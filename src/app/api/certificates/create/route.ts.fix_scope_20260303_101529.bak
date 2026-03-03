@@ -1,0 +1,63 @@
+﻿import { NextResponse } from "next/server";
+import { z } from "zod";
+import { supabaseService } from "@/lib/supabase";
+import { makePublicId } from "@/lib/publicId";
+import { phoneLast4Hash } from "@/lib/customerPortalServer";
+
+const Body = z.object({
+  tenant_id: z.string().uuid(),
+  customer_name: z.string().min(1),
+  customer_phone_last4: customer_phone_last4 || null,
+  customer_phone_last4_hash: customer_phone_last4_hash,
+  customer_phone_last4_hash: z.string().optional(),
+  vehicle_info_json: z.any().optional(),
+  content_free_text: z.string().optional(),
+  content_preset_json: z.any().optional(),
+  expiry_type: z.enum(["date","maintenance","text"]).optional(),
+  expiry_value: z.string().optional(),
+  logo_asset_path: z.string().optional(),
+  footer_variant: z.string().optional(),
+  created_by: z.string().uuid().optional(),
+});
+
+export async function POST(req: Request) {
+  const json = await req.json().catch(() => null);
+  const parsed = Body.safeParse(json);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  }
+
+  const public_id = makePublicId();
+  const b = parsed.data;
+
+  const { data, error } = await supabaseService
+    .from("certificates")
+    .insert({
+      tenant_id: b.tenant_id,
+      public_id,
+      status: "active",
+      customer_name: b.customer_name,
+  customer_phone_last4: customer_phone_last4 || null,
+  customer_phone_last4_hash: customer_phone_last4_hash,
+      customer_phone_last4_hash: b.customer_phone_last4_hash ?? null,
+      vehicle_info_json: b.vehicle_info_json ?? {},
+      content_free_text: b.content_free_text ?? null,
+      content_preset_json: b.content_preset_json ?? {},
+      expiry_type: b.expiry_type ?? "text",
+      expiry_value: b.expiry_value ?? null,
+      logo_asset_path: b.logo_asset_path ?? null,
+      footer_variant: b.footer_variant ?? "holy",
+      created_by: b.created_by ?? null,
+    })
+    .select("id, public_id, tenant_id, status, created_at")
+    .single();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    certificate: data,
+    public_url: `${process.env.APP_URL}/c/${data.public_id}`,
+  });
+}

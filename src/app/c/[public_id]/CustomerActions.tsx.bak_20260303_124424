@@ -1,0 +1,52 @@
+﻿"use client";
+
+import { useRouter } from "next/navigation";
+
+type Props = {
+  pdfHref: string;
+  returnTo?: string | null;    // 一覧に戻る等（rt）
+  logoutHref?: string | null;  // ログアウト遷移先（暫定）
+};
+
+export default function CustomerActions({ pdfHref, returnTo, logoutHref }: Props) {
+  const router = useRouter();
+
+  return (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+      <a
+        href={pdfHref}
+        target="_blank"
+        rel="noreferrer"
+        style={{ padding: "10px 12px", border: "1px solid #e5e7eb", borderRadius: 10, textDecoration: "none" }}
+      >
+        PDF生成
+      </a>
+
+      <button
+        type="button"
+        onClick={() => router.back()}
+        style={{ padding: "10px 12px", border: "1px solid #e5e7eb", borderRadius: 10, background: "#fff", cursor: "pointer" }}
+      >
+        戻る
+      </button>
+
+      {returnTo ? (
+        <a
+          href={returnTo}
+          style={{ padding: "10px 12px", border: "1px solid #e5e7eb", borderRadius: 10, textDecoration: "none" }}
+        >
+          一覧に戻る
+        </a>
+      ) : null}
+
+      {logoutHref ? (
+        <a
+          href={logoutHref}
+          style={{ padding: "10px 12px", border: "1px solid #e5e7eb", borderRadius: 10, textDecoration: "none" }}
+        >
+          ログアウト
+        </a>
+      ) : null}
+    </div>
+  );
+}
