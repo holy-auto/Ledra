@@ -172,8 +172,8 @@ export async function POST(req: NextRequest) {
       // ✅ Portal操作後の支払い・失敗でも同期（invoice自体にmetadataが無いので subscription を取得）
       case "invoice.paid":
       case "invoice.payment_failed": {
-        const inv = event.data.object as Stripe.Invoice;
-        const subscriptionId = asStringId(inv.subscription);
+        const inv = event.data.object as any;
+        const subscriptionId = asStringId(inv.subscription ?? inv.subscription_id);
         if (!subscriptionId) break;
 
         const sub = await stripe.subscriptions.retrieve(subscriptionId);
@@ -191,3 +191,4 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ received: true });
 }
+
