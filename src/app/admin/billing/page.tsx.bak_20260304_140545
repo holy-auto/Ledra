@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -21,7 +22,7 @@ function short(id?: string | null) {
 
 export default function BillingPage() {
   const supabase = useMemo(() => createClient(), []);
-  const [status, setStatus] = useState<string | null>(null);
+  const sp = useSearchParams();
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -29,15 +30,7 @@ export default function BillingPage() {
 
   const [portalBusy, setPortalBusy] = useState(false);
 
-  // ✅ useSearchParams() を使わず、クライアントで query を読む（Suspense不要）
-  useEffect(() => {
-    try {
-      const s = new URLSearchParams(window.location.search).get("status");
-      setStatus(s);
-    } catch {
-      setStatus(null);
-    }
-  }, []);
+  const status = sp.get("status"); // success / cancel が来る想定
 
   useEffect(() => {
     (async () => {
@@ -149,7 +142,11 @@ export default function BillingPage() {
           </div>
 
           <div className="pt-3 flex gap-2">
-            <button className="rounded border px-3 py-2" onClick={openPortal} disabled={portalBusy}>
+            <button
+              className="rounded border px-3 py-2"
+              onClick={openPortal}
+              disabled={portalBusy}
+            >
               {portalBusy ? "Opening…" : "Stripe請求ポータルを開く"}
             </button>
 
