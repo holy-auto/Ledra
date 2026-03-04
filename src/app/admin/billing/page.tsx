@@ -38,6 +38,15 @@ function fmtUnix(unix?: number | null) {
   return d.toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
 }
 
+function daysLeft(unix?: number | null) {
+  if (!unix) return null;
+  const ms = unix * 1000 - Date.now();
+  const d = Math.ceil(ms / (1000 * 60 * 60 * 24));
+  return d;
+}
+);
+}
+
 export default function BillingPage() {
   const supabase = useMemo(() => createClient(), []);
   const [status, setStatus] = useState<string | null>(null);
@@ -49,6 +58,7 @@ export default function BillingPage() {
   const [sub, setSub] = useState<SubInfo>(null);
 
   const [portalBusy, setPortalBusy] = useState(false);
+  const [resumeBusy, setResumeBusy] = useState(false);
   const busyRef = useRef(false);
 
   useEffect(() => {
@@ -191,7 +201,39 @@ export default function BillingPage() {
     }
   }
 
-  const activeLabel =
+    async function resumeCheckout() {
+    setResumeBusy(true);
+    setErr(null);
+
+    try {
+      const sessionRes = await supabase.auth.getSession();
+      const access_token = sessionRes.data?.session?.access_token;
+      if (!access_token) {
+        window.location.href = "/login";
+        return;
+      }
+
+      const res = await fetch("/api/stripe/resume", {
+        method: "POST",
+        headers: { "content-type": "application/json; charset=utf-8" },
+        body: JSON.stringify({ access_token }),
+        cache: "no-store",
+      });
+
+      const j = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(j?.error ? `${j.error}${j.detail ? " / " + j.detail : ""}` : `HTTP ${res.status}`);
+      }
+      if (!j?.url) throw new Error("resume url missing");
+
+      window.location.href = j.url;
+    } catch (e: any) {
+      setErr(e?.message ?? String(e));
+    } finally {
+      setResumeBusy(false);
+    }
+  }
+const activeLabel =
     tenant?.is_active === true ? "ACTIVE" : tenant?.is_active === false ? "INACTIVE" : "-";
 
   const subErr = sub && "error" in sub ? sub.error : null;
@@ -246,11 +288,11 @@ export default function BillingPage() {
                   期間開始: <b>{fmtUnix(subOk.current_period_start)}</b>
                 </div>
                 <div>
-                  次回更新（期間終了）: <b>{fmtUnix(subOk.current_period_end)}</b>
+                  次回請求日（有効期限）: <b>{fmtUnix(subOk.current_period_end)}</b>{(() => { const d = daysLeft(subOk.current_period_end); return d !== null ? <span className="ml-2 opacity-80">（あと{d}日）</span> : null; })()}
                 </div>
                 {subOk.cancel_at_period_end && (
                   <div>
-                    解約予約: <b>ON</b>（終了日: <b>{fmtUnix(subOk.current_period_end)}</b>）
+                    解約予約中: <b>ON</b>（終了日: <b>{fmtUnix(subOk.current_period_end)}</b>）
                   </div>
                 )}
                 {subOk.trial_end && (
@@ -263,10 +305,22 @@ export default function BillingPage() {
             {!sub && <div className="opacity-70">subscription が無い（未課金/未紐づけ）</div>}
           </div>
 
-          <div className="pt-3 flex gap-2">
+          {tenant.is_active === false && (
+  <div className="rounded border p-3 text-sm">
+    <div className="font-semibold">支払いが停止しています</div>
+    <div className="mt-1 opacity-80">この状態では機能が制限されます。下の「支払いを再開」で再決済してください。</div>
+  </div>
+)}
+<div className="pt-3 flex gap-2">
             <button className="rounded border px-3 py-2" onClick={openPortal} disabled={portalBusy}>
               {portalBusy ? "Opening…" : "Stripe請求ポータルを開く"}
             </button>
+
+            {tenant.is_active === false && (
+              <button className="rounded border px-3 py-2" onClick={resumeCheckout} disabled={resumeBusy}>
+                {resumeBusy ? "Redirecting…" : "支払いを再開（Checkout）"}
+              </button>
+            )}
 
             <button
               className="rounded border px-3 py-2"
@@ -289,3 +343,5 @@ export default function BillingPage() {
     </main>
   );
 }
+
+
