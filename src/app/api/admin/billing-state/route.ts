@@ -68,19 +68,25 @@ export async function POST(req: NextRequest) {
     if (subscriptionId) {
       try {
         const stripe = getStripe();
-        const sub = await stripe.subscriptions.retrieve(subscriptionId);
 
-        subscription = {
-          id: sub.id,
-          status: sub.status,
-          current_period_start: sub.current_period_start,
-          current_period_end: sub.current_period_end,
-          cancel_at_period_end: sub.cancel_at_period_end,
-          cancel_at: sub.cancel_at,
-          trial_end: sub.trial_end,
-        };
+        // Stripe SDKの戻りが Response<Subscription> の場合があるため data を吸収
+        const res: any = await stripe.subscriptions.retrieve(subscriptionId);
+        const sub: any = res?.data ?? res;
+
+        if (sub?.deleted) {
+          subscription = { error: "Subscription is deleted" };
+        } else {
+          subscription = {
+            id: sub.id,
+            status: sub.status,
+            current_period_start: sub.current_period_start ?? null,
+            current_period_end: sub.current_period_end ?? null,
+            cancel_at_period_end: sub.cancel_at_period_end ?? null,
+            cancel_at: sub.cancel_at ?? null,
+            trial_end: sub.trial_end ?? null,
+          };
+        }
       } catch (e: any) {
-        // Stripe取得失敗でも tenant は返す（UI側で “取得失敗” 表示できる）
         subscription = { error: e?.message ?? String(e) };
       }
     }
