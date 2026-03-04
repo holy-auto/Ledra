@@ -51,18 +51,19 @@ export async function POST(req: NextRequest) {
     const appUrl = process.env.APP_URL!;
     if (!appUrl) throw new Error("Missing APP_URL");
 
-        const session = await stripe.checkout.sessions.create({
+    const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
       client_reference_id: tenant_id,
-      metadata: { tenant_id, plan_tier },
-      subscription_data: { metadata: { tenant_id, plan_tier } },
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${appUrl}/admin/billing?status=success`,
       cancel_url: `${appUrl}/admin/billing?status=cancel`,
+      subscription_data: {
+        metadata: { tenant_id, plan_tier },
+      },
+      metadata: { tenant_id, plan_tier },
       allow_promotion_codes: false,
     });
-
 
     return NextResponse.json({ url: session.url }, { status: 200 });
   } catch (e: any) {
@@ -70,4 +71,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: String(e?.message ?? e) }, { status: 500 });
   }
 }
-
