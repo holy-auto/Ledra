@@ -263,15 +263,23 @@ const activeLabel =
           </div>
           <div>
             プラン: <b>{tenant.plan_tier ?? "-"}</b>
-          </div>
-          <div>
-            Stripe customer: <span className="font-mono">{short(tenant.stripe_customer_id)}</span>
-          </div>
-          <div>
-            Stripe subscription: <span className="font-mono">{short(tenant.stripe_subscription_id)}</span>
+          </div>          <div>
+            Stripe連携: <b>{tenant.stripe_subscription_id ? "連携済み" : "未連携"}</b>
           </div>
 
-          <div className="pt-2">
+          {tenant.stripe_subscription_id && (
+            <details className="pt-2">
+              <summary className="cursor-pointer opacity-80">サポート用ID（必要なときだけ）</summary>
+              <div className="mt-2 space-y-1">
+                <div>
+                  顧客ID: <span className="font-mono">{short(tenant.stripe_customer_id)}</span>
+                </div>
+                <div>
+                  契約ID: <span className="font-mono">{short(tenant.stripe_subscription_id)}</span>
+                </div>
+              </div>
+            </details>
+          )}<div className="pt-2">
             <div className="font-semibold">期限/更新</div>
             {subErr && <div className="opacity-80">Stripe期限の取得に失敗: {subErr}</div>}
             {subOk && (
@@ -328,6 +336,7 @@ const activeLabel =
     </main>
   );
 }
+
 
 
 
