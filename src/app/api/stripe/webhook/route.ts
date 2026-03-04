@@ -20,7 +20,7 @@ function planFromPriceId(priceId?: string | null): PlanTier | null {
 
 // 運用方針：active/trialing/past_due は有効扱い
 function isActiveStatus(status: Stripe.Subscription.Status): boolean {
-  return status === "active" || status === "trialing" || status === "past_due";
+  return status === "active" || status === "trialing";
 }
 
 function asStringId(v: any): string | null {
@@ -191,5 +191,6 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ received: true });
 }
+
 
 
