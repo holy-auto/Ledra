@@ -88,10 +88,9 @@ export async function POST(req: NextRequest) {
 
 // ブラウザで開いた時（GET）用の案内
 export async function GET() {
-  return NextResponse.json({
-    ok: true,
-    note: "Use POST",
-    endpoint: "/api/certificates/pdf-one",
-    body: { certificate_id: "..." },
+  return NextResponse.json({ error: "Method Not Allowed" }, { status: 405 });
+}
+,
   });
 }
+
