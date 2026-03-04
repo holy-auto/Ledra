@@ -28,7 +28,6 @@ export default function BillingPage() {
   const [tenant, setTenant] = useState<Tenant | null>(null);
 
   const [portalBusy, setPortalBusy] = useState(false);
-const [accessToken, setAccessToken] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -48,7 +47,6 @@ const [accessToken, setAccessToken] = useState<string | null>(null);
       try {
         const sessionRes = await supabase.auth.getSession();
         const access_token = sessionRes.data?.session?.access_token;
-setAccessToken(access_token ?? null);
         if (!access_token) {
           window.location.href = "/login";
           return;
@@ -82,7 +80,7 @@ setAccessToken(access_token ?? null);
       const res = await fetch("/api/stripe/portal", {
         method: "POST",
         headers: { "content-type": "application/json; charset=utf-8" },
-        body: JSON.stringify({ return_url: window.location.href, access_token: accessToken }),
+        body: JSON.stringify({ return_url: window.location.href }),
       });
 
       if (res.ok) {
@@ -151,4 +149,3 @@ setAccessToken(access_token ?? null);
     </main>
   );
 }
-
