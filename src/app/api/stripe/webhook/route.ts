@@ -18,6 +18,7 @@ function planFromPriceId(priceId?: string | null): PlanTier | null {
   return PRICE_TO_TIER[priceId] ?? null;
 }
 
+// 運用方針：active/trialing/past_due は有効扱い
 function isActiveStatus(status: Stripe.Subscription.Status): boolean {
   return status === "active" || status === "trialing" || status === "past_due";
 }
@@ -42,10 +43,78 @@ function getSupabaseAdmin() {
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
-async function updateTenant(tenant_id: string, patch: Record<string, any>) {
-  const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from("tenants").update(patch).eq("id", tenant_id);
+type TenantSelector = { by: "id"; value: string } | { by: "slug"; value: string };
+
+async function resolveTenantSelector(params: {
+  supabase: ReturnType<typeof getSupabaseAdmin>;
+  tenant_id?: string | null;
+  tenant_slug?: string | null;
+  customerId?: string | null;
+  subscriptionId?: string | null;
+}): Promise<TenantSelector | null> {
+  const { supabase, tenant_id, tenant_slug, customerId, subscriptionId } = params;
+
+  if (tenant_id) return { by: "id", value: tenant_id };
+  if (tenant_slug) return { by: "slug", value: tenant_slug };
+
+  // fallback: DB にすでに入っている stripe_id から逆引き
+  if (subscriptionId) {
+    const { data, error } = await supabase
+      .from("tenants")
+      .select("id")
+      .eq("stripe_subscription_id", subscriptionId)
+      .limit(1);
+    if (error) throw error;
+    if (data?.[0]?.id) return { by: "id", value: data[0].id };
+  }
+
+  if (customerId) {
+    const { data, error } = await supabase
+      .from("tenants")
+      .select("id")
+      .eq("stripe_customer_id", customerId)
+      .limit(1);
+    if (error) throw error;
+    if (data?.[0]?.id) return { by: "id", value: data[0].id };
+  }
+
+  return null;
+}
+
+async function updateTenantBySelector(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  selector: TenantSelector,
+  patch: Record<string, any>
+) {
+  const q = supabase.from("tenants").update(patch);
+  const { error } =
+    selector.by === "id" ? await q.eq("id", selector.value) : await q.eq("slug", selector.value);
   if (error) throw error;
+}
+
+async function syncBySubscription(stripe: Stripe, supabase: ReturnType<typeof getSupabaseAdmin>, sub: Stripe.Subscription) {
+  const subscriptionId = sub.id;
+  const customerId = asStringId(sub.customer);
+
+  const tenant_id = sub.metadata?.tenant_id ?? null;
+  const tenant_slug = sub.metadata?.tenant_slug ?? null;
+
+  const priceId: string | null = sub.items?.data?.[0]?.price?.id ?? null;
+  const plan_tier = planFromPriceId(priceId);
+  const active = isActiveStatus(sub.status);
+
+  const selector = await resolveTenantSelector({ supabase, tenant_id, tenant_slug, customerId, subscriptionId });
+  if (!selector) throw new Error(`Unable to resolve tenant for subscription sync. sub=${subscriptionId}`);
+
+  const patch: Record<string, any> = {
+    stripe_subscription_id: subscriptionId,
+    is_active: active,
+  };
+  if (customerId) patch.stripe_customer_id = customerId;
+  if (plan_tier) patch.plan_tier = plan_tier;
+
+  console.log("webhook: sync subscription", { tenant_id: tenant_id ?? "(lookup)", plan_tier, active, subscriptionId });
+  await updateTenantBySelector(supabase, selector, patch);
 }
 
 export async function POST(req: NextRequest) {
@@ -66,77 +135,49 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
+  const supabase = getSupabaseAdmin();
+
   try {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
 
-        const tenant_id = session.metadata?.tenant_id ?? session.client_reference_id ?? null;
-        const plan_tier = (session.metadata?.plan_tier as any) ?? null;
-
         const customerId = asStringId(session.customer);
         const subscriptionId = asStringId(session.subscription);
 
-        if (!tenant_id) throw new Error("checkout.session.completed: missing tenant_id in metadata/client_reference_id");
+        // tenant 特定：metadata優先（推奨）→ client_reference_id
+        const tenant_id = session.metadata?.tenant_id ?? session.client_reference_id ?? null;
+        const tenant_slug = session.metadata?.tenant_slug ?? null;
+
         if (!subscriptionId) throw new Error("checkout.session.completed: missing subscription id");
 
-        // plan が metadata に無い場合は subscription の price から推定
-        let tier: PlanTier | null = plan_tier;
-        if (!tier) {
-          const sub = await stripe.subscriptions.retrieve(subscriptionId);
-          const priceId = sub.items?.data?.[0]?.price?.id ?? null;
-          tier = planFromPriceId(priceId);
-        }
+        // subscription を取って確定値で同期
+        const sub = await stripe.subscriptions.retrieve(subscriptionId);
+        // metadata が subscription にも入っている想定だが、念のためセッション由来を補完
+        if (tenant_id && !sub.metadata?.tenant_id) sub.metadata = { ...(sub.metadata ?? {}), tenant_id };
+        if (tenant_slug && !sub.metadata?.tenant_slug) sub.metadata = { ...(sub.metadata ?? {}), tenant_slug };
 
-        const patch: Record<string, any> = {
-          stripe_subscription_id: subscriptionId,
-          is_active: true,
-        };
-        if (customerId) patch.stripe_customer_id = customerId;
-        if (tier) patch.plan_tier = tier;
-
-        console.log("webhook: checkout.session.completed", { tenant_id, tier, customerId, subscriptionId });
-        await updateTenant(tenant_id, patch);
+        await syncBySubscription(stripe, supabase, sub);
         break;
       }
 
       case "customer.subscription.created":
-      case "customer.subscription.updated": {
+      case "customer.subscription.updated":
+      case "customer.subscription.deleted": {
         const sub = event.data.object as Stripe.Subscription;
-
-        const tenant_id = sub.metadata?.tenant_id ?? null;
-        if (!tenant_id) throw new Error("subscription.*: missing tenant_id in subscription.metadata");
-
-        const customerId = asStringId(sub.customer);
-        const subscriptionId = sub.id;
-
-        const priceId = sub.items?.data?.[0]?.price?.id ?? null;
-        const tier = planFromPriceId(priceId);
-        const active = isActiveStatus(sub.status);
-
-        const patch: Record<string, any> = {
-          stripe_subscription_id: subscriptionId,
-          is_active: active,
-        };
-        if (customerId) patch.stripe_customer_id = customerId;
-        if (tier) patch.plan_tier = tier;
-
-        console.log("webhook: subscription sync", { tenant_id, tier, active, customerId, subscriptionId });
-        await updateTenant(tenant_id, patch);
+        await syncBySubscription(stripe, supabase, sub);
         break;
       }
 
-      case "customer.subscription.deleted": {
-        const sub = event.data.object as Stripe.Subscription;
+      // ✅ Portal操作後の支払い・失敗でも同期（invoice自体にmetadataが無いので subscription を取得）
+      case "invoice.paid":
+      case "invoice.payment_failed": {
+        const inv = event.data.object as Stripe.Invoice;
+        const subscriptionId = asStringId(inv.subscription);
+        if (!subscriptionId) break;
 
-        const tenant_id = sub.metadata?.tenant_id ?? null;
-        if (!tenant_id) {
-          console.warn("subscription.deleted: missing tenant_id; skip");
-          break;
-        }
-
-        console.log("webhook: subscription.deleted", { tenant_id, subscriptionId: sub.id });
-        await updateTenant(tenant_id, { is_active: false, stripe_subscription_id: sub.id });
+        const sub = await stripe.subscriptions.retrieve(subscriptionId);
+        await syncBySubscription(stripe, supabase, sub);
         break;
       }
 
@@ -144,7 +185,7 @@ export async function POST(req: NextRequest) {
         break;
     }
   } catch (e: any) {
-    console.error("webhook handler failed", { type: event.type, id: event.id, error: e?.message ?? e });
+    console.error("stripe webhook handler failed", { type: event.type, id: event.id, error: e?.message ?? e });
     return NextResponse.json({ error: "Webhook handler failed" }, { status: 500 });
   }
 
