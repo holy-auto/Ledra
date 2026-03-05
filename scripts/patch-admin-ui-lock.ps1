@@ -52,12 +52,12 @@ function WrapDefaultPageReturn([string]$content, [string]$featureKey) {
 
     if ($inS) {
       if ($ch -eq "\") { $esc = $true; continue }
-      if ($ch -eq "'") { $inS = $false; continue }
+      if ($ch -eq [char]39) { $inS = $false; continue }
       continue
     }
     if ($inD) {
       if ($ch -eq "\") { $esc = $true; continue }
-      if ($ch -eq '"') { $inD = $false; continue }
+      if ($ch -eq [char]34) { $inD = $false; continue }
       continue
     }
     if ($inT) {
@@ -66,8 +66,8 @@ function WrapDefaultPageReturn([string]$content, [string]$featureKey) {
       continue
     }
 
-    if ($ch -eq "'") { $inS = $true; continue }
-    if ($ch -eq '"') { $inD = $true; continue }
+    if ($ch -eq [char]39) { $inS = $true; continue }
+    if ($ch -eq [char]34) { $inD = $true; continue }
     if ($ch -eq "`") { $inT = $true; continue }
 
     if ($ch -eq "(") { $depth++; continue }
