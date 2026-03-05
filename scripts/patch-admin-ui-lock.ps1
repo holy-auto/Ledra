@@ -175,7 +175,7 @@ if (!(Test-Path $guardPath)) {
   $guardDir = Split-Path -Parent $guardPath
   New-Item -ItemType Directory -Force -Path $guardDir | Out-Null
 
-  $guard = @"
+  $guard = @'
 "use client";
 
 import Link from "next/link";
@@ -224,7 +224,7 @@ export default function AdminFeatureGuard({ feature, children }: { feature: Feat
     </div>
   );
 }
-"@
+'@
   WriteUtf8 $guardPath $guard
 }
 
