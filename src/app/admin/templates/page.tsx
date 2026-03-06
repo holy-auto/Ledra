@@ -1,10 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabaseServer";
-import { FEATURES as BILLING_FEATURES } from "@/lib/billing/planFeatures";
 
 import AdminFeatureGuard from "@/app/admin/AdminFeatureGuard";
-import { FEATURES as BILLING_FEATURES } from "@/lib/billing/planFeatures";
 const DEFAULT_SCHEMA = {
   version: 1,
   sections: [
@@ -110,7 +108,7 @@ export default async function Page({
   if (error) return <main className="p-6">読み込みエラー: {error.message}</main>;
 
   return (
-  <AdminFeatureGuard feature={FEATURES.manage_templates}>
+  <AdminFeatureGuard feature="manage_templates">
 
     <main className="p-6 space-y-4 max-w-3xl">
       <header className="flex items-end justify-between flex-wrap gap-3">
@@ -179,3 +177,4 @@ export default async function Page({
   </AdminFeatureGuard>
 );
 }
+
