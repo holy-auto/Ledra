@@ -1,4 +1,4 @@
-﻿import { notFound } from "next/navigation";
+import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 import CustomerActions from "./CustomerActions";
 
@@ -97,7 +97,30 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
   // 暫定：customer-login 実装前なので /login に飛ばす
   const logoutHref = showLogout ? "/login" : null;
 
-  return (
+  
+
+  const noticeRaw = (sp as any)?.notice;
+  const notice =
+    typeof noticeRaw === "string" ? noticeRaw :
+    Array.isArray(noticeRaw) ? noticeRaw[0] : null;
+
+  const isPdfBlocked =
+    notice === "pdf_blocked" ||
+    notice === "pdf_blocked_grace_expired" ||
+    notice === "pdf_blocked_inactive" ||
+    notice === "payment_required";
+
+  const shopName = cert.tenant_name ?? "施工店";
+  const shopUrl = cert.tenant_custom_domain ? `https://${cert.tenant_custom_domain}` : null;
+
+  const helpMessage =
+    `【施工証明書】PDFが表示できません\n` +
+    `施工店: ${shopName}\n` +
+    `Public ID: ${cert.public_id}\n` +
+    `ページURL: ${publicUrl}\n` +
+    `状況: PDF提供が一時停止（契約/プラン/支払い状況）\n` +
+    `→ 施工店へ上記を伝えてご確認ください。`;
+return (
     <main
       style={{
         maxWidth: 860,
@@ -118,6 +141,53 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
         </div>
       </header>
 
+      {isPdfBlocked && (
+        <section
+          style={{
+            border: "1px solid #f59e0b",
+            background: "#fffbeb",
+            borderRadius: 12,
+            padding: 14,
+            marginBottom: 16,
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>PDFの提供が一時停止されています</div>
+          <div style={{ fontSize: 13, lineHeight: 1.6 }}>
+            このページの公開閲覧は可能ですが、PDFは施工店の契約/プラン/支払い状況により一時的に提供されない場合があります。<br />
+            <b>施工店（{shopName}）</b>へ「Public ID」とページURLを伝えてお問い合わせください。
+          </div>
+
+          <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+            {shopUrl ? (
+              <a href={shopUrl} target="_blank" rel="noreferrer" style={{ textDecoration: "underline" }}>
+                施工店サイトを開く
+              </a>
+            ) : (
+              <span style={{ fontSize: 12, opacity: 0.8 }}>施工店サイト（未設定）</span>
+            )}
+            <span style={{ fontSize: 12, opacity: 0.8 }}>Public ID: {cert.public_id}</span>
+          </div>
+
+          <pre
+            style={{
+              marginTop: 10,
+              whiteSpace: "pre-wrap",
+              fontSize: 12,
+              background: "#fff",
+              border: "1px solid #fde68a",
+              borderRadius: 10,
+              padding: 10,
+            }}
+          >
+            {helpMessage}
+          </pre>
+          <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
+            ※上の文章をそのままコピーして、施工店へ送ってください（LINE/メール等）。
+          </div>
+        </section>
+      )}
+
+
       <CustomerActions pdfHref={pdfHref} returnTo={returnTo ?? undefined} logoutHref={logoutHref ?? undefined} />
 <section style={{ display: "flex", gap: 16, alignItems: "center", border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, marginBottom: 16 }}>
         <div style={{ width: 220, height: 220, border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden", background: "#fff", display: "grid", placeItems: "center" }}>
@@ -129,7 +199,7 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
           <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>スマホで読み取り or URLを共有</div>
           <a href={publicUrl} style={{ wordBreak: "break-all" }}>{publicUrl}</a>
           <div style={{ marginTop: 10 }}>
-            <a href={pdfHref} target="_blank" rel="noreferrer">PDFを表示</a>
+            {isPdfBlocked ? (<span style={{ color: "#b45309", fontWeight: 600 }}>PDF（現在停止中）</span>) : (<a href={pdfHref} target="_blank" rel="noreferrer">PDFを表示</a>)}
           </div>
         </div>
       </section>
