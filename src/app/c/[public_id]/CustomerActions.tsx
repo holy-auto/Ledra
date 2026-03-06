@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -72,7 +72,7 @@ export default function CustomerActions(props: Props) {
     // 初回は “customer導線らしい” と判断できれば表示（query logout=1 はマウント後）
     const showLogout = !!tenant || (!!rt && rt.startsWith("/customer/"));
 
-    return { pid, rt, tenant, pdfHref, listUrl, logoutAfter, showLogout };
+    return { pid, rt, tenant, pdfHref, listUrl, logoutAfter, showLogout, pdfBlocked: false };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -114,19 +114,24 @@ export default function CustomerActions(props: Props) {
 
       const showLogout = logout_q || !!tenant || !!listUrl;
 
-      setS({ pid, rt, tenant, pdfHref, listUrl, logoutAfter, showLogout });
+      const notice = (sp.get("notice") ?? "").trim();
+      const pdfBlocked =
+        notice === "pdf_blocked" ||
+        notice === "pdf_blocked_grace_expired" ||
+        notice === "pdf_blocked_inactive" ||
+        notice === "payment_required";setS({ pid, rt, tenant, pdfHref, listUrl, logoutAfter, showLogout, pdfBlocked });
     } catch {
       // no-op
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const canPdf = !!s.pdfHref;
+  const canPdf = !!s.pdfHref && !s.pdfBlocked;
   const canList = !!s.listUrl;
   const canLogout = s.showLogout && !!s.logoutAfter;
 
   const onPdf = () => {
-    if (!s.pdfHref) return;
+    if (!s.pdfHref || s.pdfBlocked) return;
     window.open(s.pdfHref, "_blank", "noopener,noreferrer");
   };
 
@@ -160,7 +165,7 @@ export default function CustomerActions(props: Props) {
         disabled={!canPdf}
         className="rounded-md border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
       >
-        PDF生成
+        {s.pdfBlocked ? "PDF（停止中）" : "PDF生成"}
       </button>
 
       <button
