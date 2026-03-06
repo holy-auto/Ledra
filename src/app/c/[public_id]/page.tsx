@@ -153,8 +153,8 @@ return (
         >
           <div style={{ fontWeight: 700, marginBottom: 6 }}>現在、この証明書のPDFご案内を一時停止しています</div>
           <div style={{ fontSize: 13, lineHeight: 1.6 }}>
-            このページの公開閲覧は可能ですが、PDFは施工店の契約/プラン/支払い状況により一時的に提供されない場合があります。<br />
-            <b>施工店（{shopName}）</b>へ「Public ID」とページURLを伝えてお問い合わせください。
+            このページの公開閲覧は引き続きご利用いただけますが、PDFのご案内は現在一時的に停止しています。<br />
+            <b>施工店（{shopName}）</b>へ「Public ID」とページURLを添えてお問い合わせください。
           </div>
 
           <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
