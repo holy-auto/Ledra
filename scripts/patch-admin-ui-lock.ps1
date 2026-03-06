@@ -34,7 +34,8 @@ function WrapDefaultPageReturn([string]$content, [string]$featureKey) {
   $mPage = [regex]::Match($content, 'export default\s+async\s+function\s+Page\b', 'Singleline')
   if (!$mPage.Success) { throw "export default async function Page not found." }
 
-  $mRet = [regex]::Match($content, 'return\s*\(', 'Singleline', $mPage.Index)
+  $after = $content.Substring($mPage.Index)
+  $mRet = [regex]::Match($after, 'return\s*\(', 'Singleline')
   if (!$mRet.Success) { throw "return( not found in Page." }
 
   $openParenIndex = $mRet.Index + ($mRet.Value.Length - 1)  # '(' の位置
@@ -261,6 +262,7 @@ if ($cc -match 'const\s+canPdfOne\s*=' -and $cc -notmatch '"pdf_one"') {
 WriteUtf8 $ccPath $cc
 
 "OK: patched. backup=" + $backupDir
+
 
 
 

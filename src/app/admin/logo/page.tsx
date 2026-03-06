@@ -1,6 +1,6 @@
-﻿import { redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabaseServer";
-
+import AdminFeatureGuard from "@/app/admin/AdminFeatureGuard";
 export default async function Page({
   searchParams,
 }: {
@@ -55,6 +55,8 @@ if (file.size > 2 * 1024 * 1024) redirect("/admin/logo?e=size"); // 2MB上限
   }
 
   return (
+  <AdminFeatureGuard feature="upload_logo">
+
     <main className="p-6 max-w-xl space-y-4">
       <h1 className="text-2xl font-bold">ロゴアップロード</h1>
       <p className="text-sm text-gray-500">tenant: <span className="font-mono">{tenantId}</span></p>
@@ -69,5 +71,7 @@ if (file.size > 2 * 1024 * 1024) redirect("/admin/logo?e=size"); // 2MB上限
         <button className="border rounded px-3 py-2 text-sm w-full">アップロード</button>
       </form>
     </main>
-  );
+  
+  </AdminFeatureGuard>
+);
 }
