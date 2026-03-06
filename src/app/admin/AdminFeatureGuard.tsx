@@ -5,6 +5,7 @@ import { ReactNode, useMemo } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useAdminBillingStatus } from "@/lib/billing/useAdminBillingStatus";
 import { canUseFeature, normalizePlanTier, type FeatureKey } from "@/lib/billing/planFeatures";
+import type { FeatureKey } from "@/lib/billing/featureKeys";
 
 export default function AdminFeatureGuard({ feature, children }: { feature: FeatureKey; children: ReactNode }) {
   const bs = useAdminBillingStatus();
