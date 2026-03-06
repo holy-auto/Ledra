@@ -1,14 +1,6 @@
 export type PlanTier = "mini" | "standard" | "pro";
 
-export type FeatureKey =
-  | "issue_certificate"
-  | "export_one_csv"
-  | "export_search_csv"
-  | "export_selected_csv"
-  | "pdf_one"
-  | "pdf_zip"
-  | "manage_templates"
-  | "upload_logo";
+export type FeatureKey = FeatureId;
 
 /**
  * - 不明な plan_tier は "pro" 扱い（UIは緩く→実際の制限はAPI/402で止める）
