@@ -1,4 +1,4 @@
-import type { FeatureId } from "@/lib/billing/featureKeys";
+﻿import type { FeatureId } from "@/lib/billing/featureKeys";
 export type PlanTier = "mini" | "standard" | "pro";
 
 export type FeatureKey = string;
@@ -72,3 +72,16 @@ const __assertExactFeatureKeys = <T extends Record<FeatureKey, unknown>>(t: __No
 
 // MATRIX must include ALL FeatureId keys (no missing / no extra)
 __assertExactFeatureKeys(MATRIX);
+
+/** compile-time diff (auto): show missing/extra keys as readable TS errors */
+type __MissingFeatureKeys = Exclude<FeatureId, keyof typeof MATRIX>;
+type __ExtraFeatureKeys = Exclude<keyof typeof MATRIX, FeatureId>;
+
+// If missing/extra exists, the error type will include the key union.
+type __CheckMissingFeatureKeys =
+  __MissingFeatureKeys extends never ? true : ["Missing FeatureId keys in MATRIX", __MissingFeatureKeys];
+type __CheckExtraFeatureKeys =
+  __ExtraFeatureKeys extends never ? true : ["Extra keys in MATRIX (not in FeatureId)", __ExtraFeatureKeys];
+
+const __checkMissingFeatureKeys: __CheckMissingFeatureKeys = true;
+const __checkExtraFeatureKeys: __CheckExtraFeatureKeys = true;
