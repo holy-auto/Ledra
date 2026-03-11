@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { MarketingHeader } from "@/components/marketing/layout/MarketingHeader";
 import { MarketingFooter } from "@/components/marketing/layout/MarketingFooter";
 
@@ -10,7 +11,7 @@ import { MarketingFooter } from "@/components/marketing/layout/MarketingFooter";
 export default function MarketingLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <div className="flex min-h-screen flex-col">
