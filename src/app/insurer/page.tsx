@@ -13,14 +13,38 @@ type Row = {
   tenant_id: string;
 };
 
+function StatusBadge({ status }: { status: string }) {
+  const s = String(status ?? "").toLowerCase();
+  if (s === "active")
+    return (
+      <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
+        有効
+      </span>
+    );
+  if (s === "void")
+    return (
+      <span className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-semibold text-neutral-500 ring-1 ring-neutral-200">
+        無効
+      </span>
+    );
+  return (
+    <span className="inline-flex items-center rounded-full bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-600 ring-1 ring-neutral-200">
+      {status}
+    </span>
+  );
+}
+
 export default function InsurerHomePage() {
   const supabase = useMemo(() => createClient(), []);
   const [ready, setReady] = useState(false);
   const [q, setQ] = useState("");
+  const [status, setStatus] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [billingBusy, setBillingBusy] = useState(false);
+  const billingBusy = false;
 
   useEffect(() => {
     (async () => {
@@ -37,7 +61,12 @@ export default function InsurerHomePage() {
     setBusy(true);
     setErr(null);
     try {
-      const res = await fetch(`/api/insurer/search?q=${encodeURIComponent(q)}&limit=50&offset=0`, { cache: "no-store" });
+      const qs = new URLSearchParams({ limit: "50", offset: "0" });
+      if (q) qs.set("q", q);
+      if (status) qs.set("status", status);
+      if (dateFrom) qs.set("date_from", dateFrom);
+      if (dateTo) qs.set("date_to", dateTo);
+      const res = await fetch(`/api/insurer/search?${qs.toString()}`, { cache: "no-store" });
       const j = await res.json();
       if (!res.ok) throw new Error(j?.error ?? "search_failed");
       setRows(j?.rows ?? []);
@@ -55,91 +84,191 @@ export default function InsurerHomePage() {
   };
 
   const startCheckout = async () => {
-    setBillingBusy(true);
-    setErr(null);
-    try {
-      const res = await fetch("/api/insurer/checkout", { method: "POST" });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j?.error ?? "checkout_failed");
-      if (!j?.url) throw new Error("checkout_url_missing");
-      window.location.href = j.url;
-    } catch (e: any) {
-      setErr(e?.message ?? "checkout_failed");
-    } finally {
-      setBillingBusy(false);
-    }
+    // 保険会社向け Stripe checkout は未実装（insurer_id と Stripe の紐づけ設計が必要）
+    setErr("サブスク契約機能は現在準備中です。");
   };
 
   if (!ready) return null;
 
-  const exportUrl = `/api/insurer/export?q=${encodeURIComponent(q)}`;
+  const exportQs = new URLSearchParams();
+  if (q) exportQs.set("q", q);
+  if (status) exportQs.set("status", status);
+  if (dateFrom) exportQs.set("date_from", dateFrom);
+  if (dateTo) exportQs.set("date_to", dateTo);
+  const exportUrl = `/api/insurer/export${exportQs.toString() ? `?${exportQs.toString()}` : ""}`;
 
   return (
-    <main style={{ maxWidth: 1100, margin: "30px auto", padding: 16 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700 }}>保険会社ポータル：証明書検索</h1>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={startCheckout} disabled={billingBusy} style={{ padding: 10, fontWeight: 700 }}>
-            {billingBusy ? "..." : "サブスク契約/更新"}
-          </button>
-          <button onClick={onLogout} style={{ padding: 10 }}>ログアウト</button>
-        </div>
-      </div>
+    <main className="min-h-screen bg-neutral-50 p-6">
+      <div className="mx-auto max-w-7xl space-y-6">
 
-      <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="public_id / 顧客名 / 車両型式(model) / ナンバー(plate)"
-          style={{ flex: 1, padding: 10 }}
-        />
-        <button onClick={runSearch} disabled={busy} style={{ padding: "10px 14px", fontWeight: 700 }}>
-          {busy ? "..." : "検索"}
-        </button>
-        <a href={exportUrl} style={{ padding: "10px 14px", fontWeight: 700, display: "inline-block", border: "1px solid #ddd" }}>
-          検索CSV
-        </a>
-      </div>
+        {/* Header */}
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-3">
+            <div className="inline-flex rounded-full border border-neutral-300 bg-white px-3 py-1 text-[11px] font-semibold tracking-[0.22em] text-neutral-600">
+              INSURER PORTAL
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight text-neutral-900">
+                証明書検索
+              </h1>
+              <p className="mt-2 text-sm text-neutral-600">
+                保険会社ポータル — 施工証明書を public_id・顧客名・車両で検索します。
+              </p>
+            </div>
+          </div>
 
-      {err && <div style={{ color: "crimson", marginTop: 10 }}>{err}</div>}
+          <div className="flex gap-3 items-center">
+            <button
+              onClick={startCheckout}
+              disabled={billingBusy}
+              className="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-40"
+            >
+              {billingBusy ? "..." : "サブスク契約/更新"}
+            </button>
+            <button
+              onClick={onLogout}
+              className="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
+            >
+              ログアウト
+            </button>
+          </div>
+        </header>
 
-      <div style={{ marginTop: 16, borderTop: "1px solid #ddd" }} />
+        {/* Search bar */}
+        <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+          <div className="mb-3">
+            <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">SEARCH</div>
+            <div className="mt-1 text-base font-semibold text-neutral-900">証明書を検索</div>
+          </div>
+          <div className="space-y-3">
+            {/* キーワード行 */}
+            <div className="flex gap-3">
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && runSearch()}
+                placeholder="public_id / 顧客名 / 車両型式 / ナンバー"
+                className="flex-1 rounded-xl border border-neutral-300 bg-neutral-50 px-4 py-2.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-400"
+              />
+              <button
+                onClick={runSearch}
+                disabled={busy}
+                className="rounded-xl border border-neutral-900 bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
+              >
+                {busy ? "検索中..." : "検索"}
+              </button>
+              <a
+                href={exportUrl}
+                className="rounded-xl border border-neutral-300 bg-white px-4 py-2.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
+              >
+                CSV
+              </a>
+            </div>
 
-      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12 }}>
-        <thead>
-          <tr style={{ textAlign: "left" }}>
-            <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>public_id</th>
-            <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>顧客名</th>
-            <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>車両</th>
-            <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>状態</th>
-            <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>作成</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.public_id}>
-              <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                <a href={`/insurer/c/${encodeURIComponent(r.public_id)}`} style={{ fontWeight: 700 }}>
-                  {r.public_id}
-                </a>
-              </td>
-              <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{r.customer_name}</td>
-              <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                {[r.vehicle_model, r.vehicle_plate].filter(Boolean).join(" / ")}
-              </td>
-              <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{r.status}</td>
-              <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{new Date(r.created_at).toLocaleString()}</td>
-            </tr>
-          ))}
-          {rows.length === 0 && (
-            <tr>
-              <td colSpan={5} style={{ padding: 14, opacity: 0.7 }}>
-                検索結果がありません
-              </td>
-            </tr>
+            {/* フィルタ行 */}
+            <div className="grid gap-3 sm:grid-cols-3">
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
+              >
+                <option value="">全ステータス</option>
+                <option value="active">有効 (active)</option>
+                <option value="void">無効 (void)</option>
+              </select>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-neutral-500 whitespace-nowrap">FROM</span>
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="flex-1 rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-neutral-500 whitespace-nowrap">TO</span>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="flex-1 rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
+                />
+              </div>
+            </div>
+          </div>
+
+          {err && (
+            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {err}
+            </div>
           )}
-        </tbody>
-      </table>
+        </div>
+
+        {/* Results */}
+        <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">RESULTS</div>
+              <div className="mt-1 text-base font-semibold text-neutral-900">検索結果</div>
+            </div>
+            {rows.length > 0 && (
+              <div className="text-sm text-neutral-500">
+                <span className="font-semibold text-neutral-900">{rows.length}</span> 件
+              </div>
+            )}
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-neutral-200">
+            <table className="min-w-full text-sm">
+              <thead className="bg-neutral-50">
+                <tr>
+                  <th className="p-3 text-left font-semibold text-neutral-600">証明書 ID</th>
+                  <th className="p-3 text-left font-semibold text-neutral-600">顧客名</th>
+                  <th className="p-3 text-left font-semibold text-neutral-600">車両</th>
+                  <th className="p-3 text-left font-semibold text-neutral-600">ステータス</th>
+                  <th className="p-3 text-left font-semibold text-neutral-600">作成日時</th>
+                  <th className="p-3 text-left font-semibold text-neutral-600">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.public_id} className="border-t hover:bg-neutral-50">
+                    <td className="p-3 font-mono text-xs text-neutral-700">{r.public_id}</td>
+                    <td className="p-3 font-medium text-neutral-900">{r.customer_name}</td>
+                    <td className="p-3 text-neutral-600">
+                      {[r.vehicle_model, r.vehicle_plate].filter(Boolean).join(" / ") || "-"}
+                    </td>
+                    <td className="p-3">
+                      <StatusBadge status={r.status} />
+                    </td>
+                    <td className="p-3 whitespace-nowrap text-neutral-600">
+                      {new Date(r.created_at).toLocaleString("ja-JP")}
+                    </td>
+                    <td className="p-3">
+                      <a
+                        href={`/insurer/c/${encodeURIComponent(r.public_id)}`}
+                        className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100"
+                      >
+                        詳細
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+                {rows.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="p-8 text-center text-sm text-neutral-500">
+                      {q ? `「${q}」に一致する証明書が見つかりません。` : "検索キーワードを入力してください。"}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+      </div>
     </main>
   );
 }

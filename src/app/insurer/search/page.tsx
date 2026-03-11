@@ -1,6 +1,28 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 
+function StatusBadge({ status }: { status: string }) {
+  const s = String(status ?? "").toLowerCase();
+  if (s === "active")
+    return (
+      <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
+        有効
+      </span>
+    );
+  if (s === "void")
+    return (
+      <span className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-semibold text-neutral-500 ring-1 ring-neutral-200">
+        無効
+      </span>
+    );
+  if (!s || s === "-") return <span className="text-xs text-neutral-400">-</span>;
+  return (
+    <span className="inline-flex items-center rounded-full bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-600 ring-1 ring-neutral-200">
+      {status}
+    </span>
+  );
+}
+
 export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -45,6 +67,8 @@ async function fetchSearch(sp: Record<string, string | string[] | undefined>) {
   const keys = [
     "q",
     "status",
+    "date_from",
+    "date_to",
     "public_id",
     "plate",
     "plate_display",
@@ -183,6 +207,8 @@ export default async function Page({
   const sp = await searchParams;
   const q = first(sp.q).trim();
   const status = first(sp.status).trim();
+  const dateFrom = first(sp.date_from).trim();
+  const dateTo = first(sp.date_to).trim();
 
   const result = await fetchSearch(sp);
   const rows = result.rows as any[];
@@ -215,31 +241,91 @@ export default async function Page({
           </div>
         </header>
 
-        <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-          <form action="/insurer/search" method="get" className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_120px]">
+        <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm space-y-3">
+          <div>
+            <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">SEARCH</div>
+            <div className="mt-1 text-base font-semibold text-neutral-900">絞り込み条件</div>
+          </div>
+          <form action="/insurer/search" method="get" className="space-y-3">
+            {/* キーワード */}
             <input
               name="q"
               defaultValue={q}
               placeholder="public_id / 顧客名 / ナンバー / 車種"
-              className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-3 text-sm"
+              className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
             />
 
-            <select
-              name="status"
-              defaultValue={status}
-              className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-3 text-sm"
-            >
-              <option value="">全ステータス</option>
-              <option value="active">active</option>
-              <option value="void">void</option>
-            </select>
+            {/* ステータス・日付フィルタ */}
+            <div className="grid gap-3 sm:grid-cols-[180px_1fr_1fr_120px]">
+              <select
+                name="status"
+                defaultValue={status}
+                className="rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
+              >
+                <option value="">全ステータス</option>
+                <option value="active">有効 (active)</option>
+                <option value="void">無効 (void)</option>
+              </select>
 
-            <button
-              type="submit"
-              className="rounded-xl border border-neutral-300 bg-neutral-900 px-4 py-3 text-sm font-medium text-white hover:bg-neutral-800"
-            >
-              検索
-            </button>
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-medium text-neutral-500 whitespace-nowrap">FROM</label>
+                <input
+                  type="date"
+                  name="date_from"
+                  defaultValue={dateFrom}
+                  className="flex-1 rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-medium text-neutral-500 whitespace-nowrap">TO</label>
+                <input
+                  type="date"
+                  name="date_to"
+                  defaultValue={dateTo}
+                  className="flex-1 rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="rounded-xl border border-neutral-900 bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-700"
+              >
+                検索
+              </button>
+            </div>
+
+            {/* Active filters display */}
+            {(q || status || dateFrom || dateTo) && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {q && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-medium text-neutral-700">
+                    キーワード: {q}
+                  </span>
+                )}
+                {status && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-medium text-neutral-700">
+                    ステータス: {status}
+                  </span>
+                )}
+                {dateFrom && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-medium text-neutral-700">
+                    FROM: {dateFrom}
+                  </span>
+                )}
+                {dateTo && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-medium text-neutral-700">
+                    TO: {dateTo}
+                  </span>
+                )}
+                <Link
+                  href="/insurer/search"
+                  className="inline-flex items-center gap-1 rounded-full bg-neutral-200 px-2.5 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-300"
+                >
+                  クリア
+                </Link>
+              </div>
+            )}
           </form>
         </section>
 
@@ -253,25 +339,23 @@ export default async function Page({
           </section>
         ) : null}
 
-        <section className="grid gap-4 md:grid-cols-4">
+        <section className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
           <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
             <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">RESULTS</div>
             <div className="mt-2 text-2xl font-bold text-neutral-900">{rows.length}</div>
+            <div className="mt-1 text-xs text-neutral-500">件</div>
           </div>
-
           <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">QUERY</div>
-            <div className="mt-2 text-sm font-medium text-neutral-900">{q || "-"}</div>
+            <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">STATUS</div>
+            <div className="mt-2 text-sm font-semibold text-neutral-900">{status || "全て"}</div>
           </div>
-
           <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">STATUS FILTER</div>
-            <div className="mt-2 text-sm font-medium text-neutral-900">{status || "-"}</div>
+            <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">DATE FROM</div>
+            <div className="mt-2 text-sm font-semibold text-neutral-900">{dateFrom || "-"}</div>
           </div>
-
           <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">SOURCE</div>
-            <div className="mt-2 text-sm font-medium text-neutral-900">/api/insurer/search</div>
+            <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">DATE TO</div>
+            <div className="mt-2 text-sm font-semibold text-neutral-900">{dateTo || "-"}</div>
           </div>
         </section>
 
@@ -312,13 +396,7 @@ export default async function Page({
                         {publicId || <span className="text-xs text-neutral-400">証明書未発行</span>}
                       </td>
                       <td className="p-3">
-                        {hasCertificate ? (
-                          <span className={isVoid ? "text-red-700" : "text-emerald-700"}>
-                            {statusText}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-neutral-400">-</span>
-                        )}
+                        <StatusBadge status={hasCertificate ? statusText : "-"} />
                       </td>
                       <td className="p-3">{getRowCustomer(row)}</td>
                       <td className="p-3">{getRowModel(row)}</td>
@@ -341,25 +419,23 @@ export default async function Page({
                       </td>
                       <td className="p-3">
                         {hasCertificate ? (
-                          <div className="flex flex-col gap-2">
+                          <div className="flex flex-col gap-1.5">
                             <Link
-                              href={`/insurer/certificate/${encodeURIComponent(publicId)}`}
-                              className="underline"
+                              href={`/insurer/c/${encodeURIComponent(publicId)}`}
+                              className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100 text-center"
                             >
                               詳細
                             </Link>
                             <Link
                               href={`/c/${encodeURIComponent(publicId)}`}
                               target="_blank"
-                              className="underline"
+                              className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100 text-center"
                             >
-                              公開ページ
+                              公開
                             </Link>
                           </div>
                         ) : (
-                          <span className="text-xs text-neutral-400">
-                            車両一致のみ
-                          </span>
+                          <span className="text-xs text-neutral-400">証明書なし</span>
                         )}
                       </td>
                     </tr>

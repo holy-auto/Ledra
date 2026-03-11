@@ -12,6 +12,9 @@ function getClientMeta(req: Request) {
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const q = url.searchParams.get("q") ?? "";
+  const status = url.searchParams.get("status") ?? "";
+  const dateFrom = url.searchParams.get("date_from") ?? "";
+  const dateTo = url.searchParams.get("date_to") ?? "";
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50", 10) || 50, 200);
   const offset = Math.max(parseInt(url.searchParams.get("offset") ?? "0", 10) || 0, 0);
 
@@ -30,5 +33,58 @@ export async function GET(req: Request) {
   });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  return NextResponse.json({ rows: data ?? [] });
+
+  let rows: any[] = data ?? [];
+
+  // Post-RPC filtering for status, date_from, date_to
+  // (applied here for RPC compatibility — no DB migration required)
+  if (status) {
+    const s = status.toLowerCase();
+    rows = rows.filter((r: any) => {
+      const rowStatus = String(
+        r?.status ??
+        r?.latest_active_certificate_status ??
+        r?.latest_certificate_status ??
+        r?.certificate_status ??
+        ""
+      ).toLowerCase();
+      return rowStatus === s;
+    });
+  }
+
+  if (dateFrom) {
+    const from = new Date(dateFrom);
+    if (!Number.isNaN(from.getTime())) {
+      rows = rows.filter((r: any) => {
+        const createdAt = String(
+          r?.created_at ??
+          r?.latest_active_certificate_created_at ??
+          r?.latest_certificate_created_at ??
+          ""
+        );
+        if (!createdAt) return true;
+        return new Date(createdAt) >= from;
+      });
+    }
+  }
+
+  if (dateTo) {
+    // Include the full dateTo day (end of day)
+    const to = new Date(dateTo);
+    to.setHours(23, 59, 59, 999);
+    if (!Number.isNaN(to.getTime())) {
+      rows = rows.filter((r: any) => {
+        const createdAt = String(
+          r?.created_at ??
+          r?.latest_active_certificate_created_at ??
+          r?.latest_certificate_created_at ??
+          ""
+        );
+        if (!createdAt) return true;
+        return new Date(createdAt) <= to;
+      });
+    }
+  }
+
+  return NextResponse.json({ rows });
 }

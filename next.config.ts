@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
@@ -9,17 +10,12 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "10mb",
     },
   },
+
+  // Turbopack root: point to the parent repo so Turbopack finds node_modules/next.
+  // The worktree lives inside this directory so source files remain compilable.
+  turbopack: {
+    root: path.resolve(__dirname, "../../../.."),
+  },
 };
 
 export default nextConfig;
-;(() => {
-  try {
-    // Ensure Turbopack uses this project as the workspace root
-    // @ts-ignore
-    const cfg = module.exports?.default ?? module.exports;
-    if (cfg) {
-      cfg.turbopack = cfg.turbopack || {};
-      cfg.turbopack.root = __dirname;
-    }
-  } catch {}
-})();

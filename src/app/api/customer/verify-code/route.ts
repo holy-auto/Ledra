@@ -13,6 +13,8 @@ import {
 
 const LAST4_COOKIE = "hc_l4";
 
+const isSecureCookie = process.env.NODE_ENV === "production";
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
@@ -59,11 +61,10 @@ export async function POST(req: Request) {
 
     const res = NextResponse.json({ ok: true });
 
-    // ✅ ローカル http でも cookie を保存できるよう secure=false 固定（本番は https 運用にしたら true にする）
     res.cookies.set(CUSTOMER_COOKIE, sess.token, {
       httpOnly: true,
       sameSite: "lax",
-      secure: false,
+      secure: isSecureCookie,
       path: "/",
       maxAge: 30 * 24 * 60 * 60,
     });
@@ -72,7 +73,7 @@ export async function POST(req: Request) {
     res.cookies.set(LAST4_COOKIE, last4Raw.trim(), {
       httpOnly: true,
       sameSite: "lax",
-      secure: false,
+      secure: isSecureCookie,
       path: "/",
       maxAge: 30 * 24 * 60 * 60,
     });

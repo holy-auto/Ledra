@@ -25,26 +25,62 @@ export default function InsurerLoginPage() {
   };
 
   return (
-    <main style={{ maxWidth: 520, margin: "40px auto", padding: 16 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700 }}>保険会社ポータル ログイン</h1>
-      <p style={{ opacity: 0.8 }}>認証は Supabase Auth（Email/Password）です。</p>
+    <main className="min-h-screen bg-neutral-50 flex items-center justify-center p-6">
+      <div className="w-full max-w-sm space-y-6">
 
-      <div style={{ display: "grid", gap: 10, marginTop: 18 }}>
-        <label>
-          <div style={{ fontSize: 12, opacity: 0.8 }}>Email</div>
-          <input value={email} onChange={(e) => setEmail(e.target.value)} style={{ width: "100%", padding: 10 }} />
-        </label>
+        {/* Header */}
+        <div className="space-y-2 text-center">
+          <div className="inline-flex rounded-full border border-neutral-300 bg-white px-3 py-1 text-[11px] font-semibold tracking-[0.22em] text-neutral-600">
+            INSURER PORTAL
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-neutral-900">
+            保険会社ポータル
+          </h1>
+          <p className="text-sm text-neutral-500">
+            メールアドレスとパスワードでログイン
+          </p>
+        </div>
 
-        <label>
-          <div style={{ fontSize: 12, opacity: 0.8 }}>Password</div>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} style={{ width: "100%", padding: 10 }} />
-        </label>
+        {/* Form */}
+        <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm space-y-4">
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium text-neutral-700">メールアドレス</span>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && onLogin()}
+              placeholder="insurer@example.com"
+              className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
+            />
+          </label>
 
-        {err && <div style={{ color: "crimson" }}>{err}</div>}
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium text-neutral-700">パスワード</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && onLogin()}
+              className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
+            />
+          </label>
 
-        <button onClick={onLogin} disabled={busy} style={{ padding: 12, fontWeight: 700 }}>
-          {busy ? "..." : "ログイン"}
-        </button>
+          {err && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {err}
+            </div>
+          )}
+
+          <button
+            onClick={onLogin}
+            disabled={busy}
+            className="w-full rounded-xl border border-neutral-900 bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
+          >
+            {busy ? "ログイン中..." : "ログイン"}
+          </button>
+        </div>
+
       </div>
     </main>
   );

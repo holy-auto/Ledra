@@ -13,11 +13,32 @@ type Row = {
   created_at: string;
 };
 
+function StatusBadge({ status }: { status: string }) {
+  const s = String(status ?? "").toLowerCase();
+  if (s === "active")
+    return (
+      <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
+        有効
+      </span>
+    );
+  if (s === "void")
+    return (
+      <span className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-semibold text-neutral-500 ring-1 ring-neutral-200">
+        無効
+      </span>
+    );
+  return (
+    <span className="inline-flex items-center rounded-full bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-600 ring-1 ring-neutral-200">
+      {status}
+    </span>
+  );
+}
+
 export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: string }) {
   const [selected, setSelected] = useState<Record<string, boolean>>({});
 
   const bs = useAdminBillingStatus();
-  const isActive = bs.data?.is_active ?? true; // 取得失敗時は従来どおり（APIが最後に止める）
+  const isActive = bs.data?.is_active ?? true;
   const planTier = bs.data?.plan_tier ?? "pro";
   const denyReason = !isActive ? "inactive" : "plan";
 
@@ -56,37 +77,51 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
   const canCsvOne = isActive && canUseFeature(planTier, "export_one_csv");
   const canPdfOne = isActive && canUseFeature(planTier, "pdf_one");
 
-  const btnCls = (enabled: boolean) => "border rounded px-3 py-2 text-sm " + (enabled ? "" : "opacity-50");
-  const linkCls = (enabled: boolean) => "underline " + (enabled ? "" : "opacity-50");
-
   const hrefOrBill = (enabled: boolean, href: string, action: string) => (enabled ? href : bill(action));
 
+  const actionBtn = (enabled: boolean) =>
+    enabled
+      ? "rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100"
+      : "rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs font-medium text-neutral-400 cursor-not-allowed";
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      {/* Billing warning */}
       {bs.data && !bs.data.is_active ? (
-        <div className="border rounded p-3 text-sm bg-amber-50 text-amber-900">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
           お支払い停止中のため、出力（CSV/PDF）はご利用いただけません。{" "}
-          <Link className="underline" href="/admin/billing">
+          <Link className="underline font-medium" href="/admin/billing">
             課金ページへ
           </Link>
         </div>
       ) : null}
 
+      {/* Bulk actions toolbar */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="text-sm text-gray-500">
-          選択: <span className="font-mono">{selectedIds.length}</span> 件
+        <div className="text-sm text-neutral-500">
+          選択中: <span className="font-semibold text-neutral-900">{selectedIds.length}</span> 件
         </div>
 
-        <div className="flex gap-3 items-center flex-wrap">
-          <button type="button" className="border rounded px-3 py-2 text-sm" onClick={() => toggleAll(true)} disabled={allIds.length === 0}>
+        <div className="flex gap-2 items-center flex-wrap">
+          <button
+            type="button"
+            className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-40"
+            onClick={() => toggleAll(true)}
+            disabled={allIds.length === 0}
+          >
             全選択
           </button>
-          <button type="button" className="border rounded px-3 py-2 text-sm" onClick={() => toggleAll(false)} disabled={allIds.length === 0}>
+          <button
+            type="button"
+            className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-40"
+            onClick={() => toggleAll(false)}
+            disabled={selectedIds.length === 0}
+          >
             全解除
           </button>
 
           <Link
-            className={btnCls(selectedIds.length > 0 && canCsvSelected)}
+            className={actionBtn(selectedIds.length > 0 && canCsvSelected)}
             href={hrefOrBill(selectedIds.length > 0 && canCsvSelected, exportUrl, "export_selected_csv")}
             aria-disabled={!(selectedIds.length > 0 && canCsvSelected)}
             title={!(selectedIds.length > 0 && canCsvSelected) ? "利用不可 → 課金ページへ" : ""}
@@ -95,7 +130,7 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
           </Link>
 
           <Link
-            className={btnCls(selectedIds.length > 0 && canPdfZip)}
+            className={actionBtn(selectedIds.length > 0 && canPdfZip)}
             href={hrefOrBill(selectedIds.length > 0 && canPdfZip, pdfZipUrl, "pdf_zip")}
             aria-disabled={!(selectedIds.length > 0 && canPdfZip)}
             title={!(selectedIds.length > 0 && canPdfZip) ? "利用不可 → 課金ページへ" : ""}
@@ -104,7 +139,7 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
           </Link>
 
           <Link
-            className={linkCls(canCsvSearch)}
+            className={actionBtn(canCsvSearch)}
             href={hrefOrBill(canCsvSearch, `/admin/certificates/export?q=${encodeURIComponent(q)}`, "export_search_csv")}
             aria-disabled={!canCsvSearch}
             title={!canCsvSearch ? "利用不可 → 課金ページへ" : ""}
@@ -114,9 +149,10 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
         </div>
       </div>
 
-      <div className="overflow-x-auto border rounded">
+      {/* Table */}
+      <div className="overflow-x-auto rounded-xl border border-neutral-200">
         <table className="min-w-full text-sm">
-          <thead className="bg-gray-50">
+          <thead className="bg-neutral-50">
             <tr>
               <th className="p-3 text-left w-10">
                 <input
@@ -126,53 +162,70 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
                     if (el) el.indeterminate = someChecked;
                   }}
                   onChange={(e) => toggleAll(e.target.checked)}
+                  className="h-4 w-4 rounded border-neutral-300"
                 />
               </th>
-              <th className="text-left p-3">作成日時</th>
-              <th className="text-left p-3">public_id</th>
-              <th className="text-left p-3">お客様名</th>
-              <th className="text-left p-3">status</th>
-              <th className="text-left p-3">操作</th>
+              <th className="p-3 text-left font-semibold text-neutral-600">作成日時</th>
+              <th className="p-3 text-left font-semibold text-neutral-600">証明書 ID</th>
+              <th className="p-3 text-left font-semibold text-neutral-600">顧客名</th>
+              <th className="p-3 text-left font-semibold text-neutral-600">ステータス</th>
+              <th className="p-3 text-left font-semibold text-neutral-600">操作</th>
             </tr>
           </thead>
 
           <tbody>
             {rows.map((r) => {
-              const url = `/c/${r.public_id}`;
               const isVoid = r.status === "void";
               const checked = !!selected[r.public_id];
 
               return (
-                <tr key={r.public_id} className="border-t">
+                <tr key={r.public_id} className={`border-t hover:bg-neutral-50 ${isVoid ? "opacity-60" : ""}`}>
                   <td className="p-3">
-                    <input type="checkbox" checked={checked} onChange={(e) => toggleOne(r.public_id, e.target.checked)} />
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => toggleOne(r.public_id, e.target.checked)}
+                      className="h-4 w-4 rounded border-neutral-300"
+                    />
                   </td>
-                  <td className="p-3 whitespace-nowrap">{new Date(r.created_at).toLocaleString("ja-JP")}</td>
-                  <td className="p-3 font-mono">{r.public_id}</td>
-                  <td className="p-3">{r.customer_name}</td>
+                  <td className="p-3 whitespace-nowrap text-neutral-600">
+                    {new Date(r.created_at).toLocaleString("ja-JP")}
+                  </td>
+                  <td className="p-3 font-mono text-xs text-neutral-700">{r.public_id}</td>
+                  <td className="p-3 font-medium text-neutral-900">{r.customer_name}</td>
                   <td className="p-3">
-                    <span className={isVoid ? "text-gray-400" : ""}>{r.status}</span>
+                    <StatusBadge status={r.status} />
                   </td>
                   <td className="p-3">
-                    <div className="flex gap-3 items-center flex-wrap">
-                      <Link className="underline" href={url} target="_blank">
-                        公開ページ
+                    <div className="flex gap-2 flex-wrap">
+                      <Link
+                        href={`/admin/certificates/${r.public_id}`}
+                        className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100"
+                      >
+                        詳細
                       </Link>
                       <Link
-                        className={linkCls(canCsvOne)}
+                        href={`/c/${r.public_id}`}
+                        target="_blank"
+                        className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100"
+                      >
+                        公開
+                      </Link>
+                      <Link
+                        className={actionBtn(canCsvOne)}
                         href={hrefOrBill(canCsvOne, `/admin/certificates/export-one?pid=${encodeURIComponent(r.public_id)}`, "export_one_csv")}
                         aria-disabled={!canCsvOne}
                         title={!canCsvOne ? "利用不可 → 課金ページへ" : ""}
                       >
-                        CSV(1件)
+                        CSV
                       </Link>
                       <Link
-                        className={linkCls(canPdfOne)}
+                        className={actionBtn(canPdfOne)}
                         href={hrefOrBill(canPdfOne, `/admin/certificates/pdf-one?pid=${encodeURIComponent(r.public_id)}`, "pdf_one")}
                         aria-disabled={!canPdfOne}
                         title={!canPdfOne ? "利用不可 → 課金ページへ" : ""}
                       >
-                        PDF(1件)
+                        PDF
                       </Link>
                     </div>
                   </td>
@@ -182,8 +235,8 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
 
             {rows.length === 0 && (
               <tr>
-                <td className="p-6 text-gray-500" colSpan={6}>
-                  該当なし
+                <td className="p-8 text-center text-sm text-neutral-500" colSpan={6}>
+                  {q ? `「${q}」に一致する証明書が見つかりません。` : "証明書がまだ発行されていません。"}
                 </td>
               </tr>
             )}
@@ -191,9 +244,8 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
         </table>
       </div>
 
-      <p className="text-xs text-gray-500">※ 選択PDFはZIPでまとめて落ちます（上限50件）。</p>
-      <p className="text-xs text-gray-400">
-        ※ プラン制限の調整は <span className="font-mono">src/lib/billing/planFeatures.ts</span> で行います。
+      <p className="text-xs text-neutral-400">
+        ※ 選択PDFはZIPでまとめてダウンロードされます（上限50件）。
       </p>
     </div>
   );

@@ -4,6 +4,48 @@ import { createSupabaseServerClient } from "@/lib/supabaseServer";
 
 export const dynamic = "force-dynamic";
 
+function fmt(v?: string | null) {
+  if (!v) return "-";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  return d.toLocaleDateString("ja-JP");
+}
+
+function fmtDt(v?: string | null) {
+  if (!v) return "-";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  return d.toLocaleString("ja-JP");
+}
+
+function InfoRow({ label, value }: { label: string; value: string | number | null | undefined }) {
+  return (
+    <div className="rounded-xl bg-neutral-50 p-3">
+      <div className="text-[11px] font-semibold tracking-wide text-neutral-400 uppercase">{label}</div>
+      <div className="mt-0.5 text-sm font-medium text-neutral-900">{value ?? "-"}</div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status?: string | null }) {
+  const s = String(status ?? "").toLowerCase();
+  const cls =
+    s === "active"
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : s === "void"
+      ? "bg-red-50 text-red-700 border-red-200"
+      : "bg-neutral-100 text-neutral-600 border-neutral-200";
+  const dot =
+    s === "active" ? "bg-emerald-500" : s === "void" ? "bg-red-500" : "bg-neutral-400";
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${cls}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+      {status ?? "-"}
+    </span>
+  );
+}
+
 export default async function AdminVehicleDetailPage({
   params,
   searchParams,
@@ -24,9 +66,7 @@ export default async function AdminVehicleDetailPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    return <div className="p-6">ログインしてください。</div>;
-  }
+  if (!user) redirect("/login");
 
   const { data: membership } = await supabase
     .from("tenant_memberships")
@@ -36,26 +76,19 @@ export default async function AdminVehicleDetailPage({
     .single();
 
   if (!membership?.tenant_id) {
-    return <div className="p-6">tenant が見つかりません。</div>;
+    return <main className="p-6 text-sm text-neutral-600">tenant が見つかりません。</main>;
   }
 
+  // ── Server Action ──────────────────────────────────────────
   async function voidCertificate(formData: FormData) {
     "use server";
 
     const certId = String(formData.get("certificate_id") ?? "").trim();
-    if (!certId) {
-      redirect(`/admin/vehicles/${id}?e=1`);
-    }
+    if (!certId) redirect(`/admin/vehicles/${id}?e=1`);
 
     const supabase = await createSupabaseServerClient();
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      redirect("/login");
-    }
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) redirect("/login");
 
     const { data: membership } = await supabase
       .from("tenant_memberships")
@@ -64,9 +97,7 @@ export default async function AdminVehicleDetailPage({
       .limit(1)
       .single();
 
-    if (!membership?.tenant_id) {
-      redirect(`/admin/vehicles/${id}?e=1`);
-    }
+    if (!membership?.tenant_id) redirect(`/admin/vehicles/${id}?e=1`);
 
     const existing = await supabase
       .from("certificates")
@@ -77,10 +108,7 @@ export default async function AdminVehicleDetailPage({
       .limit(1)
       .maybeSingle();
 
-    if (existing.error || !existing.data?.id) {
-      redirect(`/admin/vehicles/${id}?e=1`);
-    }
-
+    if (existing.error || !existing.data?.id) redirect(`/admin/vehicles/${id}?e=1`);
     if (String(existing.data.status ?? "").toLowerCase() === "void") {
       redirect(`/admin/vehicles/${id}?voided=1`);
     }
@@ -89,23 +117,18 @@ export default async function AdminVehicleDetailPage({
 
     const updated = await supabase
       .from("certificates")
-      .update({
-        status: "void",
-        updated_at: nowIso,
-      })
+      .update({ status: "void", updated_at: nowIso })
       .eq("tenant_id", membership.tenant_id)
       .eq("vehicle_id", id)
       .eq("id", certId);
 
-    if (updated.error) {
-      redirect(`/admin/vehicles/${id}?e=1`);
-    }
+    if (updated.error) redirect(`/admin/vehicles/${id}?e=1`);
 
     await supabase.from("vehicle_histories").insert({
       tenant_id: membership.tenant_id,
       vehicle_id: id,
       type: "certificate_voided",
-      title: "施工証明書を削除",
+      title: "施工証明書を無効化",
       description: existing.data.public_id ? `Public ID: ${existing.data.public_id}` : null,
       performed_at: nowIso,
       certificate_id: certId,
@@ -113,6 +136,7 @@ export default async function AdminVehicleDetailPage({
 
     redirect(`/admin/vehicles/${id}?voided=1`);
   }
+  // ───────────────────────────────────────────────────────────
 
   const { data: vehicle, error: vehicleError } = await supabase
     .from("vehicles")
@@ -122,7 +146,7 @@ export default async function AdminVehicleDetailPage({
     .single();
 
   if (vehicleError || !vehicle) {
-    return <div className="p-6">車両が見つかりません。</div>;
+    return <main className="p-6 text-sm text-neutral-600">車両が見つかりません。</main>;
   }
 
   const { data: certs } = await supabase
@@ -146,185 +170,274 @@ export default async function AdminVehicleDetailPage({
     .eq("vehicle_id", id)
     .order("created_at", { ascending: false });
 
-  return (
-    <div className="p-6 space-y-8">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">
-            {[vehicle.maker, vehicle.model].filter(Boolean).join(" ")}
-          </h1>
-          <p className="text-sm text-neutral-500">
-            {vehicle.year ?? "-"} / {vehicle.plate_display ?? "-"}
-          </p>
-        </div>
+  const certRows = certs ?? [];
+  const historyRows = histories ?? [];
+  const tagRows = tags ?? [];
+  const activeCertCount = certRows.filter(
+    (c) => String(c.status ?? "").toLowerCase() === "active"
+  ).length;
 
-        <div className="flex gap-2">
-          <Link
-            href={`/admin/vehicles/${vehicle.id}/edit`}
-            className="rounded-md border px-4 py-2 text-sm font-medium"
-          >
-            編集
-          </Link>
-          <Link
-            href={`/admin/certificates/new?vehicle_id=${vehicle.id}`}
-            className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white"
-          >
-            ＋ 証明書を作成
-          </Link>
+  return (
+    <main className="min-h-screen bg-neutral-50 p-6">
+      <div className="mx-auto max-w-7xl space-y-6">
+
+        {/* Header */}
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-3">
+            <div className="inline-flex rounded-full border border-neutral-300 bg-white px-3 py-1 text-[11px] font-semibold tracking-[0.22em] text-neutral-600">
+              VEHICLE DETAIL
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight text-neutral-900">
+                {[vehicle.maker, vehicle.model].filter(Boolean).join(" ") || "車両詳細"}
+              </h1>
+              <p className="mt-1 text-sm text-neutral-500">
+                {vehicle.year ? `${vehicle.year}年式` : ""}{vehicle.year && vehicle.plate_display ? " · " : ""}{vehicle.plate_display ?? ""}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href="/admin/vehicles"
+              className="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
+            >
+              一覧へ
+            </Link>
+            <Link
+              href={`/admin/vehicles/${vehicle.id}/edit`}
+              className="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
+            >
+              編集
+            </Link>
+            <Link
+              href={`/admin/certificates/new?vehicle_id=${vehicle.id}`}
+              className="rounded-xl border border-neutral-900 bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700"
+            >
+              + 証明書を作成
+            </Link>
+          </div>
+        </header>
+
+        {/* Banners */}
+        {savedFlag ? (
+          <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-800">
+            車両情報を保存しました。
+          </div>
+        ) : null}
+        {voidedFlag ? (
+          <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
+            証明書を無効化しました。履歴保全のため「void」として記録しています。
+          </div>
+        ) : null}
+        {errFlag ? (
+          <div className="rounded-2xl border border-red-300 bg-red-50 p-4 text-sm text-red-700">
+            処理に失敗しました。もう一度お試しください。
+          </div>
+        ) : null}
+
+        {/* Stats */}
+        <section className="grid gap-4 sm:grid-cols-3">
+          <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+            <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">CERTIFICATES</div>
+            <div className="mt-2 text-2xl font-bold text-neutral-900">{certRows.length}</div>
+            <div className="mt-1 text-xs text-neutral-500">発行済み証明書</div>
+          </div>
+          <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+            <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">ACTIVE</div>
+            <div className="mt-2 text-2xl font-bold text-emerald-700">{activeCertCount}</div>
+            <div className="mt-1 text-xs text-neutral-500">有効な証明書</div>
+          </div>
+          <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+            <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">HISTORY</div>
+            <div className="mt-2 text-2xl font-bold text-neutral-900">{historyRows.length}</div>
+            <div className="mt-1 text-xs text-neutral-500">履歴件数</div>
+          </div>
+        </section>
+
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="space-y-6">
+
+            {/* 証明書一覧 */}
+            <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">CERTIFICATES</div>
+                  <div className="mt-1 text-lg font-semibold text-neutral-900">証明書履歴</div>
+                </div>
+                <Link
+                  href={`/admin/certificates/new?vehicle_id=${vehicle.id}`}
+                  className="rounded-xl border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-700"
+                >
+                  + 新規作成
+                </Link>
+              </div>
+
+              {certRows.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="bg-neutral-50">
+                        <th className="p-3 text-left font-semibold text-neutral-600">作成日</th>
+                        <th className="p-3 text-left font-semibold text-neutral-600">証明番号</th>
+                        <th className="p-3 text-left font-semibold text-neutral-600">施工内容</th>
+                        <th className="p-3 text-left font-semibold text-neutral-600">状態</th>
+                        <th className="p-3 text-left font-semibold text-neutral-600">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {certRows.map((row) => {
+                        const isVoid = String(row.status ?? "").toLowerCase() === "void";
+                        return (
+                          <tr key={row.id} className="border-t hover:bg-neutral-50">
+                            <td className="p-3 whitespace-nowrap text-neutral-600">{fmt(row.created_at)}</td>
+                            <td className="p-3 font-mono text-xs text-neutral-700">{row.certificate_no ?? "-"}</td>
+                            <td className="p-3 text-neutral-900">{row.service_type ?? "-"}</td>
+                            <td className="p-3">
+                              <StatusBadge status={row.status} />
+                            </td>
+                            <td className="p-3">
+                              <div className="flex gap-2">
+                                {row.public_id ? (
+                                  <>
+                                    <Link
+                                      href={`/admin/certificates/${row.public_id}`}
+                                      className="rounded-lg border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100"
+                                    >
+                                      詳細
+                                    </Link>
+                                    <a
+                                      href={`/c/${row.public_id}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="rounded-lg border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100"
+                                    >
+                                      公開
+                                    </a>
+                                  </>
+                                ) : null}
+                                {isVoid ? (
+                                  <span className="rounded-lg bg-neutral-100 px-2.5 py-1 text-xs text-neutral-400">
+                                    無効済み
+                                  </span>
+                                ) : (
+                                  <form action={voidCertificate}>
+                                    <input type="hidden" name="certificate_id" value={row.id} />
+                                    <button
+                                      type="submit"
+                                      className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                                    >
+                                      無効化
+                                    </button>
+                                  </form>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="rounded-xl bg-neutral-50 p-6 text-center text-sm text-neutral-500">
+                  証明書はまだありません。
+                </div>
+              )}
+            </section>
+
+            {/* 履歴タイムライン */}
+            <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+              <div className="mb-4">
+                <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">HISTORY</div>
+                <div className="mt-1 text-lg font-semibold text-neutral-900">施工・整備履歴</div>
+              </div>
+
+              {historyRows.length > 0 ? (
+                <div className="relative pl-4">
+                  <div className="absolute left-0 top-2 bottom-2 w-px bg-neutral-200" />
+                  <div className="space-y-4">
+                    {historyRows.map((row) => (
+                      <div key={row.id} className="relative">
+                        <div className="absolute -left-[17px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-neutral-300 bg-white" />
+                        <div className="rounded-xl border border-neutral-100 bg-neutral-50 p-3">
+                          <div className="text-sm font-semibold text-neutral-900">{row.title}</div>
+                          <div className="mt-0.5 text-xs text-neutral-400">
+                            {fmtDt(row.performed_at)}{row.type ? ` · ${row.type}` : ""}
+                          </div>
+                          {row.description ? (
+                            <div className="mt-2 text-sm leading-relaxed text-neutral-700 whitespace-pre-wrap">
+                              {row.description}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl bg-neutral-50 p-6 text-center text-sm text-neutral-500">
+                  履歴はまだありません。
+                </div>
+              )}
+            </section>
+          </div>
+
+          {/* Right sidebar */}
+          <aside className="space-y-6">
+
+            {/* 車両情報 */}
+            <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+              <div className="mb-4">
+                <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">VEHICLE INFO</div>
+                <div className="mt-1 text-lg font-semibold text-neutral-900">車両情報</div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <InfoRow label="メーカー" value={vehicle.maker} />
+                <InfoRow label="車種" value={vehicle.model} />
+                <InfoRow label="年式" value={vehicle.year} />
+                <InfoRow label="ナンバー" value={vehicle.plate_display} />
+                <InfoRow label="顧客名" value={vehicle.customer_name} />
+                <InfoRow label="顧客メール" value={vehicle.customer_email} />
+                {vehicle.customer_phone_masked ? (
+                  <InfoRow label="電話" value={vehicle.customer_phone_masked} />
+                ) : null}
+              </div>
+              {vehicle.notes ? (
+                <div className="mt-3 rounded-xl bg-neutral-50 p-3">
+                  <div className="text-[11px] font-semibold tracking-wide text-neutral-400 uppercase">メモ</div>
+                  <div className="mt-1 text-sm text-neutral-700 whitespace-pre-wrap">{vehicle.notes}</div>
+                </div>
+              ) : null}
+            </section>
+
+            {/* NFCタグ */}
+            {tagRows.length > 0 ? (
+              <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+                <div className="mb-4">
+                  <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">NFC TAGS</div>
+                  <div className="mt-1 text-lg font-semibold text-neutral-900">NFCタグ</div>
+                </div>
+                <div className="space-y-3">
+                  {tagRows.map((row) => (
+                    <div key={row.id} className="rounded-xl border border-neutral-100 bg-neutral-50 p-3 text-sm space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-xs text-neutral-700">{row.tag_code}</span>
+                        <span className="rounded-full bg-white border border-neutral-200 px-2 py-0.5 text-xs text-neutral-600">
+                          {row.status}
+                        </span>
+                      </div>
+                      <div className="text-xs text-neutral-400">
+                        書込: {fmtDt(row.written_at)} · 貼付: {fmtDt(row.attached_at)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+          </aside>
         </div>
       </div>
-
-      {savedFlag ? (
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-          車両情報を保存しました。
-        </div>
-      ) : null}
-
-      {voidedFlag ? (
-        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          証明書を削除しました。内部的には履歴保全のため「void（無効化）」として処理しています。
-        </div>
-      ) : null}
-
-      {errFlag ? (
-        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          処理に失敗しました。
-        </div>
-      ) : null}
-
-      <section className="rounded-xl border p-6 space-y-3">
-        <h2 className="text-lg font-semibold">車両情報</h2>
-        <div className="grid gap-3 md:grid-cols-2 text-sm">
-          <div>メーカー: {vehicle.maker ?? "-"}</div>
-          <div>車種: {vehicle.model ?? "-"}</div>
-          <div>年式: {vehicle.year ?? "-"}</div>
-          <div>ナンバー: {vehicle.plate_display ?? "-"}</div>
-          <div>顧客名: {vehicle.customer_name ?? "-"}</div>
-          <div>顧客メール: {vehicle.customer_email ?? "-"}</div>
-          <div>顧客電話: {vehicle.customer_phone_masked ?? "-"}</div>
-        </div>
-        {vehicle.notes ? <div className="text-sm">メモ: {vehicle.notes}</div> : null}
-      </section>
-
-      <section className="rounded-xl border p-6 space-y-4">
-        <h2 className="text-lg font-semibold">証明書</h2>
-        {certs && certs.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-neutral-50">
-                <tr>
-                  <th className="px-4 py-3 text-left">証明番号</th>
-                  <th className="px-4 py-3 text-left">施工内容</th>
-                  <th className="px-4 py-3 text-left">作成日</th>
-                  <th className="px-4 py-3 text-left">状態</th>
-                  <th className="px-4 py-3 text-left">公開</th>
-                  <th className="px-4 py-3 text-left">削除</th>
-                </tr>
-              </thead>
-              <tbody>
-                {certs.map((row) => {
-                  const isVoid = String(row.status ?? "").toLowerCase() === "void";
-
-                  return (
-                    <tr key={row.id} className="border-t">
-                      <td className="px-4 py-3">{row.certificate_no ?? "-"}</td>
-                      <td className="px-4 py-3">{row.service_type ?? "-"}</td>
-                      <td className="px-4 py-3">
-                        {row.created_at ? new Date(row.created_at).toLocaleDateString("ja-JP") : "-"}
-                      </td>
-                      <td className="px-4 py-3">{row.status ?? "-"}</td>
-                      <td className="px-4 py-3">
-                        {row.public_id ? (
-                          <a
-                            href={`/c/${row.public_id}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="underline"
-                          >
-                            表示
-                          </a>
-                        ) : (
-                          "-"
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {isVoid ? (
-                          <span className="text-xs text-neutral-500">削除済み</span>
-                        ) : (
-                          <form action={voidCertificate}>
-                            <input type="hidden" name="certificate_id" value={row.id} />
-                            <button
-                              type="submit"
-                              className="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
-                            >
-                              削除
-                            </button>
-                          </form>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="text-sm text-neutral-500">証明書はまだありません。</div>
-        )}
-      </section>
-
-      <section className="rounded-xl border p-6 space-y-4">
-        <h2 className="text-lg font-semibold">履歴タイムライン</h2>
-        {histories && histories.length > 0 ? (
-          <div className="space-y-3">
-            {histories.map((row) => (
-              <div key={row.id} className="rounded-lg border p-4">
-                <div className="text-sm font-medium">{row.title}</div>
-                <div className="text-xs text-neutral-500">
-                  {row.performed_at ? new Date(row.performed_at).toLocaleString("ja-JP") : "-"} / {row.type}
-                </div>
-                {row.description ? <div className="mt-2 text-sm">{row.description}</div> : null}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-sm text-neutral-500">履歴はまだありません。</div>
-        )}
-      </section>
-
-      <section className="rounded-xl border p-6 space-y-4">
-        <h2 className="text-lg font-semibold">NFCタグ</h2>
-        {tags && tags.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-neutral-50">
-                <tr>
-                  <th className="px-4 py-3 text-left">タグコード</th>
-                  <th className="px-4 py-3 text-left">状態</th>
-                  <th className="px-4 py-3 text-left">書込日時</th>
-                  <th className="px-4 py-3 text-left">貼付日時</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tags.map((row) => (
-                  <tr key={row.id} className="border-t">
-                    <td className="px-4 py-3">{row.tag_code}</td>
-                    <td className="px-4 py-3">{row.status}</td>
-                    <td className="px-4 py-3">
-                      {row.written_at ? new Date(row.written_at).toLocaleString("ja-JP") : "-"}
-                    </td>
-                    <td className="px-4 py-3">
-                      {row.attached_at ? new Date(row.attached_at).toLocaleString("ja-JP") : "-"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="text-sm text-neutral-500">NFCタグはまだありません。</div>
-        )}
-      </section>
-    </div>
+    </main>
   );
 }
