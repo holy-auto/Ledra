@@ -8,6 +8,8 @@ type Props = {
   contactEmail: string | null;
   contactPhone: string | null;
   address: string | null;
+  websiteUrl: string | null;
+  columnsExist: boolean;
 };
 
 const inputCls =
@@ -15,7 +17,7 @@ const inputCls =
 const labelCls = "block space-y-1.5";
 const labelTextCls = "text-sm font-medium text-neutral-700";
 
-export default function SettingsForm({ name, contactEmail, contactPhone, address }: Props) {
+export default function SettingsForm({ name, contactEmail, contactPhone, address, websiteUrl, columnsExist }: Props) {
   const [isPending, startTransition] = useTransition();
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,37 +50,56 @@ export default function SettingsForm({ name, contactEmail, contactPhone, address
         />
       </label>
 
-      <label className={labelCls}>
-        <span className={labelTextCls}>メールアドレス</span>
-        <input
-          type="email"
-          name="contact_email"
-          defaultValue={contactEmail ?? ""}
-          className={inputCls}
-          placeholder="info@example.com"
-        />
-      </label>
+      {columnsExist ? (
+        <>
+          <label className={labelCls}>
+            <span className={labelTextCls}>メールアドレス</span>
+            <input
+              type="email"
+              name="contact_email"
+              defaultValue={contactEmail ?? ""}
+              className={inputCls}
+              placeholder="info@example.com"
+            />
+          </label>
 
-      <label className={labelCls}>
-        <span className={labelTextCls}>電話番号</span>
-        <input
-          type="tel"
-          name="contact_phone"
-          defaultValue={contactPhone ?? ""}
-          className={inputCls}
-          placeholder="03-0000-0000"
-        />
-      </label>
+          <label className={labelCls}>
+            <span className={labelTextCls}>電話番号</span>
+            <input
+              type="tel"
+              name="contact_phone"
+              defaultValue={contactPhone ?? ""}
+              className={inputCls}
+              placeholder="03-0000-0000"
+            />
+          </label>
 
-      <label className={labelCls}>
-        <span className={labelTextCls}>住所</span>
-        <input
-          name="address"
-          defaultValue={address ?? ""}
-          className={inputCls}
-          placeholder="東京都渋谷区○○ 1-2-3"
-        />
-      </label>
+          <label className={labelCls}>
+            <span className={labelTextCls}>住所</span>
+            <input
+              name="address"
+              defaultValue={address ?? ""}
+              className={inputCls}
+              placeholder="東京都渋谷区○○ 1-2-3"
+            />
+          </label>
+
+          <label className={labelCls}>
+            <span className={labelTextCls}>Webサイト</span>
+            <input
+              type="url"
+              name="website_url"
+              defaultValue={websiteUrl ?? ""}
+              className={inputCls}
+              placeholder="https://example.com"
+            />
+          </label>
+        </>
+      ) : (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+          住所・連絡先はDBマイグレーション後に入力できます（上記のSQL実行後にページを再読み込み）
+        </p>
+      )}
 
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

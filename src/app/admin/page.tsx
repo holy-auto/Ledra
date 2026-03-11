@@ -20,6 +20,12 @@ const menuSections = [
     ],
   },
   {
+    title: "NFCタグ",
+    items: [
+      { label: "NFCタグ管理", href: "/admin/nfc", desc: "タグ台帳・状態・証明書／車両との紐付けを確認" },
+    ],
+  },
+  {
     title: "テンプレート・ブランド",
     items: [
       { label: "テンプレート管理", href: "/admin/templates", desc: "証明書テンプレートの作成・編集" },

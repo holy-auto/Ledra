@@ -22,21 +22,23 @@ export async function updateTenantSettingsAction(formData: FormData): Promise<Se
   if (!tenantId) return { ok: false, error: "unauthorized" };
 
   const name = String(formData.get("name") ?? "").trim();
+  if (!name) return { ok: false, error: "店舗名は必須です" };
+
+  // Build update payload — include extended fields only if present in the form
+  const payload: Record<string, any> = { name };
   const contact_email = String(formData.get("contact_email") ?? "").trim();
   const contact_phone = String(formData.get("contact_phone") ?? "").trim();
-  const address = String(formData.get("address") ?? "").trim();
-
-  if (!name) return { ok: false, error: "店舗名は必須です" };
+  const address       = String(formData.get("address") ?? "").trim();
+  const website_url   = String(formData.get("website_url") ?? "").trim();
+  // Only include extended fields if the form sent them (columnsExist path)
+  if (formData.has("contact_email")) payload.contact_email = contact_email || null;
+  if (formData.has("contact_phone")) payload.contact_phone = contact_phone || null;
+  if (formData.has("address"))       payload.address       = address || null;
+  if (formData.has("website_url"))   payload.website_url   = website_url || null;
 
   const { error } = await supabase
     .from("tenants")
-    .update({
-      name,
-      contact_email: contact_email || null,
-      contact_phone: contact_phone || null,
-      address: address || null,
-      updated_at: new Date().toISOString(),
-    })
+    .update(payload)
     .eq("id", tenantId);
 
   if (error) return { ok: false, error: error.message };
