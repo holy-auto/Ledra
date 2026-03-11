@@ -9,6 +9,7 @@ const menuSections = [
     items: [
       { label: "証明書一覧", href: "/admin/certificates", desc: "発行済み証明書の検索・閲覧・出力" },
       { label: "新規証明書を作成", href: "/admin/certificates/new", desc: "テンプレートから証明書を発行" },
+      { label: "車両一覧", href: "/admin/vehicles", desc: "登録済み車両の確認・詳細・証明書発行" },
       { label: "車両を登録", href: "/admin/vehicles/new", desc: "車両マスタを新規登録" },
     ],
   },
