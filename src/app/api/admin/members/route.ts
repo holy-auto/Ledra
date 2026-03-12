@@ -156,13 +156,18 @@ export async function POST(req: NextRequest) {
     const { error: insertErr } = await admin
       .from("tenant_memberships")
       .insert({
+        id: crypto.randomUUID(),
         tenant_id: caller.tenantId,
         user_id: userId,
         role,
       });
 
     if (insertErr) {
-      return NextResponse.json({ error: "insert_failed", detail: insertErr.message }, { status: 500 });
+      console.error("member insert failed:", insertErr);
+      return NextResponse.json({
+        error: "insert_failed",
+        message: `メンバー追加に失敗しました: ${insertErr.message}`,
+      }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true, user_id: userId, email });
