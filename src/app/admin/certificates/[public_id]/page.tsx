@@ -6,7 +6,7 @@ import {
   CERTIFICATE_IMAGE_BUCKET,
   formatCertificateImageBytes,
 } from "@/lib/certificateImages";
-import CertStatusActions from "./CertStatusActions";
+import { logCertificateAction } from "@/lib/audit/certificateLog";
 
 type PageProps = {
   params: Promise<{ public_id: string }>;
@@ -71,9 +71,17 @@ export default async function Page({ params }: PageProps) {
 
   if (error || !row?.public_id) notFound();
 
-  const certStatus = String(row.status ?? "").toLowerCase();
-  const isVoid = certStatus === "void";
-  const isDraft = certStatus === "draft";
+  // 閲覧ログ記録
+  logCertificateAction({
+    type: "certificate_viewed",
+    tenantId,
+    publicId: row.public_id as string,
+    certificateId: row.id as string,
+    vehicleId: row.vehicle_id as string | null,
+    userId: userRes.user.id,
+  });
+
+  const isVoid = String(row.status ?? "").toLowerCase() === "void";
   const info = asObj(row.vehicle_info_json);
   const preset = asObj(row.content_preset_json);
 
@@ -167,11 +175,6 @@ export default async function Page({ params }: PageProps) {
           </div>
         </header>
 
-        {isDraft ? (
-          <section className="rounded-2xl border border-blue-300 bg-blue-50 p-4 text-sm text-blue-900 shadow-sm">
-            この証明書は <strong>下書き</strong> 状態です。「公開する」を押すと顧客に公開されます。
-          </section>
-        ) : null}
         {isVoid ? (
           <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 shadow-sm">
             この証明書は void（無効化）状態です。公開 / 出力は停止対象です。
@@ -303,14 +306,6 @@ export default async function Page({ params }: PageProps) {
           </div>
 
           <aside className="space-y-6">
-            <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm space-y-4">
-              <div>
-                <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">ACTIONS</div>
-                <div className="mt-1 text-lg font-semibold text-neutral-900">ステータス操作</div>
-              </div>
-              <CertStatusActions publicId={row.public_id} status={certStatus} />
-            </section>
-
             <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm space-y-4">
               <div>
                 <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">OUTPUT</div>

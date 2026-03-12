@@ -4,6 +4,8 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { Document, Page, Text, View, Image, StyleSheet, Font } from "@react-pdf/renderer";
 import { renderToBuffer } from "@react-pdf/renderer";
+import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -171,6 +173,29 @@ export async function GET(req: Request) {
   if (!cert || (cert.status ?? "").toLowerCase() !== "active") {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
+
+  // 公開PDF閲覧ログ（tenant_id を取得して記録）
+  try {
+    const adm = createAdminClient();
+    const { data: certRow } = await adm
+      .from("certificates")
+      .select("tenant_id,id,vehicle_id")
+      .eq("public_id", pid)
+      .limit(1)
+      .maybeSingle();
+    if (certRow?.tenant_id) {
+      const meta = getRequestMeta(req);
+      logCertificateAction({
+        type: "certificate_public_pdf",
+        tenantId: certRow.tenant_id as string,
+        publicId: pid,
+        certificateId: certRow.id as string,
+        vehicleId: certRow.vehicle_id as string | null,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+      });
+    }
+  } catch { /* audit failure should not block PDF */ }
 
   const fallbackOrigin = await getFallbackOrigin();
   const origin = buildOriginFromCert(cert, fallbackOrigin);

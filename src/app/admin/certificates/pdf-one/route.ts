@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabaseServer";
 import { renderCertificatePdf } from "@/lib/pdfCertificate";
 import { checkAdminFeature, billingDenyResponse } from "@/lib/billing/adminFeatureGate";
+import { logCertificateAction } from "@/lib/audit/certificateLog";
 
 export async function GET(req: Request) {
   // @holy-guard:pdf_one
@@ -33,6 +34,13 @@ export async function GET(req: Request) {
     .single();
 
   if (error || !row) return NextResponse.json({ error: "not_found" }, { status: 404 });
+
+  logCertificateAction({
+    type: "certificate_pdf_generated",
+    tenantId,
+    publicId: pid,
+    userId: userRes.user.id,
+  });
 
   // baseUrl（APP_URL依存なし）
   const host = req.headers.get("host") ?? "localhost:3000";

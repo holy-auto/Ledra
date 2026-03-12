@@ -14,6 +14,11 @@ function fmt(v?: string | null) {
 const TYPE_LABELS: Record<string, { label: string; color: string }> = {
   certificate_issued: { label: "証明書発行", color: "text-emerald-700 bg-emerald-50 border-emerald-200" },
   certificate_voided: { label: "証明書無効化", color: "text-red-700 bg-red-50 border-red-200" },
+  certificate_viewed: { label: "証明書閲覧", color: "text-sky-700 bg-sky-50 border-sky-200" },
+  certificate_pdf_generated: { label: "PDF生成", color: "text-sky-700 bg-sky-50 border-sky-200" },
+  certificate_pdf_batch: { label: "PDF一括生成", color: "text-sky-700 bg-sky-50 border-sky-200" },
+  certificate_public_viewed: { label: "公開ページ閲覧", color: "text-violet-700 bg-violet-50 border-violet-200" },
+  certificate_public_pdf: { label: "公開PDF閲覧", color: "text-violet-700 bg-violet-50 border-violet-200" },
   vehicle_registered: { label: "車両登録", color: "text-blue-700 bg-blue-50 border-blue-200" },
   vehicle_updated: { label: "車両更新", color: "text-neutral-700 bg-neutral-50 border-neutral-200" },
   note: { label: "メモ", color: "text-neutral-700 bg-neutral-50 border-neutral-200" },

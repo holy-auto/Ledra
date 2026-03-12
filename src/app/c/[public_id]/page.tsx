@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import CustomerActions from "./CustomerActions";
+import { logCertificateAction } from "@/lib/audit/certificateLog";
 
 type PageProps = {
   params: Promise<{ public_id: string }>;
@@ -166,6 +167,20 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
 
   const data = await fetchPublicStatus(publicId);
   if (!data?.certificate?.public_id) notFound();
+
+  // 公開ページ閲覧ログ
+  if (data.certificate.tenant_id) {
+    const h = await headers();
+    logCertificateAction({
+      type: "certificate_public_viewed",
+      tenantId: data.certificate.tenant_id,
+      publicId: data.certificate.public_id,
+      certificateId: data.certificate.id ?? undefined,
+      vehicleId: data.certificate.vehicle_id ?? undefined,
+      ip: h.get("x-forwarded-for") ?? h.get("x-real-ip") ?? null,
+      userAgent: h.get("user-agent") ?? null,
+    });
+  }
 
   const origin = await getOrigin();
   const sp = await searchParams;

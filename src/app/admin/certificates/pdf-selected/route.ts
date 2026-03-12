@@ -3,6 +3,7 @@ import JSZip from "jszip";
 import { createSupabaseServerClient } from "@/lib/supabaseServer";
 import { renderCertificatePdf } from "@/lib/pdfCertificate";
 import { checkAdminFeature, billingDenyResponse } from "@/lib/billing/adminFeatureGate";
+import { logCertificateAction } from "@/lib/audit/certificateLog";
 
 export async function GET(req: Request) {
   // @holy-guard:pdf_zip_selected
@@ -36,6 +37,15 @@ export async function GET(req: Request) {
     .in("public_id", ids);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const pids = (rows ?? []).map((r) => r.public_id as string);
+  logCertificateAction({
+    type: "certificate_pdf_batch",
+    tenantId,
+    publicId: pids.join(","),
+    userId: userRes.user.id,
+    description: `一括PDF生成: ${pids.length}件`,
+  });
 
   const host = req.headers.get("host") ?? "localhost:3000";
   const proto = req.headers.get("x-forwarded-proto") ?? "http";
