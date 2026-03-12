@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAdminBillingStatus } from "@/lib/billing/useAdminBillingStatus";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { buildBillingDenyUrl } from "@/lib/billing/billingRedirect";
@@ -35,7 +36,28 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: string }) {
+  const router = useRouter();
   const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [voidingId, setVoidingId] = useState<string | null>(null);
+
+  const handleVoid = useCallback(async (publicId: string) => {
+    if (!confirm("この証明書を削除（無効化）しますか？\n※ 内部的にはvoid扱いとなり、復元はできません。")) return;
+    setVoidingId(publicId);
+    try {
+      const res = await fetch("/api/admin/certificates/void", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ public_id: publicId }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      router.refresh();
+    } catch (e: any) {
+      alert("削除に失敗しました: " + (e?.message ?? String(e)));
+    } finally {
+      setVoidingId(null);
+    }
+  }, [router]);
 
   const bs = useAdminBillingStatus();
   const isActive = bs.data?.is_active ?? true;
@@ -227,6 +249,16 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
                       >
                         PDF
                       </Link>
+                      {!isVoid && (
+                        <button
+                          type="button"
+                          className="text-red-600 hover:text-red-800 disabled:opacity-50"
+                          disabled={voidingId === r.public_id}
+                          onClick={() => handleVoid(r.public_id)}
+                        >
+                          {voidingId === r.public_id ? "削除中…" : "削除"}
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

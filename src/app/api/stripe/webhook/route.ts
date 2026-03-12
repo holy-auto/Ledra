@@ -1,19 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
-import { priceIdToPlanTier, type PlanTier } from "@/lib/stripe/plan";
+import { priceIdToPlanTier } from "@/lib/stripe/plan";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function planFromPriceId(priceId?: string | null): PlanTier | null {
-  if (!priceId) return null;
-  return priceIdToPlanTier(priceId);
-}
-
 // 運用方針：active/trialing/past_due は有効扱い
 function isActiveStatus(status: Stripe.Subscription.Status): boolean {
-  return status === "active" || status === "trialing";
+  return status === "active" || status === "trialing" || status === "past_due";
 }
 
 function asStringId(v: any): string | null {
@@ -93,7 +88,7 @@ async function syncBySubscription(stripe: Stripe, supabase: ReturnType<typeof ge
   const tenant_slug = sub.metadata?.tenant_slug ?? null;
 
   const priceId: string | null = sub.items?.data?.[0]?.price?.id ?? null;
-  const plan_tier = planFromPriceId(priceId);
+  const plan_tier = priceId ? priceIdToPlanTier(priceId) : null;
   const active = isActiveStatus(sub.status);
 
   const selector = await resolveTenantSelector({ supabase, tenant_id, tenant_slug, customerId, subscriptionId });

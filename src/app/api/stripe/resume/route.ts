@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
-import { planTierToPriceId } from "@/lib/stripe/plan";
+import { type PlanTier, planTierToPriceId } from "@/lib/stripe/plan";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
 
     const tenant_id = (t.data as any).id as string;
     const tenant_slug = (t.data as any).slug as string | null;
-    const plan_tier = (((t.data as any).plan_tier as string | null) ?? "standard") as "mini" | "standard" | "pro";
+    const plan_tier = ((t.data as any).plan_tier as PlanTier | null) ?? "standard";
     const priceId = planTierToPriceId(plan_tier);
 
     const app = baseUrl(req);

@@ -127,6 +127,7 @@ export default function CustomerActions(props: Props) {
   }, []);
 
   const canPdf = !!s.pdfHref && !s.pdfBlocked;
+  const canBack = !!s.rt;
   const canList = !!s.listUrl;
   const canLogout = s.showLogout && !!s.logoutAfter;
 
@@ -171,7 +172,8 @@ export default function CustomerActions(props: Props) {
       <button
         type="button"
         onClick={onBack}
-        className="rounded-md border px-3 py-2 text-sm hover:bg-gray-50"
+        className={`rounded-md border px-3 py-2 text-sm transition-opacity ${canBack ? "hover:bg-gray-50" : "opacity-50 hover:opacity-70"}`}
+        title={canBack ? `${s.rt} に戻ります` : "ブラウザ履歴で戻ります（直接アクセスの場合は動作しません）"}
       >
         戻る
       </button>

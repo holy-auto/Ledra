@@ -38,6 +38,29 @@ function fmtUnix(unix?: number | null) {
   return d.toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
 }
 
+function planLabel(tier?: string | null) {
+  switch (tier) {
+    case "mini": return "ミニ";
+    case "standard": return "スタンダード";
+    case "pro": return "プロ";
+    default: return tier ?? "-";
+  }
+}
+
+function subStatusLabel(status?: string) {
+  switch (status) {
+    case "active": return "有効";
+    case "trialing": return "トライアル中";
+    case "past_due": return "支払い遅延（リトライ中）";
+    case "canceled": return "解約済み";
+    case "unpaid": return "未払い";
+    case "incomplete": return "未完了";
+    case "incomplete_expired": return "期限切れ";
+    case "paused": return "一時停止";
+    default: return status ?? "-";
+  }
+}
+
 function daysLeft(unix?: number | null) {
   if (!unix) return null;
   const ms = unix * 1000 - Date.now();
@@ -295,7 +318,7 @@ export default function BillingPage() {
             利用状態: <b>{activeLabel}</b>
           </div>
           <div>
-            プラン: <b>{tenant.plan_tier ?? "-"}</b>
+            プラン: <b>{planLabel(tenant.plan_tier)}</b>
           </div>
           <div>
             決済: <b>{tenant.stripe_subscription_id ? "連携済み" : "未連携"}</b>
@@ -321,7 +344,7 @@ export default function BillingPage() {
             {subOk && (
               <div className="space-y-1">
                 <div>
-                  契約状態: <b>{subOk.status}</b>
+                  契約状態: <b>{subStatusLabel(subOk.status)}</b>
                 </div>
                 <div>
                   期間開始: <b>{fmtUnix(subOk.current_period_start)}</b>
