@@ -10,6 +10,19 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* CARTRUST Marketing Design Tokens */
+  --color-primary: #0B5CBA;
+  --color-primary-hover: #094A96;
+  --color-primary-light: #EBF2FC;
+  --color-heading: #111827;
+  --color-body: #374151;
+  --color-muted: #6B7280;
+  --color-surface: #FFFFFF;
+  --color-surface-alt: #F9FAFB;
+  --color-surface-subtle: #F3F4F6;
+  --color-border: #E5E7EB;
+  --color-border-light: #F3F4F6;
 }
 
 @media (prefers-color-scheme: dark) {

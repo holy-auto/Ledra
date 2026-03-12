@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { resolve } from "path";
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
@@ -9,17 +10,10 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "10mb",
     },
   },
+
+  turbopack: {
+    root: resolve("."),
+  },
 };
 
 export default nextConfig;
-;(() => {
-  try {
-    // Ensure Turbopack uses this project as the workspace root
-    // @ts-ignore
-    const cfg = module.exports?.default ?? module.exports;
-    if (cfg) {
-      cfg.turbopack = cfg.turbopack || {};
-      cfg.turbopack.root = __dirname;
-    }
-  } catch {}
-})();
