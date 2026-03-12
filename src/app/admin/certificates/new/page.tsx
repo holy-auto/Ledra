@@ -57,6 +57,15 @@ export default async function Page({
 
   if (tplErr) return <main className="p-6 text-primary">テンプレ読み込みエラー: {tplErr.message}</main>;
 
+  // 顧客一覧を取得
+  const { data: customers } = await supabase
+    .from("customers")
+    .select("id, name")
+    .eq("tenant_id", tenantId)
+    .order("name", { ascending: true });
+
+  const customerList = customers ?? [];
+
   const list = templates ?? [];
   const fallbackId = list[0]?.id ?? "";
   const tid = selectedTemplateId || fallbackId;
@@ -100,11 +109,14 @@ export default async function Page({
       schema_snapshot = tpl?.schema_json ?? null;
     }
 
+    const customer_id = String(formData.get("customer_id") || "").trim() || null;
     const customer_name = String(formData.get("customer_name") || "").trim();
     const model = String(formData.get("model") || "").trim();
     const plate = String(formData.get("plate") || "").trim();
     const content_free_text = String(formData.get("content_free_text") || "").trim();
     const expiry_value = String(formData.get("expiry_value") || "").trim();
+    const servicePriceRaw = formData.get("service_price");
+    const service_price = servicePriceRaw ? parseInt(String(servicePriceRaw), 10) : null;
 
     if (!customer_name) redirect(`/admin/certificates/new?tid=${encodeURIComponent(template_id)}&e=1`);
 
@@ -132,6 +144,7 @@ export default async function Page({
       tenant_id: tenantId,
       public_id,
       status: "active",
+      customer_id,
       customer_name,
       vehicle_info_json: { model, plate },
       content_free_text,
@@ -141,6 +154,7 @@ export default async function Page({
       footer_variant: "holy",
       logo_asset_path: tenantLogoPath,
       created_by: userId,
+      service_price: service_price !== null && !isNaN(service_price) ? service_price : null,
     });
 
     if (error) redirect(`/admin/certificates/new?tid=${encodeURIComponent(template_id)}&e=2`);
@@ -178,6 +192,17 @@ export default async function Page({
 
         <section className="space-y-3">
           <div className="text-sm font-semibold text-primary">基本情報</div>
+
+          <div className="space-y-1">
+            <div className="text-xs text-muted">顧客（任意）</div>
+            <select name="customer_id" className="select-field w-full">
+              <option value="">顧客を選択（紐付けなし）</option>
+              {customerList.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <div className="text-[10px] text-muted">顧客マスタから選択すると、請求書や履歴と紐付けできます</div>
+          </div>
 
           <div className="space-y-1">
             <div className="text-xs text-muted">お客様名（必須）</div>
@@ -287,10 +312,17 @@ export default async function Page({
             <div className="text-xs text-muted">施工内容（自由記述）</div>
             <textarea name="content_free_text" className="input-field w-full" rows={4} />
           </div>
-          <div className="space-y-1">
-            <div className="text-xs text-muted">有効条件（テキスト）</div>
-            <input name="expiry_value" className="input-field w-full" placeholder="半年ごとにメンテ推奨 など" />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <div className="text-xs text-muted">施工料金（円）</div>
+              <input type="number" name="service_price" min="0" className="input-field w-full" placeholder="50000" />
+            </div>
+            <div className="space-y-1">
+              <div className="text-xs text-muted">有効条件（テキスト）</div>
+              <input name="expiry_value" className="input-field w-full" placeholder="半年ごとにメンテ推奨 など" />
+            </div>
           </div>
+          <div className="text-[10px] text-muted">※ 施工料金は当事者（施工店・車両所有者・保険会社）のみ閲覧可能です</div>
         </section>
 
         <button className="btn-primary w-full">発行</button>
