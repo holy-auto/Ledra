@@ -313,4 +313,15 @@ export const metadata: Metadata = {
   title: `料金 | ${siteConfig.siteName}`,
   description:
     "CARTRUSTの料金プラン。フリー・スタンダード・プロの3プランをご用意。小規模施工店から保険会社連携まで対応します。",
+  openGraph: {
+    title: `料金 | ${siteConfig.siteName}`,
+    description:
+      "CARTRUSTの料金プラン。フリー・スタンダード・プロの3プランをご用意。小規模施工店から保険会社連携まで対応します。",
+    url: `${siteConfig.siteUrl}/pricing`,
+  },
+  twitter: {
+    title: `料金 | ${siteConfig.siteName}`,
+    description:
+      "CARTRUSTの料金プラン。フリー・スタンダード・プロの3プランをご用意。小規模施工店から保険会社連携まで対応します。",
+  },
 };

@@ -331,4 +331,15 @@ export const metadata: Metadata = {
   title: `施工店の方へ | ${siteConfig.siteName}`,
   description:
     "施工証明書の発行・管理をデジタル化。紙の証明書・手書き記録・保険会社への確認連絡をなくし、施工店の業務効率を改善します。",
+  openGraph: {
+    title: `施工店の方へ | ${siteConfig.siteName}`,
+    description:
+      "施工証明書の発行・管理をデジタル化。紙の証明書・手書き記録・保険会社への確認連絡をなくし、施工店の業務効率を改善します。",
+    url: `${siteConfig.siteUrl}/for-shops`,
+  },
+  twitter: {
+    title: `施工店の方へ | ${siteConfig.siteName}`,
+    description:
+      "施工証明書の発行・管理をデジタル化。紙の証明書・手書き記録・保険会社への確認連絡をなくし、施工店の業務効率を改善します。",
+  },
 };

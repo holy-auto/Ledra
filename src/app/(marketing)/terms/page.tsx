@@ -141,4 +141,10 @@ export default function TermsPage() {
 export const metadata: Metadata = {
   title: `利用規約 | ${siteConfig.siteName}`,
   description: "CARTRUSTの利用規約です。",
+  openGraph: {
+    title: `利用規約 | ${siteConfig.siteName}`,
+    description: "CARTRUSTの利用規約です。",
+    url: `${siteConfig.siteUrl}/terms`,
+  },
+  robots: { index: true, follow: false },
 };

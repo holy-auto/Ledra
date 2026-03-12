@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { siteConfig } from "@/lib/marketing/config";
@@ -297,7 +298,16 @@ export default function HomePage() {
   );
 }
 
-export const metadata = {
+export const metadata: Metadata = {
   title: `${siteConfig.siteName} — 施工証明をデジタルで`,
   description: siteConfig.siteDescription,
+  openGraph: {
+    title: `${siteConfig.siteName} — 施工証明をデジタルで`,
+    description: siteConfig.siteDescription,
+    url: siteConfig.siteUrl,
+  },
+  twitter: {
+    title: `${siteConfig.siteName} — 施工証明をデジタルで`,
+    description: siteConfig.siteDescription,
+  },
 };

@@ -109,4 +109,10 @@ export default function TokushoPage() {
 export const metadata: Metadata = {
   title: `特定商取引法に基づく表記 | ${siteConfig.siteName}`,
   description: "CARTRUSTの特定商取引法に基づく表記です。",
+  openGraph: {
+    title: `特定商取引法に基づく表記 | ${siteConfig.siteName}`,
+    description: "CARTRUSTの特定商取引法に基づく表記です。",
+    url: `${siteConfig.siteUrl}/tokusho`,
+  },
+  robots: { index: true, follow: false },
 };

@@ -299,4 +299,15 @@ export const metadata: Metadata = {
   title: `保険会社の方へ | ${siteConfig.siteName}`,
   description:
     "施工証明書の真正性確認・保管管理・API連携をデジタル化。保険査定の効率化と不正防止を同時に実現するSaaSプラットフォームです。",
+  openGraph: {
+    title: `保険会社の方へ | ${siteConfig.siteName}`,
+    description:
+      "施工証明書の真正性確認・保管管理・API連携をデジタル化。保険査定の効率化と不正防止を同時に実現するSaaSプラットフォームです。",
+    url: `${siteConfig.siteUrl}/for-insurers`,
+  },
+  twitter: {
+    title: `保険会社の方へ | ${siteConfig.siteName}`,
+    description:
+      "施工証明書の真正性確認・保管管理・API連携をデジタル化。保険査定の効率化と不正防止を同時に実現するSaaSプラットフォームです。",
+  },
 };
