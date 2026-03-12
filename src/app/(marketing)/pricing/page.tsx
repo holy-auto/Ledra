@@ -39,7 +39,7 @@ const plans: Plan[] = [
     priceNote: "/ 月（税込）",
     description: "中規模施工店・継続利用に最適",
     cta: "14日間無料で試す",
-    ctaHref: "/contact",
+    ctaHref: "/pricing/checkout?plan=standard",
     highlight: true,
     features: [
       "証明書発行 月100枚まで",
