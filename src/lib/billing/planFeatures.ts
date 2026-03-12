@@ -66,6 +66,13 @@ export function featureLabel(feature: FeatureKey): string {
   }
 }
 
+/** 写真添付枚数上限（プランごと） */
+export const PHOTO_LIMITS: Record<PlanTier, number> = {
+  mini: 3,
+  standard: 10,
+  pro: 20,
+};
+
 /** compile-time exhaustiveness check (auto) */
 type __NoExtraKeys<T> = Exclude<keyof T, FeatureKey> extends never ? T : never;
 const __assertExactFeatureKeys = <T extends Record<FeatureKey, unknown>>(t: __NoExtraKeys<T>) => t;

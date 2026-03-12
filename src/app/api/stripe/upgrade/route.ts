@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
-import { planTierToPriceId } from "@/lib/stripe/plan";
+import { planTierToPriceId, type PlanTier } from "@/lib/stripe/plan";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const VALID_PLANS: PlanTier[] = ["mini", "standard", "pro"];
 
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -32,10 +34,14 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => ({} as any));
     const access_token = body?.access_token as string | undefined;
+    const plan_tier = body?.plan_tier as PlanTier | undefined;
 
     if (!access_token) return NextResponse.json({ error: "Missing access_token" }, { status: 400 });
+    if (!plan_tier || !VALID_PLANS.includes(plan_tier)) {
+      return NextResponse.json({ error: "plan_tier must be mini|standard|pro" }, { status: 400 });
+    }
 
-    // token検証 → user_id
+    // access_token検証 → user_id
     const u = await admin.auth.getUser(access_token);
     if (u.error || !u.data?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const user_id = u.data.user.id;
@@ -54,7 +60,7 @@ export async function POST(req: NextRequest) {
     // tenants
     const t = await admin
       .from("tenants")
-      .select("id, slug, plan_tier, stripe_customer_id")
+      .select("id, slug, stripe_customer_id")
       .eq("id", m.data.tenant_id)
       .maybeSingle();
 
@@ -62,12 +68,11 @@ export async function POST(req: NextRequest) {
 
     const tenant_id = (t.data as any).id as string;
     const tenant_slug = (t.data as any).slug as string | null;
-    const plan_tier = (((t.data as any).plan_tier as string | null) ?? "standard") as "mini" | "standard" | "pro";
     const priceId = planTierToPriceId(plan_tier);
 
     const app = baseUrl(req);
     const success_url = `${app}/admin/billing?status=success`;
-    const cancel_url = `${app}/admin/billing?status=cancel`;
+    const cancel_url = `${app}/pricing`;
 
     const meta: Record<string, string> = { tenant_id, plan_tier };
     if (tenant_slug) meta.tenant_slug = tenant_slug;
@@ -86,7 +91,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ url: session.url });
   } catch (e: any) {
-    console.error("stripe resume failed", e);
+    console.error("stripe upgrade failed", e);
     return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
   }
 }

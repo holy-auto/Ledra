@@ -1,21 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
+import { priceIdToPlanTier, type PlanTier } from "@/lib/stripe/plan";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type PlanTier = "mini" | "standard" | "pro";
-
-const PRICE_TO_TIER: Record<string, PlanTier> = {
-  "price_1T6mOK8STGezcQhAjoFbA93K": "mini",
-  "price_1T6mOK8STGezcQhAF7JX62m4": "standard",
-  "price_1T6mOK8STGezcQhAjifBSYXJ": "pro",
-};
-
 function planFromPriceId(priceId?: string | null): PlanTier | null {
   if (!priceId) return null;
-  return PRICE_TO_TIER[priceId] ?? null;
+  return priceIdToPlanTier(priceId);
 }
 
 // 運用方針：active/trialing/past_due は有効扱い

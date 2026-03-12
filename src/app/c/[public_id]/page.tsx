@@ -66,6 +66,16 @@ type PublicStatusResponse = {
     slug?: string | null;
     custom_domain?: string | null;
   } | null;
+  vehicle_certificates?: Array<{
+    id?: string | null;
+    public_id?: string | null;
+    status?: string | null;
+    customer_name?: string | null;
+    created_at?: string | null;
+    vehicle_info_json?: any;
+    content_free_text?: string | null;
+    expiry_value?: string | null;
+  }>;
 };
 
 function asText(v: unknown) {
@@ -192,6 +202,8 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
 
   const hasNfc = !!data.nfc?.tag_code;
   const hasHistories = (data.histories?.length ?? 0) > 0;
+  const vehicleCerts = data.vehicle_certificates ?? [];
+  const hasVehicleCerts = vehicleCerts.length > 0;
 
   return (
     <main className="min-h-screen bg-neutral-50 pb-16">
@@ -380,6 +392,56 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
                   </div>
                 ))}
               </div>
+            </div>
+          </section>
+        ) : null}
+
+        {/* Same-vehicle past certificates */}
+        {hasVehicleCerts ? (
+          <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+            <div className="mb-4">
+              <div className="text-[10px] font-semibold tracking-[0.2em] text-neutral-400 uppercase">Vehicle History</div>
+              <div className="text-base font-bold text-neutral-900 mt-0.5">同一車両の過去施工</div>
+              <p className="mt-0.5 text-xs text-neutral-500">この車両に紐づく他の施工証明書</p>
+            </div>
+            <div className="space-y-2">
+              {vehicleCerts.map((vc) => {
+                const vcStatus = String(vc.status ?? "").toLowerCase();
+                const vcIsActive = vcStatus === "active";
+                const vcIsVoid = vcStatus === "void";
+                const badgeCls = vcIsActive
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  : vcIsVoid
+                  ? "bg-red-50 text-red-700 border-red-200"
+                  : "bg-neutral-50 text-neutral-600 border-neutral-200";
+                const dotCls = vcIsActive
+                  ? "bg-emerald-500"
+                  : vcIsVoid
+                  ? "bg-red-500"
+                  : "bg-neutral-400";
+                return (
+                  <a
+                    key={vc.public_id ?? vc.id}
+                    href={`/c/${encodeURIComponent(vc.public_id ?? "")}`}
+                    className="flex items-center justify-between rounded-xl border border-neutral-100 bg-neutral-50 p-3 hover:border-neutral-300 hover:bg-white transition-colors"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="font-mono text-xs text-neutral-500">{vc.public_id}</div>
+                      <div className="mt-0.5 text-sm font-medium text-neutral-900 truncate">
+                        {vc.customer_name || "-"}
+                      </div>
+                      <div className="text-xs text-neutral-400">
+                        {formatDate(vc.created_at)}
+                        {vc.expiry_value ? ` · ${vc.expiry_value}` : ""}
+                      </div>
+                    </div>
+                    <span className={`ml-3 shrink-0 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${badgeCls}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${dotCls}`} />
+                      {getStatusLabel(vc.status)}
+                    </span>
+                  </a>
+                );
+              })}
             </div>
           </section>
         ) : null}

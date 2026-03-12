@@ -357,22 +357,50 @@ export default async function AdminVehicleDetailPage({
                 <div className="relative pl-4">
                   <div className="absolute left-0 top-2 bottom-2 w-px bg-neutral-200" />
                   <div className="space-y-4">
-                    {historyRows.map((row) => (
-                      <div key={row.id} className="relative">
-                        <div className="absolute -left-[17px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-neutral-300 bg-white" />
-                        <div className="rounded-xl border border-neutral-100 bg-neutral-50 p-3">
-                          <div className="text-sm font-semibold text-neutral-900">{row.title}</div>
-                          <div className="mt-0.5 text-xs text-neutral-400">
-                            {fmtDt(row.performed_at)}{row.type ? ` · ${row.type}` : ""}
-                          </div>
-                          {row.description ? (
-                            <div className="mt-2 text-sm leading-relaxed text-neutral-700 whitespace-pre-wrap">
-                              {row.description}
+                    {historyRows.map((row) => {
+                      // Find matching cert row to get public_id for linking
+                      const linkedCert = row.certificate_id
+                        ? certRows.find((c) => c.id === row.certificate_id)
+                        : null;
+                      const typeColor =
+                        row.type === "certificate_issued"
+                          ? "border-emerald-200 bg-emerald-50"
+                          : row.type === "certificate_voided"
+                          ? "border-red-100 bg-red-50"
+                          : "border-neutral-100 bg-neutral-50";
+                      const dotColor =
+                        row.type === "certificate_issued"
+                          ? "border-emerald-400 bg-emerald-100"
+                          : row.type === "certificate_voided"
+                          ? "border-red-300 bg-red-100"
+                          : "border-neutral-300 bg-white";
+                      return (
+                        <div key={row.id} className="relative">
+                          <div className={`absolute -left-[17px] top-1.5 h-2.5 w-2.5 rounded-full border-2 ${dotColor}`} />
+                          <div className={`rounded-xl border p-3 ${typeColor}`}>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="text-sm font-semibold text-neutral-900">{row.title}</div>
+                              {linkedCert?.public_id ? (
+                                <Link
+                                  href={`/admin/certificates/${linkedCert.public_id}`}
+                                  className="shrink-0 rounded-md border border-neutral-300 bg-white px-2 py-0.5 text-[11px] font-medium text-neutral-600 hover:bg-neutral-50"
+                                >
+                                  詳細 →
+                                </Link>
+                              ) : null}
                             </div>
-                          ) : null}
+                            <div className="mt-0.5 text-xs text-neutral-400">
+                              {fmtDt(row.performed_at)}{row.type ? ` · ${row.type}` : ""}
+                            </div>
+                            {row.description ? (
+                              <div className="mt-2 text-sm leading-relaxed text-neutral-700 whitespace-pre-wrap">
+                                {row.description}
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ) : (

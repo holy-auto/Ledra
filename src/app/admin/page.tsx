@@ -14,6 +14,18 @@ const menuSections = [
     ],
   },
   {
+    title: "顧客",
+    items: [
+      { label: "顧客管理", href: "/admin/customers", desc: "車両に紐づく顧客の一覧・証明書発行" },
+    ],
+  },
+  {
+    title: "NFCタグ",
+    items: [
+      { label: "NFCタグ管理", href: "/admin/nfc", desc: "タグ台帳・状態・証明書／車両との紐付けを確認" },
+    ],
+  },
+  {
     title: "テンプレート・ブランド",
     items: [
       { label: "テンプレート管理", href: "/admin/templates", desc: "証明書テンプレートの作成・編集" },
@@ -21,8 +33,16 @@ const menuSections = [
     ],
   },
   {
+    title: "チーム・管理",
+    items: [
+      { label: "メンバー管理", href: "/admin/members", desc: "テナントに所属するメンバーの確認" },
+      { label: "操作履歴", href: "/admin/audit", desc: "車両・証明書の操作イベントログ" },
+    ],
+  },
+  {
     title: "契約・設定",
     items: [
+      { label: "テナント設定", href: "/admin/settings", desc: "店舗情報・アカウント設定の確認・編集" },
       { label: "プラン・請求", href: "/admin/billing", desc: "ご利用プランの確認・変更・支払い管理" },
     ],
   },
