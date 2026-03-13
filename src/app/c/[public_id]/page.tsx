@@ -1,6 +1,8 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import CustomerActions from "./CustomerActions";
+import InquiryForm from "./InquiryForm";
+import ShopContact from "./ShopContact";
 
 type PageProps = {
   params: Promise<{ public_id: string }>;
@@ -66,6 +68,10 @@ type PublicStatusResponse = {
     slug?: string | null;
     custom_domain?: string | null;
   } | null;
+  contact_phone?: string | null;
+  contact_email?: string | null;
+  contact_line?: string | null;
+  contact_note?: string | null;
 };
 
 function asText(v: unknown) {
@@ -406,6 +412,22 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
             pdfHref={pdfHref}
             returnTo={returnTo ?? undefined}
             logoutHref={logoutHref ?? undefined}
+          />
+        ) : null}
+
+        {/* Shop contact info */}
+        <ShopContact
+          phone={data.contact_phone}
+          email={data.contact_email}
+          lineId={data.contact_line}
+          note={data.contact_note}
+        />
+
+        {/* Inquiry form */}
+        {!isVoidCertificate ? (
+          <InquiryForm
+            publicId={data.certificate.public_id!}
+            shopName={data.shop?.name ?? undefined}
           />
         ) : null}
 

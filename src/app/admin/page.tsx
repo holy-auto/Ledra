@@ -21,6 +21,13 @@ const menuSections = [
     ],
   },
   {
+    title: "お客様対応",
+    items: [
+      { label: "お問い合わせ", href: "/admin/inquiries", desc: "お客様からのお問い合わせを確認・対応" },
+      { label: "連絡先設定", href: "/admin/contact", desc: "店舗の電話番号・メール・LINE IDを設定" },
+    ],
+  },
+  {
     title: "契約・設定",
     items: [
       { label: "プラン・請求", href: "/admin/billing", desc: "ご利用プランの確認・変更・支払い管理" },
@@ -37,6 +44,7 @@ export default async function AdminHome() {
   let tenantName: string | null = null;
   let certCount: number | null = null;
   let vehicleCount: number | null = null;
+  let inquiryPendingCount: number | null = null;
 
   if (userId) {
     const { data: membership } = await supabase
@@ -65,8 +73,15 @@ export default async function AdminHome() {
         .select("id", { count: "exact", head: true })
         .eq("tenant_id", membership.tenant_id);
 
+      const { count: ic } = await supabase
+        .from("customer_inquiries")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", membership.tenant_id)
+        .eq("status", "pending");
+
       certCount = cc ?? 0;
       vehicleCount = vc ?? 0;
+      inquiryPendingCount = ic ?? 0;
     }
   }
 
@@ -99,6 +114,20 @@ export default async function AdminHome() {
               <div className="mt-2 text-2xl font-bold text-neutral-900">{vehicleCount}</div>
               <div className="mt-1 text-xs text-neutral-500">登録車両</div>
             </div>
+            <Link
+              href="/admin/inquiries"
+              className={`rounded-2xl border p-5 shadow-sm transition hover:shadow-md ${
+                (inquiryPendingCount ?? 0) > 0
+                  ? "border-amber-300 bg-amber-50 hover:border-amber-400"
+                  : "border-neutral-200 bg-white hover:border-neutral-400"
+              }`}
+            >
+              <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">INQUIRIES</div>
+              <div className={`mt-2 text-2xl font-bold ${(inquiryPendingCount ?? 0) > 0 ? "text-amber-700" : "text-neutral-900"}`}>
+                {inquiryPendingCount ?? 0}
+              </div>
+              <div className="mt-1 text-xs text-neutral-500">未対応のお問い合わせ</div>
+            </Link>
           </section>
         )}
 

@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
 
     const t = await supabase
       .from("tenants")
-      .select("name, slug, is_active, stripe_subscription_id")
+      .select("name, slug, is_active, stripe_subscription_id, contact_phone, contact_email, contact_line, contact_note")
       .eq("id", c.data.tenant_id)
       .limit(1)
       .maybeSingle();
@@ -88,6 +88,10 @@ export async function GET(req: NextRequest) {
         grace_until,
         pdf_allowed,
         grace_days: graceDays(),
+        contact_phone: (t.data as any)?.contact_phone ?? null,
+        contact_email: (t.data as any)?.contact_email ?? null,
+        contact_line: (t.data as any)?.contact_line ?? null,
+        contact_note: (t.data as any)?.contact_note ?? null,
       },
       { status: 200, headers: { "cache-control": "no-store" } }
     );

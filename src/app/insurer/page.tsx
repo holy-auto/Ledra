@@ -118,6 +118,12 @@ export default function InsurerHomePage() {
           </div>
 
           <div className="flex gap-3 items-center">
+            <a
+              href="/insurer/inquiries"
+              className="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
+            >
+              お問い合わせ一覧
+            </a>
             <button
               onClick={startCheckout}
               disabled={billingBusy}
