@@ -1,6 +1,19 @@
 ﻿import React from "react";
-import { Document, Page, Text, View, Image, StyleSheet } from "@react-pdf/renderer";
+import { Document, Page, Text, View, Image, StyleSheet, Font } from "@react-pdf/renderer";
 import { renderToBuffer } from "@react-pdf/renderer";
+
+const NOTO_SANS_JP =
+  "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-400-normal.ttf";
+const NOTO_SANS_JP_BOLD =
+  "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-700-normal.ttf";
+
+Font.register({
+  family: "NotoSansJP",
+  fonts: [
+    { src: NOTO_SANS_JP, fontWeight: 400 },
+    { src: NOTO_SANS_JP_BOLD, fontWeight: 700 },
+  ],
+});
 import { createSignedAssetUrl } from "@/lib/signedUrl";
 import QRCode from "qrcode";
 
@@ -28,7 +41,7 @@ export type CertRow = {
 };
 
 const styles = StyleSheet.create({
-  page: { padding: 28, fontSize: 10 },
+  page: { padding: 28, fontSize: 10, fontFamily: "NotoSansJP" },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   title: { fontSize: 18 },

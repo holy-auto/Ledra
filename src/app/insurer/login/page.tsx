@@ -25,62 +25,47 @@ export default function InsurerLoginPage() {
   };
 
   return (
-    <main className="min-h-screen bg-neutral-50 flex items-center justify-center p-6">
-      <div className="w-full max-w-sm space-y-6">
-
-        {/* Header */}
-        <div className="space-y-2 text-center">
-          <div className="inline-flex rounded-full border border-neutral-300 bg-white px-3 py-1 text-[11px] font-semibold tracking-[0.22em] text-neutral-600">
-            INSURER PORTAL
+    <main className="min-h-screen flex items-center justify-center bg-base p-6">
+      <div className="glass-card w-full max-w-md space-y-6 p-8">
+        {/* Branding */}
+        <div className="flex items-center justify-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-[#0071e3] flex items-center justify-center text-white font-bold text-lg">
+            C
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-neutral-900">
-            保険会社ポータル
-          </h1>
-          <p className="text-sm text-neutral-500">
-            メールアドレスとパスワードでログイン
-          </p>
+          <span className="text-xl font-bold text-primary tracking-wide">CARTRUST</span>
         </div>
 
-        {/* Form */}
-        <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm space-y-4">
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium text-neutral-700">メールアドレス</span>
+        <div className="text-center">
+          <h1 className="text-xl font-bold text-primary">保険会社ポータル ログイン</h1>
+          <p className="text-sm text-muted mt-1">認証は Supabase Auth（Email/Password）です。</p>
+        </div>
+
+        <div className="grid gap-4">
+          <label>
+            <div className="text-sm text-secondary mb-1">Email</div>
             <input
-              type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && onLogin()}
-              placeholder="insurer@example.com"
-              className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
+              className="input-field w-full"
             />
           </label>
 
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium text-neutral-700">パスワード</span>
+          <label>
+            <div className="text-sm text-secondary mb-1">Password</div>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && onLogin()}
-              className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
+              className="input-field w-full"
             />
           </label>
 
-          {err && (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              {err}
-            </div>
-          )}
+          {err && <div className="text-sm text-red-500">{err}</div>}
 
-          <button
-            onClick={onLogin}
-            disabled={busy}
-            className="w-full rounded-xl border border-neutral-900 bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
-          >
-            {busy ? "ログイン中..." : "ログイン"}
+          <button onClick={onLogin} disabled={busy} className="btn-primary w-full">
+            {busy ? "..." : "ログイン"}
           </button>
         </div>
-
       </div>
     </main>
   );

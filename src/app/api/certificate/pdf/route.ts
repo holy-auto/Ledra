@@ -2,10 +2,25 @@ import { enforceBilling } from "@/lib/billing/guard";
 import React from "react";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
-import { Document, Page, Text, View, Image, StyleSheet } from "@react-pdf/renderer";
+import { Document, Page, Text, View, Image, StyleSheet, Font } from "@react-pdf/renderer";
 import { renderToBuffer } from "@react-pdf/renderer";
+import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
+
+const NOTO_SANS_JP =
+  "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-400-normal.ttf";
+const NOTO_SANS_JP_BOLD =
+  "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-700-normal.ttf";
+
+Font.register({
+  family: "NotoSansJP",
+  fonts: [
+    { src: NOTO_SANS_JP, fontWeight: 400 },
+    { src: NOTO_SANS_JP_BOLD, fontWeight: 700 },
+  ],
+});
 
 type CertPublic = {
   public_id: string;
@@ -26,7 +41,7 @@ type CertPublic = {
 };
 
 const styles = StyleSheet.create({
-  page: { padding: 28, fontSize: 10 },
+  page: { padding: 28, fontSize: 10, fontFamily: "NotoSansJP" },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   title: { fontSize: 18 },
   meta: { color: "#666", marginTop: 4 },
@@ -158,6 +173,29 @@ export async function GET(req: Request) {
   if (!cert || (cert.status ?? "").toLowerCase() !== "active") {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
+
+  // 公開PDF閲覧ログ（tenant_id を取得して記録）
+  try {
+    const adm = createAdminClient();
+    const { data: certRow } = await adm
+      .from("certificates")
+      .select("tenant_id,id,vehicle_id")
+      .eq("public_id", pid)
+      .limit(1)
+      .maybeSingle();
+    if (certRow?.tenant_id) {
+      const meta = getRequestMeta(req);
+      logCertificateAction({
+        type: "certificate_public_pdf",
+        tenantId: certRow.tenant_id as string,
+        publicId: pid,
+        certificateId: certRow.id as string,
+        vehicleId: certRow.vehicle_id as string | null,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+      });
+    }
+  } catch { /* audit failure should not block PDF */ }
 
   const fallbackOrigin = await getFallbackOrigin();
   const origin = buildOriginFromCert(cert, fallbackOrigin);

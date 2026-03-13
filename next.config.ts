@@ -1,5 +1,5 @@
 import type { NextConfig } from "next";
-import path from "path";
+import { resolve } from "path";
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
@@ -11,10 +11,8 @@ const nextConfig: NextConfig = {
     },
   },
 
-  // Turbopack root: point to the parent repo so Turbopack finds node_modules/next.
-  // The worktree lives inside this directory so source files remain compilable.
   turbopack: {
-    root: path.resolve(__dirname, "../../../.."),
+    root: resolve("."),
   },
 };
 

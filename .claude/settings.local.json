@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la /c/Users/admin/holy-cert/.claude/worktrees/distracted-bhaskara/src/app/c/[public_id]/)"
+    ]
+  }
+}

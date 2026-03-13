@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { formatDate, formatDateTime } from "@/lib/format";
 
 type Field = {
   key: string;
@@ -43,11 +44,8 @@ function renderValue(field: Field, raw: any) {
 
   // date
   if (field.type === "date") {
-    try {
-      const d = new Date(raw);
-      if (!isNaN(d.getTime())) return d.toLocaleDateString("ja-JP");
-    } catch {}
-    return String(raw);
+    const formatted = formatDate(String(raw));
+    return formatted === "-" ? String(raw) : formatted;
   }
 
   // number
@@ -154,7 +152,7 @@ export default function InsurerCertificatePage() {
               <div style={{ fontWeight: 700 }}>{[cert.expiry_type, cert.expiry_value].filter(Boolean).join(" / ")}</div>
 
               <div style={{ opacity: 0.7 }}>作成</div>
-              <div>{cert.created_at ? new Date(cert.created_at).toLocaleString("ja-JP") : ""}</div>
+              <div>{formatDateTime(cert.created_at)}</div>
             </div>
           </div>
 

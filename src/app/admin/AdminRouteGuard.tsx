@@ -55,13 +55,13 @@ export default function AdminRouteGuard({ children }: { children: ReactNode }) {
 
   return (
     <div className="space-y-3">
-      <div className="rounded border bg-yellow-50 p-3 text-sm">
-        <div className="font-semibold">{title}</div>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Link className="rounded border bg-white px-3 py-2" href={"/admin/billing?next=" + encodeURIComponent(nextUrl)}>
-            {cta}（/admin/billing）
+      <div className="glass-card p-4 text-sm glow-amber">
+        <div className="font-semibold text-amber-400">{title}</div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Link className="btn-primary" href={"/admin/billing?next=" + encodeURIComponent(nextUrl)}>
+            {cta}
           </Link>
-          <span className="text-xs opacity-70">plan: {planTier} / active: {String(isActive)}</span>
+          <span className="text-xs text-muted">plan: {planTier} / active: {String(isActive)}</span>
         </div>
       </div>
 

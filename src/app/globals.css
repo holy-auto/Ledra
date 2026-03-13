@@ -1,26 +1,234 @@
 @import "tailwindcss";
 
+/* ── Apple-inspired Light Design Tokens ── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg-base: #f5f5f7;
+  --bg-surface: rgba(255, 255, 255, 0.8);
+  --bg-surface-solid: #ffffff;
+  --bg-surface-hover: #f0f0f2;
+  --bg-surface-active: #e8e8ed;
+  --bg-elevated: rgba(255, 255, 255, 0.9);
+  --border-default: rgba(0, 0, 0, 0.08);
+  --border-subtle: rgba(0, 0, 0, 0.04);
+  --border-focus: #0071e3;
+  --text-primary: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --text-muted: #aeaeb2;
+  --accent-blue: #0071e3;
+  --accent-blue-dim: rgba(0, 113, 227, 0.08);
+  --accent-emerald: #28a745;
+  --accent-emerald-dim: rgba(40, 167, 69, 0.08);
+  --accent-amber: #f09300;
+  --accent-amber-dim: rgba(240, 147, 0, 0.08);
+  --accent-red: #ff3b30;
+  --accent-red-dim: rgba(255, 59, 48, 0.08);
+  --accent-violet: #af52de;
+  --accent-violet-dim: rgba(175, 82, 222, 0.08);
+  --font-sans: "Yu Mincho", "YuMincho", "游明朝", "Hiragino Mincho ProN", "HG明朝E", serif;
+  --font-mono: var(--font-geist-mono, "SF Mono", ui-monospace, monospace);
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-base: var(--bg-base);
+  --color-surface: var(--bg-surface-solid);
+  --color-surface-hover: var(--bg-surface-hover);
+  --color-surface-active: var(--bg-surface-active);
+  --color-border-default: var(--border-default);
+  --color-border-subtle: var(--border-subtle);
+  --color-primary: var(--text-primary);
+  --color-secondary: var(--text-secondary);
+  --color-muted: var(--text-muted);
+  --color-accent: var(--accent-blue);
+  --color-accent-dim: var(--accent-blue-dim);
+  --color-success: var(--accent-emerald);
+  --color-success-dim: var(--accent-emerald-dim);
+  --color-warning: var(--accent-amber);
+  --color-warning-dim: var(--accent-amber-dim);
+  --color-danger: var(--accent-red);
+  --color-danger-dim: var(--accent-red-dim);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Apple-style Component Recipes ── */
+@layer components {
+  /* Card — clean white with subtle border */
+  .glass-card {
+    background: var(--bg-surface);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-xl);
+    box-shadow:
+      0 0 0 0.5px rgba(0, 0, 0, 0.03),
+      0 1px 3px rgba(0, 0, 0, 0.06),
+      0 2px 8px rgba(0, 0, 0, 0.04);
+  }
+
+  /* Primary Button — vibrant blue */
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: var(--radius-md);
+    background: var(--accent-blue);
+    color: #fff;
+    font-weight: 500;
+    font-size: 0.875rem;
+    letter-spacing: -0.01em;
+    padding: 0.5rem 1.25rem;
+    transition: all 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    cursor: pointer;
+    border: none;
+  }
+  .btn-primary:hover {
+    background: #0077ed;
+    box-shadow: 0 2px 12px rgba(0, 113, 227, 0.25);
+  }
+  .btn-primary:active { transform: scale(0.97); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Secondary Button */
+  .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: var(--radius-md);
+    background: var(--bg-surface-solid);
+    border: 1px solid var(--border-default);
+    color: var(--text-primary);
+    font-weight: 500;
+    font-size: 0.875rem;
+    letter-spacing: -0.01em;
+    padding: 0.5rem 1.25rem;
+    transition: all 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    cursor: pointer;
+  }
+  .btn-secondary:hover {
+    background: var(--bg-surface-hover);
+    border-color: rgba(0, 0, 0, 0.12);
+  }
+  .btn-secondary:active { transform: scale(0.97); }
+
+  /* Ghost Button */
+  .btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--text-secondary);
+    font-weight: 500;
+    font-size: 0.875rem;
+    letter-spacing: -0.01em;
+    padding: 0.5rem 1.25rem;
+    transition: all 200ms;
+    cursor: pointer;
+    border: none;
+  }
+  .btn-ghost:hover {
+    background: rgba(0, 0, 0, 0.04);
+    color: var(--text-primary);
+  }
+  .btn-ghost:active { transform: scale(0.97); }
+
+  /* Danger Button */
+  .btn-danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: var(--radius-md);
+    background: var(--accent-red-dim);
+    border: 1px solid rgba(255, 59, 48, 0.15);
+    color: var(--accent-red);
+    font-weight: 500;
+    font-size: 0.875rem;
+    letter-spacing: -0.01em;
+    padding: 0.5rem 1.25rem;
+    transition: all 200ms;
+    cursor: pointer;
+  }
+  .btn-danger:hover {
+    background: rgba(255, 59, 48, 0.12);
+    border-color: rgba(255, 59, 48, 0.25);
+  }
+  .btn-danger:active { transform: scale(0.97); }
+
+  /* Input Field */
+  .input-field {
+    width: 100%;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-default);
+    background: var(--bg-surface-solid);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    letter-spacing: -0.01em;
+    padding: 0.5rem 0.875rem;
+    transition: border-color 200ms, box-shadow 200ms;
+    outline: none;
+  }
+  .input-field::placeholder { color: var(--text-muted); }
+  .input-field:focus {
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px var(--accent-blue-dim);
+  }
+
+  /* Select Field */
+  .select-field {
+    width: 100%;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-default);
+    background: var(--bg-surface-solid);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    letter-spacing: -0.01em;
+    padding: 0.5rem 0.875rem;
+    transition: border-color 200ms, box-shadow 200ms;
+    outline: none;
+    cursor: pointer;
+  }
+  .select-field:focus {
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px var(--accent-blue-dim);
+  }
+}
+
+/* ── Utility Classes ── */
+@layer utilities {
+  .glow-cyan { box-shadow: 0 0 20px var(--accent-blue-dim); }
+  .glow-emerald { box-shadow: 0 0 20px var(--accent-emerald-dim); }
+  .glow-amber { box-shadow: 0 0 20px var(--accent-amber-dim); }
+  .glow-red { box-shadow: 0 0 20px var(--accent-red-dim); }
+}
+
+/* ── Scrollbar styling ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
 }

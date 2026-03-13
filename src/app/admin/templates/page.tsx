@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 
+import { formatDateTime } from "@/lib/format";
 import AdminFeatureGuard from "@/app/admin/AdminFeatureGuard";
 const DEFAULT_SCHEMA = {
   version: 1,
@@ -32,7 +33,7 @@ export default async function Page({
     .limit(1)
     .single();
 
-  if (!mem) return <main className="p-6">tenant_memberships が見つかりません。</main>;
+  if (!mem) return <main className="p-6 text-primary">tenant_memberships が見つかりません。</main>;
   const tenantId = mem.tenant_id as string;
 
   async function createTemplate(formData: FormData) {
@@ -105,7 +106,7 @@ export default async function Page({
     .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false });
 
-  if (error) return <main className="p-6">読み込みエラー: {error.message}</main>;
+  if (error) return <main className="p-6 text-primary">読み込みエラー: {error.message}</main>;
 
   return (
   <AdminFeatureGuard feature="manage_templates">
@@ -113,53 +114,53 @@ export default async function Page({
     <main className="p-6 space-y-4 max-w-3xl">
       <header className="flex items-end justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold">テンプレ管理</h1>
-          <p className="text-sm text-gray-500">
+          <h1 className="text-2xl font-bold text-primary">テンプレ管理</h1>
+          <p className="text-sm text-muted">
             tenant: <span className="font-mono">{tenantId}</span>
           </p>
         </div>
         <div className="flex gap-3 text-sm">
-          <Link className="underline" href="/admin/certificates/new">発行</Link>
-          <Link className="underline" href="/admin/certificates">証明書一覧</Link>
+          <Link className="underline text-[#0071e3] hover:text-[#0077ED]" href="/admin/certificates/new">発行</Link>
+          <Link className="underline text-[#0071e3] hover:text-[#0077ED]" href="/admin/certificates">証明書一覧</Link>
         </div>
       </header>
 
-      {sp.ok ? <div className="border rounded p-3 text-sm">OK ✅</div> : null}
-      {sp.e ? <div className="border rounded p-3 text-sm text-red-600">エラー: {sp.e}</div> : null}
+      {sp.ok ? <div className="glass-card p-3 text-sm text-emerald-400">OK</div> : null}
+      {sp.e ? <div className="glass-card p-3 text-sm text-red-500">エラー: {sp.e}</div> : null}
 
-      <form action={createTemplate} className="border rounded p-4 space-y-2">
-        <div className="text-sm font-semibold">新規テンプレ作成</div>
+      <form action={createTemplate} className="glass-card p-4 space-y-2">
+        <div className="text-sm font-semibold text-primary">新規テンプレ作成</div>
         <div className="flex gap-2 items-center">
-          <input name="name" placeholder="例：コーティング標準 / PPF / 整備" className="border rounded px-3 py-2 text-sm w-full" />
-          <button className="border rounded px-3 py-2 text-sm whitespace-nowrap">作成</button>
+          <input name="name" placeholder="例：コーティング標準 / PPF / 整備" className="input-field w-full" />
+          <button className="btn-primary whitespace-nowrap">作成</button>
         </div>
-        <div className="text-xs text-gray-500">※ ひな形スキーマで作成します。あとで編集してください。</div>
+        <div className="text-xs text-muted">※ ひな形スキーマで作成します。あとで編集してください。</div>
       </form>
 
-      <div className="border rounded overflow-x-auto">
+      <div className="border border-border-default rounded-xl overflow-x-auto">
         <table className="min-w-full text-sm">
-          <thead className="bg-gray-50">
+          <thead className="bg-base">
             <tr>
-              <th className="text-left p-3">名前</th>
-              <th className="text-left p-3">layout</th>
-              <th className="text-left p-3">作成</th>
-              <th className="text-left p-3">操作</th>
+              <th className="text-left p-3 text-secondary">名前</th>
+              <th className="text-left p-3 text-secondary">layout</th>
+              <th className="text-left p-3 text-secondary">作成</th>
+              <th className="text-left p-3 text-secondary">操作</th>
             </tr>
           </thead>
           <tbody>
             {(templates ?? []).map((t) => (
-              <tr key={t.id} className="border-t">
-                <td className="p-3">{t.name}</td>
-                <td className="p-3">{t.layout_version}</td>
-                <td className="p-3 whitespace-nowrap">{new Date(t.created_at).toLocaleString("ja-JP")}</td>
+              <tr key={t.id} className="border-t border-border-default hover:bg-surface-hover transition-colors">
+                <td className="p-3 text-primary">{t.name}</td>
+                <td className="p-3 text-primary">{t.layout_version}</td>
+                <td className="p-3 whitespace-nowrap text-primary">{formatDateTime(t.created_at)}</td>
                 <td className="p-3">
                   <div className="flex gap-3 items-center flex-wrap">
-                    <Link className="underline" href={`/admin/templates/edit?tid=${encodeURIComponent(t.id)}`}>
+                    <Link className="underline text-[#0071e3] hover:text-[#0077ED]" href={`/admin/templates/edit?tid=${encodeURIComponent(t.id)}`}>
                       編集
                     </Link>
                     <form action={duplicateTemplate}>
                       <input type="hidden" name="tid" value={t.id} />
-                      <button className="border rounded px-2 py-1 text-xs">複製</button>
+                      <button className="btn-ghost text-xs">複製</button>
                     </form>
                   </div>
                 </td>
@@ -167,14 +168,13 @@ export default async function Page({
             ))}
 
             {(templates ?? []).length === 0 && (
-              <tr><td className="p-6 text-gray-500" colSpan={4}>テンプレがありません</td></tr>
+              <tr><td className="p-6 text-muted" colSpan={4}>テンプレがありません</td></tr>
             )}
           </tbody>
         </table>
       </div>
     </main>
-  
+
   </AdminFeatureGuard>
 );
 }
-

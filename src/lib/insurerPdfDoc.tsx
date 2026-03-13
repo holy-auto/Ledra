@@ -1,5 +1,18 @@
 import React from "react";
-import { Document, Page, Text, View, StyleSheet, Image } from "@react-pdf/renderer";
+import { Document, Page, Text, View, StyleSheet, Image, Font } from "@react-pdf/renderer";
+
+const NOTO_SANS_JP =
+  "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-400-normal.ttf";
+const NOTO_SANS_JP_BOLD =
+  "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-700-normal.ttf";
+
+Font.register({
+  family: "NotoSansJP",
+  fonts: [
+    { src: NOTO_SANS_JP, fontWeight: 400 },
+    { src: NOTO_SANS_JP_BOLD, fontWeight: 700 },
+  ],
+});
 
 export function InsurerPdfDoc(props: { cert: any; qrDataUrl: string; publicUrl: string }) {
   const { cert, qrDataUrl, publicUrl } = props;
@@ -48,7 +61,7 @@ const styles = StyleSheet.create({
   page: {
     padding: 28,
     fontSize: 11,
-    fontFamily: "Helvetica",
+    fontFamily: "NotoSansJP",
   },
   header: { marginBottom: 14 },
   h1: { fontSize: 16, fontWeight: "bold" },

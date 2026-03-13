@@ -1,6 +1,8 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import CustomerActions from "./CustomerActions";
+import { logCertificateAction } from "@/lib/audit/certificateLog";
+import { formatDate, formatDateTime } from "@/lib/format";
 
 type PageProps = {
   params: Promise<{ public_id: string }>;
@@ -80,30 +82,18 @@ function pickVehicleField(vehicle: any, info: any, keys: string[]) {
   for (const key of keys) {
     const v1 = vehicle?.[key];
     if (v1 !== undefined && v1 !== null && String(v1).trim() !== "") return String(v1);
+
     const v2 = info?.[key];
     if (v2 !== undefined && v2 !== null && String(v2).trim() !== "") return String(v2);
   }
   return "";
 }
 
-function formatDateTime(v?: string | null) {
-  if (!v) return "-";
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return String(v);
-  return d.toLocaleString("ja-JP");
-}
-
-function formatDate(v?: string | null) {
-  if (!v) return "-";
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return String(v);
-  return d.toLocaleDateString("ja-JP");
-}
 
 function getStatusLabel(status?: string | null) {
   const s = String(status ?? "").toLowerCase();
-  if (s === "active") return "有効";
-  if (s === "void") return "無効";
+  if (s === "active") return "有効な施工証明書";
+  if (s === "void") return "無効の施工証明書";
   if (s === "expired") return "期限切れ";
   if (s === "inactive") return "停止";
   return status ?? "不明";
@@ -133,21 +123,15 @@ async function fetchPublicStatus(publicId: string): Promise<PublicStatusResponse
     `${origin}/api/certificate/public-status?pid=${encodeURIComponent(publicId)}`,
     { cache: "no-store" }
   );
+
   if (res.status === 404) return null;
+
   if (!res.ok) {
     const txt = await res.text();
     throw new Error(`public-status failed: ${res.status} ${txt}`);
   }
-  return (await res.json()) as PublicStatusResponse;
-}
 
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl bg-neutral-50 p-3">
-      <div className="text-[11px] font-semibold tracking-wide text-neutral-400 uppercase">{label}</div>
-      <div className="mt-0.5 text-sm font-medium text-neutral-900">{value || "-"}</div>
-    </div>
-  );
+  return (await res.json()) as PublicStatusResponse;
 }
 
 export default async function CertificatePublicPage({ params, searchParams }: PageProps) {
@@ -157,12 +141,25 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
   const data = await fetchPublicStatus(publicId);
   if (!data?.certificate?.public_id) notFound();
 
+  // 公開ページ閲覧ログ
+  if (data.certificate.tenant_id) {
+    const h = await headers();
+    logCertificateAction({
+      type: "certificate_public_viewed",
+      tenantId: data.certificate.tenant_id,
+      publicId: data.certificate.public_id,
+      certificateId: data.certificate.id ?? undefined,
+      vehicleId: data.certificate.vehicle_id ?? undefined,
+      ip: h.get("x-forwarded-for") ?? h.get("x-real-ip") ?? null,
+      userAgent: h.get("user-agent") ?? null,
+    });
+  }
+
   const origin = await getOrigin();
   const sp = await searchParams;
   const notice = Array.isArray(sp?.notice) ? sp?.notice[0] : sp?.notice;
   const certStatus = String(data.certificate.status ?? "").toLowerCase();
   const isVoidCertificate = certStatus === "void";
-  const isActive = certStatus === "active";
 
   const info = asObj(data.certificate.vehicle_info_json);
   const publicUrl = `${origin}/c/${data.certificate.public_id}`;
@@ -184,164 +181,106 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
     notice === "pdf_blocked_inactive" ||
     notice === "pdf_blocked_plan";
 
-  const statusBadgeClass = isActive
-    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-    : isVoidCertificate
-    ? "bg-red-50 text-red-700 border-red-200"
-    : "bg-amber-50 text-amber-700 border-amber-200";
-
-  const hasNfc = !!data.nfc?.tag_code;
-  const hasHistories = (data.histories?.length ?? 0) > 0;
-
   return (
-    <main className="min-h-screen bg-neutral-50 pb-16">
-      {/* Hero header */}
-      <div className="bg-white border-b border-neutral-200">
-        <div className="mx-auto max-w-2xl px-4 py-6 sm:px-6">
-          {/* Brand */}
-          <div className="flex items-center gap-3 mb-5">
-            <div>
-              <div className="text-[11px] font-semibold tracking-[0.2em] text-neutral-400">CARTRUST</div>
-              <div className="text-xl font-extrabold tracking-tight text-neutral-900 leading-none mt-0.5">
-                施工証明書
-              </div>
-            </div>
-          </div>
-
-          {/* Status + ID */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${statusBadgeClass}`}
-            >
-              <span
-                className={`h-1.5 w-1.5 rounded-full ${
-                  isActive ? "bg-emerald-500" : isVoidCertificate ? "bg-red-500" : "bg-amber-500"
-                }`}
-              />
-              {getStatusLabel(data.certificate.status)}
-            </span>
-            <span className="font-mono text-xs text-neutral-500">
-              {data.certificate.public_id}
-            </span>
-          </div>
-
-          {/* Shop name */}
-          {data.shop?.name ? (
-            <p className="mt-3 text-sm text-neutral-600">
-              発行店舗：<span className="font-semibold text-neutral-900">{data.shop.name}</span>
-            </p>
-          ) : null}
+    <main className="mx-auto max-w-[980px] p-4">
+      <div className="glass-card mb-4 p-5">
+        <div className="text-[28px] font-extrabold tracking-wide text-primary">CARTRUST CERT</div>
+        <div className="mt-1 text-sm text-muted">施工証明書</div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <span
+            className={`inline-block rounded-full border px-2.5 py-1.5 text-xs font-bold ${
+              certStatus === "active"
+                ? "border-emerald-500/30 bg-[rgba(16,185,129,0.1)] text-emerald-400"
+                : certStatus === "void"
+                  ? "border-red-500/30 bg-[rgba(239,68,68,0.1)] text-red-500"
+                  : "border-amber-500/30 bg-[rgba(245,158,11,0.1)] text-amber-400"
+            }`}
+          >
+            認証状態: {getStatusLabel(data.certificate.status)}
+          </span>
+          <span className="self-center text-xs text-secondary">
+            Public ID: {data.certificate.public_id}
+          </span>
         </div>
       </div>
 
-      <div className="mx-auto max-w-2xl px-4 py-5 sm:px-6 space-y-4">
-        {/* Banners */}
-        {!isActive && !isVoidCertificate ? (
-          <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-            この証明書は現在「{getStatusLabel(data.certificate.status)}」状態です。
-            存在は確認できますが、一部機能や扱いが通常と異なる場合があります。
-          </div>
-        ) : null}
+      {certStatus !== "active" ? (
+        <div className="mb-4 rounded-xl border border-amber-500/30 bg-[rgba(245,158,11,0.1)] p-4 text-amber-400">
+          この証明書は現在「{getStatusLabel(data.certificate.status)}」状態です。存在は確認できますが、一部機能や扱いが通常と異なる場合があります。
+        </div>
+      ) : null}
 
-        {isVoidCertificate ? (
-          <div className="rounded-2xl border border-red-300 bg-red-50 p-4">
-            <div className="text-sm font-bold text-red-800 mb-1">この証明書は無効化されています</div>
-            <p className="text-sm leading-relaxed text-red-700">
-              この公開ページでは記録の存在確認のみ可能です。PDF出力と添付画像の公開表示は停止しています。
-              詳細確認は発行店舗へお問い合わせください。
-            </p>
+      {isVoidCertificate ? (
+        <div className="mb-4 rounded-xl border border-red-500/30 bg-[rgba(239,68,68,0.1)] p-4 text-red-500">
+          <div className="mb-1.5 font-extrabold">この証明書は無効化されています</div>
+          <div className="text-sm leading-relaxed">
+            この公開ページでは記録の存在確認のみ可能です。PDF出力と添付画像の公開表示は停止しています。詳細確認は発行店舗へお問い合わせください。
           </div>
-        ) : null}
+        </div>
+      ) : null}
 
-        {isPdfBlocked ? (
-          <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4">
-            <div className="text-sm font-bold text-amber-800 mb-1">
-              現在、PDFのご案内を一時停止しています
-            </div>
-            <p className="text-sm leading-relaxed text-amber-700">
-              このページの公開閲覧は引き続きご利用いただけますが、PDFのご案内は現在一時的に停止しています。
-            </p>
+      {isPdfBlocked ? (
+        <div className="mb-4 rounded-xl border border-amber-500/30 bg-[rgba(245,158,11,0.1)] p-4 text-amber-400">
+          <div className="mb-1.5 font-bold">現在、この証明書のPDFご案内を一時停止しています</div>
+          <div className="text-sm leading-relaxed">
+            このページの公開閲覧は引き続きご利用いただけますが、PDFのご案内は現在一時的に停止しています。
           </div>
-        ) : null}
+        </div>
+      ) : null}
 
-        {/* Vehicle info */}
-        <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-          <div className="mb-3">
-            <div className="text-[10px] font-semibold tracking-[0.2em] text-neutral-400 uppercase">Vehicle</div>
-            <div className="text-base font-bold text-neutral-900 mt-0.5">車両情報</div>
-          </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <InfoRow label="メーカー" value={maker} />
-            <InfoRow label="車種" value={model} />
-            <InfoRow label="年式" value={year} />
-            <InfoRow label="ナンバー" value={plate} />
-            <InfoRow label="顧客名" value={customerName} />
-            <InfoRow label="発行日" value={formatDate(data.certificate.created_at)} />
+      <div className="grid gap-4">
+        <section className="glass-card p-4">
+          <div className="mb-3 font-bold text-primary">車両情報</div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">メーカー: <span className="text-primary">{maker || "-"}</span></div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">車種: <span className="text-primary">{model || "-"}</span></div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">年式: <span className="text-primary">{year || "-"}</span></div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">ナンバー: <span className="text-primary">{plate || "-"}</span></div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">顧客名: <span className="text-primary">{customerName || "-"}</span></div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">記録作成日: <span className="text-primary">{formatDate(data.certificate.created_at)}</span></div>
           </div>
         </section>
 
-        {/* Certificate info */}
-        <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-          <div className="mb-3">
-            <div className="text-[10px] font-semibold tracking-[0.2em] text-neutral-400 uppercase">Certificate</div>
-            <div className="text-base font-bold text-neutral-900 mt-0.5">証明書情報</div>
+        <section className="glass-card p-4">
+          <div className="mb-3 font-bold text-primary">証明書情報</div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">施工店: <span className="text-primary">{data.shop?.name || "-"}</span></div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">ステータス: <span className="text-primary">{getStatusLabel(data.certificate.status)}</span></div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">有効期限タイプ: <span className="text-primary">{asText(data.certificate.expiry_type) || "-"}</span></div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">有効期限値: <span className="text-primary">{data.certificate.expiry_value != null ? String(data.certificate.expiry_value) : "-"}</span></div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">バージョン: <span className="text-primary">{data.certificate.current_version != null ? String(data.certificate.current_version) : "-"}</span></div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+              公開URL:{" "}
+              <a href={publicUrl} target="_blank" rel="noreferrer" className="text-[#0071e3] hover:underline">
+                {publicUrl}
+              </a>
+            </div>
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <InfoRow label="ステータス" value={getStatusLabel(data.certificate.status)} />
-            <InfoRow label="有効期限タイプ" value={asText(data.certificate.expiry_type)} />
-            <InfoRow
-              label="有効期限値"
-              value={data.certificate.expiry_value != null ? String(data.certificate.expiry_value) : ""}
-            />
-            <InfoRow
-              label="バージョン"
-              value={data.certificate.current_version != null ? String(data.certificate.current_version) : ""}
-            />
-          </div>
-
-          {/* Free text */}
           {freeText ? (
-            <div className="mt-4 rounded-xl bg-neutral-50 p-4 text-sm leading-relaxed text-neutral-800 whitespace-pre-wrap">
+            <div className="mt-3 whitespace-pre-wrap leading-relaxed text-secondary">
               {freeText}
             </div>
           ) : null}
-
-          {/* Public URL */}
-          <div className="mt-3 rounded-xl bg-neutral-50 p-3">
-            <div className="text-[11px] font-semibold tracking-wide text-neutral-400 uppercase mb-0.5">公開URL</div>
-            <a
-              href={publicUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="break-all text-xs text-blue-600 underline"
-            >
-              {publicUrl}
-            </a>
-          </div>
         </section>
 
-        {/* Images */}
         {images.length > 0 ? (
-          <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <div className="mb-3">
-              <div className="text-[10px] font-semibold tracking-[0.2em] text-neutral-400 uppercase">Images</div>
-              <div className="text-base font-bold text-neutral-900 mt-0.5">添付画像</div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+          <section className="glass-card p-4">
+            <div className="mb-3 font-bold text-primary">添付画像</div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {images.map((img) => (
                 <a
                   key={String(img.id ?? img.sort_order ?? Math.random())}
                   href={String(img.url)}
                   target="_blank"
                   rel="noreferrer"
-                  className="block overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50 hover:border-neutral-400 transition-colors"
+                  className="block rounded-xl border border-border-default p-2.5 no-underline transition-colors hover:border-[#0071e3]/50 hover:bg-surface-hover"
                 >
                   <img
                     src={String(img.url)}
                     alt={img.file_name || `image_${img.sort_order ?? ""}`}
-                    className="h-36 w-full object-cover sm:h-48"
+                    className="h-[180px] w-full rounded-lg border border-border-default bg-base object-cover"
                   />
-                  <div className="p-2 text-xs text-neutral-500 truncate">
+                  <div className="mt-2 text-xs text-muted">
                     {img.file_name || `image_${img.sort_order ?? "-"}`}
                   </div>
                 </a>
@@ -350,70 +289,54 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
           </section>
         ) : null}
 
-        {/* History timeline */}
-        {hasHistories ? (
-          <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <div className="mb-4">
-              <div className="text-[10px] font-semibold tracking-[0.2em] text-neutral-400 uppercase">History</div>
-              <div className="text-base font-bold text-neutral-900 mt-0.5">施工履歴</div>
-            </div>
-            <div className="relative pl-4">
-              {/* Timeline line */}
-              <div className="absolute left-0 top-2 bottom-2 w-px bg-neutral-200" />
-              <div className="space-y-4">
-                {data.histories?.map((row) => (
-                  <div key={row.id} className="relative">
-                    {/* Dot */}
-                    <div className="absolute -left-[17px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-neutral-300 bg-white" />
-                    <div className="rounded-xl border border-neutral-100 bg-neutral-50 p-3">
-                      <div className="text-sm font-semibold text-neutral-900">{row.title}</div>
-                      <div className="mt-0.5 text-xs text-neutral-400">
-                        {formatDateTime(row.performed_at ?? row.created_at ?? null)}
-                        {row.type ? ` · ${row.type}` : ""}
-                      </div>
-                      {row.description ? (
-                        <div className="mt-2 text-sm leading-relaxed text-neutral-700 whitespace-pre-wrap">
-                          {row.description}
-                        </div>
-                      ) : null}
-                    </div>
+        <section className="glass-card p-4">
+          <div className="mb-3 font-bold text-primary">NFC情報</div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">状態: <span className="text-primary">{getNfcStatusLabel(data.nfc?.status)}</span></div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">タグコード: <span className="text-primary">{data.nfc?.tag_code || "-"}</span></div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">書込日時: <span className="text-primary">{formatDateTime(data.nfc?.written_at)}</span></div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">貼付日時: <span className="text-primary">{formatDateTime(data.nfc?.attached_at)}</span></div>
+          </div>
+        </section>
+
+        <section className="glass-card p-4">
+          <div className="mb-3 font-bold text-primary">履歴</div>
+
+          {(data.histories?.length ?? 0) > 0 ? (
+            <div className="grid gap-3">
+              {data.histories?.map((row) => (
+                <div key={row.id} className="rounded-xl border border-border-default bg-base p-3">
+                  <div className="font-bold text-primary">{row.title}</div>
+                  <div className="mt-1 text-xs text-muted">
+                    {formatDateTime(row.performed_at ?? row.created_at ?? null)} / {row.type}
                   </div>
-                ))}
-              </div>
+                  {row.description ? (
+                    <div className="mt-2 whitespace-pre-wrap leading-relaxed text-secondary">
+                      {row.description}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
             </div>
-          </section>
-        ) : null}
+          ) : (
+            <div className="text-sm text-muted">履歴はありません。</div>
+          )}
+        </section>
+      </div>
 
-        {/* NFC info — show only when tag exists */}
-        {hasNfc ? (
-          <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <div className="mb-3">
-              <div className="text-[10px] font-semibold tracking-[0.2em] text-neutral-400 uppercase">NFC</div>
-              <div className="text-base font-bold text-neutral-900 mt-0.5">NFCタグ情報</div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <InfoRow label="状態" value={getNfcStatusLabel(data.nfc?.status)} />
-              <InfoRow label="タグコード" value={data.nfc?.tag_code ?? ""} />
-              <InfoRow label="書込日時" value={formatDateTime(data.nfc?.written_at)} />
-              <InfoRow label="貼付日時" value={formatDateTime(data.nfc?.attached_at)} />
-            </div>
-          </section>
-        ) : null}
-
-        {/* PDF / actions */}
-        {!isVoidCertificate ? (
+      {!isVoidCertificate ? (
+        <div className="mt-4">
           <CustomerActions
             pdfHref={pdfHref}
             returnTo={returnTo ?? undefined}
             logoutHref={logoutHref ?? undefined}
           />
-        ) : null}
+        </div>
+      ) : null}
 
-        {/* Footer */}
-        <footer className="pt-2 text-center text-[11px] text-neutral-400">
-          この証明書は CARTRUST により記録・管理されています
-        </footer>
-      </div>
+      <footer className="mt-5 text-xs text-muted">
+        この証明書は certificate.info により記録・管理されています
+      </footer>
     </main>
   );
 }

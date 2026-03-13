@@ -1,5 +1,6 @@
 ﻿import type { FeatureId } from "@/lib/billing/featureKeys";
-export type PlanTier = "mini" | "standard" | "pro";
+export type { PlanTier } from "@/types/billing";
+import type { PlanTier } from "@/types/billing";
 
 export type FeatureKey = FeatureId;
 
@@ -65,6 +66,13 @@ export function featureLabel(feature: FeatureKey): string {
     default: return feature;
   }
 }
+
+/** 写真添付枚数上限（プランごと） */
+export const PHOTO_LIMITS: Record<PlanTier, number> = {
+  mini: 3,
+  standard: 10,
+  pro: 20,
+};
 
 /** compile-time exhaustiveness check (auto) */
 type __NoExtraKeys<T> = Exclude<keyof T, FeatureKey> extends never ? T : never;

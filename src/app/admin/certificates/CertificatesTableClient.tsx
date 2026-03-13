@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAdminBillingStatus } from "@/lib/billing/useAdminBillingStatus";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { buildBillingDenyUrl } from "@/lib/billing/billingRedirect";
+import { formatDateTime } from "@/lib/format";
 
 type Row = {
   public_id: string;
@@ -13,32 +15,32 @@ type Row = {
   created_at: string;
 };
 
-function StatusBadge({ status }: { status: string }) {
-  const s = String(status ?? "").toLowerCase();
-  if (s === "active")
-    return (
-      <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
-        有効
-      </span>
-    );
-  if (s === "void")
-    return (
-      <span className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-semibold text-neutral-500 ring-1 ring-neutral-200">
-        無効
-      </span>
-    );
-  return (
-    <span className="inline-flex items-center rounded-full bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-600 ring-1 ring-neutral-200">
-      {status}
-    </span>
-  );
-}
-
 export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: string }) {
+  const router = useRouter();
   const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [voidingId, setVoidingId] = useState<string | null>(null);
+
+  const handleVoid = useCallback(async (publicId: string) => {
+    if (!confirm("この証明書を削除（無効化）しますか？\n※ 内部的にはvoid扱いとなり、復元はできません。")) return;
+    setVoidingId(publicId);
+    try {
+      const res = await fetch("/api/admin/certificates/void", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ public_id: publicId }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      router.refresh();
+    } catch (e: any) {
+      alert("削除に失敗しました: " + (e?.message ?? String(e)));
+    } finally {
+      setVoidingId(null);
+    }
+  }, [router]);
 
   const bs = useAdminBillingStatus();
-  const isActive = bs.data?.is_active ?? true;
+  const isActive = bs.data?.is_active ?? true; // 取得失敗時は従来どおり（APIが最後に止める）
   const planTier = bs.data?.plan_tier ?? "pro";
   const denyReason = !isActive ? "inactive" : "plan";
 
@@ -77,51 +79,37 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
   const canCsvOne = isActive && canUseFeature(planTier, "export_one_csv");
   const canPdfOne = isActive && canUseFeature(planTier, "pdf_one");
 
+  const btnCls = (enabled: boolean) => "btn-secondary " + (enabled ? "" : "opacity-50");
+  const linkCls = (enabled: boolean) => "underline text-[#0071e3] hover:text-[#0077ED] " + (enabled ? "" : "opacity-50");
+
   const hrefOrBill = (enabled: boolean, href: string, action: string) => (enabled ? href : bill(action));
 
-  const actionBtn = (enabled: boolean) =>
-    enabled
-      ? "rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100"
-      : "rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs font-medium text-neutral-400 cursor-not-allowed";
-
   return (
-    <div className="space-y-4">
-      {/* Billing warning */}
+    <div className="space-y-3">
       {bs.data && !bs.data.is_active ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+        <div className="rounded-xl border border-amber-500/30 p-3 text-sm bg-[rgba(245,158,11,0.1)] text-amber-400">
           お支払い停止中のため、出力（CSV/PDF）はご利用いただけません。{" "}
-          <Link className="underline font-medium" href="/admin/billing">
+          <Link className="underline text-amber-300 hover:text-amber-200" href="/admin/billing">
             課金ページへ
           </Link>
         </div>
       ) : null}
 
-      {/* Bulk actions toolbar */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="text-sm text-neutral-500">
-          選択中: <span className="font-semibold text-neutral-900">{selectedIds.length}</span> 件
+        <div className="text-sm text-muted">
+          選択: <span className="font-mono">{selectedIds.length}</span> 件
         </div>
 
-        <div className="flex gap-2 items-center flex-wrap">
-          <button
-            type="button"
-            className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-40"
-            onClick={() => toggleAll(true)}
-            disabled={allIds.length === 0}
-          >
+        <div className="flex gap-3 items-center flex-wrap">
+          <button type="button" className="btn-secondary" onClick={() => toggleAll(true)} disabled={allIds.length === 0}>
             全選択
           </button>
-          <button
-            type="button"
-            className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-40"
-            onClick={() => toggleAll(false)}
-            disabled={selectedIds.length === 0}
-          >
+          <button type="button" className="btn-secondary" onClick={() => toggleAll(false)} disabled={allIds.length === 0}>
             全解除
           </button>
 
           <Link
-            className={actionBtn(selectedIds.length > 0 && canCsvSelected)}
+            className={btnCls(selectedIds.length > 0 && canCsvSelected)}
             href={hrefOrBill(selectedIds.length > 0 && canCsvSelected, exportUrl, "export_selected_csv")}
             aria-disabled={!(selectedIds.length > 0 && canCsvSelected)}
             title={!(selectedIds.length > 0 && canCsvSelected) ? "利用不可 → 課金ページへ" : ""}
@@ -130,7 +118,7 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
           </Link>
 
           <Link
-            className={actionBtn(selectedIds.length > 0 && canPdfZip)}
+            className={btnCls(selectedIds.length > 0 && canPdfZip)}
             href={hrefOrBill(selectedIds.length > 0 && canPdfZip, pdfZipUrl, "pdf_zip")}
             aria-disabled={!(selectedIds.length > 0 && canPdfZip)}
             title={!(selectedIds.length > 0 && canPdfZip) ? "利用不可 → 課金ページへ" : ""}
@@ -139,7 +127,7 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
           </Link>
 
           <Link
-            className={actionBtn(canCsvSearch)}
+            className={linkCls(canCsvSearch)}
             href={hrefOrBill(canCsvSearch, `/admin/certificates/export?q=${encodeURIComponent(q)}`, "export_search_csv")}
             aria-disabled={!canCsvSearch}
             title={!canCsvSearch ? "利用不可 → 課金ページへ" : ""}
@@ -149,84 +137,79 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
         </div>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto rounded-xl border border-neutral-200">
+      <div className="overflow-x-auto border border-border-default rounded-xl">
         <table className="min-w-full text-sm">
-          <thead className="bg-neutral-50">
+          <thead className="bg-base">
             <tr>
               <th className="p-3 text-left w-10">
                 <input
                   type="checkbox"
+                  className="accent-[#0071e3]"
                   checked={allChecked}
                   ref={(el) => {
                     if (el) el.indeterminate = someChecked;
                   }}
                   onChange={(e) => toggleAll(e.target.checked)}
-                  className="h-4 w-4 rounded border-neutral-300"
                 />
               </th>
-              <th className="p-3 text-left font-semibold text-neutral-600">作成日時</th>
-              <th className="p-3 text-left font-semibold text-neutral-600">証明書 ID</th>
-              <th className="p-3 text-left font-semibold text-neutral-600">顧客名</th>
-              <th className="p-3 text-left font-semibold text-neutral-600">ステータス</th>
-              <th className="p-3 text-left font-semibold text-neutral-600">操作</th>
+              <th className="text-left p-3 text-secondary">作成日時</th>
+              <th className="text-left p-3 text-secondary">public_id</th>
+              <th className="text-left p-3 text-secondary">お客様名</th>
+              <th className="text-left p-3 text-secondary">status</th>
+              <th className="text-left p-3 text-secondary">操作</th>
             </tr>
           </thead>
 
           <tbody>
             {rows.map((r) => {
+              const url = `/c/${r.public_id}`;
               const isVoid = r.status === "void";
               const checked = !!selected[r.public_id];
 
               return (
-                <tr key={r.public_id} className={`border-t hover:bg-neutral-50 ${isVoid ? "opacity-60" : ""}`}>
+                <tr key={r.public_id} className="border-t border-border-default hover:bg-surface-hover transition-colors">
                   <td className="p-3">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => toggleOne(r.public_id, e.target.checked)}
-                      className="h-4 w-4 rounded border-neutral-300"
-                    />
+                    <input type="checkbox" className="accent-[#0071e3]" checked={checked} onChange={(e) => toggleOne(r.public_id, e.target.checked)} />
                   </td>
-                  <td className="p-3 whitespace-nowrap text-neutral-600">
-                    {new Date(r.created_at).toLocaleString("ja-JP")}
-                  </td>
-                  <td className="p-3 font-mono text-xs text-neutral-700">{r.public_id}</td>
-                  <td className="p-3 font-medium text-neutral-900">{r.customer_name}</td>
+                  <td className="p-3 whitespace-nowrap text-primary">{formatDateTime(r.created_at)}</td>
+                  <td className="p-3 font-mono text-primary">{r.public_id}</td>
+                  <td className="p-3 text-primary">{r.customer_name}</td>
                   <td className="p-3">
-                    <StatusBadge status={r.status} />
+                    <span className={isVoid ? "text-muted" : "text-primary"}>
+                      {r.status === "active" ? "有効な施工証明書" : r.status === "void" ? "無効の施工証明書" : r.status}
+                    </span>
                   </td>
                   <td className="p-3">
-                    <div className="flex gap-2 flex-wrap">
-                      <Link
-                        href={`/admin/certificates/${r.public_id}`}
-                        className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100"
-                      >
-                        詳細
+                    <div className="flex gap-3 items-center flex-wrap">
+                      <Link className="underline text-[#0071e3] hover:text-[#0077ED]" href={url} target="_blank">
+                        公開ページ
                       </Link>
                       <Link
-                        href={`/c/${r.public_id}`}
-                        target="_blank"
-                        className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100"
-                      >
-                        公開
-                      </Link>
-                      <Link
-                        className={actionBtn(canCsvOne)}
+                        className={linkCls(canCsvOne)}
                         href={hrefOrBill(canCsvOne, `/admin/certificates/export-one?pid=${encodeURIComponent(r.public_id)}`, "export_one_csv")}
                         aria-disabled={!canCsvOne}
                         title={!canCsvOne ? "利用不可 → 課金ページへ" : ""}
                       >
-                        CSV
+                        CSV(1件)
                       </Link>
                       <Link
-                        className={actionBtn(canPdfOne)}
+                        className={linkCls(canPdfOne)}
                         href={hrefOrBill(canPdfOne, `/admin/certificates/pdf-one?pid=${encodeURIComponent(r.public_id)}`, "pdf_one")}
                         aria-disabled={!canPdfOne}
                         title={!canPdfOne ? "利用不可 → 課金ページへ" : ""}
                       >
-                        PDF
+                        PDF(1件)
                       </Link>
+                      {!isVoid && (
+                        <button
+                          type="button"
+                          className="text-red-500 hover:text-red-600 disabled:opacity-50"
+                          disabled={voidingId === r.public_id}
+                          onClick={() => handleVoid(r.public_id)}
+                        >
+                          {voidingId === r.public_id ? "削除中…" : "削除"}
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -235,8 +218,8 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
 
             {rows.length === 0 && (
               <tr>
-                <td className="p-8 text-center text-sm text-neutral-500" colSpan={6}>
-                  {q ? `「${q}」に一致する証明書が見つかりません。` : "証明書がまだ発行されていません。"}
+                <td className="p-6 text-muted" colSpan={6}>
+                  該当なし
                 </td>
               </tr>
             )}
@@ -244,8 +227,9 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
         </table>
       </div>
 
-      <p className="text-xs text-neutral-400">
-        ※ 選択PDFはZIPでまとめてダウンロードされます（上限50件）。
+      <p className="text-xs text-muted">※ 選択PDFはZIPでまとめて落ちます（上限50件）。</p>
+      <p className="text-xs text-muted">
+        ※ プラン制限の調整は <span className="font-mono">src/lib/billing/planFeatures.ts</span> で行います。
       </p>
     </div>
   );

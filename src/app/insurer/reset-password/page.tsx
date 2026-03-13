@@ -100,7 +100,7 @@ export default function InsurerResetPasswordPage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-2xl border border-neutral-900 bg-neutral-900 px-5 py-3 font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? "更新中..." : "パスワードを更新"}
         </button>

@@ -1,15 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
-
-function fmt(v?: string | null) {
-  if (!v) return "-";
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return String(v);
-  return d.toLocaleDateString("ja-JP");
-}
 
 export default async function AdminVehicleListPage() {
   const supabase = await createSupabaseServerClient();
@@ -82,7 +76,7 @@ export default async function AdminVehicleListPage() {
             </Link>
             <Link
               href="/admin/vehicles/new"
-              className="rounded-xl border border-neutral-900 bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700"
+              className="btn-primary"
             >
               + 車両を登録
             </Link>
@@ -112,7 +106,7 @@ export default async function AdminVehicleListPage() {
               </p>
               <Link
                 href="/admin/vehicles/new"
-                className="mt-4 inline-block rounded-xl border border-neutral-900 bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700"
+                className="btn-primary mt-4 inline-block"
               >
                 最初の車両を登録する
               </Link>
@@ -135,7 +129,7 @@ export default async function AdminVehicleListPage() {
                   {rows.map((v) => (
                     <tr key={v.id} className="border-t hover:bg-neutral-50">
                       <td className="p-3 whitespace-nowrap text-neutral-600">
-                        {fmt(v.created_at)}
+                        {formatDate(v.created_at)}
                       </td>
                       <td className="p-3 font-medium text-neutral-900">
                         {v.maker || "-"}
@@ -162,7 +156,7 @@ export default async function AdminVehicleListPage() {
                           </Link>
                           <Link
                             href={`/admin/certificates/new?vehicleId=${v.id}`}
-                            className="rounded-lg border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-700"
+                            className="btn-primary"
                           >
                             証明書発行
                           </Link>

@@ -1,7 +1,8 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { formatDateTime } from "@/lib/format";
 
 type Row = {
   public_id: string;
@@ -149,53 +150,25 @@ export default function CustomerListPage() {
   }, [tenant]);
 
   return (
-    <main
-      style={{
-        maxWidth: 900,
-        margin: "0 auto",
-        padding: 24,
-        fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
-      }}
-    >
-      <header
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 12,
-          marginBottom: 16,
-        }}
-      >
+    <main className="mx-auto max-w-[900px] p-6 font-sans">
+      <header className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <h1 style={{ fontSize: 22, margin: 0 }}>お客様の証明書一覧</h1>
-          <div style={{ opacity: 0.7, marginTop: 4 }}>店舗: {tenant || "..."}</div>
+          <h1 className="text-xl font-bold">お客様の証明書一覧</h1>
+          <div className="mt-1 text-sm text-neutral-500">店舗: {tenant || "..."}</div>
         </div>
 
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div className="flex items-center gap-2">
           <button
             onClick={load}
             disabled={!tenant || loading}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: "1px solid #e5e7eb",
-              background: "#fff",
-              cursor: tenant && !loading ? "pointer" : "default",
-              opacity: tenant && !loading ? 1 : 0.6,
-            }}
+            className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm hover:bg-neutral-50 disabled:cursor-default disabled:opacity-60"
           >
             {loading ? "更新中…" : "更新"}
           </button>
 
           <button
             onClick={logout}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: "1px solid #e5e7eb",
-              background: "#fff",
-              cursor: "pointer",
-            }}
+            className="cursor-pointer rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm hover:bg-neutral-50"
           >
             ログアウト
           </button>
@@ -203,19 +176,12 @@ export default function CustomerListPage() {
       </header>
 
       {err ? (
-        <div
-          style={{
-            padding: 12,
-            border: "1px solid #fecaca",
-            borderRadius: 10,
-            background: "#fff1f2",
-          }}
-        >
-          {err}（ログインが必要） → <a href={`/customer/${tenant}/login`}>ログインへ</a>
+        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm">
+          {err}（ログインが必要） → <a href={`/customer/${tenant}/login`} className="underline">ログインへ</a>
         </div>
       ) : null}
 
-      <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+      <div className="mt-3 grid gap-2.5">
         {rows.map((r) => {
           const rt = encodeURIComponent(`/customer/${tenant}`);
           const href = `/c/${r.public_id}?tenant=${encodeURIComponent(tenant)}&rt=${rt}&logout=1`;
@@ -227,67 +193,59 @@ export default function CustomerListPage() {
           const statusLabel = isVoid ? "VOID（無効）" : (r.status ? String(r.status) : "active");
 
           return (
-            <a key={r.public_id} href={href} style={{ textDecoration: "none", color: "inherit" }}>
+            <a key={r.public_id} href={href} className="no-underline text-inherit">
               <div
-                style={{
-                  border: isVoid ? "1px solid #fecaca" : "1px solid #e5e7eb",
-                  borderRadius: 12,
-                  padding: 14,
-                  display: "grid",
-                  opacity: isVoid ? 0.78 : 1,
-                  gap: 8,
-                }}
+                className={`grid gap-2 rounded-xl border p-3.5 ${
+                  isVoid ? "border-red-200 opacity-80" : "border-neutral-200"
+                }`}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
-                  <div style={{ fontSize: 12, opacity: 0.7 }}>{new Date(r.created_at).toLocaleString("ja-JP")}</div>
+                <div className="flex items-baseline justify-between gap-2.5">
+                  <div className="text-xs text-neutral-500">{formatDateTime(r.created_at)}</div>
                   <div
-                    style={{
-                      fontSize: 12,
-                      padding: "2px 8px",
-                      borderRadius: 999,
-                      border: isVoid ? "1px solid #fecaca" : "1px solid #e5e7eb",
-                      background: isVoid ? "#fef2f2" : "#f0fdf4",
-                      color: isVoid ? "#b91c1c" : "#166534",
-                    }}
+                    className={`rounded-full border px-2 py-0.5 text-xs ${
+                      isVoid
+                        ? "border-red-200 bg-red-50 text-red-700"
+                        : "border-neutral-200 bg-green-50 text-green-800"
+                    }`}
                   >
                     {statusLabel}
                   </div>
                 </div>
 
-                <div style={{ fontSize: 16, fontWeight: 600 }}>{r.customer_name}</div>
+                <div className="text-base font-semibold">{r.customer_name}</div>
 
-                <div style={{ fontSize: 13, opacity: 0.85 }}>
-                  <div style={{ fontWeight: 600, marginBottom: 2 }}>{vs.title}</div>
+                <div className="text-[13px] text-neutral-700">
+                  <div className="mb-0.5 font-semibold">{vs.title}</div>
                   {vs.lines.length ? (
-                    <ul style={{ margin: 0, paddingLeft: 18 }}>
+                    <ul className="m-0 pl-4">
                       {vs.lines.map((x, i) => (
                         <li key={i}>{x}</li>
                       ))}
                     </ul>
                   ) : (
-                    <div style={{ opacity: 0.75 }}>詳細情報がありません。</div>
+                    <div className="text-neutral-500">詳細情報がありません。</div>
                   )}
                 </div>
 
                 {vi ? (
-                  <details style={{ fontSize: 12, opacity: 0.85 }}>
-                    <summary style={{ cursor: "pointer" }}>車両情報（raw）</summary>
-                    <pre style={{ margin: "8px 0 0", whiteSpace: "pre-wrap" }}>
+                  <details className="text-xs text-neutral-600">
+                    <summary className="cursor-pointer">車両情報（raw）</summary>
+                    <pre className="mt-2 whitespace-pre-wrap">
                       {JSON.stringify(vi, null, 2)}
                     </pre>
                   </details>
                 ) : null}
 
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                  <div style={{ fontSize: 12, opacity: 0.65 }}>Public ID: {r.public_id}</div>
-                  <div style={{ fontSize: 12, opacity: 0.85 }}>証明書を開く →</div>
+                <div className="flex justify-between gap-2.5">
+                  <div className="text-xs text-neutral-500">Public ID: {r.public_id}</div>
+                  <div className="text-xs text-neutral-600">証明書を開く →</div>
                 </div>
               </div>
             </a>
           );
         })}
 
-        {rows.length === 0 && !err && !loading ? <div style={{ opacity: 0.7 }}>対象の証明書がありません。</div> : null}
+        {rows.length === 0 && !err && !loading ? <div className="text-sm text-neutral-500">対象の証明書がありません。</div> : null}
       </div>
     </main>
   );

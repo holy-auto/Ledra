@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { buildBillingDenyUrl, BillingReason } from "@/lib/billing/billingRedirect";
 import type { FeatureKey } from "@/lib/billing/planFeatures";

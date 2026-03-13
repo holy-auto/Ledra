@@ -127,6 +127,7 @@ export default function CustomerActions(props: Props) {
   }, []);
 
   const canPdf = !!s.pdfHref && !s.pdfBlocked;
+  const canBack = !!s.rt;
   const canList = !!s.listUrl;
   const canLogout = s.showLogout && !!s.logoutAfter;
 
@@ -163,7 +164,7 @@ export default function CustomerActions(props: Props) {
         type="button"
         onClick={onPdf}
         disabled={!canPdf}
-        className="rounded-md border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+        className="btn-primary disabled:opacity-50"
       >
         {s.pdfBlocked ? "PDF（停止中）" : "PDF生成"}
       </button>
@@ -171,7 +172,8 @@ export default function CustomerActions(props: Props) {
       <button
         type="button"
         onClick={onBack}
-        className="rounded-md border px-3 py-2 text-sm hover:bg-gray-50"
+        className={`btn-secondary transition-opacity ${canBack ? "" : "opacity-50 hover:opacity-70"}`}
+        title={canBack ? `${s.rt} に戻ります` : "ブラウザ履歴で戻ります（直接アクセスの場合は動作しません）"}
       >
         戻る
       </button>
@@ -180,7 +182,7 @@ export default function CustomerActions(props: Props) {
         type="button"
         onClick={onList}
         disabled={!canList}
-        className="rounded-md border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+        className="btn-secondary disabled:opacity-50"
       >
         車両一覧に戻る
       </button>
@@ -189,7 +191,7 @@ export default function CustomerActions(props: Props) {
         type="button"
         onClick={onLogout}
         disabled={!canLogout || pending}
-        className="rounded-md border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+        className="btn-ghost disabled:opacity-50"
       >
         ログアウト
       </button>

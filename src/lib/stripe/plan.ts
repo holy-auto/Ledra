@@ -1,4 +1,5 @@
-export type PlanTier = "mini" | "standard" | "pro";
+export type { PlanTier } from "@/types/billing";
+import type { PlanTier } from "@/types/billing";
 
 export function priceIdToPlanTier(priceId: string): PlanTier | null {
   const mini = process.env.STRIPE_PRICE_MINI;

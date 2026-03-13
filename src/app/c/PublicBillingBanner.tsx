@@ -55,9 +55,9 @@ export default function PublicBillingBanner() {
   if (data.billing_active) return null;
 
   return (
-    <div className="mb-4 rounded border p-3 text-sm">
+    <div className="glass-card mb-4 border-amber-500/30 p-4 text-sm text-amber-400">
       <div className="font-semibold">この施工証明書は閲覧できますが、現在「検証」はできません</div>
-      <div className="mt-1 opacity-80">
+      <div className="mt-1 text-amber-400/80">
         施工店のサブスクリプションが停止中のため、最新状態の保証・再発行・一部の出力機能は制限されます。
       </div>
 

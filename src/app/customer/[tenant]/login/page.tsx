@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
@@ -15,7 +15,7 @@ export default function CustomerLoginPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  
+
   const sp = useSearchParams();
 
   useEffect(() => {
@@ -67,37 +67,40 @@ async function requestCode() {
     }
   }
 
+  const inputCls = "w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400";
+  const btnCls = "rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm cursor-pointer hover:bg-neutral-50 disabled:opacity-60 disabled:cursor-default";
+
   return (
-    <main style={{ maxWidth: 520, margin: "0 auto", padding: 24, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
-      <h1 style={{ fontSize: 22, marginBottom: 8 }}>お客様ログイン</h1>
-      <div style={{ opacity: 0.7, marginBottom: 16 }}>店舗: {tenant}</div>
+    <main className="mx-auto max-w-lg p-6 font-sans">
+      <h1 className="text-xl font-bold">お客様ログイン</h1>
+      <div className="mt-1 text-sm text-neutral-500">店舗: {tenant}</div>
 
-      <label style={{ display: "block", marginTop: 10 }}>メール</label>
-      <input value={email} onChange={(e) => setEmail(e.target.value)} style={{ width: "100%", padding: 10, border: "1px solid #e5e7eb", borderRadius: 10 }} />
+      <label className="mt-4 block text-sm font-medium text-neutral-700">メール</label>
+      <input value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
 
-      <label style={{ display: "block", marginTop: 10 }}>電話番号 下4桁</label>
-      <input value={last4} onChange={(e) => setLast4(e.target.value)} inputMode="numeric" style={{ width: "100%", padding: 10, border: "1px solid #e5e7eb", borderRadius: 10 }} />
+      <label className="mt-3 block text-sm font-medium text-neutral-700">電話番号 下4桁</label>
+      <input value={last4} onChange={(e) => setLast4(e.target.value)} inputMode="numeric" className={inputCls} />
 
       {phase === "verify" ? (
         <>
-          <label style={{ display: "block", marginTop: 10 }}>メールに届いた6桁コード</label>
-          <input value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" style={{ width: "100%", padding: 10, border: "1px solid #e5e7eb", borderRadius: 10 }} />
+          <label className="mt-3 block text-sm font-medium text-neutral-700">メールに届いた6桁コード</label>
+          <input value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" className={inputCls} />
         </>
       ) : null}
 
-      <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+      <div className="mt-4 flex gap-2.5">
         {phase === "request" ? (
-          <button disabled={busy} onClick={requestCode} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer" }}>
+          <button disabled={busy} onClick={requestCode} className={btnCls}>
             コード送信
           </button>
         ) : (
-          <button disabled={busy} onClick={verifyCode} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer" }}>
+          <button disabled={busy} onClick={verifyCode} className={btnCls}>
             ログイン
           </button>
         )}
       </div>
 
-      {msg ? <div style={{ marginTop: 12, color: "#b91c1c" }}>{msg}</div> : null}
+      {msg ? <div className="mt-3 text-sm text-red-700">{msg}</div> : null}
     </main>
   );
 }

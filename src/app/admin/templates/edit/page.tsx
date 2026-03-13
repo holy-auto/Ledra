@@ -1,6 +1,6 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import EditorClient from "./EditorClient";
 
 function hasDuplicateKeys(obj: any): boolean {
@@ -23,7 +23,7 @@ export default async function Page({
 }) {
   const sp = await searchParams;
   const tid = sp.tid ?? "";
-  if (!tid) return <main className="p-6">tid がありません</main>;
+  if (!tid) return <main className="p-6 text-primary">tid がありません</main>;
 
   const supabase = await createSupabaseServerClient();
   const { data: userRes } = await supabase.auth.getUser();
@@ -35,7 +35,7 @@ export default async function Page({
     .limit(1)
     .single();
 
-  if (!mem) return <main className="p-6">tenant_memberships が見つかりません。</main>;
+  if (!mem) return <main className="p-6 text-primary">tenant_memberships が見つかりません。</main>;
   const tenantId = mem.tenant_id as string;
 
   const { data: tpl, error } = await supabase
@@ -45,7 +45,7 @@ export default async function Page({
     .eq("tenant_id", tenantId)
     .single();
 
-  if (error || !tpl) return <main className="p-6">テンプレが見つかりません。</main>;
+  if (error || !tpl) return <main className="p-6 text-primary">テンプレが見つかりません。</main>;
 
   async function save(formData: FormData) {
     "use server";
@@ -100,21 +100,21 @@ export default async function Page({
     <main className="p-6 space-y-4 max-w-4xl">
       <header className="flex items-end justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold">テンプレ編集（GUI）</h1>
-          <div className="text-sm text-gray-500">{tpl.name}</div>
-          <div className="text-xs text-gray-500">tid: <span className="font-mono">{tpl.id}</span></div>
+          <h1 className="text-2xl font-bold text-primary">テンプレ編集（GUI）</h1>
+          <div className="text-sm text-muted">{tpl.name}</div>
+          <div className="text-xs text-muted">tid: <span className="font-mono">{tpl.id}</span></div>
         </div>
         <div className="flex gap-3 text-sm">
-          <Link className="underline" href="/admin/templates">一覧へ</Link>
-          <Link className="underline" href="/admin/certificates/new">発行</Link>
+          <Link className="underline text-[#0071e3] hover:text-[#0077ED]" href="/admin/templates">一覧へ</Link>
+          <Link className="underline text-[#0071e3] hover:text-[#0077ED]" href="/admin/certificates/new">発行</Link>
         </div>
       </header>
 
-      {sp.ok ? <div className="border rounded p-3 text-sm">保存しました ✅</div> : null}
-      {sp.e === "dupkey" ? <div className="border rounded p-3 text-sm text-red-600">keyが重複しています（保存できません）</div> : null}
-      {sp.e === "json" ? <div className="border rounded p-3 text-sm text-red-600">JSONが不正です</div> : null}
-      {sp.e === "invalid" ? <div className="border rounded p-3 text-sm text-red-600">schema_jsonの形式が不正です</div> : null}
-      {sp.e === "save" ? <div className="border rounded p-3 text-sm text-red-600">保存に失敗しました</div> : null}
+      {sp.ok ? <div className="glass-card p-3 text-sm text-emerald-400">保存しました</div> : null}
+      {sp.e === "dupkey" ? <div className="glass-card p-3 text-sm text-red-500">keyが重複しています（保存できません）</div> : null}
+      {sp.e === "json" ? <div className="glass-card p-3 text-sm text-red-500">JSONが不正です</div> : null}
+      {sp.e === "invalid" ? <div className="glass-card p-3 text-sm text-red-500">schema_jsonの形式が不正です</div> : null}
+      {sp.e === "save" ? <div className="glass-card p-3 text-sm text-red-500">保存に失敗しました</div> : null}
 
       <form action={save} className="space-y-3">
         <input type="hidden" name="tid" value={tpl.id} />
@@ -122,7 +122,7 @@ export default async function Page({
 
         <EditorClient initialJson={initialJson} />
 
-        <button className="border rounded px-3 py-2 text-sm w-full">保存</button>
+        <button className="btn-primary w-full">保存</button>
       </form>
     </main>
   );

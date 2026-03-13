@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { CertificateStatusBadge } from "@/components/StatusBadge";
+import { formatDateTime } from "@/lib/format";
 
 type Row = {
   public_id: string;
@@ -12,27 +14,6 @@ type Row = {
   created_at: string;
   tenant_id: string;
 };
-
-function StatusBadge({ status }: { status: string }) {
-  const s = String(status ?? "").toLowerCase();
-  if (s === "active")
-    return (
-      <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
-        有効
-      </span>
-    );
-  if (s === "void")
-    return (
-      <span className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-semibold text-neutral-500 ring-1 ring-neutral-200">
-        無効
-      </span>
-    );
-  return (
-    <span className="inline-flex items-center rounded-full bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-600 ring-1 ring-neutral-200">
-      {status}
-    </span>
-  );
-}
 
 export default function InsurerHomePage() {
   const supabase = useMemo(() => createClient(), []);
@@ -153,7 +134,7 @@ export default function InsurerHomePage() {
               <button
                 onClick={runSearch}
                 disabled={busy}
-                className="rounded-xl border border-neutral-900 bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
+                className="btn-primary disabled:opacity-50"
               >
                 {busy ? "検索中..." : "検索"}
               </button>
@@ -241,10 +222,10 @@ export default function InsurerHomePage() {
                       {[r.vehicle_model, r.vehicle_plate].filter(Boolean).join(" / ") || "-"}
                     </td>
                     <td className="p-3">
-                      <StatusBadge status={r.status} />
+                      <CertificateStatusBadge status={r.status} />
                     </td>
                     <td className="p-3 whitespace-nowrap text-neutral-600">
-                      {new Date(r.created_at).toLocaleString("ja-JP")}
+                      {formatDateTime(r.created_at)}
                     </td>
                     <td className="p-3">
                       <a

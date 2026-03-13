@@ -1,15 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
+import { type PlanTier, planTierToPriceId } from "@/lib/stripe/plan";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const TIER_TO_PRICE: Record<string, string> = {
-  mini: "price_1T6mOK8STGezcQhAjoFbA93K",
-  standard: "price_1T6mOK8STGezcQhAF7JX62m4",
-  pro: "price_1T6mOK8STGezcQhAjifBSYXJ",
-};
 
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -67,8 +62,8 @@ export async function POST(req: NextRequest) {
 
     const tenant_id = (t.data as any).id as string;
     const tenant_slug = (t.data as any).slug as string | null;
-    const plan_tier = ((t.data as any).plan_tier as string | null) ?? "standard";
-    const priceId = TIER_TO_PRICE[plan_tier] ?? TIER_TO_PRICE["standard"];
+    const plan_tier = ((t.data as any).plan_tier as PlanTier | null) ?? "standard";
+    const priceId = planTierToPriceId(plan_tier);
 
     const app = baseUrl(req);
     const success_url = `${app}/admin/billing?status=success`;

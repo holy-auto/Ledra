@@ -1,8 +1,6 @@
-import { createClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
 import Stripe from "stripe";
-
-type PlanTier = "mini" | "standard" | "pro";
-const RANK: Record<PlanTier, number> = { mini: 1, standard: 2, pro: 3 };
+import { type PlanTier, PLAN_RANK as RANK } from "@/types/billing";
 
 const DEFAULT_GRACE_DAYS = 14;
 
@@ -13,10 +11,7 @@ function graceDays(): number {
 }
 
 function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  return createAdminClient();
 }
 
 function getStripe() {
