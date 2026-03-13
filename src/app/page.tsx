@@ -5,7 +5,7 @@ export default function Home() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-base px-6">
       {/* Brand */}
       <div className="flex items-center gap-3 mb-4">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-500 text-xl font-bold text-[#09090b]">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl text-xl font-bold text-white" style={{ background: "linear-gradient(135deg, #0071e3, #5856d6)" }}>
           C
         </div>
         <span className="text-2xl font-bold tracking-wider text-primary">CARTRUST</span>

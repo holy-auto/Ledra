@@ -30,11 +30,23 @@ export async function updateTenantSettingsAction(formData: FormData): Promise<Se
   const contact_phone = String(formData.get("contact_phone") ?? "").trim();
   const address       = String(formData.get("address") ?? "").trim();
   const website_url   = String(formData.get("website_url") ?? "").trim();
+  const registration_number = String(formData.get("registration_number") ?? "").trim();
   // Only include extended fields if the form sent them (columnsExist path)
   if (formData.has("contact_email")) payload.contact_email = contact_email || null;
   if (formData.has("contact_phone")) payload.contact_phone = contact_phone || null;
   if (formData.has("address"))       payload.address       = address || null;
   if (formData.has("website_url"))   payload.website_url   = website_url || null;
+  if (formData.has("registration_number")) payload.registration_number = registration_number || null;
+
+  if (formData.has("bank_name")) {
+    payload.bank_info = {
+      bank_name: String(formData.get("bank_name") ?? "").trim() || null,
+      branch_name: String(formData.get("bank_branch_name") ?? "").trim() || null,
+      account_type: String(formData.get("bank_account_type") ?? "").trim() || "普通",
+      account_number: String(formData.get("bank_account_number") ?? "").trim() || null,
+      account_holder: String(formData.get("bank_account_holder") ?? "").trim() || null,
+    };
+  }
 
   const { error } = await supabase
     .from("tenants")

@@ -124,7 +124,7 @@ export default function MembersClient() {
         <div className="text-sm text-muted">読み込み中…</div>
       )}
       {err && (
-        <div className="glass-card p-4 text-sm text-red-400">{err}</div>
+        <div className="glass-card p-4 text-sm text-red-500">{err}</div>
       )}
 
       {data && (
@@ -172,7 +172,7 @@ export default function MembersClient() {
             </div>
             <div className="flex gap-3 items-end flex-wrap">
               <div className="flex-1 min-w-[220px] space-y-1">
-                <label className="text-xs text-muted">メールアドレス <span className="text-red-400">*</span></label>
+                <label className="text-xs text-muted">メールアドレス <span className="text-red-500">*</span></label>
                 <input
                   type="email"
                   placeholder="example@email.com"
@@ -206,7 +206,7 @@ export default function MembersClient() {
             </div>
             <p className="text-xs text-muted mt-2">招待メールが送信されます。ユーザーがメール内のリンクからパスワードを設定します。</p>
             {addMsg && (
-              <div className={`mt-3 text-sm ${addMsg.ok ? "text-emerald-400" : "text-red-400"}`}>
+              <div className={`mt-3 text-sm ${addMsg.ok ? "text-emerald-400" : "text-red-500"}`}>
                 {addMsg.text}
               </div>
             )}

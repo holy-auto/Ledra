@@ -72,10 +72,10 @@ export default function FilmThicknessSection() {
           </div>
           <div className="mt-0.5 text-base font-semibold text-neutral-900">
             膜厚計測
-            <span className="ml-2 text-xs font-normal text-neutral-400">任意</span>
+            <span className="ml-2 text-xs font-normal text-neutral-500">任意</span>
           </div>
         </div>
-        <span className="text-sm text-neutral-400">{open ? "▲ 閉じる" : "▼ 入力する"}</span>
+        <span className="text-sm text-neutral-500">{open ? "▲ 閉じる" : "▼ 入力する"}</span>
       </button>
 
       {open && (
@@ -86,10 +86,10 @@ export default function FilmThicknessSection() {
 
           {/* Header row */}
           <div className="hidden sm:grid sm:grid-cols-[2fr_1fr_1fr_1.5fr_auto] gap-2 px-1">
-            <span className="text-[11px] font-semibold text-neutral-400 uppercase">部位</span>
-            <span className="text-[11px] font-semibold text-neutral-400 uppercase">施工前(μm)</span>
-            <span className="text-[11px] font-semibold text-neutral-400 uppercase">施工後(μm)</span>
-            <span className="text-[11px] font-semibold text-neutral-400 uppercase">備考</span>
+            <span className="text-[11px] font-semibold text-neutral-500 uppercase">部位</span>
+            <span className="text-[11px] font-semibold text-neutral-500 uppercase">施工前(μm)</span>
+            <span className="text-[11px] font-semibold text-neutral-500 uppercase">施工後(μm)</span>
+            <span className="text-[11px] font-semibold text-neutral-500 uppercase">備考</span>
             <span />
           </div>
 
@@ -97,7 +97,7 @@ export default function FilmThicknessSection() {
             <div key={row.id} className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr_1.5fr_auto] gap-2 items-start rounded-xl border border-neutral-100 bg-neutral-50 p-3 sm:p-0 sm:bg-transparent sm:border-0">
               {/* Location */}
               <div>
-                <span className="sm:hidden text-[11px] font-semibold text-neutral-400 uppercase mb-1 block">部位</span>
+                <span className="sm:hidden text-[11px] font-semibold text-neutral-500 uppercase mb-1 block">部位</span>
                 <input
                   list={`loc-list-${row.id}`}
                   value={row.location}
@@ -114,7 +114,7 @@ export default function FilmThicknessSection() {
 
               {/* Before */}
               <div>
-                <span className="sm:hidden text-[11px] font-semibold text-neutral-400 uppercase mb-1 block">施工前(μm)</span>
+                <span className="sm:hidden text-[11px] font-semibold text-neutral-500 uppercase mb-1 block">施工前(μm)</span>
                 <input
                   type="number"
                   min="0"
@@ -128,7 +128,7 @@ export default function FilmThicknessSection() {
 
               {/* After */}
               <div>
-                <span className="sm:hidden text-[11px] font-semibold text-neutral-400 uppercase mb-1 block">施工後(μm)</span>
+                <span className="sm:hidden text-[11px] font-semibold text-neutral-500 uppercase mb-1 block">施工後(μm)</span>
                 <input
                   type="number"
                   min="0"
@@ -142,7 +142,7 @@ export default function FilmThicknessSection() {
 
               {/* Notes */}
               <div>
-                <span className="sm:hidden text-[11px] font-semibold text-neutral-400 uppercase mb-1 block">備考</span>
+                <span className="sm:hidden text-[11px] font-semibold text-neutral-500 uppercase mb-1 block">備考</span>
                 <input
                   value={row.notes}
                   onChange={(e) => update(row.id, "notes", e.target.value)}
@@ -156,7 +156,7 @@ export default function FilmThicknessSection() {
                 type="button"
                 onClick={() => removeRow(row.id)}
                 disabled={rows.length === 1}
-                className="mt-1 self-center rounded-lg border border-neutral-200 px-2 py-1.5 text-xs text-neutral-400 hover:border-red-200 hover:text-red-500 disabled:opacity-30 sm:mt-0"
+                className="mt-1 self-center rounded-lg border border-neutral-200 px-2 py-1.5 text-xs text-neutral-500 hover:border-red-200 hover:text-red-500 disabled:opacity-30 sm:mt-0"
               >
                 ✕
               </button>

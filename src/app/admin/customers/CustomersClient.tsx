@@ -182,7 +182,7 @@ export default function CustomersClient() {
       />
 
       {loading && <div className="text-sm text-muted">読み込み中…</div>}
-      {err && <div className="glass-card p-4 text-sm text-red-400">{err}</div>}
+      {err && <div className="glass-card p-4 text-sm text-red-500">{err}</div>}
 
       {data && (
         <>
@@ -231,7 +231,7 @@ export default function CustomersClient() {
           </section>
 
           {saveMsg && (
-            <div className={`text-sm ${saveMsg.ok ? "text-emerald-400" : "text-red-400"}`}>
+            <div className={`text-sm ${saveMsg.ok ? "text-emerald-400" : "text-red-500"}`}>
               {saveMsg.text}
             </div>
           )}
@@ -245,7 +245,7 @@ export default function CustomersClient() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs text-muted">顧客名 <span className="text-red-400">*</span></label>
+                  <label className="text-xs text-muted">顧客名 <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     value={form.name}
@@ -343,7 +343,7 @@ export default function CustomersClient() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs text-muted">顧客名 <span className="text-red-400">*</span></label>
+                  <label className="text-xs text-muted">顧客名 <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     value={editForm.name}
@@ -451,7 +451,7 @@ export default function CustomersClient() {
                       <td className="px-5 py-3.5">
                         <Link
                           href={`/admin/customers/${c.id}`}
-                          className="font-medium text-primary hover:text-[#0a84ff] underline"
+                          className="font-medium text-primary hover:text-[#0071e3] underline"
                         >
                           {c.name}
                         </Link>

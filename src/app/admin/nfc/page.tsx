@@ -183,7 +183,7 @@ export default async function AdminNfcPage() {
                             <Link href={`/admin/vehicles/${row.vehicle_id}`} className="font-medium text-neutral-900 hover:underline">
                               {vehicleLabel(v)}
                             </Link>
-                          ) : <span className="text-neutral-400">-</span>}
+                          ) : <span className="text-neutral-500">-</span>}
                           {v?.customer_name && (
                             <div className="mt-0.5 text-xs text-neutral-500">{v.customer_name}</div>
                           )}
@@ -200,7 +200,7 @@ export default async function AdminNfcPage() {
                                 </span>
                               </div>
                             </div>
-                          ) : <span className="text-neutral-400">-</span>}
+                          ) : <span className="text-neutral-500">-</span>}
                         </td>
                         <td className="px-4 py-3 font-mono text-xs text-neutral-500">{row.uid ?? "-"}</td>
                         <td className="px-4 py-3 whitespace-nowrap text-xs text-neutral-500">{formatDateTime(row.written_at)}</td>

@@ -76,7 +76,7 @@ export default async function AdminVehicleListPage() {
             </Link>
             <Link
               href="/admin/vehicles/new"
-              className="rounded-xl border border-neutral-900 bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700"
+              className="btn-primary"
             >
               + 車両を登録
             </Link>
@@ -106,7 +106,7 @@ export default async function AdminVehicleListPage() {
               </p>
               <Link
                 href="/admin/vehicles/new"
-                className="mt-4 inline-block rounded-xl border border-neutral-900 bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700"
+                className="btn-primary mt-4 inline-block"
               >
                 最初の車両を登録する
               </Link>
@@ -156,7 +156,7 @@ export default async function AdminVehicleListPage() {
                           </Link>
                           <Link
                             href={`/admin/certificates/new?vehicleId=${v.id}`}
-                            className="rounded-lg border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-700"
+                            className="btn-primary"
                           >
                             証明書発行
                           </Link>

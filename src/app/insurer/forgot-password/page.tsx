@@ -61,7 +61,7 @@ export default function InsurerForgotPasswordPage() {
         <button
           type="submit"
           disabled={loading || !email.trim()}
-          className="w-full rounded-2xl border border-neutral-900 bg-neutral-900 px-5 py-3 font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? "送信中..." : "再設定メールを送信"}
         </button>

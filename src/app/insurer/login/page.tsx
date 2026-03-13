@@ -29,7 +29,7 @@ export default function InsurerLoginPage() {
       <div className="glass-card w-full max-w-md space-y-6 p-8">
         {/* Branding */}
         <div className="flex items-center justify-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-cyan-500 flex items-center justify-center text-white font-bold text-lg">
+          <div className="w-10 h-10 rounded-lg bg-[#0071e3] flex items-center justify-center text-white font-bold text-lg">
             C
           </div>
           <span className="text-xl font-bold text-primary tracking-wide">CARTRUST</span>
@@ -60,7 +60,7 @@ export default function InsurerLoginPage() {
             />
           </label>
 
-          {err && <div className="text-sm text-red-400">{err}</div>}
+          {err && <div className="text-sm text-red-500">{err}</div>}
 
           <button onClick={onLogin} disabled={busy} className="btn-primary w-full">
             {busy ? "..." : "ログイン"}

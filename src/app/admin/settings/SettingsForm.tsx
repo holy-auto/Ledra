@@ -3,12 +3,22 @@
 import { useTransition, useState } from "react";
 import { updateTenantSettingsAction } from "./actions";
 
+type BankInfo = {
+  bank_name?: string;
+  branch_name?: string;
+  account_type?: string;
+  account_number?: string;
+  account_holder?: string;
+} | null;
+
 type Props = {
   name: string;
   contactEmail: string | null;
   contactPhone: string | null;
   address: string | null;
   websiteUrl: string | null;
+  registrationNumber: string | null;
+  bankInfo: BankInfo;
   columnsExist: boolean;
 };
 
@@ -17,7 +27,7 @@ const inputCls =
 const labelCls = "block space-y-1.5";
 const labelTextCls = "text-sm font-medium text-neutral-700";
 
-export default function SettingsForm({ name, contactEmail, contactPhone, address, websiteUrl, columnsExist }: Props) {
+export default function SettingsForm({ name, contactEmail, contactPhone, address, websiteUrl, registrationNumber, bankInfo, columnsExist }: Props) {
   const [isPending, startTransition] = useTransition();
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +104,79 @@ export default function SettingsForm({ name, contactEmail, contactPhone, address
               placeholder="https://example.com"
             />
           </label>
+
+          <div className="border-t border-neutral-200 pt-5 mt-5">
+            <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500 mb-3">インボイス設定</div>
+            <label className={labelCls}>
+              <span className={labelTextCls}>適格請求書発行事業者登録番号</span>
+              <input
+                name="registration_number"
+                defaultValue={registrationNumber ?? ""}
+                className={inputCls}
+                placeholder="T1234567890123"
+                pattern="T\d{13}"
+                title="T + 13桁の数字（例: T1234567890123）"
+              />
+              <span className="text-xs text-neutral-500">T + 13桁の数字を入力してください</span>
+            </label>
+          </div>
+
+          <div className="border-t border-neutral-200 pt-5 mt-5">
+            <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500 mb-3">口座情報</div>
+            <div className="space-y-4">
+              <label className={labelCls}>
+                <span className={labelTextCls}>銀行名</span>
+                <input
+                  name="bank_name"
+                  defaultValue={bankInfo?.bank_name ?? ""}
+                  className={inputCls}
+                  placeholder="例: みずほ銀行"
+                />
+              </label>
+
+              <label className={labelCls}>
+                <span className={labelTextCls}>支店名</span>
+                <input
+                  name="bank_branch_name"
+                  defaultValue={bankInfo?.branch_name ?? ""}
+                  className={inputCls}
+                  placeholder="例: 渋谷支店"
+                />
+              </label>
+
+              <label className={labelCls}>
+                <span className={labelTextCls}>口座種別</span>
+                <select
+                  name="bank_account_type"
+                  defaultValue={bankInfo?.account_type ?? "普通"}
+                  className={inputCls}
+                >
+                  <option value="普通">普通</option>
+                  <option value="当座">当座</option>
+                </select>
+              </label>
+
+              <label className={labelCls}>
+                <span className={labelTextCls}>口座番号</span>
+                <input
+                  name="bank_account_number"
+                  defaultValue={bankInfo?.account_number ?? ""}
+                  className={inputCls}
+                  placeholder="例: 1234567"
+                />
+              </label>
+
+              <label className={labelCls}>
+                <span className={labelTextCls}>口座名義</span>
+                <input
+                  name="bank_account_holder"
+                  defaultValue={bankInfo?.account_holder ?? ""}
+                  className={inputCls}
+                  placeholder="例: カ）サンプルショウテン"
+                />
+              </label>
+            </div>
+          </div>
         </>
       ) : (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
@@ -116,7 +199,7 @@ export default function SettingsForm({ name, contactEmail, contactPhone, address
       <button
         type="submit"
         disabled={isPending}
-        className="rounded-xl border border-neutral-900 bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
+        className="btn-primary disabled:opacity-50"
       >
         {isPending ? "保存中…" : "設定を保存"}
       </button>

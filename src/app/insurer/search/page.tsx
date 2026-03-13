@@ -230,7 +230,7 @@ export default async function Page({
 
             <button
               type="submit"
-              className="rounded-xl border border-neutral-300 bg-neutral-900 px-4 py-3 text-sm font-medium text-white hover:bg-neutral-800"
+              className="btn-primary px-4 py-3"
             >
               検索
             </button>
@@ -303,7 +303,7 @@ export default async function Page({
                     <tr key={`${publicId || vehiclePublicId || "row"}_${idx}`} className="border-t align-top">
                       <td className="p-3 whitespace-nowrap">{formatDateTime(getRowCreatedAt(row))}</td>
                       <td className="p-3 font-mono">
-                        {publicId || <span className="text-xs text-neutral-400">証明書未発行</span>}
+                        {publicId || <span className="text-xs text-neutral-500">証明書未発行</span>}
                       </td>
                       <td className="p-3">
                         {hasCertificate ? (
@@ -311,7 +311,7 @@ export default async function Page({
                             {isVoid ? "無効の施工証明書" : statusText === "active" ? "有効な施工証明書" : statusText}
                           </span>
                         ) : (
-                          <span className="text-xs text-neutral-400">-</span>
+                          <span className="text-xs text-neutral-500">-</span>
                         )}
                       </td>
                       <td className="p-3">{getRowCustomer(row)}</td>
@@ -329,7 +329,7 @@ export default async function Page({
                               />
                             </a>
                           ) : (
-                            <div className="text-xs text-neutral-400">画像URLなし</div>
+                            <div className="text-xs text-neutral-500">画像URLなし</div>
                           )}
                         </div>
                       </td>
@@ -351,7 +351,7 @@ export default async function Page({
                             </Link>
                           </div>
                         ) : (
-                          <span className="text-xs text-neutral-400">
+                          <span className="text-xs text-neutral-500">
                             車両一致のみ
                           </span>
                         )}

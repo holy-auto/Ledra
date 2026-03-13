@@ -192,7 +192,7 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
               certStatus === "active"
                 ? "border-emerald-500/30 bg-[rgba(16,185,129,0.1)] text-emerald-400"
                 : certStatus === "void"
-                  ? "border-red-500/30 bg-[rgba(239,68,68,0.1)] text-red-400"
+                  ? "border-red-500/30 bg-[rgba(239,68,68,0.1)] text-red-500"
                   : "border-amber-500/30 bg-[rgba(245,158,11,0.1)] text-amber-400"
             }`}
           >
@@ -211,7 +211,7 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
       ) : null}
 
       {isVoidCertificate ? (
-        <div className="mb-4 rounded-xl border border-red-500/30 bg-[rgba(239,68,68,0.1)] p-4 text-red-400">
+        <div className="mb-4 rounded-xl border border-red-500/30 bg-[rgba(239,68,68,0.1)] p-4 text-red-500">
           <div className="mb-1.5 font-extrabold">この証明書は無効化されています</div>
           <div className="text-sm leading-relaxed">
             この公開ページでは記録の存在確認のみ可能です。PDF出力と添付画像の公開表示は停止しています。詳細確認は発行店舗へお問い合わせください。
@@ -251,7 +251,7 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
             <div className="rounded-lg bg-base px-3 py-2 text-secondary">バージョン: <span className="text-primary">{data.certificate.current_version != null ? String(data.certificate.current_version) : "-"}</span></div>
             <div className="rounded-lg bg-base px-3 py-2 text-secondary">
               公開URL:{" "}
-              <a href={publicUrl} target="_blank" rel="noreferrer" className="text-cyan-500 hover:underline">
+              <a href={publicUrl} target="_blank" rel="noreferrer" className="text-[#0071e3] hover:underline">
                 {publicUrl}
               </a>
             </div>
@@ -273,7 +273,7 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
                   href={String(img.url)}
                   target="_blank"
                   rel="noreferrer"
-                  className="block rounded-xl border border-border-default p-2.5 no-underline transition-colors hover:border-cyan-500/50 hover:bg-surface-hover"
+                  className="block rounded-xl border border-border-default p-2.5 no-underline transition-colors hover:border-[#0071e3]/50 hover:bg-surface-hover"
                 >
                   <img
                     src={String(img.url)}

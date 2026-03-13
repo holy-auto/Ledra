@@ -26,7 +26,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   if (!tenantId) {
     return (
       <main className="space-y-6">
-        <div className="glass-card p-4 text-sm text-red-400">テナントが見つかりません。</div>
+        <div className="glass-card p-4 text-sm text-red-500">テナントが見つかりません。</div>
       </main>
     );
   }
@@ -42,8 +42,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     return (
       <main className="space-y-6">
         <PageHeader tag="INVOICES" title="請求書詳細" />
-        <div className="glass-card p-4 text-sm text-red-400">請求書が見つかりません。</div>
-        <Link href="/admin/invoices" className="text-sm underline text-[#0a84ff]">一覧に戻る</Link>
+        <div className="glass-card p-4 text-sm text-red-500">請求書が見つかりません。</div>
+        <Link href="/admin/invoices" className="text-sm underline text-[#0071e3]">一覧に戻る</Link>
       </main>
     );
   }
@@ -59,6 +59,13 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     customerName = cust?.name ?? null;
   }
 
+  // テナント情報（インボイス用）
+  const { data: tenant } = await supabase
+    .from("tenants")
+    .select("name, address, contact_email, contact_phone, registration_number, bank_info")
+    .eq("id", tenantId)
+    .single();
+
   return (
     <main className="mx-auto max-w-4xl space-y-6">
       <PageHeader
@@ -69,7 +76,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         }
       />
 
-      <InvoiceDetailClient invoice={invoice} customerName={customerName} />
+      <InvoiceDetailClient invoice={invoice} customerName={customerName} tenant={tenant} />
     </main>
   );
 }

@@ -148,6 +148,12 @@ export async function POST(req: NextRequest) {
     const note = (body?.note ?? "").trim() || null;
     const items = body?.items ?? [];
     const status = body?.status || "draft";
+    const isInvoiceCompliant = !!body?.is_invoice_compliant;
+    const showSeal = !!body?.show_seal;
+    const showLogo = body?.show_logo !== false;
+    const showBankInfo = !!body?.show_bank_info;
+    const recipientName = (body?.recipient_name ?? "").trim() || null;
+    const taxRate = parseInt(String(body?.tax_rate ?? 10), 10);
 
     // 金額計算
     let subtotal = 0;
@@ -167,7 +173,7 @@ export async function POST(req: NextRequest) {
       return mapped;
     });
 
-    const tax = Math.floor(subtotal * 0.1);
+    const tax = Math.floor(subtotal * (taxRate / 100));
     const total = subtotal + tax;
 
     const row = {
@@ -183,6 +189,12 @@ export async function POST(req: NextRequest) {
       total,
       note,
       items_json: itemsJson,
+      is_invoice_compliant: isInvoiceCompliant,
+      show_seal: showSeal,
+      show_logo: showLogo,
+      show_bank_info: showBankInfo,
+      recipient_name: recipientName,
+      tax_rate: taxRate,
     };
 
     const { data, error } = await supabase.from("invoices").insert(row).select().single();
@@ -215,6 +227,11 @@ export async function PUT(req: NextRequest) {
     if (body.due_date !== undefined) updates.due_date = body.due_date;
     if (body.note !== undefined) updates.note = (body.note ?? "").trim() || null;
     if (body.invoice_number !== undefined) updates.invoice_number = body.invoice_number;
+    if (body.is_invoice_compliant !== undefined) updates.is_invoice_compliant = !!body.is_invoice_compliant;
+    if (body.show_seal !== undefined) updates.show_seal = !!body.show_seal;
+    if (body.show_logo !== undefined) updates.show_logo = !!body.show_logo;
+    if (body.show_bank_info !== undefined) updates.show_bank_info = !!body.show_bank_info;
+    if (body.recipient_name !== undefined) updates.recipient_name = (body.recipient_name ?? "").trim() || null;
 
     // 明細更新
     if (body.items !== undefined) {
@@ -235,11 +252,13 @@ export async function PUT(req: NextRequest) {
         if (item.certificate_public_id) mapped.certificate_public_id = item.certificate_public_id;
         return mapped;
       });
-      const tax = Math.floor(subtotal * 0.1);
+      const taxRate = parseInt(String(body.tax_rate ?? 10), 10);
+      const tax = Math.floor(subtotal * (taxRate / 100));
       updates.items_json = itemsJson;
       updates.subtotal = subtotal;
       updates.tax = tax;
       updates.total = subtotal + tax;
+      updates.tax_rate = taxRate;
     }
 
     const { data, error } = await supabase

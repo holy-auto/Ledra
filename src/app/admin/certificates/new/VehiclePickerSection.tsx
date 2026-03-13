@@ -140,7 +140,7 @@ export default function VehiclePickerSection({
               }
               disabled={vehicles.length === 0}
               autoComplete="off"
-              className={`${inputCls} pr-10 disabled:bg-neutral-100 disabled:text-neutral-400`}
+              className={`${inputCls} pr-10 disabled:bg-neutral-100 disabled:text-neutral-500`}
             />
             {search && filtered.length === 0 && (
               <div className="absolute z-10 mt-1 w-full rounded-xl border border-neutral-200 bg-white p-3 text-sm text-neutral-500 shadow-md">

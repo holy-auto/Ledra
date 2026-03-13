@@ -7,20 +7,20 @@ import { formatDateTime } from "@/lib/format";
 export const dynamic = "force-dynamic";
 
 const TYPE_LABELS: Record<string, { label: string; color: string }> = {
-  certificate_issued: { label: "証明書発行", color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30" },
-  certificate_voided: { label: "証明書無効化", color: "text-red-400 bg-red-500/10 border-red-500/30" },
-  certificate_viewed: { label: "証明書閲覧", color: "text-[#0a84ff] bg-[rgba(10,132,255,0.1)] border-[rgba(10,132,255,0.2)]" },
-  certificate_pdf_generated: { label: "PDF生成", color: "text-[#0a84ff] bg-[rgba(10,132,255,0.1)] border-[rgba(10,132,255,0.2)]" },
-  certificate_pdf_batch: { label: "PDF一括生成", color: "text-[#0a84ff] bg-[rgba(10,132,255,0.1)] border-[rgba(10,132,255,0.2)]" },
-  certificate_public_viewed: { label: "公開ページ閲覧", color: "text-violet-400 bg-violet-500/10 border-violet-500/30" },
-  certificate_public_pdf: { label: "公開PDF閲覧", color: "text-violet-400 bg-violet-500/10 border-violet-500/30" },
-  vehicle_registered: { label: "車両登録", color: "text-blue-400 bg-blue-500/10 border-blue-500/30" },
-  vehicle_updated: { label: "車両更新", color: "text-zinc-400 bg-zinc-500/10 border-zinc-500/30" },
-  note: { label: "メモ", color: "text-zinc-400 bg-zinc-500/10 border-zinc-500/30" },
+  certificate_issued: { label: "証明書発行", color: "text-emerald-600 bg-emerald-500/10 border-emerald-500/30" },
+  certificate_voided: { label: "証明書無効化", color: "text-red-500 bg-red-500/10 border-red-500/30" },
+  certificate_viewed: { label: "証明書閲覧", color: "text-[#0071e3] bg-[rgba(0,113,227,0.08)] border-[rgba(0,113,227,0.15)]" },
+  certificate_pdf_generated: { label: "PDF生成", color: "text-[#0071e3] bg-[rgba(0,113,227,0.08)] border-[rgba(0,113,227,0.15)]" },
+  certificate_pdf_batch: { label: "PDF一括生成", color: "text-[#0071e3] bg-[rgba(0,113,227,0.08)] border-[rgba(0,113,227,0.15)]" },
+  certificate_public_viewed: { label: "公開ページ閲覧", color: "text-violet-600 bg-violet-500/10 border-violet-500/30" },
+  certificate_public_pdf: { label: "公開PDF閲覧", color: "text-violet-600 bg-violet-500/10 border-violet-500/30" },
+  vehicle_registered: { label: "車両登録", color: "text-blue-600 bg-blue-500/10 border-blue-500/30" },
+  vehicle_updated: { label: "車両更新", color: "text-zinc-600 bg-zinc-500/10 border-zinc-500/30" },
+  note: { label: "メモ", color: "text-zinc-600 bg-zinc-500/10 border-zinc-500/30" },
 };
 
 function TypeBadge({ type }: { type: string }) {
-  const meta = TYPE_LABELS[type] ?? { label: type, color: "text-zinc-400 bg-zinc-500/10 border-zinc-500/30" };
+  const meta = TYPE_LABELS[type] ?? { label: type, color: "text-zinc-600 bg-zinc-500/10 border-zinc-500/30" };
   return (
     <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${meta.color}`}>
       {meta.label}
@@ -54,7 +54,7 @@ export default async function AdminAuditPage() {
     .limit(200);
 
   if (error) {
-    return <main className="p-6 text-sm text-red-400">エラー: {error.message}</main>;
+    return <main className="p-6 text-sm text-red-500">エラー: {error.message}</main>;
   }
 
   // Fetch vehicle names for display

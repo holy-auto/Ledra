@@ -188,7 +188,7 @@ export default async function AdminVehicleDetailPage({
       ) : null}
 
       {errFlag ? (
-        <div className="rounded-xl border border-red-500/30 bg-[rgba(239,68,68,0.1)] p-3 text-sm text-red-400">
+        <div className="rounded-xl border border-red-500/30 bg-[rgba(239,68,68,0.1)] p-3 text-sm text-red-500">
           処理に失敗しました。
         </div>
       ) : null}
@@ -240,7 +240,7 @@ export default async function AdminVehicleDetailPage({
                             href={`/c/${row.public_id}`}
                             target="_blank"
                             rel="noreferrer"
-                            className="underline text-[#0a84ff] hover:text-[#3b9eff]"
+                            className="underline text-[#0071e3] hover:text-[#0077ED]"
                           >
                             表示
                           </a>

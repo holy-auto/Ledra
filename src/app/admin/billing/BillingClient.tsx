@@ -269,7 +269,7 @@ export default function BillingPage() {
       <PageHeader tag="BILLING" title="請求・プラン" />
 
       {status && (
-        <div className={`glass-card p-4 text-sm ${status === "success" ? "text-[#0a84ff] glow-cyan" : "text-amber-400 glow-amber"}`}>
+        <div className={`glass-card p-4 text-sm ${status === "success" ? "text-[#0071e3] glow-cyan" : "text-amber-400 glow-amber"}`}>
           決済結果: <b>{status === "success" ? "成功" : status === "cancel" ? "キャンセル" : status}</b>
         </div>
       )}
@@ -286,13 +286,13 @@ export default function BillingPage() {
           </div>
           {action && (
             <div className="mt-2 text-muted">
-              対象機能: <span className="text-[#0a84ff] font-mono">{action}</span>
+              対象機能: <span className="text-[#0071e3] font-mono">{action}</span>
             </div>
           )}
           {ret && (
             <div className="mt-2 text-muted">
               元の画面:{" "}
-              <a className="underline text-[#0a84ff]" href={ret}>
+              <a className="underline text-[#0071e3]" href={ret}>
                 戻る
               </a>
             </div>
@@ -304,8 +304,8 @@ export default function BillingPage() {
 
       {err && (
         <div className="glass-card p-4 text-sm">
-          <div className="font-semibold text-red-400">Error</div>
-          <div className="mt-1 whitespace-pre-wrap text-red-400">{err}</div>
+          <div className="font-semibold text-red-500">Error</div>
+          <div className="mt-1 whitespace-pre-wrap text-red-500">{err}</div>
         </div>
       )}
 
@@ -329,10 +329,10 @@ export default function BillingPage() {
               <summary className="cursor-pointer text-muted hover:text-secondary">サポート用ID（必要なときだけ）</summary>
               <div className="mt-2 space-y-1 text-secondary">
                 <div>
-                  顧客ID: <span className="text-[#0a84ff] font-mono">{short(tenant.stripe_customer_id)}</span>
+                  顧客ID: <span className="text-[#0071e3] font-mono">{short(tenant.stripe_customer_id)}</span>
                 </div>
                 <div>
-                  契約ID: <span className="text-[#0a84ff] font-mono">{short(tenant.stripe_subscription_id)}</span>
+                  契約ID: <span className="text-[#0071e3] font-mono">{short(tenant.stripe_subscription_id)}</span>
                 </div>
               </div>
             </details>

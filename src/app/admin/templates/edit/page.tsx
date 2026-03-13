@@ -105,16 +105,16 @@ export default async function Page({
           <div className="text-xs text-muted">tid: <span className="font-mono">{tpl.id}</span></div>
         </div>
         <div className="flex gap-3 text-sm">
-          <Link className="underline text-[#0a84ff] hover:text-[#3b9eff]" href="/admin/templates">一覧へ</Link>
-          <Link className="underline text-[#0a84ff] hover:text-[#3b9eff]" href="/admin/certificates/new">発行</Link>
+          <Link className="underline text-[#0071e3] hover:text-[#0077ED]" href="/admin/templates">一覧へ</Link>
+          <Link className="underline text-[#0071e3] hover:text-[#0077ED]" href="/admin/certificates/new">発行</Link>
         </div>
       </header>
 
       {sp.ok ? <div className="glass-card p-3 text-sm text-emerald-400">保存しました</div> : null}
-      {sp.e === "dupkey" ? <div className="glass-card p-3 text-sm text-red-400">keyが重複しています（保存できません）</div> : null}
-      {sp.e === "json" ? <div className="glass-card p-3 text-sm text-red-400">JSONが不正です</div> : null}
-      {sp.e === "invalid" ? <div className="glass-card p-3 text-sm text-red-400">schema_jsonの形式が不正です</div> : null}
-      {sp.e === "save" ? <div className="glass-card p-3 text-sm text-red-400">保存に失敗しました</div> : null}
+      {sp.e === "dupkey" ? <div className="glass-card p-3 text-sm text-red-500">keyが重複しています（保存できません）</div> : null}
+      {sp.e === "json" ? <div className="glass-card p-3 text-sm text-red-500">JSONが不正です</div> : null}
+      {sp.e === "invalid" ? <div className="glass-card p-3 text-sm text-red-500">schema_jsonの形式が不正です</div> : null}
+      {sp.e === "save" ? <div className="glass-card p-3 text-sm text-red-500">保存に失敗しました</div> : null}
 
       <form action={save} className="space-y-3">
         <input type="hidden" name="tid" value={tpl.id} />

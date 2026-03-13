@@ -36,7 +36,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
     return (
       <main className="space-y-6">
         <PageHeader tag="CERTIFICATES" title="管理：証明書一覧" />
-        <div className="glass-card p-4 text-sm text-red-400">
+        <div className="glass-card p-4 text-sm text-red-500">
           tenant_memberships が見つかりません。あなたのユーザーを tenant に紐付けてください。
         </div>
       </main>
@@ -63,9 +63,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
   if (q) query = query.or(`public_id.ilike.%${q}%,customer_name.ilike.%${q}%`);
 
   const { data: rows, error } = await query;
-  if (error) return <main className="space-y-6"><div className="text-red-400">読み込みエラー: {error.message}</div></main>;
+  if (error) return <main className="space-y-6"><div className="text-red-500">読み込みエラー: {error.message}</div></main>;
 
-  const linkCls = (enabled: boolean) => "text-sm underline " + (enabled ? "text-[#0a84ff]" : "opacity-50 text-muted");
+  const linkCls = (enabled: boolean) => "text-sm underline " + (enabled ? "text-[#0071e3]" : "opacity-50 text-muted");
 
   return (
     <main className="space-y-6">

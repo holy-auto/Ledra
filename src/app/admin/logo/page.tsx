@@ -61,8 +61,8 @@ if (file.size > 2 * 1024 * 1024) redirect("/admin/logo?e=size"); // 2MB上限
       <p className="text-sm text-muted">tenant: <span className="font-mono">{tenantId}</span></p>
 
       {sp.ok ? <div className="glass-card p-3 text-sm text-emerald-400">保存しました</div> : null}
-      {sp.e === "png" ? <div className="glass-card p-3 text-sm text-red-400">PNGのみ対応です</div> : null}
-      {sp.e && sp.e !== "png" ? <div className="glass-card p-3 text-sm text-red-400">エラー: {sp.e}</div> : null}
+      {sp.e === "png" ? <div className="glass-card p-3 text-sm text-red-500">PNGのみ対応です</div> : null}
+      {sp.e && sp.e !== "png" ? <div className="glass-card p-3 text-sm text-red-500">エラー: {sp.e}</div> : null}
 
       <form action={uploadLogo} className="glass-card p-4 space-y-3">
         <div className="text-xs text-muted">※ PNGのみ（logo.pngとして保存）</div>

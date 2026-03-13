@@ -120,13 +120,13 @@ export default async function Page({
           </p>
         </div>
         <div className="flex gap-3 text-sm">
-          <Link className="underline text-[#0a84ff] hover:text-[#3b9eff]" href="/admin/certificates/new">発行</Link>
-          <Link className="underline text-[#0a84ff] hover:text-[#3b9eff]" href="/admin/certificates">証明書一覧</Link>
+          <Link className="underline text-[#0071e3] hover:text-[#0077ED]" href="/admin/certificates/new">発行</Link>
+          <Link className="underline text-[#0071e3] hover:text-[#0077ED]" href="/admin/certificates">証明書一覧</Link>
         </div>
       </header>
 
       {sp.ok ? <div className="glass-card p-3 text-sm text-emerald-400">OK</div> : null}
-      {sp.e ? <div className="glass-card p-3 text-sm text-red-400">エラー: {sp.e}</div> : null}
+      {sp.e ? <div className="glass-card p-3 text-sm text-red-500">エラー: {sp.e}</div> : null}
 
       <form action={createTemplate} className="glass-card p-4 space-y-2">
         <div className="text-sm font-semibold text-primary">新規テンプレ作成</div>
@@ -155,7 +155,7 @@ export default async function Page({
                 <td className="p-3 whitespace-nowrap text-primary">{formatDateTime(t.created_at)}</td>
                 <td className="p-3">
                   <div className="flex gap-3 items-center flex-wrap">
-                    <Link className="underline text-[#0a84ff] hover:text-[#3b9eff]" href={`/admin/templates/edit?tid=${encodeURIComponent(t.id)}`}>
+                    <Link className="underline text-[#0071e3] hover:text-[#0077ED]" href={`/admin/templates/edit?tid=${encodeURIComponent(t.id)}`}>
                       編集
                     </Link>
                     <form action={duplicateTemplate}>

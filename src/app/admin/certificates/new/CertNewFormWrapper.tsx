@@ -253,7 +253,7 @@ export default function CertNewFormWrapper({
                               <option key={opt} value={opt}>{opt}</option>
                             ))}
                           </select>
-                          <p className="text-[11px] text-neutral-400">Ctrl / Shift で複数選択</p>
+                          <p className="text-[11px] text-neutral-500">Ctrl / Shift で複数選択</p>
                         </div>
                       );
                     }
@@ -349,7 +349,7 @@ export default function CertNewFormWrapper({
             type="submit"
             disabled={isPending}
             onClick={() => setSubmitStatus("active")}
-            className="rounded-xl border border-neutral-900 bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
+            className="btn-primary disabled:opacity-50"
           >
             {isPending && submitStatus === "active" ? "処理中…" : "証明書を発行する"}
           </button>
@@ -368,7 +368,7 @@ export default function CertNewFormWrapper({
             キャンセル
           </Link>
           {isPending && (
-            <span className="text-xs text-neutral-400">
+            <span className="text-xs text-neutral-500">
               写真がある場合はアップロード完了までお待ちください
             </span>
           )}

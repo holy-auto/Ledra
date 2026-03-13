@@ -80,7 +80,7 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
   const canPdfOne = isActive && canUseFeature(planTier, "pdf_one");
 
   const btnCls = (enabled: boolean) => "btn-secondary " + (enabled ? "" : "opacity-50");
-  const linkCls = (enabled: boolean) => "underline text-[#0a84ff] hover:text-[#3b9eff] " + (enabled ? "" : "opacity-50");
+  const linkCls = (enabled: boolean) => "underline text-[#0071e3] hover:text-[#0077ED] " + (enabled ? "" : "opacity-50");
 
   const hrefOrBill = (enabled: boolean, href: string, action: string) => (enabled ? href : bill(action));
 
@@ -144,7 +144,7 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
               <th className="p-3 text-left w-10">
                 <input
                   type="checkbox"
-                  className="accent-[#0a84ff]"
+                  className="accent-[#0071e3]"
                   checked={allChecked}
                   ref={(el) => {
                     if (el) el.indeterminate = someChecked;
@@ -169,7 +169,7 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
               return (
                 <tr key={r.public_id} className="border-t border-border-default hover:bg-surface-hover transition-colors">
                   <td className="p-3">
-                    <input type="checkbox" className="accent-[#0a84ff]" checked={checked} onChange={(e) => toggleOne(r.public_id, e.target.checked)} />
+                    <input type="checkbox" className="accent-[#0071e3]" checked={checked} onChange={(e) => toggleOne(r.public_id, e.target.checked)} />
                   </td>
                   <td className="p-3 whitespace-nowrap text-primary">{formatDateTime(r.created_at)}</td>
                   <td className="p-3 font-mono text-primary">{r.public_id}</td>
@@ -181,7 +181,7 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
                   </td>
                   <td className="p-3">
                     <div className="flex gap-3 items-center flex-wrap">
-                      <Link className="underline text-[#0a84ff] hover:text-[#3b9eff]" href={url} target="_blank">
+                      <Link className="underline text-[#0071e3] hover:text-[#0077ED]" href={url} target="_blank">
                         公開ページ
                       </Link>
                       <Link
@@ -203,7 +203,7 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
                       {!isVoid && (
                         <button
                           type="button"
-                          className="text-red-400 hover:text-red-300 disabled:opacity-50"
+                          className="text-red-500 hover:text-red-600 disabled:opacity-50"
                           disabled={voidingId === r.public_id}
                           onClick={() => handleVoid(r.public_id)}
                         >

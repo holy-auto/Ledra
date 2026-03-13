@@ -223,7 +223,7 @@ export default function CustomerListPage() {
                       ))}
                     </ul>
                   ) : (
-                    <div className="text-neutral-400">詳細情報がありません。</div>
+                    <div className="text-neutral-500">詳細情報がありません。</div>
                   )}
                 </div>
 
@@ -237,7 +237,7 @@ export default function CustomerListPage() {
                 ) : null}
 
                 <div className="flex justify-between gap-2.5">
-                  <div className="text-xs text-neutral-400">Public ID: {r.public_id}</div>
+                  <div className="text-xs text-neutral-500">Public ID: {r.public_id}</div>
                   <div className="text-xs text-neutral-600">証明書を開く →</div>
                 </div>
               </div>

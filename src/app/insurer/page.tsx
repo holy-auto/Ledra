@@ -134,7 +134,7 @@ export default function InsurerHomePage() {
               <button
                 onClick={runSearch}
                 disabled={busy}
-                className="rounded-xl border border-neutral-900 bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
+                className="btn-primary disabled:opacity-50"
               >
                 {busy ? "検索中..." : "検索"}
               </button>

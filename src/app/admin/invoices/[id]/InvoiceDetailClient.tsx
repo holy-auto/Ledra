@@ -27,7 +27,30 @@ type Invoice = {
   items_json: InvoiceItem[];
   created_at: string;
   updated_at: string | null;
+  is_invoice_compliant?: boolean;
+  show_seal?: boolean;
+  show_logo?: boolean;
+  show_bank_info?: boolean;
+  recipient_name?: string | null;
+  tax_rate?: number;
 };
+
+type BankInfo = {
+  bank_name?: string | null;
+  branch_name?: string | null;
+  account_type?: string | null;
+  account_number?: string | null;
+  account_holder?: string | null;
+} | null;
+
+type TenantInfo = {
+  name: string;
+  address: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  registration_number: string | null;
+  bank_info: BankInfo;
+} | null;
 
 const statusVariant = (s: string) => {
   switch (s) {
@@ -60,9 +83,11 @@ const TRANSITIONS: Record<string, string[]> = {
 export default function InvoiceDetailClient({
   invoice: initial,
   customerName,
+  tenant,
 }: {
   invoice: Invoice;
   customerName: string | null;
+  tenant: TenantInfo;
 }) {
   const [invoice, setInvoice] = useState(initial);
   const [updating, setUpdating] = useState(false);
@@ -99,7 +124,7 @@ export default function InvoiceDetailClient({
   return (
     <div className="space-y-6">
       {msg && (
-        <div className={`text-sm ${msg.ok ? "text-emerald-400" : "text-red-400"}`}>{msg.text}</div>
+        <div className={`text-sm ${msg.ok ? "text-emerald-400" : "text-red-500"}`}>{msg.text}</div>
       )}
 
       {/* Status & Actions */}
@@ -110,6 +135,9 @@ export default function InvoiceDetailClient({
             <Badge variant={statusVariant(invoice.status)}>
               {statusLabel(invoice.status)}
             </Badge>
+            {invoice.is_invoice_compliant && (
+              <Badge variant="info">インボイス対応</Badge>
+            )}
           </div>
           <div className="flex gap-2 flex-wrap">
             {nextStatuses.map((ns) => (
@@ -140,6 +168,11 @@ export default function InvoiceDetailClient({
               <div className="text-sm text-muted print:text-gray-600 mt-1 font-mono">
                 {invoice.invoice_number}
               </div>
+              {invoice.is_invoice_compliant && tenant?.registration_number && (
+                <div className="text-xs text-secondary print:text-gray-600 mt-1">
+                  登録番号: {tenant.registration_number}
+                </div>
+              )}
             </div>
             <div className="text-right text-sm text-secondary print:text-gray-700 space-y-1">
               <div>発行日: {formatDate(invoice.issued_at)}</div>
@@ -147,15 +180,30 @@ export default function InvoiceDetailClient({
             </div>
           </div>
 
-          {/* Customer */}
-          {customerName && (
-            <div className="border-b border-border-subtle pb-4 print:border-gray-300">
-              <div className="text-xs text-muted print:text-gray-500">請求先</div>
-              <div className="text-lg font-semibold text-primary print:text-black mt-1">
-                {customerName} 様
+          {/* Issuer / Customer */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            {/* Customer (宛先) */}
+            {(customerName || invoice.recipient_name) && (
+              <div className="border-b border-border-subtle pb-4 print:border-gray-300">
+                <div className="text-xs text-muted print:text-gray-500">宛先</div>
+                <div className="text-lg font-semibold text-primary print:text-black mt-1">
+                  {invoice.recipient_name || customerName} 様
+                </div>
               </div>
-            </div>
-          )}
+            )}
+            {/* Issuer (差出人) */}
+            {tenant && (
+              <div className="border-b border-border-subtle pb-4 print:border-gray-300">
+                <div className="text-xs text-muted print:text-gray-500">差出人</div>
+                <div className="text-sm text-primary print:text-black mt-1 space-y-0.5">
+                  <div className="font-semibold">{tenant.name}</div>
+                  {tenant.address && <div className="text-secondary print:text-gray-600">{tenant.address}</div>}
+                  {tenant.contact_phone && <div className="text-secondary print:text-gray-600">TEL: {tenant.contact_phone}</div>}
+                  {tenant.contact_email && <div className="text-secondary print:text-gray-600">{tenant.contact_email}</div>}
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Items Table */}
           <div className="overflow-x-auto">
@@ -174,7 +222,7 @@ export default function InvoiceDetailClient({
                     <td className="py-3 px-3 text-primary print:text-black">
                       {item.description || "-"}
                       {item.certificate_public_id && (
-                        <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-[rgba(10,132,255,0.1)] text-[#0a84ff] print:text-blue-600 print:bg-blue-50">
+                        <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-[rgba(0,113,227,0.08)] text-[#0071e3] print:text-blue-600 print:bg-blue-50">
                           証明書: {item.certificate_public_id}
                         </span>
                       )}
@@ -205,7 +253,7 @@ export default function InvoiceDetailClient({
                 <span className="text-primary print:text-black">{formatJpy(invoice.subtotal)}</span>
               </div>
               <div className="flex justify-between text-sm border-b border-border-subtle pb-2 print:border-gray-200">
-                <span className="text-muted print:text-gray-500">消費税（10%）</span>
+                <span className="text-muted print:text-gray-500">消費税（{invoice.tax_rate ?? 10}%）</span>
                 <span className="text-primary print:text-black">{formatJpy(invoice.tax)}</span>
               </div>
               <div className="flex justify-between text-lg font-bold pt-1">
@@ -215,6 +263,38 @@ export default function InvoiceDetailClient({
             </div>
           </div>
 
+          {/* Seal & Logo area */}
+          {(invoice.show_seal || invoice.show_logo) && (
+            <div className="flex justify-end gap-6 pt-4">
+              {invoice.show_logo && (
+                <div className="text-xs text-muted print:text-gray-500 text-center">
+                  <div className="w-16 h-16 border border-border-subtle rounded-lg flex items-center justify-center text-muted print:border-gray-300">
+                    LOGO
+                  </div>
+                </div>
+              )}
+              {invoice.show_seal && (
+                <div className="text-xs text-muted print:text-gray-500 text-center">
+                  <div className="w-16 h-16 border border-dashed border-red-300 rounded-full flex items-center justify-center text-red-400 print:border-red-400">
+                    印
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Bank Info */}
+          {invoice.show_bank_info && tenant?.bank_info && (
+            <div className="border-t border-border-subtle pt-4 print:border-gray-300">
+              <div className="text-xs font-semibold text-muted print:text-gray-500 mb-2">振込先口座情報</div>
+              <div className="text-sm text-secondary print:text-gray-700 space-y-0.5">
+                {tenant.bank_info.bank_name && <div>{tenant.bank_info.bank_name}{tenant.bank_info.branch_name ? ` ${tenant.bank_info.branch_name}` : ""}</div>}
+                {tenant.bank_info.account_type && <div>{tenant.bank_info.account_type} {tenant.bank_info.account_number ?? ""}</div>}
+                {tenant.bank_info.account_holder && <div>口座名義: {tenant.bank_info.account_holder}</div>}
+              </div>
+            </div>
+          )}
+
           {/* Note */}
           {invoice.note && (
             <div className="border-t border-border-subtle pt-4 print:border-gray-300">
@@ -222,6 +302,13 @@ export default function InvoiceDetailClient({
               <div className="text-sm text-secondary print:text-gray-700 mt-1 whitespace-pre-wrap">
                 {invoice.note}
               </div>
+            </div>
+          )}
+
+          {/* Invoice compliance notice */}
+          {invoice.is_invoice_compliant && (
+            <div className="border-t border-border-subtle pt-4 print:border-gray-300 text-xs text-muted print:text-gray-500">
+              ※ この書類は適格請求書等保存方式（インボイス制度）に対応しています。
             </div>
           )}
         </section>

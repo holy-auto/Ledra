@@ -3,11 +3,11 @@ import type { ReactNode } from "react";
 type BadgeVariant = "default" | "success" | "warning" | "danger" | "info";
 
 const VARIANT_CLASSES: Record<BadgeVariant, string> = {
-  default: "bg-[rgba(255,255,255,0.06)] text-[#a1a1a6] border-[rgba(255,255,255,0.08)]",
-  success: "bg-[rgba(48,209,88,0.1)] text-[#30d158] border-[rgba(48,209,88,0.2)]",
-  warning: "bg-[rgba(255,159,10,0.1)] text-[#ff9f0a] border-[rgba(255,159,10,0.2)]",
-  danger: "bg-[rgba(255,69,58,0.1)] text-[#ff453a] border-[rgba(255,69,58,0.2)]",
-  info: "bg-[rgba(10,132,255,0.1)] text-[#0a84ff] border-[rgba(10,132,255,0.2)]",
+  default: "bg-[rgba(0,0,0,0.04)] text-[#6e6e73] border-[rgba(0,0,0,0.08)]",
+  success: "bg-[rgba(40,167,69,0.08)] text-[#1a7f37] border-[rgba(40,167,69,0.2)]",
+  warning: "bg-[rgba(240,147,0,0.08)] text-[#b35c00] border-[rgba(240,147,0,0.2)]",
+  danger: "bg-[rgba(255,59,48,0.08)] text-[#d1242f] border-[rgba(255,59,48,0.2)]",
+  info: "bg-[rgba(0,113,227,0.08)] text-[#0071e3] border-[rgba(0,113,227,0.2)]",
 };
 
 interface BadgeProps {

@@ -150,7 +150,7 @@ export default function AdminVehicleNewPage() {
           </label>
 
           {err ? (
-            <div className="rounded-xl border border-red-500/30 bg-[rgba(239,68,68,0.1)] p-3 text-sm text-red-400">
+            <div className="rounded-xl border border-red-500/30 bg-[rgba(239,68,68,0.1)] p-3 text-sm text-red-500">
               {err}
             </div>
           ) : null}

@@ -105,6 +105,11 @@ export default function InvoicesClient() {
   const [formItems, setFormItems] = useState<InvoiceItem[]>([emptyItem()]);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [formIsInvoiceCompliant, setFormIsInvoiceCompliant] = useState(false);
+  const [formShowSeal, setFormShowSeal] = useState(false);
+  const [formShowLogo, setFormShowLogo] = useState(true);
+  const [formShowBankInfo, setFormShowBankInfo] = useState(false);
+  const [formRecipientName, setFormRecipientName] = useState("");
 
   // Certificates for linking
   const [certificates, setCertificates] = useState<CertificateOption[]>([]);
@@ -230,6 +235,11 @@ export default function InvoicesClient() {
           due_date: formDueDate || null,
           note: formNote,
           items: formItems,
+          is_invoice_compliant: formIsInvoiceCompliant,
+          show_seal: formShowSeal,
+          show_logo: formShowLogo,
+          show_bank_info: formShowBankInfo,
+          recipient_name: formRecipientName || null,
         }),
       });
       const j = await res.json().catch(() => null);
@@ -240,6 +250,11 @@ export default function InvoicesClient() {
       setFormDueDate("");
       setFormNote("");
       setFormItems([emptyItem()]);
+      setFormIsInvoiceCompliant(false);
+      setFormShowSeal(false);
+      setFormShowLogo(true);
+      setFormShowBankInfo(false);
+      setFormRecipientName("");
       setSaveMsg({ text: `請求書 ${j.invoice?.invoice_number} を作成しました`, ok: true });
       await fetchInvoices(statusFilter);
     } catch (e: any) {
@@ -286,7 +301,7 @@ export default function InvoicesClient() {
       />
 
       {loading && <div className="text-sm text-muted">読み込み中…</div>}
-      {err && <div className="glass-card p-4 text-sm text-red-400">{err}</div>}
+      {err && <div className="glass-card p-4 text-sm text-red-500">{err}</div>}
 
       {data && (
         <>
@@ -330,7 +345,7 @@ export default function InvoicesClient() {
           </section>
 
           {saveMsg && (
-            <div className={`text-sm ${saveMsg.ok ? "text-emerald-400" : "text-red-400"}`}>
+            <div className={`text-sm ${saveMsg.ok ? "text-emerald-400" : "text-red-500"}`}>
               {saveMsg.text}
             </div>
           )}
@@ -356,6 +371,16 @@ export default function InvoicesClient() {
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted">宛先店舗名（BtoB）</label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    placeholder="例: 株式会社○○ 渋谷店"
+                    value={formRecipientName}
+                    onChange={(e) => setFormRecipientName(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs text-muted">請求番号</label>
@@ -446,7 +471,7 @@ export default function InvoicesClient() {
                       <div className="col-span-1">
                         <button
                           type="button"
-                          className="btn-ghost !px-2 !py-1 !text-xs text-red-400"
+                          className="btn-ghost !px-2 !py-1 !text-xs text-red-500"
                           onClick={() => removeItem(idx)}
                           disabled={formItems.length <= 1}
                         >
@@ -488,6 +513,42 @@ export default function InvoicesClient() {
                   value={formNote}
                   onChange={(e) => setFormNote(e.target.value)}
                 />
+              </div>
+
+              {/* Options */}
+              <div className="flex flex-wrap gap-4">
+                <label className="text-sm text-secondary cursor-pointer flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={formIsInvoiceCompliant}
+                    onChange={(e) => setFormIsInvoiceCompliant(e.target.checked)}
+                  />
+                  インボイス対応
+                </label>
+                <label className="text-sm text-secondary cursor-pointer flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={formShowSeal}
+                    onChange={(e) => setFormShowSeal(e.target.checked)}
+                  />
+                  角印を表示
+                </label>
+                <label className="text-sm text-secondary cursor-pointer flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={formShowLogo}
+                    onChange={(e) => setFormShowLogo(e.target.checked)}
+                  />
+                  ロゴを表示
+                </label>
+                <label className="text-sm text-secondary cursor-pointer flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={formShowBankInfo}
+                    onChange={(e) => setFormShowBankInfo(e.target.checked)}
+                  />
+                  口座情報を表示
+                </label>
               </div>
 
               <div className="flex gap-3">
@@ -535,7 +596,7 @@ export default function InvoicesClient() {
                       <td className="px-5 py-3.5">
                         <Link
                           href={`/admin/invoices/${inv.id}`}
-                          className="font-mono text-[#0a84ff] hover:text-[#3b9eff] underline"
+                          className="font-mono text-[#0071e3] hover:text-[#0077ED] underline"
                         >
                           {inv.invoice_number}
                         </Link>

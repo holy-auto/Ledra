@@ -29,7 +29,7 @@ export function MarketingFooter() {
           {/* ナビリンクグループ */}
           {footerNavGroups.map((group) => (
             <div key={group.heading}>
-              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
                 {group.heading}
               </p>
               <ul className="mt-4 flex flex-col gap-3">
@@ -49,7 +49,7 @@ export function MarketingFooter() {
         </div>
 
         {/* 下段: コピーライト */}
-        <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-zinc-200 pt-8 text-sm text-zinc-400 sm:flex-row sm:items-center">
+        <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-zinc-200 pt-8 text-sm text-zinc-500 sm:flex-row sm:items-center">
           <p>© {currentYear} {siteConfig.siteName}. All rights reserved.</p>
           <a
             href={`mailto:${siteConfig.contactEmail}`}

@@ -74,7 +74,7 @@ const PhotoUploadSection = forwardRef<PhotoUploadHandle, Props>(function PhotoUp
         <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">PHOTOS</div>
         <div className="mt-0.5 flex items-baseline gap-2">
           <span className="text-base font-semibold text-neutral-900">施工写真</span>
-          <span className="text-xs text-neutral-400">任意 · 最大 {maxPhotos} 枚（{planLabel} プラン）</span>
+          <span className="text-xs text-neutral-500">任意 · 最大 {maxPhotos} 枚（{planLabel} プラン）</span>
         </div>
       </div>
 
@@ -90,7 +90,7 @@ const PhotoUploadSection = forwardRef<PhotoUploadHandle, Props>(function PhotoUp
           <div className="mt-2 text-sm font-medium text-neutral-600">
             クリックまたはドラッグ&ドロップで追加
           </div>
-          <div className="mt-1 text-xs text-neutral-400">
+          <div className="mt-1 text-xs text-neutral-500">
             JPG / PNG / WebP / HEIC · 最大 20MB/枚 · あと {maxPhotos - count} 枚
           </div>
         </div>
@@ -131,7 +131,7 @@ const PhotoUploadSection = forwardRef<PhotoUploadHandle, Props>(function PhotoUp
                 >
                   ✕
                 </button>
-                <div className="mt-1 truncate text-[10px] text-neutral-400 px-0.5">
+                <div className="mt-1 truncate text-[10px] text-neutral-500 px-0.5">
                   {p.file.name}
                 </div>
               </div>
