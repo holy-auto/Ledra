@@ -98,6 +98,26 @@ export default function DocumentDetailClient({
 
   const handlePrint = () => window.print();
 
+  const [downloading, setDownloading] = useState(false);
+  const handlePdfDownload = async () => {
+    setDownloading(true);
+    try {
+      const res = await fetch(`/admin/documents/pdf?id=${doc.id}`);
+      if (!res.ok) throw new Error(`PDF生成に失敗しました (${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${doc.doc_number || "document"}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setMsg({ text: e?.message ?? String(e), ok: false });
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const items = (doc.items_json ?? []) as DocumentItem[];
   const nextStatuses = STATUS_TRANSITIONS[doc.status] ?? [];
   const docLabel = DOC_TYPES[doc.doc_type as DocType]?.label ?? doc.doc_type;
@@ -145,6 +165,14 @@ export default function DocumentDetailClient({
             )}
             <button type="button" className="btn-ghost !text-xs" onClick={handlePrint}>
               印刷
+            </button>
+            <button
+              type="button"
+              className="btn-secondary !text-xs"
+              disabled={downloading}
+              onClick={handlePdfDownload}
+            >
+              {downloading ? "生成中…" : "PDFダウンロード"}
             </button>
           </div>
         </div>

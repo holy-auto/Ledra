@@ -1,8 +1,112 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import PageHeader from "@/components/ui/PageHeader";
+
+const PLANS = [
+  {
+    tier: "mini",
+    name: "ミニ",
+    price: "¥980/月",
+    features: ["施工証明書 発行", "PDF出力（単体）", "QRコード生成", "基本ダッシュボード"],
+  },
+  {
+    tier: "standard",
+    name: "スタンダード",
+    price: "¥2,980/月",
+    features: ["ミニの全機能", "PDF一括出力（ZIP）", "CSV出力", "テンプレート管理", "帳票・請求書管理", "顧客CRM"],
+    recommended: true,
+  },
+  {
+    tier: "pro",
+    name: "プロ",
+    price: "¥9,800/月",
+    features: ["スタンダードの全機能", "ロゴアップロード", "BtoB在庫管理", "Stripe決済連携", "優先サポート"],
+  },
+];
+
+function PlanSelector({ currentPlan, isActive }: { currentPlan: string | null; isActive: boolean }) {
+  const supabase = useMemo(() => createClient(), []);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSelectPlan = useCallback(async (tier: string) => {
+    setBusy(tier);
+    setError(null);
+    try {
+      const sessionRes = await supabase.auth.getSession();
+      const access_token = sessionRes.data?.session?.access_token;
+      if (!access_token) { window.location.href = "/login"; return; }
+
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ access_token, plan_tier: tier }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!j?.url) throw new Error("checkout url missing");
+      window.location.href = j.url;
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+    } finally {
+      setBusy(null);
+    }
+  }, [supabase]);
+
+  return (
+    <section className="space-y-4">
+      <div className="text-xs font-semibold tracking-[0.18em] text-muted">PLANS</div>
+      {error && <div className="text-sm text-red-500">{error}</div>}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {PLANS.map((plan) => {
+          const isCurrent = currentPlan === plan.tier;
+          return (
+            <div
+              key={plan.tier}
+              className={`glass-card p-5 space-y-3 relative ${
+                plan.recommended ? "ring-2 ring-[#0071e3]" : ""
+              } ${isCurrent ? "border-[#0071e3]" : ""}`}
+            >
+              {plan.recommended && (
+                <div className="absolute -top-2.5 left-4 px-2 py-0.5 bg-[#0071e3] text-white text-[10px] font-semibold rounded-full">
+                  おすすめ
+                </div>
+              )}
+              <div>
+                <div className="text-lg font-bold text-primary">{plan.name}</div>
+                <div className="text-2xl font-bold text-primary mt-1">{plan.price}</div>
+              </div>
+              <ul className="space-y-1.5 text-sm text-secondary">
+                {plan.features.map((f) => (
+                  <li key={f} className="flex items-start gap-2">
+                    <span className="text-[#0071e3] mt-0.5">&#10003;</span>
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+              {isCurrent ? (
+                <div className="btn-ghost !text-xs text-center w-full cursor-default">
+                  現在のプラン
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className={`w-full ${plan.recommended ? "btn-primary" : "btn-secondary"} !text-xs`}
+                  disabled={busy !== null}
+                  onClick={() => handleSelectPlan(plan.tier)}
+                >
+                  {busy === plan.tier ? "処理中…" : "このプランを選択"}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
 type Tenant = {
   id: string;
@@ -392,6 +496,11 @@ export default function BillingPage() {
 
           <div className="pt-2 text-xs text-muted">※ ポータル復帰時は自動で数回リトライして最新状態に同期します。</div>
         </div>
+      )}
+
+      {/* Plan selection */}
+      {!loading && tenant && (
+        <PlanSelector currentPlan={tenant.plan_tier} isActive={tenant.is_active === true} />
       )}
     </main>
   );

@@ -15,10 +15,10 @@ async function fetchTenantExtended(tenantId: string) {
   try {
     const { data, error } = await admin
       .from("tenants")
-      .select("contact_email,contact_phone,address,website_url,registration_number,bank_info")
+      .select("contact_email,contact_phone,address,website_url,registration_number,bank_info,stripe_connect_account_id,stripe_connect_onboarded")
       .eq("id", tenantId)
       .single();
-    if (error) return { contact_email: null, contact_phone: null, address: null, website_url: null, registration_number: null, bank_info: null };
+    if (error) return { contact_email: null, contact_phone: null, address: null, website_url: null, registration_number: null, bank_info: null, stripe_connect_account_id: null, stripe_connect_onboarded: false };
     return {
       contact_email: (data as any)?.contact_email ?? null,
       contact_phone: (data as any)?.contact_phone ?? null,
@@ -26,6 +26,8 @@ async function fetchTenantExtended(tenantId: string) {
       website_url: (data as any)?.website_url ?? null,
       registration_number: (data as any)?.registration_number ?? null,
       bank_info: (data as any)?.bank_info ?? null,
+      stripe_connect_account_id: (data as any)?.stripe_connect_account_id ?? null,
+      stripe_connect_onboarded: (data as any)?.stripe_connect_onboarded ?? false,
     };
   } catch {
     return { contact_email: null, contact_phone: null, address: null, website_url: null, registration_number: null, bank_info: null };
@@ -180,6 +182,10 @@ export default async function AdminSettingsPage() {
             registrationNumber={columnsExist ? ext.registration_number : null}
             bankInfo={columnsExist ? ext.bank_info : null}
             columnsExist={columnsExist}
+            connectStatus={columnsExist ? {
+              accountId: (ext as any).stripe_connect_account_id ?? null,
+              onboarded: (ext as any).stripe_connect_onboarded ?? false,
+            } : null}
           />
         </section>
 

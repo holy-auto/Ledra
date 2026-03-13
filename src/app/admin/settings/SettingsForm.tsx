@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition, useState } from "react";
+import { useTransition, useState, useCallback } from "react";
 import { updateTenantSettingsAction } from "./actions";
 
 type BankInfo = {
@@ -9,6 +9,11 @@ type BankInfo = {
   account_type?: string;
   account_number?: string;
   account_holder?: string;
+} | null;
+
+type ConnectStatus = {
+  accountId: string | null;
+  onboarded: boolean;
 } | null;
 
 type Props = {
@@ -20,6 +25,7 @@ type Props = {
   registrationNumber: string | null;
   bankInfo: BankInfo;
   columnsExist: boolean;
+  connectStatus?: ConnectStatus;
 };
 
 const inputCls =
@@ -27,7 +33,7 @@ const inputCls =
 const labelCls = "block space-y-1.5";
 const labelTextCls = "text-sm font-medium text-neutral-700";
 
-export default function SettingsForm({ name, contactEmail, contactPhone, address, websiteUrl, registrationNumber, bankInfo, columnsExist }: Props) {
+export default function SettingsForm({ name, contactEmail, contactPhone, address, websiteUrl, registrationNumber, bankInfo, columnsExist, connectStatus }: Props) {
   const [isPending, startTransition] = useTransition();
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -203,6 +209,124 @@ export default function SettingsForm({ name, contactEmail, contactPhone, address
       >
         {isPending ? "保存中…" : "設定を保存"}
       </button>
+
+      {/* Stripe Connect Section */}
+      {columnsExist && (
+        <div className="border-t border-neutral-200 pt-5 mt-5">
+          <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500 mb-3">STRIPE CONNECT</div>
+          <StripeConnectSection connectStatus={connectStatus ?? null} />
+        </div>
+      )}
     </form>
+  );
+}
+
+function StripeConnectSection({ connectStatus }: { connectStatus: ConnectStatus }) {
+  const [busy, setBusy] = useState(false);
+  const [connectErr, setConnectErr] = useState<string | null>(null);
+  const [liveStatus, setLiveStatus] = useState<{
+    connected: boolean;
+    onboarded: boolean;
+    charges_enabled?: boolean;
+    payouts_enabled?: boolean;
+    account_id?: string | null;
+  } | null>(null);
+
+  const checkStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/stripe/connect");
+      const j = await res.json().catch(() => null);
+      if (res.ok && j) setLiveStatus(j);
+    } catch {}
+  }, []);
+
+  const handleConnect = async () => {
+    setBusy(true);
+    setConnectErr(null);
+    try {
+      const res = await fetch("/api/stripe/connect", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          return_url: window.location.href,
+          refresh_url: window.location.href,
+        }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (j?.onboarding_url) {
+        window.location.href = j.onboarding_url;
+      }
+    } catch (e: any) {
+      setConnectErr(e?.message ?? String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const isOnboarded = liveStatus?.onboarded ?? connectStatus?.onboarded ?? false;
+  const accountId = liveStatus?.account_id ?? connectStatus?.accountId;
+  const isConnected = liveStatus?.connected ?? !!accountId;
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-neutral-600">
+        Stripeアカウントを接続すると、オンライン決済を受け付けることができます。
+      </p>
+
+      <div className="flex items-center gap-3 text-sm">
+        <span className="text-neutral-500">ステータス:</span>
+        {isOnboarded ? (
+          <span className="inline-flex items-center gap-1.5 text-emerald-700 font-medium">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            接続済み
+          </span>
+        ) : isConnected ? (
+          <span className="inline-flex items-center gap-1.5 text-amber-600 font-medium">
+            <span className="w-2 h-2 rounded-full bg-amber-500" />
+            オンボーディング未完了
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 text-neutral-500 font-medium">
+            <span className="w-2 h-2 rounded-full bg-neutral-400" />
+            未接続
+          </span>
+        )}
+      </div>
+
+      {isOnboarded && liveStatus && (
+        <div className="text-sm text-neutral-600 space-y-1">
+          <div>課金受付: <b className="text-neutral-900">{liveStatus.charges_enabled ? "有効" : "無効"}</b></div>
+          <div>入金: <b className="text-neutral-900">{liveStatus.payouts_enabled ? "有効" : "無効"}</b></div>
+          {accountId && <div className="text-xs text-neutral-400 font-mono">ID: {accountId}</div>}
+        </div>
+      )}
+
+      {connectErr && (
+        <div className="text-sm text-red-500">{connectErr}</div>
+      )}
+
+      <div className="flex gap-3">
+        {!isOnboarded && (
+          <button
+            type="button"
+            className="btn-primary !text-sm"
+            disabled={busy}
+            onClick={handleConnect}
+          >
+            {busy ? "処理中…" : isConnected ? "オンボーディングを再開" : "Stripeアカウントを接続"}
+          </button>
+        )}
+        {isConnected && (
+          <button
+            type="button"
+            className="btn-ghost !text-sm"
+            onClick={checkStatus}
+          >
+            ステータスを更新
+          </button>
+        )}
+      </div>
+    </div>
   );
 }

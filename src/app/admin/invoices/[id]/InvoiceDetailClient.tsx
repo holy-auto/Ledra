@@ -118,6 +118,26 @@ export default function InvoiceDetailClient({
     window.print();
   };
 
+  const [downloading, setDownloading] = useState(false);
+  const handlePdfDownload = async () => {
+    setDownloading(true);
+    try {
+      const res = await fetch(`/admin/invoices/pdf?id=${invoice.id}`);
+      if (!res.ok) throw new Error(`PDF生成に失敗しました (${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${invoice.invoice_number || "invoice"}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setMsg({ text: e?.message ?? String(e), ok: false });
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const items = (invoice.items_json ?? []) as InvoiceItem[];
   const nextStatuses = TRANSITIONS[invoice.status] ?? [];
 
@@ -153,6 +173,14 @@ export default function InvoiceDetailClient({
             ))}
             <button type="button" className="btn-ghost !text-xs" onClick={handlePrint}>
               印刷
+            </button>
+            <button
+              type="button"
+              className="btn-secondary !text-xs"
+              disabled={downloading}
+              onClick={handlePdfDownload}
+            >
+              {downloading ? "生成中…" : "PDFダウンロード"}
             </button>
           </div>
         </div>
