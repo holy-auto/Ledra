@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 import AdminFeatureGuard from "@/app/admin/AdminFeatureGuard";
 const DEFAULT_SCHEMA = {

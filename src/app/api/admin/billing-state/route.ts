@@ -93,7 +93,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ tenant: t.data, role: m.data.role ?? null, subscription });
   } catch (e: any) {
-    console.error("billing-state failed", e);
     return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
   }
 }

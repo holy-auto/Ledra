@@ -1,5 +1,5 @@
 ﻿import { redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import AdminFeatureGuard from "@/app/admin/AdminFeatureGuard";
 import { FEATURES } from "@/lib/billing/featureKeys";
 export default async function Page({

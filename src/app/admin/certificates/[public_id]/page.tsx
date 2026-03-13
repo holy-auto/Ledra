@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
-import { createSupabaseAdminClient } from "@/lib/supabaseAdmin";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createAdminClient as createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   CERTIFICATE_IMAGE_BUCKET,
   formatCertificateImageBytes,

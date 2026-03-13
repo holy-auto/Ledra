@@ -91,7 +91,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ url: session.url });
   } catch (e: any) {
-    console.error("stripe resume failed", e);
     return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
   }
 }

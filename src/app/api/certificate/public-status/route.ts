@@ -92,7 +92,6 @@ export async function GET(req: NextRequest) {
       { status: 200, headers: { "cache-control": "no-store" } }
     );
   } catch (e: any) {
-    console.error("public-status failed", e);
     return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
   }
 }

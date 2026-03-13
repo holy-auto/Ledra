@@ -80,7 +80,6 @@ export async function POST(req: Request) {
 
     return res;
   } catch (e: any) {
-    console.error("customer verify-code error", e);
     return NextResponse.json({ error: e?.message ?? "verify-code failed" }, { status: 500 });
   }
 }

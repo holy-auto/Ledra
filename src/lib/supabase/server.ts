@@ -28,3 +28,6 @@ export async function createClient() {
     },
   });
 }
+
+// Backward-compat alias (previously exported from @/lib/supabaseServer)
+export const createSupabaseServerClient = createClient;

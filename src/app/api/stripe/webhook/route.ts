@@ -113,7 +113,6 @@ async function syncBySubscription(stripe: Stripe, supabase: ReturnType<typeof ge
   if (customerId) patch.stripe_customer_id = customerId;
   if (plan_tier) patch.plan_tier = plan_tier;
 
-  console.log("webhook: sync subscription", { tenant_id: tenant_id ?? "(lookup)", plan_tier, active, subscriptionId });
   await updateTenantBySelector(supabase, selector, patch);
 }
 
@@ -131,7 +130,6 @@ export async function POST(req: NextRequest) {
     const rawBody = await req.text();
     event = stripe.webhooks.constructEvent(rawBody, sig, whsec);
   } catch (e: any) {
-    console.error("webhook signature verify failed", e);
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
@@ -185,7 +183,6 @@ export async function POST(req: NextRequest) {
         break;
     }
   } catch (e: any) {
-    console.error("stripe webhook handler failed", { type: event.type, id: event.id, error: e?.message ?? e });
     return NextResponse.json({ error: "Webhook handler failed" }, { status: 500 });
   }
 

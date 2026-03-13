@@ -1,5 +1,5 @@
 ﻿import { redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 function safeNextPath(value: string | undefined) {
   if (!value) return "/admin/certificates";

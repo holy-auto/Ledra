@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { checkAdminFeature, billingDenyResponse } from "@/lib/billing/adminFeatureGate";
 
 function csvEscape(v: any) {

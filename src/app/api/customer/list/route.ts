@@ -30,7 +30,6 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ ok: true, rows });
   } catch (e: any) {
-    console.error("customer list error", e);
     return NextResponse.json({ error: e?.message ?? "list failed" }, { status: 500 });
   }
 }

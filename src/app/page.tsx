@@ -129,6 +129,7 @@ export default function HomePage() {
             <Link href="/privacy" className="hover:text-neutral-700 transition">プライバシーポリシー</Link>
             <Link href="/terms" className="hover:text-neutral-700 transition">利用規約</Link>
             <Link href="/legal" className="hover:text-neutral-700 transition">特定商取引法に基づく表示</Link>
+            <Link href="/superadmin" className="hover:text-neutral-700 transition">運営管理</Link>
           </div>
           <div className="text-xs text-neutral-400">© {new Date().getFullYear()} HOLY-CERT. All rights reserved.</div>
         </div>

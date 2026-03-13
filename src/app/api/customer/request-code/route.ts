@@ -32,7 +32,6 @@ async function sendEmailResend(to: string, subject: string, html: string) {
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    console.error("[request-code] Resend failed", res.status, body);
     throw new Error(`resend_failed:${res.status}`);
   }
 }
@@ -89,7 +88,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (e: any) {
-    console.error("[request-code] error", e);
     return NextResponse.json({ error: "server_error" }, { status: 500 });
   }
 }

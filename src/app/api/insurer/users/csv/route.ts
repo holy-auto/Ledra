@@ -137,7 +137,6 @@ export async function POST(req: Request) {
     .maybeSingle();
 
   if (adminRowErr || !adminRow?.insurer_id) {
-    console.error("[insurer-users-csv] cannot resolve insurer_id:", adminRowErr);
     return NextResponse.json({ error: "cannot resolve insurer_id for admin" }, { status: 500 });
   }
 
@@ -217,7 +216,6 @@ export async function POST(req: Request) {
       ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null,
       userAgent: req.headers.get("user-agent") || null,
     });} catch (e: any) {
-    console.warn("[insurer-users-csv] audit log failed:", e?.message || e);
   }
 
   return NextResponse.json({
