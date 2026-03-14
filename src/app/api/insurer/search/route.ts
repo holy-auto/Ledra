@@ -18,6 +18,10 @@ export async function GET(req: Request) {
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50", 10) || 50, 200);
   const offset = Math.max(parseInt(url.searchParams.get("offset") ?? "0", 10) || 0, 0);
 
+  // When JS filters are active, fetch more rows from RPC to compensate for post-filter reduction
+  const hasJsFilters = !!(status || dateFrom || dateTo);
+  const rpcLimit = hasJsFilters ? Math.min(limit * 4, 800) : limit;
+
   const { ip, ua } = getClientMeta(req);
 
   const supabase = await createClient();
@@ -26,7 +30,7 @@ export async function GET(req: Request) {
 
   const { data, error } = await supabase.rpc("insurer_search_certificates", {
     p_query: q,
-    p_limit: limit,
+    p_limit: rpcLimit,
     p_offset: offset,
     p_ip: ip,
     p_user_agent: ua,
@@ -37,7 +41,7 @@ export async function GET(req: Request) {
   let rows: any[] = data ?? [];
 
   // Post-RPC filtering for status, date_from, date_to
-  // (applied here for RPC compatibility — no DB migration required)
+  // (applied here for RPC compatibility — ideally move to DB function)
   if (status) {
     const s = status.toLowerCase();
     rows = rows.filter((r: any) => {
@@ -53,17 +57,13 @@ export async function GET(req: Request) {
   }
 
   if (dateFrom) {
-    const from = new Date(dateFrom);
-    if (!Number.isNaN(from.getTime())) {
+    const fromTs = new Date(dateFrom).getTime();
+    if (!Number.isNaN(fromTs)) {
       rows = rows.filter((r: any) => {
-        const createdAt = String(
-          r?.created_at ??
-          r?.latest_active_certificate_created_at ??
-          r?.latest_certificate_created_at ??
-          ""
-        );
+        const createdAt =
+          r?.created_at ?? r?.latest_active_certificate_created_at ?? r?.latest_certificate_created_at ?? "";
         if (!createdAt) return true;
-        return new Date(createdAt) >= from;
+        return new Date(createdAt).getTime() >= fromTs;
       });
     }
   }
@@ -72,18 +72,20 @@ export async function GET(req: Request) {
     // Include the full dateTo day (end of day)
     const to = new Date(dateTo);
     to.setHours(23, 59, 59, 999);
-    if (!Number.isNaN(to.getTime())) {
+    const toTs = to.getTime();
+    if (!Number.isNaN(toTs)) {
       rows = rows.filter((r: any) => {
-        const createdAt = String(
-          r?.created_at ??
-          r?.latest_active_certificate_created_at ??
-          r?.latest_certificate_created_at ??
-          ""
-        );
+        const createdAt =
+          r?.created_at ?? r?.latest_active_certificate_created_at ?? r?.latest_certificate_created_at ?? "";
         if (!createdAt) return true;
-        return new Date(createdAt) <= to;
+        return new Date(createdAt).getTime() <= toTs;
       });
     }
+  }
+
+  // Trim to requested limit after JS filtering
+  if (hasJsFilters && rows.length > limit) {
+    rows = rows.slice(0, limit);
   }
 
   return NextResponse.json({ rows });
