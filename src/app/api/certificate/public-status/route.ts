@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
 import Stripe from "stripe";
 
 export const runtime = "nodejs";
@@ -11,13 +11,6 @@ function graceDays(): number {
   const raw = process.env.BILLING_GRACE_DAYS ?? String(DEFAULT_GRACE_DAYS);
   const n = Math.max(0, Math.min(365, parseInt(raw, 10) || DEFAULT_GRACE_DAYS));
   return n;
-}
-
-function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
 function getStripe() {
@@ -45,7 +38,7 @@ export async function GET(req: NextRequest) {
     const pid = req.nextUrl.searchParams.get("pid") ?? req.nextUrl.searchParams.get("public_id");
     if (!pid) return NextResponse.json({ error: "Missing pid" }, { status: 400 });
 
-    const supabase = getSupabaseAdmin();
+    const supabase = createAdminClient();
 
     const c = await supabase
       .from("certificates")

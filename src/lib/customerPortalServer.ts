@@ -1,16 +1,13 @@
-﻿import crypto from "crypto";
+import crypto from "crypto";
+import { createAdminClient } from "@/lib/supabase/admin";
 
-const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SRK = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const PEPPER = process.env.CUSTOMER_AUTH_PEPPER!;
 
 export const CUSTOMER_COOKIE = "hc_cs";
 export const OTP_TTL_MIN = 10;
 export const SESSION_TTL_DAYS = 30;
 
-function assertEnv() {
-  if (!SUPA_URL) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL");
-  if (!SRK) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
+function assertPepper() {
   if (!PEPPER) throw new Error("Missing CUSTOMER_AUTH_PEPPER");
 }
 
@@ -34,146 +31,131 @@ export function normalizeLast4(last4: string) {
 
 // 重要：certificates.customer_phone_last4_hash と同じ方法で作る
 export function phoneLast4Hash(tenantId: string, last4: string) {
-  assertEnv();
+  assertPepper();
   const v = normalizeLast4(last4);
   return sha256Hex(`v1|${tenantId}|${v}|${PEPPER}`);
 }
 
 export function otpCodeHash(tenantId: string, email: string, phoneHash: string, code: string) {
-  assertEnv();
+  assertPepper();
   return sha256Hex(`otp|v1|${tenantId}|${normalizeEmail(email)}|${phoneHash}|${code}|${PEPPER}`);
 }
 
 export function sessionHash(token: string) {
-  assertEnv();
+  assertPepper();
   return sha256Hex(`sess|v1|${token}|${PEPPER}`);
 }
 
-async function supaGet(path: string) {
-  assertEnv();
-  const res = await fetch(`${SUPA_URL}/rest/v1/${path}`, {
-    method: "GET",
-    cache: "no-store",
-    headers: { apikey: SRK, Authorization: `Bearer ${SRK}` },
-  });
-  if (!res.ok) throw new Error(`Supabase GET ${path} failed: ${res.status} ${await res.text().catch(() => "")}`);
-  return await res.json();
-}
-
-async function supaPost(path: string, body: any, preferReturn = true) {
-  assertEnv();
-  const res = await fetch(`${SUPA_URL}/rest/v1/${path}`, {
-    method: "POST",
-    cache: "no-store",
-    headers: {
-      apikey: SRK,
-      Authorization: `Bearer ${SRK}`,
-      "Content-Type": "application/json",
-      Prefer: preferReturn ? "return=representation" : "return=minimal",
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`Supabase POST ${path} failed: ${res.status} ${await res.text().catch(() => "")}`);
-  return preferReturn ? await res.json() : null;
-}
-
-async function supaPatch(path: string, body: any) {
-  assertEnv();
-  const res = await fetch(`${SUPA_URL}/rest/v1/${path}`, {
-    method: "PATCH",
-    cache: "no-store",
-    headers: { apikey: SRK, Authorization: `Bearer ${SRK}`, "Content-Type": "application/json", Prefer: "return=minimal" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`Supabase PATCH ${path} failed: ${res.status} ${await res.text().catch(() => "")}`);
-}
-
 export async function getTenantIdBySlug(slug: string): Promise<string | null> {
-  const rows = await supaGet(`tenants?select=id&slug=eq.${encodeURIComponent(slug)}&limit=1`);
-  return rows?.[0]?.id ?? null;
+  const sb = createAdminClient();
+  const { data } = await sb.from("tenants").select("id").eq("slug", slug).limit(1).maybeSingle();
+  return data?.id ?? null;
 }
 
 export async function tenantHasPhoneHash(tenantId: string, phoneHash: string): Promise<boolean> {
-  const rows = await supaGet(
-    `certificates?select=id&tenant_id=eq.${tenantId}&customer_phone_last4_hash=eq.${phoneHash}&limit=1`
-  );
-  return Array.isArray(rows) && rows.length > 0;
+  const sb = createAdminClient();
+  const { data } = await sb
+    .from("certificates")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("customer_phone_last4_hash", phoneHash)
+    .limit(1)
+    .maybeSingle();
+  return !!data;
 }
 
 export async function createLoginCode(tenantId: string, email: string, phoneHash: string, code: string, expiresAtIso: string) {
+  const sb = createAdminClient();
   const code_hash = otpCodeHash(tenantId, email, phoneHash, code);
-  await supaPost("customer_login_codes", {
+  const { error } = await sb.from("customer_login_codes").insert({
     tenant_id: tenantId,
     email: normalizeEmail(email),
     phone_last4_hash: phoneHash,
     code_hash,
     expires_at: expiresAtIso,
-  }, false);
+  });
+  if (error) throw new Error(`createLoginCode failed: ${error.message}`);
 }
 
 export async function getLatestValidCodeRow(tenantId: string, email: string, phoneHash: string) {
-  const e = encodeURIComponent(normalizeEmail(email));
-  const rows = await supaGet(
-    `customer_login_codes?select=id,code_hash,expires_at,used_at,attempts&tenant_id=eq.${tenantId}&email=eq.${e}&phone_last4_hash=eq.${phoneHash}&order=created_at.desc&limit=1`
-  );
-  return rows?.[0] ?? null;
+  const sb = createAdminClient();
+  const { data } = await sb
+    .from("customer_login_codes")
+    .select("id, code_hash, expires_at, used_at, attempts")
+    .eq("tenant_id", tenantId)
+    .eq("email", normalizeEmail(email))
+    .eq("phone_last4_hash", phoneHash)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data ?? null;
 }
 
 export async function markCodeAttempt(id: string, attempts: number) {
-  await supaPatch(`customer_login_codes?id=eq.${id}`, { attempts });
+  const sb = createAdminClient();
+  const { error } = await sb.from("customer_login_codes").update({ attempts }).eq("id", id);
+  if (error) throw new Error(`markCodeAttempt failed: ${error.message}`);
 }
 
 export async function markCodeUsed(id: string) {
-  await supaPatch(`customer_login_codes?id=eq.${id}`, { used_at: new Date().toISOString() });
+  const sb = createAdminClient();
+  const { error } = await sb.from("customer_login_codes").update({ used_at: new Date().toISOString() }).eq("id", id);
+  if (error) throw new Error(`markCodeUsed failed: ${error.message}`);
 }
 
 export async function createSession(tenantId: string, email: string, phoneHash: string, last4Plain: string) {
+  const sb = createAdminClient();
   const token = randomHex(32);
   const sHash = sessionHash(token);
   const expires = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
-  await supaPost("customer_sessions", {
+  const { error } = await sb.from("customer_sessions").insert({
     tenant_id: tenantId,
     email: normalizeEmail(email),
     phone_last4_hash: phoneHash,
     session_hash: sHash,
     expires_at: expires,
-  }, false);
+  });
+  if (error) throw new Error(`createSession failed: ${error.message}`);
 
   return { token, expiresAtIso: expires };
 }
 
 export async function revokeSessionByToken(token: string) {
+  const sb = createAdminClient();
   const sHash = sessionHash(token);
-  await supaPatch(`customer_sessions?session_hash=eq.${sHash}`, { revoked_at: new Date().toISOString() });
+  const { error } = await sb
+    .from("customer_sessions")
+    .update({ revoked_at: new Date().toISOString() })
+    .eq("session_hash", sHash);
+  if (error) throw new Error(`revokeSessionByToken failed: ${error.message}`);
 }
 
 export async function validateSession(tenantId: string, token: string) {
+  const sb = createAdminClient();
   const sHash = sessionHash(token);
-  const rows = await supaGet(
-    `customer_sessions?select=id,email,phone_last4_hash,phone_last4_plain,expires_at,revoked_at&tenant_id=eq.${tenantId}&session_hash=eq.${sHash}&limit=1`
-  );
-  const r = rows?.[0];
-  if (!r) return null;
-  if (r.revoked_at) return null;
-  if (new Date(r.expires_at).getTime() < Date.now()) return null;
-  return r as { email: string; phone_last4_hash: string; phone_last4_plain: string | null };
+  const { data } = await sb
+    .from("customer_sessions")
+    .select("id, email, phone_last4_hash, phone_last4_plain, expires_at, revoked_at")
+    .eq("tenant_id", tenantId)
+    .eq("session_hash", sHash)
+    .limit(1)
+    .maybeSingle();
+  if (!data) return null;
+  if (data.revoked_at) return null;
+  if (new Date(data.expires_at).getTime() < Date.now()) return null;
+  return data as { email: string; phone_last4_hash: string; phone_last4_plain: string | null };
 }
 
 export async function listCertificatesForCustomer(tenantId: string, phoneHash: string, last4Plain: string) {
+  const sb = createAdminClient();
   // 新hash / 旧平文 / 旧バグ(hash列に平文) の3条件を1クエリで取得
-  const orFilter = [
-    `customer_phone_last4_hash.eq.${encodeURIComponent(phoneHash)}`,
-    `customer_phone_last4.eq.${encodeURIComponent(last4Plain)}`,
-    `customer_phone_last4_hash.eq.${encodeURIComponent(last4Plain)}`,
-  ].join(",");
-
-  const q =
-    `certificates?select=public_id,customer_name,vehicle_info_json,created_at,status` +
-    `&tenant_id=eq.${tenantId}` +
-    `&status=eq.active` +
-    `&or=(${orFilter})` +
-    `&order=created_at.desc`;
-  const rows = await supaGet(q);
-  return Array.isArray(rows) ? rows : [];
+  const { data } = await sb
+    .from("certificates")
+    .select("public_id, customer_name, vehicle_info_json, created_at, status")
+    .eq("tenant_id", tenantId)
+    .eq("status", "active")
+    .or(`customer_phone_last4_hash.eq.${phoneHash},customer_phone_last4.eq.${last4Plain},customer_phone_last4_hash.eq.${last4Plain}`)
+    .order("created_at", { ascending: false });
+  return data ?? [];
 }

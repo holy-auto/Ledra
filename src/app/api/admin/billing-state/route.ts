@@ -1,16 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
 import Stripe from "stripe";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceKey) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
-  return createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
-}
 
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -27,7 +20,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing access_token" }, { status: 400 });
     }
 
-    const admin = getSupabaseAdmin();
+    const admin = createAdminClient();
 
     // access_token を検証して user_id を確定
     const u = await admin.auth.getUser(access_token);

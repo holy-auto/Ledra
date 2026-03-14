@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { createClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,17 +37,10 @@ function getStripe(): Stripe {
   return new Stripe(key, { apiVersion: "2025-02-24.acacia" as any });
 }
 
-function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-}
-
 type TenantSelector = { by: "id"; value: string } | { by: "slug"; value: string };
 
 async function resolveTenantSelector(params: {
-  supabase: ReturnType<typeof getSupabaseAdmin>;
+  supabase: SupabaseClient;
   tenant_id?: string | null;
   tenant_slug?: string | null;
   customerId?: string | null;
@@ -82,7 +76,7 @@ async function resolveTenantSelector(params: {
 }
 
 async function updateTenantBySelector(
-  supabase: ReturnType<typeof getSupabaseAdmin>,
+  supabase: SupabaseClient,
   selector: TenantSelector,
   patch: Record<string, any>
 ) {
@@ -92,7 +86,7 @@ async function updateTenantBySelector(
   if (error) throw error;
 }
 
-async function syncBySubscription(stripe: Stripe, supabase: ReturnType<typeof getSupabaseAdmin>, sub: Stripe.Subscription) {
+async function syncBySubscription(stripe: Stripe, supabase: SupabaseClient, sub: Stripe.Subscription) {
   const subscriptionId = sub.id;
   const customerId = asStringId(sub.customer);
 
@@ -135,7 +129,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
-  const supabase = getSupabaseAdmin();
+  const supabase = createAdminClient();
 
   try {
     switch (event.type) {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient as createSupabaseAdmin } from "@supabase/supabase-js";
-import { createClient as createSupabaseAnon } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
 // 既存の「セッション(cookie)で動く」サーバークライアントを使う（あなたの他APIが動いてる前提）
 import { createClient as createSupabaseServer } from "@/lib/supabase/server";
 import { logInsurerAccess } from "@/lib/insurer/audit";
@@ -13,20 +13,12 @@ type CsvRow = {
   display_name: string | null;
 };
 
-function getAdminSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const service = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  return createSupabaseAdmin(url, service, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
-
 // PowerShell/curl での確認用に Authorization: Bearer も受けられるようにする
 function getAnonSupabaseWithBearer(req: Request) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
   const authz = req.headers.get("authorization") || "";
-  return createSupabaseAnon(url, anon, {
+  return createClient(url, anon, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: authz ? { headers: { Authorization: authz } } : undefined,
   });
@@ -125,7 +117,7 @@ export async function POST(req: Request) {
 
   // 3) 対象 insurer_id を特定（adminが所属する insurer を1つ取る）
   //    ここは service role で取得してOK（すでに admin 判定済み）
-  const adminSb = getAdminSupabase();
+  const adminSb = createAdminClient();
 
   const { data: adminRow, error: adminRowErr } = await adminSb
     .from("insurer_users")

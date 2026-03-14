@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { createClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,13 +17,6 @@ function getStripe() {
   return new Stripe(key, { apiVersion: "2025-02-24.acacia" as any });
 }
 
-function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-}
-
 function baseUrl(req: NextRequest) {
   const origin = req.headers.get("origin") ?? "";
   const app = process.env.APP_URL ?? origin;
@@ -33,7 +26,7 @@ function baseUrl(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const stripe = getStripe();
-    const admin = getSupabaseAdmin();
+    const admin = createAdminClient();
 
     const body = await req.json().catch(() => ({} as any));
     const access_token = body?.access_token as string | undefined;
