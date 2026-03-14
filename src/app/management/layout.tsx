@@ -13,10 +13,11 @@ const navItems = [
 
 export default async function ManagementLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createSupabaseServerClient();
-  const { data: userRes } = await supabase.auth.getUser();
+  const { data: userRes, error: authError } = await supabase.auth.getUser();
+  console.log("[ManagementLayout] auth:", { user: userRes?.user?.id, email: userRes?.user?.email, authError });
   if (!userRes?.user) notFound();
 
-  const { data: membership } = await supabase
+  const { data: membership, error: membershipError } = await supabase
     .from("tenant_memberships")
     .select("role")
     .eq("user_id", userRes.user.id)
@@ -24,6 +25,7 @@ export default async function ManagementLayout({ children }: { children: React.R
     .limit(1)
     .maybeSingle();
 
+  console.log("[ManagementLayout] membership:", { membership, membershipError });
   if (!membership) notFound();
 
   return (
