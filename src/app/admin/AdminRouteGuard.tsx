@@ -5,8 +5,6 @@ import { ReactNode, useMemo } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useAdminBillingStatus } from "@/lib/billing/useAdminBillingStatus";
 import { canUseFeature, featureLabel, normalizePlanTier, type FeatureKey } from "@/lib/billing/planFeatures";
-import type { FeatureId } from "@/lib/billing/featureKeys";
-import { FEATURES } from "@/lib/billing/featureKeys";
 
 function requiredFeatureForPath(pathname: string): FeatureKey | null {
   if (pathname.startsWith("/admin/templates")) return "manage_templates";
@@ -30,10 +28,16 @@ export default function AdminRouteGuard({ children }: { children: ReactNode }) {
 
   const feature = requiredFeatureForPath(pathname);
 
+  // useMemo must be called unconditionally (before any early returns)
+  const nextUrl = useMemo(() => {
+    const qs = sp?.toString();
+    return qs ? (pathname + "?" + qs) : pathname;
+  }, [pathname, sp]);
+
   // billing画面は常に触れる（ループ防止）
   if (!feature || pathname.startsWith("/admin/billing")) return <>{children}</>;
 
-  // 取得できてない間は“誤ブロック”しない
+  // 取得できてない間は"誤ブロック"しない
   if (!bs.data) return <>{children}</>;
 
   const isActive = !!bs.data.is_active;
@@ -41,11 +45,6 @@ export default function AdminRouteGuard({ children }: { children: ReactNode }) {
   const allowed = isActive && canUseFeature(planTier, feature);
 
   if (allowed) return <>{children}</>;
-
-  const nextUrl = useMemo(() => {
-    const qs = sp?.toString();
-    return qs ? (pathname + "?" + qs) : pathname;
-  }, [pathname, sp]);
 
   const title = !isActive
     ? "支払いが停止中のため、この画面の操作は無効です。"

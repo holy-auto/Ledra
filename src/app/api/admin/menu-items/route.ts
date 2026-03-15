@@ -38,7 +38,10 @@ export async function GET(req: NextRequest) {
     const { data, error } = await query;
     if (error) return NextResponse.json({ error: "db_error", detail: error.message }, { status: 500 });
 
-    return NextResponse.json({ items: data ?? [] });
+    return NextResponse.json({
+      items: data ?? [],
+      stats: { total: data?.length ?? 0 },
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
   }

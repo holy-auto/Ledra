@@ -27,12 +27,12 @@ const emptyItem = (): DocumentItem => ({
   amount: 0,
 });
 
-export default function DocumentsClient() {
+export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilter?: string } = {}) {
   const [docs, setDocs] = useState<DocumentRow[]>([]);
   const [stats, setStats] = useState<Stats>({ total: 0, unpaid_amount: 0 });
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<string>(initialTypeFilter ?? "all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
   // Create form
@@ -102,7 +102,7 @@ export default function DocumentsClient() {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      await Promise.all([fetchDocs(), fetchCustomers(), fetchMenuItems()]);
+      await Promise.all([fetchDocs(initialTypeFilter), fetchCustomers(), fetchMenuItems()]);
       setLoading(false);
     })();
   }, [fetchDocs, fetchCustomers, fetchMenuItems]);
