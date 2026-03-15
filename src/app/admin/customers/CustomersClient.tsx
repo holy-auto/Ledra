@@ -208,7 +208,7 @@ export default function CustomersClient() {
           {/* Search */}
           <section className="glass-card p-5">
             <div className="flex gap-3 items-end flex-wrap">
-              <div className="flex-1 min-w-[220px] space-y-1">
+              <div className="flex-1 min-w-0 space-y-1">
                 <label className="text-xs text-muted">検索（名前・メール・電話番号）</label>
                 <input
                   type="text"
@@ -437,9 +437,9 @@ export default function CustomersClient() {
                 <thead className="bg-surface-hover">
                   <tr>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">顧客名</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">フリガナ</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">メール</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">電話番号</th>
+                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">フリガナ</th>
+                    <th className="hidden md:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">メール</th>
+                    <th className="hidden md:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">電話番号</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">証明書</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">登録日</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">操作</th>
@@ -456,9 +456,9 @@ export default function CustomersClient() {
                           {c.name}
                         </Link>
                       </td>
-                      <td className="px-5 py-3.5 text-secondary">{c.name_kana ?? "-"}</td>
-                      <td className="px-5 py-3.5 text-secondary">{c.email ?? "-"}</td>
-                      <td className="px-5 py-3.5 text-secondary">{c.phone ?? "-"}</td>
+                      <td className="hidden sm:table-cell px-5 py-3.5 text-secondary">{c.name_kana ?? "-"}</td>
+                      <td className="hidden md:table-cell px-5 py-3.5 text-secondary">{c.email ?? "-"}</td>
+                      <td className="hidden md:table-cell px-5 py-3.5 text-secondary">{c.phone ?? "-"}</td>
                       <td className="px-5 py-3.5">
                         <Badge variant={c.certificates_count > 0 ? "info" : "default"}>
                           {c.certificates_count}

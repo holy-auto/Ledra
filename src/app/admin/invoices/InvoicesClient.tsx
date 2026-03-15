@@ -346,7 +346,7 @@ export default function InvoicesClient() {
               else { aging.d90++; aging.d90Amt += inv.total; }
             }
             return (
-              <section className="grid gap-4 sm:grid-cols-4">
+              <section className="grid gap-4 grid-cols-2 sm:grid-cols-4">
                 <div className="glass-card p-4">
                   <div className="text-[10px] font-semibold tracking-[0.18em] text-muted">期限内</div>
                   <div className="mt-1 text-lg font-bold text-primary">{formatJpy(aging.currentAmt)}</div>
@@ -476,8 +476,8 @@ export default function InvoicesClient() {
                         )}
                       </div>
                     )}
-                    <div className="grid grid-cols-12 gap-2 items-end">
-                      <div className="col-span-5 space-y-1">
+                    <div className="grid grid-cols-6 sm:grid-cols-12 gap-2 items-end">
+                      <div className="col-span-6 sm:col-span-5 space-y-1">
                         {idx === 0 && <label className="text-xs text-muted">内容</label>}
                         <input
                           type="text"
@@ -487,7 +487,7 @@ export default function InvoicesClient() {
                           onChange={(e) => updateItem(idx, "description", e.target.value)}
                         />
                       </div>
-                      <div className="col-span-2 space-y-1">
+                      <div className="col-span-2 sm:col-span-2 space-y-1">
                         {idx === 0 && <label className="text-xs text-muted">数量</label>}
                         <input
                           type="number"
@@ -497,7 +497,7 @@ export default function InvoicesClient() {
                           onChange={(e) => updateItem(idx, "quantity", e.target.value)}
                         />
                       </div>
-                      <div className="col-span-2 space-y-1">
+                      <div className="col-span-2 sm:col-span-2 space-y-1">
                         {idx === 0 && <label className="text-xs text-muted">単価</label>}
                         <input
                           type="number"
@@ -507,13 +507,13 @@ export default function InvoicesClient() {
                           onChange={(e) => updateItem(idx, "unit_price", e.target.value)}
                         />
                       </div>
-                      <div className="col-span-2 space-y-1">
+                      <div className="col-span-2 sm:col-span-2 space-y-1">
                         {idx === 0 && <label className="text-xs text-muted">金額</label>}
                         <div className="input-field bg-transparent text-secondary cursor-default">
                           {item.amount.toLocaleString("ja-JP")}
                         </div>
                       </div>
-                      <div className="col-span-1">
+                      <div className="col-span-6 sm:col-span-1">
                         <button
                           type="button"
                           className="btn-ghost !px-2 !py-1 !text-xs text-red-500"
@@ -671,8 +671,8 @@ export default function InvoicesClient() {
                   <tr>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">請求番号</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">顧客名</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">発行日</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">支払期限</th>
+                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">発行日</th>
+                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">支払期限</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">合計</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">ステータス</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">操作</th>
@@ -690,10 +690,10 @@ export default function InvoicesClient() {
                         </Link>
                       </td>
                       <td className="px-5 py-3.5 text-secondary">{inv.customer_name ?? "-"}</td>
-                      <td className="px-5 py-3.5 whitespace-nowrap text-secondary">
+                      <td className="hidden sm:table-cell px-5 py-3.5 whitespace-nowrap text-secondary">
                         {formatDate(inv.issued_at)}
                       </td>
-                      <td className="px-5 py-3.5 whitespace-nowrap text-secondary">
+                      <td className="hidden sm:table-cell px-5 py-3.5 whitespace-nowrap text-secondary">
                         {formatDate(inv.due_date)}
                       </td>
                       <td className="px-5 py-3.5 font-medium text-primary">

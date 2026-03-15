@@ -129,7 +129,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (e: any) {
     console.error("invoices list failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
 
@@ -204,7 +204,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, invoice: data });
   } catch (e: any) {
     console.error("invoice create failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
 
@@ -276,7 +276,7 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ ok: true, invoice: data });
   } catch (e: any) {
     console.error("invoice update failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
 
@@ -323,6 +323,6 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     console.error("invoice delete failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }

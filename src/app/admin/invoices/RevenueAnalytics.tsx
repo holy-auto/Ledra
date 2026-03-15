@@ -167,7 +167,7 @@ export default function RevenueAnalytics() {
         {viewMode === "monthly" ? (
           <>
             {/* Monthly Bar Chart */}
-            <div className="flex items-end gap-2 h-44">
+            <div className="flex items-end gap-1 sm:gap-2 h-36 sm:h-44 overflow-x-auto">
               {chartMonths.map((m, idx) => {
                 const height = maxVal > 0 ? (m.combinedTotal / maxVal) * 100 : 0;
                 const isCurrentMonth = idx === chartMonths.length - 1;
@@ -225,8 +225,8 @@ export default function RevenueAnalytics() {
                   <thead>
                     <tr>
                       <th className="text-left py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">月</th>
-                      <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">請求書</th>
-                      <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">帳票</th>
+                      <th className="hidden sm:table-cell text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">請求書</th>
+                      <th className="hidden sm:table-cell text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">帳票</th>
                       <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">合計</th>
                       <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">件数</th>
                       <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">前月比</th>
@@ -241,8 +241,8 @@ export default function RevenueAnalytics() {
                       return (
                         <tr key={m.month} className={idx === 0 ? "bg-[rgba(0,113,227,0.03)]" : ""}>
                           <td className="py-2 px-2 text-secondary font-medium">{m.label}</td>
-                          <td className="py-2 px-2 text-right text-secondary">{formatJpy(m.invoiceTotal)}</td>
-                          <td className="py-2 px-2 text-right text-secondary">{formatJpy(m.documentTotal)}</td>
+                          <td className="hidden sm:table-cell py-2 px-2 text-right text-secondary">{formatJpy(m.invoiceTotal)}</td>
+                          <td className="hidden sm:table-cell py-2 px-2 text-right text-secondary">{formatJpy(m.documentTotal)}</td>
                           <td className="py-2 px-2 text-right font-semibold text-primary">{formatJpy(m.combinedTotal)}</td>
                           <td className="py-2 px-2 text-right text-[#aeaeb2]">{m.count}</td>
                           <td className="py-2 px-2 text-right">
@@ -265,7 +265,7 @@ export default function RevenueAnalytics() {
         ) : (
           <>
             {/* Yearly View */}
-            <div className="flex items-end gap-4 h-44 px-8">
+            <div className="flex items-end gap-2 sm:gap-4 h-36 sm:h-44 px-2 sm:px-8 overflow-x-auto">
               {years.map((y, idx) => {
                 const yearMax = Math.max(...years.map((yr) => yr.total), 1);
                 const height = yearMax > 0 ? (y.total / yearMax) * 100 : 0;

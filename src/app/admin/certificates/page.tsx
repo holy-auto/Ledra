@@ -5,6 +5,7 @@ import CertificatesTableClient from "./CertificatesTableClient";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { buildBillingDenyUrl } from "@/lib/billing/billingRedirect";
 import PageHeader from "@/components/ui/PageHeader";
+import { escapeIlike } from "@/lib/sanitize";
 
 type SearchParams = { q?: string };
 
@@ -60,7 +61,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
     .order("created_at", { ascending: false })
     .limit(50);
 
-  if (q) query = query.or(`public_id.ilike.%${q}%,customer_name.ilike.%${q}%`);
+  if (q) {
+    const sq = escapeIlike(q);
+    query = query.or(`public_id.ilike.%${sq}%,customer_name.ilike.%${sq}%`);
+  }
 
   const { data: rows, error } = await query;
   if (error) return <main className="space-y-6"><div className="text-red-500">読み込みエラー: {error.message}</div></main>;
@@ -85,7 +89,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
         actions={
           <div className="flex gap-3 items-center flex-wrap">
             <form className="flex gap-2" action="/admin/certificates" method="get">
-              <input name="q" defaultValue={q} placeholder="検索（ID / 名前）" className="input-field w-64" />
+              <input name="q" defaultValue={q} placeholder="検索（ID / 名前）" className="input-field w-full sm:w-64" />
               <button className="btn-secondary">検索</button>
               <Link className="text-sm underline self-center text-muted hover:text-primary" href="/admin/certificates">
                 クリア

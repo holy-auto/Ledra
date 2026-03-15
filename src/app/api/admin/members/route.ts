@@ -85,7 +85,7 @@ export async function GET() {
     });
   } catch (e: any) {
     console.error("members list failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
 
@@ -126,31 +126,40 @@ export async function POST(req: NextRequest) {
       }, { status: 403 });
     }
 
-    // 既存ユーザーを検索、なければ招待作成
-    const { data: existingUsers } = await admin.auth.admin.listUsers();
-    const existingUser = existingUsers?.users?.find((u) => u.email === email);
-
+    const userMeta = displayName ? { display_name: displayName } : undefined;
     let userId: string;
 
-    const userMeta = displayName ? { display_name: displayName } : undefined;
+    // まず招待を試み、既存ユーザーの場合はフォールバック
+    const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
+      data: userMeta ?? {},
+    });
 
-    if (existingUser) {
-      userId = existingUser.id;
+    if (invited?.user) {
+      userId = invited.user.id;
+    } else if (inviteErr?.message?.includes("already been registered")) {
+      // 既存ユーザー → auth.users からメールで検索（ページ分割で全件走査を回避）
+      let found: { id: string; user_metadata?: Record<string, unknown> } | null = null;
+      let page = 1;
+      while (!found) {
+        const { data: page_data } = await admin.auth.admin.listUsers({ page, perPage: 100 });
+        if (!page_data?.users?.length) break;
+        const match = page_data.users.find((u) => u.email === email);
+        if (match) { found = match; break; }
+        if (page_data.users.length < 100) break;
+        page++;
+      }
+      if (!found) {
+        return NextResponse.json({ error: "user_lookup_failed", message: "既存ユーザーが見つかりませんでした。" }, { status: 500 });
+      }
+      userId = found.id;
       // 既存ユーザーに display_name をセット（未設定の場合のみ）
-      if (displayName && !existingUser.user_metadata?.display_name) {
+      if (displayName && !found.user_metadata?.display_name) {
         await admin.auth.admin.updateUserById(userId, {
-          user_metadata: { ...existingUser.user_metadata, display_name: displayName },
+          user_metadata: { ...found.user_metadata, display_name: displayName },
         });
       }
     } else {
-      // Supabase Auth に招待ユーザーを作成
-      const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
-        data: userMeta ?? {},
-      });
-      if (inviteErr || !invited?.user) {
-        return NextResponse.json({ error: "invite_failed", detail: inviteErr?.message ?? "unknown" }, { status: 500 });
-      }
-      userId = invited.user.id;
+      return NextResponse.json({ error: "invite_failed", message: inviteErr?.message ?? "招待に失敗しました。" }, { status: 500 });
     }
 
     // 既にこのテナントに所属していないか確認
@@ -188,7 +197,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, user_id: userId, email });
   } catch (e: any) {
     console.error("member add failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
 
@@ -252,7 +261,7 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ ok: true, role: newRole });
   } catch (e: any) {
     console.error("member role change failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
 
@@ -295,6 +304,6 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     console.error("member delete failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }

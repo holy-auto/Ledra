@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { escapeIlike } from "@/lib/sanitize";
 
 export const dynamic = "force-dynamic";
 
@@ -76,7 +77,10 @@ export async function GET(req: NextRequest) {
 
     if (maker) query = query.eq("maker", maker);
     if (bodyType) query = query.eq("body_type", bodyType);
-    if (search) query = query.or(`maker.ilike.%${search}%,model.ilike.%${search}%`);
+    if (search) {
+      const sq = escapeIlike(search);
+      query = query.or(`maker.ilike.%${sq}%,model.ilike.%${sq}%`);
+    }
 
     const { data: vehicles, error } = await query;
     if (error) return NextResponse.json({ error: "db_error", detail: error.message }, { status: 500 });

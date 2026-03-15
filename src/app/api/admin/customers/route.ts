@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { escapeIlike } from "@/lib/sanitize";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +41,8 @@ export async function GET(req: NextRequest) {
       .order("created_at", { ascending: false });
 
     if (q) {
-      query = query.or(`name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%,name_kana.ilike.%${q}%`);
+      const sq = escapeIlike(q);
+      query = query.or(`name.ilike.%${sq}%,email.ilike.%${sq}%,phone.ilike.%${sq}%,name_kana.ilike.%${sq}%`);
     }
 
     const { data: customers, error } = await query;
@@ -99,7 +101,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (e: any) {
     console.error("customers list failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
 
@@ -132,7 +134,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, customer: data });
   } catch (e: any) {
     console.error("customer create failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
 
@@ -174,7 +176,7 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ ok: true, customer: data });
   } catch (e: any) {
     console.error("customer update failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
 
@@ -220,6 +222,6 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     console.error("customer delete failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
