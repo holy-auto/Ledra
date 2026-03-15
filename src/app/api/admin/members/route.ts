@@ -265,6 +265,70 @@ export async function PUT(req: NextRequest) {
   }
 }
 
+// ─── PUT: ロール変更 ───
+export async function PUT(req: NextRequest) {
+  try {
+    const supabase = await createSupabaseServerClient();
+    const caller = await resolveCallerTenant(supabase);
+    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+    // owner または admin のみロール変更可
+    if (caller.role !== "owner" && caller.role !== "admin") {
+      return NextResponse.json({ error: "forbidden", message: "ロール変更の権限がありません。" }, { status: 403 });
+    }
+
+    const body = await req.json().catch(() => ({} as any));
+    const targetUserId = (body?.user_id ?? "").trim();
+    const newRole = (body?.role ?? "").trim();
+
+    if (!targetUserId || !newRole) {
+      return NextResponse.json({ error: "missing_params", message: "user_id と role は必須です。" }, { status: 400 });
+    }
+
+    const validRoles = ["admin", "staff", "viewer"];
+    if (!validRoles.includes(newRole)) {
+      return NextResponse.json({ error: "invalid_role", message: "無効なロールです。" }, { status: 400 });
+    }
+
+    // 自分自身のロール変更は不可
+    if (targetUserId === caller.userId) {
+      return NextResponse.json({ error: "cannot_change_self", message: "自分のロールは変更できません。" }, { status: 400 });
+    }
+
+    const admin = getSupabaseAdmin();
+
+    // owner のロール変更は不可
+    const { data: targetMem } = await admin
+      .from("tenant_memberships")
+      .select("role")
+      .eq("tenant_id", caller.tenantId)
+      .eq("user_id", targetUserId)
+      .maybeSingle();
+
+    if (!targetMem) {
+      return NextResponse.json({ error: "not_found", message: "メンバーが見つかりません。" }, { status: 404 });
+    }
+    if (targetMem.role === "owner") {
+      return NextResponse.json({ error: "cannot_change_owner", message: "オーナーのロールは変更できません。" }, { status: 400 });
+    }
+
+    const { error } = await admin
+      .from("tenant_memberships")
+      .update({ role: newRole })
+      .eq("tenant_id", caller.tenantId)
+      .eq("user_id", targetUserId);
+
+    if (error) {
+      return NextResponse.json({ error: "update_failed", detail: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true, role: newRole });
+  } catch (e: any) {
+    console.error("member role change failed", e);
+    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+  }
+}
+
 // ─── DELETE: メンバー削除 ───
 export async function DELETE(req: NextRequest) {
   try {
