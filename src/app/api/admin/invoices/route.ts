@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 
 export const dynamic = "force-dynamic";
 
@@ -232,6 +233,7 @@ export async function PUT(req: NextRequest) {
     if (body.show_logo !== undefined) updates.show_logo = !!body.show_logo;
     if (body.show_bank_info !== undefined) updates.show_bank_info = !!body.show_bank_info;
     if (body.recipient_name !== undefined) updates.recipient_name = (body.recipient_name ?? "").trim() || null;
+    if (body.payment_date !== undefined) updates.payment_date = body.payment_date || null;
 
     // 明細更新
     if (body.items !== undefined) {
@@ -278,12 +280,16 @@ export async function PUT(req: NextRequest) {
   }
 }
 
-// ─── DELETE: 請求書削除（下書きのみ） ───
+// ─── DELETE: 請求書削除（下書きのみ、admin以上） ───
 export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const callerWithRole = await resolveCallerWithRole(supabase);
+    if (!callerWithRole) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!requireMinRole(callerWithRole, "admin")) {
+      return NextResponse.json({ error: "forbidden", message: "削除権限がありません。" }, { status: 403 });
+    }
+    const caller = { userId: callerWithRole.userId, tenantId: callerWithRole.tenantId };
 
     const body = await req.json().catch(() => ({} as any));
     const id = (body?.id ?? "").trim();

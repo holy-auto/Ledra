@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabaseAdmin";
 import SettingsForm from "./SettingsForm";
+import FollowUpSettings from "./FollowUpSettings";
 import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -187,6 +188,16 @@ export default async function AdminSettingsPage() {
               onboarded: (ext as any).stripe_connect_onboarded ?? false,
             } : null}
           />
+        </section>
+
+        {/* Follow-up settings */}
+        <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+          <div className="mb-5">
+            <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">FOLLOW-UP</div>
+            <div className="mt-1 text-base font-semibold text-neutral-900">顧客フォロー設定</div>
+            <p className="mt-1 text-xs text-neutral-500">有効期限リマインダーや施工後フォローの自動送信を設定します。</p>
+          </div>
+          <FollowUpSettings />
         </section>
 
         {/* Account info */}

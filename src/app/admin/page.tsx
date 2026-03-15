@@ -25,6 +25,10 @@ type DashboardStats = {
   unpaidAmount: number;
   recentActivity: { date: string; count: number }[];
   statusBreakdown: { status: string; count: number }[];
+  // Reservations & orders
+  todayReservations: number;
+  activeReservations: number;
+  activeOrders: number;
   // Platform-wide
   platformCertStats: { total: number; active: number; void: number; expired: number; draft: number } | null;
   categoryStats: { category: string; count: number }[] | null;
@@ -100,6 +104,38 @@ async function fetchStats(supabase: any, tenantId: string): Promise<DashboardSta
     .filter((inv: any) => inv.status === "sent" || inv.status === "overdue")
     .reduce((sum: number, inv: any) => sum + (inv.total ?? 0), 0);
 
+  // 予約統計
+  const today = new Date().toISOString().slice(0, 10);
+  let todayReservations = 0;
+  let activeReservations = 0;
+  try {
+    const { count: todayCount } = await supabase
+      .from("reservations")
+      .select("*", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .eq("scheduled_date", today)
+      .neq("status", "cancelled");
+    todayReservations = todayCount ?? 0;
+
+    const { count: activeCount } = await supabase
+      .from("reservations")
+      .select("*", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .in("status", ["confirmed", "arrived", "in_progress"]);
+    activeReservations = activeCount ?? 0;
+  } catch { /* reservations table may not exist yet */ }
+
+  // 受発注統計
+  let activeOrders = 0;
+  try {
+    const { count: ordCount } = await supabase
+      .from("job_orders")
+      .select("*", { count: "exact", head: true })
+      .or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`)
+      .in("status", ["pending", "accepted", "in_progress"]);
+    activeOrders = ordCount ?? 0;
+  } catch { /* job_orders table may not exist yet */ }
+
   // プラットフォーム全体統計（RPC）
   let platformCertStats = null;
   let categoryStats = null;
@@ -136,6 +172,9 @@ async function fetchStats(supabase: any, tenantId: string): Promise<DashboardSta
     unpaidAmount,
     recentActivity,
     statusBreakdown,
+    todayReservations,
+    activeReservations,
+    activeOrders,
     platformCertStats,
     categoryStats,
     insurerCount,
@@ -190,6 +229,25 @@ export default async function AdminHome() {
                 <div className="mt-1 text-xs text-muted">チームメンバー</div>
               </div>
             </div>
+          </div>
+
+          {/* Reservations & Orders */}
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Link href="/admin/reservations" className="glass-card p-5 hover:bg-surface-hover transition-colors">
+              <div className="text-xs font-semibold tracking-[0.18em] text-muted">TODAY</div>
+              <div className="mt-2 text-2xl font-bold text-[#5856d6]">{stats.todayReservations}</div>
+              <div className="mt-1 text-xs text-muted">本日の予約</div>
+            </Link>
+            <Link href="/admin/reservations" className="glass-card p-5 hover:bg-surface-hover transition-colors">
+              <div className="text-xs font-semibold tracking-[0.18em] text-muted">IN PROGRESS</div>
+              <div className="mt-2 text-2xl font-bold text-[#0071e3]">{stats.activeReservations}</div>
+              <div className="mt-1 text-xs text-muted">進行中の予約・作業</div>
+            </Link>
+            <Link href="/admin/orders" className="glass-card p-5 hover:bg-surface-hover transition-colors">
+              <div className="text-xs font-semibold tracking-[0.18em] text-muted">ORDERS</div>
+              <div className="mt-2 text-2xl font-bold text-[#b35c00]">{stats.activeOrders}</div>
+              <div className="mt-1 text-xs text-muted">進行中の受発注</div>
+            </Link>
           </div>
 
           {/* Tenant sub-stats */}

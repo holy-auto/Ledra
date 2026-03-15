@@ -98,3 +98,44 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
+
+// ─── PUT: ステータス更新 ───
+export async function PUT(req: NextRequest) {
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { data: userRes } = await supabase.auth.getUser();
+    if (!userRes?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const tenantId = await getMyTenantId(supabase);
+    if (!tenantId) return NextResponse.json({ error: "No tenant" }, { status: 403 });
+
+    const body = await req.json();
+    const { id, status } = body;
+
+    if (!id || !status) {
+      return NextResponse.json({ error: "id and status are required" }, { status: 400 });
+    }
+
+    const validStatuses = ["pending", "accepted", "in_progress", "completed", "rejected", "cancelled"];
+    if (!validStatuses.includes(status)) {
+      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+    }
+
+    const { data, error } = await supabase
+      .from("job_orders")
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`)
+      .select()
+      .single();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true, order: data });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}

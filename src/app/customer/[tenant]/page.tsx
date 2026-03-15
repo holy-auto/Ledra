@@ -12,6 +12,30 @@ type Row = {
   status: string;
 };
 
+type HistoryItem = {
+  id: string;
+  type: string;
+  title: string;
+  description: string | null;
+  performed_at: string;
+};
+
+type Reservation = {
+  id: string;
+  date: string;
+  time_slot: string | null;
+  menu: string | null;
+  status: string;
+  note: string | null;
+};
+
+type Profile = {
+  name: string;
+  email: string | null;
+  phone: string | null;
+  certificateCount: number;
+} | null;
+
 type VehicleInfo = Record<string, any> | null;
 
 function normalizeVehicleInfo(v: any): VehicleInfo {
@@ -93,8 +117,12 @@ export default function CustomerListPage() {
   const tenant = useMemo(() => (params?.tenant ?? "").toString(), [params]);
 
   const [rows, setRows] = useState<Row[]>([]);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [profile, setProfile] = useState<Profile>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [tab, setTab] = useState<"certs" | "history" | "reservations">("certs");
 
   async function load() {
     if (!tenant) return;
@@ -133,6 +161,14 @@ export default function CustomerListPage() {
     });
     setRows(rows);
     setLoading(false);
+
+    // Load additional data in background
+    fetch(`/api/customer/list?tenant=${encodeURIComponent(tenant)}&action=profile`, { cache: "no-store", credentials: "include" })
+      .then((r) => r.json()).then((j) => { if (j.profile) setProfile(j.profile); }).catch(() => {});
+    fetch(`/api/customer/list?tenant=${encodeURIComponent(tenant)}&action=history`, { cache: "no-store", credentials: "include" })
+      .then((r) => r.json()).then((j) => { if (j.history) setHistory(j.history); }).catch(() => {});
+    fetch(`/api/customer/list?tenant=${encodeURIComponent(tenant)}&action=reservations`, { cache: "no-store", credentials: "include" })
+      .then((r) => r.json()).then((j) => { if (j.reservations) setReservations(j.reservations); }).catch(() => {});
   }
 
   async function logout() {
@@ -153,8 +189,15 @@ export default function CustomerListPage() {
     <main className="mx-auto max-w-[900px] p-6 font-sans">
       <header className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold">お客様の証明書一覧</h1>
-          <div className="mt-1 text-sm text-neutral-500">店舗: {tenant || "..."}</div>
+          <h1 className="text-xl font-bold">
+            {profile ? `${profile.name} 様` : "お客様マイページ"}
+          </h1>
+          <div className="mt-1 text-sm text-neutral-500">
+            店舗: {tenant || "..."}
+            {profile && (
+              <span className="ml-3">証明書: {profile.certificateCount}件</span>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -175,13 +218,95 @@ export default function CustomerListPage() {
         </div>
       </header>
 
+      {/* Profile card */}
+      {profile && (profile.email || profile.phone) && (
+        <div className="mb-4 rounded-xl border border-neutral-200 bg-neutral-50 p-3.5 text-sm">
+          <div className="font-semibold text-neutral-700 mb-1">プロフィール</div>
+          <div className="flex flex-wrap gap-x-6 gap-y-1 text-neutral-600">
+            {profile.email && <div>メール: {profile.email}</div>}
+            {profile.phone && <div>電話: {profile.phone}</div>}
+          </div>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="mb-3 flex gap-1 border-b border-neutral-200">
+        {([
+          { key: "certs" as const, label: "証明書", count: rows.length },
+          { key: "history" as const, label: "施工履歴", count: history.length },
+          { key: "reservations" as const, label: "予約", count: reservations.length },
+        ]).map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              tab === t.key
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-neutral-500 hover:text-neutral-700"
+            }`}
+          >
+            {t.label}{t.count > 0 ? ` (${t.count})` : ""}
+          </button>
+        ))}
+      </div>
+
       {err ? (
         <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm">
           {err}（ログインが必要） → <a href={`/customer/${tenant}/login`} className="underline">ログインへ</a>
         </div>
       ) : null}
 
-      <div className="mt-3 grid gap-2.5">
+      {/* History tab */}
+      {tab === "history" && (
+        <div className="mt-3 grid gap-2.5">
+          {history.length === 0 ? (
+            <div className="text-sm text-neutral-500">施工履歴がありません。</div>
+          ) : (
+            history.map((h) => (
+              <div key={h.id} className="rounded-xl border border-neutral-200 p-3.5">
+                <div className="flex items-baseline justify-between gap-2">
+                  <div className="text-sm font-semibold text-neutral-800">{h.title ?? h.type}</div>
+                  <div className="text-xs text-neutral-500">{formatDateTime(h.performed_at)}</div>
+                </div>
+                {h.description && (
+                  <div className="mt-1 text-xs text-neutral-600">{h.description}</div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Reservations tab */}
+      {tab === "reservations" && (
+        <div className="mt-3 grid gap-2.5">
+          {reservations.length === 0 ? (
+            <div className="text-sm text-neutral-500">今後の予約はありません。</div>
+          ) : (
+            reservations.map((r) => (
+              <div key={r.id} className="rounded-xl border border-neutral-200 p-3.5">
+                <div className="flex items-baseline justify-between gap-2">
+                  <div className="text-sm font-semibold text-neutral-800">
+                    {r.date}{r.time_slot ? ` ${r.time_slot}` : ""}
+                  </div>
+                  <div className={`rounded-full border px-2 py-0.5 text-xs ${
+                    r.status === "confirmed" ? "border-blue-200 bg-blue-50 text-blue-700" :
+                    r.status === "in_progress" ? "border-amber-200 bg-amber-50 text-amber-700" :
+                    "border-neutral-200 bg-neutral-50 text-neutral-600"
+                  }`}>
+                    {r.status}
+                  </div>
+                </div>
+                {r.menu && <div className="mt-1 text-sm text-neutral-700">{r.menu}</div>}
+                {r.note && <div className="mt-1 text-xs text-neutral-500">{r.note}</div>}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Certificates tab */}
+      <div className="mt-3 grid gap-2.5" style={{ display: tab === "certs" ? undefined : "none" }}>
         {rows.map((r) => {
           const rt = encodeURIComponent(`/customer/${tenant}`);
           const href = `/c/${r.public_id}?tenant=${encodeURIComponent(tenant)}&rt=${rt}&logout=1`;
@@ -247,6 +372,7 @@ export default function CustomerListPage() {
 
         {rows.length === 0 && !err && !loading ? <div className="text-sm text-neutral-500">対象の証明書がありません。</div> : null}
       </div>
+
     </main>
   );
 }

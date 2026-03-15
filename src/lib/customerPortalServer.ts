@@ -188,3 +188,68 @@ export async function listCertificatesForCustomer(tenantId: string, phoneHash: s
   const r3 = await supaGet(q3);
   return Array.isArray(r3) ? r3 : [];
 }
+
+/** 顧客の施工履歴（vehicle_histories）を取得 */
+export async function listHistoryForCustomer(tenantId: string, phoneHash: string, last4Plain: string) {
+  // まず証明書IDを取得
+  const certs = await listCertificatesForCustomer(tenantId, phoneHash, last4Plain);
+  if (!certs || certs.length === 0) return [];
+
+  const certPublicIds = certs.map((c: any) => c.public_id);
+  // vehicle_histories から certificate に紐づくイベントを取得
+  // certificate_id ベースで検索するために certificates の id が必要
+  const certIdQuery = `certificates?select=id,public_id&tenant_id=eq.${tenantId}&public_id=in.(${certPublicIds.map((id: string) => `"${id}"`).join(",")})`;
+  const certRows = await supaGet(certIdQuery);
+  if (!certRows || certRows.length === 0) return [];
+
+  const certIds = certRows.map((c: any) => c.id);
+  const histQuery = `vehicle_histories?select=id,type,title,description,performed_at,certificate_id&tenant_id=eq.${tenantId}&certificate_id=in.(${certIds.map((id: string) => `"${id}"`).join(",")})&order=performed_at.desc&limit=50`;
+  const histories = await supaGet(histQuery);
+  return Array.isArray(histories) ? histories : [];
+}
+
+/** 顧客の今後の予約を取得 */
+export async function listReservationsForCustomer(tenantId: string, phoneHash: string, last4Plain: string) {
+  // 顧客を特定：customer_phone_last4_hash または customer_phone_last4 で certificates → customer_id
+  const certs = await listCertificatesForCustomer(tenantId, phoneHash, last4Plain);
+  if (!certs || certs.length === 0) return [];
+
+  // customer_name から customers テーブルで顧客を検索
+  const customerNames = [...new Set(certs.map((c: any) => c.customer_name).filter(Boolean))];
+  if (customerNames.length === 0) return [];
+
+  // 名前の最初の値で customers を検索
+  const nameParam = encodeURIComponent(customerNames[0]);
+  const customerQuery = `customers?select=id&tenant_id=eq.${tenantId}&name=eq.${nameParam}&limit=1`;
+  const customers = await supaGet(customerQuery);
+  if (!customers || customers.length === 0) return [];
+
+  const customerId = customers[0].id;
+  const today = new Date().toISOString().slice(0, 10);
+  const reservationQuery = `reservations?select=id,date,time_slot,menu,status,note&tenant_id=eq.${tenantId}&customer_id=eq.${customerId}&date=gte.${today}&status=neq.cancelled&order=date.asc&limit=10`;
+  const reservations = await supaGet(reservationQuery);
+  return Array.isArray(reservations) ? reservations : [];
+}
+
+/** 顧客プロフィール情報を取得 */
+export async function getCustomerProfile(tenantId: string, phoneHash: string, last4Plain: string) {
+  const certs = await listCertificatesForCustomer(tenantId, phoneHash, last4Plain);
+  if (!certs || certs.length === 0) return null;
+
+  const customerNames = [...new Set(certs.map((c: any) => c.customer_name).filter(Boolean))];
+  if (customerNames.length === 0) return null;
+
+  const nameParam = encodeURIComponent(customerNames[0]);
+  const customerQuery = `customers?select=id,name,email,phone&tenant_id=eq.${tenantId}&name=eq.${nameParam}&limit=1`;
+  const customers = await supaGet(customerQuery);
+  if (!customers || customers.length === 0) {
+    return { name: customerNames[0], email: null, phone: null, certificateCount: certs.length };
+  }
+
+  return {
+    name: customers[0].name,
+    email: customers[0].email ?? null,
+    phone: customers[0].phone ?? null,
+    certificateCount: certs.length,
+  };
+}

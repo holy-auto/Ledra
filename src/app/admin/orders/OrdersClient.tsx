@@ -67,6 +67,15 @@ const CATEGORY_OPTIONS = [
   "インテリアリペア", "デントリペア", "その他",
 ];
 
+const NEXT_STATUS_RECEIVED: Record<string, string | null> = {
+  pending: "accepted",
+  accepted: "in_progress",
+  in_progress: "completed",
+  completed: null,
+  rejected: null,
+  cancelled: null,
+};
+
 export default function OrdersClient() {
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,6 +83,7 @@ export default function OrdersClient() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [showForm, setShowForm] = useState(false);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   // New order form
   const [formData, setFormData] = useState({
@@ -144,6 +154,24 @@ export default function OrdersClient() {
       alert("発注に失敗しました: " + (e instanceof Error ? e.message : String(e)));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleStatusUpdate = async (orderId: string, newStatus: string) => {
+    setUpdatingId(orderId);
+    try {
+      const res = await fetch("/api/admin/orders", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: orderId, status: newStatus }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      await fetchOrders(typeFilter, statusFilter);
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUpdatingId(null);
     }
   };
 
@@ -344,14 +372,54 @@ export default function OrdersClient() {
                     <p className="text-[13px] text-secondary">{order.description}</p>
                   )}
 
-                  <div className="flex gap-6 text-xs text-muted">
-                    {order.budget && (
-                      <span>予算: <span className="font-semibold text-primary">{formatJpy(order.budget)}</span></span>
-                    )}
-                    {order.deadline && (
-                      <span>納期: <span className="font-semibold text-primary">{formatDate(order.deadline)}</span></span>
-                    )}
-                    <span>発注先: <span className="text-secondary">{order.to_company || order.to_tenant_id?.slice(0, 8)}</span></span>
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex gap-6 text-xs text-muted">
+                      {order.budget && (
+                        <span>予算: <span className="font-semibold text-primary">{formatJpy(order.budget)}</span></span>
+                      )}
+                      {order.deadline && (
+                        <span>納期: <span className="font-semibold text-primary">{formatDate(order.deadline)}</span></span>
+                      )}
+                      <span>発注先: <span className="text-secondary">{order.to_company || order.to_tenant_id?.slice(0, 8)}</span></span>
+                    </div>
+
+                    {/* Status action buttons (received orders only) */}
+                    {(() => {
+                      const nextStatus = NEXT_STATUS_RECEIVED[order.status];
+                      const isUpdating = updatingId === order.id;
+                      if (!nextStatus && order.status !== "pending") return null;
+                      return (
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {nextStatus && (
+                            <button
+                              onClick={() => handleStatusUpdate(order.id, nextStatus)}
+                              disabled={isUpdating}
+                              className="btn-primary px-2.5 py-1 text-[11px]"
+                            >
+                              {isUpdating ? "..." : `${statusLabel(nextStatus as OrderStatus)}へ`}
+                            </button>
+                          )}
+                          {order.status === "pending" && (
+                            <button
+                              onClick={() => handleStatusUpdate(order.id, "rejected")}
+                              disabled={isUpdating}
+                              className="btn-secondary px-2.5 py-1 text-[11px] text-red-500"
+                            >
+                              辞退
+                            </button>
+                          )}
+                          {(order.status === "pending" || order.status === "accepted") && (
+                            <button
+                              onClick={() => handleStatusUpdate(order.id, "cancelled")}
+                              disabled={isUpdating}
+                              className="btn-secondary px-2.5 py-1 text-[11px] text-red-500"
+                            >
+                              取消
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               ))}

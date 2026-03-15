@@ -23,6 +23,7 @@ type Invoice = {
   status: string;
   issued_at: string | null;
   due_date: string | null;
+  payment_date: string | null;
   subtotal: number;
   tax: number;
   total: number;
@@ -116,6 +117,10 @@ export default function InvoicesClient() {
 
   // Delete
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Payment recording
+  const [paymentTarget, setPaymentTarget] = useState<string | null>(null);
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
 
   const fetchInvoices = useCallback(async (status?: string) => {
     setErr(null);
@@ -325,6 +330,46 @@ export default function InvoicesClient() {
               <div className="mt-1 text-xs text-muted">今月発行</div>
             </div>
           </section>
+
+          {/* Aging Analysis */}
+          {(() => {
+            const unpaid = data.invoices.filter((i) => i.status === "sent" || i.status === "overdue");
+            if (unpaid.length === 0) return null;
+            const now = new Date();
+            const aging = { current: 0, d30: 0, d60: 0, d90: 0, currentAmt: 0, d30Amt: 0, d60Amt: 0, d90Amt: 0 };
+            for (const inv of unpaid) {
+              if (!inv.due_date) { aging.current++; aging.currentAmt += inv.total; continue; }
+              const days = Math.floor((now.getTime() - new Date(inv.due_date).getTime()) / 86400000);
+              if (days <= 0) { aging.current++; aging.currentAmt += inv.total; }
+              else if (days <= 30) { aging.d30++; aging.d30Amt += inv.total; }
+              else if (days <= 60) { aging.d60++; aging.d60Amt += inv.total; }
+              else { aging.d90++; aging.d90Amt += inv.total; }
+            }
+            return (
+              <section className="grid gap-4 sm:grid-cols-4">
+                <div className="glass-card p-4">
+                  <div className="text-[10px] font-semibold tracking-[0.18em] text-muted">期限内</div>
+                  <div className="mt-1 text-lg font-bold text-primary">{formatJpy(aging.currentAmt)}</div>
+                  <div className="mt-0.5 text-[11px] text-muted">{aging.current}件</div>
+                </div>
+                <div className="glass-card p-4">
+                  <div className="text-[10px] font-semibold tracking-[0.18em] text-[#b35c00]">30日超</div>
+                  <div className="mt-1 text-lg font-bold text-[#b35c00]">{formatJpy(aging.d30Amt)}</div>
+                  <div className="mt-0.5 text-[11px] text-muted">{aging.d30}件</div>
+                </div>
+                <div className="glass-card p-4">
+                  <div className="text-[10px] font-semibold tracking-[0.18em] text-[#d1242f]">60日超</div>
+                  <div className="mt-1 text-lg font-bold text-[#d1242f]">{formatJpy(aging.d60Amt)}</div>
+                  <div className="mt-0.5 text-[11px] text-muted">{aging.d60}件</div>
+                </div>
+                <div className="glass-card p-4">
+                  <div className="text-[10px] font-semibold tracking-[0.18em] text-[#d1242f]">90日超</div>
+                  <div className="mt-1 text-lg font-bold text-[#d1242f]">{formatJpy(aging.d90Amt)}</div>
+                  <div className="mt-0.5 text-[11px] text-muted">{aging.d90}件</div>
+                </div>
+              </section>
+            );
+          })()}
 
           {/* Filter */}
           <section className="glass-card p-5">
@@ -571,6 +616,49 @@ export default function InvoicesClient() {
             </section>
           )}
 
+          {/* Payment Dialog */}
+          {paymentTarget && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={() => setPaymentTarget(null)}>
+              <div className="mx-4 w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+                <h3 className="text-base font-semibold text-primary mb-3">入金を記録</h3>
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted">入金日</label>
+                    <input
+                      type="date"
+                      value={paymentDate}
+                      onChange={(e) => setPaymentDate(e.target.value)}
+                      className="input-field"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-3 pt-4">
+                  <button type="button" onClick={() => setPaymentTarget(null)} className="btn-secondary px-4 py-2 text-sm">戻る</button>
+                  <button
+                    type="button"
+                    className="btn-primary px-4 py-2 text-sm"
+                    onClick={async () => {
+                      try {
+                        const res = await fetch("/api/admin/invoices", {
+                          method: "PUT",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ id: paymentTarget, status: "paid", payment_date: paymentDate }),
+                        });
+                        if (!res.ok) throw new Error("Failed");
+                        setPaymentTarget(null);
+                        fetchInvoices(statusFilter);
+                      } catch (e: any) {
+                        alert("入金記録に失敗しました: " + (e?.message ?? String(e)));
+                      }
+                    }}
+                  >
+                    入金確定
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Invoice List */}
           <section className="glass-card overflow-hidden">
             <div className="border-b border-border-subtle p-5">
@@ -624,6 +712,15 @@ export default function InvoicesClient() {
                           >
                             詳細
                           </Link>
+                          {(inv.status === "sent" || inv.status === "overdue") && (
+                            <button
+                              type="button"
+                              className="btn-primary !px-3 !py-1 !text-xs"
+                              onClick={() => { setPaymentTarget(inv.id); setPaymentDate(new Date().toISOString().slice(0, 10)); }}
+                            >
+                              入金
+                            </button>
+                          )}
                           {inv.status === "draft" && (
                             <button
                               type="button"

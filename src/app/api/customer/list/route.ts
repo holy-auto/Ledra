@@ -4,6 +4,9 @@ import {
   CUSTOMER_COOKIE,
   getTenantIdBySlug,
   listCertificatesForCustomer,
+  listHistoryForCustomer,
+  listReservationsForCustomer,
+  getCustomerProfile,
   validateSession,
 } from "@/lib/customerPortalServer";
 
@@ -13,6 +16,7 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const tenant_slug = (searchParams.get("tenant") ?? "").trim();
+    const action = searchParams.get("action") ?? "";
     if (!tenant_slug) return NextResponse.json({ error: "missing tenant" }, { status: 400 });
 
     const tenantId = await getTenantIdBySlug(tenant_slug);
@@ -26,6 +30,22 @@ export async function GET(req: Request) {
     if (!sess) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     const last4 = (c.get(LAST4_COOKIE)?.value ?? "").trim();
+
+    if (action === "history") {
+      const history = await listHistoryForCustomer(tenantId, sess.phone_last4_hash, last4);
+      return NextResponse.json({ ok: true, history });
+    }
+
+    if (action === "reservations") {
+      const reservations = await listReservationsForCustomer(tenantId, sess.phone_last4_hash, last4);
+      return NextResponse.json({ ok: true, reservations });
+    }
+
+    if (action === "profile") {
+      const profile = await getCustomerProfile(tenantId, sess.phone_last4_hash, last4);
+      return NextResponse.json({ ok: true, profile });
+    }
+
     const rows = await listCertificatesForCustomer(tenantId, sess.phone_last4_hash, last4);
 
     return NextResponse.json({ ok: true, rows });

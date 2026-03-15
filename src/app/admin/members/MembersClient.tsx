@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
 import { formatDate } from "@/lib/format";
+import { ROLE_LABELS, ASSIGNABLE_ROLES, type Role } from "@/lib/auth/roles";
 
 type Member = {
   user_id: string;
@@ -42,7 +43,9 @@ export default function MembersClient() {
   const [adding, setAdding] = useState(false);
   const [addMsg, setAddMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
+  const [addRole, setAddRole] = useState<Role>("staff");
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [updatingRoleId, setUpdatingRoleId] = useState<string | null>(null);
 
   const fetchMembers = useCallback(async () => {
     setErr(null);
@@ -72,7 +75,7 @@ export default function MembersClient() {
       const res = await fetch("/api/admin/members", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), display_name: displayName.trim() || undefined }),
+        body: JSON.stringify({ email: email.trim(), display_name: displayName.trim() || undefined, role: addRole }),
       });
       const j = await res.json().catch(() => null);
       if (!res.ok) {
@@ -80,6 +83,7 @@ export default function MembersClient() {
       }
       setEmail("");
       setDisplayName("");
+      setAddRole("staff");
       setAddMsg({ text: `${j.email} を追加しました`, ok: true });
       await fetchMembers();
     } catch (e: any) {
@@ -105,6 +109,24 @@ export default function MembersClient() {
       alert("削除に失敗しました: " + (e?.message ?? String(e)));
     } finally {
       setRemovingId(null);
+    }
+  };
+
+  const handleRoleChange = async (userId: string, newRole: Role) => {
+    setUpdatingRoleId(userId);
+    try {
+      const res = await fetch("/api/admin/members", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ user_id: userId, role: newRole }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      await fetchMembers();
+    } catch (e: any) {
+      alert("ロール変更に失敗しました: " + (e?.message ?? String(e)));
+    } finally {
+      setUpdatingRoleId(null);
     }
   };
 
@@ -195,6 +217,19 @@ export default function MembersClient() {
                   className="input-field disabled:opacity-50"
                 />
               </div>
+              <div className="min-w-[120px] space-y-1">
+                <label className="text-xs text-muted">ロール</label>
+                <select
+                  value={addRole}
+                  onChange={(e) => setAddRole(e.target.value as Role)}
+                  disabled={!data.can_add || adding}
+                  className="input-field disabled:opacity-50"
+                >
+                  {ASSIGNABLE_ROLES.map((r) => (
+                    <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                  ))}
+                </select>
+              </div>
               <button
                 type="button"
                 onClick={handleAdd}
@@ -247,7 +282,22 @@ export default function MembersClient() {
                         {m.email ?? "-"}
                       </td>
                       <td className="px-5 py-3.5">
-                        <Badge>{m.role}</Badge>
+                        {m.is_self || m.role === "owner" ? (
+                          <Badge variant={m.role === "owner" ? "warning" : "default"}>
+                            {ROLE_LABELS[m.role as Role] ?? m.role}
+                          </Badge>
+                        ) : (
+                          <select
+                            value={m.role}
+                            onChange={(e) => handleRoleChange(m.user_id, e.target.value as Role)}
+                            disabled={updatingRoleId === m.user_id}
+                            className="input-field !py-1 !px-2 !text-xs min-w-[100px] disabled:opacity-50"
+                          >
+                            {ASSIGNABLE_ROLES.map((r) => (
+                              <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                            ))}
+                          </select>
+                        )}
                       </td>
                       <td className="px-5 py-3.5 whitespace-nowrap text-secondary">
                         {formatDate(m.created_at)}

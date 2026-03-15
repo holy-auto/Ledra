@@ -16,6 +16,14 @@ const TYPE_LABELS: Record<string, { label: string; color: string }> = {
   certificate_public_pdf: { label: "公開PDF閲覧", color: "text-violet-600 bg-violet-500/10 border-violet-500/30" },
   vehicle_registered: { label: "車両登録", color: "text-blue-600 bg-blue-500/10 border-blue-500/30" },
   vehicle_updated: { label: "車両更新", color: "text-zinc-600 bg-zinc-500/10 border-zinc-500/30" },
+  member_added: { label: "メンバー追加", color: "text-emerald-600 bg-emerald-500/10 border-emerald-500/30" },
+  member_removed: { label: "メンバー削除", color: "text-red-500 bg-red-500/10 border-red-500/30" },
+  member_role_changed: { label: "ロール変更", color: "text-amber-600 bg-amber-500/10 border-amber-500/30" },
+  reservation_created: { label: "予約作成", color: "text-blue-600 bg-blue-500/10 border-blue-500/30" },
+  reservation_completed: { label: "予約完了", color: "text-emerald-600 bg-emerald-500/10 border-emerald-500/30" },
+  reservation_cancelled: { label: "予約キャンセル", color: "text-red-500 bg-red-500/10 border-red-500/30" },
+  invoice_created: { label: "請求書作成", color: "text-blue-600 bg-blue-500/10 border-blue-500/30" },
+  invoice_paid: { label: "入金記録", color: "text-emerald-600 bg-emerald-500/10 border-emerald-500/30" },
   note: { label: "メモ", color: "text-zinc-600 bg-zinc-500/10 border-zinc-500/30" },
 };
 
@@ -28,7 +36,16 @@ function TypeBadge({ type }: { type: string }) {
   );
 }
 
-export default async function AdminAuditPage() {
+export default async function AdminAuditPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ type?: string; from?: string; to?: string }>;
+}) {
+  const params = await searchParams;
+  const filterType = params.type ?? "";
+  const filterFrom = params.from ?? "";
+  const filterTo = params.to ?? "";
+
   const supabase = await createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login?next=/admin/audit");
@@ -46,12 +63,24 @@ export default async function AdminAuditPage() {
   const tenantId = membership.tenant_id as string;
 
   // Fetch recent vehicle histories (acts as audit log)
-  const { data: histories, error } = await supabase
+  let query = supabase
     .from("vehicle_histories")
     .select("id,vehicle_id,type,title,description,performed_at,certificate_id,created_at")
     .eq("tenant_id", tenantId)
     .order("performed_at", { ascending: false })
     .limit(200);
+
+  if (filterType) {
+    query = query.eq("type", filterType);
+  }
+  if (filterFrom) {
+    query = query.gte("performed_at", `${filterFrom}T00:00:00`);
+  }
+  if (filterTo) {
+    query = query.lte("performed_at", `${filterTo}T23:59:59`);
+  }
+
+  const { data: histories, error } = await query;
 
   if (error) {
     return <main className="p-6 text-sm text-red-500">エラー: {error.message}</main>;
@@ -106,6 +135,32 @@ export default async function AdminAuditPage() {
             </div>
             <div className="mt-1 text-xs text-muted">証明書発行イベント数</div>
           </div>
+        </section>
+
+        {/* Filters */}
+        <section className="glass-card p-5">
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted mb-3">FILTER</div>
+          <form className="flex gap-3 items-end flex-wrap">
+            <div className="min-w-[160px] space-y-1">
+              <label className="text-xs text-muted">イベントタイプ</label>
+              <select name="type" defaultValue={filterType} className="input-field">
+                <option value="">すべて</option>
+                {Object.entries(TYPE_LABELS).map(([key, val]) => (
+                  <option key={key} value={key}>{val.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="min-w-[140px] space-y-1">
+              <label className="text-xs text-muted">開始日</label>
+              <input type="date" name="from" defaultValue={filterFrom} className="input-field" />
+            </div>
+            <div className="min-w-[140px] space-y-1">
+              <label className="text-xs text-muted">終了日</label>
+              <input type="date" name="to" defaultValue={filterTo} className="input-field" />
+            </div>
+            <button type="submit" className="btn-primary">絞り込み</button>
+            <a href="/admin/audit" className="btn-secondary">リセット</a>
+          </form>
         </section>
 
         {/* Log list */}
