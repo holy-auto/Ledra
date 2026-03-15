@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import InvoicesClient from "./InvoicesClient";
 import DocumentsClient from "../documents/DocumentsClient";
+import RevenueAnalytics from "./RevenueAnalytics";
 
 type DocTypeCard = {
   id: string;
@@ -163,6 +164,9 @@ export default function BillingHubClient() {
         </p>
       </div>
 
+      {/* Revenue Analytics */}
+      <RevenueAnalytics />
+
       {/* Document Type Cards */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {DOC_TYPE_CARDS.map((card) => (
@@ -216,23 +220,9 @@ export default function BillingHubClient() {
         ))}
       </div>
 
-      {/* Quick stats */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="glass-card p-4">
-          <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">請求書</div>
-          <div className="mt-1.5 text-xl font-bold text-primary">{counts.invoice ?? 0}</div>
-          <div className="mt-0.5 text-[11px] text-muted">件</div>
-        </div>
-        <div className="glass-card p-4">
-          <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">帳票合計</div>
-          <div className="mt-1.5 text-xl font-bold text-primary">{counts.all_documents ?? 0}</div>
-          <div className="mt-0.5 text-[11px] text-muted">件</div>
-        </div>
-        <div className="glass-card p-4">
-          <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">書類種別</div>
-          <div className="mt-1.5 text-xl font-bold text-primary">{DOC_TYPE_CARDS.length - 1}</div>
-          <div className="mt-0.5 text-[11px] text-muted">種類対応</div>
-        </div>
+      {/* Document counts */}
+      <div className="text-[11px] text-[#aeaeb2] text-center">
+        請求書 {counts.invoice ?? 0}件 / 帳票 {counts.all_documents ?? 0}件 / {DOC_TYPE_CARDS.length - 1}種類対応
       </div>
     </div>
   );
