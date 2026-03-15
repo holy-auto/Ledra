@@ -22,11 +22,20 @@ function getBaseUrl() {
   return baseUrl.startsWith("http") ? baseUrl : `https://${baseUrl}`;
 }
 
-export async function enqueueInsuranceCaseCreated(payload: Record<string, unknown>) {
-  const url = `${getBaseUrl()}/api/qstash/insurance-case-created`;
+export async function enqueueInsuranceCaseCreated(
+  payload: Record<string, unknown>
+) {
+  const targetUrl = `${getBaseUrl()}/api/qstash/insurance-case-created`;
 
-  return await qstash.publishJSON({
-    url,
+  console.log("[QSTASH][publish] targetUrl:", targetUrl);
+  console.log("[QSTASH][publish] hasToken:", Boolean(process.env.QSTASH_TOKEN));
+
+  const result = await qstash.publishJSON({
+    url: targetUrl,
     body: payload,
   });
+
+  console.log("[QSTASH][publish] result:", JSON.stringify(result));
+
+  return result;
 }
