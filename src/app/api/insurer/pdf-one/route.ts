@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { logInsurerAccess } from "@/lib/insurer/audit";
 import { createClient } from "@/lib/supabase/server";
+import { resolveInsurerCaller, enforceInsurerPlan } from "@/lib/api/insurerAuth";
 import QRCode from "qrcode";
 import React from "react";
 import { pdf } from "@react-pdf/renderer";
@@ -21,11 +22,13 @@ function buildBaseUrl(req: Request) {
   return `${proto}://${host}`;
 }
 
-import { enforceBilling } from "@/lib/billing/guard";
-
 export async function GET(req: Request) {
-  const deny = await enforceBilling(req, { minPlan: "pro", action: "insurer_pdf_one" });
-  if (deny) return deny as any;
+  const caller = await resolveInsurerCaller();
+  if (!caller) return apiUnauthorized();
+
+  const planDeny = enforceInsurerPlan(caller, "pro");
+  if (planDeny) return planDeny;
+
   const url = new URL(req.url);
   const pid = url.searchParams.get("pid");
   if (!pid) return apiValidationError("pid is required");
@@ -33,8 +36,6 @@ export async function GET(req: Request) {
   const { ip, ua } = getClientMeta(req);
 
   const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth?.user) return apiUnauthorized();
 
   const { data, error } = await supabase.rpc("insurer_get_certificate", {
     p_public_id: pid,
@@ -65,8 +66,8 @@ export async function GET(req: Request) {
     qrDataUrl = "";
   }
 
-  // ★JSXを使わず createElement
   const docEl = React.createElement(InsurerPdfDoc, { cert, qrDataUrl, publicUrl }) as any;
+
   // Resolve certificate_id reliably from pid (public_id)
   const { data: certIdRow, error: certIdErr } = await supabase
     .from("certificates")
@@ -76,6 +77,7 @@ export async function GET(req: Request) {
   if (certIdErr) throw certIdErr;
   const certId = certIdRow?.id;
   if (!certId) return apiNotFound("証明書が見つかりません。");
+
   await logInsurerAccess({
     action: "download_pdf",
     certificateId: certId,
@@ -83,6 +85,7 @@ export async function GET(req: Request) {
     ip,
     userAgent: ua,
   });
+
   const buffer = await pdf(docEl as any).toBuffer();
 
   const buf = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer as any);

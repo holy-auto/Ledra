@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiUnauthorized, apiValidationError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
@@ -11,6 +12,9 @@ function getClientMeta(req: Request) {
 }
 
 export async function GET(req: Request) {
+  const caller = await resolveInsurerCaller();
+  if (!caller) return apiUnauthorized();
+
   const url = new URL(req.url);
   const q = url.searchParams.get("q") ?? "";
   const status = url.searchParams.get("status") ?? "";
@@ -22,8 +26,6 @@ export async function GET(req: Request) {
   const { ip, ua } = getClientMeta(req);
 
   const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth?.user) return apiUnauthorized();
 
   const { data, error } = await supabase.rpc("insurer_search_certificates", {
     p_query: q,

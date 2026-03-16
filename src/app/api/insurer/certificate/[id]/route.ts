@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { logInsurerAccess } from "@/lib/insurer/audit";
+import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
+import { apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -8,11 +10,12 @@ export async function GET(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> }
 ) {
+  const caller = await resolveInsurerCaller();
+  if (!caller) return apiUnauthorized();
+
   const { id } = await ctx.params;
 
   const sb = await createClient();
-  const { data: auth } = await sb.auth.getUser();
-  if (!auth.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { data: cert, error } = await sb
     .from("certificates")
@@ -20,19 +23,23 @@ export async function GET(
     .eq("id", id)
     .maybeSingle();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  if (!cert) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (error) return apiValidationError(error.message);
+  if (!cert) return apiNotFound("証明書が見つかりません。");
 
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
   const ua = req.headers.get("user-agent") ?? null;
 
-  await logInsurerAccess({
-    action: "view",
-    certificateId: id,
-    meta: { route: "GET /api/insurer/certificate/[id]" },
-    ip,
-    userAgent: ua,
-  });
+  try {
+    await logInsurerAccess({
+      action: "view",
+      certificateId: id,
+      meta: { route: "GET /api/insurer/certificate/[id]" },
+      ip,
+      userAgent: ua,
+    });
+  } catch {
+    // 監査ログ失敗は閲覧をブロックしない
+  }
 
   return NextResponse.json({ certificate: cert });
 }

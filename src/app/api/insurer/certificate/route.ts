@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { logInsurerAccess } from "@/lib/insurer/audit";
+import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 
 export const runtime = "nodejs";
@@ -12,6 +13,9 @@ export const runtime = "nodejs";
  * 既存の /api/insurer/certificate/[id] (UUID指定) と併存する。
  */
 export async function GET(req: NextRequest) {
+  const caller = await resolveInsurerCaller();
+  if (!caller) return apiUnauthorized();
+
   const pid = req.nextUrl.searchParams.get("pid") ?? "";
 
   if (!pid) {
@@ -19,11 +23,6 @@ export async function GET(req: NextRequest) {
   }
 
   const sb = await createClient();
-  const { data: auth } = await sb.auth.getUser();
-
-  if (!auth.user) {
-    return apiUnauthorized();
-  }
 
   const { data: cert, error } = await sb
     .from("certificates")

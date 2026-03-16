@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { resolveInsurerCaller, enforceInsurerPlan } from "@/lib/api/insurerAuth";
 import { apiUnauthorized, apiValidationError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
@@ -17,11 +18,13 @@ function getClientMeta(req: Request) {
   return { ip, ua };
 }
 
-import { enforceBilling } from "@/lib/billing/guard";
-
 export async function GET(req: Request) {
-  const deny = await enforceBilling(req, { minPlan: "pro", action: "insurer_export" });
-  if (deny) return deny as any;
+  const caller = await resolveInsurerCaller();
+  if (!caller) return apiUnauthorized();
+
+  const planDeny = enforceInsurerPlan(caller, "pro");
+  if (planDeny) return planDeny;
+
   const url = new URL(req.url);
   const q = url.searchParams.get("q") ?? "";
 
@@ -31,11 +34,6 @@ export async function GET(req: Request) {
   const { ip, ua } = getClientMeta(req);
 
   const supabase = await createClient();
-
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth?.user) {
-    return apiUnauthorized();
-  }
 
   const { data, error } = await supabase.rpc("insurer_search_certificates", {
     p_query: q,
