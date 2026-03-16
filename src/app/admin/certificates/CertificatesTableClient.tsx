@@ -71,6 +71,9 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
   const allIds = useMemo(() => rows.map((r) => r.public_id), [rows]);
   const selectedIds = useMemo(() => allIds.filter((id) => selected[id]), [allIds, selected]);
 
+  const allChecked = allIds.length > 0 && selectedIds.length === allIds.length;
+  const someChecked = selectedIds.length > 0 && selectedIds.length < allIds.length;
+
   const toggleAll = (on: boolean) => {
     const next: Record<string, boolean> = {};
     if (on) for (const id of allIds) next[id] = true;
@@ -155,8 +158,107 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
         </div>
       </div>
 
-      {/* List */}
-      <section className="glass-card overflow-hidden divide-y divide-border-subtle">
+      {/* Desktop: table layout */}
+      <div className="hidden md:block glass-card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-border-subtle">
+                <th className="p-3 text-left w-10">
+                  <input
+                    type="checkbox"
+                    className="accent-[#0071e3]"
+                    checked={allChecked}
+                    ref={(el) => { if (el) el.indeterminate = someChecked; }}
+                    onChange={(e) => toggleAll(e.target.checked)}
+                  />
+                </th>
+                <th className="text-left p-3 text-xs font-semibold tracking-[0.12em] text-muted whitespace-nowrap">作成日</th>
+                <th className="text-left p-3 text-xs font-semibold tracking-[0.12em] text-muted">証明書ID</th>
+                <th className="text-left p-3 text-xs font-semibold tracking-[0.12em] text-muted">お客様名</th>
+                <th className="text-left p-3 text-xs font-semibold tracking-[0.12em] text-muted">ステータス</th>
+                <th className="text-left p-3 text-xs font-semibold tracking-[0.12em] text-muted">操作</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border-subtle">
+              {rows.map((r) => {
+                const url = `/c/${r.public_id}`;
+                const isVoid = r.status === "void";
+                const checked = !!selected[r.public_id];
+
+                return (
+                  <tr key={r.public_id} className="hover:bg-surface-hover/40 transition-colors">
+                    <td className="p-3">
+                      <input
+                        type="checkbox"
+                        className="accent-[#0071e3]"
+                        checked={checked}
+                        onChange={(e) => toggleOne(r.public_id, e.target.checked)}
+                      />
+                    </td>
+                    <td className="p-3 whitespace-nowrap text-secondary text-xs">{formatDate(r.created_at)}</td>
+                    <td className="p-3">
+                      <Link
+                        href={`/admin/certificates/${r.public_id}`}
+                        className="font-mono text-sm text-primary hover:text-[#0071e3] transition-colors"
+                        title={r.public_id}
+                      >
+                        {r.public_id.length > 10 ? r.public_id.slice(0, 10) + "…" : r.public_id}
+                      </Link>
+                    </td>
+                    <td className="p-3 text-sm text-primary max-w-[200px] truncate">{r.customer_name}</td>
+                    <td className="p-3">
+                      <Badge variant={statusVariant(r.status)}>{statusLabel(r.status)}</Badge>
+                    </td>
+                    <td className="p-3">
+                      <div className="flex gap-2 items-center flex-wrap">
+                        <Link href={url} target="_blank" className="btn-ghost !px-3 !py-1 !text-xs">
+                          公開ページ
+                        </Link>
+                        <Link
+                          className={btnCls(canPdfOne)}
+                          href={hrefOrBill(canPdfOne, `/admin/certificates/pdf-one?pid=${encodeURIComponent(r.public_id)}`, "pdf_one")}
+                          aria-disabled={!canPdfOne}
+                        >
+                          PDF
+                        </Link>
+                        <Link
+                          className={btnCls(canCsvOne)}
+                          href={hrefOrBill(canCsvOne, `/admin/certificates/export-one?pid=${encodeURIComponent(r.public_id)}`, "export_one_csv")}
+                          aria-disabled={!canCsvOne}
+                        >
+                          CSV
+                        </Link>
+                        {!isVoid && (
+                          <button
+                            type="button"
+                            className="btn-danger !px-3 !py-1 !text-xs"
+                            disabled={voidingId === r.public_id}
+                            onClick={() => handleVoid(r.public_id)}
+                          >
+                            {voidingId === r.public_id ? "削除中…" : "削除"}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="p-8 text-center text-sm text-muted">
+                    該当する証明書がありません
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Mobile: card layout */}
+      <section className="md:hidden glass-card overflow-hidden divide-y divide-border-subtle">
         {rows.map((r) => {
           const url = `/c/${r.public_id}`;
           const isVoid = r.status === "void";
