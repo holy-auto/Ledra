@@ -11,8 +11,10 @@ const nextConfig: NextConfig = {
     },
   },
 
+  // Worktree is at .claude/worktrees/<name> — go up 3 levels to reach the repo root
+  // where node_modules lives. This is required for Turbopack to find next/package.json.
   turbopack: {
-    root: resolve("."),
+    root: resolve(".", "../../.."),
   },
 
   async headers() {
