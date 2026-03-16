@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
-
-const Body = z.object({
-  public_id: z.string().min(10),
-});
+import { certificateVoidSchema } from "@/lib/validations/certificate";
+import { resolveCallerBasic } from "@/lib/api/auth";
+import { apiOk, apiInternalError, apiUnauthorized, apiValidationError, apiNotFound, apiForbidden } from "@/lib/api/response";
 
 /**
  * POST /api/certificates/void
@@ -16,31 +14,20 @@ const Body = z.object({
  */
 export async function POST(req: Request) {
   const json = await req.json().catch(() => null);
-  const parsed = Body.safeParse(json);
+  const parsed = certificateVoidSchema.safeParse(json);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return apiValidationError(parsed.error.issues[0]?.message ?? "入力内容に誤りがあります。");
   }
 
   const supabase = await createSupabaseServerClient();
 
   // Auth check
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes?.user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const caller = await resolveCallerBasic(supabase);
+  if (!caller) {
+    return apiUnauthorized();
   }
 
-  // Tenant check
-  const { data: mem } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .eq("user_id", userRes.user.id)
-    .limit(1)
-    .single();
-
-  const tenantId = mem?.tenant_id as string | undefined;
-  if (!tenantId) {
-    return NextResponse.json({ error: "no_tenant" }, { status: 403 });
-  }
+  const tenantId = caller.tenantId;
 
   // Verify certificate belongs to this tenant
   const admin = createAdminClient();
@@ -53,11 +40,11 @@ export async function POST(req: Request) {
     .maybeSingle();
 
   if (fetchErr || !cert) {
-    return NextResponse.json({ error: "not_found" }, { status: 404 });
+    return apiNotFound("証明書が見つかりません。");
   }
 
   if (String(cert.status ?? "").toLowerCase() === "void") {
-    return NextResponse.json({ ok: true, already_void: true });
+    return apiOk({ already_void: true });
   }
 
   const { error } = await admin
@@ -67,7 +54,7 @@ export async function POST(req: Request) {
     .eq("public_id", parsed.data.public_id);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiInternalError(error, "certificates/void update");
   }
 
   // Audit log (fire-and-forget)
@@ -78,11 +65,11 @@ export async function POST(req: Request) {
     publicId: parsed.data.public_id,
     certificateId: cert.id,
     vehicleId: cert.vehicle_id ?? null,
-    userId: userRes.user.id,
+    userId: caller.userId,
     description: "証明書を無効化 (void)",
     ip,
     userAgent,
   });
 
-  return NextResponse.json({ ok: true });
+  return apiOk({});
 }

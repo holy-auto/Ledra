@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { type PlanTier, planTierToPriceId } from "@/lib/stripe/plan";
+import { resumeSchema } from "@/lib/validations/stripe";
+import { apiOk, apiInternalError, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,13 +33,16 @@ export async function POST(req: NextRequest) {
     const admin = getSupabaseAdmin();
 
     const body = await req.json().catch(() => ({} as any));
-    const access_token = body?.access_token as string | undefined;
+    const parsed = resumeSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力が不正です。");
+    }
 
-    if (!access_token) return NextResponse.json({ error: "Missing access_token" }, { status: 400 });
+    const { access_token } = parsed.data;
 
     // token検証 → user_id
     const u = await admin.auth.getUser(access_token);
-    if (u.error || !u.data?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (u.error || !u.data?.user) return apiUnauthorized();
     const user_id = u.data.user.id;
 
     // membership → tenant_id
@@ -48,8 +53,8 @@ export async function POST(req: NextRequest) {
       .limit(1)
       .maybeSingle();
 
-    if (m.error) return NextResponse.json({ error: "Failed to read tenant_memberships", detail: m.error.message }, { status: 500 });
-    if (!m.data?.tenant_id) return NextResponse.json({ error: "No tenant membership for this user" }, { status: 404 });
+    if (m.error) return apiInternalError(m.error, "read tenant_memberships");
+    if (!m.data?.tenant_id) return apiNotFound("テナントメンバーシップが見つかりません。");
 
     // tenants
     const t = await admin
@@ -58,7 +63,7 @@ export async function POST(req: NextRequest) {
       .eq("id", m.data.tenant_id)
       .maybeSingle();
 
-    if (t.error || !t.data) return NextResponse.json({ error: "Failed to read tenants", detail: t.error?.message ?? "not found" }, { status: 500 });
+    if (t.error || !t.data) return apiInternalError(t.error ?? new Error("not found"), "read tenants");
 
     const tenant_id = (t.data as any).id as string;
     const tenant_slug = (t.data as any).slug as string | null;
@@ -84,9 +89,8 @@ export async function POST(req: NextRequest) {
       ...(t.data.stripe_customer_id ? { customer: t.data.stripe_customer_id } : {}),
     });
 
-    return NextResponse.json({ url: session.url });
-  } catch (e: any) {
-    console.error("stripe resume failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return apiOk({ url: session.url });
+  } catch (e) {
+    return apiInternalError(e, "stripe resume");
   }
 }

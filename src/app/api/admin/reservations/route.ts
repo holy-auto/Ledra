@@ -1,33 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerBasic } from "@/lib/api/auth";
+import { apiOk, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { reservationCreateSchema, reservationUpdateSchema, reservationDeleteSchema } from "@/lib/validations/reservation";
 
 export const dynamic = "force-dynamic";
-
-async function resolveCallerTenant(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>) {
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes?.user) return null;
-
-  const { data: mem } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .eq("user_id", userRes.user.id)
-    .limit(1)
-    .single();
-
-  if (!mem?.tenant_id) return null;
-
-  return {
-    userId: userRes.user.id,
-    tenantId: mem.tenant_id as string,
-  };
-}
 
 // ─── GET: 予約一覧 ───
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
     const url = new URL(req.url);
     const status = url.searchParams.get("status") ?? "";
@@ -56,7 +40,7 @@ export async function GET(req: NextRequest) {
     }
 
     const { data: reservations, error } = await query;
-    if (error) return NextResponse.json({ error: "db_error", detail: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "reservations list query");
 
     // 顧客名を取得
     const customerIds = [...new Set((reservations ?? []).map((r) => r.customer_id).filter(Boolean))];
@@ -104,10 +88,8 @@ export async function GET(req: NextRequest) {
         active_count: activeCount,
       },
     });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("reservations list failed", e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+  } catch (e) {
+    return apiInternalError(e, "reservations list");
   }
 }
 
@@ -115,26 +97,25 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-
-    const title = (String(body?.title ?? "")).trim();
-    if (!title) return NextResponse.json({ error: "missing_title" }, { status: 400 });
-
-    const scheduledDate = String(body?.scheduled_date ?? "").trim();
-    if (!scheduledDate) return NextResponse.json({ error: "missing_scheduled_date" }, { status: 400 });
+    const body = await req.json().catch(() => ({}));
+    const parsed = reservationCreateSchema.safeParse(body);
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map(i => i.message).join(" ");
+      return apiValidationError(msg);
+    }
 
     const row = {
       id: crypto.randomUUID(),
       tenant_id: caller.tenantId,
       customer_id: (String(body?.customer_id ?? "")).trim() || null,
       vehicle_id: (String(body?.vehicle_id ?? "")).trim() || null,
-      title,
+      title: (String(body?.title ?? "")).trim(),
       menu_items_json: body?.menu_items_json ?? [],
       note: (String(body?.note ?? "")).trim() || null,
-      scheduled_date: scheduledDate,
+      scheduled_date: parsed.data.scheduled_date,
       start_time: (String(body?.start_time ?? "")).trim() || null,
       end_time: (String(body?.end_time ?? "")).trim() || null,
       assigned_user_id: (String(body?.assigned_user_id ?? "")).trim() || null,
@@ -143,13 +124,11 @@ export async function POST(req: NextRequest) {
     };
 
     const { data, error } = await supabase.from("reservations").insert(row).select().single();
-    if (error) return NextResponse.json({ error: "insert_failed", detail: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "reservation insert");
 
-    return NextResponse.json({ ok: true, reservation: data });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("reservation create failed", e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiOk({ reservation: data });
+  } catch (e) {
+    return apiInternalError(e, "reservation create");
   }
 }
 
@@ -157,13 +136,17 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const id = (String(body?.id ?? "")).trim();
-    if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
+    const body = await req.json().catch(() => ({}));
+    const parsed = reservationUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map(i => i.message).join(" ");
+      return apiValidationError(msg);
+    }
 
+    const id = parsed.data.id;
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
     if (body.title !== undefined) updates.title = (String(body.title)).trim();
@@ -194,13 +177,11 @@ export async function PUT(req: NextRequest) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: "update_failed", detail: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "reservation update");
 
-    return NextResponse.json({ ok: true, reservation: data });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("reservation update failed", e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiOk({ reservation: data });
+  } catch (e) {
+    return apiInternalError(e, "reservation update");
   }
 }
 
@@ -208,13 +189,17 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const id = (String(body?.id ?? "")).trim();
-    if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
+    const body = await req.json().catch(() => ({}));
+    const parsed = reservationDeleteSchema.safeParse(body);
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map(i => i.message).join(" ");
+      return apiValidationError(msg);
+    }
 
+    const id = parsed.data.id;
     const cancelReason = (String(body?.cancel_reason ?? "")).trim() || null;
 
     const { data, error } = await supabase
@@ -230,12 +215,10 @@ export async function DELETE(req: NextRequest) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: "cancel_failed", detail: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "reservation cancel");
 
-    return NextResponse.json({ ok: true, reservation: data });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("reservation cancel failed", e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiOk({ reservation: data });
+  } catch (e) {
+    return apiInternalError(e, "reservation cancel");
   }
 }

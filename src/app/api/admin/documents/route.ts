@@ -1,27 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { DOC_TYPES, type DocType } from "@/types/document";
+import { resolveCallerBasic } from "@/lib/api/auth";
+import { apiOk, apiUnauthorized, apiNotFound, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { documentCreateSchema, documentUpdateSchema, documentDeleteSchema } from "@/lib/validations/document";
 
 export const dynamic = "force-dynamic";
-
-async function resolveCallerTenant(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>) {
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes?.user) return null;
-
-  const { data: mem } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .eq("user_id", userRes.user.id)
-    .limit(1)
-    .single();
-
-  if (!mem?.tenant_id) return null;
-
-  return {
-    userId: userRes.user.id,
-    tenantId: mem.tenant_id as string,
-  };
-}
 
 /** 書類番号自動採番: {PREFIX}-YYYYMM-NNN */
 async function generateDocNumber(
@@ -82,8 +66,8 @@ function calcItems(items: any[], taxRate: number) {
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
     const url = new URL(req.url);
     const docType = url.searchParams.get("doc_type") ?? "";
@@ -101,7 +85,7 @@ export async function GET(req: NextRequest) {
     if (customerId) query = query.eq("customer_id", customerId);
 
     const { data: docs, error } = await query;
-    if (error) return NextResponse.json({ error: "db_error", detail: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "documents list query");
 
     // 顧客名を取得
     const customerIds = [...new Set((docs ?? []).map((d) => d.customer_id).filter(Boolean))];
@@ -129,9 +113,8 @@ export async function GET(req: NextRequest) {
       documents: enriched,
       stats: { total, unpaid_amount: unpaidAmount },
     });
-  } catch (e: any) {
-    console.error("documents list failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+  } catch (e) {
+    return apiInternalError(e, "documents list");
   }
 }
 
@@ -139,14 +122,17 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({} as any));
-    const docType = (body?.doc_type ?? "").trim() as DocType;
-    if (!DOC_TYPES[docType]) {
-      return NextResponse.json({ error: "invalid_doc_type" }, { status: 400 });
+    const body = await req.json().catch(() => ({}));
+    const parsed = documentCreateSchema.safeParse(body);
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map(i => i.message).join(" ");
+      return apiValidationError(msg);
     }
+
+    const docType = parsed.data.doc_type as DocType;
 
     const docNumber = body?.doc_number?.trim() || (await generateDocNumber(supabase, caller.tenantId, docType));
     const customerId = body?.customer_id?.trim() || null;
@@ -191,12 +177,11 @@ export async function POST(req: NextRequest) {
     };
 
     const { data, error } = await supabase.from("documents").insert(row).select().single();
-    if (error) return NextResponse.json({ error: "insert_failed", detail: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "document insert");
 
-    return NextResponse.json({ ok: true, document: data });
-  } catch (e: any) {
-    console.error("document create failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return apiOk({ document: data });
+  } catch (e) {
+    return apiInternalError(e, "document create");
   }
 }
 
@@ -204,13 +189,17 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({} as any));
-    const id = (body?.id ?? "").trim();
-    if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
+    const body = await req.json().catch(() => ({}));
+    const parsed = documentUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map(i => i.message).join(" ");
+      return apiValidationError(msg);
+    }
 
+    const id = parsed.data.id;
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
     if (body.status !== undefined) updates.status = body.status;
@@ -244,12 +233,11 @@ export async function PUT(req: NextRequest) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: "update_failed", detail: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "document update");
 
-    return NextResponse.json({ ok: true, document: data });
-  } catch (e: any) {
-    console.error("document update failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return apiOk({ document: data });
+  } catch (e) {
+    return apiInternalError(e, "document update");
   }
 }
 
@@ -257,12 +245,17 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({} as any));
-    const id = (body?.id ?? "").trim();
-    if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
+    const body = await req.json().catch(() => ({}));
+    const parsed = documentDeleteSchema.safeParse(body);
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map(i => i.message).join(" ");
+      return apiValidationError(msg);
+    }
+
+    const id = parsed.data.id;
 
     const { data: doc } = await supabase
       .from("documents")
@@ -271,13 +264,10 @@ export async function DELETE(req: NextRequest) {
       .eq("tenant_id", caller.tenantId)
       .single();
 
-    if (!doc) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    if (!doc) return apiNotFound("帳票が見つかりません。");
 
     if (doc.status !== "draft") {
-      return NextResponse.json({
-        error: "not_draft",
-        message: "下書きステータスの帳票のみ削除できます。",
-      }, { status: 400 });
+      return apiValidationError("下書きステータスの帳票のみ削除できます。");
     }
 
     const { error } = await supabase
@@ -286,11 +276,10 @@ export async function DELETE(req: NextRequest) {
       .eq("id", id)
       .eq("tenant_id", caller.tenantId);
 
-    if (error) return NextResponse.json({ error: "delete_failed", detail: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "document delete");
 
-    return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    console.error("document delete failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return apiOk({});
+  } catch (e) {
+    return apiInternalError(e, "document delete");
   }
 }

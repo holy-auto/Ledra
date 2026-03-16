@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { dealCreateSchema } from "@/lib/validations/market";
+import { apiOk, apiInternalError, apiUnauthorized, apiValidationError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -28,35 +30,30 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerTenant(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const admin = createAdminClient();
     const body = await req.json().catch(() => ({} as any));
 
-    const inquiryId = (body?.inquiry_id ?? "").trim();
-    const vehicleId = (body?.vehicle_id ?? "").trim();
-    const buyerName = (body?.buyer_name ?? "").trim();
-    const buyerEmail = (body?.buyer_email ?? "").trim();
-
-    if (!inquiryId || !vehicleId || !buyerName || !buyerEmail) {
-      return NextResponse.json(
-        { error: "inquiry_id, vehicle_id, buyer_name, and buyer_email are required" },
-        { status: 400 },
-      );
+    const parsed = dealCreateSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力が不正です。");
     }
+
+    const { inquiry_id, vehicle_id, buyer_name, buyer_email, buyer_company, agreed_price } = parsed.data;
 
     const row: Record<string, unknown> = {
       id: crypto.randomUUID(),
-      inquiry_id: inquiryId,
-      vehicle_id: vehicleId,
+      inquiry_id,
+      vehicle_id,
       seller_tenant_id: caller.tenantId,
-      buyer_name: buyerName,
-      buyer_email: buyerEmail,
+      buyer_name,
+      buyer_email,
       status: "negotiating",
     };
 
-    if (body.buyer_company !== undefined) row.buyer_company = body.buyer_company;
-    if (body.agreed_price !== undefined) row.agreed_price = body.agreed_price;
+    if (buyer_company !== undefined && buyer_company !== null) row.buyer_company = buyer_company;
+    if (agreed_price !== undefined && agreed_price !== null) row.agreed_price = agreed_price;
 
     const { data: deal, error } = await admin
       .from("market_deals")
@@ -65,25 +62,24 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: "insert_failed", detail: error.message }, { status: 500 });
+      return apiInternalError(error, "market deal insert");
     }
 
     // Update the inquiry status to "in_negotiation"
     await admin
       .from("market_inquiries")
       .update({ status: "in_negotiation", updated_at: new Date().toISOString() })
-      .eq("id", inquiryId);
+      .eq("id", inquiry_id);
 
     // Update the vehicle status to "reserved"
     await admin
       .from("market_vehicles")
       .update({ status: "reserved", updated_at: new Date().toISOString() })
-      .eq("id", vehicleId);
+      .eq("id", vehicle_id);
 
-    return NextResponse.json({ ok: true, deal });
-  } catch (e: any) {
-    console.error("market deal create failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return apiOk({ deal });
+  } catch (e) {
+    return apiInternalError(e, "market deal create");
   }
 }
 
@@ -92,7 +88,7 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerTenant(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const admin = createAdminClient();
     const url = new URL(req.url);
@@ -111,12 +107,11 @@ export async function GET(req: NextRequest) {
     const { data: deals, error } = await query;
 
     if (error) {
-      return NextResponse.json({ error: "db_error", detail: error.message }, { status: 500 });
+      return apiInternalError(error, "market deals list");
     }
 
     return NextResponse.json({ deals: deals ?? [] });
-  } catch (e: any) {
-    console.error("market deals list failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+  } catch (e) {
+    return apiInternalError(e, "market deals list");
   }
 }

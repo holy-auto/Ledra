@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { apiUnauthorized, apiValidationError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -22,7 +23,7 @@ export async function GET(req: Request) {
 
   const supabase = await createClient();
   const { data: auth } = await supabase.auth.getUser();
-  if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!auth?.user) return apiUnauthorized();
 
   const { data, error } = await supabase.rpc("insurer_search_certificates", {
     p_query: q,
@@ -32,7 +33,7 @@ export async function GET(req: Request) {
     p_user_agent: ua,
   });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return apiValidationError(error.message);
 
   let rows: any[] = data ?? [];
 

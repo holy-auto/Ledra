@@ -5,6 +5,7 @@ import QRCode from "qrcode";
 import React from "react";
 import { pdf } from "@react-pdf/renderer";
 import { InsurerPdfDoc } from "@/lib/insurerPdfDoc";
+import { apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -27,23 +28,23 @@ export async function GET(req: Request) {
   if (deny) return deny as any;
   const url = new URL(req.url);
   const pid = url.searchParams.get("pid");
-  if (!pid) return NextResponse.json({ error: "pid_required" }, { status: 400 });
+  if (!pid) return apiValidationError("pid is required");
 
   const { ip, ua } = getClientMeta(req);
 
   const supabase = await createClient();
   const { data: auth } = await supabase.auth.getUser();
-  if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!auth?.user) return apiUnauthorized();
 
   const { data, error } = await supabase.rpc("insurer_get_certificate", {
     p_public_id: pid,
     p_ip: ip,
     p_user_agent: ua,
   });
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return apiValidationError(error.message);
 
   const cert = Array.isArray(data) ? data[0] : null;
-  if (!cert) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  if (!cert) return apiNotFound("証明書が見つかりません。");
 
   const { error: logErr } = await supabase.rpc("insurer_audit_log", {
     p_action: "insurer.export.pdf.one",
@@ -52,7 +53,7 @@ export async function GET(req: Request) {
     p_ip: ip,
     p_user_agent: ua,
   });
-  if (logErr) return NextResponse.json({ error: logErr.message }, { status: 400 });
+  if (logErr) return apiValidationError(logErr.message);
 
   const baseUrl = buildBaseUrl(req);
   const publicUrl = `${baseUrl}/c/${encodeURIComponent(pid)}`;
@@ -74,7 +75,7 @@ export async function GET(req: Request) {
     .maybeSingle();
   if (certIdErr) throw certIdErr;
   const certId = certIdRow?.id;
-  if (!certId) return NextResponse.json({ error: "certificate_not_found" }, { status: 404 });
+  if (!certId) return apiNotFound("証明書が見つかりません。");
   await logInsurerAccess({
     action: "download_pdf",
     certificateId: certId,

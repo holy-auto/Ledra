@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
+import { billingStateSchema } from "@/lib/validations/stripe";
+import { apiInternalError, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,18 +23,18 @@ function getStripe() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({} as any));
-    const access_token = body?.access_token as string | undefined;
-
-    if (!access_token) {
-      return NextResponse.json({ error: "Missing access_token" }, { status: 400 });
+    const parsed = billingStateSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力が不正です。");
     }
 
+    const { access_token } = parsed.data;
     const admin = getSupabaseAdmin();
 
     // access_token を検証して user_id を確定
     const u = await admin.auth.getUser(access_token);
     if (u.error || !u.data?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
     const user_id = u.data.user.id;
 
@@ -45,10 +47,10 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (m.error) {
-      return NextResponse.json({ error: "Failed to read tenant_memberships", detail: m.error.message }, { status: 500 });
+      return apiInternalError(m.error, "read tenant_memberships");
     }
     if (!m.data?.tenant_id) {
-      return NextResponse.json({ error: "No tenant membership for this user" }, { status: 404 });
+      return apiNotFound("テナントメンバーシップが見つかりません。");
     }
 
     const t = await admin
@@ -58,7 +60,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (t.error || !t.data) {
-      return NextResponse.json({ error: "Failed to read tenants", detail: t.error?.message ?? "not found" }, { status: 500 });
+      return apiInternalError(t.error ?? new Error("not found"), "read tenants");
     }
 
     // Stripeの期限情報（subscription がある時だけ）
@@ -86,14 +88,13 @@ export async function POST(req: NextRequest) {
             trial_end: sub.trial_end ?? null,
           };
         }
-      } catch (e: any) {
-        subscription = { error: e?.message ?? String(e) };
+      } catch (e) {
+        subscription = { error: e instanceof Error ? e.message : String(e) };
       }
     }
 
     return NextResponse.json({ tenant: t.data, role: m.data.role ?? null, subscription });
-  } catch (e: any) {
-    console.error("billing-state failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+  } catch (e) {
+    return apiInternalError(e, "billing-state");
   }
 }

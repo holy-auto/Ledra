@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { inquiryCreateSchema } from "@/lib/validations/market";
+import { apiOk, apiInternalError, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -29,41 +31,36 @@ export async function POST(req: NextRequest) {
     const admin = createAdminClient();
     const body = await req.json().catch(() => ({} as any));
 
-    const vehicleId = (body?.vehicle_id ?? "").trim();
-    const buyerName = (body?.buyer_name ?? "").trim();
-    const buyerEmail = (body?.buyer_email ?? "").trim();
-    const message = (body?.message ?? "").trim();
-
-    if (!vehicleId || !buyerName || !buyerEmail || !message) {
-      return NextResponse.json(
-        { error: "vehicle_id, buyer_name, buyer_email, and message are required" },
-        { status: 400 },
-      );
+    const parsed = inquiryCreateSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力が不正です。");
     }
+
+    const { vehicle_id, buyer_name, buyer_email, message, buyer_company, buyer_phone } = parsed.data;
 
     // Look up the vehicle to get seller tenant_id
     const { data: vehicle, error: vErr } = await admin
       .from("market_vehicles")
       .select("tenant_id")
-      .eq("id", vehicleId)
+      .eq("id", vehicle_id)
       .single();
 
     if (vErr || !vehicle) {
-      return NextResponse.json({ error: "vehicle_not_found" }, { status: 404 });
+      return apiNotFound("車両が見つかりません。");
     }
 
     const row: Record<string, unknown> = {
       id: crypto.randomUUID(),
-      vehicle_id: vehicleId,
+      vehicle_id,
       seller_tenant_id: vehicle.tenant_id,
-      buyer_name: buyerName,
-      buyer_email: buyerEmail,
+      buyer_name,
+      buyer_email,
       message,
       status: "new",
     };
 
-    if (body.buyer_company !== undefined) row.buyer_company = body.buyer_company;
-    if (body.buyer_phone !== undefined) row.buyer_phone = body.buyer_phone;
+    if (buyer_company !== undefined && buyer_company !== null) row.buyer_company = buyer_company;
+    if (buyer_phone !== undefined && buyer_phone !== null) row.buyer_phone = buyer_phone;
 
     const { data: inquiry, error } = await admin
       .from("market_inquiries")
@@ -72,13 +69,12 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: "insert_failed", detail: error.message }, { status: 500 });
+      return apiInternalError(error, "market inquiry insert");
     }
 
-    return NextResponse.json({ ok: true, inquiry });
-  } catch (e: any) {
-    console.error("market inquiry create failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return apiOk({ inquiry });
+  } catch (e) {
+    return apiInternalError(e, "market inquiry create");
   }
 }
 
@@ -87,7 +83,7 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerTenant(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const admin = createAdminClient();
     const url = new URL(req.url);
@@ -106,12 +102,11 @@ export async function GET(req: NextRequest) {
     const { data: inquiries, error } = await query;
 
     if (error) {
-      return NextResponse.json({ error: "db_error", detail: error.message }, { status: 500 });
+      return apiInternalError(error, "market inquiries list");
     }
 
     return NextResponse.json({ inquiries: inquiries ?? [] });
-  } catch (e: any) {
-    console.error("market inquiries list failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+  } catch (e) {
+    return apiInternalError(e, "market inquiries list");
   }
 }

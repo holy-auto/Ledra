@@ -1,25 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-
-async function getMyTenantId(supabase: any) {
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes.user) return null;
-  const { data } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .limit(1)
-    .single();
-  return data?.tenant_id as string | null;
-}
+import { resolveCallerBasic } from "@/lib/api/auth";
+import { apiOk, apiInternalError, apiUnauthorized, apiValidationError, apiForbidden } from "@/lib/api/response";
+import { orderCreateSchema, orderUpdateSchema } from "@/lib/validations/order";
 
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const { data: userRes } = await supabase.auth.getUser();
-    if (!userRes?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const tenantId = await getMyTenantId(supabase);
-    if (!tenantId) return NextResponse.json({ error: "No tenant" }, { status: 403 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
     const { searchParams } = new URL(req.url);
     const type = searchParams.get("type"); // sent | received | all
@@ -32,11 +21,11 @@ export async function GET(req: NextRequest) {
       .order("created_at", { ascending: false });
 
     if (type === "sent") {
-      query = query.eq("from_tenant_id", tenantId);
+      query = query.eq("from_tenant_id", caller.tenantId);
     } else if (type === "received") {
-      query = query.eq("to_tenant_id", tenantId);
+      query = query.eq("to_tenant_id", caller.tenantId);
     } else {
-      query = query.or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`);
+      query = query.or(`from_tenant_id.eq.${caller.tenantId},to_tenant_id.eq.${caller.tenantId}`);
     }
 
     if (status && status !== "all") {
@@ -51,32 +40,29 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json({ orders: orders ?? [] });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+  } catch (e) {
+    return apiInternalError(e, "orders list");
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const { data: userRes } = await supabase.auth.getUser();
-    if (!userRes?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
-    const tenantId = await getMyTenantId(supabase);
-    if (!tenantId) return NextResponse.json({ error: "No tenant" }, { status: 403 });
-
-    const body = await req.json();
-    const { to_tenant_id, title, description, category, budget, deadline } = body;
-
-    if (!to_tenant_id || !title) {
-      return NextResponse.json({ error: "to_tenant_id and title are required" }, { status: 400 });
+    const body = await req.json().catch(() => ({}));
+    const parsed = orderCreateSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力が無効です。");
     }
+
+    const { to_tenant_id, title, description, category, budget, deadline } = parsed.data;
 
     const { data, error } = await supabase
       .from("job_orders")
       .insert({
-        from_tenant_id: tenantId,
+        from_tenant_id: caller.tenantId,
         to_tenant_id,
         title,
         description: description || null,
@@ -89,13 +75,12 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return apiInternalError(error, "order create");
     }
 
-    return NextResponse.json({ order: data }, { status: 201 });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiOk({ order: data });
+  } catch (e) {
+    return apiInternalError(e, "order create");
   }
 }
 
@@ -103,39 +88,31 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const { data: userRes } = await supabase.auth.getUser();
-    if (!userRes?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
-    const tenantId = await getMyTenantId(supabase);
-    if (!tenantId) return NextResponse.json({ error: "No tenant" }, { status: 403 });
-
-    const body = await req.json();
-    const { id, status } = body;
-
-    if (!id || !status) {
-      return NextResponse.json({ error: "id and status are required" }, { status: 400 });
+    const body = await req.json().catch(() => ({}));
+    const parsed = orderUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力が無効です。");
     }
 
-    const validStatuses = ["pending", "accepted", "in_progress", "completed", "rejected", "cancelled"];
-    if (!validStatuses.includes(status)) {
-      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
-    }
+    const { id, status } = parsed.data;
 
     const { data, error } = await supabase
       .from("job_orders")
       .update({ status, updated_at: new Date().toISOString() })
       .eq("id", id)
-      .or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`)
+      .or(`from_tenant_id.eq.${caller.tenantId},to_tenant_id.eq.${caller.tenantId}`)
       .select()
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return apiInternalError(error, "order status update");
     }
 
-    return NextResponse.json({ ok: true, order: data });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiOk({ order: data });
+  } catch (e) {
+    return apiInternalError(e, "order status update");
   }
 }

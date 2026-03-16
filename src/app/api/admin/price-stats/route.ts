@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 const PREFECTURES = [
   "北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県",
@@ -15,7 +16,7 @@ export async function GET() {
   try {
     const supabase = await createSupabaseServerClient();
     const { data: userRes } = await supabase.auth.getUser();
-    if (!userRes?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!userRes?.user) return apiUnauthorized();
 
     // Get all certificates with service_price and tenant prefecture info
     const { data: certs } = await supabase
@@ -74,8 +75,7 @@ export async function GET() {
       : { count: 0, avg: 0, min: 0, max: 0 };
 
     return NextResponse.json({ regionalStats, overall });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+  } catch (e) {
+    return apiInternalError(e, "price-stats");
   }
 }

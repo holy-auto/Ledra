@@ -3,6 +3,8 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { createSupabaseAdminClient } from "@/lib/supabaseAdmin";
 import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages";
 import { normalizePlanTier, PHOTO_LIMITS } from "@/lib/billing/planFeatures";
+import { apiOk, apiInternalError, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
+import { apiError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -15,7 +17,7 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const { data: userRes } = await supabase.auth.getUser();
     if (!userRes.user) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
 
     const { data: mem } = await supabase
@@ -25,7 +27,7 @@ export async function POST(req: NextRequest) {
       .single();
     const tenantId = (mem?.tenant_id as string | undefined) ?? null;
     if (!tenantId) {
-      return NextResponse.json({ error: "no_tenant" }, { status: 400 });
+      return apiValidationError("テナントが見つかりません。");
     }
 
     // ── Plan tier → photo limit ───────────────────────────────────
@@ -41,12 +43,12 @@ export async function POST(req: NextRequest) {
     const form = await req.formData();
     const publicId = String(form.get("public_id") ?? "").trim();
     if (!publicId) {
-      return NextResponse.json({ error: "missing public_id" }, { status: 400 });
+      return apiValidationError("public_id は必須です。");
     }
 
     const files = form.getAll("photos") as File[];
     if (files.length === 0) {
-      return NextResponse.json({ ok: true, uploaded: 0 });
+      return apiOk({ uploaded: 0 });
     }
 
     // ── Verify certificate belongs to this tenant ─────────────────
@@ -59,7 +61,7 @@ export async function POST(req: NextRequest) {
       .limit(1)
       .maybeSingle();
     if (!cert?.id) {
-      return NextResponse.json({ error: "certificate_not_found" }, { status: 404 });
+      return apiNotFound("証明書が見つかりません。");
     }
 
     // ── Count existing images ─────────────────────────────────────
@@ -71,10 +73,12 @@ export async function POST(req: NextRequest) {
     const remaining = maxPhotos - existing;
 
     if (remaining <= 0) {
-      return NextResponse.json(
-        { error: "photo_limit_reached", max: maxPhotos, plan: planTier },
-        { status: 422 }
-      );
+      return apiError({
+        code: "plan_limit",
+        message: "写真の上限に達しました。",
+        status: 422,
+        data: { max: maxPhotos, plan: planTier },
+      });
     }
 
     // ── Upload files ───────────────────────────────────────────────
@@ -121,9 +125,8 @@ export async function POST(req: NextRequest) {
       uploaded++;
     }
 
-    return NextResponse.json({ ok: true, uploaded, max: maxPhotos, plan: planTier });
-  } catch (e: any) {
-    console.error("image upload error", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return apiOk({ uploaded, max: maxPhotos, plan: planTier });
+  } catch (e) {
+    return apiInternalError(e, "image upload");
   }
 }

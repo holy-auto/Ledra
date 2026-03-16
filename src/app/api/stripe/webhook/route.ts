@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { priceIdToPlanTier } from "@/lib/stripe/plan";
+import { apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -111,16 +112,16 @@ export async function POST(req: NextRequest) {
   const sig = req.headers.get("stripe-signature");
   const whsec = process.env.STRIPE_WEBHOOK_SECRET;
   if (!sig || !whsec) {
-    return NextResponse.json({ error: "Missing stripe-signature or STRIPE_WEBHOOK_SECRET" }, { status: 400 });
+    return apiValidationError("Missing stripe-signature or STRIPE_WEBHOOK_SECRET");
   }
 
   let event: Stripe.Event;
   try {
     const rawBody = await req.text();
     event = stripe.webhooks.constructEvent(rawBody, sig, whsec);
-  } catch (e: any) {
+  } catch (e) {
     console.error("webhook signature verify failed", e);
-    return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+    return apiValidationError("Invalid signature");
   }
 
   const supabase = getSupabaseAdmin();
@@ -172,13 +173,10 @@ export async function POST(req: NextRequest) {
       default:
         break;
     }
-  } catch (e: any) {
-    console.error("stripe webhook handler failed", { type: event.type, id: event.id, error: e?.message ?? e });
-    return NextResponse.json({ error: "Webhook handler failed" }, { status: 500 });
+  } catch (e) {
+    console.error("stripe webhook handler failed", { type: event.type, id: event.id, error: e instanceof Error ? e.message : e });
+    return apiInternalError(e, "stripe webhook handler");
   }
 
   return NextResponse.json({ received: true });
 }
-
-
-

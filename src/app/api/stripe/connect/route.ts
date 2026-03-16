@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { apiOk, apiInternalError, apiUnauthorized, apiNotFound } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerTenant(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const admin = createAdminClient();
     const { data: tenant } = await admin
@@ -36,7 +37,7 @@ export async function POST(req: NextRequest) {
       .eq("id", caller.tenantId)
       .single();
 
-    if (!tenant) return NextResponse.json({ error: "tenant_not_found" }, { status: 404 });
+    if (!tenant) return apiNotFound("テナントが見つかりません。");
 
     const stripe = getStripe();
     let accountId = tenant.stripe_connect_account_id as string | null;
@@ -70,14 +71,12 @@ export async function POST(req: NextRequest) {
       type: "account_onboarding",
     });
 
-    return NextResponse.json({
-      ok: true,
+    return apiOk({
       account_id: accountId,
       onboarding_url: accountLink.url,
     });
-  } catch (e: any) {
-    console.error("stripe connect create failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+  } catch (e) {
+    return apiInternalError(e, "stripe connect create");
   }
 }
 
@@ -86,7 +85,7 @@ export async function GET() {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerTenant(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const admin = createAdminClient();
     const { data: tenant } = await admin
@@ -95,7 +94,7 @@ export async function GET() {
       .eq("id", caller.tenantId)
       .single();
 
-    if (!tenant) return NextResponse.json({ error: "tenant_not_found" }, { status: 404 });
+    if (!tenant) return apiNotFound("テナントが見つかりません。");
 
     const accountId = tenant.stripe_connect_account_id as string | null;
     if (!accountId) {
@@ -127,8 +126,7 @@ export async function GET() {
       charges_enabled: account.charges_enabled,
       payouts_enabled: account.payouts_enabled,
     });
-  } catch (e: any) {
-    console.error("stripe connect status failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+  } catch (e) {
+    return apiInternalError(e, "stripe connect status");
   }
 }

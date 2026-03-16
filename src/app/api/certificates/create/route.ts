@@ -1,22 +1,10 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { phoneLast4Hash } from "@/lib/customerPortalServer";
+import { certificateCreateSchema } from "@/lib/validations/certificate";
+import { apiOk, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { enforceBilling } from "@/lib/billing/guard";
 
 export const dynamic = "force-dynamic";
-
-const BodySchema = z.object({
-  tenant_id: z.string().uuid(),
-  status: z.string().optional().default("active"),
-  customer_name: z.string().min(1),
-  customer_phone_last4: z.string().regex(/^\d{4}$/).optional(),
-  vehicle_info_json: z.any().optional(),
-  content_free_text: z.string().nullable().optional(),
-  content_preset_json: z.any().optional(),
-  expiry_type: z.string().nullable().optional(),
-  expiry_value: z.string().nullable().optional(),
-  logo_asset_path: z.string().nullable().optional(),
-  footer_variant: z.string().nullable().optional(),
-});
 
 async function supaInsertCertificate(row: any) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -42,14 +30,16 @@ async function supaInsertCertificate(row: any) {
   return Array.isArray(json) ? json[0] : json;
 }
 
-import { enforceBilling } from "@/lib/billing/guard";
-
 export async function POST(req: Request) {
   const deny = await enforceBilling(req, { minPlan: "mini", action: "create" });
   if (deny) return deny as any;
   try {
     const body = await req.json();
-    const b = BodySchema.parse(body);
+    const parsed = certificateCreateSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力内容に誤りがあります。");
+    }
+    const b = parsed.data;
 
     const customer_phone_last4 = b.customer_phone_last4 ?? null;
     const customer_phone_last4_hash =
@@ -75,10 +65,7 @@ export async function POST(req: Request) {
 
     const certificate = await supaInsertCertificate(insertRow);
     return NextResponse.json({ certificate }, { status: 200 });
-  } catch (e: any) {
-    return NextResponse.json(
-      { error: e?.message ?? "create failed" },
-      { status: 500 }
-    );
+  } catch (e) {
+    return apiInternalError(e, "certificates/create");
   }
 }

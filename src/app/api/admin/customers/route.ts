@@ -1,35 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { escapeIlike } from "@/lib/sanitize";
+import { resolveCallerBasic } from "@/lib/api/auth";
+import { apiOk, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { customerCreateSchema, customerUpdateSchema, customerDeleteSchema } from "@/lib/validations/customer";
 
 export const dynamic = "force-dynamic";
-
-/** 現在ログインユーザーの tenant_id を取得 */
-async function resolveCallerTenant(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>) {
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes?.user) return null;
-
-  const { data: mem } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .eq("user_id", userRes.user.id)
-    .limit(1)
-    .single();
-
-  if (!mem?.tenant_id) return null;
-
-  return {
-    userId: userRes.user.id,
-    tenantId: mem.tenant_id as string,
-  };
-}
 
 // ─── GET: 顧客一覧 ───
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
     const url = new URL(req.url);
     const q = (url.searchParams.get("q") ?? "").trim();
@@ -46,7 +29,7 @@ export async function GET(req: NextRequest) {
     }
 
     const { data: customers, error } = await query;
-    if (error) return NextResponse.json({ error: "db_error", detail: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "customers list query");
 
     // 各顧客の証明書数を取得
     const customerIds = (customers ?? []).map((c) => c.id);
@@ -99,9 +82,8 @@ export async function GET(req: NextRequest) {
         linked_certificates: totalCerts,
       },
     });
-  } catch (e: any) {
-    console.error("customers list failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+  } catch (e) {
+    return apiInternalError(e, "customers list");
   }
 }
 
@@ -109,32 +91,34 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({} as any));
-    const name = (body?.name ?? "").trim();
-    if (!name) return NextResponse.json({ error: "name_required", message: "顧客名は必須です。" }, { status: 400 });
+    const body = await req.json().catch(() => ({}));
+    const parsed = customerCreateSchema.safeParse(body);
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map(i => i.message).join(" ");
+      return apiValidationError(msg);
+    }
 
     const row = {
       id: crypto.randomUUID(),
       tenant_id: caller.tenantId,
-      name,
-      name_kana: (body?.name_kana ?? "").trim() || null,
-      email: (body?.email ?? "").trim() || null,
-      phone: (body?.phone ?? "").trim() || null,
-      postal_code: (body?.postal_code ?? "").trim() || null,
-      address: (body?.address ?? "").trim() || null,
-      note: (body?.note ?? "").trim() || null,
+      name: parsed.data.name,
+      name_kana: parsed.data.name_kana ?? null,
+      email: parsed.data.email ?? null,
+      phone: parsed.data.phone ?? null,
+      postal_code: parsed.data.postal_code ?? null,
+      address: parsed.data.address ?? null,
+      note: parsed.data.note ?? null,
     };
 
     const { data, error } = await supabase.from("customers").insert(row).select().single();
-    if (error) return NextResponse.json({ error: "insert_failed", detail: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "customer insert");
 
-    return NextResponse.json({ ok: true, customer: data });
-  } catch (e: any) {
-    console.error("customer create failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiOk({ customer: data });
+  } catch (e) {
+    return apiInternalError(e, "customer create");
   }
 }
 
@@ -142,41 +126,40 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({} as any));
-    const id = (body?.id ?? "").trim();
-    if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
-
-    const name = (body?.name ?? "").trim();
-    if (!name) return NextResponse.json({ error: "name_required", message: "顧客名は必須です。" }, { status: 400 });
+    const body = await req.json().catch(() => ({}));
+    const parsed = customerUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map(i => i.message).join(" ");
+      return apiValidationError(msg);
+    }
 
     const updates: Record<string, unknown> = {
-      name,
-      name_kana: (body?.name_kana ?? "").trim() || null,
-      email: (body?.email ?? "").trim() || null,
-      phone: (body?.phone ?? "").trim() || null,
-      postal_code: (body?.postal_code ?? "").trim() || null,
-      address: (body?.address ?? "").trim() || null,
-      note: (body?.note ?? "").trim() || null,
+      name: parsed.data.name,
+      name_kana: parsed.data.name_kana ?? null,
+      email: parsed.data.email ?? null,
+      phone: parsed.data.phone ?? null,
+      postal_code: parsed.data.postal_code ?? null,
+      address: parsed.data.address ?? null,
+      note: parsed.data.note ?? null,
       updated_at: new Date().toISOString(),
     };
 
     const { data, error } = await supabase
       .from("customers")
       .update(updates)
-      .eq("id", id)
+      .eq("id", parsed.data.id)
       .eq("tenant_id", caller.tenantId)
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: "update_failed", detail: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "customer update");
 
-    return NextResponse.json({ ok: true, customer: data });
-  } catch (e: any) {
-    console.error("customer update failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiOk({ customer: data });
+  } catch (e) {
+    return apiInternalError(e, "customer update");
   }
 }
 
@@ -184,44 +167,43 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({} as any));
-    const id = (body?.id ?? "").trim();
-    if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
+    const body = await req.json().catch(() => ({}));
+    const parsed = customerDeleteSchema.safeParse(body);
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map(i => i.message).join(" ");
+      return apiValidationError(msg);
+    }
 
     // リンク済み証明書/請求書があるか確認
     const { count: certCount } = await supabase
       .from("certificates")
       .select("id", { count: "exact", head: true })
       .eq("tenant_id", caller.tenantId)
-      .eq("customer_id", id);
+      .eq("customer_id", parsed.data.id);
 
     const { count: invCount } = await supabase
       .from("invoices")
       .select("id", { count: "exact", head: true })
       .eq("tenant_id", caller.tenantId)
-      .eq("customer_id", id);
+      .eq("customer_id", parsed.data.id);
 
     if ((certCount ?? 0) > 0 || (invCount ?? 0) > 0) {
-      return NextResponse.json({
-        error: "has_linked_records",
-        message: "この顧客には証明書または請求書が紐付いているため削除できません。",
-      }, { status: 400 });
+      return apiValidationError("この顧客には証明書または請求書が紐付いているため削除できません。");
     }
 
     const { error } = await supabase
       .from("customers")
       .delete()
-      .eq("id", id)
+      .eq("id", parsed.data.id)
       .eq("tenant_id", caller.tenantId);
 
-    if (error) return NextResponse.json({ error: "delete_failed", detail: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "customer delete");
 
-    return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    console.error("customer delete failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiOk({});
+  } catch (e) {
+    return apiInternalError(e, "customer delete");
   }
 }

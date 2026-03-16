@@ -1,34 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { escapeIlike } from "@/lib/sanitize";
+import { resolveCallerBasic } from "@/lib/api/auth";
+import { apiOk, apiInternalError, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
+import { marketVehicleCreateSchema, marketVehicleUpdateSchema, marketVehicleDeleteSchema } from "@/lib/validations/market";
 
 export const dynamic = "force-dynamic";
-
-async function resolveCallerTenant(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>) {
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes?.user) return null;
-
-  const { data: mem } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .eq("user_id", userRes.user.id)
-    .limit(1)
-    .single();
-
-  if (!mem?.tenant_id) return null;
-
-  return {
-    userId: userRes.user.id,
-    tenantId: mem.tenant_id as string,
-  };
-}
 
 // ─── GET: BtoB中古車在庫一覧 ───
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
     const url = new URL(req.url);
     const singleId = url.searchParams.get("id") ?? "";
@@ -44,7 +28,7 @@ export async function GET(req: NextRequest) {
       if (!isPublic) q = q.eq("tenant_id", caller.tenantId);
       else q = q.eq("status", "listed");
       const { data: vehicles, error } = await q;
-      if (error) return NextResponse.json({ error: "db_error", detail: error.message }, { status: 500 });
+      if (error) return apiInternalError(error, "market vehicle get");
       // Fetch images
       let imgs: any[] = [];
       if (vehicles && vehicles.length > 0) {
@@ -83,7 +67,7 @@ export async function GET(req: NextRequest) {
     }
 
     const { data: vehicles, error } = await query;
-    if (error) return NextResponse.json({ error: "db_error", detail: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "market vehicles list");
 
     // Fetch images for all vehicles
     const vehicleIds = (vehicles ?? []).map((v) => v.id);
@@ -117,9 +101,8 @@ export async function GET(req: NextRequest) {
       vehicles: enriched,
       stats: { total, listed, draft },
     });
-  } catch (e: any) {
-    console.error("market-vehicles list failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+  } catch (e) {
+    return apiInternalError(e, "market vehicles list");
   }
 }
 
@@ -127,49 +110,20 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({} as any));
-
-    const makerVal = (body?.maker ?? "").trim();
-    const modelVal = (body?.model ?? "").trim();
-    if (!makerVal || !modelVal) {
-      return NextResponse.json({ error: "maker and model are required" }, { status: 400 });
+    const body = await req.json().catch(() => ({}));
+    const parsed = marketVehicleCreateSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力が無効です。");
     }
 
     const row: Record<string, unknown> = {
       id: crypto.randomUUID(),
       tenant_id: caller.tenantId,
-      maker: makerVal,
-      model: modelVal,
-      status: body.status ?? "draft",
+      ...parsed.data,
     };
-
-    // Optional fields
-    if (body.grade !== undefined) row.grade = body.grade;
-    if (body.year !== undefined) row.year = body.year;
-    if (body.mileage !== undefined) row.mileage = body.mileage;
-    if (body.color !== undefined) row.color = body.color;
-    if (body.color_code !== undefined) row.color_code = body.color_code;
-    if (body.plate_number !== undefined) row.plate_number = body.plate_number;
-    if (body.chassis_number !== undefined) row.chassis_number = body.chassis_number;
-    if (body.engine_type !== undefined) row.engine_type = body.engine_type;
-    if (body.displacement !== undefined) row.displacement = body.displacement;
-    if (body.transmission !== undefined) row.transmission = body.transmission;
-    if (body.drive_type !== undefined) row.drive_type = body.drive_type;
-    if (body.fuel_type !== undefined) row.fuel_type = body.fuel_type;
-    if (body.door_count !== undefined) row.door_count = body.door_count;
-    if (body.seating_capacity !== undefined) row.seating_capacity = body.seating_capacity;
-    if (body.body_type !== undefined) row.body_type = body.body_type;
-    if (body.inspection_date !== undefined) row.inspection_date = body.inspection_date;
-    if (body.repair_history !== undefined) row.repair_history = body.repair_history;
-    if (body.condition_grade !== undefined) row.condition_grade = body.condition_grade;
-    if (body.condition_note !== undefined) row.condition_note = body.condition_note;
-    if (body.asking_price !== undefined) row.asking_price = body.asking_price;
-    if (body.wholesale_price !== undefined) row.wholesale_price = body.wholesale_price;
-    if (body.description !== undefined) row.description = body.description;
-    if (body.features !== undefined) row.features = body.features;
 
     // If status is 'listed', set listed_at
     if (row.status === "listed") {
@@ -177,12 +131,11 @@ export async function POST(req: NextRequest) {
     }
 
     const { data, error } = await supabase.from("market_vehicles").insert(row).select().single();
-    if (error) return NextResponse.json({ error: "insert_failed", detail: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "market vehicle create");
 
-    return NextResponse.json({ ok: true, vehicle: data });
-  } catch (e: any) {
-    console.error("market-vehicle create failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return apiOk({ vehicle: data });
+  } catch (e) {
+    return apiInternalError(e, "market vehicle create");
   }
 }
 
@@ -190,12 +143,16 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({} as any));
-    const id = (body?.id ?? "").trim();
-    if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
+    const body = await req.json().catch(() => ({}));
+    const parsed = marketVehicleUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力が無効です。");
+    }
+
+    const { id, ...updateFields } = parsed.data;
 
     // Check current status for listed_at logic
     const { data: existing } = await supabase
@@ -205,39 +162,15 @@ export async function PUT(req: NextRequest) {
       .eq("tenant_id", caller.tenantId)
       .single();
 
-    if (!existing) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    if (!existing) return apiNotFound("車両が見つかりません。");
 
-    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-
-    if (body.maker !== undefined) updates.maker = body.maker;
-    if (body.model !== undefined) updates.model = body.model;
-    if (body.grade !== undefined) updates.grade = body.grade;
-    if (body.year !== undefined) updates.year = body.year;
-    if (body.mileage !== undefined) updates.mileage = body.mileage;
-    if (body.color !== undefined) updates.color = body.color;
-    if (body.color_code !== undefined) updates.color_code = body.color_code;
-    if (body.plate_number !== undefined) updates.plate_number = body.plate_number;
-    if (body.chassis_number !== undefined) updates.chassis_number = body.chassis_number;
-    if (body.engine_type !== undefined) updates.engine_type = body.engine_type;
-    if (body.displacement !== undefined) updates.displacement = body.displacement;
-    if (body.transmission !== undefined) updates.transmission = body.transmission;
-    if (body.drive_type !== undefined) updates.drive_type = body.drive_type;
-    if (body.fuel_type !== undefined) updates.fuel_type = body.fuel_type;
-    if (body.door_count !== undefined) updates.door_count = body.door_count;
-    if (body.seating_capacity !== undefined) updates.seating_capacity = body.seating_capacity;
-    if (body.body_type !== undefined) updates.body_type = body.body_type;
-    if (body.inspection_date !== undefined) updates.inspection_date = body.inspection_date;
-    if (body.repair_history !== undefined) updates.repair_history = body.repair_history;
-    if (body.condition_grade !== undefined) updates.condition_grade = body.condition_grade;
-    if (body.condition_note !== undefined) updates.condition_note = body.condition_note;
-    if (body.asking_price !== undefined) updates.asking_price = body.asking_price;
-    if (body.wholesale_price !== undefined) updates.wholesale_price = body.wholesale_price;
-    if (body.status !== undefined) updates.status = body.status;
-    if (body.description !== undefined) updates.description = body.description;
-    if (body.features !== undefined) updates.features = body.features;
+    const updates: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+      ...updateFields,
+    };
 
     // When status changes to 'listed', set listed_at
-    if (body.status === "listed" && existing.status !== "listed") {
+    if (updateFields.status === "listed" && existing.status !== "listed") {
       updates.listed_at = new Date().toISOString();
     }
 
@@ -249,12 +182,11 @@ export async function PUT(req: NextRequest) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: "update_failed", detail: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "market vehicle update");
 
-    return NextResponse.json({ ok: true, vehicle: data });
-  } catch (e: any) {
-    console.error("market-vehicle update failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return apiOk({ vehicle: data });
+  } catch (e) {
+    return apiInternalError(e, "market vehicle update");
   }
 }
 
@@ -262,12 +194,16 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({} as any));
-    const id = (body?.id ?? "").trim();
-    if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
+    const body = await req.json().catch(() => ({}));
+    const parsed = marketVehicleDeleteSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力が無効です。");
+    }
+
+    const { id } = parsed.data;
 
     // Fetch vehicle to check status
     const { data: vehicle } = await supabase
@@ -277,13 +213,10 @@ export async function DELETE(req: NextRequest) {
       .eq("tenant_id", caller.tenantId)
       .single();
 
-    if (!vehicle) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    if (!vehicle) return apiNotFound("車両が見つかりません。");
 
     if (vehicle.status !== "draft") {
-      return NextResponse.json({
-        error: "not_draft",
-        message: "下書きステータスの車両のみ削除できます。",
-      }, { status: 400 });
+      return apiValidationError("下書きステータスの車両のみ削除できます。");
     }
 
     // Delete associated images from storage
@@ -314,11 +247,10 @@ export async function DELETE(req: NextRequest) {
       .eq("id", id)
       .eq("tenant_id", caller.tenantId);
 
-    if (error) return NextResponse.json({ error: "delete_failed", detail: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "market vehicle delete");
 
-    return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    console.error("market-vehicle delete failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return apiOk({});
+  } catch (e) {
+    return apiInternalError(e, "market vehicle delete");
   }
 }

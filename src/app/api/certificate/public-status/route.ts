@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,7 +15,7 @@ function getSupabaseAdmin() {
 export async function GET(req: NextRequest) {
   try {
     const pid = req.nextUrl.searchParams.get("pid") ?? req.nextUrl.searchParams.get("public_id");
-    if (!pid) return NextResponse.json({ error: "Missing pid" }, { status: 400 });
+    if (!pid) return apiValidationError("pid は必須です。");
 
     const supabase = getSupabaseAdmin();
 
@@ -31,11 +32,11 @@ export async function GET(req: NextRequest) {
       .maybeSingle();
 
     if (certRes.error) {
-      return NextResponse.json({ error: "Failed to read certificate", detail: certRes.error.message }, { status: 500 });
+      return apiInternalError(certRes.error, "public-status certificate fetch");
     }
     const cert = certRes.data as any;
     if (!cert?.tenant_id) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return apiNotFound("証明書が見つかりません。");
     }
 
     // ── Tenant / Shop ─────────────────────────────────────────────
@@ -142,8 +143,7 @@ export async function GET(req: NextRequest) {
       },
       { status: 200, headers: { "cache-control": "no-store" } }
     );
-  } catch (e: any) {
-    console.error("public-status failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+  } catch (e) {
+    return apiInternalError(e, "public-status");
   }
 }
