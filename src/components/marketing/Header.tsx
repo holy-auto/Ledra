@@ -58,10 +58,10 @@ export function Header() {
             ログイン
           </Link>
           <Link
-            href="/contact"
+            href="/signup"
             className="bg-heading text-white text-[0.875rem] font-medium px-5 py-2.5 rounded-lg hover:bg-heading/90 transition-all shadow-[0_1px_2px_rgba(0,0,0,0.1)] hover:shadow-[0_2px_8px_rgba(0,0,0,0.15)] hover:-translate-y-[0.5px]"
           >
-            お問い合わせ
+            無料で始める
           </Link>
         </div>
 
