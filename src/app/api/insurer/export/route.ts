@@ -17,10 +17,13 @@ function getClientMeta(req: Request) {
 }
 
 import { enforceBilling } from "@/lib/billing/guard";
+import { enforceInsurerStatus } from "@/lib/insurer/statusGuard";
 
 export async function GET(req: Request) {
   const deny = await enforceBilling(req, { minPlan: "pro", action: "insurer_export" });
   if (deny) return deny as any;
+  const statusDeny = await enforceInsurerStatus();
+  if (statusDeny) return statusDeny as any;
   const url = new URL(req.url);
   const q = url.searchParams.get("q") ?? "";
 

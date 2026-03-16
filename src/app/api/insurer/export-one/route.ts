@@ -17,10 +17,13 @@ function getClientMeta(req: Request) {
 }
 
 import { enforceBilling } from "@/lib/billing/guard";
+import { enforceInsurerStatus } from "@/lib/insurer/statusGuard";
 
 export async function GET(req: Request) {
   const deny = await enforceBilling(req, { minPlan: "pro", action: "insurer_export_one" });
   if (deny) return deny as any;
+  const statusDeny = await enforceInsurerStatus();
+  if (statusDeny) return statusDeny as any;
   const url = new URL(req.url);
   const pid = url.searchParams.get("pid");
   if (!pid) return NextResponse.json({ error: "pid_required" }, { status: 400 });

@@ -77,10 +77,13 @@ function parseCsv(text: string): CsvRow[] {
 }
 
 import { enforceBilling } from "@/lib/billing/guard";
+import { enforceInsurerStatus } from "@/lib/insurer/statusGuard";
 
 export async function POST(req: Request) {
   const deny = await enforceBilling(req, { minPlan: "pro", action: "insurer_users_csv" });
   if (deny) return deny as any;
+  const statusDeny = await enforceInsurerStatus();
+  if (statusDeny) return statusDeny as any;
   // dev用の認証スキップは完全削除（本番仕様）
   if (req.headers.get("x-dev-skip-auth")) {
     return NextResponse.json({ error: "x-dev-skip-auth is not allowed" }, { status: 403 });
