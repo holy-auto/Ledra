@@ -249,9 +249,9 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
             <div className="rounded-lg bg-base px-3 py-2 text-secondary">有効期限タイプ: <span className="text-primary">{asText(data.certificate.expiry_type) || "-"}</span></div>
             <div className="rounded-lg bg-base px-3 py-2 text-secondary">有効期限値: <span className="text-primary">{data.certificate.expiry_value != null ? String(data.certificate.expiry_value) : "-"}</span></div>
             <div className="rounded-lg bg-base px-3 py-2 text-secondary">バージョン: <span className="text-primary">{data.certificate.current_version != null ? String(data.certificate.current_version) : "-"}</span></div>
-            <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary overflow-hidden">
               公開URL:{" "}
-              <a href={publicUrl} target="_blank" rel="noreferrer" className="text-[#0071e3] hover:underline">
+              <a href={publicUrl} target="_blank" rel="noreferrer" className="text-[#0071e3] hover:underline truncate block">
                 {publicUrl}
               </a>
             </div>

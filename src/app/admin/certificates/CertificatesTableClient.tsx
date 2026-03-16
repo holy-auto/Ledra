@@ -188,19 +188,19 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
                 </Badge>
               </div>
               {/* Row 2: actions */}
-              <div className="flex gap-2 items-center px-4 pb-3 pl-[2.75rem]">
-                <Link href={url} target="_blank" className="btn-ghost !px-3 !py-1 !text-xs">
+              <div className="flex gap-2 items-center px-4 pb-3 pl-[2.75rem] flex-wrap">
+                <Link href={url} target="_blank" className="btn-ghost !px-3 !py-1 !text-xs whitespace-nowrap">
                   公開ページ
                 </Link>
                 <Link
-                  className={btnCls(canPdfOne)}
+                  className={btnCls(canPdfOne) + " whitespace-nowrap"}
                   href={hrefOrBill(canPdfOne, `/admin/certificates/pdf-one?pid=${encodeURIComponent(r.public_id)}`, "pdf_one")}
                   aria-disabled={!canPdfOne}
                 >
                   PDF
                 </Link>
                 <Link
-                  className={btnCls(canCsvOne)}
+                  className={btnCls(canCsvOne) + " whitespace-nowrap"}
                   href={hrefOrBill(canCsvOne, `/admin/certificates/export-one?pid=${encodeURIComponent(r.public_id)}`, "export_one_csv")}
                   aria-disabled={!canCsvOne}
                 >
@@ -209,7 +209,7 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
                 {!isVoid && (
                   <button
                     type="button"
-                    className="btn-danger !px-3 !py-1 !text-xs"
+                    className="btn-danger !px-3 !py-1 !text-xs whitespace-nowrap"
                     disabled={voidingId === r.public_id}
                     onClick={() => handleVoid(r.public_id)}
                   >

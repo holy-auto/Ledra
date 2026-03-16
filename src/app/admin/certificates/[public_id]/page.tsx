@@ -283,19 +283,25 @@ export default async function Page({ params }: PageProps) {
               </div>
 
               <div className="space-y-3 text-sm">
-                <div className="rounded-xl bg-base p-4">
+                <div className="rounded-xl bg-base p-4 overflow-hidden">
                   <div className="text-xs text-muted">公開ページ</div>
-                  <div className="mt-1 break-all text-primary">{publicUrl}</div>
+                  <Link href={publicUrl} target="_blank" className="mt-1 block text-[#0071e3] hover:underline truncate">
+                    {publicUrl}
+                  </Link>
                 </div>
 
-                <div className="rounded-xl bg-base p-4">
+                <div className="rounded-xl bg-base p-4 overflow-hidden">
                   <div className="text-xs text-muted">CSV(1件)</div>
-                  <div className="mt-1 break-all text-primary">{csvUrl}</div>
+                  <Link href={csvUrl} className="mt-1 block text-[#0071e3] hover:underline truncate">
+                    {csvUrl}
+                  </Link>
                 </div>
 
-                <div className="rounded-xl bg-base p-4">
+                <div className="rounded-xl bg-base p-4 overflow-hidden">
                   <div className="text-xs text-muted">PDF(1件)</div>
-                  <div className="mt-1 break-all text-primary">{pdfUrl}</div>
+                  <Link href={pdfUrl} target="_blank" className="mt-1 block text-[#0071e3] hover:underline truncate">
+                    {pdfUrl}
+                  </Link>
                 </div>
               </div>
             </section>
