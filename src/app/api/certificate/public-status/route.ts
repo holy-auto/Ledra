@@ -39,89 +39,65 @@ export async function GET(req: NextRequest) {
       return apiNotFound("証明書が見つかりません。");
     }
 
-    // ── Tenant / Shop ─────────────────────────────────────────────
-    const tenantRes = await supabase
-      .from("tenants")
-      .select("name, slug, custom_domain")
-      .eq("id", cert.tenant_id)
-      .limit(1)
-      .maybeSingle();
-    const tenant = (tenantRes.data as any) ?? null;
+    // ── 関連データを並列取得（直列→並列で大幅高速化） ──────────
+    const [tenantRes, vehicleRes, nfcRes, histRes, imgRes, vcRes] = await Promise.all([
+      // Tenant / Shop
+      supabase.from("tenants").select("name, slug, custom_domain")
+        .eq("id", cert.tenant_id).limit(1).maybeSingle(),
 
-    // ── Vehicle ───────────────────────────────────────────────────
-    let vehicle: any = null;
-    if (cert.vehicle_id) {
-      const vehicleRes = await supabase
-        .from("vehicles")
-        .select("id, maker, model, year, plate_display, customer_name, customer_email, notes")
-        .eq("id", cert.vehicle_id)
-        .limit(1)
-        .maybeSingle();
-      vehicle = (vehicleRes.data as any) ?? null;
-    }
+      // Vehicle
+      cert.vehicle_id
+        ? supabase.from("vehicles")
+            .select("id, maker, model, year, plate_display, customer_name, customer_email, notes")
+            .eq("id", cert.vehicle_id).limit(1).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
 
-    // ── NFC tag ───────────────────────────────────────────────────
-    let nfc: any = null;
-    {
-      const nfcRes = await supabase
-        .from("nfc_tags")
+      // NFC tag
+      supabase.from("nfc_tags")
         .select("id, tag_code, status, written_at, attached_at")
-        .eq("certificate_id", cert.id)
-        .limit(1)
-        .maybeSingle();
-      nfc = (nfcRes.data as any) ?? null;
-    }
+        .eq("certificate_id", cert.id).limit(1).maybeSingle(),
 
-    // ── Vehicle histories (timeline) ──────────────────────────────
-    let histories: any[] = [];
-    if (cert.vehicle_id) {
-      const histRes = await supabase
-        .from("vehicle_histories")
-        .select("id, type, title, description, performed_at, created_at")
-        .eq("vehicle_id", cert.vehicle_id)
-        .order("performed_at", { ascending: false })
-        .limit(50);
-      histories = (histRes.data as any[]) ?? [];
-    }
+      // Vehicle histories
+      cert.vehicle_id
+        ? supabase.from("vehicle_histories")
+            .select("id, type, title, description, performed_at, created_at")
+            .eq("vehicle_id", cert.vehicle_id)
+            .order("performed_at", { ascending: false }).limit(50)
+        : Promise.resolve({ data: [], error: null }),
 
-    // ── Certificate images ────────────────────────────────────────
-    let images: any[] = [];
-    {
-      const imgRes = await supabase
-        .from("certificate_images")
+      // Certificate images
+      supabase.from("certificate_images")
         .select("id, file_name, content_type, file_size, sort_order, created_at, storage_path")
         .eq("certificate_id", cert.id)
-        .order("sort_order", { ascending: true })
-        .limit(20);
+        .order("sort_order", { ascending: true }).limit(20),
 
-      if (!imgRes.error && imgRes.data) {
-        images = imgRes.data.map((img: any) => {
-          let url: string | null = null;
-          if (img.storage_path) {
-            const { data: signedData } = supabase.storage
-              .from("certificate-images")
-              .getPublicUrl(img.storage_path);
-            url = signedData?.publicUrl ?? null;
-          }
-          return { ...img, url };
-        });
-      }
-    }
+      // Same-vehicle past certificates
+      cert.vehicle_id
+        ? supabase.from("certificates")
+            .select("id, public_id, status, customer_name, created_at, vehicle_info_json, content_free_text, expiry_value")
+            .eq("vehicle_id", cert.vehicle_id).neq("public_id", pid)
+            .order("created_at", { ascending: false }).limit(20)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
 
-    // ── Same-vehicle past certificates ────────────────────────────
-    let vehicle_certificates: any[] = [];
-    if (cert.vehicle_id) {
-      const vcRes = await supabase
-        .from("certificates")
-        .select(
-          "id, public_id, status, customer_name, created_at, vehicle_info_json, " +
-          "content_free_text, expiry_value"
-        )
-        .eq("vehicle_id", cert.vehicle_id)
-        .neq("public_id", pid)
-        .order("created_at", { ascending: false })
-        .limit(20);
-      vehicle_certificates = (vcRes.data as any[]) ?? [];
+    const tenant = (tenantRes.data as any) ?? null;
+    const vehicle = (vehicleRes.data as any) ?? null;
+    const nfc = (nfcRes.data as any) ?? null;
+    const histories = ((histRes.data as any[]) ?? []);
+    const vehicle_certificates = ((vcRes.data as any[]) ?? []);
+
+    let images: any[] = [];
+    if (!imgRes.error && imgRes.data) {
+      images = (imgRes.data as any[]).map((img: any) => {
+        let url: string | null = null;
+        if (img.storage_path) {
+          const { data: signedData } = supabase.storage
+            .from("certificate-images")
+            .getPublicUrl(img.storage_path);
+          url = signedData?.publicUrl ?? null;
+        }
+        return { ...img, url };
+      });
     }
 
     return NextResponse.json(

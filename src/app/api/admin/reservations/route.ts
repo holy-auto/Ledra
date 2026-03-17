@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerBasic } from "@/lib/api/auth";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError, apiError } from "@/lib/api/response";
+import { parsePagination } from "@/lib/api/pagination";
 import { reservationCreateSchema, reservationUpdateSchema, reservationDeleteSchema } from "@/lib/validations/reservation";
 import { checkOverlap } from "@/lib/reservations/overlap";
 import { syncCreateEvent, syncUpdateEvent, syncDeleteEvent } from "@/lib/gcal/client";
@@ -15,6 +16,7 @@ export async function GET(req: NextRequest) {
     const caller = await resolveCallerBasic(supabase);
     if (!caller) return apiUnauthorized();
 
+    const p = parsePagination(req);
     const url = new URL(req.url);
     const status = url.searchParams.get("status") ?? "";
     const from = url.searchParams.get("from") ?? "";
@@ -23,7 +25,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabase
       .from("reservations")
-      .select("*")
+      .select("*", { count: "exact" })
       .eq("tenant_id", caller.tenantId)
       .order("scheduled_date", { ascending: true })
       .order("start_time", { ascending: true });
@@ -41,7 +43,7 @@ export async function GET(req: NextRequest) {
       query = query.eq("customer_id", customerId);
     }
 
-    const { data: reservations, error } = await query;
+    const { data: reservations, error, count } = await query.range(p.from, p.to);
     if (error) return apiInternalError(error, "reservations list query");
 
     // 顧客名を取得
@@ -84,8 +86,11 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       reservations: enriched,
+      page: p.page,
+      per_page: p.perPage,
+      total: count ?? 0,
       stats: {
-        total: enriched.length,
+        total: count ?? 0,
         today_count: todayCount,
         active_count: activeCount,
       },

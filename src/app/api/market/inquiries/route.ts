@@ -3,6 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { createAdminClient } from "@/lib/supabase/admin";
 import { inquiryCreateSchema } from "@/lib/validations/market";
 import { apiOk, apiInternalError, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
+import { parsePagination } from "@/lib/api/pagination";
 import { notifyNewInquiry } from "@/lib/market/email";
 
 export const dynamic = "force-dynamic";
@@ -108,13 +109,14 @@ export async function GET(req: NextRequest) {
     const caller = await resolveCallerTenant(supabase);
     if (!caller) return apiUnauthorized();
 
+    const p = parsePagination(req);
     const admin = createAdminClient();
     const url = new URL(req.url);
     const status = url.searchParams.get("status") ?? "";
 
     let query = admin
       .from("market_inquiries")
-      .select("*, market_vehicles(maker, model)")
+      .select("*, market_vehicles(maker, model)", { count: "exact" })
       .eq("seller_tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
 
@@ -122,13 +124,13 @@ export async function GET(req: NextRequest) {
       query = query.eq("status", status);
     }
 
-    const { data: inquiries, error } = await query;
+    const { data: inquiries, error, count } = await query.range(p.from, p.to);
 
     if (error) {
       return apiInternalError(error, "market inquiries list");
     }
 
-    return NextResponse.json({ inquiries: inquiries ?? [] });
+    return NextResponse.json({ inquiries: inquiries ?? [], page: p.page, per_page: p.perPage, total: count ?? 0 });
   } catch (e) {
     return apiInternalError(e, "market inquiries list");
   }

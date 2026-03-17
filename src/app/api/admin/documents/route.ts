@@ -3,6 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { DOC_TYPES, type DocType } from "@/types/document";
 import { resolveCallerBasic } from "@/lib/api/auth";
 import { apiOk, apiUnauthorized, apiNotFound, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { parsePagination } from "@/lib/api/pagination";
 import { documentCreateSchema, documentUpdateSchema, documentDeleteSchema } from "@/lib/validations/document";
 
 export const dynamic = "force-dynamic";
@@ -69,6 +70,7 @@ export async function GET(req: NextRequest) {
     const caller = await resolveCallerBasic(supabase);
     if (!caller) return apiUnauthorized();
 
+    const p = parsePagination(req);
     const url = new URL(req.url);
     const docType = url.searchParams.get("doc_type") ?? "";
     const status = url.searchParams.get("status") ?? "";
@@ -76,7 +78,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabase
       .from("documents")
-      .select("*")
+      .select("*", { count: "exact" })
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
 
@@ -84,7 +86,7 @@ export async function GET(req: NextRequest) {
     if (status && status !== "all") query = query.eq("status", status);
     if (customerId) query = query.eq("customer_id", customerId);
 
-    const { data: docs, error } = await query;
+    const { data: docs, error, count } = await query.range(p.from, p.to);
     if (error) return apiInternalError(error, "documents list query");
 
     // 顧客名を取得
@@ -104,14 +106,16 @@ export async function GET(req: NextRequest) {
     }));
 
     // 統計
-    const total = enriched.length;
     const unpaidAmount = enriched
       .filter((d) => d.status === "sent" || d.status === "accepted")
       .reduce((sum, d) => sum + (d.total ?? 0), 0);
 
     return NextResponse.json({
       documents: enriched,
-      stats: { total, unpaid_amount: unpaidAmount },
+      page: p.page,
+      per_page: p.perPage,
+      total: count ?? 0,
+      stats: { total: count ?? 0, unpaid_amount: unpaidAmount },
     });
   } catch (e) {
     return apiInternalError(e, "documents list");

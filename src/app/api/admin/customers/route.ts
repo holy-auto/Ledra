@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { escapeIlike } from "@/lib/sanitize";
+import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
 import { resolveCallerBasic } from "@/lib/api/auth";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { parsePagination } from "@/lib/api/pagination";
 import { customerCreateSchema, customerUpdateSchema, customerDeleteSchema } from "@/lib/validations/customer";
 
 export const dynamic = "force-dynamic";
@@ -14,21 +15,22 @@ export async function GET(req: NextRequest) {
     const caller = await resolveCallerBasic(supabase);
     if (!caller) return apiUnauthorized();
 
+    const p = parsePagination(req);
     const url = new URL(req.url);
     const q = (url.searchParams.get("q") ?? "").trim();
 
     let query = supabase
       .from("customers")
-      .select("*")
+      .select("*", { count: "exact" })
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
 
     if (q) {
-      const sq = escapeIlike(q);
+      const sq = escapePostgrestValue(escapeIlike(q));
       query = query.or(`name.ilike.%${sq}%,email.ilike.%${sq}%,phone.ilike.%${sq}%,name_kana.ilike.%${sq}%`);
     }
 
-    const { data: customers, error } = await query;
+    const { data: customers, error, count } = await query.range(p.from, p.to);
     if (error) return apiInternalError(error, "customers list query");
 
     // 各顧客の証明書数を取得
@@ -76,8 +78,11 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       customers: enriched,
+      page: p.page,
+      per_page: p.perPage,
+      total: count ?? 0,
       stats: {
-        total: enriched.length,
+        total: count ?? 0,
         this_month_new: thisMonthNew,
         linked_certificates: totalCerts,
       },

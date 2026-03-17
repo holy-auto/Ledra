@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerBasic } from "@/lib/api/auth";
 import { apiOk, apiInternalError, apiUnauthorized, apiValidationError } from "@/lib/api/response";
+import { parsePagination } from "@/lib/api/pagination";
 import { menuItemCreateSchema, menuItemUpdateSchema, menuItemDeleteSchema, menuItemCsvImportSchema } from "@/lib/validations/menu-item";
 
 export const dynamic = "force-dynamic";
@@ -13,24 +14,28 @@ export async function GET(req: NextRequest) {
     const caller = await resolveCallerBasic(supabase);
     if (!caller) return apiUnauthorized();
 
+    const p = parsePagination(req);
     const url = new URL(req.url);
     const activeOnly = url.searchParams.get("active_only") !== "false";
 
     let query = supabase
       .from("menu_items")
-      .select("*")
+      .select("*", { count: "exact" })
       .eq("tenant_id", caller.tenantId)
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true });
 
     if (activeOnly) query = query.eq("is_active", true);
 
-    const { data, error } = await query;
+    const { data, error, count } = await query.range(p.from, p.to);
     if (error) return apiInternalError(error, "menu items list");
 
     return NextResponse.json({
       items: data ?? [],
-      stats: { total: data?.length ?? 0 },
+      page: p.page,
+      per_page: p.perPage,
+      total: count ?? 0,
+      stats: { total: count ?? 0 },
     });
   } catch (e) {
     return apiInternalError(e, "menu items list");

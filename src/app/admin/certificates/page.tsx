@@ -5,7 +5,7 @@ import CertificatesTableClient from "./CertificatesTableClient";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { buildBillingDenyUrl } from "@/lib/billing/billingRedirect";
 import PageHeader from "@/components/ui/PageHeader";
-import { escapeIlike } from "@/lib/sanitize";
+import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
 
 type SearchParams = { q?: string };
 
@@ -62,7 +62,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
     .limit(50);
 
   if (q) {
-    const sq = escapeIlike(q);
+    const sq = escapePostgrestValue(escapeIlike(q));
     query = query.or(`public_id.ilike.%${sq}%,customer_name.ilike.%${sq}%`);
   }
 

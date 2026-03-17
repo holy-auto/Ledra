@@ -3,6 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerBasic } from "@/lib/api/auth";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { parsePagination } from "@/lib/api/pagination";
 import { invoiceCreateSchema, invoiceUpdateSchema, invoiceDeleteSchema } from "@/lib/validations/invoice";
 
 export const dynamic = "force-dynamic";
@@ -41,6 +42,7 @@ export async function GET(req: NextRequest) {
     const caller = await resolveCallerBasic(supabase);
     if (!caller) return apiUnauthorized();
 
+    const p = parsePagination(req);
     const url = new URL(req.url);
     const action = url.searchParams.get("action") ?? "";
     const status = url.searchParams.get("status") ?? "";
@@ -60,7 +62,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabase
       .from("invoices")
-      .select("*")
+      .select("*", { count: "exact" })
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
 
@@ -71,7 +73,7 @@ export async function GET(req: NextRequest) {
       query = query.eq("customer_id", customerId);
     }
 
-    const { data: invoices, error } = await query;
+    const { data: invoices, error, count } = await query.range(p.from, p.to);
     if (error) return apiInternalError(error, "invoices list query");
 
     // 顧客名を取得
@@ -105,8 +107,11 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       invoices: enriched,
+      page: p.page,
+      per_page: p.perPage,
+      total: count ?? 0,
       stats: {
-        total: allInvoices.length,
+        total: count ?? 0,
         unpaid_amount: unpaidAmount,
         this_month_issued: thisMonthIssued,
       },

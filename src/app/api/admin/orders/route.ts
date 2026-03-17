@@ -2,13 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerBasic } from "@/lib/api/auth";
 import { apiOk, apiInternalError, apiUnauthorized, apiValidationError, apiForbidden } from "@/lib/api/response";
+import { parsePagination } from "@/lib/api/pagination";
 import { orderCreateSchema, orderUpdateSchema } from "@/lib/validations/order";
+import { assertUUID } from "@/lib/sanitize";
 
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerBasic(supabase);
     if (!caller) return apiUnauthorized();
+
+    const p = parsePagination(req);
+    assertUUID(caller.tenantId, "tenantId");
 
     const { searchParams } = new URL(req.url);
     const type = searchParams.get("type"); // sent | received | all
@@ -17,7 +22,7 @@ export async function GET(req: NextRequest) {
     // Fetch orders where this tenant is sender or receiver
     let query = supabase
       .from("job_orders")
-      .select("*")
+      .select("*", { count: "exact" })
       .order("created_at", { ascending: false });
 
     if (type === "sent") {
@@ -32,14 +37,14 @@ export async function GET(req: NextRequest) {
       query = query.eq("status", status);
     }
 
-    const { data: orders, error } = await query.limit(100);
+    const { data: orders, error, count } = await query.range(p.from, p.to);
 
     if (error) {
       // Table might not exist yet
-      return NextResponse.json({ orders: [], source: "empty" });
+      return NextResponse.json({ orders: [], source: "empty", page: p.page, per_page: p.perPage, total: 0 });
     }
 
-    return NextResponse.json({ orders: orders ?? [] });
+    return NextResponse.json({ orders: orders ?? [], page: p.page, per_page: p.perPage, total: count ?? 0 });
   } catch (e) {
     return apiInternalError(e, "orders list");
   }
@@ -98,6 +103,8 @@ export async function PUT(req: NextRequest) {
     }
 
     const { id, status } = parsed.data;
+
+    assertUUID(caller.tenantId, "tenantId");
 
     const { data, error } = await supabase
       .from("job_orders")

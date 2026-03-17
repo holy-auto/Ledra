@@ -21,7 +21,8 @@ export async function GET() {
       .from("tenant_memberships")
       .select("tenant_id, role, tenants(id, name, slug, plan_tier, is_active, logo_asset_path)")
       .eq("user_id", userRes.user.id)
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: true })
+      .limit(100);
 
     if (error) return apiInternalError(error, "list tenant memberships");
 

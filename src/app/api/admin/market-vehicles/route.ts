@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { escapeIlike } from "@/lib/sanitize";
+import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
 import { resolveCallerBasic } from "@/lib/api/auth";
 import { apiOk, apiInternalError, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
+import { parsePagination } from "@/lib/api/pagination";
 import { marketVehicleCreateSchema, marketVehicleUpdateSchema, marketVehicleDeleteSchema } from "@/lib/validations/market";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ export async function GET(req: NextRequest) {
     const caller = await resolveCallerBasic(supabase);
     if (!caller) return apiUnauthorized();
 
+    const p = parsePagination(req);
     const url = new URL(req.url);
     const singleId = url.searchParams.get("id") ?? "";
     const status = url.searchParams.get("status") ?? "";
@@ -45,14 +47,14 @@ export async function GET(req: NextRequest) {
       // Cross-tenant: only listed vehicles
       query = supabase
         .from("market_vehicles")
-        .select("*")
+        .select("*", { count: "exact" })
         .eq("status", "listed")
         .order("listed_at", { ascending: false });
     } else {
       // Tenant's own vehicles: show all statuses
       query = supabase
         .from("market_vehicles")
-        .select("*")
+        .select("*", { count: "exact" })
         .eq("tenant_id", caller.tenantId)
         .order("created_at", { ascending: false });
 
@@ -62,11 +64,11 @@ export async function GET(req: NextRequest) {
     if (maker) query = query.eq("maker", maker);
     if (bodyType) query = query.eq("body_type", bodyType);
     if (search) {
-      const sq = escapeIlike(search);
+      const sq = escapePostgrestValue(escapeIlike(search));
       query = query.or(`maker.ilike.%${sq}%,model.ilike.%${sq}%`);
     }
 
-    const { data: vehicles, error } = await query;
+    const { data: vehicles, error, count } = await query.range(p.from, p.to);
     if (error) return apiInternalError(error, "market vehicles list");
 
     // Fetch images for all vehicles
@@ -92,14 +94,15 @@ export async function GET(req: NextRequest) {
     }));
 
     // Stats (only for tenant's own vehicles)
-    const allVehicles = isPublic ? enriched : enriched;
-    const total = allVehicles.length;
-    const listed = allVehicles.filter((v) => v.status === "listed").length;
-    const draft = allVehicles.filter((v) => v.status === "draft").length;
+    const listed = enriched.filter((v) => v.status === "listed").length;
+    const draft = enriched.filter((v) => v.status === "draft").length;
 
     return NextResponse.json({
       vehicles: enriched,
-      stats: { total, listed, draft },
+      page: p.page,
+      per_page: p.perPage,
+      total: count ?? 0,
+      stats: { total: count ?? 0, listed, draft },
     });
   } catch (e) {
     return apiInternalError(e, "market vehicles list");
