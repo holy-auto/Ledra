@@ -164,61 +164,112 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
 
           return (
             <div key={r.public_id} className="hover:bg-surface-hover/40 transition-colors">
-              {/* Row 1: info */}
-              <div className="flex items-center gap-3 px-4 pt-3 pb-2">
+              {/* Desktop: single row layout */}
+              <div className="hidden md:flex items-center gap-3 px-4 py-3">
                 <input
                   type="checkbox"
                   className="accent-[#0071e3] shrink-0"
                   checked={checked}
                   onChange={(e) => toggleOne(r.public_id, e.target.checked)}
                 />
-                <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
-                  <span className="text-xs text-secondary whitespace-nowrap">{formatDate(r.created_at)}</span>
-                  <Link
-                    href={`/admin/certificates/${r.public_id}`}
-                    className="font-mono text-sm text-primary hover:text-[#0071e3] transition-colors"
-                    title={r.public_id}
-                  >
-                    {r.public_id.length > 8 ? r.public_id.slice(0, 8) + "…" : r.public_id}
-                  </Link>
-                  <span className="text-sm font-medium text-primary truncate">{r.customer_name}</span>
-                </div>
+                <span className="text-xs text-secondary whitespace-nowrap">{formatDate(r.created_at)}</span>
+                <Link
+                  href={`/admin/certificates/${r.public_id}`}
+                  className="font-mono text-sm text-primary hover:text-[#0071e3] transition-colors"
+                  title={r.public_id}
+                >
+                  {r.public_id.length > 8 ? r.public_id.slice(0, 8) + "…" : r.public_id}
+                </Link>
+                <span className="text-sm font-medium text-primary truncate flex-1 min-w-0">{r.customer_name}</span>
                 <Badge variant={statusVariant(r.status)}>
                   {statusLabel(r.status)}
                 </Badge>
-              </div>
-              {/* Row 2: public page button */}
-              <div className="px-4 pl-[2.75rem]">
-                <Link href={url} target="_blank" className="btn-secondary !text-xs !py-1.5 w-full text-center">
-                  公開ページ
-                </Link>
-              </div>
-              {/* Row 3: PDF / CSV / delete */}
-              <div className="flex gap-2 items-center px-4 pb-3 pt-1.5 pl-[2.75rem]">
-                <Link
-                  className={btnCls(canPdfOne)}
-                  href={hrefOrBill(canPdfOne, `/admin/certificates/pdf-one?pid=${encodeURIComponent(r.public_id)}`, "pdf_one")}
-                  aria-disabled={!canPdfOne}
-                >
-                  PDF
-                </Link>
-                <Link
-                  className={btnCls(canCsvOne)}
-                  href={hrefOrBill(canCsvOne, `/admin/certificates/export-one?pid=${encodeURIComponent(r.public_id)}`, "export_one_csv")}
-                  aria-disabled={!canCsvOne}
-                >
-                  CSV
-                </Link>
-                {!isVoid && (
-                  <button
-                    type="button"
-                    className="btn-danger !px-3 !py-1 !text-xs"
-                    disabled={voidingId === r.public_id}
-                    onClick={() => handleVoid(r.public_id)}
+                <div className="flex gap-2 items-center shrink-0 ml-2">
+                  <Link href={url} target="_blank" className="btn-secondary !text-xs !py-1.5">
+                    公開ページ
+                  </Link>
+                  <Link
+                    className={btnCls(canPdfOne)}
+                    href={hrefOrBill(canPdfOne, `/admin/certificates/pdf-one?pid=${encodeURIComponent(r.public_id)}`, "pdf_one")}
+                    aria-disabled={!canPdfOne}
                   >
-                    {voidingId === r.public_id ? "削除中…" : "削除"}
-                  </button>
-                )}
+                    PDF
+                  </Link>
+                  <Link
+                    className={btnCls(canCsvOne)}
+                    href={hrefOrBill(canCsvOne, `/admin/certificates/export-one?pid=${encodeURIComponent(r.public_id)}`, "export_one_csv")}
+                    aria-disabled={!canCsvOne}
+                  >
+                    CSV
+                  </Link>
+                  {!isVoid && (
+                    <button
+                      type="button"
+                      className="btn-danger !px-3 !py-1 !text-xs"
+                      disabled={voidingId === r.public_id}
+                      onClick={() => handleVoid(r.public_id)}
+                    >
+                      {voidingId === r.public_id ? "削除中…" : "削除"}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Mobile: stacked layout */}
+              <div className="md:hidden">
+                <div className="flex items-center gap-3 px-4 pt-3 pb-2">
+                  <input
+                    type="checkbox"
+                    className="accent-[#0071e3] shrink-0"
+                    checked={checked}
+                    onChange={(e) => toggleOne(r.public_id, e.target.checked)}
+                  />
+                  <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
+                    <span className="text-xs text-secondary whitespace-nowrap">{formatDate(r.created_at)}</span>
+                    <Link
+                      href={`/admin/certificates/${r.public_id}`}
+                      className="font-mono text-sm text-primary hover:text-[#0071e3] transition-colors"
+                      title={r.public_id}
+                    >
+                      {r.public_id.length > 8 ? r.public_id.slice(0, 8) + "…" : r.public_id}
+                    </Link>
+                    <span className="text-sm font-medium text-primary truncate">{r.customer_name}</span>
+                  </div>
+                  <Badge variant={statusVariant(r.status)}>
+                    {statusLabel(r.status)}
+                  </Badge>
+                </div>
+                <div className="px-4 pl-[2.75rem]">
+                  <Link href={url} target="_blank" className="btn-secondary !text-xs !py-1.5 w-full text-center">
+                    公開ページ
+                  </Link>
+                </div>
+                <div className="flex gap-2 items-center px-4 pb-3 pt-1.5 pl-[2.75rem]">
+                  <Link
+                    className={btnCls(canPdfOne)}
+                    href={hrefOrBill(canPdfOne, `/admin/certificates/pdf-one?pid=${encodeURIComponent(r.public_id)}`, "pdf_one")}
+                    aria-disabled={!canPdfOne}
+                  >
+                    PDF
+                  </Link>
+                  <Link
+                    className={btnCls(canCsvOne)}
+                    href={hrefOrBill(canCsvOne, `/admin/certificates/export-one?pid=${encodeURIComponent(r.public_id)}`, "export_one_csv")}
+                    aria-disabled={!canCsvOne}
+                  >
+                    CSV
+                  </Link>
+                  {!isVoid && (
+                    <button
+                      type="button"
+                      className="btn-danger !px-3 !py-1 !text-xs"
+                      disabled={voidingId === r.public_id}
+                      onClick={() => handleVoid(r.public_id)}
+                    >
+                      {voidingId === r.public_id ? "削除中…" : "削除"}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           );
