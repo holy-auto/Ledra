@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { resolveCallerBasic } from "@/lib/api/auth";
+import { apiOk, apiInternalError, apiUnauthorized, apiValidationError } from "@/lib/api/response";
+import { parsePagination } from "@/lib/api/pagination";
+import { menuItemCreateSchema, menuItemUpdateSchema, menuItemDeleteSchema, menuItemCsvImportSchema } from "@/lib/validations/menu-item";
 
 export const dynamic = "force-dynamic";
 
@@ -8,30 +11,34 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
+    const p = parsePagination(req);
     const url = new URL(req.url);
     const activeOnly = url.searchParams.get("active_only") !== "false";
 
     let query = supabase
       .from("menu_items")
-      .select("*")
+      .select("*", { count: "exact" })
       .eq("tenant_id", caller.tenantId)
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true });
 
     if (activeOnly) query = query.eq("is_active", true);
 
-    const { data, error } = await query;
-    if (error) return NextResponse.json({ error: "db_error", detail: error.message }, { status: 500 });
+    const { data, error, count } = await query.range(p.from, p.to);
+    if (error) return apiInternalError(error, "menu items list");
 
     return NextResponse.json({
       items: data ?? [],
-      stats: { total: data?.length ?? 0 },
+      page: p.page,
+      per_page: p.perPage,
+      total: count ?? 0,
+      stats: { total: count ?? 0 },
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+  } catch (e) {
+    return apiInternalError(e, "menu items list");
   }
 }
 
@@ -39,17 +46,19 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    if (!requirePermission(caller, "menu_items:manage")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    }
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({} as any));
+    const body = await req.json().catch(() => ({}));
 
     // CSV一括インポート
-    if (body.action === "csv_import" && body.csv) {
-      const lines = (body.csv as string)
+    if (body.action === "csv_import") {
+      const csvParsed = menuItemCsvImportSchema.safeParse(body);
+      if (!csvParsed.success) {
+        return apiValidationError(csvParsed.error.issues[0]?.message ?? "入力が無効です。");
+      }
+
+      const lines = csvParsed.data.csv
         .split("\n")
         .map((l: string) => l.trim())
         .filter((l: string) => l && !l.startsWith("品目名")); // ヘッダー行をスキップ
@@ -63,37 +72,39 @@ export async function POST(req: NextRequest) {
           unit_price: parseInt(parts[2] || "0", 10) || 0,
           tax_category: parseInt(parts[3] || "10", 10) === 8 ? 8 : 10,
         };
-      }).filter((r: any) => r.name);
+      }).filter((r) => r.name);
 
       if (rows.length === 0) {
-        return NextResponse.json({ error: "no_valid_rows", message: "有効な行がありません" }, { status: 400 });
+        return apiValidationError("有効な行がありません。");
       }
 
       const { data, error } = await supabase.from("menu_items").insert(rows).select();
-      if (error) return NextResponse.json({ error: "insert_failed", detail: error.message }, { status: 500 });
+      if (error) return apiInternalError(error, "menu items csv import");
 
-      return NextResponse.json({ ok: true, imported: data?.length ?? 0 });
+      return apiOk({ imported: data?.length ?? 0 });
     }
 
     // 単一作成
-    const name = (body.name ?? "").trim();
-    if (!name) return NextResponse.json({ error: "name_required", message: "品目名は必須です" }, { status: 400 });
+    const parsed = menuItemCreateSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力が無効です。");
+    }
 
     const row = {
       tenant_id: caller.tenantId,
-      name,
-      description: (body.description ?? "").trim() || null,
-      unit_price: parseInt(String(body.unit_price ?? 0), 10) || 0,
-      tax_category: parseInt(String(body.tax_category ?? 10), 10) === 8 ? 8 : 10,
-      sort_order: parseInt(String(body.sort_order ?? 0), 10) || 0,
+      name: parsed.data.name,
+      description: parsed.data.description ?? null,
+      unit_price: parsed.data.unit_price,
+      tax_category: parsed.data.tax_category,
+      sort_order: parsed.data.sort_order,
     };
 
     const { data, error } = await supabase.from("menu_items").insert(row).select().single();
-    if (error) return NextResponse.json({ error: "insert_failed", detail: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "menu item create");
 
-    return NextResponse.json({ ok: true, item: data });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return apiOk({ item: data });
+  } catch (e) {
+    return apiInternalError(e, "menu item create");
   }
 }
 
@@ -101,23 +112,16 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    if (!requirePermission(caller, "menu_items:manage")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
+
+    const body = await req.json().catch(() => ({}));
+    const parsed = menuItemUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力が無効です。");
     }
 
-    const body = await req.json().catch(() => ({} as any));
-    const id = (body.id ?? "").trim();
-    if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
-
-    const updates: Record<string, unknown> = {};
-    if (body.name !== undefined) updates.name = (body.name ?? "").trim();
-    if (body.description !== undefined) updates.description = (body.description ?? "").trim() || null;
-    if (body.unit_price !== undefined) updates.unit_price = parseInt(String(body.unit_price), 10) || 0;
-    if (body.tax_category !== undefined) updates.tax_category = parseInt(String(body.tax_category), 10) === 8 ? 8 : 10;
-    if (body.sort_order !== undefined) updates.sort_order = parseInt(String(body.sort_order), 10) || 0;
-    if (body.is_active !== undefined) updates.is_active = !!body.is_active;
+    const { id, ...updates } = parsed.data;
 
     const { data, error } = await supabase
       .from("menu_items")
@@ -127,11 +131,11 @@ export async function PUT(req: NextRequest) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: "update_failed", detail: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "menu item update");
 
-    return NextResponse.json({ ok: true, item: data });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return apiOk({ item: data });
+  } catch (e) {
+    return apiInternalError(e, "menu item update");
   }
 }
 
@@ -139,26 +143,25 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    if (!requirePermission(caller, "menu_items:manage")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    }
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({} as any));
-    const id = (body.id ?? "").trim();
-    if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
+    const body = await req.json().catch(() => ({}));
+    const parsed = menuItemDeleteSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力が無効です。");
+    }
 
     const { error } = await supabase
       .from("menu_items")
       .update({ is_active: false })
-      .eq("id", id)
+      .eq("id", parsed.data.id)
       .eq("tenant_id", caller.tenantId);
 
-    if (error) return NextResponse.json({ error: "delete_failed", detail: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "menu item delete");
 
-    return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return apiOk({});
+  } catch (e) {
+    return apiInternalError(e, "menu item delete");
   }
 }

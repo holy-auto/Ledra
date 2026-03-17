@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { notifyDealStatusChanged } from "@/lib/market/email";
 
 export const dynamic = "force-dynamic";
 
@@ -99,6 +100,34 @@ export async function PATCH(
         .from("market_vehicles")
         .update({ status: "listed", updated_at: new Date().toISOString() })
         .eq("id", deal.vehicle_id);
+    }
+
+    // Notify both parties of status change (non-blocking)
+    try {
+      const { data: fullDeal } = await admin
+        .from("market_deals")
+        .select("buyer_email, buyer_name, vehicle_id, seller_tenant_id, market_vehicles(maker, model, tenants(name, contact_email))")
+        .eq("id", dealId)
+        .single();
+      const vehicle = (fullDeal as any)?.market_vehicles;
+      const sellerName = vehicle?.tenants?.name ?? "出品者";
+      const sellerEmail = vehicle?.tenants?.contact_email;
+      const buyerEmail = (fullDeal as any)?.buyer_email;
+      const buyerName = (fullDeal as any)?.buyer_name ?? "購入者";
+      const vehicleLabel = [vehicle?.maker, vehicle?.model].filter(Boolean).join(" ") || "車両";
+
+      if (buyerEmail) {
+        notifyDealStatusChanged(buyerEmail, { vehicleLabel, newStatus, otherPartyName: sellerName }).catch((e) =>
+          console.warn("[market] notifyDealStatusChanged (buyer) failed:", e)
+        );
+      }
+      if (sellerEmail) {
+        notifyDealStatusChanged(sellerEmail, { vehicleLabel, newStatus, otherPartyName: buyerName }).catch((e) =>
+          console.warn("[market] notifyDealStatusChanged (seller) failed:", e)
+        );
+      }
+    } catch (e) {
+      console.warn("[market] deal status notification failed:", e);
     }
 
     return NextResponse.json({ ok: true, deal: updatedDeal });

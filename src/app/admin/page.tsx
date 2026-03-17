@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import PageHeader from "@/components/ui/PageHeader";
 import DashboardCharts from "./DashboardCharts";
+import { assertUUID } from "@/lib/sanitize";
 import AnnouncementsBanner from "./AnnouncementsBanner";
 
 async function getMyTenantId(supabase: any) {
@@ -46,6 +47,8 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 async function fetchStats(supabase: any, tenantId: string): Promise<DashboardStats> {
+  assertUUID(tenantId, "tenantId");
+
   // 証明書の総数・ステータス別
   const { data: certs } = await supabase
     .from("certificates")

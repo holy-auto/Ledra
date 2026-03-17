@@ -1,17 +1,15 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { resolveCallerBasic } from "@/lib/api/auth";
+import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    if (!requirePermission(caller, "management:view")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    }
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
     const now = new Date();
     const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
@@ -57,11 +55,7 @@ export async function GET() {
     const certs = allCerts ?? [];
     const poList = purchaseOrders ?? [];
 
-    // ══════════════════════════════════
     // 1. キャッシュフロー (Cash Flow)
-    // ══════════════════════════════════
-
-    // 入金額 (Cash In) = paid invoices + paid invoice-type documents
     const paidInvoices = invoices.filter(i => i.status === "paid");
     const cashInInvoices = paidInvoices.reduce((s, i) => s + (i.total ?? 0), 0);
     const paidDocInvoices = documents.filter(d =>
@@ -70,7 +64,6 @@ export async function GET() {
     const cashInDocs = paidDocInvoices.reduce((s, d) => s + (d.total ?? 0), 0);
     const totalCashIn = cashInInvoices + cashInDocs;
 
-    // 売掛金 (Accounts Receivable) = sent/overdue invoices
     const arInvoices = invoices.filter(i => i.status === "sent" || i.status === "overdue");
     const accountsReceivable = arInvoices.reduce((s, i) => s + (i.total ?? 0), 0);
     const arDocuments = documents.filter(d =>
@@ -80,15 +73,12 @@ export async function GET() {
     const arDocsTotal = arDocuments.reduce((s, d) => s + (d.total ?? 0), 0);
     const totalAR = accountsReceivable + arDocsTotal;
 
-    // 支出 (Cash Out) = purchase orders (sent/accepted/paid)
     const totalCashOut = poList
       .filter(p => p.status !== "draft")
       .reduce((s, p) => s + (p.total ?? 0), 0);
 
-    // 営業CF = 入金 - 支出
     const operatingCF = totalCashIn - totalCashOut;
 
-    // 今月のCF
     const thisMonthCashIn = [...paidInvoices, ...paidDocInvoices]
       .filter(i => {
         const d = i.issued_at || i.created_at;
@@ -105,7 +95,6 @@ export async function GET() {
 
     const thisMonthCF = thisMonthCashIn - thisMonthCashOut;
 
-    // 先月のCF
     const lastMonthCashIn = [...paidInvoices, ...paidDocInvoices]
       .filter(i => {
         const d = i.issued_at || i.created_at;
@@ -122,29 +111,22 @@ export async function GET() {
 
     const lastMonthCF = lastMonthCashIn - lastMonthCashOut;
 
-    // CF成長率
     const cfGrowthRate = lastMonthCF !== 0
       ? ((thisMonthCF - lastMonthCF) / Math.abs(lastMonthCF)) * 100
       : null;
 
-    // ══════════════════════════════════
     // 2. 回収率 (Collection Rate)
-    // ══════════════════════════════════
     const totalInvoiced = invoices
       .filter(i => i.status !== "cancelled" && i.status !== "draft")
       .reduce((s, i) => s + (i.total ?? 0), 0);
     const totalPaid = paidInvoices.reduce((s, i) => s + (i.total ?? 0), 0);
     const collectionRate = totalInvoiced > 0 ? (totalPaid / totalInvoiced) * 100 : null;
 
-    // 期限超過の件数・金額
     const overdueInvoices = invoices.filter(i => i.status === "overdue");
     const overdueCount = overdueInvoices.length;
     const overdueAmount = overdueInvoices.reduce((s, i) => s + (i.total ?? 0), 0);
 
-    // ══════════════════════════════════
-    // 3. DSO (Days Sales Outstanding / 売掛回転日数)
-    // ══════════════════════════════════
-    // 簡易計算: (売掛金 / 直近3ヶ月の売上平均) × 30
+    // 3. DSO (Days Sales Outstanding)
     const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1).toISOString();
     const recentRevenue = invoices
       .filter(i => {
@@ -155,9 +137,7 @@ export async function GET() {
     const monthlyAvgRevenue = recentRevenue / 3;
     const dso = monthlyAvgRevenue > 0 ? Math.round((totalAR / monthlyAvgRevenue) * 30) : null;
 
-    // ══════════════════════════════════
     // 4. 顧客単価 (ARPU)
-    // ══════════════════════════════════
     const activeCustomerIds = new Set<string>();
     for (const inv of invoices) {
       if (inv.customer_id && inv.status !== "cancelled") activeCustomerIds.add(inv.customer_id);
@@ -179,22 +159,16 @@ export async function GET() {
       ? Math.round(totalRevenue / activeCustomerIds.size)
       : null;
 
-    // ══════════════════════════════════
     // 5. 粗利率 (Gross Margin)
-    // ══════════════════════════════════
-    // 粗利 = 売上 - 仕入（発注書）
     const totalPurchases = poList.reduce((s, p) => s + (p.total ?? 0), 0);
     const grossProfit = totalRevenue - totalPurchases;
     const grossMarginRate = totalRevenue > 0
       ? (grossProfit / totalRevenue) * 100
       : null;
 
-    // ══════════════════════════════════
     // 6. 見積→受注 転換率 (Conversion Rate)
-    // ══════════════════════════════════
     const estimates = documents.filter(d => d.doc_type === "estimate" && d.status !== "cancelled");
     const acceptedEstimates = estimates.filter(d => d.status === "accepted" || d.status === "paid");
-    // Also check if any estimate has a linked invoice via source_document_id
     const estimateIds = new Set(estimates.map(e => e.id));
     const linkedFromEstimate = documents.filter(d =>
       d.source_document_id && estimateIds.has(d.source_document_id) &&
@@ -208,9 +182,7 @@ export async function GET() {
       ? (convertedEstimateCount / estimates.length) * 100
       : null;
 
-    // ══════════════════════════════════
     // 7. 顧客数推移 (Customer Growth)
-    // ══════════════════════════════════
     const customersByMonth: { month: string; label: string; count: number; cumulative: number }[] = [];
     const custMonthMap = new Map<string, number>();
     for (const c of customers) {
@@ -226,11 +198,9 @@ export async function GET() {
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       const label = `${d.getMonth() + 1}月`;
       const count = custMonthMap.get(key) ?? 0;
-      // Count customers created before this month for accurate cumulative
       cumulative += count;
       customersByMonth.push({ month: key, label, count, cumulative });
     }
-    // Adjust cumulative: add customers created before the 12-month window
     const beforeWindowCount = customers.filter(c => {
       if (!c.created_at) return false;
       const d = new Date(c.created_at);
@@ -241,9 +211,7 @@ export async function GET() {
       cm.cumulative += beforeWindowCount;
     }
 
-    // ══════════════════════════════════
     // 8. 証明書発行推移
-    // ══════════════════════════════════
     const certsByMonth: { month: string; label: string; count: number }[] = [];
     const certMonthMap = new Map<string, number>();
     for (const c of certs) {
@@ -259,20 +227,13 @@ export async function GET() {
       certsByMonth.push({ month: key, label, count: certMonthMap.get(key) ?? 0 });
     }
 
-    // ══════════════════════════════════
     // 9. CF予測 (入金予定)
-    // ══════════════════════════════════
-    // 支払期限が今月・来月のAR
     const nextMonthEnd = new Date(now.getFullYear(), now.getMonth() + 2, 0, 23, 59, 59).toISOString();
     const upcomingAR = arInvoices
       .filter(i => i.due_date && i.due_date <= nextMonthEnd)
       .reduce((s, i) => s + (i.total ?? 0), 0);
 
-    // ══════════════════════════════════
     // 10. LTV (顧客生涯価値) 簡易計算
-    // ══════════════════════════════════
-    // LTV = ARPU × 平均取引月数
-    // 各顧客の取引期間を計算
     const customerFirstLast = new Map<string, { first: string; last: string }>();
     for (const inv of invoices) {
       if (!inv.customer_id || inv.status === "cancelled") continue;
@@ -352,8 +313,7 @@ export async function GET() {
           : null,
       },
     });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+  } catch (e) {
+    return apiInternalError(e, "management-kpi");
   }
 }

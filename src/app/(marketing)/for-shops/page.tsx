@@ -34,7 +34,7 @@ export default function ForShopsPage() {
                 <path d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             }
-            title="証明書作成の時間を80%削減"
+            title="証明書作成の時間を大幅削減"
             description="テンプレートに沿って入力するだけ。手書きやExcelでの作成から解放され、1件あたりの作成時間を大幅に短縮します。"
           />
           <FeatureCard

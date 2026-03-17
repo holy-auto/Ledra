@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { resolveCallerBasic } from "@/lib/api/auth";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { apiOk, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { parsePagination } from "@/lib/api/pagination";
+import { invoiceCreateSchema, invoiceUpdateSchema, invoiceDeleteSchema } from "@/lib/validations/invoice";
 
 export const dynamic = "force-dynamic";
 
@@ -35,9 +39,10 @@ async function generateInvoiceNumber(
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
+    const p = parsePagination(req);
     const url = new URL(req.url);
     const action = url.searchParams.get("action") ?? "";
     const status = url.searchParams.get("status") ?? "";
@@ -57,7 +62,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabase
       .from("invoices")
-      .select("*")
+      .select("*", { count: "exact" })
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
 
@@ -68,8 +73,8 @@ export async function GET(req: NextRequest) {
       query = query.eq("customer_id", customerId);
     }
 
-    const { data: invoices, error } = await query;
-    if (error) return NextResponse.json({ error: "db_error", detail: error.message }, { status: 500 });
+    const { data: invoices, error, count } = await query.range(p.from, p.to);
+    if (error) return apiInternalError(error, "invoices list query");
 
     // 顧客名を取得
     const customerIds = [...new Set((invoices ?? []).map((i) => i.customer_id).filter(Boolean))];
@@ -102,15 +107,17 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       invoices: enriched,
+      page: p.page,
+      per_page: p.perPage,
+      total: count ?? 0,
       stats: {
-        total: allInvoices.length,
+        total: count ?? 0,
         unpaid_amount: unpaidAmount,
         this_month_issued: thisMonthIssued,
       },
     });
-  } catch (e: any) {
-    console.error("invoices list failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+  } catch (e) {
+    return apiInternalError(e, "invoices list");
   }
 }
 
@@ -118,13 +125,15 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    if (!requirePermission(caller, "invoices:create")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    }
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({} as any));
+    const body = await req.json().catch(() => ({}));
+    const parsed = invoiceCreateSchema.safeParse(body);
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map(i => i.message).join(" ");
+      return apiValidationError(msg);
+    }
 
     const invoiceNumber = body?.invoice_number?.trim() || (await generateInvoiceNumber(supabase, caller.tenantId));
     const customerId = body?.customer_id?.trim() || null;
@@ -183,12 +192,11 @@ export async function POST(req: NextRequest) {
     };
 
     const { data, error } = await supabase.from("invoices").insert(row).select().single();
-    if (error) return NextResponse.json({ error: "insert_failed", detail: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "invoice insert");
 
-    return NextResponse.json({ ok: true, invoice: data });
-  } catch (e: any) {
-    console.error("invoice create failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiOk({ invoice: data });
+  } catch (e) {
+    return apiInternalError(e, "invoice create");
   }
 }
 
@@ -196,16 +204,17 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    if (!requirePermission(caller, "invoices:edit")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) return apiUnauthorized();
+
+    const body = await req.json().catch(() => ({}));
+    const parsed = invoiceUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map(i => i.message).join(" ");
+      return apiValidationError(msg);
     }
 
-    const body = await req.json().catch(() => ({} as any));
-    const id = (body?.id ?? "").trim();
-    if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
-
+    const id = parsed.data.id;
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
     // ステータス更新
@@ -258,12 +267,11 @@ export async function PUT(req: NextRequest) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: "update_failed", detail: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "invoice update");
 
-    return NextResponse.json({ ok: true, invoice: data });
-  } catch (e: any) {
-    console.error("invoice update failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiOk({ invoice: data });
+  } catch (e) {
+    return apiInternalError(e, "invoice update");
   }
 }
 
@@ -272,14 +280,19 @@ export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    if (!requirePermission(caller, "invoices:edit")) {
-      return NextResponse.json({ error: "forbidden", message: "削除権限がありません。" }, { status: 403 });
+    if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "admin")) {
+      return apiForbidden("削除権限がありません。");
     }
 
-    const body = await req.json().catch(() => ({} as any));
-    const id = (body?.id ?? "").trim();
-    if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
+    const body = await req.json().catch(() => ({}));
+    const parsed = invoiceDeleteSchema.safeParse(body);
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map(i => i.message).join(" ");
+      return apiValidationError(msg);
+    }
+
+    const id = parsed.data.id;
 
     // 下書きか確認
     const { data: inv } = await supabase
@@ -289,13 +302,10 @@ export async function DELETE(req: NextRequest) {
       .eq("tenant_id", caller.tenantId)
       .single();
 
-    if (!inv) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    if (!inv) return apiNotFound("請求書が見つかりません。");
 
     if (inv.status !== "draft") {
-      return NextResponse.json({
-        error: "not_draft",
-        message: "下書きステータスの請求書のみ削除できます。",
-      }, { status: 400 });
+      return apiValidationError("下書きステータスの請求書のみ削除できます。");
     }
 
     const { error } = await supabase
@@ -304,11 +314,10 @@ export async function DELETE(req: NextRequest) {
       .eq("id", id)
       .eq("tenant_id", caller.tenantId);
 
-    if (error) return NextResponse.json({ error: "delete_failed", detail: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "invoice delete");
 
-    return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    console.error("invoice delete failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiOk({});
+  } catch (e) {
+    return apiInternalError(e, "invoice delete");
   }
 }

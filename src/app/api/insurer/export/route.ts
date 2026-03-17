@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { resolveInsurerCaller, enforceInsurerPlan } from "@/lib/api/insurerAuth";
+import { apiUnauthorized, apiValidationError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -16,14 +18,13 @@ function getClientMeta(req: Request) {
   return { ip, ua };
 }
 
-import { enforceBilling } from "@/lib/billing/guard";
-import { enforceInsurerStatus } from "@/lib/insurer/statusGuard";
-
 export async function GET(req: Request) {
-  const deny = await enforceBilling(req, { minPlan: "pro", action: "insurer_export" });
-  if (deny) return deny as any;
-  const statusDeny = await enforceInsurerStatus();
-  if (statusDeny) return statusDeny as any;
+  const caller = await resolveInsurerCaller();
+  if (!caller) return apiUnauthorized();
+
+  const planDeny = enforceInsurerPlan(caller, "pro");
+  if (planDeny) return planDeny;
+
   const url = new URL(req.url);
   const q = url.searchParams.get("q") ?? "";
 
@@ -34,11 +35,6 @@ export async function GET(req: Request) {
 
   const supabase = await createClient();
 
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth?.user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-
   const { data, error } = await supabase.rpc("insurer_search_certificates", {
     p_query: q,
     p_limit: limit,
@@ -46,7 +42,7 @@ export async function GET(req: Request) {
     p_ip: ip,
     p_user_agent: ua,
   });
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return apiValidationError(error.message);
 
   const { error: logErr } = await supabase.rpc("insurer_audit_log", {
     p_action: "insurer.export.csv",
@@ -55,7 +51,7 @@ export async function GET(req: Request) {
     p_ip: ip,
     p_user_agent: ua,
   });
-  if (logErr) return NextResponse.json({ error: logErr.message }, { status: 400 });
+  if (logErr) return apiValidationError(logErr.message);
 
   const rows = (data ?? []) as any[];
 

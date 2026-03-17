@@ -25,7 +25,8 @@ export default function InsurerHomePage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const billingBusy = false;
+  const [billingBusy, setBillingBusy] = useState(false);
+  const [planTier, setPlanTier] = useState<string>("");
   const [insurerStatus, setInsurerStatus] = useState<string | null>(null);
 
   useEffect(() => {
@@ -36,6 +37,14 @@ export default function InsurerHomePage() {
         return;
       }
       setReady(true);
+      // Fetch billing state
+      try {
+        const res = await fetch("/api/insurer/billing");
+        if (res.ok) {
+          const j = await res.json();
+          if (j.plan_tier) setPlanTier(j.plan_tier);
+        }
+      } catch {}
 
       // ステータス取得
       try {
@@ -75,8 +84,26 @@ export default function InsurerHomePage() {
   };
 
   const startCheckout = async () => {
-    // 保険会社向け Stripe checkout は未実装（insurer_id と Stripe の紐づけ設計が必要）
-    setErr("サブスク契約機能は現在準備中です。");
+    setBillingBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/insurer/billing", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ plan_tier: "pro" }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      if (j?.checkout_url) {
+        window.location.href = j.checkout_url;
+      } else if (j?.portal_url) {
+        window.location.href = j.portal_url;
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBillingBusy(false);
+    }
   };
 
   if (!ready) return null;
@@ -134,7 +161,7 @@ export default function InsurerHomePage() {
               title={isPending ? "仮登録中はご利用いただけません" : undefined}
               className="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-40"
             >
-              {billingBusy ? "..." : "サブスク契約/更新"}
+              {billingBusy ? "処理中..." : planTier ? `プラン管理 (${planTier})` : "サブスク契約"}
             </button>
             <button
               onClick={onLogout}

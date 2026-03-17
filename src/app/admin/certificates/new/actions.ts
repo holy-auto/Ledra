@@ -2,6 +2,7 @@
 
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { makePublicId } from "@/lib/publicId";
+import { enqueueInsuranceCaseCreated } from "@/lib/qstash/publish";
 
 export type CreateCertResult =
   | { ok: true; public_id: string }
@@ -117,6 +118,20 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
       performed_at: new Date().toISOString(),
       certificate_id: null,
     });
+  }
+
+  // Enqueue async notification via QStash (non-blocking)
+  if (certStatus === "active") {
+    enqueueInsuranceCaseCreated({
+      certificate_id: public_id, // will be resolved via public_id in handler
+      public_id,
+      tenant_id: tenantId,
+      customer_name,
+      vehicle_model: model,
+      vehicle_plate: plate,
+      service_type: template_name || content_free_text?.slice(0, 50) || "",
+      created_by: userId,
+    }).catch((e) => console.warn("[cert] QStash enqueue failed:", e));
   }
 
   return { ok: true, public_id };

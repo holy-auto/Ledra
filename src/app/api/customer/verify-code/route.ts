@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import {
   createSession,
   getLatestValidCodeRow,
@@ -15,7 +16,10 @@ const LAST4_COOKIE = "hc_l4";
 
 const isSecureCookie = process.env.NODE_ENV === "production";
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const limited = await checkRateLimit(req, "auth");
+  if (limited) return limited;
+
   try {
     const body = await req.json().catch(() => ({}));
     const tenant_slug = (body.tenant_slug ?? "").toString().trim();
