@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import PageHeader from "@/components/ui/PageHeader";
 import DashboardCharts from "./DashboardCharts";
+import { assertUUID } from "@/lib/sanitize";
 import AnnouncementsBanner from "./AnnouncementsBanner";
 
 async function getMyTenantId(supabase: any) {
@@ -44,6 +45,8 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 async function fetchStats(supabase: any, tenantId: string): Promise<DashboardStats> {
+  assertUUID(tenantId, "tenantId");
+
   const { data: certs } = await supabase
     .from("certificates")
     .select("status,created_at")
@@ -192,7 +195,7 @@ export default async function AdminHome() {
     <div className="space-y-6">
       <PageHeader tag="管理画面" title="ダッシュボード" description="施工証明書の管理状況を一目で確認" />
 
-      {/* ── Announcements - prominent position ── */}
+      {/* Announcements - prominent position */}
       <AnnouncementsBanner />
 
       {stats && (

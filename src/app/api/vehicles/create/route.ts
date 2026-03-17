@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { vehicleCreateSchema } from "@/lib/validations/vehicle";
+import { resolveCallerBasic } from "@/lib/api/auth";
+import { apiOk, apiInternalError, apiUnauthorized, apiValidationError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -7,60 +10,28 @@ export async function POST(req: Request) {
   try {
     const supabase = await createSupabaseServerClient();
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { data: membership } = await supabase
-      .from("tenant_memberships")
-      .select("tenant_id")
-      .eq("user_id", user.id)
-      .limit(1)
-      .single();
-
-    if (!membership?.tenant_id) {
-      return NextResponse.json({ error: "No tenant found" }, { status: 400 });
+    const caller = await resolveCallerBasic(supabase);
+    if (!caller) {
+      return apiUnauthorized();
     }
 
     const body = await req.json();
-
-    const maker = String(body.maker ?? "").trim();
-    const model = String(body.model ?? "").trim();
-
-    if (!maker || !model) {
-      return NextResponse.json(
-        { error: "メーカーと車種は必須です。" },
-        { status: 400 },
-      );
+    const parsed = vehicleCreateSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力内容に誤りがあります。");
     }
-
-    const yearRaw = body.year;
-    const year =
-      yearRaw !== null && yearRaw !== undefined && yearRaw !== ""
-        ? Number(yearRaw)
-        : null;
-
-    if (year !== null && (!Number.isFinite(year) || year < 1900 || year > 2100)) {
-      return NextResponse.json(
-        { error: "年式は1900〜2100の範囲で入力してください。" },
-        { status: 400 },
-      );
-    }
+    const b = parsed.data;
 
     const insertRow = {
-      tenant_id: membership.tenant_id,
-      maker,
-      model,
-      year,
-      plate_display: body.plate_display ?? null,
-      customer_name: body.customer_name ?? null,
-      customer_email: body.customer_email ?? null,
-      customer_phone_masked: body.customer_phone_masked ?? null,
-      notes: body.notes ?? null,
+      tenant_id: caller.tenantId,
+      maker: b.maker,
+      model: b.model,
+      year: b.year ?? null,
+      plate_display: b.plate_display ?? null,
+      customer_name: b.customer_name ?? null,
+      customer_email: b.customer_email ?? null,
+      customer_phone_masked: b.customer_phone_masked ?? null,
+      notes: b.notes ?? null,
     };
 
     const { data: vehicle, error } = await supabase
@@ -70,17 +41,11 @@ export async function POST(req: Request) {
       .single();
 
     if (error) {
-      return NextResponse.json(
-        { error: error.message ?? "Insert failed" },
-        { status: 500 },
-      );
+      return apiInternalError(error, "vehicles/create insert");
     }
 
     return NextResponse.json({ id: vehicle.id }, { status: 200 });
-  } catch (e: any) {
-    return NextResponse.json(
-      { error: e?.message ?? "Unexpected error" },
-      { status: 500 },
-    );
+  } catch (e) {
+    return apiInternalError(e, "vehicles/create");
   }
 }

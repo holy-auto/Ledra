@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { apiOk, apiInternalError, apiUnauthorized, apiValidationError, apiNotFound, apiForbidden } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -11,17 +11,17 @@ export async function POST(req: Request) {
     const publicId = (body?.public_id ?? "").trim();
 
     if (!publicId) {
-      return NextResponse.json({ error: "missing public_id" }, { status: 400 });
+      return apiValidationError("public_id は必須です。");
     }
 
     const supabase = await createSupabaseServerClient();
 
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
     if (!requireMinRole(caller, "admin")) {
-      return NextResponse.json({ error: "forbidden", message: "証明書無効化の権限がありません。" }, { status: 403 });
+      return apiForbidden("証明書無効化の権限がありません。");
     }
 
     const userRes = { user: { id: caller.userId } };
@@ -37,11 +37,11 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (existing.error || !existing.data) {
-      return NextResponse.json({ error: "not_found" }, { status: 404 });
+      return apiNotFound("証明書が見つかりません。");
     }
 
     if (String(existing.data.status ?? "").toLowerCase() === "void") {
-      return NextResponse.json({ ok: true, already_void: true });
+      return apiOk({ already_void: true });
     }
 
     const { error: updateErr } = await supabase
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
       .eq("public_id", publicId);
 
     if (updateErr) {
-      return NextResponse.json({ error: "update_failed", detail: updateErr.message }, { status: 500 });
+      return apiInternalError(updateErr, "admin/certificates/void update");
     }
 
     // Audit log (fire-and-forget)
@@ -68,9 +68,8 @@ export async function POST(req: Request) {
       userAgent,
     });
 
-    return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    console.error("certificate void failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiOk({});
+  } catch (e) {
+    return apiInternalError(e, "admin/certificates/void");
   }
 }

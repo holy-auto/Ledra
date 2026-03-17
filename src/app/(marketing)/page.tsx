@@ -12,16 +12,19 @@ import { FAQList } from "@/components/marketing/FAQList";
 import { FAQItem } from "@/components/marketing/FAQItem";
 import { CTABanner } from "@/components/marketing/CTABanner";
 import { ScrollReveal } from "@/components/marketing/ScrollReveal";
+import { getMarketingStats } from "@/lib/marketing/stats";
+import { PLANS } from "@/lib/marketing/pricing";
 import Link from "next/link";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const stats = await getMarketingStats();
   return (
     <>
       {/* Hero */}
       <Hero />
 
       {/* 課題提起 */}
-      <Section bg="dark-alt">
+      <Section bg="alt">
         <SectionHeading
           title="こんな課題、ありませんか？"
           subtitle="施工証明の管理には、多くの非効率が残されています"
@@ -64,7 +67,7 @@ export default function HomePage() {
       </Section>
 
       {/* CARTRUSTの解決方法 */}
-      <Section bg="dark">
+      <Section>
         <SectionHeading
           title="CARTRUSTが解決します"
           subtitle="デジタル施工証明書で、施工店と保険会社の業務を変えます"
@@ -104,7 +107,7 @@ export default function HomePage() {
       </Section>
 
       {/* 施工店向けメリット */}
-      <Section bg="dark-alt">
+      <Section bg="alt">
         <SectionHeading
           title="施工店の方へ"
           subtitle="業務効率化と顧客満足度の向上を同時に実現します"
@@ -158,7 +161,7 @@ export default function HomePage() {
       </Section>
 
       {/* 保険会社向けメリット */}
-      <Section bg="dark">
+      <Section>
         <SectionHeading
           title="保険会社の方へ"
           subtitle="査定業務の効率化と、施工情報の信頼性向上を支援します"
@@ -208,7 +211,7 @@ export default function HomePage() {
       </Section>
 
       {/* ユースケース */}
-      <Section bg="dark-alt">
+      <Section bg="alt">
         <SectionHeading
           title="ご利用シーン"
           subtitle="さまざまな場面でCARTRUSTをご活用いただけます"
@@ -251,72 +254,54 @@ export default function HomePage() {
       </Section>
 
       {/* 信頼要素 */}
-      <Section bg="dark">
+      <Section>
         <SectionHeading title="多くの企業にご利用いただいています" />
         <StatsRow>
-          <StatCard value="500+" label="導入企業数" delay={0} />
-          <StatCard value="10,000+" label="証明書発行数" delay={150} />
-          <StatCard value="99%" label="継続利用率" delay={300} />
+          <StatCard value={stats.shopCount} label="導入企業数" delay={0} />
+          <StatCard value={stats.certificateCount} label="証明書発行数" delay={150} />
         </StatsRow>
         <LogoCloud />
       </Section>
 
       {/* 料金概要 */}
-      <Section bg="dark-alt">
+      <Section bg="alt">
         <SectionHeading
           title="料金プラン"
           subtitle="シンプルな料金体系で、すぐに始められます"
         />
         <PricingCards>
           <PricingCard
-            name="スターター"
-            price="無料"
-            unit=""
-            description="まずは試してみたい方に"
+            name={PLANS.starter.name}
+            price={PLANS.starter.price}
+            unit={PLANS.starter.unit}
+            description={PLANS.starter.description}
             delay={0}
-            features={[
-              "月5件まで証明書発行",
-              "基本テンプレート",
-              "URL共有",
-              "メールサポート",
-            ]}
-            ctaLabel="無料で始める"
+            features={[...PLANS.starter.features]}
+            ctaLabel={PLANS.starter.ctaLabel}
           />
           <PricingCard
-            name="スタンダード"
-            price="¥9,800"
-            description="本格的に活用したい施工店に"
+            name={PLANS.standard.name}
+            price={PLANS.standard.price}
+            description={PLANS.standard.description}
             delay={100}
-            features={[
-              "月100件まで証明書発行",
-              "カスタムテンプレート",
-              "ロゴ・ブランドカスタマイズ",
-              "CSV/PDFエクスポート",
-              "優先サポート",
-            ]}
+            features={[...PLANS.standard.features]}
             recommended
           />
           <PricingCard
-            name="エンタープライズ"
-            price="要相談"
-            unit=""
-            description="大規模導入・API連携をお考えの方に"
+            name={PLANS.enterprise.name}
+            price={PLANS.enterprise.price}
+            unit={PLANS.enterprise.unit}
+            description={PLANS.enterprise.description}
             delay={200}
-            features={[
-              "無制限の証明書発行",
-              "API連携",
-              "専用アカウントマネージャー",
-              "カスタム開発対応",
-              "SLA保証",
-            ]}
-            ctaLabel="お問い合わせ"
+            features={[...PLANS.enterprise.features]}
+            ctaLabel={PLANS.enterprise.ctaLabel}
           />
         </PricingCards>
         <ScrollReveal variant="fade-in" delay={400}>
           <p className="text-center mt-8">
             <Link
               href="/pricing"
-              className="text-sm font-medium text-blue-400 hover:text-blue-300 transition-colors"
+              className="text-sm font-medium text-primary hover:underline"
             >
               料金の詳細を見る &rarr;
             </Link>
@@ -325,12 +310,12 @@ export default function HomePage() {
       </Section>
 
       {/* FAQ抜粋 */}
-      <Section bg="dark">
+      <Section>
         <SectionHeading title="よくあるご質問" />
         <FAQList>
           <FAQItem
             question="無料プランでも証明書の発行はできますか？"
-            answer="はい、無料プランでも月5件まで証明書を発行いただけます。まずは無料プランでお試しいただき、必要に応じてアップグレードをご検討ください。"
+            answer={`はい、無料プランでも${PLANS.starter.certLimitShort}まで証明書を発行いただけます。まずは無料プランでお試しいただき、必要に応じてアップグレードをご検討ください。`}
           />
           <FAQItem
             question="導入にあたって特別な設備やソフトウェアは必要ですか？"
@@ -349,7 +334,7 @@ export default function HomePage() {
           <p className="text-center mt-8">
             <Link
               href="/faq"
-              className="text-sm font-medium text-blue-400 hover:text-blue-300 transition-colors"
+              className="text-sm font-medium text-primary hover:underline"
             >
               すべてのFAQを見る &rarr;
             </Link>

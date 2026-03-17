@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { logInsurerAccess } from "@/lib/insurer/audit";
 import { createClient } from "@/lib/supabase/server";
+import { resolveInsurerCaller, enforceInsurerPlan } from "@/lib/api/insurerAuth";
 import QRCode from "qrcode";
 import React from "react";
 import { pdf } from "@react-pdf/renderer";
 import { InsurerPdfDoc } from "@/lib/insurerPdfDoc";
+import { apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -20,33 +22,30 @@ function buildBaseUrl(req: Request) {
   return `${proto}://${host}`;
 }
 
-import { enforceBilling } from "@/lib/billing/guard";
-import { enforceInsurerStatus } from "@/lib/insurer/statusGuard";
-
 export async function GET(req: Request) {
-  const deny = await enforceBilling(req, { minPlan: "pro", action: "insurer_pdf_one" });
-  if (deny) return deny as any;
-  const statusDeny = await enforceInsurerStatus();
-  if (statusDeny) return statusDeny as any;
+  const caller = await resolveInsurerCaller();
+  if (!caller) return apiUnauthorized();
+
+  const planDeny = enforceInsurerPlan(caller, "pro");
+  if (planDeny) return planDeny;
+
   const url = new URL(req.url);
   const pid = url.searchParams.get("pid");
-  if (!pid) return NextResponse.json({ error: "pid_required" }, { status: 400 });
+  if (!pid) return apiValidationError("pid is required");
 
   const { ip, ua } = getClientMeta(req);
 
   const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { data, error } = await supabase.rpc("insurer_get_certificate", {
     p_public_id: pid,
     p_ip: ip,
     p_user_agent: ua,
   });
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return apiValidationError(error.message);
 
   const cert = Array.isArray(data) ? data[0] : null;
-  if (!cert) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  if (!cert) return apiNotFound("証明書が見つかりません。");
 
   const { error: logErr } = await supabase.rpc("insurer_audit_log", {
     p_action: "insurer.export.pdf.one",
@@ -55,7 +54,7 @@ export async function GET(req: Request) {
     p_ip: ip,
     p_user_agent: ua,
   });
-  if (logErr) return NextResponse.json({ error: logErr.message }, { status: 400 });
+  if (logErr) return apiValidationError(logErr.message);
 
   const baseUrl = buildBaseUrl(req);
   const publicUrl = `${baseUrl}/c/${encodeURIComponent(pid)}`;
@@ -67,8 +66,8 @@ export async function GET(req: Request) {
     qrDataUrl = "";
   }
 
-  // ★JSXを使わず createElement
   const docEl = React.createElement(InsurerPdfDoc, { cert, qrDataUrl, publicUrl }) as any;
+
   // Resolve certificate_id reliably from pid (public_id)
   const { data: certIdRow, error: certIdErr } = await supabase
     .from("certificates")
@@ -77,7 +76,8 @@ export async function GET(req: Request) {
     .maybeSingle();
   if (certIdErr) throw certIdErr;
   const certId = certIdRow?.id;
-  if (!certId) return NextResponse.json({ error: "certificate_not_found" }, { status: 404 });
+  if (!certId) return apiNotFound("証明書が見つかりません。");
+
   await logInsurerAccess({
     action: "download_pdf",
     certificateId: certId,
@@ -85,6 +85,7 @@ export async function GET(req: Request) {
     ip,
     userAgent: ua,
   });
+
   const buffer = await pdf(docEl as any).toBuffer();
 
   const buf = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer as any);

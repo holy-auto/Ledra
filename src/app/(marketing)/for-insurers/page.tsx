@@ -68,9 +68,9 @@ export default function ForInsurersPage() {
         />
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
           {[
-            { value: "70%", label: "確認作業時間の削減", description: "電話・FAXでの確認作業が不要に" },
-            { value: "99.9%", label: "データの正確性", description: "改ざん防止によるデータ信頼性" },
-            { value: "50%", label: "査定コストの削減", description: "業務プロセス全体の効率化" },
+            { value: "即時", label: "施工内容の確認", description: "電話・FAXでの確認作業が不要に" },
+            { value: "改ざん防止", label: "データの信頼性", description: "デジタル証明による正確性担保" },
+            { value: "一括取得", label: "データエクスポート", description: "CSVで既存システムと連携" },
           ].map((item, i) => (
             <ScrollReveal key={item.label} variant="scale-up" delay={i * 120}>
               <div className="text-center p-8 rounded-xl bg-white border border-border">

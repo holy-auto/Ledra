@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { enforceBilling } from "@/lib/billing/guard";
+import { apiValidationError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -80,7 +81,7 @@ export async function POST(req: NextRequest) {
   const id = pickId(body);
 
   if (!id) {
-    return NextResponse.json({ error: "Missing certificate_id" }, { status: 400 });
+    return apiValidationError("certificate_id は必須です。");
   }
 
   return proxyToCertificatePdf(req, id);

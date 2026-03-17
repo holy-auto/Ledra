@@ -1,41 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { normalizePlanTier } from "@/lib/billing/planFeatures";
 import { memberLimit, canAddMember } from "@/lib/billing/memberLimits";
-import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { resolveCallerFull, getAdminClient } from "@/lib/api/auth";
+import { apiOk, apiInternalError, apiUnauthorized, apiValidationError, apiNotFound, apiForbidden, apiPlanLimit } from "@/lib/api/response";
+import { memberAddSchema, memberRoleChangeSchema, memberDeleteSchema } from "@/lib/validations/member";
 
 export const dynamic = "force-dynamic";
-
-function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-}
-
-/** Resolve the plan tier for the caller's tenant */
-async function resolvePlanTier(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, tenantId: string) {
-  const { data: tenant } = await supabase
-    .from("tenants")
-    .select("id, plan_tier")
-    .eq("id", tenantId)
-    .single();
-  return normalizePlanTier(tenant?.plan_tier);
-}
 
 // ─── GET: メンバー一覧 ───
 export async function GET() {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    if (!requirePermission(caller, "members:view")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    }
+    const caller = await resolveCallerFull(supabase);
+    if (!caller) return apiUnauthorized();
 
-    const admin = getSupabaseAdmin();
-    const planTier = await resolvePlanTier(supabase, caller.tenantId);
+    const admin = getAdminClient();
+    const planTier = caller.planTier;
 
     // tenant_memberships からメンバー取得
     const { data: members, error } = await admin
@@ -43,7 +23,7 @@ export async function GET() {
       .select("user_id, role, created_at")
       .eq("tenant_id", caller.tenantId);
 
-    if (error) return NextResponse.json({ error: "db_error", detail: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "members list db");
 
     // ユーザー情報を admin API で取得
     const enriched = await Promise.all(
@@ -70,9 +50,8 @@ export async function GET() {
       member_limit: limit,
       can_add: canAddMember(planTier, enriched.length),
     });
-  } catch (e: any) {
-    console.error("members list failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+  } catch (e) {
+    return apiInternalError(e, "members list");
   }
 }
 
@@ -80,22 +59,17 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    if (!requirePermission(caller, "members:manage")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    const caller = await resolveCallerFull(supabase);
+    if (!caller) return apiUnauthorized();
+
+    const body = await req.json().catch(() => ({}));
+    const parsed = memberAddSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力が無効です。");
     }
+    const { email, display_name: displayName, role } = parsed.data;
 
-    const body = await req.json().catch(() => ({} as any));
-    const email = (body?.email ?? "").trim().toLowerCase();
-    const displayName = (body?.display_name ?? "").trim() || null;
-    const role = (body?.role ?? "").trim() || null; // null → DB default
-
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return NextResponse.json({ error: "invalid_email" }, { status: 400 });
-    }
-
-    const admin = getSupabaseAdmin();
+    const admin = getAdminClient();
 
     // 現在のメンバー数を確認
     const { count, error: countErr } = await admin
@@ -103,18 +77,15 @@ export async function POST(req: NextRequest) {
       .select("user_id", { count: "exact", head: true })
       .eq("tenant_id", caller.tenantId);
 
-    if (countErr) return NextResponse.json({ error: "db_error", detail: countErr.message }, { status: 500 });
+    if (countErr) return apiInternalError(countErr, "member count");
 
     const currentCount = count ?? 0;
-    const planTier = await resolvePlanTier(supabase, caller.tenantId);
-    if (!canAddMember(planTier, currentCount)) {
-      const limit = memberLimit(planTier);
-      return NextResponse.json({
-        error: "member_limit_reached",
-        message: `現在のプラン（${planTier}）ではメンバーは${limit}人までです。プランをアップグレードしてください。`,
-        current: currentCount,
-        limit,
-      }, { status: 403 });
+    if (!canAddMember(caller.planTier, currentCount)) {
+      const limit = memberLimit(caller.planTier);
+      return apiPlanLimit(
+        `現在のプラン（${caller.planTier}）ではメンバーは${limit}人までです。プランをアップグレードしてください。`,
+        { current: currentCount, limit },
+      );
     }
 
     const userMeta = displayName ? { display_name: displayName } : undefined;
@@ -140,7 +111,7 @@ export async function POST(req: NextRequest) {
         page++;
       }
       if (!found) {
-        return NextResponse.json({ error: "user_lookup_failed", message: "既存ユーザーが見つかりませんでした。" }, { status: 500 });
+        return apiInternalError(new Error("既存ユーザーが見つかりませんでした。"), "user lookup");
       }
       userId = found.id;
       // 既存ユーザーに display_name をセット（未設定の場合のみ）
@@ -150,7 +121,7 @@ export async function POST(req: NextRequest) {
         });
       }
     } else {
-      return NextResponse.json({ error: "invite_failed", message: inviteErr?.message ?? "招待に失敗しました。" }, { status: 500 });
+      return apiInternalError(new Error(inviteErr?.message ?? "招待に失敗しました。"), "invite");
     }
 
     // 既にこのテナントに所属していないか確認
@@ -162,7 +133,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (existingMem) {
-      return NextResponse.json({ error: "already_member", message: "このユーザーは既にメンバーです。" }, { status: 409 });
+      return apiValidationError("このユーザーは既にメンバーです。");
     }
 
     // tenant_memberships に追加
@@ -178,17 +149,12 @@ export async function POST(req: NextRequest) {
       .insert(row);
 
     if (insertErr) {
-      console.error("member insert failed:", insertErr);
-      return NextResponse.json({
-        error: "insert_failed",
-        message: `メンバー追加に失敗しました: ${insertErr.message}`,
-      }, { status: 500 });
+      return apiInternalError(insertErr, "member insert");
     }
 
-    return NextResponse.json({ ok: true, user_id: userId, email });
-  } catch (e: any) {
-    console.error("member add failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiOk({ user_id: userId, email });
+  } catch (e) {
+    return apiInternalError(e, "member add");
   }
 }
 
@@ -196,31 +162,27 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    if (!requirePermission(caller, "members:manage")) {
-      return NextResponse.json({ error: "forbidden", message: "ロール変更の権限がありません。" }, { status: 403 });
+    const caller = await resolveCallerFull(supabase);
+    if (!caller) return apiUnauthorized();
+
+    // owner または admin のみロール変更可
+    if (caller.role !== "owner" && caller.role !== "admin") {
+      return apiForbidden("ロール変更の権限がありません。");
     }
 
-    const body = await req.json().catch(() => ({} as any));
-    const targetUserId = (body?.user_id ?? "").trim();
-    const newRole = (body?.role ?? "").trim();
-
-    if (!targetUserId || !newRole) {
-      return NextResponse.json({ error: "missing_params", message: "user_id と role は必須です。" }, { status: 400 });
+    const body = await req.json().catch(() => ({}));
+    const parsed = memberRoleChangeSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力が無効です。");
     }
-
-    const validRoles = ["admin", "staff", "viewer"];
-    if (!validRoles.includes(newRole)) {
-      return NextResponse.json({ error: "invalid_role", message: "無効なロールです。" }, { status: 400 });
-    }
+    const { user_id: targetUserId, role: newRole } = parsed.data;
 
     // 自分自身のロール変更は不可
     if (targetUserId === caller.userId) {
-      return NextResponse.json({ error: "cannot_change_self", message: "自分のロールは変更できません。" }, { status: 400 });
+      return apiValidationError("自分のロールは変更できません。");
     }
 
-    const admin = getSupabaseAdmin();
+    const admin = getAdminClient();
 
     // owner のロール変更は不可
     const { data: targetMem } = await admin
@@ -231,10 +193,10 @@ export async function PUT(req: NextRequest) {
       .maybeSingle();
 
     if (!targetMem) {
-      return NextResponse.json({ error: "not_found", message: "メンバーが見つかりません。" }, { status: 404 });
+      return apiNotFound("メンバーが見つかりません。");
     }
     if (targetMem.role === "owner") {
-      return NextResponse.json({ error: "cannot_change_owner", message: "オーナーのロールは変更できません。" }, { status: 400 });
+      return apiValidationError("オーナーのロールは変更できません。");
     }
 
     const { error } = await admin
@@ -244,13 +206,12 @@ export async function PUT(req: NextRequest) {
       .eq("user_id", targetUserId);
 
     if (error) {
-      return NextResponse.json({ error: "update_failed", detail: error.message }, { status: 500 });
+      return apiInternalError(error, "member role update");
     }
 
-    return NextResponse.json({ ok: true, role: newRole });
-  } catch (e: any) {
-    console.error("member role change failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiOk({ role: newRole });
+  } catch (e) {
+    return apiInternalError(e, "member role change");
   }
 }
 
@@ -258,25 +219,27 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    if (!requirePermission(caller, "members:manage")) {
-      return NextResponse.json({ error: "forbidden", message: "メンバー削除の権限がありません。" }, { status: 403 });
+    const caller = await resolveCallerFull(supabase);
+    if (!caller) return apiUnauthorized();
+
+    // owner または admin のみ削除可
+    if (caller.role !== "owner" && caller.role !== "admin") {
+      return apiForbidden("メンバー削除の権限がありません。");
     }
 
-    const body = await req.json().catch(() => ({} as any));
-    const targetUserId = (body?.user_id ?? "").trim();
-
-    if (!targetUserId) {
-      return NextResponse.json({ error: "missing_user_id" }, { status: 400 });
+    const body = await req.json().catch(() => ({}));
+    const parsed = memberDeleteSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力が無効です。");
     }
+    const { user_id: targetUserId } = parsed.data;
 
     // 自分自身は削除不可
     if (targetUserId === caller.userId) {
-      return NextResponse.json({ error: "cannot_remove_self", message: "自分自身は削除できません。" }, { status: 400 });
+      return apiValidationError("自分自身は削除できません。");
     }
 
-    const admin = getSupabaseAdmin();
+    const admin = getAdminClient();
 
     const { error } = await admin
       .from("tenant_memberships")
@@ -285,12 +248,11 @@ export async function DELETE(req: NextRequest) {
       .eq("user_id", targetUserId);
 
     if (error) {
-      return NextResponse.json({ error: "delete_failed", detail: error.message }, { status: 500 });
+      return apiInternalError(error, "member delete");
     }
 
-    return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    console.error("member delete failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiOk({});
+  } catch (e) {
+    return apiInternalError(e, "member delete");
   }
 }

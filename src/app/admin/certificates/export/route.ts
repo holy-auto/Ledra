@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { checkAdminFeature, billingDenyResponse } from "@/lib/billing/adminFeatureGate";
-import { escapeIlike } from "@/lib/sanitize";
+import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
 
 function csvEscape(v: any) {
   const s = (v ?? "").toString();
@@ -43,7 +43,7 @@ export async function GET(req: Request) {
     .limit(5000);
 
   if (q) {
-    const sq = escapeIlike(q);
+    const sq = escapePostgrestValue(escapeIlike(q));
     query = query.or(`public_id.ilike.%${sq}%,customer_name.ilike.%${sq}%`);
   }
 

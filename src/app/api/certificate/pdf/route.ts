@@ -6,6 +6,7 @@ import { Document, Page, Text, View, Image, StyleSheet, Font } from "@react-pdf/
 import { renderToBuffer } from "@react-pdf/renderer";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -166,12 +167,12 @@ export async function GET(req: Request) {
   const pid = (searchParams.get("pid") ?? "").trim();
 
   if (!/^[a-f0-9]{32}$/i.test(pid)) {
-    return NextResponse.json({ error: "invalid pid" }, { status: 400 });
+    return apiValidationError("無効な公開IDです。");
   }
 
   const cert = await fetchCertPublic(pid);
   if (!cert || (cert.status ?? "").toLowerCase() !== "active") {
-    return NextResponse.json({ error: "not found" }, { status: 404 });
+    return apiNotFound("証明書が見つかりません。");
   }
 
   // 公開PDF閲覧ログ（tenant_id を取得して記録）
@@ -219,4 +220,3 @@ export async function GET(req: Request) {
     },
   });
 }
-
