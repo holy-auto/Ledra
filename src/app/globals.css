@@ -217,6 +217,39 @@ body {
   .glow-red { box-shadow: 0 0 20px var(--accent-red-dim); }
 }
 
+/* ── Dark Marketing Animations ── */
+@keyframes gradient-border-spin {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes dark-float {
+  0%, 100% { transform: translateY(0px) scale(1); }
+  50%       { transform: translateY(-12px) scale(1.02); }
+}
+
+/* ── Dark Marketing Components ── */
+@layer components {
+  .dark-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 1rem;
+    transition: background 300ms, border-color 300ms, box-shadow 300ms, transform 300ms;
+  }
+  .dark-card:hover {
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(255, 255, 255, 0.12);
+    box-shadow: 0 0 30px rgba(59, 130, 246, 0.12);
+  }
+  .gradient-border-recommended {
+    background: linear-gradient(160deg, #3b82f6, #8b5cf6, #3b82f6);
+    background-size: 200% 200%;
+    animation: gradient-border-spin 4s ease infinite;
+    border-radius: 1.25rem;
+    padding: 1px;
+  }
+}
+
 /* ── Scrollbar styling ── */
 ::-webkit-scrollbar {
   width: 6px;

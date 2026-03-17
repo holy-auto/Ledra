@@ -4,6 +4,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import PageHeader from "@/components/ui/PageHeader";
 import DashboardCharts from "./DashboardCharts";
 import { assertUUID } from "@/lib/sanitize";
+import AnnouncementsBanner from "./AnnouncementsBanner";
 
 async function getMyTenantId(supabase: any) {
   const { data: userRes } = await supabase.auth.getUser();
@@ -204,6 +205,9 @@ export default async function AdminHome() {
   return (
     <div className="space-y-6">
       <PageHeader tag="管理画面" title="ダッシュボード" description="施工証明書の管理状況を一目で確認" />
+
+      {/* Announcements from operator */}
+      <AnnouncementsBanner />
 
       {/* My Tenant Stats */}
       {stats && (

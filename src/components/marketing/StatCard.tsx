@@ -20,14 +20,14 @@ export function StatCard({
   return (
     <ScrollReveal variant="scale-up" delay={delay}>
       <div className="text-center px-8">
-        <div className="text-[2.75rem] md:text-[3.5rem] font-bold text-heading leading-tight tracking-tight">
+        <div className="text-[2.75rem] md:text-[3.5rem] font-bold text-white leading-tight tracking-tight">
           {numericValue !== null ? (
             <AnimatedCounter target={numericValue} suffix={suffix} />
           ) : (
             value
           )}
         </div>
-        <div className="mt-3 text-sm text-muted font-medium">{label}</div>
+        <div className="mt-3 text-sm text-white/45 font-medium">{label}</div>
       </div>
     </ScrollReveal>
   );

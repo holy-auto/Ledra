@@ -25,7 +25,7 @@ export default function MarketingLayout({
 }) {
   return (
     <div
-      className={`${notoSansJP.variable} font-[family-name:var(--font-noto)] text-body bg-surface`}
+      className={`${notoSansJP.variable} font-[family-name:var(--font-noto)] bg-[#060a12]`}
     >
       <Header />
       <main>{children}</main>

@@ -172,6 +172,11 @@ export async function PUT(req: NextRequest) {
       ...updateFields,
     };
 
+    // When status changes to 'sold', set sold_at
+    if (body.status === "sold" && existing.status !== "sold") {
+      updates.sold_at = new Date().toISOString();
+    }
+
     // When status changes to 'listed', set listed_at
     if (updateFields.status === "listed" && existing.status !== "listed") {
       updates.listed_at = new Date().toISOString();

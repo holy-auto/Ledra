@@ -27,6 +27,7 @@ export default function InsurerHomePage() {
   const [busy, setBusy] = useState(false);
   const [billingBusy, setBillingBusy] = useState(false);
   const [planTier, setPlanTier] = useState<string>("");
+  const [insurerStatus, setInsurerStatus] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -43,7 +44,16 @@ export default function InsurerHomePage() {
           const j = await res.json();
           if (j.plan_tier) setPlanTier(j.plan_tier);
         }
-      } catch {};
+      } catch {}
+
+      // ステータス取得
+      try {
+        const { data: statusData } = await supabase.rpc("get_my_insurer_status");
+        const row = Array.isArray(statusData) ? statusData[0] : statusData;
+        if (row?.status) setInsurerStatus(row.status);
+      } catch {
+        // RPC未定義の場合は無視（既存環境互換）
+      }
     })();
   }, [supabase]);
 
@@ -98,6 +108,25 @@ export default function InsurerHomePage() {
 
   if (!ready) return null;
 
+  const isPending = insurerStatus === "active_pending_review";
+  const isSuspended = insurerStatus === "suspended";
+
+  if (isSuspended) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-neutral-50 p-6">
+        <div className="max-w-md rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
+          <h1 className="text-xl font-bold text-red-800 mb-2">アカウント停止中</h1>
+          <p className="text-sm text-red-700 mb-4">
+            このアカウントは現在停止されています。詳細は管理者にお問い合わせください。
+          </p>
+          <button onClick={onLogout} className="rounded-xl border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">
+            ログアウト
+          </button>
+        </div>
+      </main>
+    );
+  }
+
   const exportQs = new URLSearchParams();
   if (q) exportQs.set("q", q);
   if (status) exportQs.set("status", status);
@@ -128,7 +157,8 @@ export default function InsurerHomePage() {
           <div className="flex gap-3 items-center">
             <button
               onClick={startCheckout}
-              disabled={billingBusy}
+              disabled={billingBusy || isPending}
+              title={isPending ? "仮登録中はご利用いただけません" : undefined}
               className="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-40"
             >
               {billingBusy ? "処理中..." : planTier ? `プラン管理 (${planTier})` : "サブスク契約"}
@@ -141,6 +171,22 @@ export default function InsurerHomePage() {
             </button>
           </div>
         </header>
+
+        {/* 仮開通バナー */}
+        {isPending && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-200 text-amber-800 text-xs font-bold">!</div>
+              <div>
+                <div className="text-sm font-semibold text-amber-800">仮登録中</div>
+                <p className="mt-1 text-sm text-amber-700">
+                  現在アカウントは審査待ちの仮登録状態です。証明書の検索・閲覧はご利用いただけますが、
+                  CSV出力・PDF出力・ユーザー招待・サブスク契約は正式開通後にご利用いただけます。
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Search bar */}
         <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
@@ -165,12 +211,21 @@ export default function InsurerHomePage() {
               >
                 {busy ? "検索中..." : "検索"}
               </button>
-              <a
-                href={exportUrl}
-                className="rounded-xl border border-neutral-300 bg-white px-4 py-2.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
-              >
-                CSV
-              </a>
+              {isPending ? (
+                <span
+                  title="仮登録中はご利用いただけません"
+                  className="rounded-xl border border-neutral-200 bg-neutral-100 px-4 py-2.5 text-sm font-medium text-neutral-400 cursor-not-allowed"
+                >
+                  CSV
+                </span>
+              ) : (
+                <a
+                  href={exportUrl}
+                  className="rounded-xl border border-neutral-300 bg-white px-4 py-2.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
+                >
+                  CSV
+                </a>
+              )}
             </div>
 
             {/* フィルタ行 */}

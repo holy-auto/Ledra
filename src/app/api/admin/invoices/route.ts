@@ -279,12 +279,11 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const callerWithRole = await resolveCallerWithRole(supabase);
-    if (!callerWithRole) return apiUnauthorized();
-    if (!requireMinRole(callerWithRole, "admin")) {
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "admin")) {
       return apiForbidden("削除権限がありません。");
     }
-    const caller = { userId: callerWithRole.userId, tenantId: callerWithRole.tenantId };
 
     const body = await req.json().catch(() => ({}));
     const parsed = invoiceDeleteSchema.safeParse(body);

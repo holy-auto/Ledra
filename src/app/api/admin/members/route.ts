@@ -15,6 +15,7 @@ export async function GET() {
     if (!caller) return apiUnauthorized();
 
     const admin = getAdminClient();
+    const planTier = caller.planTier;
 
     // tenant_memberships からメンバー取得
     const { data: members, error } = await admin
@@ -40,14 +41,14 @@ export async function GET() {
       })
     );
 
-    const limit = memberLimit(caller.planTier);
+    const limit = memberLimit(planTier);
 
     return NextResponse.json({
       members: enriched,
-      plan_tier: caller.planTier,
+      plan_tier: planTier,
       member_count: enriched.length,
       member_limit: limit,
-      can_add: canAddMember(caller.planTier, enriched.length),
+      can_add: canAddMember(planTier, enriched.length),
     });
   } catch (e) {
     return apiInternalError(e, "members list");

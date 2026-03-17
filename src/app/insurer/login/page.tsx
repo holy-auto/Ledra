@@ -66,6 +66,13 @@ export default function InsurerLoginPage() {
             {busy ? "..." : "ログイン"}
           </button>
         </div>
+
+        <p className="text-center text-sm text-muted">
+          アカウントをお持ちでない方は{" "}
+          <a href="/join" className="text-[#0071e3] hover:underline">
+            新規登録
+          </a>
+        </p>
       </div>
     </main>
   );

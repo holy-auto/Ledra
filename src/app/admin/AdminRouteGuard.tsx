@@ -5,6 +5,8 @@ import { ReactNode, useMemo } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useAdminBillingStatus } from "@/lib/billing/useAdminBillingStatus";
 import { canUseFeature, featureLabel, normalizePlanTier, type FeatureKey } from "@/lib/billing/planFeatures";
+import { useCurrentRole } from "@/lib/auth/useCurrentRole";
+import { requiredPermissionForPath } from "@/lib/auth/permissions";
 
 function requiredFeatureForPath(pathname: string): FeatureKey | null {
   if (pathname.startsWith("/admin/templates")) return "manage_templates";
@@ -23,16 +25,36 @@ function requiredFeatureForPath(pathname: string): FeatureKey | null {
 
 export default function AdminRouteGuard({ children }: { children: ReactNode }) {
   const bs = useAdminBillingStatus();
+  const { can, loading: roleLoading } = useCurrentRole();
   const pathname = usePathname();
   const sp = useSearchParams();
 
   const feature = requiredFeatureForPath(pathname);
+  const requiredPerm = requiredPermissionForPath(pathname);
 
   // useMemo must be called unconditionally (before any early returns)
   const nextUrl = useMemo(() => {
     const qs = sp?.toString();
     return qs ? (pathname + "?" + qs) : pathname;
   }, [pathname, sp]);
+
+  // Role-based access check (skip while loading to avoid false blocks)
+  if (!roleLoading && requiredPerm && !can(requiredPerm)) {
+    return (
+      <div className="space-y-3">
+        <div className="glass-card p-4 text-sm glow-amber">
+          <div className="font-semibold text-amber-400">
+            この画面へのアクセス権限がありません。
+          </div>
+          <div className="mt-3">
+            <Link className="btn-primary" href="/admin">
+              ダッシュボードに戻る
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // billing画面は常に触れる（ループ防止）
   if (!feature || pathname.startsWith("/admin/billing")) return <>{children}</>;

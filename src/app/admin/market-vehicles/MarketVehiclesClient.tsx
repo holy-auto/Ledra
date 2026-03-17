@@ -20,6 +20,9 @@ interface VehicleRow {
   color: string | null;
   asking_price: number | null;
   wholesale_price: number | null;
+  cost_price: number | null;
+  supplier_name: string | null;
+  acquisition_date: string | null;
   status: VehicleStatus;
   body_type: string | null;
   thumbnail_url: string | null;
@@ -79,6 +82,18 @@ const statusVariant = (s: VehicleStatus): "default" | "success" | "warning" | "d
 const formatMileage = (km: number | null): string => {
   if (km == null) return "-";
   return `${km.toLocaleString("ja-JP")} km`;
+};
+
+const calcDaysInStock = (acquisitionDate: string | null, createdAt: string): number => {
+  const startDate = acquisitionDate ?? createdAt.slice(0, 10);
+  const start = new Date(startDate);
+  const now = new Date();
+  return Math.max(0, Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+};
+
+const calcProfit = (askingPrice: number | null, costPrice: number | null): number | null => {
+  if (askingPrice == null || costPrice == null) return null;
+  return askingPrice - costPrice;
 };
 
 /* ---------- component ---------- */
@@ -166,7 +181,7 @@ export default function MarketVehiclesClient() {
       {!loading && (
         <>
           {/* Stats */}
-          <section className="grid gap-4 sm:grid-cols-3">
+          <section className="grid gap-4 sm:grid-cols-3 lg:grid-cols-5">
             <div className="glass-card p-5">
               <div className="text-xs font-semibold tracking-[0.18em] text-muted">合計</div>
               <div className="mt-2 text-2xl font-bold text-primary">{stats.total}</div>
@@ -174,7 +189,7 @@ export default function MarketVehiclesClient() {
             </div>
             <div className="glass-card p-5">
               <div className="text-xs font-semibold tracking-[0.18em] text-muted">掲載中</div>
-              <div className="mt-2 text-2xl font-bold text-primary">{stats.listed}</div>
+              <div className="mt-2 text-2xl font-bold text-[#28a745]">{stats.listed}</div>
               <div className="mt-1 text-xs text-muted">掲載中</div>
             </div>
             <div className="glass-card p-5">
@@ -182,7 +197,50 @@ export default function MarketVehiclesClient() {
               <div className="mt-2 text-2xl font-bold text-primary">{stats.draft}</div>
               <div className="mt-1 text-xs text-muted">下書き</div>
             </div>
+            <div className="glass-card p-5">
+              <div className="text-xs font-semibold tracking-[0.18em] text-muted">在庫総額</div>
+              <div className="mt-2 text-2xl font-bold text-[#0071e3]">
+                {formatJpy(vehicles.filter((v) => v.status !== "sold").reduce((s, v) => s + (v.cost_price ?? v.asking_price ?? 0), 0))}
+              </div>
+              <div className="mt-1 text-xs text-muted">仕入原価ベース</div>
+            </div>
+            <div className="glass-card p-5">
+              <div className="text-xs font-semibold tracking-[0.18em] text-muted">想定利益</div>
+              <div className="mt-2 text-2xl font-bold text-[#28a745]">
+                {formatJpy(vehicles.filter((v) => v.status !== "sold" && v.cost_price != null && v.asking_price != null).reduce((s, v) => s + ((v.asking_price ?? 0) - (v.cost_price ?? 0)), 0))}
+              </div>
+              <div className="mt-1 text-xs text-muted">販売時見込み</div>
+            </div>
           </section>
+
+          {/* Long-stock alerts */}
+          {(() => {
+            const longStock = vehicles.filter((v) => v.status !== "sold" && v.status !== "withdrawn" && calcDaysInStock(v.acquisition_date, v.created_at) >= 60);
+            if (longStock.length === 0) return null;
+            return (
+              <div className="rounded-xl border border-[rgba(179,92,0,0.2)] bg-[rgba(179,92,0,0.04)] p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="text-[#b35c00]">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                  </svg>
+                  <span className="text-sm font-semibold text-[#b35c00]">長期在庫アラート</span>
+                  <span className="text-xs text-[#b35c00]">({longStock.length}台が60日以上)</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {longStock.map((v) => (
+                    <Link
+                      key={v.id}
+                      href={`/admin/market-vehicles/${v.id}`}
+                      className="inline-flex items-center gap-1 rounded-full border border-[rgba(179,92,0,0.2)] bg-white px-2.5 py-1 text-xs text-[#b35c00] hover:bg-[rgba(179,92,0,0.06)]"
+                    >
+                      {v.maker} {v.model}
+                      <span className="font-bold">{calcDaysInStock(v.acquisition_date, v.created_at)}日</span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Filters */}
           <section className="glass-card p-5">
@@ -278,7 +336,7 @@ export default function MarketVehiclesClient() {
                       {v.color && <span>{v.color}</span>}
                     </div>
 
-                    <div className="flex items-baseline gap-3 mt-auto pt-2 border-t border-border-subtle">
+                    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mt-auto pt-2 border-t border-border-subtle">
                       <div>
                         <div className="text-[10px] text-muted">販売価格</div>
                         <div className="text-sm font-bold text-primary">{formatJpy(v.asking_price)}</div>
@@ -287,7 +345,23 @@ export default function MarketVehiclesClient() {
                         <div className="text-[10px] text-muted">卸価格</div>
                         <div className="text-sm font-medium text-secondary">{formatJpy(v.wholesale_price)}</div>
                       </div>
+                      {v.cost_price != null && (
+                        <div>
+                          <div className="text-[10px] text-muted">利益</div>
+                          <div className={`text-sm font-bold ${calcProfit(v.asking_price, v.cost_price)! >= 0 ? "text-[#28a745]" : "text-[#d1242f]"}`}>
+                            {formatJpy(calcProfit(v.asking_price, v.cost_price))}
+                          </div>
+                        </div>
+                      )}
                     </div>
+
+                    {/* Inventory age & supplier */}
+                    {v.status !== "sold" && (
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted">
+                        <span>在庫 {calcDaysInStock(v.acquisition_date, v.created_at)}日</span>
+                        {v.supplier_name && <span>仕入先: {v.supplier_name}</span>}
+                      </div>
+                    )}
 
                     {/* Actions */}
                     <div className="flex gap-2 pt-2">
