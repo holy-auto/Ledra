@@ -9,6 +9,18 @@ import { formatJpy, formatDate } from "@/lib/format";
 
 type VehicleImage = { id: string; storage_path: string; file_name: string | null; sort_order: number };
 
+type CustomerInterest = {
+  id: string;
+  customer_name: string;
+  customer_phone: string | null;
+  customer_email: string | null;
+  interest_level: "hot" | "warm" | "cold";
+  note: string | null;
+  follow_up_date: string | null;
+  status: "active" | "converted" | "lost";
+  created_at: string;
+};
+
 type Vehicle = {
   id: string;
   maker: string;
@@ -34,6 +46,11 @@ type Vehicle = {
   condition_note: string | null;
   asking_price: number | null;
   wholesale_price: number | null;
+  cost_price: number | null;
+  supplier_name: string | null;
+  acquisition_date: string | null;
+  sold_at: string | null;
+  sold_price: number | null;
   status: string;
   listed_at: string | null;
   description: string | null;
@@ -73,6 +90,44 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [editData, setEditData] = useState<Record<string, unknown>>({});
+  const [interests, setInterests] = useState<CustomerInterest[]>([]);
+  const [showAddInterest, setShowAddInterest] = useState(false);
+  const [newInterest, setNewInterest] = useState({ customer_name: "", customer_phone: "", customer_email: "", interest_level: "warm", note: "", follow_up_date: "" });
+
+  const fetchInterests = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/admin/vehicle-interests?vehicle_id=${vehicleId}`, { cache: "no-store" });
+      const j = await res.json();
+      if (res.ok) setInterests(j.interests ?? []);
+    } catch { /* ignore */ }
+  }, [vehicleId]);
+
+  const addInterest = async () => {
+    if (!newInterest.customer_name.trim()) return;
+    try {
+      const res = await fetch("/api/admin/vehicle-interests", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ vehicle_id: vehicleId, ...newInterest }),
+      });
+      if (res.ok) {
+        await fetchInterests();
+        setNewInterest({ customer_name: "", customer_phone: "", customer_email: "", interest_level: "warm", note: "", follow_up_date: "" });
+        setShowAddInterest(false);
+      }
+    } catch { /* ignore */ }
+  };
+
+  const updateInterestStatus = async (id: string, status: string) => {
+    try {
+      await fetch("/api/admin/vehicle-interests", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id, status }),
+      });
+      await fetchInterests();
+    } catch { /* ignore */ }
+  };
 
   const fetchVehicle = useCallback(async () => {
     try {
@@ -86,8 +141,8 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
   }, [vehicleId]);
 
   useEffect(() => {
-    (async () => { setLoading(true); await fetchVehicle(); setLoading(false); })();
-  }, [fetchVehicle]);
+    (async () => { setLoading(true); await fetchVehicle(); await fetchInterests(); setLoading(false); })();
+  }, [fetchVehicle, fetchInterests]);
 
   const handleStatusChange = async (newStatus: string) => {
     setUpdating(true); setMsg(null);
@@ -142,8 +197,9 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
       body_type: vehicle.body_type, inspection_date: vehicle.inspection_date,
       repair_history: vehicle.repair_history, condition_grade: vehicle.condition_grade,
       condition_note: vehicle.condition_note, asking_price: vehicle.asking_price,
-      wholesale_price: vehicle.wholesale_price, description: vehicle.description,
-      features: vehicle.features?.join(", ") ?? "",
+      wholesale_price: vehicle.wholesale_price, cost_price: vehicle.cost_price,
+      supplier_name: vehicle.supplier_name, acquisition_date: vehicle.acquisition_date,
+      description: vehicle.description, features: vehicle.features?.join(", ") ?? "",
     });
     setEditMode(true);
     setMsg(null);
@@ -323,13 +379,16 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
             </div>
           </section>
           <section className="glass-card p-5 space-y-4">
-            <div className="text-xs font-semibold tracking-[0.18em] text-muted">コンディション・価格</div>
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted">コンディション・価格・仕入</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <EditField label="車検満了日" field="inspection_date" type="date" />
               <EditField label="修復歴" field="repair_history" type="select" options={REPAIR_OPTIONS} />
               <EditField label="評価点" field="condition_grade" type="select" options={CONDITION_GRADES} />
               <EditField label="希望価格" field="asking_price" type="number" />
               <EditField label="卸価格" field="wholesale_price" type="number" />
+              <EditField label="仕入原価" field="cost_price" type="number" />
+              <EditField label="仕入先" field="supplier_name" />
+              <EditField label="仕入日" field="acquisition_date" type="date" />
             </div>
             <EditField label="コンディション備考" field="condition_note" type="textarea" />
           </section>
@@ -374,17 +433,82 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
               </div>
             </div>
 
-            {/* Price */}
+            {/* Price & Profit */}
             <div className="space-y-4">
               <div className="glass-card p-5 space-y-3">
                 <div className="text-xs font-semibold tracking-[0.18em] text-muted">PRICE</div>
                 {vehicle.asking_price != null && (
-                  <div><div className="text-xs text-muted">希望価格（税抜）</div><div className="text-2xl font-bold text-primary">{formatJpy(vehicle.asking_price)}</div></div>
+                  <div><div className="text-xs text-muted">販売価格</div><div className="text-2xl font-bold text-primary">{formatJpy(vehicle.asking_price)}</div></div>
                 )}
                 {vehicle.wholesale_price != null && (
                   <div><div className="text-xs text-muted">卸価格</div><div className="text-lg font-semibold text-secondary">{formatJpy(vehicle.wholesale_price)}</div></div>
                 )}
+                {vehicle.cost_price != null && (
+                  <div><div className="text-xs text-muted">仕入原価</div><div className="text-lg font-semibold text-secondary">{formatJpy(vehicle.cost_price)}</div></div>
+                )}
               </div>
+
+              {/* Profit Analysis */}
+              {vehicle.cost_price != null && (
+                <div className="glass-card p-5 space-y-3">
+                  <div className="text-xs font-semibold tracking-[0.18em] text-muted">PROFIT ANALYSIS</div>
+                  <div className="grid grid-cols-2 gap-4">
+                    {vehicle.asking_price != null && (
+                      <div>
+                        <div className="text-xs text-muted">販売利益</div>
+                        <div className={`text-lg font-bold ${vehicle.asking_price - vehicle.cost_price >= 0 ? "text-[#28a745]" : "text-[#d1242f]"}`}>
+                          {formatJpy(vehicle.asking_price - vehicle.cost_price)}
+                        </div>
+                        <div className={`text-xs ${vehicle.asking_price - vehicle.cost_price >= 0 ? "text-[#28a745]" : "text-[#d1242f]"}`}>
+                          利益率 {((vehicle.asking_price - vehicle.cost_price) / vehicle.asking_price * 100).toFixed(1)}%
+                        </div>
+                      </div>
+                    )}
+                    {vehicle.wholesale_price != null && (
+                      <div>
+                        <div className="text-xs text-muted">卸利益</div>
+                        <div className={`text-lg font-bold ${vehicle.wholesale_price - vehicle.cost_price >= 0 ? "text-[#28a745]" : "text-[#d1242f]"}`}>
+                          {formatJpy(vehicle.wholesale_price - vehicle.cost_price)}
+                        </div>
+                        <div className={`text-xs ${vehicle.wholesale_price - vehicle.cost_price >= 0 ? "text-[#28a745]" : "text-[#d1242f]"}`}>
+                          利益率 {((vehicle.wholesale_price - vehicle.cost_price) / vehicle.wholesale_price * 100).toFixed(1)}%
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Inventory Info */}
+              {(vehicle.supplier_name || vehicle.acquisition_date) && (
+                <div className="glass-card p-5 space-y-2">
+                  <div className="text-xs font-semibold tracking-[0.18em] text-muted">ACQUISITION</div>
+                  {vehicle.supplier_name && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted">仕入先</span>
+                      <span className="text-primary font-medium">{vehicle.supplier_name}</span>
+                    </div>
+                  )}
+                  {vehicle.acquisition_date && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted">仕入日</span>
+                      <span className="text-primary font-medium">{formatDate(vehicle.acquisition_date)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted">在庫日数</span>
+                    {(() => {
+                      const startDate = vehicle.acquisition_date ?? vehicle.created_at.slice(0, 10);
+                      const days = Math.max(0, Math.floor((Date.now() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)));
+                      return (
+                        <span className={`font-bold ${days >= 90 ? "text-[#d1242f]" : days >= 60 ? "text-[#b35c00]" : "text-primary"}`}>
+                          {days}日
+                        </span>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
               <div className="flex gap-2 text-sm text-secondary flex-wrap">
                 {vehicle.year && <span className="glass-card px-3 py-1.5">{vehicle.year}年式</span>}
                 {vehicle.mileage != null && <span className="glass-card px-3 py-1.5">{vehicle.mileage.toLocaleString()} km</span>}
@@ -448,6 +572,102 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
               <p className="text-sm text-secondary whitespace-pre-wrap">{vehicle.description}</p>
             </section>
           )}
+
+          {/* Customer Interest Tracking (CRM) */}
+          <section className="glass-card p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs font-semibold tracking-[0.18em] text-muted">CUSTOMER INTERESTS</div>
+                <div className="mt-0.5 text-base font-semibold text-primary">購入検討客</div>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary !text-xs"
+                onClick={() => setShowAddInterest(!showAddInterest)}
+              >
+                {showAddInterest ? "閉じる" : "+ 顧客追加"}
+              </button>
+            </div>
+
+            {showAddInterest && (
+              <div className="rounded-lg border border-border-subtle bg-[rgba(0,0,0,0.02)] p-4 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted">顧客名 <span className="text-red-500">*</span></label>
+                    <input type="text" className="input-field" placeholder="山田太郎" value={newInterest.customer_name} onChange={(e) => setNewInterest((p) => ({ ...p, customer_name: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted">電話番号</label>
+                    <input type="tel" className="input-field" placeholder="090-1234-5678" value={newInterest.customer_phone} onChange={(e) => setNewInterest((p) => ({ ...p, customer_phone: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted">メール</label>
+                    <input type="email" className="input-field" placeholder="email@example.com" value={newInterest.customer_email} onChange={(e) => setNewInterest((p) => ({ ...p, customer_email: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted">興味度</label>
+                    <select className="select-field" value={newInterest.interest_level} onChange={(e) => setNewInterest((p) => ({ ...p, interest_level: e.target.value }))}>
+                      <option value="hot">高（来店済み）</option>
+                      <option value="warm">中（問い合わせ）</option>
+                      <option value="cold">低（検討中）</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted">フォローアップ日</label>
+                    <input type="date" className="input-field" value={newInterest.follow_up_date} onChange={(e) => setNewInterest((p) => ({ ...p, follow_up_date: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted">メモ</label>
+                  <textarea className="input-field" rows={2} placeholder="商談内容や要望など" value={newInterest.note} onChange={(e) => setNewInterest((p) => ({ ...p, note: e.target.value }))} />
+                </div>
+                <button type="button" className="btn-primary !text-xs" onClick={addInterest}>追加</button>
+              </div>
+            )}
+
+            {interests.length === 0 ? (
+              <div className="text-sm text-muted text-center py-4">まだ登録された顧客がいません</div>
+            ) : (
+              <div className="space-y-2">
+                {interests.map((i) => {
+                  const levelConfig = { hot: { label: "高", color: "text-[#d1242f]", bg: "bg-[rgba(209,36,47,0.08)]" }, warm: { label: "中", color: "text-[#b35c00]", bg: "bg-[rgba(179,92,0,0.08)]" }, cold: { label: "低", color: "text-[#6e6e73]", bg: "bg-[rgba(0,0,0,0.04)]" } }[i.interest_level] ?? { label: "-", color: "text-muted", bg: "bg-[rgba(0,0,0,0.04)]" };
+                  return (
+                    <div key={i.id} className="rounded-lg border border-border-subtle p-3 flex items-start gap-3">
+                      <span className={`mt-0.5 inline-flex h-6 min-w-6 items-center justify-center rounded-full text-[10px] font-bold ${levelConfig.color} ${levelConfig.bg}`}>
+                        {levelConfig.label}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold text-primary">{i.customer_name}</span>
+                          {i.status !== "active" && (
+                            <span className={`text-[10px] font-medium ${i.status === "converted" ? "text-[#28a745]" : "text-muted"}`}>
+                              {i.status === "converted" ? "成約" : "失注"}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted mt-0.5">
+                          {i.customer_phone && <span>{i.customer_phone}</span>}
+                          {i.customer_email && <span>{i.customer_email}</span>}
+                          {i.follow_up_date && (
+                            <span className={new Date(i.follow_up_date) <= new Date() ? "text-[#d1242f] font-semibold" : ""}>
+                              フォロー: {formatDate(i.follow_up_date)}
+                            </span>
+                          )}
+                        </div>
+                        {i.note && <div className="text-xs text-secondary mt-1">{i.note}</div>}
+                      </div>
+                      {i.status === "active" && (
+                        <div className="flex gap-1">
+                          <button type="button" className="rounded px-2 py-1 text-[10px] font-medium bg-[rgba(40,167,69,0.08)] text-[#28a745] hover:bg-[rgba(40,167,69,0.15)]" onClick={() => updateInterestStatus(i.id, "converted")}>成約</button>
+                          <button type="button" className="rounded px-2 py-1 text-[10px] font-medium bg-[rgba(0,0,0,0.04)] text-muted hover:bg-[rgba(0,0,0,0.08)]" onClick={() => updateInterestStatus(i.id, "lost")}>失注</button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
 
           <section className="glass-card p-5 text-xs text-muted space-y-1">
             <div>ID: <span className="font-mono">{vehicle.id}</span></div>

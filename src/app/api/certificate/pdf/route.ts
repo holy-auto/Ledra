@@ -6,6 +6,10 @@ import { Document, Page, Text, View, Image, StyleSheet, Font } from "@react-pdf/
 import { renderToBuffer } from "@react-pdf/renderer";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { renderBrandedCertificatePdf } from "@/lib/template-options/renderBrandedCertificate";
+import type { TemplateConfig } from "@/types/templateOption";
+import type { CertRow } from "@/lib/pdfCertificate";
 
 export const dynamic = "force-dynamic";
 
@@ -166,12 +170,12 @@ export async function GET(req: Request) {
   const pid = (searchParams.get("pid") ?? "").trim();
 
   if (!/^[a-f0-9]{32}$/i.test(pid)) {
-    return NextResponse.json({ error: "invalid pid" }, { status: 400 });
+    return apiValidationError("無効な公開IDです。");
   }
 
   const cert = await fetchCertPublic(pid);
   if (!cert || (cert.status ?? "").toLowerCase() !== "active") {
-    return NextResponse.json({ error: "not found" }, { status: 404 });
+    return apiNotFound("証明書が見つかりません。");
   }
 
   // 公開PDF閲覧ログ（tenant_id を取得して記録）
@@ -201,6 +205,74 @@ export async function GET(req: Request) {
   const origin = buildOriginFromCert(cert, fallbackOrigin);
   const publicUrl = `${origin}/c/${cert.public_id}`;
 
+  // ── ブランドテンプレートが有効ならブランドPDFを生成 ──
+  try {
+    const adm2 = createAdminClient();
+    const certForTenant = await adm2
+      .from("certificates")
+      .select("tenant_id")
+      .eq("public_id", pid)
+      .limit(1)
+      .maybeSingle();
+
+    if (certForTenant?.data?.tenant_id) {
+      const { data: activeSub } = await adm2
+        .from("tenant_option_subscriptions")
+        .select("template_config_id")
+        .eq("tenant_id", certForTenant.data.tenant_id)
+        .in("status", ["active", "past_due"])
+        .limit(1)
+        .maybeSingle();
+
+      if (activeSub?.template_config_id) {
+        const { data: tplConfig } = await adm2
+          .from("tenant_template_configs")
+          .select("config_json, is_active")
+          .eq("id", activeSub.template_config_id)
+          .eq("is_active", true)
+          .limit(1)
+          .maybeSingle();
+
+        if (tplConfig?.config_json) {
+          const brandedRow: CertRow = {
+            public_id: cert.public_id,
+            customer_name: cert.customer_name ?? "",
+            vehicle_info_json: cert.vehicle_info_json ?? {},
+            content_free_text: cert.content_free_text ?? null,
+            content_preset_json: cert.content_preset_json ?? {},
+            expiry_type: cert.expiry_type ?? null,
+            expiry_value: cert.expiry_value ?? null,
+            logo_asset_path: cert.logo_asset_path ?? null,
+            created_at: cert.created_at ?? new Date().toISOString(),
+            tenant_custom_domain: cert.tenant_custom_domain,
+          };
+
+          const brandedBuf = await renderBrandedCertificatePdf(
+            brandedRow,
+            publicUrl,
+            tplConfig.config_json as TemplateConfig,
+          );
+
+          const ab = (brandedBuf as any).buffer
+            ? (brandedBuf as any).buffer.slice((brandedBuf as any).byteOffset ?? 0, ((brandedBuf as any).byteOffset ?? 0) + (brandedBuf as any).byteLength)
+            : brandedBuf;
+
+          return new NextResponse(ab as any, {
+            status: 200,
+            headers: {
+              "Content-Type": "application/pdf",
+              "Content-Disposition": `inline; filename="certificate_${cert.public_id}.pdf"`,
+              "Cache-Control": "no-store",
+            },
+          });
+        }
+      }
+    }
+  } catch (brandErr) {
+    // ブランドテンプレ失敗時は標準テンプレにフォールバック
+    console.error("branded template fallback:", brandErr instanceof Error ? brandErr.message : brandErr);
+  }
+
   const qrPngUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(publicUrl)}`;
   const qrDataUrl = await pngUrlToDataUrl(qrPngUrl);
 
@@ -219,4 +291,3 @@ export async function GET(req: Request) {
     },
   });
 }
-

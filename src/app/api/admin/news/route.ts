@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import Parser from "rss-parser";
+import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 const RSS_FEEDS = [
   // ── 塗装・コーティング専門 ──
@@ -69,7 +70,7 @@ export async function GET() {
   try {
     const supabase = await createSupabaseServerClient();
     const { data: userRes } = await supabase.auth.getUser();
-    if (!userRes?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!userRes?.user) return apiUnauthorized();
 
     // 1) DBに保存済みの記事を取得（cron で保存されたもの）
     const { data: savedNews } = await supabase
@@ -107,8 +108,7 @@ export async function GET() {
       feedCount: RSS_FEEDS.length + 12, // RSS + スクレイピングサイト
       savedCount: savedNews?.length ?? 0,
     });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+  } catch (e) {
+    return apiInternalError(e, "news");
   }
 }

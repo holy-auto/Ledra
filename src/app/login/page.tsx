@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -64,7 +65,17 @@ export default async function Page({
           <button className="btn-primary w-full">ログイン</button>
         </form>
 
-        <p className="text-xs text-muted text-center">※ /admin はログイン必須です。</p>
+        <div className="text-center space-y-2">
+          <Link href="/forgot-password" className="text-xs text-[#0071e3] hover:underline">
+            パスワードをお忘れですか？
+          </Link>
+          <p className="text-sm text-secondary">
+            アカウントをお持ちでないですか？{" "}
+            <Link href="/signup" className="text-[#0071e3] hover:underline font-medium">
+              新規登録
+            </Link>
+          </p>
+        </div>
       </div>
     </main>
   );

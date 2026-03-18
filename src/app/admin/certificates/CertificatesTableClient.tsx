@@ -187,11 +187,14 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
                   {statusLabel(r.status)}
                 </Badge>
               </div>
-              {/* Row 2: actions */}
-              <div className="flex gap-2 items-center px-4 pb-3 pl-[2.75rem]">
-                <Link href={url} target="_blank" className="btn-ghost !px-3 !py-1 !text-xs">
+              {/* Row 2: public page button */}
+              <div className="px-4 pl-[2.75rem]">
+                <Link href={url} target="_blank" className="btn-secondary !text-xs !py-1.5 w-full text-center">
                   公開ページ
                 </Link>
+              </div>
+              {/* Row 3: PDF / CSV / delete */}
+              <div className="flex gap-2 items-center px-4 pb-3 pt-1.5 pl-[2.75rem]">
                 <Link
                   className={btnCls(canPdfOne)}
                   href={hrefOrBill(canPdfOne, `/admin/certificates/pdf-one?pid=${encodeURIComponent(r.public_id)}`, "pdf_one")}

@@ -253,12 +253,28 @@ function StripeConnectSection({ connectStatus }: { connectStatus: ConnectStatus 
         }),
       });
       const j = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       if (j?.onboarding_url) {
         window.location.href = j.onboarding_url;
       }
-    } catch (e: any) {
-      setConnectErr(e?.message ?? String(e));
+    } catch (e) {
+      setConnectErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    if (!confirm("Stripe Connect アカウントを切断しますか？\n切断後も Stripe アカウント自体は残ります。")) return;
+    setBusy(true);
+    setConnectErr(null);
+    try {
+      const res = await fetch("/api/stripe/connect", { method: "DELETE" });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      setLiveStatus({ connected: false, onboarded: false, account_id: null });
+    } catch (e) {
+      setConnectErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -306,7 +322,7 @@ function StripeConnectSection({ connectStatus }: { connectStatus: ConnectStatus 
         <div className="text-sm text-red-500">{connectErr}</div>
       )}
 
-      <div className="flex gap-3">
+      <div className="flex gap-3 flex-wrap">
         {!isOnboarded && (
           <button
             type="button"
@@ -326,7 +342,25 @@ function StripeConnectSection({ connectStatus }: { connectStatus: ConnectStatus 
             ステータスを更新
           </button>
         )}
+        {isConnected && (
+          <button
+            type="button"
+            className="text-sm text-red-500 hover:text-red-700 transition-colors px-3 py-1.5"
+            disabled={busy}
+            onClick={handleDisconnect}
+          >
+            切断する
+          </button>
+        )}
       </div>
+
+      {isOnboarded && (
+        <div className="mt-3 rounded-lg bg-emerald-50 border border-emerald-200 p-3">
+          <p className="text-sm text-emerald-800">
+            請求書の詳細画面から「決済リンクを作成」ボタンで、顧客にオンライン決済リンクを送信できます。
+          </p>
+        </div>
+      )}
     </div>
   );
 }

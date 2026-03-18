@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -8,7 +9,7 @@ export async function GET() {
 
   const { data: userRes } = await supabase.auth.getUser();
   if (!userRes?.user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401, headers: { "Cache-Control": "no-store" } });
+    return apiUnauthorized();
   }
 
   const { data: mem } = await supabase
@@ -19,7 +20,7 @@ export async function GET() {
 
   const tenantId = mem?.tenant_id as string | undefined;
   if (!tenantId) {
-    return NextResponse.json({ error: "no_tenant" }, { status: 400, headers: { "Cache-Control": "no-store" } });
+    return apiValidationError("テナントが見つかりません。");
   }
 
   const { data: t, error } = await supabase
@@ -29,7 +30,7 @@ export async function GET() {
     .single();
 
   if (error || !t) {
-    return NextResponse.json({ error: "tenant_not_found" }, { status: 404, headers: { "Cache-Control": "no-store" } });
+    return apiNotFound("テナントが見つかりません。");
   }
 
   return NextResponse.json(

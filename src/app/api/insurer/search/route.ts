@@ -1,5 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
+import { apiUnauthorized, apiValidationError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -9,7 +12,13 @@ function getClientMeta(req: Request) {
   return { ip, ua };
 }
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
+  const caller = await resolveInsurerCaller();
+  if (!caller) return apiUnauthorized();
+
   const url = new URL(req.url);
   const q = url.searchParams.get("q") ?? "";
   const status = url.searchParams.get("status") ?? "";
@@ -21,8 +30,6 @@ export async function GET(req: Request) {
   const { ip, ua } = getClientMeta(req);
 
   const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { data, error } = await supabase.rpc("insurer_search_certificates", {
     p_query: q,
@@ -32,7 +39,7 @@ export async function GET(req: Request) {
     p_user_agent: ua,
   });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return apiValidationError(error.message);
 
   let rows: any[] = data ?? [];
 

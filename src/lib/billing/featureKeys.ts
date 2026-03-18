@@ -7,6 +7,7 @@ export const FEATURES = {
   "issue_certificate": "issue_certificate",
   "pdf_one": "pdf_one",
   "pdf_zip": "pdf_zip",
+  "manage_stores": "manage_stores",
 } as const;
 
 export type FeatureId = keyof typeof FEATURES;

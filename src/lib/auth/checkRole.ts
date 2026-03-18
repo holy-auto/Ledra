@@ -1,7 +1,8 @@
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { normalizeRole, hasMinRole, type Role } from "./roles";
+import { hasPermission, type Permission } from "./permissions";
 
-type CallerInfo = {
+export type CallerInfo = {
   userId: string;
   tenantId: string;
   role: Role;
@@ -38,4 +39,11 @@ export async function resolveCallerWithRole(
  */
 export function requireMinRole(caller: CallerInfo, minRole: Role): boolean {
   return hasMinRole(caller.role, minRole);
+}
+
+/**
+ * Check if the caller has a specific permission.
+ */
+export function requirePermission(caller: CallerInfo, perm: Permission): boolean {
+  return hasPermission(caller.role, perm);
 }

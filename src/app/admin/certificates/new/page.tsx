@@ -49,6 +49,26 @@ export default async function Page({
     .single();
   const tenantLogoPath = (tenantRow?.logo_asset_path as string | null) ?? null;
 
+  // ブランドテンプレート確認
+  let hasBrandedTemplate = false;
+  try {
+    const { data: tos } = await supabase
+      .from("tenant_option_subscriptions")
+      .select("status")
+      .eq("tenant_id", tenantId)
+      .in("status", ["active", "past_due"])
+      .limit(1)
+      .maybeSingle();
+    const { data: ttc } = await supabase
+      .from("tenant_template_configs")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+    hasBrandedTemplate = !!tos && !!ttc;
+  } catch { /* tables may not exist */ }
+
   const { data: templates, error: tplErr } = await supabase
     .from("templates")
     .select("id,name,schema_json,created_at")
@@ -176,6 +196,13 @@ export default async function Page({
           </div>
         }
       />
+
+      {hasBrandedTemplate && (
+        <div className="glass-card p-3 text-sm text-[#0071e3] glow-cyan flex items-center justify-between">
+          <span>ブランドテンプレートが適用中です。発行される証明書PDFに自動で反映されます。</span>
+          <Link href="/admin/template-options" className="text-xs underline">設定を確認</Link>
+        </div>
+      )}
 
       <form action="/admin/certificates/new" method="get" className="glass-card p-4 space-y-2">
         <div className="text-xs text-muted">テンプレ</div>

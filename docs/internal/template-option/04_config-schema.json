@@ -1,0 +1,348 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cartrust.jp/schemas/template-config/v1",
+  "title": "CARTRUST Template Config",
+  "description": "施工証明書テンプレートの構造化カスタム設定。証明書の信頼性を担保しつつ、ブランドカスタマイズを許可する。readOnly=true の項目はテナント側では変更不可（証明書の必須表示項目）。",
+  "type": "object",
+  "required": ["version", "branding"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "スキーマバージョン。将来の互換性管理用。"
+    },
+
+    "branding": {
+      "type": "object",
+      "description": "ブランド情報。ロゴ・社名・配色など。A/B共通で編集可能。",
+      "required": ["company_name"],
+      "additionalProperties": false,
+      "properties": {
+        "logo_asset_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "template_assets テーブルのID。ロゴ画像への参照。"
+        },
+        "logo_position": {
+          "type": "string",
+          "enum": ["top-left", "top-center", "top-right"],
+          "default": "top-left",
+          "description": "ロゴの配置位置。"
+        },
+        "logo_max_height_px": {
+          "type": "integer",
+          "minimum": 20,
+          "maximum": 80,
+          "default": 40,
+          "description": "ロゴの最大高さ（px）。PDF生成時にこの高さに収まるよう自動リサイズ。"
+        },
+        "primary_color": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "default": "#1a1a1a",
+          "description": "プライマリカラー（HEX）。ヘッダー背景・テキスト等に使用。"
+        },
+        "secondary_color": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "default": "#666666",
+          "description": "セカンダリカラー（HEX）。サブテキスト・ボーダー等に使用。"
+        },
+        "accent_color": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "default": "#0071e3",
+          "description": "アクセントカラー（HEX）。B契約のみ変更可能。",
+          "_access": "custom_only"
+        },
+        "company_name": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "会社名・店舗名。証明書ヘッダーに表示。"
+        },
+        "company_name_en": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "会社名（英語表記）。任意。"
+        },
+        "company_address": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "住所。証明書フッターに表示。"
+        },
+        "company_phone": {
+          "type": "string",
+          "maxLength": 20,
+          "pattern": "^[0-9\\-\\+\\(\\)\\s]*$",
+          "description": "電話番号。"
+        },
+        "company_email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 100,
+          "description": "メールアドレス。"
+        },
+        "company_url": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 200,
+          "description": "Webサイト URL。"
+        }
+      }
+    },
+
+    "header": {
+      "type": "object",
+      "description": "証明書ヘッダー部分の設定。",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "default": "施工証明書",
+          "maxLength": 30,
+          "description": "証明書タイトル。B契約のみ変更可能。",
+          "_access": "custom_only"
+        },
+        "subtitle": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "サブタイトル（任意）。例: 'Certificate of Service'",
+          "_access": "custom_only"
+        },
+        "show_issue_date": {
+          "type": "boolean",
+          "default": true,
+          "description": "発行日を表示するか。"
+        },
+        "show_certificate_no": {
+          "type": "boolean",
+          "default": true,
+          "readOnly": true,
+          "description": "証明書番号の表示。必須表示項目のため変更不可。"
+        },
+        "date_format": {
+          "type": "string",
+          "enum": ["yyyy年MM月dd日", "yyyy/MM/dd", "yyyy-MM-dd"],
+          "default": "yyyy年MM月dd日",
+          "description": "日付フォーマット。"
+        }
+      }
+    },
+
+    "body": {
+      "type": "object",
+      "description": "証明書本文部分の設定。必須表示項目はreadOnly。",
+      "additionalProperties": false,
+      "properties": {
+        "show_customer_name": {
+          "type": "boolean",
+          "default": true,
+          "readOnly": true,
+          "description": "お客様名の表示。証明書の必須項目。変更不可。"
+        },
+        "show_vehicle_info": {
+          "type": "boolean",
+          "default": true,
+          "readOnly": true,
+          "description": "車両情報の表示。証明書の必須項目。変更不可。"
+        },
+        "show_service_details": {
+          "type": "boolean",
+          "default": true,
+          "readOnly": true,
+          "description": "施工内容の表示。証明書の必須項目。変更不可。"
+        },
+        "show_photos": {
+          "type": "boolean",
+          "default": true,
+          "description": "施工写真の表示ON/OFF。"
+        },
+        "photo_layout": {
+          "type": "string",
+          "enum": ["grid-2", "grid-3", "single"],
+          "default": "grid-2",
+          "description": "写真レイアウト。B契約のみ変更可能。",
+          "_access": "custom_only"
+        },
+        "customer_label": {
+          "type": "string",
+          "default": "お客様名",
+          "maxLength": 20,
+          "description": "お客様名のラベルテキスト。例: 'オーナー様' に変更可。",
+          "_access": "custom_only"
+        },
+        "vehicle_fields": {
+          "type": "array",
+          "description": "車両情報の表示フィールド順序。B契約のみ。",
+          "items": {
+            "type": "string",
+            "enum": ["maker", "model", "year", "plate_display", "color", "vin"]
+          },
+          "default": ["maker", "model", "year", "plate_display"],
+          "_access": "custom_only"
+        },
+        "custom_sections": {
+          "type": "array",
+          "maxItems": 3,
+          "description": "カスタムセクション（B契約のみ追加可能）。",
+          "items": {
+            "type": "object",
+            "required": ["title", "content"],
+            "additionalProperties": false,
+            "properties": {
+              "title": {
+                "type": "string",
+                "maxLength": 30,
+                "description": "セクションタイトル。"
+              },
+              "content": {
+                "type": "string",
+                "maxLength": 500,
+                "description": "セクション本文。"
+              },
+              "position": {
+                "type": "string",
+                "enum": ["before_footer", "after_service", "after_photos"],
+                "default": "before_footer",
+                "description": "表示位置。"
+              }
+            }
+          },
+          "_access": "custom_only"
+        }
+      }
+    },
+
+    "footer": {
+      "type": "object",
+      "description": "証明書フッター部分。保証文言・メンテナンスURL等。",
+      "additionalProperties": false,
+      "properties": {
+        "warranty_text": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "保証文言。A契約: 200字, B契約: 500字。上限は実装側（Zod）で制御。"
+        },
+        "notice_text": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "注意文言。"
+        },
+        "show_qr": {
+          "type": "boolean",
+          "default": true,
+          "description": "証明書確認用QRコード（public_id URL）の表示。"
+        },
+        "show_cartrust_badge": {
+          "type": "boolean",
+          "default": true,
+          "readOnly": true,
+          "description": "CARTRUST認証マークの表示。必須表示のため変更不可。"
+        },
+        "show_company_seal": {
+          "type": "boolean",
+          "default": false,
+          "description": "会社印の表示ON/OFF。（tenants.company_seal_pathを使用）"
+        },
+        "maintenance_urls": {
+          "type": "array",
+          "maxItems": 3,
+          "description": "メンテナンスURL。A契約: 1件, B契約: 3件。上限は実装側で制御。",
+          "items": {
+            "type": "object",
+            "required": ["url", "label"],
+            "additionalProperties": false,
+            "properties": {
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "maxLength": 500,
+                "description": "メンテナンス案内URL。"
+              },
+              "label": {
+                "type": "string",
+                "maxLength": 50,
+                "default": "メンテナンス情報",
+                "description": "URL表示ラベル。"
+              },
+              "show_qr": {
+                "type": "boolean",
+                "default": false,
+                "description": "このURL用のQRコードを表示するか。"
+              }
+            }
+          }
+        },
+        "footer_text": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "フッター追加テキスト（住所・連絡先等を自由記述）。"
+        }
+      }
+    },
+
+    "style": {
+      "type": "object",
+      "description": "見た目スタイルの設定。一部はB契約のみ。",
+      "additionalProperties": false,
+      "properties": {
+        "font_family": {
+          "type": "string",
+          "enum": ["noto-sans-jp", "noto-serif-jp"],
+          "default": "noto-sans-jp",
+          "description": "フォント。B契約のみ変更可能。",
+          "_access": "custom_only"
+        },
+        "border_style": {
+          "type": "string",
+          "enum": ["none", "simple", "double", "elegant", "rounded"],
+          "default": "simple",
+          "description": "外枠ボーダースタイル。B契約のみ変更可能。",
+          "_access": "custom_only"
+        },
+        "background_variant": {
+          "type": "string",
+          "enum": ["white", "cream", "light-gray", "dark"],
+          "default": "white",
+          "description": "背景バリアント。B契約のみ変更可能。",
+          "_access": "custom_only"
+        },
+        "header_style": {
+          "type": "string",
+          "enum": ["standard", "centered", "minimal", "bold"],
+          "default": "standard",
+          "description": "ヘッダーレイアウトスタイル。B契約のみ。",
+          "_access": "custom_only"
+        },
+        "divider_style": {
+          "type": "string",
+          "enum": ["line", "dotted", "none", "double"],
+          "default": "line",
+          "description": "セクション区切り線スタイル。B契約のみ。",
+          "_access": "custom_only"
+        }
+      }
+    }
+  },
+
+  "_meta": {
+    "description": "スキーマ設計メモ（実装には含めない）",
+    "access_levels": {
+      "all": "A契約・B契約どちらでも変更可能な項目",
+      "custom_only": "_access: 'custom_only' が付いた項目はB契約のみ変更可能",
+      "readOnly": "readOnly: true の項目はテナント側では変更不可（証明書の必須項目）",
+      "admin_only": "layout_key はtenant_template_configsテーブル側で管理。管理者のみ変更可。"
+    },
+    "validation_notes": {
+      "warranty_text_limit": "A契約=200字, B契約=500字。JSONスキーマでは500字にしておき、Zod側でoption_typeに応じて制限。",
+      "maintenance_urls_limit": "A契約=1件, B契約=3件。同上。",
+      "custom_sections_limit": "A契約=0件, B契約=3件。A契約ではcustom_sectionsフィールド自体を非表示。"
+    },
+    "implementation_notes": {
+      "config_merge": "A契約の場合、platform_templates.base_config とテナントの config_json をマージして最終設定を生成。テナント側が明示的に設定した値が優先。",
+      "pdf_rendering": "renderBrandedCertificate() で config_json + layout_key を受け取り、PDF/HTMLを生成。",
+      "future_extension": "version フィールドで将来のスキーマ変更に対応。v2以降ではマイグレーション関数で自動変換。"
+    }
+  }
+}

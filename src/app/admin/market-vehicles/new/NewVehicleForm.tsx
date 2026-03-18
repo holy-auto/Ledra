@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import PageHeader from "@/components/ui/PageHeader";
@@ -24,6 +24,7 @@ interface ImageFile {
 export default function NewVehicleForm() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   // 基本情報
   const [maker, setMaker] = useState("");
@@ -54,9 +55,12 @@ export default function NewVehicleForm() {
   const [conditionGrade, setConditionGrade] = useState("");
   const [conditionNote, setConditionNote] = useState("");
 
-  // 価格
+  // 価格・仕入
   const [askingPrice, setAskingPrice] = useState("");
   const [wholesalePrice, setWholesalePrice] = useState("");
+  const [costPrice, setCostPrice] = useState("");
+  const [supplierName, setSupplierName] = useState("");
+  const [acquisitionDate, setAcquisitionDate] = useState("");
 
   // 写真
   const [images, setImages] = useState<ImageFile[]>([]);
@@ -139,6 +143,9 @@ export default function NewVehicleForm() {
         condition_note: conditionNote.trim() || null,
         asking_price: askingPrice ? parseInt(askingPrice, 10) : null,
         wholesale_price: wholesalePrice ? parseInt(wholesalePrice, 10) : null,
+        cost_price: costPrice ? parseInt(costPrice, 10) : null,
+        supplier_name: supplierName.trim() || null,
+        acquisition_date: acquisitionDate || null,
         description: description.trim() || null,
         features: features.trim() || null,
       };
@@ -341,10 +348,10 @@ export default function NewVehicleForm() {
         </div>
       </section>
 
-      {/* 価格 */}
+      {/* 価格・仕入 */}
       <section className="glass-card p-5 space-y-4">
-        <SectionTitle tag="PRICING" title="価格" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <SectionTitle tag="PRICING & COST" title="価格・仕入" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="space-y-1">
             <label className="text-xs text-muted">販売価格 (税込)</label>
             <input type="number" className="input-field" placeholder="例: 2500000" value={askingPrice} onChange={(e) => setAskingPrice(e.target.value)} />
@@ -353,7 +360,46 @@ export default function NewVehicleForm() {
             <label className="text-xs text-muted">卸価格</label>
             <input type="number" className="input-field" placeholder="例: 2200000" value={wholesalePrice} onChange={(e) => setWholesalePrice(e.target.value)} />
           </div>
+          <div className="space-y-1">
+            <label className="text-xs text-muted">仕入原価</label>
+            <input type="number" className="input-field" placeholder="例: 1800000" value={costPrice} onChange={(e) => setCostPrice(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-muted">仕入先</label>
+            <input type="text" className="input-field" placeholder="例: オートオークション AA" value={supplierName} onChange={(e) => setSupplierName(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-muted">仕入日</label>
+            <input type="date" className="input-field" value={acquisitionDate} onChange={(e) => setAcquisitionDate(e.target.value)} />
+          </div>
         </div>
+        {/* Profit preview */}
+        {costPrice && askingPrice && (
+          <div className="rounded-lg border border-border-subtle bg-[rgba(0,0,0,0.02)] p-3">
+            <div className="flex gap-6 text-sm">
+              <div>
+                <span className="text-xs text-muted">販売利益</span>
+                <div className={`font-semibold ${parseInt(askingPrice) - parseInt(costPrice) >= 0 ? "text-[#28a745]" : "text-[#d1242f]"}`}>
+                  ¥{(parseInt(askingPrice) - parseInt(costPrice)).toLocaleString()}
+                </div>
+              </div>
+              <div>
+                <span className="text-xs text-muted">利益率</span>
+                <div className={`font-semibold ${parseInt(askingPrice) - parseInt(costPrice) >= 0 ? "text-[#28a745]" : "text-[#d1242f]"}`}>
+                  {((parseInt(askingPrice) - parseInt(costPrice)) / parseInt(askingPrice) * 100).toFixed(1)}%
+                </div>
+              </div>
+              {wholesalePrice && (
+                <div>
+                  <span className="text-xs text-muted">卸利益</span>
+                  <div className={`font-semibold ${parseInt(wholesalePrice) - parseInt(costPrice) >= 0 ? "text-[#28a745]" : "text-[#d1242f]"}`}>
+                    ¥{(parseInt(wholesalePrice) - parseInt(costPrice)).toLocaleString()}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </section>
 
       {/* 写真 */}
@@ -370,19 +416,53 @@ export default function NewVehicleForm() {
           onDragLeave={handleDragLeave}
         >
           <div className="text-sm text-muted">
-            画像をドラッグ＆ドロップ、または
-            <button
-              type="button"
-              className="mx-1 text-[#0071e3] underline hover:text-[#0077ED]"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              ファイルを選択
-            </button>
-            (最大 {MAX_IMAGES} 枚)
+            写真を追加 (最大 {MAX_IMAGES} 枚)
           </div>
           <div className="mt-1 text-xs text-muted">
             {images.length}/{MAX_IMAGES} 枚アップロード済み
           </div>
+
+          {/* Camera / Album buttons */}
+          <div className="mt-4 flex flex-wrap justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => cameraInputRef.current?.click()}
+              className="inline-flex items-center gap-2 rounded-lg border border-[rgba(0,0,0,0.1)] bg-white px-4 py-2 text-sm font-medium text-secondary shadow-sm hover:bg-[rgba(0,0,0,0.02)] hover:border-[rgba(0,0,0,0.2)] transition-colors"
+            >
+              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Z" />
+              </svg>
+              カメラで撮影
+            </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center gap-2 rounded-lg border border-[rgba(0,0,0,0.1)] bg-white px-4 py-2 text-sm font-medium text-secondary shadow-sm hover:bg-[rgba(0,0,0,0.02)] hover:border-[rgba(0,0,0,0.2)] transition-colors"
+            >
+              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
+              </svg>
+              アルバムから選択
+            </button>
+          </div>
+          <div className="mt-2 text-xs text-muted opacity-60">
+            ドラッグ&ドロップにも対応しています
+          </div>
+
+          {/* Camera input */}
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files) addFiles(e.target.files);
+              e.target.value = "";
+            }}
+          />
+          {/* Album input */}
           <input
             ref={fileInputRef}
             type="file"

@@ -12,9 +12,12 @@ import { FAQList } from "@/components/marketing/FAQList";
 import { FAQItem } from "@/components/marketing/FAQItem";
 import { CTABanner } from "@/components/marketing/CTABanner";
 import { ScrollReveal } from "@/components/marketing/ScrollReveal";
+import { getMarketingStats } from "@/lib/marketing/stats";
+import { PLANS } from "@/lib/marketing/pricing";
 import Link from "next/link";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const stats = await getMarketingStats();
   return (
     <>
       {/* Hero */}
@@ -254,9 +257,8 @@ export default function HomePage() {
       <Section>
         <SectionHeading title="多くの企業にご利用いただいています" />
         <StatsRow>
-          <StatCard value="500+" label="導入企業数" delay={0} />
-          <StatCard value="10,000+" label="証明書発行数" delay={150} />
-          <StatCard value="99%" label="継続利用率" delay={300} />
+          <StatCard value={stats.shopCount} label="導入企業数" delay={0} />
+          <StatCard value={stats.certificateCount} label="証明書発行数" delay={150} />
         </StatsRow>
         <LogoCloud />
       </Section>
@@ -269,47 +271,30 @@ export default function HomePage() {
         />
         <PricingCards>
           <PricingCard
-            name="スターター"
-            price="無料"
-            unit=""
-            description="まずは試してみたい方に"
+            name={PLANS.starter.name}
+            price={PLANS.starter.price}
+            unit={PLANS.starter.unit}
+            description={PLANS.starter.description}
             delay={0}
-            features={[
-              "月5件まで証明書発行",
-              "基本テンプレート",
-              "URL共有",
-              "メールサポート",
-            ]}
-            ctaLabel="無料で始める"
+            features={[...PLANS.starter.features]}
+            ctaLabel={PLANS.starter.ctaLabel}
           />
           <PricingCard
-            name="スタンダード"
-            price="¥9,800"
-            description="本格的に活用したい施工店に"
+            name={PLANS.standard.name}
+            price={PLANS.standard.price}
+            description={PLANS.standard.description}
             delay={100}
-            features={[
-              "月100件まで証明書発行",
-              "カスタムテンプレート",
-              "ロゴ・ブランドカスタマイズ",
-              "CSV/PDFエクスポート",
-              "優先サポート",
-            ]}
+            features={[...PLANS.standard.features]}
             recommended
           />
           <PricingCard
-            name="エンタープライズ"
-            price="要相談"
-            unit=""
-            description="大規模導入・API連携をお考えの方に"
+            name={PLANS.enterprise.name}
+            price={PLANS.enterprise.price}
+            unit={PLANS.enterprise.unit}
+            description={PLANS.enterprise.description}
             delay={200}
-            features={[
-              "無制限の証明書発行",
-              "API連携",
-              "専用アカウントマネージャー",
-              "カスタム開発対応",
-              "SLA保証",
-            ]}
-            ctaLabel="お問い合わせ"
+            features={[...PLANS.enterprise.features]}
+            ctaLabel={PLANS.enterprise.ctaLabel}
           />
         </PricingCards>
         <ScrollReveal variant="fade-in" delay={400}>
@@ -330,7 +315,7 @@ export default function HomePage() {
         <FAQList>
           <FAQItem
             question="無料プランでも証明書の発行はできますか？"
-            answer="はい、無料プランでも月5件まで証明書を発行いただけます。まずは無料プランでお試しいただき、必要に応じてアップグレードをご検討ください。"
+            answer={`はい、無料プランでも${PLANS.starter.certLimitShort}まで証明書を発行いただけます。まずは無料プランでお試しいただき、必要に応じてアップグレードをご検討ください。`}
           />
           <FAQItem
             question="導入にあたって特別な設備やソフトウェアは必要ですか？"

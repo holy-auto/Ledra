@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { priceIdToPlanTier } from "@/lib/stripe/plan";
+import { insurerPriceIdToPlanTier } from "@/lib/stripe/insurerPlan";
+import { isTemplateOptionEvent } from "@/lib/template-options/stripe";
+import { apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -105,22 +108,76 @@ async function syncBySubscription(stripe: Stripe, supabase: ReturnType<typeof ge
   await updateTenantBySelector(supabase, selector, patch);
 }
 
+// ─── Insurer subscription sync ───
+async function syncInsurerSubscription(stripe: Stripe, supabase: ReturnType<typeof getSupabaseAdmin>, sub: Stripe.Subscription) {
+  const insurerId = sub.metadata?.insurer_id;
+  if (!insurerId) {
+    // Try reverse lookup by stripe_subscription_id or customer_id
+    const subscriptionId = sub.id;
+    const customerId = asStringId(sub.customer);
+
+    let resolvedInsurerId: string | null = null;
+
+    if (subscriptionId) {
+      const { data } = await supabase
+        .from("insurers")
+        .select("id")
+        .eq("stripe_subscription_id", subscriptionId)
+        .limit(1);
+      if (data?.[0]?.id) resolvedInsurerId = data[0].id;
+    }
+
+    if (!resolvedInsurerId && customerId) {
+      const { data } = await supabase
+        .from("insurers")
+        .select("id")
+        .eq("stripe_customer_id", customerId)
+        .limit(1);
+      if (data?.[0]?.id) resolvedInsurerId = data[0].id;
+    }
+
+    if (!resolvedInsurerId) return false; // Not an insurer subscription
+    return await doSyncInsurer(supabase, resolvedInsurerId, sub);
+  }
+
+  return await doSyncInsurer(supabase, insurerId, sub);
+}
+
+async function doSyncInsurer(supabase: ReturnType<typeof getSupabaseAdmin>, insurerId: string, sub: Stripe.Subscription) {
+  const priceId: string | null = sub.items?.data?.[0]?.price?.id ?? null;
+  const planTier = priceId ? insurerPriceIdToPlanTier(priceId) : null;
+  const active = isActiveStatus(sub.status);
+  const customerId = asStringId(sub.customer);
+
+  const patch: Record<string, any> = {
+    stripe_subscription_id: sub.id,
+    is_active: active,
+  };
+  if (customerId) patch.stripe_customer_id = customerId;
+  if (planTier) patch.plan_tier = planTier;
+
+  console.log("webhook: sync insurer subscription", { insurerId, planTier, active, subscriptionId: sub.id });
+  const { error } = await supabase.from("insurers").update(patch).eq("id", insurerId);
+  if (error) throw error;
+  return true;
+}
+
 export async function POST(req: NextRequest) {
   const stripe = getStripe();
 
   const sig = req.headers.get("stripe-signature");
   const whsec = process.env.STRIPE_WEBHOOK_SECRET;
   if (!sig || !whsec) {
-    return NextResponse.json({ error: "Missing stripe-signature or STRIPE_WEBHOOK_SECRET" }, { status: 400 });
+    return apiValidationError("Missing stripe-signature or STRIPE_WEBHOOK_SECRET");
   }
 
   let event: Stripe.Event;
   try {
     const rawBody = await req.text();
     event = stripe.webhooks.constructEvent(rawBody, sig, whsec);
-  } catch (e: any) {
+  } catch (e) {
     console.error("webhook signature verify failed", e);
-    return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+    return apiValidationError("Invalid signature");
   }
 
   const supabase = getSupabaseAdmin();
@@ -133,19 +190,51 @@ export async function POST(req: NextRequest) {
         const customerId = asStringId(session.customer);
         const subscriptionId = asStringId(session.subscription);
 
+        // ─── テンプレートオプション checkout ───
+        if (isTemplateOptionEvent(session.metadata as Record<string, string> | null)) {
+          const tenantId = session.metadata?.tenant_id;
+          const optionType = session.metadata?.option_type as "preset" | "custom" | undefined;
+          if (tenantId && optionType && subscriptionId) {
+            // subscription item ID を取得
+            const sub = await stripe.subscriptions.retrieve(subscriptionId);
+            const recurringItem = sub.items?.data?.find(i => i.price?.recurring);
+
+            await supabase.from("tenant_option_subscriptions").upsert({
+              tenant_id: tenantId,
+              option_type: optionType,
+              status: "active",
+              stripe_subscription_id: subscriptionId,
+              stripe_subscription_item_id: recurringItem?.id ?? null,
+              started_at: new Date().toISOString(),
+              current_period_end: sub.current_period_end
+                ? new Date(sub.current_period_end * 1000).toISOString()
+                : null,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: "tenant_id,option_type" });
+
+            console.log("webhook: template option subscription created", { tenantId, optionType, subscriptionId });
+          }
+          break;
+        }
+
         // tenant 特定：metadata優先（推奨）→ client_reference_id
         const tenant_id = session.metadata?.tenant_id ?? session.client_reference_id ?? null;
         const tenant_slug = session.metadata?.tenant_slug ?? null;
+        const isInsurer = session.metadata?.type === "insurer";
 
         if (!subscriptionId) throw new Error("checkout.session.completed: missing subscription id");
 
-        // subscription を取って確定値で同期
         const sub = await stripe.subscriptions.retrieve(subscriptionId);
-        // metadata が subscription にも入っている想定だが、念のためセッション由来を補完
-        if (tenant_id && !sub.metadata?.tenant_id) sub.metadata = { ...(sub.metadata ?? {}), tenant_id };
-        if (tenant_slug && !sub.metadata?.tenant_slug) sub.metadata = { ...(sub.metadata ?? {}), tenant_slug };
 
-        await syncBySubscription(stripe, supabase, sub);
+        if (isInsurer) {
+          // Insurer checkout
+          await syncInsurerSubscription(stripe, supabase, sub);
+        } else {
+          // Tenant checkout
+          if (tenant_id && !sub.metadata?.tenant_id) sub.metadata = { ...(sub.metadata ?? {}), tenant_id };
+          if (tenant_slug && !sub.metadata?.tenant_slug) sub.metadata = { ...(sub.metadata ?? {}), tenant_slug };
+          await syncBySubscription(stripe, supabase, sub);
+        }
         break;
       }
 
@@ -153,7 +242,47 @@ export async function POST(req: NextRequest) {
       case "customer.subscription.updated":
       case "customer.subscription.deleted": {
         const sub = event.data.object as Stripe.Subscription;
-        await syncBySubscription(stripe, supabase, sub);
+
+        // ─── テンプレートオプション subscription ───
+        if (isTemplateOptionEvent(sub.metadata as Record<string, string> | null)) {
+          const tenantId = sub.metadata?.tenant_id;
+          const optionType = sub.metadata?.option_type;
+          if (tenantId && optionType) {
+            const active = isActiveStatus(sub.status);
+            const status = sub.status === "canceled" ? "cancelled"
+              : sub.status === "past_due" ? "past_due"
+              : active ? "active" : "suspended";
+
+            await supabase.from("tenant_option_subscriptions")
+              .update({
+                status,
+                current_period_end: sub.current_period_end
+                  ? new Date(sub.current_period_end * 1000).toISOString()
+                  : null,
+                cancelled_at: sub.status === "canceled" ? new Date().toISOString() : null,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("tenant_id", tenantId)
+              .eq("option_type", optionType);
+
+            console.log("webhook: template option subscription synced", { tenantId, optionType, status });
+          }
+          break;
+        }
+
+        // Try insurer first (checks metadata.type or reverse lookup)
+        const isInsurer = sub.metadata?.type === "insurer";
+        if (isInsurer) {
+          await syncInsurerSubscription(stripe, supabase, sub);
+        } else {
+          // Try tenant sync; if it fails because tenant not found, try insurer
+          try {
+            await syncBySubscription(stripe, supabase, sub);
+          } catch (tenantErr) {
+            const handled = await syncInsurerSubscription(stripe, supabase, sub);
+            if (!handled) throw tenantErr; // Re-throw if neither tenant nor insurer
+          }
+        }
         break;
       }
 
@@ -165,20 +294,72 @@ export async function POST(req: NextRequest) {
         if (!subscriptionId) break;
 
         const sub = await stripe.subscriptions.retrieve(subscriptionId);
-        await syncBySubscription(stripe, supabase, sub);
+
+        // ─── テンプレートオプション invoice ───
+        if (isTemplateOptionEvent(sub.metadata as Record<string, string> | null)) {
+          const tenantId = sub.metadata?.tenant_id;
+          const optionType = sub.metadata?.option_type;
+          if (tenantId && optionType) {
+            const isPaid = event.type === "invoice.paid";
+            await supabase.from("tenant_option_subscriptions")
+              .update({
+                status: isPaid ? "active" : "past_due",
+                current_period_end: sub.current_period_end
+                  ? new Date(sub.current_period_end * 1000).toISOString()
+                  : null,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("tenant_id", tenantId)
+              .eq("option_type", optionType);
+            console.log("webhook: template option invoice", { tenantId, optionType, event: event.type });
+          }
+          break;
+        }
+
+        const isInsurer = sub.metadata?.type === "insurer";
+        if (isInsurer) {
+          await syncInsurerSubscription(stripe, supabase, sub);
+        } else {
+          try {
+            await syncBySubscription(stripe, supabase, sub);
+          } catch {
+            await syncInsurerSubscription(stripe, supabase, sub);
+          }
+        }
+        break;
+      }
+
+      // ─── Stripe Connect: アカウントオンボーディング状態の自動同期 ───
+      case "account.updated": {
+        const account = event.data.object as Stripe.Account;
+        const accountId = account.id;
+        const onboarded = !!(account.charges_enabled && account.payouts_enabled);
+
+        // stripe_connect_account_id でテナントを逆引き
+        const { data: tenant } = await supabase
+          .from("tenants")
+          .select("id, stripe_connect_onboarded")
+          .eq("stripe_connect_account_id", accountId)
+          .limit(1)
+          .maybeSingle();
+
+        if (tenant && tenant.stripe_connect_onboarded !== onboarded) {
+          await supabase
+            .from("tenants")
+            .update({ stripe_connect_onboarded: onboarded })
+            .eq("id", tenant.id);
+          console.log("webhook: connect account synced", { accountId, onboarded });
+        }
         break;
       }
 
       default:
         break;
     }
-  } catch (e: any) {
-    console.error("stripe webhook handler failed", { type: event.type, id: event.id, error: e?.message ?? e });
-    return NextResponse.json({ error: "Webhook handler failed" }, { status: 500 });
+  } catch (e) {
+    console.error("stripe webhook handler failed", { type: event.type, id: event.id, error: e instanceof Error ? e.message : e });
+    return apiInternalError(e, "stripe webhook handler");
   }
 
   return NextResponse.json({ received: true });
 }
-
-
-

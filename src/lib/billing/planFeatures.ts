@@ -18,6 +18,7 @@ const MATRIX: Record<PlanTier, Record<FeatureKey, boolean>> = {
     pdf_zip: false,
     manage_templates: false,
     upload_logo: false,
+    manage_stores: false,
   },
   standard: {
     issue_certificate: true,
@@ -28,6 +29,7 @@ const MATRIX: Record<PlanTier, Record<FeatureKey, boolean>> = {
     pdf_zip: true,
     manage_templates: true,
     upload_logo: true,
+    manage_stores: false,
   },
   pro: {
     issue_certificate: true,
@@ -38,6 +40,7 @@ const MATRIX: Record<PlanTier, Record<FeatureKey, boolean>> = {
     pdf_zip: true,
     manage_templates: true,
     upload_logo: true,
+    manage_stores: true,
   },
 };
 
@@ -63,6 +66,7 @@ export function featureLabel(feature: FeatureKey): string {
     case "pdf_zip": return "PDF ZIP出力（選択分）";
     case "manage_templates": return "テンプレート管理";
     case "upload_logo": return "ロゴアップロード";
+    case "manage_stores": return "店舗管理";
     default: return feature;
   }
 }
@@ -72,6 +76,13 @@ export const PHOTO_LIMITS: Record<PlanTier, number> = {
   mini: 3,
   standard: 10,
   pro: 20,
+};
+
+/** 店舗数上限（プランごと） */
+export const STORE_LIMITS: Record<PlanTier, number> = {
+  mini: 1,
+  standard: 1,
+  pro: 10,
 };
 
 /** compile-time exhaustiveness check (auto) */

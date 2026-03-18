@@ -81,8 +81,15 @@ export function MobileMenu({
               ログイン
             </Link>
             <Link
-              href="/contact"
+              href="/signup"
               className="mt-4 bg-primary text-white text-base font-medium px-6 py-3 rounded-lg text-center hover:bg-primary-hover transition-colors"
+              onClick={() => setOpen(false)}
+            >
+              無料で始める
+            </Link>
+            <Link
+              href="/contact"
+              className="bg-white text-primary text-base font-medium px-6 py-3 rounded-lg text-center border border-primary/20 hover:bg-primary/5 transition-colors"
               onClick={() => setOpen(false)}
             >
               お問い合わせ

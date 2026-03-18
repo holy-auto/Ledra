@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { logInsurerAccess } from "@/lib/insurer/audit";
+import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
+import { apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -11,21 +13,16 @@ export const runtime = "nodejs";
  * 既存の /api/insurer/certificate/[id] (UUID指定) と併存する。
  */
 export async function GET(req: NextRequest) {
+  const caller = await resolveInsurerCaller();
+  if (!caller) return apiUnauthorized();
+
   const pid = req.nextUrl.searchParams.get("pid") ?? "";
 
   if (!pid) {
-    return NextResponse.json(
-      { error: "Missing pid (public_id) query parameter" },
-      { status: 400 },
-    );
+    return apiValidationError("Missing pid (public_id) query parameter");
   }
 
   const sb = await createClient();
-  const { data: auth } = await sb.auth.getUser();
-
-  if (!auth.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
 
   const { data: cert, error } = await sb
     .from("certificates")
@@ -34,11 +31,11 @@ export async function GET(req: NextRequest) {
     .maybeSingle();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return apiValidationError(error.message);
   }
 
   if (!cert) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return apiNotFound("証明書が見つかりません。");
   }
 
   const ip =

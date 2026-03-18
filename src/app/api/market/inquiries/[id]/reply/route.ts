@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { notifyInquiryReply } from "@/lib/market/email";
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +67,28 @@ export async function POST(
         .from("market_inquiries")
         .update({ status: "responded", updated_at: new Date().toISOString() })
         .eq("id", inquiryId);
+    }
+
+    // Notify buyer via email when seller replies (non-blocking)
+    if (senderType === "seller") {
+      try {
+        const { data: fullInquiry } = await admin
+          .from("market_inquiries")
+          .select("buyer_email, buyer_name, vehicle_id, market_vehicles(maker, model, tenants(name))")
+          .eq("id", inquiryId)
+          .single();
+        const buyerEmail = (fullInquiry as any)?.buyer_email;
+        const vehicle = (fullInquiry as any)?.market_vehicles;
+        const sellerName = vehicle?.tenants?.name ?? "出品者";
+        const vehicleLabel = [vehicle?.maker, vehicle?.model].filter(Boolean).join(" ") || "車両";
+        if (buyerEmail) {
+          notifyInquiryReply(buyerEmail, { sellerName, vehicleLabel, message }).catch((e) =>
+            console.warn("[market] notifyInquiryReply failed:", e)
+          );
+        }
+      } catch (e) {
+        console.warn("[market] buyer notification failed:", e);
+      }
     }
 
     return NextResponse.json({ ok: true, reply });

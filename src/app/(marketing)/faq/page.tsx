@@ -4,6 +4,7 @@ import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { FAQList } from "@/components/marketing/FAQList";
 import { FAQItem } from "@/components/marketing/FAQItem";
 import { CTABanner } from "@/components/marketing/CTABanner";
+import { PLANS, ANNUAL_DISCOUNT_PERCENT } from "@/lib/marketing/pricing";
 
 export const metadata = {
   title: "よくあるご質問",
@@ -48,7 +49,7 @@ export default function FAQPage() {
         <FAQList>
           <FAQItem
             question="無料プランでも証明書の発行はできますか？"
-            answer="はい、無料プランでも月5件まで証明書を発行いただけます。まずは無料プランでお試しいただき、必要に応じてアップグレードをご検討ください。"
+            answer={`はい、無料プランでも${PLANS.starter.certLimitShort}まで証明書を発行いただけます。まずは無料プランでお試しいただき、必要に応じてアップグレードをご検討ください。`}
           />
           <FAQItem
             question="証明書のテンプレートはカスタマイズできますか？"
@@ -98,7 +99,7 @@ export default function FAQPage() {
           />
           <FAQItem
             question="年間契約による割引はありますか？"
-            answer="はい、年間契約の場合は月額料金から20%の割引が適用されます。詳しくはお問い合わせください。"
+            answer={`はい、年間契約の場合は月額料金から${ANNUAL_DISCOUNT_PERCENT}%の割引が適用されます。詳しくはお問い合わせください。`}
           />
           <FAQItem
             question="解約手数料はかかりますか？"

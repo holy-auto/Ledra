@@ -7,6 +7,7 @@ import { FAQList } from "@/components/marketing/FAQList";
 import { FAQItem } from "@/components/marketing/FAQItem";
 import { CTABanner } from "@/components/marketing/CTABanner";
 import { ScrollReveal } from "@/components/marketing/ScrollReveal";
+import { PLANS, FEATURE_COMPARISON, ANNUAL_DISCOUNT_PERCENT, TEMPLATE_OPTIONS, TEMPLATE_ADDITIONAL_WORK, TEMPLATE_FAQ } from "@/lib/marketing/pricing";
 
 export const metadata = {
   title: "料金プラン",
@@ -26,47 +27,30 @@ export default function PricingPage() {
       <Section>
         <PricingCards>
           <PricingCard
-            name="スターター"
-            price="無料"
-            unit=""
-            description="まずは試してみたい方に"
+            name={PLANS.starter.name}
+            price={PLANS.starter.price}
+            unit={PLANS.starter.unit}
+            description={PLANS.starter.description}
             delay={0}
-            features={[
-              "月5件まで証明書発行",
-              "基本テンプレート",
-              "URL共有",
-              "メールサポート",
-            ]}
-            ctaLabel="無料で始める"
+            features={[...PLANS.starter.features]}
+            ctaLabel={PLANS.starter.ctaLabel}
           />
           <PricingCard
-            name="スタンダード"
-            price="¥9,800"
-            description="本格的に活用したい施工店に"
+            name={PLANS.standard.name}
+            price={PLANS.standard.price}
+            description={PLANS.standard.description}
             delay={100}
-            features={[
-              "月100件まで証明書発行",
-              "カスタムテンプレート",
-              "ロゴ・ブランドカスタマイズ",
-              "CSV/PDFエクスポート",
-              "優先サポート",
-            ]}
+            features={[...PLANS.standard.features]}
             recommended
           />
           <PricingCard
-            name="エンタープライズ"
-            price="要相談"
-            unit=""
-            description="大規模導入・API連携をお考えの方に"
+            name={PLANS.enterprise.name}
+            price={PLANS.enterprise.price}
+            unit={PLANS.enterprise.unit}
+            description={PLANS.enterprise.description}
             delay={200}
-            features={[
-              "無制限の証明書発行",
-              "API連携",
-              "専用アカウントマネージャー",
-              "カスタム開発対応",
-              "SLA保証",
-            ]}
-            ctaLabel="お問い合わせ"
+            features={[...PLANS.enterprise.features]}
+            ctaLabel={PLANS.enterprise.ctaLabel}
           />
         </PricingCards>
       </Section>
@@ -89,16 +73,7 @@ export default function PricingPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-light">
-                {[
-                  { feature: "証明書発行数", starter: "月5件", standard: "月100件", enterprise: "無制限" },
-                  { feature: "テンプレート", starter: "基本", standard: "カスタム", enterprise: "完全カスタム" },
-                  { feature: "ブランドカスタマイズ", starter: "—", standard: "✓", enterprise: "✓" },
-                  { feature: "URL共有", starter: "✓", standard: "✓", enterprise: "✓" },
-                  { feature: "CSV/PDFエクスポート", starter: "—", standard: "✓", enterprise: "✓" },
-                  { feature: "API連携", starter: "—", standard: "—", enterprise: "✓" },
-                  { feature: "サポート", starter: "メール", standard: "優先メール", enterprise: "専任マネージャー" },
-                  { feature: "SLA保証", starter: "—", standard: "—", enterprise: "✓" },
-                ].map((row) => (
+                {FEATURE_COMPARISON.map((row) => (
                   <tr key={row.feature} className="hover:bg-surface-subtle/50 transition-colors">
                     <td className="py-3.5 px-4 text-heading font-medium">{row.feature}</td>
                     <td className="py-3.5 px-4 text-center text-body">{row.starter}</td>
@@ -122,7 +97,7 @@ export default function PricingPage() {
           />
           <FAQItem
             question="年間契約による割引はありますか？"
-            answer="はい、年間契約の場合は月額料金から20%の割引が適用されます。詳しくはお問い合わせください。"
+            answer={`はい、年間契約の場合は月額料金から${ANNUAL_DISCOUNT_PERCENT}%の割引が適用されます。詳しくはお問い合わせください。`}
           />
           <FAQItem
             question="月の発行数が上限を超えた場合はどうなりますか？"
@@ -132,6 +107,71 @@ export default function PricingPage() {
             question="解約手数料はかかりますか？"
             answer="解約手数料は一切かかりません。月額プランの場合、月末まではご利用いただけます。年間プランの場合は残期間分の返金はございませんのでご了承ください。"
           />
+        </FAQList>
+      </Section>
+
+      {/* テンプレートオプション */}
+      <Section bg="alt">
+        <SectionHeading
+          title="ブランド証明書オプション"
+          subtitle="自社ロゴ・ブランドカラーを反映した施工証明書を発行できるオプションです。基本プランに追加してご利用いただけます。"
+        />
+        <PricingCards>
+          <PricingCard
+            name={TEMPLATE_OPTIONS.preset.name}
+            price={TEMPLATE_OPTIONS.preset.price}
+            unit={TEMPLATE_OPTIONS.preset.unit}
+            description={`${TEMPLATE_OPTIONS.preset.description}（初期費用 ${TEMPLATE_OPTIONS.preset.setupFee}）`}
+            delay={0}
+            features={[...TEMPLATE_OPTIONS.preset.features]}
+          />
+          <PricingCard
+            name={TEMPLATE_OPTIONS.custom.name}
+            price={TEMPLATE_OPTIONS.custom.price}
+            unit={TEMPLATE_OPTIONS.custom.unit}
+            description={`${TEMPLATE_OPTIONS.custom.description}（初期費用 ${TEMPLATE_OPTIONS.custom.setupFee}）`}
+            delay={100}
+            features={[...TEMPLATE_OPTIONS.custom.features]}
+            recommended
+          />
+        </PricingCards>
+      </Section>
+
+      {/* 追加作業費 */}
+      <Section>
+        <SectionHeading
+          title="追加作業費"
+          subtitle="テンプレート公開後の変更・追加は以下の料金にて承ります。"
+        />
+        <ScrollReveal variant="fade-up" delay={100}>
+          <div className="overflow-x-auto">
+            <table className="w-full max-w-2xl mx-auto text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left py-4 px-4 font-medium text-muted">作業内容</th>
+                  <th className="text-right py-4 px-4 font-medium text-heading">料金（税込）</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border-light">
+                {TEMPLATE_ADDITIONAL_WORK.map((row) => (
+                  <tr key={row.item} className="hover:bg-surface-subtle/50 transition-colors">
+                    <td className="py-3.5 px-4 text-heading">{row.item}</td>
+                    <td className="py-3.5 px-4 text-right text-body">{row.price}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </ScrollReveal>
+      </Section>
+
+      {/* テンプレートFAQ */}
+      <Section bg="alt">
+        <SectionHeading title="ブランド証明書に関するご質問" />
+        <FAQList>
+          {TEMPLATE_FAQ.map((faq) => (
+            <FAQItem key={faq.question} question={faq.question} answer={faq.answer} />
+          ))}
         </FAQList>
       </Section>
 

@@ -1,13 +1,19 @@
 import { Client } from "@upstash/qstash";
 
-const qstash = new Client({
-  token: process.env.QSTASH_TOKEN!,
-});
+function getClient() {
+  const token = process.env.QSTASH_TOKEN;
+  if (!token) {
+    console.warn("[QSTASH] QSTASH_TOKEN not set, skipping publish");
+    return null;
+  }
+  return new Client({ token });
+}
 
 function getBaseUrl() {
   const candidates = [
     process.env.NEXT_PUBLIC_APP_URL,
     process.env.APP_URL,
+    process.env.NEXT_PUBLIC_BASE_URL,
     process.env.VERCEL_URL,
   ].filter(Boolean) as string[];
 
@@ -22,20 +28,24 @@ function getBaseUrl() {
   return baseUrl.startsWith("http") ? baseUrl : `https://${baseUrl}`;
 }
 
-export async function enqueueInsuranceCaseCreated(
-  payload: Record<string, unknown>
-) {
-  const targetUrl = `${getBaseUrl()}/api/qstash/insurance-case-created`;
+async function publish(path: string, payload: Record<string, unknown>) {
+  const client = getClient();
+  if (!client) return null;
 
-  console.log("[QSTASH][publish] targetUrl:", targetUrl);
-  console.log("[QSTASH][publish] hasToken:", Boolean(process.env.QSTASH_TOKEN));
+  const targetUrl = `${getBaseUrl()}${path}`;
+  console.log("[QSTASH][publish]", path, { hasToken: true });
 
-  const result = await qstash.publishJSON({
+  const result = await client.publishJSON({
     url: targetUrl,
     body: payload,
   });
 
-  console.log("[QSTASH][publish] result:", JSON.stringify(result));
-
   return result;
+}
+
+/** Enqueue certificate creation event for async processing */
+export async function enqueueInsuranceCaseCreated(
+  payload: Record<string, unknown>
+) {
+  return publish("/api/qstash/insurance-case-created", payload);
 }

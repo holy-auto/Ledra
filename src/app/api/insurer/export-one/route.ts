@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { resolveInsurerCaller, enforceInsurerPlan } from "@/lib/api/insurerAuth";
+import { apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -16,34 +18,30 @@ function getClientMeta(req: Request) {
   return { ip, ua };
 }
 
-import { enforceBilling } from "@/lib/billing/guard";
-import { enforceInsurerStatus } from "@/lib/insurer/statusGuard";
-
 export async function GET(req: Request) {
-  const deny = await enforceBilling(req, { minPlan: "pro", action: "insurer_export_one" });
-  if (deny) return deny as any;
-  const statusDeny = await enforceInsurerStatus();
-  if (statusDeny) return statusDeny as any;
+  const caller = await resolveInsurerCaller();
+  if (!caller) return apiUnauthorized();
+
+  const planDeny = enforceInsurerPlan(caller, "pro");
+  if (planDeny) return planDeny;
+
   const url = new URL(req.url);
   const pid = url.searchParams.get("pid");
-  if (!pid) return NextResponse.json({ error: "pid_required" }, { status: 400 });
+  if (!pid) return apiValidationError("pid is required");
 
   const { ip, ua } = getClientMeta(req);
 
   const supabase = await createClient();
-
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { data, error } = await supabase.rpc("insurer_get_certificate", {
     p_public_id: pid,
     p_ip: ip,
     p_user_agent: ua,
   });
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return apiValidationError(error.message);
 
   const row = Array.isArray(data) ? data[0] : null;
-  if (!row) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  if (!row) return apiNotFound("証明書が見つかりません。");
 
   const { error: logErr } = await supabase.rpc("insurer_audit_log", {
     p_action: "insurer.export.csv.one",
@@ -52,12 +50,12 @@ export async function GET(req: Request) {
     p_ip: ip,
     p_user_agent: ua,
   });
-  if (logErr) return NextResponse.json({ error: logErr.message }, { status: 400 });
+  if (logErr) return apiValidationError(logErr.message);
 
-  const vehicleModel = row.vehicle_info_json?.model ?? "";
-  const vehiclePlate = row.vehicle_info_json?.plate ?? "";
+  const vehicleModel = row.vehicle_model ?? "";
+  const vehiclePlate = row.vehicle_plate ?? "";
 
-  const header = ["public_id", "status", "tenant_id", "customer_name", "vehicle_model", "vehicle_plate", "expiry_type", "expiry_value", "created_at"];
+  const header = ["public_id", "status", "tenant_id", "customer_name", "vehicle_model", "vehicle_plate", "service_type", "certificate_no", "created_at"];
   const line = [
     csvEscape(row.public_id),
     csvEscape(row.status),
@@ -65,8 +63,8 @@ export async function GET(req: Request) {
     csvEscape(row.customer_name),
     csvEscape(vehicleModel),
     csvEscape(vehiclePlate),
-    csvEscape(row.expiry_type),
-    csvEscape(row.expiry_value),
+    csvEscape(row.service_type),
+    csvEscape(row.certificate_no),
     csvEscape(row.created_at),
   ].join(",");
 

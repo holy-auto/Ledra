@@ -1,6 +1,13 @@
+import { NextRequest } from "next/server";
 import { enqueueInsuranceCaseCreated } from "@/lib/qstash/publish";
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  const authHeader = req.headers.get("authorization");
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const result = await enqueueInsuranceCaseCreated({
       source: "manual-test",
