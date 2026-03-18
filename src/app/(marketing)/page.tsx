@@ -350,11 +350,19 @@ export default async function HomePage() {
             ctaLabel={PLANS.free.ctaLabel}
           />
           <PricingCard
+            name={PLANS.starter.name}
+            price={PLANS.starter.price}
+            unit={PLANS.starter.unit}
+            description={PLANS.starter.description}
+            delay={100}
+            features={[...PLANS.starter.features]}
+          />
+          <PricingCard
             name={PLANS.standard.name}
             price={PLANS.standard.price}
             unit={PLANS.standard.unit}
             description={PLANS.standard.description}
-            delay={100}
+            delay={200}
             features={[...PLANS.standard.features]}
             recommended
           />
@@ -363,7 +371,7 @@ export default async function HomePage() {
             price={PLANS.pro.price}
             unit={PLANS.pro.unit}
             description={PLANS.pro.description}
-            delay={200}
+            delay={300}
             features={[...PLANS.pro.features]}
             ctaLabel={PLANS.pro.ctaLabel}
             ctaHref="/contact"
