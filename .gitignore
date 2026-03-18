@@ -53,3 +53,4 @@ _backup/
 scripts/_clip_patch.ps1
 scripts/_clip_patch*.ps1
 
+.vercel
