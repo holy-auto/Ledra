@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 
 export const dynamic = "force-dynamic";
 
@@ -7,26 +8,11 @@ const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp"];
 const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB
 const MAX_IMAGES_PER_VEHICLE = 20;
 
-async function resolveCallerTenant(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>
-) {
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes?.user) return null;
-  const { data: mem } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .eq("user_id", userRes.user.id)
-    .limit(1)
-    .single();
-  if (!mem?.tenant_id) return null;
-  return { userId: userRes.user.id, tenantId: mem.tenant_id as string };
-}
-
 // ─── GET: List images for a vehicle ───
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller)
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
@@ -59,17 +45,19 @@ export async function GET(req: NextRequest) {
       .eq("tenant_id", caller.tenantId)
       .order("sort_order", { ascending: true });
 
-    if (error)
+    if (error) {
+      console.error("[market-vehicle-images] db_error:", error.message);
       return NextResponse.json(
-        { error: "db_error", detail: error.message },
+        { error: "db_error" },
         { status: 500 }
       );
+    }
 
     return NextResponse.json({ images: images ?? [] });
   } catch (e: any) {
     console.error("market vehicle images GET error", e);
     return NextResponse.json(
-      { error: e?.message ?? String(e) },
+      { error: "internal_error" },
       { status: 500 }
     );
   }
@@ -79,7 +67,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller)
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
@@ -157,7 +145,7 @@ export async function POST(req: NextRequest) {
     if (uploadError) {
       console.error("market image upload error", uploadError);
       return NextResponse.json(
-        { error: "upload_failed", detail: uploadError.message },
+        { error: "upload_failed" },
         { status: 500 }
       );
     }
@@ -178,10 +166,11 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (insertError) {
+      console.error("[market-vehicle-images] db_error (insert):", insertError.message);
       // Attempt to clean up uploaded file
       await supabase.storage.from("market").remove([storagePath]);
       return NextResponse.json(
-        { error: "db_error", detail: insertError.message },
+        { error: "db_error" },
         { status: 500 }
       );
     }
@@ -190,7 +179,7 @@ export async function POST(req: NextRequest) {
   } catch (e: any) {
     console.error("market vehicle images POST error", e);
     return NextResponse.json(
-      { error: e?.message ?? String(e) },
+      { error: "internal_error" },
       { status: 500 }
     );
   }
@@ -200,7 +189,7 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller)
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
@@ -245,17 +234,19 @@ export async function DELETE(req: NextRequest) {
       .eq("id", id)
       .eq("tenant_id", caller.tenantId);
 
-    if (deleteError)
+    if (deleteError) {
+      console.error("[market-vehicle-images] db_error (delete):", deleteError.message);
       return NextResponse.json(
-        { error: "db_error", detail: deleteError.message },
+        { error: "db_error" },
         { status: 500 }
       );
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     console.error("market vehicle images DELETE error", e);
     return NextResponse.json(
-      { error: e?.message ?? String(e) },
+      { error: "internal_error" },
       { status: 500 }
     );
   }

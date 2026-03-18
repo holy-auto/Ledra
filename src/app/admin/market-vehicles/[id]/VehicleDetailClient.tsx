@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
@@ -346,9 +347,9 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
           {/* Images */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="space-y-3">
-              <div className="aspect-[4/3] glass-card overflow-hidden flex items-center justify-center bg-neutral-100">
+              <div className="relative aspect-[4/3] glass-card overflow-hidden flex items-center justify-center bg-neutral-100">
                 {images.length > 0 ? (
-                  <img src={images[mainIdx]?.storage_path} alt={`${vehicle.maker} ${vehicle.model}`} className="w-full h-full object-cover" />
+                  <Image src={images[mainIdx]?.storage_path} alt={`${vehicle.maker} ${vehicle.model}`} fill sizes="(max-width: 1024px) 100vw, 50vw" className="object-cover" priority />
                 ) : (
                   <div className="text-muted text-sm">写真なし</div>
                 )}

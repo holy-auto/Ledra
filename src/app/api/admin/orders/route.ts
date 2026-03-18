@@ -1,25 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-
-async function getMyTenantId(supabase: any) {
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes.user) return null;
-  const { data } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .limit(1)
-    .single();
-  return data?.tenant_id as string | null;
-}
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const { data: userRes } = await supabase.auth.getUser();
-    if (!userRes?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const tenantId = await getMyTenantId(supabase);
-    if (!tenantId) return NextResponse.json({ error: "No tenant" }, { status: 403 });
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const tenantId = caller.tenantId;
 
     const { searchParams } = new URL(req.url);
     const type = searchParams.get("type"); // sent | received | all
@@ -52,19 +40,17 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ orders: orders ?? [] });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[orders] GET failed:", e);
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const { data: userRes } = await supabase.auth.getUser();
-    if (!userRes?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const tenantId = await getMyTenantId(supabase);
-    if (!tenantId) return NextResponse.json({ error: "No tenant" }, { status: 403 });
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const tenantId = caller.tenantId;
 
     const body = await req.json();
     const { to_tenant_id, title, description, category, budget, deadline } = body;
@@ -89,13 +75,14 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error("[orders] insert_failed:", error.message);
+      return NextResponse.json({ error: "insert_failed" }, { status: 500 });
     }
 
     return NextResponse.json({ order: data }, { status: 201 });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[orders] POST failed:", e);
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
 
@@ -103,11 +90,9 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const { data: userRes } = await supabase.auth.getUser();
-    if (!userRes?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const tenantId = await getMyTenantId(supabase);
-    if (!tenantId) return NextResponse.json({ error: "No tenant" }, { status: 403 });
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const tenantId = caller.tenantId;
 
     const body = await req.json();
     const { id, status } = body;
@@ -130,12 +115,13 @@ export async function PUT(req: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error("[orders] update_failed:", error.message);
+      return NextResponse.json({ error: "update_failed" }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true, order: data });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[orders] PUT failed:", e);
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }

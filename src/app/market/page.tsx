@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import Badge from "@/components/ui/Badge";
 import { formatJpy } from "@/lib/format";
@@ -170,12 +171,15 @@ export default function MarketPage() {
                 className="glass-card overflow-hidden hover:shadow-md transition-shadow"
               >
                 {/* Image */}
-                <div className="aspect-[16/10] bg-neutral-100 flex items-center justify-center text-muted">
+                <div className="relative aspect-[16/10] bg-neutral-100 flex items-center justify-center text-muted">
                   {v.images && v.images.length > 0 ? (
-                    <img
+                    <Image
                       src={v.images[0].storage_path}
                       alt={`${v.maker} ${v.model}`}
-                      className="w-full h-full object-cover"
+                      fill
+                      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                      className="object-cover"
+                      loading="lazy"
                     />
                   ) : (
                     <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>

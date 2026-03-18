@@ -23,7 +23,7 @@ export async function GET(req: Request) {
     .limit(1)
     .maybeSingle();
 
-  if (!mem) {
+  if (!mem || !["admin", "owner"].includes(mem.role)) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
@@ -43,7 +43,8 @@ export async function GET(req: Request) {
   const { data, error } = await query;
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("[insurers] db_error:", error.message);
+    return NextResponse.json({ error: "db_error" }, { status: 500 });
   }
 
   return NextResponse.json({ insurers: data ?? [] });
@@ -68,7 +69,7 @@ export async function PATCH(req: Request) {
     .limit(1)
     .maybeSingle();
 
-  if (!mem) {
+  if (!mem || !["admin", "owner"].includes(mem.role)) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
@@ -110,7 +111,8 @@ export async function PATCH(req: Request) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("[insurers] update_failed:", error.message);
+    return NextResponse.json({ error: "update_failed" }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true, insurer: data });

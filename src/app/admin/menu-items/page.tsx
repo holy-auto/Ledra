@@ -1,8 +1,16 @@
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import MenuItemsClient from "./MenuItemsClient";
+import dynamic from "next/dynamic";
 
-export const dynamic = "force-dynamic";
+const MenuItemsClient = dynamic(() => import("./MenuItemsClient"), {
+  loading: () => (
+    <div className="flex items-center justify-center py-20">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+    </div>
+  ),
+});
+
+export const revalidate = 0;
 
 export default async function MenuItemsPage() {
   const supabase = await createSupabaseServerClient();

@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import useSWR from "swr";
 import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
 import { formatDate, formatJpy } from "@/lib/format";
+import { fetcher } from "@/lib/swr";
 import {
   DOC_TYPES,
   DOC_TYPE_LIST,
@@ -19,6 +21,7 @@ import {
 type Customer = { id: string; name: string };
 type MenuItem = { id: string; name: string; description: string | null; unit_price: number; tax_category: number };
 type Stats = { total: number; unpaid_amount: number };
+type DocumentsData = { documents: DocumentRow[]; stats: Stats };
 
 const emptyItem = (): DocumentItem => ({
   description: "",
@@ -28,12 +31,28 @@ const emptyItem = (): DocumentItem => ({
 });
 
 export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilter?: string } = {}) {
-  const [docs, setDocs] = useState<DocumentRow[]>([]);
-  const [stats, setStats] = useState<Stats>({ total: 0, unpaid_amount: 0 });
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>(initialTypeFilter ?? "all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [activeTypeFilter, setActiveTypeFilter] = useState<string>(initialTypeFilter ?? "all");
+  const [activeStatusFilter, setActiveStatusFilter] = useState<string>("all");
+
+  // Build SWR key
+  const swrKey = (() => {
+    const params = new URLSearchParams();
+    if (activeTypeFilter && activeTypeFilter !== "all") params.set("doc_type", activeTypeFilter);
+    if (activeStatusFilter && activeStatusFilter !== "all") params.set("status", activeStatusFilter);
+    return `/api/admin/documents?${params.toString()}`;
+  })();
+
+  const { data: swrData, error: swrError, isLoading: loading, mutate } = useSWR<DocumentsData>(
+    swrKey,
+    fetcher,
+    { revalidateOnFocus: true, keepPreviousData: true, dedupingInterval: 2000 },
+  );
+
+  const docs = swrData?.documents ?? [];
+  const stats = swrData?.stats ?? { total: 0, unpaid_amount: 0 };
+  const err = swrError ? (swrError.message ?? "読み込みに失敗しました") : null;
 
   // Create form
   const [showForm, setShowForm] = useState(false);
@@ -57,22 +76,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   // Delete
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const fetchDocs = useCallback(async (docType?: string, status?: string) => {
-    setErr(null);
-    try {
-      const params = new URLSearchParams();
-      if (docType && docType !== "all") params.set("doc_type", docType);
-      if (status && status !== "all") params.set("status", status);
-      const res = await fetch(`/api/admin/documents?${params.toString()}`, { cache: "no-store" });
-      const j = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
-      setDocs(j.documents ?? []);
-      setStats(j.stats ?? { total: 0, unpaid_amount: 0 });
-    } catch (e: any) {
-      setErr(e?.message ?? String(e));
-    }
-  }, []);
-
+  // Reference data: customers + menuItems (one-time fetch)
   const fetchCustomers = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/customers", { cache: "no-store" });
@@ -100,17 +104,14 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   }, []);
 
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      await Promise.all([fetchDocs(initialTypeFilter), fetchCustomers(), fetchMenuItems()]);
-      setLoading(false);
-    })();
-  }, [fetchDocs, fetchCustomers, fetchMenuItems]);
+    Promise.all([fetchCustomers(), fetchMenuItems()]);
+  }, [fetchCustomers, fetchMenuItems]);
 
   const handleFilterChange = (newType: string, newStatus: string) => {
     setTypeFilter(newType);
     setStatusFilter(newStatus);
-    fetchDocs(newType, newStatus);
+    setActiveTypeFilter(newType);
+    setActiveStatusFilter(newStatus);
   };
 
   // Item management
@@ -163,7 +164,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
       resetForm();
       const docLabel = DOC_TYPES[formDocType]?.label ?? formDocType;
       setSaveMsg({ text: `${docLabel} ${j.document?.doc_number} を作成しました`, ok: true });
-      await fetchDocs(typeFilter, statusFilter);
+      mutate();
     } catch (e: any) {
       setSaveMsg({ text: e?.message ?? String(e), ok: false });
     } finally {
@@ -208,7 +209,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
       });
       const j = await res.json().catch(() => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
-      await fetchDocs(typeFilter, statusFilter);
+      mutate();
     } catch (e: any) {
       alert("削除に失敗しました: " + (e?.message ?? String(e)));
     } finally {
@@ -238,7 +239,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
       {loading && <div className="text-sm text-muted">読み込み中…</div>}
       {err && <div className="glass-card p-4 text-sm text-red-500">{err}</div>}
 
-      {!loading && (
+      {swrData && (
         <>
           {/* Stats */}
           <section className="grid gap-4 sm:grid-cols-2">

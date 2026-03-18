@@ -1,27 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { DOC_TYPES, type DocType } from "@/types/document";
 
 export const dynamic = "force-dynamic";
-
-async function resolveCallerTenant(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>) {
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes?.user) return null;
-
-  const { data: mem } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .eq("user_id", userRes.user.id)
-    .limit(1)
-    .single();
-
-  if (!mem?.tenant_id) return null;
-
-  return {
-    userId: userRes.user.id,
-    tenantId: mem.tenant_id as string,
-  };
-}
 
 /** 書類番号自動採番: {PREFIX}-YYYYMM-NNN */
 async function generateDocNumber(
@@ -82,26 +64,43 @@ function calcItems(items: any[], taxRate: number) {
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     const url = new URL(req.url);
     const docType = url.searchParams.get("doc_type") ?? "";
     const status = url.searchParams.get("status") ?? "";
     const customerId = url.searchParams.get("customer_id") ?? "";
+    const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "0", 10) || 0);
+    const perPage = Math.min(200, Math.max(1, parseInt(url.searchParams.get("per_page") ?? "50", 10)));
+
+    const selectCols = "id, tenant_id, customer_id, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, note, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, recipient_name, created_at, updated_at";
 
     let query = supabase
       .from("documents")
-      .select("*")
+      .select(selectCols)
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
 
-    if (docType) query = query.eq("doc_type", docType);
-    if (status && status !== "all") query = query.eq("status", status);
-    if (customerId) query = query.eq("customer_id", customerId);
+    let countQuery = supabase
+      .from("documents")
+      .select("*", { count: "exact", head: true })
+      .eq("tenant_id", caller.tenantId);
 
-    const { data: docs, error } = await query;
-    if (error) return NextResponse.json({ error: "db_error", detail: error.message }, { status: 500 });
+    if (docType) { query = query.eq("doc_type", docType); countQuery = countQuery.eq("doc_type", docType); }
+    if (status && status !== "all") { query = query.eq("status", status); countQuery = countQuery.eq("status", status); }
+    if (customerId) { query = query.eq("customer_id", customerId); countQuery = countQuery.eq("customer_id", customerId); }
+
+    if (page > 0) {
+      const from = (page - 1) * perPage;
+      query = query.range(from, from + perPage - 1);
+    }
+
+    const [{ data: docs, error }, { count: totalCount }] = await Promise.all([query, countQuery]);
+    if (error) {
+      console.error("[documents] db_error:", error.message);
+      return NextResponse.json({ error: "db_error" }, { status: 500 });
+    }
 
     // 顧客名を取得
     const customerIds = [...new Set((docs ?? []).map((d) => d.customer_id).filter(Boolean))];
@@ -127,11 +126,19 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       documents: enriched,
-      stats: { total, unpaid_amount: unpaidAmount },
+      stats: { total: totalCount ?? total, unpaid_amount: unpaidAmount },
+      ...(page > 0 && {
+        pagination: {
+          page,
+          per_page: perPage,
+          total: totalCount ?? total,
+          total_pages: Math.ceil((totalCount ?? total) / perPage),
+        },
+      }),
     });
   } catch (e: any) {
     console.error("documents list failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
 
@@ -139,7 +146,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     const body = await req.json().catch(() => ({} as any));
@@ -191,12 +198,15 @@ export async function POST(req: NextRequest) {
     };
 
     const { data, error } = await supabase.from("documents").insert(row).select().single();
-    if (error) return NextResponse.json({ error: "insert_failed", detail: error.message }, { status: 500 });
+    if (error) {
+      console.error("[documents] insert_failed:", error.message);
+      return NextResponse.json({ error: "insert_failed" }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true, document: data });
   } catch (e: any) {
     console.error("document create failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
 
@@ -204,7 +214,7 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     const body = await req.json().catch(() => ({} as any));
@@ -244,12 +254,15 @@ export async function PUT(req: NextRequest) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: "update_failed", detail: error.message }, { status: 500 });
+    if (error) {
+      console.error("[documents] update_failed:", error.message);
+      return NextResponse.json({ error: "update_failed" }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true, document: data });
   } catch (e: any) {
     console.error("document update failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
 
@@ -257,7 +270,7 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     const body = await req.json().catch(() => ({} as any));
@@ -286,11 +299,14 @@ export async function DELETE(req: NextRequest) {
       .eq("id", id)
       .eq("tenant_id", caller.tenantId);
 
-    if (error) return NextResponse.json({ error: "delete_failed", detail: error.message }, { status: 500 });
+    if (error) {
+      console.error("[documents] delete_failed:", error.message);
+      return NextResponse.json({ error: "delete_failed" }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     console.error("document delete failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }

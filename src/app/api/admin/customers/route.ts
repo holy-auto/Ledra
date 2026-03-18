@@ -1,38 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { escapeIlike } from "@/lib/sanitize";
 
 export const dynamic = "force-dynamic";
-
-/** 現在ログインユーザーの tenant_id を取得 */
-async function resolveCallerTenant(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>) {
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes?.user) return null;
-
-  const { data: mem } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .eq("user_id", userRes.user.id)
-    .limit(1)
-    .single();
-
-  if (!mem?.tenant_id) return null;
-
-  return {
-    userId: userRes.user.id,
-    tenantId: mem.tenant_id as string,
-  };
-}
 
 // ─── GET: 顧客一覧 ───
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     const url = new URL(req.url);
     const q = (url.searchParams.get("q") ?? "").trim();
+    const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "0", 10) || 0);
+    const perPage = Math.min(200, Math.max(1, parseInt(url.searchParams.get("per_page") ?? "50", 10)));
+
+    // Count query for pagination metadata
+    let countQuery = supabase
+      .from("customers")
+      .select("*", { count: "exact", head: true })
+      .eq("tenant_id", caller.tenantId);
 
     let query = supabase
       .from("customers")
@@ -42,11 +31,23 @@ export async function GET(req: NextRequest) {
 
     if (q) {
       const sq = escapeIlike(q);
-      query = query.or(`name.ilike.%${sq}%,email.ilike.%${sq}%,phone.ilike.%${sq}%,name_kana.ilike.%${sq}%`);
+      const filter = `name.ilike.%${sq}%,email.ilike.%${sq}%,phone.ilike.%${sq}%,name_kana.ilike.%${sq}%`;
+      query = query.or(filter);
+      countQuery = countQuery.or(filter);
     }
 
-    const { data: customers, error } = await query;
-    if (error) return NextResponse.json({ error: "db_error", detail: error.message }, { status: 500 });
+    // Apply pagination if page param is provided
+    if (page > 0) {
+      const from = (page - 1) * perPage;
+      const to = from + perPage - 1;
+      query = query.range(from, to);
+    }
+
+    const [{ data: customers, error }, { count: totalCount }] = await Promise.all([query, countQuery]);
+    if (error) {
+      console.error("[customers] db_error:", error.message);
+      return NextResponse.json({ error: "db_error" }, { status: 500 });
+    }
 
     // 各顧客の証明書数を取得
     const customerIds = (customers ?? []).map((c) => c.id);
@@ -94,10 +95,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       customers: enriched,
       stats: {
-        total: enriched.length,
+        total: totalCount ?? enriched.length,
         this_month_new: thisMonthNew,
         linked_certificates: totalCerts,
       },
+      ...(page > 0 && {
+        pagination: {
+          page,
+          per_page: perPage,
+          total: totalCount ?? enriched.length,
+          total_pages: Math.ceil((totalCount ?? enriched.length) / perPage),
+        },
+      }),
     });
   } catch (e: any) {
     console.error("customers list failed", e);
@@ -109,7 +118,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     const body = await req.json().catch(() => ({} as any));
@@ -129,7 +138,10 @@ export async function POST(req: NextRequest) {
     };
 
     const { data, error } = await supabase.from("customers").insert(row).select().single();
-    if (error) return NextResponse.json({ error: "insert_failed", detail: error.message }, { status: 500 });
+    if (error) {
+      console.error("[customers] insert_failed:", error.message);
+      return NextResponse.json({ error: "insert_failed" }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true, customer: data });
   } catch (e: any) {
@@ -142,7 +154,7 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     const body = await req.json().catch(() => ({} as any));
@@ -171,7 +183,10 @@ export async function PUT(req: NextRequest) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: "update_failed", detail: error.message }, { status: 500 });
+    if (error) {
+      console.error("[customers] update_failed:", error.message);
+      return NextResponse.json({ error: "update_failed" }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true, customer: data });
   } catch (e: any) {
@@ -184,7 +199,7 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     const body = await req.json().catch(() => ({} as any));
@@ -217,7 +232,10 @@ export async function DELETE(req: NextRequest) {
       .eq("id", id)
       .eq("tenant_id", caller.tenantId);
 
-    if (error) return NextResponse.json({ error: "delete_failed", detail: error.message }, { status: 500 });
+    if (error) {
+      console.error("[customers] delete_failed:", error.message);
+      return NextResponse.json({ error: "delete_failed" }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {

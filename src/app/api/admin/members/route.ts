@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { normalizePlanTier } from "@/lib/billing/planFeatures";
 import { memberLimit, canAddMember } from "@/lib/billing/memberLimits";
 
@@ -13,30 +14,19 @@ function getSupabaseAdmin() {
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
-/** 現在ログインユーザーの tenant_id + plan_tier を取得 */
-async function resolveCallerTenant(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>) {
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes?.user) return null;
-
-  const { data: mem } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id, role")
-    .eq("user_id", userRes.user.id)
-    .limit(1)
-    .single();
-
-  if (!mem?.tenant_id) return null;
+/** Resolve caller and fetch plan tier for member limit checks */
+async function resolveCallerWithPlan(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>) {
+  const caller = await resolveCallerWithRole(supabase);
+  if (!caller) return null;
 
   const { data: tenant } = await supabase
     .from("tenants")
     .select("id, plan_tier")
-    .eq("id", mem.tenant_id)
+    .eq("id", caller.tenantId)
     .single();
 
   return {
-    userId: userRes.user.id,
-    tenantId: mem.tenant_id as string,
-    role: (mem.role as string) ?? "member",
+    ...caller,
     planTier: normalizePlanTier(tenant?.plan_tier),
   };
 }
@@ -45,7 +35,7 @@ async function resolveCallerTenant(supabase: Awaited<ReturnType<typeof createSup
 export async function GET() {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
+    const caller = await resolveCallerWithPlan(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     const admin = getSupabaseAdmin();
@@ -56,7 +46,10 @@ export async function GET() {
       .select("user_id, role, created_at")
       .eq("tenant_id", caller.tenantId);
 
-    if (error) return NextResponse.json({ error: "db_error", detail: error.message }, { status: 500 });
+    if (error) {
+      console.error("[members] db_error:", error.message);
+      return NextResponse.json({ error: "db_error" }, { status: 500 });
+    }
 
     // ユーザー情報を admin API で取得
     const enriched = await Promise.all(
@@ -93,7 +86,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
+    const caller = await resolveCallerWithPlan(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     const body = await req.json().catch(() => ({} as any));
@@ -113,7 +106,10 @@ export async function POST(req: NextRequest) {
       .select("user_id", { count: "exact", head: true })
       .eq("tenant_id", caller.tenantId);
 
-    if (countErr) return NextResponse.json({ error: "db_error", detail: countErr.message }, { status: 500 });
+    if (countErr) {
+      console.error("[members] db_error:", countErr.message);
+      return NextResponse.json({ error: "db_error" }, { status: 500 });
+    }
 
     const currentCount = count ?? 0;
     if (!canAddMember(caller.planTier, currentCount)) {
@@ -190,7 +186,7 @@ export async function POST(req: NextRequest) {
       console.error("member insert failed:", insertErr);
       return NextResponse.json({
         error: "insert_failed",
-        message: `メンバー追加に失敗しました: ${insertErr.message}`,
+        message: "メンバー追加に失敗しました。",
       }, { status: 500 });
     }
 
@@ -205,7 +201,7 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
+    const caller = await resolveCallerWithPlan(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     // owner または admin のみロール変更可
@@ -255,7 +251,8 @@ export async function PUT(req: NextRequest) {
       .eq("user_id", targetUserId);
 
     if (error) {
-      return NextResponse.json({ error: "update_failed", detail: error.message }, { status: 500 });
+      console.error("[members] update_failed:", error.message);
+      return NextResponse.json({ error: "update_failed" }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true, role: newRole });
@@ -269,7 +266,7 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
+    const caller = await resolveCallerWithPlan(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     // owner または admin のみ削除可
@@ -298,7 +295,8 @@ export async function DELETE(req: NextRequest) {
       .eq("user_id", targetUserId);
 
     if (error) {
-      return NextResponse.json({ error: "delete_failed", detail: error.message }, { status: 500 });
+      console.error("[members] delete_failed:", error.message);
+      return NextResponse.json({ error: "delete_failed" }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true });

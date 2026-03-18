@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { contactSchema, parseBody } from "@/lib/validation/schemas";
 
 /** 遅延初期化: ビルド時に API キーが無くてもクラッシュしない */
 function getResend() {
@@ -12,38 +14,30 @@ const TO = process.env.CONTACT_TO_EMAIL ?? "info@cartrust.co.jp";
 /** 送信元として表示するアドレス（Resendの検証済みドメインである必要がある） */
 const FROM = process.env.CONTACT_FROM_EMAIL ?? "noreply@cartrust.co.jp";
 
-type Body = {
-  name: string;
-  email: string;
-  company?: string;
-  category: string;
-  message: string;
-};
-
-function isValidBody(b: unknown): b is Body {
-  if (!b || typeof b !== "object") return false;
-  const { name, email, category, message } = b as Record<string, unknown>;
-  return (
-    typeof name === "string" && name.trim().length > 0 &&
-    typeof email === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) &&
-    typeof category === "string" && category.trim().length > 0 &&
-    typeof message === "string" && message.trim().length > 0
-  );
-}
-
 export async function POST(request: Request) {
-  let body: unknown;
+  // Rate limit: 5 contact form submissions per IP per 15 minutes
+  const ip = getClientIp(request);
+  const rl = checkRateLimit(`contact:${ip}`, { limit: 5, windowSec: 900 });
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "rate_limited", message: "送信が多すぎます。しばらくしてから再度お試しください。" },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
+    );
+  }
+
+  let rawBody: unknown;
   try {
-    body = await request.json();
+    rawBody = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  if (!isValidBody(body)) {
-    return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  const parsed = parseBody(contactSchema, rawBody);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Missing required fields", details: parsed.errors }, { status: 400 });
   }
 
-  const { name, email, company, category, message } = body;
+  const { name, email, company, category, message } = parsed.data;
 
   if (!process.env.RESEND_API_KEY) {
     // 開発環境: APIキー未設定の場合はログだけ出してOK返す

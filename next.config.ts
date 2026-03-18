@@ -15,6 +15,19 @@ const nextConfig: NextConfig = {
     root: resolve("."),
   },
 
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "**.supabase.co",
+      },
+      {
+        protocol: "https",
+        hostname: "**.supabase.in",
+      },
+    ],
+  },
+
   async headers() {
     return [
       {

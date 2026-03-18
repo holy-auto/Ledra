@@ -2,6 +2,8 @@
  * Follow-up & expiry reminder emails via Resend API.
  */
 
+import { escapeHtml } from "@/lib/sanitize";
+
 const RESEND_API = "https://api.resend.com/emails";
 
 function wrap(title: string, body: string) {
@@ -43,27 +45,31 @@ export async function sendExpiryReminder(params: {
   expiryDate: string;
   daysUntil: number;
 }): Promise<boolean> {
+  const shop = escapeHtml(params.shopName);
+  const customer = escapeHtml(params.customerName);
+  const cert = escapeHtml(params.certificateLabel);
+  const expiry = escapeHtml(params.expiryDate);
   const urgency = params.daysUntil <= 1 ? "本日" : `${params.daysUntil}日後`;
   const html = wrap(
     "施工証明書の有効期限のお知らせ",
     `
       <p style="color: #1d1d1f; font-size: 14px;">
-        ${params.customerName} 様<br><br>
-        ${params.shopName}よりご案内いたします。<br>
+        ${customer} 様<br><br>
+        ${shop}よりご案内いたします。<br>
         以下の施工証明書の有効期限が <strong>${urgency}</strong> に迫っております。
       </p>
       <div style="background: #f5f5f7; border-radius: 8px; padding: 12px; margin: 16px 0; font-size: 14px; color: #1d1d1f;">
-        施工内容: <strong>${params.certificateLabel}</strong><br>
-        有効期限: <strong>${params.expiryDate}</strong>
+        施工内容: <strong>${cert}</strong><br>
+        有効期限: <strong>${expiry}</strong>
       </div>
       <p style="font-size: 13px; color: #86868b;">
-        再施工のご予約は ${params.shopName} までお気軽にお問い合わせください。
+        再施工のご予約は ${shop} までお気軽にお問い合わせください。
       </p>
     `,
   );
   return send(
     params.customerEmail,
-    `[${params.shopName}] 施工証明書の有効期限のお知らせ`,
+    `[${shop}] 施工証明書の有効期限のお知らせ`,
     html,
   );
 }
@@ -76,13 +82,16 @@ export async function sendFollowUpEmail(params: {
   certificateLabel: string;
   daysSince: number;
 }): Promise<boolean> {
+  const shop = escapeHtml(params.shopName);
+  const customer = escapeHtml(params.customerName);
+  const cert = escapeHtml(params.certificateLabel);
   const html = wrap(
     "施工後のフォローアップ",
     `
       <p style="color: #1d1d1f; font-size: 14px;">
-        ${params.customerName} 様<br><br>
-        ${params.shopName}です。<br>
-        「${params.certificateLabel}」の施工から約${params.daysSince}日が経過いたしました。<br>
+        ${customer} 様<br><br>
+        ${shop}です。<br>
+        「${cert}」の施工から約${params.daysSince}日が経過いたしました。<br>
         施工の状態はいかがでしょうか？
       </p>
       <p style="color: #1d1d1f; font-size: 14px;">
@@ -95,7 +104,7 @@ export async function sendFollowUpEmail(params: {
   );
   return send(
     params.customerEmail,
-    `[${params.shopName}] 施工後のご確認`,
+    `[${shop}] 施工後のご確認`,
     html,
   );
 }

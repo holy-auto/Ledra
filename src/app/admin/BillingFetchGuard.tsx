@@ -17,32 +17,36 @@ export default function BillingFetchGuard() {
     if ((window as any).__billingFetchGuardInstalled) return;
     (window as any).__billingFetchGuardInstalled = true;
 
-    // ---- fetch hook ----
+    // ---- fetch hook (optimized: early-exit for non-API and success responses) ----
     const origFetch = window.fetch.bind(window);
     window.fetch = async (input: any, init?: any) => {
       const res = await origFetch(input, init);
+
+      // Fast path: skip non-error responses (vast majority of requests)
+      if (res.status !== 402 && res.status !== 403) return res;
 
       try {
         const rawUrl = typeof input === "string" ? input : input?.url;
         if (!rawUrl) return res;
 
+        // Only intercept same-origin /api/ calls
+        if (typeof rawUrl === "string" && !rawUrl.startsWith("/api/") && !rawUrl.includes("/api/")) return res;
+
         const u = new URL(rawUrl, window.location.origin);
         if (u.origin !== window.location.origin) return res;
         if (!u.pathname.startsWith("/api/")) return res;
 
-        if (res.status === 402 || res.status === 403) {
-          // header 優先 → body fallback
-          let billingUrl: string | null = res.headers.get("x-billing-url");
+        // header 優先 → body fallback
+        let billingUrl: string | null = res.headers.get("x-billing-url");
 
-          if (!billingUrl) {
-            try {
-              const j = await res.clone().json();
-              billingUrl = j?.billing_url ?? null;
-            } catch {}
-          }
-
-          redirectToBilling(billingUrl);
+        if (!billingUrl) {
+          try {
+            const j = await res.clone().json();
+            billingUrl = j?.billing_url ?? null;
+          } catch {}
         }
+
+        redirectToBilling(billingUrl);
       } catch {}
 
       return res;

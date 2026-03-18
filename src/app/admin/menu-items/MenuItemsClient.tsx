@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import useSWR from "swr";
 import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
 import { formatJpy } from "@/lib/format";
+import { fetcher } from "@/lib/swr";
 
 /* ---------- Types ---------- */
 
@@ -25,9 +27,14 @@ type MenuItemsData = {
 /* ---------- Component ---------- */
 
 export default function MenuItemsClient() {
-  const [data, setData] = useState<MenuItemsData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
+  // SWR for main data
+  const { data, error: swrError, isLoading: loading, mutate } = useSWR<MenuItemsData>(
+    "/api/admin/menu-items",
+    fetcher,
+    { revalidateOnFocus: false, keepPreviousData: true, dedupingInterval: 2000 },
+  );
+
+  const err = swrError ? (swrError.message ?? "読み込みに失敗しました") : null;
 
   // Create form
   const [showForm, setShowForm] = useState(false);
@@ -56,28 +63,6 @@ export default function MenuItemsClient() {
   const [csvMsg, setCsvMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  /* ---------- Fetch ---------- */
-
-  const fetchItems = useCallback(async () => {
-    setErr(null);
-    try {
-      const res = await fetch("/api/admin/menu-items", { cache: "no-store" });
-      const j = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
-      setData(j as MenuItemsData);
-    } catch (e: any) {
-      setErr(e?.message ?? String(e));
-    }
-  }, []);
-
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      await fetchItems();
-      setLoading(false);
-    })();
-  }, [fetchItems]);
-
   /* ---------- Create ---------- */
 
   const handleCreate = async () => {
@@ -103,7 +88,7 @@ export default function MenuItemsClient() {
       setFormUnitPrice("");
       setFormTaxCategory("10");
       setSaveMsg({ text: `品目「${j.item?.name ?? formName}」を登録しました`, ok: true });
-      await fetchItems();
+      mutate();
     } catch (e: any) {
       setSaveMsg({ text: e?.message ?? String(e), ok: false });
     } finally {
@@ -144,7 +129,7 @@ export default function MenuItemsClient() {
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setEditingId(null);
       setSaveMsg({ text: "品目を更新しました", ok: true });
-      await fetchItems();
+      mutate();
     } catch (e: any) {
       alert("更新に失敗しました: " + (e?.message ?? String(e)));
     } finally {
@@ -166,7 +151,7 @@ export default function MenuItemsClient() {
       const j = await res.json().catch(() => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setSaveMsg({ text: "品目を無効化しました", ok: true });
-      await fetchItems();
+      mutate();
     } catch (e: any) {
       alert("無効化に失敗しました: " + (e?.message ?? String(e)));
     } finally {
@@ -202,7 +187,7 @@ export default function MenuItemsClient() {
       setCsvText("");
       setCsvMsg({ text: j.message ?? "CSVインポートが完了しました", ok: true });
       if (fileInputRef.current) fileInputRef.current.value = "";
-      await fetchItems();
+      mutate();
     } catch (e: any) {
       setCsvMsg({ text: e?.message ?? String(e), ok: false });
     } finally {

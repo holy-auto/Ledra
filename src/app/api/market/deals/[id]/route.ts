@@ -1,27 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
-
-async function resolveCallerTenant(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>) {
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes?.user) return null;
-
-  const { data: mem } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .eq("user_id", userRes.user.id)
-    .limit(1)
-    .single();
-
-  if (!mem?.tenant_id) return null;
-
-  return {
-    userId: userRes.user.id,
-    tenantId: mem.tenant_id as string,
-  };
-}
 
 // Valid status transitions
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -36,7 +18,7 @@ export async function PATCH(
 ) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     const { id: dealId } = await params;
@@ -85,7 +67,8 @@ export async function PATCH(
       .single();
 
     if (updateErr) {
-      return NextResponse.json({ error: "update_failed", detail: updateErr.message }, { status: 500 });
+      console.error("[market-deals] update_failed:", updateErr.message);
+      return NextResponse.json({ error: "update_failed" }, { status: 500 });
     }
 
     // Update vehicle status based on deal outcome
@@ -104,6 +87,6 @@ export async function PATCH(
     return NextResponse.json({ ok: true, deal: updatedDeal });
   } catch (e: any) {
     console.error("market deal update failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }

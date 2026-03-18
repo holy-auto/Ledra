@@ -29,6 +29,12 @@ export default function InsurerRegisterPage() {
     if (!form.email.trim()) return setErr("メールアドレスを入力してください");
     if (form.password.length < 8)
       return setErr("パスワードは8文字以上で入力してください");
+    if (!/[A-Z]/.test(form.password))
+      return setErr("パスワードに大文字を1文字以上含めてください");
+    if (!/[a-z]/.test(form.password))
+      return setErr("パスワードに小文字を1文字以上含めてください");
+    if (!/[0-9]/.test(form.password))
+      return setErr("パスワードに数字を1文字以上含めてください");
     if (form.password !== form.password_confirm)
       return setErr("パスワードが一致しません");
 

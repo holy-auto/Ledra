@@ -10,6 +10,7 @@ import {
   phoneLast4Hash,
   CUSTOMER_COOKIE,
 } from "@/lib/customerPortalServer";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
 const LAST4_COOKIE = "hc_l4";
 
@@ -17,6 +18,16 @@ const isSecureCookie = process.env.NODE_ENV === "production";
 
 export async function POST(req: Request) {
   try {
+    // Rate limit: 10 verify attempts per IP per 5 minutes
+    const ip = getClientIp(req);
+    const rl = checkRateLimit(`verify:${ip}`, { limit: 10, windowSec: 300 });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "rate_limited", message: "試行回数が多すぎます。しばらくしてから再度お試しください。" },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
+      );
+    }
+
     const body = await req.json().catch(() => ({}));
     const tenant_slug = (body.tenant_slug ?? "").toString().trim();
     const emailRaw = (body.email ?? "").toString();

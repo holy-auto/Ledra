@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { joinSchema, parseBody } from "@/lib/validation/schemas";
 
 export const runtime = "nodejs";
 
 function slugify(name: string): string {
-  // 日本語の場合はランダム slug、英数字があればハイフン区切り
   const ascii = name
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, "")
@@ -16,38 +17,31 @@ function slugify(name: string): string {
   return `${base}-${suffix}`;
 }
 
-function isValidEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-
 export async function POST(req: Request) {
-  let body: any;
+  // Rate limit: 3 registration attempts per IP per 10 minutes
+  const ip = getClientIp(req);
+  const rl = checkRateLimit(`join:${ip}`, { limit: 3, windowSec: 600 });
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "rate_limited", message: "登録リクエストが多すぎます。しばらくしてから再度お試しください。" },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
+    );
+  }
+
+  let rawBody: unknown;
   try {
-    body = await req.json();
+    rawBody = await req.json();
   } catch {
     return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
   }
 
-  const company_name = String(body.company_name ?? "").trim();
-  const contact_person = String(body.contact_person ?? "").trim();
-  const email = String(body.email ?? "").trim().toLowerCase();
-  const phone = String(body.phone ?? "").trim();
-  const password = String(body.password ?? "");
-  const requested_plan = String(body.requested_plan ?? "basic").toLowerCase();
-
-  // --- validation ---
-  const errors: string[] = [];
-  if (!company_name) errors.push("会社名は必須です");
-  if (!contact_person) errors.push("担当者名は必須です");
-  if (!email || !isValidEmail(email)) errors.push("有効なメールアドレスを入力してください");
-  if (password.length < 8) errors.push("パスワードは8文字以上で入力してください");
-  if (!["basic", "standard", "pro"].includes(requested_plan)) {
-    errors.push("プランは basic / standard / pro から選択してください");
+  // --- Zod validation ---
+  const parsed = parseBody(joinSchema, rawBody);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "validation_error", details: parsed.errors }, { status: 400 });
   }
 
-  if (errors.length > 0) {
-    return NextResponse.json({ error: "validation_error", details: errors }, { status: 400 });
-  }
+  const { company_name, contact_person, email, phone, password, requested_plan } = parsed.data;
 
   const supabase = createAdminClient();
   let userId: string | null = null;

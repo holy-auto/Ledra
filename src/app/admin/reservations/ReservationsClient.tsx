@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import useSWR from "swr";
 import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
 import CalendarView from "./CalendarView";
 import { formatDate, formatJpy } from "@/lib/format";
+import { fetcher } from "@/lib/swr";
 
 // ─── Types ───
 
@@ -33,6 +35,7 @@ type Vehicle = { id: string; maker: string; model: string; year: number | null; 
 type MenuItemMaster = { id: string; name: string; unit_price: number };
 
 type Stats = { total: number; today_count: number; active_count: number };
+type ReservationsData = { reservations: Reservation[]; stats: Stats };
 
 // ─── Status helpers ───
 
@@ -79,15 +82,33 @@ const labelTextCls = "text-sm font-medium text-neutral-700";
 // ─── Component ───
 
 export default function ReservationsClient() {
-  // Data
-  const [reservations, setReservations] = useState<Reservation[]>([]);
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-
   // Filters
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("");
+  const [activeStatusFilter, setActiveStatusFilter] = useState("all");
+  const [activeDateFilter, setActiveDateFilter] = useState("");
+
+  // Build SWR key
+  const swrKey = (() => {
+    const params = new URLSearchParams();
+    if (activeStatusFilter && activeStatusFilter !== "all") params.set("status", activeStatusFilter);
+    if (activeDateFilter) {
+      params.set("from", activeDateFilter);
+      params.set("to", activeDateFilter);
+    }
+    return `/api/admin/reservations?${params.toString()}`;
+  })();
+
+  const { data: swrData, error: swrError, isLoading: loading, mutate } = useSWR<ReservationsData>(
+    swrKey,
+    fetcher,
+    { revalidateOnFocus: true, keepPreviousData: true },
+  );
+
+  const reservations = swrData?.reservations ?? [];
+  const stats = swrData?.stats ?? null;
+  const [mutationErr, setMutationErr] = useState<string | null>(null);
+  const err = swrError ? (swrError.message ?? "読み込みに失敗しました") : mutationErr;
 
   // View mode
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
@@ -116,24 +137,7 @@ export default function ReservationsClient() {
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState("");
 
-  // ─── Fetchers ───
-
-  const fetchReservations = useCallback(async (status?: string, from?: string, to?: string) => {
-    setErr(null);
-    try {
-      const params = new URLSearchParams();
-      if (status && status !== "all") params.set("status", status);
-      if (from) params.set("from", from);
-      if (to) params.set("to", to);
-      const res = await fetch(`/api/admin/reservations?${params.toString()}`, { cache: "no-store" });
-      const j = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
-      setReservations(j.reservations ?? []);
-      setStats(j.stats ?? null);
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
-  }, []);
+  // ─── Reference data (one-time fetch) ───
 
   const fetchMasterData = useCallback(async () => {
     try {
@@ -169,29 +173,25 @@ export default function ReservationsClient() {
   }, []);
 
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      await Promise.all([fetchReservations(), fetchMasterData()]);
-      setLoading(false);
-    })();
-  }, [fetchReservations, fetchMasterData]);
+    fetchMasterData();
+  }, [fetchMasterData]);
 
   // ─── Filter handlers ───
 
   const handleFilterChange = (val: string) => {
     setStatusFilter(val);
-    fetchReservations(val, dateFilter || undefined);
+    setActiveStatusFilter(val);
   };
 
   const handleDateChange = (val: string) => {
     setDateFilter(val);
-    fetchReservations(statusFilter !== "all" ? statusFilter : undefined, val || undefined, val || undefined);
+    setActiveDateFilter(val);
   };
 
   const handleCalendarDateClick = (date: string) => {
     setDateFilter(date);
+    setActiveDateFilter(date);
     setViewMode("list");
-    fetchReservations(statusFilter !== "all" ? statusFilter : undefined, date, date);
   };
 
   // ─── Form handlers ───
@@ -275,7 +275,7 @@ export default function ReservationsClient() {
       setSaveMsg({ text: editingId ? "予約を更新しました" : "予約を作成しました", ok: true });
       setShowForm(false);
       resetForm();
-      fetchReservations(statusFilter !== "all" ? statusFilter : undefined);
+      mutate();
     } catch (e: unknown) {
       setSaveMsg({ text: e instanceof Error ? e.message : String(e), ok: false });
     } finally {
@@ -296,9 +296,9 @@ export default function ReservationsClient() {
         const j = await res.json().catch(() => null);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
-      fetchReservations(statusFilter !== "all" ? statusFilter : undefined);
+      mutate();
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setMutationErr(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -318,9 +318,9 @@ export default function ReservationsClient() {
       }
       setCancelTarget(null);
       setCancelReason("");
-      fetchReservations(statusFilter !== "all" ? statusFilter : undefined);
+      mutate();
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setMutationErr(e instanceof Error ? e.message : String(e));
     }
   };
 

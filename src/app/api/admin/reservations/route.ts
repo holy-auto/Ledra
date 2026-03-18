@@ -1,32 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 
 export const dynamic = "force-dynamic";
-
-async function resolveCallerTenant(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>) {
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes?.user) return null;
-
-  const { data: mem } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .eq("user_id", userRes.user.id)
-    .limit(1)
-    .single();
-
-  if (!mem?.tenant_id) return null;
-
-  return {
-    userId: userRes.user.id,
-    tenantId: mem.tenant_id as string,
-  };
-}
 
 // ─── GET: 予約一覧 ───
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     const url = new URL(req.url);
@@ -56,7 +38,10 @@ export async function GET(req: NextRequest) {
     }
 
     const { data: reservations, error } = await query;
-    if (error) return NextResponse.json({ error: "db_error", detail: error.message }, { status: 500 });
+    if (error) {
+      console.error("[reservations] db_error:", error.message);
+      return NextResponse.json({ error: "db_error" }, { status: 500 });
+    }
 
     // 顧客名を取得
     const customerIds = [...new Set((reservations ?? []).map((r) => r.customer_id).filter(Boolean))];
@@ -105,9 +90,8 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
     console.error("reservations list failed", e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
 
@@ -115,7 +99,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
@@ -143,13 +127,15 @@ export async function POST(req: NextRequest) {
     };
 
     const { data, error } = await supabase.from("reservations").insert(row).select().single();
-    if (error) return NextResponse.json({ error: "insert_failed", detail: error.message }, { status: 500 });
+    if (error) {
+      console.error("[reservations] insert_failed:", error.message);
+      return NextResponse.json({ error: "insert_failed" }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true, reservation: data });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
     console.error("reservation create failed", e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
 
@@ -157,7 +143,7 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
@@ -194,13 +180,15 @@ export async function PUT(req: NextRequest) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: "update_failed", detail: error.message }, { status: 500 });
+    if (error) {
+      console.error("[reservations] update_failed:", error.message);
+      return NextResponse.json({ error: "update_failed" }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true, reservation: data });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
     console.error("reservation update failed", e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
 
@@ -208,7 +196,7 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
@@ -230,12 +218,14 @@ export async function DELETE(req: NextRequest) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: "cancel_failed", detail: error.message }, { status: 500 });
+    if (error) {
+      console.error("[reservations] cancel_failed:", error.message);
+      return NextResponse.json({ error: "cancel_failed" }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true, reservation: data });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
     console.error("reservation cancel failed", e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }

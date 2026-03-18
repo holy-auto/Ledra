@@ -7,6 +7,8 @@ import {
   phoneLast4Hash,
   tenantHasPhoneHash,
 } from "@/lib/customerPortalServer";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { escapeHtml } from "@/lib/sanitize";
 
 function genCode6(): string {
   // 000000〜999999（先頭ゼロあり）
@@ -39,6 +41,16 @@ async function sendEmailResend(to: string, subject: string, html: string) {
 
 export async function POST(req: Request) {
   try {
+    // Rate limit: 5 OTP requests per IP per 5 minutes
+    const ip = getClientIp(req);
+    const rl = checkRateLimit(`otp:${ip}`, { limit: 5, windowSec: 300 });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "rate_limited", message: "リクエストが多すぎます。しばらくしてから再度お試しください。" },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
+      );
+    }
+
     const body = await req.json().catch(() => ({} as any));
 
     const tenant_slug = (body.tenant_slug ?? "").toString().trim();
@@ -80,10 +92,12 @@ export async function POST(req: Request) {
       `&auto=1&tenant=${encodeURIComponent(tenant_slug)}`;
 
     const subject = "ログインコード（WEB施工証明書）";
+    const safeUrl = escapeHtml(loginUrl);
+    const safeCode = escapeHtml(code);
     const html =
       `<p>ログイン用リンクです（10分以内）。</p>` +
-      `<p><a href="${loginUrl}">${loginUrl}</a></p>` +
-      `<p>リンクが開けない場合は、ログイン画面でコード入力してください：<b>${code}</b></p>`;
+      `<p><a href="${safeUrl}">${safeUrl}</a></p>` +
+      `<p>リンクが開けない場合は、ログイン画面でコード入力してください：<b>${safeCode}</b></p>`;
 
     await sendEmailResend(email, subject, html);
 

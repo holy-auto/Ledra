@@ -1,27 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
-
-async function resolveCallerTenant(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>) {
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes?.user) return null;
-
-  const { data: mem } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .eq("user_id", userRes.user.id)
-    .limit(1)
-    .single();
-
-  if (!mem?.tenant_id) return null;
-
-  return {
-    userId: userRes.user.id,
-    tenantId: mem.tenant_id as string,
-  };
-}
 
 // ─── POST: Create inquiry (public, no auth required) ───
 export async function POST(req: NextRequest) {
@@ -72,13 +54,14 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: "insert_failed", detail: error.message }, { status: 500 });
+      console.error("[market-inquiries] insert_failed:", error.message);
+      return NextResponse.json({ error: "insert_failed" }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true, inquiry });
   } catch (e: any) {
     console.error("market inquiry create failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
 
@@ -86,7 +69,7 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerTenant(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     const admin = createAdminClient();
@@ -106,12 +89,13 @@ export async function GET(req: NextRequest) {
     const { data: inquiries, error } = await query;
 
     if (error) {
-      return NextResponse.json({ error: "db_error", detail: error.message }, { status: 500 });
+      console.error("[market-inquiries] db_error:", error.message);
+      return NextResponse.json({ error: "db_error" }, { status: 500 });
     }
 
     return NextResponse.json({ inquiries: inquiries ?? [] });
   } catch (e: any) {
     console.error("market inquiries list failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }

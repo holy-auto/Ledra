@@ -1,8 +1,16 @@
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import OrdersClient from "./OrdersClient";
+import dynamic from "next/dynamic";
 
-export const dynamic = "force-dynamic";
+const OrdersClient = dynamic(() => import("./OrdersClient"), {
+  loading: () => (
+    <div className="flex items-center justify-center py-20">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+    </div>
+  ),
+});
+
+export const revalidate = 0;
 
 export default async function OrdersPage() {
   const supabase = await createSupabaseServerClient();

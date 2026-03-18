@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import useSWR from "swr";
 import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
 import { formatDate, formatJpy } from "@/lib/format";
+import { fetcher } from "@/lib/swr";
 
 type InvoiceItem = {
   description: string;
@@ -91,10 +93,23 @@ const statusLabel = (s: string) => {
 const emptyItem = (): InvoiceItem => ({ description: "", quantity: 1, unit_price: 0, amount: 0, certificate_id: null, certificate_public_id: null });
 
 export default function InvoicesClient() {
-  const [data, setData] = useState<InvoicesData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [activeFilter, setActiveFilter] = useState("all");
+
+  // Build SWR key
+  const swrKey = (() => {
+    const params = new URLSearchParams();
+    if (activeFilter && activeFilter !== "all") params.set("status", activeFilter);
+    return `/api/admin/invoices?${params.toString()}`;
+  })();
+
+  const { data, error: swrError, isLoading: loading, mutate } = useSWR<InvoicesData>(
+    swrKey,
+    fetcher,
+    { revalidateOnFocus: true, keepPreviousData: true, dedupingInterval: 2000 },
+  );
+
+  const err = swrError ? (swrError.message ?? "読み込みに失敗しました") : null;
 
   // Create form
   const [showForm, setShowForm] = useState(false);
@@ -122,20 +137,7 @@ export default function InvoicesClient() {
   const [paymentTarget, setPaymentTarget] = useState<string | null>(null);
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
 
-  const fetchInvoices = useCallback(async (status?: string) => {
-    setErr(null);
-    try {
-      const params = new URLSearchParams();
-      if (status && status !== "all") params.set("status", status);
-      const res = await fetch(`/api/admin/invoices?${params.toString()}`, { cache: "no-store" });
-      const j = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
-      setData(j as InvoicesData);
-    } catch (e: any) {
-      setErr(e?.message ?? String(e));
-    }
-  }, []);
-
+  // Reference data: customers (one-time fetch)
   const fetchCustomers = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/customers", { cache: "no-store" });
@@ -147,12 +149,8 @@ export default function InvoicesClient() {
   }, []);
 
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      await Promise.all([fetchInvoices(), fetchCustomers()]);
-      setLoading(false);
-    })();
-  }, [fetchInvoices, fetchCustomers]);
+    fetchCustomers();
+  }, [fetchCustomers]);
 
   // 顧客が変わったら証明書を取得
   const fetchCertificatesForCustomer = useCallback(async (customerId: string) => {
@@ -180,7 +178,7 @@ export default function InvoicesClient() {
 
   const handleFilterChange = (val: string) => {
     setStatusFilter(val);
-    fetchInvoices(val);
+    setActiveFilter(val);
   };
 
   // Item management
@@ -261,7 +259,7 @@ export default function InvoicesClient() {
       setFormShowBankInfo(false);
       setFormRecipientName("");
       setSaveMsg({ text: `請求書 ${j.invoice?.invoice_number} を作成しました`, ok: true });
-      await fetchInvoices(statusFilter);
+      mutate();
     } catch (e: any) {
       setSaveMsg({ text: e?.message ?? String(e), ok: false });
     } finally {
@@ -280,7 +278,7 @@ export default function InvoicesClient() {
       });
       const j = await res.json().catch(() => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
-      await fetchInvoices(statusFilter);
+      mutate();
     } catch (e: any) {
       alert("削除に失敗しました: " + (e?.message ?? String(e)));
     } finally {
@@ -646,7 +644,7 @@ export default function InvoicesClient() {
                         });
                         if (!res.ok) throw new Error("Failed");
                         setPaymentTarget(null);
-                        fetchInvoices(statusFilter);
+                        mutate();
                       } catch (e: any) {
                         alert("入金記録に失敗しました: " + (e?.message ?? String(e)));
                       }

@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import useSWR from "swr";
 import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
+import Pagination from "@/components/ui/Pagination";
 import { formatDate } from "@/lib/format";
+import { fetcher } from "@/lib/swr";
 
 type Customer = {
   id: string;
@@ -26,9 +29,17 @@ type Stats = {
   linked_certificates: number;
 };
 
+type PaginationInfo = {
+  page: number;
+  per_page: number;
+  total: number;
+  total_pages: number;
+};
+
 type CustomersData = {
   customers: Customer[];
   stats: Stats;
+  pagination?: PaginationInfo;
 };
 
 const emptyForm = {
@@ -42,12 +53,28 @@ const emptyForm = {
 };
 
 export default function CustomersClient() {
-  const [data, setData] = useState<CustomersData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-
-  // Search
+  // Search & pagination
   const [search, setSearch] = useState("");
+  const [activeSearch, setActiveSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const perPage = 50;
+
+  // Build SWR key
+  const swrKey = (() => {
+    const params = new URLSearchParams();
+    params.set("page", String(page));
+    params.set("per_page", String(perPage));
+    if (activeSearch) params.set("q", activeSearch);
+    return `/api/admin/customers?${params.toString()}`;
+  })();
+
+  const { data, error: swrError, isLoading: loading, mutate } = useSWR<CustomersData>(
+    swrKey,
+    fetcher,
+    { revalidateOnFocus: true, keepPreviousData: true, dedupingInterval: 2000 },
+  );
+
+  const err = swrError ? (swrError.message ?? "読み込みに失敗しました") : null;
 
   // Add form
   const [showForm, setShowForm] = useState(false);
@@ -63,30 +90,9 @@ export default function CustomersClient() {
   // Delete
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const fetchCustomers = useCallback(async (q?: string) => {
-    setErr(null);
-    try {
-      const params = new URLSearchParams();
-      if (q) params.set("q", q);
-      const res = await fetch(`/api/admin/customers?${params.toString()}`, { cache: "no-store" });
-      const j = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
-      setData(j as CustomersData);
-    } catch (e: any) {
-      setErr(e?.message ?? String(e));
-    }
-  }, []);
-
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      await fetchCustomers();
-      setLoading(false);
-    })();
-  }, [fetchCustomers]);
-
   const handleSearch = () => {
-    fetchCustomers(search.trim());
+    setActiveSearch(search.trim());
+    setPage(1);
   };
 
   const handleAdd = async () => {
@@ -104,7 +110,7 @@ export default function CustomersClient() {
       setForm({ ...emptyForm });
       setShowForm(false);
       setSaveMsg({ text: "顧客を追加しました", ok: true });
-      await fetchCustomers(search.trim());
+      mutate();
     } catch (e: any) {
       setSaveMsg({ text: e?.message ?? String(e), ok: false });
     } finally {
@@ -137,7 +143,7 @@ export default function CustomersClient() {
       const j = await res.json().catch(() => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setEditingId(null);
-      await fetchCustomers(search.trim());
+      mutate();
     } catch (e: any) {
       alert("更新に失敗しました: " + (e?.message ?? String(e)));
     } finally {
@@ -156,7 +162,7 @@ export default function CustomersClient() {
       });
       const j = await res.json().catch(() => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
-      await fetchCustomers(search.trim());
+      mutate();
     } catch (e: any) {
       alert("削除に失敗しました: " + (e?.message ?? String(e)));
     } finally {
@@ -223,7 +229,7 @@ export default function CustomersClient() {
               <button
                 type="button"
                 className="btn-ghost"
-                onClick={() => { setSearch(""); fetchCustomers(); }}
+                onClick={() => { setSearch(""); setActiveSearch(""); setPage(1); }}
               >
                 クリア
               </button>
@@ -506,6 +512,15 @@ export default function CustomersClient() {
                 </tbody>
               </table>
             </div>
+            {data.pagination && (
+              <div className="p-4 border-t border-border-subtle">
+                <Pagination
+                  page={data.pagination.page}
+                  totalPages={data.pagination.total_pages}
+                  onPageChange={setPage}
+                />
+              </div>
+            )}
           </section>
         </>
       )}

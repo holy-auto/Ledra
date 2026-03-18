@@ -9,6 +9,9 @@ const notoSansJP = Noto_Sans_JP({
   display: "swap",
 });
 
+// ISR: All marketing pages regenerate every 1 hour
+export const revalidate = 3600;
+
 export const metadata = {
   title: {
     default: "CARTRUST | WEB施工証明書SaaS",
