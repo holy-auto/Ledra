@@ -31,7 +31,7 @@ async function supaInsertCertificate(row: any) {
 }
 
 export async function POST(req: Request) {
-  const deny = await enforceBilling(req, { minPlan: "mini", action: "create" });
+  const deny = await enforceBilling(req, { minPlan: "free", action: "create" });
   if (deny) return deny as any;
   try {
     const body = await req.json();

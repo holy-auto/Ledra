@@ -148,7 +148,7 @@ async function graceInfoForTenant(stripe_subscription_id: string | null) {
 
 export async function enforceBilling(
   req: Request,
-  opts: { minPlan: PlanTier; action?: string } = { minPlan: "mini" }
+  opts: { minPlan: PlanTier; action?: string } = { minPlan: "free" }
 ): Promise<Response | null> {
   const tenant_id = await extractTenantId(req);
   const action = opts.action ?? null;
@@ -169,7 +169,7 @@ export async function enforceBilling(
     return json(404, { error: "Tenant not found (billing guard)" }, { "x-billing-url": "/admin/billing" });
   }
 
-  const plan = (data.plan_tier ?? "mini") as PlanTier;
+  const plan = (data.plan_tier ?? "free") as PlanTier;
   const active = !!data.is_active;
 
   // ---- inactive handling with grace for public_pdf ----

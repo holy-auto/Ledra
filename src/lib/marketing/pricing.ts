@@ -4,50 +4,80 @@
  */
 
 export const PLANS = {
-  starter: {
-    name: "スターター",
+  free: {
+    name: "フリー",
     price: "無料",
     unit: "",
     description: "まずは試してみたい方に",
-    certLimit: "月5件まで証明書発行",
-    certLimitShort: "月5件",
+    certLimit: "月10件まで証明書発行",
+    certLimitShort: "月10件",
     features: [
-      "月5件まで証明書発行",
+      "月10件まで証明書発行",
       "基本テンプレート",
-      "URL共有",
+      "URL共有・QR確認",
+      "車両台帳・顧客台帳",
+      "保険会社ポータル反映",
       "メールサポート",
     ],
     ctaLabel: "無料で始める",
   },
-  standard: {
-    name: "スタンダード",
+  starter: {
+    name: "スターター",
     price: "¥9,800",
     unit: "/月",
-    description: "本格的に活用したい施工店に",
-    certLimit: "月100件まで証明書発行",
-    certLimitShort: "月100件",
+    annualPrice: "¥94,080",
+    annualUnit: "/年",
+    description: "本格的に活用を始めたい施工店に",
+    certLimit: "月80件まで証明書発行",
+    certLimitShort: "月80件",
     features: [
-      "月100件まで証明書発行",
+      "月80件まで証明書発行",
+      "基本テンプレート＋ロゴ反映",
+      "CSV/PDF単体エクスポート",
+      "車両台帳・顧客台帳",
+      "保険会社ポータル反映",
+      "メールサポート",
+    ],
+  },
+  standard: {
+    name: "スタンダード",
+    price: "¥24,800",
+    unit: "/月",
+    annualPrice: "¥238,080",
+    annualUnit: "/年",
+    setupFee: "¥29,800",
+    description: "複数店舗・チーム運用に最適",
+    certLimit: "月300件まで証明書発行",
+    certLimitShort: "月300件",
+    features: [
+      "月300件まで証明書発行",
       "カスタムテンプレート",
-      "ロゴ・ブランドカスタマイズ",
-      "CSV/PDFエクスポート",
+      "CSV/PDFエクスポート（一括対応）",
+      "2店舗・7ユーザーまで",
+      "基本レポート",
+      "保険会社ポータル反映",
       "優先サポート",
     ],
     recommended: true,
   },
-  enterprise: {
-    name: "エンタープライズ",
-    price: "要相談",
-    unit: "",
-    description: "大規模導入・API連携をお考えの方に",
+  pro: {
+    name: "プロ",
+    price: "¥49,800",
+    unit: "/月",
+    annualPrice: "¥478,080",
+    annualUnit: "/年",
+    setupFee: "¥49,800",
+    description: "大規模運用・API連携をお考えの方に",
     certLimit: "無制限の証明書発行",
     certLimitShort: "無制限",
     features: [
       "無制限の証明書発行",
+      "フルカスタムテンプレート",
+      "5店舗・15ユーザーまで",
+      "詳細レポート・監査ログ",
       "API連携",
-      "専用アカウントマネージャー",
-      "カスタム開発対応",
-      "SLA保証",
+      "保険会社ポータル反映",
+      "専任サポート",
     ],
     ctaLabel: "お問い合わせ",
   },
@@ -103,7 +133,7 @@ export const TEMPLATE_ADDITIONAL_WORK = [
 export const TEMPLATE_FAQ = [
   {
     question: "既存のプランと併用できますか？",
-    answer: "はい。現在ご利用中のプラン（スターター/スタンダード/エンタープライズ）に追加する形でご利用いただけます。",
+    answer: "はい。現在ご利用中のプラン（フリー/スターター/スタンダード/プロ）に追加する形でご利用いただけます。",
   },
   {
     question: "途中でライトからプレミアムに変更できますか？",
@@ -126,14 +156,46 @@ export const TEMPLATE_FAQ = [
 /** 年間契約の割引率 */
 export const ANNUAL_DISCOUNT_PERCENT = 20;
 
+/** オプション料金 */
+export const ADD_ON_OPTIONS = {
+  additionalStore: { name: "追加店舗", price: "¥4,980", unit: "/店舗/月" },
+  additionalUser: { name: "追加ユーザー", price: "¥1,480", unit: "/人/月" },
+  invoicePayment: { name: "請求書機能＋オンライン決済", price: "¥3,980", unit: "/月" },
+  prioritySupport: { name: "優先サポート", price: "¥4,980", unit: "/月" },
+  onboarding: { name: "導入伴走", price: "¥19,800", unit: "/月", packPrice: "¥49,800", packUnit: "/3ヶ月" },
+} as const;
+
+/** NFCタグ料金 */
+export const NFC_TAG_PRICING = {
+  freeAllocation: 20,
+  packs: [
+    { quantity: 10, price: "¥980" },
+    { quantity: 30, price: "¥2,480" },
+    { quantity: 100, price: "¥6,980" },
+  ],
+} as const;
+
+/** 初期100店舗キャンペーン */
+export const LAUNCH_CAMPAIGN = {
+  slug: "launch_100",
+  maxSlots: 100,
+  plans: ["standard", "pro"] as const,
+  durationMonths: 12,
+  nfcFreeAllocation: 30,
+  invoiceOptionPrice: "¥1,980",
+  description: "初期100店舗限定キャンペーン（初年度のみ適用・Standard/Pro対象）",
+} as const;
+
 /** プラン別機能比較テーブルデータ */
 export const FEATURE_COMPARISON = [
-  { feature: "証明書発行数", starter: PLANS.starter.certLimitShort, standard: PLANS.standard.certLimitShort, enterprise: PLANS.enterprise.certLimitShort },
-  { feature: "テンプレート", starter: "基本", standard: "カスタム", enterprise: "完全カスタム" },
-  { feature: "ブランドカスタマイズ", starter: "—", standard: "✓", enterprise: "✓" },
-  { feature: "URL共有", starter: "✓", standard: "✓", enterprise: "✓" },
-  { feature: "CSV/PDFエクスポート", starter: "—", standard: "✓", enterprise: "✓" },
-  { feature: "API連携", starter: "—", standard: "—", enterprise: "✓" },
-  { feature: "サポート", starter: "メール", standard: "優先メール", enterprise: "専任マネージャー" },
-  { feature: "SLA保証", starter: "—", standard: "—", enterprise: "✓" },
+  { feature: "証明書発行数", free: PLANS.free.certLimitShort, starter: PLANS.starter.certLimitShort, standard: PLANS.standard.certLimitShort, pro: PLANS.pro.certLimitShort },
+  { feature: "店舗数", free: "1", starter: "1", standard: "2", pro: "5" },
+  { feature: "ユーザー数", free: "1", starter: "3", standard: "7", pro: "15" },
+  { feature: "テンプレート", free: "基本", starter: "基本+ロゴ", standard: "カスタム", pro: "フルカスタム" },
+  { feature: "保険会社ポータル", free: "✓", starter: "✓", standard: "✓", pro: "✓" },
+  { feature: "CSV/PDFエクスポート", free: "—", starter: "単体のみ", standard: "✓", pro: "✓" },
+  { feature: "レポート", free: "—", starter: "—", standard: "基本", pro: "詳細" },
+  { feature: "API連携", free: "—", starter: "—", standard: "—", pro: "✓" },
+  { feature: "監査ログ", free: "—", starter: "—", standard: "—", pro: "✓" },
+  { feature: "サポート", free: "メール", starter: "メール", standard: "優先", pro: "専任" },
 ] as const;

@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { priceIdToPlanTier } from "@/lib/stripe/plan";
 import { insurerPriceIdToPlanTier } from "@/lib/stripe/insurerPlan";
 import { isTemplateOptionEvent } from "@/lib/template-options/stripe";
+import { confirmCampaignSlot } from "@/lib/billing/campaign";
 import { apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
@@ -314,6 +315,16 @@ export async function POST(req: NextRequest) {
             console.log("webhook: template option invoice", { tenantId, optionType, event: event.type });
           }
           break;
+        }
+
+        // ─── キャンペーン枠確定（invoice.paid のみ） ───
+        if (event.type === "invoice.paid") {
+          const tenantId = sub.metadata?.tenant_id;
+          const campaignSlug = sub.metadata?.campaign_slug;
+          if (tenantId && campaignSlug) {
+            await confirmCampaignSlot(supabase, tenantId, campaignSlug);
+            console.log("webhook: campaign slot confirmed", { tenantId, campaignSlug });
+          }
         }
 
         const isInsurer = sub.metadata?.type === "insurer";

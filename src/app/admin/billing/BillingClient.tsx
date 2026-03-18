@@ -6,23 +6,23 @@ import PageHeader from "@/components/ui/PageHeader";
 
 const PLANS = [
   {
-    tier: "mini",
-    name: "ミニ",
-    price: "¥980/月",
-    features: ["施工証明書 発行", "PDF出力（単体）", "QRコード生成", "基本ダッシュボード"],
+    tier: "starter",
+    name: "スターター",
+    price: "¥9,800/月",
+    features: ["月80件まで証明書発行", "基本テンプレート＋ロゴ", "PDF/CSV単体出力", "車両台帳・顧客台帳", "保険会社ポータル反映"],
   },
   {
     tier: "standard",
     name: "スタンダード",
-    price: "¥2,980/月",
-    features: ["ミニの全機能", "PDF一括出力（ZIP）", "CSV出力", "テンプレート管理", "帳票・請求書管理", "顧客CRM"],
+    price: "¥24,800/月",
+    features: ["月300件まで証明書発行", "カスタムテンプレート", "CSV/PDF一括出力", "2店舗・7ユーザー", "基本レポート", "優先サポート"],
     recommended: true,
   },
   {
     tier: "pro",
     name: "プロ",
-    price: "¥9,800/月",
-    features: ["スタンダードの全機能", "ロゴアップロード", "BtoB在庫管理", "Stripe決済連携", "優先サポート"],
+    price: "¥49,800/月",
+    features: ["無制限の証明書発行", "5店舗・15ユーザー", "詳細レポート・監査ログ", "API連携", "専任サポート"],
   },
 ];
 
@@ -144,7 +144,9 @@ function fmtUnix(unix?: number | null) {
 
 function planLabel(tier?: string | null) {
   switch (tier) {
-    case "mini": return "ミニ";
+    case "free": return "フリー";
+    case "starter": return "スターター";
+    case "mini": return "スターター"; // 旧プラン互換
     case "standard": return "スタンダード";
     case "pro": return "プロ";
     default: return tier ?? "-";

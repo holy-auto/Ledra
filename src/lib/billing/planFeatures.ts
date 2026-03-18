@@ -9,7 +9,18 @@ export type FeatureKey = FeatureId;
  * - ここは「見た目の制限」(ボタン無効/画面無効) 用のマトリクス
  */
 const MATRIX: Record<PlanTier, Record<FeatureKey, boolean>> = {
-  mini: {
+  free: {
+    issue_certificate: true,
+    export_one_csv: false,
+    export_search_csv: false,
+    export_selected_csv: false,
+    pdf_one: true,
+    pdf_zip: false,
+    manage_templates: false,
+    upload_logo: false,
+    manage_stores: false,
+  },
+  starter: {
     issue_certificate: true,
     export_one_csv: true,
     export_search_csv: false,
@@ -17,7 +28,7 @@ const MATRIX: Record<PlanTier, Record<FeatureKey, boolean>> = {
     pdf_one: true,
     pdf_zip: false,
     manage_templates: false,
-    upload_logo: false,
+    upload_logo: true,
     manage_stores: false,
   },
   standard: {
@@ -29,7 +40,7 @@ const MATRIX: Record<PlanTier, Record<FeatureKey, boolean>> = {
     pdf_zip: true,
     manage_templates: true,
     upload_logo: true,
-    manage_stores: false,
+    manage_stores: true,
   },
   pro: {
     issue_certificate: true,
@@ -46,9 +57,11 @@ const MATRIX: Record<PlanTier, Record<FeatureKey, boolean>> = {
 
 export function normalizePlanTier(v: any): PlanTier {
   const s = String(v ?? "").toLowerCase();
-  if (s === "mini") return "mini";
+  if (s === "free") return "free";
+  if (s === "starter" || s === "mini") return "starter";
   if (s === "standard") return "standard";
-  return "pro";
+  if (s === "pro") return "pro";
+  return "free";
 }
 
 export function canUseFeature(planTier: any, feature: FeatureKey): boolean {
@@ -73,16 +86,26 @@ export function featureLabel(feature: FeatureKey): string {
 
 /** 写真添付枚数上限（プランごと） */
 export const PHOTO_LIMITS: Record<PlanTier, number> = {
-  mini: 3,
+  free: 3,
+  starter: 5,
   standard: 10,
   pro: 20,
 };
 
 /** 店舗数上限（プランごと） */
 export const STORE_LIMITS: Record<PlanTier, number> = {
-  mini: 1,
-  standard: 1,
-  pro: 10,
+  free: 1,
+  starter: 1,
+  standard: 2,
+  pro: 5,
+};
+
+/** 月間証明発行上限（プランごと、null = 無制限） */
+export const CERT_LIMITS: Record<PlanTier, number | null> = {
+  free: 10,
+  starter: 80,
+  standard: 300,
+  pro: null,
 };
 
 /** compile-time exhaustiveness check (auto) */
@@ -91,7 +114,8 @@ const __assertExactFeatureKeys = <T extends Record<FeatureKey, unknown>>(t: __No
 
 // MATRIX must include ALL FeatureId keys (no missing / no extra)
 // MATRIX rows must include ALL FeatureId keys (no missing / no extra)
-  __assertExactFeatureKeys(MATRIX.mini);
+  __assertExactFeatureKeys(MATRIX.free);
+  __assertExactFeatureKeys(MATRIX.starter);
   __assertExactFeatureKeys(MATRIX.standard);
   __assertExactFeatureKeys(MATRIX.pro);
 /** compile-time diff (auto): show missing/extra keys as readable TS errors */

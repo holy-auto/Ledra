@@ -34,7 +34,7 @@ export async function GET() {
       email: userRes.user.email,
       tenant_id: mem.tenant_id,
       tenant_name: tenant?.name ?? null,
-      plan_tier: tenant?.plan_tier ?? "mini",
+      plan_tier: tenant?.plan_tier ?? "free",
       role: mem.role ?? "admin",
     });
   } catch (e: unknown) {

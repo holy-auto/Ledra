@@ -57,9 +57,10 @@ const labelCls = "block space-y-1.5";
 const labelTextCls = "text-sm font-medium text-neutral-700";
 
 const PLAN_LABELS: Record<PlanTier, string> = {
-  mini: "mini",
+  free: "FREE",
+  starter: "STARTER",
   standard: "STANDARD",
-  pro: "pro",
+  pro: "PRO",
 };
 
 export default function CertNewFormWrapper({

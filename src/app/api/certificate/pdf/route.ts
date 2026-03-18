@@ -164,7 +164,7 @@ function PdfDocEl(cert: CertPublic, publicUrl: string, qrDataUrl: string) {
 }
 
 export async function GET(req: Request) {
-  const deny = await enforceBilling(req as any, { minPlan: "mini", action: "public_pdf" });
+  const deny = await enforceBilling(req as any, { minPlan: "free", action: "public_pdf" });
   if (deny) return deny as any;
   const { searchParams } = new URL(req.url);
   const pid = (searchParams.get("pid") ?? "").trim();

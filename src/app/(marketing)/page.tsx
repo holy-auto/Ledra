@@ -271,30 +271,31 @@ export default async function HomePage() {
         />
         <PricingCards>
           <PricingCard
-            name={PLANS.starter.name}
-            price={PLANS.starter.price}
-            unit={PLANS.starter.unit}
-            description={PLANS.starter.description}
+            name={PLANS.free.name}
+            price={PLANS.free.price}
+            unit={PLANS.free.unit}
+            description={PLANS.free.description}
             delay={0}
-            features={[...PLANS.starter.features]}
-            ctaLabel={PLANS.starter.ctaLabel}
+            features={[...PLANS.free.features]}
+            ctaLabel={PLANS.free.ctaLabel}
           />
           <PricingCard
             name={PLANS.standard.name}
             price={PLANS.standard.price}
+            unit={PLANS.standard.unit}
             description={PLANS.standard.description}
             delay={100}
             features={[...PLANS.standard.features]}
             recommended
           />
           <PricingCard
-            name={PLANS.enterprise.name}
-            price={PLANS.enterprise.price}
-            unit={PLANS.enterprise.unit}
-            description={PLANS.enterprise.description}
+            name={PLANS.pro.name}
+            price={PLANS.pro.price}
+            unit={PLANS.pro.unit}
+            description={PLANS.pro.description}
             delay={200}
-            features={[...PLANS.enterprise.features]}
-            ctaLabel={PLANS.enterprise.ctaLabel}
+            features={[...PLANS.pro.features]}
+            ctaLabel={PLANS.pro.ctaLabel}
           />
         </PricingCards>
         <ScrollReveal variant="fade-in" delay={400}>

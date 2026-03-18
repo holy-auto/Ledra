@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
         id: crypto.randomUUID(),
         name: shop_name,
         slug,
-        plan_tier: "mini",
+        plan_tier: "free",
         is_active: true,
         contact_email: email,
         contact_phone,

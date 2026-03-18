@@ -26,7 +26,9 @@ type MembersData = {
 
 function planLabel(tier?: string | null) {
   switch (tier) {
-    case "mini": return "ミニ";
+    case "free": return "フリー";
+    case "starter": return "スターター";
+    case "mini": return "スターター"; // 旧プラン互換
     case "standard": return "スタンダード";
     case "pro": return "プロ";
     default: return tier ?? "-";

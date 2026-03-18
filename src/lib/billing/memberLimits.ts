@@ -2,9 +2,10 @@ import type { PlanTier } from "@/lib/billing/planFeatures";
 
 /** プラン別メンバー上限（null = 無制限） */
 const LIMITS: Record<PlanTier, number | null> = {
-  mini: 1,
-  standard: 5,
-  pro: null,
+  free: 1,
+  starter: 3,
+  standard: 7,
+  pro: 15,
 };
 
 export function memberLimit(plan: PlanTier): number | null {

@@ -27,30 +27,39 @@ export default function PricingPage() {
       <Section>
         <PricingCards>
           <PricingCard
+            name={PLANS.free.name}
+            price={PLANS.free.price}
+            unit={PLANS.free.unit}
+            description={PLANS.free.description}
+            delay={0}
+            features={[...PLANS.free.features]}
+            ctaLabel={PLANS.free.ctaLabel}
+          />
+          <PricingCard
             name={PLANS.starter.name}
             price={PLANS.starter.price}
             unit={PLANS.starter.unit}
             description={PLANS.starter.description}
-            delay={0}
+            delay={100}
             features={[...PLANS.starter.features]}
-            ctaLabel={PLANS.starter.ctaLabel}
           />
           <PricingCard
             name={PLANS.standard.name}
             price={PLANS.standard.price}
+            unit={PLANS.standard.unit}
             description={PLANS.standard.description}
-            delay={100}
+            delay={200}
             features={[...PLANS.standard.features]}
             recommended
           />
           <PricingCard
-            name={PLANS.enterprise.name}
-            price={PLANS.enterprise.price}
-            unit={PLANS.enterprise.unit}
-            description={PLANS.enterprise.description}
-            delay={200}
-            features={[...PLANS.enterprise.features]}
-            ctaLabel={PLANS.enterprise.ctaLabel}
+            name={PLANS.pro.name}
+            price={PLANS.pro.price}
+            unit={PLANS.pro.unit}
+            description={PLANS.pro.description}
+            delay={300}
+            features={[...PLANS.pro.features]}
+            ctaLabel={PLANS.pro.ctaLabel}
           />
         </PricingCards>
       </Section>
@@ -63,22 +72,24 @@ export default function PricingPage() {
         />
         <ScrollReveal variant="fade-up" delay={100}>
           <div className="overflow-x-auto">
-            <table className="w-full max-w-4xl mx-auto text-sm">
+            <table className="w-full max-w-5xl mx-auto text-sm">
               <thead>
                 <tr className="border-b border-border">
                   <th className="text-left py-4 px-4 font-medium text-muted">機能</th>
+                  <th className="text-center py-4 px-4 font-medium text-heading">フリー</th>
                   <th className="text-center py-4 px-4 font-medium text-heading">スターター</th>
                   <th className="text-center py-4 px-4 font-medium text-primary">スタンダード</th>
-                  <th className="text-center py-4 px-4 font-medium text-heading">エンタープライズ</th>
+                  <th className="text-center py-4 px-4 font-medium text-heading">プロ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-light">
                 {FEATURE_COMPARISON.map((row) => (
                   <tr key={row.feature} className="hover:bg-surface-subtle/50 transition-colors">
                     <td className="py-3.5 px-4 text-heading font-medium">{row.feature}</td>
+                    <td className="py-3.5 px-4 text-center text-body">{row.free}</td>
                     <td className="py-3.5 px-4 text-center text-body">{row.starter}</td>
                     <td className="py-3.5 px-4 text-center text-primary font-medium">{row.standard}</td>
-                    <td className="py-3.5 px-4 text-center text-body">{row.enterprise}</td>
+                    <td className="py-3.5 px-4 text-center text-body">{row.pro}</td>
                   </tr>
                 ))}
               </tbody>
