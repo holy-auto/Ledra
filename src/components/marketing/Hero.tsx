@@ -70,7 +70,7 @@ export function Hero() {
           </CTAButton>
         </div>
 
-        {/* Trust metrics */}
+        {/* Value props — factual, no inflated numbers */}
         <div className="mt-20 flex flex-col sm:flex-row items-center justify-center gap-8 sm:gap-16 animate-[hero-fade-in_0.8s_ease-out_1.2s_both]">
           <div className="text-center">
             <div className="text-2xl md:text-3xl font-bold text-white">無料<span className="text-blue-400">で開始</span></div>

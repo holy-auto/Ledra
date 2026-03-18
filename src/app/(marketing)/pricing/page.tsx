@@ -75,22 +75,22 @@ export default function PricingPage() {
           <div className="overflow-x-auto">
             <table className="w-full max-w-5xl mx-auto text-sm">
               <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left py-4 px-4 font-medium text-muted">機能</th>
-                  <th className="text-center py-4 px-4 font-medium text-heading">フリー</th>
-                  <th className="text-center py-4 px-4 font-medium text-heading">スターター</th>
-                  <th className="text-center py-4 px-4 font-medium text-primary">スタンダード</th>
-                  <th className="text-center py-4 px-4 font-medium text-heading">プロ</th>
+                <tr className="border-b border-white/[0.08]">
+                  <th className="text-left py-4 px-4 font-medium text-white/40">機能</th>
+                  <th className="text-center py-4 px-4 font-medium text-white">フリー</th>
+                  <th className="text-center py-4 px-4 font-medium text-white">スターター</th>
+                  <th className="text-center py-4 px-4 font-medium text-blue-400">スタンダード</th>
+                  <th className="text-center py-4 px-4 font-medium text-white">プロ</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border-light">
+              <tbody className="divide-y divide-white/[0.04]">
                 {FEATURE_COMPARISON.map((row) => (
-                  <tr key={row.feature} className="hover:bg-surface-subtle/50 transition-colors">
-                    <td className="py-3.5 px-4 text-heading font-medium">{row.feature}</td>
-                    <td className="py-3.5 px-4 text-center text-body">{row.free}</td>
-                    <td className="py-3.5 px-4 text-center text-body">{row.starter}</td>
-                    <td className="py-3.5 px-4 text-center text-primary font-medium">{row.standard}</td>
-                    <td className="py-3.5 px-4 text-center text-body">{row.pro}</td>
+                  <tr key={row.feature} className="hover:bg-white/[0.03] transition-colors">
+                    <td className="py-3.5 px-4 text-white font-medium">{row.feature}</td>
+                    <td className="py-3.5 px-4 text-center text-white/60">{row.free}</td>
+                    <td className="py-3.5 px-4 text-center text-white/60">{row.starter}</td>
+                    <td className="py-3.5 px-4 text-center text-blue-400 font-medium">{row.standard}</td>
+                    <td className="py-3.5 px-4 text-center text-white/60">{row.pro}</td>
                   </tr>
                 ))}
               </tbody>
@@ -159,16 +159,16 @@ export default function PricingPage() {
           <div className="overflow-x-auto">
             <table className="w-full max-w-2xl mx-auto text-sm">
               <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left py-4 px-4 font-medium text-muted">作業内容</th>
-                  <th className="text-right py-4 px-4 font-medium text-heading">料金（税込）</th>
+                <tr className="border-b border-white/[0.08]">
+                  <th className="text-left py-4 px-4 font-medium text-white/40">作業内容</th>
+                  <th className="text-right py-4 px-4 font-medium text-white">料金（税込）</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border-light">
+              <tbody className="divide-y divide-white/[0.04]">
                 {TEMPLATE_ADDITIONAL_WORK.map((row) => (
-                  <tr key={row.item} className="hover:bg-surface-subtle/50 transition-colors">
-                    <td className="py-3.5 px-4 text-heading">{row.item}</td>
-                    <td className="py-3.5 px-4 text-right text-body">{row.price}</td>
+                  <tr key={row.item} className="hover:bg-white/[0.03] transition-colors">
+                    <td className="py-3.5 px-4 text-white">{row.item}</td>
+                    <td className="py-3.5 px-4 text-right text-white/60">{row.price}</td>
                   </tr>
                 ))}
               </tbody>
@@ -191,6 +191,7 @@ export default function PricingPage() {
         title="まずは無料で始めましょう"
         subtitle="クレジットカード不要。5分で始められます。"
         primaryLabel="無料で始める"
+        primaryHref="/signup"
         secondaryLabel="お問い合わせ"
       />
     </>

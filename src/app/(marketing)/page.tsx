@@ -373,7 +373,7 @@ export default async function HomePage() {
           <p className="text-center mt-8">
             <Link
               href="/pricing"
-              className="text-sm font-medium text-primary hover:underline"
+              className="text-sm font-medium text-blue-400 hover:underline"
             >
               料金の詳細を見る &rarr;
             </Link>
@@ -406,7 +406,7 @@ export default async function HomePage() {
           <p className="text-center mt-8">
             <Link
               href="/faq"
-              className="text-sm font-medium text-primary hover:underline"
+              className="text-sm font-medium text-blue-400 hover:underline"
             >
               すべてのFAQを見る &rarr;
             </Link>
