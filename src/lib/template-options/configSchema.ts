@@ -107,15 +107,20 @@ export function validateCustomConfig(config: TemplateConfigInput): TemplateConfi
   return {
     ...config,
     body: {
-      ...config.body,
       show_customer_name: true,  // 必須固定
       show_vehicle_info: true,   // 必須固定
       show_service_details: true, // 必須固定
       show_photos: config.body?.show_photos ?? true,
+      custom_sections: config.body?.custom_sections ?? [],
     },
     footer: {
-      ...config.footer,
+      warranty_text: config.footer?.warranty_text,
+      notice_text: config.footer?.notice_text,
+      show_qr: config.footer?.show_qr ?? true,
       show_cartrust_badge: true, // 必須固定
+      maintenance_url: config.footer?.maintenance_url,
+      maintenance_label: config.footer?.maintenance_label ?? "メンテナンス情報",
+      show_maintenance_qr: config.footer?.show_maintenance_qr ?? false,
     },
   };
 }
