@@ -6,6 +6,7 @@ import { insurerPriceIdToPlanTier } from "@/lib/stripe/insurerPlan";
 import { isTemplateOptionEvent } from "@/lib/template-options/stripe";
 import { confirmCampaignSlot } from "@/lib/billing/campaign";
 import { apiValidationError, apiInternalError } from "@/lib/api/response";
+import { logAuditEvent } from "@/lib/audit/certificateLog";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -114,6 +115,17 @@ async function syncBySubscription(stripe: Stripe, supabase: ReturnType<typeof ge
 
   console.log("webhook: sync subscription", { tenant_id: tenant_id ?? "(lookup)", plan_tier, active, subscriptionId });
   await updateTenantBySelector(supabase, selector, patch);
+
+  // Audit log for billing state change
+  const resolvedTenantId = selector.by === "id" ? selector.value : tenant_id;
+  if (resolvedTenantId) {
+    logAuditEvent({
+      type: "invoice_paid",
+      tenantId: resolvedTenantId,
+      title: "課金状態を同期",
+      description: `plan=${plan_tier ?? "unknown"} active=${active} sub=${subscriptionId}`,
+    });
+  }
 }
 
 // ─── Insurer subscription sync ───
