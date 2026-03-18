@@ -3,7 +3,7 @@ import Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { planTierToPriceId } from "@/lib/stripe/plan";
 import { checkoutSchema } from "@/lib/validations/stripe";
-import { apiOk, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
+import { apiOk, apiInternalError, apiValidationError, apiNotFound, apiUnauthorized } from "@/lib/api/response";
 import { resolveCampaign } from "@/lib/billing/campaign";
 
 export async function POST(req: NextRequest) {
@@ -14,10 +14,38 @@ export async function POST(req: NextRequest) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "入力が不正です。");
     }
 
-    const { tenant_id, plan_tier, annual } = parsed.data;
+    const { plan_tier, annual, access_token, tenant_id: bodyTenantId } = parsed.data;
 
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2025-02-24.acacia" as any });
     const supabase = createAdminClient();
+
+    // ---- Authenticate caller via access_token ----
+    if (!access_token) {
+      return apiValidationError("access_token は必須です。");
+    }
+
+    const u = await supabase.auth.getUser(access_token);
+    if (u.error || !u.data?.user) {
+      return apiUnauthorized();
+    }
+
+    const m = await supabase
+      .from("tenant_memberships")
+      .select("tenant_id")
+      .eq("user_id", u.data.user.id)
+      .limit(1)
+      .maybeSingle();
+
+    if (m.error || !m.data?.tenant_id) {
+      return apiNotFound("テナントメンバーシップが見つかりません。");
+    }
+
+    const tenant_id = m.data.tenant_id;
+
+    // If bodyTenantId was provided, verify it matches (prevent cross-tenant abuse)
+    if (bodyTenantId && bodyTenantId !== tenant_id) {
+      return apiUnauthorized();
+    }
 
     // tenants から stripe_customer_id を取得
     const { data: tenant, error: tErr } = await supabase

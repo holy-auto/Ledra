@@ -2,12 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
 
-// ─── POST: Create inquiry (public, no auth required) ───
+// ─── POST: Create inquiry (public, rate-limited) ───
 export async function POST(req: NextRequest) {
   try {
+    // Rate limit: 5 inquiries per 15 minutes per IP
+    const ip = getClientIp(req);
+    const rl = checkRateLimit(`market-inquiry:${ip}`, { limit: 5, windowSec: 900 });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "rate_limited", message: "送信回数の上限に達しました。しばらくしてからお試しください。" },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
+      );
+    }
+
     const admin = createAdminClient();
     const body = await req.json().catch(() => ({} as any));
 

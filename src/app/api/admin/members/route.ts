@@ -4,6 +4,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { normalizePlanTier } from "@/lib/billing/planFeatures";
 import { memberLimit, canAddMember } from "@/lib/billing/memberLimits";
+import { logAuditEvent } from "@/lib/audit/certificateLog";
 
 export const dynamic = "force-dynamic";
 
@@ -190,6 +191,12 @@ export async function POST(req: NextRequest) {
       }, { status: 500 });
     }
 
+    logAuditEvent({
+      type: "member_added",
+      tenantId: caller.tenantId,
+      description: `${email} (role: ${role ?? "member"}) を追加`,
+    });
+
     return NextResponse.json({ ok: true, user_id: userId, email });
   } catch (e: any) {
     console.error("member add failed", e);
@@ -255,6 +262,12 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "update_failed" }, { status: 500 });
     }
 
+    logAuditEvent({
+      type: "member_role_changed",
+      tenantId: caller.tenantId,
+      description: `${targetUserId} のロールを ${targetMem.role} → ${newRole} に変更`,
+    });
+
     return NextResponse.json({ ok: true, role: newRole });
   } catch (e: any) {
     console.error("member role change failed", e);
@@ -298,6 +311,12 @@ export async function DELETE(req: NextRequest) {
       console.error("[members] delete_failed:", error.message);
       return NextResponse.json({ error: "delete_failed" }, { status: 500 });
     }
+
+    logAuditEvent({
+      type: "member_removed",
+      tenantId: caller.tenantId,
+      description: `${targetUserId} を削除`,
+    });
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {
