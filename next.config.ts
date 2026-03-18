@@ -1,5 +1,4 @@
 import type { NextConfig } from "next";
-import { resolve } from "path";
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
@@ -11,8 +10,17 @@ const nextConfig: NextConfig = {
     },
   },
 
-  turbopack: {
-    root: resolve("."),
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "**.supabase.co",
+      },
+      {
+        protocol: "https",
+        hostname: "**.supabase.in",
+      },
+    ],
   },
 
   images: {

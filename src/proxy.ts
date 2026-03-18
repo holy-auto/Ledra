@@ -24,7 +24,40 @@ const MARKETING_PATHS = [
 ];
 
 export function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const { method, nextUrl } = request;
+  const { pathname } = nextUrl;
+
+  // --- CSRF protection for API mutation routes ---
+  if (pathname.startsWith("/api/") && !["GET", "HEAD", "OPTIONS"].includes(method)) {
+    const origin = request.headers.get("origin");
+    const host = request.headers.get("host");
+
+    if (!origin || !host) {
+      const secFetchSite = request.headers.get("sec-fetch-site");
+      if (secFetchSite && secFetchSite !== "same-origin") {
+        return NextResponse.json(
+          { error: "csrf_rejected", message: "Cross-origin request blocked" },
+          { status: 403 },
+        );
+      }
+    } else {
+      try {
+        const originHost = new URL(origin).host;
+        if (originHost !== host) {
+          console.warn(`[CSRF] Blocked: origin=${origin} host=${host} path=${pathname}`);
+          return NextResponse.json(
+            { error: "csrf_rejected", message: "Cross-origin request blocked" },
+            { status: 403 },
+          );
+        }
+      } catch {
+        return NextResponse.json(
+          { error: "csrf_rejected", message: "Invalid origin" },
+          { status: 403 },
+        );
+      }
+    }
+  }
 
   // Skip static assets
   if (pathname.startsWith("/_next") || pathname === "/favicon.ico" || pathname === "/robots.txt" || pathname === "/sitemap.xml") {
