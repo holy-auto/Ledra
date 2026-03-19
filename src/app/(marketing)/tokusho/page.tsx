@@ -5,22 +5,22 @@ import { siteConfig } from "@/lib/marketing/config";
 function Article({ children }: { children: ReactNode }) {
   return (
     <div className="mx-auto max-w-2xl px-6 py-24">
-      <article className="prose prose-zinc max-w-none">{children}</article>
+      <article className="prose prose-invert max-w-none">{children}</article>
     </div>
   );
 }
 
 function H2({ children }: { children: ReactNode }) {
   return (
-    <h2 className="mb-3 mt-10 text-lg font-bold text-zinc-900">{children}</h2>
+    <h2 className="mb-3 mt-10 text-lg font-bold text-white">{children}</h2>
   );
 }
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="grid grid-cols-[9rem_1fr] gap-4 border-b border-zinc-100 py-3 text-sm last:border-0">
-      <dt className="font-medium text-zinc-700">{label}</dt>
-      <dd className="text-zinc-600">{value}</dd>
+    <div className="grid grid-cols-[9rem_1fr] gap-4 border-b border-white/[0.08] py-3 text-sm last:border-0">
+      <dt className="font-medium text-white/80">{label}</dt>
+      <dd className="text-white/60">{value}</dd>
     </div>
   );
 }
@@ -28,14 +28,14 @@ function Row({ label, value }: { label: string; value: ReactNode }) {
 export default function TokushoPage() {
   return (
     <Article>
-      <h1 className="mb-2 text-3xl font-bold text-zinc-900">
+      <h1 className="mb-2 text-3xl font-bold text-white">
         特定商取引法に基づく表記
       </h1>
-      <p className="mb-10 text-sm text-zinc-400">
+      <p className="mb-10 text-sm text-white/40">
         特定商取引に関する法律第11条に基づき、以下のとおり表記します。
       </p>
 
-      <dl className="rounded-2xl border border-zinc-200 bg-white px-6">
+      <dl className="rounded-2xl border border-white/[0.08] bg-white/[0.04] px-6">
         <Row label="販売事業者名" value="株式会社〇〇（準備中）" />
         <Row label="代表者氏名" value="代表取締役　〇〇 〇〇" />
         <Row
@@ -51,7 +51,7 @@ export default function TokushoPage() {
           value={
             <a
               href={`mailto:${siteConfig.contactEmail}`}
-              className="font-medium text-zinc-700 hover:underline"
+              className="font-medium text-blue-400 hover:underline"
             >
               {siteConfig.contactEmail}
             </a>
@@ -92,11 +92,11 @@ export default function TokushoPage() {
       </dl>
 
       <H2>お問い合わせ</H2>
-      <p className="text-sm text-zinc-600">
+      <p className="text-sm text-white/60">
         本表記に関するお問い合わせは{" "}
         <a
           href={`mailto:${siteConfig.contactEmail}`}
-          className="font-medium text-zinc-700 hover:underline"
+          className="font-medium text-blue-400 hover:underline"
         >
           {siteConfig.contactEmail}
         </a>{" "}

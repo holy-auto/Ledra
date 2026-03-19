@@ -3,6 +3,7 @@ import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { PricingCards } from "@/components/marketing/PricingCards";
 import { PricingCard } from "@/components/marketing/PricingCard";
+import { FeatureComparisonTable } from "@/components/marketing/FeatureComparisonTable";
 import { FAQList } from "@/components/marketing/FAQList";
 import { FAQItem } from "@/components/marketing/FAQItem";
 import { CTABanner } from "@/components/marketing/CTABanner";
@@ -59,8 +60,6 @@ export default function PricingPage() {
             description={PLANS.pro.description}
             delay={300}
             features={[...PLANS.pro.features]}
-            ctaLabel={PLANS.pro.ctaLabel}
-            ctaHref="/contact"
           />
         </PricingCards>
       </Section>
@@ -72,30 +71,7 @@ export default function PricingPage() {
           subtitle="各プランの詳細な機能一覧"
         />
         <ScrollReveal variant="fade-up" delay={100}>
-          <div className="overflow-x-auto">
-            <table className="w-full max-w-5xl mx-auto text-sm">
-              <thead>
-                <tr className="border-b border-white/[0.08]">
-                  <th className="text-left py-4 px-4 font-medium text-white/40">機能</th>
-                  <th className="text-center py-4 px-4 font-medium text-white">フリー</th>
-                  <th className="text-center py-4 px-4 font-medium text-white">スターター</th>
-                  <th className="text-center py-4 px-4 font-medium text-blue-400">スタンダード</th>
-                  <th className="text-center py-4 px-4 font-medium text-white">プロ</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/[0.04]">
-                {FEATURE_COMPARISON.map((row) => (
-                  <tr key={row.feature} className="hover:bg-white/[0.03] transition-colors">
-                    <td className="py-3.5 px-4 text-white font-medium">{row.feature}</td>
-                    <td className="py-3.5 px-4 text-center text-white/60">{row.free}</td>
-                    <td className="py-3.5 px-4 text-center text-white/60">{row.starter}</td>
-                    <td className="py-3.5 px-4 text-center text-blue-400 font-medium">{row.standard}</td>
-                    <td className="py-3.5 px-4 text-center text-white/60">{row.pro}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <FeatureComparisonTable rows={FEATURE_COMPARISON} />
         </ScrollReveal>
       </Section>
 
