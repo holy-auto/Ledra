@@ -1,27 +1,12 @@
 import Link from "next/link";
 import { Container } from "./Container";
 
+// Pre-launch: only show contact link
 const footerLinks = [
-  {
-    title: "プロダクト",
-    links: [
-      { label: "料金", href: "/pricing" },
-      { label: "施工店の方", href: "/for-shops" },
-      { label: "保険会社の方", href: "/for-insurers" },
-    ],
-  },
   {
     title: "サポート",
     links: [
-      { label: "FAQ", href: "/faq" },
       { label: "お問い合わせ", href: "/contact" },
-    ],
-  },
-  {
-    title: "会社情報",
-    links: [
-      { label: "利用規約", href: "/terms" },
-      { label: "プライバシーポリシー", href: "/privacy" },
     ],
   },
 ];
