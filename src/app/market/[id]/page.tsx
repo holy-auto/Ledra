@@ -1,45 +1,13 @@
-"use client";
-
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import Badge from "@/components/ui/Badge";
+import { notFound, redirect } from "next/navigation";
+import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { formatJpy, formatDate } from "@/lib/format";
+import Badge from "@/components/ui/Badge";
+import ImageGallery from "./ImageGallery";
+import InquiryForm from "./InquiryForm";
 
-type VehicleImage = { id: string; storage_path: string; file_name: string | null; sort_order: number };
-
-type Vehicle = {
-  id: string;
-  maker: string;
-  model: string;
-  grade: string | null;
-  year: number | null;
-  mileage: number | null;
-  color: string | null;
-  color_code: string | null;
-  plate_number: string | null;
-  chassis_number: string | null;
-  engine_type: string | null;
-  displacement: number | null;
-  transmission: string | null;
-  drive_type: string | null;
-  fuel_type: string | null;
-  door_count: number | null;
-  seating_capacity: number | null;
-  body_type: string | null;
-  inspection_date: string | null;
-  repair_history: string | null;
-  condition_grade: string | null;
-  condition_note: string | null;
-  asking_price: number | null;
-  wholesale_price: number | null;
-  status: string;
-  listed_at: string | null;
-  description: string | null;
-  features: string[] | null;
-  images?: VehicleImage[];
-  tenant_name?: string;
-};
+export const dynamic = "force-dynamic";
 
 const statusLabel = (s: string) => {
   switch (s) {
@@ -62,44 +30,30 @@ const statusVariant = (s: string) => {
   }
 };
 
-export default function MarketVehicleDetailPage() {
-  const params = useParams();
-  const id = params.id as string;
-  const [vehicle, setVehicle] = useState<Vehicle | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [mainImage, setMainImage] = useState(0);
+export default async function MarketVehicleDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
 
-  const fetchVehicle = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/admin/market-vehicles?id=${id}&public=true`, { cache: "no-store" });
-      const j = await res.json().catch(() => null);
-      if (res.ok && j?.vehicles?.length > 0) {
-        setVehicle(j.vehicles[0]);
-      }
-    } catch {}
-  }, [id]);
+  const supabase = await createSupabaseServerClient();
+  const caller = await resolveCallerWithRole(supabase);
+  if (!caller) redirect(`/login?next=/market/${id}`);
 
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      await fetchVehicle();
-      setLoading(false);
-    })();
-  }, [fetchVehicle]);
+  const { data: vehicles } = await supabase
+    .from("market_vehicles")
+    .select("*")
+    .eq("id", id)
+    .eq("status", "listed");
 
-  if (loading) return <main className="p-10 text-sm text-muted">読み込み中…</main>;
-  if (!vehicle) {
-    return (
-      <main className="mx-auto max-w-4xl px-6 py-10">
-        <div className="glass-card p-8 text-center">
-          <p className="text-primary font-medium">車両が見つかりません</p>
-          <Link href="/market" className="mt-4 inline-block text-sm text-[#0071e3] hover:underline">一覧に戻る</Link>
-        </div>
-      </main>
-    );
-  }
+  if (!vehicles || vehicles.length === 0) notFound();
+  const vehicle = vehicles[0];
 
-  const images = vehicle.images ?? [];
+  // Fetch images
+  const { data: images } = await supabase
+    .from("market_vehicle_images")
+    .select("*")
+    .eq("vehicle_id", id)
+    .order("sort_order", { ascending: true });
+
+  const vehicleImages = images ?? [];
 
   const specRows: [string, string | null][] = [
     ["メーカー", vehicle.maker],
@@ -130,37 +84,7 @@ export default function MarketVehicleDetailPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left: Images */}
-        <div className="space-y-3">
-          {/* Main image */}
-          <div className="aspect-[4/3] glass-card overflow-hidden flex items-center justify-center bg-neutral-100">
-            {images.length > 0 ? (
-              <img
-                src={images[mainImage]?.storage_path}
-                alt={`${vehicle.maker} ${vehicle.model}`}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <div className="text-muted text-sm">写真なし</div>
-            )}
-          </div>
-          {/* Thumbnails */}
-          {images.length > 1 && (
-            <div className="flex gap-2 overflow-x-auto pb-2">
-              {images.map((img, idx) => (
-                <button
-                  key={img.id}
-                  type="button"
-                  onClick={() => setMainImage(idx)}
-                  className={`flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-colors ${
-                    idx === mainImage ? "border-[#0071e3]" : "border-transparent"
-                  }`}
-                >
-                  <img src={img.storage_path} alt="" className="w-full h-full object-cover" />
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <ImageGallery images={vehicleImages} alt={`${vehicle.maker} ${vehicle.model}`} />
 
         {/* Right: Info */}
         <div className="space-y-4">
@@ -237,7 +161,7 @@ export default function MarketVehicleDetailPage() {
         <section className="glass-card p-5 mt-4">
           <div className="text-xs font-semibold tracking-[0.18em] text-muted mb-3">FEATURES</div>
           <div className="flex flex-wrap gap-2">
-            {vehicle.features.map((f, i) => (
+            {vehicle.features.map((f: string, i: number) => (
               <span key={i} className="inline-flex items-center rounded-full border border-border-subtle bg-surface-hover px-3 py-1 text-xs text-secondary">
                 {f}
               </span>
@@ -251,109 +175,5 @@ export default function MarketVehicleDetailPage() {
         <InquiryForm vehicleId={vehicle.id} vehicleLabel={`${vehicle.maker} ${vehicle.model}`} />
       )}
     </main>
-  );
-}
-
-function InquiryForm({ vehicleId, vehicleLabel }: { vehicleId: string; vehicleLabel: string }) {
-  const [form, setForm] = useState({ buyer_name: "", buyer_company: "", buyer_email: "", buyer_phone: "", message: "" });
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setResult(null);
-    try {
-      const res = await fetch("/api/market/inquiries", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ vehicle_id: vehicleId, ...form }),
-      });
-      const j = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(j?.error ?? `送信に失敗しました (${res.status})`);
-      setResult({ ok: true, text: "お問い合わせを送信しました。担当者より連絡いたします。" });
-      setForm({ buyer_name: "", buyer_company: "", buyer_email: "", buyer_phone: "", message: "" });
-    } catch (e: any) {
-      setResult({ ok: false, text: e?.message ?? String(e) });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <section className="glass-card p-5 mt-6">
-      <div className="text-xs font-semibold tracking-[0.18em] text-muted mb-2">INQUIRY</div>
-      <h3 className="text-lg font-bold text-primary mb-4">この車両について問い合わせる</h3>
-      <p className="text-sm text-muted mb-4">「{vehicleLabel}」に関するお問い合わせ</p>
-
-      {result && (
-        <div className={`mb-4 text-sm ${result.ok ? "text-emerald-600" : "text-red-500"}`}>
-          {result.text}
-        </div>
-      )}
-
-      {(!result?.ok) && (
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <label className="block space-y-1">
-              <span className="text-sm font-medium text-secondary">お名前 <span className="text-red-500">*</span></span>
-              <input
-                type="text"
-                required
-                value={form.buyer_name}
-                onChange={(e) => setForm((p) => ({ ...p, buyer_name: e.target.value }))}
-                className="input-field"
-                placeholder="山田 太郎"
-              />
-            </label>
-            <label className="block space-y-1">
-              <span className="text-sm font-medium text-secondary">会社名</span>
-              <input
-                type="text"
-                value={form.buyer_company}
-                onChange={(e) => setForm((p) => ({ ...p, buyer_company: e.target.value }))}
-                className="input-field"
-                placeholder="株式会社○○"
-              />
-            </label>
-            <label className="block space-y-1">
-              <span className="text-sm font-medium text-secondary">メールアドレス <span className="text-red-500">*</span></span>
-              <input
-                type="email"
-                required
-                value={form.buyer_email}
-                onChange={(e) => setForm((p) => ({ ...p, buyer_email: e.target.value }))}
-                className="input-field"
-                placeholder="info@example.com"
-              />
-            </label>
-            <label className="block space-y-1">
-              <span className="text-sm font-medium text-secondary">電話番号</span>
-              <input
-                type="tel"
-                value={form.buyer_phone}
-                onChange={(e) => setForm((p) => ({ ...p, buyer_phone: e.target.value }))}
-                className="input-field"
-                placeholder="03-0000-0000"
-              />
-            </label>
-          </div>
-          <label className="block space-y-1">
-            <span className="text-sm font-medium text-secondary">メッセージ <span className="text-red-500">*</span></span>
-            <textarea
-              required
-              rows={4}
-              value={form.message}
-              onChange={(e) => setForm((p) => ({ ...p, message: e.target.value }))}
-              className="input-field"
-              placeholder="ご質問やご要望をお書きください"
-            />
-          </label>
-          <button type="submit" className="btn-primary" disabled={busy}>
-            {busy ? "送信中…" : "問い合わせを送信"}
-          </button>
-        </form>
-      )}
-    </section>
   );
 }

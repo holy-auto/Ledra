@@ -1,6 +1,10 @@
+import nextDynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import PriceStatsClient from "./PriceStatsClient";
+
+const PriceStatsClient = nextDynamic(() => import("./PriceStatsClient"), {
+  loading: () => <div className="animate-pulse h-40 rounded-2xl bg-[rgba(0,0,0,0.04)]" />,
+});
 
 export const dynamic = "force-dynamic";
 

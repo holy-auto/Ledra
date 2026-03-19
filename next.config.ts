@@ -12,7 +12,7 @@ const nextConfig: NextConfig = {
 
   // Exclude worktree directories from Turbopack/Webpack scanning to prevent
   // infinite symlink loops caused by "holy-cert": "file:" in package.json
-  serverExternalPackages: ["holy-cert"],
+  serverExternalPackages: ["holy-cert", "@react-pdf/renderer"],
 
   // Next 16.1.6: Server Actions config is under experimental
   experimental: {
