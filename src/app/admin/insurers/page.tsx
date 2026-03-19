@@ -1,7 +1,11 @@
+import dynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import PageHeader from "@/components/ui/PageHeader";
-import InsurerReviewClient from "./InsurerReviewClient";
+
+const InsurerReviewClient = dynamic(() => import("./InsurerReviewClient"), {
+  loading: () => <div className="animate-pulse h-40 rounded-2xl bg-[rgba(0,0,0,0.04)]" />,
+});
 
 export default async function AdminInsurersPage() {
   const supabase = await createSupabaseServerClient();

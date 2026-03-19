@@ -49,29 +49,30 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "db_error" }, { status: 500 });
     }
 
-    // 各顧客の証明書数を取得
+    // 各顧客の証明書数・請求書数を並列で取得（customer_idのみselectしてカウント）
     const customerIds = (customers ?? []).map((c) => c.id);
     let certCounts: Record<string, number> = {};
     let invoiceCounts: Record<string, number> = {};
 
     if (customerIds.length > 0) {
-      const { data: certs } = await supabase
-        .from("certificates")
-        .select("customer_id")
-        .eq("tenant_id", caller.tenantId)
-        .in("customer_id", customerIds);
+      const [{ data: certs }, { data: invs }] = await Promise.all([
+        supabase
+          .from("certificates")
+          .select("customer_id", { count: "planned" })
+          .eq("tenant_id", caller.tenantId)
+          .in("customer_id", customerIds),
+        supabase
+          .from("invoices")
+          .select("customer_id", { count: "planned" })
+          .eq("tenant_id", caller.tenantId)
+          .in("customer_id", customerIds),
+      ]);
 
       (certs ?? []).forEach((c) => {
         if (c.customer_id) {
           certCounts[c.customer_id] = (certCounts[c.customer_id] || 0) + 1;
         }
       });
-
-      const { data: invs } = await supabase
-        .from("invoices")
-        .select("customer_id")
-        .eq("tenant_id", caller.tenantId)
-        .in("customer_id", customerIds);
 
       (invs ?? []).forEach((inv) => {
         if (inv.customer_id) {
