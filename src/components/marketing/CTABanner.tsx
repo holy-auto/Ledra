@@ -8,7 +8,7 @@ export function CTABanner({
   title = "CARTRUSTを始めましょう",
   subtitle = "まずはお気軽にお問い合わせください。導入のご相談も承ります。",
   primaryLabel = "無料で始める",
-  primaryHref = "/contact",
+  primaryHref = "/signup",
   secondaryLabel = "お問い合わせ",
   secondaryHref = "/contact",
 }: {
@@ -20,12 +20,12 @@ export function CTABanner({
   secondaryHref?: string;
 }) {
   return (
-    <section className="relative overflow-hidden bg-gradient-to-br from-heading via-[#1e293b] to-heading">
+    <section className="relative overflow-hidden bg-gradient-to-br from-[#0a0f1a] via-[#1e293b] to-[#0a0f1a]">
       {/* Animated decorative elements */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-[100px] animate-[float_10s_ease-in-out_infinite]" />
-        <div className="absolute bottom-0 right-1/4 w-72 h-72 bg-primary/5 rounded-full blur-[80px] animate-[float_8s_ease-in-out_infinite_reverse]" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/[0.03] rounded-full blur-[120px] animate-[pulse-soft_6s_ease-in-out_infinite]" />
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-600/10 rounded-full blur-[100px] animate-[float_10s_ease-in-out_infinite]" />
+        <div className="absolute bottom-0 right-1/4 w-72 h-72 bg-blue-600/5 rounded-full blur-[80px] animate-[float_8s_ease-in-out_infinite_reverse]" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-600/[0.03] rounded-full blur-[120px] animate-[pulse-soft_6s_ease-in-out_infinite]" />
         {/* Grid pattern */}
         <div
           className="absolute inset-0 opacity-[0.03]"

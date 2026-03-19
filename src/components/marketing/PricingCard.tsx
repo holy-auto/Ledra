@@ -11,7 +11,7 @@ export function PricingCard({
   features,
   recommended = false,
   ctaLabel = "お申し込み",
-  ctaHref = "/contact",
+  ctaHref = "/signup",
   delay = 0,
 }: {
   name: string;
@@ -26,7 +26,7 @@ export function PricingCard({
 }) {
   const inner = (
     <div
-      className={`rounded-2xl p-8 md:p-10 w-full relative flex flex-col transition-all duration-400 group h-full ${
+      className={`rounded-2xl p-6 md:p-8 w-full relative flex flex-col transition-all duration-400 group h-full ${
         recommended
           ? "bg-[#0d1525]"
           : "bg-white/[0.04] border border-white/[0.07] hover:bg-white/[0.07] hover:border-white/[0.12] hover:shadow-[0_0_30px_rgba(59,130,246,0.1)] hover:-translate-y-1"
@@ -47,22 +47,22 @@ export function PricingCard({
         </p>
       </div>
 
-      <div className="mb-8">
-        <span className="text-[2.75rem] font-bold tracking-tight text-white">
+      <div className="mb-8 min-h-[3.5rem] flex items-baseline">
+        <span className="text-[2.5rem] font-bold tracking-tight text-white">
           {price}
         </span>
         {unit && (
           <span className="text-sm ml-1.5 text-white/40">
-            /{unit}
+            {unit.startsWith("/") ? unit : `/${unit}`}
           </span>
         )}
       </div>
 
-      <ul className="space-y-3.5 mb-10 flex-1">
+      <ul className="space-y-3 mb-10 flex-1">
         {features.map((feature) => (
           <li
             key={feature}
-            className="flex items-start gap-2.5 text-sm text-white/70"
+            className="flex items-start gap-2 text-[0.8125rem] leading-snug text-white/70"
           >
             <svg
               className="w-4.5 h-4.5 flex-shrink-0 mt-0.5 text-blue-400"

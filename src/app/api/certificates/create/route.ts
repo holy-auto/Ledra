@@ -3,6 +3,7 @@ import { phoneLast4Hash } from "@/lib/customerPortalServer";
 import { certificateCreateSchema } from "@/lib/validations/certificate";
 import { apiOk, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { enforceBilling } from "@/lib/billing/guard";
+import { logCertificateAction } from "@/lib/audit/certificateLog";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +65,17 @@ export async function POST(req: Request) {
     };
 
     const certificate = await supaInsertCertificate(insertRow);
+
+    // Fire-and-forget audit log
+    logCertificateAction({
+      type: "certificate_issued",
+      tenantId: b.tenant_id,
+      publicId: certificate?.public_id ?? "",
+      certificateId: certificate?.id ?? null,
+      vehicleId: certificate?.vehicle_id ?? null,
+      description: `顧客: ${b.customer_name}`,
+    });
+
     return NextResponse.json({ certificate }, { status: 200 });
   } catch (e) {
     return apiInternalError(e, "certificates/create");

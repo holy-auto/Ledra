@@ -1,7 +1,11 @@
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import CertificatesTableClient from "./CertificatesTableClient";
+
+const CertificatesTableClient = dynamic(() => import("./CertificatesTableClient"), {
+  loading: () => <div className="animate-pulse h-40 rounded-2xl bg-[rgba(0,0,0,0.04)]" />,
+});
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { buildBillingDenyUrl } from "@/lib/billing/billingRedirect";
 import PageHeader from "@/components/ui/PageHeader";

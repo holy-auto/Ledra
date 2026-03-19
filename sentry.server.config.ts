@@ -2,14 +2,15 @@ import * as Sentry from "@sentry/nextjs";
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
-  environment: process.env.NODE_ENV,
-
-  // Tracing
-  tracesSampleRate: process.env.NODE_ENV === "production" ? 0.2 : 1.0,
-
-  // Capture local variables on unhandled exceptions
-  integrations: [Sentry.localVariablesIntegration()],
-
-  // Don't send events in development unless DSN is explicitly set
   enabled: !!process.env.NEXT_PUBLIC_SENTRY_DSN,
+
+  tracesSampleRate: 0.1,
+
+  beforeSend(event) {
+    if (event.user) {
+      delete event.user.email;
+      delete event.user.ip_address;
+    }
+    return event;
+  },
 });

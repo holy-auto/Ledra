@@ -14,7 +14,7 @@ export function MobileMenu({
     <div className="md:hidden">
       <button
         onClick={() => setOpen(true)}
-        className="p-2 text-body"
+        className="p-2 text-white/60"
         aria-label="メニューを開く"
       >
         <svg
@@ -33,18 +33,18 @@ export function MobileMenu({
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 bg-white">
+        <div className="fixed inset-0 z-50 bg-[#060a12]">
           <div className="flex items-center justify-between h-16 px-5">
             <Link
               href="/"
-              className="text-xl font-bold tracking-tight text-primary"
+              className="text-xl font-bold tracking-tight text-white"
               onClick={() => setOpen(false)}
             >
               CARTRUST
             </Link>
             <button
               onClick={() => setOpen(false)}
-              className="p-2 text-body"
+              className="p-2 text-white/60"
               aria-label="メニューを閉じる"
             >
               <svg
@@ -67,7 +67,7 @@ export function MobileMenu({
               <Link
                 key={item.href}
                 href={item.href}
-                className="text-lg font-medium text-heading hover:text-primary transition-colors"
+                className="text-lg font-medium text-white/70 hover:text-white transition-colors"
                 onClick={() => setOpen(false)}
               >
                 {item.label}
@@ -75,21 +75,21 @@ export function MobileMenu({
             ))}
             <Link
               href="/login"
-              className="text-lg font-medium text-body hover:text-primary transition-colors"
+              className="text-lg font-medium text-white/50 hover:text-white transition-colors"
               onClick={() => setOpen(false)}
             >
               ログイン
             </Link>
             <Link
               href="/signup"
-              className="mt-4 bg-primary text-white text-base font-medium px-6 py-3 rounded-lg text-center hover:bg-primary-hover transition-colors"
+              className="mt-4 bg-gradient-to-r from-blue-600 to-blue-500 text-white text-base font-medium px-6 py-3 rounded-lg text-center hover:from-blue-500 hover:to-blue-400 transition-all shadow-[0_1px_12px_rgba(59,130,246,0.3)]"
               onClick={() => setOpen(false)}
             >
               無料で始める
             </Link>
             <Link
               href="/contact"
-              className="bg-white text-primary text-base font-medium px-6 py-3 rounded-lg text-center border border-primary/20 hover:bg-primary/5 transition-colors"
+              className="text-white text-base font-medium px-6 py-3 rounded-lg text-center border border-white/20 hover:bg-white/10 transition-colors"
               onClick={() => setOpen(false)}
             >
               お問い合わせ

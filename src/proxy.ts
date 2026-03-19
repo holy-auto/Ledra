@@ -78,6 +78,12 @@ export function proxy(request: NextRequest) {
   const csrfResponse = csrfCheck(request);
   if (csrfResponse) return csrfResponse;
 
+  // Pre-launch: redirect all marketing pages except "/" and "/contact" to countdown
+  const PRELAUNCH_BLOCKED = ["/pricing", "/for-shops", "/for-insurers", "/faq", "/privacy", "/terms", "/tokusho"];
+  if (PRELAUNCH_BLOCKED.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
+    return NextResponse.redirect(new URL("/", request.url));
+  }
+
   // Marketing pages and public routes: pass through
   if (MARKETING_PATHS.includes(pathname) || PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) {
     return refreshSession(request);

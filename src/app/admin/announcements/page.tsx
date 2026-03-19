@@ -1,5 +1,9 @@
+import dynamic from "next/dynamic";
 import PageHeader from "@/components/ui/PageHeader";
-import AnnouncementsClient from "./AnnouncementsClient";
+
+const AnnouncementsClient = dynamic(() => import("./AnnouncementsClient"), {
+  loading: () => <div className="animate-pulse h-40 rounded-2xl bg-[rgba(0,0,0,0.04)]" />,
+});
 
 export default function AnnouncementsPage() {
   return (

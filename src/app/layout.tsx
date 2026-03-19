@@ -9,7 +9,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "HOLY-CERT",
+  title: "CARTRUST",
   description: "WEB施工証明書SaaS",
 };
 

@@ -85,13 +85,13 @@ export default function ForShopsPage() {
             },
           ].map((item, i) => (
             <ScrollReveal key={item.step} variant="fade-up" delay={i * 120}>
-              <div className="flex gap-6 md:gap-8 items-start py-8 border-b border-border last:border-b-0">
-                <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-primary/[0.08] flex items-center justify-center">
-                  <span className="text-lg font-bold text-primary">{item.step}</span>
+              <div className="flex gap-6 md:gap-8 items-start py-8 border-b border-white/[0.06] last:border-b-0">
+                <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-blue-500/[0.1] flex items-center justify-center">
+                  <span className="text-lg font-bold text-blue-400">{item.step}</span>
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-heading">{item.title}</h3>
-                  <p className="mt-2 text-body leading-relaxed">{item.description}</p>
+                  <h3 className="text-lg font-bold text-white">{item.title}</h3>
+                  <p className="mt-2 text-white/50 leading-relaxed">{item.description}</p>
                 </div>
               </div>
             </ScrollReveal>

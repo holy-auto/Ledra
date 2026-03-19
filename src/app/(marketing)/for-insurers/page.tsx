@@ -73,10 +73,10 @@ export default function ForInsurersPage() {
             { value: "一括取得", label: "データエクスポート", description: "CSVで既存システムと連携" },
           ].map((item, i) => (
             <ScrollReveal key={item.label} variant="scale-up" delay={i * 120}>
-              <div className="text-center p-8 rounded-xl bg-white border border-border">
-                <div className="text-3xl md:text-4xl font-bold text-primary">{item.value}</div>
-                <div className="mt-2 text-sm font-medium text-heading">{item.label}</div>
-                <div className="mt-1 text-xs text-muted">{item.description}</div>
+              <div className="text-center p-8 rounded-xl bg-white/[0.04] border border-white/[0.07]">
+                <div className="text-3xl md:text-4xl font-bold text-blue-400">{item.value}</div>
+                <div className="mt-2 text-sm font-medium text-white">{item.label}</div>
+                <div className="mt-1 text-xs text-white/40">{item.description}</div>
               </div>
             </ScrollReveal>
           ))}
@@ -132,7 +132,7 @@ export default function ForInsurersPage() {
               </svg>
             }
             title="API連携"
-            description="エンタープライズプランでは、RESTful APIによる社内システムとの連携が可能。既存ワークフローに組み込めます。"
+            description="施工店のプロプランでは、RESTful APIによるデータ連携が可能。保険会社の既存ワークフローに組み込めます。"
           />
         </div>
       </Section>

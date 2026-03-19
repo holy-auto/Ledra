@@ -1,30 +1,10 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import PageHeader from "@/components/ui/PageHeader";
 import DashboardCharts from "./DashboardCharts";
-
-type DashboardStats = {
-  totalCerts: number;
-  activeCerts: number;
-  voidCerts: number;
-  memberCount: number;
-  customerCount: number;
-  invoiceCount: number;
-  unpaidAmount: number;
-  recentActivity: { date: string; count: number }[];
-  statusBreakdown: { status: string; count: number }[];
-  // Reservations & orders
-  todayReservations: number;
-  activeReservations: number;
-  activeOrders: number;
-  // Platform-wide
-  platformCertStats: { total: number; active: number; void: number; expired: number; draft: number } | null;
-  categoryStats: { category: string; count: number }[] | null;
-  insurerCount: number;
-  regionalStats: { prefecture: string; count: number }[] | null;
-};
 
 const CATEGORY_LABELS: Record<string, string> = {
   detailing: "ディテイリング",
@@ -34,10 +14,25 @@ const CATEGORY_LABELS: Record<string, string> = {
   unset: "未設定",
 };
 
-async function fetchStats(supabase: any, tenantId: string): Promise<DashboardStats> {
+function StatSkeleton() {
+  return (
+    <div className="animate-pulse grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {[1, 2, 3, 4].map((i) => (
+        <div key={i} className="glass-card p-5 space-y-2">
+          <div className="h-3 w-16 rounded bg-[rgba(0,0,0,0.06)]" />
+          <div className="h-8 w-20 rounded bg-[rgba(0,0,0,0.06)]" />
+          <div className="h-3 w-24 rounded bg-[rgba(0,0,0,0.04)]" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Tenant Stats Section ──
+async function TenantStats({ tenantId }: { tenantId: string }) {
+  const supabase = await createSupabaseServerClient();
   const today = new Date().toISOString().slice(0, 10);
 
-  // ── All queries in parallel (was 11 sequential queries → now 1 round-trip) ──
   const [
     { data: certs },
     { count: memberCount },
@@ -46,25 +41,16 @@ async function fetchStats(supabase: any, tenantId: string): Promise<DashboardSta
     todayResResult,
     activeResResult,
     ordersResult,
-    pcsResult,
-    csResult,
-    icResult,
-    rsResult,
   ] = await Promise.all([
     supabase.from("certificates").select("status,created_at").eq("tenant_id", tenantId),
     supabase.from("tenant_memberships").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId),
     supabase.from("customers").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId),
     supabase.from("invoices").select("status,total").eq("tenant_id", tenantId),
-    supabase.from("reservations").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("scheduled_date", today).neq("status", "cancelled").then((r: any) => r).catch(() => ({ count: 0 })),
-    supabase.from("reservations").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).in("status", ["confirmed", "arrived", "in_progress"]).then((r: any) => r).catch(() => ({ count: 0 })),
-    supabase.from("job_orders").select("*", { count: "exact", head: true }).or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`).in("status", ["pending", "accepted", "in_progress"]).then((r: any) => r).catch(() => ({ count: 0 })),
-    supabase.rpc("platform_certificate_stats").then((r: any) => r).catch(() => ({ data: null })),
-    supabase.rpc("platform_tenant_category_stats").then((r: any) => r).catch(() => ({ data: null })),
-    supabase.rpc("platform_insurer_count").then((r: any) => r).catch(() => ({ data: 0 })),
-    supabase.rpc("platform_regional_stats").then((r: any) => r).catch(() => ({ data: null })),
+    Promise.resolve(supabase.from("reservations").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("scheduled_date", today).neq("status", "cancelled")).catch(() => ({ count: 0 })),
+    Promise.resolve(supabase.from("reservations").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).in("status", ["confirmed", "arrived", "in_progress"])).catch(() => ({ count: 0 })),
+    Promise.resolve(supabase.from("job_orders").select("*", { count: "exact", head: true }).or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`).in("status", ["pending", "accepted", "in_progress"])).catch(() => ({ count: 0 })),
   ]);
 
-  // ── Process certificates ──
   const allCerts = certs ?? [];
   const totalCerts = allCerts.length;
   const activeCerts = allCerts.filter((c: any) => c.status === "active").length;
@@ -90,31 +76,193 @@ async function fetchStats(supabase: any, tenantId: string): Promise<DashboardSta
   }
   const recentActivity = Array.from(dateMap.entries()).map(([date, count]) => ({ date, count }));
 
-  // ── Process invoices ──
   const invoiceList = invoices ?? [];
   const invoiceCount = invoiceList.length;
   const unpaidAmount = invoiceList
     .filter((inv: any) => inv.status === "sent" || inv.status === "overdue")
     .reduce((sum: number, inv: any) => sum + (inv.total ?? 0), 0);
 
-  return {
-    totalCerts,
-    activeCerts,
-    voidCerts,
-    memberCount: memberCount ?? 0,
-    customerCount: customerCount ?? 0,
-    invoiceCount,
-    unpaidAmount,
-    recentActivity,
-    statusBreakdown,
-    todayReservations: todayResResult?.count ?? 0,
-    activeReservations: activeResResult?.count ?? 0,
-    activeOrders: ordersResult?.count ?? 0,
-    platformCertStats: pcsResult?.data ?? null,
-    categoryStats: csResult?.data ?? null,
-    insurerCount: icResult?.data ?? 0,
-    regionalStats: rsResult?.data ?? null,
-  };
+  return (
+    <>
+      <div>
+        <h2 className="text-xs font-semibold tracking-[0.18em] text-muted mb-3">自店舗</h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="glass-card p-5">
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted">合計</div>
+            <div className="mt-2 text-3xl font-bold text-primary">{totalCerts}</div>
+            <div className="mt-1 text-xs text-muted">施工証明書 総数</div>
+          </div>
+          <div className="glass-card p-5">
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted">有効</div>
+            <div className="mt-2 text-3xl font-bold text-[#28a745]">{activeCerts}</div>
+            <div className="mt-1 text-xs text-muted">有効な施工証明書</div>
+          </div>
+          <div className="glass-card p-5">
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted">無効</div>
+            <div className="mt-2 text-3xl font-bold text-[#d1242f]">{voidCerts}</div>
+            <div className="mt-1 text-xs text-muted">無効の施工証明書</div>
+          </div>
+          <div className="glass-card p-5">
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted">メンバー</div>
+            <div className="mt-2 text-3xl font-bold text-[#0071e3]">{memberCount ?? 0}</div>
+            <div className="mt-1 text-xs text-muted">チームメンバー</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Reservations & Orders */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Link href="/admin/reservations" className="glass-card p-5 hover:bg-surface-hover transition-colors">
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">本日</div>
+          <div className="mt-2 text-2xl font-bold text-[#5856d6]">{todayResResult?.count ?? 0}</div>
+          <div className="mt-1 text-xs text-muted">本日の予約</div>
+        </Link>
+        <Link href="/admin/reservations" className="glass-card p-5 hover:bg-surface-hover transition-colors">
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">進行中</div>
+          <div className="mt-2 text-2xl font-bold text-[#0071e3]">{activeResResult?.count ?? 0}</div>
+          <div className="mt-1 text-xs text-muted">進行中の予約・作業</div>
+        </Link>
+        <Link href="/admin/orders" className="glass-card p-5 hover:bg-surface-hover transition-colors">
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">受発注</div>
+          <div className="mt-2 text-2xl font-bold text-[#b35c00]">{ordersResult?.count ?? 0}</div>
+          <div className="mt-1 text-xs text-muted">進行中の受発注</div>
+        </Link>
+      </div>
+
+      {/* Tenant sub-stats */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="glass-card p-5">
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">顧客</div>
+          <div className="mt-2 text-2xl font-bold text-primary">{customerCount ?? 0}</div>
+          <div className="mt-1 text-xs text-muted">顧客数</div>
+        </div>
+        <div className="glass-card p-5">
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">請求書</div>
+          <div className="mt-2 text-2xl font-bold text-primary">{invoiceCount}</div>
+          <div className="mt-1 text-xs text-muted">請求書数</div>
+        </div>
+        <div className="glass-card p-5">
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">未回収</div>
+          <div className="mt-2 text-2xl font-bold text-[#b35c00]">¥{unpaidAmount.toLocaleString()}</div>
+          <div className="mt-1 text-xs text-muted">未回収額</div>
+        </div>
+      </div>
+
+      {/* Charts */}
+      <DashboardCharts recentActivity={recentActivity} statusBreakdown={statusBreakdown} />
+    </>
+  );
+}
+
+// ── Platform Stats Section ──
+async function PlatformStats() {
+  const supabase = await createSupabaseServerClient();
+
+  const [pcsResult, csResult, icResult, rsResult] = await Promise.all([
+    Promise.resolve(supabase.rpc("platform_certificate_stats")).catch(() => ({ data: null })),
+    Promise.resolve(supabase.rpc("platform_tenant_category_stats")).catch(() => ({ data: null })),
+    Promise.resolve(supabase.rpc("platform_insurer_count")).catch(() => ({ data: 0 })),
+    Promise.resolve(supabase.rpc("platform_regional_stats")).catch(() => ({ data: null })),
+  ]);
+
+  const platformCertStats = pcsResult?.data ?? null;
+  const categoryStats = csResult?.data ?? null;
+  const insurerCount = icResult?.data ?? 0;
+  const regionalStats = rsResult?.data ?? null;
+
+  if (!platformCertStats && !categoryStats && insurerCount <= 0) return null;
+
+  return (
+    <>
+      <div>
+        <h2 className="text-xs font-semibold tracking-[0.18em] text-muted mb-3">プラットフォーム全体</h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {platformCertStats && (
+            <>
+              <div className="glass-card p-5">
+                <div className="text-xs font-semibold tracking-[0.18em] text-muted">全体証明書</div>
+                <div className="mt-2 text-3xl font-bold text-primary">{platformCertStats.total}</div>
+                <div className="mt-1 text-xs text-muted">プラットフォーム全体</div>
+              </div>
+              <div className="glass-card p-5">
+                <div className="text-xs font-semibold tracking-[0.18em] text-muted">全体 有効</div>
+                <div className="mt-2 text-3xl font-bold text-[#28a745]">{platformCertStats.active}</div>
+                <div className="mt-1 text-xs text-muted">有効な施工証明書</div>
+              </div>
+            </>
+          )}
+          <div className="glass-card p-5">
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted">保険会社</div>
+            <div className="mt-2 text-3xl font-bold text-[#bf5af2]">{insurerCount}</div>
+            <div className="mt-1 text-xs text-muted">保険会社数</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Category & Regional Breakdown */}
+      {(categoryStats || regionalStats) && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {categoryStats && categoryStats.length > 0 && (
+            <div className="glass-card p-5">
+              <div className="text-xs font-semibold tracking-[0.18em] text-muted mb-1">業種別</div>
+              <div className="text-base font-semibold text-primary mb-4">業種別 施工店数</div>
+              <div className="space-y-3">
+                {(() => {
+                  const categoryTotal = categoryStats.reduce((s: number, c: any) => s + c.count, 0);
+                  return categoryStats.map((cat: any) => {
+                    const pct = categoryTotal > 0 ? Math.round((cat.count / categoryTotal) * 100) : 0;
+                    return (
+                      <div key={cat.category}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm text-secondary">{CATEGORY_LABELS[cat.category] ?? cat.category}</span>
+                          <span className="text-sm font-semibold text-primary">{cat.count}</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-[#0071e3] to-[#5e5ce6]"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          )}
+
+          {regionalStats && regionalStats.length > 0 && (
+            <div className="glass-card p-5">
+              <div className="text-xs font-semibold tracking-[0.18em] text-muted mb-1">地域別</div>
+              <div className="text-base font-semibold text-primary mb-4">地域別 施工店数</div>
+              <div className="space-y-3">
+                {(() => {
+                  const regionalTotal = regionalStats.reduce((s: number, r: any) => s + r.count, 0);
+                  return regionalStats.slice(0, 10).map((reg: any) => {
+                    const pct = regionalTotal > 0 ? Math.round((reg.count / regionalTotal) * 100) : 0;
+                    return (
+                      <div key={reg.prefecture}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm text-secondary">{reg.prefecture}</span>
+                          <span className="text-sm font-semibold text-primary">{reg.count}</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-[#30d158] to-[#34c759]"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
 }
 
 export default async function AdminHome() {
@@ -124,186 +272,23 @@ export default async function AdminHome() {
 
   const tenantId = caller.tenantId;
 
-  let stats: DashboardStats | null = null;
-  if (tenantId) {
-    try {
-      stats = await fetchStats(supabase, tenantId);
-    } catch {
-      stats = null;
-    }
-  }
-
   return (
     <div className="space-y-6">
       <PageHeader tag="管理画面" title="ダッシュボード" description="施工証明書の管理状況を一目で確認" />
 
-      {/* My Tenant Stats */}
-      {stats && (
-        <>
-          <div>
-            <h2 className="text-xs font-semibold tracking-[0.18em] text-muted mb-3">自店舗</h2>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="glass-card p-5">
-                <div className="text-xs font-semibold tracking-[0.18em] text-muted">合計</div>
-                <div className="mt-2 text-3xl font-bold text-primary">{stats.totalCerts}</div>
-                <div className="mt-1 text-xs text-muted">施工証明書 総数</div>
-              </div>
-              <div className="glass-card p-5">
-                <div className="text-xs font-semibold tracking-[0.18em] text-muted">有効</div>
-                <div className="mt-2 text-3xl font-bold text-[#28a745]">{stats.activeCerts}</div>
-                <div className="mt-1 text-xs text-muted">有効な施工証明書</div>
-              </div>
-              <div className="glass-card p-5">
-                <div className="text-xs font-semibold tracking-[0.18em] text-muted">無効</div>
-                <div className="mt-2 text-3xl font-bold text-[#d1242f]">{stats.voidCerts}</div>
-                <div className="mt-1 text-xs text-muted">無効の施工証明書</div>
-              </div>
-              <div className="glass-card p-5">
-                <div className="text-xs font-semibold tracking-[0.18em] text-muted">メンバー</div>
-                <div className="mt-2 text-3xl font-bold text-[#0071e3]">{stats.memberCount}</div>
-                <div className="mt-1 text-xs text-muted">チームメンバー</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Reservations & Orders */}
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Link href="/admin/reservations" className="glass-card p-5 hover:bg-surface-hover transition-colors">
-              <div className="text-xs font-semibold tracking-[0.18em] text-muted">本日</div>
-              <div className="mt-2 text-2xl font-bold text-[#5856d6]">{stats.todayReservations}</div>
-              <div className="mt-1 text-xs text-muted">本日の予約</div>
-            </Link>
-            <Link href="/admin/reservations" className="glass-card p-5 hover:bg-surface-hover transition-colors">
-              <div className="text-xs font-semibold tracking-[0.18em] text-muted">進行中</div>
-              <div className="mt-2 text-2xl font-bold text-[#0071e3]">{stats.activeReservations}</div>
-              <div className="mt-1 text-xs text-muted">進行中の予約・作業</div>
-            </Link>
-            <Link href="/admin/orders" className="glass-card p-5 hover:bg-surface-hover transition-colors">
-              <div className="text-xs font-semibold tracking-[0.18em] text-muted">受発注</div>
-              <div className="mt-2 text-2xl font-bold text-[#b35c00]">{stats.activeOrders}</div>
-              <div className="mt-1 text-xs text-muted">進行中の受発注</div>
-            </Link>
-          </div>
-
-          {/* Tenant sub-stats */}
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="glass-card p-5">
-              <div className="text-xs font-semibold tracking-[0.18em] text-muted">顧客</div>
-              <div className="mt-2 text-2xl font-bold text-primary">{stats.customerCount}</div>
-              <div className="mt-1 text-xs text-muted">顧客数</div>
-            </div>
-            <div className="glass-card p-5">
-              <div className="text-xs font-semibold tracking-[0.18em] text-muted">請求書</div>
-              <div className="mt-2 text-2xl font-bold text-primary">{stats.invoiceCount}</div>
-              <div className="mt-1 text-xs text-muted">請求書数</div>
-            </div>
-            <div className="glass-card p-5">
-              <div className="text-xs font-semibold tracking-[0.18em] text-muted">未回収</div>
-              <div className="mt-2 text-2xl font-bold text-[#b35c00]">¥{stats.unpaidAmount.toLocaleString()}</div>
-              <div className="mt-1 text-xs text-muted">未回収額</div>
-            </div>
-          </div>
-        </>
+      {/* Tenant Stats - streams in first */}
+      {tenantId && (
+        <Suspense fallback={<StatSkeleton />}>
+          <TenantStats tenantId={tenantId} />
+        </Suspense>
       )}
 
-      {/* Charts */}
-      {stats && (
-        <DashboardCharts
-          recentActivity={stats.recentActivity}
-          statusBreakdown={stats.statusBreakdown}
-        />
-      )}
+      {/* Platform Stats - streams independently */}
+      <Suspense fallback={<StatSkeleton />}>
+        <PlatformStats />
+      </Suspense>
 
-      {/* Platform-wide Stats */}
-      {stats && (stats.platformCertStats || stats.categoryStats || stats.insurerCount > 0) && (
-        <div>
-          <h2 className="text-xs font-semibold tracking-[0.18em] text-muted mb-3">プラットフォーム全体</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {stats.platformCertStats && (
-              <>
-                <div className="glass-card p-5">
-                  <div className="text-xs font-semibold tracking-[0.18em] text-muted">全体証明書</div>
-                  <div className="mt-2 text-3xl font-bold text-primary">{stats.platformCertStats.total}</div>
-                  <div className="mt-1 text-xs text-muted">プラットフォーム全体</div>
-                </div>
-                <div className="glass-card p-5">
-                  <div className="text-xs font-semibold tracking-[0.18em] text-muted">全体 有効</div>
-                  <div className="mt-2 text-3xl font-bold text-[#28a745]">{stats.platformCertStats.active}</div>
-                  <div className="mt-1 text-xs text-muted">有効な施工証明書</div>
-                </div>
-              </>
-            )}
-            <div className="glass-card p-5">
-              <div className="text-xs font-semibold tracking-[0.18em] text-muted">保険会社</div>
-              <div className="mt-2 text-3xl font-bold text-[#bf5af2]">{stats.insurerCount}</div>
-              <div className="mt-1 text-xs text-muted">保険会社数</div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Category & Regional Breakdown */}
-      {stats && (stats.categoryStats || stats.regionalStats) && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {/* 業種別施工店数 */}
-          {stats.categoryStats && stats.categoryStats.length > 0 && (
-            <div className="glass-card p-5">
-              <div className="text-xs font-semibold tracking-[0.18em] text-muted mb-1">業種別</div>
-              <div className="text-base font-semibold text-primary mb-4">業種別 施工店数</div>
-              <div className="space-y-3">
-                {stats.categoryStats.map((cat: any) => {
-                  const total = stats!.categoryStats!.reduce((s: number, c: any) => s + c.count, 0);
-                  const pct = total > 0 ? Math.round((cat.count / total) * 100) : 0;
-                  return (
-                    <div key={cat.category}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm text-secondary">{CATEGORY_LABELS[cat.category] ?? cat.category}</span>
-                        <span className="text-sm font-semibold text-primary">{cat.count}</span>
-                      </div>
-                      <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-[#0071e3] to-[#5e5ce6]"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* 地域別 */}
-          {stats.regionalStats && stats.regionalStats.length > 0 && (
-            <div className="glass-card p-5">
-              <div className="text-xs font-semibold tracking-[0.18em] text-muted mb-1">地域別</div>
-              <div className="text-base font-semibold text-primary mb-4">地域別 施工店数</div>
-              <div className="space-y-3">
-                {stats.regionalStats.slice(0, 10).map((reg: any) => {
-                  const total = stats!.regionalStats!.reduce((s: number, r: any) => s + r.count, 0);
-                  const pct = total > 0 ? Math.round((reg.count / total) * 100) : 0;
-                  return (
-                    <div key={reg.prefecture}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm text-secondary">{reg.prefecture}</span>
-                        <span className="text-sm font-semibold text-primary">{reg.count}</span>
-                      </div>
-                      <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-[#30d158] to-[#34c759]"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Quick Actions */}
+      {/* Quick Actions - renders immediately (no data fetching) */}
       <div>
         <h2 className="text-sm font-semibold tracking-[0.18em] text-muted mb-3">クイックアクション</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

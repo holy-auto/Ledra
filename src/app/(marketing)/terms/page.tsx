@@ -5,24 +5,24 @@ import { siteConfig } from "@/lib/marketing/config";
 function Article({ children }: { children: ReactNode }) {
   return (
     <div className="mx-auto max-w-2xl px-6 py-24">
-      <article className="prose prose-zinc max-w-none">{children}</article>
+      <article className="prose prose-invert max-w-none">{children}</article>
     </div>
   );
 }
 
 function H2({ children }: { children: ReactNode }) {
   return (
-    <h2 className="mb-3 mt-10 text-lg font-bold text-zinc-900">{children}</h2>
+    <h2 className="mb-3 mt-10 text-lg font-bold text-white">{children}</h2>
   );
 }
 
 function P({ children }: { children: ReactNode }) {
-  return <p className="mb-4 text-sm leading-relaxed text-zinc-600">{children}</p>;
+  return <p className="mb-4 text-sm leading-relaxed text-white/60">{children}</p>;
 }
 
 function Ul({ children }: { children: ReactNode }) {
   return (
-    <ul className="mb-4 list-disc space-y-1 pl-5 text-sm text-zinc-600">
+    <ul className="mb-4 list-disc space-y-1 pl-5 text-sm text-white/60">
       {children}
     </ul>
   );
@@ -33,8 +33,8 @@ export default function TermsPage() {
 
   return (
     <Article>
-      <h1 className="mb-2 text-3xl font-bold text-zinc-900">利用規約</h1>
-      <p className="mb-10 text-sm text-zinc-400">最終更新日：{updated}</p>
+      <h1 className="mb-2 text-3xl font-bold text-white">利用規約</h1>
+      <p className="mb-10 text-sm text-white/40">最終更新日：{updated}</p>
 
       <P>
         本利用規約（以下「本規約」）は、{siteConfig.siteName}（以下「当社」）が提供する
@@ -128,7 +128,7 @@ export default function TermsPage() {
         本規約に関するお問い合わせは{" "}
         <a
           href={`mailto:${siteConfig.contactEmail}`}
-          className="font-medium text-zinc-700 hover:underline"
+          className="font-medium text-blue-400 hover:underline"
         >
           {siteConfig.contactEmail}
         </a>{" "}

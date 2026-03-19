@@ -62,29 +62,29 @@ export function Hero() {
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center mt-12 animate-[hero-fade-up_0.8s_ease-out_0.9s_both]">
-          <CTAButton variant="white" href="/contact">
+          <CTAButton variant="white" href="/signup">
             無料で始める
           </CTAButton>
           <CTAButton variant="white-outline" href="/contact">
-            資料請求
+            資料請求・お問い合わせ
           </CTAButton>
         </div>
 
-        {/* Trust metrics */}
+        {/* Value props — factual, no inflated numbers */}
         <div className="mt-20 flex flex-col sm:flex-row items-center justify-center gap-8 sm:gap-16 animate-[hero-fade-in_0.8s_ease-out_1.2s_both]">
           <div className="text-center">
-            <div className="text-2xl md:text-3xl font-bold text-white">500<span className="text-blue-400">+</span></div>
-            <div className="text-xs text-white/40 mt-1">導入企業数</div>
+            <div className="text-2xl md:text-3xl font-bold text-white">無料<span className="text-blue-400">で開始</span></div>
+            <div className="text-xs text-white/40 mt-1">クレジットカード不要</div>
           </div>
           <div className="hidden sm:block w-px h-8 bg-white/10" />
           <div className="text-center">
-            <div className="text-2xl md:text-3xl font-bold text-white">10,000<span className="text-blue-400">+</span></div>
-            <div className="text-xs text-white/40 mt-1">証明書発行数</div>
+            <div className="text-2xl md:text-3xl font-bold text-white">5<span className="text-blue-400">分</span></div>
+            <div className="text-xs text-white/40 mt-1">かんたん初期設定</div>
           </div>
           <div className="hidden sm:block w-px h-8 bg-white/10" />
           <div className="text-center">
-            <div className="text-2xl md:text-3xl font-bold text-white">99<span className="text-blue-400">%</span></div>
-            <div className="text-xs text-white/40 mt-1">継続利用率</div>
+            <div className="text-2xl md:text-3xl font-bold text-white">URL<span className="text-blue-400">共有</span></div>
+            <div className="text-xs text-white/40 mt-1">証明書をすぐに共有</div>
           </div>
         </div>
       </Container>

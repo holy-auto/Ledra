@@ -2,19 +2,22 @@
 
 import { useState } from "react";
 
+const inputClass =
+  "w-full px-4 py-3 rounded-lg border border-white/[0.08] bg-white/[0.05] text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/40 transition-colors";
+
 export function ContactForm() {
   const [submitted, setSubmitted] = useState(false);
 
   if (submitted) {
     return (
-      <div className="text-center py-16 px-8 rounded-xl bg-surface-alt border border-border">
-        <div className="w-16 h-16 mx-auto bg-primary/[0.08] rounded-full flex items-center justify-center">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-8 h-8 text-primary">
+      <div className="text-center py-16 px-8 rounded-xl bg-white/[0.04] border border-white/[0.07]">
+        <div className="w-16 h-16 mx-auto bg-blue-500/[0.1] rounded-full flex items-center justify-center">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-8 h-8 text-blue-400">
             <path d="M5 13l4 4L19 7" />
           </svg>
         </div>
-        <h3 className="mt-6 text-xl font-bold text-heading">送信完了</h3>
-        <p className="mt-3 text-body">
+        <h3 className="mt-6 text-xl font-bold text-white">送信完了</h3>
+        <p className="mt-3 text-white/50">
           お問い合わせいただきありがとうございます。<br />
           1営業日以内にご返信いたします。
         </p>
@@ -32,43 +35,43 @@ export function ContactForm() {
     >
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
         <div>
-          <label className="block text-sm font-medium text-heading mb-2">
-            お名前 <span className="text-red-500">*</span>
+          <label className="block text-sm font-medium text-white/80 mb-2">
+            お名前 <span className="text-red-400">*</span>
           </label>
           <input
             type="text"
             required
-            className="w-full px-4 py-3 rounded-lg border border-border bg-white text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+            className={inputClass}
             placeholder="山田 太郎"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-heading mb-2">
+          <label className="block text-sm font-medium text-white/80 mb-2">
             会社名
           </label>
           <input
             type="text"
-            className="w-full px-4 py-3 rounded-lg border border-border bg-white text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+            className={inputClass}
             placeholder="株式会社〇〇"
           />
         </div>
       </div>
       <div>
-        <label className="block text-sm font-medium text-heading mb-2">
-          メールアドレス <span className="text-red-500">*</span>
+        <label className="block text-sm font-medium text-white/80 mb-2">
+          メールアドレス <span className="text-red-400">*</span>
         </label>
         <input
           type="email"
           required
-          className="w-full px-4 py-3 rounded-lg border border-border bg-white text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+          className={inputClass}
           placeholder="example@company.com"
         />
       </div>
       <div>
-        <label className="block text-sm font-medium text-heading mb-2">
+        <label className="block text-sm font-medium text-white/80 mb-2">
           お問い合わせ種別
         </label>
-        <select className="w-full px-4 py-3 rounded-lg border border-border bg-white text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors">
+        <select className={inputClass}>
           <option value="">選択してください</option>
           <option value="demo">デモのご依頼</option>
           <option value="document">資料請求</option>
@@ -78,19 +81,19 @@ export function ContactForm() {
         </select>
       </div>
       <div>
-        <label className="block text-sm font-medium text-heading mb-2">
-          お問い合わせ内容 <span className="text-red-500">*</span>
+        <label className="block text-sm font-medium text-white/80 mb-2">
+          お問い合わせ内容 <span className="text-red-400">*</span>
         </label>
         <textarea
           required
           rows={5}
-          className="w-full px-4 py-3 rounded-lg border border-border bg-white text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors resize-none"
+          className={`${inputClass} resize-none`}
           placeholder="お問い合わせ内容をご記入ください"
         />
       </div>
       <button
         type="submit"
-        className="w-full sm:w-auto inline-flex items-center justify-center font-medium rounded-lg text-[0.938rem] px-8 py-3.5 bg-primary text-white hover:bg-primary-hover shadow-[0_1px_2px_rgba(0,0,0,0.08),0_4px_12px_rgba(11,92,186,0.25)] hover:shadow-[0_1px_2px_rgba(0,0,0,0.08),0_6px_20px_rgba(11,92,186,0.35)] hover:-translate-y-[1px] transition-all duration-200"
+        className="w-full sm:w-auto inline-flex items-center justify-center font-medium rounded-lg text-[0.938rem] px-8 py-3.5 bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 shadow-[0_1px_12px_rgba(59,130,246,0.3)] hover:shadow-[0_2px_20px_rgba(59,130,246,0.45)] hover:-translate-y-[0.5px] transition-all duration-200"
       >
         送信する
       </button>

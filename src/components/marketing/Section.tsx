@@ -10,17 +10,13 @@ export function Section({
   className?: string;
 }) {
   const bgClass =
-    bg === "alt"
-      ? "bg-[#f8f9fb]"
+    bg === "alt" || bg === "dark-alt"
+      ? "bg-[#0a0f1a]"
       : bg === "primary"
         ? "bg-gradient-to-br from-primary to-[#094A96]"
-        : bg === "dark"
-          ? "bg-[#060a12]"
-          : bg === "dark-alt"
-            ? "bg-[#0a0f1a]"
-            : "bg-white";
+        : "bg-[#060a12]";
 
-  const isDark = bg === "dark" || bg === "dark-alt";
+  const isDark = true;
 
   return (
     <section className={`relative py-24 md:py-32 overflow-hidden ${bgClass} ${className}`}>

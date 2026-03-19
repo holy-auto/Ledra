@@ -19,16 +19,8 @@ export default function GlobalError({
       <body>
         <div style={{ padding: "2rem", textAlign: "center" }}>
           <h2>予期しないエラーが発生しました</h2>
-          <p>問題が解決しない場合はサポートまでご連絡ください。</p>
-          <button
-            onClick={() => reset()}
-            style={{
-              marginTop: "1rem",
-              padding: "0.5rem 1rem",
-              cursor: "pointer",
-            }}
-          >
-            もう一度試す
+          <button onClick={() => reset()} style={{ marginTop: "1rem", padding: "0.5rem 1rem" }}>
+            再読み込み
           </button>
         </div>
       </body>

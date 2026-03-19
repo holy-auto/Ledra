@@ -1,5 +1,9 @@
 import { Suspense } from "react";
-import BillingHubClient from "./BillingHubClient";
+import nextDynamic from "next/dynamic";
+
+const BillingHubClient = nextDynamic(() => import("./BillingHubClient"), {
+  loading: () => <div className="animate-pulse h-40 rounded-2xl bg-[rgba(0,0,0,0.04)]" />,
+});
 
 export const dynamic = "force-dynamic";
 

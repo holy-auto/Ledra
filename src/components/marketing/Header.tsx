@@ -37,36 +37,7 @@ export function Header() {
           CARTRUST
         </Link>
 
-        {/* Desktop Nav */}
-        <nav className="hidden md:flex items-center gap-10">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="text-[0.875rem] font-medium text-white/50 hover:text-white transition-colors relative after:absolute after:bottom-[-4px] after:left-0 after:w-0 after:h-[2px] after:bg-blue-400 after:transition-all after:duration-300 hover:after:w-full"
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-
-        <div className="hidden md:flex items-center gap-4">
-          <Link
-            href="/login"
-            className="text-[0.875rem] font-medium text-white/50 hover:text-white transition-colors"
-          >
-            ログイン
-          </Link>
-          <Link
-            href="/signup"
-            className="bg-gradient-to-r from-blue-600 to-blue-500 text-white text-[0.875rem] font-medium px-5 py-2.5 rounded-lg hover:from-blue-500 hover:to-blue-400 transition-all shadow-[0_1px_12px_rgba(59,130,246,0.3)] hover:shadow-[0_2px_20px_rgba(59,130,246,0.45)] hover:-translate-y-[0.5px]"
-          >
-            無料で始める
-          </Link>
-        </div>
-
-        {/* Mobile Menu */}
-        <MobileMenu navItems={navItems} />
+        {/* Pre-launch: nav hidden */}
       </Container>
     </header>
   );
