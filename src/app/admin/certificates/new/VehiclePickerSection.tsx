@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useId, useEffect } from "react";
+import { useState, useId, useEffect, useRef } from "react";
+import Button from "@/components/ui/Button";
 
 type Vehicle = {
   id: string;
@@ -8,7 +9,14 @@ type Vehicle = {
   model: string | null;
   year: number | null;
   plate_display: string | null;
-  customer_name: string | null;
+  vin_code?: string | null;
+};
+
+type Customer = {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
 };
 
 function vehicleLabel(v: Vehicle) {
@@ -33,46 +41,81 @@ const labelCls = "block space-y-1.5";
 const labelTextCls = "text-sm font-medium text-neutral-700";
 
 export default function VehiclePickerSection({
-  vehicles,
+  vehicles: initialVehicles,
   defaultVehicleId,
 }: {
   vehicles: Vehicle[];
   defaultVehicleId?: string;
 }) {
   const uid = useId();
+  const [vehicles, setVehicles] = useState<Vehicle[]>(initialVehicles);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [customerName, setCustomerName] = useState("");
+  const [customerId, setCustomerId] = useState("");
   const [model, setModel] = useState("");
   const [plate, setPlate] = useState("");
 
-  // Pre-select vehicle when defaultVehicleId is provided (e.g. from ?vehicle_id= in URL)
+  // Customer master search
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerResults, setCustomerResults] = useState<Customer[]>([]);
+  const [customerSearchOpen, setCustomerSearchOpen] = useState(false);
+  const customerDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Inline new vehicle form
+  const [showNewVehicleForm, setShowNewVehicleForm] = useState(false);
+  const [newMaker, setNewMaker] = useState("");
+  const [newModel, setNewModel] = useState("");
+  const [newYear, setNewYear] = useState("");
+  const [newPlate, setNewPlate] = useState("");
+  const [newVin, setNewVin] = useState("");
+  const [newVehicleBusy, setNewVehicleBusy] = useState(false);
+  const [newVehicleErr, setNewVehicleErr] = useState<string | null>(null);
+
+  // Pre-select vehicle when defaultVehicleId is provided
   useEffect(() => {
     if (!defaultVehicleId) return;
     const v = vehicles.find((v) => v.id === defaultVehicleId);
     if (v) {
       setSelectedId(v.id);
-      setCustomerName(v.customer_name ?? "");
       setModel(vehicleModel(v));
       setPlate(v.plate_display ?? "");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultVehicleId]);
 
+  // Customer search debounce
+  useEffect(() => {
+    if (!customerSearch.trim()) {
+      setCustomerResults([]);
+      return;
+    }
+    if (customerDebounceRef.current) clearTimeout(customerDebounceRef.current);
+    customerDebounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/admin/customers?q=${encodeURIComponent(customerSearch)}&limit=8`);
+        const j = await res.json();
+        setCustomerResults(j.customers ?? []);
+      } catch {
+        setCustomerResults([]);
+      }
+    }, 300);
+  }, [customerSearch]);
+
   const filtered = vehicles.filter((v) => {
     if (!search.trim()) return true;
     const s = search.toLowerCase();
-    return [v.maker, v.model, v.plate_display, v.customer_name]
+    return [v.maker, v.model, v.plate_display, v.vin_code]
       .filter(Boolean)
       .some((val) => String(val).toLowerCase().includes(s));
   });
 
-  const handleSelect = (vehicleId: string) => {
+  const handleSelect = (vehicleId: string, vehicleList = vehicles) => {
     setSelectedId(vehicleId);
     setSearch("");
-    const v = vehicles.find((v) => v.id === vehicleId);
+    setShowNewVehicleForm(false);
+    const v = vehicleList.find((v) => v.id === vehicleId);
     if (v) {
-      setCustomerName(v.customer_name ?? "");
       setModel(vehicleModel(v));
       setPlate(v.plate_display ?? "");
     }
@@ -81,10 +124,59 @@ export default function VehiclePickerSection({
   const handleClear = () => {
     setSelectedId("");
     setSearch("");
-    setCustomerName("");
     setModel("");
     setPlate("");
+    setShowNewVehicleForm(false);
   };
+
+  const handleCustomerSelect = (c: Customer) => {
+    setCustomerName(c.name);
+    setCustomerId(c.id);
+    setCustomerSearch("");
+    setCustomerSearchOpen(false);
+  };
+
+  async function createNewVehicle(e: React.FormEvent) {
+    e.preventDefault();
+    setNewVehicleBusy(true);
+    setNewVehicleErr(null);
+    try {
+      const res = await fetch("/api/vehicles/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          maker: newMaker,
+          model: newModel,
+          year: newYear ? Number(newYear) : null,
+          plate_display: newPlate || null,
+          vin_code: newVin || null,
+        }),
+      });
+      const j = await res.json();
+      if (!res.ok) {
+        setNewVehicleErr(j?.message || "登録に失敗しました。");
+        return;
+      }
+      const newV: Vehicle = {
+        id: j.id,
+        maker: newMaker,
+        model: newModel,
+        year: newYear ? Number(newYear) : null,
+        plate_display: newPlate || null,
+        vin_code: newVin || null,
+      };
+      const updated = [...vehicles, newV];
+      setVehicles(updated);
+      handleSelect(j.id, updated);
+      // Reset form
+      setNewMaker(""); setNewModel(""); setNewYear(""); setNewPlate(""); setNewVin("");
+      setSearch("");
+    } catch (err: any) {
+      setNewVehicleErr(String(err?.message || err));
+    } finally {
+      setNewVehicleBusy(false);
+    }
+  }
 
   const selected = vehicles.find((v) => v.id === selectedId) ?? null;
 
@@ -100,7 +192,7 @@ export default function VehiclePickerSection({
             車両を選択 <span className="text-red-500">*</span>
           </div>
           <p className="mt-0.5 text-xs text-neutral-500">
-            既存車両を選択すると顧客名・車両情報が自動入力されます（必須）
+            登録済みの車両から選択してください（必須）
           </p>
         </div>
 
@@ -112,11 +204,6 @@ export default function VehiclePickerSection({
               <div className="text-sm font-semibold text-emerald-900 truncate">
                 {vehicleLabel(selected)}
               </div>
-              {selected.customer_name && (
-                <div className="text-xs text-emerald-700 mt-0.5">
-                  {selected.customer_name}
-                </div>
-              )}
             </div>
             <button
               type="button"
@@ -127,47 +214,77 @@ export default function VehiclePickerSection({
             </button>
           </div>
         ) : (
-          <div className="relative">
-            <input
-              id={uid}
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={
-                vehicles.length === 0
-                  ? "登録車両がありません"
-                  : "車種・ナンバー・顧客名で検索…"
-              }
-              disabled={vehicles.length === 0}
-              autoComplete="off"
-              className={`${inputCls} pr-10 disabled:bg-neutral-100 disabled:text-neutral-500`}
-            />
-            {search && filtered.length === 0 && (
-              <div className="absolute z-10 mt-1 w-full rounded-xl border border-neutral-200 bg-white p-3 text-sm text-neutral-500 shadow-md">
-                一致する車両が見つかりません
+          <div className="space-y-2">
+            <div className="relative">
+              <input
+                id={uid}
+                type="text"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setShowNewVehicleForm(false); }}
+                placeholder={
+                  vehicles.length === 0
+                    ? "登録車両がありません"
+                    : "車種・ナンバー・VINで検索…"
+                }
+                disabled={vehicles.length === 0}
+                autoComplete="off"
+                className={`${inputCls} pr-10 disabled:bg-neutral-100 disabled:text-neutral-500`}
+              />
+              {search && filtered.length > 0 && (
+                <ul className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-neutral-200 bg-white shadow-md">
+                  {filtered.map((v) => (
+                    <li key={v.id}>
+                      <button
+                        type="button"
+                        onMouseDown={() => handleSelect(v.id)}
+                        className="w-full px-4 py-2.5 text-left text-sm hover:bg-neutral-50"
+                      >
+                        <span className="font-medium text-neutral-900">
+                          {vehicleLabel(v)}
+                        </span>
+                        {v.vin_code && (
+                          <span className="ml-2 text-xs text-neutral-400 font-mono">
+                            {v.vin_code}
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* No match — show new vehicle option */}
+            {search && filtered.length === 0 && !showNewVehicleForm && (
+              <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3 flex items-center justify-between gap-3">
+                <span className="text-sm text-neutral-500">一致する車両が見つかりません</span>
+                <button
+                  type="button"
+                  onClick={() => setShowNewVehicleForm(true)}
+                  className="shrink-0 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100"
+                >
+                  新規登録して選択
+                </button>
               </div>
             )}
-            {search && filtered.length > 0 && (
-              <ul className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-neutral-200 bg-white shadow-md">
-                {filtered.map((v) => (
-                  <li key={v.id}>
-                    <button
-                      type="button"
-                      onMouseDown={() => handleSelect(v.id)}
-                      className="w-full px-4 py-2.5 text-left text-sm hover:bg-neutral-50"
-                    >
-                      <span className="font-medium text-neutral-900">
-                        {vehicleLabel(v)}
-                      </span>
-                      {v.customer_name && (
-                        <span className="ml-2 text-xs text-neutral-500">
-                          {v.customer_name}
-                        </span>
-                      )}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+
+            {/* Inline new vehicle form */}
+            {showNewVehicleForm && (
+              <form onSubmit={createNewVehicle} className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 space-y-3">
+                <div className="text-xs font-semibold text-neutral-700">新規車両を登録</div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input value={newMaker} onChange={(e) => setNewMaker(e.target.value)} placeholder="メーカー *" required className={inputCls} />
+                  <input value={newModel} onChange={(e) => setNewModel(e.target.value)} placeholder="車種 *" required className={inputCls} />
+                  <input value={newYear} onChange={(e) => setNewYear(e.target.value)} placeholder="年式" inputMode="numeric" className={inputCls} />
+                  <input value={newPlate} onChange={(e) => setNewPlate(e.target.value)} placeholder="ナンバー" className={inputCls} />
+                  <input value={newVin} onChange={(e) => setNewVin(e.target.value)} placeholder="車体番号（VIN）" className={`${inputCls} font-mono sm:col-span-2`} />
+                </div>
+                {newVehicleErr && <p className="text-xs text-red-500">{newVehicleErr}</p>}
+                <div className="flex gap-2">
+                  <Button type="submit" size="sm" loading={newVehicleBusy}>登録して選択</Button>
+                  <button type="button" onClick={() => setShowNewVehicleForm(false)} className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs text-neutral-600 hover:bg-neutral-100">キャンセル</button>
+                </div>
+              </form>
             )}
           </div>
         )}
@@ -185,19 +302,50 @@ export default function VehiclePickerSection({
         </div>
 
         <div className="space-y-4">
-          <label className={labelCls}>
+          {/* Customer master search */}
+          <div className={labelCls}>
             <span className={labelTextCls}>
               お客様名 <span className="text-red-500">*</span>
             </span>
+            <div className="relative">
+              <div className="flex gap-2 mb-1.5">
+                <input
+                  type="text"
+                  value={customerSearch}
+                  onChange={(e) => { setCustomerSearch(e.target.value); setCustomerSearchOpen(true); }}
+                  onFocus={() => setCustomerSearchOpen(true)}
+                  onBlur={() => setTimeout(() => setCustomerSearchOpen(false), 200)}
+                  placeholder="顧客マスタから検索…"
+                  className="flex-1 rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
+                />
+              </div>
+              {customerSearchOpen && customerResults.length > 0 && (
+                <ul className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-xl border border-neutral-200 bg-white shadow-md">
+                  {customerResults.map((c) => (
+                    <li key={c.id}>
+                      <button
+                        type="button"
+                        onMouseDown={() => handleCustomerSelect(c)}
+                        className="w-full px-4 py-2.5 text-left text-sm hover:bg-neutral-50"
+                      >
+                        <span className="font-medium text-neutral-900">{c.name}</span>
+                        {c.phone && <span className="ml-2 text-xs text-neutral-500">{c.phone}</span>}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <input type="hidden" name="customer_id" value={customerId} />
             <input
               name="customer_name"
               value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
+              onChange={(e) => { setCustomerName(e.target.value); setCustomerId(""); }}
               className={inputCls}
               placeholder="山田 太郎"
               required
             />
-          </label>
+          </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className={labelCls}>

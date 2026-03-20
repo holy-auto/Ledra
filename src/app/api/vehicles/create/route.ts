@@ -28,9 +28,7 @@ export async function POST(req: Request) {
       model: b.model,
       year: b.year ?? null,
       plate_display: b.plate_display ?? null,
-      customer_name: b.customer_name ?? null,
-      customer_email: b.customer_email ?? null,
-      customer_phone_masked: b.customer_phone_masked ?? null,
+      vin_code: b.vin_code ?? null,
       notes: b.notes ?? null,
     };
 

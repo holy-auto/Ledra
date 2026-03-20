@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import PageHeader from "@/components/ui/PageHeader";
+import Button from "@/components/ui/Button";
 
 type Store = {
   id: string;
@@ -220,9 +221,9 @@ export default function StoresClient() {
               </div>
             </div>
             <div className="flex gap-2 pt-2">
-              <button type="submit" disabled={saving} className="btn-primary">
-                {saving ? "保存中..." : editingStore ? "更新" : "作成"}
-              </button>
+              <Button type="submit" loading={saving} disabled={saving}>
+                {editingStore ? "更新" : "作成"}
+              </Button>
               <button type="button" onClick={resetForm} className="btn-secondary">
                 キャンセル
               </button>

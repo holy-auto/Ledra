@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
+import Button from "@/components/ui/Button";
 import { formatJpy, formatDate } from "@/lib/format";
 
 type OrderStatus = "pending" | "accepted" | "in_progress" | "completed" | "rejected" | "cancelled";
@@ -288,9 +289,9 @@ export default function OrdersClient() {
               </div>
             </div>
             <div className="flex gap-2">
-              <button type="submit" className="btn-primary" disabled={submitting}>
-                {submitting ? "送信中..." : "発注する"}
-              </button>
+              <Button type="submit" loading={submitting} disabled={submitting}>
+                発注する
+              </Button>
               <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>
                 キャンセル
               </button>

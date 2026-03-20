@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import useSWR from "swr";
 import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
+import Button from "@/components/ui/Button";
 import CalendarView from "./CalendarView";
 import { formatDate, formatJpy } from "@/lib/format";
 import { fetcher } from "@/lib/swr";
@@ -664,9 +665,9 @@ export default function ReservationsClient() {
                   <button type="button" onClick={() => setShowForm(false)} className="btn-secondary px-4 py-2 text-sm">
                     キャンセル
                   </button>
-                  <button type="submit" disabled={saving} className="btn-primary px-4 py-2 text-sm">
-                    {saving ? "保存中..." : editingId ? "更新" : "作成"}
-                  </button>
+                  <Button type="submit" loading={saving} disabled={saving}>
+                    {editingId ? "更新" : "作成"}
+                  </Button>
                 </div>
               </form>
             </div>

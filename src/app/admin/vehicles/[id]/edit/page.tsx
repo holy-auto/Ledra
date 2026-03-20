@@ -1,13 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { useRouter, useParams } from "next/navigation";
 import Button from "@/components/ui/Button";
 
-export default function AdminVehicleNewPage() {
+export default function AdminVehicleEditPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const returnTo = searchParams.get("returnTo") || "/admin/vehicles";
+  const params = useParams();
+  const id = params.id as string;
 
   const [maker, setMaker] = useState("");
   const [model, setModel] = useState("");
@@ -15,10 +15,31 @@ export default function AdminVehicleNewPage() {
   const [plateDisplay, setPlateDisplay] = useState("");
   const [vinCode, setVinCode] = useState("");
   const [notes, setNotes] = useState("");
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const ocrInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch(`/api/vehicles/${id}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.vehicle) {
+          const v = j.vehicle;
+          setMaker(v.maker ?? "");
+          setModel(v.model ?? "");
+          setYear(v.year ? String(v.year) : "");
+          setPlateDisplay(v.plate_display ?? "");
+          setVinCode(v.vin_code ?? "");
+          setNotes(v.notes ?? "");
+        } else {
+          setErr("車両が見つかりません。");
+        }
+      })
+      .catch(() => setErr("データ取得に失敗しました。"))
+      .finally(() => setLoading(false));
+  }, [id]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -26,8 +47,8 @@ export default function AdminVehicleNewPage() {
     setErr(null);
 
     try {
-      const res = await fetch("/api/vehicles/create", {
-        method: "POST",
+      const res = await fetch(`/api/vehicles/${id}`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           maker,
@@ -46,12 +67,7 @@ export default function AdminVehicleNewPage() {
         return;
       }
 
-      if (j?.id && returnTo === "/admin/vehicles") {
-        router.push(`/admin/vehicles/${j.id}`);
-        return;
-      }
-
-      router.push(returnTo);
+      router.push(`/admin/vehicles/${id}?saved=1`);
     } catch (e: any) {
       setErr(String(e?.message || e));
     } finally {
@@ -87,12 +103,22 @@ export default function AdminVehicleNewPage() {
     }
   }
 
+  if (loading) {
+    return (
+      <div className="p-6">
+        <div className="mx-auto max-w-3xl">
+          <p className="text-sm text-muted">読み込み中...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6">
       <div className="mx-auto max-w-3xl space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-primary">車両を登録</h1>
-          <p className="text-sm text-muted">CARTRUST RECORD の車両マスターを登録します。</p>
+          <h1 className="text-2xl font-bold text-primary">車両を編集</h1>
+          <p className="text-sm text-muted">車両情報を更新します。</p>
         </div>
 
         {/* 車検証 OCR */}
@@ -196,7 +222,7 @@ export default function AdminVehicleNewPage() {
             <Button
               type="button"
               variant="secondary"
-              onClick={() => router.push(returnTo)}
+              onClick={() => router.push(`/admin/vehicles/${id}`)}
             >
               キャンセル
             </Button>

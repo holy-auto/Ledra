@@ -200,9 +200,7 @@ export default async function AdminVehicleDetailPage({
           <div>車種: {vehicle.model ?? "-"}</div>
           <div>年式: {vehicle.year ?? "-"}</div>
           <div>ナンバー: {vehicle.plate_display ?? "-"}</div>
-          <div>顧客名: {vehicle.customer_name ?? "-"}</div>
-          <div>顧客メール: {vehicle.customer_email ?? "-"}</div>
-          <div>顧客電話: {vehicle.customer_phone_masked ?? "-"}</div>
+          <div className="font-mono">車体番号: {vehicle.vin_code ?? "-"}</div>
         </div>
         {vehicle.notes ? <div className="text-sm text-secondary">メモ: {vehicle.notes}</div> : null}
       </section>

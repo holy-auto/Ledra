@@ -51,12 +51,24 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
   const content_free_text = String(formData.get("content_free_text") || "").trim();
   const expiry_value = String(formData.get("expiry_value") || "").trim();
 
+  const customer_id = String(formData.get("customer_id") || "").trim() || null;
+
   // Film thickness JSON (optional)
   let film_thickness: any[] = [];
   try {
     const raw = String(formData.get("film_thickness_json") || "[]");
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) film_thickness = parsed;
+  } catch {
+    // ignore parse errors — field is optional
+  }
+
+  // Coating products JSON (optional)
+  let coating_products: any[] = [];
+  try {
+    const raw = String(formData.get("coating_products_json") || "[]");
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) coating_products = parsed;
   } catch {
     // ignore parse errors — field is optional
   }
@@ -88,6 +100,7 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
     public_id,
     status: certStatus,
     customer_name,
+    customer_id: customer_id ?? undefined,
     vehicle_id: vehicle_id ?? undefined,
     vehicle_info_json: { model, plate },
     content_free_text,
@@ -98,6 +111,7 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
       values,
       ...(film_thickness.length > 0 ? { film_thickness } : {}),
     },
+    coating_products_json: coating_products.length > 0 ? coating_products : [],
     expiry_type: "text",
     expiry_value,
     footer_variant: "holy",
