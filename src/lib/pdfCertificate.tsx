@@ -34,6 +34,7 @@ export type CertRow = {
   vehicle_info_json: any;
   content_free_text: string | null;
   content_preset_json: any;
+  coating_products_json?: any[] | null;
   expiry_type: string | null;
   expiry_value: string | null;
   logo_asset_path: string | null;
@@ -170,6 +171,20 @@ export async function renderCertificatePdf(row: CertRow, publicUrl: string) {
               <View key={idx} style={styles.itemRow}>
                 <Text style={styles.itemLabel}>[{it.section}] {it.label}</Text>
                 <Text style={styles.itemValue}>{it.value}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {Array.isArray(row.coating_products_json) && row.coating_products_json.length > 0 ? (
+          <View style={styles.box}>
+            <Text style={styles.sectionTitle}>コーティング剤</Text>
+            {row.coating_products_json.map((cp: any, idx: number) => (
+              <View key={idx} style={styles.itemRow}>
+                <Text style={styles.itemLabel}>{cp.location || "-"}</Text>
+                <Text style={styles.itemValue}>
+                  {[cp.brand_name, cp.product_name].filter(Boolean).join(" / ") || "-"}
+                </Text>
               </View>
             ))}
           </View>

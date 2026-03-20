@@ -6,7 +6,9 @@ import Link from "next/link";
 import { createCertAction } from "./actions";
 import VehiclePickerSection from "./VehiclePickerSection";
 import FilmThicknessSection from "./FilmThicknessSection";
+import CoatingProductsSection from "./CoatingProductsSection";
 import PhotoUploadSection, { type PhotoUploadHandle } from "./PhotoUploadSection";
+import Button from "@/components/ui/Button";
 import type { PlanTier } from "@/lib/billing/planFeatures";
 import { PHOTO_LIMITS } from "@/lib/billing/planFeatures";
 
@@ -323,6 +325,9 @@ export default function CertNewFormWrapper({
         {/* Film thickness */}
         <FilmThicknessSection />
 
+        {/* Coating products */}
+        <CoatingProductsSection />
+
         {/* Photo upload */}
         <PhotoUploadSection
           ref={photoRef}
@@ -346,22 +351,23 @@ export default function CertNewFormWrapper({
 
         {/* Actions */}
         <div className="border-t border-neutral-100 pt-6 flex flex-wrap gap-3 items-center">
-          <button
+          <Button
             type="submit"
+            loading={isPending && submitStatus === "active"}
             disabled={isPending}
             onClick={() => setSubmitStatus("active")}
-            className="btn-primary disabled:opacity-50"
           >
-            {isPending && submitStatus === "active" ? "処理中…" : "証明書を発行する"}
-          </button>
-          <button
+            証明書を発行する
+          </Button>
+          <Button
             type="submit"
+            variant="secondary"
+            loading={isPending && submitStatus === "draft"}
             disabled={isPending}
             onClick={() => setSubmitStatus("draft")}
-            className="rounded-xl border border-neutral-300 bg-white px-5 py-2.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-50"
           >
-            {isPending && submitStatus === "draft" ? "保存中…" : "下書き保存"}
-          </button>
+            下書き保存
+          </Button>
           <Link
             href="/admin/certificates"
             className="rounded-xl border border-neutral-300 bg-white px-5 py-2.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100"

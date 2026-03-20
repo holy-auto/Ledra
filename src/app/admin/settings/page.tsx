@@ -168,6 +168,18 @@ export default async function AdminSettingsPage() {
           />
         </section>
 
+        {/* Coating products master */}
+        <section className="glass-card p-5">
+          <div className="mb-4">
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted">マスター管理</div>
+            <div className="mt-1 text-base font-semibold text-primary">コーティング剤マスター</div>
+            <p className="mt-1 text-xs text-muted">ブランドと製品を登録し、証明書作成時に選択できるようにします。</p>
+          </div>
+          <Link href="/admin/settings/brands" className="btn-secondary">
+            ブランド・製品を管理する →
+          </Link>
+        </section>
+
         {/* Follow-up settings */}
         <section className="glass-card p-5">
           <div className="mb-5">
