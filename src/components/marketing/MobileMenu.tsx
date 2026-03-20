@@ -75,7 +75,7 @@ export function MobileMenu({
             ))}
             <Link
               href="/login"
-              className="text-lg font-medium text-white/50 hover:text-white transition-colors"
+              className="text-lg font-medium text-white/55 hover:text-white transition-colors"
               onClick={() => setOpen(false)}
             >
               ログイン

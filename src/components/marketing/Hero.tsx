@@ -60,7 +60,7 @@ export function Hero({
           </span>
         </h1>
 
-        <p className="mt-10 text-lg md:text-xl leading-relaxed text-white/60 max-w-2xl mx-auto animate-[hero-fade-up_0.8s_ease-out_0.7s_both]">
+        <p className="mt-10 text-lg md:text-xl leading-relaxed text-white/65 max-w-2xl mx-auto animate-[hero-fade-up_0.8s_ease-out_0.7s_both]">
           CARTRUSTは、自動車の施工記録をデジタル証明書として発行・管理できるプラットフォームです。
           施工店の業務効率化と、保険会社の査定精度向上を同時に実現します。
         </p>
@@ -78,17 +78,17 @@ export function Hero({
         <div className="mt-20 flex flex-col sm:flex-row items-center justify-center gap-8 sm:gap-16 animate-[hero-fade-in_0.8s_ease-out_1.2s_both]">
           <div className="text-center">
             <div className="text-2xl md:text-3xl font-bold text-white">無料<span className="text-blue-400">で開始</span></div>
-            <div className="text-xs text-white/50 mt-1">クレジットカード不要</div>
+            <div className="text-xs text-white/55 mt-1">クレジットカード不要</div>
           </div>
           <div className="hidden sm:block w-px h-8 bg-white/10" />
           <div className="text-center">
             <div className="text-2xl md:text-3xl font-bold text-white">5<span className="text-blue-400">分</span></div>
-            <div className="text-xs text-white/50 mt-1">かんたん初期設定</div>
+            <div className="text-xs text-white/55 mt-1">かんたん初期設定</div>
           </div>
           <div className="hidden sm:block w-px h-8 bg-white/10" />
           <div className="text-center">
             <div className="text-2xl md:text-3xl font-bold text-white">URL<span className="text-blue-400">共有</span></div>
-            <div className="text-xs text-white/50 mt-1">証明書をすぐに共有</div>
+            <div className="text-xs text-white/55 mt-1">証明書をすぐに共有</div>
           </div>
         </div>
       </Container>

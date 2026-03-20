@@ -36,7 +36,7 @@ export default function PricingPage() {
             <h3 className="text-lg md:text-xl font-bold text-white">
               {LAUNCH_CAMPAIGN.description}
             </h3>
-            <p className="mt-2 text-sm text-white/60">
+            <p className="mt-2 text-sm text-white/65">
               NFC初回{LAUNCH_CAMPAIGN.nfcFreeAllocation}枚無料 · 請求書機能 {LAUNCH_CAMPAIGN.invoiceOptionPrice}/月
             </p>
           </div>
@@ -82,7 +82,7 @@ export default function PricingPage() {
           />
         </PricingCards>
         <ScrollReveal variant="fade-in" delay={300}>
-          <p className="text-center mt-6 text-sm text-white/50">
+          <p className="text-center mt-6 text-sm text-white/55">
             年間契約で{ANNUAL_DISCOUNT_PERCENT}%オフ。詳しくはお問い合わせください。
           </p>
         </ScrollReveal>
@@ -111,7 +111,7 @@ export default function PricingPage() {
               <div className="text-xl font-bold text-cyan-400">
                 初回{NFC_TAG_PRICING.freeAllocation}枚 無料
               </div>
-              <p className="mt-1 text-sm text-white/60">
+              <p className="mt-1 text-sm text-white/65">
                 アカウント作成時に無料でお届け
               </p>
             </div>
@@ -127,7 +127,7 @@ export default function PricingPage() {
                   {NFC_TAG_PRICING.packs.map((pack) => (
                     <tr key={pack.quantity} className="hover:bg-white/[0.03] transition-colors">
                       <td className="py-3 px-5 text-white">{pack.quantity}枚パック</td>
-                      <td className="py-3 px-5 text-right text-white/60">{pack.price}</td>
+                      <td className="py-3 px-5 text-right text-white/65">{pack.price}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -211,7 +211,7 @@ export default function PricingPage() {
                 {TEMPLATE_ADDITIONAL_WORK.map((row) => (
                   <tr key={row.item} className="hover:bg-white/[0.03] transition-colors">
                     <td className="py-3.5 px-4 text-white">{row.item}</td>
-                    <td className="py-3.5 px-4 text-right text-white/60">{row.price}</td>
+                    <td className="py-3.5 px-4 text-right text-white/65">{row.price}</td>
                   </tr>
                 ))}
               </tbody>

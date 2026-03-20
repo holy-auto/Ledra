@@ -141,7 +141,7 @@ export default async function HomePage() {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-white">{item.title}</h3>
-                  <p className="mt-2 text-white/50 leading-relaxed">{item.description}</p>
+                  <p className="mt-2 text-white/55 leading-relaxed">{item.description}</p>
                 </div>
               </div>
             </ScrollReveal>
@@ -225,7 +225,7 @@ export default async function HomePage() {
                   "発行履歴の一元管理",
                   "自社ブランドの証明書",
                 ].map((item) => (
-                  <li key={item} className="flex items-start gap-2.5 text-sm text-white/60">
+                  <li key={item} className="flex items-start gap-2.5 text-sm text-white/65">
                     <svg className="w-4 h-4 flex-shrink-0 mt-0.5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                     </svg>
@@ -254,7 +254,7 @@ export default async function HomePage() {
                   "CSV一括エクスポート",
                   "既存システムとのAPI連携",
                 ].map((item) => (
-                  <li key={item} className="flex items-start gap-2.5 text-sm text-white/60">
+                  <li key={item} className="flex items-start gap-2.5 text-sm text-white/65">
                     <svg className="w-4 h-4 flex-shrink-0 mt-0.5 text-violet-400" viewBox="0 0 20 20" fill="currentColor">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                     </svg>

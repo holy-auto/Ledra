@@ -35,7 +35,7 @@ export function FAQItem({
         className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
       >
         <div className="overflow-hidden">
-          <p className="pb-6 text-[0.938rem] leading-[1.75] text-white/60">
+          <p className="pb-6 text-[0.938rem] leading-[1.75] text-white/65">
             {answer}
           </p>
         </div>

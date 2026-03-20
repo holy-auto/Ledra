@@ -43,7 +43,7 @@ export function Header() {
             <Link
               key={item.href}
               href={item.href}
-              className="text-sm text-white/60 hover:text-white transition-colors"
+              className="text-sm text-white/65 hover:text-white transition-colors"
             >
               {item.label}
             </Link>
@@ -54,7 +54,7 @@ export function Header() {
         <div className="hidden md:flex items-center gap-3">
           <Link
             href="/contact"
-            className="text-sm text-white/60 hover:text-white transition-colors"
+            className="text-sm text-white/65 hover:text-white transition-colors"
           >
             お問い合わせ
           </Link>

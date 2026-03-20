@@ -20,7 +20,7 @@ function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="grid grid-cols-[9rem_1fr] gap-4 border-b border-white/[0.08] py-3 text-sm last:border-0">
       <dt className="font-medium text-white/80">{label}</dt>
-      <dd className="text-white/60">{value}</dd>
+      <dd className="text-white/65">{value}</dd>
     </div>
   );
 }
@@ -92,7 +92,7 @@ export default function TokushoPage() {
       </dl>
 
       <H2>お問い合わせ</H2>
-      <p className="text-sm text-white/60">
+      <p className="text-sm text-white/65">
         本表記に関するお問い合わせは{" "}
         <a
           href={`mailto:${siteConfig.contactEmail}`}

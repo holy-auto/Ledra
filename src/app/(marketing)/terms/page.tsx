@@ -17,12 +17,12 @@ function H2({ children }: { children: ReactNode }) {
 }
 
 function P({ children }: { children: ReactNode }) {
-  return <p className="mb-4 text-sm leading-relaxed text-white/60">{children}</p>;
+  return <p className="mb-4 text-sm leading-relaxed text-white/65">{children}</p>;
 }
 
 function Ul({ children }: { children: ReactNode }) {
   return (
-    <ul className="mb-4 list-disc space-y-1 pl-5 text-sm text-white/60">
+    <ul className="mb-4 list-disc space-y-1 pl-5 text-sm text-white/65">
       {children}
     </ul>
   );

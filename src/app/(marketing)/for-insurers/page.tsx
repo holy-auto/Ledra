@@ -3,6 +3,7 @@ import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { FeatureCard } from "@/components/marketing/FeatureCard";
 import { ScrollReveal } from "@/components/marketing/ScrollReveal";
+import { StepList } from "@/components/marketing/StepList";
 import { CTABanner } from "@/components/marketing/CTABanner";
 
 export const metadata = {
@@ -39,7 +40,7 @@ export default function ForInsurersPage() {
                   "手動でシステムに転記",
                   "書類を保管・ファイリング",
                 ].map((item) => (
-                  <li key={item} className="flex items-start gap-3 text-sm text-white/60">
+                  <li key={item} className="flex items-start gap-3 text-sm text-white/65">
                     <svg className="w-4 h-4 flex-shrink-0 mt-0.5 text-red-400/60" viewBox="0 0 20 20" fill="currentColor">
                       <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
                     </svg>
@@ -113,7 +114,7 @@ export default function ForInsurersPage() {
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-white">{item.title}</h3>
-                  <p className="mt-1.5 text-xs text-white/60 leading-relaxed">{item.description}</p>
+                  <p className="mt-1.5 text-xs text-white/65 leading-relaxed">{item.description}</p>
                 </div>
               </div>
             </ScrollReveal>
@@ -181,42 +182,15 @@ export default function ForInsurersPage() {
           title="導入プロセス"
           subtitle="専任担当がスムーズな導入をサポートします"
         />
-        <div className="max-w-3xl mx-auto">
-          {[
-            {
-              step: "01",
-              title: "お問い合わせ・ヒアリング",
-              description: "貴社の業務フローや要件をヒアリングし、最適な導入プランをご提案します。",
-            },
-            {
-              step: "02",
-              title: "デモ・トライアル",
-              description: "実際のシステムをデモ環境でお試しいただけます。貴社のデータでのテストも可能です。",
-            },
-            {
-              step: "03",
-              title: "導入設定・連携テスト",
-              description: "貴社のシステムとの連携設定、アクセス権限の設定、テストデータでの動作確認を行います。",
-            },
-            {
-              step: "04",
-              title: "本番運用開始",
-              description: "運用開始後も専任担当がサポート。利用状況に応じた改善提案も行います。",
-            },
-          ].map((item, i) => (
-            <ScrollReveal key={item.step} variant="fade-up" delay={i * 120}>
-              <div className="flex gap-6 md:gap-8 items-start py-8 border-b border-white/[0.06] last:border-b-0">
-                <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-violet-500/[0.1] border border-violet-500/20 flex items-center justify-center">
-                  <span className="text-lg font-bold text-violet-400">{item.step}</span>
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-white">{item.title}</h3>
-                  <p className="mt-2 text-white/60 leading-relaxed">{item.description}</p>
-                </div>
-              </div>
-            </ScrollReveal>
-          ))}
-        </div>
+        <StepList
+          accent="violet"
+          steps={[
+            { step: "01", title: "お問い合わせ・ヒアリング", description: "貴社の業務フローや要件をヒアリングし、最適な導入プランをご提案します。" },
+            { step: "02", title: "デモ・トライアル", description: "実際のシステムをデモ環境でお試しいただけます。貴社のデータでのテストも可能です。" },
+            { step: "03", title: "導入設定・連携テスト", description: "貴社のシステムとの連携設定、アクセス権限の設定、テストデータでの動作確認を行います。" },
+            { step: "04", title: "本番運用開始", description: "運用開始後も専任担当がサポート。利用状況に応じた改善提案も行います。" },
+          ]}
+        />
       </Section>
 
       <CTABanner

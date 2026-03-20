@@ -84,16 +84,16 @@ export function FeatureComparisonTable({ rows }: { rows: readonly Row[] }) {
                 >
                   {row.feature}
                 </td>
-                <td className="py-3.5 px-4 text-center text-white/60">
+                <td className="py-3.5 px-4 text-center text-white/65">
                   {row.free}
                 </td>
-                <td className="py-3.5 px-4 text-center text-white/60">
+                <td className="py-3.5 px-4 text-center text-white/65">
                   {row.starter}
                 </td>
                 <td className="py-3.5 px-4 text-center text-blue-400 font-medium">
                   {row.standard}
                 </td>
-                <td className="py-3.5 px-4 text-center text-white/60">
+                <td className="py-3.5 px-4 text-center text-white/65">
                   {row.pro}
                 </td>
               </tr>

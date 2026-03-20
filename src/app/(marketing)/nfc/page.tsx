@@ -31,7 +31,7 @@ export default function NFCPage() {
         />
         <ScrollReveal variant="fade-up" delay={100}>
           <div className="max-w-3xl mx-auto text-center">
-            <p className="text-white/60 leading-relaxed">
+            <p className="text-white/65 leading-relaxed">
               NFCタグを車両に貼り付けるだけで、施工証明書のデジタルリンクが車両と一体化します。
               お客様や保険会社の担当者がスマートフォンをかざすだけで、施工内容・保証期間・施工店情報を即座に確認できます。
               特別なアプリのインストールは一切不要です。
@@ -102,7 +102,7 @@ export default function NFCPage() {
                   </div>
                   <div className="mt-2 text-xs text-white/30 font-medium">STEP {item.step}</div>
                   <h3 className="mt-3 text-lg font-bold text-white">{item.title}</h3>
-                  <p className="mt-3 text-sm text-white/60 leading-relaxed">
+                  <p className="mt-3 text-sm text-white/65 leading-relaxed">
                     {item.description}
                   </p>
                 </div>
@@ -173,7 +173,7 @@ export default function NFCPage() {
               <div className="text-2xl font-bold text-cyan-400">
                 初回{NFC_TAG_PRICING.freeAllocation}枚 無料
               </div>
-              <p className="mt-2 text-sm text-white/60">
+              <p className="mt-2 text-sm text-white/65">
                 アカウント作成時に{NFC_TAG_PRICING.freeAllocation}枚のNFCタグを無料でお届けします
               </p>
             </div>
@@ -206,7 +206,7 @@ export default function NFCPage() {
                         <td className="py-3.5 px-5 text-right text-white">
                           {pack.price}
                         </td>
-                        <td className="py-3.5 px-5 text-right text-white/60">
+                        <td className="py-3.5 px-5 text-right text-white/65">
                           ¥{perUnit.toLocaleString()}
                         </td>
                       </tr>

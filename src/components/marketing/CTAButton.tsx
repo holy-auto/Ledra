@@ -3,16 +3,22 @@ import Link from "next/link";
 export function CTAButton({
   variant = "primary",
   href,
+  onClick,
+  type,
+  disabled,
   children,
   className = "",
 }: {
   variant?: "primary" | "outline" | "white" | "white-outline";
-  href: string;
+  href?: string;
+  onClick?: () => void;
+  type?: "button" | "submit";
+  disabled?: boolean;
   children: React.ReactNode;
   className?: string;
 }) {
   const base =
-    "inline-flex items-center justify-center font-medium rounded-lg transition-all duration-200 text-[0.938rem] px-6 py-3.5 active:scale-[0.97]";
+    "inline-flex items-center justify-center font-medium rounded-lg transition-all duration-200 text-[0.938rem] px-6 py-3.5 active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100";
 
   const variants = {
     primary:
@@ -25,9 +31,24 @@ export function CTAButton({
       "border border-white/30 text-white hover:bg-white/10 backdrop-blur-sm",
   };
 
+  const classes = `${base} ${variants[variant]} ${className}`;
+
+  if (href) {
+    return (
+      <Link href={href} className={classes}>
+        {children}
+      </Link>
+    );
+  }
+
   return (
-    <Link href={href} className={`${base} ${variants[variant]} ${className}`}>
+    <button
+      type={type ?? "button"}
+      onClick={onClick}
+      disabled={disabled}
+      className={classes}
+    >
       {children}
-    </Link>
+    </button>
   );
 }

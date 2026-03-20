@@ -13,6 +13,9 @@ import { CTABanner } from "@/components/marketing/CTABanner";
 import { ScrollReveal } from "@/components/marketing/ScrollReveal";
 import { getMarketingStats } from "@/lib/marketing/stats";
 import { PLANS } from "@/lib/marketing/pricing";
+import { StepList } from "@/components/marketing/StepList";
+import { CertificatePreview } from "@/components/marketing/CertificatePreview";
+import { CTAButton } from "@/components/marketing/CTAButton";
 import Link from "next/link";
 
 export default async function HomePage() {
@@ -36,7 +39,7 @@ export default async function HomePage() {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4.5 h-4.5 text-blue-400/70">
                   <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
                 </svg>
-                <span className="text-xs text-white/50 font-medium">{item.label}</span>
+                <span className="text-xs text-white/55 font-medium">{item.label}</span>
               </div>
             ))}
           </div>
@@ -132,42 +135,15 @@ export default async function HomePage() {
           title="証明書発行の流れ"
           subtitle="施工完了から証明書の共有まで、わずか数分で完了します"
         />
-        <div className="max-w-3xl mx-auto">
-          {[
-            {
-              step: "01",
-              title: "施工内容を入力",
-              description: "車両情報・施工内容・使用材料をテンプレートに沿って入力。写真のアップロードも可能です。",
-            },
-            {
-              step: "02",
-              title: "証明書を発行",
-              description: "内容を確認して発行。改ざん防止のデジタル証明書が即座に生成されます。",
-            },
-            {
-              step: "03",
-              title: "URLで顧客に共有",
-              description: "発行された証明書のURLをメールやLINEで共有。QRコードにも対応しています。",
-            },
-            {
-              step: "04",
-              title: "保険会社が照会",
-              description: "保険会社は専用ポータルから証明書を検索・確認。電話やFAXでのやり取りが不要になります。",
-            },
-          ].map((item, i) => (
-            <ScrollReveal key={item.step} variant="fade-up" delay={i * 100}>
-              <div className="flex gap-6 md:gap-8 items-start py-8 border-b border-white/[0.06] last:border-b-0">
-                <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
-                  <span className="text-lg font-bold text-blue-400">{item.step}</span>
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-white">{item.title}</h3>
-                  <p className="mt-2 text-white/60 leading-relaxed">{item.description}</p>
-                </div>
-              </div>
-            </ScrollReveal>
-          ))}
-        </div>
+        <StepList
+          accent="blue"
+          steps={[
+            { step: "01", title: "施工内容を入力", description: "車両情報・施工内容・使用材料をテンプレートに沿って入力。写真のアップロードも可能です。" },
+            { step: "02", title: "証明書を発行", description: "内容を確認して発行。改ざん防止のデジタル証明書が即座に生成されます。" },
+            { step: "03", title: "URLで顧客に共有", description: "発行された証明書のURLをメールやLINEで共有。QRコードにも対応しています。" },
+            { step: "04", title: "保険会社が照会", description: "保険会社は専用ポータルから証明書を検索・確認。電話やFAXでのやり取りが不要になります。" },
+          ]}
+        />
       </Section>
 
       {/* NFC訴求セクション */}
@@ -210,7 +186,7 @@ export default async function HomePage() {
                     {item.step}
                   </div>
                   <h3 className="mt-5 text-base font-bold text-white">{item.title}</h3>
-                  <p className="mt-2 text-sm text-white/60 leading-relaxed">{item.description}</p>
+                  <p className="mt-2 text-sm text-white/65 leading-relaxed">{item.description}</p>
                 </div>
               ))}
             </div>
@@ -232,56 +208,10 @@ export default async function HomePage() {
           title="発行される証明書のイメージ"
           subtitle="施工店のブランドを反映した、プロフェッショナルなデジタル証明書"
         />
-        <ScrollReveal variant="fade-up" delay={100}>
-          <div className="max-w-2xl mx-auto">
-            <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-8 md:p-12">
-              <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-xs text-white/40 uppercase tracking-widest">施工証明書</div>
-                    <div className="mt-1 text-lg font-bold text-white">CARTRUST Certificate</div>
-                  </div>
-                  <div className="w-10 h-10 rounded-lg bg-blue-500/20 border border-blue-500/30 flex items-center justify-center">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5 text-blue-400">
-                      <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                    </svg>
-                  </div>
-                </div>
-                <div className="h-px bg-white/[0.06]" />
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <div className="text-white/40">車両</div>
-                    <div className="mt-1 text-white/70">Toyota Alphard 2024</div>
-                  </div>
-                  <div>
-                    <div className="text-white/40">施工日</div>
-                    <div className="mt-1 text-white/70">2025.03.15</div>
-                  </div>
-                  <div>
-                    <div className="text-white/40">施工内容</div>
-                    <div className="mt-1 text-white/70">ボディコーティング</div>
-                  </div>
-                  <div>
-                    <div className="text-white/40">保証期間</div>
-                    <div className="mt-1 text-white/70">5年間</div>
-                  </div>
-                </div>
-                <div className="h-px bg-white/[0.06]" />
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-white/[0.06] flex items-center justify-center">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-green-400">
-                      <path d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
-                  <div className="text-sm text-green-400/80">改ざん防止により真正性を担保</div>
-                </div>
-              </div>
-            </div>
-            <p className="mt-6 text-center text-sm text-white/40">
-              自社ロゴ・ブランドカラーの反映、施工写真の添付にも対応
-            </p>
-          </div>
-        </ScrollReveal>
+        <CertificatePreview
+          variant="full"
+          caption="自社ロゴ・ブランドカラーの反映、施工写真の添付にも対応"
+        />
       </Section>
 
       {/* ターゲット別導線 */}
@@ -302,7 +232,7 @@ export default async function HomePage() {
                   "発行履歴の一元管理",
                   "自社ブランドの証明書",
                 ].map((item) => (
-                  <li key={item} className="flex items-start gap-2.5 text-sm text-white/60">
+                  <li key={item} className="flex items-start gap-2.5 text-sm text-white/65">
                     <svg className="w-4 h-4 flex-shrink-0 mt-0.5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                     </svg>
@@ -311,12 +241,12 @@ export default async function HomePage() {
                 ))}
               </ul>
               <div className="mt-8 flex flex-col sm:flex-row gap-3">
-                <Link href="/signup" className="inline-flex items-center justify-center font-medium rounded-lg text-sm px-6 py-3 bg-white text-[#060a12] hover:bg-gray-100 transition-colors active:scale-[0.97]">
+                <CTAButton variant="white" href="/signup">
                   無料で始める
-                </Link>
-                <Link href="/for-shops" className="inline-flex items-center justify-center font-medium rounded-lg text-sm px-6 py-3 border border-white/20 text-white/70 hover:text-white hover:border-white/40 transition-colors active:scale-[0.97]">
+                </CTAButton>
+                <CTAButton variant="outline" href="/for-shops">
                   詳しく見る
-                </Link>
+                </CTAButton>
               </div>
             </div>
           </ScrollReveal>
@@ -331,7 +261,7 @@ export default async function HomePage() {
                   "CSV一括エクスポート",
                   "既存システムとのAPI連携",
                 ].map((item) => (
-                  <li key={item} className="flex items-start gap-2.5 text-sm text-white/60">
+                  <li key={item} className="flex items-start gap-2.5 text-sm text-white/65">
                     <svg className="w-4 h-4 flex-shrink-0 mt-0.5 text-violet-400" viewBox="0 0 20 20" fill="currentColor">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                     </svg>
@@ -340,12 +270,12 @@ export default async function HomePage() {
                 ))}
               </ul>
               <div className="mt-8 flex flex-col sm:flex-row gap-3">
-                <Link href="/contact" className="inline-flex items-center justify-center font-medium rounded-lg text-sm px-6 py-3 bg-white text-[#060a12] hover:bg-gray-100 transition-colors active:scale-[0.97]">
+                <CTAButton variant="white" href="/contact">
                   デモを依頼
-                </Link>
-                <Link href="/for-insurers" className="inline-flex items-center justify-center font-medium rounded-lg text-sm px-6 py-3 border border-white/20 text-white/70 hover:text-white hover:border-white/40 transition-colors active:scale-[0.97]">
+                </CTAButton>
+                <CTAButton variant="outline" href="/for-insurers">
                   詳しく見る
-                </Link>
+                </CTAButton>
               </div>
             </div>
           </ScrollReveal>
