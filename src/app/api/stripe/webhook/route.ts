@@ -83,10 +83,23 @@ async function sendPaymentFailureEmail(
         お支払いが確認できない場合、一部機能がご利用いただけなくなる場合がございます。
       </p>
       <div style="border-top: 1px solid #e5e5e5; margin-top: 24px; padding-top: 12px; font-size: 12px; color: #86868b;">
-        CARTRUST
+        CARTRUST — 株式会社HOLY AUTO
       </div>
     </div>
   `;
+
+  const text = `お支払いに失敗しました
+
+ご利用中のCARTRUSTプランのお支払いを処理できませんでした。
+カード情報をご確認のうえ、更新をお願いいたします。
+
+カード情報の更新はこちら: ${billingPortalUrl}
+
+お支払いが確認できない場合、一部機能がご利用いただけなくなる場合がございます。
+
+---
+CARTRUST — 株式会社HOLY AUTO
+`;
 
   try {
     const res = await fetch(RESEND_API, {
@@ -95,8 +108,10 @@ async function sendPaymentFailureEmail(
       body: JSON.stringify({
         from,
         to: email,
-        subject: "【CARTRUST】お支払いに失敗しました — カード情報をご確認ください",
+        reply_to: "support@cartrust.co.jp",
+        subject: "【CARTRUST】お支払いについてのご連絡",
         html,
+        text,
       }),
     });
     const resBody = await res.text();
