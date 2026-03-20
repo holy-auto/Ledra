@@ -320,23 +320,40 @@ export default function VehiclePickerSection({
         </div>
 
         <div className="space-y-4">
-          {/* Customer master search */}
+          {/* Customer name — combobox: type to search or manual entry */}
           <div className={labelCls}>
             <span className={labelTextCls}>
               お客様名 <span className="text-red-500">*</span>
             </span>
             <div className="relative">
-              <div className="flex gap-2 mb-1.5">
-                <input
-                  type="text"
-                  value={customerSearch}
-                  onChange={(e) => { setCustomerSearch(e.target.value); setCustomerSearchOpen(true); }}
-                  onFocus={() => setCustomerSearchOpen(true)}
-                  onBlur={() => setTimeout(() => setCustomerSearchOpen(false), 200)}
-                  placeholder="顧客マスタから検索…"
-                  className="flex-1 rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
-                />
-              </div>
+              <input type="hidden" name="customer_id" value={customerId} />
+              <input
+                name="customer_name"
+                value={customerName}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCustomerName(val);
+                  setCustomerId("");
+                  setCustomerSearch(val);
+                  setCustomerSearchOpen(true);
+                }}
+                onFocus={() => {
+                  if (customerName) {
+                    setCustomerSearch(customerName);
+                  }
+                  setCustomerSearchOpen(true);
+                }}
+                onBlur={() => setTimeout(() => setCustomerSearchOpen(false), 200)}
+                className={inputCls}
+                placeholder="顧客名を入力 or 顧客マスタから選択"
+                required
+                autoComplete="off"
+              />
+              {customerId && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-medium">
+                  マスタ連携
+                </span>
+              )}
               {customerSearchOpen && customerResults.length > 0 && (
                 <ul className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-xl border border-neutral-200 bg-white shadow-md">
                   {customerResults.map((c) => (
@@ -353,16 +370,8 @@ export default function VehiclePickerSection({
                   ))}
                 </ul>
               )}
+              <p className="mt-1 text-[11px] text-neutral-400">入力すると顧客マスタを検索します。手入力のみでもOK</p>
             </div>
-            <input type="hidden" name="customer_id" value={customerId} />
-            <input
-              name="customer_name"
-              value={customerName}
-              onChange={(e) => { setCustomerName(e.target.value); setCustomerId(""); }}
-              className={inputCls}
-              placeholder="山田 太郎"
-              required
-            />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
