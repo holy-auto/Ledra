@@ -5,6 +5,7 @@ import { FeatureGrid } from "@/components/marketing/FeatureGrid";
 import { FeatureCard } from "@/components/marketing/FeatureCard";
 import { ScrollReveal } from "@/components/marketing/ScrollReveal";
 import { CTABanner } from "@/components/marketing/CTABanner";
+import Link from "next/link";
 
 export const metadata = {
   title: "施工店の方へ",
@@ -20,8 +21,63 @@ export default function ForShopsPage() {
         subtitle="紙やExcelでの管理から脱却。デジタル証明書で業務品質と顧客満足度を同時に向上させます。"
       />
 
-      {/* 主要メリット */}
+      {/* 証明書プレビュー — 施工店が最も知りたいのは「発行されるものの品質」 */}
       <Section>
+        <SectionHeading
+          title="プロフェッショナルな証明書を発行"
+          subtitle="施工品質を正しく伝える、ブランド対応のデジタル証明書"
+        />
+        <ScrollReveal variant="fade-up" delay={100}>
+          <div className="max-w-2xl mx-auto">
+            <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-8 md:p-10">
+              <div className="space-y-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs text-white/40 uppercase tracking-widest">施工証明書</div>
+                    <div className="mt-1 text-base font-bold text-white">ボディコーティング施工証明</div>
+                  </div>
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/10 border border-green-500/20">
+                    <div className="w-1.5 h-1.5 bg-green-400 rounded-full" />
+                    <span className="text-xs font-medium text-green-400">有効</span>
+                  </div>
+                </div>
+                <div className="h-px bg-white/[0.06]" />
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <div className="text-white/40">車両</div>
+                    <div className="mt-1 text-white/70">Toyota Alphard 2024</div>
+                  </div>
+                  <div>
+                    <div className="text-white/40">施工日</div>
+                    <div className="mt-1 text-white/70">2025.03.15</div>
+                  </div>
+                  <div>
+                    <div className="text-white/40">使用材料</div>
+                    <div className="mt-1 text-white/70">GYEON Q² One</div>
+                  </div>
+                  <div>
+                    <div className="text-white/40">保証期間</div>
+                    <div className="mt-1 text-white/70">5年間</div>
+                  </div>
+                </div>
+                <div className="h-px bg-white/[0.06]" />
+                <div className="flex items-center gap-3 text-xs text-white/40">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-blue-400">
+                    <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                  CARTRUST認証 · 改ざん防止済み
+                </div>
+              </div>
+            </div>
+            <p className="mt-4 text-center text-sm text-white/40">
+              自社ロゴ・ブランドカラー・施工写真の反映に対応
+            </p>
+          </div>
+        </ScrollReveal>
+      </Section>
+
+      {/* 主要メリット */}
+      <Section bg="alt">
         <SectionHeading
           title="CARTRUSTが施工店にもたらす価値"
           subtitle="証明書発行から管理まで、施工店の業務をワンストップで支援します"
@@ -60,10 +116,33 @@ export default function ForShopsPage() {
         </FeatureGrid>
       </Section>
 
+      {/* 施工種別別の活用例 */}
+      <Section>
+        <SectionHeading
+          title="こんな施工に対応しています"
+          subtitle="あらゆる施工タイプの証明書をデジタルで発行"
+        />
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { title: "ボディコーティング", desc: "ガラスコーティング、セラミックコーティング等" },
+            { title: "PPF（プロテクションフィルム）", desc: "塗装保護フィルムの施工記録" },
+            { title: "ウィンドウフィルム", desc: "カーフィルム、断熱フィルムの施工証明" },
+            { title: "その他カスタム", desc: "ラッピング、デッドニング等にも対応" },
+          ].map((item, i) => (
+            <ScrollReveal key={item.title} variant="fade-up" delay={i * 80}>
+              <div className="p-5 rounded-xl bg-white/[0.04] border border-white/[0.07] hover:bg-white/[0.07] hover:border-white/[0.12] transition-all duration-300 h-full">
+                <h3 className="text-sm font-bold text-white">{item.title}</h3>
+                <p className="mt-2 text-xs text-white/50 leading-relaxed">{item.desc}</p>
+              </div>
+            </ScrollReveal>
+          ))}
+        </div>
+      </Section>
+
       {/* ワークフロー */}
       <Section bg="alt">
         <SectionHeading
-          title="かんたん3ステップ"
+          title="かんたん3ステップで始められます"
           subtitle="面倒な手続きは不要。すぐに使い始められます"
         />
         <div className="max-w-3xl mx-auto">
@@ -81,7 +160,7 @@ export default function ForShopsPage() {
             {
               step: "03",
               title: "URLで共有",
-              description: "発行された証明書のURLを顧客や保険会社に共有。QRコードでの共有にも対応しています。",
+              description: "発行された証明書のURLを顧客や保険会社に共有。QRコードやNFCタグでの共有にも対応しています。",
             },
           ].map((item, i) => (
             <ScrollReveal key={item.step} variant="fade-up" delay={i * 120}>
@@ -91,7 +170,7 @@ export default function ForShopsPage() {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-white">{item.title}</h3>
-                  <p className="mt-2 text-white/50 leading-relaxed">{item.description}</p>
+                  <p className="mt-2 text-white/60 leading-relaxed">{item.description}</p>
                 </div>
               </div>
             </ScrollReveal>
@@ -99,11 +178,11 @@ export default function ForShopsPage() {
         </div>
       </Section>
 
-      {/* 追加メリット */}
+      {/* 他店との差別化 */}
       <Section>
         <SectionHeading
-          title="さらに、こんなメリットも"
-          subtitle="施工店の日々の業務を支える機能が揃っています"
+          title="他店との差別化ポイントに"
+          subtitle="デジタル証明書の導入は、施工店の競争力を高めます"
         />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-10">
           <FeatureCard
@@ -133,24 +212,53 @@ export default function ForShopsPage() {
             delay={200}
             icon={
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6">
-                <path d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                <path d="M7 7h10v10H7z" />
+                <path d="M11 3v4m0 10v4M3 11h4m10 0h4" />
               </svg>
             }
-            title="ブランドカスタマイズ"
-            description="自社のロゴやカラーを証明書に反映。プロフェッショナルな印象を顧客に与えることができます。"
+            title="NFCタグ連携"
+            description="NFCタグを車両に貼付すれば、お客様がスマホをかざすだけで証明書を確認可能。先進的な顧客体験を提供します。"
           />
           <FeatureCard
             variant="bordered"
             delay={300}
             icon={
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6">
-                <path d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                <path d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
               </svg>
             }
-            title="データ分析・レポート"
-            description="発行件数や施工内容の傾向をダッシュボードで確認。経営判断に活かせるインサイトを提供します。"
+            title="ブランドカスタマイズ"
+            description="自社のロゴやカラーを証明書に反映。プロフェッショナルな印象を顧客に与えることができます。"
           />
         </div>
+      </Section>
+
+      {/* 料金導線 */}
+      <Section bg="alt">
+        <ScrollReveal variant="fade-up">
+          <div className="text-center max-w-lg mx-auto">
+            <h2 className="text-2xl md:text-3xl font-bold text-white">
+              無料プランですぐに始められます
+            </h2>
+            <p className="mt-4 text-white/60">
+              月10件まで証明書を無料で発行。クレジットカード不要で今日から使えます。
+            </p>
+            <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
+              <Link
+                href="/signup"
+                className="inline-flex items-center justify-center font-medium rounded-lg text-sm px-8 py-3.5 bg-white text-[#060a12] hover:bg-gray-100 transition-colors active:scale-[0.97]"
+              >
+                無料で始める
+              </Link>
+              <Link
+                href="/pricing"
+                className="inline-flex items-center justify-center font-medium rounded-lg text-sm px-8 py-3.5 border border-white/20 text-white/70 hover:text-white hover:border-white/40 transition-colors active:scale-[0.97]"
+              >
+                料金プランを見る
+              </Link>
+            </div>
+          </div>
+        </ScrollReveal>
       </Section>
 
       <CTABanner

@@ -21,7 +21,7 @@ export function FAQItem({
           {question}
         </span>
         <svg
-          className={`w-4 h-4 text-white/30 flex-shrink-0 transition-transform duration-200 ${open ? "rotate-45" : ""}`}
+          className={`w-4 h-4 text-white/40 flex-shrink-0 transition-transform duration-300 ease-out ${open ? "rotate-45" : ""}`}
           viewBox="0 0 16 16"
           fill="none"
           stroke="currentColor"
@@ -32,10 +32,10 @@ export function FAQItem({
         </svg>
       </button>
       <div
-        className={`grid transition-[grid-template-rows] duration-200 ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
+        className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
       >
         <div className="overflow-hidden">
-          <p className="pb-6 text-[0.938rem] leading-[1.75] text-white/45">
+          <p className="pb-6 text-[0.938rem] leading-[1.75] text-white/60">
             {answer}
           </p>
         </div>

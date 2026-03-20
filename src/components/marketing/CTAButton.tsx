@@ -12,7 +12,7 @@ export function CTAButton({
   className?: string;
 }) {
   const base =
-    "inline-flex items-center justify-center font-medium rounded-lg transition-all duration-200 text-[0.938rem] px-8 py-3.5";
+    "inline-flex items-center justify-center font-medium rounded-lg transition-all duration-200 text-[0.938rem] px-6 py-3.5 active:scale-[0.97]";
 
   const variants = {
     primary:

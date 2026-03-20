@@ -29,7 +29,7 @@ export function FeatureCard({
         <h3 className="text-[1.125rem] md:text-[1.25rem] font-bold leading-[1.4] text-white mb-3">
           {title}
         </h3>
-        <p className="text-[0.938rem] leading-[1.75] text-white/50">{description}</p>
+        <p className="text-[0.938rem] leading-[1.75] text-white/60">{description}</p>
       </div>
     </ScrollReveal>
   );

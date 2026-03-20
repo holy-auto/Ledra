@@ -42,7 +42,7 @@ export function PricingCard({
         <h3 className="text-lg font-bold text-white">
           {name}
         </h3>
-        <p className="mt-1.5 text-sm text-white/50">
+        <p className="mt-1.5 text-sm text-white/60">
           {description}
         </p>
       </div>

@@ -1,7 +1,11 @@
 import { Container } from "./Container";
 import { CTAButton } from "./CTAButton";
 
-export function Hero() {
+export function Hero({
+  variant = "full",
+}: {
+  variant?: "full" | "prelaunch";
+}) {
   return (
     <section className="relative overflow-hidden bg-[#060a12] min-h-[92vh] flex items-center">
       {/* Dark premium background with animated elements */}
@@ -10,7 +14,7 @@ export function Hero() {
         <div className="absolute top-[-20%] left-[-10%] w-[700px] h-[700px] bg-blue-600/20 rounded-full blur-[150px] animate-[float_10s_ease-in-out_infinite]" />
         <div className="absolute bottom-[-10%] right-[-5%] w-[600px] h-[600px] bg-blue-400/15 rounded-full blur-[130px] animate-[float_12s_ease-in-out_infinite_reverse]" />
         <div className="absolute top-[40%] left-[50%] w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[120px] animate-[pulse-soft_8s_ease-in-out_infinite]" />
-        {/* Purple accent orb — right top */}
+        {/* Purple accent orb */}
         <div className="absolute top-[-5%] right-[10%] w-[400px] h-[400px] bg-violet-600/15 rounded-full blur-[130px] animate-[float_14s_ease-in-out_infinite_1s]" />
 
         {/* Refined grid pattern */}
@@ -40,7 +44,7 @@ export function Hero() {
 
       <Container className="relative text-center py-28 md:py-40 lg:py-48">
         <div className="animate-[hero-fade-in_0.7s_ease-out_0.15s_both]">
-          {/* Enhanced badge with gradient border */}
+          {/* Badge */}
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium text-blue-300 bg-blue-500/10 border border-blue-500/20 shadow-[0_0_20px_rgba(59,130,246,0.15)]">
             <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-[pulse-soft_2s_ease-in-out_infinite]" />
             WEB施工証明書SaaS
@@ -56,7 +60,7 @@ export function Hero() {
           </span>
         </h1>
 
-        <p className="mt-10 text-lg md:text-xl leading-relaxed text-white/50 max-w-2xl mx-auto animate-[hero-fade-up_0.8s_ease-out_0.7s_both]">
+        <p className="mt-10 text-lg md:text-xl leading-relaxed text-white/60 max-w-2xl mx-auto animate-[hero-fade-up_0.8s_ease-out_0.7s_both]">
           CARTRUSTは、自動車の施工記録をデジタル証明書として発行・管理できるプラットフォームです。
           施工店の業務効率化と、保険会社の査定精度向上を同時に実現します。
         </p>
@@ -70,21 +74,21 @@ export function Hero() {
           </CTAButton>
         </div>
 
-        {/* Value props — factual, no inflated numbers */}
+        {/* Value props */}
         <div className="mt-20 flex flex-col sm:flex-row items-center justify-center gap-8 sm:gap-16 animate-[hero-fade-in_0.8s_ease-out_1.2s_both]">
           <div className="text-center">
             <div className="text-2xl md:text-3xl font-bold text-white">無料<span className="text-blue-400">で開始</span></div>
-            <div className="text-xs text-white/40 mt-1">クレジットカード不要</div>
+            <div className="text-xs text-white/50 mt-1">クレジットカード不要</div>
           </div>
           <div className="hidden sm:block w-px h-8 bg-white/10" />
           <div className="text-center">
             <div className="text-2xl md:text-3xl font-bold text-white">5<span className="text-blue-400">分</span></div>
-            <div className="text-xs text-white/40 mt-1">かんたん初期設定</div>
+            <div className="text-xs text-white/50 mt-1">かんたん初期設定</div>
           </div>
           <div className="hidden sm:block w-px h-8 bg-white/10" />
           <div className="text-center">
             <div className="text-2xl md:text-3xl font-bold text-white">URL<span className="text-blue-400">共有</span></div>
-            <div className="text-xs text-white/40 mt-1">証明書をすぐに共有</div>
+            <div className="text-xs text-white/50 mt-1">証明書をすぐに共有</div>
           </div>
         </div>
       </Container>
