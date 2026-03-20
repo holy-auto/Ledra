@@ -34,7 +34,7 @@ export default function ImageGallery({ images, alt }: { images: VehicleImage[]; 
               type="button"
               onClick={() => setMainImage(idx)}
               className={`flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-colors ${
-                idx === mainImage ? "border-[#0071e3]" : "border-transparent"
+                idx === mainImage ? "border-accent" : "border-transparent"
               }`}
             >
               <Image src={img.storage_path} alt="" width={64} height={64} className="w-full h-full object-cover" />

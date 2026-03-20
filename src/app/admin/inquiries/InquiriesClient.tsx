@@ -223,7 +223,7 @@ export default function InquiriesClient() {
                   {/* Summary row */}
                   <button
                     type="button"
-                    className="w-full p-4 text-left hover:bg-[rgba(0,0,0,0.02)] transition-colors"
+                    className="w-full p-4 text-left hover:bg-surface-hover transition-colors"
                     onClick={() => toggleExpand(inq.id)}
                   >
                     <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -272,7 +272,7 @@ export default function InquiriesClient() {
                         {!repliesLoading && replies.length > 0 && (
                           <div className="space-y-2">
                             {replies.map((r) => (
-                              <div key={r.id} className="rounded-lg bg-[rgba(0,0,0,0.02)] p-3">
+                              <div key={r.id} className="rounded-lg bg-surface-hover p-3">
                                 <div className="flex items-center justify-between mb-1">
                                   <span className="text-xs font-medium text-secondary">{r.sender}</span>
                                   <span className="text-[10px] text-muted">{formatDate(r.created_at)}</span>

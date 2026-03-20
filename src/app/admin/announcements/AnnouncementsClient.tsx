@@ -12,10 +12,10 @@ interface Announcement {
 }
 
 const CATEGORY_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  info: { label: "お知らせ", color: "text-[#0071e3]", bg: "bg-[rgba(0,113,227,0.06)]", border: "border-[rgba(0,113,227,0.15)]" },
-  update: { label: "アップデート", color: "text-[#28a745]", bg: "bg-[rgba(40,167,69,0.06)]", border: "border-[rgba(40,167,69,0.15)]" },
-  maintenance: { label: "メンテナンス", color: "text-[#b35c00]", bg: "bg-[rgba(179,92,0,0.06)]", border: "border-[rgba(179,92,0,0.15)]" },
-  important: { label: "重要", color: "text-[#d1242f]", bg: "bg-[rgba(209,36,47,0.06)]", border: "border-[rgba(209,36,47,0.15)]" },
+  info: { label: "お知らせ", color: "text-accent-text", bg: "bg-accent-dim", border: "border-accent/15" },
+  update: { label: "アップデート", color: "text-success-text", bg: "bg-success-dim", border: "border-success/15" },
+  maintenance: { label: "メンテナンス", color: "text-warning-text", bg: "bg-warning-dim", border: "border-warning/15" },
+  important: { label: "重要", color: "text-danger-text", bg: "bg-danger-dim", border: "border-danger/15" },
 };
 
 const CATEGORY_FILTERS = [
@@ -87,12 +87,12 @@ export default function AnnouncementsClient() {
         </div>
         <div className="glass-card p-5">
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">未読</div>
-          <div className="mt-2 text-2xl font-bold text-[#d1242f]">{unreadCount}</div>
+          <div className="mt-2 text-2xl font-bold text-danger-text">{unreadCount}</div>
           <div className="mt-1 text-xs text-muted">未読のお知らせ</div>
         </div>
         <div className="glass-card p-5">
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">既読</div>
-          <div className="mt-2 text-2xl font-bold text-[#28a745]">{announcements.length - unreadCount}</div>
+          <div className="mt-2 text-2xl font-bold text-success-text">{announcements.length - unreadCount}</div>
           <div className="mt-1 text-xs text-muted">既読のお知らせ</div>
         </div>
       </div>
@@ -106,8 +106,8 @@ export default function AnnouncementsClient() {
             onClick={() => setCategoryFilter(f.value)}
             className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
               categoryFilter === f.value
-                ? "bg-[#0071e3] text-white"
-                : "bg-[rgba(0,0,0,0.04)] text-secondary hover:bg-[rgba(0,0,0,0.08)]"
+                ? "bg-accent text-inverse"
+                : "bg-surface-hover text-secondary hover:bg-surface-active"
             }`}
           >
             {f.label}
@@ -134,7 +134,7 @@ export default function AnnouncementsClient() {
               >
                 <div className="flex items-start gap-3">
                   {!ann.is_read && (
-                    <span className="mt-1.5 h-2.5 w-2.5 flex-shrink-0 rounded-full bg-[#0071e3]" />
+                    <span className="mt-1.5 h-2.5 w-2.5 flex-shrink-0 rounded-full bg-accent" />
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">

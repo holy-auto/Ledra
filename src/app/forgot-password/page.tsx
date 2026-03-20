@@ -48,12 +48,12 @@ export default function ForgotPasswordPage() {
       <main className="min-h-screen flex items-center justify-center bg-base p-6">
         <div className="glass-card w-full max-w-sm space-y-6 p-8 text-center">
           <div className="flex items-center justify-center gap-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg" style={{ background: "linear-gradient(135deg, #0071e3, #5856d6)" }}>
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg" style={{ background: "linear-gradient(135deg, var(--accent-blue), #5856d6)" }}>
               C
             </div>
             <span className="text-xl font-bold text-primary tracking-wide">CARTRUST</span>
           </div>
-          <div className="text-[#0071e3]">
+          <div className="text-accent">
             <svg className="mx-auto w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
             </svg>
@@ -73,7 +73,7 @@ export default function ForgotPasswordPage() {
       <div className="glass-card w-full max-w-sm space-y-6 p-8">
         {/* Branding */}
         <div className="flex items-center justify-center gap-3">
-          <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg" style={{ background: "linear-gradient(135deg, #0071e3, #5856d6)" }}>
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg" style={{ background: "linear-gradient(135deg, var(--accent-blue), #5856d6)" }}>
             C
           </div>
           <span className="text-xl font-bold text-primary tracking-wide">CARTRUST</span>
@@ -114,7 +114,7 @@ export default function ForgotPasswordPage() {
         </form>
 
         <p className="text-sm text-secondary text-center">
-          <Link href="/login" className="text-[#0071e3] hover:underline font-medium">
+          <Link href="/login" className="text-accent hover:underline font-medium">
             ログインに戻る
           </Link>
         </p>

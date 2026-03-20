@@ -251,7 +251,7 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
             <div className="rounded-lg bg-base px-3 py-2 text-secondary">バージョン: <span className="text-primary">{data.certificate.current_version != null ? String(data.certificate.current_version) : "-"}</span></div>
             <div className="rounded-lg bg-base px-3 py-2 text-secondary">
               公開URL:{" "}
-              <a href={publicUrl} target="_blank" rel="noreferrer" className="text-[#0071e3] hover:underline">
+              <a href={publicUrl} target="_blank" rel="noreferrer" className="text-accent hover:underline">
                 {publicUrl}
               </a>
             </div>
@@ -273,7 +273,7 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
                   href={String(img.url)}
                   target="_blank"
                   rel="noreferrer"
-                  className="block rounded-xl border border-border-default p-2.5 no-underline transition-colors hover:border-[#0071e3]/50 hover:bg-surface-hover"
+                  className="block rounded-xl border border-border-default p-2.5 no-underline transition-colors hover:border-accent/50 hover:bg-surface-hover"
                 >
                   <img
                     src={String(img.url)}

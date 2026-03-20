@@ -40,12 +40,12 @@ type AnalyticsData = {
 };
 
 function GrowthBadge({ rate }: { rate: number | null }) {
-  if (rate === null) return <span className="text-[11px] text-[#aeaeb2]">- データなし</span>;
+  if (rate === null) return <span className="text-[11px] text-muted">- データなし</span>;
   const isPositive = rate >= 0;
   return (
     <span
       className="inline-flex items-center gap-0.5 text-[12px] font-semibold"
-      style={{ color: isPositive ? "#34c759" : "#ff3b30" }}
+      style={{ color: isPositive ? "var(--color-success)" : "var(--color-danger)" }}
     >
       <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
         <path
@@ -78,8 +78,8 @@ export default function RevenueAnalytics() {
   if (loading) {
     return (
       <div className="glass-card p-6 animate-pulse space-y-4">
-        <div className="h-4 w-32 rounded bg-[rgba(0,0,0,0.06)]" />
-        <div className="h-40 rounded bg-[rgba(0,0,0,0.04)]" />
+        <div className="h-4 w-32 rounded bg-border-default" />
+        <div className="h-40 rounded bg-border-default/50" />
       </div>
     );
   }
@@ -101,7 +101,7 @@ export default function RevenueAnalytics() {
           <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">今月の売上</div>
           <div className="text-xl font-bold text-primary">{formatJpy(current.month)}</div>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-[#aeaeb2]">前月比</span>
+            <span className="text-[11px] text-muted">前月比</span>
             <GrowthBadge rate={current.monthGrowthRate} />
           </div>
         </div>
@@ -110,7 +110,7 @@ export default function RevenueAnalytics() {
         <div className="glass-card p-4 space-y-1">
           <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">前月</div>
           <div className="text-xl font-bold text-primary">{formatJpy(current.prevMonth)}</div>
-          <div className="text-[11px] text-[#aeaeb2]">{current.prevMonthLabel}</div>
+          <div className="text-[11px] text-muted">{current.prevMonthLabel}</div>
         </div>
 
         {/* Year over year */}
@@ -118,7 +118,7 @@ export default function RevenueAnalytics() {
           <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">前年同月比</div>
           <div className="text-xl font-bold text-primary">{formatJpy(current.lastYearSameMonth)}</div>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-[#aeaeb2]">{current.lastYearLabel}</span>
+            <span className="text-[11px] text-muted">{current.lastYearLabel}</span>
             <GrowthBadge rate={current.yearGrowthRate} />
           </div>
         </div>
@@ -126,8 +126,8 @@ export default function RevenueAnalytics() {
         {/* Estimate pipeline */}
         <div className="glass-card p-4 space-y-1">
           <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">見積パイプライン</div>
-          <div className="text-xl font-bold text-[#ff9500]">{formatJpy(summary.estimatePipeline)}</div>
-          <div className="text-[11px] text-[#aeaeb2]">未確定の見積合計</div>
+          <div className="text-xl font-bold text-warning">{formatJpy(summary.estimatePipeline)}</div>
+          <div className="text-[11px] text-muted">未確定の見積合計</div>
         </div>
       </div>
 
@@ -138,14 +138,14 @@ export default function RevenueAnalytics() {
             <div className="text-[10px] font-semibold tracking-[0.18em] text-muted">売上チャート</div>
             <div className="mt-0.5 text-[15px] font-semibold text-primary">売上推移</div>
           </div>
-          <div className="flex gap-1 rounded-lg p-0.5" style={{ background: "rgba(0,0,0,0.04)" }}>
+          <div className="flex gap-1 rounded-lg p-0.5" style={{ background: "var(--color-border-default)" }}>
             <button
               type="button"
               onClick={() => setViewMode("monthly")}
               className={`px-3 py-1.5 rounded-md text-[11px] font-medium transition-all ${
                 viewMode === "monthly"
-                  ? "bg-white text-[#0071e3] shadow-sm"
-                  : "text-[#6e6e73] hover:text-[#1d1d1f]"
+                  ? "bg-surface text-accent shadow-sm"
+                  : "text-secondary hover:text-primary"
               }`}
             >
               月別
@@ -155,8 +155,8 @@ export default function RevenueAnalytics() {
               onClick={() => setViewMode("yearly")}
               className={`px-3 py-1.5 rounded-md text-[11px] font-medium transition-all ${
                 viewMode === "yearly"
-                  ? "bg-white text-[#0071e3] shadow-sm"
-                  : "text-[#6e6e73] hover:text-[#1d1d1f]"
+                  ? "bg-surface text-accent shadow-sm"
+                  : "text-secondary hover:text-primary"
               }`}
             >
               年別
@@ -187,7 +187,7 @@ export default function RevenueAnalytics() {
                       {growth !== null && m.combinedTotal > 0 && (
                         <span
                           className="text-[9px] font-semibold opacity-0 group-hover:opacity-100 transition-opacity"
-                          style={{ color: growth >= 0 ? "#34c759" : "#ff3b30" }}
+                          style={{ color: growth >= 0 ? "var(--color-success)" : "var(--color-danger)" }}
                         >
                           {growth >= 0 ? "+" : ""}{growth.toFixed(0)}%
                         </span>
@@ -199,18 +199,18 @@ export default function RevenueAnalytics() {
                       style={{
                         height: `${Math.max(height, 3)}%`,
                         background: isCurrentMonth
-                          ? "linear-gradient(180deg, #0071e3, #5856d6)"
+                          ? "linear-gradient(180deg, var(--accent-blue), var(--accent-violet))"
                           : m.combinedTotal > 0
-                            ? "linear-gradient(180deg, rgba(0,113,227,0.3), rgba(88,86,214,0.2))"
-                            : "rgba(0,0,0,0.04)",
+                            ? "linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 30%, transparent), color-mix(in srgb, var(--accent-violet) 20%, transparent))"
+                            : "var(--color-border-default)",
                       }}
                     />
                     {/* Month label */}
-                    <div className={`text-[10px] mt-1 ${isCurrentMonth ? "font-semibold text-[#0071e3]" : "text-[#aeaeb2]"}`}>
+                    <div className={`text-[10px] mt-1 ${isCurrentMonth ? "font-semibold text-accent" : "text-muted"}`}>
                       {m.label.replace(/^\d+年/, "")}
                     </div>
                     {/* Count */}
-                    <div className="text-[9px] text-[#aeaeb2]">
+                    <div className="text-[9px] text-muted">
                       {m.count}件
                     </div>
                   </div>
@@ -239,19 +239,19 @@ export default function RevenueAnalytics() {
                         ? ((m.combinedTotal - prevMonth.combinedTotal) / prevMonth.combinedTotal * 100)
                         : null;
                       return (
-                        <tr key={m.month} className={idx === 0 ? "bg-[rgba(0,113,227,0.03)]" : ""}>
+                        <tr key={m.month} className={idx === 0 ? "bg-accent-dim" : ""}>
                           <td className="py-2 px-2 text-secondary font-medium">{m.label}</td>
                           <td className="hidden sm:table-cell py-2 px-2 text-right text-secondary">{formatJpy(m.invoiceTotal)}</td>
                           <td className="hidden sm:table-cell py-2 px-2 text-right text-secondary">{formatJpy(m.documentTotal)}</td>
                           <td className="py-2 px-2 text-right font-semibold text-primary">{formatJpy(m.combinedTotal)}</td>
-                          <td className="py-2 px-2 text-right text-[#aeaeb2]">{m.count}</td>
+                          <td className="py-2 px-2 text-right text-muted">{m.count}</td>
                           <td className="py-2 px-2 text-right">
                             {growth !== null && m.combinedTotal > 0 ? (
-                              <span style={{ color: growth >= 0 ? "#34c759" : "#ff3b30" }}>
+                              <span style={{ color: growth >= 0 ? "var(--color-success)" : "var(--color-danger)" }}>
                                 {growth >= 0 ? "+" : ""}{growth.toFixed(1)}%
                               </span>
                             ) : (
-                              <span className="text-[#aeaeb2]">-</span>
+                              <span className="text-muted">-</span>
                             )}
                           </td>
                         </tr>
@@ -283,7 +283,7 @@ export default function RevenueAnalytics() {
                       {growth !== null && (
                         <span
                           className="text-[10px] font-semibold"
-                          style={{ color: growth >= 0 ? "#34c759" : "#ff3b30" }}
+                          style={{ color: growth >= 0 ? "var(--color-success)" : "var(--color-danger)" }}
                         >
                           {growth >= 0 ? "+" : ""}{growth.toFixed(1)}%
                         </span>
@@ -294,14 +294,14 @@ export default function RevenueAnalytics() {
                       style={{
                         height: `${Math.max(height, 3)}%`,
                         background: idx === years.length - 1
-                          ? "linear-gradient(180deg, #0071e3, #5856d6)"
-                          : "linear-gradient(180deg, rgba(0,113,227,0.3), rgba(88,86,214,0.2))",
+                          ? "linear-gradient(180deg, var(--accent-blue), var(--accent-violet))"
+                          : "linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 30%, transparent), color-mix(in srgb, var(--accent-violet) 20%, transparent))",
                       }}
                     />
-                    <div className={`text-[12px] mt-1 font-semibold ${idx === years.length - 1 ? "text-[#0071e3]" : "text-[#6e6e73]"}`}>
+                    <div className={`text-[12px] mt-1 font-semibold ${idx === years.length - 1 ? "text-accent" : "text-secondary"}`}>
                       {y.year}年
                     </div>
-                    <div className="text-[10px] text-[#aeaeb2]">{y.count}件</div>
+                    <div className="text-[10px] text-muted">{y.count}件</div>
                   </div>
                 );
               })}
@@ -325,17 +325,17 @@ export default function RevenueAnalytics() {
                       ? ((y.total - prevYear.total) / prevYear.total * 100)
                       : null;
                     return (
-                      <tr key={y.year} className={idx === 0 ? "bg-[rgba(0,113,227,0.03)]" : ""}>
+                      <tr key={y.year} className={idx === 0 ? "bg-accent-dim" : ""}>
                         <td className="py-2 px-2 font-semibold text-primary">{y.year}年</td>
                         <td className="py-2 px-2 text-right font-semibold text-primary">{formatJpy(y.total)}</td>
-                        <td className="py-2 px-2 text-right text-[#aeaeb2]">{y.count}</td>
+                        <td className="py-2 px-2 text-right text-muted">{y.count}</td>
                         <td className="py-2 px-2 text-right">
                           {growth !== null ? (
-                            <span style={{ color: growth >= 0 ? "#34c759" : "#ff3b30" }}>
+                            <span style={{ color: growth >= 0 ? "var(--color-success)" : "var(--color-danger)" }}>
                               {growth >= 0 ? "+" : ""}{growth.toFixed(1)}%
                             </span>
                           ) : (
-                            <span className="text-[#aeaeb2]">-</span>
+                            <span className="text-muted">-</span>
                           )}
                         </td>
                       </tr>

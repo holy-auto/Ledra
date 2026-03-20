@@ -140,7 +140,7 @@ export default async function AdminSettingsPage() {
   ADD COLUMN IF NOT EXISTS address       text,
   ADD COLUMN IF NOT EXISTS website_url   text;`}</pre>
             <p className="mt-2 text-xs text-muted">
-              SQL Editor: <a href="https://supabase.com/dashboard/project/cahybswpduchptvyvdkk/sql/new" target="_blank" rel="noreferrer" className="underline text-[#0071e3]">supabase.com/dashboard/project/cahybswpduchptvyvdkk/sql/new</a>
+              SQL Editor: <a href="https://supabase.com/dashboard/project/cahybswpduchptvyvdkk/sql/new" target="_blank" rel="noreferrer" className="underline text-accent">supabase.com/dashboard/project/cahybswpduchptvyvdkk/sql/new</a>
             </p>
           </section>
         )}

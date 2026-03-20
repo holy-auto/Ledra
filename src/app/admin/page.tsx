@@ -19,9 +19,9 @@ function StatSkeleton() {
     <div className="animate-pulse grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {[1, 2, 3, 4].map((i) => (
         <div key={i} className="glass-card p-5 space-y-2">
-          <div className="h-3 w-16 rounded bg-[rgba(0,0,0,0.06)]" />
-          <div className="h-8 w-20 rounded bg-[rgba(0,0,0,0.06)]" />
-          <div className="h-3 w-24 rounded bg-[rgba(0,0,0,0.04)]" />
+          <div className="h-3 w-16 rounded bg-surface-hover" />
+          <div className="h-8 w-20 rounded bg-surface-hover" />
+          <div className="h-3 w-24 rounded bg-surface-hover" />
         </div>
       ))}
     </div>
@@ -94,17 +94,17 @@ async function TenantStats({ tenantId }: { tenantId: string }) {
           </div>
           <div className="glass-card p-5">
             <div className="text-xs font-semibold tracking-[0.18em] text-muted">有効</div>
-            <div className="mt-2 text-3xl font-bold text-[#28a745]">{activeCerts}</div>
+            <div className="mt-2 text-3xl font-bold text-success">{activeCerts}</div>
             <div className="mt-1 text-xs text-muted">有効な施工証明書</div>
           </div>
           <div className="glass-card p-5">
             <div className="text-xs font-semibold tracking-[0.18em] text-muted">無効</div>
-            <div className="mt-2 text-3xl font-bold text-[#d1242f]">{voidCerts}</div>
+            <div className="mt-2 text-3xl font-bold text-danger">{voidCerts}</div>
             <div className="mt-1 text-xs text-muted">無効の施工証明書</div>
           </div>
           <div className="glass-card p-5">
             <div className="text-xs font-semibold tracking-[0.18em] text-muted">メンバー</div>
-            <div className="mt-2 text-3xl font-bold text-[#0071e3]">{memberCount ?? 0}</div>
+            <div className="mt-2 text-3xl font-bold text-accent">{memberCount ?? 0}</div>
             <div className="mt-1 text-xs text-muted">チームメンバー</div>
           </div>
         </div>
@@ -114,17 +114,17 @@ async function TenantStats({ tenantId }: { tenantId: string }) {
       <div className="grid gap-4 sm:grid-cols-3">
         <Link href="/admin/reservations" className="glass-card p-5 hover:bg-surface-hover transition-colors">
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">本日</div>
-          <div className="mt-2 text-2xl font-bold text-[#5856d6]">{todayResResult?.count ?? 0}</div>
+          <div className="mt-2 text-2xl font-bold text-violet-text">{todayResResult?.count ?? 0}</div>
           <div className="mt-1 text-xs text-muted">本日の予約</div>
         </Link>
         <Link href="/admin/reservations" className="glass-card p-5 hover:bg-surface-hover transition-colors">
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">進行中</div>
-          <div className="mt-2 text-2xl font-bold text-[#0071e3]">{activeResResult?.count ?? 0}</div>
+          <div className="mt-2 text-2xl font-bold text-accent">{activeResResult?.count ?? 0}</div>
           <div className="mt-1 text-xs text-muted">進行中の予約・作業</div>
         </Link>
         <Link href="/admin/orders" className="glass-card p-5 hover:bg-surface-hover transition-colors">
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">受発注</div>
-          <div className="mt-2 text-2xl font-bold text-[#b35c00]">{ordersResult?.count ?? 0}</div>
+          <div className="mt-2 text-2xl font-bold text-warning">{ordersResult?.count ?? 0}</div>
           <div className="mt-1 text-xs text-muted">進行中の受発注</div>
         </Link>
       </div>
@@ -143,7 +143,7 @@ async function TenantStats({ tenantId }: { tenantId: string }) {
         </div>
         <div className="glass-card p-5">
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">未回収</div>
-          <div className="mt-2 text-2xl font-bold text-[#b35c00]">¥{unpaidAmount.toLocaleString()}</div>
+          <div className="mt-2 text-2xl font-bold text-warning">¥{unpaidAmount.toLocaleString()}</div>
           <div className="mt-1 text-xs text-muted">未回収額</div>
         </div>
       </div>
@@ -186,14 +186,14 @@ async function PlatformStats() {
               </div>
               <div className="glass-card p-5">
                 <div className="text-xs font-semibold tracking-[0.18em] text-muted">全体 有効</div>
-                <div className="mt-2 text-3xl font-bold text-[#28a745]">{platformCertStats.active}</div>
+                <div className="mt-2 text-3xl font-bold text-success">{platformCertStats.active}</div>
                 <div className="mt-1 text-xs text-muted">有効な施工証明書</div>
               </div>
             </>
           )}
           <div className="glass-card p-5">
             <div className="text-xs font-semibold tracking-[0.18em] text-muted">保険会社</div>
-            <div className="mt-2 text-3xl font-bold text-[#bf5af2]">{insurerCount}</div>
+            <div className="mt-2 text-3xl font-bold text-violet-text">{insurerCount}</div>
             <div className="mt-1 text-xs text-muted">保険会社数</div>
           </div>
         </div>
@@ -219,7 +219,7 @@ async function PlatformStats() {
                         </div>
                         <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
                           <div
-                            className="h-full rounded-full bg-gradient-to-r from-[#0071e3] to-[#5e5ce6]"
+                            className="h-full rounded-full bg-gradient-to-r from-accent to-violet-500"
                             style={{ width: `${pct}%` }}
                           />
                         </div>
@@ -248,7 +248,7 @@ async function PlatformStats() {
                         </div>
                         <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
                           <div
-                            className="h-full rounded-full bg-gradient-to-r from-[#30d158] to-[#34c759]"
+                            className="h-full rounded-full bg-gradient-to-r from-success to-emerald-500"
                             style={{ width: `${pct}%` }}
                           />
                         </div>
@@ -297,12 +297,12 @@ export default async function AdminHome() {
             className="glass-card p-5 flex items-center gap-4 hover:bg-surface-hover transition-colors group"
           >
             <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent-dim">
-              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} className="text-[#0071e3]">
+              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} className="text-accent">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
               </svg>
             </span>
             <div>
-              <div className="text-sm font-semibold text-primary group-hover:text-[#0077ED] transition-colors">証明書一覧</div>
+              <div className="text-sm font-semibold text-primary group-hover:text-accent transition-colors">証明書一覧</div>
               <div className="text-xs text-muted">証明書の管理・検索</div>
             </div>
           </Link>
@@ -312,12 +312,12 @@ export default async function AdminHome() {
             className="glass-card p-5 flex items-center gap-4 hover:bg-surface-hover transition-colors group"
           >
             <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-success-dim">
-              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} className="text-[#28a745]">
+              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} className="text-success">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
               </svg>
             </span>
             <div>
-              <div className="text-sm font-semibold text-primary group-hover:text-[#28a745] transition-colors">新規発行</div>
+              <div className="text-sm font-semibold text-primary group-hover:text-success transition-colors">新規発行</div>
               <div className="text-xs text-muted">施工証明書を発行</div>
             </div>
           </Link>
@@ -327,12 +327,12 @@ export default async function AdminHome() {
             className="glass-card p-5 flex items-center gap-4 hover:bg-surface-hover transition-colors group"
           >
             <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent-dim">
-              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} className="text-[#0071e3]">
+              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} className="text-accent">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
               </svg>
             </span>
             <div>
-              <div className="text-sm font-semibold text-primary group-hover:text-[#0077ED] transition-colors">顧客管理</div>
+              <div className="text-sm font-semibold text-primary group-hover:text-accent transition-colors">顧客管理</div>
               <div className="text-xs text-muted">顧客情報の登録・編集</div>
             </div>
           </Link>
@@ -342,12 +342,12 @@ export default async function AdminHome() {
             className="glass-card p-5 flex items-center gap-4 hover:bg-surface-hover transition-colors group"
           >
             <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning-dim">
-              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} className="text-[#b35c00]">
+              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} className="text-warning">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
               </svg>
             </span>
             <div>
-              <div className="text-sm font-semibold text-primary group-hover:text-[#b35c00] transition-colors">請求書</div>
+              <div className="text-sm font-semibold text-primary group-hover:text-warning transition-colors">請求書</div>
               <div className="text-xs text-muted">請求書の作成・管理</div>
             </div>
           </Link>
@@ -357,12 +357,12 @@ export default async function AdminHome() {
             className="glass-card p-5 flex items-center gap-4 hover:bg-surface-hover transition-colors group"
           >
             <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning-dim">
-              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} className="text-[#b35c00]">
+              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} className="text-warning">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" />
               </svg>
             </span>
             <div>
-              <div className="text-sm font-semibold text-primary group-hover:text-[#b35c00] transition-colors">請求・プラン</div>
+              <div className="text-sm font-semibold text-primary group-hover:text-warning transition-colors">請求・プラン</div>
               <div className="text-xs text-muted">課金状況の確認</div>
             </div>
           </Link>
@@ -372,12 +372,12 @@ export default async function AdminHome() {
             className="glass-card p-5 flex items-center gap-4 hover:bg-surface-hover transition-colors group"
           >
             <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent-dim">
-              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} className="text-[#0071e3]">
+              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} className="text-accent">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
               </svg>
             </span>
             <div>
-              <div className="text-sm font-semibold text-primary group-hover:text-[#0077ED] transition-colors">テンプレート</div>
+              <div className="text-sm font-semibold text-primary group-hover:text-accent transition-colors">テンプレート</div>
               <div className="text-xs text-muted">証明書テンプレートの管理</div>
             </div>
           </Link>

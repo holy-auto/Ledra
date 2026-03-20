@@ -9,9 +9,9 @@ export const dynamic = "force-dynamic";
 const TYPE_LABELS: Record<string, { label: string; color: string }> = {
   certificate_issued: { label: "証明書発行", color: "text-emerald-600 bg-emerald-500/10 border-emerald-500/30" },
   certificate_voided: { label: "証明書無効化", color: "text-red-500 bg-red-500/10 border-red-500/30" },
-  certificate_viewed: { label: "証明書閲覧", color: "text-[#0071e3] bg-[rgba(0,113,227,0.08)] border-[rgba(0,113,227,0.15)]" },
-  certificate_pdf_generated: { label: "PDF生成", color: "text-[#0071e3] bg-[rgba(0,113,227,0.08)] border-[rgba(0,113,227,0.15)]" },
-  certificate_pdf_batch: { label: "PDF一括生成", color: "text-[#0071e3] bg-[rgba(0,113,227,0.08)] border-[rgba(0,113,227,0.15)]" },
+  certificate_viewed: { label: "証明書閲覧", color: "text-accent-text bg-accent-dim border-accent/15" },
+  certificate_pdf_generated: { label: "PDF生成", color: "text-accent-text bg-accent-dim border-accent/15" },
+  certificate_pdf_batch: { label: "PDF一括生成", color: "text-accent-text bg-accent-dim border-accent/15" },
   certificate_public_viewed: { label: "公開ページ閲覧", color: "text-violet-600 bg-violet-500/10 border-violet-500/30" },
   certificate_public_pdf: { label: "公開PDF閲覧", color: "text-violet-600 bg-violet-500/10 border-violet-500/30" },
   vehicle_registered: { label: "車両登録", color: "text-blue-600 bg-blue-500/10 border-blue-500/30" },

@@ -326,7 +326,7 @@ function StripeConnectSection({ connectStatus }: { connectStatus: ConnectStatus 
         {!isOnboarded && (
           <button
             type="button"
-            className="btn-primary !text-sm"
+            className="btn-primary text-sm"
             disabled={busy}
             onClick={handleConnect}
           >
@@ -336,7 +336,7 @@ function StripeConnectSection({ connectStatus }: { connectStatus: ConnectStatus 
         {isConnected && (
           <button
             type="button"
-            className="btn-ghost !text-sm"
+            className="btn-ghost text-sm"
             onClick={checkStatus}
           >
             ステータスを更新

@@ -84,7 +84,7 @@ export default function MaintenanceUrlPage() {
       {!loading && !configId && (
         <div className="glass-card p-4 text-sm text-muted">
           テンプレート設定が見つかりません。先に
-          <Link href="/admin/template-options/gallery" className="underline text-[#0071e3]">テンプレートを選択</Link>
+          <Link href="/admin/template-options/gallery" className="underline text-accent">テンプレートを選択</Link>
           してください。
         </div>
       )}

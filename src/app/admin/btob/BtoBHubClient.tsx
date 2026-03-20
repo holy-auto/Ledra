@@ -46,8 +46,8 @@ export default function BtoBHubClient() {
             onClick={() => handleTabChange(tab.id)}
             className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-[13px] font-medium transition-all duration-200 flex-1 justify-center ${
               activeTab === tab.id
-                ? "bg-white text-[#0071e3] shadow-sm"
-                : "text-[#6e6e73] hover:text-[#1d1d1f]"
+                ? "bg-surface text-accent shadow-sm"
+                : "text-secondary hover:text-primary"
             }`}
           >
             <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

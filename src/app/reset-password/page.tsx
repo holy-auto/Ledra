@@ -56,12 +56,12 @@ export default function ResetPasswordPage() {
       <main className="min-h-screen flex items-center justify-center bg-base p-6">
         <div className="glass-card w-full max-w-sm space-y-6 p-8 text-center">
           <div className="flex items-center justify-center gap-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg" style={{ background: "linear-gradient(135deg, #0071e3, #5856d6)" }}>
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg" style={{ background: "linear-gradient(135deg, var(--accent-blue), #5856d6)" }}>
               C
             </div>
             <span className="text-xl font-bold text-primary tracking-wide">CARTRUST</span>
           </div>
-          <div className="text-[#28a745]">
+          <div className="text-success">
             <svg className="mx-auto w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
             </svg>
@@ -77,7 +77,7 @@ export default function ResetPasswordPage() {
     <main className="min-h-screen flex items-center justify-center bg-base p-6">
       <div className="glass-card w-full max-w-sm space-y-6 p-8">
         <div className="flex items-center justify-center gap-3">
-          <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg" style={{ background: "linear-gradient(135deg, #0071e3, #5856d6)" }}>
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg" style={{ background: "linear-gradient(135deg, var(--accent-blue), #5856d6)" }}>
             C
           </div>
           <span className="text-xl font-bold text-primary tracking-wide">CARTRUST</span>
@@ -133,7 +133,7 @@ export default function ResetPasswordPage() {
         </form>
 
         <p className="text-sm text-secondary text-center">
-          <Link href="/login" className="text-[#0071e3] hover:underline font-medium">
+          <Link href="/login" className="text-accent hover:underline font-medium">
             ログインに戻る
           </Link>
         </p>

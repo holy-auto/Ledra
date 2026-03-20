@@ -87,17 +87,17 @@ export default function PriceStatsClient() {
               </div>
               <div className="glass-card p-5">
                 <div className="text-xs font-semibold tracking-[0.18em] text-muted">全国平均</div>
-                <div className="mt-2 text-3xl font-bold text-[#0071e3]">{formatJpy(data.overall.avg)}</div>
+                <div className="mt-2 text-3xl font-bold text-accent">{formatJpy(data.overall.avg)}</div>
                 <div className="mt-1 text-xs text-muted">施工単価</div>
               </div>
               <div className="glass-card p-5">
                 <div className="text-xs font-semibold tracking-[0.18em] text-muted">最安値</div>
-                <div className="mt-2 text-3xl font-bold text-[#28a745]">{formatJpy(data.overall.min)}</div>
+                <div className="mt-2 text-3xl font-bold text-success">{formatJpy(data.overall.min)}</div>
                 <div className="mt-1 text-xs text-muted">全国最安</div>
               </div>
               <div className="glass-card p-5">
                 <div className="text-xs font-semibold tracking-[0.18em] text-muted">最高値</div>
-                <div className="mt-2 text-3xl font-bold text-[#d1242f]">{formatJpy(data.overall.max)}</div>
+                <div className="mt-2 text-3xl font-bold text-danger">{formatJpy(data.overall.max)}</div>
                 <div className="mt-1 text-xs text-muted">全国最高</div>
               </div>
             </div>
@@ -158,21 +158,21 @@ export default function PriceStatsClient() {
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-muted">平均</span>
-                        <span className="text-sm font-bold text-[#0071e3]">{formatJpy(r.avg)}</span>
+                        <span className="text-sm font-bold text-accent">{formatJpy(r.avg)}</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-muted">最安値</span>
-                        <span className="text-sm font-medium text-[#28a745]">{formatJpy(r.min)}</span>
+                        <span className="text-sm font-medium text-success">{formatJpy(r.min)}</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-muted">最高値</span>
-                        <span className="text-sm font-medium text-[#d1242f]">{formatJpy(r.max)}</span>
+                        <span className="text-sm font-medium text-danger">{formatJpy(r.max)}</span>
                       </div>
                       {/* Price range bar */}
                       <div className="mt-1">
                         <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
                           <div
-                            className="h-full rounded-full bg-gradient-to-r from-[#28a745] via-[#0071e3] to-[#d1242f]"
+                            className="h-full rounded-full bg-gradient-to-r from-success via-accent to-danger"
                             style={{ width: `${Math.min(100, Math.round((r.avg / (data.overall.max || 1)) * 100))}%` }}
                           />
                         </div>

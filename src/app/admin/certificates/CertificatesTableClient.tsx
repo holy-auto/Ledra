@@ -97,7 +97,7 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
   const canCsvOne = isActive && canUseFeature(planTier, "export_one_csv");
   const canPdfOne = isActive && canUseFeature(planTier, "pdf_one");
 
-  const btnCls = (enabled: boolean) => "btn-secondary !text-xs " + (enabled ? "" : "opacity-50");
+  const btnCls = (enabled: boolean) => "btn-secondary text-xs " + (enabled ? "" : "opacity-50");
 
   const hrefOrBill = (enabled: boolean, href: string, action: string) => (enabled ? href : bill(action));
 
@@ -119,10 +119,10 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
             <span className="text-sm text-muted">
               選択: <span className="font-mono font-semibold text-primary">{selectedIds.length}</span> 件
             </span>
-            <button type="button" className="btn-ghost !text-xs" onClick={() => toggleAll(true)} disabled={allIds.length === 0}>
+            <button type="button" className="btn-ghost text-xs" onClick={() => toggleAll(true)} disabled={allIds.length === 0}>
               全選択
             </button>
-            <button type="button" className="btn-ghost !text-xs" onClick={() => toggleAll(false)} disabled={allIds.length === 0}>
+            <button type="button" className="btn-ghost text-xs" onClick={() => toggleAll(false)} disabled={allIds.length === 0}>
               全解除
             </button>
           </div>
@@ -168,7 +168,7 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
               <div className="flex items-center gap-3 px-4 pt-3 pb-2">
                 <input
                   type="checkbox"
-                  className="accent-[#0071e3] shrink-0"
+                  className="accent-accent shrink-0"
                   checked={checked}
                   onChange={(e) => toggleOne(r.public_id, e.target.checked)}
                 />
@@ -176,7 +176,7 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
                   <span className="text-xs text-secondary whitespace-nowrap">{formatDate(r.created_at)}</span>
                   <Link
                     href={`/admin/certificates/${r.public_id}`}
-                    className="font-mono text-sm text-primary hover:text-[#0071e3] transition-colors"
+                    className="font-mono text-sm text-primary hover:text-accent transition-colors"
                     title={r.public_id}
                   >
                     {r.public_id.length > 8 ? r.public_id.slice(0, 8) + "…" : r.public_id}
@@ -189,7 +189,7 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
               </div>
               {/* Row 2: public page button */}
               <div className="px-4 pl-[2.75rem]">
-                <Link href={url} target="_blank" className="btn-secondary !text-xs !py-1.5 w-full text-center">
+                <Link href={url} target="_blank" className="btn-secondary text-xs py-1.5 w-full text-center">
                   公開ページ
                 </Link>
               </div>
@@ -212,7 +212,7 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
                 {!isVoid && (
                   <button
                     type="button"
-                    className="btn-danger !px-3 !py-1 !text-xs"
+                    className="btn-danger px-3 py-1 text-xs"
                     disabled={voidingId === r.public_id}
                     onClick={() => handleVoid(r.public_id)}
                   >

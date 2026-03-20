@@ -264,7 +264,7 @@ export default function DealsClient() {
                           />
                           <button
                             type="button"
-                            className="btn-primary !px-3 !py-1 !text-xs"
+                            className="btn-primary px-3 py-1 text-xs"
                             disabled={updatingId === deal.id}
                             onClick={() => handlePriceSave(deal.id)}
                           >
@@ -272,7 +272,7 @@ export default function DealsClient() {
                           </button>
                           <button
                             type="button"
-                            className="btn-secondary !px-3 !py-1 !text-xs"
+                            className="btn-secondary px-3 py-1 text-xs"
                             onClick={() => setEditingPriceId(null)}
                           >
                             取消
@@ -306,7 +306,7 @@ export default function DealsClient() {
                           <div className="flex flex-col gap-1">
                             <button
                               type="button"
-                              className="btn-primary !px-3 !py-1 !text-xs"
+                              className="btn-primary px-3 py-1 text-xs"
                               disabled={updatingId === deal.id}
                               onClick={() => handleNoteSave(deal.id)}
                             >
@@ -314,7 +314,7 @@ export default function DealsClient() {
                             </button>
                             <button
                               type="button"
-                              className="btn-secondary !px-3 !py-1 !text-xs"
+                              className="btn-secondary px-3 py-1 text-xs"
                               onClick={() => setEditingNoteId(null)}
                             >
                               取消
@@ -343,7 +343,7 @@ export default function DealsClient() {
                         <button
                           key={ns}
                           type="button"
-                          className={ns === "cancelled" ? "btn-danger !px-3 !py-1 !text-xs" : "btn-primary !px-3 !py-1 !text-xs"}
+                          className={ns === "cancelled" ? "btn-danger px-3 py-1 text-xs" : "btn-primary px-3 py-1 text-xs"}
                           disabled={updatingId === deal.id}
                           onClick={() => handleStatusChange(deal.id, ns)}
                         >

@@ -28,7 +28,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   if (!tenantId) {
     return (
       <div className="space-y-6">
-        <div className="glass-card p-4 text-sm text-red-500">テナントが見つかりません。</div>
+        <div className="glass-card p-4 text-sm text-danger">テナントが見つかりません。</div>
       </div>
     );
   }
@@ -45,8 +45,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     return (
       <div className="space-y-6">
         <PageHeader tag="CUSTOMERS" title="顧客詳細" />
-        <div className="glass-card p-4 text-sm text-red-500">顧客が見つかりません。</div>
-        <Link href="/admin/customers" className="text-sm underline text-[#0071e3]">一覧に戻る</Link>
+        <div className="glass-card p-4 text-sm text-danger">顧客が見つかりません。</div>
+        <Link href="/admin/customers" className="text-sm underline text-accent">一覧に戻る</Link>
       </div>
     );
   }
@@ -135,7 +135,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   <td className="px-5 py-3.5">
                     <Link
                       href={`/admin/certificates/${cert.public_id}`}
-                      className="font-mono text-[#0071e3] hover:text-[#0077ED] underline"
+                      className="font-mono text-accent hover:text-accent underline"
                     >
                       {cert.public_id}
                     </Link>
@@ -189,7 +189,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   <td className="px-5 py-3.5">
                     <Link
                       href={`/admin/invoices/${inv.id}`}
-                      className="font-mono text-[#0071e3] hover:text-[#0077ED] underline"
+                      className="font-mono text-accent hover:text-accent underline"
                     >
                       {inv.invoice_number}
                     </Link>

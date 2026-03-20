@@ -195,7 +195,7 @@ export default function TemplateOptionsPage() {
                 "テスト発行（月3回）",
               ].map((f) => (
                 <li key={f} className="flex items-start gap-2">
-                  <span className="text-[#0071e3] mt-0.5">&#10003;</span>
+                  <span className="text-accent mt-0.5">&#10003;</span>
                   <span>{f}</span>
                 </li>
               ))}
@@ -204,8 +204,8 @@ export default function TemplateOptionsPage() {
           </div>
 
           {/* B: プレミアム */}
-          <div className="glass-card p-6 space-y-4 ring-2 ring-[#0071e3] relative">
-            <div className="absolute -top-2.5 left-4 px-2 py-0.5 bg-[#0071e3] text-white text-[10px] font-semibold rounded-full">
+          <div className="glass-card p-6 space-y-4 ring-2 ring-accent relative">
+            <div className="absolute -top-2.5 left-4 px-2 py-0.5 bg-accent text-inverse text-[10px] font-semibold rounded-full">
               おすすめ
             </div>
             <div className="text-lg font-bold text-primary">ブランド証明書 プレミアム</div>
@@ -225,7 +225,7 @@ export default function TemplateOptionsPage() {
                 "初回修正対応込み",
               ].map((f) => (
                 <li key={f} className="flex items-start gap-2">
-                  <span className="text-[#0071e3] mt-0.5">&#10003;</span>
+                  <span className="text-accent mt-0.5">&#10003;</span>
                   <span>{f}</span>
                 </li>
               ))}

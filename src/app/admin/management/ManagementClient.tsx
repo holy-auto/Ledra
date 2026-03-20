@@ -52,10 +52,10 @@ type KPIData = {
 /* ─── Helpers ─── */
 
 function GrowthBadge({ rate, suffix = "%" }: { rate: number | null; suffix?: string }) {
-  if (rate === null) return <span className="text-[11px] text-[#aeaeb2]">-</span>;
+  if (rate === null) return <span className="text-[11px] text-muted">-</span>;
   const isPositive = rate >= 0;
   return (
-    <span className="inline-flex items-center gap-0.5 text-[12px] font-semibold" style={{ color: isPositive ? "#34c759" : "#ff3b30" }}>
+    <span className="inline-flex items-center gap-0.5 text-[12px] font-semibold" style={{ color: isPositive ? "var(--accent-emerald)" : "var(--accent-red)" }}>
       <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
         <path strokeLinecap="round" strokeLinejoin="round"
           d={isPositive ? "M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" : "M4.5 4.5l15 15m0 0V8.25m0 11.25H8.25"} />
@@ -71,15 +71,15 @@ function KPICard({ tag, value, sub, color, danger }: {
   return (
     <div className="glass-card p-4 space-y-1">
       <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">{tag}</div>
-      <div className={`text-xl font-bold ${danger ? "text-[#ff3b30]" : ""}`} style={color ? { color } : undefined}>
+      <div className={`text-xl font-bold ${danger ? "text-danger" : ""}`} style={color ? { color } : undefined}>
         {value}
       </div>
-      {sub && <div className="text-[11px] text-[#aeaeb2]">{sub}</div>}
+      {sub && <div className="text-[11px] text-muted">{sub}</div>}
     </div>
   );
 }
 
-function MiniBar({ data, maxVal, color = "#0071e3" }: {
+function MiniBar({ data, maxVal, color = "var(--accent-blue)" }: {
   data: { label: string; value: number }[];
   maxVal: number;
   color?: string;
@@ -97,7 +97,7 @@ function MiniBar({ data, maxVal, color = "#0071e3" }: {
               className="w-full rounded-t min-h-[2px] transition-all"
               style={{ height: `${Math.max(h, 3)}%`, backgroundColor: d.value > 0 ? color : "rgba(0,0,0,0.04)" }}
             />
-            <div className="text-[8px] text-[#aeaeb2]">{d.label}</div>
+            <div className="text-[8px] text-muted">{d.label}</div>
           </div>
         );
       })}
@@ -105,7 +105,7 @@ function MiniBar({ data, maxVal, color = "#0071e3" }: {
   );
 }
 
-function ProgressRing({ rate, size = 80, color = "#0071e3" }: { rate: number | null; size?: number; color?: string }) {
+function ProgressRing({ rate, size = 80, color = "var(--accent-blue)" }: { rate: number | null; size?: number; color?: string }) {
   const pct = rate ?? 0;
   const r = (size - 8) / 2;
   const circumference = 2 * Math.PI * r;
@@ -155,14 +155,14 @@ export default function ManagementClient() {
     return (
       <div className="mx-auto max-w-6xl space-y-6 animate-pulse">
         <div className="space-y-2">
-          <div className="h-3 w-32 rounded bg-[rgba(0,0,0,0.06)]" />
-          <div className="h-8 w-48 rounded bg-[rgba(0,0,0,0.06)]" />
+          <div className="h-3 w-32 rounded bg-surface-hover" />
+          <div className="h-8 w-48 rounded bg-surface-hover" />
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[1, 2, 3, 4].map(i => (
             <div key={i} className="glass-card p-5 space-y-2">
-              <div className="h-3 w-16 rounded bg-[rgba(0,0,0,0.06)]" />
-              <div className="h-7 w-24 rounded bg-[rgba(0,0,0,0.06)]" />
+              <div className="h-3 w-16 rounded bg-surface-hover" />
+              <div className="h-7 w-24 rounded bg-surface-hover" />
             </div>
           ))}
         </div>
@@ -205,56 +205,56 @@ export default function ManagementClient() {
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="glass-card p-4 space-y-1 relative overflow-hidden">
-            <div className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: cashFlow.operatingCF >= 0 ? "#34c759" : "#ff3b30" }} />
+            <div className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: cashFlow.operatingCF >= 0 ? "var(--accent-emerald)" : "var(--accent-red)" }} />
             <div className="pl-2">
               <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">営業CF（累計）</div>
-              <div className="text-xl font-bold" style={{ color: cashFlow.operatingCF >= 0 ? "#34c759" : "#ff3b30" }}>
+              <div className="text-xl font-bold" style={{ color: cashFlow.operatingCF >= 0 ? "var(--accent-emerald)" : "var(--accent-red)" }}>
                 {formatJpy(cashFlow.operatingCF)}
               </div>
-              <div className="text-[11px] text-[#aeaeb2]">入金 - 支出</div>
+              <div className="text-[11px] text-muted">入金 - 支出</div>
             </div>
           </div>
 
           <div className="glass-card p-4 space-y-1">
             <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">今月のCF</div>
-            <div className="text-xl font-bold" style={{ color: cashFlow.thisMonth.cf >= 0 ? "#34c759" : "#ff3b30" }}>
+            <div className="text-xl font-bold" style={{ color: cashFlow.thisMonth.cf >= 0 ? "var(--accent-emerald)" : "var(--accent-red)" }}>
               {formatJpy(cashFlow.thisMonth.cf)}
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[11px] text-[#aeaeb2]">前月比</span>
+              <span className="text-[11px] text-muted">前月比</span>
               <GrowthBadge rate={cashFlow.cfGrowthRate} />
             </div>
           </div>
 
-          <KPICard tag="累計入金額" value={formatJpy(cashFlow.totalCashIn)} sub="Cash In" color="#34c759" />
-          <KPICard tag="累計支出" value={formatJpy(cashFlow.totalCashOut)} sub="Cash Out" color="#ff9500" />
+          <KPICard tag="累計入金額" value={formatJpy(cashFlow.totalCashIn)} sub="Cash In" color="var(--accent-emerald)" />
+          <KPICard tag="累計支出" value={formatJpy(cashFlow.totalCashOut)} sub="Cash Out" color="var(--accent-amber)" />
         </div>
 
         {/* CF Detail */}
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="glass-card p-4 space-y-1">
             <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">売掛金（AR）</div>
-            <div className="text-lg font-bold text-[#ff9500]">{formatJpy(cashFlow.accountsReceivable)}</div>
-            <div className="text-[11px] text-[#aeaeb2]">未回収の請求額</div>
+            <div className="text-lg font-bold text-warning-text">{formatJpy(cashFlow.accountsReceivable)}</div>
+            <div className="text-[11px] text-muted">未回収の請求額</div>
           </div>
           <div className="glass-card p-4 space-y-1">
             <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">入金予定（2ヶ月内）</div>
-            <div className="text-lg font-bold text-[#0071e3]">{formatJpy(cashFlow.upcomingAR)}</div>
-            <div className="text-[11px] text-[#aeaeb2]">支払期限内のAR</div>
+            <div className="text-lg font-bold text-accent">{formatJpy(cashFlow.upcomingAR)}</div>
+            <div className="text-[11px] text-muted">支払期限内のAR</div>
           </div>
           <div className="glass-card p-4 space-y-2">
             <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">今月 vs 先月</div>
             <div className="flex justify-between text-[12px]">
-              <span className="text-[#aeaeb2]">今月入金</span>
+              <span className="text-muted">今月入金</span>
               <span className="font-semibold text-primary">{formatJpy(cashFlow.thisMonth.cashIn)}</span>
             </div>
             <div className="flex justify-between text-[12px]">
-              <span className="text-[#aeaeb2]">先月入金</span>
+              <span className="text-muted">先月入金</span>
               <span className="font-semibold text-primary">{formatJpy(cashFlow.lastMonth.cashIn)}</span>
             </div>
             <div className="flex justify-between text-[12px]">
-              <span className="text-[#aeaeb2]">今月支出</span>
-              <span className="font-semibold text-[#ff9500]">{formatJpy(cashFlow.thisMonth.cashOut)}</span>
+              <span className="text-muted">今月支出</span>
+              <span className="font-semibold text-warning-text">{formatJpy(cashFlow.thisMonth.cashOut)}</span>
             </div>
           </div>
         </div>
@@ -266,14 +266,14 @@ export default function ManagementClient() {
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <KPICard tag="売上高（累計）" value={formatJpy(profitability.totalRevenue)} sub="Total Revenue" />
-          <KPICard tag="仕入原価" value={formatJpy(profitability.totalPurchases)} sub="Cost of Goods" color="#ff9500" />
-          <KPICard tag="粗利益" value={formatJpy(profitability.grossProfit)} sub="Gross Profit" color="#34c759" />
+          <KPICard tag="仕入原価" value={formatJpy(profitability.totalPurchases)} sub="Cost of Goods" color="var(--accent-amber)" />
+          <KPICard tag="粗利益" value={formatJpy(profitability.grossProfit)} sub="Gross Profit" color="var(--accent-emerald)" />
 
           <div className="glass-card p-4 flex items-center gap-4">
-            <ProgressRing rate={profitability.grossMarginRate} color="#34c759" />
+            <ProgressRing rate={profitability.grossMarginRate} color="var(--accent-emerald)" />
             <div>
               <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">粗利率</div>
-              <div className="text-[12px] text-[#aeaeb2] mt-0.5">Gross Margin</div>
+              <div className="text-[12px] text-muted mt-0.5">Gross Margin</div>
             </div>
           </div>
         </div>
@@ -287,11 +287,11 @@ export default function ManagementClient() {
           <div className="glass-card p-4 flex items-center gap-4">
             <ProgressRing
               rate={collection.collectionRate}
-              color={collection.collectionRate !== null && collection.collectionRate >= 80 ? "#34c759" : "#ff9500"}
+              color={collection.collectionRate !== null && collection.collectionRate >= 80 ? "var(--accent-emerald)" : "var(--accent-amber)"}
             />
             <div>
               <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">回収率</div>
-              <div className="text-[12px] text-[#aeaeb2] mt-0.5">Collection Rate</div>
+              <div className="text-[12px] text-muted mt-0.5">Collection Rate</div>
             </div>
           </div>
 
@@ -299,7 +299,7 @@ export default function ManagementClient() {
             tag="DSO（売掛回転日数）"
             value={collection.dso !== null ? `${collection.dso}日` : "-"}
             sub="Days Sales Outstanding"
-            color={collection.dso !== null && collection.dso > 60 ? "#ff3b30" : undefined}
+            color={collection.dso !== null && collection.dso > 60 ? "var(--accent-red)" : undefined}
           />
 
           <KPICard
@@ -314,21 +314,21 @@ export default function ManagementClient() {
             <div className="space-y-1.5">
               <div>
                 <div className="flex justify-between text-[11px] mb-0.5">
-                  <span className="text-[#aeaeb2]">請求額</span>
+                  <span className="text-muted">請求額</span>
                   <span className="font-medium text-primary">{formatJpy(collection.totalInvoiced)}</span>
                 </div>
-                <div className="h-1.5 rounded-full bg-[rgba(0,0,0,0.06)] overflow-hidden">
-                  <div className="h-full rounded-full bg-[#0071e3]" style={{ width: "100%" }} />
+                <div className="h-1.5 rounded-full bg-surface-hover overflow-hidden">
+                  <div className="h-full rounded-full bg-accent" style={{ width: "100%" }} />
                 </div>
               </div>
               <div>
                 <div className="flex justify-between text-[11px] mb-0.5">
-                  <span className="text-[#aeaeb2]">入金済</span>
-                  <span className="font-medium text-[#34c759]">{formatJpy(collection.totalPaid)}</span>
+                  <span className="text-muted">入金済</span>
+                  <span className="font-medium text-success-text">{formatJpy(collection.totalPaid)}</span>
                 </div>
-                <div className="h-1.5 rounded-full bg-[rgba(0,0,0,0.06)] overflow-hidden">
+                <div className="h-1.5 rounded-full bg-surface-hover overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-[#34c759]"
+                    className="h-full rounded-full bg-success"
                     style={{ width: `${collection.totalInvoiced > 0 ? (collection.totalPaid / collection.totalInvoiced * 100) : 0}%` }}
                   />
                 </div>
@@ -343,7 +343,7 @@ export default function ManagementClient() {
         <h2 className="text-xs font-semibold tracking-[0.18em] text-muted">CUSTOMER METRICS / 顧客指標</h2>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <KPICard tag="顧客数" value={String(customers.total)} sub={`取引顧客 ${customers.activeCustomers}社`} color="#0071e3" />
+          <KPICard tag="顧客数" value={String(customers.total)} sub={`取引顧客 ${customers.activeCustomers}社`} color="var(--accent-blue)" />
           <KPICard
             tag="顧客単価（ARPU）"
             value={customers.arpu !== null ? formatJpy(customers.arpu) : "-"}
@@ -359,7 +359,7 @@ export default function ManagementClient() {
             <MiniBar
               data={customers.growthByMonth.slice(-6).map(m => ({ label: m.label, value: m.count }))}
               maxVal={custMax}
-              color="#0071e3"
+              color="var(--accent-blue)"
             />
           </div>
         </div>
@@ -373,18 +373,18 @@ export default function ManagementClient() {
           <div className="glass-card p-4 flex items-center gap-4">
             <ProgressRing
               rate={conversion.conversionRate}
-              color="#5856d6"
+              color="var(--accent-violet)"
             />
             <div>
               <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">見積→受注 転換率</div>
-              <div className="text-[12px] text-[#aeaeb2] mt-0.5">
+              <div className="text-[12px] text-muted mt-0.5">
                 {conversion.convertedEstimates} / {conversion.totalEstimates} 件
               </div>
             </div>
           </div>
 
-          <KPICard tag="見積書（総数）" value={`${conversion.totalEstimates}件`} sub="Total Estimates" color="#5856d6" />
-          <KPICard tag="受注件数" value={`${conversion.convertedEstimates}件`} sub="Converted" color="#34c759" />
+          <KPICard tag="見積書（総数）" value={`${conversion.totalEstimates}件`} sub="Total Estimates" color="var(--accent-violet)" />
+          <KPICard tag="受注件数" value={`${conversion.convertedEstimates}件`} sub="Converted" color="var(--accent-emerald)" />
         </div>
       </section>
 
@@ -393,7 +393,7 @@ export default function ManagementClient() {
         <h2 className="text-xs font-semibold tracking-[0.18em] text-muted">CERTIFICATES / 施工証明書</h2>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <KPICard tag="発行総数" value={String(certificates.total)} sub={`有効 ${certificates.active}件`} color="#0071e3" />
+          <KPICard tag="発行総数" value={String(certificates.total)} sub={`有効 ${certificates.active}件`} color="var(--accent-blue)" />
           <KPICard
             tag="平均施工単価"
             value={certificates.avgServicePrice !== null ? formatJpy(certificates.avgServicePrice) : "-"}
@@ -404,7 +404,7 @@ export default function ManagementClient() {
             <MiniBar
               data={certificates.byMonth.slice(-6).map(m => ({ label: m.label, value: m.count }))}
               maxVal={certMax}
-              color="#5856d6"
+              color="var(--accent-violet)"
             />
           </div>
         </div>

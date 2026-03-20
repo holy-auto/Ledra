@@ -25,7 +25,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
           <div className="font-mono text-primary">{pid}</div>
 
           <div className="text-sm pt-2 text-secondary">公開URL</div>
-          <Link className="underline text-[#0071e3] hover:text-[#0077ED]" href={rel} target="_blank">{fullUrl}</Link>
+          <Link className="underline text-accent hover:text-accent/80" href={rel} target="_blank">{fullUrl}</Link>
 
           <div className="pt-2">
             <img src={qr} alt="QR" className="h-32 w-32 border border-border-default rounded-xl" />
@@ -33,12 +33,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
           </div>
         </div>
       ) : (
-        <p className="text-sm text-red-500">pid がありません</p>
+        <p className="text-sm text-danger">pid がありません</p>
       )}
 
       <div className="flex gap-4 text-sm">
-        <Link className="underline text-[#0071e3] hover:text-[#0077ED]" href="/admin/certificates/new">続けて発行</Link>
-        <Link className="underline text-[#0071e3] hover:text-[#0077ED]" href="/admin/certificates">一覧へ</Link>
+        <Link className="underline text-accent hover:text-accent/80" href="/admin/certificates/new">続けて発行</Link>
+        <Link className="underline text-accent hover:text-accent/80" href="/admin/certificates">一覧へ</Link>
       </div>
     </div>
   );

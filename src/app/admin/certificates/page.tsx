@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 
 const CertificatesTableClient = dynamic(() => import("./CertificatesTableClient"), {
-  loading: () => <div className="animate-pulse h-40 rounded-2xl bg-[rgba(0,0,0,0.04)]" />,
+  loading: () => <div className="animate-pulse h-40 rounded-2xl bg-surface-hover" />,
 });
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { buildBillingDenyUrl } from "@/lib/billing/billingRedirect";
@@ -41,7 +41,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
     return (
       <div className="space-y-6">
         <PageHeader tag="証明書管理" title="証明書一覧" />
-        <div className="glass-card p-4 text-sm text-red-500">
+        <div className="glass-card p-4 text-sm text-danger">
           tenant_memberships が見つかりません。あなたのユーザーを tenant に紐付けてください。
         </div>
       </div>
@@ -71,7 +71,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
   }
 
   const { data: rows, error } = await query;
-  if (error) return <div className="space-y-6"><div className="text-red-500">読み込みエラー: {error.message}</div></div>;
+  if (error) return <div className="space-y-6"><div className="text-danger">読み込みエラー: {error.message}</div></div>;
 
   const allRows = rows ?? [];
   const activeCount = allRows.filter((r) => r.status === "active").length;
@@ -115,12 +115,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
         </div>
         <div className="glass-card p-5">
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">有効</div>
-          <div className="mt-2 text-2xl font-bold text-[#28a745]">{activeCount}</div>
+          <div className="mt-2 text-2xl font-bold text-success">{activeCount}</div>
           <div className="mt-1 text-xs text-muted">有効な証明書</div>
         </div>
         <div className="glass-card p-5">
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">無効</div>
-          <div className="mt-2 text-2xl font-bold text-[#d1242f]">{voidCount}</div>
+          <div className="mt-2 text-2xl font-bold text-danger">{voidCount}</div>
           <div className="mt-1 text-xs text-muted">無効の証明書</div>
         </div>
       </section>

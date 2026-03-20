@@ -43,7 +43,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       <div className="space-y-6">
         <PageHeader tag="INVOICES" title="請求書詳細" />
         <div className="glass-card p-4 text-sm text-red-500">請求書が見つかりません。</div>
-        <Link href="/admin/invoices" className="text-sm underline text-[#0071e3]">一覧に戻る</Link>
+        <Link href="/admin/invoices" className="text-sm underline text-accent">一覧に戻る</Link>
       </div>
     );
   }

@@ -19,11 +19,11 @@ interface CalendarViewProps {
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
 const STATUS_DOT: Record<string, string> = {
-  confirmed: "bg-[#0071e3]",
-  arrived: "bg-[#f09300]",
-  in_progress: "bg-[#5856d6]",
-  completed: "bg-[#28a745]",
-  cancelled: "bg-[#aeaeb2]",
+  confirmed: "bg-accent",
+  arrived: "bg-warning",
+  in_progress: "bg-violet",
+  completed: "bg-success",
+  cancelled: "bg-muted",
 };
 
 function getMonthDays(year: number, month: number) {
@@ -145,13 +145,13 @@ export default function CalendarView({ reservations, onDateClick }: CalendarView
               type="button"
               onClick={() => onDateClick(cell.date)}
               className={`relative min-h-[72px] border-b border-r border-border-subtle p-1.5 text-left transition-colors hover:bg-surface-hover ${
-                !cell.isCurrentMonth ? "bg-[rgba(0,0,0,0.02)]" : ""
+                !cell.isCurrentMonth ? "bg-surface-hover" : ""
               }`}
             >
               <span
                 className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
                   isToday
-                    ? "bg-[#0071e3] text-white"
+                    ? "bg-accent text-inverse"
                     : !cell.isCurrentMonth
                     ? "text-muted/40"
                     : dayOfWeek === 0

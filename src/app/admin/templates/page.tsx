@@ -154,7 +154,7 @@ export default async function Page({
                 <td className="p-3 whitespace-nowrap text-primary">{formatDateTime(t.created_at)}</td>
                 <td className="p-3">
                   <div className="flex gap-3 items-center flex-wrap">
-                    <Link className="underline text-[#0071e3] hover:text-[#0077ED]" href={`/admin/templates/edit?tid=${encodeURIComponent(t.id)}`}>
+                    <Link className="underline text-accent hover:text-accent" href={`/admin/templates/edit?tid=${encodeURIComponent(t.id)}`}>
                       編集
                     </Link>
                     <form action={duplicateTemplate}>

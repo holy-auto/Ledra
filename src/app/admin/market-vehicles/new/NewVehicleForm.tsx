@@ -375,24 +375,24 @@ export default function NewVehicleForm() {
         </div>
         {/* Profit preview */}
         {costPrice && askingPrice && (
-          <div className="rounded-lg border border-border-subtle bg-[rgba(0,0,0,0.02)] p-3">
+          <div className="rounded-lg border border-border-subtle bg-surface-hover p-3">
             <div className="flex gap-6 text-sm">
               <div>
                 <span className="text-xs text-muted">販売利益</span>
-                <div className={`font-semibold ${parseInt(askingPrice) - parseInt(costPrice) >= 0 ? "text-[#28a745]" : "text-[#d1242f]"}`}>
+                <div className={`font-semibold ${parseInt(askingPrice) - parseInt(costPrice) >= 0 ? "text-success" : "text-danger"}`}>
                   ¥{(parseInt(askingPrice) - parseInt(costPrice)).toLocaleString()}
                 </div>
               </div>
               <div>
                 <span className="text-xs text-muted">利益率</span>
-                <div className={`font-semibold ${parseInt(askingPrice) - parseInt(costPrice) >= 0 ? "text-[#28a745]" : "text-[#d1242f]"}`}>
+                <div className={`font-semibold ${parseInt(askingPrice) - parseInt(costPrice) >= 0 ? "text-success" : "text-danger"}`}>
                   {((parseInt(askingPrice) - parseInt(costPrice)) / parseInt(askingPrice) * 100).toFixed(1)}%
                 </div>
               </div>
               {wholesalePrice && (
                 <div>
                   <span className="text-xs text-muted">卸利益</span>
-                  <div className={`font-semibold ${parseInt(wholesalePrice) - parseInt(costPrice) >= 0 ? "text-[#28a745]" : "text-[#d1242f]"}`}>
+                  <div className={`font-semibold ${parseInt(wholesalePrice) - parseInt(costPrice) >= 0 ? "text-success" : "text-danger"}`}>
                     ¥{(parseInt(wholesalePrice) - parseInt(costPrice)).toLocaleString()}
                   </div>
                 </div>
@@ -408,8 +408,8 @@ export default function NewVehicleForm() {
         <div
           className={`relative rounded-lg border-2 border-dashed p-8 text-center transition-colors ${
             dragActive
-              ? "border-[#0071e3] bg-[rgba(0,113,227,0.04)]"
-              : "border-border-subtle hover:border-[rgba(0,0,0,0.2)]"
+              ? "border-accent bg-accent-dim"
+              : "border-border-subtle hover:border-border-default"
           }`}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
@@ -427,7 +427,7 @@ export default function NewVehicleForm() {
             <button
               type="button"
               onClick={() => cameraInputRef.current?.click()}
-              className="inline-flex items-center gap-2 rounded-lg border border-[rgba(0,0,0,0.1)] bg-white px-4 py-2 text-sm font-medium text-secondary shadow-sm hover:bg-[rgba(0,0,0,0.02)] hover:border-[rgba(0,0,0,0.2)] transition-colors"
+              className="inline-flex items-center gap-2 rounded-lg border border-border-default bg-surface px-4 py-2 text-sm font-medium text-secondary shadow-sm hover:bg-surface-hover hover:border-border-default transition-colors"
             >
               <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" />
@@ -438,7 +438,7 @@ export default function NewVehicleForm() {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-2 rounded-lg border border-[rgba(0,0,0,0.1)] bg-white px-4 py-2 text-sm font-medium text-secondary shadow-sm hover:bg-[rgba(0,0,0,0.02)] hover:border-[rgba(0,0,0,0.2)] transition-colors"
+              className="inline-flex items-center gap-2 rounded-lg border border-border-default bg-surface px-4 py-2 text-sm font-medium text-secondary shadow-sm hover:bg-surface-hover hover:border-border-default transition-colors"
             >
               <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
@@ -479,7 +479,7 @@ export default function NewVehicleForm() {
         {images.length > 0 && (
           <div className="grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-6 gap-2">
             {images.map((img, idx) => (
-              <div key={idx} className="group relative aspect-square rounded-lg overflow-hidden bg-[rgba(0,0,0,0.03)]">
+              <div key={idx} className="group relative aspect-square rounded-lg overflow-hidden bg-surface-hover">
                 <Image
                   src={img.preview}
                   alt={`Upload ${idx + 1}`}
@@ -536,7 +536,7 @@ export default function NewVehicleForm() {
               return (
                 <span
                   key={i}
-                  className="inline-flex items-center rounded-full border border-[rgba(0,0,0,0.08)] bg-[rgba(0,0,0,0.04)] px-2 py-0.5 text-[11px] text-secondary"
+                  className="inline-flex items-center rounded-full border border-border-default bg-surface-hover px-2 py-0.5 text-[11px] text-secondary"
                 >
                   {tag}
                 </span>

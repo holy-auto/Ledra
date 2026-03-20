@@ -66,11 +66,11 @@ function PlanSelector({ currentPlan, isActive }: { currentPlan: string | null; i
             <div
               key={plan.tier}
               className={`glass-card p-5 space-y-3 relative ${
-                plan.recommended ? "ring-2 ring-[#0071e3]" : ""
-              } ${isCurrent ? "border-[#0071e3]" : ""}`}
+                plan.recommended ? "ring-2 ring-accent" : ""
+              } ${isCurrent ? "border-accent" : ""}`}
             >
               {plan.recommended && (
-                <div className="absolute -top-2.5 left-4 px-2 py-0.5 bg-[#0071e3] text-white text-[10px] font-semibold rounded-full">
+                <div className="absolute -top-2.5 left-4 px-2 py-0.5 bg-accent text-inverse text-[10px] font-semibold rounded-full">
                   おすすめ
                 </div>
               )}
@@ -81,19 +81,19 @@ function PlanSelector({ currentPlan, isActive }: { currentPlan: string | null; i
               <ul className="space-y-1.5 text-sm text-secondary">
                 {plan.features.map((f) => (
                   <li key={f} className="flex items-start gap-2">
-                    <span className="text-[#0071e3] mt-0.5">&#10003;</span>
+                    <span className="text-accent mt-0.5">&#10003;</span>
                     <span>{f}</span>
                   </li>
                 ))}
               </ul>
               {isCurrent ? (
-                <div className="btn-ghost !text-xs text-center w-full cursor-default">
+                <div className="btn-ghost text-xs text-center w-full cursor-default">
                   現在のプラン
                 </div>
               ) : (
                 <button
                   type="button"
-                  className={`w-full ${plan.recommended ? "btn-primary" : "btn-secondary"} !text-xs`}
+                  className={`w-full ${plan.recommended ? "btn-primary" : "btn-secondary"} text-xs`}
                   disabled={busy !== null}
                   onClick={() => handleSelectPlan(plan.tier)}
                 >
@@ -375,7 +375,7 @@ export default function BillingPage() {
       <PageHeader tag="課金管理" title="請求・プラン" />
 
       {status && (
-        <div className={`glass-card p-4 text-sm ${status === "success" ? "text-[#0071e3] glow-cyan" : "text-amber-400 glow-amber"}`}>
+        <div className={`glass-card p-4 text-sm ${status === "success" ? "text-accent glow-cyan" : "text-amber-400 glow-amber"}`}>
           決済結果: <b>{status === "success" ? "成功" : status === "cancel" ? "キャンセル" : status}</b>
         </div>
       )}
@@ -392,13 +392,13 @@ export default function BillingPage() {
           </div>
           {action && (
             <div className="mt-2 text-muted">
-              対象機能: <span className="text-[#0071e3] font-mono">{action}</span>
+              対象機能: <span className="text-accent font-mono">{action}</span>
             </div>
           )}
           {ret && (
             <div className="mt-2 text-muted">
               元の画面:{" "}
-              <a className="underline text-[#0071e3]" href={ret}>
+              <a className="underline text-accent" href={ret}>
                 戻る
               </a>
             </div>
@@ -435,10 +435,10 @@ export default function BillingPage() {
               <summary className="cursor-pointer text-muted hover:text-secondary">サポート用ID（必要なときだけ）</summary>
               <div className="mt-2 space-y-1 text-secondary">
                 <div>
-                  顧客ID: <span className="text-[#0071e3] font-mono">{short(tenant.stripe_customer_id)}</span>
+                  顧客ID: <span className="text-accent font-mono">{short(tenant.stripe_customer_id)}</span>
                 </div>
                 <div>
-                  契約ID: <span className="text-[#0071e3] font-mono">{short(tenant.stripe_subscription_id)}</span>
+                  契約ID: <span className="text-accent font-mono">{short(tenant.stripe_subscription_id)}</span>
                 </div>
               </div>
             </details>

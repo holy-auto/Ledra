@@ -79,7 +79,7 @@ export default async function MarketVehicleDetailPage({ params }: { params: Prom
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
       <div className="mb-6">
-        <Link href="/market" className="text-sm text-[#0071e3] hover:underline">← 在庫一覧に戻る</Link>
+        <Link href="/market" className="text-sm text-accent hover:underline">← 在庫一覧に戻る</Link>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
