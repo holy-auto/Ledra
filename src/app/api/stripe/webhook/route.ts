@@ -412,10 +412,9 @@ export async function POST(req: NextRequest) {
           ?? inv.parent?.subscription_details?.subscription
           ?? inv.lines?.data?.[0]?.parent?.subscription_item_details?.subscription
           ?? inv.lines?.data?.[0]?.subscription;
-        console.log("webhook: invoice case entered", { eventType: event.type, eventId: event.id, rawSubId, invId: inv.id, parentType: inv.parent?.type });
         const subscriptionId = asStringId(rawSubId);
         if (!subscriptionId) {
-          console.warn("webhook: invoice has no subscription ID, skipping", { eventType: event.type, invId: inv.id, keys: Object.keys(inv).join(",") });
+          console.warn("webhook: invoice has no subscription ID, skipping", { eventType: event.type, invId: inv.id });
           break;
         }
 
@@ -453,17 +452,14 @@ export async function POST(req: NextRequest) {
         }
 
         // ─── 決済失敗通知メール（テナント向け） ───
-        console.log("webhook: invoice event", { type: event.type, subMetadata: sub.metadata, subId: sub.id });
         if (event.type === "invoice.payment_failed" && sub.metadata?.type !== "insurer") {
           const tenantId = sub.metadata?.tenant_id;
           const customerId = asStringId(sub.customer);
-          console.log("webhook: payment failure email attempt", { tenantId, customerId });
           if (tenantId || customerId) {
             const resolvedTenantId = tenantId ?? (customerId ? (
               await supabase.from("tenants").select("id").eq("stripe_customer_id", customerId).limit(1).maybeSingle()
             ).data?.id : null);
 
-            console.log("webhook: resolved tenant for failure email", { resolvedTenantId });
             if (resolvedTenantId) {
               const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.cartrust.co.jp";
               await sendPaymentFailureEmail(supabase, resolvedTenantId, `${appUrl}/admin/billing`);
