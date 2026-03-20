@@ -235,6 +235,11 @@ body {
   --mk-accent-blue: #3b82f6;
   --mk-accent-violet: #8b5cf6;
   --mk-accent-cyan: #06b6d4;
+  --mk-accent-light-blue: #4f9cf7;
+  --mk-bg-card-recommended: #0d1525;
+  --mk-bg-table-hover: #0b1120;
+  --mk-bg-cta-mid: #1e293b;
+  --mk-text-on-white: #1d1d1f;
 }
 
 /* ── Dark Marketing Animations ── */

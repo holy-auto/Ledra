@@ -7,7 +7,7 @@ export function Hero({
   variant?: "full" | "prelaunch";
 }) {
   return (
-    <section className="relative overflow-hidden bg-[#060a12] min-h-[92vh] flex items-center">
+    <section className="relative overflow-hidden bg-[var(--mk-bg-base)] min-h-[92vh] flex items-center">
       {/* Dark premium background with animated elements */}
       <div className="absolute inset-0 pointer-events-none">
         {/* Large animated gradient orbs */}

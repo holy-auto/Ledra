@@ -234,7 +234,7 @@ export default async function HomePage() {
                 ))}
               </ul>
               <div className="mt-8 flex flex-col sm:flex-row gap-3">
-                <Link href="/signup" className="inline-flex items-center justify-center font-medium rounded-lg text-sm px-6 py-3 bg-white text-[#060a12] hover:bg-gray-100 transition-colors">
+                <Link href="/signup" className="inline-flex items-center justify-center font-medium rounded-lg text-sm px-6 py-3 bg-white text-[var(--mk-text-on-white)] hover:bg-gray-100 transition-colors">
                   無料で始める
                 </Link>
                 <Link href="/for-shops" className="inline-flex items-center justify-center font-medium rounded-lg text-sm px-6 py-3 border border-white/20 text-white/70 hover:text-white hover:border-white/40 transition-colors">
@@ -263,7 +263,7 @@ export default async function HomePage() {
                 ))}
               </ul>
               <div className="mt-8 flex flex-col sm:flex-row gap-3">
-                <Link href="/contact" className="inline-flex items-center justify-center font-medium rounded-lg text-sm px-6 py-3 bg-white text-[#060a12] hover:bg-gray-100 transition-colors">
+                <Link href="/contact" className="inline-flex items-center justify-center font-medium rounded-lg text-sm px-6 py-3 bg-white text-[var(--mk-text-on-white)] hover:bg-gray-100 transition-colors">
                   デモを依頼
                 </Link>
                 <Link href="/for-insurers" className="inline-flex items-center justify-center font-medium rounded-lg text-sm px-6 py-3 border border-white/20 text-white/70 hover:text-white hover:border-white/40 transition-colors">

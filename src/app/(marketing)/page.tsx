@@ -26,7 +26,7 @@ export default async function HomePage() {
       <Hero />
 
       {/* Trust Bar */}
-      <div className="bg-[#060a12] border-y border-white/[0.04]">
+      <div className="bg-[var(--mk-bg-base)] border-y border-white/[0.04]">
         <div className="max-w-6xl mx-auto px-5 md:px-8 py-6">
           <div className="flex flex-wrap items-center justify-center gap-8 md:gap-16">
             {[

@@ -82,19 +82,10 @@ export default function ForShopsPage() {
           subtitle="あらゆる施工タイプの証明書をデジタルで発行"
         />
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { title: "ボディコーティング", desc: "ガラスコーティング、セラミックコーティング等" },
-            { title: "PPF（プロテクションフィルム）", desc: "塗装保護フィルムの施工記録" },
-            { title: "ウィンドウフィルム", desc: "カーフィルム、断熱フィルムの施工証明" },
-            { title: "その他カスタム", desc: "ラッピング、デッドニング等にも対応" },
-          ].map((item, i) => (
-            <ScrollReveal key={item.title} variant="fade-up" delay={i * 80}>
-              <div className="p-5 rounded-xl bg-white/[0.04] border border-white/[0.07] hover:bg-white/[0.07] hover:border-white/[0.12] transition-all duration-300 h-full">
-                <h3 className="text-sm font-bold text-white">{item.title}</h3>
-                <p className="mt-2 text-xs text-white/55 leading-relaxed">{item.desc}</p>
-              </div>
-            </ScrollReveal>
-          ))}
+          <FeatureCard size="compact" delay={0} title="ボディコーティング" description="ガラスコーティング、セラミックコーティング等" />
+          <FeatureCard size="compact" delay={80} title="PPF（プロテクションフィルム）" description="塗装保護フィルムの施工記録" />
+          <FeatureCard size="compact" delay={160} title="ウィンドウフィルム" description="カーフィルム、断熱フィルムの施工証明" />
+          <FeatureCard size="compact" delay={240} title="その他カスタム" description="ラッピング、デッドニング等にも対応" />
         </div>
       </Section>
 
