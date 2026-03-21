@@ -76,7 +76,7 @@ export default async function Page({
     .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false });
 
-  if (tplErr) return <div className="text-sm text-red-500">テンプレ読み込みエラー: {tplErr.message}</div>;
+  if (tplErr) return <div className="text-sm text-danger">テンプレ読み込みエラー: {tplErr.message}</div>;
 
   // 顧客一覧を取得
   const { data: customers } = await supabase
@@ -198,7 +198,7 @@ export default async function Page({
       />
 
       {hasBrandedTemplate && (
-        <div className="glass-card p-3 text-sm text-[#0071e3] glow-cyan flex items-center justify-between">
+        <div className="glass-card p-3 text-sm text-accent glow-cyan flex items-center justify-between">
           <span>ブランドテンプレートが適用中です。発行される証明書PDFに自動で反映されます。</span>
           <Link href="/admin/template-options" className="text-xs underline">設定を確認</Link>
         </div>
@@ -264,7 +264,7 @@ export default async function Page({
                     if (f.type === "checkbox") {
                       return (
                         <label key={f.key} className="flex items-center gap-2 text-sm text-primary">
-                          <input type="checkbox" name={name} className="h-4 w-4 accent-[#0071e3]" />
+                          <input type="checkbox" name={name} className="h-4 w-4 accent-accent" />
                           <span>{f.label}</span>
                         </label>
                       );

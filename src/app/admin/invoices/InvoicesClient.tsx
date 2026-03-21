@@ -351,18 +351,18 @@ export default function InvoicesClient() {
                   <div className="mt-0.5 text-[11px] text-muted">{aging.current}件</div>
                 </div>
                 <div className="glass-card p-4">
-                  <div className="text-[10px] font-semibold tracking-[0.18em] text-[#b35c00]">30日超</div>
-                  <div className="mt-1 text-lg font-bold text-[#b35c00]">{formatJpy(aging.d30Amt)}</div>
+                  <div className="text-[10px] font-semibold tracking-[0.18em] text-warning-text">30日超</div>
+                  <div className="mt-1 text-lg font-bold text-warning-text">{formatJpy(aging.d30Amt)}</div>
                   <div className="mt-0.5 text-[11px] text-muted">{aging.d30}件</div>
                 </div>
                 <div className="glass-card p-4">
-                  <div className="text-[10px] font-semibold tracking-[0.18em] text-[#d1242f]">60日超</div>
-                  <div className="mt-1 text-lg font-bold text-[#d1242f]">{formatJpy(aging.d60Amt)}</div>
+                  <div className="text-[10px] font-semibold tracking-[0.18em] text-danger-text">60日超</div>
+                  <div className="mt-1 text-lg font-bold text-danger-text">{formatJpy(aging.d60Amt)}</div>
                   <div className="mt-0.5 text-[11px] text-muted">{aging.d60}件</div>
                 </div>
                 <div className="glass-card p-4">
-                  <div className="text-[10px] font-semibold tracking-[0.18em] text-[#d1242f]">90日超</div>
-                  <div className="mt-1 text-lg font-bold text-[#d1242f]">{formatJpy(aging.d90Amt)}</div>
+                  <div className="text-[10px] font-semibold tracking-[0.18em] text-danger-text">90日超</div>
+                  <div className="mt-1 text-lg font-bold text-danger-text">{formatJpy(aging.d90Amt)}</div>
                   <div className="mt-0.5 text-[11px] text-muted">{aging.d90}件</div>
                 </div>
               </section>
@@ -458,7 +458,7 @@ export default function InvoicesClient() {
                       <div className="flex items-center gap-2">
                         <label className="text-[10px] text-muted whitespace-nowrap">証明書紐付け:</label>
                         <select
-                          className="select-field !text-xs !py-1"
+                          className="select-field text-xs py-1"
                           value={item.certificate_id ?? ""}
                           onChange={(e) => linkCertificate(idx, e.target.value)}
                         >
@@ -514,7 +514,7 @@ export default function InvoicesClient() {
                       <div className="col-span-6 sm:col-span-1">
                         <button
                           type="button"
-                          className="btn-ghost !px-2 !py-1 !text-xs text-red-500"
+                          className="btn-ghost px-2 py-1 text-xs text-red-500"
                           onClick={() => removeItem(idx)}
                           disabled={formItems.length <= 1}
                         >
@@ -524,7 +524,7 @@ export default function InvoicesClient() {
                     </div>
                   </div>
                 ))}
-                <button type="button" className="btn-ghost !text-xs" onClick={addItem}>
+                <button type="button" className="btn-ghost text-xs" onClick={addItem}>
                   + 明細を追加
                 </button>
                 {formCustomerId && certificates.length === 0 && (
@@ -617,7 +617,7 @@ export default function InvoicesClient() {
           {/* Payment Dialog */}
           {paymentTarget && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={() => setPaymentTarget(null)}>
-              <div className="mx-4 w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+              <div className="mx-4 w-full max-w-sm rounded-2xl bg-surface p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
                 <h3 className="text-base font-semibold text-primary mb-3">入金を記録</h3>
                 <div className="space-y-3">
                   <div className="space-y-1">
@@ -681,7 +681,7 @@ export default function InvoicesClient() {
                       <td className="px-5 py-3.5">
                         <Link
                           href={`/admin/invoices/${inv.id}`}
-                          className="font-mono text-[#0071e3] hover:text-[#0077ED] underline"
+                          className="font-mono text-accent hover:text-accent/90 underline"
                         >
                           {inv.invoice_number}
                         </Link>
@@ -705,14 +705,14 @@ export default function InvoicesClient() {
                         <div className="flex gap-2">
                           <Link
                             href={`/admin/invoices/${inv.id}`}
-                            className="btn-ghost !px-3 !py-1 !text-xs"
+                            className="btn-ghost px-3 py-1 text-xs"
                           >
                             詳細
                           </Link>
                           {(inv.status === "sent" || inv.status === "overdue") && (
                             <button
                               type="button"
-                              className="btn-primary !px-3 !py-1 !text-xs"
+                              className="btn-primary px-3 py-1 text-xs"
                               onClick={() => { setPaymentTarget(inv.id); setPaymentDate(new Date().toISOString().slice(0, 10)); }}
                             >
                               入金
@@ -721,7 +721,7 @@ export default function InvoicesClient() {
                           {inv.status === "draft" && (
                             <button
                               type="button"
-                              className="btn-danger !px-3 !py-1 !text-xs"
+                              className="btn-danger px-3 py-1 text-xs"
                               disabled={deletingId === inv.id}
                               onClick={() => handleDelete(inv.id)}
                             >

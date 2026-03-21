@@ -188,7 +188,7 @@ export default function CustomersClient() {
       />
 
       {loading && <div className="text-sm text-muted">読み込み中…</div>}
-      {err && <div className="glass-card p-4 text-sm text-red-500">{err}</div>}
+      {err && <div className="glass-card p-4 text-sm text-danger">{err}</div>}
 
       {data && (
         <>
@@ -237,7 +237,7 @@ export default function CustomersClient() {
           </section>
 
           {saveMsg && (
-            <div className={`text-sm ${saveMsg.ok ? "text-emerald-400" : "text-red-500"}`}>
+            <div className={`text-sm ${saveMsg.ok ? "text-success" : "text-danger"}`}>
               {saveMsg.text}
             </div>
           )}
@@ -251,7 +251,7 @@ export default function CustomersClient() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs text-muted">顧客名 <span className="text-red-500">*</span></label>
+                  <label className="text-xs text-muted">顧客名 <span className="text-danger">*</span></label>
                   <input
                     type="text"
                     value={form.name}
@@ -349,7 +349,7 @@ export default function CustomersClient() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs text-muted">顧客名 <span className="text-red-500">*</span></label>
+                  <label className="text-xs text-muted">顧客名 <span className="text-danger">*</span></label>
                   <input
                     type="text"
                     value={editForm.name}
@@ -456,7 +456,7 @@ export default function CustomersClient() {
                       <td className="px-5 py-3.5">
                         <Link
                           href={`/admin/customers/${c.id}`}
-                          className="font-medium text-primary hover:text-[#0071e3] underline"
+                          className="font-medium text-primary hover:text-accent underline"
                         >
                           {c.name}
                         </Link>
@@ -476,14 +476,14 @@ export default function CustomersClient() {
                         <div className="flex gap-2">
                           <button
                             type="button"
-                            className="btn-ghost !px-3 !py-1 !text-xs"
+                            className="btn-ghost px-3 py-1 text-xs"
                             onClick={() => startEdit(c)}
                           >
                             編集
                           </button>
                           <button
                             type="button"
-                            className="btn-danger !px-3 !py-1 !text-xs"
+                            className="btn-danger px-3 py-1 text-xs"
                             disabled={
                               deletingId === c.id ||
                               c.certificates_count > 0 ||

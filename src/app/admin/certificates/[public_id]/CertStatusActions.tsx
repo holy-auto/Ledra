@@ -50,7 +50,7 @@ export default function CertStatusActions({ publicId, status }: Props) {
         <button
           onClick={handleActivate}
           disabled={isPending}
-          className="rounded-xl border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+          className="rounded-xl border border-success bg-success px-4 py-2 text-sm font-medium text-inverse hover:bg-success/90 disabled:opacity-50"
         >
           {isPending ? "処理中…" : "✓ 公開する"}
         </button>
@@ -58,12 +58,12 @@ export default function CertStatusActions({ publicId, status }: Props) {
       <button
         onClick={handleVoid}
         disabled={isPending}
-        className="rounded-xl border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+        className="rounded-xl border border-danger/40 bg-surface px-4 py-2 text-sm font-medium text-danger hover:bg-danger/5 disabled:opacity-50"
       >
         無効化する
       </button>
       {error && (
-        <p className="text-xs text-red-600">{error}</p>
+        <p className="text-xs text-danger">{error}</p>
       )}
     </div>
   );

@@ -69,7 +69,7 @@ export default function CustomerDetailClient({ customer: initial }: { customer: 
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1">
-            <label className="text-xs text-muted">顧客名 <span className="text-red-500">*</span></label>
+            <label className="text-xs text-muted">顧客名 <span className="text-danger">*</span></label>
             <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input-field" />
           </div>
           <div className="space-y-1">
@@ -97,7 +97,7 @@ export default function CustomerDetailClient({ customer: initial }: { customer: 
           <label className="text-xs text-muted">備考</label>
           <textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} className="input-field" rows={2} />
         </div>
-        {msg && <div className={`text-sm ${msg.ok ? "text-emerald-400" : "text-red-500"}`}>{msg.text}</div>}
+        {msg && <div className={`text-sm ${msg.ok ? "text-success" : "text-danger"}`}>{msg.text}</div>}
         <div className="flex gap-3">
           <button type="button" className="btn-primary" disabled={saving || !form.name.trim()} onClick={handleSave}>
             {saving ? "更新中…" : "更新"}
@@ -115,9 +115,9 @@ export default function CustomerDetailClient({ customer: initial }: { customer: 
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">CUSTOMER INFO</div>
           <div className="mt-1 text-lg font-bold text-primary">{customer.name}</div>
         </div>
-        <button type="button" className="btn-ghost !text-xs" onClick={() => setEditing(true)}>編集</button>
+        <button type="button" className="btn-ghost text-xs" onClick={() => setEditing(true)}>編集</button>
       </div>
-      {msg && <div className={`text-sm ${msg.ok ? "text-emerald-400" : "text-red-500"}`}>{msg.text}</div>}
+      {msg && <div className={`text-sm ${msg.ok ? "text-success" : "text-danger"}`}>{msg.text}</div>}
       {infoRow("フリガナ", customer.name_kana)}
       {infoRow("メール", customer.email)}
       {infoRow("電話番号", customer.phone)}

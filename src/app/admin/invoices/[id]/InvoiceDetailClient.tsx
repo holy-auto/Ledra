@@ -164,19 +164,19 @@ export default function InvoiceDetailClient({
               <button
                 key={ns}
                 type="button"
-                className={ns === "cancelled" ? "btn-danger !text-xs" : "btn-secondary !text-xs"}
+                className={ns === "cancelled" ? "btn-danger text-xs" : "btn-secondary text-xs"}
                 disabled={updating}
                 onClick={() => handleStatusChange(ns)}
               >
                 {statusLabel(ns)}に変更
               </button>
             ))}
-            <button type="button" className="btn-ghost !text-xs" onClick={handlePrint}>
+            <button type="button" className="btn-ghost text-xs" onClick={handlePrint}>
               印刷
             </button>
             <button
               type="button"
-              className="btn-secondary !text-xs"
+              className="btn-secondary text-xs"
               disabled={downloading}
               onClick={handlePdfDownload}
             >
@@ -250,7 +250,7 @@ export default function InvoiceDetailClient({
                     <td className="py-3 px-3 text-primary print:text-black">
                       {item.description || "-"}
                       {item.certificate_public_id && (
-                        <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-[rgba(0,113,227,0.08)] text-[#0071e3] print:text-blue-600 print:bg-blue-50">
+                        <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-accent-dim text-accent print:text-blue-600 print:bg-blue-50">
                           証明書: {item.certificate_public_id}
                         </span>
                       )}

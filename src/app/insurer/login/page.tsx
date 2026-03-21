@@ -29,7 +29,7 @@ export default function InsurerLoginPage() {
       <div className="glass-card w-full max-w-md space-y-6 p-8">
         {/* Branding */}
         <div className="flex items-center justify-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-[#0071e3] flex items-center justify-center text-white font-bold text-lg">
+          <div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center text-white font-bold text-lg">
             C
           </div>
           <span className="text-xl font-bold text-primary tracking-wide">CARTRUST</span>
@@ -69,7 +69,7 @@ export default function InsurerLoginPage() {
 
         <p className="text-center text-sm text-muted">
           アカウントをお持ちでない方は{" "}
-          <a href="/join" className="text-[#0071e3] hover:underline">
+          <a href="/join" className="text-accent hover:underline">
             新規登録
           </a>
         </p>

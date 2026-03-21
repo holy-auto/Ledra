@@ -238,7 +238,7 @@ export default async function AdminVehicleDetailPage({
                             href={`/c/${row.public_id}`}
                             target="_blank"
                             rel="noreferrer"
-                            className="underline text-[#0071e3] hover:text-[#0077ED]"
+                            className="underline text-accent hover:text-accent"
                           >
                             表示
                           </a>

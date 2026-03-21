@@ -125,8 +125,8 @@ export default function NewsClient() {
                 type="button"
                 className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
                   !showSavedOnly
-                    ? "bg-[#1d1d1f] text-white"
-                    : "bg-[rgba(0,0,0,0.04)] text-[#6e6e73] hover:bg-[rgba(0,0,0,0.08)]"
+                    ? "bg-primary text-inverse"
+                    : "bg-surface-hover text-secondary hover:bg-border-default"
                 }`}
                 onClick={() => setShowSavedOnly(false)}
               >
@@ -136,8 +136,8 @@ export default function NewsClient() {
                 type="button"
                 className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
                   showSavedOnly
-                    ? "bg-[#34c759] text-white"
-                    : "bg-[rgba(0,0,0,0.04)] text-[#6e6e73] hover:bg-[rgba(0,0,0,0.08)]"
+                    ? "bg-success text-inverse"
+                    : "bg-surface-hover text-secondary hover:bg-border-default"
                 }`}
                 onClick={() => setShowSavedOnly(true)}
               >
@@ -150,8 +150,8 @@ export default function NewsClient() {
                 type="button"
                 className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
                   categoryFilter === "all"
-                    ? "bg-[#5856d6] text-white"
-                    : "bg-[rgba(0,0,0,0.04)] text-[#6e6e73] hover:bg-[rgba(0,0,0,0.08)]"
+                    ? "bg-violet text-inverse"
+                    : "bg-surface-hover text-secondary hover:bg-border-default"
                 }`}
                 onClick={() => setCategoryFilter("all")}
               >
@@ -163,8 +163,8 @@ export default function NewsClient() {
                   type="button"
                   className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
                     categoryFilter === group
-                      ? "bg-[#5856d6] text-white"
-                      : "bg-[rgba(0,0,0,0.04)] text-[#6e6e73] hover:bg-[rgba(0,0,0,0.08)]"
+                      ? "bg-violet text-inverse"
+                      : "bg-surface-hover text-secondary hover:bg-border-default"
                   }`}
                   onClick={() => setCategoryFilter(group)}
                 >
@@ -178,8 +178,8 @@ export default function NewsClient() {
                 type="button"
                 className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
                   sourceFilter === "all"
-                    ? "bg-[#0071e3] text-white"
-                    : "bg-[rgba(0,0,0,0.04)] text-[#6e6e73] hover:bg-[rgba(0,0,0,0.08)]"
+                    ? "bg-accent text-inverse"
+                    : "bg-surface-hover text-secondary hover:bg-border-default"
                 }`}
                 onClick={() => setSourceFilter("all")}
               >
@@ -193,8 +193,8 @@ export default function NewsClient() {
                     type="button"
                     className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
                       sourceFilter === src
-                        ? "bg-[#0071e3] text-white"
-                        : "bg-[rgba(0,0,0,0.04)] text-[#6e6e73] hover:bg-[rgba(0,0,0,0.08)]"
+                        ? "bg-accent text-inverse"
+                        : "bg-surface-hover text-secondary hover:bg-border-default"
                     }`}
                     onClick={() => setSourceFilter(src)}
                   >
@@ -214,13 +214,13 @@ export default function NewsClient() {
             )}
 
             {filtered.map((item) => (
-              <article key={item.id} className={`glass-card p-5 space-y-2 hover:bg-surface-hover transition-colors ${item.saved ? "border-l-2 border-l-[#34c759]" : ""}`}>
+              <article key={item.id} className={`glass-card p-5 space-y-2 hover:bg-surface-hover transition-colors ${item.saved ? "border-l-2 border-l-success" : ""}`}>
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge variant={SOURCE_VARIANT[item.source] ?? "default"}>
                     {item.source}
                   </Badge>
                   {item.saved && (
-                    <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#34c75920] text-[#34c759] font-medium">
+                    <span className="px-1.5 py-0.5 rounded text-[10px] bg-success-dim text-success-text font-medium">
                       自動収集
                     </span>
                   )}
@@ -230,7 +230,7 @@ export default function NewsClient() {
                 </div>
                 <h3 className="text-sm font-semibold text-primary leading-relaxed">
                   {item.url ? (
-                    <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:underline hover:text-[#0071e3]">
+                    <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:underline hover:text-accent">
                       {item.title}
                     </a>
                   ) : (
@@ -243,7 +243,7 @@ export default function NewsClient() {
                 {item.keywords && item.keywords.length > 0 && (
                   <div className="flex gap-1 flex-wrap">
                     {item.keywords.slice(0, 5).map((kw) => (
-                      <span key={kw} className="px-1.5 py-0.5 rounded text-[10px] bg-[rgba(0,113,227,0.08)] text-[#0071e3]">
+                      <span key={kw} className="px-1.5 py-0.5 rounded text-[10px] bg-accent-dim text-accent">
                         {kw}
                       </span>
                     ))}

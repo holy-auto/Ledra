@@ -59,7 +59,7 @@ export default async function DocumentDetailPage({
         tag={docLabel.toUpperCase()}
         title={`${docLabel} ${doc.doc_number}`}
         actions={
-          <a href="/admin/documents" className="btn-ghost !text-xs">
+          <a href="/admin/documents" className="btn-ghost text-xs">
             ← 帳票一覧に戻る
           </a>
         }

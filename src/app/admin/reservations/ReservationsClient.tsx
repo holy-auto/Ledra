@@ -76,7 +76,7 @@ const statusLabel = (s: string) => {
 // ─── Styles ───
 
 const inputCls =
-  "w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400";
+  "w-full rounded-xl border border-neutral-300 bg-surface px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400";
 const labelCls = "block space-y-1.5";
 const labelTextCls = "text-sm font-medium text-neutral-700";
 
@@ -384,13 +384,13 @@ export default function ReservationsClient() {
           <div className="flex rounded-lg border border-border-subtle overflow-hidden">
             <button
               onClick={() => setViewMode("list")}
-              className={`px-3 py-1.5 text-xs font-medium transition-colors ${viewMode === "list" ? "bg-[#0071e3] text-white" : "bg-white text-secondary hover:bg-surface-hover"}`}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${viewMode === "list" ? "bg-accent text-inverse" : "bg-surface text-secondary hover:bg-surface-hover"}`}
             >
               リスト
             </button>
             <button
               onClick={() => setViewMode("calendar")}
-              className={`px-3 py-1.5 text-xs font-medium transition-colors ${viewMode === "calendar" ? "bg-[#0071e3] text-white" : "bg-white text-secondary hover:bg-surface-hover"}`}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${viewMode === "calendar" ? "bg-accent text-inverse" : "bg-surface text-secondary hover:bg-surface-hover"}`}
             >
               カレンダー
             </button>
@@ -400,7 +400,7 @@ export default function ReservationsClient() {
           <select
             value={statusFilter}
             onChange={(e) => handleFilterChange(e.target.value)}
-            className="rounded-lg border border-border-subtle bg-white px-3 py-1.5 text-xs text-primary"
+            className="rounded-lg border border-border-subtle bg-surface px-3 py-1.5 text-xs text-primary"
           >
             {STATUS_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -414,7 +414,7 @@ export default function ReservationsClient() {
                 type="date"
                 value={dateFilter}
                 onChange={(e) => handleDateChange(e.target.value)}
-                className="rounded-lg border border-border-subtle bg-white px-3 py-1.5 text-xs text-primary"
+                className="rounded-lg border border-border-subtle bg-surface px-3 py-1.5 text-xs text-primary"
               />
               {dateFilter && (
                 <button
@@ -518,7 +518,7 @@ export default function ReservationsClient() {
         {/* ─── Create / Edit Modal ─── */}
         {showForm && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={() => setShowForm(false)}>
-            <div className="mx-4 w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mx-4 w-full max-w-lg rounded-2xl bg-surface p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-lg font-semibold text-primary mb-4">
                 {editingId ? "予約を編集" : "新規予約"}
               </h2>
@@ -625,7 +625,7 @@ export default function ReservationsClient() {
                             onClick={() => toggleMenuItem(mi)}
                             className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                               selected
-                                ? "border-[#0071e3] bg-[rgba(0,113,227,0.08)] text-[#0071e3]"
+                                ? "border-accent bg-accent-dim text-accent"
                                 : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-400"
                             }`}
                           >
@@ -677,7 +677,7 @@ export default function ReservationsClient() {
         {/* ─── Cancel Dialog ─── */}
         {cancelTarget && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={() => setCancelTarget(null)}>
-            <div className="mx-4 w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mx-4 w-full max-w-sm rounded-2xl bg-surface p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
               <h3 className="text-base font-semibold text-primary mb-3">予約をキャンセル</h3>
               <label className={labelCls}>
                 <span className={labelTextCls}>キャンセル理由</span>

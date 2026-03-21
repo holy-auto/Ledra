@@ -53,7 +53,7 @@ export default function GalleryPage() {
             type="button"
             className={`text-xs px-3 py-1.5 rounded-full transition-colors ${
               filter === cat
-                ? "bg-[#0071e3] text-white"
+                ? "bg-accent text-inverse"
                 : "bg-surface-hover text-muted hover:text-primary"
             }`}
             onClick={() => setFilter(cat)}

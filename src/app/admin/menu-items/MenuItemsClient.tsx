@@ -262,7 +262,7 @@ export default function MenuItemsClient() {
                   onChange={(e) => setCsvText(e.target.value)}
                 />
                 <div className="flex items-center gap-3">
-                  <label className="btn-ghost cursor-pointer !text-xs">
+                  <label className="btn-ghost cursor-pointer text-xs">
                     ファイルを選択
                     <input
                       ref={fileInputRef}
@@ -402,7 +402,7 @@ export default function MenuItemsClient() {
                           <td className="px-5 py-3">
                             <input
                               type="text"
-                              className="input-field !py-1 !text-sm"
+                              className="input-field py-1 text-sm"
                               value={editName}
                               onChange={(e) => setEditName(e.target.value)}
                             />
@@ -410,7 +410,7 @@ export default function MenuItemsClient() {
                           <td className="px-5 py-3">
                             <input
                               type="text"
-                              className="input-field !py-1 !text-sm"
+                              className="input-field py-1 text-sm"
                               value={editDescription}
                               onChange={(e) => setEditDescription(e.target.value)}
                             />
@@ -418,7 +418,7 @@ export default function MenuItemsClient() {
                           <td className="px-5 py-3">
                             <input
                               type="number"
-                              className="input-field !py-1 !text-sm"
+                              className="input-field py-1 text-sm"
                               min="0"
                               value={editUnitPrice}
                               onChange={(e) => setEditUnitPrice(e.target.value)}
@@ -426,7 +426,7 @@ export default function MenuItemsClient() {
                           </td>
                           <td className="px-5 py-3">
                             <select
-                              className="select-field !py-1 !text-sm"
+                              className="select-field py-1 text-sm"
                               value={editTaxCategory}
                               onChange={(e) => setEditTaxCategory(e.target.value)}
                             >
@@ -443,7 +443,7 @@ export default function MenuItemsClient() {
                             <div className="flex gap-2">
                               <button
                                 type="button"
-                                className="btn-primary !px-3 !py-1 !text-xs"
+                                className="btn-primary px-3 py-1 text-xs"
                                 disabled={editSaving || !editName.trim()}
                                 onClick={handleEdit}
                               >
@@ -451,7 +451,7 @@ export default function MenuItemsClient() {
                               </button>
                               <button
                                 type="button"
-                                className="btn-ghost !px-3 !py-1 !text-xs"
+                                className="btn-ghost px-3 py-1 text-xs"
                                 onClick={cancelEdit}
                               >
                                 取消
@@ -479,7 +479,7 @@ export default function MenuItemsClient() {
                             <div className="flex gap-2">
                               <button
                                 type="button"
-                                className="btn-ghost !px-3 !py-1 !text-xs"
+                                className="btn-ghost px-3 py-1 text-xs"
                                 onClick={() => startEdit(item)}
                               >
                                 編集
@@ -487,7 +487,7 @@ export default function MenuItemsClient() {
                               {item.is_active && (
                                 <button
                                   type="button"
-                                  className="btn-danger !px-3 !py-1 !text-xs"
+                                  className="btn-danger px-3 py-1 text-xs"
                                   disabled={deletingId === item.id}
                                   onClick={() => handleDelete(item.id)}
                                 >

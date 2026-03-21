@@ -201,17 +201,17 @@ export default function OrdersClient() {
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="glass-card p-5">
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">申請中</div>
-          <div className="mt-2 text-3xl font-bold text-[#b35c00]">{pendingSent}</div>
+          <div className="mt-2 text-3xl font-bold text-warning-text">{pendingSent}</div>
           <div className="mt-1 text-xs text-muted">回答待ちの発注</div>
         </div>
         <div className="glass-card p-5">
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">進行中</div>
-          <div className="mt-2 text-3xl font-bold text-[#0071e3]">{activeCount}</div>
+          <div className="mt-2 text-3xl font-bold text-accent">{activeCount}</div>
           <div className="mt-1 text-xs text-muted">受注・作業中</div>
         </div>
         <div className="glass-card p-5">
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">完了</div>
-          <div className="mt-2 text-3xl font-bold text-[#28a745]">{completedCount}</div>
+          <div className="mt-2 text-3xl font-bold text-success">{completedCount}</div>
           <div className="mt-1 text-xs text-muted">完了した取引</div>
         </div>
       </div>

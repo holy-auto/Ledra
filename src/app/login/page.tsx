@@ -33,7 +33,7 @@ export default async function Page({
       <div className="glass-card w-full max-w-sm space-y-6 p-8">
         {/* Branding */}
         <div className="flex items-center justify-center gap-3">
-          <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg" style={{ background: "linear-gradient(135deg, #0071e3, #5856d6)" }}>
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg" style={{ background: "linear-gradient(135deg, var(--accent-blue), #5856d6)" }}>
             C
           </div>
           <span className="text-xl font-bold text-primary tracking-wide">CARTRUST</span>
@@ -66,12 +66,12 @@ export default async function Page({
         </form>
 
         <div className="text-center space-y-2">
-          <Link href="/forgot-password" className="text-xs text-[#0071e3] hover:underline">
+          <Link href="/forgot-password" className="text-xs text-accent hover:underline">
             パスワードをお忘れですか？
           </Link>
           <p className="text-sm text-secondary">
             アカウントをお持ちでないですか？{" "}
-            <Link href="/signup" className="text-[#0071e3] hover:underline font-medium">
+            <Link href="/signup" className="text-accent hover:underline font-medium">
               新規登録
             </Link>
           </p>

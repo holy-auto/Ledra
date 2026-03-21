@@ -172,7 +172,7 @@ export default function PlatformTemplateOrdersPage() {
                       <span className={`inline-block px-2 py-0.5 rounded-full text-xs ${
                         order.status === "active" ? "bg-emerald-900/30 text-emerald-400" :
                         order.status === "cancelled" ? "bg-red-900/30 text-red-400" :
-                        "bg-[#0071e3]/20 text-[#0071e3]"
+                        "bg-accent-dim text-accent"
                       }`}>
                         {ORDER_STATUS_LABELS[order.status] ?? order.status}
                       </span>
@@ -199,7 +199,7 @@ export default function PlatformTemplateOrdersPage() {
                         </select>
                         <Link
                           href={`/admin/platform/template-orders/${order.id}`}
-                          className="text-[#0071e3] text-xs underline whitespace-nowrap"
+                          className="text-accent text-xs underline whitespace-nowrap"
                         >
                           詳細
                         </Link>

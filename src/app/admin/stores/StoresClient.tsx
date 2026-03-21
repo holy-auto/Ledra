@@ -163,13 +163,13 @@ export default function StoresClient() {
       {/* Create/Edit Form */}
       {showForm && (
         <div className="glass-card p-5 space-y-4">
-          <h3 className="text-sm font-semibold text-[#1d1d1f]">
+          <h3 className="text-sm font-semibold text-primary">
             {editingStore ? "店舗を編集" : "新規店舗を追加"}
           </h3>
           <form onSubmit={handleSubmit} className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-xs font-medium text-[#6e6e73]">店舗名 *</label>
+                <label className="mb-1 block text-xs font-medium text-secondary">店舗名 *</label>
                 <input
                   type="text"
                   value={formName}
@@ -180,7 +180,7 @@ export default function StoresClient() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-[#6e6e73]">店長名</label>
+                <label className="mb-1 block text-xs font-medium text-secondary">店長名</label>
                 <input
                   type="text"
                   value={formManager}
@@ -190,7 +190,7 @@ export default function StoresClient() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-[#6e6e73]">住所</label>
+                <label className="mb-1 block text-xs font-medium text-secondary">住所</label>
                 <input
                   type="text"
                   value={formAddress}
@@ -200,7 +200,7 @@ export default function StoresClient() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-[#6e6e73]">電話番号</label>
+                <label className="mb-1 block text-xs font-medium text-secondary">電話番号</label>
                 <input
                   type="tel"
                   value={formPhone}
@@ -210,7 +210,7 @@ export default function StoresClient() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-[#6e6e73]">メールアドレス</label>
+                <label className="mb-1 block text-xs font-medium text-secondary">メールアドレス</label>
                 <input
                   type="email"
                   value={formEmail}
@@ -234,9 +234,9 @@ export default function StoresClient() {
 
       {/* Store List */}
       {loading ? (
-        <div className="glass-card p-8 text-center text-sm text-[#6e6e73]">読み込み中...</div>
+        <div className="glass-card p-8 text-center text-sm text-secondary">読み込み中...</div>
       ) : stores.length === 0 ? (
-        <div className="glass-card p-8 text-center text-sm text-[#6e6e73]">
+        <div className="glass-card p-8 text-center text-sm text-secondary">
           まだ店舗が登録されていません。
         </div>
       ) : (
@@ -246,7 +246,7 @@ export default function StoresClient() {
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-2">
-                    <h4 className="text-sm font-semibold text-[#1d1d1f]">{store.name}</h4>
+                    <h4 className="text-sm font-semibold text-primary">{store.name}</h4>
                     {store.is_default && (
                       <span className="inline-flex items-center rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">
                         デフォルト
@@ -259,31 +259,31 @@ export default function StoresClient() {
                     )}
                   </div>
                   {store.manager_name && (
-                    <p className="mt-0.5 text-xs text-[#6e6e73]">店長: {store.manager_name}</p>
+                    <p className="mt-0.5 text-xs text-secondary">店長: {store.manager_name}</p>
                   )}
                 </div>
-                <span className="text-xs text-[#aeaeb2]">{store.member_count}名</span>
+                <span className="text-xs text-muted">{store.member_count}名</span>
               </div>
 
               {store.address && (
-                <p className="text-xs text-[#6e6e73]">{store.address}</p>
+                <p className="text-xs text-secondary">{store.address}</p>
               )}
 
-              <div className="flex flex-wrap gap-2 text-xs text-[#6e6e73]">
+              <div className="flex flex-wrap gap-2 text-xs text-secondary">
                 {store.phone && <span>{store.phone}</span>}
                 {store.email && <span>{store.email}</span>}
               </div>
 
-              <div className="flex gap-2 border-t border-[rgba(0,0,0,0.04)] pt-2">
+              <div className="flex gap-2 border-t border-border-subtle pt-2">
                 <button
                   onClick={() => openEdit(store)}
-                  className="text-xs font-medium text-[#0071e3] hover:underline"
+                  className="text-xs font-medium text-accent hover:underline"
                 >
                   編集
                 </button>
                 <button
                   onClick={() => toggleActive(store)}
-                  className="text-xs font-medium text-[#6e6e73] hover:underline"
+                  className="text-xs font-medium text-secondary hover:underline"
                 >
                   {store.is_active ? "無効にする" : "有効にする"}
                 </button>

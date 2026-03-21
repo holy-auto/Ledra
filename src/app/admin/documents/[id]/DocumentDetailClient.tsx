@@ -126,7 +126,7 @@ export default function DocumentDetailClient({
   return (
     <div className="space-y-6">
       {msg && (
-        <div className={`text-sm ${msg.ok ? "text-emerald-600" : "text-red-500"}`}>{msg.text}</div>
+        <div className={`text-sm ${msg.ok ? "text-success" : "text-danger"}`}>{msg.text}</div>
       )}
 
       {/* Status & Actions */}
@@ -146,7 +146,7 @@ export default function DocumentDetailClient({
               <button
                 key={ns}
                 type="button"
-                className={ns === "cancelled" || ns === "rejected" ? "btn-danger !text-xs" : "btn-secondary !text-xs"}
+                className={ns === "cancelled" || ns === "rejected" ? "btn-danger text-xs" : "btn-secondary text-xs"}
                 disabled={updating}
                 onClick={() => handleStatusChange(ns)}
               >
@@ -156,19 +156,19 @@ export default function DocumentDetailClient({
             {canConvert && (
               <button
                 type="button"
-                className="btn-secondary !text-xs"
+                className="btn-secondary text-xs"
                 disabled={converting}
                 onClick={handleConvertToInvoice}
               >
                 {converting ? "変換中…" : "請求書に変換"}
               </button>
             )}
-            <button type="button" className="btn-ghost !text-xs" onClick={handlePrint}>
+            <button type="button" className="btn-ghost text-xs" onClick={handlePrint}>
               印刷
             </button>
             <button
               type="button"
-              className="btn-secondary !text-xs"
+              className="btn-secondary text-xs"
               disabled={downloading}
               onClick={handlePdfDownload}
             >
@@ -340,7 +340,7 @@ export default function DocumentDetailClient({
           <span className="text-muted">元帳票: </span>
           <a
             href={`/admin/documents/${doc.source_document_id}`}
-            className="text-[#0071e3] hover:text-[#0077ED] underline"
+            className="text-accent hover:text-accent underline"
           >
             {doc.source_document_id}
           </a>

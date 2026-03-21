@@ -128,13 +128,13 @@ export default async function AdminVehicleListPage() {
                       <div className="flex gap-2 flex-wrap">
                         <Link
                           href={`/admin/vehicles/${v.id}`}
-                          className="btn-ghost !px-3 !py-1 !text-xs"
+                          className="btn-ghost px-3 py-1 text-xs"
                         >
                           詳細
                         </Link>
                         <Link
                           href={`/admin/certificates/new?vehicleId=${v.id}`}
-                          className="btn-primary !px-3 !py-1.5 !text-xs"
+                          className="btn-primary px-3 py-1.5 text-xs"
                         >
                           証明書発行
                         </Link>

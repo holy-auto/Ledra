@@ -237,7 +237,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
       />
 
       {loading && <div className="text-sm text-muted">読み込み中…</div>}
-      {err && <div className="glass-card p-4 text-sm text-red-500">{err}</div>}
+      {err && <div className="glass-card p-4 text-sm text-danger">{err}</div>}
 
       {swrData && (
         <>
@@ -287,7 +287,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
           </section>
 
           {saveMsg && (
-            <div className={`text-sm ${saveMsg.ok ? "text-emerald-600" : "text-red-500"}`}>
+            <div className={`text-sm ${saveMsg.ok ? "text-success" : "text-danger"}`}>
               {saveMsg.text}
             </div>
           )}
@@ -422,7 +422,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                       {idx === 0 && <label className="text-xs text-muted">内容</label>}
                       {menuItems.length > 0 && (
                         <select
-                          className="select-field !py-1 !text-xs mb-1"
+                          className="select-field py-1 text-xs mb-1"
                           value=""
                           onChange={(e) => { if (e.target.value) handleMenuItemSelect(e.target.value, idx); }}
                         >
@@ -471,7 +471,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                     <div className="col-span-1">
                       <button
                         type="button"
-                        className="btn-ghost !px-2 !py-1 !text-xs text-red-500"
+                        className="btn-ghost px-2 py-1 text-xs text-danger"
                         onClick={() => removeItem(idx)}
                         disabled={formItems.length <= 1}
                       >
@@ -480,7 +480,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                     </div>
                   </div>
                 ))}
-                <button type="button" className="btn-ghost !text-xs" onClick={addItem}>
+                <button type="button" className="btn-ghost text-xs" onClick={addItem}>
                   + 明細を追加
                 </button>
               </div>
@@ -560,7 +560,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                       <td className="px-5 py-3.5">
                         <Link
                           href={`/admin/documents/${doc.id}`}
-                          className="font-mono text-[#0071e3] hover:text-[#0077ED] underline"
+                          className="font-mono text-accent hover:text-accent underline"
                         >
                           {doc.doc_number}
                         </Link>
@@ -581,14 +581,14 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                         <div className="flex gap-2">
                           <Link
                             href={`/admin/documents/${doc.id}`}
-                            className="btn-ghost !px-3 !py-1 !text-xs"
+                            className="btn-ghost px-3 py-1 text-xs"
                           >
                             詳細
                           </Link>
                           {doc.status === "draft" && (
                             <button
                               type="button"
-                              className="btn-danger !px-3 !py-1 !text-xs"
+                              className="btn-danger px-3 py-1 text-xs"
                               disabled={deletingId === doc.id}
                               onClick={() => handleDelete(doc.id)}
                             >

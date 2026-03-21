@@ -297,7 +297,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
     return (
       <div className="space-y-4">
         <div className="glass-card p-8 text-center"><p className="text-primary font-medium">車両が見つかりません</p></div>
-        <Link href="/admin/market-vehicles" className="text-sm text-[#0071e3] hover:underline">一覧に戻る</Link>
+        <Link href="/admin/market-vehicles" className="text-sm text-accent hover:underline">一覧に戻る</Link>
       </div>
     );
   }
@@ -340,11 +340,11 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
           </div>
           <div className="flex gap-2 flex-wrap">
             {nextStatuses.map((ns) => (
-              <button key={ns} type="button" className={ns === "withdrawn" ? "btn-danger !text-xs" : "btn-secondary !text-xs"} disabled={updating} onClick={() => handleStatusChange(ns)}>
+              <button key={ns} type="button" className={ns === "withdrawn" ? "btn-danger text-xs" : "btn-secondary text-xs"} disabled={updating} onClick={() => handleStatusChange(ns)}>
                 {STATUS_LABELS[ns] ?? ns}に変更
               </button>
             ))}
-            {vehicle.status === "draft" && <button type="button" className="btn-danger !text-xs" onClick={handleDelete}>削除</button>}
+            {vehicle.status === "draft" && <button type="button" className="btn-danger text-xs" onClick={handleDelete}>削除</button>}
           </div>
         </div>
       </section>
@@ -417,7 +417,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
                 <div className="flex gap-2 overflow-x-auto pb-2">
                   {images.map((img, idx) => (
                     <div key={img.id} className="relative flex-shrink-0">
-                      <button type="button" onClick={() => setMainIdx(idx)} className={`w-16 h-16 rounded-lg overflow-hidden border-2 ${idx === mainIdx ? "border-[#0071e3]" : "border-transparent"}`}>
+                      <button type="button" onClick={() => setMainIdx(idx)} className={`w-16 h-16 rounded-lg overflow-hidden border-2 ${idx === mainIdx ? "border-accent" : "border-transparent"}`}>
                         <img src={img.storage_path} alt="" className="w-full h-full object-cover" />
                       </button>
                       <button type="button" onClick={() => handleDeleteImage(img.id)} className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center hover:bg-red-600">×</button>
@@ -427,7 +427,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
               )}
               <div className="flex items-center gap-3">
                 <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={(e) => { if (e.target.files?.length) handleUpload(e.target.files); }} />
-                <button type="button" className="btn-secondary !text-xs" disabled={uploading || images.length >= 20} onClick={() => fileInputRef.current?.click()}>
+                <button type="button" className="btn-secondary text-xs" disabled={uploading || images.length >= 20} onClick={() => fileInputRef.current?.click()}>
                   {uploading ? "アップロード中…" : `写真を追加（${images.length}/20）`}
                 </button>
               </div>
@@ -456,10 +456,10 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
                     {vehicle.asking_price != null && (
                       <div>
                         <div className="text-xs text-muted">販売利益</div>
-                        <div className={`text-lg font-bold ${vehicle.asking_price - vehicle.cost_price >= 0 ? "text-[#28a745]" : "text-[#d1242f]"}`}>
+                        <div className={`text-lg font-bold ${vehicle.asking_price - vehicle.cost_price >= 0 ? "text-success" : "text-danger"}`}>
                           {formatJpy(vehicle.asking_price - vehicle.cost_price)}
                         </div>
-                        <div className={`text-xs ${vehicle.asking_price - vehicle.cost_price >= 0 ? "text-[#28a745]" : "text-[#d1242f]"}`}>
+                        <div className={`text-xs ${vehicle.asking_price - vehicle.cost_price >= 0 ? "text-success" : "text-danger"}`}>
                           利益率 {((vehicle.asking_price - vehicle.cost_price) / vehicle.asking_price * 100).toFixed(1)}%
                         </div>
                       </div>
@@ -467,10 +467,10 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
                     {vehicle.wholesale_price != null && (
                       <div>
                         <div className="text-xs text-muted">卸利益</div>
-                        <div className={`text-lg font-bold ${vehicle.wholesale_price - vehicle.cost_price >= 0 ? "text-[#28a745]" : "text-[#d1242f]"}`}>
+                        <div className={`text-lg font-bold ${vehicle.wholesale_price - vehicle.cost_price >= 0 ? "text-success" : "text-danger"}`}>
                           {formatJpy(vehicle.wholesale_price - vehicle.cost_price)}
                         </div>
-                        <div className={`text-xs ${vehicle.wholesale_price - vehicle.cost_price >= 0 ? "text-[#28a745]" : "text-[#d1242f]"}`}>
+                        <div className={`text-xs ${vehicle.wholesale_price - vehicle.cost_price >= 0 ? "text-success" : "text-danger"}`}>
                           利益率 {((vehicle.wholesale_price - vehicle.cost_price) / vehicle.wholesale_price * 100).toFixed(1)}%
                         </div>
                       </div>
@@ -501,7 +501,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
                       const startDate = vehicle.acquisition_date ?? vehicle.created_at.slice(0, 10);
                       const days = Math.max(0, Math.floor((Date.now() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)));
                       return (
-                        <span className={`font-bold ${days >= 90 ? "text-[#d1242f]" : days >= 60 ? "text-[#b35c00]" : "text-primary"}`}>
+                        <span className={`font-bold ${days >= 90 ? "text-danger" : days >= 60 ? "text-warning" : "text-primary"}`}>
                           {days}日
                         </span>
                       );
@@ -582,7 +582,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
               </div>
               <button
                 type="button"
-                className="btn-secondary !text-xs"
+                className="btn-secondary text-xs"
                 onClick={() => setShowAddInterest(!showAddInterest)}
               >
                 {showAddInterest ? "閉じる" : "+ 顧客追加"}
@@ -590,7 +590,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
             </div>
 
             {showAddInterest && (
-              <div className="rounded-lg border border-border-subtle bg-[rgba(0,0,0,0.02)] p-4 space-y-3">
+              <div className="rounded-lg border border-border-subtle bg-surface-hover p-4 space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   <div className="space-y-1">
                     <label className="text-xs text-muted">顧客名 <span className="text-red-500">*</span></label>
@@ -621,7 +621,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
                   <label className="text-xs text-muted">メモ</label>
                   <textarea className="input-field" rows={2} placeholder="商談内容や要望など" value={newInterest.note} onChange={(e) => setNewInterest((p) => ({ ...p, note: e.target.value }))} />
                 </div>
-                <button type="button" className="btn-primary !text-xs" onClick={addInterest}>追加</button>
+                <button type="button" className="btn-primary text-xs" onClick={addInterest}>追加</button>
               </div>
             )}
 
@@ -630,7 +630,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
             ) : (
               <div className="space-y-2">
                 {interests.map((i) => {
-                  const levelConfig = { hot: { label: "高", color: "text-[#d1242f]", bg: "bg-[rgba(209,36,47,0.08)]" }, warm: { label: "中", color: "text-[#b35c00]", bg: "bg-[rgba(179,92,0,0.08)]" }, cold: { label: "低", color: "text-[#6e6e73]", bg: "bg-[rgba(0,0,0,0.04)]" } }[i.interest_level] ?? { label: "-", color: "text-muted", bg: "bg-[rgba(0,0,0,0.04)]" };
+                  const levelConfig = { hot: { label: "高", color: "text-danger", bg: "bg-danger/10" }, warm: { label: "中", color: "text-warning", bg: "bg-warning/10" }, cold: { label: "低", color: "text-secondary", bg: "bg-surface-hover" } }[i.interest_level] ?? { label: "-", color: "text-muted", bg: "bg-surface-hover" };
                   return (
                     <div key={i.id} className="rounded-lg border border-border-subtle p-3 flex items-start gap-3">
                       <span className={`mt-0.5 inline-flex h-6 min-w-6 items-center justify-center rounded-full text-[10px] font-bold ${levelConfig.color} ${levelConfig.bg}`}>
@@ -640,7 +640,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-semibold text-primary">{i.customer_name}</span>
                           {i.status !== "active" && (
-                            <span className={`text-[10px] font-medium ${i.status === "converted" ? "text-[#28a745]" : "text-muted"}`}>
+                            <span className={`text-[10px] font-medium ${i.status === "converted" ? "text-success" : "text-muted"}`}>
                               {i.status === "converted" ? "成約" : "失注"}
                             </span>
                           )}
@@ -649,7 +649,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
                           {i.customer_phone && <span>{i.customer_phone}</span>}
                           {i.customer_email && <span>{i.customer_email}</span>}
                           {i.follow_up_date && (
-                            <span className={new Date(i.follow_up_date) <= new Date() ? "text-[#d1242f] font-semibold" : ""}>
+                            <span className={new Date(i.follow_up_date) <= new Date() ? "text-danger font-semibold" : ""}>
                               フォロー: {formatDate(i.follow_up_date)}
                             </span>
                           )}
@@ -658,8 +658,8 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
                       </div>
                       {i.status === "active" && (
                         <div className="flex gap-1">
-                          <button type="button" className="rounded px-2 py-1 text-[10px] font-medium bg-[rgba(40,167,69,0.08)] text-[#28a745] hover:bg-[rgba(40,167,69,0.15)]" onClick={() => updateInterestStatus(i.id, "converted")}>成約</button>
-                          <button type="button" className="rounded px-2 py-1 text-[10px] font-medium bg-[rgba(0,0,0,0.04)] text-muted hover:bg-[rgba(0,0,0,0.08)]" onClick={() => updateInterestStatus(i.id, "lost")}>失注</button>
+                          <button type="button" className="rounded px-2 py-1 text-[10px] font-medium bg-success/10 text-success hover:bg-success/15" onClick={() => updateInterestStatus(i.id, "converted")}>成約</button>
+                          <button type="button" className="rounded px-2 py-1 text-[10px] font-medium bg-surface-hover text-muted hover:bg-border-default" onClick={() => updateInterestStatus(i.id, "lost")}>失注</button>
                         </div>
                       )}
                     </div>

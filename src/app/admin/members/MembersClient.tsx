@@ -287,7 +287,7 @@ export default function MembersClient() {
                             value={m.role}
                             onChange={(e) => handleRoleChange(m.user_id, e.target.value as Role)}
                             disabled={updatingRoleId === m.user_id}
-                            className="select-field !py-1 !px-2 !text-xs min-w-[100px] disabled:opacity-50"
+                            className="select-field py-1 px-2 text-xs min-w-[100px] disabled:opacity-50"
                           >
                             {ASSIGNABLE_ROLES.map((r) => (
                               <option key={r} value={r}>{ROLE_LABELS[r]}</option>
@@ -304,7 +304,7 @@ export default function MembersClient() {
                         ) : (
                           <button
                             type="button"
-                            className="btn-danger !px-3 !py-1 !text-xs"
+                            className="btn-danger px-3 py-1 text-xs"
                             disabled={removingId === m.user_id}
                             onClick={() => handleRemove(m.user_id)}
                           >
