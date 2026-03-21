@@ -100,16 +100,7 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
-  {
-    href: "/admin/templates",
-    label: "テンプレート",
-    requiredPermission: "templates:manage",
-    icon: (
-      <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
-      </svg>
-    ),
-  },
+  // テンプレート編集は無効化（プリセットテンプレートを使用）
   {
     href: "/admin/template-options",
     label: "ブランド証明書",

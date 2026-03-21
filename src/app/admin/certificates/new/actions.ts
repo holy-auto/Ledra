@@ -52,6 +52,8 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
   const expiry_value = String(formData.get("expiry_value") || "").trim();
 
   const customer_id = String(formData.get("customer_id") || "").trim() || null;
+  const expiry_date = String(formData.get("expiry_date") || "").trim() || null;
+  const warranty_period_end = String(formData.get("warranty_period_end") || "").trim() || null;
 
   // Film thickness JSON (optional)
   let film_thickness: any[] = [];
@@ -114,6 +116,8 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
     coating_products_json: coating_products.length > 0 ? coating_products : [],
     expiry_type: "text",
     expiry_value,
+    expiry_date: expiry_date || null,
+    warranty_period_end: warranty_period_end || null,
     footer_variant: "holy",
     logo_asset_path: tenantLogoPath,
     created_by: userId,

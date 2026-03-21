@@ -33,7 +33,7 @@ export default async function AdminVehicleListPage() {
 
   const { data: vehicles, error } = await supabase
     .from("vehicles")
-    .select("id,maker,model,year,plate_display,vin_code,notes,created_at,updated_at")
+    .select("id,maker,model,year,plate_display,vin_code,notes,created_at,updated_at,customer_id,customer:customers(id,name)")
     .eq("tenant_id", membership.tenant_id)
     .order("created_at", { ascending: false })
     .limit(200);
@@ -100,6 +100,7 @@ export default async function AdminVehicleListPage() {
                   <th className="hidden sm:table-cell p-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">年式</th>
                   <th className="hidden sm:table-cell p-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">ナンバー</th>
                   <th className="hidden md:table-cell p-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">車体番号</th>
+                  <th className="hidden sm:table-cell p-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">所有者</th>
                   <th className="p-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">操作</th>
                 </tr>
               </thead>
@@ -123,6 +124,9 @@ export default async function AdminVehicleListPage() {
                     </td>
                     <td className="hidden md:table-cell p-3 font-mono text-secondary text-xs">
                       {v.vin_code || "-"}
+                    </td>
+                    <td className="hidden sm:table-cell p-3 text-secondary text-sm">
+                      {(v as any).customer?.name || "-"}
                     </td>
                     <td className="p-3">
                       <div className="flex gap-2 flex-wrap">

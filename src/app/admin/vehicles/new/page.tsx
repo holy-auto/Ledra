@@ -1,8 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Button from "@/components/ui/Button";
+
+type Customer = { id: string; name: string; phone: string | null };
 
 export default function AdminVehicleNewPage() {
   const router = useRouter();
@@ -15,10 +17,27 @@ export default function AdminVehicleNewPage() {
   const [plateDisplay, setPlateDisplay] = useState("");
   const [vinCode, setVinCode] = useState("");
   const [notes, setNotes] = useState("");
+  const [customerId, setCustomerId] = useState<string | null>(null);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerResults, setCustomerResults] = useState<Customer[]>([]);
+  const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
+  const customerDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [busy, setBusy] = useState(false);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const ocrInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!customerSearch.trim()) { setCustomerResults([]); return; }
+    if (customerDebounceRef.current) clearTimeout(customerDebounceRef.current);
+    customerDebounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/admin/customers?q=${encodeURIComponent(customerSearch)}&limit=8`);
+        const j = await res.json();
+        setCustomerResults(j.customers ?? []);
+      } catch { setCustomerResults([]); }
+    }, 300);
+  }, [customerSearch]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -36,6 +55,7 @@ export default function AdminVehicleNewPage() {
           plate_display: plateDisplay || null,
           vin_code: vinCode || null,
           notes: notes || null,
+          customer_id: customerId || null,
         }),
       });
 
@@ -172,6 +192,54 @@ export default function AdminVehicleNewPage() {
                 maxLength={50}
               />
             </label>
+          </div>
+
+          {/* 顧客紐付け */}
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-primary">現所有者（顧客）</div>
+            <div className="relative">
+              <input
+                type="text"
+                value={customerSearch}
+                onChange={(e) => { setCustomerSearch(e.target.value); setCustomerId(null); setCustomerDropdownOpen(true); }}
+                onFocus={() => { if (customerSearch) setCustomerDropdownOpen(true); }}
+                onBlur={() => setTimeout(() => setCustomerDropdownOpen(false), 200)}
+                className="input-field w-full"
+                placeholder="顧客名で検索..."
+                autoComplete="off"
+              />
+              {customerId && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-medium">
+                  マスタ連携
+                </span>
+              )}
+              {customerDropdownOpen && customerResults.length > 0 && (
+                <ul className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-xl border border-neutral-200 bg-white shadow-md">
+                  {customerResults.map((c) => (
+                    <li key={c.id}>
+                      <button
+                        type="button"
+                        onMouseDown={() => { setCustomerId(c.id); setCustomerSearch(c.name); setCustomerDropdownOpen(false); }}
+                        className="w-full px-4 py-2.5 text-left text-sm hover:bg-neutral-50"
+                      >
+                        <span className="font-medium text-neutral-900">{c.name}</span>
+                        {c.phone && <span className="ml-2 text-xs text-neutral-500">{c.phone}</span>}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {customerId && (
+                <button
+                  type="button"
+                  onClick={() => { setCustomerId(null); setCustomerSearch(""); }}
+                  className="mt-1 text-xs text-red-500 hover:underline"
+                >
+                  紐付けを解除
+                </button>
+              )}
+            </div>
+            <p className="text-[11px] text-muted">顧客マスタから選択すると車両と顧客を紐付けできます（任意）</p>
           </div>
 
           <label className="space-y-2 block">

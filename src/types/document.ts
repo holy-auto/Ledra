@@ -59,6 +59,7 @@ export const STATUS_TRANSITIONS: Record<string, string[]> = {
 export type DocumentItem = {
   description: string;
   quantity: number;
+  unit?: string;
   unit_price: number;
   amount: number;
   tax_category?: number; // 10 or 8 (軽減税率)

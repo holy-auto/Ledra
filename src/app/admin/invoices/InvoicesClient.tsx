@@ -11,6 +11,7 @@ import { fetcher } from "@/lib/swr";
 type InvoiceItem = {
   description: string;
   quantity: number;
+  unit: string;
   unit_price: number;
   amount: number;
   certificate_id?: string | null;
@@ -37,6 +38,14 @@ type Invoice = {
 type Customer = {
   id: string;
   name: string;
+};
+
+type MenuItem = {
+  id: string;
+  name: string;
+  description: string | null;
+  unit_price: number;
+  tax_category: number;
 };
 
 type CertificateOption = {
@@ -90,7 +99,9 @@ const statusLabel = (s: string) => {
   }
 };
 
-const emptyItem = (): InvoiceItem => ({ description: "", quantity: 1, unit_price: 0, amount: 0, certificate_id: null, certificate_public_id: null });
+const UNIT_OPTIONS = ["式", "台", "個", "セット", "本", "枚", "m", "m²", "時間"];
+
+const emptyItem = (): InvoiceItem => ({ description: "", quantity: 1, unit: "式", unit_price: 0, amount: 0, certificate_id: null, certificate_public_id: null });
 
 export default function InvoicesClient() {
   const [statusFilter, setStatusFilter] = useState("all");
@@ -127,6 +138,14 @@ export default function InvoicesClient() {
   const [formShowBankInfo, setFormShowBankInfo] = useState(false);
   const [formRecipientName, setFormRecipientName] = useState("");
 
+  // Menu items (品目マスタ)
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+
+  // Vehicle info
+  const [formVehicleModel, setFormVehicleModel] = useState("");
+  const [formVehiclePlate, setFormVehiclePlate] = useState("");
+  const [formVehicleVin, setFormVehicleVin] = useState("");
+
   // Certificates for linking
   const [certificates, setCertificates] = useState<CertificateOption[]>([]);
 
@@ -148,9 +167,25 @@ export default function InvoicesClient() {
     } catch {}
   }, []);
 
+  const fetchMenuItems = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/menu-items?active_only=true", { cache: "no-store" });
+      const j = await res.json().catch(() => null);
+      if (res.ok && j?.items) {
+        setMenuItems(j.items.map((m: any) => ({
+          id: m.id,
+          name: m.name,
+          description: m.description,
+          unit_price: m.unit_price,
+          tax_category: m.tax_category,
+        })));
+      }
+    } catch {}
+  }, []);
+
   useEffect(() => {
-    fetchCustomers();
-  }, [fetchCustomers]);
+    Promise.all([fetchCustomers(), fetchMenuItems()]);
+  }, [fetchCustomers, fetchMenuItems]);
 
   // 顧客が変わったら証明書を取得
   const fetchCertificatesForCustomer = useCallback(async (customerId: string) => {
@@ -187,9 +222,22 @@ export default function InvoicesClient() {
     const item = { ...newItems[index] };
     if (field === "description") item.description = value as string;
     if (field === "quantity") item.quantity = parseInt(String(value), 10) || 0;
+    if (field === "unit") item.unit = value as string;
     if (field === "unit_price") item.unit_price = parseInt(String(value), 10) || 0;
     item.amount = item.quantity * item.unit_price;
     newItems[index] = item;
+    setFormItems(newItems);
+  };
+
+  const handleMenuItemSelect = (menuItemId: string, itemIndex: number) => {
+    const mi = menuItems.find((m) => m.id === menuItemId);
+    if (!mi) return;
+    const newItems = [...formItems];
+    const item = { ...newItems[itemIndex] };
+    item.description = mi.name + (mi.description ? ` (${mi.description})` : "");
+    item.unit_price = mi.unit_price;
+    item.amount = item.quantity * item.unit_price;
+    newItems[itemIndex] = item;
     setFormItems(newItems);
   };
 
@@ -243,6 +291,9 @@ export default function InvoicesClient() {
           show_logo: formShowLogo,
           show_bank_info: formShowBankInfo,
           recipient_name: formRecipientName || null,
+          vehicle_info: (formVehicleModel || formVehiclePlate || formVehicleVin)
+            ? { model: formVehicleModel, plate: formVehiclePlate, vin: formVehicleVin }
+            : null,
         }),
       });
       const j = await res.json().catch(() => null);
@@ -258,6 +309,9 @@ export default function InvoicesClient() {
       setFormShowLogo(true);
       setFormShowBankInfo(false);
       setFormRecipientName("");
+      setFormVehicleModel("");
+      setFormVehiclePlate("");
+      setFormVehicleVin("");
       setSaveMsg({ text: `請求書 ${j.invoice?.invoice_number} を作成しました`, ok: true });
       mutate();
     } catch (e: any) {
@@ -449,11 +503,44 @@ export default function InvoicesClient() {
                 </div>
               </div>
 
+              {/* Vehicle Info */}
+              <div className="space-y-2">
+                <div className="text-xs font-semibold text-muted tracking-[0.18em]">車両情報（任意）</div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted">車種</label>
+                    <input type="text" className="input-field" placeholder="Toyota Prius" value={formVehicleModel} onChange={(e) => setFormVehicleModel(e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted">ナンバー</label>
+                    <input type="text" className="input-field" placeholder="水戸 300 あ 12-34" value={formVehiclePlate} onChange={(e) => setFormVehiclePlate(e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted">車台番号</label>
+                    <input type="text" className="input-field font-mono" placeholder="VIN" value={formVehicleVin} onChange={(e) => setFormVehicleVin(e.target.value)} />
+                  </div>
+                </div>
+              </div>
+
               {/* Line Items */}
               <div className="space-y-2">
                 <div className="text-xs font-semibold text-muted tracking-[0.18em]">明細項目</div>
                 {formItems.map((item, idx) => (
                   <div key={idx} className="space-y-1">
+                    {menuItems.length > 0 && (
+                      <select
+                        className="select-field py-1 text-xs mb-1"
+                        value=""
+                        onChange={(e) => { if (e.target.value) handleMenuItemSelect(e.target.value, idx); }}
+                      >
+                        <option value="">品目マスタから選択...</option>
+                        {menuItems.map((mi) => (
+                          <option key={mi.id} value={mi.id}>
+                            {mi.name} ({formatJpy(mi.unit_price)})
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     {certificates.length > 0 && (
                       <div className="flex items-center gap-2">
                         <label className="text-[10px] text-muted whitespace-nowrap">証明書紐付け:</label>
@@ -475,7 +562,7 @@ export default function InvoicesClient() {
                       </div>
                     )}
                     <div className="grid grid-cols-6 sm:grid-cols-12 gap-2 items-end">
-                      <div className="col-span-6 sm:col-span-5 space-y-1">
+                      <div className="col-span-6 sm:col-span-4 space-y-1">
                         {idx === 0 && <label className="text-xs text-muted">内容</label>}
                         <input
                           type="text"
@@ -494,6 +581,21 @@ export default function InvoicesClient() {
                           value={item.quantity}
                           onChange={(e) => updateItem(idx, "quantity", e.target.value)}
                         />
+                      </div>
+                      <div className="col-span-2 sm:col-span-1 space-y-1">
+                        {idx === 0 && <label className="text-xs text-muted">単位</label>}
+                        <input
+                          type="text"
+                          className="input-field"
+                          list="unit-options"
+                          value={item.unit}
+                          onChange={(e) => updateItem(idx, "unit", e.target.value)}
+                        />
+                        {idx === 0 && (
+                          <datalist id="unit-options">
+                            {UNIT_OPTIONS.map((u) => <option key={u} value={u} />)}
+                          </datalist>
+                        )}
                       </div>
                       <div className="col-span-2 sm:col-span-2 space-y-1">
                         {idx === 0 && <label className="text-xs text-muted">単価</label>}

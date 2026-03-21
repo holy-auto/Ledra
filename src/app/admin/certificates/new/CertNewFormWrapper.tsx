@@ -320,6 +320,24 @@ export default function CertNewFormWrapper({
               placeholder="半年ごとにメンテ推奨 など"
             />
           </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className={labelCls}>
+              <span className={labelTextCls}>有効期限</span>
+              <input
+                type="date"
+                name="expiry_date"
+                className={inputCls}
+              />
+            </label>
+            <label className={labelCls}>
+              <span className={labelTextCls}>保証期間（終了日）</span>
+              <input
+                type="date"
+                name="warranty_period_end"
+                className={inputCls}
+              />
+            </label>
+          </div>
         </div>
 
         {/* Film thickness */}
