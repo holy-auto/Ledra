@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import PageHeader from "@/components/ui/PageHeader";
@@ -59,9 +60,9 @@ export default async function DocumentDetailPage({
         tag={docLabel.toUpperCase()}
         title={`${docLabel} ${doc.doc_number}`}
         actions={
-          <a href="/admin/documents" className="btn-ghost text-xs">
+          <Link href="/admin/documents" className="btn-ghost text-xs">
             ← 帳票一覧に戻る
-          </a>
+          </Link>
         }
       />
       <DocumentDetailClient
