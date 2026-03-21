@@ -10,6 +10,8 @@ type Vehicle = {
   year: number | null;
   plate_display: string | null;
   vin_code?: string | null;
+  customer_id?: string | null;
+  customer?: { id: string; name: string } | null;
 };
 
 type Customer = {
@@ -62,6 +64,9 @@ export default function VehiclePickerSection({
   const [customerSearchOpen, setCustomerSearchOpen] = useState(false);
   const customerDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Vehicle dropdown open state
+  const [vehicleDropdownOpen, setVehicleDropdownOpen] = useState(false);
+
   // Inline new vehicle form
   const [showNewVehicleForm, setShowNewVehicleForm] = useState(false);
   const [newMaker, setNewMaker] = useState("");
@@ -80,6 +85,10 @@ export default function VehiclePickerSection({
       setSelectedId(v.id);
       setModel(vehicleModel(v));
       setPlate(v.plate_display ?? "");
+      if (v.customer) {
+        setCustomerName(v.customer.name);
+        setCustomerId(v.customer.id);
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultVehicleId]);
@@ -118,6 +127,12 @@ export default function VehiclePickerSection({
     if (v) {
       setModel(vehicleModel(v));
       setPlate(v.plate_display ?? "");
+      // 車両に顧客が紐付いている場合は自動入力
+      if (v.customer) {
+        setCustomerName(v.customer.name);
+        setCustomerId(v.customer.id);
+        setCustomerSearch("");
+      }
     }
   };
 
@@ -150,6 +165,7 @@ export default function VehiclePickerSection({
           year: newYear ? Number(newYear) : null,
           plate_display: newPlate || null,
           vin_code: newVin || null,
+          customer_id: customerId || null,
         }),
       });
       const j = await res.json();
@@ -204,6 +220,11 @@ export default function VehiclePickerSection({
               <div className="text-sm font-semibold text-emerald-900 truncate">
                 {vehicleLabel(selected)}
               </div>
+              {selected.customer && (
+                <div className="text-xs text-emerald-700 mt-0.5">
+                  顧客: {selected.customer.name}
+                </div>
+              )}
             </div>
             <button
               type="button"
@@ -220,17 +241,19 @@ export default function VehiclePickerSection({
                 id={uid}
                 type="text"
                 value={search}
-                onChange={(e) => { setSearch(e.target.value); setShowNewVehicleForm(false); }}
+                onChange={(e) => { setSearch(e.target.value); setShowNewVehicleForm(false); setVehicleDropdownOpen(true); }}
+                onFocus={() => setVehicleDropdownOpen(true)}
+                onBlur={() => setTimeout(() => setVehicleDropdownOpen(false), 200)}
                 placeholder={
                   vehicles.length === 0
                     ? "登録車両がありません"
-                    : "車種・ナンバー・VINで検索…"
+                    : "車種・ナンバー・VINで検索… (クリックで一覧表示)"
                 }
                 disabled={vehicles.length === 0}
                 autoComplete="off"
                 className={`${inputCls} pr-10 disabled:bg-neutral-100 disabled:text-neutral-500`}
               />
-              {search && filtered.length > 0 && (
+              {vehicleDropdownOpen && filtered.length > 0 && (
                 <ul className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-neutral-200 bg-white shadow-md">
                   {filtered.map((v) => (
                     <li key={v.id}>
@@ -242,6 +265,11 @@ export default function VehiclePickerSection({
                         <span className="font-medium text-neutral-900">
                           {vehicleLabel(v)}
                         </span>
+                        {v.customer && (
+                          <span className="ml-2 text-xs text-emerald-600">
+                            {v.customer.name}
+                          </span>
+                        )}
                         {v.vin_code && (
                           <span className="ml-2 text-xs text-neutral-400 font-mono">
                             {v.vin_code}
@@ -255,7 +283,7 @@ export default function VehiclePickerSection({
             </div>
 
             {/* No match — show new vehicle option */}
-            {search && filtered.length === 0 && !showNewVehicleForm && (
+            {vehicleDropdownOpen && search && filtered.length === 0 && !showNewVehicleForm && (
               <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3 flex items-center justify-between gap-3">
                 <span className="text-sm text-neutral-500">一致する車両が見つかりません</span>
                 <button
@@ -302,23 +330,40 @@ export default function VehiclePickerSection({
         </div>
 
         <div className="space-y-4">
-          {/* Customer master search */}
+          {/* Customer name — combobox: type to search or manual entry */}
           <div className={labelCls}>
             <span className={labelTextCls}>
               お客様名 <span className="text-red-500">*</span>
             </span>
             <div className="relative">
-              <div className="flex gap-2 mb-1.5">
-                <input
-                  type="text"
-                  value={customerSearch}
-                  onChange={(e) => { setCustomerSearch(e.target.value); setCustomerSearchOpen(true); }}
-                  onFocus={() => setCustomerSearchOpen(true)}
-                  onBlur={() => setTimeout(() => setCustomerSearchOpen(false), 200)}
-                  placeholder="顧客マスタから検索…"
-                  className="flex-1 rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
-                />
-              </div>
+              <input type="hidden" name="customer_id" value={customerId} />
+              <input
+                name="customer_name"
+                value={customerName}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCustomerName(val);
+                  setCustomerId("");
+                  setCustomerSearch(val);
+                  setCustomerSearchOpen(true);
+                }}
+                onFocus={() => {
+                  if (customerName) {
+                    setCustomerSearch(customerName);
+                  }
+                  setCustomerSearchOpen(true);
+                }}
+                onBlur={() => setTimeout(() => setCustomerSearchOpen(false), 200)}
+                className={inputCls}
+                placeholder="顧客名を入力 or 顧客マスタから選択"
+                required
+                autoComplete="off"
+              />
+              {customerId && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-medium">
+                  マスタ連携
+                </span>
+              )}
               {customerSearchOpen && customerResults.length > 0 && (
                 <ul className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-xl border border-neutral-200 bg-white shadow-md">
                   {customerResults.map((c) => (
@@ -335,16 +380,8 @@ export default function VehiclePickerSection({
                   ))}
                 </ul>
               )}
+              <p className="mt-1 text-[11px] text-neutral-400">入力すると顧客マスタを検索します。手入力のみでもOK</p>
             </div>
-            <input type="hidden" name="customer_id" value={customerId} />
-            <input
-              name="customer_name"
-              value={customerName}
-              onChange={(e) => { setCustomerName(e.target.value); setCustomerId(""); }}
-              className={inputCls}
-              placeholder="山田 太郎"
-              required
-            />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">

@@ -117,7 +117,7 @@ export default async function AdminVehicleDetailPage({
 
   const { data: vehicle, error: vehicleError } = await supabase
     .from("vehicles")
-    .select("*")
+    .select("*, customer:customers(id, name)")
     .eq("tenant_id", membership.tenant_id)
     .eq("id", id)
     .single();
@@ -201,6 +201,9 @@ export default async function AdminVehicleDetailPage({
           <div>年式: {vehicle.year ?? "-"}</div>
           <div>ナンバー: {vehicle.plate_display ?? "-"}</div>
           <div className="font-mono">車体番号: {vehicle.vin_code ?? "-"}</div>
+          <div>
+            現所有者: {(vehicle as any).customer?.name ?? <span className="text-muted">未設定</span>}
+          </div>
         </div>
         {vehicle.notes ? <div className="text-sm text-secondary">メモ: {vehicle.notes}</div> : null}
       </section>

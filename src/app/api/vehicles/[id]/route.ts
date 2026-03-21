@@ -25,7 +25,7 @@ export async function GET(
 
     const { data: vehicle, error } = await supabase
       .from("vehicles")
-      .select("*")
+      .select("*, customer:customers(id, name, email, phone)")
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .single();
@@ -61,7 +61,7 @@ export async function PUT(
       .update({ ...fields, updated_at: new Date().toISOString() })
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
-      .select("*")
+      .select("*, customer:customers(id, name, email, phone)")
       .single();
 
     if (error || !vehicle) {

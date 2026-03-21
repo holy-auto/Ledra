@@ -7,6 +7,7 @@ export const vehicleCreateSchema = z.object({
   plate_display: z.string().trim().max(30).nullable().optional().transform(v => v || null),
   vin_code: z.string().trim().max(50).nullable().optional().transform(v => v || null),
   notes: z.string().trim().max(500).nullable().optional().transform(v => v || null),
+  customer_id: z.string().uuid().nullable().optional(),
 });
 
 export const vehicleUpdateSchema = vehicleCreateSchema.partial().extend({

@@ -30,6 +30,7 @@ export async function POST(req: Request) {
       plate_display: b.plate_display ?? null,
       vin_code: b.vin_code ?? null,
       notes: b.notes ?? null,
+      customer_id: b.customer_id ?? null,
     };
 
     const { data: vehicle, error } = await supabase
