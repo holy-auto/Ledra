@@ -89,7 +89,6 @@ export default async function Page({
         actions={
           <div className="flex gap-3 items-center">
             <Link className="btn-ghost" href="/admin/certificates">一覧へ</Link>
-            <Link className="btn-secondary" href="/admin/templates">テンプレート</Link>
           </div>
         }
       />

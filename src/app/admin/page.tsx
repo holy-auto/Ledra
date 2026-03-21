@@ -385,20 +385,6 @@ export default async function AdminHome() {
             </div>
           </Link>
 
-          <Link
-            href="/admin/templates"
-            className="glass-card p-5 flex items-center gap-4 hover:bg-surface-hover transition-colors group"
-          >
-            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent-dim">
-              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} className="text-accent">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
-              </svg>
-            </span>
-            <div>
-              <div className="text-sm font-semibold text-primary group-hover:text-accent transition-colors">テンプレート</div>
-              <div className="text-xs text-muted">証明書テンプレートの管理</div>
-            </div>
-          </Link>
         </div>
       </div>
     </div>
