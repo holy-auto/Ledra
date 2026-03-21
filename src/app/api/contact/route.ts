@@ -12,7 +12,7 @@ function getResend() {
 const TO = process.env.CONTACT_TO_EMAIL ?? "info@cartrust.co.jp";
 
 /** 送信元: RESEND_FROM（検証済みドメイン）を使用 */
-const FROM = process.env.RESEND_FROM ?? "CARTRUST <noreply@cartrust.co.jp>";
+const FROM = process.env.RESEND_FROM ?? "CAR TRUST <support@cartrust.co.jp>";
 
 export async function POST(request: Request) {
   // Rate limit: 5 contact form submissions per IP per 15 minutes
