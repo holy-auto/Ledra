@@ -9,12 +9,14 @@ const PLANS = [
     tier: "starter",
     name: "スターター",
     price: "¥9,800/月",
+    priceNote: "初期費用なし",
     features: ["月80件まで証明書発行", "基本テンプレート＋ロゴ", "PDF/CSV単体出力", "車両台帳・顧客台帳", "保険会社ポータル反映"],
   },
   {
     tier: "standard",
     name: "スタンダード",
     price: "¥24,800/月",
+    priceNote: "初期費用 ¥29,800",
     features: ["月300件まで証明書発行", "カスタムテンプレート", "CSV/PDF一括出力", "2店舗・7ユーザー", "基本レポート", "優先サポート"],
     recommended: true,
   },
@@ -22,6 +24,7 @@ const PLANS = [
     tier: "pro",
     name: "プロ",
     price: "¥49,800/月",
+    priceNote: "初期費用 ¥49,800",
     features: ["無制限の証明書発行", "5店舗・15ユーザー", "詳細レポート・監査ログ", "API連携", "専任サポート"],
   },
 ];
@@ -30,9 +33,16 @@ function PlanSelector({ currentPlan, isActive }: { currentPlan: string | null; i
   const supabase = useMemo(() => createClient(), []);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
 
-  const handleSelectPlan = useCallback(async (tier: string) => {
-    setBusy(tier);
+  const handleSelectPlan = useCallback((tier: string) => {
+    setSelectedPlan(tier);
+    setError(null);
+  }, []);
+
+  const handleConfirmCheckout = useCallback(async () => {
+    if (!selectedPlan) return;
+    setBusy(selectedPlan);
     setError(null);
     try {
       const sessionRes = await supabase.auth.getSession();
@@ -42,7 +52,7 @@ function PlanSelector({ currentPlan, isActive }: { currentPlan: string | null; i
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ access_token, plan_tier: tier }),
+        body: JSON.stringify({ access_token, plan_tier: selectedPlan }),
       });
       const j = await res.json().catch(() => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
@@ -53,7 +63,9 @@ function PlanSelector({ currentPlan, isActive }: { currentPlan: string | null; i
     } finally {
       setBusy(null);
     }
-  }, [supabase]);
+  }, [supabase, selectedPlan]);
+
+  const selectedPlanData = PLANS.find((p) => p.tier === selectedPlan);
 
   return (
     <section className="space-y-4">
@@ -62,12 +74,13 @@ function PlanSelector({ currentPlan, isActive }: { currentPlan: string | null; i
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {PLANS.map((plan) => {
           const isCurrent = currentPlan === plan.tier;
+          const isSelected = selectedPlan === plan.tier;
           return (
             <div
               key={plan.tier}
-              className={`glass-card p-5 space-y-3 relative ${
+              className={`glass-card p-5 space-y-3 relative transition-all ${
                 plan.recommended ? "ring-2 ring-accent" : ""
-              } ${isCurrent ? "border-accent" : ""}`}
+              } ${isCurrent ? "border-accent" : ""} ${isSelected ? "ring-2 ring-accent glow-cyan" : ""}`}
             >
               {plan.recommended && (
                 <div className="absolute -top-2.5 left-4 px-2 py-0.5 bg-accent text-inverse text-[10px] font-semibold rounded-full">
@@ -97,13 +110,60 @@ function PlanSelector({ currentPlan, isActive }: { currentPlan: string | null; i
                   disabled={busy !== null}
                   onClick={() => handleSelectPlan(plan.tier)}
                 >
-                  {busy === plan.tier ? "処理中…" : "このプランを選択"}
+                  {isSelected ? "選択中" : "このプランを選択"}
                 </button>
               )}
             </div>
           );
         })}
       </div>
+
+      {/* 確認セクション（ページ内展開） */}
+      {selectedPlanData && (
+        <div className="glass-card p-5 space-y-4 glow-cyan">
+          <div className="text-xs font-semibold tracking-[0.18em] text-accent">プラン確認</div>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between text-primary">
+              <span>プラン名</span>
+              <span className="font-bold">{selectedPlanData.name}</span>
+            </div>
+            <div className="flex justify-between text-primary">
+              <span>月額料金</span>
+              <span className="font-bold">{selectedPlanData.price}</span>
+            </div>
+            <div className="flex justify-between text-secondary">
+              <span>初期費用</span>
+              <span>{selectedPlanData.priceNote}</span>
+            </div>
+            {currentPlan && currentPlan !== "free" && (
+              <div className="flex justify-between text-secondary">
+                <span>現在のプラン</span>
+                <span>{PLANS.find((p) => p.tier === currentPlan)?.name ?? currentPlan}</span>
+              </div>
+            )}
+          </div>
+          <div className="border-t border-[var(--border-default)] pt-3 text-xs text-muted">
+            「決済に進む」を押すとStripe決済画面に移動します。決済完了後、プランが即時反映されます。
+          </div>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              className="btn-primary text-sm"
+              disabled={busy !== null}
+              onClick={handleConfirmCheckout}
+            >
+              {busy ? "処理中…" : "決済に進む"}
+            </button>
+            <button
+              type="button"
+              className="btn-ghost text-sm"
+              onClick={() => setSelectedPlan(null)}
+            >
+              キャンセル
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -369,6 +429,7 @@ export default function BillingPage() {
   const activeLabel = tenant?.is_active === true ? "有効" : tenant?.is_active === false ? "停止" : "-";
   const subErr = sub && "error" in sub ? sub.error : null;
   const subOk = sub && !("error" in sub) ? sub : null;
+  const hasSubscription = !!tenant?.stripe_subscription_id;
 
   return (
     <div className="space-y-6">
@@ -485,9 +546,11 @@ export default function BillingPage() {
           )}
 
           <div className="pt-3 flex gap-3 flex-wrap">
-            <button className="btn-secondary" onClick={openPortal} disabled={portalBusy}>
-              {portalBusy ? "処理中…" : "請求ポータル（プラン変更）"}
-            </button>
+            {hasSubscription && (
+              <button className="btn-secondary" onClick={openPortal} disabled={portalBusy}>
+                {portalBusy ? "処理中…" : "請求ポータル（プラン変更）"}
+              </button>
+            )}
 
             {tenant.is_active === false && (
               <button className="btn-primary" onClick={resumeCheckout} disabled={resumeBusy}>

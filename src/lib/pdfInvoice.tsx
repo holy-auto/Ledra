@@ -140,7 +140,7 @@ const s = StyleSheet.create({
   grandTotalValue: { fontSize: 12, fontWeight: 700 },
   // stamp area
   stampRow: { flexDirection: "row", justifyContent: "flex-end", gap: 16, marginTop: 16 },
-  logoBox: { width: 52, height: 52 },
+  logoBox: { height: 52 },
   sealBox: {
     width: 52,
     height: 52,
@@ -179,6 +179,14 @@ const s = StyleSheet.create({
     fontSize: 7,
     color: "#888",
   },
+  watermark: {
+    position: "absolute" as const,
+    top: "35%",
+    left: "25%",
+    width: 300,
+    height: 300,
+    opacity: 0.06,
+  },
 });
 
 export async function renderInvoicePdf(
@@ -213,12 +221,15 @@ export async function renderInvoicePdf(
   const doc = (
     <Document>
       <Page size="A4" style={s.page}>
+        {/* Logo watermark */}
+        {logoUrl && <Image src={logoUrl} style={s.watermark} />}
+
         {/* Header */}
         <View style={s.header}>
           <View>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
               {logoUrl ? (
-                <Image src={logoUrl} style={{ height: 24, width: 100 }} />
+                <Image src={logoUrl} style={{ height: 28 }} />
               ) : null}
               <Text style={s.title}>請求書</Text>
             </View>

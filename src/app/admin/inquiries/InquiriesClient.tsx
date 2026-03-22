@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
 import { formatDate } from "@/lib/format";
@@ -175,7 +176,12 @@ export default function InquiriesClient() {
       <PageHeader
         tag="問い合わせ"
         title="問い合わせ管理"
-        description="バイヤーからの問い合わせを管理します。"
+        description="お客様からの問い合わせを管理します。"
+        actions={
+          <Link href="/admin/support" className="btn-primary text-sm">
+            運営に問い合わせ
+          </Link>
+        }
       />
 
       {loading && <div className="text-sm text-muted">読み込み中...</div>}

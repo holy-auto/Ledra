@@ -47,6 +47,10 @@ export async function POST(req: NextRequest) {
     const action = body?.action;
 
     if (action === "connect") {
+      // 環境変数チェック
+      if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+        return apiError({ code: "internal_error", message: "Googleカレンダー連携の環境変数（GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET）が未設定です。", status: 503 });
+      }
       // OAuth 認可URL を返す
       const url = getAuthUrl(caller.tenantId);
       return apiOk({ auth_url: url });

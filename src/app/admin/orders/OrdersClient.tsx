@@ -77,6 +77,11 @@ const NEXT_STATUS_RECEIVED: Record<string, string | null> = {
   cancelled: null,
 };
 
+interface TenantOption {
+  tenant_id: string;
+  tenant_name: string;
+}
+
 export default function OrdersClient() {
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,6 +90,9 @@ export default function OrdersClient() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [showForm, setShowForm] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  // 自テナント一覧（複数テナント所属対応）
+  const [myTenants, setMyTenants] = useState<TenantOption[]>([]);
 
   // New order form
   const [formData, setFormData] = useState({
@@ -116,6 +124,15 @@ export default function OrdersClient() {
   useEffect(() => {
     (async () => {
       setLoading(true);
+      // 自テナント一覧を取得
+      try {
+        const res = await fetch("/api/admin/orders?_tenants=1", { cache: "no-store" });
+        const j = await res.json().catch(() => null);
+        if (j?.myTenants?.length) {
+          setMyTenants(j.myTenants);
+          // デフォルトで先頭テナントを発注元として自動入力（from_tenant_id はAPI側で処理）
+        }
+      } catch { /* ignore */ }
       await fetchOrders();
       setLoading(false);
     })();
@@ -223,13 +240,31 @@ export default function OrdersClient() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1">
+                <label className="text-xs text-muted">発注元（自社店舗）</label>
+                {myTenants.length > 1 ? (
+                  <select className="select-field" disabled>
+                    {myTenants.map((t) => (
+                      <option key={t.tenant_id} value={t.tenant_id}>{t.tenant_name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    className="input-field bg-surface-hover"
+                    value={myTenants[0]?.tenant_name ?? "読込中..."}
+                    disabled
+                  />
+                )}
+                <p className="text-[10px] text-muted">※ 発注元は自動設定されます</p>
+              </div>
+              <div className="space-y-1">
                 <label className="text-xs text-muted">発注先テナントID *</label>
                 <input
                   type="text"
                   className="input-field"
                   value={formData.to_tenant_id}
                   onChange={(e) => setFormData({ ...formData, to_tenant_id: e.target.value })}
-                  placeholder="発注先のテナントID"
+                  placeholder="発注先のテナントIDまたは店舗名で検索"
                   required
                 />
               </div>

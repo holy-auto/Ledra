@@ -138,6 +138,11 @@ export default function ReservationsClient() {
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState("");
 
+  // Googleカレンダー連携
+  const [gcalConnected, setGcalConnected] = useState(false);
+  const [gcalLoading, setGcalLoading] = useState(false);
+  const [gcalSyncing, setGcalSyncing] = useState(false);
+
   // ─── Reference data (one-time fetch) ───
 
   const fetchMasterData = useCallback(async () => {
@@ -154,6 +159,12 @@ export default function ReservationsClient() {
       if (menuRes.ok && menuJ?.items) {
         setMenuItems(menuJ.items.map((m: Record<string, unknown>) => ({ id: m.id, name: m.name, unit_price: m.unit_price })));
       }
+      // Googleカレンダー接続状態チェック
+      try {
+        const gcRes = await fetch("/api/admin/gcal", { cache: "no-store" });
+        const gcJ = await gcRes.json().catch(() => null);
+        if (gcRes.ok && gcJ?.connected) setGcalConnected(true);
+      } catch { /* gcal not configured */ }
     } catch {}
   }, []);
 
@@ -354,6 +365,80 @@ export default function ReservationsClient() {
             </button>
           }
         />
+
+        {/* Googleカレンダー連携 */}
+        <section className="glass-card p-4 flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="text-muted">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+            </svg>
+            <div>
+              <div className="text-sm font-semibold text-primary">Googleカレンダー連携</div>
+              <div className="text-xs text-muted">
+                {gcalConnected ? "✅ 連携中 — 予約がGoogleカレンダーに自動同期されます" : "連携するとGoogleカレンダーと予約を自動同期できます"}
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            {gcalConnected ? (
+              <>
+                <button
+                  onClick={async () => {
+                    setGcalSyncing(true);
+                    try {
+                      const today = new Date();
+                      const from = today.toISOString().slice(0, 10);
+                      const toDate = new Date(today);
+                      toDate.setDate(toDate.getDate() + 90);
+                      const to = toDate.toISOString().slice(0, 10);
+                      await fetch("/api/admin/gcal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sync", from, to }) });
+                      mutate();
+                    } catch {}
+                    setGcalSyncing(false);
+                  }}
+                  disabled={gcalSyncing}
+                  className="btn-secondary text-xs px-3 py-1.5"
+                >
+                  {gcalSyncing ? "同期中..." : "今すぐ同期"}
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!confirm("Googleカレンダー連携を解除しますか？")) return;
+                    await fetch("/api/admin/gcal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "disconnect" }) });
+                    setGcalConnected(false);
+                  }}
+                  className="btn-ghost text-xs px-3 py-1.5 text-red-500"
+                >
+                  連携解除
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={async () => {
+                  setGcalLoading(true);
+                  try {
+                    const res = await fetch("/api/admin/gcal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "connect" }) });
+                    const j = await res.json().catch(() => null);
+                    if (j?.auth_url) {
+                      window.location.href = j.auth_url;
+                    } else if (j?.error) {
+                      alert("連携エラー: " + j.error);
+                    } else {
+                      alert("Googleカレンダー連携の設定が必要です。管理者にお問い合わせください。");
+                    }
+                  } catch {
+                    alert("通信エラーが発生しました");
+                  }
+                  setGcalLoading(false);
+                }}
+                disabled={gcalLoading}
+                className="btn-primary text-xs px-4 py-1.5"
+              >
+                {gcalLoading ? "準備中..." : "Googleカレンダーと連携"}
+              </button>
+            )}
+          </div>
+        </section>
 
         {err && (
           <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">{err}</div>

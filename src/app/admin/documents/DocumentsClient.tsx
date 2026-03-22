@@ -542,10 +542,10 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                   <tr>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">種別</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">書類番号</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">顧客名</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">発行日</th>
+                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">顧客名</th>
+                    <th className="hidden md:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">発行日</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">合計</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">ステータス</th>
+                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">ステータス</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">操作</th>
                   </tr>
                 </thead>
@@ -565,14 +565,14 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                           {doc.doc_number}
                         </Link>
                       </td>
-                      <td className="px-5 py-3.5 text-secondary">{doc.recipient_name || doc.customer_name || "-"}</td>
-                      <td className="px-5 py-3.5 whitespace-nowrap text-secondary">
+                      <td className="hidden sm:table-cell px-5 py-3.5 text-secondary">{doc.recipient_name || doc.customer_name || "-"}</td>
+                      <td className="hidden md:table-cell px-5 py-3.5 whitespace-nowrap text-secondary">
                         {formatDate(doc.issued_at)}
                       </td>
                       <td className="px-5 py-3.5 font-medium text-primary">
                         {formatJpy(doc.total)}
                       </td>
-                      <td className="px-5 py-3.5">
+                      <td className="hidden sm:table-cell px-5 py-3.5">
                         <Badge variant={statusVariant(doc.status)}>
                           {statusLabel(doc.status)}
                         </Badge>

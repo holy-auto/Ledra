@@ -78,7 +78,7 @@ export default async function Page({
   const list = templates ?? [];
   const fallbackId = list[0]?.id ?? "";
   const tid = selectedTemplateId || fallbackId;
-  const selected = list.find((t) => t.id === tid) ?? list[0];
+  const selected = list.find((t) => t.id === tid) ?? list[0] ?? null;
 
   return (
     <div className="space-y-4">
@@ -104,7 +104,7 @@ export default async function Page({
         vehicles={(vehiclesRaw ?? []) as any[]}
         defaultVehicleId={defaultVehicleId}
         templates={list as any[]}
-        selectedTemplate={(selected ?? null) as any}
+        selectedTemplate={selected as any}
         tenantLogoPath={tenantLogoPath}
         planTier={planTier}
         tid={tid}

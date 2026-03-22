@@ -89,8 +89,8 @@ export default async function AdminSettingsPage() {
     <div className="space-y-6">
 
         <PageHeader
-          tag="設定"
-          title="テナント設定"
+          tag="店舗設定"
+          title="店舗設定"
           description="店舗情報の編集・プラン確認を行います。"
           actions={
             <Link href="/admin" className="btn-secondary">ダッシュボード</Link>

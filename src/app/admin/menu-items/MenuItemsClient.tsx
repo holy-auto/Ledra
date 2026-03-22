@@ -386,10 +386,10 @@ export default function MenuItemsClient() {
                 <thead className="bg-surface-hover">
                   <tr>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">品目名</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">説明</th>
+                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">説明</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">単価</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">税率</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">状態</th>
+                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">税率</th>
+                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">状態</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">操作</th>
                   </tr>
                 </thead>
@@ -407,7 +407,7 @@ export default function MenuItemsClient() {
                               onChange={(e) => setEditName(e.target.value)}
                             />
                           </td>
-                          <td className="px-5 py-3">
+                          <td className="hidden sm:table-cell px-5 py-3">
                             <input
                               type="text"
                               className="input-field py-1 text-sm"
@@ -424,7 +424,7 @@ export default function MenuItemsClient() {
                               onChange={(e) => setEditUnitPrice(e.target.value)}
                             />
                           </td>
-                          <td className="px-5 py-3">
+                          <td className="hidden sm:table-cell px-5 py-3">
                             <select
                               className="select-field py-1 text-sm"
                               value={editTaxCategory}
@@ -434,7 +434,7 @@ export default function MenuItemsClient() {
                               <option value="8">8%</option>
                             </select>
                           </td>
-                          <td className="px-5 py-3">
+                          <td className="hidden sm:table-cell px-5 py-3">
                             <Badge variant={item.is_active ? "success" : "default"}>
                               {item.is_active ? "有効" : "無効"}
                             </Badge>
@@ -463,14 +463,14 @@ export default function MenuItemsClient() {
                         /* Display Row */
                         <>
                           <td className="px-5 py-3.5 font-medium text-primary">{item.name}</td>
-                          <td className="px-5 py-3.5 text-secondary">{item.description ?? "-"}</td>
+                          <td className="hidden sm:table-cell px-5 py-3.5 text-secondary">{item.description ?? "-"}</td>
                           <td className="px-5 py-3.5 font-medium text-primary whitespace-nowrap">
                             {item.unit_price != null ? formatJpy(item.unit_price) : "-"}
                           </td>
-                          <td className="px-5 py-3.5 text-secondary">
+                          <td className="hidden sm:table-cell px-5 py-3.5 text-secondary">
                             {item.tax_category != null ? `${item.tax_category}%` : "-"}
                           </td>
-                          <td className="px-5 py-3.5">
+                          <td className="hidden sm:table-cell px-5 py-3.5">
                             <Badge variant={item.is_active ? "success" : "default"}>
                               {item.is_active ? "有効" : "無効"}
                             </Badge>

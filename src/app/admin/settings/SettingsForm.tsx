@@ -29,9 +29,9 @@ type Props = {
 };
 
 const inputCls =
-  "w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400";
+  "input-field";
 const labelCls = "block space-y-1.5";
-const labelTextCls = "text-sm font-medium text-neutral-700";
+const labelTextCls = "text-sm font-medium text-secondary";
 
 export default function SettingsForm({ name, contactEmail, contactPhone, address, websiteUrl, registrationNumber, bankInfo, columnsExist, connectStatus }: Props) {
   const [isPending, startTransition] = useTransition();
@@ -111,8 +111,8 @@ export default function SettingsForm({ name, contactEmail, contactPhone, address
             />
           </label>
 
-          <div className="border-t border-neutral-200 pt-5 mt-5">
-            <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500 mb-3">インボイス設定</div>
+          <div className="border-t border-[var(--border-default)] pt-5 mt-5">
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted mb-3">インボイス設定</div>
             <label className={labelCls}>
               <span className={labelTextCls}>適格請求書発行事業者登録番号</span>
               <input
@@ -123,12 +123,12 @@ export default function SettingsForm({ name, contactEmail, contactPhone, address
                 pattern="T\d{13}"
                 title="T + 13桁の数字（例: T1234567890123）"
               />
-              <span className="text-xs text-neutral-500">T + 13桁の数字を入力してください</span>
+              <span className="text-xs text-muted">T + 13桁の数字を入力してください</span>
             </label>
           </div>
 
-          <div className="border-t border-neutral-200 pt-5 mt-5">
-            <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500 mb-3">口座情報</div>
+          <div className="border-t border-[var(--border-default)] pt-5 mt-5">
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted mb-3">口座情報</div>
             <div className="space-y-4">
               <label className={labelCls}>
                 <span className={labelTextCls}>銀行名</span>
@@ -185,19 +185,19 @@ export default function SettingsForm({ name, contactEmail, contactPhone, address
           </div>
         </>
       ) : (
-        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+        <p className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-400">
           住所・連絡先はDBマイグレーション後に入力できます（上記のSQL実行後にページを再読み込み）
         </p>
       )}
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-xl border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-400">
           {error}
         </div>
       )}
 
       {success && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+        <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-400">
           設定を保存しました。
         </div>
       )}
@@ -212,8 +212,8 @@ export default function SettingsForm({ name, contactEmail, contactPhone, address
 
       {/* Stripe Connect Section */}
       {columnsExist && (
-        <div className="border-t border-neutral-200 pt-5 mt-5">
-          <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500 mb-3">STRIPE CONNECT</div>
+        <div className="border-t border-[var(--border-default)] pt-5 mt-5">
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted mb-3">STRIPE CONNECT</div>
           <StripeConnectSection connectStatus={connectStatus ?? null} />
         </div>
       )}
@@ -286,35 +286,35 @@ function StripeConnectSection({ connectStatus }: { connectStatus: ConnectStatus 
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-neutral-600">
+      <p className="text-sm text-secondary">
         Stripeアカウントを接続すると、オンライン決済を受け付けることができます。
       </p>
 
       <div className="flex items-center gap-3 text-sm">
-        <span className="text-neutral-500">ステータス:</span>
+        <span className="text-muted">ステータス:</span>
         {isOnboarded ? (
-          <span className="inline-flex items-center gap-1.5 text-emerald-700 font-medium">
+          <span className="inline-flex items-center gap-1.5 text-emerald-400 font-medium">
             <span className="w-2 h-2 rounded-full bg-emerald-500" />
             接続済み
           </span>
         ) : isConnected ? (
-          <span className="inline-flex items-center gap-1.5 text-amber-600 font-medium">
+          <span className="inline-flex items-center gap-1.5 text-amber-400 font-medium">
             <span className="w-2 h-2 rounded-full bg-amber-500" />
             オンボーディング未完了
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1.5 text-neutral-500 font-medium">
-            <span className="w-2 h-2 rounded-full bg-neutral-400" />
+          <span className="inline-flex items-center gap-1.5 text-muted font-medium">
+            <span className="w-2 h-2 rounded-full bg-[var(--text-muted)]" />
             未接続
           </span>
         )}
       </div>
 
       {isOnboarded && liveStatus && (
-        <div className="text-sm text-neutral-600 space-y-1">
-          <div>課金受付: <b className="text-neutral-900">{liveStatus.charges_enabled ? "有効" : "無効"}</b></div>
-          <div>入金: <b className="text-neutral-900">{liveStatus.payouts_enabled ? "有効" : "無効"}</b></div>
-          {accountId && <div className="text-xs text-neutral-400 font-mono">ID: {accountId}</div>}
+        <div className="text-sm text-secondary space-y-1">
+          <div>課金受付: <b className="text-primary">{liveStatus.charges_enabled ? "有効" : "無効"}</b></div>
+          <div>入金: <b className="text-primary">{liveStatus.payouts_enabled ? "有効" : "無効"}</b></div>
+          {accountId && <div className="text-xs text-muted font-mono">ID: {accountId}</div>}
         </div>
       )}
 
@@ -355,8 +355,8 @@ function StripeConnectSection({ connectStatus }: { connectStatus: ConnectStatus 
       </div>
 
       {isOnboarded && (
-        <div className="mt-3 rounded-lg bg-emerald-50 border border-emerald-200 p-3">
-          <p className="text-sm text-emerald-800">
+        <div className="mt-3 rounded-lg bg-emerald-400/10 border border-emerald-400/30 p-3">
+          <p className="text-sm text-emerald-400">
             請求書の詳細画面から「決済リンクを作成」ボタンで、顧客にオンライン決済リンクを送信できます。
           </p>
         </div>

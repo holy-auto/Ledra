@@ -236,8 +236,13 @@ export default function StoresClient() {
       {loading ? (
         <div className="glass-card p-8 text-center text-sm text-secondary">読み込み中...</div>
       ) : stores.length === 0 ? (
-        <div className="glass-card p-8 text-center text-sm text-secondary">
-          まだ店舗が登録されていません。
+        <div className="glass-card p-8 text-center space-y-3">
+          <p className="text-sm text-secondary">
+            店舗がまだ登録されていません。現在のテナント情報が1店舗目として使用されます。
+          </p>
+          <p className="text-xs text-muted">
+            「+ 新規店舗」から現在の店舗情報を登録すると、店舗別の管理が可能になります。
+          </p>
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

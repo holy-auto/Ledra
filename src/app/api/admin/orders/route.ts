@@ -10,6 +10,20 @@ export async function GET(req: NextRequest) {
     const tenantId = caller.tenantId;
 
     const { searchParams } = new URL(req.url);
+
+    // テナント一覧リクエスト
+    if (searchParams.has("_tenants")) {
+      const { data: memberships } = await supabase
+        .from("tenant_memberships")
+        .select("tenant_id, tenants:tenants(company_name)")
+        .eq("user_id", caller.userId);
+      const myTenants = (memberships ?? []).map((m: Record<string, unknown>) => ({
+        tenant_id: m.tenant_id,
+        tenant_name: (m.tenants as Record<string, unknown>)?.company_name ?? String(m.tenant_id).slice(0, 8),
+      }));
+      return NextResponse.json({ myTenants });
+    }
+
     const type = searchParams.get("type"); // sent | received | all
     const status = searchParams.get("status");
 

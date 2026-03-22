@@ -150,10 +150,10 @@ export default function NfcClient({ initialRows, vehicleMap, certMap, isAdmin }:
                   <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-500">状態</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-500">タグコード</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-500">車両 / 顧客</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-500">証明書</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-500">UID</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-500">書込日時</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-500">貼付日時</th>
+                  <th className="hidden sm:table-cell px-4 py-3 text-left text-xs font-semibold text-neutral-500">証明書</th>
+                  <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-semibold text-neutral-500">UID</th>
+                  <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-semibold text-neutral-500">書込日時</th>
+                  <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-semibold text-neutral-500">貼付日時</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-500">操作</th>
                 </tr>
               </thead>
@@ -185,7 +185,7 @@ export default function NfcClient({ initialRows, vehicleMap, certMap, isAdmin }:
                           <div className="mt-0.5 text-xs text-neutral-500">{v.customer_name}</div>
                         )}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="hidden sm:table-cell px-4 py-3">
                         {publicId ? (
                           <div className="space-y-1">
                             <Link href={`/c/${publicId}`} target="_blank" className="font-mono text-xs text-neutral-700 hover:underline">
@@ -199,9 +199,9 @@ export default function NfcClient({ initialRows, vehicleMap, certMap, isAdmin }:
                           </div>
                         ) : <span className="text-neutral-500">-</span>}
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs text-neutral-500">{row.uid ?? "-"}</td>
-                      <td className="px-4 py-3 whitespace-nowrap text-xs text-neutral-500">{formatDateTime(row.written_at)}</td>
-                      <td className="px-4 py-3 whitespace-nowrap text-xs text-neutral-500">{formatDateTime(row.attached_at)}</td>
+                      <td className="hidden md:table-cell px-4 py-3 font-mono text-xs text-neutral-500">{row.uid ?? "-"}</td>
+                      <td className="hidden md:table-cell px-4 py-3 whitespace-nowrap text-xs text-neutral-500">{formatDateTime(row.written_at)}</td>
+                      <td className="hidden md:table-cell px-4 py-3 whitespace-nowrap text-xs text-neutral-500">{formatDateTime(row.attached_at)}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex items-center gap-2">
                           {!isRetired && (

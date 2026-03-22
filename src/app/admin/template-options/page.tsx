@@ -13,6 +13,40 @@ import {
   type TenantOptionSubscriptionRow,
 } from "@/types/templateOption";
 
+const OPTION_PLANS = [
+  {
+    optionType: "preset" as const,
+    name: "ブランド証明書 ライト",
+    price: "¥3,300/月",
+    setupFee: "初期費用 ¥16,500",
+    features: [
+      "既製テンプレートから選択",
+      "ロゴ・社名の反映",
+      "ブランドカラー設定",
+      "保証文言の軽微な調整",
+      "メンテナンスURL / QRコード",
+      "テスト発行（月3回）",
+    ],
+  },
+  {
+    optionType: "custom" as const,
+    name: "ブランド証明書 プレミアム",
+    price: "¥4,400/月",
+    setupFee: "初期費用 ¥88,000（制作代行込み）",
+    recommended: true,
+    features: [
+      "専任担当によるヒアリング",
+      "オリジナルデザイン制作",
+      "ロゴ・ブランドカラー反映",
+      "保証文言・注意文言カスタム",
+      "レイアウト調整",
+      "メンテナンスURL / QRコード",
+      "テスト発行（月5回）",
+      "初回修正対応込み",
+    ],
+  },
+];
+
 export default function TemplateOptionsPage() {
   const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(true);
@@ -23,6 +57,7 @@ export default function TemplateOptionsPage() {
   const [subs, setSubs] = useState<TenantOptionSubscriptionRow[]>([]);
 
   const [status, setStatus] = useState<string | null>(null);
+  const [selectedOption, setSelectedOption] = useState<"preset" | "custom" | null>(null);
 
   useEffect(() => {
     try {
@@ -105,10 +140,6 @@ export default function TemplateOptionsPage() {
               <div className="text-xs text-muted">
                 自社ロゴ・ブランドカラーを反映した施工証明書を発行できるオプションです。
               </div>
-              <div className="flex gap-3">
-                <SubscribeButton optionType="preset" label="ライトを申込（¥16,500 + ¥3,300/月）" />
-                <SubscribeButton optionType="custom" label="プレミアムを申込（¥88,000 + ¥4,400/月）" />
-              </div>
             </div>
           )}
         </div>
@@ -175,82 +206,74 @@ export default function TemplateOptionsPage() {
         </div>
       )}
 
-      {/* 未契約時の案内 */}
+      {/* 未契約時のプラン選択 */}
       {!loading && !activeSub && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* A: ライト */}
-          <div className="glass-card p-6 space-y-4">
-            <div className="text-lg font-bold text-primary">ブランド証明書 ライト</div>
-            <div className="text-2xl font-bold text-primary">
-              ¥3,300<span className="text-sm font-normal text-muted">/月</span>
-            </div>
-            <div className="text-xs text-muted">初期費用 ¥16,500</div>
-            <ul className="space-y-1.5 text-sm text-secondary">
-              {[
-                "既製テンプレートから選択",
-                "ロゴ・社名の反映",
-                "ブランドカラー設定",
-                "保証文言の軽微な調整",
-                "メンテナンスURL / QRコード",
-                "テスト発行（月3回）",
-              ].map((f) => (
-                <li key={f} className="flex items-start gap-2">
-                  <span className="text-accent mt-0.5">&#10003;</span>
-                  <span>{f}</span>
-                </li>
-              ))}
-            </ul>
-            <SubscribeButton optionType="preset" label="ライトを申込" className="w-full btn-secondary" />
-          </div>
-
-          {/* B: プレミアム */}
-          <div className="glass-card p-6 space-y-4 ring-2 ring-accent relative">
-            <div className="absolute -top-2.5 left-4 px-2 py-0.5 bg-accent text-inverse text-[10px] font-semibold rounded-full">
-              おすすめ
-            </div>
-            <div className="text-lg font-bold text-primary">ブランド証明書 プレミアム</div>
-            <div className="text-2xl font-bold text-primary">
-              ¥4,400<span className="text-sm font-normal text-muted">/月</span>
-            </div>
-            <div className="text-xs text-muted">初期費用 ¥88,000（制作代行込み）</div>
-            <ul className="space-y-1.5 text-sm text-secondary">
-              {[
-                "専任担当によるヒアリング",
-                "オリジナルデザイン制作",
-                "ロゴ・ブランドカラー反映",
-                "保証文言・注意文言カスタム",
-                "レイアウト調整",
-                "メンテナンスURL / QRコード",
-                "テスト発行（月5回）",
-                "初回修正対応込み",
-              ].map((f) => (
-                <li key={f} className="flex items-start gap-2">
-                  <span className="text-accent mt-0.5">&#10003;</span>
-                  <span>{f}</span>
-                </li>
-              ))}
-            </ul>
-            <SubscribeButton optionType="custom" label="プレミアムを申込" className="w-full btn-primary" />
-          </div>
+          {OPTION_PLANS.map((plan) => {
+            const isSelected = selectedOption === plan.optionType;
+            return (
+              <div
+                key={plan.optionType}
+                className={`glass-card p-6 space-y-4 relative ${
+                  plan.recommended ? "ring-2 ring-accent" : ""
+                } ${isSelected ? "ring-2 ring-accent glow-cyan" : ""}`}
+              >
+                {plan.recommended && (
+                  <div className="absolute -top-2.5 left-4 px-2 py-0.5 bg-accent text-inverse text-[10px] font-semibold rounded-full">
+                    おすすめ
+                  </div>
+                )}
+                <div className="text-lg font-bold text-primary">{plan.name}</div>
+                <div className="text-2xl font-bold text-primary">
+                  {plan.price.split("/")[0]}<span className="text-sm font-normal text-muted">/{plan.price.split("/")[1]}</span>
+                </div>
+                <div className="text-xs text-muted">{plan.setupFee}</div>
+                <ul className="space-y-1.5 text-sm text-secondary">
+                  {plan.features.map((f) => (
+                    <li key={f} className="flex items-start gap-2">
+                      <span className="text-accent mt-0.5">&#10003;</span>
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  className={`w-full ${plan.recommended ? "btn-primary" : "btn-secondary"}`}
+                  onClick={() => { setSelectedOption(plan.optionType); setError(null); }}
+                >
+                  {isSelected ? "選択中" : `${plan.name.includes("ライト") ? "ライト" : "プレミアム"}を選択`}
+                </button>
+              </div>
+            );
+          })}
         </div>
+      )}
+
+      {/* 確認セクション（ページ内展開） */}
+      {selectedOption && !activeSub && (
+        <SubscribeConfirmation
+          optionType={selectedOption}
+          plan={OPTION_PLANS.find((p) => p.optionType === selectedOption)!}
+          onCancel={() => setSelectedOption(null)}
+        />
       )}
     </div>
   );
 }
 
-function SubscribeButton({
+function SubscribeConfirmation({
   optionType,
-  label,
-  className = "btn-primary text-xs",
+  plan,
+  onCancel,
 }: {
   optionType: "preset" | "custom";
-  label: string;
-  className?: string;
+  plan: typeof OPTION_PLANS[number];
+  onCancel: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSubscribe() {
+  async function handleConfirm() {
     setBusy(true);
     setError(null);
     try {
@@ -270,16 +293,43 @@ function SubscribeButton({
   }
 
   return (
-    <div>
-      <button
-        type="button"
-        className={className}
-        disabled={busy}
-        onClick={handleSubscribe}
-      >
-        {busy ? "処理中..." : label}
-      </button>
-      {error && <div className="text-xs text-red-500 mt-1">{error}</div>}
+    <div className="glass-card p-5 space-y-4 glow-cyan">
+      <div className="text-xs font-semibold tracking-[0.18em] text-accent">申込内容の確認</div>
+      <div className="space-y-2 text-sm">
+        <div className="flex justify-between text-primary">
+          <span>プラン名</span>
+          <span className="font-bold">{plan.name}</span>
+        </div>
+        <div className="flex justify-between text-primary">
+          <span>月額料金</span>
+          <span className="font-bold">{plan.price}</span>
+        </div>
+        <div className="flex justify-between text-secondary">
+          <span>初期費用</span>
+          <span>{plan.setupFee}</span>
+        </div>
+      </div>
+      <div className="border-t border-[var(--border-default)] pt-3 text-xs text-muted">
+        「申込に進む」を押すとStripe決済画面に移動します。決済完了後、テンプレートオプションが即時有効になります。
+      </div>
+      {error && <div className="text-sm text-red-500">{error}</div>}
+      <div className="flex gap-3">
+        <button
+          type="button"
+          className="btn-primary text-sm"
+          disabled={busy}
+          onClick={handleConfirm}
+        >
+          {busy ? "処理中..." : "申込に進む"}
+        </button>
+        <button
+          type="button"
+          className="btn-ghost text-sm"
+          onClick={onCancel}
+        >
+          キャンセル
+        </button>
+      </div>
     </div>
   );
 }
