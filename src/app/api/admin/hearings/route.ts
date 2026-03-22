@@ -129,6 +129,7 @@ export async function PUT(req: NextRequest) {
             plate_display: hearing.vehicle_plate || null,
             vin_code: hearing.vehicle_vin || null,
             customer_id: customer.id,
+            size_class: hearing.vehicle_size || null,
           })
           .select("id")
           .single();
