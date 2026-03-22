@@ -14,16 +14,17 @@ async function generateInvoiceNumber(
   const prefix = `INV-${ym}-`;
 
   const { data } = await supabase
-    .from("invoices")
-    .select("invoice_number")
+    .from("documents")
+    .select("doc_number")
     .eq("tenant_id", tenantId)
-    .like("invoice_number", `${prefix}%`)
-    .order("invoice_number", { ascending: false })
+    .eq("doc_type", "invoice")
+    .like("doc_number", `${prefix}%`)
+    .order("doc_number", { ascending: false })
     .limit(1);
 
   let seq = 1;
   if (data && data.length > 0) {
-    const last = data[0].invoice_number as string;
+    const last = data[0].doc_number as string;
     const num = parseInt(last.replace(prefix, ""), 10);
     if (!isNaN(num)) seq = num + 1;
   }
@@ -57,18 +58,20 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ certificates: certs ?? [] });
     }
 
-    const selectCols = "id, tenant_id, customer_id, invoice_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, note, created_at, updated_at";
+    const selectCols = "id, tenant_id, customer_id, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, note, payment_date, created_at, updated_at";
 
     let query = supabase
-      .from("invoices")
+      .from("documents")
       .select(selectCols)
       .eq("tenant_id", caller.tenantId)
+      .eq("doc_type", "invoice")
       .order("created_at", { ascending: false });
 
     let countQuery = supabase
-      .from("invoices")
+      .from("documents")
       .select("*", { count: "exact", head: true })
-      .eq("tenant_id", caller.tenantId);
+      .eq("tenant_id", caller.tenantId)
+      .eq("doc_type", "invoice");
 
     if (status && status !== "all") {
       query = query.eq("status", status);
@@ -84,14 +87,14 @@ export async function GET(req: NextRequest) {
       query = query.range(from, from + perPage - 1);
     }
 
-    const [{ data: invoices, error }, { count: totalCount }] = await Promise.all([query, countQuery]);
+    const [{ data: docs, error }, { count: totalCount }] = await Promise.all([query, countQuery]);
     if (error) {
       console.error("[invoices] db_error:", error.message);
       return NextResponse.json({ error: "db_error" }, { status: 500 });
     }
 
     // 顧客名を取得
-    const customerIds = [...new Set((invoices ?? []).map((i) => i.customer_id).filter(Boolean))];
+    const customerIds = [...new Set((docs ?? []).map((i) => i.customer_id).filter(Boolean))];
     let customerNames: Record<string, string> = {};
     if (customerIds.length > 0) {
       const { data: customers } = await supabase
@@ -103,8 +106,10 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const enriched = (invoices ?? []).map((inv) => ({
+    const enriched = (docs ?? []).map((inv) => ({
       ...inv,
+      // 後方互換: invoice_number エイリアス
+      invoice_number: inv.doc_number,
       customer_name: inv.customer_id ? (customerNames[inv.customer_id] ?? null) : null,
     }));
 
@@ -150,7 +155,7 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => ({} as any));
 
-    const invoiceNumber = body?.invoice_number?.trim() || (await generateInvoiceNumber(supabase, caller.tenantId));
+    const docNumber = body?.invoice_number?.trim() || (await generateInvoiceNumber(supabase, caller.tenantId));
     const customerId = body?.customer_id?.trim() || null;
     const issuedAt = body?.issued_at || new Date().toISOString().slice(0, 10);
     const dueDate = body?.due_date || null;
@@ -191,7 +196,8 @@ export async function POST(req: NextRequest) {
       id: crypto.randomUUID(),
       tenant_id: caller.tenantId,
       customer_id: customerId,
-      invoice_number: invoiceNumber,
+      doc_type: "invoice" as const,
+      doc_number: docNumber,
       issued_at: issuedAt,
       due_date: dueDate,
       status,
@@ -200,6 +206,7 @@ export async function POST(req: NextRequest) {
       total,
       note,
       items_json: itemsJson,
+      meta_json: {},
       is_invoice_compliant: isInvoiceCompliant,
       show_seal: showSeal,
       show_logo: showLogo,
@@ -210,13 +217,14 @@ export async function POST(req: NextRequest) {
       vehicle_info_json: vehicleInfo ?? {},
     };
 
-    const { data, error } = await supabase.from("invoices").insert(row).select().single();
+    const { data, error } = await supabase.from("documents").insert(row).select().single();
     if (error) {
       console.error("[invoices] insert_failed:", error.message);
       return NextResponse.json({ error: "insert_failed" }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, invoice: data });
+    // 後方互換: invoice_number エイリアス
+    return NextResponse.json({ ok: true, invoice: { ...data, invoice_number: data.doc_number } });
   } catch (e: any) {
     console.error("invoice create failed", e);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });
@@ -242,7 +250,7 @@ export async function PUT(req: NextRequest) {
     if (body.issued_at !== undefined) updates.issued_at = body.issued_at;
     if (body.due_date !== undefined) updates.due_date = body.due_date;
     if (body.note !== undefined) updates.note = (body.note ?? "").trim() || null;
-    if (body.invoice_number !== undefined) updates.invoice_number = body.invoice_number;
+    if (body.invoice_number !== undefined) updates.doc_number = body.invoice_number;
     if (body.is_invoice_compliant !== undefined) updates.is_invoice_compliant = !!body.is_invoice_compliant;
     if (body.show_seal !== undefined) updates.show_seal = !!body.show_seal;
     if (body.show_logo !== undefined) updates.show_logo = !!body.show_logo;
@@ -279,10 +287,11 @@ export async function PUT(req: NextRequest) {
     }
 
     const { data, error } = await supabase
-      .from("invoices")
+      .from("documents")
       .update(updates)
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
+      .eq("doc_type", "invoice")
       .select()
       .single();
 
@@ -291,7 +300,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "update_failed" }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, invoice: data });
+    return NextResponse.json({ ok: true, invoice: { ...data, invoice_number: data.doc_number } });
   } catch (e: any) {
     console.error("invoice update failed", e);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });
@@ -315,10 +324,11 @@ export async function DELETE(req: NextRequest) {
 
     // 下書きか確認
     const { data: inv } = await supabase
-      .from("invoices")
+      .from("documents")
       .select("status")
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
+      .eq("doc_type", "invoice")
       .single();
 
     if (!inv) return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -331,7 +341,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     const { error } = await supabase
-      .from("invoices")
+      .from("documents")
       .delete()
       .eq("id", id)
       .eq("tenant_id", caller.tenantId);

@@ -31,12 +31,15 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     );
   }
 
-  const { data: invoice, error: invErr } = await supabase
-    .from("invoices")
+  const { data: invoiceDoc, error: invErr } = await supabase
+    .from("documents")
     .select("*")
     .eq("id", id)
     .eq("tenant_id", tenantId)
+    .eq("doc_type", "invoice")
     .single();
+  // Map doc_number to invoice_number for backward compatibility
+  const invoice = invoiceDoc ? { ...invoiceDoc, invoice_number: invoiceDoc.doc_number } : null;
 
   if (invErr || !invoice) {
     return (

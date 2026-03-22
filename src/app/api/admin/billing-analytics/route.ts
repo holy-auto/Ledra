@@ -7,9 +7,7 @@ export const dynamic = "force-dynamic";
 type MonthData = {
   month: string; // "YYYY-MM"
   label: string; // "2026年3月"
-  invoiceTotal: number;
-  documentTotal: number;
-  combinedTotal: number;
+  total: number;
   count: number;
 };
 
@@ -19,14 +17,7 @@ export async function GET() {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-    // Fetch all invoices (non-cancelled) for this tenant
-    const { data: invoices } = await supabase
-      .from("invoices")
-      .select("total, issued_at, status, created_at")
-      .eq("tenant_id", caller.tenantId)
-      .neq("status", "cancelled");
-
-    // Fetch all documents (invoice/receipt type, non-cancelled) for revenue
+    // Fetch all revenue-type documents (non-cancelled) from unified documents table
     const { data: documents } = await supabase
       .from("documents")
       .select("total, issued_at, status, doc_type, created_at")
@@ -52,30 +43,14 @@ export async function GET() {
       months.push({
         month: key,
         label,
-        invoiceTotal: 0,
-        documentTotal: 0,
-        combinedTotal: 0,
+        total: 0,
         count: 0,
       });
     }
 
     const monthMap = new Map(months.map((m) => [m.month, m]));
 
-    // Aggregate invoices by month
-    for (const inv of invoices ?? []) {
-      const dateStr = inv.issued_at || inv.created_at;
-      if (!dateStr) continue;
-      const d = new Date(dateStr);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const bucket = monthMap.get(key);
-      if (bucket) {
-        bucket.invoiceTotal += inv.total ?? 0;
-        bucket.combinedTotal += inv.total ?? 0;
-        bucket.count += 1;
-      }
-    }
-
-    // Aggregate documents by month (invoice/receipt types only)
+    // Aggregate all revenue documents by month (unified - no double counting)
     for (const doc of documents ?? []) {
       const dateStr = doc.issued_at || doc.created_at;
       if (!dateStr) continue;
@@ -83,8 +58,7 @@ export async function GET() {
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       const bucket = monthMap.get(key);
       if (bucket) {
-        bucket.documentTotal += doc.total ?? 0;
-        bucket.combinedTotal += doc.total ?? 0;
+        bucket.total += doc.total ?? 0;
         bucket.count += 1;
       }
     }
@@ -97,7 +71,7 @@ export async function GET() {
         yearMap.set(year, { year, total: 0, count: 0 });
       }
       const y = yearMap.get(year)!;
-      y.total += m.combinedTotal;
+      y.total += m.total;
       y.count += m.count;
     }
 
@@ -115,17 +89,9 @@ export async function GET() {
     // We need to fetch last year's same month if not in our 12-month window
     let lastYearSameMonth = monthMap.get(lastYearKey);
     if (!lastYearSameMonth) {
-      // Fetch from DB directly
+      // Fetch from DB directly (unified documents table only)
       const startOfMonth = new Date(lastYearDate.getFullYear(), lastYearDate.getMonth(), 1).toISOString();
       const endOfMonth = new Date(lastYearDate.getFullYear(), lastYearDate.getMonth() + 1, 0, 23, 59, 59).toISOString();
-
-      const { data: lyInv } = await supabase
-        .from("invoices")
-        .select("total")
-        .eq("tenant_id", caller.tenantId)
-        .neq("status", "cancelled")
-        .gte("issued_at", startOfMonth)
-        .lte("issued_at", endOfMonth);
 
       const { data: lyDoc } = await supabase
         .from("documents")
@@ -136,26 +102,23 @@ export async function GET() {
         .gte("issued_at", startOfMonth)
         .lte("issued_at", endOfMonth);
 
-      const lyTotal = (lyInv ?? []).reduce((s, r) => s + (r.total ?? 0), 0)
-        + (lyDoc ?? []).reduce((s, r) => s + (r.total ?? 0), 0);
+      const lyTotal = (lyDoc ?? []).reduce((s, r) => s + (r.total ?? 0), 0);
 
       lastYearSameMonth = {
         month: lastYearKey,
         label: `${lastYearDate.getFullYear()}年${lastYearDate.getMonth() + 1}月`,
-        invoiceTotal: 0,
-        documentTotal: 0,
-        combinedTotal: lyTotal,
+        total: lyTotal,
         count: 0,
       };
     }
 
     // Calculate growth rates
-    const monthGrowthRate = prevMonth && prevMonth.combinedTotal > 0
-      ? ((currentMonth?.combinedTotal ?? 0) - prevMonth.combinedTotal) / prevMonth.combinedTotal * 100
+    const monthGrowthRate = prevMonth && prevMonth.total > 0
+      ? ((currentMonth?.total ?? 0) - prevMonth.total) / prevMonth.total * 100
       : null;
 
-    const yearGrowthRate = lastYearSameMonth && lastYearSameMonth.combinedTotal > 0
-      ? ((currentMonth?.combinedTotal ?? 0) - lastYearSameMonth.combinedTotal) / lastYearSameMonth.combinedTotal * 100
+    const yearGrowthRate = lastYearSameMonth && lastYearSameMonth.total > 0
+      ? ((currentMonth?.total ?? 0) - lastYearSameMonth.total) / lastYearSameMonth.total * 100
       : null;
 
     // Estimate pipeline (未確定の見積もり)
@@ -164,20 +127,28 @@ export async function GET() {
       .reduce((s, e) => s + (e.total ?? 0), 0);
 
     // Total revenue (all time from data we have)
-    const totalRevenue = months.reduce((s, m) => s + m.combinedTotal, 0);
+    const totalRevenue = months.reduce((s, m) => s + m.total, 0);
 
     // Find max month for chart scaling
-    const maxMonthTotal = Math.max(...months.map((m) => m.combinedTotal), 1);
+    const maxMonthTotal = Math.max(...months.map((m) => m.total), 1);
+
+    // Map to legacy response shape for backward compatibility
+    const monthsResponse = months.map((m) => ({
+      ...m,
+      invoiceTotal: 0,
+      documentTotal: m.total,
+      combinedTotal: m.total,
+    }));
 
     return NextResponse.json({
-      months,
+      months: monthsResponse,
       years: Array.from(yearMap.values()),
       current: {
-        month: currentMonth?.combinedTotal ?? 0,
+        month: currentMonth?.total ?? 0,
         monthLabel: currentMonth?.label ?? "",
-        prevMonth: prevMonth?.combinedTotal ?? 0,
+        prevMonth: prevMonth?.total ?? 0,
         prevMonthLabel: prevMonth?.label ?? "",
-        lastYearSameMonth: lastYearSameMonth?.combinedTotal ?? 0,
+        lastYearSameMonth: lastYearSameMonth?.total ?? 0,
         lastYearLabel: lastYearSameMonth?.label ?? "",
         monthGrowthRate,
         yearGrowthRate,

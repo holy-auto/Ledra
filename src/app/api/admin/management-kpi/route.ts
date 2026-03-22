@@ -16,21 +16,16 @@ export async function GET() {
     const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
     const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59).toISOString();
 
-    // ── Fetch all data in parallel ──
+    // ── Fetch all data in parallel (unified: documents only) ──
     const [
-      { data: allInvoices },
       { data: allDocuments },
       { data: allCustomers },
       { data: allCerts },
       { data: purchaseOrders },
     ] = await Promise.all([
       supabase
-        .from("invoices")
-        .select("id, total, subtotal, tax, status, issued_at, due_date, customer_id, created_at")
-        .eq("tenant_id", caller.tenantId),
-      supabase
         .from("documents")
-        .select("id, total, subtotal, tax, status, doc_type, issued_at, due_date, customer_id, created_at, source_document_id")
+        .select("id, total, subtotal, tax, status, doc_type, issued_at, due_date, customer_id, created_at, source_document_id, payment_date")
         .eq("tenant_id", caller.tenantId),
       supabase
         .from("customers")
@@ -48,34 +43,34 @@ export async function GET() {
         .neq("status", "cancelled"),
     ]);
 
-    const invoices = allInvoices ?? [];
     const documents = allDocuments ?? [];
     const customers = allCustomers ?? [];
     const certs = allCerts ?? [];
     const poList = purchaseOrders ?? [];
 
+    // Invoice-type documents (for KPI calculations that were previously on invoices table)
+    const invoiceTypeDocs = documents.filter(d =>
+      ["invoice", "consolidated_invoice"].includes(d.doc_type)
+    );
+
+    // Revenue-type documents (invoices + receipts)
+    const revenueDocs = documents.filter(d =>
+      ["invoice", "consolidated_invoice", "receipt"].includes(d.doc_type)
+    );
+
     // ══════════════════════════════════
     // 1. キャッシュフロー (Cash Flow)
     // ══════════════════════════════════
 
-    // 入金額 (Cash In) = paid invoices + paid invoice-type documents
-    const paidInvoices = invoices.filter(i => i.status === "paid");
-    const cashInInvoices = paidInvoices.reduce((s, i) => s + (i.total ?? 0), 0);
-    const paidDocInvoices = documents.filter(d =>
-      d.status === "paid" && ["invoice", "consolidated_invoice", "receipt"].includes(d.doc_type)
-    );
-    const cashInDocs = paidDocInvoices.reduce((s, d) => s + (d.total ?? 0), 0);
-    const totalCashIn = cashInInvoices + cashInDocs;
+    // 入金額 (Cash In) = paid revenue-type documents
+    const paidRevenueDocs = revenueDocs.filter(d => d.status === "paid");
+    const totalCashIn = paidRevenueDocs.reduce((s, d) => s + (d.total ?? 0), 0);
 
-    // 売掛金 (Accounts Receivable) = sent/overdue invoices
-    const arInvoices = invoices.filter(i => i.status === "sent" || i.status === "overdue");
-    const accountsReceivable = arInvoices.reduce((s, i) => s + (i.total ?? 0), 0);
-    const arDocuments = documents.filter(d =>
-      (d.status === "sent" || d.status === "accepted") &&
-      ["invoice", "consolidated_invoice"].includes(d.doc_type)
+    // 売掛金 (Accounts Receivable) = sent/accepted/overdue invoice-type documents
+    const arDocuments = invoiceTypeDocs.filter(d =>
+      d.status === "sent" || d.status === "accepted" || d.status === "overdue"
     );
-    const arDocsTotal = arDocuments.reduce((s, d) => s + (d.total ?? 0), 0);
-    const totalAR = accountsReceivable + arDocsTotal;
+    const totalAR = arDocuments.reduce((s, d) => s + (d.total ?? 0), 0);
 
     // 支出 (Cash Out) = purchase orders (sent/accepted/paid)
     const totalCashOut = poList
@@ -86,7 +81,7 @@ export async function GET() {
     const operatingCF = totalCashIn - totalCashOut;
 
     // 今月のCF
-    const thisMonthCashIn = [...paidInvoices, ...paidDocInvoices]
+    const thisMonthCashIn = paidRevenueDocs
       .filter(i => {
         const d = i.issued_at || i.created_at;
         return d && d >= thisMonthStart && d <= thisMonthEnd;
@@ -103,7 +98,7 @@ export async function GET() {
     const thisMonthCF = thisMonthCashIn - thisMonthCashOut;
 
     // 先月のCF
-    const lastMonthCashIn = [...paidInvoices, ...paidDocInvoices]
+    const lastMonthCashIn = paidRevenueDocs
       .filter(i => {
         const d = i.issued_at || i.created_at;
         return d && d >= lastMonthStart && d <= lastMonthEnd;
@@ -127,23 +122,24 @@ export async function GET() {
     // ══════════════════════════════════
     // 2. 回収率 (Collection Rate)
     // ══════════════════════════════════
-    const totalInvoiced = invoices
+    const totalInvoiced = invoiceTypeDocs
       .filter(i => i.status !== "cancelled" && i.status !== "draft")
       .reduce((s, i) => s + (i.total ?? 0), 0);
-    const totalPaid = paidInvoices.reduce((s, i) => s + (i.total ?? 0), 0);
+    const totalPaid = invoiceTypeDocs
+      .filter(i => i.status === "paid")
+      .reduce((s, i) => s + (i.total ?? 0), 0);
     const collectionRate = totalInvoiced > 0 ? (totalPaid / totalInvoiced) * 100 : null;
 
     // 期限超過の件数・金額
-    const overdueInvoices = invoices.filter(i => i.status === "overdue");
+    const overdueInvoices = invoiceTypeDocs.filter(i => i.status === "overdue");
     const overdueCount = overdueInvoices.length;
     const overdueAmount = overdueInvoices.reduce((s, i) => s + (i.total ?? 0), 0);
 
     // ══════════════════════════════════
     // 3. DSO (Days Sales Outstanding / 売掛回転日数)
     // ══════════════════════════════════
-    // 簡易計算: (売掛金 / 直近3ヶ月の売上平均) × 30
     const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1).toISOString();
-    const recentRevenue = invoices
+    const recentRevenue = invoiceTypeDocs
       .filter(i => {
         const d = i.issued_at || i.created_at;
         return d && d >= threeMonthsAgo && i.status !== "cancelled";
@@ -156,21 +152,12 @@ export async function GET() {
     // 4. 顧客単価 (ARPU)
     // ══════════════════════════════════
     const activeCustomerIds = new Set<string>();
-    for (const inv of invoices) {
-      if (inv.customer_id && inv.status !== "cancelled") activeCustomerIds.add(inv.customer_id);
+    for (const doc of revenueDocs) {
+      if (doc.customer_id && doc.status !== "cancelled") activeCustomerIds.add(doc.customer_id);
     }
-    for (const doc of documents) {
-      if (doc.customer_id && doc.status !== "cancelled" &&
-        ["invoice", "consolidated_invoice", "receipt"].includes(doc.doc_type)) {
-        activeCustomerIds.add(doc.customer_id);
-      }
-    }
-    const totalRevenue = invoices
-      .filter(i => i.status !== "cancelled")
-      .reduce((s, i) => s + (i.total ?? 0), 0)
-      + documents
-        .filter(d => d.status !== "cancelled" && ["invoice", "consolidated_invoice", "receipt"].includes(d.doc_type))
-        .reduce((s, d) => s + (d.total ?? 0), 0);
+    const totalRevenue = revenueDocs
+      .filter(d => d.status !== "cancelled")
+      .reduce((s, d) => s + (d.total ?? 0), 0);
 
     const arpu = activeCustomerIds.size > 0
       ? Math.round(totalRevenue / activeCustomerIds.size)
@@ -179,7 +166,6 @@ export async function GET() {
     // ══════════════════════════════════
     // 5. 粗利率 (Gross Margin)
     // ══════════════════════════════════
-    // 粗利 = 売上 - 仕入（発注書）
     const totalPurchases = poList.reduce((s, p) => s + (p.total ?? 0), 0);
     const grossProfit = totalRevenue - totalPurchases;
     const grossMarginRate = totalRevenue > 0
@@ -191,7 +177,6 @@ export async function GET() {
     // ══════════════════════════════════
     const estimates = documents.filter(d => d.doc_type === "estimate" && d.status !== "cancelled");
     const acceptedEstimates = estimates.filter(d => d.status === "accepted" || d.status === "paid");
-    // Also check if any estimate has a linked invoice via source_document_id
     const estimateIds = new Set(estimates.map(e => e.id));
     const linkedFromEstimate = documents.filter(d =>
       d.source_document_id && estimateIds.has(d.source_document_id) &&
@@ -223,11 +208,9 @@ export async function GET() {
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       const label = `${d.getMonth() + 1}月`;
       const count = custMonthMap.get(key) ?? 0;
-      // Count customers created before this month for accurate cumulative
       cumulative += count;
       customersByMonth.push({ month: key, label, count, cumulative });
     }
-    // Adjust cumulative: add customers created before the 12-month window
     const beforeWindowCount = customers.filter(c => {
       if (!c.created_at) return false;
       const d = new Date(c.created_at);
@@ -259,19 +242,16 @@ export async function GET() {
     // ══════════════════════════════════
     // 9. CF予測 (入金予定)
     // ══════════════════════════════════
-    // 支払期限が今月・来月のAR
     const nextMonthEnd = new Date(now.getFullYear(), now.getMonth() + 2, 0, 23, 59, 59).toISOString();
-    const upcomingAR = arInvoices
+    const upcomingAR = arDocuments
       .filter(i => i.due_date && i.due_date <= nextMonthEnd)
       .reduce((s, i) => s + (i.total ?? 0), 0);
 
     // ══════════════════════════════════
     // 10. LTV (顧客生涯価値) 簡易計算
     // ══════════════════════════════════
-    // LTV = ARPU × 平均取引月数
-    // 各顧客の取引期間を計算
     const customerFirstLast = new Map<string, { first: string; last: string }>();
-    for (const inv of invoices) {
+    for (const inv of invoiceTypeDocs) {
       if (!inv.customer_id || inv.status === "cancelled") continue;
       const d = inv.issued_at || inv.created_at;
       if (!d) continue;

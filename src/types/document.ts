@@ -90,6 +90,14 @@ export type DocumentRow = {
   show_logo: boolean;
   show_bank_info: boolean;
   recipient_name: string | null;
+  payment_date: string | null;
+  vehicle_id: string | null;
+  vehicle_info_json: Record<string, unknown>;
   created_at: string;
   updated_at: string | null;
+};
+
+/** 後方互換: Invoice 型は DocumentRow のエイリアス（doc_type='invoice'） */
+export type InvoiceRow = DocumentRow & {
+  invoice_number: string; // doc_number のエイリアス
 };
