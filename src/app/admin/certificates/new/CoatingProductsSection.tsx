@@ -23,7 +23,18 @@ type Row = {
   product_id: string;
   product_name: string;
   lot_number: string; // ロット番号
+  film_type: string;  // PPF用: gloss | matte | satin | color | ""
 };
+
+// PPFフィルムタイプ選択肢
+const FILM_TYPE_OPTIONS = [
+  { value: "", label: "―" },
+  { value: "gloss", label: "グロス（光沢）" },
+  { value: "matte", label: "マット（艶消し）" },
+  { value: "satin", label: "サテン" },
+  { value: "color", label: "カラー" },
+  { value: "black", label: "ブラック" },
+] as const;
 
 // 施工部位プリセット
 const AREA_PRESETS = [
@@ -61,10 +72,16 @@ function newRow(): Row {
     product_id: "",
     product_name: "",
     lot_number: "",
+    film_type: "",
   };
 }
 
-export default function CoatingProductsSection() {
+type Props = {
+  serviceType?: string; // "ppf" | "coating" | etc
+};
+
+export default function CoatingProductsSection({ serviceType }: Props) {
+  const isPpf = serviceType === "ppf";
   const [rows, setRows] = useState<Row[]>([newRow()]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [brandsLoading, setBrandsLoading] = useState(false);
@@ -118,6 +135,7 @@ export default function CoatingProductsSection() {
       product_id: r.product_id || null,
       product_name: r.product_name || null,
       lot_number: r.lot_number?.trim() || null,
+      ...(isPpf && r.film_type ? { film_type: r.film_type } : {}),
     }))
   );
 
@@ -126,12 +144,18 @@ export default function CoatingProductsSection() {
       <input type="hidden" name="coating_products_json" value={jsonValue} />
 
       <div>
-        <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">COATING PRODUCTS</div>
+        <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">
+          {isPpf ? "PPF FILM" : "COATING PRODUCTS"}
+        </div>
         <div className="mt-0.5 text-base font-semibold text-neutral-900">
-          コーティング剤
+          {isPpf ? "使用フィルム" : "コーティング剤"}
           <span className="ml-2 text-xs font-normal text-neutral-500">任意</span>
         </div>
-        <p className="mt-1 text-xs text-neutral-500">施工箇所ごとに使用したコーティング剤を記録します。</p>
+        <p className="mt-1 text-xs text-neutral-500">
+          {isPpf
+            ? "使用したPPFフィルムのブランド・製品・タイプを記録します。"
+            : "施工箇所ごとに使用したコーティング剤を記録します。"}
+        </p>
       </div>
 
       {brandsLoading ? (
@@ -147,10 +171,11 @@ export default function CoatingProductsSection() {
       ) : null}
 
       {/* ヘッダー行 */}
-      <div className="hidden sm:grid sm:grid-cols-[2fr_2fr_2fr_1.5fr_auto] gap-2 px-1">
-        <span className="text-[11px] font-semibold text-neutral-500 uppercase">部位</span>
+      <div className={`hidden sm:grid gap-2 px-1 ${isPpf ? "sm:grid-cols-[1.5fr_2fr_2fr_1.5fr_1.5fr_auto]" : "sm:grid-cols-[2fr_2fr_2fr_1.5fr_auto]"}`}>
+        <span className="text-[11px] font-semibold text-neutral-500 uppercase">{isPpf ? "部位" : "部位"}</span>
         <span className="text-[11px] font-semibold text-neutral-500 uppercase">ブランド</span>
         <span className="text-[11px] font-semibold text-neutral-500 uppercase">製品</span>
+        {isPpf && <span className="text-[11px] font-semibold text-neutral-500 uppercase">タイプ</span>}
         <span className="text-[11px] font-semibold text-neutral-500 uppercase">ロット番号</span>
         <span />
       </div>
@@ -160,7 +185,7 @@ export default function CoatingProductsSection() {
         return (
           <div
             key={row.id}
-            className="grid grid-cols-1 sm:grid-cols-[2fr_2fr_2fr_1.5fr_auto] gap-2 items-start rounded-xl border border-neutral-100 bg-neutral-50 p-3 sm:p-0 sm:bg-transparent sm:border-0"
+            className={`grid grid-cols-1 gap-2 items-start rounded-xl border border-neutral-100 bg-neutral-50 p-3 sm:p-0 sm:bg-transparent sm:border-0 ${isPpf ? "sm:grid-cols-[1.5fr_2fr_2fr_1.5fr_1.5fr_auto]" : "sm:grid-cols-[2fr_2fr_2fr_1.5fr_auto]"}`}
           >
             {/* 部位 */}
             <div>
@@ -218,6 +243,22 @@ export default function CoatingProductsSection() {
                 ))}
               </select>
             </div>
+
+            {/* フィルムタイプ（PPFのみ） */}
+            {isPpf && (
+              <div>
+                <span className="sm:hidden text-[11px] font-semibold text-neutral-500 uppercase mb-1 block">タイプ</span>
+                <select
+                  value={row.film_type}
+                  onChange={(e) => update(row.id, "film_type", e.target.value)}
+                  className={selectCls}
+                >
+                  {FILM_TYPE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* ロット番号 */}
             <div>

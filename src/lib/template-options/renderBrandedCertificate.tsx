@@ -5,6 +5,7 @@ import { createSignedAssetUrl } from "@/lib/signedUrl";
 import QRCode from "qrcode";
 import type { TemplateConfig } from "@/types/templateOption";
 import type { CertRow } from "@/lib/pdfCertificate";
+import { getPanelLabel, getCoverageLabel, getFilmTypeLabel } from "@/lib/ppf/constants";
 
 const NOTO_SANS_JP =
   "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-400-normal.ttf";
@@ -226,6 +227,9 @@ export async function renderBrandedCertificatePdf(
   const vehicle = row.vehicle_info_json ?? {};
   const model = String(vehicle.model ?? "").trim();
   const plate = String(vehicle.plate ?? vehicle.plate_display ?? "").trim();
+  const color = String(vehicle.color ?? "").trim();
+  const isPpf = row.service_type === "ppf";
+  const ppfCoverage: any[] = Array.isArray(row.ppf_coverage_json) ? row.ppf_coverage_json : [];
   const presetLines = buildPresetLines(schema, values);
 
   // ロゴ
@@ -278,6 +282,9 @@ export async function renderBrandedCertificatePdf(
             {headerConfig.show_issue_date !== false && (
               <Text style={s.meta}>発行日: {new Date(row.created_at).toLocaleDateString("ja-JP")}</Text>
             )}
+            {(row.current_version ?? 1) > 1 && (
+              <Text style={[s.meta, { color: "#c00" }]}>再発行版（第{row.current_version}版）</Text>
+            )}
           </View>
           <View style={{ alignItems: "center" }}>
             {logoUrl && logoPosition === "top-right" && (
@@ -317,6 +324,58 @@ export async function renderBrandedCertificatePdf(
                 <Text style={s.itemValue}>{plate}</Text>
               </View>
             )}
+            {color && (
+              <View style={s.itemRow}>
+                <Text style={s.itemLabel}>ボディカラー</Text>
+                <Text style={s.itemValue}>{color}</Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* ---- PPF: Film info ---- */}
+        {isPpf && Array.isArray(row.coating_products_json) && row.coating_products_json.length > 0 && (
+          <View style={s.box}>
+            <Text style={s.boxTitle}>使用フィルム</Text>
+            {row.coating_products_json.map((cp: any, idx: number) => (
+              <View key={idx} style={s.itemRow}>
+                <Text style={s.itemLabel}>{cp.location || "-"}</Text>
+                <Text style={s.itemValue}>
+                  {[cp.brand_name, cp.product_name, cp.film_type ? getFilmTypeLabel(cp.film_type) : null].filter(Boolean).join(" / ") || "-"}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* ---- PPF: Coverage panels ---- */}
+        {isPpf && ppfCoverage.length > 0 && (
+          <View style={s.box}>
+            <Text style={s.boxTitle}>施工範囲</Text>
+            {ppfCoverage.map((entry: any, idx: number) => (
+              <View key={idx} style={s.itemRow}>
+                <Text style={s.itemLabel}>{getPanelLabel(entry.panel)}</Text>
+                <Text style={s.itemValue}>
+                  {getCoverageLabel(entry.coverage)}
+                  {entry.partial_note ? ` — ${entry.partial_note}` : ""}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* ---- Non-PPF: Coating products ---- */}
+        {!isPpf && Array.isArray(row.coating_products_json) && row.coating_products_json.length > 0 && (
+          <View style={s.box}>
+            <Text style={s.boxTitle}>コーティング剤</Text>
+            {row.coating_products_json.map((cp: any, idx: number) => (
+              <View key={idx} style={s.itemRow}>
+                <Text style={s.itemLabel}>{cp.location || "-"}</Text>
+                <Text style={s.itemValue}>
+                  {[cp.brand_name, cp.product_name].filter(Boolean).join(" / ") || "-"}
+                </Text>
+              </View>
+            ))}
           </View>
         )}
 
@@ -411,6 +470,79 @@ export async function renderBrandedCertificatePdf(
           </View>
         </View>
       </Page>
+
+      {/* ── PPF Page 2: 保証・注意事項 ── */}
+      {isPpf && (
+        <Page size="A4" style={s.page}>
+          <View>
+            <Text style={s.title}>{headerConfig.title ?? "PPF施工証明書"} — 保証・注意事項</Text>
+            <Text style={s.meta}>証明書番号: {row.public_id}</Text>
+          </View>
+
+          {row.warranty_period_end && (
+            <View style={s.box}>
+              <Text style={s.boxTitle}>保証情報</Text>
+              <View style={s.itemRow}>
+                <Text style={s.itemLabel}>保証期間終了日</Text>
+                <Text style={s.itemValue}>{row.warranty_period_end}</Text>
+              </View>
+            </View>
+          )}
+
+          {row.warranty_exclusions && (
+            <View style={s.box}>
+              <Text style={s.boxTitle}>保証対象外事項</Text>
+              <Text style={{ fontSize: 9, lineHeight: 1.6 }}>{row.warranty_exclusions}</Text>
+            </View>
+          )}
+
+          <View style={s.box}>
+            <Text style={s.boxTitle}>フィルムのお取り扱いについて</Text>
+            <Text style={s.warrantyText}>
+              {[
+                "・施工後48時間は洗車およびフィルム端部への接触をお控えください。",
+                "・洗車は中性洗剤を使用した手洗いを推奨します。",
+                "・高圧洗浄機をご使用の際は、フィルム端部から30cm以上離してください。",
+                "・ワックスやコンパウンドをフィルム面に使用しないでください。",
+                "・フィルムの端部が浮いた場合は、ご自身で処置せず施工店にご連絡ください。",
+              ].join("\n")}
+            </Text>
+          </View>
+
+          <View style={s.box}>
+            <Text style={s.boxTitle}>免責事項</Text>
+            <Text style={s.warrantyText}>
+              {[
+                "本証明書は施工事実を証明するものであり、車両の状態や性能を保証するものではありません。",
+                "以下の事項については保証の対象外となります。",
+                "",
+                "・飛び石、事故その他の外的要因による物理的損傷",
+                "・不適切なメンテナンスに起因する劣化・損傷",
+                "・お客様ご自身による剥離、補修、改変",
+                "・当店以外での施工、修理、改造後に生じた不具合",
+                "・自然災害（台風、雹、洪水等）による損傷",
+                "・フィルムの経年による通常の劣化",
+                "・車両の製造上の塗装不良に起因する問題",
+                "",
+                "保証の適用にあたっては、施工店による現車確認が必要となる場合があります。",
+              ].join("\n")}
+            </Text>
+          </View>
+
+          <View style={s.box}>
+            <Text style={s.boxTitle}>オンライン照会について</Text>
+            <Text style={s.warrantyText}>
+              本証明書に記載のQRコードをスマートフォンで読み取ると、CARTRUST認証プラットフォーム上で本証明書の最新情報をリアルタイムに確認できます。
+            </Text>
+          </View>
+
+          <View style={s.footer}>
+            {config.footer?.show_cartrust_badge !== false && (
+              <Text style={s.badge}>Powered by CARTRUST</Text>
+            )}
+          </View>
+        </Page>
+      )}
     </Document>
   );
 

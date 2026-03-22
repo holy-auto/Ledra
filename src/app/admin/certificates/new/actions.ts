@@ -78,6 +78,19 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
     // ignore parse errors — field is optional
   }
 
+  // PPF coverage JSON (optional — PPF templates only)
+  let ppf_coverage: any[] = [];
+  try {
+    const raw = String(formData.get("ppf_coverage_json") || "[]");
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) ppf_coverage = parsed;
+  } catch {
+    // ignore parse errors — field is optional
+  }
+
+  // Service type (ppf | coating | etc)
+  const service_type = String(formData.get("service_type") || "").trim() || null;
+
   if (!customer_name) return { ok: false, error: "customer_name_required" };
   if (!vehicle_id) return { ok: false, error: "vehicle_required" };
 
@@ -117,6 +130,8 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
       ...(film_thickness.length > 0 ? { film_thickness } : {}),
     },
     coating_products_json: coating_products.length > 0 ? coating_products : [],
+    ppf_coverage_json: ppf_coverage.length > 0 ? ppf_coverage : [],
+    service_type: service_type || null,
     expiry_type: "text",
     expiry_value,
     expiry_date: expiry_date || null,

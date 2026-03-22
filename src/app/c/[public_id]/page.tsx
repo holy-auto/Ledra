@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import CustomerActions from "./CustomerActions";
 import { logCertificateAction } from "@/lib/audit/certificateLog";
 import { formatDate, formatDateTime } from "@/lib/format";
+import { getPanelLabel, getCoverageLabel, getFilmTypeLabel } from "@/lib/ppf/constants";
 
 type PageProps = {
   params: Promise<{ public_id: string }>;
@@ -28,6 +29,11 @@ type PublicStatusResponse = {
     logo_asset_path?: string | null;
     footer_variant?: string | null;
     current_version?: string | null;
+    service_type?: string | null;
+    ppf_coverage_json?: any[] | null;
+    coating_products_json?: any[] | null;
+    warranty_period_end?: string | null;
+    warranty_exclusions?: string | null;
   };
   vehicle?: {
     id?: string | null;
@@ -262,6 +268,50 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
             </div>
           ) : null}
         </section>
+
+        {/* PPF施工範囲 */}
+        {data.certificate.service_type === "ppf" && Array.isArray(data.certificate.ppf_coverage_json) && data.certificate.ppf_coverage_json.length > 0 ? (
+          <section className="glass-card p-4">
+            <div className="mb-3 font-bold text-primary">PPF施工範囲</div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {data.certificate.ppf_coverage_json.map((entry: any, idx: number) => (
+                <div key={idx} className="rounded-lg bg-base px-3 py-2 text-secondary">
+                  {getPanelLabel(entry.panel)}:{" "}
+                  <span className={`font-medium ${entry.coverage === "full" ? "text-emerald-400" : "text-amber-400"}`}>
+                    {getCoverageLabel(entry.coverage)}
+                  </span>
+                  {entry.partial_note ? (
+                    <span className="ml-1 text-xs text-muted">({entry.partial_note})</span>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {/* 使用フィルム / コーティング剤 */}
+        {Array.isArray(data.certificate.coating_products_json) && data.certificate.coating_products_json.length > 0 ? (
+          <section className="glass-card p-4">
+            <div className="mb-3 font-bold text-primary">
+              {data.certificate.service_type === "ppf" ? "使用フィルム" : "使用製品"}
+            </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {data.certificate.coating_products_json.map((cp: any, idx: number) => (
+                <div key={idx} className="rounded-lg bg-base px-3 py-2 text-secondary">
+                  <span className="text-primary font-medium">
+                    {[cp.brand_name, cp.product_name].filter(Boolean).join(" / ") || "-"}
+                  </span>
+                  {cp.film_type ? (
+                    <span className="ml-2 text-xs text-muted">({getFilmTypeLabel(cp.film_type)})</span>
+                  ) : null}
+                  {cp.location ? (
+                    <div className="text-xs text-muted mt-0.5">{cp.location}</div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         {images.length > 0 ? (
           <section className="glass-card p-4">
