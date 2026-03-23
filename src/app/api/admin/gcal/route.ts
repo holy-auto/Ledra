@@ -51,9 +51,19 @@ export async function GET(req: NextRequest) {
       .eq("id", caller.tenantId)
       .single();
 
+    // 最終同期日時を取得
+    const { data: lastSync } = await admin
+      .from("gcal_sync_log")
+      .select("created_at, action, status")
+      .eq("tenant_id", caller.tenantId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
     return apiOk({
       connected: !!tenant?.gcal_sync_enabled,
       calendar_id: tenant?.gcal_calendar_id || null,
+      last_synced_at: lastSync?.created_at || null,
     });
   } catch (e) {
     return apiInternalError(e, "gcal status");
@@ -120,7 +130,7 @@ export async function POST(req: NextRequest) {
       const to = body?.to;
       if (!from || !to) return apiValidationError("from / to (YYYY-MM-DD) が必要です");
       const imported = await pullEventsFromCalendar(caller.tenantId, from, to);
-      return apiOk({ imported });
+      return apiOk({ imported, synced_at: new Date().toISOString() });
     }
 
     return apiValidationError("action は connect / callback / disconnect / set-calendar / sync のいずれかです");

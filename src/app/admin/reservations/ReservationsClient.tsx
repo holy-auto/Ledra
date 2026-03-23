@@ -142,6 +142,7 @@ export default function ReservationsClient() {
   const [gcalConnected, setGcalConnected] = useState(false);
   const [gcalLoading, setGcalLoading] = useState(false);
   const [gcalSyncing, setGcalSyncing] = useState(false);
+  const [gcalLastSynced, setGcalLastSynced] = useState<string | null>(null);
 
   // ─── Reference data (one-time fetch) ───
 
@@ -164,6 +165,7 @@ export default function ReservationsClient() {
         const gcRes = await fetch("/api/admin/gcal", { cache: "no-store" });
         const gcJ = await gcRes.json().catch(() => null);
         if (gcRes.ok && gcJ?.connected) setGcalConnected(true);
+        if (gcJ?.last_synced_at) setGcalLastSynced(gcJ.last_synced_at);
       } catch { /* gcal not configured */ }
     } catch {}
   }, []);
@@ -400,7 +402,9 @@ export default function ReservationsClient() {
             <div>
               <div className="text-sm font-semibold text-primary">Googleカレンダー連携</div>
               <div className="text-xs text-muted">
-                {gcalConnected ? "✅ 連携中 — 予約がGoogleカレンダーに自動同期されます" : "連携するとGoogleカレンダーと予約を自動同期できます"}
+                {gcalConnected
+                  ? `✅ 連携中${gcalLastSynced ? ` — 最終同期: ${new Date(gcalLastSynced).toLocaleString("ja-JP")}` : " — 予約がGoogleカレンダーに自動同期されます"}`
+                  : "連携するとGoogleカレンダーと予約を自動同期できます"}
               </div>
             </div>
           </div>
@@ -416,7 +420,9 @@ export default function ReservationsClient() {
                       const toDate = new Date(today);
                       toDate.setDate(toDate.getDate() + 90);
                       const to = toDate.toISOString().slice(0, 10);
-                      await fetch("/api/admin/gcal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sync", from, to }) });
+                      const syncRes = await fetch("/api/admin/gcal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sync", from, to }) });
+                      const syncJ = await syncRes.json().catch(() => null);
+                      if (syncJ?.synced_at) setGcalLastSynced(syncJ.synced_at);
                       mutate();
                     } catch {}
                     setGcalSyncing(false);
