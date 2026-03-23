@@ -44,20 +44,15 @@ export async function GET(req: NextRequest) {
 
   try {
     // 1. Exchange code for tokens
-    // Note: Square ObtainToken does NOT require redirect_uri in the body.
-    // Including a mismatched redirect_uri causes token exchange to fail.
+    // redirect_uri MUST match the one sent during /oauth2/authorize
+    const redirectUri = `${baseUrl}/api/admin/square/callback`;
     const tokenBody: Record<string, string> = {
       client_id: process.env.SQUARE_APP_ID!,
       client_secret: process.env.SQUARE_APP_SECRET!,
       code,
       grant_type: "authorization_code",
+      redirect_uri: redirectUri,
     };
-
-    // Only include redirect_uri if explicitly configured (must match Square Console exactly)
-    const configuredRedirectUri = process.env.SQUARE_REDIRECT_URI;
-    if (configuredRedirectUri) {
-      tokenBody.redirect_uri = configuredRedirectUri;
-    }
 
     const tokenRes = await fetch("https://connect.squareup.com/oauth2/token", {
       method: "POST",

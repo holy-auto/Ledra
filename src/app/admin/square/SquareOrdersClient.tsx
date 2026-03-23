@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import useSWR from "swr";
 import PageHeader from "@/components/ui/PageHeader";
@@ -59,6 +58,9 @@ export default function SquareOrdersClient() {
   const [page, setPage] = useState(1);
   const perPage = 50;
 
+  // Connect
+  const [connecting, setConnecting] = useState(false);
+
   // Sync
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -87,6 +89,19 @@ export default function SquareOrdersClient() {
 
   const err = swrError ? (swrError.message ?? "読み込みに失敗しました") : null;
   const isConnected = data?.connection?.status === "active";
+
+  const handleConnect = async () => {
+    setConnecting(true);
+    try {
+      const res = await fetch("/api/admin/square/connect", { method: "POST" });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
+      if (j?.auth_url) window.location.href = j.auth_url;
+    } catch (e: any) {
+      setSyncMsg({ text: e?.message ?? "接続に失敗しました", ok: false });
+      setConnecting(false);
+    }
+  };
 
   const handleSync = async () => {
     setSyncing(true);
@@ -161,9 +176,14 @@ export default function SquareOrdersClient() {
           <div className="text-muted text-sm">
             Squareアカウントが接続されていません。
           </div>
-          <Link href="/admin/settings" className="btn-primary inline-block">
-            Squareアカウントを接続してください →
-          </Link>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={connecting}
+            onClick={handleConnect}
+          >
+            {connecting ? "接続中…" : "Squareアカウントを接続してください →"}
+          </button>
         </section>
       )}
 
