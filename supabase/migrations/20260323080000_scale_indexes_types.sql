@@ -4,14 +4,92 @@
 -- ============================================================
 -- 1. 金額カラムをbigintに変換（SUMオーバーフロー防止）
 -- ============================================================
+
+-- payments（VIEWなし、直接変換OK）
 ALTER TABLE payments ALTER COLUMN amount TYPE bigint;
 ALTER TABLE payments ALTER COLUMN received_amount TYPE bigint;
 ALTER TABLE payments ALTER COLUMN change_amount TYPE bigint;
 ALTER TABLE payments ALTER COLUMN refund_amount TYPE bigint;
 
+-- documents は invoices VIEW が依存しているため、VIEW+RULEを一時DROP
+DROP RULE IF EXISTS invoices_delete ON invoices;
+DROP RULE IF EXISTS invoices_update ON invoices;
+DROP RULE IF EXISTS invoices_insert ON invoices;
+DROP VIEW IF EXISTS invoices;
+
 ALTER TABLE documents ALTER COLUMN subtotal TYPE bigint;
 ALTER TABLE documents ALTER COLUMN tax TYPE bigint;
 ALTER TABLE documents ALTER COLUMN total TYPE bigint;
+
+-- invoices VIEW 再作成
+CREATE OR REPLACE VIEW invoices AS
+SELECT
+  id, tenant_id, customer_id,
+  doc_number AS invoice_number,
+  issued_at, due_date, status,
+  subtotal, tax, total, tax_rate,
+  note, items_json,
+  is_invoice_compliant, show_seal, show_logo, show_bank_info,
+  recipient_name, payment_date,
+  vehicle_id, vehicle_info_json,
+  created_at, updated_at
+FROM documents
+WHERE doc_type = 'invoice';
+
+CREATE OR REPLACE RULE invoices_insert AS
+ON INSERT TO invoices DO INSTEAD
+INSERT INTO documents (
+  id, tenant_id, customer_id,
+  doc_type, doc_number, issued_at, due_date,
+  status, subtotal, tax, total, tax_rate,
+  items_json, note, meta_json,
+  is_invoice_compliant, show_seal, show_logo, show_bank_info,
+  recipient_name, payment_date,
+  vehicle_id, vehicle_info_json,
+  created_at, updated_at
+) VALUES (
+  COALESCE(NEW.id, gen_random_uuid()), NEW.tenant_id, NEW.customer_id,
+  'invoice', NEW.invoice_number, NEW.issued_at, NEW.due_date,
+  NEW.status, NEW.subtotal, NEW.tax, NEW.total, COALESCE(NEW.tax_rate, 10),
+  NEW.items_json, NEW.note, '{}'::jsonb,
+  COALESCE(NEW.is_invoice_compliant, false),
+  COALESCE(NEW.show_seal, false),
+  COALESCE(NEW.show_logo, true),
+  COALESCE(NEW.show_bank_info, false),
+  NEW.recipient_name, NEW.payment_date,
+  NEW.vehicle_id, COALESCE(NEW.vehicle_info_json, '{}'::jsonb),
+  COALESCE(NEW.created_at, now()), COALESCE(NEW.updated_at, now())
+);
+
+CREATE OR REPLACE RULE invoices_update AS
+ON UPDATE TO invoices DO INSTEAD
+UPDATE documents SET
+  tenant_id = NEW.tenant_id,
+  customer_id = NEW.customer_id,
+  doc_number = NEW.invoice_number,
+  issued_at = NEW.issued_at,
+  due_date = NEW.due_date,
+  status = NEW.status,
+  subtotal = NEW.subtotal,
+  tax = NEW.tax,
+  total = NEW.total,
+  tax_rate = NEW.tax_rate,
+  items_json = NEW.items_json,
+  note = NEW.note,
+  is_invoice_compliant = NEW.is_invoice_compliant,
+  show_seal = NEW.show_seal,
+  show_logo = NEW.show_logo,
+  show_bank_info = NEW.show_bank_info,
+  recipient_name = NEW.recipient_name,
+  payment_date = NEW.payment_date,
+  vehicle_id = NEW.vehicle_id,
+  vehicle_info_json = NEW.vehicle_info_json,
+  updated_at = NEW.updated_at
+WHERE id = OLD.id;
+
+CREATE OR REPLACE RULE invoices_delete AS
+ON DELETE TO invoices DO INSTEAD
+DELETE FROM documents WHERE id = OLD.id;
 
 ALTER TABLE reservations ALTER COLUMN estimated_amount TYPE bigint;
 
