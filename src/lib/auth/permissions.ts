@@ -108,6 +108,7 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "register_sessions:view", "register_sessions:operate",
     "payments:view", "payments:create",
     "announcements:view", "news:view", "price_stats:view",
+    "template_options:view",
   ],
   viewer: [
     "dashboard:view",
@@ -123,6 +124,7 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "register_sessions:view",
     "payments:view",
     "announcements:view", "news:view", "price_stats:view",
+    "template_options:view",
   ],
 };
 
