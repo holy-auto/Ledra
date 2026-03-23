@@ -206,15 +206,12 @@ export async function POST(req: NextRequest) {
     }
 
     // Square API からオーダーを取得
-    console.log("[square sync] fetching orders:", { locationIds, from, to, locationCount: locationIds.length });
     const { orders, error: fetchError } = await fetchAllOrders(
       accessToken,
       locationIds,
       from,
       to,
     );
-
-    console.log("[square sync] fetched:", { total: orders.length, error: fetchError });
 
     if (fetchError === "unauthorized") {
       await admin
