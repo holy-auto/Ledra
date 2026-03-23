@@ -81,7 +81,7 @@ export default function SquareConnectSection({ initialConnection }: Props) {
   };
 
   const handleDisconnect = async () => {
-    if (!confirm("Squareアカウントを切断しますか？\n切断後もSquareアカウント自体は残ります。")) return;
+    if (!window.confirm("Square連携を解除しますか？取り込み済みのデータは削除されません。")) return;
     setBusy(true);
     setErr(null);
     try {

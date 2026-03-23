@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import useSWR from "swr";
 import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
@@ -70,6 +70,26 @@ export default function SquareOrdersClient() {
 
   // Sync history panel
   const [showSyncHistory, setShowSyncHistory] = useState(false);
+
+  // Detect query params from OAuth callback redirect
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const squareParam = params.get("square");
+    if (squareParam === "connected") {
+      setSyncMsg({ text: "Squareアカウントが正常に接続されました。", ok: true });
+    } else if (squareParam === "error") {
+      const reason = params.get("reason") ?? "";
+      setSyncMsg({ text: `Square接続エラー: ${reason || "不明なエラー"}`, ok: false });
+    } else if (squareParam === "denied") {
+      setSyncMsg({ text: "Squareアカウントの接続が拒否されました。", ok: false });
+    }
+    if (squareParam) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("square");
+      url.searchParams.delete("reason");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, []);
 
   // Build SWR key
   const swrKey = (() => {
@@ -162,6 +182,11 @@ export default function SquareOrdersClient() {
               >
                 {syncing ? "同期中…" : "手動同期"}
               </button>
+            )}
+            {isConnected && data?.connection?.last_synced_at && (
+              <span className="text-xs text-muted">
+                最終同期: {formatDateTime(data.connection.last_synced_at)}
+              </span>
             )}
           </div>
         }

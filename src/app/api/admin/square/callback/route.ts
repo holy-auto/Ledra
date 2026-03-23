@@ -15,13 +15,13 @@ export async function GET(req: NextRequest) {
   // ユーザーが拒否した場合
   if (error) {
     return NextResponse.redirect(
-      new URL("/admin/settings?square=denied", baseUrl),
+      new URL("/admin/square?square=denied", baseUrl),
     );
   }
 
   if (!code || !state) {
     return NextResponse.redirect(
-      new URL("/admin/settings?square=error&reason=missing_params", baseUrl),
+      new URL("/admin/square?square=error&reason=missing_params", baseUrl),
     );
   }
 
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
   if (!tenant) {
     console.error("[square callback] invalid state (tenant not found):", state);
     return NextResponse.redirect(
-      new URL("/admin/settings?square=error&reason=invalid_state", baseUrl),
+      new URL("/admin/square?square=error&reason=invalid_state", baseUrl),
     );
   }
 
@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
       // Include status in redirect for easier debugging
       const reason = `token_exchange_${tokenRes.status}`;
       return NextResponse.redirect(
-        new URL(`/admin/settings?square=error&reason=${reason}`, baseUrl),
+        new URL(`/admin/square?square=error&reason=${reason}`, baseUrl),
       );
     }
 
@@ -115,17 +115,17 @@ export async function GET(req: NextRequest) {
     if (dbError) {
       console.error("[square callback] db upsert error:", dbError.message);
       return NextResponse.redirect(
-        new URL("/admin/settings?square=error&reason=db_save", baseUrl),
+        new URL("/admin/square?square=error&reason=db_save", baseUrl),
       );
     }
 
     return NextResponse.redirect(
-      new URL("/admin/settings?square=connected", baseUrl),
+      new URL("/admin/square?square=connected", baseUrl),
     );
   } catch (e) {
     console.error("[square callback] unexpected error:", e);
     return NextResponse.redirect(
-      new URL("/admin/settings?square=error&reason=unexpected", baseUrl),
+      new URL("/admin/square?square=error&reason=unexpected", baseUrl),
     );
   }
 }
