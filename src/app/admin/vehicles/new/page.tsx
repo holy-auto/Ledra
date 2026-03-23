@@ -16,6 +16,8 @@ export default function AdminVehicleNewPage() {
   const [year, setYear] = useState("");
   const [plateDisplay, setPlateDisplay] = useState("");
   const [vinCode, setVinCode] = useState("");
+  const [sizeClass, setSizeClass] = useState("");
+  const [sizeAuto, setSizeAuto] = useState(false);
   const [notes, setNotes] = useState("");
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
@@ -26,6 +28,23 @@ export default function AdminVehicleNewPage() {
   const [ocrBusy, setOcrBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const ocrInputRef = useRef<HTMLInputElement>(null);
+
+  // メーカー/車種からサイズ自動判定
+  const sizeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!maker.trim() || !model.trim()) return;
+    if (sizeDebounceRef.current) clearTimeout(sizeDebounceRef.current);
+    sizeDebounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/admin/vehicle-size?maker=${encodeURIComponent(maker)}&model=${encodeURIComponent(model)}`);
+        const j = await res.json();
+        if (j?.size_class) {
+          setSizeClass(j.size_class);
+          setSizeAuto(true);
+        }
+      } catch { /* ignore */ }
+    }, 500);
+  }, [maker, model]);
 
   useEffect(() => {
     if (!customerSearch.trim()) { setCustomerResults([]); return; }
@@ -56,6 +75,7 @@ export default function AdminVehicleNewPage() {
           vin_code: vinCode || null,
           notes: notes || null,
           customer_id: customerId || null,
+          size_class: sizeClass || null,
         }),
       });
 
@@ -192,6 +212,40 @@ export default function AdminVehicleNewPage() {
                 maxLength={50}
               />
             </label>
+          </div>
+
+          {/* 車両サイズ */}
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-primary">車両サイズ</div>
+            <div className="flex gap-2 flex-wrap">
+              {["SS", "S", "M", "L", "LL", "XL"].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => { setSizeClass(s); setSizeAuto(false); }}
+                  className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+                    sizeClass === s
+                      ? "border-accent bg-accent text-white"
+                      : "border-neutral-200 bg-surface text-secondary hover:bg-surface-hover"
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+              {sizeClass && (
+                <button
+                  type="button"
+                  onClick={() => { setSizeClass(""); setSizeAuto(false); }}
+                  className="text-xs text-muted hover:text-red-500 ml-2"
+                >
+                  クリア
+                </button>
+              )}
+            </div>
+            {sizeAuto && sizeClass && (
+              <p className="text-[11px] text-emerald-600">✓ {maker} {model} → {sizeClass} （マスタから自動判定）</p>
+            )}
+            <p className="text-[11px] text-muted">SS=~8㎥, S=8~10㎥, M=10~12㎥, L=12~14㎥, LL=14~16㎥, XL=16㎥~（体積基準）</p>
           </div>
 
           {/* 顧客紐付け */}

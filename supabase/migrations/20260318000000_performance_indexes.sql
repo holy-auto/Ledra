@@ -10,9 +10,12 @@ CREATE INDEX IF NOT EXISTS idx_certificates_tenant_status_created
 CREATE INDEX IF NOT EXISTS idx_customers_tenant_created
   ON customers (tenant_id, created_at DESC);
 
--- Invoices: list by tenant, filter by status
-CREATE INDEX IF NOT EXISTS idx_invoices_tenant_status_created
-  ON invoices (tenant_id, status, created_at DESC);
+-- Invoices: list by tenant, filter by status (skip if invoices is a VIEW)
+DO $$ BEGIN
+IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='invoices' AND table_type='BASE TABLE') THEN
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_invoices_tenant_status_created ON invoices (tenant_id, status, created_at DESC)';
+END IF;
+END $$;
 
 -- Documents: list by tenant, filter by doc_type and status
 CREATE INDEX IF NOT EXISTS idx_documents_tenant_type_status_created

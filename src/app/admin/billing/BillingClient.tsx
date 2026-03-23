@@ -546,12 +546,6 @@ export default function BillingPage() {
           )}
 
           <div className="pt-3 flex gap-3 flex-wrap">
-            {hasSubscription && (
-              <button className="btn-secondary" onClick={openPortal} disabled={portalBusy}>
-                {portalBusy ? "処理中…" : "請求ポータル（プラン変更）"}
-              </button>
-            )}
-
             {tenant.is_active === false && (
               <button className="btn-primary" onClick={resumeCheckout} disabled={resumeBusy}>
                 {resumeBusy ? "リダイレクト中…" : "支払いを再開"}

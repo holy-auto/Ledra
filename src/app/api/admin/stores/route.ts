@@ -21,7 +21,11 @@ export async function GET() {
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: true });
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      // テーブル未作成またはRLSエラー時は空配列を返す
+      console.warn("[stores] GET error:", error.message);
+      return NextResponse.json({ stores: [] });
+    }
 
     // Get member counts per store
     const { data: memberships } = await supabase

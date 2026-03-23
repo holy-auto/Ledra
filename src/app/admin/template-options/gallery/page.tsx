@@ -74,16 +74,30 @@ export default function GalleryPage() {
 
           return (
             <div key={tpl.id} className="glass-card overflow-hidden">
-              {/* サムネイルプレビュー（簡易） */}
+              {/* サムネイルプレビュー（証明書風） */}
               <div
-                className="h-40 flex items-center justify-center text-2xl font-bold"
+                className="h-52 p-4 flex flex-col items-center justify-between"
                 style={{
                   backgroundColor: bgVariant === "cream" ? "#faf8f5" : bgVariant === "light-gray" ? "#f5f5f7" : "#fff",
-                  borderBottom: `${borderStyle === "double" ? "4px double" : borderStyle === "elegant" ? "2px solid" : "1px solid"} ${config.branding?.primary_color ?? "#1a1a2e"}20`,
+                  border: `${borderStyle === "double" ? "4px double" : borderStyle === "elegant" ? "2px solid" : borderStyle === "none" ? "none" : "1px solid"} ${config.branding?.primary_color ?? "#1a1a2e"}40`,
                   color: config.branding?.primary_color ?? "#1a1a2e",
+                  fontFamily: config.style?.font_family === "noto-serif-jp" ? "serif" : "sans-serif",
                 }}
               >
-                施工証明書
+                <div className="text-[10px] opacity-40 tracking-widest">CERTIFICATE</div>
+                <div className="text-center space-y-1">
+                  <div className="text-lg font-bold tracking-wider">施工証明書</div>
+                  <div className="text-[9px] opacity-50">Certificate of Service</div>
+                </div>
+                <div className="w-full space-y-1">
+                  <div className="h-1 rounded-full opacity-10" style={{ backgroundColor: config.branding?.primary_color ?? "#1a1a2e" }} />
+                  <div className="flex justify-between text-[8px] opacity-30">
+                    <span>車両情報</span>
+                    <span>施工日: 20XX/XX/XX</span>
+                  </div>
+                  <div className="h-0.5 w-3/4 rounded-full opacity-5" style={{ backgroundColor: config.branding?.primary_color ?? "#1a1a2e" }} />
+                  <div className="h-0.5 w-1/2 rounded-full opacity-5" style={{ backgroundColor: config.branding?.primary_color ?? "#1a1a2e" }} />
+                </div>
               </div>
 
               <div className="p-4 space-y-2">

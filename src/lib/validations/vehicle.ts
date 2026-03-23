@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+export const VEHICLE_SIZE_CLASSES = ["SS", "S", "M", "L", "LL", "XL"] as const;
+export type VehicleSizeClass = (typeof VEHICLE_SIZE_CLASSES)[number];
+
 export const vehicleCreateSchema = z.object({
   maker: z.string().trim().min(1, "メーカーは必須です。").max(100),
   model: z.string().trim().min(1, "車種は必須です。").max(100),
@@ -8,6 +11,7 @@ export const vehicleCreateSchema = z.object({
   vin_code: z.string().trim().max(50).nullable().optional().transform(v => v || null),
   notes: z.string().trim().max(500).nullable().optional().transform(v => v || null),
   customer_id: z.string().uuid().nullable().optional(),
+  size_class: z.enum(VEHICLE_SIZE_CLASSES).nullable().optional(),
 });
 
 export const vehicleUpdateSchema = vehicleCreateSchema.partial().extend({

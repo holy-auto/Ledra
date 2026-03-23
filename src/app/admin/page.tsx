@@ -70,7 +70,7 @@ async function TenantStats({ tenantId }: { tenantId: string }) {
       supabase.from("certificates").select("status,created_at").eq("tenant_id", tenantId),
       supabase.from("tenant_memberships").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId),
       supabase.from("customers").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId),
-      supabase.from("invoices").select("status,total").eq("tenant_id", tenantId),
+      supabase.from("documents").select("status,total").eq("tenant_id", tenantId).in("doc_type", ["invoice", "consolidated_invoice"]),
       Promise.resolve(supabase.from("reservations").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("scheduled_date", today).neq("status", "cancelled")).catch(() => ({ count: 0 })),
       Promise.resolve(supabase.from("reservations").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).in("status", ["confirmed", "arrived", "in_progress"])).catch(() => ({ count: 0 })),
       Promise.resolve(supabase.from("job_orders").select("*", { count: "exact", head: true }).or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`).in("status", ["pending", "accepted", "in_progress"])).catch(() => ({ count: 0 })),
@@ -308,19 +308,7 @@ export default async function AdminHome() {
       <OnboardingTour />
       <PageHeader tag="管理画面" title="ダッシュボード" description="施工証明書の管理状況を一目で確認" />
 
-      {/* Tenant Stats - streams in first */}
-      {tenantId && (
-        <Suspense fallback={<StatSkeleton />}>
-          <TenantStats tenantId={tenantId} />
-        </Suspense>
-      )}
-
-      {/* Platform Stats - streams independently */}
-      <Suspense fallback={<StatSkeleton />}>
-        <PlatformStats />
-      </Suspense>
-
-      {/* Getting Started */}
+      {/* Getting Started - 一番上に表示 */}
       <div className="glass-card p-5 flex items-start gap-4 border-l-4 border-accent">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent-dim">
           <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} className="text-accent">
@@ -332,13 +320,13 @@ export default async function AdminHome() {
           <p className="text-xs text-muted leading-relaxed">
             CARTRUSTへようこそ！まずは<Link href="/admin/settings" className="text-accent hover:underline">店舗設定</Link>を完了し、
             <Link href="/admin/certificates/new" className="text-accent hover:underline">最初の証明書を発行</Link>してみましょう。
-            ご不明な点は<Link href="/faq" className="text-accent hover:underline">よくある質問</Link>または
-            <Link href="/contact" className="text-accent hover:underline">お問い合わせ</Link>をご利用ください。
+            ご不明な点は<Link href="/admin/support" className="text-accent hover:underline">サポート</Link>または
+            <Link href="/admin/support" className="text-accent hover:underline">お問い合わせ</Link>をご利用ください。
           </p>
         </div>
       </div>
 
-      {/* Quick Actions - renders immediately (no data fetching) */}
+      {/* Quick Actions - 2段目 */}
       <div>
         <h2 className="text-sm font-semibold tracking-[0.18em] text-muted mb-3">クイックアクション</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -419,6 +407,18 @@ export default async function AdminHome() {
 
         </div>
       </div>
+
+      {/* Tenant Stats */}
+      {tenantId && (
+        <Suspense fallback={<StatSkeleton />}>
+          <TenantStats tenantId={tenantId} />
+        </Suspense>
+      )}
+
+      {/* Platform Stats */}
+      <Suspense fallback={<StatSkeleton />}>
+        <PlatformStats />
+      </Suspense>
     </div>
   );
 }

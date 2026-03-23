@@ -45,6 +45,22 @@ export const INVOICE_STATUS_MAP: Record<string, StatusEntry> = {
   cancelled: { variant: "default", label: "取消" },
 };
 
+/* ── Payment ── */
+export const PAYMENT_STATUS_MAP: Record<string, StatusEntry> = {
+  completed:      { variant: "success", label: "完了" },
+  refunded:       { variant: "danger",  label: "返金済" },
+  partial_refund: { variant: "warning", label: "一部返金" },
+  voided:         { variant: "default", label: "取消" },
+};
+
+/* ── Reservation Payment ── */
+export const RESERVATION_PAYMENT_STATUS_MAP: Record<string, StatusEntry> = {
+  unpaid:   { variant: "default", label: "未会計" },
+  paid:     { variant: "success", label: "会計済" },
+  partial:  { variant: "warning", label: "一部入金" },
+  refunded: { variant: "danger",  label: "返金済" },
+};
+
 /* ── Utility: get status entry safely ── */
 export function getStatusEntry(
   map: Record<string, StatusEntry>,

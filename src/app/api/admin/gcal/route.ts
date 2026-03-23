@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerBasic } from "@/lib/api/auth";
 import { getAdminClient } from "@/lib/api/auth";
@@ -9,10 +9,37 @@ export const dynamic = "force-dynamic";
 
 /**
  * GET /api/admin/gcal
- * Google Calendar 連携状態を取得
+ * - ?code=xxx → OAuth コールバック（Google からのリダイレクト）
+ * - それ以外 → 連携状態を取得
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const { searchParams } = new URL(req.url);
+    const code = searchParams.get("code");
+    const state = searchParams.get("state"); // tenantId を state として送っている
+
+    // OAuth コールバック: Google からリダイレクトされた場合
+    if (code) {
+      const supabase = await createSupabaseServerClient();
+      const caller = await resolveCallerBasic(supabase);
+
+      // state（tenantId）またはログイン中のテナントを使用
+      const tenantId = state || caller?.tenantId;
+      if (!tenantId) {
+        return NextResponse.redirect(new URL("/admin/reservations?gcal=auth_error", req.url));
+      }
+
+      try {
+        await exchangeCodeAndSave(code, tenantId);
+        // 連携成功 → 予約管理ページにリダイレクト
+        return NextResponse.redirect(new URL("/admin/reservations?gcal=connected", req.url));
+      } catch (e) {
+        console.error("[gcal] OAuth callback failed:", e);
+        return NextResponse.redirect(new URL("/admin/reservations?gcal=error", req.url));
+      }
+    }
+
+    // 通常のステータス取得
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerBasic(supabase);
     if (!caller) return apiUnauthorized();

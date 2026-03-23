@@ -250,8 +250,24 @@ export default function MenuItemsClient() {
                 <div className="text-xs font-semibold tracking-[0.18em] text-muted">CSV取込</div>
                 <div className="mt-1 text-base font-semibold text-primary">CSVインポート</div>
               </div>
-              <div className="text-xs text-muted">
-                形式: <code className="text-secondary">品目名,説明,単価,税率区分(10/8)</code>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="text-xs text-muted">
+                  形式: <code className="text-secondary">品目名,説明,単価,税率区分(10/8)</code>
+                </div>
+                <button
+                  type="button"
+                  className="btn-ghost text-xs px-3 py-1"
+                  onClick={() => {
+                    const sample = "品目名,説明,単価,税率区分\nガラスコーティング,ボディ全面ガラスコーティング施工,55000,10\nPPFフィルム施工,フロントバンパーPPF貼付,88000,10\nヘッドライトコーティング,ヘッドライト黄ばみ除去+コーティング,15000,10\nインテリアコーティング,本革シートコーティング,35000,10\nホイールコーティング,4本セット,12000,10\nウィンドウフィルム施工,フロント3面,25000,10\n鈑金塗装,バンパー修理塗装,45000,10\n証明書発行手数料,施工証明書の発行,3300,10\nNFCタグ取付,NFCタグ1枚取付,1100,10\n消耗品,コーティング剤等消耗品,2200,10";
+                    const blob = new Blob(["\uFEFF" + sample], { type: "text/csv;charset=utf-8" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url; a.download = "cartrust_品目マスタ_見本.csv"; a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                >
+                  📥 見本CSVダウンロード
+                </button>
               </div>
               <div className="space-y-2">
                 <textarea

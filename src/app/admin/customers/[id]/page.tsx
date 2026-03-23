@@ -51,6 +51,14 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     );
   }
 
+  // 紐付き車両
+  const { data: vehicles } = await supabase
+    .from("vehicles")
+    .select("id, maker, model, year, plate_display")
+    .eq("tenant_id", tenantId)
+    .eq("customer_id", id)
+    .order("created_at", { ascending: false });
+
   // 紐付き証明書
   const { data: certificates } = await supabase
     .from("certificates")
@@ -59,13 +67,16 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     .eq("customer_id", id)
     .order("created_at", { ascending: false });
 
-  // 紐付き請求書
-  const { data: invoices } = await supabase
-    .from("invoices")
-    .select("id, invoice_number, status, total, issued_at, due_date")
+  // 紐付き請求書 (documents テーブルから)
+  const { data: invoiceDocs } = await supabase
+    .from("documents")
+    .select("id, doc_number, status, total, issued_at, due_date")
     .eq("tenant_id", tenantId)
     .eq("customer_id", id)
+    .in("doc_type", ["invoice", "consolidated_invoice"])
     .order("created_at", { ascending: false });
+  // 後方互換: invoice_number エイリアス
+  const invoices = (invoiceDocs ?? []).map(d => ({ ...d, invoice_number: d.doc_number }));
 
   const statusVariant = (s: string) => {
     switch (s) {
@@ -109,6 +120,40 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
       {/* Customer Info + Edit */}
       <CustomerDetailClient customer={customer} />
+
+      {/* Linked Vehicles */}
+      <section className="glass-card overflow-hidden">
+        <div className="border-b border-border-subtle p-5 flex items-center justify-between">
+          <div>
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted">VEHICLES</div>
+            <div className="mt-1 text-base font-semibold text-primary">
+              紐付き車両（{(vehicles ?? []).length}件）
+            </div>
+          </div>
+          <Link href={`/admin/vehicles/new?returnTo=/admin/customers/${id}`} className="btn-secondary text-xs">
+            + 車両登録
+          </Link>
+        </div>
+        <div className="divide-y divide-border-subtle">
+          {(vehicles ?? []).map((v) => (
+            <div key={v.id} className="flex items-center justify-between px-5 py-3.5 hover:bg-surface-hover/60">
+              <div className="flex items-center gap-3">
+                <Link href={`/admin/vehicles/${v.id}`} className="font-medium text-primary hover:text-accent">
+                  {v.maker} {v.model}
+                </Link>
+                {v.year && <span className="text-xs text-muted">{v.year}年</span>}
+                {v.plate_display && <span className="text-xs text-secondary">{v.plate_display}</span>}
+              </div>
+              <Link href={`/admin/certificates/new?vehicle_id=${v.id}&customer_id=${id}`} className="btn-primary text-xs py-1 px-3">
+                証明書発行
+              </Link>
+            </div>
+          ))}
+          {(vehicles ?? []).length === 0 && (
+            <div className="px-5 py-8 text-center text-muted text-sm">紐付き車両はありません</div>
+          )}
+        </div>
+      </section>
 
       {/* Linked Certificates */}
       <section className="glass-card overflow-hidden">

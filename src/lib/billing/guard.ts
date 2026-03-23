@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import Stripe from "stripe";
 import { type PlanTier, PLAN_RANK as RANK } from "@/types/billing";
+import { isPlatformTenantId } from "@/lib/auth/platformAdmin";
 
 const DEFAULT_GRACE_DAYS = 14;
 
@@ -155,6 +156,11 @@ export async function enforceBilling(
 
   if (!tenant_id) {
     return json(400, { error: "Missing tenant_id (billing guard)" }, { "x-billing-url": "/admin/billing" });
+  }
+
+  // --- Platform admin bypass: skip all billing checks ---
+  if (isPlatformTenantId(tenant_id)) {
+    return null;
   }
 
   const supabase = getSupabaseAdmin();

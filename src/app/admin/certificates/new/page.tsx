@@ -11,11 +11,12 @@ export const dynamic = "force-dynamic";
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ tid?: string; vehicle_id?: string }>;
+  searchParams: Promise<{ tid?: string; vehicle_id?: string; customer_id?: string }>;
 }) {
   const sp = await searchParams;
   const selectedTemplateId = sp.tid ?? "";
   const defaultVehicleId = sp.vehicle_id ?? undefined;
+  const defaultCustomerId = sp.customer_id ?? undefined;
 
   const supabase = await createSupabaseServerClient();
   const { data: userRes } = await supabase.auth.getUser();
@@ -103,6 +104,7 @@ export default async function Page({
       <CertNewFormWrapper
         vehicles={(vehiclesRaw ?? []) as any[]}
         defaultVehicleId={defaultVehicleId}
+        defaultCustomerId={defaultCustomerId}
         templates={list as any[]}
         selectedTemplate={selected as any}
         tenantLogoPath={tenantLogoPath}

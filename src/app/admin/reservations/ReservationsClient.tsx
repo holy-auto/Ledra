@@ -366,6 +366,31 @@ export default function ReservationsClient() {
           }
         />
 
+        {/* Googleカレンダー連携結果フィードバック */}
+        {typeof window !== "undefined" && (() => {
+          const params = new URLSearchParams(window.location.search);
+          const gcalResult = params.get("gcal");
+          if (gcalResult === "connected") {
+            // URLからパラメータを除去
+            window.history.replaceState({}, "", window.location.pathname);
+            if (!gcalConnected) setGcalConnected(true);
+            return (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+                ✅ Googleカレンダーとの連携が完了しました！予約が自動同期されます。
+              </div>
+            );
+          }
+          if (gcalResult === "error" || gcalResult === "auth_error") {
+            window.history.replaceState({}, "", window.location.pathname);
+            return (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">
+                ❌ Googleカレンダーの連携に失敗しました。再度お試しください。
+              </div>
+            );
+          }
+          return null;
+        })()}
+
         {/* Googleカレンダー連携 */}
         <section className="glass-card p-4 flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
@@ -421,8 +446,10 @@ export default function ReservationsClient() {
                     const j = await res.json().catch(() => null);
                     if (j?.auth_url) {
                       window.location.href = j.auth_url;
+                    } else if (res.status === 503) {
+                      alert("Googleカレンダー連携は現在準備中です。\n\nGoogle Cloud ConsoleでOAuth認証情報を設定し、環境変数（GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_REDIRECT_URI）をVercelに登録してください。");
                     } else if (j?.error) {
-                      alert("連携エラー: " + j.error);
+                      alert("連携エラー: " + (typeof j.error === "string" ? j.error : j.error.message ?? JSON.stringify(j.error)));
                     } else {
                       alert("Googleカレンダー連携の設定が必要です。管理者にお問い合わせください。");
                     }
@@ -589,6 +616,27 @@ export default function ReservationsClient() {
                                 取消
                               </button>
                             </>
+                          )}
+                          {(r.status === "cancelled" || r.status === "completed") && (
+                            <button
+                              onClick={async () => {
+                                if (!confirm("この予約を完全に削除しますか？この操作は取り消せません。")) return;
+                                try {
+                                  const res = await fetch("/api/admin/reservations", {
+                                    method: "DELETE",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ id: r.id, hard_delete: true }),
+                                  });
+                                  if (!res.ok) throw new Error("削除に失敗しました");
+                                  mutate();
+                                } catch (e: unknown) {
+                                  setMutationErr(e instanceof Error ? e.message : String(e));
+                                }
+                              }}
+                              className="btn-secondary px-2.5 py-1 text-[11px] text-red-500 hover:text-red-600"
+                            >
+                              削除
+                            </button>
                           )}
                         </div>
                       </div>

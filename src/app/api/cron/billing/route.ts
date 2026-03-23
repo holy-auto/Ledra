@@ -62,8 +62,9 @@ export async function GET(req: NextRequest) {
   // ─── 1. Auto-detect overdue ───
   try {
     const { data: overdueInvoices } = await supabase
-      .from("invoices")
+      .from("documents")
       .select("id")
+      .in("doc_type", ["invoice", "consolidated_invoice"])
       .eq("status", "sent")
       .lt("due_date", today)
       .not("due_date", "is", null);
@@ -71,7 +72,7 @@ export async function GET(req: NextRequest) {
     if (overdueInvoices && overdueInvoices.length > 0) {
       const ids = overdueInvoices.map((inv) => inv.id);
       const { count } = await supabase
-        .from("invoices")
+        .from("documents")
         .update({ status: "overdue", updated_at: new Date().toISOString() })
         .in("id", ids);
       overdueUpdated = count ?? ids.length;
@@ -88,8 +89,9 @@ export async function GET(req: NextRequest) {
     const threeDaysAgoStr = threeDaysAgo.toISOString().slice(0, 10);
 
     const { data: overdueForReminder } = await supabase
-      .from("invoices")
-      .select("id, tenant_id, customer_id, invoice_number, total, due_date")
+      .from("documents")
+      .select("id, tenant_id, customer_id, doc_number, total, due_date")
+      .in("doc_type", ["invoice", "consolidated_invoice"])
       .eq("status", "overdue")
       .lte("due_date", threeDaysAgoStr);
 
@@ -127,7 +129,7 @@ export async function GET(req: NextRequest) {
         `
           <p style="color: #1d1d1f; font-size: 14px;">
             ${customer.name} 様<br><br>
-            ${shopName}より、請求書 <strong>${inv.invoice_number}</strong> のお支払い期限が過ぎております。
+            ${shopName}より、請求書 <strong>${inv.doc_number}</strong> のお支払い期限が過ぎております。
           </p>
           <div style="background: #fff3cd; border-radius: 8px; padding: 12px; margin: 16px 0; font-size: 14px; color: #856404;">
             請求額: <strong>¥${(inv.total ?? 0).toLocaleString("ja-JP")}</strong><br>
@@ -139,7 +141,7 @@ export async function GET(req: NextRequest) {
 
       const sent = await sendReminderEmail(
         customer.email,
-        `[${shopName}] お支払いのお願い: ${inv.invoice_number}`,
+        `[${shopName}] お支払いのお願い: ${inv.doc_number}`,
         html,
       );
 
@@ -162,8 +164,9 @@ export async function GET(req: NextRequest) {
     const sevenDaysLaterStr = sevenDaysLater.toISOString().slice(0, 10);
 
     const { data: dueSoonInvoices } = await supabase
-      .from("invoices")
-      .select("id, tenant_id, customer_id, invoice_number, total, due_date")
+      .from("documents")
+      .select("id, tenant_id, customer_id, doc_number, total, due_date")
+      .in("doc_type", ["invoice", "consolidated_invoice"])
       .eq("status", "sent")
       .eq("due_date", sevenDaysLaterStr);
 
@@ -198,7 +201,7 @@ export async function GET(req: NextRequest) {
         `
           <p style="color: #1d1d1f; font-size: 14px;">
             ${customer.name} 様<br><br>
-            ${shopName}より、請求書 <strong>${inv.invoice_number}</strong> のお支払期限が近づいております。
+            ${shopName}より、請求書 <strong>${inv.doc_number}</strong> のお支払期限が近づいております。
           </p>
           <div style="background: #f5f5f7; border-radius: 8px; padding: 12px; margin: 16px 0; font-size: 14px; color: #1d1d1f;">
             請求額: <strong>¥${(inv.total ?? 0).toLocaleString("ja-JP")}</strong><br>
@@ -209,7 +212,7 @@ export async function GET(req: NextRequest) {
 
       const sent = await sendReminderEmail(
         customer.email,
-        `[${shopName}] お支払期限のご案内: ${inv.invoice_number}`,
+        `[${shopName}] お支払期限のご案内: ${inv.doc_number}`,
         html,
       );
 

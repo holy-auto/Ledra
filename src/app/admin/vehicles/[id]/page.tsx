@@ -200,6 +200,13 @@ export default async function AdminVehicleDetailPage({
           <div>車種: {vehicle.model ?? "-"}</div>
           <div>年式: {vehicle.year ?? "-"}</div>
           <div>ナンバー: {vehicle.plate_display ?? "-"}</div>
+          <div>
+            サイズ: {(vehicle as any).size_class ? (
+              <span className="inline-flex items-center rounded-md bg-accent-dim px-2 py-0.5 text-xs font-bold text-accent">
+                {(vehicle as any).size_class}
+              </span>
+            ) : <span className="text-muted">未設定</span>}
+          </div>
           <div className="font-mono">車体番号: {vehicle.vin_code ?? "-"}</div>
           <div>
             現所有者: {(vehicle as any).customer?.name ?? <span className="text-muted">未設定</span>}

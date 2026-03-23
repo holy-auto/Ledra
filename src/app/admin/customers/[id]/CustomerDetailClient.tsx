@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { formatDate } from "@/lib/format";
 
 type Customer = {
@@ -115,7 +116,12 @@ export default function CustomerDetailClient({ customer: initial }: { customer: 
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">CUSTOMER INFO</div>
           <div className="mt-1 text-lg font-bold text-primary">{customer.name}</div>
         </div>
-        <button type="button" className="btn-ghost text-xs" onClick={() => setEditing(true)}>編集</button>
+        <div className="flex gap-2">
+          <Link href={`/admin/certificates/new?customer_id=${customer.id}`} className="btn-primary text-xs">
+            証明書発行を開始
+          </Link>
+          <button type="button" className="btn-ghost text-xs" onClick={() => setEditing(true)}>編集</button>
+        </div>
       </div>
       {msg && <div className={`text-sm ${msg.ok ? "text-success" : "text-danger"}`}>{msg.text}</div>}
       {infoRow("フリガナ", customer.name_kana)}

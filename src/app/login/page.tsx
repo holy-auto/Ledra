@@ -11,7 +11,7 @@ function safeNextPath(value: string | undefined) {
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string; e?: string }>;
+  searchParams: Promise<{ next?: string; e?: string; reason?: string }>;
 }) {
   const sp = await searchParams;
   const next = safeNextPath(sp.next);
@@ -40,6 +40,12 @@ export default async function Page({
         </div>
 
         <h1 className="text-xl font-bold text-primary text-center">ログイン</h1>
+
+        {sp.reason === "idle" && (
+          <div className="text-sm text-amber-500 text-center">
+            一定時間操作がなかったため、自動的にログアウトしました。
+          </div>
+        )}
 
         {sp.e && (
           <div className="text-sm text-red-400 text-center">

@@ -40,9 +40,12 @@ CREATE INDEX IF NOT EXISTS idx_nfc_tags_cert
 CREATE INDEX IF NOT EXISTS idx_vehicle_histories_vehicle
   ON vehicle_histories(vehicle_id, performed_at DESC);
 
--- 請求書: テナント別作成日
-CREATE INDEX IF NOT EXISTS idx_invoices_tenant_created
-  ON invoices(tenant_id, created_at DESC);
+-- 請求書: テナント別作成日 (skip if invoices is a VIEW)
+DO $$ BEGIN
+IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='invoices' AND table_type='BASE TABLE') THEN
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_invoices_tenant_created ON invoices(tenant_id, created_at DESC)';
+END IF;
+END $$;
 
 -- ドキュメント: テナント別作成日
 CREATE INDEX IF NOT EXISTS idx_documents_tenant_created

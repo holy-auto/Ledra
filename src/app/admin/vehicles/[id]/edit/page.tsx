@@ -16,6 +16,7 @@ export default function AdminVehicleEditPage() {
   const [year, setYear] = useState("");
   const [plateDisplay, setPlateDisplay] = useState("");
   const [vinCode, setVinCode] = useState("");
+  const [sizeClass, setSizeClass] = useState("");
   const [notes, setNotes] = useState("");
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
@@ -51,6 +52,7 @@ export default function AdminVehicleEditPage() {
           setYear(v.year ? String(v.year) : "");
           setPlateDisplay(v.plate_display ?? "");
           setVinCode(v.vin_code ?? "");
+          setSizeClass(v.size_class ?? "");
           setNotes(v.notes ?? "");
           if (v.customer) {
             setCustomerId(v.customer.id);
@@ -81,6 +83,7 @@ export default function AdminVehicleEditPage() {
           vin_code: vinCode || null,
           notes: notes || null,
           customer_id: customerId || null,
+          size_class: sizeClass || null,
         }),
       });
 
@@ -222,6 +225,37 @@ export default function AdminVehicleEditPage() {
                 maxLength={50}
               />
             </label>
+          </div>
+
+          {/* 車両サイズ */}
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-primary">車両サイズ</div>
+            <div className="flex gap-2 flex-wrap">
+              {["SS", "S", "M", "L", "LL", "XL"].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setSizeClass(s)}
+                  className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+                    sizeClass === s
+                      ? "border-accent bg-accent text-white"
+                      : "border-neutral-200 bg-surface text-secondary hover:bg-surface-hover"
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+              {sizeClass && (
+                <button
+                  type="button"
+                  onClick={() => setSizeClass("")}
+                  className="text-xs text-muted hover:text-red-500 ml-2"
+                >
+                  クリア
+                </button>
+              )}
+            </div>
+            <p className="text-[11px] text-muted">SS=~8㎥, S=8~10㎥, M=10~12㎥, L=12~14㎥, LL=14~16㎥, XL=16㎥~（体積基準）</p>
           </div>
 
           {/* 顧客紐付け */}

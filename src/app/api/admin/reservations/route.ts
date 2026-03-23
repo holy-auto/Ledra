@@ -203,6 +203,36 @@ export async function DELETE(req: NextRequest) {
     const id = (String(body?.id ?? "")).trim();
     if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
 
+    const hardDelete = body?.hard_delete === true;
+
+    if (hardDelete) {
+      // 完全削除（キャンセル済み or 完了のみ許可）
+      const { data: existing } = await supabase
+        .from("reservations")
+        .select("status")
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .single();
+
+      if (!existing) return NextResponse.json({ error: "not_found" }, { status: 404 });
+      if (existing.status !== "cancelled" && existing.status !== "completed") {
+        return NextResponse.json({ error: "active_reservation_cannot_delete" }, { status: 400 });
+      }
+
+      const { error: delErr } = await supabase
+        .from("reservations")
+        .delete()
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId);
+
+      if (delErr) {
+        console.error("[reservations] hard_delete_failed:", delErr.message);
+        return NextResponse.json({ error: "delete_failed" }, { status: 500 });
+      }
+      return NextResponse.json({ ok: true, deleted: true });
+    }
+
+    // ソフトデリート（キャンセル扱い）
     const cancelReason = (String(body?.cancel_reason ?? "")).trim() || null;
 
     const { data, error } = await supabase

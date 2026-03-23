@@ -49,6 +49,7 @@ type Template = {
 type Props = {
   vehicles: Vehicle[];
   defaultVehicleId?: string;
+  defaultCustomerId?: string;
   templates: Template[];
   selectedTemplate: Template | null;
   tenantLogoPath: string | null;
@@ -75,6 +76,7 @@ const PLAN_LABELS: Record<PlanTier, string> = {
 export default function CertNewFormWrapper({
   vehicles,
   defaultVehicleId,
+  defaultCustomerId,
   templates,
   selectedTemplate,
   tenantLogoPath,
@@ -200,12 +202,16 @@ export default function CertNewFormWrapper({
       >
         <input type="hidden" name="template_id" value={selectedTemplate?.id ?? ""} />
         <input type="hidden" name="template_name" value={selectedTemplate?.name ?? ""} />
+        {defaultCustomerId && <input type="hidden" name="customer_id" value={defaultCustomerId} />}
         {serviceType && <input type="hidden" name="service_type" value={serviceType} />}
 
         {/* ━━━ 1. 車種選択 ━━━ */}
         <section data-vehicle-picker className="pb-6">
           <VehiclePickerSection
-            vehicles={vehicles}
+            vehicles={defaultCustomerId
+              ? vehicles.filter((v) => (v as Record<string, unknown>).customer_id === defaultCustomerId || !defaultVehicleId)
+              : vehicles
+            }
             defaultVehicleId={defaultVehicleId}
           />
         </section>
@@ -325,94 +331,7 @@ export default function CertNewFormWrapper({
           </label>
         </section>
 
-        {/* ━━━ テンプレ追加フィールド（あれば） ━━━ */}
-        {schema && schema.sections.length > 0 && (
-          <section className="border-t border-neutral-100 py-6 space-y-5">
-            <div className={sectionHeaderCls}>
-              <div className={sectionTagCls}>TEMPLATE FIELDS</div>
-              <div className={sectionTitleCls}>テンプレート追加項目</div>
-              <p className="mt-0.5 text-xs text-neutral-500">
-                選択中のテンプレート「{selectedTemplate?.name}」で定義された追加フィールド
-              </p>
-            </div>
-
-            {schema.sections.map((sec) => (
-              <div key={sec.title} className="rounded-xl border border-neutral-200 p-4 space-y-4">
-                <div className="text-sm font-semibold text-neutral-800">{sec.title}</div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {sec.fields.map((f) => {
-                    const name = `f__${f.key}`;
-
-                    if (f.type === "checkbox") {
-                      return (
-                        <label key={f.key} className="flex items-center gap-2.5 text-sm text-neutral-700">
-                          <input type="checkbox" name={name} className="h-4 w-4 rounded border-neutral-300" />
-                          <span>{f.label}</span>
-                        </label>
-                      );
-                    }
-                    if (f.type === "select") {
-                      return (
-                        <div key={f.key} className={labelCls}>
-                          <span className={labelTextCls}>{f.label}{f.required ? " *" : ""}</span>
-                          <select name={name} className={inputCls} required={!!f.required}>
-                            <option value="">選択してください</option>
-                            {(f.options ?? []).map((opt) => (
-                              <option key={opt} value={opt}>{opt}</option>
-                            ))}
-                          </select>
-                        </div>
-                      );
-                    }
-                    if (f.type === "multiselect") {
-                      return (
-                        <div key={f.key} className={`${labelCls} sm:col-span-2`}>
-                          <span className={labelTextCls}>{f.label}{f.required ? " *" : ""}</span>
-                          <select name={name} multiple className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm h-28 focus:outline-none focus:ring-2 focus:ring-neutral-400" required={!!f.required}>
-                            {(f.options ?? []).map((opt) => (
-                              <option key={opt} value={opt}>{opt}</option>
-                            ))}
-                          </select>
-                          <p className="text-[11px] text-neutral-500">Ctrl / Shift で複数選択</p>
-                        </div>
-                      );
-                    }
-                    if (f.type === "textarea") {
-                      return (
-                        <div key={f.key} className={`${labelCls} sm:col-span-2`}>
-                          <span className={labelTextCls}>{f.label}{f.required ? " *" : ""}</span>
-                          <textarea name={name} className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400" rows={3} required={!!f.required} />
-                        </div>
-                      );
-                    }
-                    if (f.type === "number") {
-                      return (
-                        <div key={f.key} className={labelCls}>
-                          <span className={labelTextCls}>{f.label}{f.required ? " *" : ""}</span>
-                          <input type="number" name={name} className={inputCls} required={!!f.required} />
-                        </div>
-                      );
-                    }
-                    if (f.type === "date") {
-                      return (
-                        <div key={f.key} className={labelCls}>
-                          <span className={labelTextCls}>{f.label}{f.required ? " *" : ""}</span>
-                          <input type="date" name={name} className={inputCls} required={!!f.required} />
-                        </div>
-                      );
-                    }
-                    return (
-                      <div key={f.key} className={labelCls}>
-                        <span className={labelTextCls}>{f.label}{f.required ? " *" : ""}</span>
-                        <input name={name} className={inputCls} required={!!f.required} />
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </section>
-        )}
+        {/* テンプレート追加項目は廃止 — テンプレート選択のみ上部で行う */}
 
         {/* ── エラー ── */}
         {error && (

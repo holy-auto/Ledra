@@ -49,6 +49,7 @@ type VehicleOption = {
   vin_code: string | null;
   customer_id: string | null;
   customer_name: string | null;
+  size_class: string | null;
 };
 
 type MenuItem = {
@@ -253,7 +254,8 @@ export default function InvoicesClient() {
     }
     const v = vehicles.find((veh) => veh.id === vehicleId);
     if (v) {
-      const modelStr = [v.maker, v.model, v.year ? String(v.year) : null].filter(Boolean).join(" ");
+      const sizeTag = v.size_class ? ` [${v.size_class}]` : "";
+      const modelStr = [v.maker, v.model, v.year ? String(v.year) : null].filter(Boolean).join(" ") + sizeTag;
       setFormVehicleModel(modelStr);
       setFormVehiclePlate(v.plate_display ?? "");
       setFormVehicleVin(v.vin_code ?? "");
@@ -639,14 +641,29 @@ export default function InvoicesClient() {
                     )}
                     <div className="grid grid-cols-6 sm:grid-cols-12 gap-2 items-end">
                       <div className="col-span-6 sm:col-span-4 space-y-1">
-                        {idx === 0 && <label className="text-xs text-muted">内容</label>}
-                        <input
-                          type="text"
-                          className="input-field"
-                          placeholder="施工内容"
-                          value={item.description}
-                          onChange={(e) => updateItem(idx, "description", e.target.value)}
-                        />
+                        {idx === 0 && <label className="text-xs text-muted">内容（品目マスタから選択 or 直接入力）</label>}
+                        <div className="relative">
+                          <input
+                            type="text"
+                            className="input-field"
+                            list={`menu-item-list-${idx}`}
+                            placeholder="施工内容を入力 or 選択"
+                            value={item.description}
+                            onChange={(e) => {
+                              updateItem(idx, "description", e.target.value);
+                              // 品目マスタの名前と一致したら単価も自動入力
+                              const matched = menuItems.find((m) => m.name === e.target.value);
+                              if (matched) {
+                                updateItem(idx, "unit_price", String(matched.unit_price ?? 0));
+                              }
+                            }}
+                          />
+                          <datalist id={`menu-item-list-${idx}`}>
+                            {menuItems.map((m) => (
+                              <option key={m.id} value={m.name}>{m.name} — ¥{(m.unit_price ?? 0).toLocaleString()}</option>
+                            ))}
+                          </datalist>
+                        </div>
                       </div>
                       <div className="col-span-2 sm:col-span-2 space-y-1">
                         {idx === 0 && <label className="text-xs text-muted">数量</label>}

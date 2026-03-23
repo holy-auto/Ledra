@@ -437,10 +437,22 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                       <input
                         type="text"
                         className="input-field"
-                        placeholder="品目・内容"
+                        list={`doc-menu-list-${idx}`}
+                        placeholder="品目・内容を入力 or 選択"
                         value={item.description}
-                        onChange={(e) => updateItem(idx, "description", e.target.value)}
+                        onChange={(e) => {
+                          updateItem(idx, "description", e.target.value);
+                          const matched = menuItems.find((m) => m.name === e.target.value);
+                          if (matched) {
+                            updateItem(idx, "unit_price", String(matched.unit_price ?? 0));
+                          }
+                        }}
                       />
+                      <datalist id={`doc-menu-list-${idx}`}>
+                        {menuItems.map((m) => (
+                          <option key={m.id} value={m.name}>{m.name} — ¥{(m.unit_price ?? 0).toLocaleString()}</option>
+                        ))}
+                      </datalist>
                     </div>
                     <div className="col-span-2 space-y-1">
                       {idx === 0 && <label className="text-xs text-muted">数量</label>}

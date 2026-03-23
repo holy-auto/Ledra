@@ -3,6 +3,8 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { buildBillingDenyUrl, BillingReason } from "@/lib/billing/billingRedirect";
 import type { FeatureKey } from "@/lib/billing/planFeatures";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 
 export type GateOk = {
   ok: true;
@@ -34,6 +36,12 @@ export async function checkAdminFeature(feature: FeatureKey, returnTo: string): 
   const { data: userRes } = await supabase.auth.getUser();
   if (!userRes?.user) {
     return { ok: false, status: 401, reason: "unauthorized" };
+  }
+
+  // --- Platform admin bypass: skip all plan/active checks ---
+  const caller = await resolveCallerWithRole(supabase);
+  if (caller && isPlatformAdmin(caller)) {
+    return { ok: true, tenantId: caller.tenantId, planTier: "pro", isActive: true };
   }
 
   const { data: mem } = await supabase

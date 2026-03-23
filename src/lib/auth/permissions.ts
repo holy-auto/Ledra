@@ -33,6 +33,9 @@ export type Permission =
   | "stores:view" | "stores:manage"
   // Template Options
   | "template_options:view" | "template_options:manage"
+  // Registers
+  | "registers:view" | "registers:manage"
+  | "register_sessions:view" | "register_sessions:operate" | "register_sessions:manage"
   // Other
   | "announcements:view" | "news:view" | "price_stats:view"
   | "management:view" | "audit:view" | "insurers:view" | "insurers:manage"
@@ -57,6 +60,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "settings:view", "settings:edit",
     "billing:view", "billing:manage",
     "stores:view", "stores:manage",
+    "registers:view", "registers:manage",
+    "register_sessions:view", "register_sessions:operate", "register_sessions:manage",
     "announcements:view", "news:view", "price_stats:view",
     "management:view", "audit:view",
     "insurers:view", "insurers:manage",
@@ -77,6 +82,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "settings:view", "settings:edit",
     "billing:view",
     "stores:view", "stores:manage",
+    "registers:view", "registers:manage",
+    "register_sessions:view", "register_sessions:operate", "register_sessions:manage",
     "announcements:view", "news:view", "price_stats:view",
     "management:view", "audit:view",
     "insurers:view", "insurers:manage",
@@ -93,6 +100,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "market:view", "market:create", "market:edit",
     "orders:view", "orders:create",
     "stores:view",
+    "registers:view",
+    "register_sessions:view", "register_sessions:operate",
     "announcements:view", "news:view", "price_stats:view",
   ],
   viewer: [
@@ -105,6 +114,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "market:view",
     "orders:view",
     "stores:view",
+    "registers:view",
+    "register_sessions:view",
     "announcements:view", "news:view", "price_stats:view",
   ],
 };
@@ -157,6 +168,8 @@ export const ROUTE_PERMISSIONS: Record<string, Permission> = {
   "/admin/logo": "logo:manage",
   "/admin/audit": "audit:view",
   "/admin/stores": "stores:view",
+  "/admin/pos": "register_sessions:operate",
+  "/admin/registers": "registers:view",
   "/admin/deals": "market:view",
   "/admin/template-options": "template_options:view",
   "/admin/platform/template-orders": "template_options:manage",
