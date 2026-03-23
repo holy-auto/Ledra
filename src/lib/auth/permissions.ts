@@ -31,6 +31,8 @@ export type Permission =
   | "billing:view" | "billing:manage"
   // Stores
   | "stores:view" | "stores:manage"
+  // Payments
+  | "payments:view" | "payments:create" | "payments:manage"
   // Template Options
   | "template_options:view" | "template_options:manage"
   // Registers
@@ -65,6 +67,7 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "announcements:view", "news:view", "price_stats:view",
     "management:view", "audit:view",
     "insurers:view", "insurers:manage",
+    "payments:view", "payments:create", "payments:manage",
     "logo:manage",
     "template_options:view", "template_options:manage",
   ],
@@ -87,6 +90,7 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "announcements:view", "news:view", "price_stats:view",
     "management:view", "audit:view",
     "insurers:view", "insurers:manage",
+    "payments:view", "payments:create", "payments:manage",
     "logo:manage",
     "template_options:view", "template_options:manage",
   ],
@@ -102,6 +106,7 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "stores:view",
     "registers:view",
     "register_sessions:view", "register_sessions:operate",
+    "payments:view", "payments:create",
     "announcements:view", "news:view", "price_stats:view",
   ],
   viewer: [
@@ -116,6 +121,7 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "stores:view",
     "registers:view",
     "register_sessions:view",
+    "payments:view",
     "announcements:view", "news:view", "price_stats:view",
   ],
 };
@@ -171,6 +177,7 @@ export const ROUTE_PERMISSIONS: Record<string, Permission> = {
   "/admin/pos": "register_sessions:operate",
   "/admin/registers": "registers:view",
   "/admin/deals": "market:view",
+  "/admin/payments": "payments:view",
   "/admin/template-options": "template_options:view",
   "/admin/platform/template-orders": "template_options:manage",
 };
