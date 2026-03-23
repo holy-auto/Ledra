@@ -7,6 +7,7 @@ import { createCertAction } from "./actions";
 import VehiclePickerSection from "./VehiclePickerSection";
 import FilmThicknessSection from "./FilmThicknessSection";
 import CoatingProductsSection from "./CoatingProductsSection";
+import PpfCoverageSection from "./PpfCoverageSection";
 import PhotoUploadSection, { type PhotoUploadHandle } from "./PhotoUploadSection";
 import Button from "@/components/ui/Button";
 import type { PlanTier } from "@/lib/billing/planFeatures";
@@ -54,6 +55,7 @@ type Props = {
   tenantLogoPath: string | null;
   planTier: PlanTier;
   tid: string;
+  serviceType?: string; // "ppf" | "coating" | etc — derived from template category
 };
 
 const inputCls =
@@ -80,7 +82,9 @@ export default function CertNewFormWrapper({
   tenantLogoPath,
   planTier,
   tid,
+  serviceType,
 }: Props) {
+  const isPpf = serviceType === "ppf";
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [submitStatus, setSubmitStatus] = useState<"active" | "draft">("active");
@@ -199,6 +203,7 @@ export default function CertNewFormWrapper({
         <input type="hidden" name="template_id" value={selectedTemplate?.id ?? ""} />
         <input type="hidden" name="template_name" value={selectedTemplate?.name ?? ""} />
         {defaultCustomerId && <input type="hidden" name="customer_id" value={defaultCustomerId} />}
+        {serviceType && <input type="hidden" name="service_type" value={serviceType} />}
 
         {/* ━━━ 1. 車種選択 ━━━ */}
         <section data-vehicle-picker className="pb-6">
@@ -211,9 +216,16 @@ export default function CertNewFormWrapper({
           />
         </section>
 
-        {/* ━━━ 2. コーティング情報 ━━━ */}
+        {/* ━━━ 2. PPF施工範囲（PPFテンプレート時のみ） ━━━ */}
+        {isPpf && (
+          <section className="border-t border-neutral-100 py-6">
+            <PpfCoverageSection />
+          </section>
+        )}
+
+        {/* ━━━ 3. コーティング剤 / 使用フィルム ━━━ */}
         <section className="border-t border-neutral-100 py-6">
-          <CoatingProductsSection />
+          <CoatingProductsSection serviceType={serviceType} />
         </section>
 
         {/* ━━━ 3. 有効期限・保証期間 ━━━ */}

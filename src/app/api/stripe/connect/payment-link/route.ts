@@ -50,12 +50,13 @@ export async function POST(req: NextRequest) {
       return apiForbidden("Stripe Connect のオンボーディングを完了してください。");
     }
 
-    // 請求書を取得
+    // 請求書を取得 (documents テーブルから)
     const { data: invoice } = await admin
-      .from("invoices")
-      .select("id, total, subject, recipient_name, status, customer_id")
+      .from("documents")
+      .select("id, total, doc_number, recipient_name, status, customer_id")
       .eq("id", invoice_id)
       .eq("tenant_id", caller.tenantId)
+      .in("doc_type", ["invoice", "consolidated_invoice"])
       .single();
 
     if (!invoice) return apiNotFound("請求書が見つかりません。");
@@ -82,7 +83,7 @@ export async function POST(req: NextRequest) {
           price_data: {
             currency: "jpy",
             product_data: {
-              name: (invoice.subject as string) || `請求書 #${(invoice.id as string).slice(0, 8)}`,
+              name: (invoice.doc_number as string) || `請求書 #${(invoice.id as string).slice(0, 8)}`,
               description: tenant.name ? `${tenant.name}からの請求` : undefined,
             },
             unit_amount: totalYen,

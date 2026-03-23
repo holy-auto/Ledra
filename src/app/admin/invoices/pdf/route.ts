@@ -24,12 +24,13 @@ export async function GET(req: Request) {
 
   const admin = createAdminClient();
 
-  // Fetch invoice
+  // Fetch invoice from documents table
   const { data: invoice, error } = await admin
-    .from("invoices")
+    .from("documents")
     .select("*")
     .eq("id", id)
     .eq("tenant_id", tenantId)
+    .eq("doc_type", "invoice")
     .single();
   if (error || !invoice) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
@@ -53,13 +54,18 @@ export async function GET(req: Request) {
   }
 
   try {
-    const pdf = await renderInvoicePdf(invoice as any, tenant as any, customerName);
+    // Map documents columns to InvoiceForPdf shape
+    const invoiceForPdf = {
+      ...invoice,
+      invoice_number: invoice.doc_number,
+    };
+    const pdf = await renderInvoicePdf(invoiceForPdf as any, tenant as any, customerName);
     const body = new Uint8Array(pdf as any);
     return new NextResponse(body, {
       status: 200,
       headers: {
         "content-type": "application/pdf",
-        "content-disposition": `attachment; filename="${invoice.invoice_number || "invoice"}.pdf"`,
+        "content-disposition": `attachment; filename="${invoice.doc_number || "invoice"}.pdf"`,
       },
     });
   } catch (e: any) {

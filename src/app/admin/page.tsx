@@ -70,7 +70,7 @@ async function TenantStats({ tenantId }: { tenantId: string }) {
       supabase.from("certificates").select("status,created_at").eq("tenant_id", tenantId),
       supabase.from("tenant_memberships").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId),
       supabase.from("customers").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId),
-      supabase.from("invoices").select("status,total").eq("tenant_id", tenantId),
+      supabase.from("documents").select("status,total").eq("tenant_id", tenantId).in("doc_type", ["invoice", "consolidated_invoice"]),
       Promise.resolve(supabase.from("reservations").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("scheduled_date", today).neq("status", "cancelled")).catch(() => ({ count: 0 })),
       Promise.resolve(supabase.from("reservations").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).in("status", ["confirmed", "arrived", "in_progress"])).catch(() => ({ count: 0 })),
       Promise.resolve(supabase.from("job_orders").select("*", { count: "exact", head: true }).or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`).in("status", ["pending", "accepted", "in_progress"])).catch(() => ({ count: 0 })),

@@ -69,31 +69,30 @@ CREATE TABLE IF NOT EXISTS invoices (
   updated_at timestamptz DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_invoices_tenant ON invoices(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_invoices_customer ON invoices(customer_id);
+-- Indexes and RLS only if invoices is a real table (not a VIEW)
+DO $$ BEGIN
+IF EXISTS (
+  SELECT 1 FROM information_schema.tables
+  WHERE table_schema = 'public' AND table_name = 'invoices' AND table_type = 'BASE TABLE'
+) THEN
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_invoices_tenant ON invoices(tenant_id)';
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_invoices_customer ON invoices(customer_id)';
+  EXECUTE 'ALTER TABLE invoices ENABLE ROW LEVEL SECURITY';
+  EXECUTE 'DROP POLICY IF EXISTS invoices_tenant_select ON invoices';
+  EXECUTE 'CREATE POLICY invoices_tenant_select ON invoices FOR SELECT USING (tenant_id IN (SELECT tenant_id FROM tenant_memberships WHERE user_id = auth.uid()))';
+END IF;
+END $$;
 
-ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS invoices_tenant_select ON invoices;
-CREATE POLICY invoices_tenant_select ON invoices
-  FOR SELECT USING (
-    tenant_id IN (SELECT tenant_id FROM tenant_memberships WHERE user_id = auth.uid())
-  );
-
-DROP POLICY IF EXISTS invoices_tenant_insert ON invoices;
-CREATE POLICY invoices_tenant_insert ON invoices
-  FOR INSERT WITH CHECK (
-    tenant_id IN (SELECT tenant_id FROM tenant_memberships WHERE user_id = auth.uid())
-  );
-
-DROP POLICY IF EXISTS invoices_tenant_update ON invoices;
-CREATE POLICY invoices_tenant_update ON invoices
-  FOR UPDATE USING (
-    tenant_id IN (SELECT tenant_id FROM tenant_memberships WHERE user_id = auth.uid())
-  );
-
-DROP POLICY IF EXISTS invoices_tenant_delete ON invoices;
-CREATE POLICY invoices_tenant_delete ON invoices
-  FOR DELETE USING (
-    tenant_id IN (SELECT tenant_id FROM tenant_memberships WHERE user_id = auth.uid())
-  );
+DO $$ BEGIN
+IF EXISTS (
+  SELECT 1 FROM information_schema.tables
+  WHERE table_schema = 'public' AND table_name = 'invoices' AND table_type = 'BASE TABLE'
+) THEN
+  EXECUTE 'DROP POLICY IF EXISTS invoices_tenant_insert ON invoices';
+  EXECUTE 'CREATE POLICY invoices_tenant_insert ON invoices FOR INSERT WITH CHECK (tenant_id IN (SELECT tenant_id FROM tenant_memberships WHERE user_id = auth.uid()))';
+  EXECUTE 'DROP POLICY IF EXISTS invoices_tenant_update ON invoices';
+  EXECUTE 'CREATE POLICY invoices_tenant_update ON invoices FOR UPDATE USING (tenant_id IN (SELECT tenant_id FROM tenant_memberships WHERE user_id = auth.uid()))';
+  EXECUTE 'DROP POLICY IF EXISTS invoices_tenant_delete ON invoices';
+  EXECUTE 'CREATE POLICY invoices_tenant_delete ON invoices FOR DELETE USING (tenant_id IN (SELECT tenant_id FROM tenant_memberships WHERE user_id = auth.uid()))';
+END IF;
+END $$;

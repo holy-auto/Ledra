@@ -16,6 +16,7 @@ Font.register({
 });
 import { createSignedAssetUrl } from "@/lib/signedUrl";
 import QRCode from "qrcode";
+import { getPanelLabel, getCoverageLabel, getFilmTypeLabel } from "@/lib/ppf/constants";
 
 type FieldType = "text" | "textarea" | "number" | "date" | "select" | "multiselect" | "checkbox";
 
@@ -35,10 +36,15 @@ export type CertRow = {
   content_free_text: string | null;
   content_preset_json: any;
   coating_products_json?: any[] | null;
+  ppf_coverage_json?: any[] | null;
+  service_type?: string | null;
   expiry_type: string | null;
   expiry_value: string | null;
+  warranty_period_end?: string | null;
+  warranty_exclusions?: string | null;
   logo_asset_path: string | null;
   created_at: string;
+  current_version?: number | null;
 };
 
 const styles = StyleSheet.create({
@@ -110,10 +116,12 @@ export async function renderCertificatePdf(row: CertRow, publicUrl: string) {
   const vehicle = row.vehicle_info_json ?? {};
   const model = String(vehicle.model ?? "").trim();
   const plate = String(vehicle.plate ?? "").trim();
+  const color = String(vehicle.color ?? "").trim();
+  const isPpf = row.service_type === "ppf";
+  const ppfCoverage: any[] = Array.isArray(row.ppf_coverage_json) ? row.ppf_coverage_json : [];
 
   const presetLines = buildPresetLines(schema, values);
 
-  // ✅ ロゴは失敗しても落とさない
   let logoUrl: string | null = null;
   try {
     logoUrl = row.logo_asset_path ? await createSignedAssetUrl(row.logo_asset_path, 3600) : null;
@@ -122,24 +130,39 @@ export async function renderCertificatePdf(row: CertRow, publicUrl: string) {
   }
 
   const qrDataUrl = await QRCode.toDataURL(publicUrl, { margin: 1, width: 220 });
+  const certTitle = isPpf ? "PPF施工証明書" : "施工証明書";
+  const productsTitle = isPpf ? "使用フィルム" : "コーティング剤";
 
   const doc = (
     <Document>
+      {/* ── ページ1: 証明書本体 ── */}
       <Page size="A4" style={styles.page}>
         <View style={styles.header}>
           <View>
             <View style={styles.titleRow}>
               {logoUrl ? <Image src={logoUrl} style={{ height: 26, width: 120 }} /> : null}
-              <Text style={styles.title}>施工証明書</Text>
+              <Text style={styles.title}>{certTitle}</Text>
             </View>
-            <Text style={styles.meta}>公開ID: {row.public_id}</Text>
-            <Text style={styles.meta}>発行日: {new Date(row.created_at).toLocaleString("ja-JP")}</Text>
+            <Text style={styles.meta}>証明書番号: {row.public_id}</Text>
+            <Text style={styles.meta}>発行日: {new Date(row.created_at).toLocaleDateString("ja-JP")}</Text>
+            {(row.current_version ?? 1) > 1 && (
+              <Text style={[styles.meta, { color: "#c00" }]}>再発行版（第{row.current_version}版）</Text>
+            )}
           </View>
           <View>
             <Image src={qrDataUrl} style={styles.qr} />
-            <Text style={styles.small}>QRで表示</Text>
+            <Text style={styles.small}>QRで確認</Text>
           </View>
         </View>
+
+        {/* 証明文 */}
+        {isPpf && (
+          <View style={{ marginTop: 10 }}>
+            <Text style={{ fontSize: 9, color: "#444", lineHeight: 1.6 }}>
+              本証明書は、下記車両に対してペイントプロテクションフィルム（PPF）の施工が完了した事実を証明するものです。
+            </Text>
+          </View>
+        )}
 
         <View style={styles.box}>
           <Text style={styles.label}>お客様名</Text>
@@ -148,7 +171,7 @@ export async function renderCertificatePdf(row: CertRow, publicUrl: string) {
 
         {(model || plate) ? (
           <View style={styles.box}>
-            <Text style={styles.label}>車両情報</Text>
+            <Text style={styles.sectionTitle}>車両情報</Text>
             {model ? (
               <View style={styles.itemRow}>
                 <Text style={styles.itemLabel}>車種</Text>
@@ -161,30 +184,53 @@ export async function renderCertificatePdf(row: CertRow, publicUrl: string) {
                 <Text style={styles.itemValue}>{plate}</Text>
               </View>
             ) : null}
+            {color ? (
+              <View style={styles.itemRow}>
+                <Text style={styles.itemLabel}>ボディカラー</Text>
+                <Text style={styles.itemValue}>{color}</Text>
+              </View>
+            ) : null}
           </View>
         ) : null}
 
-        {presetLines.length > 0 ? (
+        {/* 使用フィルム / コーティング剤 */}
+        {Array.isArray(row.coating_products_json) && row.coating_products_json.length > 0 ? (
           <View style={styles.box}>
-            <Text style={styles.sectionTitle}>テンプレ項目</Text>
-            {presetLines.map((it, idx) => (
+            <Text style={styles.sectionTitle}>{productsTitle}</Text>
+            {row.coating_products_json.map((cp: any, idx: number) => (
               <View key={idx} style={styles.itemRow}>
-                <Text style={styles.itemLabel}>[{it.section}] {it.label}</Text>
-                <Text style={styles.itemValue}>{it.value}</Text>
+                <Text style={styles.itemLabel}>{cp.location || "-"}</Text>
+                <Text style={styles.itemValue}>
+                  {[cp.brand_name, cp.product_name, cp.film_type ? getFilmTypeLabel(cp.film_type) : null].filter(Boolean).join(" / ") || "-"}
+                </Text>
               </View>
             ))}
           </View>
         ) : null}
 
-        {Array.isArray(row.coating_products_json) && row.coating_products_json.length > 0 ? (
+        {/* PPF施工範囲 */}
+        {isPpf && ppfCoverage.length > 0 ? (
           <View style={styles.box}>
-            <Text style={styles.sectionTitle}>コーティング剤</Text>
-            {row.coating_products_json.map((cp: any, idx: number) => (
+            <Text style={styles.sectionTitle}>施工範囲</Text>
+            {ppfCoverage.map((entry: any, idx: number) => (
               <View key={idx} style={styles.itemRow}>
-                <Text style={styles.itemLabel}>{cp.location || "-"}</Text>
+                <Text style={styles.itemLabel}>{getPanelLabel(entry.panel)}</Text>
                 <Text style={styles.itemValue}>
-                  {[cp.brand_name, cp.product_name].filter(Boolean).join(" / ") || "-"}
+                  {getCoverageLabel(entry.coverage)}
+                  {entry.partial_note ? ` — ${entry.partial_note}` : ""}
                 </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {presetLines.length > 0 ? (
+          <View style={styles.box}>
+            <Text style={styles.sectionTitle}>施工内容</Text>
+            {presetLines.map((it, idx) => (
+              <View key={idx} style={styles.itemRow}>
+                <Text style={styles.itemLabel}>[{it.section}] {it.label}</Text>
+                <Text style={styles.itemValue}>{it.value}</Text>
               </View>
             ))}
           </View>
@@ -203,10 +249,86 @@ export async function renderCertificatePdf(row: CertRow, publicUrl: string) {
         </View>
 
         <View style={styles.footer}>
-          <Text>公開URL: {publicUrl}</Text>
-          <Text>HOLY監修フッター（信頼担保）</Text>
+          <Text>証明書URL: {publicUrl}</Text>
+          <Text style={{ fontSize: 7, color: "#999", marginTop: 2 }}>Powered by CARTRUST</Text>
         </View>
       </Page>
+
+      {/* ── ページ2: 保証・注意事項（PPFの場合のみ） ── */}
+      {isPpf && (
+        <Page size="A4" style={styles.page}>
+          <View>
+            <Text style={styles.title}>{certTitle} — 保証・注意事項</Text>
+            <Text style={styles.meta}>証明書番号: {row.public_id}</Text>
+          </View>
+
+          {/* 保証情報 */}
+          {row.warranty_period_end && (
+            <View style={styles.box}>
+              <Text style={styles.sectionTitle}>保証情報</Text>
+              <View style={styles.itemRow}>
+                <Text style={styles.itemLabel}>保証期間終了日</Text>
+                <Text style={styles.itemValue}>{row.warranty_period_end}</Text>
+              </View>
+            </View>
+          )}
+
+          {/* 保証対象外事項 */}
+          {row.warranty_exclusions && (
+            <View style={styles.box}>
+              <Text style={styles.sectionTitle}>保証対象外事項</Text>
+              <Text style={{ fontSize: 9, lineHeight: 1.6 }}>{row.warranty_exclusions}</Text>
+            </View>
+          )}
+
+          {/* 注意事項 */}
+          <View style={styles.box}>
+            <Text style={styles.sectionTitle}>フィルムのお取り扱いについて</Text>
+            <Text style={{ fontSize: 8, lineHeight: 1.7, color: "#444" }}>
+              {[
+                "・施工後48時間は洗車およびフィルム端部への接触をお控えください。",
+                "・洗車は中性洗剤を使用した手洗いを推奨します。",
+                "・高圧洗浄機をご使用の際は、フィルム端部から30cm以上離してください。",
+                "・ワックスやコンパウンドをフィルム面に使用しないでください。",
+                "・フィルムの端部が浮いた場合は、ご自身で処置せず施工店にご連絡ください。",
+              ].join("\n")}
+            </Text>
+          </View>
+
+          {/* 免責事項 */}
+          <View style={styles.box}>
+            <Text style={styles.sectionTitle}>免責事項</Text>
+            <Text style={{ fontSize: 8, lineHeight: 1.7, color: "#444" }}>
+              {[
+                "本証明書は施工事実を証明するものであり、車両の状態や性能を保証するものではありません。",
+                "以下の事項については保証の対象外となります。",
+                "",
+                "・飛び石、事故その他の外的要因による物理的損傷",
+                "・不適切なメンテナンスに起因する劣化・損傷",
+                "・お客様ご自身による剥離、補修、改変",
+                "・当店以外での施工、修理、改造後に生じた不具合",
+                "・自然災害（台風、雹、洪水等）による損傷",
+                "・フィルムの経年による通常の劣化",
+                "・車両の製造上の塗装不良に起因する問題",
+                "",
+                "保証の適用にあたっては、施工店による現車確認が必要となる場合があります。",
+              ].join("\n")}
+            </Text>
+          </View>
+
+          {/* QR照会案内 */}
+          <View style={styles.box}>
+            <Text style={styles.sectionTitle}>オンライン照会について</Text>
+            <Text style={{ fontSize: 8, lineHeight: 1.7, color: "#444" }}>
+              本証明書に記載のQRコードをスマートフォンで読み取ると、CARTRUST認証プラットフォーム上で本証明書の最新情報をリアルタイムに確認できます。
+            </Text>
+          </View>
+
+          <View style={styles.footer}>
+            <Text style={{ fontSize: 7, color: "#999" }}>Powered by CARTRUST</Text>
+          </View>
+        </Page>
+      )}
     </Document>
   );
 

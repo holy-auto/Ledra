@@ -63,7 +63,7 @@ export default async function Page({
   // テナント固有 + 共通テンプレート（tenant_id IS NULL）を取得
   const { data: templates, error: tplErr } = await supabase
     .from("templates")
-    .select("id, name, schema_json, created_at")
+    .select("id, name, schema_json, category, created_at")
     .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
     .order("created_at", { ascending: false });
 
@@ -110,6 +110,7 @@ export default async function Page({
         tenantLogoPath={tenantLogoPath}
         planTier={planTier}
         tid={tid}
+        serviceType={(selected as any)?.category === "ppf" ? "ppf" : undefined}
       />
     </div>
   );

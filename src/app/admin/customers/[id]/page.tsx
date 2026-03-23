@@ -67,13 +67,16 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     .eq("customer_id", id)
     .order("created_at", { ascending: false });
 
-  // 紐付き請求書
-  const { data: invoices } = await supabase
-    .from("invoices")
-    .select("id, invoice_number, status, total, issued_at, due_date")
+  // 紐付き請求書 (documents テーブルから)
+  const { data: invoiceDocs } = await supabase
+    .from("documents")
+    .select("id, doc_number, status, total, issued_at, due_date")
     .eq("tenant_id", tenantId)
     .eq("customer_id", id)
+    .in("doc_type", ["invoice", "consolidated_invoice"])
     .order("created_at", { ascending: false });
+  // 後方互換: invoice_number エイリアス
+  const invoices = (invoiceDocs ?? []).map(d => ({ ...d, invoice_number: d.doc_number }));
 
   const statusVariant = (s: string) => {
     switch (s) {
