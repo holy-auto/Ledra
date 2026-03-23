@@ -23,6 +23,8 @@ type StripeTerminalInstance = any;
 /*  Types                                         */
 /* ────────────────────────────────────────────── */
 
+type PosMode = "reservation" | "walkin";
+
 interface Reservation {
   id: string;
   title: string;
@@ -51,6 +53,27 @@ interface MenuItem {
 interface ReservationsData {
   reservations: Reservation[];
   stats?: { total?: number; today?: number; active?: number };
+}
+
+interface MasterMenuItem {
+  id: string;
+  name: string;
+  unit_price: number;
+  tax_category: string | null;
+  is_active: boolean;
+  unit: string | null;
+}
+
+interface MenuItemsData {
+  items: MasterMenuItem[];
+}
+
+interface CartItem {
+  id: string;
+  name: string;
+  unit_price: number;
+  quantity: number;
+  amount: number;
 }
 
 interface CheckoutResult {
@@ -94,16 +117,18 @@ const PAYMENT_STATUS_MAP: Record<string, { variant: "default" | "success" | "war
 /* ────────────────────────────────────────────── */
 
 export default function PosClient() {
-  // ── Data fetch ──
+  // ── Mode ──
+  const [mode, setMode] = useState<PosMode>("reservation");
+
+  // ── Data fetch: Reservations ──
   const { data, isLoading, mutate } = useSWR<ReservationsData>(
     "/api/admin/reservations?status=arrived,in_progress,completed&limit=200",
     fetcher,
-    { revalidateOnFocus: true, refreshInterval: 15_000, keepPreviousData: true },
+    { revalidateOnFocus: false, refreshInterval: 12_000 + Math.floor(Math.random() * 6_000), keepPreviousData: true },
   );
 
   const reservations = data?.reservations ?? [];
 
-  // Filter to unpaid only
   const unpaidReservations = useMemo(
     () => reservations.filter((r) => !r.payment_status || r.payment_status === "unpaid"),
     [reservations],
@@ -114,8 +139,22 @@ export default function PosClient() {
     [reservations],
   );
 
+  // ── Data fetch: Menu items (walk-in) ──
+  const { data: menuData, isLoading: menuLoading } = useSWR<MenuItemsData>(
+    mode === "walkin" ? "/api/admin/menu-items" : null,
+    fetcher,
+    { revalidateOnFocus: false, keepPreviousData: true },
+  );
+
+  const masterMenuItems = useMemo(
+    () => (menuData?.items ?? []).filter((mi) => mi.is_active),
+    [menuData],
+  );
+
   // ── State ──
   const [selected, setSelected] = useState<Reservation | null>(null);
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [menuSearch, setMenuSearch] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
   const [receivedAmount, setReceivedAmount] = useState<string>("");
   const [note, setNote] = useState("");
@@ -129,13 +168,73 @@ export default function PosClient() {
   const terminalRef = useRef<StripeTerminalInstance>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Computed ──
-  const amount = selected?.estimated_amount ?? 0;
-  const received = receivedAmount ? parseInt(receivedAmount, 10) : amount;
-  const change = paymentMethod === "cash" ? Math.max(0, received - amount) : 0;
+  // ── Mode switch reset ──
+  const handleModeSwitch = useCallback((newMode: PosMode) => {
+    setMode(newMode);
+    setSelected(null);
+    setCart([]);
+    setMenuSearch("");
+    setResult(null);
+    setError(null);
+    setPaymentMethod("cash");
+    setReceivedAmount("");
+    setNote("");
+    setTerminalStatus("idle");
+    setTerminalError(null);
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  }, []);
 
-  // Items from selected reservation
-  const items = useMemo(() => {
+  // ── Filtered menu items ──
+  const filteredMenuItems = useMemo(() => {
+    if (!menuSearch.trim()) return masterMenuItems;
+    const q = menuSearch.trim().toLowerCase();
+    return masterMenuItems.filter((mi) => mi.name.toLowerCase().includes(q));
+  }, [masterMenuItems, menuSearch]);
+
+  // ── Cart helpers ──
+  const addToCart = useCallback((mi: MasterMenuItem) => {
+    setCart((prev) => {
+      const existing = prev.find((c) => c.id === mi.id);
+      if (existing) {
+        return prev.map((c) =>
+          c.id === mi.id
+            ? { ...c, quantity: c.quantity + 1, amount: (c.quantity + 1) * c.unit_price }
+            : c,
+        );
+      }
+      return [...prev, { id: mi.id, name: mi.name, unit_price: mi.unit_price, quantity: 1, amount: mi.unit_price }];
+    });
+  }, []);
+
+  const updateCartQty = useCallback((id: string, delta: number) => {
+    setCart((prev) =>
+      prev
+        .map((c) => {
+          if (c.id !== id) return c;
+          const newQty = c.quantity + delta;
+          if (newQty <= 0) return null;
+          return { ...c, quantity: newQty, amount: newQty * c.unit_price };
+        })
+        .filter(Boolean) as CartItem[],
+    );
+  }, []);
+
+  const clearCart = useCallback(() => setCart([]), []);
+
+  // ── Checkout items (unified) ──
+  const checkoutItems = useMemo(() => {
+    if (mode === "walkin") {
+      return cart.map((c) => ({
+        description: c.name,
+        quantity: c.quantity,
+        unit_price: c.unit_price,
+        amount: c.amount,
+      }));
+    }
+    // reservation mode
     if (!selected?.menu_items_json) return [];
     return selected.menu_items_json.map((mi) => ({
       description: mi.name,
@@ -143,10 +242,22 @@ export default function PosClient() {
       unit_price: mi.unit_price ?? mi.price ?? 0,
       amount: (mi.quantity ?? 1) * (mi.unit_price ?? mi.price ?? 0),
     }));
-  }, [selected]);
+  }, [mode, cart, selected]);
 
-  // Reset form when selection changes
+  // ── Computed ──
+  const amount = useMemo(() => {
+    if (mode === "walkin") return cart.reduce((s, c) => s + c.amount, 0);
+    return selected?.estimated_amount ?? 0;
+  }, [mode, cart, selected]);
+
+  const received = receivedAmount ? parseInt(receivedAmount, 10) : amount;
+  const change = paymentMethod === "cash" ? Math.max(0, received - amount) : 0;
+  const hasSelection = mode === "reservation" ? !!selected : cart.length > 0;
+  const canCheckout = amount > 0 && !processing && (paymentMethod !== "cash" || received >= amount);
+
+  // Reset form when selection changes (reservation mode)
   useEffect(() => {
+    if (mode !== "reservation") return;
     setPaymentMethod("cash");
     setReceivedAmount("");
     setNote("");
@@ -158,7 +269,7 @@ export default function PosClient() {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
     }
-  }, [selected?.id]);
+  }, [selected?.id, mode]);
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -203,20 +314,16 @@ export default function PosClient() {
 
   // ── Card payment: Full Terminal SDK flow ──
   const handleCardPaymentWithTerminal = useCallback(async (terminal: StripeTerminalInstance) => {
-    if (!selected) return;
-
     setTerminalStatus("processing");
     setTerminalError(null);
 
     try {
       // 1. PaymentIntent 作成
+      const description = checkoutItems.map((i) => i.description).join(", ") || (mode === "reservation" ? selected?.title : "ウォークイン会計") || "POS会計";
       const piRes = await fetch("/api/admin/pos/terminal/create-payment-intent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amount,
-          description: items.map((i) => i.description).join(", ") || selected.title || "POS会計",
-        }),
+        body: JSON.stringify({ amount, description }),
       });
       const piData = await piRes.json();
       if (!piRes.ok) throw new Error(piData?.error ?? "PaymentIntent の作成に失敗しました");
@@ -248,9 +355,9 @@ export default function PosClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           payment_intent_id: processResult.paymentIntent.id,
-          reservation_id: selected.id,
-          customer_id: selected.customer_id,
-          items_json: items.map((ci) => ({
+          reservation_id: mode === "reservation" ? selected?.id : undefined,
+          customer_id: mode === "reservation" ? selected?.customer_id : undefined,
+          items_json: checkoutItems.map((ci) => ({
             description: ci.description,
             quantity: ci.quantity,
             unit_price: ci.unit_price,
@@ -270,24 +377,20 @@ export default function PosClient() {
       setTerminalError(e instanceof Error ? e.message : "カード決済に失敗しました");
       setTerminalStatus("failed");
     }
-  }, [selected, amount, items, note, mutate]);
+  }, [selected, amount, checkoutItems, note, mutate, mode]);
 
   // ── Card payment: Fallback polling flow (SDK未インストール時) ──
   const handleCardPaymentFallback = useCallback(async () => {
-    if (!selected) return;
-
     setTerminalStatus("processing");
     setTerminalError(null);
 
     try {
       // 1. PaymentIntent 作成
+      const description = checkoutItems.map((i) => i.description).join(", ") || (mode === "reservation" ? selected?.title : "ウォークイン会計") || "POS会計";
       const piRes = await fetch("/api/admin/pos/terminal/create-payment-intent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amount,
-          description: items.map((i) => i.description).join(", ") || selected.title || "POS会計",
-        }),
+        body: JSON.stringify({ amount, description }),
       });
       const piData = await piRes.json();
       if (!piRes.ok) throw new Error(piData?.error ?? "PaymentIntent の作成に失敗しました");
@@ -342,9 +445,9 @@ export default function PosClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           payment_intent_id: paymentIntentId,
-          reservation_id: selected.id,
-          customer_id: selected.customer_id,
-          items_json: items.map((ci) => ({
+          reservation_id: mode === "reservation" ? selected?.id : undefined,
+          customer_id: mode === "reservation" ? selected?.customer_id : undefined,
+          items_json: checkoutItems.map((ci) => ({
             description: ci.description,
             quantity: ci.quantity,
             unit_price: ci.unit_price,
@@ -364,11 +467,11 @@ export default function PosClient() {
       setTerminalError(e instanceof Error ? e.message : "カード決済に失敗しました");
       setTerminalStatus("failed");
     }
-  }, [selected, amount, items, note, mutate]);
+  }, [selected, amount, checkoutItems, note, mutate, mode]);
 
   // ── Main checkout handler ──
   const handleCheckout = useCallback(async () => {
-    if (!selected || processing) return;
+    if (!hasSelection || processing) return;
 
     // カード決済の場合は Stripe Terminal フローへ
     if (paymentMethod === "card") {
@@ -387,7 +490,7 @@ export default function PosClient() {
       return;
     }
 
-    // 現金・QR・振込・その他 → 従来通り即 pos_checkout
+    // 現金・QR・振込・その他 → pos_checkout
     setProcessing(true);
     setError(null);
     try {
@@ -395,12 +498,12 @@ export default function PosClient() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          reservation_id: selected.id,
-          customer_id: selected.customer_id,
+          reservation_id: mode === "reservation" ? selected?.id : undefined,
+          customer_id: mode === "reservation" ? selected?.customer_id : undefined,
           payment_method: paymentMethod,
           amount,
           received_amount: paymentMethod === "cash" ? received : undefined,
-          items_json: items,
+          items_json: checkoutItems,
           tax_rate: 10,
           note: note || undefined,
           create_receipt: true,
@@ -415,12 +518,12 @@ export default function PosClient() {
     } finally {
       setProcessing(false);
     }
-  }, [selected, processing, paymentMethod, amount, received, items, note, mutate, getTerminal, handleCardPaymentWithTerminal, handleCardPaymentFallback]);
+  }, [hasSelection, processing, paymentMethod, amount, received, checkoutItems, note, mutate, getTerminal, handleCardPaymentWithTerminal, handleCardPaymentFallback, mode, selected]);
 
   // ── Render ──
   return (
     <div className="space-y-6">
-      <PageHeader title="POS 会計" tag="POS" description="予約の会計処理を行います" />
+      <PageHeader title="POS 会計" tag="POS" description="予約の会計処理・ウォークイン会計を行います" />
 
       {/* Stats */}
       <div className="grid gap-4 sm:grid-cols-3">
@@ -434,56 +537,185 @@ export default function PosClient() {
         />
       </div>
 
-      <div className="flex flex-col gap-6 lg:flex-row">
-        {/* ── Left: Reservation list ── */}
-        <div className="flex-1 space-y-3">
-          <h2 className="text-sm font-semibold text-secondary">未会計の予約</h2>
+      {/* Mode tabs */}
+      <div className="flex gap-1 rounded-xl bg-surface-hover p-1">
+        <button
+          type="button"
+          onClick={() => handleModeSwitch("reservation")}
+          className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
+            mode === "reservation"
+              ? "bg-surface text-primary shadow-sm"
+              : "text-secondary hover:text-primary"
+          }`}
+        >
+          予約から会計
+        </button>
+        <button
+          type="button"
+          onClick={() => handleModeSwitch("walkin")}
+          className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
+            mode === "walkin"
+              ? "bg-surface text-primary shadow-sm"
+              : "text-secondary hover:text-primary"
+          }`}
+        >
+          予約なし会計
+        </button>
+      </div>
 
-          {isLoading && !data ? (
-            <div className="space-y-2">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="h-20 animate-pulse rounded-xl bg-surface-hover" />
-              ))}
-            </div>
-          ) : unpaidReservations.length === 0 ? (
-            <div className="rounded-xl border border-border-subtle bg-surface p-8 text-center text-sm text-muted">
-              未会計の予約はありません
-            </div>
+      <div className="flex flex-col gap-6 lg:flex-row">
+        {/* ── Left panel ── */}
+        <div className="flex-1 space-y-3">
+          {mode === "reservation" ? (
+            /* ── Reservation list ── */
+            <>
+              <h2 className="text-sm font-semibold text-secondary">未会計の予約</h2>
+
+              {isLoading && !data ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="h-20 animate-pulse rounded-xl bg-surface-hover" />
+                  ))}
+                </div>
+              ) : unpaidReservations.length === 0 ? (
+                <div className="rounded-xl border border-border-subtle bg-surface p-8 text-center text-sm text-muted">
+                  未会計の予約はありません
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {unpaidReservations.map((r) => {
+                    const isSelected = selected?.id === r.id;
+                    const statusEntry = RESERVATION_STATUS_MAP[r.status] ?? { variant: "default" as const, label: r.status };
+                    return (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => setSelected(isSelected ? null : r)}
+                        className={`w-full rounded-xl border p-4 text-left transition-all ${
+                          isSelected
+                            ? "border-accent bg-accent-dim shadow-sm"
+                            : "border-border-subtle bg-surface hover:border-border hover:shadow-sm"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-primary">{r.title || "無題"}</span>
+                          <div className="flex items-center gap-2">
+                            <Badge variant={statusEntry.variant}>{statusEntry.label}</Badge>
+                            <span className="text-sm font-semibold text-primary">
+                              {formatJpy(r.estimated_amount)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-secondary">
+                          {r.scheduled_date && <span>{formatDate(r.scheduled_date)}</span>}
+                          {r.start_time && <span>{r.start_time}〜{r.end_time ?? ""}</span>}
+                          {r.customer_name && <span>{r.customer_name}</span>}
+                          {r.vehicle_info && <span>{r.vehicle_info}</span>}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           ) : (
-            <div className="space-y-2">
-              {unpaidReservations.map((r) => {
-                const isSelected = selected?.id === r.id;
-                const statusEntry = RESERVATION_STATUS_MAP[r.status] ?? { variant: "default" as const, label: r.status };
-                return (
+            /* ── Walk-in: menu item grid ── */
+            <>
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-secondary">品目を選択</h2>
+                {cart.length > 0 && (
                   <button
-                    key={r.id}
                     type="button"
-                    onClick={() => setSelected(isSelected ? null : r)}
-                    className={`w-full rounded-xl border p-4 text-left transition-all ${
-                      isSelected
-                        ? "border-accent bg-accent-dim shadow-sm"
-                        : "border-border-subtle bg-surface hover:border-border hover:shadow-sm"
-                    }`}
+                    onClick={clearCart}
+                    className="text-xs text-danger-text hover:underline"
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-primary">{r.title || "無題"}</span>
+                    カートを空にする
+                  </button>
+                )}
+              </div>
+
+              {/* Search */}
+              <input
+                type="text"
+                value={menuSearch}
+                onChange={(e) => setMenuSearch(e.target.value)}
+                placeholder="品目名で検索..."
+                className="w-full rounded-xl border border-border-subtle bg-surface px-3 py-2 text-sm text-primary placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+
+              {/* Cart summary */}
+              {cart.length > 0 && (
+                <div className="space-y-1 rounded-xl border border-accent bg-accent-dim p-3">
+                  <span className="text-xs font-medium text-accent">カート ({cart.length} 品目)</span>
+                  {cart.map((c) => (
+                    <div key={c.id} className="flex items-center justify-between text-sm">
+                      <span className="text-primary">{c.name}</span>
                       <div className="flex items-center gap-2">
-                        <Badge variant={statusEntry.variant}>{statusEntry.label}</Badge>
-                        <span className="text-sm font-semibold text-primary">
-                          {formatJpy(r.estimated_amount)}
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => updateCartQty(c.id, -1)}
+                          className="flex h-6 w-6 items-center justify-center rounded-md border border-border-subtle bg-surface text-xs font-bold text-secondary hover:bg-surface-hover"
+                        >
+                          -
+                        </button>
+                        <span className="w-6 text-center text-xs font-semibold">{c.quantity}</span>
+                        <button
+                          type="button"
+                          onClick={() => updateCartQty(c.id, 1)}
+                          className="flex h-6 w-6 items-center justify-center rounded-md border border-border-subtle bg-surface text-xs font-bold text-secondary hover:bg-surface-hover"
+                        >
+                          +
+                        </button>
+                        <span className="ml-1 w-16 text-right text-xs font-medium">{formatJpy(c.amount)}</span>
                       </div>
                     </div>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-secondary">
-                      {r.scheduled_date && <span>{formatDate(r.scheduled_date)}</span>}
-                      {r.start_time && <span>{r.start_time}〜{r.end_time ?? ""}</span>}
-                      {r.customer_name && <span>{r.customer_name}</span>}
-                      {r.vehicle_info && <span>{r.vehicle_info}</span>}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+                  ))}
+                  <div className="flex justify-between border-t border-accent/30 pt-1 text-sm font-semibold">
+                    <span className="text-accent">合計</span>
+                    <span className="text-accent">{formatJpy(amount)}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Menu item grid */}
+              {menuLoading ? (
+                <div className="grid grid-cols-3 gap-2">
+                  {[1, 2, 3, 4, 5, 6].map((i) => (
+                    <div key={i} className="h-20 animate-pulse rounded-xl bg-surface-hover" />
+                  ))}
+                </div>
+              ) : filteredMenuItems.length === 0 ? (
+                <div className="rounded-xl border border-border-subtle bg-surface p-8 text-center text-sm text-muted">
+                  {menuSearch ? "該当する品目がありません" : "品目マスタが登録されていません"}
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-2">
+                  {filteredMenuItems.map((mi) => {
+                    const inCart = cart.find((c) => c.id === mi.id);
+                    return (
+                      <button
+                        key={mi.id}
+                        type="button"
+                        onClick={() => addToCart(mi)}
+                        className={`relative rounded-xl border p-3 text-left transition-all hover:shadow-sm ${
+                          inCart
+                            ? "border-accent bg-accent-dim"
+                            : "border-border-subtle bg-surface hover:border-border"
+                        }`}
+                      >
+                        <div className="text-sm font-medium text-primary leading-tight">{mi.name}</div>
+                        <div className="mt-1 text-xs font-semibold text-secondary">{formatJpy(mi.unit_price)}</div>
+                        {inCart && (
+                          <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-white">
+                            {inCart.quantity}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -522,6 +754,7 @@ export default function PosClient() {
                   type="button"
                   onClick={() => {
                     setSelected(null);
+                    setCart([]);
                     setResult(null);
                   }}
                   className="btn-primary w-full rounded-xl py-3 text-sm font-medium"
@@ -529,27 +762,29 @@ export default function PosClient() {
                   次の会計へ
                 </button>
               </div>
-            ) : selected ? (
+            ) : hasSelection ? (
               /* ── Checkout form ── */
               <div className="glass-card space-y-5 rounded-2xl p-6">
                 <div>
-                  <h3 className="text-base font-semibold text-primary">{selected.title || "無題"}</h3>
-                  {selected.customer_name && (
+                  <h3 className="text-base font-semibold text-primary">
+                    {mode === "reservation" ? (selected?.title || "無題") : "ウォークイン会計"}
+                  </h3>
+                  {mode === "reservation" && selected?.customer_name && (
                     <p className="mt-0.5 text-xs text-secondary">{selected.customer_name}</p>
                   )}
                 </div>
 
                 {/* Items */}
-                {items.length > 0 && (
+                {checkoutItems.length > 0 && (
                   <div className="space-y-1.5">
                     <span className="text-xs font-medium text-secondary">明細</span>
                     <div className="space-y-1 rounded-xl bg-surface-hover p-3">
-                      {items.map((item, i) => (
+                      {checkoutItems.map((item, i) => (
                         <div key={i} className="flex items-center justify-between text-sm">
                           <span className="text-primary">
                             {item.description}
                             {item.quantity > 1 && (
-                              <span className="ml-1 text-xs text-secondary">×{item.quantity}</span>
+                              <span className="ml-1 text-xs text-secondary">x{item.quantity}</span>
                             )}
                           </span>
                           <span className="font-medium">{formatJpy(item.amount)}</span>
@@ -698,7 +933,7 @@ export default function PosClient() {
                 <button
                   type="button"
                   onClick={handleCheckout}
-                  disabled={processing || amount <= 0 || (paymentMethod === "cash" && received < amount) || (paymentMethod === "card" && terminalStatus !== "idle" && terminalStatus !== "failed")}
+                  disabled={!canCheckout || (paymentMethod === "card" && terminalStatus !== "idle" && terminalStatus !== "failed")}
                   className="btn-primary w-full rounded-xl py-3.5 text-base font-semibold disabled:opacity-40"
                 >
                   {processing ? (
@@ -722,7 +957,9 @@ export default function PosClient() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z" />
                   </svg>
                   <p className="text-sm text-muted">
-                    左の一覧から予約を選択してください
+                    {mode === "reservation"
+                      ? "左の一覧から予約を選択してください"
+                      : "左の品目をタップしてカートに追加してください"}
                   </p>
                 </div>
               </div>
