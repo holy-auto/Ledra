@@ -23,6 +23,7 @@ export const slugSchema = z.string().trim().min(1).regex(/^[a-z0-9-]+$/);
 
 // ─── API route schemas ───
 
+/** @deprecated Use joinSchemaV2 instead */
 export const joinSchema = z.object({
   company_name: z.string().trim().min(1, "会社名は必須です"),
   contact_person: z.string().trim().min(1, "担当者名は必須です"),
@@ -30,6 +31,20 @@ export const joinSchema = z.object({
   phone: z.string().trim().optional().default(""),
   password: passwordSchema,
   requested_plan: z.enum(["basic", "standard", "pro"]).default("basic"),
+});
+
+/** V2: Extended join schema with terms, corporate info */
+export const joinSchemaV2 = z.object({
+  company_name: z.string().trim().min(1, "会社名は必須です"),
+  contact_person: z.string().trim().min(1, "担当者名は必須です"),
+  email: emailSchema,
+  phone: z.string().trim().optional().default(""),
+  password: passwordSchema,
+  requested_plan: z.enum(["basic", "pro", "enterprise"]).default("basic"),
+  corporate_number: z.string().trim().optional().default(""),
+  address: z.string().trim().optional().default(""),
+  representative_name: z.string().trim().optional().default(""),
+  terms_accepted: z.boolean({ required_error: "利用規約への同意が必要です" }),
 });
 
 export const contactSchema = z.object({

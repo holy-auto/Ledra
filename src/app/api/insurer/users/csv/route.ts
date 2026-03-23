@@ -64,6 +64,17 @@ export async function POST(req: Request) {
 
     const adminSb = createAdminClient();
 
+    // Check max_users limit before processing
+    const { INSURER_PLAN_FEATURES } = await import("@/types/insurer");
+    const maxUsers = INSURER_PLAN_FEATURES[caller.planTier]?.max_users ?? 3;
+
+    const { count: currentCount } = await adminSb
+      .from("insurer_users")
+      .select("id", { count: "exact", head: true })
+      .eq("insurer_id", caller.insurerId)
+      .eq("is_active", true);
+
+
     // CSV読み込み
     const body = await req.text();
     let rows: CsvRow[];
@@ -75,6 +86,19 @@ export async function POST(req: Request) {
 
     if (rows.length === 0) {
       return NextResponse.json({ ok: true, inserted: 0, created_auth: 0, existing_auth: 0, errors: [] });
+    }
+
+    // Validate that adding these users won't exceed max_users
+    const remainingSlots = maxUsers - (currentCount ?? 0);
+    if (rows.length > remainingSlots) {
+      return NextResponse.json({
+        ok: false,
+        error: "max_users_exceeded",
+        message: `ユーザー上限を超過します。現在 ${currentCount ?? 0} 名 / 上限 ${maxUsers} 名。追加可能: ${Math.max(0, remainingSlots)} 名`,
+        current: currentCount ?? 0,
+        max: maxUsers,
+        requested: rows.length,
+      }, { status: 400 });
     }
 
     let createdAuth = 0;

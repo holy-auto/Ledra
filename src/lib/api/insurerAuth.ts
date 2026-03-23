@@ -34,12 +34,13 @@ export async function resolveInsurerCaller(): Promise<InsurerCallerContext | nul
 
   if (iuErr || !iu) return null;
 
-  // Get insurer plan info
+  // Get insurer plan info — also verify insurer is active and not suspended
   const { data: insurer, error: insErr } = await admin
     .from("insurers")
-    .select("plan_tier")
+    .select("plan_tier, status")
     .eq("id", iu.insurer_id)
     .eq("is_active", true)
+    .eq("status", "active")
     .limit(1)
     .maybeSingle();
 

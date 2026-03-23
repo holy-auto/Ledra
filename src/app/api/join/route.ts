@@ -1,22 +1,22 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
-import { joinSchema, parseBody } from "@/lib/validation/schemas";
+import { joinSchemaV2, parseBody } from "@/lib/validation/schemas";
 
 export const runtime = "nodejs";
 
-function slugify(name: string): string {
-  const ascii = name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-");
-  const base = ascii || "insurer";
-  const suffix = Math.random().toString(36).slice(2, 8);
-  return `${base}-${suffix}`;
-}
-
+/**
+ * POST /api/join
+ * Full insurer self-registration via transactional RPC.
+ *
+ * Requires prior email verification via /api/join/send-code + /api/join/verify-code.
+ *
+ * Body: {
+ *   email, password, company_name, contact_person, phone?,
+ *   requested_plan, corporate_number?, address?, representative_name?,
+ *   terms_accepted: boolean
+ * }
+ */
 export async function POST(req: Request) {
   // Rate limit: 3 registration attempts per IP per 10 minutes
   const ip = getClientIp(req);
@@ -36,97 +36,81 @@ export async function POST(req: Request) {
   }
 
   // --- Zod validation ---
-  const parsed = parseBody(joinSchema, rawBody);
+  const parsed = parseBody(joinSchemaV2, rawBody);
   if (!parsed.success) {
     return NextResponse.json({ error: "validation_error", details: parsed.errors }, { status: 400 });
   }
 
-  const { company_name, contact_person, email, phone, password, requested_plan } = parsed.data;
+  const data = parsed.data;
 
-  const supabase = createAdminClient();
-  let userId: string | null = null;
-
-  try {
-    // 1. Auth ユーザー作成
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-    });
-
-    if (authError) {
-      const msg = authError.message?.toLowerCase() ?? "";
-      if (msg.includes("already") || msg.includes("exists") || msg.includes("duplicate")) {
-        return NextResponse.json(
-          { error: "email_exists", message: "このメールアドレスは既に登録されています" },
-          { status: 409 }
-        );
-      }
-      throw new Error(`Auth user creation failed: ${authError.message}`);
-    }
-
-    userId = authData.user.id;
-
-    // 2. insurers レコード作成
-    const slug = slugify(company_name);
-    const { data: insurer, error: insurerError } = await supabase
-      .from("insurers")
-      .insert({
-        name: company_name,
-        slug,
-        is_active: true,
-        status: "active_pending_review",
-        requested_plan,
-        contact_person,
-        contact_email: email,
-        contact_phone: phone || null,
-        signup_source: "self",
-      })
-      .select("id")
-      .single();
-
-    if (insurerError || !insurer?.id) {
-      throw new Error(`Insurer creation failed: ${insurerError?.message ?? "no id returned"}`);
-    }
-
-    // 3. insurer_users レコード作成（初回ユーザー = admin）
-    const { error: iuError } = await supabase.from("insurer_users").insert({
-      insurer_id: insurer.id,
-      user_id: userId,
-      role: "admin",
-      email,
-      display_name: contact_person,
-      is_active: true,
-    });
-
-    if (iuError) {
-      // insurer は作れたが insurer_users が失敗 → insurer も巻き戻し
-      await supabase.from("insurers").delete().eq("id", insurer.id);
-      throw new Error(`Insurer user creation failed: ${iuError.message}`);
-    }
-
+  if (!data.terms_accepted) {
     return NextResponse.json(
-      {
-        ok: true,
-        insurer_id: insurer.id,
-        user_id: userId,
-      },
-      { status: 201 }
-    );
-  } catch (e: any) {
-    // Auth ユーザーが作成済みならクリーンアップ
-    if (userId) {
-      try {
-        await supabase.auth.admin.deleteUser(userId);
-      } catch {
-        console.error("[insurer-register] cleanup: failed to delete auth user", userId);
-      }
-    }
-
-    console.error("[insurer-register] error:", e?.message ?? e);
-    return NextResponse.json(
-      { error: "registration_failed", message: e?.message ?? "登録に失敗しました" },
-      { status: 500 }
+      { error: "terms_required", message: "利用規約への同意が必要です" },
+      { status: 400 },
     );
   }
+
+  const supabase = createAdminClient();
+
+  // Verify that email was confirmed via OTP
+  const { data: verification } = await supabase
+    .from("insurer_email_verifications")
+    .select("id, verified")
+    .eq("email", data.email.toLowerCase())
+    .eq("verified", true)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!verification) {
+    return NextResponse.json(
+      { error: "email_not_verified", message: "メールアドレスの確認が完了していません。確認コードを入力してください。" },
+      { status: 400 },
+    );
+  }
+
+  // Call transactional RPC
+  const { data: result, error: rpcError } = await supabase.rpc("register_insurer_v2", {
+    p_email: data.email,
+    p_password: data.password,
+    p_company_name: data.company_name,
+    p_contact_person: data.contact_person,
+    p_phone: data.phone || "",
+    p_requested_plan: data.requested_plan,
+    p_corporate_number: data.corporate_number || null,
+    p_address: data.address || null,
+    p_representative_name: data.representative_name || null,
+    p_terms_accepted: data.terms_accepted,
+  });
+
+  if (rpcError) {
+    const msg = rpcError.message ?? "";
+    console.error("[insurer-register] rpc error:", msg);
+
+    if (msg.includes("email_exists")) {
+      return NextResponse.json(
+        { error: "email_exists", message: "このメールアドレスは既に登録されています" },
+        { status: 409 },
+      );
+    }
+    if (msg.includes("terms_not_accepted")) {
+      return NextResponse.json(
+        { error: "terms_required", message: "利用規約への同意が必要です" },
+        { status: 400 },
+      );
+    }
+
+    return NextResponse.json(
+      { error: "registration_failed", message: "登録に失敗しました。しばらくしてから再度お試しください。" },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json(
+    {
+      ok: true,
+      insurer_id: result?.insurer_id,
+    },
+    { status: 201 },
+  );
 }
