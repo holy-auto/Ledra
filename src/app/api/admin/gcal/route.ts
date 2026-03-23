@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
       if (!from || !to) return apiValidationError("from / to (YYYY-MM-DD) が必要です");
 
       const pushed = await pushReservationsToCalendar(caller.tenantId, from, to);
-      const imported = await pullEventsFromCalendar(caller.tenantId, from, to);
+      const pullResult = await pullEventsFromCalendar(caller.tenantId, from, to);
 
       // 最終同期日時を更新
       const admin = getAdminClient();
@@ -140,7 +140,13 @@ export async function POST(req: NextRequest) {
         .update({ gcal_last_synced_at: new Date().toISOString() })
         .eq("id", caller.tenantId);
 
-      return apiOk({ pushed, imported, synced_at: new Date().toISOString() });
+      return apiOk({
+        pushed,
+        imported: pullResult.imported,
+        updated: pullResult.updated,
+        skipped: pullResult.skipped,
+        synced_at: new Date().toISOString(),
+      });
     }
 
     if (action === "push") {

@@ -416,15 +416,25 @@ export default function ReservationsClient() {
                     setGcalSyncing(true);
                     try {
                       const today = new Date();
-                      const from = today.toISOString().slice(0, 10);
+                      const fromDate = new Date(today);
+                      fromDate.setDate(fromDate.getDate() - 30);
+                      const from = fromDate.toISOString().slice(0, 10);
                       const toDate = new Date(today);
                       toDate.setDate(toDate.getDate() + 90);
                       const to = toDate.toISOString().slice(0, 10);
                       const syncRes = await fetch("/api/admin/gcal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sync", from, to }) });
                       const syncJ = await syncRes.json().catch(() => null);
                       if (syncJ?.synced_at) setGcalLastSynced(syncJ.synced_at);
+                      const parts = [];
+                      if (syncJ?.pushed) parts.push(`Push: ${syncJ.pushed}件`);
+                      if (syncJ?.imported) parts.push(`取込: ${syncJ.imported}件`);
+                      if (syncJ?.updated) parts.push(`更新: ${syncJ.updated}件`);
+                      if (parts.length > 0) alert(`同期完了: ${parts.join(", ")}`);
                       mutate();
-                    } catch {}
+                    } catch (err) {
+                      console.error("[gcal] sync error:", err);
+                      alert("同期中にエラーが発生しました");
+                    }
                     setGcalSyncing(false);
                   }}
                   disabled={gcalSyncing}

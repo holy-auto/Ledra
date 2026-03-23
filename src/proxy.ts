@@ -45,6 +45,9 @@ function csrfCheck(request: NextRequest): NextResponse | null {
   // Webhook は外部サービスからの server-to-server コールのため CSRF チェック不要
   if (nextUrl.pathname.startsWith("/api/webhooks/")) return null;
 
+  // Cron は外部スケジューラからの server-to-server コールのため CSRF チェック不要
+  if (nextUrl.pathname.startsWith("/api/cron/")) return null;
+
   const origin = request.headers.get("origin");
   const host = request.headers.get("host");
 
