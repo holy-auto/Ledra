@@ -17,6 +17,8 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const storeId = url.searchParams.get("store_id") ?? "";
     const isActive = url.searchParams.get("is_active") ?? "";
+    const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "0", 10) || 0);
+    const perPage = Math.min(500, Math.max(1, parseInt(url.searchParams.get("limit") ?? "100", 10)));
 
     let query = supabase
       .from("registers")
@@ -25,22 +27,47 @@ export async function GET(req: NextRequest) {
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: true });
 
+    let countQuery = supabase
+      .from("registers")
+      .select("*", { count: "exact", head: true })
+      .eq("tenant_id", caller.tenantId);
+
     if (storeId) {
       query = query.eq("store_id", storeId);
+      countQuery = countQuery.eq("store_id", storeId);
     }
     if (isActive === "true") {
       query = query.eq("is_active", true);
+      countQuery = countQuery.eq("is_active", true);
     } else if (isActive === "false") {
       query = query.eq("is_active", false);
+      countQuery = countQuery.eq("is_active", false);
     }
 
-    const { data: registers, error } = await query;
+    if (page > 0) {
+      const offset = (page - 1) * perPage;
+      query = query.range(offset, offset + perPage - 1);
+    }
+
+    const [{ data: registers, error }, { count: totalCount }] = await Promise.all([query, countQuery]);
     if (error) {
       console.error("[registers] db_error:", error.message);
       return NextResponse.json({ error: "db_error" }, { status: 500 });
     }
 
-    return NextResponse.json({ registers: registers ?? [] });
+    const total = totalCount ?? (registers ?? []).length;
+
+    return NextResponse.json({
+      registers: registers ?? [],
+      ...(page > 0 && {
+        pagination: {
+          page,
+          per_page: perPage,
+          total,
+          total_pages: Math.ceil(total / perPage),
+        },
+      }),
+    });
   } catch (e: unknown) {
     console.error("registers list failed", e);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });

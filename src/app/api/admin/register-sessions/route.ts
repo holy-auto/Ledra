@@ -19,6 +19,8 @@ export async function GET(req: NextRequest) {
     const status = url.searchParams.get("status") ?? "";
     const from = url.searchParams.get("from") ?? "";
     const to = url.searchParams.get("to") ?? "";
+    const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "0", 10) || 0);
+    const perPage = Math.min(500, Math.max(1, parseInt(url.searchParams.get("limit") ?? "100", 10)));
 
     let query = supabase
       .from("register_sessions")
@@ -26,26 +28,52 @@ export async function GET(req: NextRequest) {
       .eq("tenant_id", caller.tenantId)
       .order("opened_at", { ascending: false });
 
+    let countQuery = supabase
+      .from("register_sessions")
+      .select("*", { count: "exact", head: true })
+      .eq("tenant_id", caller.tenantId);
+
     if (registerId) {
       query = query.eq("register_id", registerId);
+      countQuery = countQuery.eq("register_id", registerId);
     }
     if (status && status !== "all") {
       query = query.eq("status", status);
+      countQuery = countQuery.eq("status", status);
     }
     if (from) {
       query = query.gte("opened_at", from);
+      countQuery = countQuery.gte("opened_at", from);
     }
     if (to) {
       query = query.lte("opened_at", to);
+      countQuery = countQuery.lte("opened_at", to);
     }
 
-    const { data: sessions, error } = await query;
+    if (page > 0) {
+      const offset = (page - 1) * perPage;
+      query = query.range(offset, offset + perPage - 1);
+    }
+
+    const [{ data: sessions, error }, { count: totalCount }] = await Promise.all([query, countQuery]);
     if (error) {
       console.error("[register_sessions] db_error:", error.message);
       return NextResponse.json({ error: "db_error" }, { status: 500 });
     }
 
-    return NextResponse.json({ sessions: sessions ?? [] });
+    const total = totalCount ?? (sessions ?? []).length;
+
+    return NextResponse.json({
+      sessions: sessions ?? [],
+      ...(page > 0 && {
+        pagination: {
+          page,
+          per_page: perPage,
+          total,
+          total_pages: Math.ceil(total / perPage),
+        },
+      }),
+    });
   } catch (e: unknown) {
     console.error("register_sessions list failed", e);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });

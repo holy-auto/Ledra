@@ -87,7 +87,7 @@ export default function PosClient() {
   const { data, isLoading, mutate } = useSWR<ReservationsData>(
     "/api/admin/reservations?status=arrived,in_progress,completed&limit=200",
     fetcher,
-    { revalidateOnFocus: true, refreshInterval: 15_000, keepPreviousData: true },
+    { revalidateOnFocus: false, refreshInterval: 12_000 + Math.floor(Math.random() * 6_000), keepPreviousData: true },
   );
 
   const reservations = data?.reservations ?? [];

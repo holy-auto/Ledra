@@ -135,13 +135,16 @@ export async function POST(req: NextRequest) {
     }
 
     const amount = parseInt(String(body?.amount ?? ""), 10);
-    if (isNaN(amount) || amount <= 0) {
+    if (isNaN(amount) || amount < 1 || amount > 999_999_999) {
       return NextResponse.json({ error: "invalid_amount" }, { status: 400 });
     }
 
     const receivedAmount = body?.received_amount != null
       ? parseInt(String(body.received_amount), 10)
       : null;
+    if (receivedAmount != null && (isNaN(receivedAmount) || receivedAmount < 0)) {
+      return NextResponse.json({ error: "invalid_received_amount" }, { status: 400 });
+    }
     const changeAmount = receivedAmount != null && receivedAmount > amount
       ? receivedAmount - amount
       : 0;
