@@ -82,7 +82,7 @@ async function fetchAllOrders(
               end_at: new Date(to).toISOString(),
             },
           },
-          state_filter: { states: ["COMPLETED"] },
+          state_filter: { states: ["COMPLETED", "OPEN"] },
         },
         sort: { sort_field: "CREATED_AT", sort_order: "DESC" },
       },
@@ -171,10 +171,10 @@ export async function POST(req: NextRequest) {
       accessToken = refreshed.access_token;
     }
 
-    // リクエストボディから日付範囲を取得（デフォルト: 過去7日）
+    // リクエストボディから日付範囲を取得（デフォルト: 過去90日）
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const now = new Date();
-    const defaultFrom = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+    const defaultFrom = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
       .toISOString()
       .slice(0, 10);
     const defaultTo = now.toISOString().slice(0, 10);
@@ -206,12 +206,15 @@ export async function POST(req: NextRequest) {
     }
 
     // Square API からオーダーを取得
+    console.log("[square sync] fetching orders:", { locationIds, from, to, locationCount: locationIds.length });
     const { orders, error: fetchError } = await fetchAllOrders(
       accessToken,
       locationIds,
       from,
       to,
     );
+
+    console.log("[square sync] fetched:", { total: orders.length, error: fetchError });
 
     if (fetchError === "unauthorized") {
       await admin
