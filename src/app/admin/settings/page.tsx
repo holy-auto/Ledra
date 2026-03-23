@@ -4,6 +4,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { createSupabaseAdminClient } from "@/lib/supabaseAdmin";
 import SettingsForm from "./SettingsForm";
 import FollowUpSettings from "./FollowUpSettings";
+import SquareConnectSection from "./SquareConnectSection";
 import RestartTourButton from "./RestartTourButton";
 import PageHeader from "@/components/ui/PageHeader";
 import { formatDate } from "@/lib/format";
@@ -167,6 +168,16 @@ export default async function AdminSettingsPage() {
               onboarded: (ext as any).stripe_connect_onboarded ?? false,
             } : null}
           />
+        </section>
+
+        {/* Square連携 */}
+        <section className="glass-card p-5">
+          <div className="mb-5">
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted">外部連携</div>
+            <div className="mt-1 text-base font-semibold text-primary">Square連携</div>
+            <p className="mt-1 text-xs text-muted">SquareのPOS売上データをCARTRUSTに取り込みます。</p>
+          </div>
+          <SquareConnectSection />
         </section>
 
         {/* Coating products master */}

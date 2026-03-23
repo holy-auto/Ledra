@@ -39,6 +39,9 @@ function csrfCheck(request: NextRequest): NextResponse | null {
   if (!nextUrl.pathname.startsWith("/api/")) return null;
   if (["GET", "HEAD", "OPTIONS"].includes(method)) return null;
 
+  // モバイルアプリは Bearer Token 認証のため CSRF チェック不要
+  if (nextUrl.pathname.startsWith("/api/mobile/")) return null;
+
   const origin = request.headers.get("origin");
   const host = request.headers.get("host");
 

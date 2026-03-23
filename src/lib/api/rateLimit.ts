@@ -45,12 +45,28 @@ const webhookLimiter = () => {
   return new Ratelimit({ redis: r, limiter: Ratelimit.slidingWindow(120, "60 s"), prefix: "rl:webhook" });
 };
 
-export type RateLimitPreset = "general" | "auth" | "webhook";
+/** プリセット: モバイル POS チェックアウト (10 req / 60s) */
+const mobilePosLimiter = () => {
+  const r = getRedis();
+  if (!r) return null;
+  return new Ratelimit({ redis: r, limiter: Ratelimit.slidingWindow(10, "60 s"), prefix: "rl:mobile-pos" });
+};
+
+/** プリセット: モバイル Terminal (30 req / 60s) */
+const mobileTerminalLimiter = () => {
+  const r = getRedis();
+  if (!r) return null;
+  return new Ratelimit({ redis: r, limiter: Ratelimit.slidingWindow(30, "60 s"), prefix: "rl:mobile-terminal" });
+};
+
+export type RateLimitPreset = "general" | "auth" | "webhook" | "mobile_pos" | "mobile_terminal";
 
 const presets: Record<RateLimitPreset, () => Ratelimit | null> = {
   general: generalLimiter,
   auth: authLimiter,
   webhook: webhookLimiter,
+  mobile_pos: mobilePosLimiter,
+  mobile_terminal: mobileTerminalLimiter,
 };
 
 /**
