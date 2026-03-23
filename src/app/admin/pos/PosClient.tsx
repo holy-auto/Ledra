@@ -410,14 +410,6 @@ export default function PosClient() {
       // 2. 「カード決済待ち」状態 - 端末側での決済を待つ
       setTerminalStatus("waiting_card");
 
-      // モバイルの場合、Stripeアプリを自動で開く
-      if (isMobile) {
-        const dashboardBase = connectAccount
-          ? `https://dashboard.stripe.com/${connectAccount}`
-          : "https://dashboard.stripe.com";
-        window.open(`${dashboardBase}/payments/${paymentIntentId}`, "_blank");
-      }
-
       // ポーリングで PaymentIntent のステータスを確認
       await new Promise<void>((resolve, reject) => {
         let attempts = 0;
@@ -933,12 +925,11 @@ export default function PosClient() {
                             </p>
                             {activePaymentIntentId && (
                               <a
-                                href={`${activeConnectAccount ? `https://dashboard.stripe.com/${activeConnectAccount}` : "https://dashboard.stripe.com"}/payments/${activePaymentIntentId}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium backdrop-blur hover:bg-white/30"
+                                href={`${activeConnectAccount ? `https://dashboard.stripe.com/${activeConnectAccount}` : "https://dashboard.stripe.com"}/test/payments/${activePaymentIntentId}`}
+                                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#635BFF] px-4 py-3 text-sm font-semibold text-white shadow-lg transition-transform active:scale-95"
                               >
-                                📱 Stripeアプリを開く
+                                <span className="text-lg">📱</span>
+                                Stripeアプリで決済する
                               </a>
                             )}
                           </>
