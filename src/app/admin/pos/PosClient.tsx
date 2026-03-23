@@ -165,8 +165,11 @@ export default function PosClient() {
   // ── Stripe Terminal state ──
   const [terminalStatus, setTerminalStatus] = useState<TerminalStatus>("idle");
   const [terminalError, setTerminalError] = useState<string | null>(null);
+  const [activePaymentIntentId, setActivePaymentIntentId] = useState<string | null>(null);
+  const [activeConnectAccount, setActiveConnectAccount] = useState<string | null>(null);
   const terminalRef = useRef<StripeTerminalInstance>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isMobile = typeof navigator !== "undefined" && /iPhone|iPad|Android/i.test(navigator.userAgent);
 
   // ── Mode switch reset ──
   const handleModeSwitch = useCallback((newMode: PosMode) => {
@@ -181,6 +184,8 @@ export default function PosClient() {
     setNote("");
     setTerminalStatus("idle");
     setTerminalError(null);
+    setActivePaymentIntentId(null);
+    setActiveConnectAccount(null);
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
@@ -265,6 +270,8 @@ export default function PosClient() {
     setError(null);
     setTerminalStatus("idle");
     setTerminalError(null);
+    setActivePaymentIntentId(null);
+    setActiveConnectAccount(null);
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
@@ -396,9 +403,20 @@ export default function PosClient() {
       if (!piRes.ok) throw new Error(piData?.error ?? "PaymentIntent の作成に失敗しました");
 
       const paymentIntentId = piData.payment_intent_id;
+      const connectAccount = piData.connect_account as string | null;
+      setActivePaymentIntentId(paymentIntentId);
+      setActiveConnectAccount(connectAccount);
 
       // 2. 「カード決済待ち」状態 - 端末側での決済を待つ
       setTerminalStatus("waiting_card");
+
+      // モバイルの場合、Stripeアプリを自動で開く
+      if (isMobile) {
+        const dashboardBase = connectAccount
+          ? `https://dashboard.stripe.com/${connectAccount}`
+          : "https://dashboard.stripe.com";
+        window.open(`${dashboardBase}/payments/${paymentIntentId}`, "_blank");
+      }
 
       // ポーリングで PaymentIntent のステータスを確認
       await new Promise<void>((resolve, reject) => {
@@ -909,9 +927,21 @@ export default function PosClient() {
                           {terminalStatus === "failed" && `❌ ${terminalError || "カード決済に失敗しました"}`}
                         </p>
                         {terminalStatus === "waiting_card" && (
-                          <p className="mt-1 text-xs opacity-80">
-                            Stripeモバイルアプリで {formatJpy(amount)} の決済を確認・実行してください（最大2分）
-                          </p>
+                          <>
+                            <p className="mt-1 text-xs opacity-80">
+                              Stripeモバイルアプリで {formatJpy(amount)} の決済を確認・実行してください（最大2分）
+                            </p>
+                            {activePaymentIntentId && (
+                              <a
+                                href={`${activeConnectAccount ? `https://dashboard.stripe.com/${activeConnectAccount}` : "https://dashboard.stripe.com"}/payments/${activePaymentIntentId}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium backdrop-blur hover:bg-white/30"
+                              >
+                                📱 Stripeアプリを開く
+                              </a>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
