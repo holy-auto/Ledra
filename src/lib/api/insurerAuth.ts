@@ -1,7 +1,12 @@
+import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { InsurerPlanTier, InsurerRole } from "@/types/insurer";
 import { normalizeInsurerPlanTier, normalizeInsurerRole, INSURER_PLAN_RANK } from "@/types/insurer";
+
+const ACTIVE_INSURER_COOKIE = "active_insurer_id";
+
+export type InsurerStatus = "active" | "active_pending_review" | "suspended";
 
 export type InsurerCallerContext = {
   userId: string;
@@ -9,10 +14,13 @@ export type InsurerCallerContext = {
   insurerUserId: string;
   role: InsurerRole;
   planTier: InsurerPlanTier;
+  /** Current insurer status — use `isReadOnly` helper for gating write operations */
+  insurerStatus: InsurerStatus;
 };
 
 /**
  * Resolve the current user's insurer context from Supabase session.
+ * Uses `active_insurer_id` cookie to support multi-insurer switching.
  * Returns null if the user is not authenticated or not an insurer user.
  */
 export async function resolveInsurerCaller(): Promise<InsurerCallerContext | null> {
@@ -22,36 +30,101 @@ export async function resolveInsurerCaller(): Promise<InsurerCallerContext | nul
 
   const admin = createAdminClient();
 
-  // Get insurer_user record
-  const { data: iu, error: iuErr } = await admin
+  // Check for active insurer cookie
+  const cookieStore = await cookies();
+  const activeInsurerId = cookieStore.get(ACTIVE_INSURER_COOKIE)?.value;
+
+  // Build query for insurer_user record
+  let query = admin
     .from("insurer_users")
     .select("id, insurer_id, role")
     .eq("user_id", auth.user.id)
-    .eq("is_active", true)
+    .eq("is_active", true);
+
+  if (activeInsurerId) {
+    // Try specific insurer first
+    query = query.eq("insurer_id", activeInsurerId);
+  }
+
+  const { data: iu, error: iuErr } = await query
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
 
+  // If cookie-specified insurer not found, fall back to any
+  if (!iu && activeInsurerId) {
+    const { data: fallbackIu } = await admin
+      .from("insurer_users")
+      .select("id, insurer_id, role")
+      .eq("user_id", auth.user.id)
+      .eq("is_active", true)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (!fallbackIu) return null;
+    // Use fallback and continue
+    return resolveInsurerContext(admin, auth.user.id, fallbackIu);
+  }
+
   if (iuErr || !iu) return null;
 
-  // Get insurer plan info
+  return resolveInsurerContext(admin, auth.user.id, iu);
+}
+
+async function resolveInsurerContext(
+  admin: ReturnType<typeof createAdminClient>,
+  userId: string,
+  iu: { id: string; insurer_id: string; role: string },
+): Promise<InsurerCallerContext | null> {
+  // Get insurer plan info — allow active and active_pending_review (not suspended)
   const { data: insurer, error: insErr } = await admin
     .from("insurers")
-    .select("plan_tier")
+    .select("plan_tier, status")
     .eq("id", iu.insurer_id)
     .eq("is_active", true)
+    .in("status", ["active", "active_pending_review"])
     .limit(1)
     .maybeSingle();
 
   if (insErr || !insurer) return null;
 
   return {
-    userId: auth.user.id,
+    userId,
     insurerId: iu.insurer_id,
     insurerUserId: iu.id,
     role: normalizeInsurerRole(iu.role),
     planTier: normalizeInsurerPlanTier(insurer.plan_tier),
+    insurerStatus: insurer.status as InsurerStatus,
   };
+}
+
+/**
+ * Returns true if the insurer is in a read-only state (pending review).
+ */
+export function isReadOnly(caller: InsurerCallerContext): boolean {
+  return caller.insurerStatus === "active_pending_review";
+}
+
+/**
+ * Enforce that the insurer has been fully approved (status = 'active').
+ * Returns a Response if access is denied, or null if allowed.
+ * Use this to gate write/mutation endpoints.
+ */
+export function enforceActiveStatus(caller: InsurerCallerContext): Response | null {
+  if (caller.insurerStatus !== "active") {
+    return new Response(
+      JSON.stringify({
+        error: "insurer_not_active",
+        message: "この操作は加盟店の審査完了後に利用できます。",
+        status: caller.insurerStatus,
+      }),
+      {
+        status: 403,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      }
+    );
+  }
+  return null;
 }
 
 /**

@@ -52,6 +52,58 @@ function parseCsv(text: string): CsvRow[] {
   return out;
 }
 
+/**
+ * Send invitation email via Resend
+ */
+async function sendInviteEmail(to: string, companyName: string) {
+  const apiKey = (process.env.RESEND_API_KEY ?? "").trim();
+  const from = (process.env.RESEND_FROM ?? "").trim();
+  if (!apiKey || !from) return;
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.cartrust.co.jp";
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 24px;">
+      <div style="border-bottom: 2px solid #0071e3; padding-bottom: 12px; margin-bottom: 20px;">
+        <h2 style="margin: 0; color: #1d1d1f; font-size: 18px;">CARTRUSTへの招待</h2>
+      </div>
+      <p style="color: #1d1d1f; line-height: 1.6;">
+        ${companyName} より、CARTRUST加盟店ポータルへ招待されました。<br>
+        以下のリンクからパスワードを設定し、ご利用を開始してください。
+      </p>
+      <p style="margin: 24px 0;">
+        <a href="${baseUrl}/insurer/forgot-password" style="display: inline-block; background: #0071e3; color: #fff; padding: 10px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">
+          パスワードを設定する
+        </a>
+      </p>
+      <p style="color: #86868b; font-size: 13px;">
+        心当たりのない場合は、このメールを無視してください。
+      </p>
+      <div style="border-top: 1px solid #e5e5e5; margin-top: 24px; padding-top: 12px; font-size: 12px; color: #86868b;">
+        CARTRUST — 株式会社HOLY AUTO
+      </div>
+    </div>
+  `;
+
+  try {
+    await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from,
+        to,
+        subject: `【CARTRUST】${companyName} から招待されました`,
+        html,
+      }),
+    });
+  } catch (e) {
+    console.error("[insurer-csv] invite email failed:", to, e);
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const caller = await resolveInsurerCaller();
@@ -64,6 +116,24 @@ export async function POST(req: Request) {
 
     const adminSb = createAdminClient();
 
+    // Check max_users limit before processing
+    const { INSURER_PLAN_FEATURES } = await import("@/types/insurer");
+    const maxUsers = INSURER_PLAN_FEATURES[caller.planTier]?.max_users ?? 3;
+
+    const { count: currentCount } = await adminSb
+      .from("insurer_users")
+      .select("id", { count: "exact", head: true })
+      .eq("insurer_id", caller.insurerId)
+      .eq("is_active", true);
+
+    // Get insurer name for invite emails
+    const { data: insurerData } = await adminSb
+      .from("insurers")
+      .select("name")
+      .eq("id", caller.insurerId)
+      .single();
+    const companyName = insurerData?.name ?? "CARTRUST加盟店";
+
     // CSV読み込み
     const body = await req.text();
     let rows: CsvRow[];
@@ -74,10 +144,23 @@ export async function POST(req: Request) {
     }
 
     if (rows.length === 0) {
-      return NextResponse.json({ ok: true, inserted: 0, created_auth: 0, existing_auth: 0, errors: [] });
+      return NextResponse.json({ ok: true, inserted: 0, invited: 0, existing_auth: 0, errors: [] });
     }
 
-    let createdAuth = 0;
+    // Validate that adding these users won't exceed max_users
+    const remainingSlots = maxUsers - (currentCount ?? 0);
+    if (rows.length > remainingSlots) {
+      return NextResponse.json({
+        ok: false,
+        error: "max_users_exceeded",
+        message: `ユーザー上限を超過します。現在 ${currentCount ?? 0} 名 / 上限 ${maxUsers} 名。追加可能: ${Math.max(0, remainingSlots)} 名`,
+        current: currentCount ?? 0,
+        max: maxUsers,
+        requested: rows.length,
+      }, { status: 400 });
+    }
+
+    let invited = 0;
     let existingAuth = 0;
     let upserted = 0;
     const errors: Array<{ email: string; error: string }> = [];
@@ -86,21 +169,23 @@ export async function POST(req: Request) {
       try {
         const email = r.email;
 
-        // Create auth user if not exists
-        const cr = await adminSb.auth.admin.createUser({
-          email,
-          email_confirm: true,
+        // Try to invite user (creates auth user + sends Supabase invite email)
+        const inviteResult = await adminSb.auth.admin.inviteUserByEmail(email, {
+          data: { display_name: r.display_name ?? undefined },
+          redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://app.cartrust.co.jp"}/insurer/reset-password`,
         });
 
-        if ((cr as any)?.error) {
-          const msg = String((cr as any).error?.message ?? (cr as any).error ?? "");
-          if (msg.toLowerCase().includes("already") || msg.toLowerCase().includes("exists") || msg.toLowerCase().includes("duplicate")) {
+        if (inviteResult.error) {
+          const msg = inviteResult.error.message?.toLowerCase() ?? "";
+          if (msg.includes("already") || msg.includes("exists") || msg.includes("duplicate")) {
             existingAuth++;
           } else {
-            throw new Error(`createUser failed: ${msg || "unknown"}`);
+            throw new Error(`inviteUser failed: ${inviteResult.error.message || "unknown"}`);
           }
         } else {
-          createdAuth++;
+          invited++;
+          // Send custom invite email with company name
+          sendInviteEmail(email, companyName);
         }
 
         const { error: upErr } = await adminSb.rpc("upsert_insurer_user", {
@@ -122,7 +207,7 @@ export async function POST(req: Request) {
       insurer_id: caller.insurerId,
       total: rows.length,
       upserted,
-      created_auth: createdAuth,
+      invited,
       existing_auth: existingAuth,
       errors,
     });

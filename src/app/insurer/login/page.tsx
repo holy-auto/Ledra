@@ -18,7 +18,7 @@ export default function InsurerLoginPage() {
       if (error) throw error;
       window.location.href = "/insurer";
     } catch (e: any) {
-      setErr(e?.message ?? "login_failed");
+      setErr(e?.message ?? "ログインに失敗しました");
     } finally {
       setBusy(false);
     }
@@ -37,26 +37,29 @@ export default function InsurerLoginPage() {
 
         <div className="text-center">
           <h1 className="text-xl font-bold text-primary">保険会社ポータル ログイン</h1>
-          <p className="text-sm text-muted mt-1">認証は Supabase Auth（Email/Password）です。</p>
+          <p className="text-sm text-muted mt-1">メールアドレスとパスワードでログインしてください。</p>
         </div>
 
         <div className="grid gap-4">
           <label>
-            <div className="text-sm text-secondary mb-1">Email</div>
+            <div className="text-sm text-secondary mb-1">メールアドレス</div>
             <input
+              type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="input-field w-full"
+              placeholder="example@company.co.jp"
             />
           </label>
 
           <label>
-            <div className="text-sm text-secondary mb-1">Password</div>
+            <div className="text-sm text-secondary mb-1">パスワード</div>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="input-field w-full"
+              onKeyDown={(e) => e.key === "Enter" && !busy && onLogin()}
             />
           </label>
 
@@ -67,12 +70,19 @@ export default function InsurerLoginPage() {
           </button>
         </div>
 
-        <p className="text-center text-sm text-muted">
-          アカウントをお持ちでない方は{" "}
-          <a href="/join" className="text-accent hover:underline">
-            新規登録
-          </a>
-        </p>
+        <div className="text-center space-y-2">
+          <p className="text-sm text-muted">
+            <a href="/insurer/forgot-password" className="text-accent hover:underline">
+              パスワードをお忘れですか？
+            </a>
+          </p>
+          <p className="text-sm text-muted">
+            アカウントをお持ちでない方は{" "}
+            <a href="/join" className="text-accent hover:underline">
+              新規登録
+            </a>
+          </p>
+        </div>
       </div>
     </main>
   );
