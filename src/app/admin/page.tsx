@@ -7,6 +7,35 @@ import PageHeader from "@/components/ui/PageHeader";
 import DashboardCharts from "./DashboardCharts";
 import OnboardingTour from "./OnboardingTour";
 
+// ── Partner Rank System ──
+interface PartnerRank {
+  key: string;
+  label: string;
+  color: string;    // tailwind text color
+  bgColor: string;  // tailwind bg color
+  minCompleted: number;
+  minRating: number | null;
+}
+
+const PARTNER_RANKS: PartnerRank[] = [
+  { key: "platinum", label: "プラチナ", color: "text-violet-600 dark:text-violet-400", bgColor: "bg-violet-100 dark:bg-violet-900/40", minCompleted: 50, minRating: 4.0 },
+  { key: "gold",     label: "ゴールド", color: "text-yellow-600 dark:text-yellow-400", bgColor: "bg-yellow-100 dark:bg-yellow-900/40", minCompleted: 20, minRating: 3.5 },
+  { key: "silver",   label: "シルバー", color: "text-gray-500 dark:text-gray-400",     bgColor: "bg-gray-100 dark:bg-gray-800/60",     minCompleted: 5,  minRating: null },
+  { key: "bronze",   label: "ブロンズ", color: "text-orange-600 dark:text-orange-400", bgColor: "bg-orange-100 dark:bg-orange-900/40", minCompleted: 1,  minRating: null },
+  { key: "starter",  label: "スターター", color: "text-muted",                          bgColor: "bg-surface-hover",                    minCompleted: 0,  minRating: null },
+];
+
+function resolveRank(completedOrders: number, avgRating: number | null): PartnerRank {
+  for (const rank of PARTNER_RANKS) {
+    if (completedOrders >= rank.minCompleted) {
+      if (rank.minRating == null || (avgRating != null && avgRating >= rank.minRating)) {
+        return rank;
+      }
+    }
+  }
+  return PARTNER_RANKS[PARTNER_RANKS.length - 1];
+}
+
 const CATEGORY_LABELS: Record<string, string> = {
   detailing: "ディテイリング",
   maintenance: "整備",
@@ -113,8 +142,82 @@ async function TenantStats({ tenantId }: { tenantId: string }) {
     activeOrders = (ordersResult as any)?.count ?? 0;
   }
 
+  // ── Partner Score ──
+  const { data: partnerScore } = await supabase
+    .from("partner_scores")
+    .select("total_orders, completed_orders, on_time_orders, cancelled_orders, avg_rating, rating_count")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  const ps = partnerScore ?? { total_orders: 0, completed_orders: 0, on_time_orders: 0, cancelled_orders: 0, avg_rating: null, rating_count: 0 };
+  const rank = resolveRank(ps.completed_orders, ps.avg_rating);
+  const completionRate = ps.total_orders > 0 ? Math.round((ps.completed_orders / ps.total_orders) * 100) : null;
+  const onTimeRate = ps.completed_orders > 0 ? Math.round((ps.on_time_orders / ps.completed_orders) * 100) : null;
+
+  // Next rank calculation
+  const currentIdx = PARTNER_RANKS.findIndex((r) => r.key === rank.key);
+  const nextRank = currentIdx > 0 ? PARTNER_RANKS[currentIdx - 1] : null;
+
   return (
     <>
+      {/* Partner Score Card */}
+      <div>
+        <h2 className="text-xs font-semibold tracking-[0.18em] text-muted mb-3">取引実績</h2>
+        <div className="glass-card p-5">
+          <div className="flex items-center gap-4 mb-4">
+            <div className={`flex h-14 w-14 items-center justify-center rounded-xl ${rank.bgColor}`}>
+              <span className={`text-2xl font-bold ${rank.color}`}>
+                {rank.key === "platinum" ? "P" : rank.key === "gold" ? "G" : rank.key === "silver" ? "S" : rank.key === "bronze" ? "B" : "—"}
+              </span>
+            </div>
+            <div>
+              <div className={`text-lg font-bold ${rank.color}`}>{rank.label}</div>
+              <div className="text-xs text-muted">パートナーランク</div>
+            </div>
+            {ps.avg_rating != null && (
+              <div className="ml-auto text-right">
+                <div className="text-2xl font-bold text-yellow-500">
+                  {"★".repeat(Math.round(ps.avg_rating))}{"☆".repeat(5 - Math.round(ps.avg_rating))}
+                </div>
+                <div className="text-xs text-muted">{ps.avg_rating.toFixed(1)} / 5.0（{ps.rating_count}件）</div>
+              </div>
+            )}
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-4 text-center">
+            <div className="p-3 rounded-lg bg-surface-hover">
+              <div className="text-2xl font-bold text-primary">{ps.completed_orders}</div>
+              <div className="text-[11px] text-muted">完了取引</div>
+            </div>
+            <div className="p-3 rounded-lg bg-surface-hover">
+              <div className="text-2xl font-bold text-primary">{completionRate != null ? `${completionRate}%` : "—"}</div>
+              <div className="text-[11px] text-muted">完了率</div>
+            </div>
+            <div className="p-3 rounded-lg bg-surface-hover">
+              <div className="text-2xl font-bold text-primary">{onTimeRate != null ? `${onTimeRate}%` : "—"}</div>
+              <div className="text-[11px] text-muted">納期遵守率</div>
+            </div>
+            <div className="p-3 rounded-lg bg-surface-hover">
+              <div className="text-2xl font-bold text-danger">{ps.cancelled_orders}</div>
+              <div className="text-[11px] text-muted">キャンセル</div>
+            </div>
+          </div>
+
+          {nextRank && (
+            <div className="mt-4 p-3 rounded-lg bg-surface-hover text-xs text-muted">
+              <span className={`font-semibold ${nextRank.color}`}>{nextRank.label}</span>
+              まであと
+              {ps.completed_orders < nextRank.minCompleted && (
+                <span className="font-semibold text-primary"> {nextRank.minCompleted - ps.completed_orders}件の完了取引</span>
+              )}
+              {nextRank.minRating != null && (ps.avg_rating == null || ps.avg_rating < nextRank.minRating) && (
+                <span className="font-semibold text-primary"> 平均評価{nextRank.minRating}以上</span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
       <div>
         <h2 className="text-xs font-semibold tracking-[0.18em] text-muted mb-3">自店舗</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
