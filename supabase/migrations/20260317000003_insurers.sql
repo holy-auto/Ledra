@@ -427,6 +427,7 @@ end $$;
 -- =============================================================
 -- 11) Fix platform_insurer_count() from dashboard_enhancements
 -- =============================================================
+drop function if exists platform_insurer_count();
 create or replace function platform_insurer_count()
 returns bigint
 language sql stable security definer
