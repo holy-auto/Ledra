@@ -61,6 +61,33 @@ export const RESERVATION_PAYMENT_STATUS_MAP: Record<string, StatusEntry> = {
   refunded: { variant: "danger",  label: "返金済" },
 };
 
+/* ── Agent Referral ── */
+export const AGENT_REFERRAL_STATUS_MAP: Record<string, StatusEntry> = {
+  pending:          { variant: "default", label: "審査待ち" },
+  contacted:        { variant: "info",    label: "連絡済み" },
+  in_negotiation:   { variant: "violet",  label: "商談中" },
+  trial:            { variant: "warning", label: "トライアル中" },
+  contracted:       { variant: "success", label: "契約成立" },
+  cancelled:        { variant: "default", label: "キャンセル" },
+  churned:          { variant: "danger",  label: "解約" },
+};
+
+/* ── Agent Commission ── */
+export const AGENT_COMMISSION_STATUS_MAP: Record<string, StatusEntry> = {
+  pending:   { variant: "default", label: "未払い" },
+  approved:  { variant: "info",    label: "承認済み" },
+  paid:      { variant: "success", label: "支払い済み" },
+  failed:    { variant: "danger",  label: "支払い失敗" },
+  cancelled: { variant: "default", label: "キャンセル" },
+};
+
+/* ── Agent Account ── */
+export const AGENT_STATUS_MAP: Record<string, StatusEntry> = {
+  active_pending_review: { variant: "warning", label: "仮登録" },
+  active:                { variant: "success", label: "有効" },
+  suspended:             { variant: "danger",  label: "停止" },
+};
+
 /* ── Utility: get status entry safely ── */
 export function getStatusEntry(
   map: Record<string, StatusEntry>,
