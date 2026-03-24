@@ -188,10 +188,10 @@ IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public'
   EXECUTE 'DROP POLICY IF EXISTS "job_orders_insert" ON job_orders';
   EXECUTE 'DROP POLICY IF EXISTS "job_orders_update" ON job_orders';
 
-  EXECUTE 'CREATE POLICY "job_orders_select_v2" ON job_orders FOR SELECT USING (poster_dealer_id IN (SELECT my_tenant_ids()) OR assigned_dealer_id IN (SELECT my_tenant_ids()))';
-  EXECUTE 'CREATE POLICY "job_orders_insert_v2" ON job_orders FOR INSERT WITH CHECK (poster_dealer_id IN (SELECT my_tenant_ids()) AND my_tenant_role(poster_dealer_id) IN (''owner'',''admin'',''staff''))';
-  EXECUTE 'CREATE POLICY "job_orders_update_v2" ON job_orders FOR UPDATE USING ((poster_dealer_id IN (SELECT my_tenant_ids()) AND my_tenant_role(poster_dealer_id) IN (''owner'',''admin'',''staff'')) OR (assigned_dealer_id IN (SELECT my_tenant_ids()) AND my_tenant_role(assigned_dealer_id) IN (''owner'',''admin'',''staff'')))';
-  EXECUTE 'CREATE POLICY "job_orders_delete_v2" ON job_orders FOR DELETE USING (poster_dealer_id IN (SELECT my_tenant_ids()) AND my_tenant_role(poster_dealer_id) IN (''owner'',''admin''))';
+  EXECUTE 'CREATE POLICY "job_orders_select_v2" ON job_orders FOR SELECT USING (from_tenant_id IN (SELECT my_tenant_ids()) OR to_tenant_id IN (SELECT my_tenant_ids()))';
+  EXECUTE 'CREATE POLICY "job_orders_insert_v2" ON job_orders FOR INSERT WITH CHECK (from_tenant_id IN (SELECT my_tenant_ids()) AND my_tenant_role(from_tenant_id) IN (''owner'',''admin'',''staff''))';
+  EXECUTE 'CREATE POLICY "job_orders_update_v2" ON job_orders FOR UPDATE USING ((from_tenant_id IN (SELECT my_tenant_ids()) AND my_tenant_role(from_tenant_id) IN (''owner'',''admin'',''staff'')) OR (to_tenant_id IN (SELECT my_tenant_ids()) AND my_tenant_role(to_tenant_id) IN (''owner'',''admin'',''staff'')))';
+  EXECUTE 'CREATE POLICY "job_orders_delete_v2" ON job_orders FOR DELETE USING (from_tenant_id IN (SELECT my_tenant_ids()) AND my_tenant_role(from_tenant_id) IN (''owner'',''admin''))';
 END IF;
 END $$;
 
