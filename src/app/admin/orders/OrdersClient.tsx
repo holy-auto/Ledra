@@ -1,15 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import { formatJpy, formatDate } from "@/lib/format";
 
-type OrderStatus = "pending" | "accepted" | "in_progress" | "completed" | "rejected" | "cancelled";
+type OrderStatus =
+  | "pending" | "quoting" | "accepted" | "in_progress"
+  | "approval_pending" | "payment_pending" | "completed"
+  | "rejected" | "cancelled";
 
 interface OrderRow {
   id: string;
+  order_number: string | null;
   from_tenant_id: string;
   to_tenant_id: string;
   from_company?: string;
@@ -18,16 +23,21 @@ interface OrderRow {
   description: string | null;
   category: string | null;
   budget: number | null;
+  accepted_amount: number | null;
   deadline: string | null;
   status: OrderStatus;
+  payment_status: string;
   created_at: string;
 }
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "all", label: "すべて" },
   { value: "pending", label: "申請中" },
+  { value: "quoting", label: "見積中" },
   { value: "accepted", label: "受注" },
   { value: "in_progress", label: "作業中" },
+  { value: "approval_pending", label: "検収待ち" },
+  { value: "payment_pending", label: "支払待ち" },
   { value: "completed", label: "完了" },
   { value: "rejected", label: "辞退" },
   { value: "cancelled", label: "キャンセル" },
@@ -42,8 +52,11 @@ const TYPE_OPTIONS: { value: string; label: string }[] = [
 const statusLabel = (s: OrderStatus): string => {
   const m: Record<OrderStatus, string> = {
     pending: "申請中",
+    quoting: "見積中",
     accepted: "受注",
     in_progress: "作業中",
+    approval_pending: "検収待ち",
+    payment_pending: "支払待ち",
     completed: "完了",
     rejected: "辞退",
     cancelled: "キャンセル",
@@ -54,8 +67,11 @@ const statusLabel = (s: OrderStatus): string => {
 const statusVariant = (s: OrderStatus): "default" | "success" | "warning" | "danger" | "info" => {
   const m: Record<OrderStatus, "default" | "success" | "warning" | "danger" | "info"> = {
     pending: "warning",
+    quoting: "warning",
     accepted: "info",
     in_progress: "info",
+    approval_pending: "warning",
+    payment_pending: "warning",
     completed: "success",
     rejected: "danger",
     cancelled: "default",
@@ -68,18 +84,17 @@ const CATEGORY_OPTIONS = [
   "インテリアリペア", "デントリペア", "その他",
 ];
 
-const NEXT_STATUS_RECEIVED: Record<string, string | null> = {
-  pending: "accepted",
-  accepted: "in_progress",
-  in_progress: "completed",
-  completed: null,
-  rejected: null,
-  cancelled: null,
-};
-
 interface TenantOption {
   tenant_id: string;
   tenant_name: string;
+}
+
+interface TenantSearchResult {
+  tenant_id: string;
+  company_name: string;
+  slug: string;
+  completed_orders: number;
+  avg_rating: number | null;
 }
 
 export default function OrdersClient() {
@@ -89,14 +104,20 @@ export default function OrdersClient() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [showForm, setShowForm] = useState(false);
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  // 自テナント一覧（複数テナント所属対応）
+  // テナント一覧
   const [myTenants, setMyTenants] = useState<TenantOption[]>([]);
+
+  // テナント検索
+  const [tenantQuery, setTenantQuery] = useState("");
+  const [tenantResults, setTenantResults] = useState<TenantSearchResult[]>([]);
+  const [searchingTenants, setSearchingTenants] = useState(false);
+  const [selectedTenant, setSelectedTenant] = useState<TenantSearchResult | null>(null);
+  const [showTenantDropdown, setShowTenantDropdown] = useState(false);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // New order form
   const [formData, setFormData] = useState({
-    to_tenant_id: "",
     title: "",
     description: "",
     category: "",
@@ -124,19 +145,34 @@ export default function OrdersClient() {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      // 自テナント一覧を取得
       try {
         const res = await fetch("/api/admin/orders?_tenants=1", { cache: "no-store" });
         const j = await res.json().catch(() => null);
-        if (j?.myTenants?.length) {
-          setMyTenants(j.myTenants);
-          // デフォルトで先頭テナントを発注元として自動入力（from_tenant_id はAPI側で処理）
-        }
+        if (j?.myTenants?.length) setMyTenants(j.myTenants);
       } catch { /* ignore */ }
       await fetchOrders();
       setLoading(false);
     })();
   }, [fetchOrders]);
+
+  // ─── テナント検索（debounce） ───
+  useEffect(() => {
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    if (!tenantQuery || tenantQuery.length < 1) {
+      setTenantResults([]);
+      return;
+    }
+    searchTimeoutRef.current = setTimeout(async () => {
+      setSearchingTenants(true);
+      try {
+        const res = await fetch(`/api/admin/tenants/search?q=${encodeURIComponent(tenantQuery)}`);
+        const j = await res.json();
+        setTenantResults(j.tenants ?? []);
+        setShowTenantDropdown(true);
+      } catch { /* ignore */ }
+      setSearchingTenants(false);
+    }, 300);
+  }, [tenantQuery]);
 
   const applyFilters = (newType?: string, newStatus?: string) => {
     const t = newType ?? typeFilter;
@@ -148,8 +184,8 @@ export default function OrdersClient() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.to_tenant_id || !formData.title) {
-      alert("送信先テナントIDと件名は必須です");
+    if (!selectedTenant || !formData.title) {
+      alert("発注先と件名は必須です");
       return;
     }
     setSubmitting(true);
@@ -159,6 +195,7 @@ export default function OrdersClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...formData,
+          to_tenant_id: selectedTenant.tenant_id,
           budget: formData.budget ? Number(formData.budget) : null,
           deadline: formData.deadline || null,
         }),
@@ -166,7 +203,9 @@ export default function OrdersClient() {
       const j = await res.json().catch(() => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setShowForm(false);
-      setFormData({ to_tenant_id: "", title: "", description: "", category: "", budget: "", deadline: "" });
+      setFormData({ title: "", description: "", category: "", budget: "", deadline: "" });
+      setSelectedTenant(null);
+      setTenantQuery("");
       await fetchOrders(typeFilter, statusFilter);
     } catch (e: unknown) {
       alert("発注に失敗しました: " + (e instanceof Error ? e.message : String(e)));
@@ -175,26 +214,10 @@ export default function OrdersClient() {
     }
   };
 
-  const handleStatusUpdate = async (orderId: string, newStatus: string) => {
-    setUpdatingId(orderId);
-    try {
-      const res = await fetch("/api/admin/orders", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: orderId, status: newStatus }),
-      });
-      const j = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
-      await fetchOrders(typeFilter, statusFilter);
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setUpdatingId(null);
-    }
-  };
-
-  const pendingSent = orders.filter((o) => o.status === "pending").length;
-  const activeCount = orders.filter((o) => o.status === "accepted" || o.status === "in_progress").length;
+  const pendingSent = orders.filter((o) => o.status === "pending" || o.status === "quoting").length;
+  const activeCount = orders.filter((o) =>
+    ["accepted", "in_progress", "approval_pending", "payment_pending"].includes(o.status),
+  ).length;
   const completedCount = orders.filter((o) => o.status === "completed").length;
 
   return (
@@ -241,32 +264,73 @@ export default function OrdersClient() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1">
                 <label className="text-xs text-muted">発注元（自社店舗）</label>
-                {myTenants.length > 1 ? (
-                  <select className="select-field" disabled>
-                    {myTenants.map((t) => (
-                      <option key={t.tenant_id} value={t.tenant_id}>{t.tenant_name}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    className="input-field bg-surface-hover"
-                    value={myTenants[0]?.tenant_name ?? "読込中..."}
-                    disabled
-                  />
-                )}
-                <p className="text-[10px] text-muted">※ 発注元は自動設定されます</p>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs text-muted">発注先テナントID *</label>
                 <input
                   type="text"
-                  className="input-field"
-                  value={formData.to_tenant_id}
-                  onChange={(e) => setFormData({ ...formData, to_tenant_id: e.target.value })}
-                  placeholder="発注先のテナントIDまたは店舗名で検索"
-                  required
+                  className="input-field bg-surface-hover"
+                  value={myTenants[0]?.tenant_name ?? "読込中..."}
+                  disabled
                 />
+                <p className="text-[10px] text-muted">※ 発注元は自動設定されます</p>
+              </div>
+              <div className="space-y-1 relative">
+                <label className="text-xs text-muted">発注先 *</label>
+                {selectedTenant ? (
+                  <div className="flex items-center gap-2">
+                    <div className="input-field bg-surface-hover flex-1 flex items-center justify-between">
+                      <span>{selectedTenant.company_name}</span>
+                      {selectedTenant.avg_rating && (
+                        <span className="text-xs text-yellow-500">★ {selectedTenant.avg_rating}</span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      className="text-xs text-red-500 hover:underline"
+                      onClick={() => { setSelectedTenant(null); setTenantQuery(""); }}
+                    >
+                      変更
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      type="text"
+                      className="input-field"
+                      value={tenantQuery}
+                      onChange={(e) => setTenantQuery(e.target.value)}
+                      onFocus={() => tenantResults.length > 0 && setShowTenantDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowTenantDropdown(false), 200)}
+                      placeholder="施工店名で検索..."
+                    />
+                    {searchingTenants && <p className="text-[10px] text-muted">検索中...</p>}
+                    {showTenantDropdown && tenantResults.length > 0 && (
+                      <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-surface border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {tenantResults.map((t) => (
+                          <button
+                            key={t.tenant_id}
+                            type="button"
+                            className="w-full text-left px-3 py-2 hover:bg-surface-hover text-sm flex items-center justify-between"
+                            onMouseDown={() => {
+                              setSelectedTenant(t);
+                              setTenantQuery("");
+                              setShowTenantDropdown(false);
+                            }}
+                          >
+                            <span className="font-medium">{t.company_name}</span>
+                            <span className="text-xs text-muted">
+                              {t.completed_orders > 0 && `${t.completed_orders}件完了`}
+                              {t.avg_rating && ` ★${t.avg_rating}`}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {showTenantDropdown && tenantResults.length === 0 && tenantQuery.length >= 1 && !searchingTenants && (
+                      <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-surface border border-border rounded-lg shadow-lg p-3 text-xs text-muted">
+                        該当する施工店が見つかりません
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
               <div className="space-y-1">
                 <label className="text-xs text-muted">カテゴリ</label>
@@ -388,76 +452,48 @@ export default function OrdersClient() {
 
             <div className="space-y-3">
               {orders.map((order) => (
-                <div key={order.id} className="glass-card p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-4 flex-wrap">
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-primary truncate">{order.title}</div>
-                      {order.category && (
-                        <span className="text-xs text-secondary">{order.category}</span>
-                      )}
+                <Link key={order.id} href={`/admin/orders/${order.id}`} className="block">
+                  <div className="glass-card p-4 space-y-3 hover:ring-1 hover:ring-accent/30 transition-shadow">
+                    <div className="flex items-center justify-between gap-4 flex-wrap">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          {order.order_number && (
+                            <span className="text-xs text-muted font-mono">{order.order_number}</span>
+                          )}
+                          <span className="text-sm font-semibold text-primary truncate">{order.title}</span>
+                        </div>
+                        {order.category && (
+                          <span className="text-xs text-secondary">{order.category}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <Badge variant={statusVariant(order.status)}>
+                          {statusLabel(order.status)}
+                        </Badge>
+                        <span className="text-xs text-muted">{formatDate(order.created_at)}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <Badge variant={statusVariant(order.status)}>
-                        {statusLabel(order.status)}
-                      </Badge>
-                      <span className="text-xs text-muted">{formatDate(order.created_at)}</span>
-                    </div>
-                  </div>
 
-                  {order.description && (
-                    <p className="text-[13px] text-secondary">{order.description}</p>
-                  )}
+                    {order.description && (
+                      <p className="text-[13px] text-secondary line-clamp-2">{order.description}</p>
+                    )}
 
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div className="flex gap-6 text-xs text-muted">
-                      {order.budget && (
-                        <span>予算: <span className="font-semibold text-primary">{formatJpy(order.budget)}</span></span>
+                    <div className="flex items-center gap-6 text-xs text-muted">
+                      {(order.accepted_amount || order.budget) && (
+                        <span>
+                          {order.accepted_amount ? "合意金額" : "予算"}:{" "}
+                          <span className="font-semibold text-primary">
+                            {formatJpy(order.accepted_amount ?? order.budget!)}
+                          </span>
+                        </span>
                       )}
                       {order.deadline && (
                         <span>納期: <span className="font-semibold text-primary">{formatDate(order.deadline)}</span></span>
                       )}
                       <span>発注先: <span className="text-secondary">{order.to_company || order.to_tenant_id?.slice(0, 8)}</span></span>
                     </div>
-
-                    {/* Status action buttons (received orders only) */}
-                    {(() => {
-                      const nextStatus = NEXT_STATUS_RECEIVED[order.status];
-                      const isUpdating = updatingId === order.id;
-                      if (!nextStatus && order.status !== "pending") return null;
-                      return (
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {nextStatus && (
-                            <button
-                              onClick={() => handleStatusUpdate(order.id, nextStatus)}
-                              disabled={isUpdating}
-                              className="btn-primary px-2.5 py-1 text-[11px]"
-                            >
-                              {isUpdating ? "..." : `${statusLabel(nextStatus as OrderStatus)}へ`}
-                            </button>
-                          )}
-                          {order.status === "pending" && (
-                            <button
-                              onClick={() => handleStatusUpdate(order.id, "rejected")}
-                              disabled={isUpdating}
-                              className="btn-secondary px-2.5 py-1 text-[11px] text-red-500"
-                            >
-                              辞退
-                            </button>
-                          )}
-                          {(order.status === "pending" || order.status === "accepted") && (
-                            <button
-                              onClick={() => handleStatusUpdate(order.id, "cancelled")}
-                              disabled={isUpdating}
-                              className="btn-secondary px-2.5 py-1 text-[11px] text-red-500"
-                            >
-                              取消
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })()}
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           </section>

@@ -1,0 +1,31 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+
+/**
+ * PUT /api/admin/notifications/[id]/read
+ * 通知を既読にする
+ */
+export async function PUT(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { id } = await params;
+    const supabase = await createClient();
+    const { data: userRes } = await supabase.auth.getUser();
+    if (!userRes?.user) return apiUnauthorized();
+
+    const { error } = await supabase
+      .from("notifications")
+      .update({ read_at: new Date().toISOString() })
+      .eq("id", id)
+      .is("read_at", null);
+
+    if (error) return apiInternalError(error, "mark notification read");
+
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return apiInternalError(e, "mark notification read");
+  }
+}
