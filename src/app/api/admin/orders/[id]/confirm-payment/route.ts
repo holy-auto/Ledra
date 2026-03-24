@@ -85,7 +85,7 @@ export async function POST(
 
     if (error) {
       console.error("[confirm-payment] update_failed:", error.message);
-      return NextResponse.json({ error: "update_failed" }, { status: 500 });
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     // 監査ログ

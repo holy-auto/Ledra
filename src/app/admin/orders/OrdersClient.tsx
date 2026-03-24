@@ -149,7 +149,9 @@ export default function OrdersClient() {
         const res = await fetch("/api/admin/orders?_tenants=1", { cache: "no-store" });
         const j = await res.json().catch(() => null);
         if (j?.myTenants?.length) setMyTenants(j.myTenants);
-      } catch { /* ignore */ }
+      } catch (e) {
+        console.error("[orders] tenant fetch failed:", e);
+      }
       await fetchOrders();
       setLoading(false);
     })();
@@ -267,7 +269,7 @@ export default function OrdersClient() {
                 <input
                   type="text"
                   className="input-field bg-surface-hover"
-                  value={myTenants[0]?.tenant_name ?? "読込中..."}
+                  value={myTenants[0]?.tenant_name ?? (loading ? "読込中..." : "取得失敗")}
                   disabled
                 />
                 <p className="text-[10px] text-muted">※ 発注元は自動設定されます</p>
