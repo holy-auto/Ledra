@@ -83,6 +83,21 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
+
+    // Check for duplicate corporate number
+    const { data: existing } = await supabase
+      .from("insurers")
+      .select("id")
+      .eq("corporate_number", data.corporate_number.replace(/[-\s]/g, ""))
+      .limit(1)
+      .maybeSingle();
+
+    if (existing) {
+      return NextResponse.json(
+        { error: "corporate_number_exists", message: "この法人番号は既に登録されています" },
+        { status: 409 },
+      );
+    }
   }
 
   // --- Hybrid approach: create auth user via SDK, then insurer data via RPC ---
@@ -130,6 +145,7 @@ export async function POST(req: NextRequest) {
     p_terms_accepted: data.terms_accepted,
     p_referral_code: data.referral_code || null,
     p_agency_id: data.agency_id || null,
+    p_business_type: data.business_type || "corporation",
   });
 
   if (rpcError) {

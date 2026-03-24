@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6;
+type BusinessType = "corporation" | "sole_proprietor";
 
 const STEP_LABELS: Record<Step, string> = {
   1: "メール確認",
@@ -27,12 +28,15 @@ export default function InsurerRegisterPage() {
   const [code, setCode] = useState("");
 
   // Step 3: Company info
+  const [businessType, setBusinessType] = useState<BusinessType>("corporation");
   const [companyName, setCompanyName] = useState("");
   const [contactPerson, setContactPerson] = useState("");
   const [phone, setPhone] = useState("");
   const [corporateNumber, setCorporateNumber] = useState("");
   const [address, setAddress] = useState("");
   const [representativeName, setRepresentativeName] = useState("");
+  const [lookingUp, setLookingUp] = useState(false);
+  const [lookupDone, setLookupDone] = useState(false);
 
   // Step 4: Terms
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -50,6 +54,41 @@ export default function InsurerRegisterPage() {
   const [done, setDone] = useState(false);
 
   const clearErr = () => setErr(null);
+
+  // --- GBiz API lookup ---
+  const handleLookupCorporate = useCallback(async (number: string) => {
+    const cleaned = number.replace(/[-\s]/g, "");
+    if (cleaned.length !== 13) return;
+
+    setLookingUp(true);
+    setLookupDone(false);
+    try {
+      const res = await fetch(`/api/join/lookup-corporate?number=${encodeURIComponent(cleaned)}`);
+      if (!res.ok) {
+        setLookupDone(true);
+        return;
+      }
+      const json = await res.json();
+      if (json.company_name) setCompanyName(json.company_name);
+      if (json.address) setAddress(json.address);
+      if (json.representative_name) setRepresentativeName(json.representative_name);
+      setLookupDone(true);
+    } catch {
+      // Silently fail — user can fill in manually
+      setLookupDone(true);
+    } finally {
+      setLookingUp(false);
+    }
+  }, []);
+
+  const handleCorporateNumberChange = useCallback((value: string) => {
+    setCorporateNumber(value);
+    setLookupDone(false);
+    const cleaned = value.replace(/[-\s]/g, "");
+    if (cleaned.length === 13 && /^\d{13}$/.test(cleaned)) {
+      handleLookupCorporate(cleaned);
+    }
+  }, [handleLookupCorporate]);
 
   // --- Step 1: Send verification code ---
   const handleSendCode = async () => {
@@ -101,8 +140,13 @@ export default function InsurerRegisterPage() {
   // --- Step 3: Company info validation ---
   const handleCompanyInfo = () => {
     clearErr();
-    if (!companyName.trim()) return setErr("会社名を入力してください");
+    if (!companyName.trim()) return setErr("会社名・屋号を入力してください");
     if (!contactPerson.trim()) return setErr("担当者名を入力してください");
+    if (businessType === "corporation") {
+      const cleaned = corporateNumber.replace(/[-\s]/g, "");
+      if (!cleaned) return setErr("法人の場合、法人番号は必須です");
+      if (!/^\d{13}$/.test(cleaned)) return setErr("法人番号は13桁の数字で入力してください");
+    }
     setStep(4);
   };
 
@@ -135,13 +179,14 @@ export default function InsurerRegisterPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          business_type: businessType,
           company_name: companyName.trim(),
           contact_person: contactPerson.trim(),
           email: email.trim().toLowerCase(),
           phone: phone.trim(),
           password,
           requested_plan: requestedPlan,
-          corporate_number: corporateNumber.trim(),
+          corporate_number: businessType === "corporation" ? corporateNumber.trim() : "",
           address: address.trim(),
           representative_name: representativeName.trim(),
           terms_accepted: true,
@@ -286,14 +331,79 @@ export default function InsurerRegisterPage() {
           {/* ───── Step 3: Company info ───── */}
           {step === 3 && (
             <>
+              {/* Business type selector */}
+              <fieldset>
+                <legend className="text-sm text-secondary mb-2">
+                  事業形態 <span className="text-red-500">*</span>
+                </legend>
+                <div className="flex gap-3">
+                  {([
+                    { value: "corporation" as const, label: "法人" },
+                    { value: "sole_proprietor" as const, label: "個人事業主" },
+                  ]).map((opt) => (
+                    <label
+                      key={opt.value}
+                      className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border cursor-pointer transition-colors text-sm ${
+                        businessType === opt.value
+                          ? "border-accent bg-accent/5 font-semibold text-primary"
+                          : "border-neutral-200 hover:border-neutral-300 text-secondary"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="business_type"
+                        value={opt.value}
+                        checked={businessType === opt.value}
+                        onChange={() => setBusinessType(opt.value)}
+                        className="accent-accent"
+                      />
+                      {opt.label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
+              {/* Corporate number — required for corporation, hidden for sole proprietor */}
+              {businessType === "corporation" && (
+                <label>
+                  <div className="text-sm text-secondary mb-1">
+                    法人番号 <span className="text-red-500">*</span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      value={corporateNumber}
+                      onChange={(e) => handleCorporateNumberChange(e.target.value)}
+                      placeholder="13桁の法人番号を入力"
+                      maxLength={15}
+                      className="input-field w-full pr-10"
+                    />
+                    {lookingUp && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    )}
+                    {lookupDone && !lookingUp && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted mt-1">
+                    法人番号を入力すると会社情報を自動取得します
+                  </p>
+                </label>
+              )}
+
               <label>
                 <div className="text-sm text-secondary mb-1">
-                  会社名 <span className="text-red-500">*</span>
+                  {businessType === "corporation" ? "会社名" : "屋号・事業名"} <span className="text-red-500">*</span>
                 </div>
                 <input
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
-                  placeholder="株式会社○○"
+                  placeholder={businessType === "corporation" ? "株式会社○○" : "○○自動車"}
                   className="input-field w-full"
                 />
               </label>
@@ -322,17 +432,7 @@ export default function InsurerRegisterPage() {
               </label>
 
               <label>
-                <div className="text-sm text-secondary mb-1">法人番号（任意）</div>
-                <input
-                  value={corporateNumber}
-                  onChange={(e) => setCorporateNumber(e.target.value)}
-                  placeholder="1234567890123"
-                  className="input-field w-full"
-                />
-              </label>
-
-              <label>
-                <div className="text-sm text-secondary mb-1">住所（任意）</div>
+                <div className="text-sm text-secondary mb-1">住所</div>
                 <input
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
@@ -342,11 +442,13 @@ export default function InsurerRegisterPage() {
               </label>
 
               <label>
-                <div className="text-sm text-secondary mb-1">代表者名（任意）</div>
+                <div className="text-sm text-secondary mb-1">
+                  {businessType === "corporation" ? "代表者名" : "事業主名"}
+                </div>
                 <input
                   value={representativeName}
                   onChange={(e) => setRepresentativeName(e.target.value)}
-                  placeholder="代表取締役 ○○"
+                  placeholder={businessType === "corporation" ? "代表取締役 ○○" : "○○ ○○"}
                   className="input-field w-full"
                 />
               </label>
