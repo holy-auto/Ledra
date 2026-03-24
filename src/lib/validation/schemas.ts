@@ -44,7 +44,7 @@ export const joinSchemaV2 = z.object({
   corporate_number: z.string().trim().optional().default(""),
   address: z.string().trim().optional().default(""),
   representative_name: z.string().trim().optional().default(""),
-  terms_accepted: z.boolean({ required_error: "利用規約への同意が必要です" }),
+  terms_accepted: z.boolean({ error: "利用規約への同意が必要です" }),
   referral_code: z.string().trim().max(100).optional(),
   agency_id: z.string().uuid("agency_idはUUID形式である必要があります").optional(),
 });
