@@ -39,7 +39,7 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
       .from("templates")
       .select("schema_json")
       .eq("id", template_id)
-      .eq("tenant_id", tenantId)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .single();
     schema_snapshot = tpl?.schema_json ?? null;
   }
