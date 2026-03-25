@@ -71,7 +71,17 @@ ALTER TABLE reservations ADD COLUMN IF NOT EXISTS line_user_id text;
 ALTER TABLE reservations ADD COLUMN IF NOT EXISTS gcal_event_id text;
 
 -- 5c. 車両履歴テーブル拡張: performed_at(防御的追加) + 顧客公開フラグ
-ALTER TABLE vehicle_histories ADD COLUMN IF NOT EXISTS performed_at timestamptz NOT NULL DEFAULT now();
+-- performed_at を nullable で追加し、既存行を埋めてから NOT NULL にする
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'vehicle_histories' AND column_name = 'performed_at'
+  ) THEN
+    ALTER TABLE vehicle_histories ADD COLUMN performed_at timestamptz DEFAULT now();
+    UPDATE vehicle_histories SET performed_at = created_at WHERE performed_at IS NULL;
+    ALTER TABLE vehicle_histories ALTER COLUMN performed_at SET NOT NULL;
+  END IF;
+END $$;
 ALTER TABLE vehicle_histories ADD COLUMN IF NOT EXISTS is_public boolean DEFAULT false;
 ALTER TABLE vehicle_histories ADD COLUMN IF NOT EXISTS progress_label text;
 
