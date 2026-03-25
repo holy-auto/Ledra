@@ -361,6 +361,23 @@ export async function pullEventsFromCalendar(
   }
 }
 
+/** テナントのGoogleカレンダー一覧を取得 */
+export async function listCalendars(
+  tenantId: string,
+): Promise<{ id: string; summary: string; primary?: boolean }[]> {
+  try {
+    const client = await getCalendarClient(tenantId);
+    if (!client) return [];
+
+    const res = await client.calendar.calendarList.list({ minAccessRole: "writer" });
+    return (res.data.items ?? [])
+      .map((c) => ({ id: c.id ?? "", summary: c.summary ?? "", primary: c.primary ?? false }))
+      .filter((c) => c.id);
+  } catch {
+    return [];
+  }
+}
+
 /**
  * 既存予約を一括で Google Calendar に push 同期
  * gcal_event_id が未設定の予約のみ対象

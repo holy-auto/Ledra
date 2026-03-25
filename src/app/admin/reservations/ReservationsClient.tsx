@@ -143,6 +143,9 @@ export default function ReservationsClient() {
   const [gcalLoading, setGcalLoading] = useState(false);
   const [gcalSyncing, setGcalSyncing] = useState(false);
   const [gcalLastSynced, setGcalLastSynced] = useState<string | null>(null);
+  const [gcalCalendars, setGcalCalendars] = useState<{ id: string; summary: string; primary?: boolean }[]>([]);
+  const [gcalCalendarId, setGcalCalendarId] = useState<string | null>(null);
+  const [gcalCalendarSaving, setGcalCalendarSaving] = useState(false);
 
   // ─── Reference data (one-time fetch) ───
 
@@ -164,7 +167,14 @@ export default function ReservationsClient() {
       try {
         const gcRes = await fetch("/api/admin/gcal", { cache: "no-store" });
         const gcJ = await gcRes.json().catch(() => null);
-        if (gcRes.ok && gcJ?.connected) setGcalConnected(true);
+        if (gcRes.ok && gcJ?.connected) {
+          setGcalConnected(true);
+          if (gcJ?.calendar_id) setGcalCalendarId(gcJ.calendar_id);
+          // カレンダー一覧を取得
+          const calRes = await fetch("/api/admin/gcal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "list-calendars" }) });
+          const calJ = await calRes.json().catch(() => null);
+          if (calJ?.calendars) setGcalCalendars(calJ.calendars);
+        }
         if (gcJ?.last_synced_at) setGcalLastSynced(gcJ.last_synced_at);
       } catch { /* gcal not configured */ }
     } catch {}
@@ -447,6 +457,8 @@ export default function ReservationsClient() {
                     if (!confirm("Googleカレンダー連携を解除しますか？")) return;
                     await fetch("/api/admin/gcal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "disconnect" }) });
                     setGcalConnected(false);
+                    setGcalCalendars([]);
+                    setGcalCalendarId(null);
                   }}
                   className="btn-ghost text-xs px-3 py-1.5 text-red-500"
                 >
@@ -481,6 +493,30 @@ export default function ReservationsClient() {
               </button>
             )}
           </div>
+          {gcalConnected && gcalCalendars.length > 0 && (
+            <div className="w-full flex items-center gap-2 pt-1 border-t border-border">
+              <label className="text-xs text-muted whitespace-nowrap">同期先カレンダー:</label>
+              <select
+                value={gcalCalendarId ?? "primary"}
+                onChange={async (e) => {
+                  const id = e.target.value;
+                  setGcalCalendarId(id);
+                  setGcalCalendarSaving(true);
+                  await fetch("/api/admin/gcal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "set-calendar", calendar_id: id }) });
+                  setGcalCalendarSaving(false);
+                }}
+                disabled={gcalCalendarSaving}
+                className="text-xs border border-border rounded px-2 py-1 flex-1 min-w-0 bg-background text-primary"
+              >
+                {gcalCalendars.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.summary}{c.primary ? " (メイン)" : ""}
+                  </option>
+                ))}
+              </select>
+              {gcalCalendarSaving && <span className="text-xs text-muted">保存中...</span>}
+            </div>
+          )}
         </section>
 
         {err && (
