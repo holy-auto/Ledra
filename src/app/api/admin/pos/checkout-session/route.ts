@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
   try {
     // Rate limiting
     const ip = getClientIp(req);
-    const rl = checkRateLimit(`checkout-session:${ip}`, { limit: 20, windowSec: 60 });
+    const rl = await checkRateLimit(`checkout-session:${ip}`, { limit: 20, windowSec: 60 });
     if (!rl.allowed) {
       return NextResponse.json(
         { error: "rate_limited", retry_after: rl.retryAfterSec },
