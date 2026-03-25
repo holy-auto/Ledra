@@ -65,10 +65,20 @@ export default function SelectStoreScreen() {
   if (stores.length === 0) {
     return (
       <View style={styles.center}>
-        <Text variant="titleMedium">店舗が見つかりません</Text>
+        <Text variant="titleMedium">店舗が登録されていません</Text>
         <Text variant="bodyMedium" style={styles.subtext}>
-          管理者に店舗の設定を依頼してください
+          店舗なしで続行するか、管理者に設定を依頼してください
         </Text>
+        <Button
+          mode="contained"
+          onPress={() => {
+            setSelectedStore({ id: "", name: user?.tenantName ?? "本店" });
+            router.replace("/(tabs)");
+          }}
+          style={{ marginTop: 24 }}
+        >
+          続行する
+        </Button>
       </View>
     );
   }

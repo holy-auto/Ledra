@@ -21,13 +21,12 @@ export async function fetchUserProfile(): Promise<UserProfile | null> {
 
   if (!user) return null;
 
-  const { data: membership } = await supabase
+  const { data: membership, error } = await supabase
     .from("tenant_memberships")
     .select(
       `
       tenant_id,
       role,
-      store_ids,
       tenants (
         name
       )
@@ -36,7 +35,10 @@ export async function fetchUserProfile(): Promise<UserProfile | null> {
     .eq("user_id", user.id)
     .single();
 
-  if (!membership) return null;
+  if (error || !membership) {
+    console.error("fetchUserProfile error:", error?.message);
+    return null;
+  }
 
   const tenant = membership.tenants as unknown as { name: string } | null;
 
@@ -46,7 +48,7 @@ export async function fetchUserProfile(): Promise<UserProfile | null> {
     tenantId: membership.tenant_id,
     tenantName: tenant?.name ?? "",
     role: membership.role as AppRole,
-    storeIds: (membership.store_ids as string[]) ?? [],
+    storeIds: [],
   };
 }
 
