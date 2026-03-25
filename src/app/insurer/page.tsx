@@ -245,6 +245,7 @@ export default function InsurerHomePage() {
                 <option value="">全ステータス</option>
                 <option value="active">有効 (active)</option>
                 <option value="void">無効 (void)</option>
+                <option value="expired">期限切れ (expired)</option>
               </select>
 
               <div className="flex items-center gap-2">
