@@ -27,11 +27,11 @@ export async function GET(req: NextRequest) {
       .eq("user_id", userRes.user.id);
     const myTenantIds = (myMemberships ?? []).map((m) => m.tenant_id);
 
-    // company_name で ILIKE 検索
+    // name で ILIKE 検索
     let query = supabase
       .from("tenants")
-      .select("id, company_name, slug")
-      .ilike("company_name", `%${q}%`)
+      .select("id, name, slug")
+      .ilike("name", `%${q}%`)
       .eq("is_active", true)
       .limit(20);
 
@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
 
     const results = (tenants ?? []).map((t) => ({
       tenant_id: t.id,
-      company_name: t.company_name,
+      company_name: t.name,
       slug: t.slug,
       completed_orders: scoresMap[t.id]?.completed_orders ?? 0,
       avg_rating: scoresMap[t.id]?.avg_rating ?? null,

@@ -16,7 +16,7 @@ interface OrderRow {
   id: string;
   order_number: string | null;
   from_tenant_id: string;
-  to_tenant_id: string;
+  to_tenant_id: string | null;
   from_company?: string;
   to_company?: string;
   title: string;
@@ -149,7 +149,9 @@ export default function OrdersClient() {
         const res = await fetch("/api/admin/orders?_tenants=1", { cache: "no-store" });
         const j = await res.json().catch(() => null);
         if (j?.myTenants?.length) setMyTenants(j.myTenants);
-      } catch { /* ignore */ }
+      } catch (e) {
+        console.error("[orders] tenant fetch failed:", e);
+      }
       await fetchOrders();
       setLoading(false);
     })();
@@ -184,8 +186,8 @@ export default function OrdersClient() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedTenant || !formData.title) {
-      alert("発注先と件名は必須です");
+    if (!formData.title) {
+      alert("件名は必須です");
       return;
     }
     setSubmitting(true);
@@ -195,7 +197,7 @@ export default function OrdersClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...formData,
-          to_tenant_id: selectedTenant.tenant_id,
+          to_tenant_id: selectedTenant?.tenant_id || null,
           budget: formData.budget ? Number(formData.budget) : null,
           deadline: formData.deadline || null,
         }),
@@ -267,13 +269,13 @@ export default function OrdersClient() {
                 <input
                   type="text"
                   className="input-field bg-surface-hover"
-                  value={myTenants[0]?.tenant_name ?? "読込中..."}
+                  value={myTenants[0]?.tenant_name ?? (loading ? "読込中..." : "取得失敗")}
                   disabled
                 />
                 <p className="text-[10px] text-muted">※ 発注元は自動設定されます</p>
               </div>
               <div className="space-y-1 relative">
-                <label className="text-xs text-muted">発注先 *</label>
+                <label className="text-xs text-muted">発注先</label>
                 {selectedTenant ? (
                   <div className="flex items-center gap-2">
                     <div className="input-field bg-surface-hover flex-1 flex items-center justify-between">
@@ -490,7 +492,7 @@ export default function OrdersClient() {
                       {order.deadline && (
                         <span>納期: <span className="font-semibold text-primary">{formatDate(order.deadline)}</span></span>
                       )}
-                      <span>発注先: <span className="text-secondary">{order.to_company || order.to_tenant_id?.slice(0, 8)}</span></span>
+                      <span>発注先: <span className="text-secondary">{order.to_company || (order.to_tenant_id ? order.to_tenant_id.slice(0, 8) : "未指定")}</span></span>
                     </div>
                   </div>
                 </Link>

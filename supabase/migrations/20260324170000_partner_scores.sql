@@ -26,7 +26,7 @@ CREATE POLICY "partner_scores_select" ON partner_scores FOR SELECT
 CREATE OR REPLACE VIEW partner_score_view AS
 SELECT
   ps.tenant_id,
-  t.company_name,
+  t.name AS company_name,
   ps.total_orders,
   ps.completed_orders,
   CASE WHEN ps.total_orders > 0

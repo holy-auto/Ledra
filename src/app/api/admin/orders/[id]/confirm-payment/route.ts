@@ -40,7 +40,7 @@ export async function POST(
     }
 
     const isFrom = order.from_tenant_id === tenantId;
-    const isTo = order.to_tenant_id === tenantId;
+    const isTo = order.to_tenant_id != null && order.to_tenant_id === tenantId;
 
     const updateData: Record<string, unknown> = {
       updated_at: new Date().toISOString(),

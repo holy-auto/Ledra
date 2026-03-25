@@ -31,13 +31,32 @@ export async function GET(req: NextRequest) {
 
     // テナント一覧リクエスト
     if (searchParams.has("_tenants")) {
-      const { data: memberships } = await supabase
+      const { data: memberships, error: memErr } = await supabase
         .from("tenant_memberships")
-        .select("tenant_id, tenants:tenants(company_name)")
+        .select("tenant_id")
         .eq("user_id", caller.userId);
-      const myTenants = (memberships ?? []).map((m: Record<string, unknown>) => ({
-        tenant_id: m.tenant_id,
-        tenant_name: (m.tenants as Record<string, unknown>)?.company_name ?? String(m.tenant_id).slice(0, 8),
+
+      if (memErr) {
+        console.error("[orders] _tenants memberships failed:", memErr.message);
+        return NextResponse.json({ myTenants: [] });
+      }
+
+      const tenantIds = (memberships ?? []).map((m) => m.tenant_id as string);
+      let tenantMap: Record<string, string> = {};
+
+      if (tenantIds.length > 0) {
+        const { data: tenants } = await supabase
+          .from("tenants")
+          .select("id, name")
+          .in("id", tenantIds);
+        for (const t of tenants ?? []) {
+          tenantMap[t.id] = t.name;
+        }
+      }
+
+      const myTenants = tenantIds.map((tid) => ({
+        tenant_id: tid,
+        tenant_name: tenantMap[tid] ?? tid.slice(0, 8),
       }));
       return NextResponse.json({ myTenants });
     }
@@ -55,6 +74,7 @@ export async function GET(req: NextRequest) {
     } else if (type === "received") {
       query = query.eq("to_tenant_id", tenantId);
     } else {
+      // 発注先未定(to_tenant_id IS NULL)の注文も発注者なら表示
       query = query.or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`);
     }
 
@@ -65,6 +85,7 @@ export async function GET(req: NextRequest) {
     const { data: orders, error } = await query.limit(100);
 
     if (error) {
+      console.error("[orders] list_failed:", error.message, error.details);
       return NextResponse.json({ orders: [], source: "empty" });
     }
 
@@ -85,15 +106,15 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { to_tenant_id, title, description, category, budget, deadline, vehicle_id } = body;
 
-    if (!to_tenant_id || !title) {
-      return NextResponse.json({ error: "to_tenant_id and title are required" }, { status: 400 });
+    if (!title) {
+      return NextResponse.json({ error: "title is required" }, { status: 400 });
     }
 
     const { data, error } = await supabase
       .from("job_orders")
       .insert({
         from_tenant_id: tenantId,
-        to_tenant_id,
+        to_tenant_id: to_tenant_id || null,
         title,
         description: description || null,
         category: category || null,
@@ -106,8 +127,8 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) {
-      console.error("[orders] insert_failed:", error.message);
-      return NextResponse.json({ error: "insert_failed" }, { status: 500 });
+      console.error("[orders] insert_failed:", error.message, error.details, error.hint);
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ order: data }, { status: 201 });
@@ -160,7 +181,7 @@ export async function PUT(req: NextRequest) {
 
     // 操作権限チェック（from/to のどちら側が操作可能か）
     const isFrom = current.from_tenant_id === tenantId;
-    const isTo = current.to_tenant_id === tenantId;
+    const isTo = current.to_tenant_id != null && current.to_tenant_id === tenantId;
     if (transition.side === "from" && !isFrom) {
       return NextResponse.json({ error: "発注者のみがこの操作を行えます" }, { status: 403 });
     }
@@ -193,8 +214,8 @@ export async function PUT(req: NextRequest) {
       .single();
 
     if (error) {
-      console.error("[orders] update_failed:", error.message);
-      return NextResponse.json({ error: "update_failed" }, { status: 500 });
+      console.error("[orders] update_failed:", error.message, error.details, error.hint);
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     // 監査ログ記録（fire-and-forget、失敗しても本体処理は成功扱い）

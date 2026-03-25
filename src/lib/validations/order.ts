@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const orderCreateSchema = z.object({
-  to_tenant_id: z.string().uuid("発注先テナントIDは必須です。"),
+  to_tenant_id: z.string().uuid("発注先テナントIDの形式が不正です。").nullable().optional().transform(v => v || null),
   title: z.string().trim().min(1, "タイトルは必須です。").max(200),
   description: z.string().trim().max(2000).nullable().optional().transform(v => v || null),
   category: z.string().trim().max(100).nullable().optional().transform(v => v || null),

@@ -18,7 +18,7 @@ interface OrderDetail {
   id: string;
   order_number: string | null;
   from_tenant_id: string;
-  to_tenant_id: string;
+  to_tenant_id: string | null;
   title: string;
   description: string | null;
   category: string | null;
@@ -328,7 +328,7 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
         </div>
         <div className="glass-card p-4">
           <div className="text-xs text-muted">発注先</div>
-          <div className="mt-1 text-sm font-semibold text-primary">{toTenant?.company_name ?? "—"}</div>
+          <div className="mt-1 text-sm font-semibold text-primary">{toTenant?.company_name ?? (order.to_tenant_id ? "—" : "未指定")}</div>
         </div>
         <div className="glass-card p-4">
           <div className="text-xs text-muted">予算 / 合意金額</div>

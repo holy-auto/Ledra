@@ -30,9 +30,15 @@ export async function GET(
     }
 
     // 関連テナント情報
+    // Remap DB column "name" → API field "company_name" for frontend compatibility
+    const mapTenant = (d: Record<string, unknown> | null) =>
+      d ? { id: d.id, company_name: d.name, slug: d.slug } : null;
+
     const [fromTenant, toTenant] = await Promise.all([
-      supabase.from("tenants").select("id, company_name, slug").eq("id", order.from_tenant_id).single(),
-      supabase.from("tenants").select("id, company_name, slug").eq("id", order.to_tenant_id).single(),
+      supabase.from("tenants").select("id, name, slug").eq("id", order.from_tenant_id).single(),
+      order.to_tenant_id
+        ? supabase.from("tenants").select("id, name, slug").eq("id", order.to_tenant_id).single()
+        : Promise.resolve({ data: null }),
     ]);
 
     // 紐づく帳票
@@ -66,14 +72,14 @@ export async function GET(
 
     return NextResponse.json({
       order,
-      from_tenant: fromTenant.data,
-      to_tenant: toTenant.data,
+      from_tenant: mapTenant(fromTenant.data),
+      to_tenant: mapTenant(toTenant.data),
       documents: documents ?? [],
       recent_messages: (recentMessages ?? []).reverse(),
       reviews: reviews ?? [],
       audit_log: auditLog ?? [],
       is_from: order.from_tenant_id === tenantId,
-      is_to: order.to_tenant_id === tenantId,
+      is_to: order.to_tenant_id != null && order.to_tenant_id === tenantId,
     });
   } catch (e: unknown) {
     console.error("[orders/[id]] GET failed:", e);
