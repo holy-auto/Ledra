@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { logInsurerAccess } from "@/lib/insurer/audit";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
+import { apiUnauthorized, apiValidationError, apiNotFound, sanitizeErrorMessage } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -15,6 +16,9 @@ export const runtime = "nodejs";
 export async function GET(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
+
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
 
   const pid = req.nextUrl.searchParams.get("pid") ?? "";
 
@@ -31,10 +35,23 @@ export async function GET(req: NextRequest) {
     .maybeSingle();
 
   if (error) {
-    return apiValidationError(error.message);
+    return apiValidationError(sanitizeErrorMessage(error, "証明書の取得に失敗しました。"));
   }
 
   if (!cert) {
+    return apiNotFound("証明書が見つかりません。");
+  }
+
+  // Verify insurer has an active contract with the certificate's tenant
+  const { data: contract } = await sb
+    .from("insurer_tenant_contracts")
+    .select("id")
+    .eq("insurer_id", caller.insurerId)
+    .eq("tenant_id", cert.tenant_id)
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (!contract) {
     return apiNotFound("証明書が見つかりません。");
   }
 

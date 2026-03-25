@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/api/auth";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
     const supabase = await createClient();
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "admin")) return apiForbidden();
 
     const admin = getAdminClient();
     const [catRes, faqRes] = await Promise.all([
@@ -24,15 +27,16 @@ export async function GET() {
 
     return NextResponse.json({ categories: catRes.data ?? [], faqs });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "internal_error" }, { status: 500 });
+    return apiInternalError(e, "agent-faq GET");
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "admin")) return apiForbidden();
 
     const body = await request.json();
     const admin = getAdminClient();
@@ -49,9 +53,9 @@ export async function POST(request: NextRequest) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "agent-faq POST");
     return NextResponse.json({ faq: data }, { status: 201 });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "internal_error" }, { status: 500 });
+    return apiInternalError(e, "agent-faq POST");
   }
 }

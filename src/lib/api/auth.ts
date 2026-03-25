@@ -14,12 +14,6 @@ export type CallerContext = {
   planTier: PlanTier;
 };
 
-/** テナント情報のみ（プラン不要な場合） */
-export type CallerBasic = {
-  userId: string;
-  tenantId: string;
-};
-
 /** Supabase Admin クライアント取得 */
 export { getSupabaseAdmin as getAdminClient } from "@/lib/supabase/admin";
 
@@ -101,20 +95,3 @@ export async function resolveCallerFull(
   };
 }
 
-/**
- * ログインユーザーのテナント情報を解決する（基本情報のみ）
- */
-export async function resolveCallerBasic(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
-): Promise<CallerBasic | null> {
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes?.user) return null;
-
-  const mem = await resolveMembership(supabase, userRes.user.id, "tenant_id");
-  if (!mem?.tenant_id) return null;
-
-  return {
-    userId: userRes.user.id,
-    tenantId: mem.tenant_id as string,
-  };
-}

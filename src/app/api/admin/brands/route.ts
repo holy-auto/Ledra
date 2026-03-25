@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { brandCreateSchema, brandUpdateSchema } from "@/lib/validations/brand";
-import { resolveCallerBasic } from "@/lib/api/auth";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import {
   apiOk,
   apiInternalError,
@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 export async function GET(_req: Request) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerBasic(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
     const { data: brands, error } = await supabase
@@ -36,7 +36,7 @@ export async function GET(_req: Request) {
 export async function POST(req: Request) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerBasic(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
     const body = await req.json();
@@ -68,7 +68,7 @@ export async function POST(req: Request) {
 export async function PUT(req: Request) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerBasic(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
     const body = await req.json();
@@ -100,7 +100,7 @@ export async function PUT(req: Request) {
 export async function DELETE(req: Request) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerBasic(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
     const { id } = await req.json();

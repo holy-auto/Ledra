@@ -1,13 +1,13 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { resolveCallerBasic } from "@/lib/api/auth";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 /** GET: 既製テンプレート一覧 + テナントの契約状況 */
 export async function GET(_req: NextRequest) {
   try {
     const supabase = await createClient();
-    const caller = await resolveCallerBasic(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
     // 既製テンプレート一覧

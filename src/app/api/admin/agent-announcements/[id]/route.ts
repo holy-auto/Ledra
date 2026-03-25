@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/api/auth";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -8,8 +10,9 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
   try {
     const { id } = await ctx.params;
     const supabase = await createClient();
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "admin")) return apiForbidden();
 
     const body = await request.json();
     const admin = getAdminClient();
@@ -26,10 +29,10 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "agent-announcements PUT");
     return NextResponse.json({ announcement: data });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "internal_error" }, { status: 500 });
+    return apiInternalError(e, "agent-announcements PUT");
   }
 }
 
@@ -37,13 +40,14 @@ export async function DELETE(_request: NextRequest, ctx: RouteContext) {
   try {
     const { id } = await ctx.params;
     const supabase = await createClient();
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "admin")) return apiForbidden();
 
     const admin = getAdminClient();
     await admin.from("agent_announcements").delete().eq("id", id);
     return NextResponse.json({ ok: true });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "internal_error" }, { status: 500 });
+    return apiInternalError(e, "agent-announcements DELETE");
   }
 }

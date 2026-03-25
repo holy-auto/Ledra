@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { apiUnauthorized, apiForbidden, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -23,8 +23,7 @@ export async function GET() {
       .order("created_at", { ascending: true });
 
     if (error) {
-      console.error("[insurer-users] list error:", error.message);
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
+      return apiInternalError(error, "insurer users list");
     }
 
     // Batch-fetch all user emails via a single RPC call instead of N+1 getUserById
@@ -68,12 +67,12 @@ export async function PATCH(req: Request) {
     try {
       body = await req.json();
     } catch {
-      return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
+      return apiValidationError("invalid JSON");
     }
 
     const { insurer_user_id, role, is_active } = body;
     if (!insurer_user_id) {
-      return NextResponse.json({ error: "insurer_user_id is required" }, { status: 400 });
+      return apiValidationError("insurer_user_id is required");
     }
 
     const admin = createAdminClient();
@@ -87,23 +86,17 @@ export async function PATCH(req: Request) {
       .single();
 
     if (!target) {
-      return NextResponse.json({ error: "user_not_found" }, { status: 404 });
+      return apiNotFound("ユーザーが見つかりません。");
     }
 
     // Prevent self-demotion from admin
     if (target.user_id === caller.userId && role && role !== "admin") {
-      return NextResponse.json(
-        { error: "cannot_demote_self", message: "自分自身の管理者権限を変更することはできません" },
-        { status: 400 },
-      );
+      return apiValidationError("自分自身の管理者権限を変更することはできません");
     }
 
     // Prevent deactivating self
     if (target.user_id === caller.userId && is_active === false) {
-      return NextResponse.json(
-        { error: "cannot_deactivate_self", message: "自分自身を無効化することはできません" },
-        { status: 400 },
-      );
+      return apiValidationError("自分自身を無効化することはできません");
     }
 
     const updates: Record<string, any> = {};
@@ -115,7 +108,7 @@ export async function PATCH(req: Request) {
     }
 
     if (Object.keys(updates).length === 0) {
-      return NextResponse.json({ error: "no_updates" }, { status: 400 });
+      return apiValidationError("更新するフィールドがありません。");
     }
 
     const { data: updated, error } = await admin
@@ -127,8 +120,7 @@ export async function PATCH(req: Request) {
       .single();
 
     if (error) {
-      console.error("[insurer-users] update error:", error.message);
-      return NextResponse.json({ error: "update_failed" }, { status: 500 });
+      return apiInternalError(error, "insurer users update");
     }
 
     return NextResponse.json({ ok: true, user: updated });
@@ -152,12 +144,12 @@ export async function DELETE(req: Request) {
     try {
       body = await req.json();
     } catch {
-      return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
+      return apiValidationError("invalid JSON");
     }
 
     const { insurer_user_id } = body;
     if (!insurer_user_id) {
-      return NextResponse.json({ error: "insurer_user_id is required" }, { status: 400 });
+      return apiValidationError("insurer_user_id is required");
     }
 
     const admin = createAdminClient();
@@ -171,15 +163,12 @@ export async function DELETE(req: Request) {
       .single();
 
     if (!target) {
-      return NextResponse.json({ error: "user_not_found" }, { status: 404 });
+      return apiNotFound("ユーザーが見つかりません。");
     }
 
     // Prevent self-deletion
     if (target.user_id === caller.userId) {
-      return NextResponse.json(
-        { error: "cannot_delete_self", message: "自分自身を削除することはできません" },
-        { status: 400 },
-      );
+      return apiValidationError("自分自身を削除することはできません");
     }
 
     // Check there's at least one other admin remaining
@@ -192,10 +181,7 @@ export async function DELETE(req: Request) {
       .neq("id", insurer_user_id);
 
     if ((adminCount ?? 0) < 1) {
-      return NextResponse.json(
-        { error: "last_admin", message: "最後の管理者を削除することはできません。先に別の管理者を設定してください。" },
-        { status: 400 },
-      );
+      return apiValidationError("最後の管理者を削除することはできません。先に別の管理者を設定してください。");
     }
 
     const { error } = await admin
@@ -205,8 +191,7 @@ export async function DELETE(req: Request) {
       .eq("insurer_id", caller.insurerId);
 
     if (error) {
-      console.error("[insurer-users] delete error:", error.message);
-      return NextResponse.json({ error: "delete_failed" }, { status: 500 });
+      return apiInternalError(error, "insurer users delete");
     }
 
     return NextResponse.json({ ok: true, deleted: insurer_user_id });

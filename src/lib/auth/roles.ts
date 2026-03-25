@@ -34,8 +34,3 @@ export function hasMinRole(role: Role, minRole: Role): boolean {
 
 /** Assignable roles (super_admin and owner can't be assigned via UI) */
 export const ASSIGNABLE_ROLES: Role[] = ["admin", "staff", "viewer"];
-
-/** Check if user is platform super admin */
-export function isSuperAdmin(role: Role): boolean {
-  return role === "super_admin";
-}

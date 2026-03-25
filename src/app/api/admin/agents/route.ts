@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/api/auth";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
 
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth?.user) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "admin")) return apiForbidden();
 
     const admin = getAdminClient();
     const status = request.nextUrl.searchParams.get("status");
@@ -24,65 +25,67 @@ export async function GET(request: NextRequest) {
 
     const { data: agents, error } = await query;
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return apiInternalError(error, "agents GET");
     }
 
-    // Enrich with referral/commission stats
-    const enriched = await Promise.all(
-      (agents ?? []).map(async (agent) => {
-        const [refResult, contractedResult, commResult] = await Promise.all([
-          admin
-            .from("agent_referrals")
-            .select("*", { count: "exact", head: true })
-            .eq("agent_id", agent.id),
-          admin
-            .from("agent_referrals")
-            .select("*", { count: "exact", head: true })
-            .eq("agent_id", agent.id)
-            .eq("status", "contracted"),
-          admin
-            .from("agent_commissions")
-            .select("amount")
-            .eq("agent_id", agent.id)
-            .in("status", ["approved", "paid"]),
-        ]);
+    // Enrich with referral/commission stats (batch queries to avoid N+1)
+    const agentIds = (agents ?? []).map((a) => a.id);
 
-        const totalCommission = (commResult.data ?? []).reduce(
-          (sum, c) => sum + (c.amount ?? 0),
-          0
-        );
+    let refCountMap: Record<string, number> = {};
+    let contractedCountMap: Record<string, number> = {};
+    let commMap: Record<string, number> = {};
 
-        return {
-          ...agent,
-          referral_count: refResult.count ?? 0,
-          contracted_count: contractedResult.count ?? 0,
-          total_commission: totalCommission,
-        };
-      })
-    );
+    if (agentIds.length > 0) {
+      const [refsResult, commsResult] = await Promise.all([
+        admin
+          .from("agent_referrals")
+          .select("agent_id, status")
+          .in("agent_id", agentIds),
+        admin
+          .from("agent_commissions")
+          .select("agent_id, amount")
+          .in("agent_id", agentIds)
+          .in("status", ["approved", "paid"]),
+      ]);
+
+      for (const ref of refsResult.data ?? []) {
+        refCountMap[ref.agent_id] = (refCountMap[ref.agent_id] ?? 0) + 1;
+        if (ref.status === "contracted") {
+          contractedCountMap[ref.agent_id] =
+            (contractedCountMap[ref.agent_id] ?? 0) + 1;
+        }
+      }
+
+      for (const c of commsResult.data ?? []) {
+        commMap[c.agent_id] = (commMap[c.agent_id] ?? 0) + (c.amount ?? 0);
+      }
+    }
+
+    const enriched = (agents ?? []).map((agent) => ({
+      ...agent,
+      referral_count: refCountMap[agent.id] ?? 0,
+      contracted_count: contractedCountMap[agent.id] ?? 0,
+      total_commission: commMap[agent.id] ?? 0,
+    }));
 
     return NextResponse.json({ agents: enriched });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "internal_error" },
-      { status: 500 }
-    );
+    return apiInternalError(e, "agents GET");
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth?.user) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "admin")) return apiForbidden();
 
     const body = await request.json();
     const { name, contact_name, contact_email, contact_phone, address } = body;
 
     if (!name) {
-      return NextResponse.json({ error: "name is required" }, { status: 400 });
+      return apiValidationError("name is required");
     }
 
     const admin = getAdminClient();
@@ -99,14 +102,11 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return apiInternalError(error, "agents POST");
     }
 
     return NextResponse.json({ agent: data }, { status: 201 });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "internal_error" },
-      { status: 500 }
-    );
+    return apiInternalError(e, "agents POST");
   }
 }

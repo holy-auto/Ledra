@@ -3,6 +3,20 @@ import { apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/res
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
+/** Mask customer name for public display: 山田太郎 → 山田●● */
+function maskName(name: string | null): string | null {
+  if (!name) return null;
+  const trimmed = name.trim();
+  if (trimmed.length <= 1) return trimmed;
+  // For names with spaces (like "山田 太郎"), show family name + mask given name
+  const parts = trimmed.split(/\s+/);
+  if (parts.length >= 2) {
+    return parts[0] + " " + "●".repeat(Math.min(parts.slice(1).join("").length, 4));
+  }
+  if (trimmed.length <= 2) return trimmed[0] + "●";
+  return trimmed.slice(0, Math.ceil(trimmed.length / 2)) + "●".repeat(Math.floor(trimmed.length / 2));
+}
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -106,15 +120,52 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    // ── Computed fields ─────────────────────────────────────────
+    const vehicleServiceHistoryCount = vehicle_certificates.length;
+
+    const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/c/${cert.public_id}`;
+
+    let daysUntilExpiry: number | null = null;
+    if (cert.expiry_value) {
+      const expiryDate = new Date(cert.expiry_value);
+      if (!isNaN(expiryDate.getTime())) {
+        const now = new Date();
+        daysUntilExpiry = Math.ceil(
+          (expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+        );
+      }
+    }
+
+    const warrantyActive =
+      cert.warranty_period_end != null &&
+      new Date(cert.warranty_period_end).getTime() > Date.now();
+
     return NextResponse.json(
       {
         ok: true,
-        certificate: cert,
-        vehicle,
+        certificate: {
+          ...cert,
+          tenant_id: undefined,        // Don't expose internal tenant UUID
+          content_free_text: undefined, // May contain internal shop notes
+          customer_name: maskName(cert.customer_name),
+        },
+        vehicle: vehicle ? {
+          ...vehicle,
+          customer_email: undefined,
+          notes: undefined,
+        } : null,
         nfc,
         histories,
         images,
-        vehicle_certificates,
+        vehicle_certificates: vehicle_certificates.map((vc: any) => ({
+          ...vc,
+          content_free_text: undefined,
+          customer_name: maskName(vc.customer_name),
+        })),
+        vehicle_service_history_count: vehicleServiceHistoryCount,
+        verification_url: verificationUrl,
+        days_until_expiry: daysUntilExpiry,
+        warranty_active: warrantyActive,
         shop: tenant
           ? {
               name: (tenant as any).name ?? (tenant as any).slug ?? null,

@@ -1,5 +1,5 @@
 import { apiInternalError, apiUnauthorized, apiValidationError } from "@/lib/api/response";
-import { resolveCallerBasic } from "@/lib/api/auth";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     }
 
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerBasic(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
     const formData = await req.formData();

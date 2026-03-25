@@ -1,52 +1,88 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
-const REQUIRED_ENV = [
-  "NEXT_PUBLIC_SUPABASE_URL",
-  "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-  "SUPABASE_SERVICE_ROLE_KEY",
-  "STRIPE_SECRET_KEY",
-  "STRIPE_WEBHOOK_SECRET",
-  "STRIPE_PRICE_STARTER",
-  "STRIPE_PRICE_STANDARD",
-  "STRIPE_PRICE_PRO",
-  "STRIPE_PRICE_STARTER_ANNUAL",
-  "STRIPE_PRICE_STANDARD_ANNUAL",
-  "STRIPE_PRICE_PRO_ANNUAL",
-  "RESEND_API_KEY",
-  "CRON_SECRET",
-] as const;
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
+/**
+ * GET /api/health
+ * Comprehensive health check for monitoring.
+ * Returns 200 if all critical services are reachable, 503 otherwise.
+ */
 export async function GET() {
-  const ts = new Date().toISOString();
+  const checks: Record<
+    string,
+    { ok: boolean; latency_ms?: number; error?: string }
+  > = {};
+  let allHealthy = true;
 
-  // 1. Check required environment variables
-  const missingEnv = REQUIRED_ENV.filter((key) => !process.env[key]);
-
-  // 2. Check Supabase DB connectivity
-  let dbOk = false;
-  let dbError: string | undefined;
+  // Check Supabase DB connectivity
+  const dbStart = Date.now();
   try {
     const supabase = getSupabaseAdmin();
     const { error } = await supabase.from("tenants").select("id").limit(1);
-    if (error) {
-      dbError = error.message;
-    } else {
-      dbOk = true;
-    }
-  } catch (e) {
-    dbError = e instanceof Error ? e.message : "Unknown error";
+    checks.database = {
+      ok: !error,
+      latency_ms: Date.now() - dbStart,
+      ...(error ? { error: "DB query failed" } : {}),
+    };
+    if (error) allHealthy = false;
+  } catch {
+    checks.database = {
+      ok: false,
+      latency_ms: Date.now() - dbStart,
+      error: "DB unreachable",
+    };
+    allHealthy = false;
   }
 
-  const ok = missingEnv.length === 0 && dbOk;
+  // Check Stripe connectivity (config presence only — no API call)
+  const stripeStart = Date.now();
+  try {
+    const key = process.env.STRIPE_SECRET_KEY;
+    if (!key) {
+      checks.stripe = { ok: false, error: "STRIPE_SECRET_KEY not set" };
+      allHealthy = false;
+    } else {
+      checks.stripe = { ok: true, latency_ms: 0 };
+    }
+  } catch {
+    checks.stripe = {
+      ok: false,
+      latency_ms: Date.now() - stripeStart,
+      error: "Stripe check failed",
+    };
+    allHealthy = false;
+  }
+
+  // Check required env vars (names only — values are never exposed)
+  const requiredEnvVars = [
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "STRIPE_SECRET_KEY",
+    "STRIPE_WEBHOOK_SECRET",
+    "RESEND_API_KEY",
+  ];
+
+  const missingEnvVars = requiredEnvVars.filter((v) => !process.env[v]);
+  checks.env_vars = {
+    ok: missingEnvVars.length === 0,
+    ...(missingEnvVars.length > 0
+      ? { error: `Missing: ${missingEnvVars.join(", ")}` }
+      : {}),
+  };
+  if (missingEnvVars.length > 0) allHealthy = false;
 
   return NextResponse.json(
     {
-      ok,
-      ts,
-      db: dbOk ? "connected" : dbError,
-      env: missingEnv.length === 0 ? "all_set" : { missing: missingEnv },
+      status: allHealthy ? "healthy" : "degraded",
+      timestamp: new Date().toISOString(),
+      checks,
     },
-    { status: ok ? 200 : 503 },
+    {
+      status: allHealthy ? 200 : 503,
+      headers: { "cache-control": "no-store" },
+    },
   );
 }
