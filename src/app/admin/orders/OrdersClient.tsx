@@ -105,6 +105,16 @@ export default function OrdersClient() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [showForm, setShowForm] = useState(false);
 
+  // タブ: "my" = 自社案件, "browse" = 公開案件を検索
+  const [activeTab, setActiveTab] = useState<"my" | "browse">("my");
+
+  // 公開案件検索
+  const [browseOrders, setBrowseOrders] = useState<OrderRow[]>([]);
+  const [browseLoading, setBrowseLoading] = useState(false);
+  const [browseQuery, setBrowseQuery] = useState("");
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const browseTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
   // テナント一覧
   const [myTenants, setMyTenants] = useState<TenantOption[]>([]);
 
@@ -142,6 +152,21 @@ export default function OrdersClient() {
     }
   }, []);
 
+  const fetchBrowseOrders = useCallback(async (q?: string) => {
+    setBrowseLoading(true);
+    try {
+      const params = new URLSearchParams({ type: "browse" });
+      if (q) params.set("q", q);
+      const res = await fetch(`/api/admin/orders?${params.toString()}`, { cache: "no-store" });
+      const j = await res.json().catch(() => null);
+      setBrowseOrders(j?.orders ?? []);
+    } catch {
+      setBrowseOrders([]);
+    } finally {
+      setBrowseLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -156,6 +181,22 @@ export default function OrdersClient() {
       setLoading(false);
     })();
   }, [fetchOrders]);
+
+  // 公開案件タブ切り替え時に初回読み込み
+  useEffect(() => {
+    if (activeTab === "browse" && browseOrders.length === 0 && !browseLoading) {
+      fetchBrowseOrders();
+    }
+  }, [activeTab, browseOrders.length, browseLoading, fetchBrowseOrders]);
+
+  // 公開案件検索（debounce）
+  useEffect(() => {
+    if (activeTab !== "browse") return;
+    if (browseTimeoutRef.current) clearTimeout(browseTimeoutRef.current);
+    browseTimeoutRef.current = setTimeout(() => {
+      fetchBrowseOrders(browseQuery || undefined);
+    }, 400);
+  }, [browseQuery, activeTab, fetchBrowseOrders]);
 
   // ─── テナント検索（debounce） ───
   useEffect(() => {
@@ -213,6 +254,29 @@ export default function OrdersClient() {
       alert("発注に失敗しました: " + (e instanceof Error ? e.message : String(e)));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // 公開案件を受注
+  const handleAcceptOrder = async (orderId: string) => {
+    if (!confirm("この案件を受注しますか？")) return;
+    setAcceptingId(orderId);
+    try {
+      const res = await fetch("/api/admin/orders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: orderId }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      alert("受注しました！");
+      // ブラウズリストから削除し、自社案件を更新
+      setBrowseOrders((prev) => prev.filter((o) => o.id !== orderId));
+      await fetchOrders(typeFilter, statusFilter);
+    } catch (e: unknown) {
+      alert("受注に失敗しました: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setAcceptingId(null);
     }
   };
 
@@ -275,7 +339,7 @@ export default function OrdersClient() {
                 <p className="text-[10px] text-muted">※ 発注元は自動設定されます</p>
               </div>
               <div className="space-y-1 relative">
-                <label className="text-xs text-muted">発注先</label>
+                <label className="text-xs text-muted">発注先（未指定で公開案件として掲載）</label>
                 {selectedTenant ? (
                   <div className="flex items-center gap-2">
                     <div className="input-field bg-surface-hover flex-1 flex items-center justify-between">
@@ -301,7 +365,7 @@ export default function OrdersClient() {
                       onChange={(e) => setTenantQuery(e.target.value)}
                       onFocus={() => tenantResults.length > 0 && setShowTenantDropdown(true)}
                       onBlur={() => setTimeout(() => setShowTenantDropdown(false), 200)}
-                      placeholder="施工店名で検索..."
+                      placeholder="施工店名で検索... (空欄で公開案件)"
                     />
                     {searchingTenants && <p className="text-[10px] text-muted">検索中...</p>}
                     {showTenantDropdown && tenantResults.length > 0 && (
@@ -406,99 +470,218 @@ export default function OrdersClient() {
 
       {!loading && (
         <>
-          {/* Filters */}
-          <section className="glass-card p-5">
-            <div className="flex gap-4 items-end flex-wrap">
-              <div className="space-y-1">
-                <label className="text-xs text-muted">種別</label>
-                <select
-                  className="select-field"
-                  value={typeFilter}
-                  onChange={(e) => applyFilters(e.target.value, undefined)}
-                >
-                  {TYPE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
+          {/* Tab switcher */}
+          <div className="flex border-b border-border">
+            <button
+              type="button"
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "my"
+                  ? "border-accent text-accent"
+                  : "border-transparent text-muted hover:text-primary"
+              }`}
+              onClick={() => setActiveTab("my")}
+            >
+              自社の受発注
+            </button>
+            <button
+              type="button"
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "browse"
+                  ? "border-accent text-accent"
+                  : "border-transparent text-muted hover:text-primary"
+              }`}
+              onClick={() => setActiveTab("browse")}
+            >
+              公開案件を探す
+            </button>
+          </div>
+
+          {/* ─── My orders tab ─── */}
+          {activeTab === "my" && (
+            <>
+              {/* Filters */}
+              <section className="glass-card p-5">
+                <div className="flex gap-4 items-end flex-wrap">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted">種別</label>
+                    <select
+                      className="select-field"
+                      value={typeFilter}
+                      onChange={(e) => applyFilters(e.target.value, undefined)}
+                    >
+                      {TYPE_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted">ステータス</label>
+                    <select
+                      className="select-field"
+                      value={statusFilter}
+                      onChange={(e) => applyFilters(undefined, e.target.value)}
+                    >
+                      {STATUS_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </section>
+
+              {/* Order list */}
+              <section className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-semibold tracking-[0.18em] text-muted">受発注一覧</div>
+                    <div className="mt-1 text-base font-semibold text-primary">受発注一覧</div>
+                  </div>
+                  <div className="text-sm text-muted">{orders.length} 件</div>
+                </div>
+
+                {orders.length === 0 && (
+                  <div className="glass-card p-8 text-center text-muted">
+                    受発注データがありません。「新規発注」から他の施工店に仕事を依頼できます。
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  {orders.map((order) => (
+                    <Link key={order.id} href={`/admin/orders/${order.id}`} className="block">
+                      <div className="glass-card p-4 space-y-3 hover:ring-1 hover:ring-accent/30 transition-shadow">
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              {order.order_number && (
+                                <span className="text-xs text-muted font-mono">{order.order_number}</span>
+                              )}
+                              <span className="text-sm font-semibold text-primary truncate">{order.title}</span>
+                            </div>
+                            {order.category && (
+                              <span className="text-xs text-secondary">{order.category}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <Badge variant={statusVariant(order.status)}>
+                              {statusLabel(order.status)}
+                            </Badge>
+                            <span className="text-xs text-muted">{formatDate(order.created_at)}</span>
+                          </div>
+                        </div>
+
+                        {order.description && (
+                          <p className="text-[13px] text-secondary line-clamp-2">{order.description}</p>
+                        )}
+
+                        <div className="flex items-center gap-6 text-xs text-muted">
+                          {(order.accepted_amount || order.budget) && (
+                            <span>
+                              {order.accepted_amount ? "合意金額" : "予算"}:{" "}
+                              <span className="font-semibold text-primary">
+                                {formatJpy(order.accepted_amount ?? order.budget!)}
+                              </span>
+                            </span>
+                          )}
+                          {order.deadline && (
+                            <span>納期: <span className="font-semibold text-primary">{formatDate(order.deadline)}</span></span>
+                          )}
+                          <span>発注先: <span className="text-secondary">{order.to_company || (order.to_tenant_id ? order.to_tenant_id.slice(0, 8) : "未指定（公開中）")}</span></span>
+                        </div>
+                      </div>
+                    </Link>
                   ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs text-muted">ステータス</label>
-                <select
-                  className="select-field"
-                  value={statusFilter}
-                  onChange={(e) => applyFilters(undefined, e.target.value)}
-                >
-                  {STATUS_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </section>
+                </div>
+              </section>
+            </>
+          )}
 
-          {/* Order list */}
-          <section className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-xs font-semibold tracking-[0.18em] text-muted">受発注一覧</div>
-                <div className="mt-1 text-base font-semibold text-primary">受発注一覧</div>
+          {/* ─── Browse open orders tab ─── */}
+          {activeTab === "browse" && (
+            <section className="space-y-4">
+              <div className="glass-card p-5">
+                <div className="space-y-3">
+                  <div>
+                    <div className="text-xs font-semibold tracking-[0.18em] text-muted">公開案件</div>
+                    <div className="mt-1 text-base font-semibold text-primary">受注できる案件を探す</div>
+                    <p className="text-xs text-muted mt-1">
+                      他の施工店が公開している案件を検索して受注できます。
+                    </p>
+                  </div>
+                  <div className="flex gap-3 items-end">
+                    <div className="flex-1 space-y-1">
+                      <label className="text-xs text-muted">キーワード検索</label>
+                      <input
+                        type="text"
+                        className="input-field"
+                        value={browseQuery}
+                        onChange={(e) => setBrowseQuery(e.target.value)}
+                        placeholder="カテゴリ・タイトル・内容で検索..."
+                      />
+                    </div>
+                    <Button
+                      onClick={() => fetchBrowseOrders(browseQuery || undefined)}
+                      disabled={browseLoading}
+                      loading={browseLoading}
+                    >
+                      検索
+                    </Button>
+                  </div>
+                </div>
               </div>
-              <div className="text-sm text-muted">{orders.length} 件</div>
-            </div>
 
-            {orders.length === 0 && (
-              <div className="glass-card p-8 text-center text-muted">
-                受発注データがありません。「新規発注」から他の施工店に仕事を依頼できます。
-              </div>
-            )}
+              {browseLoading && <div className="text-sm text-muted text-center py-4">検索中...</div>}
 
-            <div className="space-y-3">
-              {orders.map((order) => (
-                <Link key={order.id} href={`/admin/orders/${order.id}`} className="block">
-                  <div className="glass-card p-4 space-y-3 hover:ring-1 hover:ring-accent/30 transition-shadow">
+              {!browseLoading && browseOrders.length === 0 && (
+                <div className="glass-card p-8 text-center text-muted">
+                  現在公開されている案件はありません。
+                </div>
+              )}
+
+              <div className="space-y-3">
+                {browseOrders.map((order) => (
+                  <div key={order.id} className="glass-card p-4 space-y-3">
                     <div className="flex items-center justify-between gap-4 flex-wrap">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          {order.order_number && (
-                            <span className="text-xs text-muted font-mono">{order.order_number}</span>
-                          )}
                           <span className="text-sm font-semibold text-primary truncate">{order.title}</span>
                         </div>
                         {order.category && (
-                          <span className="text-xs text-secondary">{order.category}</span>
+                          <span className="inline-block mt-1 text-xs bg-accent/10 text-accent px-2 py-0.5 rounded">{order.category}</span>
                         )}
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
-                        <Badge variant={statusVariant(order.status)}>
-                          {statusLabel(order.status)}
-                        </Badge>
-                        <span className="text-xs text-muted">{formatDate(order.created_at)}</span>
+                        <Badge variant="warning">受注者募集中</Badge>
+                        <Button
+                          onClick={() => handleAcceptOrder(order.id)}
+                          loading={acceptingId === order.id}
+                          disabled={acceptingId !== null}
+                        >
+                          受注する
+                        </Button>
                       </div>
                     </div>
 
                     {order.description && (
-                      <p className="text-[13px] text-secondary line-clamp-2">{order.description}</p>
+                      <p className="text-[13px] text-secondary line-clamp-3">{order.description}</p>
                     )}
 
-                    <div className="flex items-center gap-6 text-xs text-muted">
-                      {(order.accepted_amount || order.budget) && (
-                        <span>
-                          {order.accepted_amount ? "合意金額" : "予算"}:{" "}
-                          <span className="font-semibold text-primary">
-                            {formatJpy(order.accepted_amount ?? order.budget!)}
-                          </span>
-                        </span>
+                    <div className="flex items-center gap-6 text-xs text-muted flex-wrap">
+                      {order.from_company && (
+                        <span>発注元: <span className="font-semibold text-primary">{order.from_company}</span></span>
+                      )}
+                      {order.budget && (
+                        <span>予算: <span className="font-semibold text-primary">{formatJpy(order.budget)}</span></span>
                       )}
                       {order.deadline && (
                         <span>納期: <span className="font-semibold text-primary">{formatDate(order.deadline)}</span></span>
                       )}
-                      <span>発注先: <span className="text-secondary">{order.to_company || (order.to_tenant_id ? order.to_tenant_id.slice(0, 8) : "未指定")}</span></span>
+                      <span>掲載日: {formatDate(order.created_at)}</span>
                     </div>
                   </div>
-                </Link>
-              ))}
-            </div>
-          </section>
+                ))}
+              </div>
+            </section>
+          )}
         </>
       )}
     </div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 /**
  * GET /api/admin/orders/[id]
@@ -17,8 +18,10 @@ export async function GET(
     if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const tenantId = caller.tenantId;
 
-    // 注文取得
-    const { data: order, error } = await supabase
+    const admin = getSupabaseAdmin();
+
+    // 注文取得 (admin client to bypass RLS)
+    const { data: order, error } = await admin
       .from("job_orders")
       .select("*")
       .eq("id", id)
@@ -30,26 +33,25 @@ export async function GET(
     }
 
     // 関連テナント情報
-    // Remap DB column "name" → API field "company_name" for frontend compatibility
     const mapTenant = (d: Record<string, unknown> | null) =>
       d ? { id: d.id, company_name: d.name, slug: d.slug } : null;
 
     const [fromTenant, toTenant] = await Promise.all([
-      supabase.from("tenants").select("id, name, slug").eq("id", order.from_tenant_id).single(),
+      admin.from("tenants").select("id, name, slug").eq("id", order.from_tenant_id).single(),
       order.to_tenant_id
-        ? supabase.from("tenants").select("id, name, slug").eq("id", order.to_tenant_id).single()
+        ? admin.from("tenants").select("id, name, slug").eq("id", order.to_tenant_id).single()
         : Promise.resolve({ data: null }),
     ]);
 
     // 紐づく帳票
-    const { data: documents } = await supabase
+    const { data: documents } = await admin
       .from("documents")
       .select("id, doc_type, doc_number, status, total, issued_at")
       .eq("job_order_id", id)
       .order("created_at", { ascending: false });
 
     // チャット最新5件
-    const { data: recentMessages } = await supabase
+    const { data: recentMessages } = await admin
       .from("chat_messages")
       .select("id, sender_tenant_id, body, is_system, created_at")
       .eq("job_order_id", id)
@@ -57,13 +59,13 @@ export async function GET(
       .limit(5);
 
     // 評価
-    const { data: reviews } = await supabase
+    const { data: reviews } = await admin
       .from("order_reviews")
       .select("id, reviewer_tenant_id, reviewed_tenant_id, rating, comment, published_at")
       .eq("job_order_id", id);
 
     // 監査ログ（最新20件）
-    const { data: auditLog } = await supabase
+    const { data: auditLog } = await admin
       .from("order_audit_log")
       .select("action, old_value, new_value, actor_tenant_id, created_at")
       .eq("job_order_id", id)
