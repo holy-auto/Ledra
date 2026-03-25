@@ -33,7 +33,7 @@ export function MobileMenu({
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 bg-[#060a12]">
+        <div className="fixed inset-0 z-50 bg-[var(--mk-bg-base)]">
           <div className="flex items-center justify-between h-16 px-5">
             <Link
               href="/"
@@ -75,7 +75,7 @@ export function MobileMenu({
             ))}
             <Link
               href="/login"
-              className="text-lg font-medium text-white/50 hover:text-white transition-colors"
+              className="text-lg font-medium text-white/55 hover:text-white transition-colors"
               onClick={() => setOpen(false)}
             >
               ログイン

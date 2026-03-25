@@ -5,6 +5,9 @@ import { FeatureGrid } from "@/components/marketing/FeatureGrid";
 import { FeatureCard } from "@/components/marketing/FeatureCard";
 import { ScrollReveal } from "@/components/marketing/ScrollReveal";
 import { CTABanner } from "@/components/marketing/CTABanner";
+import { StepList } from "@/components/marketing/StepList";
+import { CertificatePreview } from "@/components/marketing/CertificatePreview";
+import { CTAButton } from "@/components/marketing/CTAButton";
 
 export const metadata = {
   title: "施工店の方へ",
@@ -20,8 +23,20 @@ export default function ForShopsPage() {
         subtitle="紙やExcelでの管理から脱却。デジタル証明書で業務品質と顧客満足度を同時に向上させます。"
       />
 
-      {/* 主要メリット */}
+      {/* 証明書プレビュー — 施工店が最も知りたいのは「発行されるものの品質」 */}
       <Section>
+        <SectionHeading
+          title="プロフェッショナルな証明書を発行"
+          subtitle="施工品質を正しく伝える、ブランド対応のデジタル証明書"
+        />
+        <CertificatePreview
+          variant="compact"
+          caption="自社ロゴ・ブランドカラー・施工写真の反映に対応"
+        />
+      </Section>
+
+      {/* 主要メリット */}
+      <Section bg="alt">
         <SectionHeading
           title="CARTRUSTが施工店にもたらす価値"
           subtitle="証明書発行から管理まで、施工店の業務をワンストップで支援します"
@@ -60,50 +75,41 @@ export default function ForShopsPage() {
         </FeatureGrid>
       </Section>
 
-      {/* ワークフロー */}
-      <Section bg="alt">
+      {/* 施工種別別の活用例 */}
+      <Section>
         <SectionHeading
-          title="かんたん3ステップ"
-          subtitle="面倒な手続きは不要。すぐに使い始められます"
+          title="こんな施工に対応しています"
+          subtitle="あらゆる施工タイプの証明書をデジタルで発行"
         />
-        <div className="max-w-3xl mx-auto">
-          {[
-            {
-              step: "01",
-              title: "施工内容を入力",
-              description: "テンプレートに沿って、車両情報・施工内容・使用材料を入力します。写真のアップロードも可能です。",
-            },
-            {
-              step: "02",
-              title: "証明書を発行",
-              description: "入力内容を確認して発行ボタンを押すだけ。改ざん防止のデジタル証明書が即座に生成されます。",
-            },
-            {
-              step: "03",
-              title: "URLで共有",
-              description: "発行された証明書のURLを顧客や保険会社に共有。QRコードでの共有にも対応しています。",
-            },
-          ].map((item, i) => (
-            <ScrollReveal key={item.step} variant="fade-up" delay={i * 120}>
-              <div className="flex gap-6 md:gap-8 items-start py-8 border-b border-white/[0.06] last:border-b-0">
-                <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-blue-500/[0.1] flex items-center justify-center">
-                  <span className="text-lg font-bold text-blue-400">{item.step}</span>
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-white">{item.title}</h3>
-                  <p className="mt-2 text-white/50 leading-relaxed">{item.description}</p>
-                </div>
-              </div>
-            </ScrollReveal>
-          ))}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+          <FeatureCard size="compact" delay={0} title="ボディコーティング" description="ガラスコーティング、セラミックコーティング等" />
+          <FeatureCard size="compact" delay={80} title="PPF（プロテクションフィルム）" description="塗装保護フィルムの施工記録" />
+          <FeatureCard size="compact" delay={160} title="ウィンドウフィルム" description="カーフィルム、断熱フィルムの施工証明" />
+          <FeatureCard size="compact" delay={240} title="その他カスタム" description="ラッピング、デッドニング等にも対応" />
         </div>
       </Section>
 
-      {/* 追加メリット */}
+      {/* ワークフロー */}
+      <Section bg="alt">
+        <SectionHeading
+          title="かんたん3ステップで始められます"
+          subtitle="面倒な手続きは不要。すぐに使い始められます"
+        />
+        <StepList
+          accent="blue"
+          steps={[
+            { step: "01", title: "施工内容を入力", description: "テンプレートに沿って、車両情報・施工内容・使用材料を入力します。写真のアップロードも可能です。" },
+            { step: "02", title: "証明書を発行", description: "入力内容を確認して発行ボタンを押すだけ。改ざん防止のデジタル証明書が即座に生成されます。" },
+            { step: "03", title: "URLで共有", description: "発行された証明書のURLを顧客や保険会社に共有。QRコードやNFCタグでの共有にも対応しています。" },
+          ]}
+        />
+      </Section>
+
+      {/* 他店との差別化 */}
       <Section>
         <SectionHeading
-          title="さらに、こんなメリットも"
-          subtitle="施工店の日々の業務を支える機能が揃っています"
+          title="他店との差別化ポイントに"
+          subtitle="デジタル証明書の導入は、施工店の競争力を高めます"
         />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-10">
           <FeatureCard
@@ -133,24 +139,47 @@ export default function ForShopsPage() {
             delay={200}
             icon={
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6">
-                <path d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                <path d="M7 7h10v10H7z" />
+                <path d="M11 3v4m0 10v4M3 11h4m10 0h4" />
               </svg>
             }
-            title="ブランドカスタマイズ"
-            description="自社のロゴやカラーを証明書に反映。プロフェッショナルな印象を顧客に与えることができます。"
+            title="NFCタグ連携"
+            description="NFCタグを車両に貼付すれば、お客様がスマホをかざすだけで証明書を確認可能。先進的な顧客体験を提供します。"
           />
           <FeatureCard
             variant="bordered"
             delay={300}
             icon={
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6">
-                <path d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                <path d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
               </svg>
             }
-            title="データ分析・レポート"
-            description="発行件数や施工内容の傾向をダッシュボードで確認。経営判断に活かせるインサイトを提供します。"
+            title="ブランドカスタマイズ"
+            description="自社のロゴやカラーを証明書に反映。プロフェッショナルな印象を顧客に与えることができます。"
           />
         </div>
+      </Section>
+
+      {/* 料金導線 */}
+      <Section bg="alt">
+        <ScrollReveal variant="fade-up">
+          <div className="text-center max-w-lg mx-auto">
+            <h2 className="text-2xl md:text-3xl font-bold text-white">
+              無料プランですぐに始められます
+            </h2>
+            <p className="mt-4 text-white/65">
+              月10件まで証明書を無料で発行。クレジットカード不要で今日から使えます。
+            </p>
+            <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
+              <CTAButton variant="white" href="/signup">
+                無料で始める
+              </CTAButton>
+              <CTAButton variant="outline" href="/pricing">
+                料金プランを見る
+              </CTAButton>
+            </div>
+          </div>
+        </ScrollReveal>
       </Section>
 
       <CTABanner

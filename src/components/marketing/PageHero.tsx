@@ -10,11 +10,11 @@ export function PageHero({
   subtitle?: string;
 }) {
   return (
-    <section className="relative overflow-hidden bg-[#070b14] flex items-center">
+    <section className="relative overflow-hidden bg-[var(--mk-bg-hero)] flex items-center">
       {/* Animated background */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-[-30%] left-[-10%] w-[500px] h-[500px] bg-blue-600/15 rounded-full blur-[120px] animate-[float_10s_ease-in-out_infinite]" />
-        <div className="absolute bottom-[-20%] right-[-5%] w-[400px] h-[400px] bg-[#4f9cf7]/10 rounded-full blur-[100px] animate-[float_12s_ease-in-out_infinite_reverse]" />
+        <div className="absolute bottom-[-20%] right-[-5%] w-[400px] h-[400px] bg-[var(--mk-accent-light-blue)]/10 rounded-full blur-[100px] animate-[float_12s_ease-in-out_infinite_reverse]" />
 
         {/* Grid pattern */}
         <div
@@ -33,10 +33,10 @@ export function PageHero({
 
         {/* Particles */}
         <div className="absolute top-[20%] right-[15%] w-1.5 h-1.5 bg-blue-600/30 rounded-full animate-[float_6s_ease-in-out_infinite]" />
-        <div className="absolute top-[60%] left-[12%] w-1 h-1 bg-[#4f9cf7]/25 rounded-full animate-[float_8s_ease-in-out_infinite_1s]" />
+        <div className="absolute top-[60%] left-[12%] w-1 h-1 bg-[var(--mk-accent-light-blue)]/25 rounded-full animate-[float_8s_ease-in-out_infinite_1s]" />
 
         {/* Bottom gradient fade to dark */}
-        <div className="absolute bottom-0 left-0 w-full h-24 bg-gradient-to-t from-[#060a12] to-transparent" />
+        <div className="absolute bottom-0 left-0 w-full h-24 bg-gradient-to-t from-[var(--mk-bg-base)] to-transparent" />
       </div>
 
       <Container className="relative text-center py-20 md:py-28 lg:py-32">
@@ -53,7 +53,7 @@ export function PageHero({
         </h1>
 
         {subtitle && (
-          <p className="mt-6 text-base md:text-lg leading-relaxed text-white/50 max-w-2xl mx-auto animate-[hero-fade-up_0.7s_ease-out_0.4s_both]">
+          <p className="mt-6 text-base md:text-lg leading-relaxed text-white/65 max-w-2xl mx-auto animate-[hero-fade-up_0.7s_ease-out_0.4s_both]">
             {subtitle}
           </p>
         )}

@@ -20,7 +20,7 @@ export function CTABanner({
   secondaryHref?: string;
 }) {
   return (
-    <section className="relative overflow-hidden bg-gradient-to-br from-[#0a0f1a] via-[#1e293b] to-[#0a0f1a]">
+    <section className="relative overflow-hidden bg-gradient-to-br from-[var(--mk-bg-alt)] via-[var(--mk-bg-cta-mid)] to-[var(--mk-bg-alt)]">
       {/* Animated decorative elements */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-600/10 rounded-full blur-[100px] animate-[float_10s_ease-in-out_infinite]" />
@@ -44,7 +44,7 @@ export function CTABanner({
           <h2 className="text-[1.75rem] md:text-[2.5rem] font-bold leading-[1.25] tracking-tight text-white">
             {title}
           </h2>
-          <p className="mt-5 text-base text-white/60 max-w-lg mx-auto">
+          <p className="mt-5 text-base text-white/65 max-w-lg mx-auto">
             {subtitle}
           </p>
         </ScrollReveal>

@@ -28,20 +28,20 @@ export function FeatureComparisonTable({ rows }: { rows: readonly Row[] }) {
     return () => window.removeEventListener("resize", updateScrollState);
   }, [updateScrollState]);
 
-  const stickyBg = "bg-[#0a0f1a]";
+  const stickyBg = "bg-[var(--mk-bg-alt)]";
 
   return (
     <div className="relative">
       {/* Left fade */}
       <div
-        className={`pointer-events-none absolute left-0 top-0 bottom-0 z-20 w-8 bg-gradient-to-r from-[#0a0f1a] to-transparent transition-opacity duration-300 md:hidden ${
+        className={`pointer-events-none absolute left-0 top-0 bottom-0 z-20 w-8 bg-gradient-to-r from-[var(--mk-bg-alt)] to-transparent transition-opacity duration-300 md:hidden ${
           canScrollLeft ? "opacity-100" : "opacity-0"
         }`}
         style={{ left: "140px" }}
       />
       {/* Right fade */}
       <div
-        className={`pointer-events-none absolute right-0 top-0 bottom-0 z-20 w-8 bg-gradient-to-l from-[#0a0f1a] to-transparent transition-opacity duration-300 md:hidden ${
+        className={`pointer-events-none absolute right-0 top-0 bottom-0 z-20 w-8 bg-gradient-to-l from-[var(--mk-bg-alt)] to-transparent transition-opacity duration-300 md:hidden ${
           canScrollRight ? "opacity-100" : "opacity-0"
         }`}
       />
@@ -80,20 +80,20 @@ export function FeatureComparisonTable({ rows }: { rows: readonly Row[] }) {
                 className="group hover:bg-white/[0.03] transition-colors"
               >
                 <td
-                  className={`py-3.5 px-4 text-white font-medium sticky left-0 z-10 ${stickyBg} group-hover:bg-[#0b1120] transition-colors`}
+                  className={`py-3.5 px-4 text-white font-medium sticky left-0 z-10 ${stickyBg} group-hover:bg-[var(--mk-bg-table-hover)] transition-colors`}
                 >
                   {row.feature}
                 </td>
-                <td className="py-3.5 px-4 text-center text-white/60">
+                <td className="py-3.5 px-4 text-center text-white/65">
                   {row.free}
                 </td>
-                <td className="py-3.5 px-4 text-center text-white/60">
+                <td className="py-3.5 px-4 text-center text-white/65">
                   {row.starter}
                 </td>
                 <td className="py-3.5 px-4 text-center text-blue-400 font-medium">
                   {row.standard}
                 </td>
-                <td className="py-3.5 px-4 text-center text-white/60">
+                <td className="py-3.5 px-4 text-center text-white/65">
                   {row.pro}
                 </td>
               </tr>

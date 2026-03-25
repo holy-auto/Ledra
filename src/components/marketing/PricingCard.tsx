@@ -28,7 +28,7 @@ export function PricingCard({
     <div
       className={`rounded-2xl p-6 md:p-8 w-full relative flex flex-col transition-all duration-400 group h-full ${
         recommended
-          ? "bg-[#0d1525]"
+          ? "bg-[var(--mk-bg-card-recommended)]"
           : "bg-white/[0.04] border border-white/[0.07] hover:bg-white/[0.07] hover:border-white/[0.12] hover:shadow-[0_0_30px_rgba(59,130,246,0.1)] hover:-translate-y-1"
       }`}
     >
@@ -42,7 +42,7 @@ export function PricingCard({
         <h3 className="text-lg font-bold text-white">
           {name}
         </h3>
-        <p className="mt-1.5 text-sm text-white/50">
+        <p className="mt-1.5 text-sm text-white/65">
           {description}
         </p>
       </div>

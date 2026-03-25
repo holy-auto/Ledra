@@ -469,39 +469,32 @@ body {
   .glow-red { box-shadow: 0 0 20px var(--accent-red-dim); }
 }
 
-/* ══════════════════════════════════════════════════
-   Animations
-   ══════════════════════════════════════════════════ */
-
-/* Skeleton pulse */
-@keyframes skeleton-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+/* ── Dark Marketing Tokens ── */
+[data-theme="marketing"] {
+  --mk-bg-base: #060a12;
+  --mk-bg-alt: #0a0f1a;
+  --mk-bg-hero: #070b14;
+  --mk-bg-footer: #0f1117;
+  --mk-bg-card: rgba(255, 255, 255, 0.04);
+  --mk-bg-card-hover: rgba(255, 255, 255, 0.07);
+  --mk-border: rgba(255, 255, 255, 0.07);
+  --mk-border-hover: rgba(255, 255, 255, 0.12);
+  --mk-border-subtle: rgba(255, 255, 255, 0.04);
+  --mk-text-primary: #ffffff;
+  --mk-text-body: rgba(255, 255, 255, 0.65);
+  --mk-text-muted: rgba(255, 255, 255, 0.45);
+  --mk-text-faint: rgba(255, 255, 255, 0.30);
+  --mk-accent-blue: #3b82f6;
+  --mk-accent-violet: #8b5cf6;
+  --mk-accent-cyan: #06b6d4;
+  --mk-accent-light-blue: #4f9cf7;
+  --mk-bg-card-recommended: #0d1525;
+  --mk-bg-table-hover: #0b1120;
+  --mk-bg-cta-mid: #1e293b;
+  --mk-text-on-white: #1d1d1f;
 }
 
-/* Modal / overlay enter */
-@keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-@keyframes scale-in {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-/* Drawer slide */
-@keyframes slide-in-right {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
-}
-
-/* Toast enter */
-@keyframes toast-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* Marketing — gradient border */
+/* ── Dark Marketing Animations ── */
 @keyframes gradient-border-spin {
   0%   { background-position: 0% 50%; }
   50%  { background-position: 100% 50%; }
@@ -514,9 +507,45 @@ body {
   50%       { transform: translateY(-12px) scale(1.02); }
 }
 
-/* ══════════════════════════════════════════════════
-   Component Recipes — Marketing (Dark)
-   ══════════════════════════════════════════════════ */
+/* Hero & scroll-reveal animation keyframes */
+@keyframes hero-fade-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes hero-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes scroll-fade-left {
+  from { opacity: 0; transform: translateX(-24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes scroll-fade-right {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes scroll-scale-up {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes scroll-blur-in {
+  from { opacity: 0; filter: blur(8px); }
+  to   { opacity: 1; filter: blur(0); }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-12px); }
+}
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
+}
+@keyframes shimmer {
+  0%, 100% { opacity: 0.3; }
+  50%      { opacity: 0.7; }
+}
+
+/* ── Dark Marketing Components ── */
 @layer components {
   .dark-card {
     background: rgba(255, 255, 255, 0.04);
@@ -538,9 +567,16 @@ body {
   }
 }
 
-/* ══════════════════════════════════════════════════
-   Scrollbar
-   ══════════════════════════════════════════════════ */
+/* ── Reduced Motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Scrollbar styling ── */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

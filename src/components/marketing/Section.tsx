@@ -11,10 +11,10 @@ export function Section({
 }) {
   const bgClass =
     bg === "alt" || bg === "dark-alt"
-      ? "bg-[#0a0f1a]"
+      ? "bg-[var(--mk-bg-alt)]"
       : bg === "primary"
         ? "bg-gradient-to-br from-primary to-[#094A96]"
-        : "bg-[#060a12]";
+        : "bg-[var(--mk-bg-base)]";
 
   const isDark = true;
 

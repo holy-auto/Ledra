@@ -1,19 +1,15 @@
 import Link from "next/link";
 import { Container } from "./Container";
+import { footerNavGroups } from "@/lib/marketing/config";
 
-// Pre-launch: only show contact link
-const footerLinks = [
-  {
-    title: "サポート",
-    links: [
-      { label: "お問い合わせ", href: "/contact" },
-    ],
-  },
-];
+const footerLinks = footerNavGroups.map((group) => ({
+  title: group.heading,
+  links: group.links,
+}));
 
 export function Footer() {
   return (
-    <footer className="bg-[#0f1117] text-white">
+    <footer className="bg-[var(--mk-bg-footer)] text-white">
       <Container>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-10 md:gap-16 py-20 md:py-24">
           {/* Brand column */}
@@ -39,7 +35,7 @@ export function Footer() {
                   <li key={link.href}>
                     <Link
                       href={link.href}
-                      className="text-sm text-white/60 hover:text-white transition-colors"
+                      className="text-sm text-white/65 hover:text-white transition-colors"
                     >
                       {link.label}
                     </Link>

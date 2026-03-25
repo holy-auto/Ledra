@@ -29,7 +29,7 @@ export default function MarketingLayout({
 }) {
   return (
     <MarketingThemeWrapper
-      className={`${notoSansJP.variable} font-[family-name:var(--font-noto)] bg-[var(--bg-base)]`}
+      className={`${notoSansJP.variable} font-[family-name:var(--font-noto)] bg-[var(--mk-bg-base)]`}
     >
       <Header />
       <main>{children}</main>

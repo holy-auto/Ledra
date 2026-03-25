@@ -8,7 +8,8 @@ import { FAQList } from "@/components/marketing/FAQList";
 import { FAQItem } from "@/components/marketing/FAQItem";
 import { CTABanner } from "@/components/marketing/CTABanner";
 import { ScrollReveal } from "@/components/marketing/ScrollReveal";
-import { PLANS, FEATURE_COMPARISON, ANNUAL_DISCOUNT_PERCENT, TEMPLATE_OPTIONS, TEMPLATE_ADDITIONAL_WORK, TEMPLATE_FAQ } from "@/lib/marketing/pricing";
+import { PLANS, FEATURE_COMPARISON, ANNUAL_DISCOUNT_PERCENT, TEMPLATE_OPTIONS, TEMPLATE_ADDITIONAL_WORK, TEMPLATE_FAQ, NFC_TAG_PRICING, LAUNCH_CAMPAIGN } from "@/lib/marketing/pricing";
+import Link from "next/link";
 
 export const metadata = {
   title: "料金プラン",
@@ -23,6 +24,24 @@ export default function PricingPage() {
         title="シンプルで分かりやすい料金体系"
         subtitle="すべてのプランで基本機能をご利用いただけます。規模に合わせてお選びください。"
       />
+
+      {/* キャンペーンバナー */}
+      <Section>
+        <ScrollReveal variant="fade-up">
+          <div className="max-w-3xl mx-auto rounded-2xl border border-blue-500/20 bg-gradient-to-r from-blue-500/[0.08] to-violet-500/[0.08] p-6 md:p-8 text-center mb-4">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/15 border border-blue-500/25 mb-3">
+              <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-[pulse-soft_2s_ease-in-out_infinite]" />
+              <span className="text-xs font-medium text-blue-300">CAMPAIGN</span>
+            </div>
+            <h3 className="text-lg md:text-xl font-bold text-white">
+              {LAUNCH_CAMPAIGN.description}
+            </h3>
+            <p className="mt-2 text-sm text-white/65">
+              NFC初回{LAUNCH_CAMPAIGN.nfcFreeAllocation}枚無料 · 請求書機能 {LAUNCH_CAMPAIGN.invoiceOptionPrice}/月
+            </p>
+          </div>
+        </ScrollReveal>
+      </Section>
 
       {/* メインプラン */}
       <Section>
@@ -62,6 +81,11 @@ export default function PricingPage() {
             features={[...PLANS.pro.features]}
           />
         </PricingCards>
+        <ScrollReveal variant="fade-in" delay={300}>
+          <p className="text-center mt-6 text-sm text-white/55">
+            年間契約で{ANNUAL_DISCOUNT_PERCENT}%オフ。詳しくはお問い合わせください。
+          </p>
+        </ScrollReveal>
       </Section>
 
       {/* 機能比較 */}
@@ -75,8 +99,51 @@ export default function PricingPage() {
         </ScrollReveal>
       </Section>
 
-      {/* 料金FAQ */}
+      {/* NFCタグ料金 */}
       <Section>
+        <SectionHeading
+          title="NFCタグ料金"
+          subtitle="施工証明書を車両に紐づけるNFCタグのオプション"
+        />
+        <ScrollReveal variant="fade-up" delay={100}>
+          <div className="max-w-lg mx-auto">
+            <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/[0.06] p-5 mb-6 text-center">
+              <div className="text-xl font-bold text-cyan-400">
+                初回{NFC_TAG_PRICING.freeAllocation}枚 無料
+              </div>
+              <p className="mt-1 text-sm text-white/65">
+                アカウント作成時に無料でお届け
+              </p>
+            </div>
+            <div className="overflow-hidden rounded-xl border border-white/[0.08]">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-white/[0.08] bg-white/[0.03]">
+                    <th className="text-left py-3 px-5 font-medium text-white/50">枚数</th>
+                    <th className="text-right py-3 px-5 font-medium text-white/50">料金（税込）</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/[0.04]">
+                  {NFC_TAG_PRICING.packs.map((pack) => (
+                    <tr key={pack.quantity} className="hover:bg-white/[0.03] transition-colors">
+                      <td className="py-3 px-5 text-white">{pack.quantity}枚パック</td>
+                      <td className="py-3 px-5 text-right text-white/65">{pack.price}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-4 text-center">
+              <Link href="/nfc" className="text-sm font-medium text-cyan-400 hover:underline">
+                NFCタグについて詳しく見る &rarr;
+              </Link>
+            </p>
+          </div>
+        </ScrollReveal>
+      </Section>
+
+      {/* 料金FAQ */}
+      <Section bg="alt">
         <SectionHeading title="料金に関するご質問" />
         <FAQList>
           <FAQItem
@@ -99,7 +166,7 @@ export default function PricingPage() {
       </Section>
 
       {/* テンプレートオプション */}
-      <Section bg="alt">
+      <Section>
         <SectionHeading
           title="ブランド証明書オプション"
           subtitle="自社ロゴ・ブランドカラーを反映した施工証明書を発行できるオプションです。基本プランに追加してご利用いただけます。"
@@ -126,7 +193,7 @@ export default function PricingPage() {
       </Section>
 
       {/* 追加作業費 */}
-      <Section>
+      <Section bg="alt">
         <SectionHeading
           title="追加作業費"
           subtitle="テンプレート公開後の変更・追加は以下の料金にて承ります。"
@@ -136,7 +203,7 @@ export default function PricingPage() {
             <table className="w-full max-w-2xl mx-auto text-sm">
               <thead>
                 <tr className="border-b border-white/[0.08]">
-                  <th className="text-left py-4 px-4 font-medium text-white/40">作業内容</th>
+                  <th className="text-left py-4 px-4 font-medium text-white/50">作業内容</th>
                   <th className="text-right py-4 px-4 font-medium text-white">料金（税込）</th>
                 </tr>
               </thead>
@@ -144,7 +211,7 @@ export default function PricingPage() {
                 {TEMPLATE_ADDITIONAL_WORK.map((row) => (
                   <tr key={row.item} className="hover:bg-white/[0.03] transition-colors">
                     <td className="py-3.5 px-4 text-white">{row.item}</td>
-                    <td className="py-3.5 px-4 text-right text-white/60">{row.price}</td>
+                    <td className="py-3.5 px-4 text-right text-white/65">{row.price}</td>
                   </tr>
                 ))}
               </tbody>
@@ -154,7 +221,7 @@ export default function PricingPage() {
       </Section>
 
       {/* テンプレートFAQ */}
-      <Section bg="alt">
+      <Section>
         <SectionHeading title="ブランド証明書に関するご質問" />
         <FAQList>
           {TEMPLATE_FAQ.map((faq) => (
