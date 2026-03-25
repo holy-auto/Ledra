@@ -163,20 +163,25 @@ export async function POST(req: NextRequest) {
 
     // Use admin client to bypass RLS (API already validated auth above)
     const admin = getSupabaseAdmin();
+
+    // Build insert payload — only include non-null fields to avoid
+    // hitting unexpected NOT NULL constraints on columns with defaults
+    const insertPayload: Record<string, unknown> = {
+      public_id: makePublicId(),
+      from_tenant_id: tenantId,
+      title: title.trim(),
+      status: "pending",
+    };
+    if (to_tenant_id) insertPayload.to_tenant_id = to_tenant_id;
+    if (description) insertPayload.description = description;
+    if (category) insertPayload.category = category;
+    if (budget != null && budget !== "") insertPayload.budget = Number(budget);
+    if (deadline) insertPayload.deadline = deadline;
+    if (vehicle_id) insertPayload.vehicle_id = vehicle_id;
+
     const { data, error } = await admin
       .from("job_orders")
-      .insert({
-        public_id: makePublicId(),
-        from_tenant_id: tenantId,
-        to_tenant_id: to_tenant_id || null,
-        title,
-        description: description || null,
-        category: category || null,
-        budget: budget || null,
-        deadline: deadline || null,
-        vehicle_id: vehicle_id || null,
-        status: "pending",
-      })
+      .insert(insertPayload)
       .select()
       .single();
 
