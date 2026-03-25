@@ -13,7 +13,7 @@ export default function MarketingThemeWrapper({
   className?: string;
 }) {
   return (
-    <div data-theme="dark" className={className}>
+    <div data-theme="marketing" className={className}>
       {children}
     </div>
   );
