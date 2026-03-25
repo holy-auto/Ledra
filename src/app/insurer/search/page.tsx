@@ -140,6 +140,14 @@ function getRowPlate(row: any): string {
   ) || "-";
 }
 
+function getRowVin(row: any): string {
+  return asText(
+    row?.vehicle_vin ??
+    row?.vin_code ??
+    row?.vin
+  ) || "-";
+}
+
 function getRowCreatedAt(row: any): string {
   return asText(
     row?.latest_active_certificate_created_at ??
@@ -285,6 +293,7 @@ export default async function Page({
                   <th className="p-3 text-left">顧客名</th>
                   <th className="p-3 text-left">車種</th>
                   <th className="p-3 text-left">ナンバー</th>
+                  <th className="p-3 text-left">車台番号</th>
                   <th className="p-3 text-left">画像</th>
                   <th className="p-3 text-left">操作</th>
                 </tr>
@@ -317,6 +326,7 @@ export default async function Page({
                       <td className="p-3">{getRowCustomer(row)}</td>
                       <td className="p-3">{getRowModel(row)}</td>
                       <td className="p-3">{getRowPlate(row)}</td>
+                      <td className="p-3 font-mono text-xs">{getRowVin(row)}</td>
                       <td className="p-3">
                         <div className="space-y-2">
                           <div>{imageCount}枚</div>
@@ -362,7 +372,7 @@ export default async function Page({
 
                 {rows.length === 0 ? (
                   <tr>
-                    <td className="p-6 text-neutral-500" colSpan={8}>
+                    <td className="p-6 text-neutral-500" colSpan={9}>
                       該当なし
                     </td>
                   </tr>

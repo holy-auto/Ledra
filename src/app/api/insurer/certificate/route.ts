@@ -1,58 +1,49 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { logInsurerAccess } from "@/lib/insurer/audit";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const runtime = "nodejs";
 
-/**
- * GET /api/insurer/certificate?pid=PUBLIC_ID
- *
- * public_id ベースで証明書を取得する（保険会社閲覧用）。
- * 既存の /api/insurer/certificate/[id] (UUID指定) と併存する。
- */
+function getClientMeta(req: Request) {
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+  const ua = req.headers.get("user-agent") ?? null;
+  return { ip, ua };
+}
+
 export async function GET(req: NextRequest) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
   const pid = req.nextUrl.searchParams.get("pid") ?? "";
+  if (!pid) return apiValidationError("Missing pid (public_id) query parameter");
 
-  if (!pid) {
-    return apiValidationError("Missing pid (public_id) query parameter");
-  }
+  const { ip, ua } = getClientMeta(req);
+  const supabase = await createClient();
 
-  const sb = await createClient();
-
-  const { data: cert, error } = await sb
-    .from("certificates")
-    .select("*")
-    .eq("public_id", pid)
-    .maybeSingle();
+  // Use RPC with access control + PII disclosure check + audit logging
+  const { data, error } = await supabase.rpc("insurer_get_certificate", {
+    p_public_id: pid,
+    p_ip: ip,
+    p_user_agent: ua,
+  });
 
   if (error) {
+    if (error.message.includes("Access denied")) {
+      return new Response(JSON.stringify({ error: "access_denied", message: "この証明書へのアクセス権がありません。" }), { status: 403, headers: { "content-type": "application/json" } });
+    }
+    if (error.message.includes("not found")) {
+      return apiNotFound("証明書が見つかりません。");
+    }
     return apiValidationError(error.message);
   }
 
-  if (!cert) {
-    return apiNotFound("証明書が見つかりません。");
-  }
-
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
-  const ua = req.headers.get("user-agent") ?? null;
-
-  try {
-    await logInsurerAccess({
-      action: "view",
-      certificateId: cert.id,
-      meta: { route: "GET /api/insurer/certificate?pid", public_id: pid },
-      ip,
-      userAgent: ua,
-    });
-  } catch {
-    // 監査ログ失敗は閲覧をブロックしない
-  }
+  const cert = Array.isArray(data) ? data[0] : data;
+  if (!cert) return apiNotFound("証明書が見つかりません。");
 
   return NextResponse.json({ certificate: cert });
 }
