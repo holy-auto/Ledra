@@ -168,6 +168,7 @@ export async function POST(req: NextRequest) {
         from_tenant_id: tenantId,
         to_tenant_id: to_tenant_id || null,
         title,
+        subtitle: title,
         description: description || null,
         category: category || null,
         budget: budget || null,
