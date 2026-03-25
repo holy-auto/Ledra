@@ -34,10 +34,12 @@ CREATE INDEX IF NOT EXISTS idx_pdc_insurer ON pii_disclosure_consents(insurer_id
 ALTER TABLE pii_disclosure_consents ENABLE ROW LEVEL SECURITY;
 
 -- 保険会社ユーザーは自社の同意レコードを閲覧可能
+DROP POLICY IF EXISTS "pdc_select_insurer" ON pii_disclosure_consents;
 CREATE POLICY "pdc_select_insurer" ON pii_disclosure_consents
   FOR SELECT USING (insurer_id IN (SELECT my_insurer_ids()));
 
 -- テナントメンバーは自テナントの証明書に関する同意レコードを閲覧可能
+DROP POLICY IF EXISTS "pdc_select_tenant" ON pii_disclosure_consents;
 CREATE POLICY "pdc_select_tenant" ON pii_disclosure_consents
   FOR SELECT USING (
     certificate_id IN (
@@ -449,10 +451,13 @@ CREATE INDEX IF NOT EXISTS idx_ic_number ON insurer_cases(case_number);
 
 ALTER TABLE insurer_cases ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "ic_select" ON insurer_cases;
 CREATE POLICY "ic_select" ON insurer_cases
   FOR SELECT USING (insurer_id IN (SELECT my_insurer_ids()));
+DROP POLICY IF EXISTS "ic_insert" ON insurer_cases;
 CREATE POLICY "ic_insert" ON insurer_cases
   FOR INSERT WITH CHECK (insurer_id IN (SELECT my_insurer_ids()));
+DROP POLICY IF EXISTS "ic_update" ON insurer_cases;
 CREATE POLICY "ic_update" ON insurer_cases
   FOR UPDATE USING (insurer_id IN (SELECT my_insurer_ids()));
 
@@ -470,14 +475,18 @@ CREATE TABLE IF NOT EXISTS insurer_case_messages (
 CREATE INDEX IF NOT EXISTS idx_icm_case ON insurer_case_messages(case_id, created_at);
 ALTER TABLE insurer_case_messages ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "icm_select" ON insurer_case_messages;
 CREATE POLICY "icm_select" ON insurer_case_messages
   FOR SELECT USING (case_id IN (SELECT id FROM insurer_cases WHERE insurer_id IN (SELECT my_insurer_ids())));
+DROP POLICY IF EXISTS "icm_insert" ON insurer_case_messages;
 CREATE POLICY "icm_insert" ON insurer_case_messages
   FOR INSERT WITH CHECK (case_id IN (SELECT id FROM insurer_cases WHERE insurer_id IN (SELECT my_insurer_ids())));
 
 -- テナント側もメッセージ閲覧・投稿可能（自テナントの案件のみ）
+DROP POLICY IF EXISTS "icm_select_tenant" ON insurer_case_messages;
 CREATE POLICY "icm_select_tenant" ON insurer_case_messages
   FOR SELECT USING (case_id IN (SELECT id FROM insurer_cases WHERE tenant_id IN (SELECT my_tenant_ids())));
+DROP POLICY IF EXISTS "icm_insert_tenant" ON insurer_case_messages;
 CREATE POLICY "icm_insert_tenant" ON insurer_case_messages
   FOR INSERT WITH CHECK (case_id IN (SELECT id FROM insurer_cases WHERE tenant_id IN (SELECT my_tenant_ids())));
 
@@ -494,8 +503,10 @@ CREATE TABLE IF NOT EXISTS insurer_case_attachments (
 );
 
 ALTER TABLE insurer_case_attachments ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "ica_select" ON insurer_case_attachments;
 CREATE POLICY "ica_select" ON insurer_case_attachments
   FOR SELECT USING (case_id IN (SELECT id FROM insurer_cases WHERE insurer_id IN (SELECT my_insurer_ids())));
+DROP POLICY IF EXISTS "ica_select_tenant" ON insurer_case_attachments;
 CREATE POLICY "ica_select_tenant" ON insurer_case_attachments
   FOR SELECT USING (case_id IN (SELECT id FROM insurer_cases WHERE tenant_id IN (SELECT my_tenant_ids())));
 
