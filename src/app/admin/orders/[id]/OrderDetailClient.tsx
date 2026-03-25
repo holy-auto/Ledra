@@ -76,6 +76,47 @@ interface AuditEntry {
   created_at: string;
 }
 
+interface PartnerScore {
+  total_orders: number;
+  completed_orders: number;
+  on_time_orders: number;
+  cancelled_orders: number;
+  avg_rating: number | null;
+  rating_count: number;
+}
+
+interface PartnerRank {
+  key: string;
+  label: string;
+  color: string;
+  bgColor: string;
+  minCompleted: number;
+  minRating: number | null;
+}
+
+const PARTNER_RANKS: PartnerRank[] = [
+  { key: "platinum", label: "プラチナ", color: "text-violet-600 dark:text-violet-400", bgColor: "bg-violet-100 dark:bg-violet-900/40", minCompleted: 50, minRating: 4.0 },
+  { key: "gold",     label: "ゴールド", color: "text-yellow-600 dark:text-yellow-400", bgColor: "bg-yellow-100 dark:bg-yellow-900/40", minCompleted: 20, minRating: 3.5 },
+  { key: "silver",   label: "シルバー", color: "text-gray-500 dark:text-gray-400",     bgColor: "bg-gray-100 dark:bg-gray-800/60",     minCompleted: 5,  minRating: null },
+  { key: "bronze",   label: "ブロンズ", color: "text-orange-600 dark:text-orange-400", bgColor: "bg-orange-100 dark:bg-orange-900/40", minCompleted: 1,  minRating: null },
+  { key: "starter",  label: "スターター", color: "text-muted",                          bgColor: "bg-surface-hover",                    minCompleted: 0,  minRating: null },
+];
+
+function resolveRank(completedOrders: number, avgRating: number | null): PartnerRank {
+  for (const rank of PARTNER_RANKS) {
+    if (completedOrders >= rank.minCompleted) {
+      if (rank.minRating == null || (avgRating != null && avgRating >= rank.minRating)) {
+        return rank;
+      }
+    }
+  }
+  return PARTNER_RANKS[PARTNER_RANKS.length - 1];
+}
+
+const RANK_LETTERS: Record<string, string> = {
+  platinum: "P", gold: "G", silver: "S", bronze: "B", starter: "—",
+};
+
 // ─── Status helpers ───
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
@@ -163,6 +204,7 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [reviews, setReviews] = useState<ReviewInfo[]>([]);
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
+  const [counterpartyScore, setCounterpartyScore] = useState<PartnerScore | null>(null);
   const [isFrom, setIsFrom] = useState(false);
   const [isTo, setIsTo] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -195,6 +237,7 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
       setMessages(j.recent_messages ?? []);
       setReviews(j.reviews ?? []);
       setAuditLog(j.audit_log ?? []);
+      setCounterpartyScore(j.counterparty_score ?? null);
       setIsFrom(j.is_from);
       setIsTo(j.is_to);
     } catch (e: unknown) {
@@ -337,6 +380,61 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
           </div>
         </div>
       </div>
+
+      {/* ─── Counterparty Score ─── */}
+      {counterpartyScore && (() => {
+        const cpRank = resolveRank(counterpartyScore.completed_orders, counterpartyScore.avg_rating);
+        const cpCompletionRate = counterpartyScore.total_orders > 0
+          ? Math.round((counterpartyScore.completed_orders / counterpartyScore.total_orders) * 100) : null;
+        const cpOnTimeRate = counterpartyScore.completed_orders > 0
+          ? Math.round((counterpartyScore.on_time_orders / counterpartyScore.completed_orders) * 100) : null;
+        const counterpartyName = isFrom ? toTenant?.company_name : fromTenant?.company_name;
+        return (
+          <section className="glass-card p-5 space-y-3">
+            <h3 className="text-sm font-semibold text-primary">
+              {isFrom ? "発注先" : "発注元"}の取引実績
+              {counterpartyName && <span className="text-muted font-normal ml-2">— {counterpartyName}</span>}
+            </h3>
+            <div className="flex items-center gap-4">
+              <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${cpRank.bgColor}`}>
+                <span className={`text-lg font-bold ${cpRank.color}`}>{RANK_LETTERS[cpRank.key] ?? "—"}</span>
+              </div>
+              <div>
+                <div className={`text-sm font-bold ${cpRank.color}`}>{cpRank.label}</div>
+                <div className="text-[10px] text-muted">パートナーランク</div>
+              </div>
+              {counterpartyScore.avg_rating != null && (
+                <div className="ml-2">
+                  <span className="text-yellow-500 text-sm">
+                    {"★".repeat(Math.round(counterpartyScore.avg_rating))}{"☆".repeat(5 - Math.round(counterpartyScore.avg_rating))}
+                  </span>
+                  <span className="text-[11px] text-muted ml-1">
+                    {counterpartyScore.avg_rating.toFixed(1)}（{counterpartyScore.rating_count}件）
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="grid gap-2 grid-cols-4 text-center">
+              <div className="p-2 rounded-lg bg-surface-hover">
+                <div className="text-lg font-bold text-primary">{counterpartyScore.completed_orders}</div>
+                <div className="text-[10px] text-muted">完了取引</div>
+              </div>
+              <div className="p-2 rounded-lg bg-surface-hover">
+                <div className="text-lg font-bold text-primary">{cpCompletionRate != null ? `${cpCompletionRate}%` : "—"}</div>
+                <div className="text-[10px] text-muted">完了率</div>
+              </div>
+              <div className="p-2 rounded-lg bg-surface-hover">
+                <div className="text-lg font-bold text-primary">{cpOnTimeRate != null ? `${cpOnTimeRate}%` : "—"}</div>
+                <div className="text-[10px] text-muted">納期遵守率</div>
+              </div>
+              <div className="p-2 rounded-lg bg-surface-hover">
+                <div className="text-lg font-bold text-danger">{counterpartyScore.cancelled_orders}</div>
+                <div className="text-[10px] text-muted">キャンセル</div>
+              </div>
+            </div>
+          </section>
+        );
+      })()}
 
       {/* ─── Details ─── */}
       <section className="glass-card p-5 space-y-3">

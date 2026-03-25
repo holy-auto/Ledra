@@ -11,7 +11,7 @@ export const orderCreateSchema = z.object({
 
 export const orderUpdateSchema = z.object({
   id: z.string().uuid("注文IDは必須です。"),
-  status: z.enum(["pending", "accepted", "in_progress", "completed", "rejected", "cancelled"], {
+  status: z.enum(["pending", "quoting", "accepted", "in_progress", "approval_pending", "payment_pending", "completed", "rejected", "cancelled"], {
     message: "無効なステータスです。",
   }),
 });

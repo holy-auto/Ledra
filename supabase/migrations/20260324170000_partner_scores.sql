@@ -66,7 +66,8 @@ BEGIN
     count(*) FILTER (WHERE status = 'cancelled')
   INTO v_total, v_completed, v_on_time, v_cancelled
   FROM public.job_orders
-  WHERE from_tenant_id = p_tenant_id OR to_tenant_id = p_tenant_id;
+  WHERE to_tenant_id IS NOT NULL
+    AND (from_tenant_id = p_tenant_id OR to_tenant_id = p_tenant_id);
 
   SELECT avg(rating)::numeric(3,2), count(*)
   INTO v_avg, v_count

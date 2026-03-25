@@ -60,7 +60,19 @@ export async function GET(req: NextRequest) {
         tenant_id: tid,
         tenant_name: tenantMap[tid] ?? tid.slice(0, 8),
       }));
-      return NextResponse.json({ myTenants });
+
+      // 自社のパートナースコアも返す
+      let myScore = null;
+      if (tenantId) {
+        const { data: ps } = await getSupabaseAdmin()
+          .from("partner_scores")
+          .select("total_orders, completed_orders, on_time_orders, cancelled_orders, avg_rating, rating_count")
+          .eq("tenant_id", tenantId)
+          .maybeSingle();
+        myScore = ps;
+      }
+
+      return NextResponse.json({ myTenants, myScore });
     }
 
     const type = searchParams.get("type"); // sent | received | all | browse
@@ -80,9 +92,10 @@ export async function GET(req: NextRequest) {
       // 自テナントの案件は除外
       query = query.neq("from_tenant_id", tenantId);
 
-      // カテゴリ or タイトル検索
+      // カテゴリ or タイトル検索（PostgREST特殊文字をエスケープ）
       if (browseQuery) {
-        query = query.or(`title.ilike.%${browseQuery}%,category.ilike.%${browseQuery}%,description.ilike.%${browseQuery}%`);
+        const sanitized = browseQuery.replace(/[%_\\,().]/g, (ch) => `\\${ch}`);
+        query = query.or(`title.ilike.%${sanitized}%,category.ilike.%${sanitized}%,description.ilike.%${sanitized}%`);
       }
       if (status && status !== "all") {
         query = query.eq("status", status);
@@ -163,32 +176,41 @@ export async function POST(req: NextRequest) {
 
     // Use admin client to bypass RLS (API already validated auth above)
     const admin = getSupabaseAdmin();
+
+    // Build insert payload — only include non-null fields to avoid
+    // hitting unexpected NOT NULL constraints on columns with defaults
+    const insertPayload: Record<string, unknown> = {
+      public_id: makePublicId(),
+      from_tenant_id: tenantId,
+      title: title.trim(),
+      status: "pending",
+    };
+    if (to_tenant_id) insertPayload.to_tenant_id = to_tenant_id;
+    if (description) insertPayload.description = description;
+    if (category) insertPayload.category = category;
+    if (budget != null && budget !== "") insertPayload.budget = Number(budget);
+    if (deadline) insertPayload.deadline = deadline;
+    if (vehicle_id) insertPayload.vehicle_id = vehicle_id;
+
     const { data, error } = await admin
       .from("job_orders")
-      .insert({
-        public_id: makePublicId(),
-        from_tenant_id: tenantId,
-        to_tenant_id: to_tenant_id || null,
-        title,
-        description: description || null,
-        category: category || null,
-        budget: budget || null,
-        deadline: deadline || null,
-        vehicle_id: vehicle_id || null,
-        status: "pending",
-      })
+      .insert(insertPayload)
       .select()
       .single();
 
     if (error) {
-      console.error("[orders] insert_failed:", error.message, error.details, error.hint);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error("[orders] insert_failed:", JSON.stringify({ message: error.message, details: error.details, hint: error.hint, code: error.code }));
+      return NextResponse.json(
+        { error: "注文の作成に失敗しました" },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json({ order: data }, { status: 201 });
   } catch (e: unknown) {
-    console.error("[orders] POST failed:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[orders] POST failed:", msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
 

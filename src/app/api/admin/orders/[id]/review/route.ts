@@ -45,6 +45,10 @@ export async function POST(
       return NextResponse.json({ error: "完了済みの取引のみ評価可能です" }, { status: 400 });
     }
 
+    if (!order.to_tenant_id) {
+      return NextResponse.json({ error: "受注者が未確定のため評価できません" }, { status: 400 });
+    }
+
     // reviewer / reviewed を特定
     const isFrom = order.from_tenant_id === tenantId;
     const reviewerTenantId = tenantId;

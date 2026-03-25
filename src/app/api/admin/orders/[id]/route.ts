@@ -72,6 +72,20 @@ export async function GET(
       .order("created_at", { ascending: false })
       .limit(20);
 
+    // 相手方のパートナースコアを取得
+    const counterpartyId = order.from_tenant_id === tenantId
+      ? order.to_tenant_id
+      : order.from_tenant_id;
+    let counterpartyScore = null;
+    if (counterpartyId) {
+      const { data: ps } = await admin
+        .from("partner_scores")
+        .select("total_orders, completed_orders, on_time_orders, cancelled_orders, avg_rating, rating_count")
+        .eq("tenant_id", counterpartyId)
+        .maybeSingle();
+      counterpartyScore = ps;
+    }
+
     return NextResponse.json({
       order,
       from_tenant: mapTenant(fromTenant.data),
@@ -82,6 +96,7 @@ export async function GET(
       audit_log: auditLog ?? [],
       is_from: order.from_tenant_id === tenantId,
       is_to: order.to_tenant_id != null && order.to_tenant_id === tenantId,
+      counterparty_score: counterpartyScore,
     });
   } catch (e: unknown) {
     console.error("[orders/[id]] GET failed:", e);

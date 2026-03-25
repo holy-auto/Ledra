@@ -99,6 +99,11 @@ export async function POST(
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
 
+    // 受注者未定（to_tenant_id NULL）の案件ではチャット不可
+    if (!order.to_tenant_id) {
+      return NextResponse.json({ error: "受注者が確定するまでメッセージは送れません" }, { status: 400 });
+    }
+
     const { data, error } = await admin
       .from("chat_messages")
       .insert({

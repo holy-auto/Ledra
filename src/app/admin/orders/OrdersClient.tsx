@@ -84,6 +84,47 @@ const CATEGORY_OPTIONS = [
   "インテリアリペア", "デントリペア", "その他",
 ];
 
+interface PartnerScore {
+  total_orders: number;
+  completed_orders: number;
+  on_time_orders: number;
+  cancelled_orders: number;
+  avg_rating: number | null;
+  rating_count: number;
+}
+
+interface PartnerRank {
+  key: string;
+  label: string;
+  color: string;
+  bgColor: string;
+  minCompleted: number;
+  minRating: number | null;
+}
+
+const PARTNER_RANKS: PartnerRank[] = [
+  { key: "platinum", label: "プラチナ", color: "text-violet-600 dark:text-violet-400", bgColor: "bg-violet-100 dark:bg-violet-900/40", minCompleted: 50, minRating: 4.0 },
+  { key: "gold",     label: "ゴールド", color: "text-yellow-600 dark:text-yellow-400", bgColor: "bg-yellow-100 dark:bg-yellow-900/40", minCompleted: 20, minRating: 3.5 },
+  { key: "silver",   label: "シルバー", color: "text-gray-500 dark:text-gray-400",     bgColor: "bg-gray-100 dark:bg-gray-800/60",     minCompleted: 5,  minRating: null },
+  { key: "bronze",   label: "ブロンズ", color: "text-orange-600 dark:text-orange-400", bgColor: "bg-orange-100 dark:bg-orange-900/40", minCompleted: 1,  minRating: null },
+  { key: "starter",  label: "スターター", color: "text-muted",                          bgColor: "bg-surface-hover",                    minCompleted: 0,  minRating: null },
+];
+
+function resolveRank(completedOrders: number, avgRating: number | null): PartnerRank {
+  for (const rank of PARTNER_RANKS) {
+    if (completedOrders >= rank.minCompleted) {
+      if (rank.minRating == null || (avgRating != null && avgRating >= rank.minRating)) {
+        return rank;
+      }
+    }
+  }
+  return PARTNER_RANKS[PARTNER_RANKS.length - 1];
+}
+
+const RANK_LETTERS: Record<string, string> = {
+  platinum: "P", gold: "G", silver: "S", bronze: "B", starter: "—",
+};
+
 interface TenantOption {
   tenant_id: string;
   tenant_name: string;
@@ -115,8 +156,9 @@ export default function OrdersClient() {
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const browseTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  // テナント一覧
+  // テナント一覧 & 自社スコア
   const [myTenants, setMyTenants] = useState<TenantOption[]>([]);
+  const [myScore, setMyScore] = useState<PartnerScore | null>(null);
 
   // テナント検索
   const [tenantQuery, setTenantQuery] = useState("");
@@ -174,6 +216,7 @@ export default function OrdersClient() {
         const res = await fetch("/api/admin/orders?_tenants=1", { cache: "no-store" });
         const j = await res.json().catch(() => null);
         if (j?.myTenants?.length) setMyTenants(j.myTenants);
+        if (j?.myScore) setMyScore(j.myScore);
       } catch (e) {
         console.error("[orders] tenant fetch failed:", e);
       }
@@ -321,6 +364,67 @@ export default function OrdersClient() {
           <div className="mt-1 text-xs text-muted">完了した取引</div>
         </div>
       </div>
+
+      {/* Partner Score */}
+      {myScore && (() => {
+        const rank = resolveRank(myScore.completed_orders, myScore.avg_rating);
+        const completionRate = myScore.total_orders > 0
+          ? Math.round((myScore.completed_orders / myScore.total_orders) * 100) : null;
+        const onTimeRate = myScore.completed_orders > 0
+          ? Math.round((myScore.on_time_orders / myScore.completed_orders) * 100) : null;
+        const currentIdx = PARTNER_RANKS.findIndex((r) => r.key === rank.key);
+        const nextRank = currentIdx > 0 ? PARTNER_RANKS[currentIdx - 1] : null;
+        return (
+          <div className="glass-card p-5">
+            <div className="flex items-center gap-4 mb-4">
+              <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${rank.bgColor}`}>
+                <span className={`text-xl font-bold ${rank.color}`}>{RANK_LETTERS[rank.key] ?? "—"}</span>
+              </div>
+              <div>
+                <div className={`text-base font-bold ${rank.color}`}>{rank.label}</div>
+                <div className="text-[11px] text-muted">自社パートナーランク</div>
+              </div>
+              {myScore.avg_rating != null && (
+                <div className="ml-auto text-right">
+                  <div className="text-lg font-bold text-yellow-500">
+                    {"★".repeat(Math.round(myScore.avg_rating))}{"☆".repeat(5 - Math.round(myScore.avg_rating))}
+                  </div>
+                  <div className="text-[11px] text-muted">{myScore.avg_rating.toFixed(1)} / 5.0（{myScore.rating_count}件）</div>
+                </div>
+              )}
+            </div>
+            <div className="grid gap-3 grid-cols-4 text-center">
+              <div className="p-2 rounded-lg bg-surface-hover">
+                <div className="text-xl font-bold text-primary">{myScore.completed_orders}</div>
+                <div className="text-[10px] text-muted">完了取引</div>
+              </div>
+              <div className="p-2 rounded-lg bg-surface-hover">
+                <div className="text-xl font-bold text-primary">{completionRate != null ? `${completionRate}%` : "—"}</div>
+                <div className="text-[10px] text-muted">完了率</div>
+              </div>
+              <div className="p-2 rounded-lg bg-surface-hover">
+                <div className="text-xl font-bold text-primary">{onTimeRate != null ? `${onTimeRate}%` : "—"}</div>
+                <div className="text-[10px] text-muted">納期遵守率</div>
+              </div>
+              <div className="p-2 rounded-lg bg-surface-hover">
+                <div className="text-xl font-bold text-danger">{myScore.cancelled_orders}</div>
+                <div className="text-[10px] text-muted">キャンセル</div>
+              </div>
+            </div>
+            {nextRank && (
+              <div className="mt-3 p-2 rounded-lg bg-surface-hover text-[11px] text-muted">
+                <span className={`font-semibold ${nextRank.color}`}>{nextRank.label}</span>まであと
+                {myScore.completed_orders < nextRank.minCompleted && (
+                  <span className="font-semibold text-primary"> {nextRank.minCompleted - myScore.completed_orders}件の完了取引</span>
+                )}
+                {nextRank.minRating != null && (myScore.avg_rating == null || myScore.avg_rating < nextRank.minRating) && (
+                  <span className="font-semibold text-primary"> 平均評価{nextRank.minRating}以上</span>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* New order form */}
       {showForm && (
