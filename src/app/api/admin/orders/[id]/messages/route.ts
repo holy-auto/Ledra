@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 /**
  * GET /api/admin/orders/[id]/messages
@@ -17,11 +18,12 @@ export async function GET(
     if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const tenantId = caller.tenantId;
 
+    const admin = getSupabaseAdmin();
     const cursor = req.nextUrl.searchParams.get("before"); // pagination cursor
     const limit = Math.min(Number(req.nextUrl.searchParams.get("limit")) || 50, 100);
 
     // 注文の存在 + 権限チェック
-    const { data: order } = await supabase
+    const { data: order } = await admin
       .from("job_orders")
       .select("id, from_tenant_id, to_tenant_id")
       .eq("id", id)
@@ -32,7 +34,7 @@ export async function GET(
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
 
-    let query = supabase
+    let query = admin
       .from("chat_messages")
       .select("id, sender_user_id, sender_tenant_id, body, attachment_path, attachment_type, is_system, created_at")
       .eq("job_order_id", id)
@@ -83,8 +85,10 @@ export async function POST(
       return NextResponse.json({ error: "メッセージを入力してください" }, { status: 400 });
     }
 
+    const admin = getSupabaseAdmin();
+
     // 注文取得（from/to テナント情報を冗長保持するため）
-    const { data: order } = await supabase
+    const { data: order } = await admin
       .from("job_orders")
       .select("id, from_tenant_id, to_tenant_id")
       .eq("id", id)
@@ -95,7 +99,7 @@ export async function POST(
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await admin
       .from("chat_messages")
       .insert({
         job_order_id: id,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 /**
  * POST /api/admin/orders/[id]/confirm-payment
@@ -18,10 +19,11 @@ export async function POST(
     if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const tenantId = caller.tenantId;
 
+    const admin = getSupabaseAdmin();
     const body = await req.json().catch(() => ({}));
 
     // 注文取得
-    const { data: order, error: fetchErr } = await supabase
+    const { data: order, error: fetchErr } = await admin
       .from("job_orders")
       .select("*")
       .eq("id", id)
@@ -76,7 +78,7 @@ export async function POST(
       updateData.payment_status = "confirmed_by_vendor";
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await admin
       .from("job_orders")
       .update(updateData)
       .eq("id", id)
@@ -89,7 +91,7 @@ export async function POST(
     }
 
     // 監査ログ
-    supabase
+    admin
       .from("order_audit_log")
       .insert({
         job_order_id: id,
