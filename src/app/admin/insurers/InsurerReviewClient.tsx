@@ -14,6 +14,7 @@ type Insurer = {
   contact_email: string | null;
   contact_phone: string | null;
   signup_source: string | null;
+  business_type: string | null;
   corporate_number: string | null;
   address: string | null;
   representative_name: string | null;
@@ -214,6 +215,12 @@ export default function InsurerReviewClient() {
                   <tr key={`${ins.id}-detail`} className="border-t bg-inset/50">
                     <td colSpan={8} className="p-4">
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                        <div>
+                          <div className="text-xs text-muted mb-0.5">事業形態</div>
+                          <div className="text-primary">
+                            {ins.business_type === "sole_proprietor" ? "個人事業主" : "法人"}
+                          </div>
+                        </div>
                         <div>
                           <div className="text-xs text-muted mb-0.5">法人番号</div>
                           <div className="text-primary">{ins.corporate_number || "-"}</div>

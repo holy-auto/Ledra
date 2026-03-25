@@ -4,8 +4,9 @@
  * Japanese corporate numbers are 13 digits with a check digit.
  * Format: 1 check digit + 12 digits
  *
- * Future: Can be integrated with GBiz (gBizINFO) or
- * National Tax Agency API for real-time verification.
+ * GBiz API integration for real-time verification:
+ * Requires GBIZ_API_KEY environment variable.
+ * https://info.gbiz.go.jp/api/v1/
  */
 
 /**
@@ -45,17 +46,62 @@ export function formatCorporateNumber(corpNumber: string): string {
   return `${cleaned[0]}-${cleaned.slice(1, 5)}-${cleaned.slice(5, 9)}-${cleaned.slice(9)}`;
 }
 
+/** GBiz API response shape (subset of fields we use) */
+export type GBizCompanyInfo = {
+  corporateNumber: string;
+  name: string;
+  location: string;
+  representativeName: string;
+  status: string;
+};
+
 /**
- * Placeholder for future GBiz API integration.
- * Would verify the corporate number against the national registry
- * and return company details.
+ * Verify a corporate number via the gBizINFO API and return company details.
+ *
+ * Requires env var GBIZ_API_KEY.
+ * Returns null if the API key is not configured or the number is not found.
  */
 export async function verifyCorporateNumberViaApi(
-  _corpNumber: string,
-): Promise<{ verified: boolean; companyName?: string; address?: string } | null> {
-  // TODO: Integrate with GBiz API (https://info.gbiz.go.jp/api/v1/)
-  // or National Tax Agency API when ready.
-  //
-  // For now, return null to indicate API verification is not yet available.
-  return null;
+  corpNumber: string,
+): Promise<GBizCompanyInfo | null> {
+  const apiKey = process.env.GBIZ_API_KEY;
+  if (!apiKey) return null;
+
+  const cleaned = corpNumber.replace(/[-\s]/g, "");
+  if (!/^\d{13}$/.test(cleaned)) return null;
+
+  try {
+    const res = await fetch(
+      `https://info.gbiz.go.jp/hojin/v1/hojin/${cleaned}`,
+      {
+        headers: {
+          "X-hojinInfo-api-token": apiKey,
+          Accept: "application/json",
+        },
+        signal: AbortSignal.timeout(5000),
+      },
+    );
+
+    if (!res.ok) return null;
+
+    const json = await res.json();
+
+    // gBizINFO returns { "hojin-infos": [ { ... } ] }
+    const infos = json?.["hojin-infos"];
+    if (!Array.isArray(infos) || infos.length === 0) return null;
+
+    const info = infos[0];
+
+    return {
+      corporateNumber: info["corporate-number"] ?? cleaned,
+      name: info["name"] ?? "",
+      location: info["location"] ?? "",
+      representativeName: info["representative-name"] ?? "",
+      status: info["status"] ?? "",
+    };
+  } catch {
+    // Network error or timeout — don't block registration
+    console.warn("[gbiz] API call failed for", cleaned);
+    return null;
+  }
 }

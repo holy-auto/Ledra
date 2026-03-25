@@ -174,7 +174,7 @@ export async function GET(req: Request) {
   const admin = createAdminClient();
   let query = admin
     .from("insurers")
-    .select("id, name, slug, is_active, status, plan_tier, requested_plan, contact_person, contact_email, contact_phone, signup_source, corporate_number, address, representative_name, terms_accepted_at, rejection_reason, created_at, updated_at, reviewed_at, activated_at")
+    .select("id, name, slug, is_active, status, plan_tier, requested_plan, contact_person, contact_email, contact_phone, signup_source, business_type, corporate_number, address, representative_name, terms_accepted_at, rejection_reason, created_at, updated_at, reviewed_at, activated_at")
     .order("created_at", { ascending: false });
 
   if (statusFilter && (VALID_STATUSES as readonly string[]).includes(statusFilter)) {
