@@ -89,6 +89,7 @@ as $$
 $$;
 
 -- insurers: read own insurer
+drop policy if exists "insurers_select" on insurers;
 create policy "insurers_select" on insurers
   for select using (id in (select my_insurer_ids()));
 
@@ -143,6 +144,7 @@ $$;
 --    For now, insurers can search ALL active certificates
 --    (cross-tenant access is the purpose of the insurer portal).
 -- =============================================================
+drop function if exists insurer_search_certificates(text, integer, integer, text, text);
 create or replace function insurer_search_certificates(
   p_query      text default '',
   p_limit      integer default 50,
@@ -224,6 +226,7 @@ $$;
 -- 7) RPC: insurer_get_certificate
 --    Get a single certificate by public_id (for PDF export)
 -- =============================================================
+drop function if exists insurer_get_certificate(text, text, text);
 create or replace function insurer_get_certificate(
   p_public_id  text,
   p_ip         text default null,
@@ -425,6 +428,7 @@ end $$;
 -- =============================================================
 -- 11) Fix platform_insurer_count() from dashboard_enhancements
 -- =============================================================
+drop function if exists platform_insurer_count();
 create or replace function platform_insurer_count()
 returns bigint
 language sql stable security definer

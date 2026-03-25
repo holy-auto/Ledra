@@ -30,7 +30,7 @@ export async function GET() {
     // Get tenant info with prefecture
     const { data: tenants } = await supabase
       .from("tenants")
-      .select("id, prefecture, company_name");
+      .select("id, prefecture, name");
 
     const tenantMap = new Map<string, string>();
     for (const t of tenants ?? []) {

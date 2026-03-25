@@ -1,0 +1,64 @@
+{
+  "expo": {
+    "name": "CARTRUST",
+    "slug": "cartrust",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "cartrust",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a1a2e"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.cartrust.app",
+      "infoPlist": {
+        "NFCReaderUsageDescription": "CARTRUSTは証明書NFCタグの読み取りと書き込みに使用します",
+        "NSCameraUsageDescription": "CARTRUSTは施工写真の撮影に使用します"
+      }
+    },
+    "android": {
+      "package": "com.cartrust.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#1a1a2e",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "android.permission.NFC",
+        "android.permission.CAMERA"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "5d5394bd-6242-48ef-9e36-3151e0d3dc8a"
+      },
+      "router": {}
+    },
+    "owner": "cartrust",
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "CARTRUSTは施工写真の撮影に使用します"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "CARTRUSTは施工写真の選択に使用します"
+        }
+      ]
+    ]
+  }
+}

@@ -2,6 +2,9 @@
 -- Google Calendar pull 同期: source に 'gcal' を追加 + sync_log action 拡張
 -- =============================================================
 
+-- reservations.source カラムを追加（存在しない場合）
+ALTER TABLE reservations ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'manual';
+
 -- reservations.source に 'gcal' を追加
 ALTER TABLE reservations DROP CONSTRAINT IF EXISTS reservations_source_check;
 ALTER TABLE reservations ADD CONSTRAINT reservations_source_check

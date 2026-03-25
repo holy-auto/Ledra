@@ -23,6 +23,7 @@ export const slugSchema = z.string().trim().min(1).regex(/^[a-z0-9-]+$/);
 
 // ─── API route schemas ───
 
+/** @deprecated Use joinSchemaV2 instead */
 export const joinSchema = z.object({
   company_name: z.string().trim().min(1, "会社名は必須です"),
   contact_person: z.string().trim().min(1, "担当者名は必須です"),
@@ -31,6 +32,28 @@ export const joinSchema = z.object({
   password: passwordSchema,
   requested_plan: z.enum(["basic", "standard", "pro"]).default("basic"),
 });
+
+/** V2: Extended join schema with terms, corporate info, business_type */
+export const joinSchemaV2 = z.object({
+  business_type: z.enum(["corporation", "sole_proprietor"], {
+    error: "事業形態を選択してください",
+  }).default("corporation"),
+  company_name: z.string().trim().min(1, "会社名は必須です"),
+  contact_person: z.string().trim().min(1, "担当者名は必須です"),
+  email: emailSchema,
+  phone: z.string().trim().optional().default(""),
+  password: passwordSchema,
+  requested_plan: z.enum(["basic", "pro", "enterprise"]).default("basic"),
+  corporate_number: z.string().trim().optional().default(""),
+  address: z.string().trim().optional().default(""),
+  representative_name: z.string().trim().optional().default(""),
+  terms_accepted: z.boolean({ error: "利用規約への同意が必要です" }),
+  referral_code: z.string().trim().max(100).optional(),
+  agency_id: z.string().uuid("agency_idはUUID形式である必要があります").optional(),
+}).refine(
+  (data) => data.business_type !== "corporation" || (data.corporate_number !== ""),
+  { message: "法人の場合、法人番号は必須です", path: ["corporate_number"] },
+);
 
 export const contactSchema = z.object({
   name: z.string().trim().min(1, "お名前は必須です"),

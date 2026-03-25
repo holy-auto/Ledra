@@ -3,7 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerBasic } from "@/lib/api/auth";
 import { getAdminClient } from "@/lib/api/auth";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError, apiError } from "@/lib/api/response";
-import { getAuthUrl, exchangeCodeAndSave, pullEventsFromCalendar, pushReservationsToCalendar } from "@/lib/gcal/client";
+import { getAuthUrl, exchangeCodeAndSave, pullEventsFromCalendar, pushReservationsToCalendar, listCalendars } from "@/lib/gcal/client";
 
 export const dynamic = "force-dynamic";
 
@@ -111,6 +111,11 @@ export async function POST(req: NextRequest) {
         })
         .eq("id", caller.tenantId);
       return apiOk({ connected: false });
+    }
+
+    if (action === "list-calendars") {
+      const calendars = await listCalendars(caller.tenantId);
+      return apiOk({ calendars });
     }
 
     if (action === "set-calendar") {

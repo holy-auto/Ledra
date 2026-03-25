@@ -8,12 +8,14 @@
 export default function MarketingThemeWrapper({
   children,
   className,
+  ...rest
 }: {
   children: React.ReactNode;
   className?: string;
+  [key: string]: unknown;
 }) {
   return (
-    <div data-theme="dark" className={className}>
+    <div data-theme="marketing" className={className} {...rest}>
       {children}
     </div>
   );

@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/client";
 import Badge from "@/components/ui/Badge";
 import { CERTIFICATE_STATUS_MAP, getStatusEntry } from "@/lib/statusMaps";
 import { formatDateTime } from "@/lib/format";
+import InsurerIdleAutoLogout from "./InsurerIdleAutoLogout";
+import OnboardingWizard from "./OnboardingWizard";
 
 type Row = {
   public_id: string;
@@ -137,6 +139,7 @@ export default function InsurerHomePage() {
 
   return (
     <main className="min-h-screen bg-neutral-50 p-6">
+      <InsurerIdleAutoLogout />
       <div className="mx-auto max-w-7xl space-y-6">
 
         {/* Header */}
@@ -172,6 +175,9 @@ export default function InsurerHomePage() {
             </button>
           </div>
         </header>
+
+        {/* Onboarding wizard (first login) */}
+        {!isPending && <OnboardingWizard />}
 
         {/* 仮開通バナー */}
         {isPending && (
