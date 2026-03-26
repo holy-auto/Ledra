@@ -8,14 +8,16 @@ import {
   apiNotFound,
   apiInternalError,
 } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const dynamic = "force-dynamic";
 
 // ─── GET: Reservation detail ───
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },) {
+  const limited = await checkRateLimit(request, "general");
+  if (limited) return limited;
+
   try {
     const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();
@@ -44,10 +46,11 @@ export async function GET(
 }
 
 // ─── PUT: Update reservation ───
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function PUT(request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },) {
+  const limited = await checkRateLimit(request, "general");
+  if (limited) return limited;
+
   try {
     const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();

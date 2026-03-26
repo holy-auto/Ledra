@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api/auth";
 import { apiOk, apiInternalError, apiError } from "@/lib/api/response";
 import { verifySignature, handleWebhookEvents } from "@/lib/line/client";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,9 @@ export const dynamic = "force-dynamic";
  * 例: https://app.cartrust.co.jp/api/line/webhook?tenant_id=xxxx
  */
 export async function POST(req: NextRequest) {
+  const limited = await checkRateLimit(req, "webhook");
+  if (limited) return limited;
+
   try {
     const url = new URL(req.url);
     const tenantId = url.searchParams.get("tenant_id");
@@ -60,6 +64,9 @@ export async function POST(req: NextRequest) {
  * GET /api/line/webhook
  * LINE Platform の Webhook URL 検証用（設定画面から verify 時に使用）
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const limited = await checkRateLimit(req, "webhook");
+  if (limited) return limited;
+
   return apiOk({ status: "ok" });
 }

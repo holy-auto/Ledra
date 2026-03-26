@@ -9,14 +9,16 @@ import {
   apiValidationError,
   apiInternalError,
 } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const dynamic = "force-dynamic";
 
 // ─── POST: Close register session ───
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function POST(request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },) {
+  const limited = await checkRateLimit(request, "general");
+  if (limited) return limited;
+
   try {
     const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();
