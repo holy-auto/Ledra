@@ -1,16 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/api/auth";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   try {
     const supabase = await createClient();
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth?.user) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "admin")) return apiForbidden();
 
     const admin = getAdminClient();
 
@@ -38,20 +43,19 @@ export async function GET() {
       materials,
     });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "internal_error" },
-      { status: 500 }
-    );
+    return apiInternalError(e, "agent-materials GET");
   }
 }
 
 export async function POST(request: NextRequest) {
+  const limited = await checkRateLimit(request, "general");
+  if (limited) return limited;
+
   try {
     const supabase = await createClient();
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth?.user) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "admin")) return apiForbidden();
 
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
@@ -62,10 +66,7 @@ export async function POST(request: NextRequest) {
     const isPinned = formData.get("is_pinned") === "true";
 
     if (!file || !title || !categoryId) {
-      return NextResponse.json(
-        { error: "file, title, and category_id are required" },
-        { status: 400 }
-      );
+      return apiValidationError("file, title, and category_id are required");
     }
 
     // Upload to Supabase Storage
@@ -82,7 +83,7 @@ export async function POST(request: NextRequest) {
       });
 
     if (uploadErr) {
-      return NextResponse.json({ error: uploadErr.message }, { status: 500 });
+      return apiInternalError(uploadErr, "agent-materials upload");
     }
 
     // Insert record
@@ -99,20 +100,17 @@ export async function POST(request: NextRequest) {
         version: version || null,
         is_pinned: isPinned,
         is_published: true,
-        uploaded_by: auth.user.id,
+        uploaded_by: caller.userId,
       })
       .select()
       .single();
 
     if (insertErr) {
-      return NextResponse.json({ error: insertErr.message }, { status: 500 });
+      return apiInternalError(insertErr, "agent-materials insert");
     }
 
     return NextResponse.json({ material }, { status: 201 });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "internal_error" },
-      { status: 500 }
-    );
+    return apiInternalError(e, "agent-materials POST");
   }
 }

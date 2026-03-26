@@ -1,12 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   const supabase = await createSupabaseServerClient();
 
   const { data: userRes } = await supabase.auth.getUser();

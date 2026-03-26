@@ -439,7 +439,6 @@ export default function ReservationsClient() {
                       if (syncJ?.pushed) parts.push(`Push: ${syncJ.pushed}件`);
                       if (syncJ?.imported) parts.push(`取込: ${syncJ.imported}件`);
                       if (syncJ?.updated) parts.push(`更新: ${syncJ.updated}件`);
-                      if (syncJ?.cancelled) parts.push(`キャンセル: ${syncJ.cancelled}件`);
                       if (parts.length > 0) alert(`同期完了: ${parts.join(", ")}`);
                       mutate();
                     } catch (err) {

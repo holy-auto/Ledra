@@ -1,7 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { brandCreateSchema, brandUpdateSchema } from "@/lib/validations/brand";
-import { resolveCallerBasic } from "@/lib/api/auth";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { hasPermission } from "@/lib/auth/permissions";
+import type { Role } from "@/lib/auth/roles";
 import {
   apiOk,
   apiInternalError,
@@ -9,15 +11,22 @@ import {
   apiNotFound,
   apiValidationError,
   apiError,
+  apiForbidden,
 } from "@/lib/api/response";
+import { enforceBilling } from "@/lib/billing/guard";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: Request) {
+export async function GET(_req: NextRequest) {
+  const limited = await checkRateLimit(_req, "general");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerBasic(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!hasPermission(caller.role as Role, "certificates:view")) return apiForbidden();
 
     const { data: brands, error } = await supabase
       .from("brands")
@@ -33,11 +42,18 @@ export async function GET(_req: Request) {
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerBasic(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!hasPermission(caller.role as Role, "certificates:edit")) return apiForbidden();
+
+    const billing = await enforceBilling(req, { minPlan: "starter" });
+    if (billing) return billing;
 
     const body = await req.json();
     const parsed = brandCreateSchema.safeParse(body);
@@ -65,11 +81,18 @@ export async function POST(req: Request) {
   }
 }
 
-export async function PUT(req: Request) {
+export async function PUT(req: NextRequest) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerBasic(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!hasPermission(caller.role as Role, "certificates:edit")) return apiForbidden();
+
+    const billing = await enforceBilling(req, { minPlan: "starter" });
+    if (billing) return billing;
 
     const body = await req.json();
     const parsed = brandUpdateSchema.safeParse(body);
@@ -97,11 +120,18 @@ export async function PUT(req: Request) {
   }
 }
 
-export async function DELETE(req: Request) {
+export async function DELETE(req: NextRequest) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerBasic(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!hasPermission(caller.role as Role, "certificates:edit")) return apiForbidden();
+
+    const billing = await enforceBilling(req, { minPlan: "starter" });
+    if (billing) return billing;
 
     const { id } = await req.json();
     if (!id) return apiValidationError("IDが必要です。");

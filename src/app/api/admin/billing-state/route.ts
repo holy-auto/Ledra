@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { billingStateSchema } from "@/lib/validations/stripe";
 import { apiInternalError, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +15,9 @@ function getStripe() {
 }
 
 export async function POST(req: NextRequest) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   try {
     const body = await req.json().catch(() => ({} as any));
     const parsed = billingStateSchema.safeParse(body);
