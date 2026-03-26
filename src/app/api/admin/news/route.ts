@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import Parser from "rss-parser";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 const RSS_FEEDS = [
@@ -69,8 +70,8 @@ async function fetchLiveFeeds() {
 export async function GET() {
   try {
     const supabase = await createSupabaseServerClient();
-    const { data: userRes } = await supabase.auth.getUser();
-    if (!userRes?.user) return apiUnauthorized();
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) return apiUnauthorized();
 
     // 1) DBに保存済みの記事を取得（cron で保存されたもの）
     const { data: savedNews } = await supabase

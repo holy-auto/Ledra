@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
@@ -12,8 +13,8 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createClient();
-    const { data: userRes } = await supabase.auth.getUser();
-    if (!userRes?.user) return apiUnauthorized();
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) return apiUnauthorized();
 
     const q = req.nextUrl.searchParams.get("q")?.trim();
     if (!q || q.length < 1) {
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest) {
     const { data: myMemberships } = await supabase
       .from("tenant_memberships")
       .select("tenant_id")
-      .eq("user_id", userRes.user.id);
+      .eq("user_id", caller.userId);
     const myTenantIds = (myMemberships ?? []).map((m) => m.tenant_id);
 
     // name で ILIKE 検索

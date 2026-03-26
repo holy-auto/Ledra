@@ -90,3 +90,11 @@ export function apiNotFound(message = "リソースが見つかりません。")
 export function apiPlanLimit(message: string, data?: Record<string, unknown>) {
   return apiError({ code: "plan_limit", message, status: 403, data });
 }
+
+/** Sanitize error messages for production - strip Supabase internals */
+export function sanitizeErrorMessage(error: unknown, fallback = "処理中にエラーが発生しました。"): string {
+  if (process.env.NODE_ENV === "development") {
+    return error instanceof Error ? error.message : String(error);
+  }
+  return fallback;
+}

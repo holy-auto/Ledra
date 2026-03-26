@@ -12,6 +12,9 @@ export const vehicleCreateSchema = z.object({
   notes: z.string().trim().max(500).nullable().optional().transform(v => v || null),
   customer_id: z.string().uuid().nullable().optional(),
   size_class: z.enum(VEHICLE_SIZE_CLASSES).nullable().optional(),
+  full_length_mm: z.number().int().min(1).max(99999).nullable().optional(),
+  full_width_mm: z.number().int().min(1).max(99999).nullable().optional(),
+  full_height_mm: z.number().int().min(1).max(99999).nullable().optional(),
 });
 
 export const vehicleUpdateSchema = vehicleCreateSchema.partial().extend({

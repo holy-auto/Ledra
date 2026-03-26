@@ -1,21 +1,52 @@
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerBasic } from "@/lib/api/auth";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { calcSizeClass } from "@/lib/ocr/shakensho";
 
 export const dynamic = "force-dynamic";
 
 /**
  * GET /api/admin/vehicle-size?maker=xxx&model=xxx
- * 車種サイズマスタから自動判定
+ * GET /api/admin/vehicle-size?length_mm=XXXX&width_mm=XXXX&height_mm=XXXX
+ *
+ * 寸法が指定された場合は体積から直接判定。
+ * メーカー・車種が指定された場合は車種サイズマスタから判定。
  */
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerBasic(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
     const { searchParams } = new URL(req.url);
+
+    // --- Dimension-based calculation (priority) ---
+    const lengthStr = searchParams.get("length_mm");
+    const widthStr = searchParams.get("width_mm");
+    const heightStr = searchParams.get("height_mm");
+
+    if (lengthStr && widthStr && heightStr) {
+      const length_mm = parseInt(lengthStr, 10);
+      const width_mm = parseInt(widthStr, 10);
+      const height_mm = parseInt(heightStr, 10);
+
+      if (
+        !isNaN(length_mm) && length_mm > 0 &&
+        !isNaN(width_mm) && width_mm > 0 &&
+        !isNaN(height_mm) && height_mm > 0
+      ) {
+        const volume_m3 = (length_mm * width_mm * height_mm) / 1e9;
+        return apiOk({
+          size_class: calcSizeClass(length_mm, width_mm, height_mm),
+          volume_m3: Math.round(volume_m3 * 100) / 100,
+          dimensions: { length: length_mm, width: width_mm, height: height_mm },
+          match: "dimensions",
+        });
+      }
+    }
+
+    // --- Maker/model lookup ---
     const maker = searchParams.get("maker")?.trim() ?? "";
     const model = searchParams.get("model")?.trim() ?? "";
 

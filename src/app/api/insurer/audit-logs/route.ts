@@ -9,14 +9,25 @@ export async function GET(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
-  // Only admin and auditor roles can view audit logs
   if (caller.role !== "admin" && caller.role !== "auditor") {
-    return new Response(JSON.stringify({ error: "forbidden", message: "監査ログの閲覧権限がありません。" }), { status: 403, headers: { "content-type": "application/json" } });
+    return new Response(
+      JSON.stringify({
+        error: "forbidden",
+        message: "監査ログの閲覧権限がありません。",
+      }),
+      { status: 403, headers: { "content-type": "application/json" } },
+    );
   }
 
   const url = new URL(req.url);
-  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100", 10) || 100, 500);
-  const offset = Math.max(parseInt(url.searchParams.get("offset") ?? "0", 10) || 0, 0);
+  const limit = Math.min(
+    parseInt(url.searchParams.get("limit") ?? "100", 10) || 100,
+    500,
+  );
+  const offset = Math.max(
+    parseInt(url.searchParams.get("offset") ?? "0", 10) || 0,
+    0,
+  );
   const action = url.searchParams.get("action") ?? "";
 
   const admin = createAdminClient();

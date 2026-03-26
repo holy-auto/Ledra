@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { normalizePlanTier } from "@/lib/billing/planFeatures";
 import { memberLimit, canAddMember } from "@/lib/billing/memberLimits";
 import { logAuditEvent } from "@/lib/audit/certificateLog";
@@ -26,8 +27,11 @@ async function resolveCallerWithPlan(supabase: Awaited<ReturnType<typeof createS
 }
 
 // ─── GET: メンバー一覧 ───
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const limited = await checkRateLimit(req, "general");
+    if (limited) return limited;
+
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithPlan(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -45,21 +49,22 @@ export async function GET() {
       return NextResponse.json({ error: "db_error" }, { status: 500 });
     }
 
-    // ユーザー情報を admin API で取得
-    const enriched = await Promise.all(
-      (members ?? []).map(async (m) => {
-        const { data } = await admin.auth.admin.getUserById(m.user_id);
-        const meta = data?.user?.user_metadata as Record<string, unknown> | undefined;
-        return {
-          user_id: m.user_id,
-          email: data?.user?.email ?? null,
-          display_name: (meta?.display_name as string | undefined) ?? null,
-          role: m.role ?? "member",
-          created_at: m.created_at ?? null,
-          is_self: m.user_id === caller.userId,
-        };
-      })
-    );
+    // ユーザー情報を admin API で一括取得 (N+1 回避)
+    const { data: { users } } = await admin.auth.admin.listUsers({ perPage: 1000 });
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
+    const enriched = (members ?? []).map((m) => {
+      const user = userMap.get(m.user_id);
+      const meta = user?.user_metadata as Record<string, unknown> | undefined;
+      return {
+        user_id: m.user_id,
+        email: user?.email ?? null,
+        display_name: (meta?.display_name as string | undefined) ?? null,
+        role: m.role ?? "member",
+        created_at: m.created_at ?? null,
+        is_self: m.user_id === caller.userId,
+      };
+    });
 
     const limit = memberLimit(caller.planTier);
 
@@ -79,6 +84,9 @@ export async function GET() {
 // ─── POST: メンバー追加（メール招待） ───
 export async function POST(req: NextRequest) {
   try {
+    const limited = await checkRateLimit(req, "general");
+    if (limited) return limited;
+
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithPlan(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });

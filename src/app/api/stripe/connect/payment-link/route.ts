@@ -3,7 +3,7 @@ import Stripe from "stripe";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveBaseUrl } from "@/lib/url";
-import { resolveCallerBasic } from "@/lib/api/auth";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiInternalError, apiUnauthorized, apiNotFound, apiValidationError, apiForbidden } from "@/lib/api/response";
 import { z } from "zod";
 
@@ -25,7 +25,7 @@ function getStripe() {
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerBasic(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
     const body = await req.json().catch(() => ({}));

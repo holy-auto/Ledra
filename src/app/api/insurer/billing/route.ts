@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { insurerPlanTierToPriceId } from "@/lib/stripe/insurerPlan";
 import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import type { InsurerPlanTier } from "@/types/insurer";
 
 export const runtime = "nodejs";
@@ -27,6 +28,9 @@ function resolveBaseUrl(): string {
  */
 export async function POST(req: NextRequest) {
   try {
+    const limited = await checkRateLimit(req, "general");
+    if (limited) return limited;
+
     const caller = await resolveInsurerCaller();
     if (!caller) return apiUnauthorized();
 

@@ -14,7 +14,7 @@ export type InsurerCallerContext = {
   insurerUserId: string;
   role: InsurerRole;
   planTier: InsurerPlanTier;
-  /** Current insurer status — use `isReadOnly` helper for gating write operations */
+  /** Current insurer status */
   insurerStatus: InsurerStatus;
 };
 
@@ -96,35 +96,6 @@ async function resolveInsurerContext(
     planTier: normalizeInsurerPlanTier(insurer.plan_tier),
     insurerStatus: insurer.status as InsurerStatus,
   };
-}
-
-/**
- * Returns true if the insurer is in a read-only state (pending review).
- */
-export function isReadOnly(caller: InsurerCallerContext): boolean {
-  return caller.insurerStatus === "active_pending_review";
-}
-
-/**
- * Enforce that the insurer has been fully approved (status = 'active').
- * Returns a Response if access is denied, or null if allowed.
- * Use this to gate write/mutation endpoints.
- */
-export function enforceActiveStatus(caller: InsurerCallerContext): Response | null {
-  if (caller.insurerStatus !== "active") {
-    return new Response(
-      JSON.stringify({
-        error: "insurer_not_active",
-        message: "この操作は加盟店の審査完了後に利用できます。",
-        status: caller.insurerStatus,
-      }),
-      {
-        status: 403,
-        headers: { "content-type": "application/json; charset=utf-8" },
-      }
-    );
-  }
-  return null;
 }
 
 /**

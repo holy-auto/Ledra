@@ -5,7 +5,10 @@ function InsurerSidebar() {
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 border-r border-neutral-200 bg-white lg:block">
       <div className="flex h-14 items-center border-b border-neutral-200 px-4">
-        <Link href="/insurer" className="text-sm font-bold tracking-wide text-neutral-900">
+        <Link
+          href="/insurer"
+          className="text-sm font-bold tracking-wide text-neutral-900"
+        >
           INSURER PORTAL
         </Link>
       </div>
@@ -20,7 +23,15 @@ function InsurerSidebar() {
   );
 }
 
-function NavItem({ href, label, badge }: { href: string; label: string; badge?: string }) {
+function NavItem({
+  href,
+  label,
+  badge,
+}: {
+  href: string;
+  label: string;
+  badge?: string;
+}) {
   return (
     <Link
       href={href}
@@ -36,37 +47,62 @@ function NavItem({ href, label, badge }: { href: string; label: string; badge?: 
   );
 }
 
-export default function InsurerLayout({ children }: { children: ReactNode }) {
-  return (
-    <div className="min-h-screen bg-neutral-50">
-      <InsurerSidebar />
-      {/* Mobile header */}
-      <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-neutral-200 bg-white px-4 lg:hidden">
-        <Link href="/insurer" className="text-sm font-bold tracking-wide text-neutral-900">
-          INSURER PORTAL
-        </Link>
-        <MobileMenu />
-      </header>
-      <main className="lg:pl-56">
-        {children}
-      </main>
-    </div>
-  );
-}
-
 function MobileMenu() {
   return (
     <details className="relative">
       <summary className="cursor-pointer rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-700">
         メニュー
       </summary>
-      <div className="absolute right-0 top-full mt-1 w-48 rounded-xl border border-neutral-200 bg-white p-2 shadow-lg">
-        <Link href="/insurer" className="block rounded-lg px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-100">ダッシュボード</Link>
-        <Link href="/insurer/search" className="block rounded-lg px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-100">証明書検索</Link>
-        <Link href="/insurer/vehicles" className="block rounded-lg px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-100">車両検索</Link>
-        <Link href="/insurer/account" className="block rounded-lg px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-100">アカウント</Link>
-        <Link href="/insurer/cases" className="block rounded-lg px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-100">案件管理</Link>
+      <div className="absolute right-0 top-full mt-1 w-48 rounded-xl border border-neutral-200 bg-white p-2 shadow-lg z-50">
+        <Link
+          href="/insurer"
+          className="block rounded-lg px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
+        >
+          ダッシュボード
+        </Link>
+        <Link
+          href="/insurer/search"
+          className="block rounded-lg px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
+        >
+          証明書検索
+        </Link>
+        <Link
+          href="/insurer/vehicles"
+          className="block rounded-lg px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
+        >
+          車両検索
+        </Link>
+        <Link
+          href="/insurer/account"
+          className="block rounded-lg px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
+        >
+          アカウント
+        </Link>
+        <Link
+          href="/insurer/cases"
+          className="block rounded-lg px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
+        >
+          案件管理
+        </Link>
       </div>
     </details>
+  );
+}
+
+export default function InsurerLayout({ children }: { children: ReactNode }) {
+  return (
+    <div className="min-h-screen bg-neutral-50">
+      <InsurerSidebar />
+      <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-neutral-200 bg-white px-4 lg:hidden">
+        <Link
+          href="/insurer"
+          className="text-sm font-bold tracking-wide text-neutral-900"
+        >
+          INSURER PORTAL
+        </Link>
+        <MobileMenu />
+      </header>
+      <main className="lg:pl-56">{children}</main>
+    </div>
   );
 }

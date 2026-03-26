@@ -5,20 +5,21 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
   const admin = createAdminClient();
   const { data: insurer, error } = await admin
     .from("insurers")
-    .select("id, name, slug, plan_tier, status, contact_email, contact_phone, address, max_users, created_at")
+    .select(
+      "id, name, slug, plan_tier, status, contact_email, contact_phone, address, max_users, created_at",
+    )
     .eq("id", caller.insurerId)
     .maybeSingle();
 
   if (error) return apiValidationError(error.message);
 
-  // Get user count
   const { count } = await admin
     .from("insurer_users")
     .select("id", { count: "exact", head: true })
@@ -33,11 +34,21 @@ export async function PATCH(req: NextRequest) {
   if (!caller) return apiUnauthorized();
 
   if (caller.role !== "admin") {
-    return new Response(JSON.stringify({ error: "admin_only", message: "管理者のみ編集できます。" }), { status: 403, headers: { "content-type": "application/json" } });
+    return new Response(
+      JSON.stringify({
+        error: "admin_only",
+        message: "管理者のみ編集できます。",
+      }),
+      { status: 403, headers: { "content-type": "application/json" } },
+    );
   }
 
   let body: any;
-  try { body = await req.json(); } catch { return apiValidationError("Invalid JSON"); }
+  try {
+    body = await req.json();
+  } catch {
+    return apiValidationError("Invalid JSON");
+  }
 
   const allowedFields = ["contact_email", "contact_phone", "address"];
   const update: Record<string, any> = {};
@@ -45,7 +56,8 @@ export async function PATCH(req: NextRequest) {
     if (body[key] !== undefined) update[key] = body[key];
   }
 
-  if (Object.keys(update).length === 0) return apiValidationError("No valid fields to update");
+  if (Object.keys(update).length === 0)
+    return apiValidationError("No valid fields to update");
 
   const admin = createAdminClient();
   const { data, error } = await admin

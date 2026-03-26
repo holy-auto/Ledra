@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { View, ScrollView, StyleSheet } from "react-native";
-import { TextInput, Button, HelperText, Menu, List } from "react-native-paper";
+import { TextInput, Button, HelperText, Menu, List, Chip } from "react-native-paper";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -32,6 +32,9 @@ export default function CertificateNewScreen() {
 
   const [form, setForm] = useState({
     vehicle_id: "",
+    vehicle_maker: "",
+    vehicle_model: "",
+    vehicle_plate: "",
     service_type: "",
     content_summary: "",
     notes: "",
@@ -78,7 +81,17 @@ export default function CertificateNewScreen() {
           .eq("id", data.vehicle_id)
           .single();
 
-        if (v) setSelectedVehicle(v as Vehicle);
+        if (v) {
+          const vehicle = v as Vehicle;
+          setSelectedVehicle(vehicle);
+          setForm((prev) => ({
+            ...prev,
+            vehicle_id: vehicle.id,
+            vehicle_maker: vehicle.maker ?? "",
+            vehicle_model: vehicle.model ?? "",
+            vehicle_plate: vehicle.plate_display ?? "",
+          }));
+        }
       }
     }
 
@@ -100,9 +113,9 @@ export default function CertificateNewScreen() {
           },
           status: "draft",
           customer_name: selectedVehicle?.customer_name ?? null,
-          vehicle_maker: selectedVehicle?.maker ?? null,
-          vehicle_model: selectedVehicle?.model ?? null,
-          plate_display: selectedVehicle?.plate_display ?? null,
+          vehicle_maker: form.vehicle_maker.trim() || null,
+          vehicle_model: form.vehicle_model.trim() || null,
+          plate_display: form.vehicle_plate.trim() || null,
         })
         .select("id")
         .single();
@@ -117,7 +130,10 @@ export default function CertificateNewScreen() {
 
   function validate(): boolean {
     const e: Record<string, string> = {};
-    if (!form.vehicle_id) e.vehicle_id = "車両を選択してください";
+    // Allow either vehicle_id (master) or manual maker/model entry
+    if (!form.vehicle_id && !form.vehicle_maker.trim() && !form.vehicle_model.trim()) {
+      e.vehicle = "車両を選択するか、メーカー・車種を入力してください";
+    }
     if (!form.service_type) e.service_type = "サービス種別を選択してください";
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -130,21 +146,32 @@ export default function CertificateNewScreen() {
 
   function selectVehicle(v: Vehicle) {
     setSelectedVehicle(v);
-    setForm((prev) => ({ ...prev, vehicle_id: v.id }));
+    setForm((prev) => ({
+      ...prev,
+      vehicle_id: v.id,
+      vehicle_maker: v.maker ?? "",
+      vehicle_model: v.model ?? "",
+      vehicle_plate: v.plate_display ?? "",
+    }));
     setVehicleMenuVisible(false);
-    if (errors.vehicle_id) setErrors((prev) => ({ ...prev, vehicle_id: "" }));
+    if (errors.vehicle) setErrors((prev) => ({ ...prev, vehicle: "" }));
+  }
+
+  function clearVehicleLink() {
+    setSelectedVehicle(null);
+    setForm((prev) => ({ ...prev, vehicle_id: "" }));
   }
 
   return (
     <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
       <View style={styles.form}>
-        {/* Vehicle Picker */}
+        {/* Vehicle Picker (optional — select from master) */}
         <Menu
           visible={vehicleMenuVisible}
           onDismiss={() => setVehicleMenuVisible(false)}
           anchor={
             <TextInput
-              label="車両 *"
+              label="車両マスタから選択（任意）"
               value={
                 selectedVehicle
                   ? `${selectedVehicle.maker ?? ""} ${selectedVehicle.model ?? ""} (${selectedVehicle.plate_display ?? ""})`
@@ -154,7 +181,6 @@ export default function CertificateNewScreen() {
               editable={false}
               onPressIn={() => setVehicleMenuVisible(true)}
               right={<TextInput.Icon icon="chevron-down" />}
-              error={!!errors.vehicle_id}
               style={styles.input}
             />
           }
@@ -169,8 +195,51 @@ export default function CertificateNewScreen() {
             />
           ))}
         </Menu>
-        {errors.vehicle_id && (
-          <HelperText type="error">{errors.vehicle_id}</HelperText>
+        {selectedVehicle && (
+          <Chip
+            icon="link"
+            onClose={clearVehicleLink}
+            style={styles.chip}
+            textStyle={styles.chipText}
+          >
+            マスタ連携中
+          </Chip>
+        )}
+
+        {/* Manual vehicle entry fields */}
+        <TextInput
+          label="メーカー *"
+          value={form.vehicle_maker}
+          onChangeText={(v) => {
+            setForm((prev) => ({ ...prev, vehicle_maker: v, vehicle_id: "" }));
+            setSelectedVehicle(null);
+            if (errors.vehicle) setErrors((prev) => ({ ...prev, vehicle: "" }));
+          }}
+          mode="outlined"
+          style={styles.input}
+        />
+        <TextInput
+          label="車種"
+          value={form.vehicle_model}
+          onChangeText={(v) => {
+            setForm((prev) => ({ ...prev, vehicle_model: v, vehicle_id: "" }));
+            setSelectedVehicle(null);
+          }}
+          mode="outlined"
+          style={styles.input}
+        />
+        <TextInput
+          label="ナンバー"
+          value={form.vehicle_plate}
+          onChangeText={(v) => {
+            setForm((prev) => ({ ...prev, vehicle_plate: v, vehicle_id: "" }));
+            setSelectedVehicle(null);
+          }}
+          mode="outlined"
+          style={styles.input}
+        />
+        {errors.vehicle && (
+          <HelperText type="error">{errors.vehicle}</HelperText>
         )}
 
         {/* Service Type Picker */}
@@ -258,4 +327,6 @@ const styles = StyleSheet.create({
   menu: { maxHeight: 300 },
   button: { marginTop: 16 },
   errorText: { marginTop: 8 },
+  chip: { marginBottom: 8, alignSelf: "flex-start" },
+  chipText: { fontSize: 12 },
 });

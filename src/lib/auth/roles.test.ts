@@ -21,7 +21,7 @@ describe("normalizeRole", () => {
     expect(normalizeRole("")).toBe("admin");
     expect(normalizeRole(null)).toBe("admin");
     expect(normalizeRole(undefined)).toBe("admin");
-    expect(normalizeRole("superadmin")).toBe("admin");
+    expect(normalizeRole("superadmin")).toBe("super_admin");
     expect(normalizeRole(123)).toBe("admin");
   });
 });
@@ -59,8 +59,9 @@ describe("hasMinRole", () => {
 
 // ─── 定数の整合性 ───
 describe("ロール定数", () => {
-  it("ROLESは4種類", () => {
-    expect(ROLES).toHaveLength(4);
+  it("ROLESは5種類", () => {
+    expect(ROLES).toHaveLength(5);
+    expect(ROLES).toContain("super_admin");
     expect(ROLES).toContain("owner");
     expect(ROLES).toContain("admin");
     expect(ROLES).toContain("staff");

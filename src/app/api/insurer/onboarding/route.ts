@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiUnauthorized, apiInternalError, apiNotFound, apiError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -22,7 +23,7 @@ export async function GET() {
       .single();
 
     if (!insurer) {
-      return NextResponse.json({ error: "insurer_not_found" }, { status: 404 });
+      return apiNotFound("保険会社が見つかりません。");
     }
 
     const isComplete = !!insurer.onboarding_completed_at;
@@ -56,8 +57,11 @@ export async function GET() {
  * POST /api/insurer/onboarding
  * Mark onboarding as completed.
  */
-export async function POST() {
+export async function POST(req: NextRequest) {
   try {
+    const limited = await checkRateLimit(req, "general");
+    if (limited) return limited;
+
     const caller = await resolveInsurerCaller();
     if (!caller) return apiUnauthorized();
 
@@ -68,8 +72,7 @@ export async function POST() {
       .eq("id", caller.insurerId);
 
     if (error) {
-      console.error("[insurer/onboarding] update error:", error.message);
-      return NextResponse.json({ error: "update_failed" }, { status: 500 });
+      return apiInternalError(error, "insurer onboarding update");
     }
 
     return NextResponse.json({ ok: true });

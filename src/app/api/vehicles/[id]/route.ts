@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { vehicleUpdateSchema } from "@/lib/validations/vehicle";
-import { resolveCallerBasic } from "@/lib/api/auth";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import {
   apiOk,
   apiInternalError,
@@ -20,7 +20,7 @@ export async function GET(
     const { id } = await params;
     const supabase = await createSupabaseServerClient();
 
-    const caller = await resolveCallerBasic(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
     const { data: vehicle, error } = await supabase
@@ -46,7 +46,7 @@ export async function PUT(
     const { id } = await params;
     const supabase = await createSupabaseServerClient();
 
-    const caller = await resolveCallerBasic(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
     const body = await req.json();

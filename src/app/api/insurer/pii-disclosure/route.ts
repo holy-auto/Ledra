@@ -27,9 +27,10 @@ export async function GET(req: NextRequest) {
 
   if (error) return apiValidationError(error.message);
 
-  const disclosed = data
-    && data.insurer_requested_at !== null
-    && data.tenant_consented_at !== null;
+  const disclosed =
+    data &&
+    data.insurer_requested_at !== null &&
+    data.tenant_consented_at !== null;
 
   return NextResponse.json({
     consent: data,
@@ -47,37 +48,43 @@ export async function POST(req: NextRequest) {
   if (!caller) return apiUnauthorized();
 
   let body: any;
-  try { body = await req.json(); } catch { return apiValidationError("Invalid JSON"); }
+  try {
+    body = await req.json();
+  } catch {
+    return apiValidationError("Invalid JSON");
+  }
 
   const { certificate_id, reason } = body;
   if (!certificate_id) return apiValidationError("Missing certificate_id");
 
   const admin = createAdminClient();
 
-  // Upsert: create or update insurer consent
   const { data, error } = await admin
     .from("pii_disclosure_consents")
-    .upsert({
-      certificate_id,
-      insurer_id: caller.insurerId,
-      insurer_requested_at: new Date().toISOString(),
-      insurer_requested_by: caller.userId,
-      insurer_reason: reason || null,
-      is_active: true,
-    }, { onConflict: "certificate_id,insurer_id" })
+    .upsert(
+      {
+        certificate_id,
+        insurer_id: caller.insurerId,
+        insurer_requested_at: new Date().toISOString(),
+        insurer_requested_by: caller.userId,
+        insurer_reason: reason || null,
+        is_active: true,
+      },
+      { onConflict: "certificate_id,insurer_id" },
+    )
     .select()
     .single();
 
   if (error) return apiValidationError(error.message);
 
-  // Audit log
   await admin.from("insurer_access_logs").insert({
     insurer_id: caller.insurerId,
     insurer_user_id: caller.insurerUserId,
     certificate_id,
     action: "pii_disclosure_request",
     meta: { reason: reason || null },
-    ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+    ip:
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
     user_agent: req.headers.get("user-agent") ?? null,
   });
 

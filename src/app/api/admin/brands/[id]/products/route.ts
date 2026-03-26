@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { coatingProductCreateSchema, coatingProductUpdateSchema } from "@/lib/validations/brand";
-import { resolveCallerBasic } from "@/lib/api/auth";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import {
   apiOk,
   apiInternalError,
@@ -19,7 +19,7 @@ export async function GET(
   try {
     const { id: brand_id } = await params;
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerBasic(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
     const { data: products, error } = await supabase
@@ -43,7 +43,7 @@ export async function POST(
   try {
     const { id: brand_id } = await params;
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerBasic(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
     const body = await req.json();
@@ -80,7 +80,7 @@ export async function PUT(
   try {
     const { id: brand_id } = await params;
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerBasic(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
     const body = await req.json();
@@ -117,7 +117,7 @@ export async function DELETE(
   try {
     const { id: _brand_id } = await params;
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerBasic(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
     const { id } = await req.json();

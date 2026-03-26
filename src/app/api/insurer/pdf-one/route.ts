@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { logInsurerAccess } from "@/lib/insurer/audit";
 import { createClient } from "@/lib/supabase/server";
 import { resolveInsurerCaller, enforceInsurerPlan } from "@/lib/api/insurerAuth";
@@ -7,6 +7,7 @@ import React from "react";
 import { pdf } from "@react-pdf/renderer";
 import { InsurerPdfDoc } from "@/lib/insurerPdfDoc";
 import { apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -22,9 +23,12 @@ function buildBaseUrl(req: Request) {
   return `${proto}://${host}`;
 }
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
+
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
 
   const planDeny = enforceInsurerPlan(caller, "pro");
   if (planDeny) return planDeny;

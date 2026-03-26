@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Badge from "@/components/ui/Badge";
+import ShareDocumentModal from "@/components/documents/ShareDocumentModal";
 import { formatDate, formatDateTime, formatJpy } from "@/lib/format";
 import {
   DOC_TYPES,
@@ -35,16 +36,21 @@ type TenantInfo = {
 export default function DocumentDetailClient({
   document: initial,
   customerName,
+  customerEmail,
+  customerPhone,
   tenant,
 }: {
   document: DocumentRow;
   customerName: string | null;
+  customerEmail?: string | null;
+  customerPhone?: string | null;
   tenant: TenantInfo;
 }) {
   const [doc, setDoc] = useState(initial);
   const [updating, setUpdating] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [converting, setConverting] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   const handleStatusChange = async (newStatus: string) => {
     setUpdating(true);
@@ -173,6 +179,13 @@ export default function DocumentDetailClient({
               onClick={handlePdfDownload}
             >
               {downloading ? "生成中…" : "PDFダウンロード"}
+            </button>
+            <button
+              type="button"
+              className="btn-primary text-xs"
+              onClick={() => setShareOpen(true)}
+            >
+              共有
             </button>
           </div>
         </div>
@@ -353,6 +366,22 @@ export default function DocumentDetailClient({
         <div>作成日: {formatDateTime(doc.created_at)}</div>
         {doc.updated_at && <div>更新日: {formatDateTime(doc.updated_at)}</div>}
       </section>
+
+      {/* Share Modal */}
+      <ShareDocumentModal
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        document={doc}
+        customerName={customerName}
+        customerEmail={customerEmail}
+        customerPhone={customerPhone}
+        onShared={(channel) => {
+          if (doc.status === "draft") {
+            setDoc((prev) => ({ ...prev, status: "sent" }));
+          }
+          setMsg({ text: `${channel}で送信しました`, ok: true });
+        }}
+      />
     </div>
   );
 }

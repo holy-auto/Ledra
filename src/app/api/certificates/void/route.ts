@@ -3,7 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
 import { certificateVoidSchema } from "@/lib/validations/certificate";
-import { resolveCallerBasic } from "@/lib/api/auth";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiInternalError, apiUnauthorized, apiValidationError, apiNotFound, apiForbidden } from "@/lib/api/response";
 
 /**
@@ -22,7 +22,7 @@ export async function POST(req: Request) {
   const supabase = await createSupabaseServerClient();
 
   // Auth check
-  const caller = await resolveCallerBasic(supabase);
+  const caller = await resolveCallerWithRole(supabase);
   if (!caller) {
     return apiUnauthorized();
   }

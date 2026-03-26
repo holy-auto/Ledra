@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerBasic } from "@/lib/api/auth";
 import { getAdminClient } from "@/lib/api/auth";
-import { apiOk, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { apiOk, apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -13,8 +13,9 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerBasic(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "admin")) return apiForbidden();
 
     const admin = getAdminClient();
     const { data: tenant } = await admin
@@ -50,8 +51,9 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerBasic(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "admin")) return apiForbidden();
 
     const body = await req.json().catch(() => ({}));
     const action = body?.action;

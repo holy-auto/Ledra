@@ -15,18 +15,19 @@ export async function GET(req: NextRequest) {
   if (!user) return new Response("Unauthorized", { status: 401 });
 
   const certificateId = req.nextUrl.searchParams.get("certificate_id");
-  if (!certificateId) return NextResponse.json({ error: "Missing certificate_id" }, { status: 400 });
+  if (!certificateId)
+    return NextResponse.json({ error: "Missing certificate_id" }, { status: 400 });
 
   const admin = createAdminClient();
 
-  // Verify user is a tenant member of this certificate's tenant
   const { data: cert } = await admin
     .from("certificates")
     .select("tenant_id")
     .eq("id", certificateId)
     .maybeSingle();
 
-  if (!cert) return NextResponse.json({ error: "Certificate not found" }, { status: 404 });
+  if (!cert)
+    return NextResponse.json({ error: "Certificate not found" }, { status: 404 });
 
   const { data: membership } = await admin
     .from("tenant_memberships")
@@ -35,9 +36,9 @@ export async function GET(req: NextRequest) {
     .eq("tenant_id", cert.tenant_id)
     .maybeSingle();
 
-  if (!membership) return NextResponse.json({ error: "Access denied" }, { status: 403 });
+  if (!membership)
+    return NextResponse.json({ error: "Access denied" }, { status: 403 });
 
-  // Get disclosure requests for this certificate
   const { data: consents, error } = await admin
     .from("pii_disclosure_consents")
     .select("*, insurers(name)")
@@ -54,23 +55,30 @@ export async function POST(req: NextRequest) {
   if (!user) return new Response("Unauthorized", { status: 401 });
 
   let body: any;
-  try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
 
   const { certificate_id, insurer_id } = body;
   if (!certificate_id || !insurer_id) {
-    return NextResponse.json({ error: "Missing certificate_id or insurer_id" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Missing certificate_id or insurer_id" },
+      { status: 400 },
+    );
   }
 
   const admin = createAdminClient();
 
-  // Verify user is a tenant member
   const { data: cert } = await admin
     .from("certificates")
     .select("tenant_id")
     .eq("id", certificate_id)
     .maybeSingle();
 
-  if (!cert) return NextResponse.json({ error: "Certificate not found" }, { status: 404 });
+  if (!cert)
+    return NextResponse.json({ error: "Certificate not found" }, { status: 404 });
 
   const { data: membership } = await admin
     .from("tenant_memberships")
@@ -79,9 +87,9 @@ export async function POST(req: NextRequest) {
     .eq("tenant_id", cert.tenant_id)
     .maybeSingle();
 
-  if (!membership) return NextResponse.json({ error: "Access denied" }, { status: 403 });
+  if (!membership)
+    return NextResponse.json({ error: "Access denied" }, { status: 403 });
 
-  // Update the consent record with tenant approval
   const { data, error } = await admin
     .from("pii_disclosure_consents")
     .update({
@@ -95,7 +103,11 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  if (!data) return NextResponse.json({ error: "No pending disclosure request found" }, { status: 404 });
+  if (!data)
+    return NextResponse.json(
+      { error: "No pending disclosure request found" },
+      { status: 404 },
+    );
 
   return NextResponse.json({ consent: data });
 }

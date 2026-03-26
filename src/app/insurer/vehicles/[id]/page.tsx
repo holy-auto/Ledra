@@ -27,6 +27,27 @@ type CertRow = {
   created_at: string;
 };
 
+function InfoItem({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div>
+      <div className="text-xs font-medium text-neutral-500">{label}</div>
+      <div
+        className={`mt-1 text-sm font-semibold text-neutral-900 ${mono ? "font-mono" : ""}`}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
 export default function InsurerVehicleDetailPage() {
   const supabase = useMemo(() => createClient(), []);
   const params = useParams<{ id: string }>();
@@ -40,7 +61,10 @@ export default function InsurerVehicleDetailPage() {
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getUser();
-      if (!data?.user) { window.location.href = "/insurer/login"; return; }
+      if (!data?.user) {
+        window.location.href = "/insurer/login";
+        return;
+      }
       setReady(true);
     })();
   }, [supabase]);
@@ -49,7 +73,9 @@ export default function InsurerVehicleDetailPage() {
     if (!ready || !vehicleId) return;
     (async () => {
       try {
-        const res = await fetch(`/api/insurer/vehicles/${vehicleId}`, { cache: "no-store" });
+        const res = await fetch(`/api/insurer/vehicles/${vehicleId}`, {
+          cache: "no-store",
+        });
         const j = await res.json();
         if (!res.ok) throw new Error(j?.error ?? "load_failed");
         setVehicle(j.vehicle);
@@ -66,30 +92,45 @@ export default function InsurerVehicleDetailPage() {
     <div className="mx-auto max-w-5xl space-y-6 p-6">
       <header className="space-y-3">
         <div className="flex items-center gap-3">
-          <Link href="/insurer/vehicles" className="text-sm text-neutral-500 hover:text-neutral-700">
+          <Link
+            href="/insurer/vehicles"
+            className="text-sm text-neutral-500 hover:text-neutral-700"
+          >
             &larr; 車両検索へ
           </Link>
         </div>
         <div className="inline-flex rounded-full border border-neutral-300 bg-white px-3 py-1 text-[11px] font-semibold tracking-[0.22em] text-neutral-600">
           VEHICLE DETAIL
         </div>
-        <h1 className="text-3xl font-bold tracking-tight text-neutral-900">車両詳細</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-neutral-900">
+          車両詳細
+        </h1>
       </header>
 
       {err && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">{err}</div>
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+          {err}
+        </div>
       )}
 
       {vehicle && (
         <>
           <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500 mb-3">VEHICLE INFO</div>
+            <div className="mb-3 text-xs font-semibold tracking-[0.18em] text-neutral-500">
+              VEHICLE INFO
+            </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <InfoItem label="車台番号" value={vehicle.vin_code || "-"} mono />
               <InfoItem label="メーカー" value={vehicle.maker || "-"} />
               <InfoItem label="車種" value={vehicle.model || "-"} />
-              <InfoItem label="年式" value={vehicle.year?.toString() ?? "-"} />
-              <InfoItem label="ナンバー" value={vehicle.plate_display || "-"} />
+              <InfoItem
+                label="年式"
+                value={vehicle.year?.toString() ?? "-"}
+              />
+              <InfoItem
+                label="ナンバー"
+                value={vehicle.plate_display || "-"}
+              />
               <InfoItem label="サイズ" value={vehicle.size_class || "-"} />
               <InfoItem label="施工店" value={vehicle.tenant_name || "-"} />
             </div>
@@ -98,11 +139,18 @@ export default function InsurerVehicleDetailPage() {
           <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">CERTIFICATES</div>
-                <div className="mt-1 text-base font-semibold text-neutral-900">証明書履歴</div>
+                <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500">
+                  CERTIFICATES
+                </div>
+                <div className="mt-1 text-base font-semibold text-neutral-900">
+                  証明書履歴
+                </div>
               </div>
               <div className="text-sm text-neutral-500">
-                <span className="font-semibold text-neutral-900">{certs.length}</span> 件
+                <span className="font-semibold text-neutral-900">
+                  {certs.length}
+                </span>{" "}
+                件
               </div>
             </div>
 
@@ -110,28 +158,61 @@ export default function InsurerVehicleDetailPage() {
               <table className="min-w-full text-sm">
                 <thead className="bg-neutral-50">
                   <tr>
-                    <th className="p-3 text-left font-semibold text-neutral-600">証明書ID</th>
-                    <th className="p-3 text-left font-semibold text-neutral-600">ステータス</th>
-                    <th className="p-3 text-left font-semibold text-neutral-600">顧客名</th>
-                    <th className="p-3 text-left font-semibold text-neutral-600">施工種別</th>
-                    <th className="p-3 text-left font-semibold text-neutral-600">証明書番号</th>
-                    <th className="p-3 text-left font-semibold text-neutral-600">作成日時</th>
-                    <th className="p-3 text-left font-semibold text-neutral-600">操作</th>
+                    <th className="p-3 text-left font-semibold text-neutral-600">
+                      証明書ID
+                    </th>
+                    <th className="p-3 text-left font-semibold text-neutral-600">
+                      ステータス
+                    </th>
+                    <th className="p-3 text-left font-semibold text-neutral-600">
+                      顧客名
+                    </th>
+                    <th className="p-3 text-left font-semibold text-neutral-600">
+                      施工種別
+                    </th>
+                    <th className="p-3 text-left font-semibold text-neutral-600">
+                      証明書番号
+                    </th>
+                    <th className="p-3 text-left font-semibold text-neutral-600">
+                      作成日時
+                    </th>
+                    <th className="p-3 text-left font-semibold text-neutral-600">
+                      操作
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {certs.map((c) => (
-                    <tr key={c.certificate_id} className="border-t hover:bg-neutral-50">
-                      <td className="p-3 font-mono text-xs text-neutral-700">{c.public_id}</td>
+                    <tr
+                      key={c.certificate_id}
+                      className="border-t hover:bg-neutral-50"
+                    >
+                      <td className="p-3 font-mono text-xs text-neutral-700">
+                        {c.public_id}
+                      </td>
                       <td className="p-3">
-                        <span className={c.status === "void" ? "text-red-600 font-medium" : "text-emerald-600 font-medium"}>
+                        <span
+                          className={
+                            c.status === "void"
+                              ? "font-medium text-red-600"
+                              : "font-medium text-emerald-600"
+                          }
+                        >
                           {c.status === "active" ? "有効" : "無効"}
                         </span>
                       </td>
-                      <td className="p-3 text-neutral-600">{c.customer_name}</td>
-                      <td className="p-3 text-neutral-600">{c.service_type || "-"}</td>
-                      <td className="p-3 text-neutral-600">{c.certificate_no || "-"}</td>
-                      <td className="p-3 whitespace-nowrap text-neutral-600">{formatDateTime(c.created_at)}</td>
+                      <td className="p-3 text-neutral-600">
+                        {c.customer_name}
+                      </td>
+                      <td className="p-3 text-neutral-600">
+                        {c.service_type || "-"}
+                      </td>
+                      <td className="p-3 text-neutral-600">
+                        {c.certificate_no || "-"}
+                      </td>
+                      <td className="p-3 whitespace-nowrap text-neutral-600">
+                        {formatDateTime(c.created_at)}
+                      </td>
                       <td className="p-3">
                         <Link
                           href={`/insurer/c/${encodeURIComponent(c.public_id)}`}
@@ -144,7 +225,10 @@ export default function InsurerVehicleDetailPage() {
                   ))}
                   {certs.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-sm text-neutral-500">
+                      <td
+                        colSpan={7}
+                        className="p-8 text-center text-sm text-neutral-500"
+                      >
                         この車両に関連する証明書がありません。
                       </td>
                     </tr>
@@ -155,15 +239,6 @@ export default function InsurerVehicleDetailPage() {
           </section>
         </>
       )}
-    </div>
-  );
-}
-
-function InfoItem({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div>
-      <div className="text-xs font-medium text-neutral-500">{label}</div>
-      <div className={`mt-1 text-sm font-semibold text-neutral-900 ${mono ? "font-mono" : ""}`}>{value}</div>
     </div>
   );
 }

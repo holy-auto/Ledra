@@ -45,6 +45,12 @@ function csrfCheck(request: NextRequest): NextResponse | null {
   // Webhook は外部サービスからの server-to-server コールのため CSRF チェック不要
   if (nextUrl.pathname.startsWith("/api/webhooks/")) return null;
 
+  // Stripe webhook は Stripe SDK で署名検証するため CSRF チェック不要
+  if (nextUrl.pathname.startsWith("/api/stripe/webhook")) return null;
+
+  // LINE webhook は LINE SDK で署名検証するため CSRF チェック不要
+  if (nextUrl.pathname.startsWith("/api/line/webhook")) return null;
+
   // Cron は外部スケジューラからの server-to-server コールのため CSRF チェック不要
   if (nextUrl.pathname.startsWith("/api/cron/")) return null;
 
@@ -81,7 +87,7 @@ function csrfCheck(request: NextRequest): NextResponse | null {
   return null;
 }
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Skip static assets
@@ -132,7 +138,7 @@ export const config = {
 };
 
 /** Refresh Supabase session cookies on every request */
-function refreshSession(request: NextRequest) {
+async function refreshSession(request: NextRequest) {
   const response = NextResponse.next({ request });
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -154,7 +160,7 @@ function refreshSession(request: NextRequest) {
   });
 
   // Fire getUser to refresh the session token
-  supabase.auth.getUser();
+  await supabase.auth.getUser();
 
   return response;
 }

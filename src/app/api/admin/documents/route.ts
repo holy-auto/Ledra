@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { DOC_TYPES, type DocType } from "@/types/document";
+import { checkRateLimit } from "@/lib/api/rateLimit";
+import { parsePagination } from "@/lib/api/pagination";
 
 export const dynamic = "force-dynamic";
 
@@ -71,8 +73,7 @@ export async function GET(req: NextRequest) {
     const docType = url.searchParams.get("doc_type") ?? "";
     const status = url.searchParams.get("status") ?? "";
     const customerId = url.searchParams.get("customer_id") ?? "";
-    const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "0", 10) || 0);
-    const perPage = Math.min(200, Math.max(1, parseInt(url.searchParams.get("per_page") ?? "50", 10)));
+    const { page, perPage, from, to } = parsePagination(req, { maxPerPage: 200 });
 
     const selectCols = "id, tenant_id, customer_id, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, note, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, recipient_name, created_at, updated_at";
 
@@ -92,8 +93,7 @@ export async function GET(req: NextRequest) {
     if (customerId) { query = query.eq("customer_id", customerId); countQuery = countQuery.eq("customer_id", customerId); }
 
     if (page > 0) {
-      const from = (page - 1) * perPage;
-      query = query.range(from, from + perPage - 1);
+      query = query.range(from, to);
     }
 
     const [{ data: docs, error }, { count: totalCount }] = await Promise.all([query, countQuery]);
@@ -145,6 +145,9 @@ export async function GET(req: NextRequest) {
 // ─── POST: 帳票作成 ───
 export async function POST(req: NextRequest) {
   try {
+    const limited = await checkRateLimit(req, "general");
+    if (limited) return limited;
+
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });

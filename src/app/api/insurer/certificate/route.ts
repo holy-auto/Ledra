@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
+import { apiUnauthorized, apiValidationError, apiNotFound, sanitizeErrorMessage } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const runtime = "nodejs";
@@ -34,12 +34,15 @@ export async function GET(req: NextRequest) {
 
   if (error) {
     if (error.message.includes("Access denied")) {
-      return new Response(JSON.stringify({ error: "access_denied", message: "この証明書へのアクセス権がありません。" }), { status: 403, headers: { "content-type": "application/json" } });
+      return new Response(
+        JSON.stringify({ error: "access_denied", message: "この証明書へのアクセス権がありません。" }),
+        { status: 403, headers: { "content-type": "application/json" } },
+      );
     }
     if (error.message.includes("not found")) {
       return apiNotFound("証明書が見つかりません。");
     }
-    return apiValidationError(error.message);
+    return apiValidationError(sanitizeErrorMessage(error, "証明書の取得に失敗しました。"));
   }
 
   const cert = Array.isArray(data) ? data[0] : data;

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { vehicleCreateSchema } from "@/lib/validations/vehicle";
-import { resolveCallerBasic } from "@/lib/api/auth";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
@@ -61,7 +61,7 @@ function parseCsv(text: string): CsvRow[] {
 export async function POST(req: Request) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerBasic(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
     const body = await req.text();

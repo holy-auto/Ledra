@@ -245,4 +245,34 @@ export async function handleWebhookEvents(
   }
 }
 
+/** 帳票リンクをLINEで送信 */
+export async function sendDocumentLink(params: {
+  tenantId: string;
+  lineUserId: string;
+  docType: string;
+  docNumber: string;
+  totalAmount: number;
+  message?: string;
+}): Promise<boolean> {
+  const config = await getLineConfig(params.tenantId);
+  if (!config) return false;
+
+  const text = [
+    `【${params.docType}】${params.docNumber}`,
+    `金額: ¥${params.totalAmount.toLocaleString("ja-JP")}`,
+    params.message || null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  try {
+    await sendMessage(config.channelAccessToken, params.lineUserId, [
+      { type: "text", text },
+    ]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export { getLineConfig };
