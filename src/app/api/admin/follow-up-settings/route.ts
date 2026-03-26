@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { hasPermission } from "@/lib/auth/permissions";
+import type { Role } from "@/lib/auth/roles";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import { enforceBilling } from "@/lib/billing/guard";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +17,7 @@ export async function GET(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!hasPermission(caller.role as Role, "settings:view")) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
     const { data } = await supabase
       .from("follow_up_settings")
@@ -42,6 +46,10 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!hasPermission(caller.role as Role, "settings:edit")) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+
+    const billing = await enforceBilling(req, { minPlan: "starter" });
+    if (billing) return billing;
 
     const body = await req.json().catch(() => ({} as any));
     const reminderDays = Array.isArray(body.reminder_days_before)

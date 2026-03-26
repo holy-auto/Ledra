@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiUnauthorized, apiInternalError, apiForbidden } from "@/lib/api/response";
+import { hasPermission } from "@/lib/auth/permissions";
+import type { Role } from "@/lib/auth/roles";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import { enforceBilling } from "@/lib/billing/guard";
 
 /**
  * PUT /api/admin/notifications/[id]/read
@@ -18,6 +21,10 @@ export async function PUT(_req: NextRequest,
     const supabase = await createClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!hasPermission(caller.role as Role, "announcements:view")) return apiForbidden();
+
+    const billing = await enforceBilling(_req, { minPlan: "starter" });
+    if (billing) return billing;
 
     const { error } = await supabase
       .from("notifications")

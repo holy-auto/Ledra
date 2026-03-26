@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiUnauthorized, apiInternalError, apiForbidden } from "@/lib/api/response";
+import { hasPermission } from "@/lib/auth/permissions";
+import type { Role } from "@/lib/auth/roles";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +20,7 @@ export async function GET(req: NextRequest) {
     const supabase = await createClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!hasPermission(caller.role as Role, "announcements:view")) return apiForbidden();
 
     const unreadOnly = req.nextUrl.searchParams.get("unread_only") === "1";
     const limit = Math.min(Number(req.nextUrl.searchParams.get("limit")) || 30, 100);

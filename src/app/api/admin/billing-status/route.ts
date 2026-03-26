@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
+import { apiUnauthorized, apiValidationError, apiNotFound, apiForbidden } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
+import { hasPermission } from "@/lib/auth/permissions";
+import type { Role } from "@/lib/auth/roles";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +22,9 @@ export async function GET(req: NextRequest) {
 
   // --- Platform admin bypass: always report pro / active ---
   const caller = await resolveCallerWithRole(supabase);
-  if (caller && isPlatformAdmin(caller)) {
+  if (!caller) return apiUnauthorized();
+  if (!hasPermission(caller.role as Role, "billing:view")) return apiForbidden();
+  if (isPlatformAdmin(caller)) {
     return NextResponse.json(
       {
         tenant_id: caller.tenantId,

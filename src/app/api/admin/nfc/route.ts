@@ -4,6 +4,7 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { requireMinRole } from "@/lib/auth/checkRole";
 import { apiUnauthorized, apiForbidden, apiValidationError, apiNotFound, apiError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import { enforceBilling } from "@/lib/billing/guard";
 
 /**
  * PATCH /api/admin/nfc — 論理削除（status → retired）
@@ -15,6 +16,9 @@ export async function PATCH(request: NextRequest) {
   const supabase = await createSupabaseServerClient();
   const caller = await resolveCallerWithRole(supabase);
   if (!caller) return apiUnauthorized();
+
+  const billing = await enforceBilling(request, { minPlan: "starter" });
+  if (billing) return billing;
 
   let body: { id?: string };
   try {
@@ -69,6 +73,9 @@ export async function DELETE(request: NextRequest) {
   if (!requireMinRole(caller, "admin")) {
     return apiForbidden("NFCタグの完全削除には管理者権限が必要です。");
   }
+
+  const billing = await enforceBilling(request, { minPlan: "starter" });
+  if (billing) return billing;
 
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
