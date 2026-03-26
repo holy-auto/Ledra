@@ -33,13 +33,12 @@ export default async function Page({
 
   const { data: tenantRow } = await supabase
     .from("tenants")
-    .select("logo_asset_path, plan_tier, default_warranty_exclusions")
+    .select("logo_asset_path, plan_tier")
     .eq("id", tenantId)
     .single();
 
   const tenantLogoPath = (tenantRow?.logo_asset_path as string | null) ?? null;
   const planTier = normalizePlanTier(tenantRow?.plan_tier) as PlanTier;
-  const defaultWarrantyExclusions = (tenantRow?.default_warranty_exclusions as string | null) ?? "";
 
   // ブランドテンプレート確認
   let hasBrandedTemplate = false;
@@ -117,7 +116,6 @@ export default async function Page({
           : (selected as any)?.category === "body_repair" ? "body_repair"
           : undefined
         }
-        defaultWarrantyExclusions={defaultWarrantyExclusions}
       />
     </div>
   );

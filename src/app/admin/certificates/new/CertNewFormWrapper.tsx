@@ -58,7 +58,6 @@ type Props = {
   planTier: PlanTier;
   tid: string;
   serviceType?: string; // "ppf" | "coating" | etc — derived from template category
-  defaultWarrantyExclusions?: string;
 };
 
 const inputCls =
@@ -86,7 +85,6 @@ export default function CertNewFormWrapper({
   planTier,
   tid,
   serviceType,
-  defaultWarrantyExclusions,
 }: Props) {
   const isPpf = serviceType === "ppf";
   const isMaintenance = serviceType === "maintenance";
@@ -97,11 +95,8 @@ export default function CertNewFormWrapper({
   const [submitStatus, setSubmitStatus] = useState<"active" | "draft">("active");
   const [error, setError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
-  const [savingDefault, setSavingDefault] = useState(false);
-  const [defaultSaveMsg, setDefaultSaveMsg] = useState<string | null>(null);
   const photoRef = useRef<PhotoUploadHandle>(null);
   const formRef = useRef<HTMLFormElement>(null);
-  const warrantyRef = useRef<HTMLTextAreaElement>(null);
 
   const maxPhotos = PHOTO_LIMITS[planTier];
   const planLabel = PLAN_LABELS[planTier];
@@ -116,10 +111,8 @@ export default function CertNewFormWrapper({
     formData.set("status", submitStatus);
 
     const vehicleId = String(formData.get("vehicle_id") ?? "").trim();
-    const vehicleMaker = String(formData.get("vehicle_maker") ?? "").trim();
-    const vehicleModelVal = String(formData.get("model") ?? "").trim();
-    if (!vehicleId && !vehicleMaker && !vehicleModelVal) {
-      setError("車両情報を入力してください。マスタから選択、またはメーカー・車種を手入力してください。");
+    if (!vehicleId) {
+      setError("車両を選択してください。証明書には車両の紐づけが必要です。");
       form.querySelector<HTMLElement>("[data-vehicle-picker]")?.scrollIntoView({
         behavior: "smooth",
         block: "center",
@@ -134,7 +127,7 @@ export default function CertNewFormWrapper({
       if (!result.ok) {
         setError(
           result.error === "vehicle_required"
-            ? "車両情報を入力してください（マスタ選択またはメーカー・車種を手入力）。"
+            ? "車両を選択してください。"
             : result.error === "customer_name_required"
             ? "お客様名を入力してください。"
             : `エラー: ${result.error}`
@@ -167,29 +160,6 @@ export default function CertNewFormWrapper({
 
       router.push(`/admin/certificates/new/success?pid=${encodeURIComponent(public_id)}`);
     });
-  };
-
-  const handleSaveWarrantyDefault = async () => {
-    const text = warrantyRef.current?.value ?? "";
-    setSavingDefault(true);
-    setDefaultSaveMsg(null);
-    try {
-      const res = await fetch("/api/admin/settings/defaults", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ default_warranty_exclusions: text }),
-      });
-      if (res.ok) {
-        setDefaultSaveMsg("デフォルトとして保存しました");
-      } else {
-        setDefaultSaveMsg("保存に失敗しました");
-      }
-    } catch {
-      setDefaultSaveMsg("保存に失敗しました");
-    } finally {
-      setSavingDefault(false);
-      setTimeout(() => setDefaultSaveMsg(null), 3000);
-    }
   };
 
   return (
@@ -357,29 +327,12 @@ export default function CertNewFormWrapper({
           <label className={`${labelCls} block`}>
             <span className={labelTextCls}>保証対象外となる条件・注意事項</span>
             <textarea
-              ref={warrantyRef}
               name="warranty_exclusions"
               className={inputCls}
               rows={4}
-              defaultValue={defaultWarrantyExclusions ?? ""}
               placeholder="例: 飛び石による損傷、経年劣化、不適切な洗車方法による損傷等"
             />
           </label>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handleSaveWarrantyDefault}
-              disabled={savingDefault}
-              className="rounded-xl border border-border-default bg-surface px-4 py-2 text-xs font-medium text-primary hover:bg-surface-hover disabled:opacity-50"
-            >
-              {savingDefault ? "保存中…" : "デフォルトとして保存"}
-            </button>
-            {defaultSaveMsg && (
-              <span className={`text-xs ${defaultSaveMsg.includes("失敗") ? "text-danger" : "text-accent"}`}>
-                {defaultSaveMsg}
-              </span>
-            )}
-          </div>
         </section>
 
         {/* ━━━ 9. 備考欄 ━━━ */}

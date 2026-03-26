@@ -5,7 +5,6 @@ import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
-import EquipmentPicker from "@/components/EquipmentPicker";
 import { formatJpy, formatDate } from "@/lib/format";
 
 type VehicleImage = { id: string; storage_path: string; file_name: string | null; sort_order: number };
@@ -166,13 +165,9 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
     setUpdating(true); setMsg(null);
     try {
       const payload: Record<string, unknown> = { ...editData, id: vehicleId };
-      // Ensure features is an array (may already be from EquipmentPicker)
+      // Convert features string to array
       if (typeof payload.features === "string") {
         payload.features = (payload.features as string).split(",").map((s: string) => s.trim()).filter(Boolean);
-      }
-      // Send null if empty array
-      if (Array.isArray(payload.features) && (payload.features as string[]).length === 0) {
-        payload.features = null;
       }
       const res = await fetch("/api/admin/market-vehicles", {
         method: "PUT",
@@ -204,7 +199,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
       condition_note: vehicle.condition_note, asking_price: vehicle.asking_price,
       wholesale_price: vehicle.wholesale_price, cost_price: vehicle.cost_price,
       supplier_name: vehicle.supplier_name, acquisition_date: vehicle.acquisition_date,
-      description: vehicle.description, features: vehicle.features ?? [],
+      description: vehicle.description, features: vehicle.features?.join(", ") ?? "",
     });
     setEditMode(true);
     setMsg(null);
@@ -399,13 +394,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
           </section>
           <section className="glass-card p-5 space-y-4">
             <EditField label="説明" field="description" type="textarea" />
-            <div className="space-y-1">
-              <label className="text-xs text-muted">装備・オプション</label>
-              <EquipmentPicker
-                selected={Array.isArray(editData.features) ? editData.features as string[] : []}
-                onChange={(val) => setField("features", val)}
-              />
-            </div>
+            <EditField label="装備・オプション（カンマ区切り）" field="features" />
           </section>
           <div className="flex gap-3">
             <button type="button" className="btn-primary" disabled={updating} onClick={handleSave}>{updating ? "保存中…" : "保存"}</button>

@@ -57,7 +57,6 @@ export default function VehiclePickerSection({
   const [customerId, setCustomerId] = useState("");
   const [model, setModel] = useState("");
   const [plate, setPlate] = useState("");
-  const [maker, setMaker] = useState("");
 
   // Customer master search
   const [customerSearch, setCustomerSearch] = useState("");
@@ -65,9 +64,18 @@ export default function VehiclePickerSection({
   const [customerSearchOpen, setCustomerSearchOpen] = useState(false);
   const customerDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Vehicle search (combobox for maker field)
-  const [vehicleSearchOpen, setVehicleSearchOpen] = useState(false);
-  const vehicleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Vehicle dropdown open state
+  const [vehicleDropdownOpen, setVehicleDropdownOpen] = useState(false);
+
+  // Inline new vehicle form
+  const [showNewVehicleForm, setShowNewVehicleForm] = useState(false);
+  const [newMaker, setNewMaker] = useState("");
+  const [newModel, setNewModel] = useState("");
+  const [newYear, setNewYear] = useState("");
+  const [newPlate, setNewPlate] = useState("");
+  const [newVin, setNewVin] = useState("");
+  const [newVehicleBusy, setNewVehicleBusy] = useState(false);
+  const [newVehicleErr, setNewVehicleErr] = useState<string | null>(null);
 
   // Pre-select vehicle when defaultVehicleId is provided
   useEffect(() => {
@@ -75,7 +83,6 @@ export default function VehiclePickerSection({
     const v = vehicles.find((v) => v.id === defaultVehicleId);
     if (v) {
       setSelectedId(v.id);
-      setMaker(v.maker ?? "");
       setModel(vehicleModel(v));
       setPlate(v.plate_display ?? "");
       if (v.customer) {
@@ -104,57 +111,37 @@ export default function VehiclePickerSection({
     }, 300);
   }, [customerSearch]);
 
-  // Vehicle search — filter local list based on maker input
-  const vehicleFiltered = vehicles.filter((v) => {
-    if (!maker.trim()) return true;
-    const s = maker.toLowerCase();
+  const filtered = vehicles.filter((v) => {
+    if (!search.trim()) return true;
+    const s = search.toLowerCase();
     return [v.maker, v.model, v.plate_display, v.vin_code]
       .filter(Boolean)
       .some((val) => String(val).toLowerCase().includes(s));
   });
 
-  const handleVehicleSelect = (v: Vehicle) => {
-    setSelectedId(v.id);
-    setMaker(v.maker ?? "");
-    setModel(vehicleModel(v));
-    setPlate(v.plate_display ?? "");
-    setVehicleSearchOpen(false);
-    // Auto-fill customer if vehicle has one
-    if (v.customer) {
-      setCustomerName(v.customer.name);
-      setCustomerId(v.customer.id);
-      setCustomerSearch("");
+  const handleSelect = (vehicleId: string, vehicleList = vehicles) => {
+    setSelectedId(vehicleId);
+    setSearch("");
+    setShowNewVehicleForm(false);
+    const v = vehicleList.find((v) => v.id === vehicleId);
+    if (v) {
+      setModel(vehicleModel(v));
+      setPlate(v.plate_display ?? "");
+      // 車両に顧客が紐付いている場合は自動入力
+      if (v.customer) {
+        setCustomerName(v.customer.name);
+        setCustomerId(v.customer.id);
+        setCustomerSearch("");
+      }
     }
   };
 
-  const handleVehicleClear = () => {
+  const handleClear = () => {
     setSelectedId("");
-    setMaker("");
+    setSearch("");
     setModel("");
     setPlate("");
-  };
-
-  const handleMakerChange = (val: string) => {
-    setMaker(val);
-    // Clear master link when user types freely
-    if (selectedId) {
-      setSelectedId("");
-    }
-    setVehicleSearchOpen(true);
-  };
-
-  const handleModelChange = (val: string) => {
-    setModel(val);
-    if (selectedId) {
-      setSelectedId("");
-    }
-  };
-
-  const handlePlateChange = (val: string) => {
-    setPlate(val);
-    if (selectedId) {
-      setSelectedId("");
-    }
+    setShowNewVehicleForm(false);
   };
 
   const handleCustomerSelect = (c: Customer) => {
@@ -164,54 +151,115 @@ export default function VehiclePickerSection({
     setCustomerSearchOpen(false);
   };
 
+  async function createNewVehicle(e: React.FormEvent) {
+    e.preventDefault();
+    setNewVehicleBusy(true);
+    setNewVehicleErr(null);
+    try {
+      const res = await fetch("/api/vehicles/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          maker: newMaker,
+          model: newModel,
+          year: newYear ? Number(newYear) : null,
+          plate_display: newPlate || null,
+          vin_code: newVin || null,
+          customer_id: customerId || null,
+        }),
+      });
+      const j = await res.json();
+      if (!res.ok) {
+        setNewVehicleErr(j?.message || "登録に失敗しました。");
+        return;
+      }
+      const newV: Vehicle = {
+        id: j.id,
+        maker: newMaker,
+        model: newModel,
+        year: newYear ? Number(newYear) : null,
+        plate_display: newPlate || null,
+        vin_code: newVin || null,
+      };
+      const updated = [...vehicles, newV];
+      setVehicles(updated);
+      handleSelect(j.id, updated);
+      // Reset form
+      setNewMaker(""); setNewModel(""); setNewYear(""); setNewPlate(""); setNewVin("");
+      setSearch("");
+    } catch (err: any) {
+      setNewVehicleErr(String(err?.message || err));
+    } finally {
+      setNewVehicleBusy(false);
+    }
+  }
+
+  const selected = vehicles.find((v) => v.id === selectedId) ?? null;
+
   return (
     <div className="space-y-4">
-      {/* Vehicle info section */}
+      {/* Vehicle picker */}
       <div>
         <div className="mb-4">
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">
-            VEHICLE INFO
+            VEHICLE LINK
           </div>
           <div className="mt-1 text-base font-semibold text-primary">
-            車両情報
+            車両を選択 <span className="text-red-500">*</span>
           </div>
           <p className="mt-0.5 text-xs text-muted">
-            車両マスタから選択、または手入力してください
+            登録済みの車両から選択してください（必須）
           </p>
         </div>
 
         <input type="hidden" name="vehicle_id" value={selectedId} />
-        <input type="hidden" name="vehicle_maker" value={maker} />
 
-        <div className="space-y-4">
-          {/* Maker — combobox: type to search or manual entry */}
-          <div className={labelCls}>
-            <span className={labelTextCls}>
-              メーカー <span className="text-red-500">*</span>
-            </span>
+        {selected ? (
+          <div className="flex items-center gap-3 rounded-xl border border-emerald-200/50 bg-emerald-500/10 px-4 py-2.5">
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-emerald-600 truncate">
+                {vehicleLabel(selected)}
+              </div>
+              {selected.customer && (
+                <div className="text-xs text-emerald-700 mt-0.5">
+                  顧客: {selected.customer.name}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={handleClear}
+              className="shrink-0 rounded-lg border border-emerald-300/50 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-500/20"
+            >
+              解除
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-2">
             <div className="relative">
               <input
-                name="maker_display"
-                value={maker}
-                onChange={(e) => handleMakerChange(e.target.value)}
-                onFocus={() => setVehicleSearchOpen(true)}
-                onBlur={() => setTimeout(() => setVehicleSearchOpen(false), 200)}
-                className={inputCls}
-                placeholder="メーカーを入力 or 車両マスタから選択"
+                id={uid}
+                type="text"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setShowNewVehicleForm(false); setVehicleDropdownOpen(true); }}
+                onFocus={() => setVehicleDropdownOpen(true)}
+                onBlur={() => setTimeout(() => setVehicleDropdownOpen(false), 200)}
+                placeholder={
+                  vehicles.length === 0
+                    ? "登録車両がありません"
+                    : "車種・ナンバー・VINで検索… (クリックで一覧表示)"
+                }
+                disabled={vehicles.length === 0}
                 autoComplete="off"
+                className={`${inputCls} pr-10 disabled:bg-neutral-100 disabled:text-neutral-500`}
               />
-              {selectedId && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-medium">
-                  マスタ連携
-                </span>
-              )}
-              {vehicleSearchOpen && !selectedId && vehicleFiltered.length > 0 && (
+              {vehicleDropdownOpen && filtered.length > 0 && (
                 <ul className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-border-default bg-surface shadow-md">
-                  {vehicleFiltered.map((v) => (
+                  {filtered.map((v) => (
                     <li key={v.id}>
                       <button
                         type="button"
-                        onMouseDown={() => handleVehicleSelect(v)}
+                        onMouseDown={() => handleSelect(v.id)}
                         className="w-full px-4 py-2.5 text-left text-sm hover:bg-surface-hover"
                       >
                         <span className="font-medium text-primary">
@@ -232,54 +280,45 @@ export default function VehiclePickerSection({
                   ))}
                 </ul>
               )}
-              <p className="mt-1 text-[11px] text-muted">入力すると車両マスタを検索します。手入力のみでもOK</p>
             </div>
-          </div>
 
-          {/* Selected vehicle banner (when linked to master) */}
-          {selectedId && (
-            <div className="flex items-center gap-3 rounded-xl border border-emerald-200/50 bg-emerald-500/10 px-4 py-2.5">
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-emerald-600 truncate">
-                  {vehicleLabel(vehicles.find((v) => v.id === selectedId)!)}
-                </div>
+            {/* No match — show new vehicle option */}
+            {vehicleDropdownOpen && search && filtered.length === 0 && !showNewVehicleForm && (
+              <div className="rounded-xl border border-border-default bg-inset p-3 flex items-center justify-between gap-3">
+                <span className="text-sm text-muted">一致する車両が見つかりません</span>
+                <button
+                  type="button"
+                  onClick={() => setShowNewVehicleForm(true)}
+                  className="shrink-0 rounded-lg border border-border-default bg-surface px-3 py-1.5 text-xs font-medium text-primary hover:bg-surface-hover"
+                >
+                  新規登録して選択
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={handleVehicleClear}
-                className="shrink-0 rounded-lg border border-emerald-300/50 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-500/20"
-              >
-                マスタ連携を解除
-              </button>
-            </div>
-          )}
+            )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className={labelCls}>
-              <span className={labelTextCls}>車種</span>
-              <input
-                name="model"
-                value={model}
-                onChange={(e) => handleModelChange(e.target.value)}
-                className={inputCls}
-                placeholder="Toyota Prius"
-              />
-            </label>
-            <label className={labelCls}>
-              <span className={labelTextCls}>ナンバー</span>
-              <input
-                name="plate"
-                value={plate}
-                onChange={(e) => handlePlateChange(e.target.value)}
-                className={inputCls}
-                placeholder="水戸 300 あ 12-34"
-              />
-            </label>
+            {/* Inline new vehicle form */}
+            {showNewVehicleForm && (
+              <form onSubmit={createNewVehicle} className="rounded-xl border border-border-default bg-inset p-4 space-y-3">
+                <div className="text-xs font-semibold text-primary">新規車両を登録</div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input value={newMaker} onChange={(e) => setNewMaker(e.target.value)} placeholder="メーカー *" required className={inputCls} />
+                  <input value={newModel} onChange={(e) => setNewModel(e.target.value)} placeholder="車種 *" required className={inputCls} />
+                  <input value={newYear} onChange={(e) => setNewYear(e.target.value)} placeholder="年式" inputMode="numeric" className={inputCls} />
+                  <input value={newPlate} onChange={(e) => setNewPlate(e.target.value)} placeholder="ナンバー" className={inputCls} />
+                  <input value={newVin} onChange={(e) => setNewVin(e.target.value)} placeholder="車体番号（VIN）" className={`${inputCls} font-mono sm:col-span-2`} />
+                </div>
+                {newVehicleErr && <p className="text-xs text-red-500">{newVehicleErr}</p>}
+                <div className="flex gap-2">
+                  <Button type="submit" size="sm" loading={newVehicleBusy}>登録して選択</Button>
+                  <button type="button" onClick={() => setShowNewVehicleForm(false)} className="rounded-lg border border-border-default bg-surface px-3 py-1.5 text-xs text-secondary hover:bg-surface-hover">キャンセル</button>
+                </div>
+              </form>
+            )}
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Basic info — customer */}
+      {/* Basic info */}
       <div className="border-t border-border-subtle pt-4">
         <div className="mb-4">
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">
@@ -343,6 +382,29 @@ export default function VehiclePickerSection({
               )}
               <p className="mt-1 text-[11px] text-muted">入力すると顧客マスタを検索します。手入力のみでもOK</p>
             </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className={labelCls}>
+              <span className={labelTextCls}>車種</span>
+              <input
+                name="model"
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                className={inputCls}
+                placeholder="Toyota Prius"
+              />
+            </label>
+            <label className={labelCls}>
+              <span className={labelTextCls}>ナンバー</span>
+              <input
+                name="plate"
+                value={plate}
+                onChange={(e) => setPlate(e.target.value)}
+                className={inputCls}
+                placeholder="水戸 300 あ 12-34"
+              />
+            </label>
           </div>
         </div>
       </div>

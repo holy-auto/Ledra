@@ -34,19 +34,15 @@ export default async function DocumentDetailPage({
 
   if (!doc) notFound();
 
-  // 顧客情報
+  // 顧客名
   let customerName: string | null = null;
-  let customerEmail: string | null = null;
-  let customerPhone: string | null = null;
   if (doc.customer_id) {
     const { data: cust } = await supabase
       .from("customers")
-      .select("name, email, phone")
+      .select("name")
       .eq("id", doc.customer_id)
       .single();
     customerName = cust?.name ?? null;
-    customerEmail = cust?.email ?? null;
-    customerPhone = cust?.phone ?? null;
   }
 
   // テナント情報（インボイス・口座情報用）
@@ -72,8 +68,6 @@ export default async function DocumentDetailPage({
       <DocumentDetailClient
         document={doc}
         customerName={customerName}
-        customerEmail={customerEmail}
-        customerPhone={customerPhone}
         tenant={tenant}
       />
     </div>
