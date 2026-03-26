@@ -1,9 +1,10 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, formatDateTime } from "@/lib/format";
+import Link from "next/link";
 
 type Field = {
   key: string;
@@ -19,42 +20,24 @@ type Section = {
 };
 
 function pickValues(obj: any): Record<string, any> {
-  // 既存実装との差異に強くする（どのキーに値が入っていても拾う）
-  return (
-    obj?.values ??
-    obj?.data ??
-    obj?.preset_values ??
-    obj?.content ??
-    obj?.field_values ??
-    {}
-  );
+  return obj?.values ?? obj?.data ?? obj?.preset_values ?? obj?.content ?? obj?.field_values ?? {};
 }
 
 function renderValue(field: Field, raw: any) {
   if (raw === null || raw === undefined) return "";
-
-  // checkbox
   if (field.type === "checkbox") return raw ? "はい" : "いいえ";
-
-  // multiselect
   if (field.type === "multiselect") {
     if (Array.isArray(raw)) return raw.filter(Boolean).join(", ");
     return String(raw);
   }
-
-  // date
   if (field.type === "date") {
     const formatted = formatDate(String(raw));
     return formatted === "-" ? String(raw) : formatted;
   }
-
-  // number
   if (field.type === "number") {
     if (typeof raw === "number") return raw.toLocaleString("ja-JP");
     return String(raw);
   }
-
-  // default
   return String(raw);
 }
 
@@ -66,147 +49,277 @@ export default function InsurerCertificatePage() {
   const [ready, setReady] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [cert, setCert] = useState<any>(null);
+  const [disclosureStatus, setDisclosureStatus] = useState<{
+    disclosed: boolean;
+    insurer_requested: boolean;
+    tenant_consented: boolean;
+  } | null>(null);
+  const [disclosureBusy, setDisclosureBusy] = useState(false);
 
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getUser();
-      if (!data?.user) {
-        window.location.href = "/insurer/login";
-        return;
-      }
+      if (!data?.user) { window.location.href = "/insurer/login"; return; }
       setReady(true);
     })();
   }, [supabase]);
 
   useEffect(() => {
-    if (!ready) return;
-    if (!publicId) return;
-
+    if (!ready || !publicId) return;
     (async () => {
       setErr(null);
       setCert(null);
       try {
         const res = await fetch(`/api/insurer/certificate?pid=${encodeURIComponent(publicId)}`, { cache: "no-store" });
         const j = await res.json();
-        if (!res.ok) throw new Error(j?.error ?? "load_failed");
-        setCert(j?.certificate ?? null);
+        if (!res.ok) throw new Error(j?.error ?? j?.message ?? "load_failed");
+        const c = j?.certificate ?? null;
+        setCert(c);
+        if (c) {
+          setDisclosureStatus({
+            disclosed: !!c.pii_disclosed,
+            insurer_requested: !!c.pii_disclosed,
+            tenant_consented: !!c.pii_disclosed,
+          });
+          // Also fetch detailed disclosure status
+          try {
+            const dRes = await fetch(`/api/insurer/pii-disclosure?certificate_id=${c.id}`);
+            if (dRes.ok) {
+              const dj = await dRes.json();
+              setDisclosureStatus({
+                disclosed: !!dj.disclosed,
+                insurer_requested: !!dj.insurer_requested,
+                tenant_consented: !!dj.tenant_consented,
+              });
+            }
+          } catch {}
+        }
       } catch (e: any) {
         setErr(e?.message ?? "load_failed");
       }
     })();
   }, [ready, publicId]);
 
+  const requestDisclosure = async () => {
+    if (!cert) return;
+    setDisclosureBusy(true);
+    try {
+      const res = await fetch("/api/insurer/pii-disclosure", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          certificate_id: cert.id,
+          reason: "保険事故照会のため個人情報の開示を申請します",
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error ?? "request_failed");
+      }
+      setDisclosureStatus(prev => prev ? { ...prev, insurer_requested: true } : prev);
+    } catch (e: any) {
+      setErr(e?.message ?? "request_failed");
+    } finally {
+      setDisclosureBusy(false);
+    }
+  };
+
   if (!ready) return null;
 
   const csvOneUrl = publicId ? `/api/insurer/export-one?pid=${encodeURIComponent(publicId)}` : "#";
   const pdfOneUrl = publicId ? `/api/insurer/pdf-one?pid=${encodeURIComponent(publicId)}` : "#";
 
-  const vehicleModel = cert?.vehicle_info_json?.model ?? "";
-  const vehiclePlate = cert?.vehicle_info_json?.plate ?? "";
+  const vehicleModel = cert?.vehicle_model ?? cert?.vehicle_info_json?.model ?? "";
+  const vehiclePlate = cert?.vehicle_plate ?? cert?.vehicle_info_json?.plate ?? "";
+  const vehicleVin = cert?.vehicle_vin ?? "";
 
   const snapshot = cert?.content_preset_json?.schema_snapshot ?? {};
   const sections: Section[] = Array.isArray(snapshot?.sections) ? snapshot.sections : [];
   const values = pickValues(cert?.content_preset_json);
 
   return (
-    <main style={{ maxWidth: 1100, margin: "28px auto", padding: 16 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-        <div>
-          <div style={{ fontSize: 18, fontWeight: 800 }}>証明書閲覧（保険会社）</div>
-          <div style={{ opacity: 0.75, marginTop: 4 }}>public_id: <span style={{ fontWeight: 700 }}>{publicId}</span></div>
+    <div className="mx-auto max-w-5xl space-y-6 p-6">
+      {/* Header */}
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="space-y-3">
+          <Link href="/insurer/search" className="text-sm text-neutral-500 hover:text-neutral-700">
+            ← 検索へ戻る
+          </Link>
+          <div className="inline-flex rounded-full border border-neutral-300 bg-white px-3 py-1 text-[11px] font-semibold tracking-[0.22em] text-neutral-600">
+            CERTIFICATE DETAIL
+          </div>
+          <h1 className="text-3xl font-bold tracking-tight text-neutral-900">証明書詳細</h1>
+          <div className="text-sm text-neutral-500">
+            public_id: <span className="font-mono font-bold text-neutral-700">{publicId}</span>
+          </div>
         </div>
-
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <a href={pdfOneUrl} style={{ padding: "10px 14px", fontWeight: 700, display: "inline-block", border: "1px solid #ddd" }}>
-            1件PDF
+        <div className="flex gap-2">
+          <a href={pdfOneUrl} className="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100">
+            PDF
           </a>
-          <a href={csvOneUrl} style={{ padding: "10px 14px", fontWeight: 700, display: "inline-block", border: "1px solid #ddd" }}>
-            1件CSV
+          <a href={csvOneUrl} className="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100">
+            CSV
           </a>
-          <a href="/insurer" style={{ padding: 10 }}>← 検索へ</a>
         </div>
-      </div>
+      </header>
 
-      {!publicId && <div style={{ marginTop: 10, color: "crimson" }}>public_id が取得できません</div>}
-      {err && <div style={{ color: "crimson", marginTop: 10 }}>{err}</div>}
+      {!publicId && <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">public_id が取得できません</div>}
+      {err && <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{err}</div>}
 
       {cert && (
         <>
-          {/* サマリー */}
-          <div style={{ marginTop: 16, border: "1px solid #eee", padding: 14, background: "#fafafa" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 10, rowGap: 8 }}>
-              <div style={{ opacity: 0.7 }}>ステータス</div>
-              <div style={{ fontWeight: 800 }}>{cert.status}</div>
+          {/* PII Disclosure Banner */}
+          {disclosureStatus && !disclosureStatus.disclosed && (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-200 text-amber-800 text-xs font-bold">!</div>
+                <div className="flex-1">
+                  <div className="text-sm font-semibold text-amber-800">個人情報マスキング中</div>
+                  <p className="mt-1 text-sm text-amber-700">
+                    顧客名などの個人情報は保護されています。保険事故の照会など正当な理由がある場合、
+                    施工店との双方同意により個人情報を開示できます。
+                  </p>
+                  <div className="mt-3 flex items-center gap-4">
+                    {!disclosureStatus.insurer_requested ? (
+                      <button
+                        onClick={requestDisclosure}
+                        disabled={disclosureBusy}
+                        className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        {disclosureBusy ? "申請中..." : "個人情報開示を申請"}
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-3 text-sm">
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">保険会社側: 申請済み</span>
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                          disclosureStatus.tenant_consented
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-neutral-100 text-neutral-500"
+                        }`}>
+                          施工店側: {disclosureStatus.tenant_consented ? "承認済み" : "未承認"}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
 
-              <div style={{ opacity: 0.7 }}>顧客名</div>
-              <div style={{ fontWeight: 700 }}>{cert.customer_name ?? ""}</div>
+          {disclosureStatus?.disclosed && (
+            <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-emerald-700">
+                <span>✓</span> 個人情報開示済み — 双方の同意により顧客情報が表示されています
+              </div>
+            </section>
+          )}
 
-              {(vehicleModel || vehiclePlate) ? (
-                <>
-                  <div style={{ opacity: 0.7 }}>車両</div>
-                  <div style={{ fontWeight: 700 }}>{[vehicleModel, vehiclePlate].filter(Boolean).join(" / ")}</div>
-                </>
-              ) : null}
-
-              <div style={{ opacity: 0.7 }}>有効期限</div>
-              <div style={{ fontWeight: 700 }}>{[cert.expiry_type, cert.expiry_value].filter(Boolean).join(" / ")}</div>
-
-              <div style={{ opacity: 0.7 }}>作成</div>
-              <div>{formatDateTime(cert.created_at)}</div>
+          {/* Summary */}
+          <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+            <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500 mb-4">SUMMARY</div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <div className="text-xs font-medium text-neutral-500">ステータス</div>
+                <div className={`mt-1 text-sm font-bold ${cert.status === "void" ? "text-red-600" : "text-emerald-600"}`}>
+                  {cert.status === "active" ? "有効" : cert.status === "void" ? "無効" : cert.status}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-medium text-neutral-500">顧客名</div>
+                <div className="mt-1 text-sm font-semibold text-neutral-900">{cert.customer_name ?? "-"}</div>
+              </div>
+              {(vehicleModel || vehiclePlate) && (
+                <div>
+                  <div className="text-xs font-medium text-neutral-500">車両</div>
+                  <div className="mt-1 text-sm font-semibold text-neutral-900">
+                    {[vehicleModel, vehiclePlate].filter(Boolean).join(" / ")}
+                  </div>
+                </div>
+              )}
+              {vehicleVin && (
+                <div>
+                  <div className="text-xs font-medium text-neutral-500">車台番号</div>
+                  <div className="mt-1 text-sm font-mono font-semibold text-neutral-900">{vehicleVin}</div>
+                </div>
+              )}
+              <div>
+                <div className="text-xs font-medium text-neutral-500">施工種別</div>
+                <div className="mt-1 text-sm font-semibold text-neutral-900">{cert.service_type ?? "-"}</div>
+              </div>
+              <div>
+                <div className="text-xs font-medium text-neutral-500">有効期限</div>
+                <div className="mt-1 text-sm font-semibold text-neutral-900">
+                  {[cert.expiry_type, cert.expiry_value].filter(Boolean).join(" / ") || "-"}
+                </div>
+              </div>
+              {cert.warranty_period_end && (
+                <div>
+                  <div className="text-xs font-medium text-neutral-500">保証期限</div>
+                  <div className="mt-1 text-sm font-semibold text-neutral-900">{formatDate(cert.warranty_period_end)}</div>
+                </div>
+              )}
+              <div>
+                <div className="text-xs font-medium text-neutral-500">施工店</div>
+                <div className="mt-1 text-sm font-semibold text-neutral-900">{cert.tenant_name ?? "-"}</div>
+              </div>
+              <div>
+                <div className="text-xs font-medium text-neutral-500">作成日</div>
+                <div className="mt-1 text-sm text-neutral-600">{formatDateTime(cert.created_at)}</div>
+              </div>
             </div>
-          </div>
 
-          {/* テンプレ項目（schema_snapshotで安全表示） */}
-          <div style={{ marginTop: 18 }}>
-            <div style={{ fontSize: 14, fontWeight: 800 }}>施工内容（テンプレ）</div>
-            {sections.length === 0 && (
-              <div style={{ marginTop: 10, opacity: 0.7 }}>
-                schema_snapshot が見つかりません（content_preset_json.schema_snapshot.sections が空）
+            {/* Vehicle link */}
+            {cert.vehicle_id && (
+              <div className="mt-4 border-t border-neutral-100 pt-4">
+                <Link
+                  href={`/insurer/vehicles/${cert.vehicle_id}`}
+                  className="inline-flex items-center gap-1 rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
+                >
+                  この車両の全証明書を見る →
+                </Link>
               </div>
             )}
+          </section>
 
-            {sections.map((sec, i) => (
-              <div key={i} style={{ marginTop: 12, border: "1px solid #eee", padding: 14 }}>
-                <div style={{ fontWeight: 800, marginBottom: 10 }}>
-                  {sec.title ?? `セクション${i + 1}`}
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: 10, rowGap: 10 }}>
-                  {(sec.fields ?? []).map((f) => {
-                    const label = f.label ?? f.key;
-                    const raw = values?.[f.key];
-                    const val = renderValue(f, raw);
-
-                    // 空は表示しない（見やすさ優先。必要なら後でトグル化）
-                    if (val === "") return null;
-
-                    return (
-                      <div key={f.key} style={{ display: "contents" }}>
-                        <div style={{ opacity: 0.75 }}>
-                          {label}
-                          <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.6 }}>({f.type})</span>
+          {/* Template fields */}
+          {sections.length > 0 && (
+            <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+              <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500 mb-4">施工内容</div>
+              {sections.map((sec, i) => (
+                <div key={i} className={i > 0 ? "mt-6 border-t border-neutral-100 pt-6" : ""}>
+                  <div className="text-sm font-bold text-neutral-800 mb-3">
+                    {sec.title ?? `セクション${i + 1}`}
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {(sec.fields ?? []).map((f) => {
+                      const label = f.label ?? f.key;
+                      const raw = values?.[f.key];
+                      const val = renderValue(f, raw);
+                      if (val === "") return null;
+                      return (
+                        <div key={f.key}>
+                          <div className="text-xs font-medium text-neutral-500">
+                            {label} <span className="text-neutral-400">({f.type})</span>
+                          </div>
+                          <div className="mt-1 text-sm font-semibold text-neutral-900 whitespace-pre-wrap">{val}</div>
                         </div>
-                        <div style={{ fontWeight: 700, whiteSpace: "pre-wrap" }}>{val}</div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </section>
+          )}
 
-          {/* 自由記述 */}
-          <div style={{ marginTop: 18, border: "1px solid #eee", padding: 14 }}>
-            <div style={{ fontSize: 14, fontWeight: 800 }}>施工内容（自由記述）</div>
-            <div style={{ marginTop: 10, whiteSpace: "pre-wrap" }}>
-              {cert.content_free_text ?? ""}
-            </div>
-          </div>
+          {/* Free text */}
+          {cert.content_free_text && (
+            <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+              <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500 mb-4">施工内容（自由記述）</div>
+              <div className="text-sm text-neutral-700 whitespace-pre-wrap">{cert.content_free_text}</div>
+            </section>
+          )}
         </>
       )}
-    </main>
+    </div>
   );
 }
-
-// PDF link
-// <a href={/api/certificate/pdf?pid=PUBLIC_ID} target="_blank" rel="noreferrer">PDFを表示</a>

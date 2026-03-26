@@ -4,6 +4,7 @@ import { useCallback, useRef, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import PageHeader from "@/components/ui/PageHeader";
+import EquipmentPicker from "@/components/EquipmentPicker";
 
 /* ---------- constants ---------- */
 const TRANSMISSIONS = ["AT", "MT", "CVT"] as const;
@@ -68,7 +69,7 @@ export default function NewVehicleForm() {
 
   // 説明・装備
   const [description, setDescription] = useState("");
-  const [features, setFeatures] = useState("");
+  const [features, setFeatures] = useState<string[]>([]);
 
   // Submit state
   const [saving, setSaving] = useState(false);
@@ -147,7 +148,7 @@ export default function NewVehicleForm() {
         supplier_name: supplierName.trim() || null,
         acquisition_date: acquisitionDate || null,
         description: description.trim() || null,
-        features: features.trim() || null,
+        features: features.length > 0 ? features : null,
       };
 
       const res = await fetch("/api/admin/market-vehicles", {
@@ -519,31 +520,9 @@ export default function NewVehicleForm() {
           />
         </div>
         <div className="space-y-1">
-          <label className="text-xs text-muted">装備・オプション (カンマ区切り)</label>
-          <input
-            type="text"
-            className="input-field"
-            placeholder="例: ナビ, ETC, バックカメラ, スマートキー, LEDヘッドライト"
-            value={features}
-            onChange={(e) => setFeatures(e.target.value)}
-          />
+          <label className="text-xs text-muted">装備・オプション</label>
+          <EquipmentPicker selected={features} onChange={setFeatures} />
         </div>
-        {features && (
-          <div className="flex flex-wrap gap-1.5">
-            {features.split(",").map((f, i) => {
-              const tag = f.trim();
-              if (!tag) return null;
-              return (
-                <span
-                  key={i}
-                  className="inline-flex items-center rounded-full border border-border-default bg-surface-hover px-2 py-0.5 text-[11px] text-secondary"
-                >
-                  {tag}
-                </span>
-              );
-            })}
-          </div>
-        )}
       </section>
 
       {/* Submit */}

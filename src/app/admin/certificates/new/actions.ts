@@ -45,6 +45,7 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
   }
 
   const vehicle_id = String(formData.get("vehicle_id") || "").trim() || null;
+  const vehicle_maker = String(formData.get("vehicle_maker") || "").trim();
   const customer_name = String(formData.get("customer_name") || "").trim();
   const model = String(formData.get("model") || "").trim();
   const plate = String(formData.get("plate") || "").trim();
@@ -112,7 +113,7 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
   const service_type = String(formData.get("service_type") || "").trim() || null;
 
   if (!customer_name) return { ok: false, error: "customer_name_required" };
-  if (!vehicle_id) return { ok: false, error: "vehicle_required" };
+  if (!vehicle_id && !vehicle_maker && !model) return { ok: false, error: "vehicle_required" };
 
   // Collect template field values
   const values: Record<string, any> = {};
@@ -140,7 +141,7 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
     customer_name,
     customer_id: customer_id ?? undefined,
     vehicle_id: vehicle_id ?? undefined,
-    vehicle_info_json: { model, plate },
+    vehicle_info_json: { maker: vehicle_maker, model, plate },
     content_free_text,
     content_preset_json: {
       template_id,
