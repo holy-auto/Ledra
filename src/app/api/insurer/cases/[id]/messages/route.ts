@@ -9,6 +9,7 @@ import {
 } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sendCaseMessageNotification } from "@/lib/insurer/notifications";
 
 export const runtime = "nodejs";
 
@@ -158,6 +159,52 @@ export async function POST(
       ip,
       user_agent: ua,
     });
+
+    // Send message notification (fire-and-forget)
+    (async () => {
+      try {
+        // Get case details for notification
+        const { data: caseData } = await admin
+          .from("insurer_cases")
+          .select("case_number, title, tenant_id, insurer_id")
+          .eq("id", id)
+          .single();
+
+        if (!caseData) return;
+
+        // Get sender display name
+        const { data: senderUser } = await admin
+          .from("insurer_users")
+          .select("display_name")
+          .eq("user_id", caller.userId)
+          .eq("insurer_id", caller.insurerId)
+          .maybeSingle();
+
+        const senderName = senderUser?.display_name ?? "保険会社ユーザー";
+
+        // Notify tenant if case has tenant_id
+        if (caseData.tenant_id) {
+          const { data: tenant } = await admin
+            .from("tenants")
+            .select("name, contact_email")
+            .eq("id", caseData.tenant_id)
+            .single();
+
+          if (tenant?.contact_email) {
+            await sendCaseMessageNotification({
+              recipientEmail: tenant.contact_email,
+              recipientName: tenant.name ?? "施工店",
+              caseNumber: caseData.case_number ?? id,
+              caseTitle: caseData.title ?? "",
+              senderName,
+              messagePreview: content.trim(),
+            });
+          }
+        }
+      } catch (e) {
+        console.error("[case-notification] message notification failed:", e);
+      }
+    })();
 
     return NextResponse.json({ message }, { status: 201 });
   } catch (err) {

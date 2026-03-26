@@ -9,6 +9,7 @@ import {
 } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sendCaseStatusNotification } from "@/lib/insurer/notifications";
 
 export const runtime = "nodejs";
 
@@ -164,6 +165,75 @@ export async function PATCH(
       ip,
       user_agent: ua,
     });
+
+    // Send notification on status change (fire-and-forget)
+    if (updateData.status && updateData.status !== existing.status) {
+      (async () => {
+        try {
+          // Notify insurer admin users about the status change
+          const { data: insurerUsers } = await admin
+            .from("insurer_users")
+            .select("user_id, display_name")
+            .eq("insurer_id", caller.insurerId)
+            .eq("is_active", true)
+            .eq("role", "admin");
+
+          if (insurerUsers && insurerUsers.length > 0) {
+            const userIds = insurerUsers.map((u) => u.user_id).filter((uid) => uid !== caller.userId);
+            if (userIds.length > 0) {
+              const { data: authUsers } = await admin
+                .from("insurer_users")
+                .select("user_id, display_name")
+                .in("user_id", userIds);
+
+              // Get emails from auth.users via insurer contact_email or individual lookup
+              const { data: insurer } = await admin
+                .from("insurers")
+                .select("contact_email, name")
+                .eq("id", caller.insurerId)
+                .single();
+
+              if (insurer?.contact_email) {
+                const senderUser = insurerUsers.find((u) => u.user_id === caller.userId);
+                await sendCaseStatusNotification({
+                  recipientEmail: insurer.contact_email,
+                  recipientName: insurer.name ?? "担当者",
+                  caseNumber: updated.case_number ?? id,
+                  caseTitle: updated.title ?? "",
+                  oldStatus: existing.status,
+                  newStatus: String(updateData.status),
+                  updatedBy: senderUser?.display_name ?? "保険会社ユーザー",
+                });
+              }
+            }
+          }
+
+          // Notify tenant if case has tenant_id
+          if (updated.tenant_id) {
+            const { data: tenant } = await admin
+              .from("tenants")
+              .select("name, contact_email")
+              .eq("id", updated.tenant_id)
+              .single();
+
+            if (tenant?.contact_email) {
+              const senderUser = insurerUsers?.find((u) => u.user_id === caller.userId);
+              await sendCaseStatusNotification({
+                recipientEmail: tenant.contact_email,
+                recipientName: tenant.name ?? "施工店",
+                caseNumber: updated.case_number ?? id,
+                caseTitle: updated.title ?? "",
+                oldStatus: existing.status,
+                newStatus: String(updateData.status),
+                updatedBy: senderUser?.display_name ?? "保険会社",
+              });
+            }
+          }
+        } catch (e) {
+          console.error("[case-notification] status change notification failed:", e);
+        }
+      })();
+    }
 
     return NextResponse.json({ case: updated });
   } catch (err) {

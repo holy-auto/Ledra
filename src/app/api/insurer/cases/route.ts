@@ -19,6 +19,11 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url);
   const status = url.searchParams.get("status");
+  const priority = url.searchParams.get("priority");
+  const category = url.searchParams.get("category");
+  const dateFrom = url.searchParams.get("date_from");
+  const dateTo = url.searchParams.get("date_to");
+  const q = url.searchParams.get("q")?.trim();
   const limit = Math.min(
     parseInt(url.searchParams.get("limit") ?? "50", 10) || 50,
     200,
@@ -41,6 +46,29 @@ export async function GET(req: NextRequest) {
 
     if (status) {
       query = query.eq("status", status);
+    }
+
+    if (priority) {
+      query = query.eq("priority", priority);
+    }
+
+    if (category) {
+      query = query.ilike("category", `%${category}%`);
+    }
+
+    if (dateFrom) {
+      query = query.gte("created_at", dateFrom);
+    }
+
+    if (dateTo) {
+      // Include the full end day
+      const endDate = new Date(dateTo);
+      endDate.setHours(23, 59, 59, 999);
+      query = query.lte("created_at", endDate.toISOString());
+    }
+
+    if (q) {
+      query = query.or(`title.ilike.%${q}%,case_number.ilike.%${q}%,description.ilike.%${q}%`);
     }
 
     const { data, error, count } = await query;
