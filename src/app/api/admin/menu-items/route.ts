@@ -1,15 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { hasPermission } from "@/lib/auth/permissions";
+import type { Role } from "@/lib/auth/roles";
+import { apiForbidden } from "@/lib/api/response";
+import { enforceBilling } from "@/lib/billing/guard";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const dynamic = "force-dynamic";
 
 // ─── GET: 品目一覧 ───
 export async function GET(req: NextRequest) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!hasPermission(caller.role as Role, "menu_items:manage")) return apiForbidden();
 
     const url = new URL(req.url);
     const activeOnly = url.searchParams.get("active_only") !== "false";
@@ -41,10 +50,17 @@ export async function GET(req: NextRequest) {
 
 // ─── POST: 品目作成 / CSV一括インポート ───
 export async function POST(req: NextRequest) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!hasPermission(caller.role as Role, "menu_items:manage")) return apiForbidden();
+
+    const billing = await enforceBilling(req, { minPlan: "starter" });
+    if (billing) return billing;
 
     const body = await req.json().catch(() => ({} as any));
 
@@ -107,10 +123,17 @@ export async function POST(req: NextRequest) {
 
 // ─── PUT: 品目更新 ───
 export async function PUT(req: NextRequest) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!hasPermission(caller.role as Role, "menu_items:manage")) return apiForbidden();
+
+    const billing = await enforceBilling(req, { minPlan: "starter" });
+    if (billing) return billing;
 
     const body = await req.json().catch(() => ({} as any));
     const id = (body.id ?? "").trim();
@@ -146,10 +169,17 @@ export async function PUT(req: NextRequest) {
 
 // ─── DELETE: 品目論理削除 ───
 export async function DELETE(req: NextRequest) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!hasPermission(caller.role as Role, "menu_items:manage")) return apiForbidden();
+
+    const billing = await enforceBilling(req, { minPlan: "starter" });
+    if (billing) return billing;
 
     const body = await req.json().catch(() => ({} as any));
     const id = (body.id ?? "").trim();

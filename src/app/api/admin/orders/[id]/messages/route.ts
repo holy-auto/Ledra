@@ -2,15 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 /**
  * GET /api/admin/orders/[id]/messages
  * チャット履歴取得
  */
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   try {
     const { id } = await params;
     const supabase = await createSupabaseServerClient();
@@ -67,10 +69,11 @@ export async function GET(
  * チャットメッセージ送信
  * Body: { body: string, attachment_path?: string, attachment_type?: string }
  */
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function POST(req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   try {
     const { id } = await params;
     const supabase = await createSupabaseServerClient();

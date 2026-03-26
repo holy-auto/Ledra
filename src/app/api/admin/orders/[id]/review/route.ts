@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 /**
  * POST /api/admin/orders/[id]/review
@@ -9,10 +10,11 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
  * Body: { rating: 1-5, comment?: string }
  * 双方が送信後に自動公開（DB trigger で published_at をセット）
  */
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function POST(req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   try {
     const { id } = await params;
     const supabase = await createSupabaseServerClient();

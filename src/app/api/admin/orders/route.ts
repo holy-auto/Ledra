@@ -3,6 +3,8 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { makePublicId } from "@/lib/publicId";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { enforceBilling } from "@/lib/billing/guard";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 // ─── 有効なステータス一覧 ───
 const VALID_STATUSES = [
@@ -23,6 +25,9 @@ const TRANSITIONS: Record<string, { next: string; side: "from" | "to" | "both" }
 };
 
 export async function GET(req: NextRequest) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
@@ -161,10 +166,17 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const deny = await enforceBilling(req as any, { minPlan: "free", action: "order_create" });
+    if (deny) return deny as any;
+
     const tenantId = caller.tenantId;
 
     const body = await req.json();
@@ -216,10 +228,17 @@ export async function POST(req: NextRequest) {
 
 // ─── PUT: ステータス更新（遷移ルール + 監査ログ付き） ───
 export async function PUT(req: NextRequest) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const deny = await enforceBilling(req as any, { minPlan: "free", action: "order_update" });
+    if (deny) return deny as any;
+
     const tenantId = caller.tenantId;
 
     const body = await req.json();
@@ -319,10 +338,17 @@ export async function PUT(req: NextRequest) {
 
 // ─── PATCH: 公開案件の受注（to_tenant_id をセット） ───
 export async function PATCH(req: NextRequest) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const deny = await enforceBilling(req as any, { minPlan: "free", action: "order_accept" });
+    if (deny) return deny as any;
+
     const tenantId = caller.tenantId;
 
     const body = await req.json();

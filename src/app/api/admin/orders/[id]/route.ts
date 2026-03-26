@@ -2,15 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 /**
  * GET /api/admin/orders/[id]
  * 受発注の詳細取得（帳票・チャット最新・評価を含む）
  */
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(_req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },) {
+  const limited = await checkRateLimit(_req, "general");
+  if (limited) return limited;
+
   try {
     const { id } = await params;
     const supabase = await createSupabaseServerClient();

@@ -1,20 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 /**
  * PUT /api/admin/notifications/[id]/read
  * 通知を既読にする
  */
-export async function PUT(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function PUT(_req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },) {
+  const limited = await checkRateLimit(_req, "general");
+  if (limited) return limited;
+
   try {
     const { id } = await params;
     const supabase = await createClient();
-    const { data: userRes } = await supabase.auth.getUser();
-    if (!userRes?.user) return apiUnauthorized();
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) return apiUnauthorized();
 
     const { error } = await supabase
       .from("notifications")

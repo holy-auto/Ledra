@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const dynamic = "force-dynamic";
 
 // ─── GET: レジセッション一覧 ───
 export async function GET(req: NextRequest) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
@@ -82,6 +86,9 @@ export async function GET(req: NextRequest) {
 
 // ─── POST: セッション開始（レジ開局） ───
 export async function POST(req: NextRequest) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
@@ -154,6 +161,9 @@ export async function POST(req: NextRequest) {
 
 // ─── PUT: セッション更新/閉鎖（レジ閉局） ───
 export async function PUT(req: NextRequest) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
@@ -226,6 +236,9 @@ export async function PUT(req: NextRequest) {
 
 // ─── DELETE: セッション削除 ───
 export async function DELETE(req: NextRequest) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -9,10 +11,13 @@ export const dynamic = "force-dynamic";
  * 通知一覧取得
  */
 export async function GET(req: NextRequest) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   try {
     const supabase = await createClient();
-    const { data: userRes } = await supabase.auth.getUser();
-    if (!userRes?.user) return apiUnauthorized();
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) return apiUnauthorized();
 
     const unreadOnly = req.nextUrl.searchParams.get("unread_only") === "1";
     const limit = Math.min(Number(req.nextUrl.searchParams.get("limit")) || 30, 100);
@@ -20,7 +25,7 @@ export async function GET(req: NextRequest) {
     let query = supabase
       .from("notifications")
       .select("*")
-      .or(`user_id.is.null,user_id.eq.${userRes.user.id}`)
+      .or(`user_id.is.null,user_id.eq.${caller.userId}`)
       .order("created_at", { ascending: false })
       .limit(limit);
 
@@ -35,7 +40,7 @@ export async function GET(req: NextRequest) {
     const { count } = await supabase
       .from("notifications")
       .select("*", { count: "exact", head: true })
-      .or(`user_id.is.null,user_id.eq.${userRes.user.id}`)
+      .or(`user_id.is.null,user_id.eq.${caller.userId}`)
       .is("read_at", null);
 
     return NextResponse.json({

@@ -3,11 +3,15 @@ import Stripe from "stripe";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const dynamic = "force-dynamic";
 
 // ─── POST: Stripe Terminal 接続トークン発行（Connect対応） ───
 export async function POST(_req: NextRequest) {
+  const limited = await checkRateLimit(_req, "general");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);

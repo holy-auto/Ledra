@@ -1,7 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import Parser from "rss-parser";
-import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { hasPermission } from "@/lib/auth/permissions";
+import type { Role } from "@/lib/auth/roles";
+import { apiUnauthorized, apiInternalError, apiForbidden } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 const RSS_FEEDS = [
   // ── 塗装・コーティング専門 ──
@@ -66,11 +70,15 @@ async function fetchLiveFeeds() {
   return cachedNews;
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
-    const { data: userRes } = await supabase.auth.getUser();
-    if (!userRes?.user) return apiUnauthorized();
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) return apiUnauthorized();
+    if (!hasPermission(caller.role as Role, "news:view")) return apiForbidden();
 
     // 1) DBに保存済みの記事を取得（cron で保存されたもの）
     const { data: savedNews } = await supabase
