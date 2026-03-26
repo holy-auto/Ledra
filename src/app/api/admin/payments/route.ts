@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { checkRateLimit } from "@/lib/api/rateLimit";
+import { parsePagination } from "@/lib/api/pagination";
 
 export const dynamic = "force-dynamic";
 
@@ -22,8 +24,7 @@ export async function GET(req: NextRequest) {
     const customerId = url.searchParams.get("customer_id") ?? "";
     const from = url.searchParams.get("from") ?? "";
     const to = url.searchParams.get("to") ?? "";
-    const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "0", 10) || 0);
-    const perPage = Math.min(200, Math.max(1, parseInt(url.searchParams.get("per_page") ?? "50", 10)));
+    const { page, perPage, from: rangeFrom, to: rangeTo } = parsePagination(req, { maxPerPage: 200 });
 
     let query = supabase
       .from("payments")
@@ -62,8 +63,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (page > 0) {
-      const offset = (page - 1) * perPage;
-      query = query.range(offset, offset + perPage - 1);
+      query = query.range(rangeFrom, rangeTo);
     }
 
     const [{ data: payments, error }, { count: totalCount }] = await Promise.all([query, countQuery]);
@@ -120,6 +120,9 @@ export async function GET(req: NextRequest) {
 // ─── POST: 支払作成 ───
 export async function POST(req: NextRequest) {
   try {
+    const limited = await checkRateLimit(req, "general");
+    if (limited) return limited;
+
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });

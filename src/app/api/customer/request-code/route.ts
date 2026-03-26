@@ -83,21 +83,23 @@ export async function POST(req: Request) {
 
     const baseUrl = resolveBaseUrl({ req });
 
-    // ✅ auto=1&tenant=... でログイン画面が自動で verify まで実行する（既存仕様）
+    // URL does NOT include the code to prevent exposure in browser history,
+    // server logs, and Referer headers
     const loginUrl =
       `${baseUrl}/customer/${tenant_slug}/login` +
       `?email=${encodeURIComponent(email)}` +
-      `&last4=${encodeURIComponent(last4Raw)}` +
-      `&code=${encodeURIComponent(code)}` +
-      `&auto=1&tenant=${encodeURIComponent(tenant_slug)}`;
+      `&last4=${encodeURIComponent(last4Raw)}`;
 
     const subject = "ログインコード（WEB施工証明書）";
     const safeUrl = escapeHtml(loginUrl);
     const safeCode = escapeHtml(code);
     const html =
-      `<p>ログイン用リンクです（10分以内）。</p>` +
-      `<p><a href="${safeUrl}">${safeUrl}</a></p>` +
-      `<p>リンクが開けない場合は、ログイン画面でコード入力してください：<b>${safeCode}</b></p>`;
+      `<p>以下のコードをログイン画面で入力してください（10分以内に有効）。</p>` +
+      `<div style="text-align: center; margin: 24px 0;">` +
+      `<span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; font-family: monospace;">${safeCode}</span>` +
+      `</div>` +
+      `<p>上記のコードをログイン画面で入力してください。</p>` +
+      `<p><a href="${safeUrl}">ログイン画面を開く</a></p>`;
 
     await sendEmailResend(email, subject, html);
 

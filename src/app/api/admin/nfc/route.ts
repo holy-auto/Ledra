@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { requireMinRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiForbidden, apiValidationError, apiNotFound } from "@/lib/api/response";
+import { apiUnauthorized, apiForbidden, apiValidationError, apiNotFound, apiError } from "@/lib/api/response";
 
 /**
  * PATCH /api/admin/nfc — 論理削除（status → retired）
@@ -45,7 +45,7 @@ export async function PATCH(request: NextRequest) {
     .eq("tenant_id", caller.tenantId);
 
   if (updateErr) {
-    return NextResponse.json({ error: "db_error", message: "更新に失敗しました。" }, { status: 500 });
+    return apiError({ code: "db_error", message: "更新に失敗しました。", status: 500 });
   }
 
   return NextResponse.json({ ok: true });
@@ -88,7 +88,7 @@ export async function DELETE(request: NextRequest) {
     .eq("tenant_id", caller.tenantId);
 
   if (delErr) {
-    return NextResponse.json({ error: "db_error", message: "削除に失敗しました。" }, { status: 500 });
+    return apiError({ code: "db_error", message: "削除に失敗しました。", status: 500 });
   }
 
   return NextResponse.json({ ok: true });

@@ -290,17 +290,22 @@ export async function POST(req: NextRequest) {
 
   const supabase = getSupabaseAdmin();
 
-  // ── Idempotency: skip already-processed events ──
-  const { data: existing } = await supabase
+  // Idempotency: claim this event before processing.
+  // INSERT with ON CONFLICT to handle concurrent webhook deliveries.
+  const { error: claimError } = await supabase
     .from("stripe_processed_events")
+    .insert({ event_id: event.id, event_type: event.type })
     .select("id")
-    .eq("event_id", event.id)
-    .limit(1)
-    .maybeSingle();
+    .single();
 
-  if (existing) {
-    console.log("webhook: duplicate event skipped", { id: event.id, type: event.type });
-    return NextResponse.json({ received: true, duplicate: true });
+  if (claimError) {
+    // unique constraint violation = already claimed by another worker
+    if (claimError.code === "23505") {
+      console.log("webhook: duplicate event skipped", { id: event.id, type: event.type });
+      return NextResponse.json({ received: true, duplicate: true });
+    }
+    // Other DB errors — log but continue to avoid losing events
+    console.warn("webhook: idempotency claim error (proceeding)", { id: event.id, error: claimError.message });
   }
 
   try {
@@ -519,14 +524,6 @@ export async function POST(req: NextRequest) {
     console.error("stripe webhook handler failed", { type: event.type, id: event.id, error: e instanceof Error ? e.message : e });
     return apiInternalError(e, "stripe webhook handler");
   }
-
-  // ── Record processed event for idempotency ──
-  await supabase
-    .from("stripe_processed_events")
-    .insert({ event_id: event.id, event_type: event.type })
-    .then(({ error }) => {
-      if (error) console.warn("webhook: failed to record processed event", { id: event.id, error: error.message });
-    });
 
   return NextResponse.json({ received: true });
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { syncCreateEvent, syncUpdateEvent, syncDeleteEvent } from "@/lib/gcal/client";
+import { enforceBilling } from "@/lib/billing/guard";
 
 export const dynamic = "force-dynamic";
 
@@ -103,6 +104,9 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
+    const deny = await enforceBilling(req as any, { minPlan: "starter", action: "reservation_create" });
+    if (deny) return deny as any;
+
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
 
     const title = (String(body?.title ?? "")).trim();
@@ -158,6 +162,9 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+    const deny = await enforceBilling(req as any, { minPlan: "starter", action: "reservation_update" });
+    if (deny) return deny as any;
 
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const id = (String(body?.id ?? "")).trim();
@@ -239,6 +246,9 @@ export async function DELETE(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+    const deny = await enforceBilling(req as any, { minPlan: "starter", action: "reservation_delete" });
+    if (deny) return deny as any;
 
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const id = (String(body?.id ?? "")).trim();

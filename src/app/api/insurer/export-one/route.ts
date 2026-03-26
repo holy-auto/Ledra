@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveInsurerCaller, enforceInsurerPlan } from "@/lib/api/insurerAuth";
 import { apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -18,9 +19,12 @@ function getClientMeta(req: Request) {
   return { ip, ua };
 }
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
+
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
 
   const planDeny = enforceInsurerPlan(caller, "pro");
   if (planDeny) return planDeny;

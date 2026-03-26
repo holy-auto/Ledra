@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { apiInternalError, apiUnauthorized, apiForbidden } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -7,11 +8,11 @@ export async function GET() {
   try {
     const supabase = await createClient();
     const { data: auth } = await supabase.auth.getUser();
-    if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!auth?.user) return apiUnauthorized();
 
     const { data: agentData } = await supabase.rpc("get_my_agent_status");
     const agent = Array.isArray(agentData) ? agentData[0] : agentData;
-    if (!agent?.agent_id) return NextResponse.json({ error: "agent_not_found" }, { status: 403 });
+    if (!agent?.agent_id) return apiForbidden("agent_not_found");
 
     // Fetch courses
     const { data: courses } = await supabase
@@ -44,7 +45,7 @@ export async function GET() {
       stats: { total: totalCourses, completed: completedCourses, required: requiredCourses, required_completed: requiredCompleted },
     });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "internal_error" }, { status: 500 });
+    return apiInternalError(e, "agent training GET");
   }
 }
 
@@ -53,11 +54,11 @@ export async function PUT(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { data: auth } = await supabase.auth.getUser();
-    if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!auth?.user) return apiUnauthorized();
 
     const { data: agentData } = await supabase.rpc("get_my_agent_status");
     const agent = Array.isArray(agentData) ? agentData[0] : agentData;
-    if (!agent?.agent_id) return NextResponse.json({ error: "agent_not_found" }, { status: 403 });
+    if (!agent?.agent_id) return apiForbidden("agent_not_found");
 
     const body = await request.json().catch(() => ({}));
     const courseId = body.course_id as string;
@@ -82,9 +83,9 @@ export async function PUT(request: NextRequest) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "agent training PUT");
     return NextResponse.json({ progress: data });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "internal_error" }, { status: 500 });
+    return apiInternalError(e, "agent training PUT");
   }
 }

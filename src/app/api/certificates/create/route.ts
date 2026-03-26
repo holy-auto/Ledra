@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { phoneLast4Hash } from "@/lib/customerPortalServer";
 import { certificateCreateSchema } from "@/lib/validations/certificate";
-import { apiInternalError, apiValidationError, apiUnauthorized, apiForbidden } from "@/lib/api/response";
+import { apiInternalError, apiValidationError, apiUnauthorized, apiForbidden, apiPlanLimit } from "@/lib/api/response";
 import { enforceBilling } from "@/lib/billing/guard";
+import { CERT_LIMITS, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { logCertificateAction } from "@/lib/audit/certificateLog";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
@@ -32,6 +33,38 @@ export async function POST(req: Request) {
 
   const deny = await enforceBilling(req, { minPlan: "free", action: "create" });
   if (deny) return deny as any;
+
+  // ── 月間証明書発行上限チェック ──
+  try {
+    const admin = getSupabaseAdmin();
+    const { data: tenant } = await admin
+      .from("tenants")
+      .select("plan_tier")
+      .eq("id", caller.tenantId)
+      .limit(1)
+      .maybeSingle();
+    const planTier = normalizePlanTier(tenant?.plan_tier);
+    const certLimit = CERT_LIMITS[planTier];
+    if (certLimit !== null) {
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const { count: monthlyCount } = await admin
+        .from("certificates")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", caller.tenantId)
+        .gte("created_at", startOfMonth);
+      if ((monthlyCount ?? 0) >= certLimit) {
+        return apiPlanLimit(
+          `月間発行上限（${certLimit}件）に達しました。プランをアップグレードしてください。`,
+          { limit: certLimit, current: monthlyCount, plan: planTier },
+        );
+      }
+    }
+  } catch (e) {
+    console.error("[certificates/create] cert limit check failed:", e);
+    // 制限チェック失敗時は安全側でブロックしない（発行を優先）
+  }
+
   try {
     const body = await req.json();
     const parsed = certificateCreateSchema.safeParse(body);

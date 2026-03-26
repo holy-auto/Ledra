@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabaseAdmin";
+import { createAdminClient as createSupabaseAdminClient } from "@/lib/supabase/admin";
 import SettingsForm from "./SettingsForm";
 import FollowUpSettings from "./FollowUpSettings";
 import SquareConnectSection from "./SquareConnectSection";

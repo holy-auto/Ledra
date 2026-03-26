@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/api/auth";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { apiUnauthorized, apiForbidden, apiInternalError, apiNotFound, apiValidationError } from "@/lib/api/response";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -8,10 +10,9 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
   try {
     const { id } = await ctx.params;
     const supabase = await createClient();
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth?.user) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "admin")) return apiForbidden();
 
     const admin = getAdminClient();
     const { data, error } = await admin
@@ -21,7 +22,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
       .single();
 
     if (error || !data) {
-      return NextResponse.json({ error: "agent not found" }, { status: 404 });
+      return apiNotFound("agent not found");
     }
 
     // Get referrals
@@ -52,10 +53,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
       members: members ?? [],
     });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "internal_error" },
-      { status: 500 }
-    );
+    return apiInternalError(e, "agents [id] GET");
   }
 }
 
@@ -63,10 +61,9 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
   try {
     const { id } = await ctx.params;
     const supabase = await createClient();
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth?.user) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "admin")) return apiForbidden();
 
     const body = await request.json();
     const admin = getAdminClient();
@@ -86,7 +83,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
     }
 
     if (Object.keys(updates).length === 0) {
-      return NextResponse.json({ error: "no fields to update" }, { status: 400 });
+      return apiValidationError("no fields to update");
     }
 
     const { data, error } = await admin
@@ -97,14 +94,11 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return apiInternalError(error, "agents [id] PUT");
     }
 
     return NextResponse.json({ agent: data });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "internal_error" },
-      { status: 500 }
-    );
+    return apiInternalError(e, "agents [id] PUT");
   }
 }
