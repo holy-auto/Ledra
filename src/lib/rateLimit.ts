@@ -145,10 +145,10 @@ async function checkRateLimitRedis(key: string, opts: RateLimitOptions): Promise
  * }
  * ```
  */
-export function checkRateLimit(
+export async function checkRateLimit(
   key: string,
   opts: RateLimitOptions,
-): RateLimitResult | Promise<RateLimitResult> {
+): Promise<RateLimitResult> {
   const r = getRedis();
   if (r) {
     return checkRateLimitRedis(key, opts);
