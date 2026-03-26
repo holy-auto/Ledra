@@ -31,12 +31,21 @@ export async function GET() {
       return NextResponse.json({ error: "failed_to_fetch_stats" }, { status: 500 });
     }
 
+    // Flatten stats into top-level to match frontend DashboardData type
+    const s = (Array.isArray(stats) ? stats[0] : stats) ?? {};
     return NextResponse.json({
       agent_id: agentId,
       agent_name: agent.agent_name,
-      status: agent.status,
+      agent_status: agent.status,
       role: agent.role,
-      stats: stats ?? {},
+      total_referrals: s.total_referrals ?? 0,
+      contracted_referrals: s.contracted_referrals ?? 0,
+      this_month_commission: s.this_month_commission ?? 0,
+      total_commission: s.total_commission ?? 0,
+      conversion_rate: s.conversion_rate ?? 0,
+      unread_announcements: s.unread_announcements ?? 0,
+      recent_referrals: s.recent_referrals ?? [],
+      monthly_commissions: s.monthly_commissions ?? [],
     });
   } catch (e: unknown) {
     console.error("[agent/dashboard] error:", e);

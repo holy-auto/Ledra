@@ -66,6 +66,7 @@ export default function AgentMaterialsPage() {
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -83,13 +84,12 @@ export default function AgentMaterialsPage() {
     setLoading(true);
     try {
       const res = await fetch("/api/agent/materials");
-      if (res.ok) {
+      if (!res.ok) throw new Error("資料の取得に失敗しました");
         const json = await res.json();
         setCategories(json.categories ?? []);
         setMaterials(json.materials ?? []);
-      }
-    } catch {
-      // ignore
+    } catch (e: any) {
+      setError(e?.message ?? "資料の取得に失敗しました");
     } finally {
       setLoading(false);
     }
@@ -130,6 +130,11 @@ export default function AgentMaterialsPage() {
 
   return (
     <div className="space-y-6">
+      {error && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
       {/* Header */}
       <div>
         <div className="inline-flex rounded-full border border-neutral-300 bg-white px-3 py-1 text-[11px] font-semibold tracking-[0.22em] text-neutral-600">

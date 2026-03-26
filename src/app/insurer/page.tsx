@@ -163,6 +163,7 @@ export default function InsurerHomePage() {
               onClick={startCheckout}
               disabled={billingBusy || isPending}
               title={isPending ? "仮登録中はご利用いただけません" : undefined}
+              data-billing-trigger
               className="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-40"
             >
               {billingBusy ? "処理中..." : planTier ? `プラン管理 (${planTier})` : "サブスク契約"}

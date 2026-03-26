@@ -337,7 +337,7 @@ export default async function Page({
                         {hasCertificate ? (
                           <div className="flex flex-col gap-2">
                             <Link
-                              href={`/insurer/certificate/${encodeURIComponent(publicId)}`}
+                              href={`/insurer/c/${encodeURIComponent(publicId)}`}
                               className="underline"
                             >
                               詳細
