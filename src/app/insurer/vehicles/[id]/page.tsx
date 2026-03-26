@@ -96,7 +96,7 @@ export default function InsurerVehicleDetailPage() {
             href="/insurer/vehicles"
             className="text-sm text-neutral-500 hover:text-neutral-700"
           >
-            ← 車両検索へ
+            &larr; 車両検索へ
           </Link>
         </div>
         <div className="inline-flex rounded-full border border-neutral-300 bg-white px-3 py-1 text-[11px] font-semibold tracking-[0.22em] text-neutral-600">

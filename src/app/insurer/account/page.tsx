@@ -141,7 +141,7 @@ function PlanTab({ insurer }: { insurer: any }) {
       </div>
       <div className="mt-4 grid gap-3 text-sm">
         <div className="flex items-center gap-2">
-          <span className="text-emerald-600">✓</span> 証明書検索・閲覧
+          <span className="text-emerald-600">&#10003;</span> 証明書検索・閲覧
         </div>
         <div className="flex items-center gap-2">
           <span
@@ -151,7 +151,7 @@ function PlanTab({ insurer }: { insurer: any }) {
                 : "text-neutral-300"
             }
           >
-            {insurer.plan_tier !== "basic" ? "✓" : "—"}
+            {insurer.plan_tier !== "basic" ? "\u2713" : "\u2014"}
           </span>{" "}
           CSV / PDF エクスポート
         </div>
@@ -163,7 +163,7 @@ function PlanTab({ insurer }: { insurer: any }) {
                 : "text-neutral-300"
             }
           >
-            {insurer.plan_tier === "enterprise" ? "✓" : "—"}
+            {insurer.plan_tier === "enterprise" ? "\u2713" : "\u2014"}
           </span>{" "}
           API アクセス
         </div>

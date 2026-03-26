@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateTime } from "@/lib/format";
 
-/* ── status / priority maps ── */
+/* -- status / priority maps -- */
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
   open: { label: "対応待ち", color: "blue" },
@@ -30,7 +30,7 @@ const FILTER_TABS = [
   { key: "closed", label: "クローズ" },
 ] as const;
 
-/* ── badge color helpers ── */
+/* -- badge color helpers -- */
 
 function statusClasses(status: string) {
   const c = STATUS_MAP[status]?.color ?? "neutral";
@@ -55,7 +55,7 @@ function priorityClasses(priority: string) {
   return map[c] ?? map.neutral;
 }
 
-/* ── types ── */
+/* -- types -- */
 
 type CaseRow = {
   id: string;
@@ -66,7 +66,7 @@ type CaseRow = {
   created_at: string;
 };
 
-/* ── component ── */
+/* -- component -- */
 
 export default function InsurerCasesPage() {
   const supabase = useMemo(() => createClient(), []);

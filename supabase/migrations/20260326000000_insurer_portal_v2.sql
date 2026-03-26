@@ -3,23 +3,18 @@
 -- =============================================================
 
 -- =============================================================
--- 1) pii_disclosure_consents — 個人情報開示同意テーブル
---    施工店と保険会社の双方が同意した場合のみ、
---    証明書の顧客名等のPIIが保険会社に全表示される。
+-- 1) pii_disclosure_consents
 -- =============================================================
 CREATE TABLE IF NOT EXISTS pii_disclosure_consents (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   certificate_id  uuid NOT NULL REFERENCES certificates(id) ON DELETE CASCADE,
   insurer_id      uuid NOT NULL REFERENCES insurers(id) ON DELETE CASCADE,
-  -- 保険会社側の同意
   insurer_requested_at  timestamptz,
   insurer_requested_by  uuid REFERENCES auth.users(id) ON DELETE SET NULL,
-  insurer_reason        text,  -- 事故案件番号・理由など
-  -- 施工店側の同意
+  insurer_reason        text,
   tenant_consented_at   timestamptz,
   tenant_consented_by   uuid REFERENCES auth.users(id) ON DELETE SET NULL,
   tenant_reason         text,
-  -- 状態管理
   is_active       boolean NOT NULL DEFAULT true,
   revoked_at      timestamptz,
   revoked_by      uuid REFERENCES auth.users(id) ON DELETE SET NULL,
@@ -33,12 +28,10 @@ CREATE INDEX IF NOT EXISTS idx_pdc_insurer ON pii_disclosure_consents(insurer_id
 
 ALTER TABLE pii_disclosure_consents ENABLE ROW LEVEL SECURITY;
 
--- 保険会社ユーザーは自社の同意レコードを閲覧可能
 DROP POLICY IF EXISTS "pdc_select_insurer" ON pii_disclosure_consents;
 CREATE POLICY "pdc_select_insurer" ON pii_disclosure_consents
   FOR SELECT USING (insurer_id IN (SELECT my_insurer_ids()));
 
--- テナントメンバーは自テナントの証明書に関する同意レコードを閲覧可能
 DROP POLICY IF EXISTS "pdc_select_tenant" ON pii_disclosure_consents;
 CREATE POLICY "pdc_select_tenant" ON pii_disclosure_consents
   FOR SELECT USING (
@@ -79,7 +72,6 @@ $$;
 
 -- =============================================================
 -- 3) 検索RPC更新: VIN完全一致 + PII マスキング
---    vehicle_vin を返却列に追加
 -- =============================================================
 DROP FUNCTION IF EXISTS insurer_search_certificates(text, integer, integer, text, text);
 CREATE OR REPLACE FUNCTION insurer_search_certificates(
@@ -112,7 +104,6 @@ DECLARE
   v_insurer_user_id uuid;
   v_insurer_id uuid;
 BEGIN
-  -- 認証チェック
   SELECT iu.id, iu.insurer_id
   INTO v_insurer_user_id, v_insurer_id
   FROM insurer_users iu
@@ -123,18 +114,15 @@ BEGIN
     RAISE EXCEPTION 'Not an active insurer user';
   END IF;
 
-  -- 監査ログ
   INSERT INTO insurer_access_logs (insurer_id, insurer_user_id, action, meta, ip, user_agent)
   VALUES (v_insurer_id, v_insurer_user_id, 'search',
     jsonb_build_object('query', p_query, 'limit', p_limit, 'offset', p_offset),
     p_ip, p_user_agent);
 
-  -- 検索: VIN完全一致を最優先、その他は部分一致
   RETURN QUERY
     SELECT
       c.public_id,
       c.status,
-      -- PII マスキング: 検索結果では常にマスク
       CASE WHEN length(c.customer_name) > 1
         THEN left(c.customer_name, 1) || '***'
         ELSE '***'
@@ -146,7 +134,7 @@ BEGIN
       v.year AS vehicle_year,
       v.id AS vehicle_id,
       (SELECT count(*) FROM certificate_images ci WHERE ci.certificate_id = c.id) AS image_count,
-      '' AS latest_image_url,  -- 署名URLはAPI側で付与
+      '' AS latest_image_url,
       c.service_type,
       c.created_at,
       c.tenant_id,
@@ -158,9 +146,7 @@ BEGIN
       c.status IN ('active', 'void')
       AND (
         p_query = ''
-        -- VIN 完全一致
         OR coalesce(v.vin_code, '') = p_query
-        -- 以下は部分一致（利便性）
         OR c.public_id ILIKE '%' || p_query || '%'
         OR coalesce(v.plate_display, '') ILIKE '%' || p_query || '%'
         OR coalesce(v.model, '') ILIKE '%' || p_query || '%'
@@ -169,7 +155,6 @@ BEGIN
         OR coalesce(c.vehicle_info_json->>'model', '') ILIKE '%' || p_query || '%'
       )
     ORDER BY
-      -- VIN完全一致を最上位にソート
       CASE WHEN coalesce(v.vin_code, '') = p_query THEN 0 ELSE 1 END,
       c.created_at DESC
     LIMIT p_limit OFFSET p_offset;
@@ -231,7 +216,6 @@ BEGIN
     RAISE EXCEPTION 'Not an active insurer user';
   END IF;
 
-  -- 証明書ID取得
   SELECT c.id INTO v_cert_id
   FROM certificates c WHERE c.public_id = p_public_id LIMIT 1;
 
@@ -239,10 +223,8 @@ BEGIN
     RAISE EXCEPTION 'Certificate not found';
   END IF;
 
-  -- PII開示チェック
   v_pii_ok := is_pii_disclosed(v_cert_id, v_insurer_id);
 
-  -- 監査ログ
   INSERT INTO insurer_access_logs (insurer_id, insurer_user_id, certificate_id, action, meta, ip, user_agent)
   VALUES (v_insurer_id, v_insurer_user_id, v_cert_id, 'view',
     jsonb_build_object('public_id', p_public_id, 'pii_disclosed', v_pii_ok),
@@ -253,7 +235,6 @@ BEGIN
       c.id,
       c.public_id,
       c.status,
-      -- PII: 双方同意済みなら全表示、そうでなければマスク
       CASE WHEN v_pii_ok THEN c.customer_name
         ELSE CASE WHEN length(c.customer_name) > 1
           THEN left(c.customer_name, 1) || '***'
@@ -353,7 +334,7 @@ BEGIN
     LEFT JOIN certificates c ON c.vehicle_id = v.id AND c.status IN ('active','void')
     WHERE
       p_query = ''
-      OR coalesce(v.vin_code, '') = p_query  -- VIN完全一致
+      OR coalesce(v.vin_code, '') = p_query
       OR coalesce(v.plate_display, '') ILIKE '%' || p_query || '%'
       OR coalesce(v.maker, '') ILIKE '%' || p_query || '%'
       OR coalesce(v.model, '') ILIKE '%' || p_query || '%'
@@ -421,7 +402,7 @@ END;
 $$;
 
 -- =============================================================
--- 7) 案件管理テーブル（将来拡張の土台）
+-- 7) 案件管理テーブル
 -- =============================================================
 CREATE TABLE IF NOT EXISTS insurer_cases (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -482,7 +463,6 @@ DROP POLICY IF EXISTS "icm_insert" ON insurer_case_messages;
 CREATE POLICY "icm_insert" ON insurer_case_messages
   FOR INSERT WITH CHECK (case_id IN (SELECT id FROM insurer_cases WHERE insurer_id IN (SELECT my_insurer_ids())));
 
--- テナント側もメッセージ閲覧・投稿可能（自テナントの案件のみ）
 DROP POLICY IF EXISTS "icm_select_tenant" ON insurer_case_messages;
 CREATE POLICY "icm_select_tenant" ON insurer_case_messages
   FOR SELECT USING (case_id IN (SELECT id FROM insurer_cases WHERE tenant_id IN (SELECT my_tenant_ids())));

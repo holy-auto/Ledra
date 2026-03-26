@@ -13,11 +13,11 @@ function getClientMeta(req: Request) {
 }
 
 export async function GET(req: NextRequest) {
-  const caller = await resolveInsurerCaller();
-  if (!caller) return apiUnauthorized();
-
   const limited = await checkRateLimit(req, "general");
   if (limited) return limited;
+
+  const caller = await resolveInsurerCaller();
+  if (!caller) return apiUnauthorized();
 
   const pid = req.nextUrl.searchParams.get("pid") ?? "";
   if (!pid) return apiValidationError("Missing pid (public_id) query parameter");
