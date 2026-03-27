@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateTime } from "@/lib/format";
 
@@ -24,11 +25,20 @@ const PRIORITY_MAP: Record<string, { label: string; color: string }> = {
 
 const FILTER_TABS = [
   { key: "", label: "全て" },
+  { key: "open", label: "対応待ち" },
   { key: "in_progress", label: "対応中" },
   { key: "pending_tenant", label: "施工店確認中" },
   { key: "resolved", label: "解決済み" },
   { key: "closed", label: "クローズ" },
 ] as const;
+
+const CASE_TEMPLATES = [
+  { key: "", label: "テンプレートなし", title: "", category: "", description: "" },
+  { key: "construction_check", label: "施工確認依頼", title: "施工確認依頼", category: "施工確認", description: "施工状態の確認をお願いします。対象車両の施工内容と現在の状態についてご報告ください。" },
+  { key: "pii_disclosure", label: "PII開示確認", title: "個人情報開示確認", category: "PII開示", description: "保険事故調査のため、個人情報の開示確認を依頼します。双方の同意が必要です。" },
+  { key: "claim_investigation", label: "保険金請求調査", title: "保険金請求調査", category: "保険金請求", description: "保険金請求に関する調査を依頼します。施工内容と証明書の整合性を確認してください。" },
+  { key: "vehicle_condition", label: "車両状態確認", title: "車両状態確認依頼", category: "車両確認", description: "車両の現在の状態確認を依頼します。施工後の車両状態をご報告ください。" },
+];
 
 /* -- badge color helpers -- */
 
@@ -66,13 +76,14 @@ type CaseRow = {
   created_at: string;
 };
 
-/* -- component -- */
+/* -- inner component (needs Suspense for useSearchParams) -- */
 
-export default function InsurerCasesPage() {
+function InsurerCasesInner() {
   const supabase = useMemo(() => createClient(), []);
+  const searchParams = useSearchParams();
   const [ready, setReady] = useState(false);
   const [cases, setCases] = useState<CaseRow[]>([]);
-  const [filter, setFilter] = useState("");
+  const [filter, setFilter] = useState(searchParams.get("status") ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -84,15 +95,31 @@ export default function InsurerCasesPage() {
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterQuery, setFilterQuery] = useState("");
 
-  // create-form state
-  const [showForm, setShowForm] = useState(false);
+  // Create-form state
+  const [showForm, setShowForm] = useState(searchParams.get("create") === "true");
   const [formTitle, setFormTitle] = useState("");
   const [formDesc, setFormDesc] = useState("");
   const [formPriority, setFormPriority] = useState("normal");
   const [formCategory, setFormCategory] = useState("");
-  const [formCertId, setFormCertId] = useState("");
-  const [formVehicleId, setFormVehicleId] = useState("");
+  const [formCertId, setFormCertId] = useState(searchParams.get("certificate_id") ?? "");
+  const [formVehicleId, setFormVehicleId] = useState(searchParams.get("vehicle_id") ?? "");
+  const [formTenantId, setFormTenantId] = useState(searchParams.get("tenant_id") ?? "");
+  const [formTemplate, setFormTemplate] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  // Pre-fill form from URL store_name param
+  const storeName = searchParams.get("store_name");
+  useEffect(() => {
+    if (storeName && !formTitle) {
+      setFormTitle(`${storeName} への問い合わせ`);
+      setFormCategory("店舗問い合わせ");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* auth check */
   useEffect(() => {
@@ -124,6 +151,7 @@ export default function InsurerCasesPage() {
       if (!res.ok) throw new Error("案件の取得に失敗しました");
       const json = await res.json();
       setCases(json.cases ?? json.data ?? []);
+      setSelectedIds(new Set());
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "エラーが発生しました");
     } finally {
@@ -134,6 +162,17 @@ export default function InsurerCasesPage() {
   useEffect(() => {
     if (ready) fetchCases();
   }, [ready, fetchCases]);
+
+  /* apply template */
+  function applyTemplate(key: string) {
+    setFormTemplate(key);
+    const tpl = CASE_TEMPLATES.find((t) => t.key === key);
+    if (tpl && tpl.key) {
+      setFormTitle(tpl.title);
+      setFormCategory(tpl.category);
+      setFormDesc(tpl.description);
+    }
+  }
 
   /* create case */
   async function handleCreate(e: React.FormEvent) {
@@ -150,6 +189,7 @@ export default function InsurerCasesPage() {
       };
       if (formCertId.trim()) body.certificate_id = formCertId.trim();
       if (formVehicleId.trim()) body.vehicle_id = formVehicleId.trim();
+      if (formTenantId.trim()) body.tenant_id = formTenantId.trim();
 
       const res = await fetch("/api/insurer/cases", {
         method: "POST",
@@ -163,12 +203,51 @@ export default function InsurerCasesPage() {
       setFormCategory("");
       setFormCertId("");
       setFormVehicleId("");
+      setFormTenantId("");
+      setFormTemplate("");
       setShowForm(false);
       fetchCases();
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "エラーが発生しました");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  /* bulk status change */
+  async function handleBulk(status: "resolved" | "closed") {
+    if (selectedIds.size === 0) return;
+    setBulkBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/insurer/cases/bulk", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ case_ids: [...selectedIds], status }),
+      });
+      if (!res.ok) throw new Error("一括更新に失敗しました");
+      fetchCases();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "エラーが発生しました");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (selectedIds.size === cases.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(cases.map((c) => c.id)));
     }
   }
 
@@ -209,6 +288,22 @@ export default function InsurerCasesPage() {
           <h2 className="text-lg font-bold text-neutral-900">新規案件作成</h2>
 
           <div className="grid gap-4 sm:grid-cols-2">
+            {/* template selector */}
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-sm font-medium text-neutral-700">
+                テンプレート
+              </label>
+              <select
+                value={formTemplate}
+                onChange={(e) => applyTemplate(e.target.value)}
+                className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+              >
+                {CASE_TEMPLATES.map((t) => (
+                  <option key={t.key} value={t.key}>{t.label}</option>
+                ))}
+              </select>
+            </div>
+
             <div className="sm:col-span-2">
               <label className="mb-1 block text-sm font-medium text-neutral-700">
                 タイトル <span className="text-red-500">*</span>
@@ -265,31 +360,33 @@ export default function InsurerCasesPage() {
               />
             </div>
 
-            <div>
-              <label className="mb-1 block text-sm font-medium text-neutral-700">
-                証明書ID（任意）
-              </label>
-              <input
-                type="text"
-                value={formCertId}
-                onChange={(e) => setFormCertId(e.target.value)}
-                className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                placeholder="証明書ID"
-              />
-            </div>
+            {formCertId && (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-neutral-700">
+                  証明書ID
+                </label>
+                <input
+                  type="text"
+                  value={formCertId}
+                  readOnly
+                  className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-500"
+                />
+              </div>
+            )}
 
-            <div>
-              <label className="mb-1 block text-sm font-medium text-neutral-700">
-                車両ID（任意）
-              </label>
-              <input
-                type="text"
-                value={formVehicleId}
-                onChange={(e) => setFormVehicleId(e.target.value)}
-                className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                placeholder="車両ID"
-              />
-            </div>
+            {formVehicleId && (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-neutral-700">
+                  車両ID
+                </label>
+                <input
+                  type="text"
+                  value={formVehicleId}
+                  readOnly
+                  className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-500"
+                />
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end">
@@ -419,6 +516,36 @@ export default function InsurerCasesPage() {
         </div>
       )}
 
+      {/* bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="sticky bottom-4 z-10 flex items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-3 shadow-lg">
+          <span className="text-sm font-medium text-blue-800">
+            {selectedIds.size}件選択中
+          </span>
+          <div className="flex-1" />
+          <button
+            onClick={() => handleBulk("resolved")}
+            disabled={bulkBusy}
+            className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+          >
+            解決済みにする
+          </button>
+          <button
+            onClick={() => handleBulk("closed")}
+            disabled={bulkBusy}
+            className="rounded-xl bg-neutral-600 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
+          >
+            クローズする
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="text-sm text-neutral-500 hover:text-neutral-700"
+          >
+            選択解除
+          </button>
+        </div>
+      )}
+
       {/* table */}
       {busy ? (
         <div className="flex items-center justify-center py-20">
@@ -433,32 +560,36 @@ export default function InsurerCasesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-neutral-200 text-left">
-                <th className="px-4 py-3 font-semibold text-neutral-600">
-                  案件番号
+                <th className="px-3 py-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.size === cases.length && cases.length > 0}
+                    onChange={toggleAll}
+                    className="rounded border-neutral-300"
+                  />
                 </th>
-                <th className="px-4 py-3 font-semibold text-neutral-600">
-                  タイトル
-                </th>
-                <th className="px-4 py-3 font-semibold text-neutral-600">
-                  ステータス
-                </th>
-                <th className="px-4 py-3 font-semibold text-neutral-600">
-                  優先度
-                </th>
-                <th className="px-4 py-3 font-semibold text-neutral-600">
-                  作成日
-                </th>
-                <th className="px-4 py-3 font-semibold text-neutral-600">
-                  操作
-                </th>
+                <th className="px-4 py-3 font-semibold text-neutral-600">案件番号</th>
+                <th className="px-4 py-3 font-semibold text-neutral-600">タイトル</th>
+                <th className="px-4 py-3 font-semibold text-neutral-600">ステータス</th>
+                <th className="px-4 py-3 font-semibold text-neutral-600">優先度</th>
+                <th className="px-4 py-3 font-semibold text-neutral-600">作成日</th>
+                <th className="px-4 py-3 font-semibold text-neutral-600">操作</th>
               </tr>
             </thead>
             <tbody>
               {cases.map((c) => (
                 <tr
                   key={c.id}
-                  className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50"
+                  className={`border-b border-neutral-100 last:border-0 hover:bg-neutral-50 ${selectedIds.has(c.id) ? "bg-blue-50" : ""}`}
                 >
+                  <td className="px-3 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(c.id)}
+                      onChange={() => toggleSelect(c.id)}
+                      className="rounded border-neutral-300"
+                    />
+                  </td>
                   <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-neutral-500">
                     {c.case_number}
                   </td>
@@ -466,16 +597,12 @@ export default function InsurerCasesPage() {
                     {c.title}
                   </td>
                   <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClasses(c.status)}`}
-                    >
+                    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClasses(c.status)}`}>
                       {STATUS_MAP[c.status]?.label ?? c.status}
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${priorityClasses(c.priority)}`}
-                    >
+                    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${priorityClasses(c.priority)}`}>
                       {PRIORITY_MAP[c.priority]?.label ?? c.priority}
                     </span>
                   </td>
@@ -497,5 +624,13 @@ export default function InsurerCasesPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function InsurerCasesPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-[60vh] items-center justify-center"><p className="text-sm text-neutral-500">読み込み中…</p></div>}>
+      <InsurerCasesInner />
+    </Suspense>
   );
 }

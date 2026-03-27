@@ -360,6 +360,12 @@ export default async function Page({
                             >
                               公開ページ
                             </Link>
+                            <Link
+                              href={`/insurer/cases?create=true${row.vehicle_id ? `&vehicle_id=${row.vehicle_id}` : ""}`}
+                              className="text-sm font-medium text-neutral-600 hover:text-neutral-800 hover:underline"
+                            >
+                              案件作成
+                            </Link>
                           </div>
                         ) : (
                           <span className="text-xs text-neutral-500">

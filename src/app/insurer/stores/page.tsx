@@ -1,30 +1,39 @@
 "use client";
 
-import { useState } from "react";
-import { formatDateTime } from "@/lib/format";
+import { useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 
-type VehicleRow = {
-  vehicle_id: string;
-  maker: string;
-  model: string;
-  year: number | null;
-  plate_display: string;
-  vin_code: string;
-  size_class: string;
+type StoreRow = {
+  store_id: string;
+  store_name: string;
+  store_address: string;
+  store_phone: string;
+  store_email: string;
+  store_manager: string;
+  tenant_id: string;
   tenant_name: string;
-  certificate_count: number;
-  latest_cert_public_id: string | null;
-  latest_cert_status: string | null;
-  latest_cert_created_at: string | null;
 };
 
-export default function InsurerVehiclesPage() {
+export default function InsurerStoresPage() {
+  const supabase = useMemo(() => createClient(), []);
+  const [ready, setReady] = useState(false);
   const [q, setQ] = useState("");
-  const [rows, setRows] = useState<VehicleRow[]>([]);
+  const [rows, setRows] = useState<StoreRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [searched, setSearched] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      if (!data?.user) {
+        window.location.href = "/insurer/login";
+        return;
+      }
+      setReady(true);
+    })();
+  }, [supabase]);
 
   const runSearch = async () => {
     if (!q.trim()) return;
@@ -35,9 +44,8 @@ export default function InsurerVehiclesPage() {
       const qs = new URLSearchParams({
         q: q.trim(),
         limit: "50",
-        offset: "0",
       });
-      const res = await fetch(`/api/insurer/vehicles?${qs.toString()}`, {
+      const res = await fetch(`/api/insurer/stores?${qs.toString()}`, {
         cache: "no-store",
       });
       const j = await res.json();
@@ -51,18 +59,20 @@ export default function InsurerVehiclesPage() {
     }
   };
 
+  if (!ready) return null;
+
   return (
     <div className="mx-auto max-w-7xl space-y-6 p-6">
       <header className="space-y-3">
         <div className="inline-flex rounded-full border border-neutral-300 bg-white px-3 py-1 text-[11px] font-semibold tracking-[0.22em] text-neutral-600">
-          VEHICLE SEARCH
+          STORE SEARCH
         </div>
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-neutral-900">
-            車両検索
+            店舗検索
           </h1>
           <p className="mt-2 text-sm text-neutral-600">
-            車台番号・ナンバー・車種で車両を検索し、証明書履歴を確認できます。
+            店舗名・住所・電話番号で店舗を検索し、問い合わせを作成できます。
           </p>
         </div>
       </header>
@@ -73,7 +83,7 @@ export default function InsurerVehiclesPage() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && runSearch()}
-            placeholder="車台番号（完全一致） / ナンバー / 車種"
+            placeholder="店舗名 / 住所 / 電話番号"
             className="flex-1 rounded-xl border border-neutral-300 bg-neutral-50 px-4 py-2.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-400"
           />
           <button
@@ -116,25 +126,19 @@ export default function InsurerVehiclesPage() {
             <thead className="bg-neutral-50">
               <tr>
                 <th className="p-3 text-left font-semibold text-neutral-600">
-                  車台番号
+                  店舗名
                 </th>
                 <th className="p-3 text-left font-semibold text-neutral-600">
-                  メーカー
+                  住所
                 </th>
                 <th className="p-3 text-left font-semibold text-neutral-600">
-                  車種
+                  電話
                 </th>
                 <th className="p-3 text-left font-semibold text-neutral-600">
-                  年式
+                  担当者
                 </th>
                 <th className="p-3 text-left font-semibold text-neutral-600">
-                  ナンバー
-                </th>
-                <th className="p-3 text-left font-semibold text-neutral-600">
-                  証明書数
-                </th>
-                <th className="p-3 text-left font-semibold text-neutral-600">
-                  最新証明書
+                  テナント名
                 </th>
                 <th className="p-3 text-left font-semibold text-neutral-600">
                   操作
@@ -143,55 +147,28 @@ export default function InsurerVehiclesPage() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.vehicle_id} className="border-t hover:bg-neutral-50">
-                  <td className="p-3 font-mono text-xs text-neutral-700">
-                    {r.vin_code || "-"}
-                  </td>
-                  <td className="p-3 text-neutral-600">{r.maker || "-"}</td>
+                <tr key={r.store_id} className="border-t hover:bg-neutral-50">
                   <td className="p-3 font-medium text-neutral-900">
-                    {r.model || "-"}
-                  </td>
-                  <td className="p-3 text-neutral-600">{r.year ?? "-"}</td>
-                  <td className="p-3 text-neutral-600">
-                    {r.plate_display || "-"}
+                    {r.store_name || "-"}
                   </td>
                   <td className="p-3 text-neutral-600">
-                    {r.certificate_count}
+                    {r.store_address || "-"}
                   </td>
                   <td className="p-3 text-neutral-600">
-                    {r.latest_cert_public_id ? (
-                      <div>
-                        <span
-                          className={
-                            r.latest_cert_status === "void"
-                              ? "text-red-600"
-                              : "text-emerald-600"
-                          }
-                        >
-                          {r.latest_cert_status === "active" ? "有効" : "無効"}
-                        </span>
-                        <div className="mt-0.5 text-xs text-neutral-400">
-                          {r.latest_cert_created_at
-                            ? formatDateTime(r.latest_cert_created_at)
-                            : ""}
-                        </div>
-                      </div>
-                    ) : (
-                      "-"
-                    )}
+                    {r.store_phone || "-"}
+                  </td>
+                  <td className="p-3 text-neutral-600">
+                    {r.store_manager || "-"}
+                  </td>
+                  <td className="p-3 text-neutral-600">
+                    {r.tenant_name || "-"}
                   </td>
                   <td className="p-3">
                     <Link
-                      href={`/insurer/vehicles/${r.vehicle_id}`}
+                      href={`/insurer/cases?create=true&tenant_id=${r.tenant_id}&store_name=${encodeURIComponent(r.store_name)}`}
                       className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100"
                     >
-                      詳細
-                    </Link>
-                    <Link
-                      href={`/insurer/cases?create=true&vehicle_id=${r.vehicle_id}`}
-                      className="text-sm font-medium text-neutral-600 hover:text-neutral-800 hover:underline ml-3"
-                    >
-                      案件作成
+                      問い合わせ
                     </Link>
                   </td>
                 </tr>
@@ -199,20 +176,20 @@ export default function InsurerVehiclesPage() {
               {searched && rows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={6}
                     className="p-8 text-center text-sm text-neutral-500"
                   >
-                    該当する車両が見つかりません。
+                    該当する店舗が見つかりません。
                   </td>
                 </tr>
               )}
               {!searched && (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={6}
                     className="p-8 text-center text-sm text-neutral-500"
                   >
-                    検索キーワードを入力してください。車台番号での完全一致検索が最も正確です。
+                    検索キーワードを入力してください。
                   </td>
                 </tr>
               )}

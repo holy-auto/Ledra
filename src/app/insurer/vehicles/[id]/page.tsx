@@ -57,6 +57,7 @@ export default function InsurerVehicleDetailPage() {
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [certs, setCerts] = useState<CertRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  const [relatedCases, setRelatedCases] = useState<Array<{id: string; case_number: string; title: string; status: string}>>([]);
 
   useEffect(() => {
     (async () => {
@@ -80,6 +81,14 @@ export default function InsurerVehicleDetailPage() {
         if (!res.ok) throw new Error(j?.error ?? "load_failed");
         setVehicle(j.vehicle);
         setCerts(j.certificates ?? []);
+        // Fetch related cases
+        try {
+          const casesRes = await fetch(`/api/insurer/cases?vehicle_id=${vehicleId}`);
+          if (casesRes.ok) {
+            const casesJson = await casesRes.json();
+            setRelatedCases(Array.isArray(casesJson) ? casesJson : casesJson?.cases ?? []);
+          }
+        } catch {}
       } catch (e: any) {
         setErr(e?.message ?? "load_failed");
       }
@@ -91,13 +100,23 @@ export default function InsurerVehicleDetailPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
       <header className="space-y-3">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/insurer/vehicles"
-            className="text-sm text-neutral-500 hover:text-neutral-700"
-          >
-            &larr; 車両検索へ
-          </Link>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/insurer/vehicles"
+              className="text-sm text-neutral-500 hover:text-neutral-700"
+            >
+              &larr; 車両検索へ
+            </Link>
+          </div>
+          {vehicleId && (
+            <Link
+              href={`/insurer/cases?create=true&vehicle_id=${vehicleId}`}
+              className="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
+            >
+              案件作成
+            </Link>
+          )}
         </div>
         <div className="inline-flex rounded-full border border-neutral-300 bg-white px-3 py-1 text-[11px] font-semibold tracking-[0.22em] text-neutral-600">
           VEHICLE DETAIL
@@ -237,6 +256,24 @@ export default function InsurerVehicleDetailPage() {
               </table>
             </div>
           </section>
+
+          {/* Related cases */}
+          {relatedCases.length > 0 && (
+            <section className="rounded-2xl border border-neutral-200 bg-white p-6 space-y-3">
+              <h2 className="text-lg font-bold text-neutral-900">関連案件 ({relatedCases.length})</h2>
+              <div className="space-y-2">
+                {relatedCases.map((c) => (
+                  <Link key={c.id} href={`/insurer/cases/${c.id}`} className="flex items-center justify-between rounded-xl border border-neutral-100 px-4 py-3 hover:bg-neutral-50">
+                    <div>
+                      <span className="font-mono text-xs text-neutral-500">{c.case_number}</span>
+                      <span className="ml-2 text-sm font-medium text-neutral-900">{c.title}</span>
+                    </div>
+                    <span className="text-xs text-blue-600">詳細 →</span>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )}
         </>
       )}
     </div>

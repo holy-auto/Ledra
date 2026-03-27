@@ -67,6 +67,20 @@ export async function GET(req: NextRequest) {
       query = query.lte("created_at", endDate.toISOString());
     }
 
+    const certificateId = url.searchParams.get("certificate_id");
+    const vehicleId = url.searchParams.get("vehicle_id");
+    const tenantId = url.searchParams.get("tenant_id");
+
+    if (certificateId) {
+      query = query.eq("certificate_id", certificateId);
+    }
+    if (vehicleId) {
+      query = query.eq("vehicle_id", vehicleId);
+    }
+    if (tenantId) {
+      query = query.eq("tenant_id", tenantId);
+    }
+
     if (q) {
       query = query.or(`title.ilike.%${q}%,case_number.ilike.%${q}%,description.ilike.%${q}%`);
     }
@@ -99,7 +113,7 @@ export async function POST(req: NextRequest) {
     return apiValidationError("Invalid JSON body.");
   }
 
-  const { title, description, certificate_id, vehicle_id, priority, category } =
+  const { title, description, certificate_id, vehicle_id, priority, category, tenant_id: bodyTenantId } =
     body as {
       title?: string;
       description?: string;
@@ -107,6 +121,7 @@ export async function POST(req: NextRequest) {
       vehicle_id?: string;
       priority?: string;
       category?: string;
+      tenant_id?: string;
     };
 
   if (!title || typeof title !== "string" || title.trim().length === 0) {
@@ -116,17 +131,23 @@ export async function POST(req: NextRequest) {
   const admin = createAdminClient();
 
   try {
-    // If certificate_id is provided, look up tenant_id
-    let tenant_id: string | null = null;
-    if (certificate_id) {
+    // Resolve tenant_id from certificate, vehicle, or direct parameter
+    let tenant_id: string | null = bodyTenantId ?? null;
+    if (!tenant_id && certificate_id) {
       const { data: cert } = await admin
         .from("certificates")
         .select("tenant_id")
         .eq("id", certificate_id)
         .maybeSingle();
-      if (cert) {
-        tenant_id = cert.tenant_id;
-      }
+      if (cert) tenant_id = cert.tenant_id;
+    }
+    if (!tenant_id && vehicle_id) {
+      const { data: v } = await admin
+        .from("vehicles")
+        .select("tenant_id")
+        .eq("id", vehicle_id)
+        .maybeSingle();
+      if (v) tenant_id = v.tenant_id;
     }
 
     const insertData: Record<string, unknown> = {

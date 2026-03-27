@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import Badge from "@/components/ui/Badge";
 import { CERTIFICATE_STATUS_MAP, getStatusEntry } from "@/lib/statusMaps";
 import { formatDateTime } from "@/lib/format";
+import Link from "next/link";
 import InsurerIdleAutoLogout from "./InsurerIdleAutoLogout";
 import OnboardingWizard from "./OnboardingWizard";
 
@@ -31,6 +32,7 @@ export default function InsurerHomePage() {
   const [billingBusy, setBillingBusy] = useState(false);
   const [planTier, setPlanTier] = useState<string>("");
   const [insurerStatus, setInsurerStatus] = useState<string | null>(null);
+  const [caseSummary, setCaseSummary] = useState<{open_count: number; active_count: number; today_count: number} | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -46,6 +48,15 @@ export default function InsurerHomePage() {
         if (res.ok) {
           const j = await res.json();
           if (j.plan_tier) setPlanTier(j.plan_tier);
+        }
+      } catch {}
+
+      // 案件サマリー取得
+      try {
+        const csRes = await fetch("/api/insurer/cases/summary");
+        if (csRes.ok) {
+          const csJson = await csRes.json();
+          setCaseSummary(csJson);
         }
       } catch {}
 
@@ -193,6 +204,24 @@ export default function InsurerHomePage() {
                 </p>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Case summary widget */}
+        {caseSummary && (
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Link href="/insurer/cases?status=open" className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm hover:shadow-md transition">
+              <p className="text-3xl font-bold text-blue-600">{caseSummary.open_count}</p>
+              <p className="mt-1 text-sm text-neutral-500">未対応案件</p>
+            </Link>
+            <Link href="/insurer/cases?status=in_progress" className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm hover:shadow-md transition">
+              <p className="text-3xl font-bold text-amber-600">{caseSummary.active_count}</p>
+              <p className="mt-1 text-sm text-neutral-500">対応中案件</p>
+            </Link>
+            <Link href="/insurer/cases" className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm hover:shadow-md transition">
+              <p className="text-3xl font-bold text-neutral-900">{caseSummary.today_count}</p>
+              <p className="mt-1 text-sm text-neutral-500">今日更新</p>
+            </Link>
           </div>
         )}
 

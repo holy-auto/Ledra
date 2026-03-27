@@ -55,6 +55,7 @@ export default function InsurerCertificatePage() {
     tenant_consented: boolean;
   } | null>(null);
   const [disclosureBusy, setDisclosureBusy] = useState(false);
+  const [relatedCases, setRelatedCases] = useState<Array<{id: string; case_number: string; title: string; status: string}>>([]);
 
   useEffect(() => {
     (async () => {
@@ -81,6 +82,14 @@ export default function InsurerCertificatePage() {
             insurer_requested: !!c.pii_disclosed,
             tenant_consented: !!c.pii_disclosed,
           });
+          // Fetch related cases
+          try {
+            const casesRes = await fetch(`/api/insurer/cases?certificate_id=${c.id}`);
+            if (casesRes.ok) {
+              const casesJson = await casesRes.json();
+              setRelatedCases(Array.isArray(casesJson) ? casesJson : casesJson?.cases ?? []);
+            }
+          } catch {}
           // Also fetch detailed disclosure status
           try {
             const dRes = await fetch(`/api/insurer/pii-disclosure?certificate_id=${c.id}`);
@@ -154,6 +163,14 @@ export default function InsurerCertificatePage() {
           </div>
         </div>
         <div className="flex gap-2">
+          {cert && (
+            <Link
+              href={`/insurer/cases?create=true&certificate_id=${cert.id}`}
+              className="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
+            >
+              案件作成
+            </Link>
+          )}
           <a href={pdfOneUrl} className="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100">
             PDF
           </a>
@@ -316,6 +333,24 @@ export default function InsurerCertificatePage() {
             <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
               <div className="text-xs font-semibold tracking-[0.18em] text-neutral-500 mb-4">施工内容（自由記述）</div>
               <div className="text-sm text-neutral-700 whitespace-pre-wrap">{cert.content_free_text}</div>
+            </section>
+          )}
+
+          {/* Related cases */}
+          {relatedCases.length > 0 && (
+            <section className="rounded-2xl border border-neutral-200 bg-white p-6 space-y-3">
+              <h2 className="text-lg font-bold text-neutral-900">関連案件 ({relatedCases.length})</h2>
+              <div className="space-y-2">
+                {relatedCases.map((c) => (
+                  <Link key={c.id} href={`/insurer/cases/${c.id}`} className="flex items-center justify-between rounded-xl border border-neutral-100 px-4 py-3 hover:bg-neutral-50">
+                    <div>
+                      <span className="font-mono text-xs text-neutral-500">{c.case_number}</span>
+                      <span className="ml-2 text-sm font-medium text-neutral-900">{c.title}</span>
+                    </div>
+                    <span className="text-xs text-blue-600">詳細 →</span>
+                  </Link>
+                ))}
+              </div>
             </section>
           )}
         </>

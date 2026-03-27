@@ -23,6 +23,7 @@ function InsurerSidebar() {
         <NavItem href="/insurer/vehicles" label="車両検索" />
         <NavItem href="/insurer/account" label="アカウント" />
         <NavItem href="/insurer/cases" label="案件管理" />
+        <NavItem href="/insurer/stores" label="店舗検索" />
       </nav>
     </aside>
   );
@@ -88,6 +89,12 @@ function MobileMenu() {
           className="block rounded-lg px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
         >
           案件管理
+        </Link>
+        <Link
+          href="/insurer/stores"
+          className="block rounded-lg px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
+        >
+          店舗検索
         </Link>
       </div>
     </details>
