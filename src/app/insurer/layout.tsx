@@ -1,5 +1,10 @@
+"use client";
+
 import { ReactNode } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+const AUTH_ROUTES = ["/insurer/login", "/insurer/forgot-password", "/insurer/reset-password"];
 
 function InsurerSidebar() {
   return (
@@ -90,6 +95,13 @@ function MobileMenu() {
 }
 
 export default function InsurerLayout({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const isAuthPage = AUTH_ROUTES.some((r) => pathname.startsWith(r));
+
+  if (isAuthPage) {
+    return <>{children}</>;
+  }
+
   return (
     <div className="min-h-screen bg-neutral-50">
       <InsurerSidebar />

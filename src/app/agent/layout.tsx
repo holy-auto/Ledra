@@ -1,8 +1,20 @@
+"use client";
+
 import { Suspense } from "react";
+import { usePathname } from "next/navigation";
 import AgentSidebar from "./AgentSidebar";
 import AgentRouteGuard from "./AgentRouteGuard";
 
+const AUTH_ROUTES = ["/agent/login"];
+
 export default function AgentLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const isAuthPage = AUTH_ROUTES.some((r) => pathname.startsWith(r));
+
+  if (isAuthPage) {
+    return <>{children}</>;
+  }
+
   return (
     <div className="flex min-h-screen">
       <AgentSidebar />
