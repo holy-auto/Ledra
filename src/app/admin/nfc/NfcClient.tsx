@@ -107,6 +107,17 @@ export default function NfcClient({ initialRows, vehicleMap, certMap, isAdmin }:
 
   return (
     <>
+      {/* Purchase prompt */}
+      <section className="glass-card p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex-1">
+          <div className="text-sm font-semibold text-primary">NFCタグを追加購入</div>
+          <div className="text-xs text-muted mt-0.5">初回20枚は無料付与済み。追加分はパックでお得に購入できます。</div>
+        </div>
+        <Link href="/admin/billing#nfc" className="btn-secondary text-xs whitespace-nowrap">
+          タグを購入する
+        </Link>
+      </section>
+
       {/* Stats */}
       <section className="grid gap-4 sm:grid-cols-4">
         <div className="glass-card p-5">

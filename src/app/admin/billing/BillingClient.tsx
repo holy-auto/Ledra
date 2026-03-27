@@ -4,6 +4,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import PageHeader from "@/components/ui/PageHeader";
 
+/* ─── Add-on Options ─── */
+const ADDON_OPTIONS = [
+  { key: "additional_store", name: "追加店舗", price: "¥4,980", unit: "/店舗/月", description: "プラン上限を超える追加店舗" },
+  { key: "additional_user", name: "追加ユーザー", price: "¥1,480", unit: "/人/月", description: "プラン上限を超える追加ユーザー" },
+  { key: "invoice_payment", name: "請求書機能＋オンライン決済", price: "¥3,980", unit: "/月", description: "顧客への請求書発行と決済受付" },
+  { key: "priority_support", name: "優先サポート", price: "¥4,980", unit: "/月", description: "優先対応・チャットサポート" },
+  { key: "onboarding", name: "導入伴走", price: "¥19,800", unit: "/月", description: "専任担当による導入支援", packKey: "onboarding_pack", packPrice: "¥49,800", packUnit: "/3ヶ月" },
+];
+
+const NFC_PACKS = [
+  { key: "nfc_10", name: "10枚パック", quantity: 10, price: "¥980", unitPrice: "¥98/枚" },
+  { key: "nfc_30", name: "30枚パック", quantity: 30, price: "¥2,480", unitPrice: "¥83/枚" },
+  { key: "nfc_100", name: "100枚パック", quantity: 100, price: "¥6,980", unitPrice: "¥70/枚", best: true },
+];
+
 const PLANS = [
   {
     tier: "starter",
@@ -164,6 +179,149 @@ function PlanSelector({ currentPlan, isActive }: { currentPlan: string | null; i
           </div>
         </div>
       )}
+    </section>
+  );
+}
+
+/* ─── Add-on Purchase Section ─── */
+function AddonPurchaseSection() {
+  const supabase = useMemo(() => createClient(), []);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handlePurchase = useCallback(async (itemKey: string, type: "addon" | "nfc") => {
+    setBusy(itemKey);
+    setError(null);
+    try {
+      const sessionRes = await supabase.auth.getSession();
+      const access_token = sessionRes.data?.session?.access_token;
+      if (!access_token) { window.location.href = "/login"; return; }
+
+      const res = await fetch("/api/stripe/addon-checkout", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          access_token,
+          items: [{ type, key: itemKey, quantity: 1 }],
+        }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      if (!j?.url) throw new Error("checkout url missing");
+      window.location.href = j.url;
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+    } finally {
+      setBusy(null);
+    }
+  }, [supabase]);
+
+  return (
+    <section className="space-y-4">
+      <div className="text-xs font-semibold tracking-[0.18em] text-muted">追加オプション</div>
+      {error && <div className="text-sm text-red-500">{error}</div>}
+      <div className="space-y-3">
+        {ADDON_OPTIONS.map((opt) => (
+          <div key={opt.key} className="glass-card p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-primary">{opt.name}</div>
+              <div className="text-xs text-muted mt-0.5">{opt.description}</div>
+            </div>
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <div className="text-right">
+                <div className="text-sm font-bold text-primary">{opt.price}<span className="text-xs text-muted font-normal">{opt.unit}</span></div>
+                {opt.packKey && (
+                  <div className="text-[11px] text-muted">パック: {opt.packPrice}{opt.packUnit}</div>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary text-xs whitespace-nowrap"
+                  disabled={busy !== null}
+                  onClick={() => handlePurchase(opt.key, "addon")}
+                >
+                  {busy === opt.key ? "処理中…" : "購入"}
+                </button>
+                {opt.packKey && (
+                  <button
+                    type="button"
+                    className="btn-ghost text-xs whitespace-nowrap"
+                    disabled={busy !== null}
+                    onClick={() => handlePurchase(opt.packKey!, "addon")}
+                  >
+                    {busy === opt.packKey ? "処理中…" : "パック購入"}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ─── NFC Tag Purchase Section ─── */
+function NfcPurchaseSection() {
+  const supabase = useMemo(() => createClient(), []);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handlePurchase = useCallback(async (packKey: string) => {
+    setBusy(packKey);
+    setError(null);
+    try {
+      const sessionRes = await supabase.auth.getSession();
+      const access_token = sessionRes.data?.session?.access_token;
+      if (!access_token) { window.location.href = "/login"; return; }
+
+      const res = await fetch("/api/stripe/addon-checkout", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          access_token,
+          items: [{ type: "nfc", key: packKey, quantity: 1 }],
+        }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      if (!j?.url) throw new Error("checkout url missing");
+      window.location.href = j.url;
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+    } finally {
+      setBusy(null);
+    }
+  }, [supabase]);
+
+  return (
+    <section className="space-y-4">
+      <div className="text-xs font-semibold tracking-[0.18em] text-muted">NFCタグ追加購入</div>
+      <div className="text-xs text-muted">初回20枚は無料付与されます。追加分はパックでご購入いただけます。</div>
+      {error && <div className="text-sm text-red-500">{error}</div>}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {NFC_PACKS.map((pack) => (
+          <div key={pack.key} className={`glass-card p-5 text-center space-y-3 relative ${pack.best ? "ring-2 ring-accent" : ""}`}>
+            {pack.best && (
+              <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2 py-0.5 bg-accent text-inverse text-[10px] font-semibold rounded-full whitespace-nowrap">
+                お得
+              </div>
+            )}
+            <div className="text-2xl font-bold text-primary">{pack.quantity}<span className="text-sm font-normal text-muted">枚</span></div>
+            <div className="text-lg font-bold text-primary">{pack.price}</div>
+            <div className="text-xs text-muted">{pack.unitPrice}</div>
+            <button
+              type="button"
+              className={`w-full ${pack.best ? "btn-primary" : "btn-secondary"} text-xs`}
+              disabled={busy !== null}
+              onClick={() => handlePurchase(pack.key)}
+            >
+              {busy === pack.key ? "処理中…" : "購入する"}
+            </button>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
@@ -560,6 +718,37 @@ export default function BillingPage() {
       {/* Plan selection */}
       {!loading && tenant && (
         <PlanSelector currentPlan={tenant.plan_tier} isActive={tenant.is_active === true} />
+      )}
+
+      {/* Stripe Portal */}
+      {!loading && tenant && hasSubscription && (
+        <section className="space-y-3">
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">お支払い管理</div>
+          <div className="glass-card p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-primary">カード情報・請求履歴</div>
+              <div className="text-xs text-muted mt-0.5">Stripeポータルでお支払い方法の変更、請求書の確認、プランの解約ができます。</div>
+            </div>
+            <button
+              type="button"
+              className="btn-secondary text-xs whitespace-nowrap"
+              disabled={portalBusy}
+              onClick={openPortal}
+            >
+              {portalBusy ? "リダイレクト中…" : "Stripeポータルを開く"}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Add-on options */}
+      {!loading && tenant && tenant.plan_tier && tenant.plan_tier !== "free" && (
+        <AddonPurchaseSection />
+      )}
+
+      {/* NFC tag purchase */}
+      {!loading && tenant && (
+        <NfcPurchaseSection />
       )}
     </div>
   );
