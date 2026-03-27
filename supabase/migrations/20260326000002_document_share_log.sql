@@ -10,6 +10,6 @@ CREATE TABLE IF NOT EXISTS document_share_log (
   sent_by uuid
 );
 
-CREATE INDEX idx_doc_share_log_doc ON document_share_log(document_id);
+CREATE INDEX IF NOT EXISTS idx_doc_share_log_doc ON document_share_log(document_id);
 
 ALTER TABLE document_share_log ENABLE ROW LEVEL SECURITY;

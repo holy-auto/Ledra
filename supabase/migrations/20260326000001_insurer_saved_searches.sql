@@ -13,4 +13,7 @@ alter table insurer_saved_searches enable row level security;
 
 create policy "Insurers can manage own searches"
   on insurer_saved_searches for all
-  using (insurer_id = (select id from insurers where auth_user_id = auth.uid()));
+  using (insurer_id in (
+    select insurer_id from insurer_users
+    where user_id = auth.uid() and is_active = true
+  ));

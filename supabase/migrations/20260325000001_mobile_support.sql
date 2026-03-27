@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   performed_at timestamptz NOT NULL DEFAULT now()
 );
 
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS performed_at timestamptz NOT NULL DEFAULT now();
+
 CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant
   ON audit_logs(tenant_id, performed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_record

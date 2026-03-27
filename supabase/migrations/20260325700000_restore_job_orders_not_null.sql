@@ -5,7 +5,7 @@
 
 -- public_id: NULL が残っていれば埋める
 UPDATE job_orders
-SET public_id = 'jo_' || encode(gen_random_bytes(12), 'hex')
+SET public_id = 'jo_' || replace(gen_random_uuid()::text, '-', '')
 WHERE public_id IS NULL;
 
 ALTER TABLE job_orders ALTER COLUMN public_id SET NOT NULL;

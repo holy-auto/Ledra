@@ -28,9 +28,9 @@ CREATE TABLE IF NOT EXISTS square_connections (
   updated_at              timestamptz DEFAULT now()
 );
 
-CREATE INDEX idx_square_connections_tenant    ON square_connections(tenant_id);
-CREATE INDEX idx_square_connections_status    ON square_connections(status);
-CREATE INDEX idx_square_connections_merchant  ON square_connections(square_merchant_id);
+CREATE INDEX IF NOT EXISTS idx_square_connections_tenant    ON square_connections(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_square_connections_status    ON square_connections(status);
+CREATE INDEX IF NOT EXISTS idx_square_connections_merchant  ON square_connections(square_merchant_id);
 
 -- ============================================================
 -- 2) square_orders – Imported Square orders/sales
@@ -66,11 +66,11 @@ CREATE TABLE IF NOT EXISTS square_orders (
   CONSTRAINT uq_square_orders_tenant_order UNIQUE (tenant_id, square_order_id)
 );
 
-CREATE INDEX idx_square_orders_tenant       ON square_orders(tenant_id);
-CREATE INDEX idx_square_orders_order_id     ON square_orders(square_order_id);
-CREATE INDEX idx_square_orders_created_at   ON square_orders(square_created_at);
-CREATE INDEX idx_square_orders_customer     ON square_orders(customer_id);
-CREATE INDEX idx_square_orders_synced_at    ON square_orders(synced_at);
+CREATE INDEX IF NOT EXISTS idx_square_orders_tenant       ON square_orders(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_square_orders_order_id     ON square_orders(square_order_id);
+CREATE INDEX IF NOT EXISTS idx_square_orders_created_at   ON square_orders(square_created_at);
+CREATE INDEX IF NOT EXISTS idx_square_orders_customer     ON square_orders(customer_id);
+CREATE INDEX IF NOT EXISTS idx_square_orders_synced_at    ON square_orders(synced_at);
 
 -- ============================================================
 -- 3) square_sync_runs – Audit log for sync operations
@@ -95,9 +95,9 @@ CREATE TABLE IF NOT EXISTS square_sync_runs (
   created_at      timestamptz DEFAULT now()
 );
 
-CREATE INDEX idx_square_sync_runs_tenant    ON square_sync_runs(tenant_id);
-CREATE INDEX idx_square_sync_runs_status    ON square_sync_runs(tenant_id, status);
-CREATE INDEX idx_square_sync_runs_started   ON square_sync_runs(started_at);
+CREATE INDEX IF NOT EXISTS idx_square_sync_runs_tenant    ON square_sync_runs(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_square_sync_runs_status    ON square_sync_runs(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_square_sync_runs_started   ON square_sync_runs(started_at);
 
 -- ============================================================
 -- 4) RLS – Enable on all tables
