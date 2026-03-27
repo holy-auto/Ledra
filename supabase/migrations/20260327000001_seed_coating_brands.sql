@@ -33,6 +33,15 @@ DECLARE
   b_g_power      uuid := gen_random_uuid();
   b_pika_rain    uuid := gen_random_uuid();
   b_ceramic_pro_ion uuid := gen_random_uuid();
+  b_kamikaze     uuid := gen_random_uuid();
+  b_ulgo         uuid := gen_random_uuid();
+  b_adams        uuid := gen_random_uuid();
+  b_cbp          uuid := gen_random_uuid();
+  b_crystal_proc uuid := gen_random_uuid();
+  b_kisho        uuid := gen_random_uuid();
+  b_pellucid     uuid := gen_random_uuid();
+  b_koch_chemie  uuid := gen_random_uuid();
+  b_26jpn        uuid := gen_random_uuid();
 BEGIN
 
 -- ===== Brands =====
@@ -65,7 +74,16 @@ INSERT INTO brands (id, tenant_id, name, description, website_url) VALUES
   (b_sensha,        NULL, 'SENSHA（洗車の王国）', '日本発。フランチャイズ展開のコーティング＆洗車ブランド。', 'https://www.sensha.com.co.jp'),
   (b_g_power,       NULL, 'G-POWER',        '日本発。G-POWER 88等のプロ用ガラスコーティング。業界注目メーカー。', NULL),
   (b_pika_rain,     NULL, 'ピカピカレイン',    '日本発。ECサイト中心で展開するセラミック＆ガラスコーティング。DIY～セミプロ向け。', 'https://www.pikapikarain.com'),
-  (b_ceramic_pro_ion, NULL, 'Opti-Coat',    '米国発。パーマネント（永久）セラミックコーティングの先駆者。ディーラー施工専用。', NULL)
+  (b_ceramic_pro_ion, NULL, 'Opti-Coat',    '米国発。パーマネント（永久）セラミックコーティングの先駆者。ディーラー施工専用。', NULL),
+  (b_kamikaze,      NULL, 'Kamikaze Collection', '横浜発。Miyabi/ISM/Zipangシリーズ。世界のプロディテイラーから高評価。', 'https://kamikaze-collection.store'),
+  (b_ulgo,          NULL, 'ULGO',         '日本発。カーメイクアートプロと化学メーカー共同開発。自社工場で全製品生産。', 'https://www.ulgo.jp'),
+  (b_adams,         NULL, 'Adam''s Polishes', '米国発。グラフェンセラミックコーティングで人気。日本正規代理店あり。', 'https://adamspolishes.jp'),
+  (b_cbp,           NULL, 'カービューティープロ（CBP）', 'ディテーリングサービス全国ネット展開。PROMAX EXE EVO-1等の独自コーティング。', 'https://www.cbp.co.jp'),
+  (b_crystal_proc,  NULL, 'クリスタルプロセス', '日本のケミカルメーカー。ハイテクX1シリーズ等プロ用ガラスコーティング多数。', 'https://crystalprocess.co.jp'),
+  (b_kisho,         NULL, 'KISHO',        '日本製。51年の実績を持つプロ用セラミックコーティングメーカー。OEM供給も。', 'https://www.kisho-coating.com'),
+  (b_pellucid,      NULL, 'Pellucid（ペルシード）', '日本製。浸透型ガラスコーティング。カー用品店で人気の高いブランド。', 'https://pellucid.co.jp'),
+  (b_koch_chemie,   NULL, 'Koch Chemie',  'ドイツ発。80年以上の歴史を持つプロ用カーケアケミカルメーカー。', NULL),
+  (b_26jpn,         NULL, '26JPN',        '日本×英国のケミカル技術融合。Crystal Coat等のプロ用セラミックコーティング。', 'https://www.26jpn.com')
 ON CONFLICT (id) DO NOTHING;
 
 -- ===== Coating Products =====
@@ -277,5 +295,65 @@ INSERT INTO coating_products (brand_id, tenant_id, name, product_code, descripti
   (b_ceramic_pro_ion, NULL, 'Opti-Coat Pro+',    'OCP+',    'パーマネントセラミックコーティング。一度の施工で半永久的な保護。'),
   (b_ceramic_pro_ion, NULL, 'Opti-Coat Pro 3',   'OCP3',    '第3世代パーマネントコーティング。'),
   (b_ceramic_pro_ion, NULL, 'Opti-Coat Pro',     'OCP',     'オリジナルパーマネントコーティング。認定ディーラー専用。');
+
+-- Kamikaze Collection
+INSERT INTO coating_products (brand_id, tenant_id, name, product_code, description) VALUES
+  (b_kamikaze, NULL, 'ENREI COAT',      'KC-EN',    '最新最上位。認定ディテイラー専用の2層式プレミアムコーティング。'),
+  (b_kamikaze, NULL, 'ZIPANG COAT 2.0', 'KC-ZP',    'ISM PRO技術進化版。セミセルフヒーリング機能。Miyabi重ね塗りで5年超耐久。'),
+  (b_kamikaze, NULL, 'MIYABI COAT 2.0', 'KC-MY',    'ベースコート。カーボンナノチューブ配合。米国市場で5年連続トップセラー。'),
+  (b_kamikaze, NULL, 'ISM COAT v3.0',   'KC-ISM',   'トップコート。Miyabiとの2層施工で高い保護性能。'),
+  (b_kamikaze, NULL, 'Over Coat',       'KC-OC',    'メンテナンス用トップコート。光沢・滑水性の回復。');
+
+-- ULGO
+INSERT INTO coating_products (brand_id, tenant_id, name, product_code, description) VALUES
+  (b_ulgo, NULL, 'ULGO Premium Series',  'UL-PRM',   '自己修復機能付き最上位シリーズ。認定プロショップ専用。'),
+  (b_ulgo, NULL, 'ULGO AP-1（撥水）',     'UL-AP1',   'Wレイヤー撥水タイプ。高濃度ガラス成分。膜厚感のある重厚な仕上がり。'),
+  (b_ulgo, NULL, 'ULGO AP-2（疎水）',     'UL-AP2',   'Wレイヤー疎水タイプ。ウォータースポット低減。しっとりとした光沢。'),
+  (b_ulgo, NULL, 'ULGO Ceramic Mold',    'UL-CM',    'プラスチックパーツ専用セラミックコーティング。');
+
+-- Adam's Polishes
+INSERT INTO coating_products (brand_id, tenant_id, name, product_code, description) VALUES
+  (b_adams, NULL, 'Graphene Ceramic Coating Advanced',       'AD-GCCA',  '最上位。10H硬度、9年超保護。レジン含有50%増。正規施工店専用。'),
+  (b_adams, NULL, 'Graphene Ceramic Coating',                'AD-GCC',   'グラフェン配合セラミックコーティング。高い接触角110-118°。'),
+  (b_adams, NULL, 'Graphene Ceramic Spray Coating Advanced', 'AD-GCSA',  'スプレータイプ上位版。レジン含有量2倍。'),
+  (b_adams, NULL, 'Graphene Ceramic Spray Coating',          'AD-GCS',   'スプレータイプ。DIY向け簡単施工。');
+
+-- カービューティープロ（CBP）
+INSERT INTO coating_products (brand_id, tenant_id, name, product_code, description) VALUES
+  (b_cbp, NULL, 'PROMAX EXE EVO-1',  'CBP-EVO1',  '最上位。ポリシラザンBASE+シランTOPの多層構造。高密度・高硬度・高耐久。'),
+  (b_cbp, NULL, 'PCX-S9',            'CBP-S9',    'デュアルレイヤー被膜。優れた排水性・防汚性・持続性。'),
+  (b_cbp, NULL, 'PCX-S8',            'CBP-S8',    '撥水系ガラスコーティング。艶やかな光沢としなやかさ。'),
+  (b_cbp, NULL, 'PCX-S7',            'CBP-S7',    'ワニス構造の緻密な架橋構造。防汚性に優れた新素材ガラス系。'),
+  (b_cbp, NULL, 'PROMAX EXE',        'CBP-EXE',   'ポリシラザン主成分の2液混合単層式。5年サポート。');
+
+-- クリスタルプロセス
+INSERT INTO coating_products (brand_id, tenant_id, name, product_code, description) VALUES
+  (b_crystal_proc, NULL, 'ハイテクX1 8500',          'CP-8500',  '最高級。有効成分85%、硬度6H。5年超持続。完全無機質ガラス被膜。'),
+  (b_crystal_proc, NULL, 'ハイテクX1 ダイヤモンドコート', 'CP-DC',   '4nmダイヤモンド微粒子配合。強度と撥水性を極限まで向上。'),
+  (b_crystal_proc, NULL, 'ハイテクX1 5000',          'CP-5000',  '有効成分70%。低溶剤・低臭。3年超持続。'),
+  (b_crystal_proc, NULL, 'ハイテクX1 高速硬化コート',   'CP-QC',   '塗布2時間で溶剤に強い被膜形成。納車時間短縮。'),
+  (b_crystal_proc, NULL, 'Si-700',                  'CP-Si700', '施工30分後に最高光沢+超撥水。メンテナンス向け。'),
+  (b_crystal_proc, NULL, 'エヴァンスコート',           'CP-EV',   '塗布面が白く判別可能。抜群の作業性。');
+
+-- KISHO
+INSERT INTO coating_products (brand_id, tenant_id, name, product_code, description) VALUES
+  (b_kisho, NULL, 'KISHO Si-901',    'KS-901',   'フラッグシップ。51年の技術が詰まったプロ用ガラスコーティング。'),
+  (b_kisho, NULL, 'KISHO Si-811',    'KS-811',   'スタンダードプロ用ガラスコーティング。100%日本製。');
+
+-- Pellucid（ペルシード）
+INSERT INTO coating_products (brand_id, tenant_id, name, product_code, description) VALUES
+  (b_pellucid, NULL, 'プレミアムトップコート180',  'PCD-901',  'ウォータースポット・雨ジミ付着抑制。プロ施工車にも対応。'),
+  (b_pellucid, NULL, 'ドロップショット2',         'PCD-812',  '浸透型撥水ガラスコーティング。カー用品店人気No.1クラス。'),
+  (b_pellucid, NULL, 'ハイドロコーティング',       'PCD-811',  '疎水タイプの浸透型ガラスコーティング。');
+
+-- Koch Chemie
+INSERT INTO coating_products (brand_id, tenant_id, name, product_code, description) VALUES
+  (b_koch_chemie, NULL, '1K Nano',       'KC-1KN',   'プロ用ナノセラミックコーティング。ドイツ品質。'),
+  (b_koch_chemie, NULL, 'Speed Glass Coating', 'KC-SGC', 'ガラス用撥水コーティング。');
+
+-- 26JPN
+INSERT INTO coating_products (brand_id, tenant_id, name, product_code, description) VALUES
+  (b_26jpn, NULL, 'Crystal Coat',     '26-CC',    'プロ用セラミックスプレーシーラント。6-9ヶ月耐久。'),
+  (b_26jpn, NULL, 'Sapphire V2',      '26-SP',    'セラミックスプレーコーティング上位版。');
 
 END $$;
