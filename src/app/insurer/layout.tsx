@@ -22,7 +22,7 @@ function InsurerSidebar() {
         <NavItem href="/insurer/search" label="証明書検索" />
         <NavItem href="/insurer/vehicles" label="車両検索" />
         <NavItem href="/insurer/account" label="アカウント" />
-        <NavItem href="/insurer/cases" label="案件管理" badge="準備中" />
+        <NavItem href="/insurer/cases" label="案件管理" />
       </nav>
     </aside>
   );
