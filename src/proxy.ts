@@ -137,13 +137,30 @@ export const config = {
   ],
 };
 
-/** Refresh Supabase session cookies on every request */
+/** Refresh Supabase session cookies only when token is near expiry */
 async function refreshSession(request: NextRequest) {
   const response = NextResponse.next({ request });
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return response;
+
+  // Check if session token is near expiry before making external call
+  const authCookie = request.cookies.getAll().find((c) => c.name.includes("auth-token"));
+  if (authCookie?.value) {
+    try {
+      // Decode JWT payload to check exp (base64url)
+      const payload = JSON.parse(atob(authCookie.value.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+      const expiresAt = payload.exp * 1000;
+      const fiveMinutes = 5 * 60 * 1000;
+      // Skip refresh if token has >5 min left
+      if (expiresAt - Date.now() > fiveMinutes) {
+        return response;
+      }
+    } catch {
+      // If we can't decode, fall through to refresh
+    }
+  }
 
   const supabase = createServerClient(url, key, {
     cookies: {
@@ -159,7 +176,7 @@ async function refreshSession(request: NextRequest) {
     },
   });
 
-  // Fire getUser to refresh the session token
+  // Only called when token is near expiry or cannot be decoded
   await supabase.auth.getUser();
 
   return response;

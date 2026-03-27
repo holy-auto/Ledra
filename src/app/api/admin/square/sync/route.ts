@@ -229,67 +229,71 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // オーダーを upsert
+    // オーダーを upsert — batch check existing then batch insert
     let imported = 0;
     let skipped = 0;
 
-    for (const order of orders) {
-      // 既存チェック
-      const { data: existing } = await admin
+    if (orders.length > 0) {
+      // Batch fetch existing order IDs
+      const squareOrderIds = orders.map((o: any) => o.id);
+      const { data: existingOrders } = await admin
         .from("square_orders")
-        .select("id")
+        .select("square_order_id")
         .eq("tenant_id", caller.tenantId)
-        .eq("square_order_id", order.id)
-        .maybeSingle();
+        .in("square_order_id", squareOrderIds);
 
-      if (existing) {
-        skipped++;
-        continue;
-      }
+      const existingSet = new Set((existingOrders ?? []).map((e) => e.square_order_id));
 
-      const totalMoney = order.total_money?.amount ?? 0;
-      const taxMoney = order.total_tax_money?.amount ?? 0;
-      const discountMoney = order.total_discount_money?.amount ?? 0;
-      const tipMoney = order.total_tip_money?.amount ?? 0;
-      const netAmount = totalMoney - taxMoney;
+      const newOrders = orders.filter((o: any) => !existingSet.has(o.id));
+      skipped = orders.length - newOrders.length;
 
-      // Extract payment methods from tenders
-      const paymentMethods: string[] = (order.tenders ?? []).map(
-        (t: any) => t.type ?? "UNKNOWN",
-      );
+      // Batch insert new orders in chunks of 50
+      const CHUNK_SIZE = 50;
+      for (let i = 0; i < newOrders.length; i += CHUNK_SIZE) {
+        const chunk = newOrders.slice(i, i + CHUNK_SIZE);
+        const rows = chunk.map((order: any) => {
+          const totalMoney = order.total_money?.amount ?? 0;
+          const taxMoney = order.total_tax_money?.amount ?? 0;
+          const discountMoney = order.total_discount_money?.amount ?? 0;
+          const tipMoney = order.total_tip_money?.amount ?? 0;
+          const paymentMethods: string[] = (order.tenders ?? []).map(
+            (t: any) => t.type ?? "UNKNOWN",
+          );
+          const receiptUrl =
+            (order.tenders ?? []).find((t: any) => t.receipt_url)?.receipt_url ?? null;
 
-      // Extract receipt URL from tenders
-      const receiptUrl =
-        (order.tenders ?? []).find((t: any) => t.receipt_url)?.receipt_url ?? null;
-
-      const { error: insertErr } = await admin
-        .from("square_orders")
-        .insert({
-          tenant_id: caller.tenantId,
-          square_order_id: order.id,
-          square_location_id: order.location_id,
-          order_state: order.state,
-          total_amount: totalMoney,
-          tax_amount: taxMoney,
-          discount_amount: discountMoney,
-          tip_amount: tipMoney,
-          net_amount: netAmount,
-          currency: order.total_money?.currency ?? "JPY",
-          payment_methods: paymentMethods,
-          items_json: order.line_items ?? [],
-          tenders_json: order.tenders ?? [],
-          square_customer_id: order.customer_id ?? null,
-          square_receipt_url: receiptUrl,
-          square_created_at: order.created_at,
-          square_closed_at: order.closed_at ?? null,
-          raw_json: order,
+          return {
+            tenant_id: caller.tenantId,
+            square_order_id: order.id,
+            square_location_id: order.location_id,
+            order_state: order.state,
+            total_amount: totalMoney,
+            tax_amount: taxMoney,
+            discount_amount: discountMoney,
+            tip_amount: tipMoney,
+            net_amount: totalMoney - taxMoney,
+            currency: order.total_money?.currency ?? "JPY",
+            payment_methods: paymentMethods,
+            items_json: order.line_items ?? [],
+            tenders_json: order.tenders ?? [],
+            square_customer_id: order.customer_id ?? null,
+            square_receipt_url: receiptUrl,
+            square_created_at: order.created_at,
+            square_closed_at: order.closed_at ?? null,
+            raw_json: order,
+          };
         });
 
-      if (insertErr) {
-        console.error("[square sync] insert error for order:", order.id, insertErr.message);
-        skipped++;
-      } else {
-        imported++;
+        const { error: insertErr } = await admin
+          .from("square_orders")
+          .insert(rows);
+
+        if (insertErr) {
+          console.error("[square sync] batch insert error:", insertErr.message);
+          skipped += chunk.length;
+        } else {
+          imported += chunk.length;
+        }
       }
     }
 

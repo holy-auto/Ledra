@@ -36,8 +36,24 @@ function useSidebarBadges(intervalMs = 60_000): BadgeCounts {
   useEffect(() => {
     fetchBadges();
     timerRef.current = setInterval(fetchBadges, intervalMs);
+
+    // Pause polling when tab is hidden, resume when visible
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+      } else {
+        fetchBadges();
+        timerRef.current = setInterval(fetchBadges, intervalMs);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [fetchBadges, intervalMs]);
 

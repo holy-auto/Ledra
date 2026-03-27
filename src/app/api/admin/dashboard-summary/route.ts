@@ -39,143 +39,86 @@ export async function GET() {
     weekEnd.setDate(weekStart.getDate() + 6);
     const weekEndStr = weekEnd.toISOString().slice(0, 10);
 
-    // ── Section: Certificates ──
-    let certificates: Record<string, unknown> = { total: 0, active: 0, void: 0, draft: 0, thisMonth: 0 };
-    try {
-      const [
-        { count: total },
-        { count: active },
-        { count: voidCount },
-        { count: draft },
-        { count: thisMonth },
-      ] = await Promise.all([
-        admin.from("certificates").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId),
-        admin.from("certificates").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("status", "active"),
-        admin.from("certificates").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("status", "void"),
-        admin.from("certificates").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("status", "draft"),
-        admin.from("certificates").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).gte("created_at", thisMonthStart),
-      ]);
-      certificates = { total: total ?? 0, active: active ?? 0, void: voidCount ?? 0, draft: draft ?? 0, thisMonth: thisMonth ?? 0 };
-    } catch (e) {
-      console.error("[dashboard-summary] certificates section failed:", e);
-    }
+    // ── Fetch all counts in a single Promise.all (5 parallel groups → 5 round trips max) ──
+    const [certResult, customerResult, invoiceResult, reservationResult, orderResult] = await Promise.allSettled([
+      // Certificates: fetch all with status to compute counts in JS (1 query instead of 7)
+      admin
+        .from("certificates")
+        .select("status, created_at, expiry_date")
+        .eq("tenant_id", tenantId),
+      // Customers: 2 counts in parallel
+      Promise.all([
+        admin.from("customers").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId),
+        admin.from("customers").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).gte("created_at", thisMonthStart),
+      ]),
+      // Invoices: fetch unpaid docs (covers total, unpaid, unpaidAmount, overdueCount in 1 query + 1 count)
+      Promise.all([
+        admin.from("documents").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("doc_type", "invoice"),
+        admin.from("documents").select("total, status").eq("tenant_id", tenantId).eq("doc_type", "invoice").in("status", ["sent", "overdue"]),
+      ]),
+      // Reservations: 3 counts in parallel
+      Promise.all([
+        admin.from("reservations").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("scheduled_date", today).neq("status", "cancelled"),
+        admin.from("reservations").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).gte("scheduled_date", weekStartStr).lte("scheduled_date", weekEndStr).neq("status", "cancelled"),
+        admin.from("reservations").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("status", "confirmed"),
+      ]),
+      // Orders: 2 counts in parallel
+      Promise.all([
+        admin.from("job_orders").select("id", { count: "exact", head: true }).or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`).in("status", ["pending", "accepted", "in_progress", "approval_pending", "payment_pending"]),
+        admin.from("job_orders").select("id", { count: "exact", head: true }).or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`).eq("status", "completed").gte("updated_at", thisMonthStart),
+      ]),
+    ]);
 
-    // ── Section: Expiring certificates ──
+    // ── Section: Certificates (computed from single query) ──
+    let certificates: Record<string, unknown> = { total: 0, active: 0, void: 0, draft: 0, thisMonth: 0 };
     let expiring = { next7days: 0, next30days: 0 };
-    try {
-      const [{ count: exp7 }, { count: exp30 }] = await Promise.all([
-        admin
-          .from("certificates")
-          .select("id", { count: "exact", head: true })
-          .eq("tenant_id", tenantId)
-          .eq("status", "active")
-          .lte("expiry_date", next7daysStr)
-          .gte("expiry_date", today),
-        admin
-          .from("certificates")
-          .select("id", { count: "exact", head: true })
-          .eq("tenant_id", tenantId)
-          .eq("status", "active")
-          .lte("expiry_date", next30daysStr)
-          .gte("expiry_date", today),
-      ]);
-      expiring = { next7days: exp7 ?? 0, next30days: exp30 ?? 0 };
-    } catch (e) {
-      console.error("[dashboard-summary] expiring section failed:", e);
+    if (certResult.status === "fulfilled") {
+      const certs = certResult.value.data ?? [];
+      let total = 0, active = 0, voidCount = 0, draft = 0, thisMonth = 0, exp7 = 0, exp30 = 0;
+      for (const c of certs) {
+        total++;
+        if (c.status === "active") active++;
+        else if (c.status === "void") voidCount++;
+        else if (c.status === "draft") draft++;
+        if (c.created_at && c.created_at >= thisMonthStart) thisMonth++;
+        if (c.status === "active" && c.expiry_date) {
+          if (c.expiry_date >= today && c.expiry_date <= next7daysStr) exp7++;
+          if (c.expiry_date >= today && c.expiry_date <= next30daysStr) exp30++;
+        }
+      }
+      certificates = { total, active, void: voidCount, draft, thisMonth };
+      expiring = { next7days: exp7, next30days: exp30 };
     }
 
     // ── Section: Customers ──
     let customers = { total: 0, thisMonth: 0 };
-    try {
-      const [{ count: custTotal }, { count: custMonth }] = await Promise.all([
-        admin.from("customers").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId),
-        admin.from("customers").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).gte("created_at", thisMonthStart),
-      ]);
+    if (customerResult.status === "fulfilled") {
+      const [{ count: custTotal }, { count: custMonth }] = customerResult.value;
       customers = { total: custTotal ?? 0, thisMonth: custMonth ?? 0 };
-    } catch (e) {
-      console.error("[dashboard-summary] customers section failed:", e);
     }
 
     // ── Section: Invoices ──
     let invoices = { total: 0, unpaid: 0, unpaidAmount: 0, overdueCount: 0 };
-    try {
-      const [{ count: invTotal }, { data: unpaidDocs }, { count: overdueCount }] = await Promise.all([
-        admin
-          .from("documents")
-          .select("id", { count: "exact", head: true })
-          .eq("tenant_id", tenantId)
-          .eq("doc_type", "invoice"),
-        admin
-          .from("documents")
-          .select("total, status")
-          .eq("tenant_id", tenantId)
-          .eq("doc_type", "invoice")
-          .in("status", ["sent", "overdue"]),
-        admin
-          .from("documents")
-          .select("id", { count: "exact", head: true })
-          .eq("tenant_id", tenantId)
-          .eq("doc_type", "invoice")
-          .eq("status", "overdue"),
-      ]);
-      const unpaidAmount = (unpaidDocs ?? []).reduce((sum: number, d: any) => sum + (d.total ?? 0), 0);
-      invoices = {
-        total: invTotal ?? 0,
-        unpaid: (unpaidDocs ?? []).length,
-        unpaidAmount,
-        overdueCount: overdueCount ?? 0,
-      };
-    } catch (e) {
-      console.error("[dashboard-summary] invoices section failed:", e);
+    if (invoiceResult.status === "fulfilled") {
+      const [{ count: invTotal }, { data: unpaidDocs }] = invoiceResult.value;
+      const docs = unpaidDocs ?? [];
+      const unpaidAmount = docs.reduce((sum: number, d: any) => sum + (d.total ?? 0), 0);
+      const overdueCount = docs.filter((d: any) => d.status === "overdue").length;
+      invoices = { total: invTotal ?? 0, unpaid: docs.length, unpaidAmount, overdueCount };
     }
 
     // ── Section: Reservations ──
     let reservations = { today: 0, thisWeek: 0, pending: 0 };
-    try {
-      const [{ count: resToday }, { count: resWeek }, { count: resPending }] = await Promise.all([
-        admin
-          .from("reservations")
-          .select("id", { count: "exact", head: true })
-          .eq("tenant_id", tenantId)
-          .eq("scheduled_date", today)
-          .neq("status", "cancelled"),
-        admin
-          .from("reservations")
-          .select("id", { count: "exact", head: true })
-          .eq("tenant_id", tenantId)
-          .gte("scheduled_date", weekStartStr)
-          .lte("scheduled_date", weekEndStr)
-          .neq("status", "cancelled"),
-        admin
-          .from("reservations")
-          .select("id", { count: "exact", head: true })
-          .eq("tenant_id", tenantId)
-          .eq("status", "confirmed"),
-      ]);
+    if (reservationResult.status === "fulfilled") {
+      const [{ count: resToday }, { count: resWeek }, { count: resPending }] = reservationResult.value;
       reservations = { today: resToday ?? 0, thisWeek: resWeek ?? 0, pending: resPending ?? 0 };
-    } catch (e) {
-      console.error("[dashboard-summary] reservations section failed:", e);
     }
 
     // ── Section: Orders ──
     let orders = { active: 0, completedThisMonth: 0 };
-    try {
-      const [{ count: activeOrders }, { count: completedMonth }] = await Promise.all([
-        admin
-          .from("job_orders")
-          .select("id", { count: "exact", head: true })
-          .or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`)
-          .in("status", ["pending", "accepted", "in_progress", "approval_pending", "payment_pending"]),
-        admin
-          .from("job_orders")
-          .select("id", { count: "exact", head: true })
-          .or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`)
-          .eq("status", "completed")
-          .gte("updated_at", thisMonthStart),
-      ]);
+    if (orderResult.status === "fulfilled") {
+      const [{ count: activeOrders }, { count: completedMonth }] = orderResult.value;
       orders = { active: activeOrders ?? 0, completedThisMonth: completedMonth ?? 0 };
-    } catch (e) {
-      console.error("[dashboard-summary] orders section failed:", e);
     }
 
     // ── Section: Recent Certificates ──

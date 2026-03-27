@@ -76,9 +76,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, total: 0, inserted: 0, errors: [] });
     }
 
-    let inserted = 0;
     const errors: Array<{ row: number; error: string }> = [];
+    const validRows: Array<{ maker: string; model: string; year: number | null; plate_display: string | null; vin_code: string | null; notes: string | null }> = [];
 
+    // Validate all rows first
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       const parsed = vehicleCreateSchema.safeParse(r);
@@ -86,8 +87,15 @@ export async function POST(req: Request) {
         errors.push({ row: i + 1, error: parsed.error.issues[0]?.message ?? "バリデーションエラー" });
         continue;
       }
-      const b = parsed.data;
-      const { error } = await supabase.from("vehicles").insert({
+      validRows.push(parsed.data as typeof validRows[number]);
+    }
+
+    // Batch insert valid rows in chunks of 100
+    let inserted = 0;
+    const CHUNK_SIZE = 100;
+    for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
+      const chunk = validRows.slice(i, i + CHUNK_SIZE);
+      const insertData = chunk.map((b) => ({
         tenant_id: caller.tenantId,
         maker: b.maker,
         model: b.model,
@@ -95,11 +103,30 @@ export async function POST(req: Request) {
         plate_display: b.plate_display ?? null,
         vin_code: b.vin_code ?? null,
         notes: b.notes ?? null,
-      });
+      }));
+
+      const { error } = await supabase.from("vehicles").insert(insertData);
       if (error) {
-        errors.push({ row: i + 1, error: error.message });
+        // If batch fails, fall back to individual inserts for this chunk
+        for (let j = 0; j < chunk.length; j++) {
+          const b = chunk[j];
+          const { error: singleErr } = await supabase.from("vehicles").insert({
+            tenant_id: caller.tenantId,
+            maker: b.maker,
+            model: b.model,
+            year: b.year ?? null,
+            plate_display: b.plate_display ?? null,
+            vin_code: b.vin_code ?? null,
+            notes: b.notes ?? null,
+          });
+          if (singleErr) {
+            errors.push({ row: i + j + 1, error: singleErr.message });
+          } else {
+            inserted++;
+          }
+        }
       } else {
-        inserted++;
+        inserted += chunk.length;
       }
     }
 

@@ -24,9 +24,18 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: "10mb",
     },
+    optimizePackageImports: [
+      "@supabase/ssr",
+      "@supabase/supabase-js",
+      "@upstash/redis",
+      "@upstash/ratelimit",
+      "zod",
+    ],
   },
 
   images: {
+    formats: ["image/avif", "image/webp"],
+    minimumCacheTTL: 31536000,
     remotePatterns: [
       {
         protocol: "https",

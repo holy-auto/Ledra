@@ -20,14 +20,17 @@ jobs:
 
       - run: npm ci
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Type Check
-        run: npx tsc --noEmit
-
-      - name: Unit Tests
-        run: npm test
+      - name: Lint, Type Check & Unit Tests (parallel)
+        run: |
+          npm run lint &
+          PID_LINT=$!
+          npx tsc --noEmit &
+          PID_TSC=$!
+          npm test &
+          PID_TEST=$!
+          wait $PID_LINT || exit 1
+          wait $PID_TSC || exit 1
+          wait $PID_TEST || exit 1
 
   e2e:
     name: E2E Tests
@@ -43,8 +46,28 @@ jobs:
 
       - run: npm ci
 
+      - name: Cache Playwright Browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
+
       - name: Install Playwright Browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright Deps (cached)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Cache Next.js Build
+        uses: actions/cache@v4
+        with:
+          path: .next
+          key: nextjs-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}-${{ hashFiles('src/**') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}-
 
       - name: Build
         run: npm run build

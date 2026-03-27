@@ -89,67 +89,74 @@ export async function GET(req: NextRequest) {
       .eq("status", "overdue")
       .lte("due_date", threeDaysAgoStr);
 
-    for (const inv of overdueForReminder ?? []) {
-      // Check if already notified
-      const { count: alreadySent } = await supabase
-        .from("notification_logs")
-        .select("*", { count: "exact", head: true })
-        .eq("target_type", "invoice")
-        .eq("target_id", inv.id)
-        .eq("type", "overdue_reminder");
+    if (overdueForReminder && overdueForReminder.length > 0) {
+      // Batch fetch: notification_logs, customers, tenants
+      const invIds = overdueForReminder.map((inv) => inv.id);
+      const customerIds = [...new Set(overdueForReminder.map((inv) => inv.customer_id).filter(Boolean))] as string[];
+      const tenantIds = [...new Set(overdueForReminder.map((inv) => inv.tenant_id).filter(Boolean))] as string[];
 
-      if ((alreadySent ?? 0) > 0) continue;
+      const [{ data: existingLogs }, { data: customers }, { data: tenants }] = await Promise.all([
+        supabase
+          .from("notification_logs")
+          .select("target_id")
+          .eq("target_type", "invoice")
+          .eq("type", "overdue_reminder")
+          .in("target_id", invIds),
+        supabase
+          .from("customers")
+          .select("id, name, email")
+          .in("id", customerIds),
+        supabase
+          .from("tenants")
+          .select("id, name")
+          .in("id", tenantIds),
+      ]);
 
-      // Get customer email
-      if (!inv.customer_id) continue;
-      const { data: customer } = await supabase
-        .from("customers")
-        .select("name, email")
-        .eq("id", inv.customer_id)
-        .single();
+      const notifiedSet = new Set((existingLogs ?? []).map((l) => l.target_id));
+      const customerMap = new Map((customers ?? []).map((c) => [c.id, c]));
+      const tenantMap = new Map((tenants ?? []).map((t) => [t.id, t]));
 
-      if (!customer?.email) continue;
+      for (const inv of overdueForReminder) {
+        if (notifiedSet.has(inv.id)) continue;
+        if (!inv.customer_id) continue;
 
-      // Get tenant name
-      const { data: tenant } = await supabase
-        .from("tenants")
-        .select("name")
-        .eq("id", inv.tenant_id)
-        .single();
+        const customer = customerMap.get(inv.customer_id);
+        if (!customer?.email) continue;
 
-      const shopName = tenant?.name ?? "施工店";
-      const html = wrapEmail(
-        "お支払いのお願い",
-        `
-          <p style="color: #1d1d1f; font-size: 14px;">
-            ${customer.name} 様<br><br>
-            ${shopName}より、請求書 <strong>${inv.doc_number}</strong> のお支払い期限が過ぎております。
-          </p>
-          <div style="background: #fff3cd; border-radius: 8px; padding: 12px; margin: 16px 0; font-size: 14px; color: #856404;">
-            請求額: <strong>¥${(inv.total ?? 0).toLocaleString("ja-JP")}</strong><br>
-            お支払期限: <strong>${inv.due_date}</strong>
-          </div>
-          <p style="font-size: 13px; color: #86868b;">お心当たりがない場合は、お手数ですが ${shopName} までお問い合わせください。</p>
-        `,
-      );
+        const shopName = tenantMap.get(inv.tenant_id)?.name ?? "施工店";
+        const html = wrapEmail(
+          "お支払いのお願い",
+          `
+            <p style="color: #1d1d1f; font-size: 14px;">
+              ${customer.name} 様<br><br>
+              ${shopName}より、請求書 <strong>${inv.doc_number}</strong> のお支払い期限が過ぎております。
+            </p>
+            <div style="background: #fff3cd; border-radius: 8px; padding: 12px; margin: 16px 0; font-size: 14px; color: #856404;">
+              請求額: <strong>¥${(inv.total ?? 0).toLocaleString("ja-JP")}</strong><br>
+              お支払期限: <strong>${inv.due_date}</strong>
+            </div>
+            <p style="font-size: 13px; color: #86868b;">お心当たりがない場合は、お手数ですが ${shopName} までお問い合わせください。</p>
+          `,
+        );
 
-      const sent = await sendReminderEmail(
-        customer.email,
-        `[${shopName}] お支払いのお願い: ${inv.doc_number}`,
-        html,
-      );
+        const sent = await sendReminderEmail(
+          customer.email,
+          `[${shopName}] お支払いのお願い: ${inv.doc_number}`,
+          html,
+        );
 
-      // Log notification
-      await supabase.from("notification_logs").insert({
-        tenant_id: inv.tenant_id,
-        type: "overdue_reminder",
-        target_type: "invoice",
-        target_id: inv.id,
-        recipient_email: customer.email,
-        status: sent ? "sent" : "failed",
-      });
+        // Log notification
+        await supabase.from("notification_logs").insert({
+          tenant_id: inv.tenant_id,
+          type: "overdue_reminder",
+          target_type: "invoice",
+          target_id: inv.id,
+          recipient_email: customer.email,
+          status: sent ? "sent" : "failed",
+        });
 
-      if (sent) remindersSent++;
+        if (sent) remindersSent++;
+      }
     }
 
     // Find invoices due in 7 days
@@ -164,62 +171,72 @@ export async function GET(req: NextRequest) {
       .eq("status", "sent")
       .eq("due_date", sevenDaysLaterStr);
 
-    for (const inv of dueSoonInvoices ?? []) {
-      const { count: alreadySent } = await supabase
-        .from("notification_logs")
-        .select("*", { count: "exact", head: true })
-        .eq("target_type", "invoice")
-        .eq("target_id", inv.id)
-        .eq("type", "due_soon");
+    if (dueSoonInvoices && dueSoonInvoices.length > 0) {
+      // Batch fetch for due-soon invoices
+      const invIds = dueSoonInvoices.map((inv) => inv.id);
+      const customerIds = [...new Set(dueSoonInvoices.map((inv) => inv.customer_id).filter(Boolean))] as string[];
+      const tenantIds = [...new Set(dueSoonInvoices.map((inv) => inv.tenant_id).filter(Boolean))] as string[];
 
-      if ((alreadySent ?? 0) > 0) continue;
+      const [{ data: existingLogs }, { data: customers }, { data: tenants }] = await Promise.all([
+        supabase
+          .from("notification_logs")
+          .select("target_id")
+          .eq("target_type", "invoice")
+          .eq("type", "due_soon")
+          .in("target_id", invIds),
+        supabase
+          .from("customers")
+          .select("id, name, email")
+          .in("id", customerIds),
+        supabase
+          .from("tenants")
+          .select("id, name")
+          .in("id", tenantIds),
+      ]);
 
-      if (!inv.customer_id) continue;
-      const { data: customer } = await supabase
-        .from("customers")
-        .select("name, email")
-        .eq("id", inv.customer_id)
-        .single();
+      const notifiedSet = new Set((existingLogs ?? []).map((l) => l.target_id));
+      const customerMap = new Map((customers ?? []).map((c) => [c.id, c]));
+      const tenantMap = new Map((tenants ?? []).map((t) => [t.id, t]));
 
-      if (!customer?.email) continue;
+      for (const inv of dueSoonInvoices) {
+        if (notifiedSet.has(inv.id)) continue;
+        if (!inv.customer_id) continue;
 
-      const { data: tenant } = await supabase
-        .from("tenants")
-        .select("name")
-        .eq("id", inv.tenant_id)
-        .single();
+        const customer = customerMap.get(inv.customer_id);
+        if (!customer?.email) continue;
 
-      const shopName = tenant?.name ?? "施工店";
-      const html = wrapEmail(
-        "お支払期限のご案内",
-        `
-          <p style="color: #1d1d1f; font-size: 14px;">
-            ${customer.name} 様<br><br>
-            ${shopName}より、請求書 <strong>${inv.doc_number}</strong> のお支払期限が近づいております。
-          </p>
-          <div style="background: #f5f5f7; border-radius: 8px; padding: 12px; margin: 16px 0; font-size: 14px; color: #1d1d1f;">
-            請求額: <strong>¥${(inv.total ?? 0).toLocaleString("ja-JP")}</strong><br>
-            お支払期限: <strong>${inv.due_date}</strong>
-          </div>
-        `,
-      );
+        const shopName = tenantMap.get(inv.tenant_id)?.name ?? "施工店";
+        const html = wrapEmail(
+          "お支払期限のご案内",
+          `
+            <p style="color: #1d1d1f; font-size: 14px;">
+              ${customer.name} 様<br><br>
+              ${shopName}より、請求書 <strong>${inv.doc_number}</strong> のお支払期限が近づいております。
+            </p>
+            <div style="background: #f5f5f7; border-radius: 8px; padding: 12px; margin: 16px 0; font-size: 14px; color: #1d1d1f;">
+              請求額: <strong>¥${(inv.total ?? 0).toLocaleString("ja-JP")}</strong><br>
+              お支払期限: <strong>${inv.due_date}</strong>
+            </div>
+          `,
+        );
 
-      const sent = await sendReminderEmail(
-        customer.email,
-        `[${shopName}] お支払期限のご案内: ${inv.doc_number}`,
-        html,
-      );
+        const sent = await sendReminderEmail(
+          customer.email,
+          `[${shopName}] お支払期限のご案内: ${inv.doc_number}`,
+          html,
+        );
 
-      await supabase.from("notification_logs").insert({
-        tenant_id: inv.tenant_id,
-        type: "due_soon",
-        target_type: "invoice",
-        target_id: inv.id,
-        recipient_email: customer.email,
-        status: sent ? "sent" : "failed",
-      });
+        await supabase.from("notification_logs").insert({
+          tenant_id: inv.tenant_id,
+          type: "due_soon",
+          target_type: "invoice",
+          target_id: inv.id,
+          recipient_email: customer.email,
+          status: sent ? "sent" : "failed",
+        });
 
-      if (sent) remindersSent++;
+        if (sent) remindersSent++;
+      }
     }
   } catch (e) {
     console.error("[cron/billing] reminder sending failed:", e);
