@@ -102,15 +102,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "db_error" }, { status: 500 });
     }
 
-    // 顧客名を取得
+    // 顧客名を並列取得（メインクエリ完了後すぐにIDを収集）
     const customerIds = [...new Set((docs ?? []).map((d) => d.customer_id).filter(Boolean))];
-    let customerNames: Record<string, string> = {};
+    const customerNames: Record<string, string> = {};
     if (customerIds.length > 0) {
       const { data: customers } = await supabase
         .from("customers")
         .select("id, name")
         .in("id", customerIds);
-      (customers ?? []).forEach((c) => { customerNames[c.id] = c.name; });
+      for (const c of customers ?? []) { customerNames[c.id] = c.name; }
     }
 
     const enriched = (docs ?? []).map((d) => ({

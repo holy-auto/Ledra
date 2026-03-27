@@ -135,6 +135,10 @@ export async function GET() {
       draft_certs: draftCerts,
       overdue_invoices: overdueInvoices,
       pending_orders: pendingOrders,
+    }, {
+      headers: {
+        "Cache-Control": "private, max-age=30, stale-while-revalidate=60",
+      },
     });
   } catch (e) {
     console.error("[sidebar-badges] error:", e);

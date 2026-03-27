@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
       const admin = getSupabaseAdmin();
       let query = admin
         .from("job_orders")
-        .select("*")
+        .select("id, public_id, from_tenant_id, to_tenant_id, title, description, category, budget, deadline, vehicle_id, status, created_at, updated_at")
         .is("to_tenant_id", null)
         .in("status", ["pending"])
         .order("created_at", { ascending: false });
@@ -131,7 +131,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabase
       .from("job_orders")
-      .select("*")
+      .select("id, public_id, from_tenant_id, to_tenant_id, title, description, category, budget, deadline, vehicle_id, status, cancelled_by, cancel_reason, vendor_completed_at, client_approved_at, created_at, updated_at")
       .order("created_at", { ascending: false });
 
     if (type === "sent") {
@@ -248,7 +248,7 @@ export async function PUT(req: NextRequest) {
     // 現在の注文を取得
     const { data: current, error: fetchError } = await admin
       .from("job_orders")
-      .select("*")
+      .select("id, status, from_tenant_id, to_tenant_id")
       .eq("id", id)
       .or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`)
       .single();
@@ -317,7 +317,7 @@ export async function PUT(req: NextRequest) {
         old_value: { status: current.status },
         new_value: { status },
       })
-      .then(() => {});
+      .then(() => {}, (e: unknown) => console.error("[orders] audit log failed:", e));
 
     return NextResponse.json({ ok: true, order: data });
   } catch (e: unknown) {
@@ -350,7 +350,7 @@ export async function PATCH(req: NextRequest) {
     // 注文取得
     const { data: order, error: fetchErr } = await admin
       .from("job_orders")
-      .select("*")
+      .select("id, status, from_tenant_id, to_tenant_id")
       .eq("id", id)
       .single();
 
@@ -401,7 +401,7 @@ export async function PATCH(req: NextRequest) {
         old_value: { status: order.status, to_tenant_id: null },
         new_value: { status: "accepted", to_tenant_id: tenantId },
       })
-      .then(() => {});
+      .then(() => {}, (e: unknown) => console.error("[orders] audit log failed:", e));
 
     return NextResponse.json({ ok: true, order: data });
   } catch (e: unknown) {

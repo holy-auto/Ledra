@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabase
       .from("menu_items")
-      .select("*")
+      .select("id, name, description, unit_price, tax_category, is_active, sort_order, created_at")
       .eq("tenant_id", caller.tenantId)
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true });
@@ -29,10 +29,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "db_error" }, { status: 500 });
     }
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       items: data ?? [],
       stats: { total: data?.length ?? 0 },
     });
+    res.headers.set("Cache-Control", "private, max-age=60, stale-while-revalidate=120");
+    return res;
   } catch (e: any) {
     console.error("[menu-items] GET failed:", e);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });

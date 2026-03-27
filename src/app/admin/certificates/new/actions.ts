@@ -23,26 +23,28 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
   const tenantId = mem?.tenant_id as string | undefined;
   if (!tenantId) return { ok: false, error: "no_tenant" };
 
-  const { data: tenantRow } = await supabase
-    .from("tenants")
-    .select("logo_asset_path")
-    .eq("id", tenantId)
-    .single();
-  const tenantLogoPath = (tenantRow?.logo_asset_path as string | null) ?? null;
-
   const template_id = String(formData.get("template_id") || "");
   const template_name = String(formData.get("template_name") || "");
 
-  let schema_snapshot: any = null;
-  if (template_id) {
-    const { data: tpl } = await supabase
-      .from("templates")
-      .select("schema_json")
-      .eq("id", template_id)
-      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
-      .single();
-    schema_snapshot = tpl?.schema_json ?? null;
-  }
+  // Parallelize independent DB reads
+  const [{ data: tenantRow }, templateResult] = await Promise.all([
+    supabase
+      .from("tenants")
+      .select("logo_asset_path")
+      .eq("id", tenantId)
+      .single(),
+    template_id
+      ? supabase
+          .from("templates")
+          .select("schema_json")
+          .eq("id", template_id)
+          .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
+          .single()
+      : Promise.resolve({ data: null }),
+  ]);
+
+  const tenantLogoPath = (tenantRow?.logo_asset_path as string | null) ?? null;
+  const schema_snapshot = templateResult?.data?.schema_json ?? null;
 
   const vehicle_id = String(formData.get("vehicle_id") || "").trim() || null;
   const vehicle_maker = String(formData.get("vehicle_maker") || "").trim();
