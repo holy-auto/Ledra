@@ -164,8 +164,11 @@ export default function HearingClient() {
 
   return (
     <div className="space-y-6">
-      {/* New hearing button */}
-      <div className="flex justify-end">
+      {/* Actions */}
+      <div className="flex items-center justify-between">
+        <Link href="/admin/hearing/branding" className="text-xs text-accent hover:underline">
+          導入ヒアリング（ブランディング）&rarr;
+        </Link>
         <button onClick={() => setShowForm(!showForm)} className="btn-primary">
           {showForm ? "閉じる" : "+ 新規ヒアリング"}
         </button>
