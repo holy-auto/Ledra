@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
 
     const { count } = await admin
       .from("template_order_logs")
-      .select("*", { count: "exact", head: true })
+      .select("id", { count: "exact", head: true })
       .eq("action", "test_issue")
       .gte("created_at", monthStart.toISOString())
       .in("order_id", (

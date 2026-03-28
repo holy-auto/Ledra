@@ -18,19 +18,19 @@ export async function GET(req: NextRequest) {
   try {
     const base = admin
       .from("insurer_cases")
-      .select("*", { count: "exact", head: true })
+      .select("id", { count: "exact", head: true })
       .eq("insurer_id", caller.insurerId);
 
     const [openRes, activeRes, todayRes] = await Promise.all([
       base.eq("status", "open"),
       admin
         .from("insurer_cases")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .eq("insurer_id", caller.insurerId)
         .in("status", ["in_progress", "pending_tenant"]),
       admin
         .from("insurer_cases")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .eq("insurer_id", caller.insurerId)
         .gte("updated_at", new Date(new Date().setHours(0, 0, 0, 0)).toISOString()),
     ]);

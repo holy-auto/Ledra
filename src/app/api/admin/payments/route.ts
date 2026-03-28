@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
 
     let countQuery = supabase
       .from("payments")
-      .select("*", { count: "exact", head: true })
+      .select("id", { count: "exact", head: true })
       .eq("tenant_id", caller.tenantId);
 
     if (status && status !== "all") {

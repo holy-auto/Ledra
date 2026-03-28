@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
     // 未読件数
     const { count } = await supabase
       .from("notifications")
-      .select("*", { count: "exact", head: true })
+      .select("id", { count: "exact", head: true })
       .or(`user_id.is.null,user_id.eq.${caller.userId}`)
       .is("read_at", null);
 

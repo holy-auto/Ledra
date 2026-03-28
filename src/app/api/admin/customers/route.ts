@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
     // Count query for pagination metadata
     let countQuery = supabase
       .from("customers")
-      .select("*", { count: "exact", head: true })
+      .select("id", { count: "exact", head: true })
       .eq("tenant_id", caller.tenantId);
 
     let query = supabase

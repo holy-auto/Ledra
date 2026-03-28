@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
 
     let countQuery = supabase
       .from("documents")
-      .select("*", { count: "exact", head: true })
+      .select("id", { count: "exact", head: true })
       .eq("tenant_id", caller.tenantId);
 
     if (docType) { query = query.eq("doc_type", docType); countQuery = countQuery.eq("doc_type", docType); }

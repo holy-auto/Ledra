@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
 
     let countQuery = supabase
       .from("registers")
-      .select("*", { count: "exact", head: true })
+      .select("id", { count: "exact", head: true })
       .eq("tenant_id", caller.tenantId);
 
     if (storeId) {
