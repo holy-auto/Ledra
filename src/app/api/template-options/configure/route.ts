@@ -26,7 +26,7 @@ export async function GET(_req: NextRequest) {
 
     const { data: configs } = await supabase
       .from("tenant_template_configs")
-      .select("*")
+      .select("id, tenant_id, platform_template_id, option_type, name, config_json, layout_key, is_active, is_default, published_at, created_at, updated_at")
       .eq("tenant_id", caller.tenantId)
       .order("is_default", { ascending: false });
 

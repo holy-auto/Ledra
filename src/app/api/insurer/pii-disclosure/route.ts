@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("pii_disclosure_consents")
-    .select("*")
+    .select("id, certificate_id, insurer_id, insurer_requested_at, insurer_requested_by, insurer_reason, tenant_consented_at, tenant_consented_by, is_active, created_at, updated_at")
     .eq("certificate_id", certificateId)
     .eq("insurer_id", caller.insurerId)
     .eq("is_active", true)

@@ -18,7 +18,7 @@ export async function GET() {
     const [catResult, matResult] = await Promise.all([
       admin
         .from("agent_material_categories")
-        .select("*")
+        .select("id, name, slug, sort_order")
         .order("sort_order", { ascending: true }),
       admin
         .from("agent_materials")

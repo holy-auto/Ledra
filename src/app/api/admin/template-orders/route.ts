@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     if (orderId && wantLogs) {
       const { data: logs } = await admin
         .from("template_order_logs")
-        .select("*")
+        .select("id, order_id, action, from_status, to_status, actor, message, meta_json, created_at")
         .eq("order_id", orderId)
         .order("created_at", { ascending: false })
         .limit(50);
@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
 
     const { data: orders, error } = await admin
       .from("template_orders")
-      .select("*, tenants:tenant_id(name, slug)")
+      .select("id, tenant_id, order_type, status, amount, revision_count, max_revisions, assigned_to, notes, due_date, hearing_json, completed_at, created_at, tenants:tenant_id(name, slug)")
       .order("created_at", { ascending: false })
       .limit(100);
 
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     // サブスクリプション一覧も取得
     const { data: subs } = await admin
       .from("tenant_option_subscriptions")
-      .select("*, tenants:tenant_id(name, slug)")
+      .select("id, tenant_id, option_type, status, started_at, current_period_end, tenants:tenant_id(name, slug)")
       .order("created_at", { ascending: false })
       .limit(100);
 

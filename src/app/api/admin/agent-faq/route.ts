@@ -15,7 +15,7 @@ export async function GET() {
 
     const admin = getAdminClient();
     const [catRes, faqRes] = await Promise.all([
-      admin.from("agent_faq_categories").select("*").order("sort_order"),
+      admin.from("agent_faq_categories").select("id, name, slug, sort_order, description").order("sort_order"),
       admin.from("agent_faqs").select("*, agent_faq_categories(name)").order("sort_order"),
     ]);
 

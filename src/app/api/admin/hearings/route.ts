@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabase
       .from("hearings")
-      .select("*")
+      .select("id, status, customer_name, customer_phone, customer_email, vehicle_maker, vehicle_model, vehicle_year, vehicle_plate, vehicle_color, vehicle_vin, service_type, vehicle_size, coating_history, desired_menu, budget_range, concern_areas, scratches_dents, parking_environment, usage_frequency, additional_requests, customer_id, vehicle_id, created_at")
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
 

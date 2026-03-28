@@ -34,7 +34,7 @@ export async function GET(
     // Fetch case
     const { data: caseData, error: caseErr } = await admin
       .from("insurer_cases")
-      .select("*")
+      .select("id, case_number, title, status, priority, category, description, created_at, insurer_id, certificate_id, vehicle_id, tenant_id, assigned_to, resolved_at, closed_at, updated_at")
       .eq("id", id)
       .maybeSingle();
 
@@ -46,12 +46,12 @@ export async function GET(
     const [{ data: messages }, { data: attachments }] = await Promise.all([
       admin
         .from("insurer_case_messages")
-        .select("*")
+        .select("id, case_id, sender_id, sender_type, content, created_at")
         .eq("case_id", id)
         .order("created_at", { ascending: true }),
       admin
         .from("insurer_case_attachments")
-        .select("*")
+        .select("id, case_id, file_name, file_size, file_type, storage_path, uploaded_by, created_at")
         .eq("case_id", id)
         .order("created_at", { ascending: true }),
     ]);
@@ -144,7 +144,7 @@ export async function PATCH(
       .from("insurer_cases")
       .update(updateData)
       .eq("id", id)
-      .select("*")
+      .select("id, case_number, title, status, priority, category, description, created_at, insurer_id, certificate_id, vehicle_id, tenant_id, assigned_to, resolved_at, closed_at, updated_at")
       .single();
 
     if (updateErr) return apiValidationError(updateErr.message);

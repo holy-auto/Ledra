@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     const admin = getAdminClient();
     const { data, error } = await admin
       .from("agent_signing_requests")
-      .select("*")
+      .select("id, agent_id, template_type, title, status, signer_email, signer_name, sent_at, signed_at, signed_pdf_path, created_at")
       .eq("agent_id", agentId)
       .order("created_at", { ascending: false });
 

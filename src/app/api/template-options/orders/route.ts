@@ -21,7 +21,7 @@ export async function GET(_req: NextRequest) {
 
     const { data: orders, error } = await supabase
       .from("template_orders")
-      .select("*")
+      .select("id, tenant_id, order_type, status, template_config_id, hearing_json, assets_json, notes, assigned_to, stripe_payment_intent_id, stripe_invoice_id, amount, revision_count, max_revisions, due_date, completed_at, created_at, updated_at")
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
 

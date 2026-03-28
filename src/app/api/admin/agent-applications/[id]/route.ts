@@ -23,7 +23,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
     const admin = getAdminClient();
     const { data, error } = await admin
       .from("agent_applications")
-      .select("*")
+      .select("id, application_number, company_name, contact_name, email, phone, address, industry, qualifications, track_record, documents, status, rejection_reason, created_at, updated_at")
       .eq("id", id)
       .single();
 
@@ -119,7 +119,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
       // Fetch application
       const { data: app, error: fetchErr } = await admin
         .from("agent_applications")
-        .select("*")
+        .select("id, application_number, company_name, contact_name, email, phone, address, industry, qualifications, track_record, documents, status, rejection_reason, agent_id, created_at, updated_at")
         .eq("id", id)
         .in("status", ["submitted", "under_review"])
         .single();

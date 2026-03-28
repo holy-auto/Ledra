@@ -57,7 +57,7 @@ export async function POST(
     const { data: reply, error: insertErr } = await admin
       .from("market_inquiry_messages")
       .insert(replyRow)
-      .select()
+      .select("id, inquiry_id, sender_type, message, created_at")
       .single();
 
     if (insertErr) {
@@ -129,7 +129,7 @@ export async function GET(
 
     const { data: messages, error } = await admin
       .from("market_inquiry_messages")
-      .select("*")
+      .select("id, inquiry_id, sender_type, message, created_at")
       .eq("inquiry_id", inquiryId)
       .order("created_at", { ascending: true });
 

@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await supabase
       .from("vehicle_interests")
-      .select("*")
+      .select("id, customer_name, customer_phone, customer_email, interest_level, note, follow_up_date, status, created_at")
       .eq("vehicle_id", vehicleId)
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });

@@ -58,7 +58,7 @@ export async function GET(
     // Fetch messages
     const { data: messages, error } = await admin
       .from("insurer_case_messages")
-      .select("*")
+      .select("id, case_id, sender_id, sender_type, content, created_at")
       .eq("case_id", id)
       .order("created_at", { ascending: true });
 
@@ -138,7 +138,7 @@ export async function POST(
         sender_type: "insurer",
         content: content.trim(),
       })
-      .select("*")
+      .select("id, case_id, sender_id, sender_type, content, created_at")
       .single();
 
     if (error) return apiValidationError(error.message);

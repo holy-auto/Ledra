@@ -16,7 +16,7 @@ export async function GET() {
     const admin = getAdminClient();
     const { data, error } = await admin
       .from("agent_announcements")
-      .select("*")
+      .select("id, title, body, category, is_pinned, published_at, created_by, created_at, updated_at")
       .order("created_at", { ascending: false });
 
     if (error) return apiInternalError(error, "agent-announcements GET");

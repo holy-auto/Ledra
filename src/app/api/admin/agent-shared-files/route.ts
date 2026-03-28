@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     const admin = getAdminClient();
     const { data, error } = await admin
       .from("agent_shared_files")
-      .select("*")
+      .select("id, agent_id, direction, file_name, file_size, file_type, note, created_at")
       .eq("agent_id", agentId)
       .order("created_at", { ascending: false });
 

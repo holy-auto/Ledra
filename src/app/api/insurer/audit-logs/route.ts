@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
   const admin = createAdminClient();
   let query = admin
     .from("insurer_access_logs")
-    .select("*")
+    .select("id, insurer_id, insurer_user_id, action, certificate_id, meta, ip, user_agent, created_at")
     .eq("insurer_id", caller.insurerId)
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);

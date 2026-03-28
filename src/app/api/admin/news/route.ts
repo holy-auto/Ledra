@@ -76,7 +76,7 @@ export async function GET() {
     // 1) DBに保存済みの記事を取得（cron で保存されたもの）
     const { data: savedNews } = await supabase
       .from("saved_news")
-      .select("*")
+      .select("id, title, summary, category, source, url, published_at, keywords, saved")
       .eq("is_relevant", true)
       .order("published_at", { ascending: false })
       .limit(100);

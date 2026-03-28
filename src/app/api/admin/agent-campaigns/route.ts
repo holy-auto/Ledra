@@ -16,7 +16,7 @@ export async function GET() {
     const admin = getAdminClient();
     const { data } = await admin
       .from("agent_campaigns")
-      .select("*")
+      .select("id, title, description, campaign_type, bonus_rate, bonus_fixed, start_date, end_date, is_active, target_agents, banner_text, created_at, updated_at")
       .order("created_at", { ascending: false });
 
     return NextResponse.json({ campaigns: data ?? [] });

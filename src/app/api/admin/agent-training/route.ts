@@ -14,7 +14,7 @@ export async function GET() {
     if (!requireMinRole(caller, "admin")) return apiForbidden();
 
     const admin = getAdminClient();
-    const { data } = await admin.from("agent_training_courses").select("*").order("sort_order", { ascending: true });
+    const { data } = await admin.from("agent_training_courses").select("id, title, description, category, content_type, content_url, thumbnail_url, duration_min, sort_order, is_required, is_published, created_at, updated_at").order("sort_order", { ascending: true });
     return NextResponse.json({ courses: data ?? [] });
   } catch (e) {
     return apiInternalError(e, "agent-training GET");
