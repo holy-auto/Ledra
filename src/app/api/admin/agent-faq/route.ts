@@ -25,7 +25,9 @@ export async function GET() {
       agent_faq_categories: undefined,
     }));
 
-    return NextResponse.json({ categories: catRes.data ?? [], faqs });
+    const res = NextResponse.json({ categories: catRes.data ?? [], faqs });
+    res.headers.set("Cache-Control", "private, max-age=300, stale-while-revalidate=600");
+    return res;
   } catch (e) {
     return apiInternalError(e, "agent-faq GET");
   }

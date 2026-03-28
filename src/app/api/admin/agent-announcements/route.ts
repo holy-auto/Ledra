@@ -20,7 +20,9 @@ export async function GET() {
       .order("created_at", { ascending: false });
 
     if (error) return apiInternalError(error, "agent-announcements GET");
-    return NextResponse.json({ announcements: data ?? [] });
+    const res = NextResponse.json({ announcements: data ?? [] });
+    res.headers.set("Cache-Control", "private, max-age=60, stale-while-revalidate=120");
+    return res;
   } catch (e) {
     return apiInternalError(e, "agent-announcements GET");
   }

@@ -40,11 +40,13 @@ export async function GET() {
       .order("end_date", { ascending: false })
       .limit(10);
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       active: campaigns ?? [],
       upcoming: upcoming ?? [],
       past: past ?? [],
     });
+    res.headers.set("Cache-Control", "private, max-age=300, stale-while-revalidate=600");
+    return res;
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "internal_error" }, { status: 500 });
   }

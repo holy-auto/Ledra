@@ -40,10 +40,12 @@ export async function GET() {
     const requiredCourses = enriched.filter((c: any) => c.is_required).length;
     const requiredCompleted = enriched.filter((c: any) => c.is_required && c.progress?.status === "completed").length;
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       courses: enriched,
       stats: { total: totalCourses, completed: completedCourses, required: requiredCourses, required_completed: requiredCompleted },
     });
+    res.headers.set("Cache-Control", "private, max-age=120, stale-while-revalidate=300");
+    return res;
   } catch (e) {
     return apiInternalError(e, "agent training GET");
   }
