@@ -4,9 +4,17 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 
 export const dynamic = "force-dynamic";
 
-const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp"];
+const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp", "image/heic"];
 const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB
 const MAX_IMAGES_PER_VEHICLE = 20;
+
+function detectMimeFromBytes(buf: Uint8Array): string | null {
+  if (buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) return "image/jpeg";
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) return "image/png";
+  if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 && buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return "image/webp";
+  if (buf[4] === 0x66 && buf[5] === 0x74 && buf[6] === 0x79 && buf[7] === 0x70) return "image/heic";
+  return null;
+}
 
 // ─── GET: List images for a vehicle ───
 export async function GET(req: NextRequest) {
@@ -83,18 +91,20 @@ export async function POST(req: NextRequest) {
     if (!file || !file.size)
       return NextResponse.json({ error: "missing file" }, { status: 400 });
 
-    // Validate MIME
-    const mime = file.type || "application/octet-stream";
-    if (!ALLOWED_MIME.includes(mime))
-      return NextResponse.json(
-        { error: "invalid_file_type", allowed: ALLOWED_MIME },
-        { status: 400 }
-      );
-
     // Validate size
     if (file.size > MAX_FILE_BYTES)
       return NextResponse.json(
         { error: "file_too_large", max_bytes: MAX_FILE_BYTES },
+        { status: 400 }
+      );
+
+    // Read file bytes and validate MIME via magic bytes
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const mime = detectMimeFromBytes(new Uint8Array(buffer));
+    if (!mime || !ALLOWED_MIME.includes(mime))
+      return NextResponse.json(
+        { error: "invalid_file_type", allowed: ALLOWED_MIME },
         { status: 400 }
       );
 
@@ -133,10 +143,6 @@ export async function POST(req: NextRequest) {
     // Build storage path
     const ext = mime.split("/")[1]?.replace("jpeg", "jpg") ?? "jpg";
     const storagePath = `market/${caller.tenantId}/${vehicleId}/${Date.now()}_${existing}.${ext}`;
-
-    // Upload to storage
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
 
     const { error: uploadError } = await supabase.storage
       .from("market")

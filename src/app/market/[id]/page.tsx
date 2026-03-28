@@ -39,7 +39,7 @@ export default async function MarketVehicleDetailPage({ params }: { params: Prom
 
   const { data: vehicles } = await supabase
     .from("market_vehicles")
-    .select("*")
+    .select("id, tenant_id, maker, model, grade, year, mileage, color, color_code, body_type, displacement, transmission, drive_type, fuel_type, door_count, seating_capacity, engine_type, inspection_date, repair_history, condition_grade, asking_price, wholesale_price, status, listed_at, description, features, tenant_name, condition_note")
     .eq("id", id)
     .eq("status", "listed");
 
@@ -49,7 +49,7 @@ export default async function MarketVehicleDetailPage({ params }: { params: Prom
   // Fetch images
   const { data: images } = await supabase
     .from("market_vehicle_images")
-    .select("*")
+    .select("id, storage_path, file_name, sort_order")
     .eq("vehicle_id", id)
     .order("sort_order", { ascending: true });
 

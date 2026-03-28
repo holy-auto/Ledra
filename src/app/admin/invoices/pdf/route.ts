@@ -27,7 +27,7 @@ export async function GET(req: Request) {
   // Fetch invoice from documents table
   const { data: invoice, error } = await admin
     .from("documents")
-    .select("*")
+    .select("id, doc_number, customer_id, status, issued_at, due_date, subtotal, tax, total, tax_rate, note, items_json, is_invoice_compliant, show_seal, show_logo, show_bank_info, recipient_name")
     .eq("id", id)
     .eq("tenant_id", tenantId)
     .eq("doc_type", "invoice")

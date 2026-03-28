@@ -33,7 +33,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
   const { data: invoiceDoc, error: invErr } = await supabase
     .from("documents")
-    .select("*")
+    .select("id, tenant_id, customer_id, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, items_json, note, is_invoice_compliant, show_seal, show_logo, show_bank_info, recipient_name, created_at, updated_at")
     .eq("id", id)
     .eq("tenant_id", tenantId)
     .eq("doc_type", "invoice")

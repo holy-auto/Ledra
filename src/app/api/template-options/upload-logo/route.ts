@@ -6,7 +6,14 @@ import { apiOk, apiUnauthorized, apiValidationError, apiInternalError, apiForbid
 import { getTemplateOptionStatus } from "@/lib/template-options/templateOptionFeatures";
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
-const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/svg+xml", "image/webp"];
+const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
+
+function detectMimeFromBytes(buf: Uint8Array): string | null {
+  if (buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) return "image/jpeg";
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) return "image/png";
+  if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 && buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return "image/webp";
+  return null;
+}
 
 /** POST: テンプレート用ロゴアップロード */
 export async function POST(req: NextRequest) {
@@ -28,24 +35,26 @@ export async function POST(req: NextRequest) {
       return apiValidationError("ファイルが選択されていません。");
     }
 
-    if (!ALLOWED_TYPES.includes(file.type)) {
-      return apiValidationError("PNG, JPEG, SVG, WebP 形式のみアップロードできます。");
-    }
-
     if (file.size > MAX_FILE_SIZE) {
       return apiValidationError("ファイルサイズは2MB以下にしてください。");
     }
 
+    // Validate MIME via magic bytes (not client-provided file.type)
+    const arrayBuffer = await file.arrayBuffer();
+    const detectedMime = detectMimeFromBytes(new Uint8Array(arrayBuffer));
+    if (!detectedMime || !ALLOWED_TYPES.includes(detectedMime)) {
+      return apiValidationError("PNG, JPEG, WebP 形式のみアップロードできます。");
+    }
+
     const admin = createAdminClient();
-    const ext = file.name.split(".").pop() ?? "png";
+    const ext = detectedMime.split("/")[1]?.replace("jpeg", "jpg") ?? "png";
     const storagePath = `template-logos/${caller.tenantId}/${Date.now()}.${ext}`;
 
     // Supabase Storage にアップロード
-    const arrayBuffer = await file.arrayBuffer();
     const { error: uploadErr } = await admin.storage
       .from("assets")
       .upload(storagePath, arrayBuffer, {
-        contentType: file.type,
+        contentType: detectedMime,
         upsert: true,
       });
 
@@ -60,7 +69,7 @@ export async function POST(req: NextRequest) {
         asset_type: "logo",
         storage_path: storagePath,
         file_name: file.name,
-        content_type: file.type,
+        content_type: detectedMime,
         file_size: file.size,
       })
       .select("id")

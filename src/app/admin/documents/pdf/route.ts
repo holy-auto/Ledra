@@ -27,7 +27,7 @@ export async function GET(req: Request) {
   // Fetch document
   const { data: doc, error } = await admin
     .from("documents")
-    .select("*")
+    .select("id, doc_type, doc_number, customer_id, issued_at, due_date, subtotal, tax, total, tax_rate, note, items_json, is_invoice_compliant, show_seal, show_logo, show_bank_info, recipient_name")
     .eq("id", id)
     .eq("tenant_id", tenantId)
     .single();

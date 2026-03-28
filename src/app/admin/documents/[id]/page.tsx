@@ -27,7 +27,7 @@ export default async function DocumentDetailPage({
 
   const { data: doc } = await supabase
     .from("documents")
-    .select("*")
+    .select("id, tenant_id, customer_id, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, items_json, note, meta_json, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, recipient_name, payment_date, vehicle_id, vehicle_info_json, created_at, updated_at")
     .eq("id", id)
     .eq("tenant_id", mem.tenant_id)
     .single();

@@ -36,7 +36,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   // 顧客情報
   const { data: customer, error: custErr } = await supabase
     .from("customers")
-    .select("*")
+    .select("id, name, name_kana, email, phone, postal_code, address, note, created_at, updated_at")
     .eq("id", id)
     .eq("tenant_id", tenantId)
     .single();

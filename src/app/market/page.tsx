@@ -19,7 +19,7 @@ export default async function MarketPage({ searchParams }: { searchParams: Promi
 
   let query = supabase
     .from("market_vehicles")
-    .select("*")
+    .select("id, tenant_id, maker, model, grade, year, mileage, color, body_type, asking_price, wholesale_price, status, listed_at, description, features, tenant_name")
     .eq("status", "listed")
     .order("listed_at", { ascending: false });
 
@@ -37,7 +37,7 @@ export default async function MarketPage({ searchParams }: { searchParams: Promi
   if (vehicleIds.length > 0) {
     const { data: images } = await supabase
       .from("market_vehicle_images")
-      .select("*")
+      .select("id, vehicle_id, storage_path, sort_order")
       .in("vehicle_id", vehicleIds)
       .order("sort_order", { ascending: true });
 
