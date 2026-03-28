@@ -29,7 +29,7 @@ async function fetchTenantExtended(tenantId: string) {
       address: string | null;
       website_url: string | null;
       registration_number: string | null;
-      bank_info: string | null;
+      bank_info: { bank_name?: string; branch_name?: string; account_type?: string; account_number?: string; account_holder?: string } | null;
       stripe_connect_account_id: string | null;
       stripe_connect_onboarded: boolean | null;
     } | null;
