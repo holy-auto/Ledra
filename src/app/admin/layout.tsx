@@ -19,7 +19,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <CommandPalette />
       <div className="flex min-h-screen">
         <Sidebar />
-        <main className="flex-1 p-4 sm:p-6 pt-16 lg:pl-60 lg:pt-6">
+        <main className="flex-1 p-4 sm:p-6 pt-16 lg:ml-60 lg:pt-6">
           <Suspense fallback={null}>
             <AdminRouteGuard>{children}</AdminRouteGuard>
           </Suspense>
