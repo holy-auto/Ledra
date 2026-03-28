@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { escapeIlike } from "@/lib/sanitize";
+import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
 import { enforceBilling } from "@/lib/billing/guard";
 
 export const dynamic = "force-dynamic";
@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
     if (maker) query = query.eq("maker", maker);
     if (bodyType) query = query.eq("body_type", bodyType);
     if (search) {
-      const sq = escapeIlike(search);
+      const sq = escapePostgrestValue(escapeIlike(search));
       query = query.or(`maker.ilike.%${sq}%,model.ilike.%${sq}%`);
     }
 

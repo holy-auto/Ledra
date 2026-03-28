@@ -3,6 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 import { calcSizeClass } from "@/lib/ocr/shakensho";
+import { escapeIlike } from "@/lib/sanitize";
 
 export const dynamic = "force-dynamic";
 
@@ -82,7 +83,7 @@ export async function GET(req: NextRequest) {
       .from("vehicle_size_master")
       .select("size_class, model, body_type")
       .eq("maker", maker)
-      .ilike("model", `%${model}%`)
+      .ilike("model", `%${escapeIlike(model)}%`)
       .limit(1)
       .maybeSingle();
 

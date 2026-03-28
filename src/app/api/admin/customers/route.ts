@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { escapeIlike } from "@/lib/sanitize";
+import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
 import { enforceBilling } from "@/lib/billing/guard";
 import { parsePagination } from "@/lib/api/pagination";
 
@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
       .order("created_at", { ascending: false });
 
     if (q) {
-      const sq = escapeIlike(q);
+      const sq = escapePostgrestValue(escapeIlike(q));
       const filter = `name.ilike.%${sq}%,email.ilike.%${sq}%,phone.ilike.%${sq}%,name_kana.ilike.%${sq}%`;
       query = query.or(filter);
       countQuery = countQuery.or(filter);

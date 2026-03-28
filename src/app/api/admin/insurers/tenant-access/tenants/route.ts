@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
+import { escapeIlike } from "@/lib/sanitize";
 
 export const runtime = "nodejs";
 
@@ -30,7 +31,7 @@ export async function GET(req: NextRequest) {
     .limit(50);
 
   if (q) {
-    query = query.ilike("name", `%${q}%`);
+    query = query.ilike("name", `%${escapeIlike(q)}%`);
   }
 
   const { data, error } = await query;

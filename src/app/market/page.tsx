@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { escapeIlike } from "@/lib/sanitize";
+import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
 import MarketClient from "./MarketClient";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +24,7 @@ export default async function MarketPage({ searchParams }: { searchParams: Promi
     .order("listed_at", { ascending: false });
 
   if (q) {
-    const sq = escapeIlike(q);
+    const sq = escapePostgrestValue(escapeIlike(q));
     query = query.or(`maker.ilike.%${sq}%,model.ilike.%${sq}%`);
   }
 

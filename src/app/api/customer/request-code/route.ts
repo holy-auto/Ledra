@@ -11,8 +11,10 @@ import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { escapeHtml } from "@/lib/sanitize";
 
 function genCode6(): string {
-  // 000000〜999999（先頭ゼロあり）
-  const n = Math.floor(Math.random() * 1000000);
+  // 000000〜999999（先頭ゼロあり）— 暗号的に安全な乱数を使用
+  const buf = new Uint32Array(1);
+  crypto.getRandomValues(buf);
+  const n = buf[0] % 1000000;
   return String(n).padStart(6, "0");
 }
 

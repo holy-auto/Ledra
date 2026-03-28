@@ -28,11 +28,15 @@ type ResendEvent = {
 
 export async function POST(req: NextRequest) {
   const secret = process.env.RESEND_WEBHOOK_SECRET;
+  if (!secret) {
+    console.error("[resend-webhook] RESEND_WEBHOOK_SECRET not configured — rejecting request");
+    return NextResponse.json({ error: "Webhook not configured" }, { status: 503 });
+  }
 
   const rawBody = await req.text();
 
   // Verify webhook signature using Svix HMAC-SHA256
-  if (secret) {
+  {
     const signature = req.headers.get("svix-signature");
     const timestamp = req.headers.get("svix-timestamp");
     const id = req.headers.get("svix-id");

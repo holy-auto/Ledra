@@ -91,10 +91,22 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithPlan(supabase);
     if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
+    // Only owner/admin can add members
+    if (caller.role !== "owner" && caller.role !== "admin" && caller.role !== "super_admin") {
+      return NextResponse.json({ error: "forbidden", message: "メンバー追加の権限がありません" }, { status: 403 });
+    }
+
     const body = await req.json().catch(() => ({} as any));
     const email = (body?.email ?? "").trim().toLowerCase();
     const displayName = (body?.display_name ?? "").trim() || null;
     const role = (body?.role ?? "").trim() || null; // null → DB default
+
+    // Prevent non-owners from assigning owner/super_admin role
+    if (role === "owner" || role === "super_admin") {
+      if (caller.role !== "owner" && caller.role !== "super_admin") {
+        return NextResponse.json({ error: "forbidden", message: "この権限を付与する権限がありません" }, { status: 403 });
+      }
+    }
 
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: "invalid_email" }, { status: 400 });

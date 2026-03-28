@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api/auth";
 import { apiOk, apiInternalError, apiValidationError, apiError } from "@/lib/api/response";
@@ -28,10 +29,30 @@ export const dynamic = "force-dynamic";
  *   source: "google_maps" | "line" | "web"
  */
 export async function POST(req: NextRequest) {
-  const limited = await checkRateLimit(req, "general");
+  const limited = await checkRateLimit(req, "auth");
   if (limited) return limited;
 
   try {
+    // API Key 認証 (Bearer token)
+    const expectedKey = process.env.EXTERNAL_BOOKING_API_KEY;
+    if (!expectedKey) {
+      console.error("[external/booking] EXTERNAL_BOOKING_API_KEY not configured");
+      return apiError({ code: "service_unavailable", message: "外部予約APIが設定されていません", status: 503 });
+    }
+
+    const authHeader = req.headers.get("authorization") ?? "";
+    const apiKey = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+    if (!apiKey) {
+      return apiError({ code: "unauthorized", message: "API Key が必要です", status: 401 });
+    }
+
+    // Constant-time comparison to prevent timing attacks
+    const keyBuf = Buffer.from(apiKey);
+    const expectedBuf = Buffer.from(expectedKey);
+    if (keyBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(keyBuf, expectedBuf)) {
+      return apiError({ code: "unauthorized", message: "無効な API Key です", status: 401 });
+    }
+
     const body = await req.json().catch(() => ({}));
 
     // 必須フィールド検証

@@ -3,6 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { escapeIlike } from "@/lib/sanitize";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
       .range(offset, offset + limit - 1);
 
     if (search) {
-      query = query.ilike("name", `%${search}%`);
+      query = query.ilike("name", `%${escapeIlike(search)}%`);
     }
     if (status === "active") {
       query = query.eq("is_active", true);
