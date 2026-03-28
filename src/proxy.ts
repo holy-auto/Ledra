@@ -320,9 +320,65 @@ async function refreshSession(request: NextRequest) {
   return response;
 }
 
+/** Maximum idle time before forcing re-login (24 hours in milliseconds) */
+const IDLE_SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Check if the session has been idle too long by examining the JWT's `iat`.
+ * Supabase SSR refreshes access tokens on activity, so a stale `iat` means
+ * the user has not made any authenticated requests recently.
+ * Returns true if the session should be considered expired.
+ */
+function isSessionIdleExpired(request: NextRequest): boolean {
+  const authCookie = request.cookies.getAll().find((c) => c.name.includes("auth-token"));
+  if (!authCookie?.value) return false; // No token — let getUser() handle it
+
+  try {
+    const payload = JSON.parse(
+      atob(authCookie.value.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")),
+    );
+    const issuedAt = (payload.iat ?? 0) * 1000;
+    return Date.now() - issuedAt > IDLE_SESSION_TIMEOUT_MS;
+  } catch {
+    return false; // Can't decode — fall through to normal auth flow
+  }
+}
+
+/** Redirect to the appropriate login page based on pathname */
+function redirectToLogin(request: NextRequest): NextResponse {
+  const { pathname } = request.nextUrl;
+  const redirectUrl = request.nextUrl.clone();
+
+  if (pathname.startsWith("/insurer")) {
+    redirectUrl.pathname = "/insurer/login";
+  } else if (pathname.startsWith("/market")) {
+    redirectUrl.pathname = "/market/login";
+  } else {
+    redirectUrl.pathname = "/login";
+    redirectUrl.searchParams.set("next", pathname);
+  }
+
+  // Clear auth cookies so the client doesn't keep the stale session
+  const response = NextResponse.redirect(redirectUrl);
+  request.cookies.getAll()
+    .filter((c) => c.name.includes("auth-token"))
+    .forEach((c) => response.cookies.delete(c.name));
+  return response;
+}
+
 /** Refresh session + redirect unauthenticated users */
 async function refreshSessionAndProtect(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // ── Server-side idle session timeout ──
+  // If the access token was issued more than 24 hours ago, the user has been
+  // idle (no requests that would trigger a Supabase token refresh). Force
+  // re-login even if Supabase would still honour the refresh token.
+  if (isSessionIdleExpired(request)) {
+    console.warn(`[idle-timeout] Session expired for ${pathname}`);
+    return redirectToLogin(request);
+  }
+
   const response = NextResponse.next({ request });
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -346,22 +402,7 @@ async function refreshSessionAndProtect(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    if (pathname.startsWith("/admin")) {
-      const redirectUrl = request.nextUrl.clone();
-      redirectUrl.pathname = "/login";
-      redirectUrl.searchParams.set("next", pathname);
-      return NextResponse.redirect(redirectUrl);
-    }
-    if (pathname.startsWith("/insurer")) {
-      const redirectUrl = request.nextUrl.clone();
-      redirectUrl.pathname = "/insurer/login";
-      return NextResponse.redirect(redirectUrl);
-    }
-    if (pathname.startsWith("/market")) {
-      const redirectUrl = request.nextUrl.clone();
-      redirectUrl.pathname = "/market/login";
-      return NextResponse.redirect(redirectUrl);
-    }
+    return redirectToLogin(request);
   }
 
   return response;

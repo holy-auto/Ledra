@@ -99,7 +99,7 @@ async function extractTenantId(req: Request): Promise<string | null> {
 
   // body: tenant_id / certificate_id / public_id
   try {
-    const b: any = await (req as any).clone().json();
+    const b: Record<string, unknown> = await req.clone().json();
 
     const tid = b?.tenant_id ?? b?.tenantId ?? b?.tenant ?? null;
     if (typeof tid === "string" && tid) return tid;
@@ -182,7 +182,7 @@ export async function enforceBilling(
   if (!active) {
     // public_pdf は「猶予期間中だけ許可」
     if (action === "public_pdf") {
-      const g = await graceInfoForTenant((data as any).stripe_subscription_id ?? null);
+      const g = await graceInfoForTenant(data.stripe_subscription_id ?? null);
       const now = Date.now();
 
       if (g.ok && g.grace_until) {

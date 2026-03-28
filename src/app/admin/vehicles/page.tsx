@@ -46,7 +46,10 @@ export default async function AdminVehicleListPage() {
     );
   }
 
-  const rows = vehicles ?? [];
+  type VehicleRow = NonNullable<typeof vehicles>[number] & {
+    customer: { id: string; name: string } | null;
+  };
+  const rows = (vehicles ?? []) as VehicleRow[];
 
   return (
     <div className="space-y-6">
@@ -126,7 +129,7 @@ export default async function AdminVehicleListPage() {
                       {v.vin_code || "-"}
                     </td>
                     <td className="hidden sm:table-cell p-3 text-secondary text-sm">
-                      {(v as any).customer?.name || "-"}
+                      {v.customer?.name || "-"}
                     </td>
                     <td className="p-3">
                       <div className="flex gap-2 flex-wrap">

@@ -115,12 +115,17 @@ export default async function AdminVehicleDetailPage({
     redirect(`/admin/vehicles/${id}?voided=1`);
   }
 
+  type VehicleWithCustomer = NonNullable<Awaited<ReturnType<typeof supabase.from<"vehicles">>>["data"]>[number] & {
+    size_class?: string | null;
+    customer: { id: string; name: string } | null;
+  };
+
   const { data: vehicle, error: vehicleError } = await supabase
     .from("vehicles")
     .select("*, customer:customers(id, name)")
     .eq("tenant_id", membership.tenant_id)
     .eq("id", id)
-    .single();
+    .single() as { data: VehicleWithCustomer | null; error: typeof vehicleError };
 
   if (vehicleError || !vehicle) {
     return <div className="p-6 text-primary">車両が見つかりません。</div>;
@@ -201,15 +206,15 @@ export default async function AdminVehicleDetailPage({
           <div>年式: {vehicle.year ?? "-"}</div>
           <div>ナンバー: {vehicle.plate_display ?? "-"}</div>
           <div>
-            サイズ: {(vehicle as any).size_class ? (
+            サイズ: {vehicle.size_class ? (
               <span className="inline-flex items-center rounded-md bg-accent-dim px-2 py-0.5 text-xs font-bold text-accent">
-                {(vehicle as any).size_class}
+                {vehicle.size_class}
               </span>
             ) : <span className="text-muted">未設定</span>}
           </div>
           <div className="font-mono">車体番号: {vehicle.vin_code ?? "-"}</div>
           <div>
-            現所有者: {(vehicle as any).customer?.name ?? <span className="text-muted">未設定</span>}
+            現所有者: {vehicle.customer?.name ?? <span className="text-muted">未設定</span>}
           </div>
         </div>
         {vehicle.notes ? <div className="text-sm text-secondary">メモ: {vehicle.notes}</div> : null}

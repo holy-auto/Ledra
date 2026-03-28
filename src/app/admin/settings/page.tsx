@@ -23,15 +23,25 @@ async function fetchTenantExtended(tenantId: string) {
       .eq("id", tenantId)
       .single();
     if (error) return { contact_email: null, contact_phone: null, address: null, website_url: null, registration_number: null, bank_info: null, stripe_connect_account_id: null, stripe_connect_onboarded: false };
+    const row = data as {
+      contact_email: string | null;
+      contact_phone: string | null;
+      address: string | null;
+      website_url: string | null;
+      registration_number: string | null;
+      bank_info: string | null;
+      stripe_connect_account_id: string | null;
+      stripe_connect_onboarded: boolean | null;
+    } | null;
     return {
-      contact_email: (data as any)?.contact_email ?? null,
-      contact_phone: (data as any)?.contact_phone ?? null,
-      address: (data as any)?.address ?? null,
-      website_url: (data as any)?.website_url ?? null,
-      registration_number: (data as any)?.registration_number ?? null,
-      bank_info: (data as any)?.bank_info ?? null,
-      stripe_connect_account_id: (data as any)?.stripe_connect_account_id ?? null,
-      stripe_connect_onboarded: (data as any)?.stripe_connect_onboarded ?? false,
+      contact_email: row?.contact_email ?? null,
+      contact_phone: row?.contact_phone ?? null,
+      address: row?.address ?? null,
+      website_url: row?.website_url ?? null,
+      registration_number: row?.registration_number ?? null,
+      bank_info: row?.bank_info ?? null,
+      stripe_connect_account_id: row?.stripe_connect_account_id ?? null,
+      stripe_connect_onboarded: row?.stripe_connect_onboarded ?? false,
     };
   } catch {
     return { contact_email: null, contact_phone: null, address: null, website_url: null, registration_number: null, bank_info: null };

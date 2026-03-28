@@ -137,9 +137,10 @@ async function TenantStats({ tenantId }: { tenantId: string }) {
     unpaidAmount = invoiceList
       .filter((inv: any) => inv.status === "sent" || inv.status === "overdue")
       .reduce((sum: number, inv: any) => sum + (inv.total ?? 0), 0);
-    todayRes = (todayResResult as any)?.count ?? 0;
-    activeRes = (activeResResult as any)?.count ?? 0;
-    activeOrders = (ordersResult as any)?.count ?? 0;
+    type CountResult = { count: number | null };
+    todayRes = (todayResResult as CountResult)?.count ?? 0;
+    activeRes = (activeResResult as CountResult)?.count ?? 0;
+    activeOrders = (ordersResult as CountResult)?.count ?? 0;
   }
 
   // ── Partner Score ──
