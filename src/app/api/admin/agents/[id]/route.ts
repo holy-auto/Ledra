@@ -17,7 +17,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
     const admin = getAdminClient();
     const { data, error } = await admin
       .from("agents")
-      .select("*")
+      .select("id, name, slug, status, contact_name, contact_email, contact_phone, address, default_commission_rate, commission_type, default_commission_fixed, stripe_account_id, stripe_onboarding_done, referral_count, contracted_count, total_commission, line_official_id, notes, created_at, updated_at")
       .eq("id", id)
       .single();
 

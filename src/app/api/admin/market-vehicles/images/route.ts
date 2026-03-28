@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
 
     const { data: images, error } = await supabase
       .from("market_vehicle_images")
-      .select("*")
+      .select("id, vehicle_id, storage_path, file_name, sort_order, content_type, file_size, tenant_id, created_at")
       .eq("vehicle_id", vehicleId)
       .eq("tenant_id", caller.tenantId)
       .order("sort_order", { ascending: true });
