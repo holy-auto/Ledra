@@ -43,7 +43,8 @@ export type Permission =
   | "management:view" | "audit:view" | "insurers:view" | "insurers:manage"
   | "logo:manage"
   // Platform (super_admin only)
-  | "platform:manage";
+  | "platform:manage"
+  | "platform:operations";
 
 /**
  * Permission matrix by role.
@@ -74,6 +75,7 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "logo:manage",
     "template_options:view", "template_options:manage",
     "platform:manage",
+    "platform:operations",
   ],
   owner: [
     "dashboard:view",
@@ -211,6 +213,7 @@ export const ROUTE_PERMISSIONS: Record<string, Permission> = {
   "/admin/square": "payments:view",
   "/admin/template-options": "template_options:view",
   "/admin/platform/template-orders": "template_options:manage",
+  "/admin/platform/operations": "platform:operations",
 };
 
 /**
