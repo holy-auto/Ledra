@@ -82,24 +82,72 @@ function fmtDate(v: string | null | undefined): string {
   return d.toLocaleDateString("ja-JP");
 }
 
+function fmtTotal(n: number | null | undefined): string {
+  if (n == null) return "-";
+  return n.toLocaleString("ja-JP");
+}
+
 const s = StyleSheet.create({
   page: { padding: 36, fontSize: 10, fontFamily: "NotoSansJP" },
+  /* ── Header row: title left, No+date right ── */
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
+    marginBottom: 24,
+  },
+  title: { fontSize: 22, fontWeight: 700, letterSpacing: 6 },
+  metaRight: { textAlign: "right", fontSize: 9, color: "#444" },
+  /* ── Main 2-col area: left summary / right sender ── */
+  mainRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 20,
   },
-  title: { fontSize: 20, fontWeight: 700 },
-  docNum: { color: "#666", fontSize: 9, marginTop: 4, fontFamily: "NotoSansJP" },
-  regNum: { color: "#666", fontSize: 8, marginTop: 2 },
-  dateBlock: { textAlign: "right", fontSize: 9, color: "#444" },
-  row2col: { flexDirection: "row", gap: 20, marginBottom: 16 },
-  colHalf: { flex: 1 },
-  sectionLabel: { fontSize: 8, color: "#888", marginBottom: 4 },
-  customerName: { fontSize: 14, fontWeight: 700 },
-  tenantLine: { fontSize: 9, color: "#444", marginTop: 1 },
-  // table
+  leftCol: { flex: 1, paddingRight: 20 },
+  rightCol: { width: 220, alignItems: "flex-end" },
+  /* left col */
+  recipientName: { fontSize: 14, fontWeight: 700, marginBottom: 14 },
+  summaryTable: { marginBottom: 12 },
+  summaryRow: {
+    flexDirection: "row",
+    paddingVertical: 3,
+    borderBottomWidth: 0.5,
+    borderBottomColor: "#ddd",
+  },
+  summaryLabel: { width: 60, fontSize: 9, fontWeight: 700, color: "#444" },
+  summaryValue: { flex: 1, fontSize: 9, color: "#333" },
+  totalBig: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 8,
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#333",
+  },
+  totalBigLabel: { fontSize: 10, fontWeight: 700, color: "#c00" },
+  totalBigValue: { fontSize: 22, fontWeight: 700 },
+  totalBigUnit: { fontSize: 10, color: "#666" },
+  /* right col — sender */
+  logo: { height: 80, marginBottom: 10 },
+  senderName: { fontSize: 11, fontWeight: 700, textAlign: "right" },
+  senderSub: { fontSize: 9, textAlign: "right", color: "#444", marginTop: 1 },
+  senderLine: { fontSize: 9, textAlign: "right", color: "#444", marginTop: 1 },
+  sealImage: { width: 64, height: 64, marginTop: 8 },
+  sealPlaceholder: {
+    width: 52,
+    height: 52,
+    borderWidth: 1,
+    borderColor: "#c00",
+    borderRadius: 26,
+    borderStyle: "dashed",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+  },
+  sealText: { fontSize: 14, color: "#c00" },
+  /* ── Items table ── */
   tableHead: {
     flexDirection: "row",
     borderBottomWidth: 1.5,
@@ -118,7 +166,7 @@ const s = StyleSheet.create({
   colPrice: { width: 70, textAlign: "right" },
   colAmount: { width: 80, textAlign: "right" },
   thText: { fontSize: 8, color: "#666", fontWeight: 700 },
-  // totals
+  /* ── Totals ── */
   totalsWrap: { alignItems: "flex-end", marginTop: 12 },
   totalsBox: { width: 200 },
   totalRow: {
@@ -138,39 +186,15 @@ const s = StyleSheet.create({
   },
   grandTotalLabel: { fontSize: 12, fontWeight: 700 },
   grandTotalValue: { fontSize: 12, fontWeight: 700 },
-  // stamp area
-  stampRow: { flexDirection: "row", justifyContent: "flex-end", gap: 16, marginTop: 16 },
-  logoBox: { height: 52 },
-  sealBox: {
-    width: 52,
-    height: 52,
-    borderWidth: 1,
-    borderColor: "#c00",
-    borderRadius: 26,
-    borderStyle: "dashed",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  sealText: { fontSize: 14, color: "#c00" },
-  // bank
-  bankSection: {
+  /* ── Note / Compliance ── */
+  noteSection: {
     borderTopWidth: 0.5,
     borderTopColor: "#ddd",
     paddingTop: 10,
     marginTop: 14,
   },
-  bankTitle: { fontSize: 8, fontWeight: 700, color: "#666", marginBottom: 4 },
-  bankLine: { fontSize: 9, color: "#444", marginTop: 1 },
-  // note
-  noteSection: {
-    borderTopWidth: 0.5,
-    borderTopColor: "#ddd",
-    paddingTop: 10,
-    marginTop: 10,
-  },
   noteLabel: { fontSize: 8, color: "#888" },
   noteText: { fontSize: 9, color: "#444", marginTop: 2 },
-  // compliance
   compliance: {
     borderTopWidth: 0.5,
     borderTopColor: "#ddd",
@@ -217,6 +241,7 @@ export async function renderInvoicePdf(
   const items = invoice.items_json ?? [];
   const recipientName = invoice.recipient_name || customerName;
   const bank = tenant.bank_info;
+  const showSeal = invoice.show_seal ?? false;
 
   const doc = (
     <Document>
@@ -224,50 +249,93 @@ export async function renderInvoicePdf(
         {/* Logo watermark */}
         {logoUrl && <Image src={logoUrl} style={s.watermark} />}
 
-        {/* Header */}
+        {/* ── Header: Title left / No+Date right ── */}
         <View style={s.header}>
-          <View>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              {logoUrl ? (
-                <Image src={logoUrl} style={{ height: 28 }} />
-              ) : null}
-              <Text style={s.title}>請求書</Text>
-            </View>
-            <Text style={s.docNum}>{invoice.invoice_number}</Text>
-            {invoice.is_invoice_compliant && tenant.registration_number && (
-              <Text style={s.regNum}>登録番号: {tenant.registration_number}</Text>
-            )}
-          </View>
-          <View style={s.dateBlock}>
-            <Text>発行日: {fmtDate(invoice.issued_at)}</Text>
-            <Text>支払期限: {fmtDate(invoice.due_date)}</Text>
+          <Text style={s.title}>請 求 書</Text>
+          <View style={s.metaRight}>
+            <Text>No：{invoice.invoice_number}</Text>
+            <Text>請求日：{fmtDate(invoice.issued_at)}</Text>
           </View>
         </View>
 
-        {/* Customer / Issuer */}
-        <View style={s.row2col}>
-          {recipientName && (
-            <View style={s.colHalf}>
-              <Text style={s.sectionLabel}>宛先</Text>
-              <Text style={s.customerName}>{recipientName} 様</Text>
+        {/* ── Main 2-col: left summary / right sender ── */}
+        <View style={s.mainRow}>
+          {/* Left column: recipient, summary, grand total */}
+          <View style={s.leftCol}>
+            {recipientName && (
+              <Text style={s.recipientName}>{recipientName} 御中</Text>
+            )}
+
+            <Text style={{ fontSize: 9, color: "#444", marginBottom: 12 }}>
+              下記のとおり、御請求申し上げます。
+            </Text>
+
+            {/* Summary fields */}
+            <View style={s.summaryTable}>
+              {invoice.due_date && (
+                <View style={s.summaryRow}>
+                  <Text style={s.summaryLabel}>支払期限</Text>
+                  <Text style={s.summaryValue}>{fmtDate(invoice.due_date)}</Text>
+                </View>
+              )}
+              {invoice.show_bank_info && bank && (
+                <View style={s.summaryRow}>
+                  <Text style={s.summaryLabel}>振込先</Text>
+                  <View style={{ flex: 1 }}>
+                    {bank.bank_name && (
+                      <Text style={s.summaryValue}>
+                        {bank.bank_name}
+                        {bank.branch_name ? ` ${bank.branch_name}` : ""}
+                        {bank.account_type ? ` ${bank.account_type}` : ""}
+                        {bank.account_number ? ` ${bank.account_number}` : ""}
+                        {bank.account_holder ? ` ${bank.account_holder}` : ""}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              )}
             </View>
-          )}
-          <View style={s.colHalf}>
-            <Text style={s.sectionLabel}>差出人</Text>
-            <Text style={{ fontSize: 11, fontWeight: 700 }}>{tenant.name}</Text>
-            {tenant.address && <Text style={s.tenantLine}>{tenant.address}</Text>}
+
+            {/* Grand total (big) */}
+            <View style={s.totalBig}>
+              <Text style={s.totalBigLabel}>合計金額</Text>
+              <Text style={s.totalBigValue}>{fmtTotal(invoice.total)}</Text>
+              <Text style={s.totalBigUnit}>円（税込）</Text>
+            </View>
+          </View>
+
+          {/* Right column: logo, company info, seal */}
+          <View style={s.rightCol}>
+            {logoUrl && <Image src={logoUrl} style={s.logo} />}
+
+            <Text style={s.senderName}>{tenant.name}</Text>
+            {tenant.address && <Text style={s.senderLine}>{tenant.address}</Text>}
             {tenant.contact_phone && (
-              <Text style={s.tenantLine}>TEL: {tenant.contact_phone}</Text>
+              <Text style={s.senderLine}>TEL：{tenant.contact_phone}</Text>
             )}
             {tenant.contact_email && (
-              <Text style={s.tenantLine}>{tenant.contact_email}</Text>
+              <Text style={s.senderLine}>{tenant.contact_email}</Text>
             )}
+            {invoice.is_invoice_compliant && tenant.registration_number && (
+              <Text style={s.senderLine}>
+                登録番号：{tenant.registration_number}
+              </Text>
+            )}
+
+            {/* Seal / 角印 — directly below sender info */}
+            {sealUrl ? (
+              <Image src={sealUrl} style={s.sealImage} />
+            ) : showSeal ? (
+              <View style={s.sealPlaceholder}>
+                <Text style={s.sealText}>印</Text>
+              </View>
+            ) : null}
           </View>
         </View>
 
-        {/* Items table */}
+        {/* ── Items table ── */}
         <View style={s.tableHead}>
-          <Text style={{ ...s.thText, ...s.colDesc }}>内容</Text>
+          <Text style={{ ...s.thText, ...s.colDesc }}>摘要</Text>
           <Text style={{ ...s.thText, ...s.colQty }}>数量</Text>
           <Text style={{ ...s.thText, ...s.colPrice }}>単価</Text>
           <Text style={{ ...s.thText, ...s.colAmount }}>金額</Text>
@@ -284,7 +352,7 @@ export async function renderInvoicePdf(
           </View>
         ))}
 
-        {/* Totals */}
+        {/* ── Totals ── */}
         <View style={s.totalsWrap}>
           <View style={s.totalsBox}>
             <View style={s.totalRow}>
@@ -304,41 +372,7 @@ export async function renderInvoicePdf(
           </View>
         </View>
 
-        {/* Seal / Logo */}
-        {(sealUrl || (invoice.show_seal && !sealUrl)) && (
-          <View style={s.stampRow}>
-            {sealUrl ? (
-              <Image src={sealUrl} style={s.logoBox} />
-            ) : invoice.show_seal ? (
-              <View style={s.sealBox}>
-                <Text style={s.sealText}>印</Text>
-              </View>
-            ) : null}
-          </View>
-        )}
-
-        {/* Bank info */}
-        {invoice.show_bank_info && bank && (
-          <View style={s.bankSection}>
-            <Text style={s.bankTitle}>振込先口座情報</Text>
-            {bank.bank_name && (
-              <Text style={s.bankLine}>
-                {bank.bank_name}
-                {bank.branch_name ? ` ${bank.branch_name}` : ""}
-              </Text>
-            )}
-            {bank.account_type && (
-              <Text style={s.bankLine}>
-                {bank.account_type} {bank.account_number ?? ""}
-              </Text>
-            )}
-            {bank.account_holder && (
-              <Text style={s.bankLine}>口座名義: {bank.account_holder}</Text>
-            )}
-          </View>
-        )}
-
-        {/* Note */}
+        {/* ── Note ── */}
         {invoice.note && (
           <View style={s.noteSection}>
             <Text style={s.noteLabel}>備考</Text>
@@ -346,7 +380,7 @@ export async function renderInvoicePdf(
           </View>
         )}
 
-        {/* Compliance */}
+        {/* ── Compliance ── */}
         {invoice.is_invoice_compliant && (
           <View style={s.compliance}>
             <Text>
