@@ -169,7 +169,7 @@ export async function PUT(req: NextRequest) {
     // 現在のセッション取得
     const { data: current } = await supabase
       .from("register_sessions")
-      .select("*")
+      .select("id, expected_cash")
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .single();

@@ -230,7 +230,7 @@ export async function PATCH(req: NextRequest) {
   // Fetch current state
   const { data: before } = await admin
     .from("insurer_tenant_access")
-    .select("*")
+    .select("id, is_active, notes")
     .eq("id", id)
     .maybeSingle();
 

@@ -83,7 +83,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     // Fetch current referral to validate status transition
     const { data: existing, error: fetchErr } = await supabase
       .from("agent_referrals")
-      .select("*")
+      .select("id, status, contracted_at")
       .eq("id", id)
       .eq("agent_id", agentId)
       .single();

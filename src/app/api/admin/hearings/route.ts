@@ -95,7 +95,7 @@ export async function PUT(req: NextRequest) {
       // 顧客レコード作成
       const { data: hearing } = await supabase
         .from("hearings")
-        .select("*")
+        .select("id, customer_name, customer_email, customer_phone, vehicle_maker, vehicle_model, vehicle_year, vehicle_plate, vehicle_vin, vehicle_size")
         .eq("id", id)
         .eq("tenant_id", caller.tenantId)
         .single();

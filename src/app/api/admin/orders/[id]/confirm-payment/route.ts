@@ -29,7 +29,7 @@ export async function POST(
     // 注文取得
     const { data: order, error: fetchErr } = await admin
       .from("job_orders")
-      .select("*")
+      .select("id, status, from_tenant_id, to_tenant_id, payment_method, accepted_amount, payment_confirmed_by_client, payment_confirmed_by_vendor, payment_status")
       .eq("id", id)
       .or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`)
       .single();

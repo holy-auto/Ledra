@@ -63,7 +63,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
 
     const { data: record, error: fetchErr } = await admin
       .from("agent_signing_requests")
-      .select("*")
+      .select("id, status, cloudsign_document_id")
       .eq("id", id)
       .single();
 
