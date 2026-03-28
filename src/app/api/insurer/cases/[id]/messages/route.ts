@@ -201,6 +201,49 @@ export async function POST(
             });
           }
         }
+
+        // @mention notifications — parse content for @display_name patterns
+        const mentionPattern = /@([^\s@]+(?:\s[^\s@]+)?)/g;
+        const mentions: string[] = [];
+        let match: RegExpExecArray | null;
+        while ((match = mentionPattern.exec(content.trim())) !== null) {
+          mentions.push(match[1]);
+        }
+
+        if (mentions.length > 0) {
+          // Look up mentioned users by display_name within the same insurer
+          const { data: mentionedUsers } = await admin
+            .from("insurer_users")
+            .select("user_id, display_name")
+            .eq("insurer_id", caller.insurerId)
+            .eq("is_active", true)
+            .in("display_name", mentions);
+
+          if (mentionedUsers && mentionedUsers.length > 0) {
+            const caseNumber = caseData.case_number ?? id;
+            const notifications = mentionedUsers
+              .filter((u) => u.user_id !== caller.userId) // Don't notify self
+              .map((u) => ({
+                insurer_id: caller.insurerId,
+                user_id: u.user_id,
+                type: "new_message",
+                title: `${senderName}さんからメンションされました`,
+                body: `案件 ${caseNumber}: ${content.trim().slice(0, 100)}`,
+                link: `/insurer/cases/${id}`,
+              }));
+
+            if (notifications.length > 0) {
+              try {
+                await admin
+                  .from("insurer_notifications")
+                  .insert(notifications);
+              } catch {
+                // insurer_notifications table may not exist yet — silently skip
+                console.warn("[mention-notification] insurer_notifications table may not exist yet, skipping.");
+              }
+            }
+          }
+        }
       } catch (e) {
         console.error("[case-notification] message notification failed:", e);
       }

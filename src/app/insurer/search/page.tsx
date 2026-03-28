@@ -218,7 +218,7 @@ export default async function Page({
         </header>
 
         <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-          <form action="/insurer/search" method="get" className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_120px]">
+          <form action="/insurer/search" method="get" className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_120px_auto]">
             <input
               name="q"
               defaultValue={q}
@@ -243,6 +243,18 @@ export default async function Page({
             >
               検索
             </button>
+
+            <a
+              href={`/api/insurer/export${(() => {
+                const qs = new URLSearchParams();
+                if (q) qs.set("q", q);
+                if (status) qs.set("status", status);
+                return qs.toString() ? `?${qs.toString()}` : "";
+              })()}`}
+              className="rounded-xl border border-neutral-300 bg-white px-4 py-3 text-center text-sm font-medium text-neutral-700 hover:bg-neutral-100"
+            >
+              CSVエクスポート
+            </a>
           </form>
         </section>
 
