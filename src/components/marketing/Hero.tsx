@@ -6,14 +6,11 @@ export function Hero() {
     <section className="relative overflow-hidden bg-[#060a12] min-h-[92vh] flex items-center">
       {/* Dark premium background with animated elements */}
       <div className="absolute inset-0 pointer-events-none">
-        {/* Large animated gradient orbs */}
         <div className="absolute top-[-20%] left-[-10%] w-[700px] h-[700px] bg-blue-600/20 rounded-full blur-[150px] animate-[float_10s_ease-in-out_infinite]" />
         <div className="absolute bottom-[-10%] right-[-5%] w-[600px] h-[600px] bg-blue-400/15 rounded-full blur-[130px] animate-[float_12s_ease-in-out_infinite_reverse]" />
         <div className="absolute top-[40%] left-[50%] w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[120px] animate-[pulse-soft_8s_ease-in-out_infinite]" />
-        {/* Purple accent orb — right top */}
         <div className="absolute top-[-5%] right-[10%] w-[400px] h-[400px] bg-violet-600/15 rounded-full blur-[130px] animate-[float_14s_ease-in-out_infinite_1s]" />
 
-        {/* Refined grid pattern */}
         <div
           className="absolute inset-0 opacity-[0.06]"
           style={{
@@ -25,11 +22,9 @@ export function Hero() {
           }}
         />
 
-        {/* Horizontal light streaks */}
         <div className="absolute top-[30%] left-0 w-full h-px bg-gradient-to-r from-transparent via-blue-500/20 to-transparent animate-[shimmer_5s_ease-in-out_infinite]" />
         <div className="absolute top-[70%] left-0 w-full h-px bg-gradient-to-r from-transparent via-blue-400/10 to-transparent animate-[shimmer_7s_ease-in-out_infinite_reverse]" />
 
-        {/* Floating particles */}
         <div className="absolute top-[12%] right-[18%] w-1.5 h-1.5 bg-blue-400/40 rounded-full animate-[float_5s_ease-in-out_infinite]" />
         <div className="absolute top-[60%] left-[15%] w-1 h-1 bg-blue-300/30 rounded-full animate-[float_7s_ease-in-out_infinite_1s]" />
         <div className="absolute top-[25%] left-[10%] w-2 h-2 border border-blue-400/15 rounded-full animate-[float_9s_ease-in-out_infinite_2s]" />
@@ -40,25 +35,25 @@ export function Hero() {
 
       <Container className="relative text-center py-28 md:py-40 lg:py-48">
         <div className="animate-[hero-fade-in_0.7s_ease-out_0.15s_both]">
-          {/* Enhanced badge with gradient border */}
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium text-blue-300 bg-blue-500/10 border border-blue-500/20 shadow-[0_0_20px_rgba(59,130,246,0.15)]">
             <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-[pulse-soft_2s_ease-in-out_infinite]" />
-            WEB施工証明書SaaS
+            施工証明プラットフォーム
           </div>
         </div>
 
         <h1 className="mt-10">
           <span className="block text-[2.5rem] md:text-[3.75rem] lg:text-[4.5rem] font-bold leading-[1.1] tracking-tight text-white animate-[hero-fade-up_0.8s_ease-out_0.3s_both]">
-            施工証明をデジタルで。
+            現場の技術を、
           </span>
           <span className="block mt-2 text-[2.5rem] md:text-[3.75rem] lg:text-[4.5rem] font-bold leading-[1.1] tracking-tight bg-gradient-to-r from-[#60a5fa] via-[#a78bfa] to-[#60a5fa] bg-clip-text text-transparent animate-[hero-fade-up_0.8s_ease-out_0.5s_both] bg-[length:200%_auto]">
-            信頼を、かんたんに。
+            業界の力へ。
           </span>
         </h1>
 
         <p className="mt-10 text-lg md:text-xl leading-relaxed text-white/50 max-w-2xl mx-auto animate-[hero-fade-up_0.8s_ease-out_0.7s_both]">
-          Ledraは、自動車の施工記録をデジタル証明書として発行・管理できるプラットフォームです。
-          施工店の業務効率化と、保険会社の査定精度向上を同時に実現します。
+          Ledraは、施工証明・履歴管理・加盟店連携・技術育成を通じて、
+          <br className="hidden md:block" />
+          現場の技術を可視化し、業界全体に信頼と価値を届けるプラットフォームです。
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center mt-12 animate-[hero-fade-up_0.8s_ease-out_0.9s_both]">
@@ -66,11 +61,10 @@ export function Hero() {
             無料で始める
           </CTAButton>
           <CTAButton variant="white-outline" href="/contact">
-            資料請求・お問い合わせ
+            Ledraを知る
           </CTAButton>
         </div>
 
-        {/* Value props — factual, no inflated numbers */}
         <div className="mt-20 flex flex-col sm:flex-row items-center justify-center gap-8 sm:gap-16 animate-[hero-fade-in_0.8s_ease-out_1.2s_both]">
           <div className="text-center">
             <div className="text-2xl md:text-3xl font-bold text-white">無料<span className="text-blue-400">で開始</span></div>

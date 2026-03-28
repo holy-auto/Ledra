@@ -62,19 +62,28 @@ export function PricingCard({
         {features.map((feature) => (
           <li
             key={feature}
-            className="flex items-start gap-2 text-[0.8125rem] leading-snug text-white/70"
+            className="flex items-start gap-2.5 text-[0.8125rem] leading-snug text-white/70"
           >
-            <svg
-              className="w-4.5 h-4.5 flex-shrink-0 mt-0.5 text-blue-400"
-              viewBox="0 0 20 20"
-              fill="currentColor"
+            <div
+              className="w-5 h-5 flex-shrink-0 mt-0.5 rounded-full flex items-center justify-center"
+              style={{
+                background: "linear-gradient(135deg, rgba(59,130,246,0.25) 0%, rgba(139,92,246,0.15) 100%)",
+                boxShadow: "0 2px 8px rgba(59,130,246,0.2), inset 0 1px 0 rgba(255,255,255,0.1)",
+                transform: "perspective(400px) rotateX(5deg)",
+              }}
             >
-              <path
-                fillRule="evenodd"
-                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                clipRule="evenodd"
-              />
-            </svg>
+              <svg
+                className="w-3 h-3 text-blue-400"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </div>
             {feature}
           </li>
         ))}
