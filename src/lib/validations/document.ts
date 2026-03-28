@@ -28,7 +28,7 @@ export const documentCreateSchema = z.object({
   show_seal: z.boolean().default(false),
   show_logo: z.boolean().default(true),
   tax_rate: z.union([z.string(), z.number()]).optional().default(10),
-  meta_json: z.record(z.unknown()).optional().default({}),
+  meta_json: z.record(z.string(), z.unknown()).optional().default({}),
 });
 
 export const documentUpdateSchema = documentCreateSchema.partial().extend({

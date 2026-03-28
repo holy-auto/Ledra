@@ -20,5 +20,5 @@ export const hearingCreateSchema = z.object({
   parking_environment: z.string().trim().max(200).default(""),
   usage_frequency: z.string().trim().max(100).default(""),
   additional_requests: z.string().trim().max(1000).default(""),
-  hearing_json: z.record(z.unknown()).optional().default({}),
+  hearing_json: z.record(z.string(), z.unknown()).optional().default({}),
 });
