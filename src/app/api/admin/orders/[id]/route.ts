@@ -23,7 +23,7 @@ export async function GET(
     // 注文取得 (admin client to bypass RLS)
     const { data: order, error } = await admin
       .from("job_orders")
-      .select("*")
+      .select("id, order_number, from_tenant_id, to_tenant_id, title, description, category, budget, accepted_amount, deadline, status, payment_method, payment_status, payment_confirmed_by_client, payment_confirmed_by_vendor, vendor_completed_at, client_approved_at, cancel_reason, created_at")
       .eq("id", id)
       .or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`)
       .single();

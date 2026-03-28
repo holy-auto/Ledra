@@ -18,21 +18,21 @@ export async function GET() {
     const [{ data: campaigns }, { data: upcoming }, { data: past }] = await Promise.all([
       supabase
         .from("agent_campaigns")
-        .select("*")
+        .select("id, title, description, campaign_type, bonus_rate, bonus_fixed, start_date, end_date, banner_text")
         .eq("is_active", true)
         .lte("start_date", today)
         .gte("end_date", today)
         .order("end_date", { ascending: true }),
       supabase
         .from("agent_campaigns")
-        .select("*")
+        .select("id, title, description, campaign_type, bonus_rate, bonus_fixed, start_date, end_date, banner_text")
         .eq("is_active", true)
         .gt("start_date", today)
         .order("start_date", { ascending: true })
         .limit(5),
       supabase
         .from("agent_campaigns")
-        .select("*")
+        .select("id, title, description, campaign_type, bonus_rate, bonus_fixed, start_date, end_date, banner_text")
         .lt("end_date", today)
         .order("end_date", { ascending: false })
         .limit(10),

@@ -15,7 +15,7 @@ export async function GET() {
 
     const { data: links } = await supabase
       .from("agent_referral_links")
-      .select("*")
+      .select("id, code, label, url, click_count, is_active, created_at")
       .eq("agent_id", agent.agent_id)
       .order("created_at", { ascending: false });
 

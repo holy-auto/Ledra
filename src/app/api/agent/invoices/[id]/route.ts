@@ -17,13 +17,13 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
     const [invoiceRes, linesRes, agentRes] = await Promise.all([
       supabase
         .from("agent_invoices")
-        .select("*")
+        .select("id, invoice_number, period_start, period_end, subtotal, tax_rate, tax_amount, total, status, issued_at, paid_at, notes, created_at")
         .eq("id", id)
         .eq("agent_id", agent.agent_id)
         .single(),
       supabase
         .from("agent_invoice_lines")
-        .select("*")
+        .select("id, description, quantity, unit_price, amount")
         .eq("invoice_id", id)
         .order("created_at", { ascending: true }),
       supabase

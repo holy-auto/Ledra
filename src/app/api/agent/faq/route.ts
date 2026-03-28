@@ -16,7 +16,7 @@ export async function GET() {
     const [catRes, faqRes] = await Promise.all([
       supabase
         .from("agent_faq_categories")
-        .select("*")
+        .select("id, name, slug")
         .order("sort_order", { ascending: true }),
       supabase
         .from("agent_faqs")

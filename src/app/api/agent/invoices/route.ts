@@ -15,7 +15,7 @@ export async function GET() {
 
     const { data: invoices } = await supabase
       .from("agent_invoices")
-      .select("*")
+      .select("id, invoice_number, period_start, period_end, subtotal, tax_rate, tax_amount, total, status, issued_at, paid_at, notes, created_at")
       .eq("agent_id", agent.agent_id)
       .order("created_at", { ascending: false });
 

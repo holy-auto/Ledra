@@ -23,7 +23,7 @@ export async function GET() {
     // Fetch agent profile
     const { data: profile, error: profileErr } = await supabase
       .from("agents")
-      .select("*")
+      .select("id, name, contact_name, contact_email, contact_phone, postal_code, address, role, stripe_account_id, line_official_account_id, email_notifications, company_name, company_address, website_url, logo_url, commission_type, commission_rate, bank_name, bank_branch, bank_account_type, bank_account_number, bank_account_holder, notes, updated_at")
       .eq("id", agentId)
       .single();
 

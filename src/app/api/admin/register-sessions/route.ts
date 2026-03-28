@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabase
       .from("register_sessions")
-      .select("*")
+      .select("id, tenant_id, register_id, opened_by, closed_by, opened_at, closed_at, opening_cash, closing_cash, expected_cash, cash_difference, total_sales, total_transactions, note, status, created_at, updated_at")
       .eq("tenant_id", caller.tenantId)
       .order("opened_at", { ascending: false });
 

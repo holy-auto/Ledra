@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
 
     // Single vehicle by ID
     if (singleId) {
-      let q = supabase.from("market_vehicles").select("*").eq("id", singleId);
+      let q = supabase.from("market_vehicles").select("id, tenant_id, maker, model, grade, year, mileage, color, color_code, plate_number, chassis_number, engine_type, displacement, transmission, drive_type, fuel_type, door_count, seating_capacity, body_type, inspection_date, repair_history, condition_grade, condition_note, asking_price, wholesale_price, cost_price, supplier_name, acquisition_date, sold_at, sold_price, status, listed_at, description, features, thumbnail_url, created_at, updated_at").eq("id", singleId);
       if (!isPublic) q = q.eq("tenant_id", caller.tenantId);
       else q = q.eq("status", "listed");
       const { data: vehicles, error } = await q;
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
       // Fetch images
       let imgs: any[] = [];
       if (vehicles && vehicles.length > 0) {
-        const { data } = await supabase.from("market_vehicle_images").select("*").eq("vehicle_id", singleId).order("sort_order", { ascending: true });
+        const { data } = await supabase.from("market_vehicle_images").select("id, vehicle_id, storage_path, file_name, sort_order, content_type, file_size, tenant_id, created_at").eq("vehicle_id", singleId).order("sort_order", { ascending: true });
         imgs = data ?? [];
       }
       const enriched = (vehicles ?? []).map((v) => ({ ...v, images: imgs }));
@@ -47,14 +47,14 @@ export async function GET(req: NextRequest) {
       // Cross-tenant: only listed vehicles
       query = supabase
         .from("market_vehicles")
-        .select("*")
+        .select("id, tenant_id, maker, model, grade, year, mileage, color, color_code, plate_number, chassis_number, engine_type, displacement, transmission, drive_type, fuel_type, door_count, seating_capacity, body_type, inspection_date, repair_history, condition_grade, condition_note, asking_price, wholesale_price, cost_price, supplier_name, acquisition_date, sold_at, sold_price, status, listed_at, description, features, thumbnail_url, created_at, updated_at")
         .eq("status", "listed")
         .order("listed_at", { ascending: false });
     } else {
       // Tenant's own vehicles: show all statuses
       query = supabase
         .from("market_vehicles")
-        .select("*")
+        .select("id, tenant_id, maker, model, grade, year, mileage, color, color_code, plate_number, chassis_number, engine_type, displacement, transmission, drive_type, fuel_type, door_count, seating_capacity, body_type, inspection_date, repair_history, condition_grade, condition_note, asking_price, wholesale_price, cost_price, supplier_name, acquisition_date, sold_at, sold_price, status, listed_at, description, features, thumbnail_url, created_at, updated_at")
         .eq("tenant_id", caller.tenantId)
         .order("created_at", { ascending: false });
 

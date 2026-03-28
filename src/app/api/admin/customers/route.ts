@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabase
       .from("customers")
-      .select("*")
+      .select("id, name, name_kana, email, phone, postal_code, address, note, created_at")
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
 

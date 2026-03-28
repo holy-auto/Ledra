@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabase
       .from("payments")
-      .select("*")
+      .select("id, tenant_id, store_id, document_id, reservation_id, customer_id, register_session_id, payment_method, amount, received_amount, change_amount, status, refund_amount, refund_reason, note, paid_at, created_by, created_at, updated_at")
       .eq("tenant_id", caller.tenantId)
       .order("paid_at", { ascending: false });
 
