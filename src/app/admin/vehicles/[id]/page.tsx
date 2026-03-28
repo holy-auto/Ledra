@@ -115,9 +115,17 @@ export default async function AdminVehicleDetailPage({
     redirect(`/admin/vehicles/${id}?voided=1`);
   }
 
-  type VehicleWithCustomer = NonNullable<Awaited<ReturnType<typeof supabase.from<"vehicles">>>["data"]>[number] & {
-    size_class?: string | null;
+  type VehicleWithCustomer = {
+    id: string;
+    maker: string | null;
+    model: string | null;
+    year: number | null;
+    plate_display: string | null;
+    size_class: string | null;
+    vin_code: string | null;
+    notes: string | null;
     customer: { id: string; name: string } | null;
+    [key: string]: unknown;
   };
 
   const { data: vehicle, error: vehicleError } = await supabase
@@ -125,7 +133,7 @@ export default async function AdminVehicleDetailPage({
     .select("*, customer:customers(id, name)")
     .eq("tenant_id", membership.tenant_id)
     .eq("id", id)
-    .single() as { data: VehicleWithCustomer | null; error: typeof vehicleError };
+    .single() as unknown as { data: VehicleWithCustomer | null; error: Error | null };
 
   if (vehicleError || !vehicle) {
     return <div className="p-6 text-primary">車両が見つかりません。</div>;
