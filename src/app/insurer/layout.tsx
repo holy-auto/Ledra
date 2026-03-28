@@ -14,7 +14,7 @@ function InsurerSidebar() {
           href="/insurer"
           className="text-sm font-bold tracking-wide text-neutral-900"
         >
-          INSURER PORTAL
+          保険会社ポータル
         </Link>
       </div>
       <nav className="space-y-1 p-3">
@@ -117,7 +117,7 @@ export default function InsurerLayout({ children }: { children: ReactNode }) {
           href="/insurer"
           className="text-sm font-bold tracking-wide text-neutral-900"
         >
-          INSURER PORTAL
+          保険会社ポータル
         </Link>
         <MobileMenu />
       </header>
