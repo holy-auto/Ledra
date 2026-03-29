@@ -14,7 +14,7 @@ export default function ForShopsPage() {
   return (
     <>
       {/* Hero */}
-      <Section bg="default">
+      <Section bg="white">
         <SectionHeading
           title="施工の技術を、証明に変える"
           subtitle="コーティング・フィルム・ラッピング。一件一件の施工を、QRコード付きデジタル証明書として発行・管理。保険会社への証明、顧客への安心を同時に実現します。"
@@ -61,7 +61,7 @@ export default function ForShopsPage() {
       </Section>
 
       {/* Workflow */}
-      <Section bg="default">
+      <Section bg="white">
         <SectionHeading title="導入の流れ" />
         <ScrollReveal variant="fade-up">
           <div className="mx-auto mt-10 max-w-2xl space-y-6">

@@ -12,11 +12,8 @@ export const metadata = {
 export default function FAQPage() {
   return (
     <>
-      <Section bg="default">
-        <SectionHeading
-          title="よくある質問"
-          subtitle="Ledraに関するよくあるご質問をまとめました。"
-        />
+      <Section bg="white">
+        <SectionHeading title="よくある質問" subtitle="Ledraに関するよくあるご質問をまとめました。" />
 
         {/* General */}
         <div className="mx-auto mt-12 max-w-3xl">

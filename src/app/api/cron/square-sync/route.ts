@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api/auth";
 import { apiOk, apiUnauthorized, apiInternalError, apiError } from "@/lib/api/response";
 import { verifyCronRequest } from "@/lib/cronAuth";
+import { sendCronFailureAlert } from "@/lib/cronAlert";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -81,17 +82,14 @@ async function fetchAllOrders(
     };
     if (cursor) body.cursor = cursor;
 
-    const res = await fetch(
-      "https://connect.squareup.com/v2/orders/search",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
+    const res = await fetch("https://connect.squareup.com/v2/orders/search", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify(body),
+    });
 
     if (res.status === 429) {
       return { orders: allOrders, error: "rate_limited" };
@@ -142,7 +140,9 @@ export async function GET(req: NextRequest) {
     // Fetch all active square connections
     const { data: connections, error: connErr } = await admin
       .from("square_connections")
-      .select("id, tenant_id, square_access_token, square_refresh_token, square_token_expires_at, square_location_ids, status")
+      .select(
+        "id, tenant_id, square_access_token, square_refresh_token, square_token_expires_at, square_location_ids, status",
+      )
       .eq("status", "active");
 
     if (connErr) {
@@ -183,10 +183,7 @@ export async function GET(req: NextRequest) {
         const expiresAt = new Date(conn.square_token_expires_at as string);
 
         if (expiresAt <= now) {
-          const refreshed = await refreshSquareToken(
-            connectionId,
-            conn.square_refresh_token as string,
-          );
+          const refreshed = await refreshSquareToken(connectionId, conn.square_refresh_token as string);
           if (!refreshed) {
             console.warn(`[square cron] tenant=${tenantId} token refresh failed, skipping`);
             results.push({ tenantId, status: "skipped", error: "token_refresh_failed" });
@@ -224,12 +221,7 @@ export async function GET(req: NextRequest) {
         }
 
         // Fetch orders from Square
-        const { orders, error: fetchError } = await fetchAllOrders(
-          accessToken,
-          locationIds,
-          from,
-          to,
-        );
+        const { orders, error: fetchError } = await fetchAllOrders(accessToken, locationIds, from, to);
 
         if (fetchError === "unauthorized") {
           await admin
@@ -278,11 +270,8 @@ export async function GET(req: NextRequest) {
               const taxMoney = order.total_tax_money?.amount ?? 0;
               const discountMoney = order.total_discount_money?.amount ?? 0;
               const tipMoney = order.total_tip_money?.amount ?? 0;
-              const paymentMethods: string[] = (order.tenders ?? []).map(
-                (t: any) => t.type ?? "UNKNOWN",
-              );
-              const receiptUrl =
-                (order.tenders ?? []).find((t: any) => t.receipt_url)?.receipt_url ?? null;
+              const paymentMethods: string[] = (order.tenders ?? []).map((t: any) => t.type ?? "UNKNOWN");
+              const receiptUrl = (order.tenders ?? []).find((t: any) => t.receipt_url)?.receipt_url ?? null;
 
               return {
                 tenant_id: tenantId,
@@ -306,9 +295,7 @@ export async function GET(req: NextRequest) {
               };
             });
 
-            const { error: insertErr, count: insertCount } = await admin
-              .from("square_orders")
-              .insert(rows);
+            const { error: insertErr, count: insertCount } = await admin.from("square_orders").insert(rows);
 
             if (insertErr) {
               console.error(`[square cron] tenant=${tenantId} batch insert error:`, insertErr.message);
@@ -339,7 +326,9 @@ export async function GET(req: NextRequest) {
           .update({ last_synced_at: new Date().toISOString() })
           .eq("tenant_id", tenantId);
 
-        console.info(`[square cron] tenant=${tenantId} done: fetched=${orders.length} imported=${imported} skipped=${skipped}`);
+        console.info(
+          `[square cron] tenant=${tenantId} done: fetched=${orders.length} imported=${imported} skipped=${skipped}`,
+        );
         results.push({
           tenantId,
           status: "synced",
@@ -356,7 +345,9 @@ export async function GET(req: NextRequest) {
     }
 
     const elapsed = Date.now() - startTime;
-    console.info(`[square cron] finished in ${elapsed}ms: processed=${results.length} synced=${synced} errors=${errors}`);
+    console.info(
+      `[square cron] finished in ${elapsed}ms: processed=${results.length} synced=${synced} errors=${errors}`,
+    );
 
     return apiOk({
       processed: results.length,
@@ -366,6 +357,7 @@ export async function GET(req: NextRequest) {
       results,
     });
   } catch (e) {
+    await sendCronFailureAlert("square-sync", e);
     return apiInternalError(e, "square cron GET");
   }
 }

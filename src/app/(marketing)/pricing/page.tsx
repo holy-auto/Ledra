@@ -1,13 +1,19 @@
 import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
-import { Container } from "@/components/marketing/Container";
 import { PricingCards } from "@/components/marketing/PricingCards";
 import { PricingCard } from "@/components/marketing/PricingCard";
 import { CTABanner } from "@/components/marketing/CTABanner";
 import { ScrollReveal } from "@/components/marketing/ScrollReveal";
 import { FAQList } from "@/components/marketing/FAQList";
 import { FAQItem } from "@/components/marketing/FAQItem";
-import { PLANS, FEATURE_COMPARISON, ADD_ON_OPTIONS, TEMPLATE_OPTIONS, ANNUAL_DISCOUNT_PERCENT, LAUNCH_CAMPAIGN } from "@/lib/marketing/pricing";
+import {
+  PLANS,
+  FEATURE_COMPARISON,
+  ADD_ON_OPTIONS,
+  TEMPLATE_OPTIONS,
+  ANNUAL_DISCOUNT_PERCENT,
+  LAUNCH_CAMPAIGN,
+} from "@/lib/marketing/pricing";
 
 export const metadata = {
   title: "料金プラン",
@@ -18,7 +24,7 @@ export default function PricingPage() {
   return (
     <>
       {/* Hero */}
-      <Section bg="default">
+      <Section bg="white">
         <SectionHeading
           title="シンプルで透明な料金体系"
           subtitle="施工店の規模に合わせた4つのプラン。まずは無料から始められます。"
@@ -84,14 +90,17 @@ export default function PricingPage() {
       </Section>
 
       {/* Add-ons */}
-      <Section bg="default">
+      <Section bg="white">
         <SectionHeading title="オプション" subtitle="必要に応じて追加できるオプション機能" />
         <ScrollReveal variant="fade-up">
           <div className="mx-auto mt-10 grid max-w-3xl gap-4">
             {Object.values(ADD_ON_OPTIONS).map((opt) => (
               <div key={opt.name} className="glass-card flex items-center justify-between p-4">
                 <span className="font-medium text-primary">{opt.name}</span>
-                <span className="text-sm text-accent">{opt.price}<span className="text-muted">{opt.unit}</span></span>
+                <span className="text-sm text-accent">
+                  {opt.price}
+                  <span className="text-muted">{opt.unit}</span>
+                </span>
               </div>
             ))}
           </div>
@@ -127,13 +136,25 @@ export default function PricingPage() {
       </Section>
 
       {/* FAQ */}
-      <Section bg="default">
+      <Section bg="white">
         <SectionHeading title="よくある質問" />
         <FAQList className="mt-10">
-          <FAQItem question="無料プランに期間制限はありますか？" answer="いいえ。フリープランは期間無制限で月10件まで発行いただけます。" />
-          <FAQItem question="途中でプラン変更できますか？" answer="はい。いつでもアップグレード・ダウングレードが可能です。日割り計算で差額を調整します。" />
-          <FAQItem question="解約に違約金はかかりますか？" answer="いいえ。月額プランはいつでも解約可能で、違約金はありません。年間プランは残存期間の返金はございません。" />
-          <FAQItem question="支払い方法は何がありますか？" answer="クレジットカード（Visa/Master/Amex/JCB）に対応しています。年間契約は請求書払いにも対応可能です。" />
+          <FAQItem
+            question="無料プランに期間制限はありますか？"
+            answer="いいえ。フリープランは期間無制限で月10件まで発行いただけます。"
+          />
+          <FAQItem
+            question="途中でプラン変更できますか？"
+            answer="はい。いつでもアップグレード・ダウングレードが可能です。日割り計算で差額を調整します。"
+          />
+          <FAQItem
+            question="解約に違約金はかかりますか？"
+            answer="いいえ。月額プランはいつでも解約可能で、違約金はありません。年間プランは残存期間の返金はございません。"
+          />
+          <FAQItem
+            question="支払い方法は何がありますか？"
+            answer="クレジットカード（Visa/Master/Amex/JCB）に対応しています。年間契約は請求書払いにも対応可能です。"
+          />
         </FAQList>
       </Section>
 

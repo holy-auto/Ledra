@@ -300,20 +300,24 @@ POS機能は**既に本格実装済み**：
 | 3 | Resend Webhook署名未検証 | ~~CRITICAL~~ LOW | - | 本番環境では設定済み（実施不要） |
 | 4 | マーケティングサイト5ページがComing Soon | ~~CRITICAL~~ INFO | - | 特許出願対応で意図的（実施不要） |
 | 5 | ステージング環境なし | **HIGH** | 1日 | **本監査で構築済み** |
-| 6 | pre-commitフック・フォーマッターなし | **HIGH** | 半日 | 未対応 |
-| 7 | テストカバレッジ計測なし | **HIGH** | 半日 | 未対応 |
-| 8 | Cron障害アラートなし | **HIGH** | 1日 | 未対応 |
+| 6 | pre-commitフック・フォーマッターなし | **HIGH** | 半日 | **修正済み（Prettier + Husky/lint-staged導入）** |
+| 7 | テストカバレッジ計測なし | **HIGH** | 半日 | **修正済み（@vitest/coverage-v8 + 閾値設定）** |
+| 8 | Cron障害アラートなし | **HIGH** | 1日 | **修正済み（全Cronにメールアラート追加）** |
 
 ### 結論（訂正版）
 
 セキュリティの根幹（proxy.ts）は実装済みであり、middleware接続とInsurerガード追加で解決。
 マーケティングサイトは意図的非公開。**最低限の修正（#1, #2, #5）で4/1ローンチは可能。**
 
-ただし以下のリスクは残存：
+**追加対応済み（2026-03-29）:**
+- Prettier + Husky/lint-staged導入（#6）
+- テストカバレッジ計測 + 閾値設定（#7）
+- 全Cronジョブにメールアラート追加（#8）
+- Cron署名検証バグ修正（空文字列→URLパスハッシュ）
+
+残存リスク：
 - API層のバリデーション・レスポンス形式不統一
-- テストカバレッジの計測・閾値未設定
-- Prettier/pre-commitフック未導入
-- Cronジョブの障害監視なし
+- テナントアクセス制御の一部不備
 
 ---
 
@@ -374,9 +378,9 @@ POS機能は**既に本格実装済み**：
 | INFO | ~~middleware.ts未接続~~ | `src/proxy.ts` | Next.js 16でproxy.tsは自動有効。対応不要 | **問題なし** |
 | ~~CRITICAL~~ | Insurerポータルにルートガードなし | `/src/app/insurer/layout.tsx` | InsurerRouteGuard作成 | **修正済み** |
 | LOW | Resend Webhookのフォールバック | `/api/webhooks/resend/route.ts` | 本番設定済み。防御的に未設定時500返却が望ましい | 本番影響なし |
-| HIGH | Cron署名が空文字列をハッシュ | `/lib/cronAuth.ts` | Vercel署名フォーマットの正しい実装 | 未対応 |
+| HIGH | Cron署名が空文字列をハッシュ | `/lib/cronAuth.ts` | URLパスをハッシュするよう修正 | **修正済み** |
 | HIGH | テナントアクセス未検証 | 複数APIルート | `caller.tenantId === requestedTenantId`の検証追加 | 未対応 |
-| MEDIUM | LINE Webhookでtenant_idを外部パラメータとして受け入れ | `/api/line/webhook/route.ts` | テナント所有権の検証 | 未対応 |
+| MEDIUM | LINE Webhookでtenant_idを外部パラメータとして受け入れ | `/api/line/webhook/route.ts` | 署名検証でテナント固有secretを使用（検証済み、問題なし） | **確認済み** |
 | LOW | Admin APIルートにレートリミットなし | `/api/admin/*` | 破壊的操作へのレートリミット追加 | 未対応 |
 
 ---

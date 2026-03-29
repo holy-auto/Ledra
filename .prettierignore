@@ -1,0 +1,11 @@
+.next
+node_modules
+build
+coverage
+playwright-report
+_backup
+_diag
+apps/mobile
+supabase/migrations
+public
+package-lock.json

@@ -20,11 +20,11 @@ export function verifyCronRequest(req: Request): {
   }
 
   // 1. Check Vercel cron signature header
+  //    Vercel signs the full request URL path with CRON_SECRET as HMAC key.
   const vercelSignature = req.headers.get("x-vercel-cron-signature");
   if (vercelSignature) {
-    const expected = crypto.createHmac("sha256", cronSecret)
-      .update("")
-      .digest("hex");
+    const url = new URL(req.url);
+    const expected = crypto.createHmac("sha256", cronSecret).update(url.pathname).digest("hex");
     if (vercelSignature === expected) {
       return { authorized: true };
     }
