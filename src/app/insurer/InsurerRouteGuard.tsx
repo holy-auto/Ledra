@@ -35,7 +35,7 @@ export default function InsurerRouteGuard({ children }: { children: ReactNode })
         const { data, error } = await supabase
           .from("insurer_users")
           .select("id, insurer_id, role, is_active")
-          .eq("auth_user_id", user.id)
+          .eq("user_id", user.id)
           .eq("is_active", true)
           .maybeSingle();
 
@@ -88,7 +88,9 @@ export default function InsurerRouteGuard({ children }: { children: ReactNode })
               try {
                 const supabase = createClient();
                 await supabase.auth.signOut();
-              } catch { /* ignore */ }
+              } catch {
+                /* ignore */
+              }
               window.location.replace("/insurer/login");
             }}
             className="btn-primary mt-6"
