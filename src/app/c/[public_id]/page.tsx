@@ -23,21 +23,23 @@ type PublicStatusResponse = {
     customer_name?: string | null;
     created_at?: string | null;
     updated_at?: string | null;
-    vehicle_info_json?: any;
+    /* eslint-disable @typescript-eslint/no-explicit-any -- DB JSON columns */
+    vehicle_info_json?: Record<string, any>;
     content_free_text?: string | null;
-    content_preset_json?: any;
+    content_preset_json?: Record<string, any>;
     expiry_type?: string | null;
     expiry_value?: string | null;
     logo_asset_path?: string | null;
     footer_variant?: string | null;
     current_version?: string | null;
     service_type?: string | null;
-    ppf_coverage_json?: any[] | null;
-    coating_products_json?: any[] | null;
+    ppf_coverage_json?: Record<string, any>[] | null;
+    coating_products_json?: Record<string, any>[] | null;
     warranty_period_end?: string | null;
     warranty_exclusions?: string | null;
-    maintenance_json?: any | null;
-    body_repair_json?: any | null;
+    maintenance_json?: Record<string, any> | null;
+    body_repair_json?: Record<string, any> | null;
+    /* eslint-enable @typescript-eslint/no-explicit-any */
   };
   vehicle?: {
     id?: string | null;
@@ -88,7 +90,7 @@ function asObj(v: unknown): Record<string, any> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, any>) : {};
 }
 
-function pickVehicleField(vehicle: any, info: any, keys: string[]) {
+function pickVehicleField(vehicle: Record<string, any> | null | undefined, info: Record<string, any>, keys: string[]) {
   for (const key of keys) {
     const v1 = vehicle?.[key];
     if (v1 !== undefined && v1 !== null && String(v1).trim() !== "") return String(v1);
@@ -278,7 +280,7 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
           <section className="glass-card p-4">
             <div className="mb-3 font-bold text-primary">PPF施工範囲</div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {data.certificate.ppf_coverage_json.map((entry: any, idx: number) => (
+              {data.certificate.ppf_coverage_json.map((entry: Record<string, any>, idx: number) => (
                 <div key={idx} className="rounded-lg bg-base px-3 py-2 text-secondary">
                   {getPanelLabel(entry.panel)}:{" "}
                   <span className={`font-medium ${entry.coverage === "full" ? "text-emerald-400" : "text-amber-400"}`}>
@@ -300,7 +302,7 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
               {data.certificate.service_type === "ppf" ? "使用フィルム" : "使用製品"}
             </div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {data.certificate.coating_products_json.map((cp: any, idx: number) => (
+              {data.certificate.coating_products_json.map((cp: Record<string, any>, idx: number) => (
                 <div key={idx} className="rounded-lg bg-base px-3 py-2 text-secondary">
                   <span className="text-primary font-medium">
                     {[cp.brand_name, cp.product_name].filter(Boolean).join(" / ") || "-"}

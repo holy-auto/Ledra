@@ -142,6 +142,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  console.log("[cron/monitor] daily check complete", summary);
+  console.info("[cron/monitor] daily check complete", summary);
   return NextResponse.json(summary);
 }

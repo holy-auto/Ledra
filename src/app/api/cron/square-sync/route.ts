@@ -151,11 +151,11 @@ export async function GET(req: NextRequest) {
     }
 
     if (!connections || connections.length === 0) {
-      console.log("[square cron] no active connections found");
+      console.info("[square cron] no active connections found");
       return apiOk({ processed: 0, synced: 0, errors: 0, results: [] });
     }
 
-    console.log(`[square cron] processing ${connections.length} tenant(s)`);
+    console.info(`[square cron] processing ${connections.length} tenant(s)`);
 
     const results: TenantResult[] = [];
     let synced = 0;
@@ -339,7 +339,7 @@ export async function GET(req: NextRequest) {
           .update({ last_synced_at: new Date().toISOString() })
           .eq("tenant_id", tenantId);
 
-        console.log(`[square cron] tenant=${tenantId} done: fetched=${orders.length} imported=${imported} skipped=${skipped}`);
+        console.info(`[square cron] tenant=${tenantId} done: fetched=${orders.length} imported=${imported} skipped=${skipped}`);
         results.push({
           tenantId,
           status: "synced",
@@ -356,7 +356,7 @@ export async function GET(req: NextRequest) {
     }
 
     const elapsed = Date.now() - startTime;
-    console.log(`[square cron] finished in ${elapsed}ms: processed=${results.length} synced=${synced} errors=${errors}`);
+    console.info(`[square cron] finished in ${elapsed}ms: processed=${results.length} synced=${synced} errors=${errors}`);
 
     return apiOk({
       processed: results.length,

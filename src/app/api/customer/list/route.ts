@@ -10,8 +10,6 @@ import {
   validateSession,
 } from "@/lib/customerPortalServer";
 
-const LAST4_COOKIE = "hc_l4";
-
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -29,24 +27,22 @@ export async function GET(req: Request) {
     const sess = await validateSession(tenantId, token);
     if (!sess) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-    const last4 = (c.get(LAST4_COOKIE)?.value ?? "").trim();
-
     if (action === "history") {
-      const history = await listHistoryForCustomer(tenantId, sess.phone_last4_hash, last4);
+      const history = await listHistoryForCustomer(tenantId, sess.phone_last4_hash);
       return NextResponse.json({ ok: true, history });
     }
 
     if (action === "reservations") {
-      const reservations = await listReservationsForCustomer(tenantId, sess.phone_last4_hash, last4);
+      const reservations = await listReservationsForCustomer(tenantId, sess.phone_last4_hash);
       return NextResponse.json({ ok: true, reservations });
     }
 
     if (action === "profile") {
-      const profile = await getCustomerProfile(tenantId, sess.phone_last4_hash, last4);
+      const profile = await getCustomerProfile(tenantId, sess.phone_last4_hash);
       return NextResponse.json({ ok: true, profile });
     }
 
-    const rows = await listCertificatesForCustomer(tenantId, sess.phone_last4_hash, last4);
+    const rows = await listCertificatesForCustomer(tenantId, sess.phone_last4_hash);
 
     return NextResponse.json({ ok: true, rows });
   } catch (e: any) {

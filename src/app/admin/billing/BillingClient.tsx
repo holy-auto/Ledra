@@ -307,8 +307,8 @@ export default function BillingPage() {
 
       try {
         await fetchBillingState();
-      } catch (e: any) {
-        setErr(e?.message ?? String(e));
+      } catch (e: unknown) {
+        setErr(e instanceof Error ? e.message : String(e));
       } finally {
         setLoading(false);
       }
@@ -320,12 +320,12 @@ export default function BillingPage() {
   useEffect(() => {
     if (!fromPortal) return;
 
-    const timers: any[] = [];
+    const timers: ReturnType<typeof setTimeout>[] = [];
     const delays = [0, 1000, 3000, 7000];
     for (const d of delays) {
       timers.push(
         setTimeout(() => {
-          fetchBillingState().catch((e: any) => setErr(e?.message ?? String(e)));
+          fetchBillingState().catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)));
         }, d)
       );
     }
@@ -343,7 +343,7 @@ export default function BillingPage() {
 
   // フォーカス復帰でも更新
   useEffect(() => {
-    const onFocus = () => fetchBillingState().catch((e: any) => setErr(e?.message ?? String(e)));
+    const onFocus = () => fetchBillingState().catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)));
     const onVis = () => {
       if (document.visibilityState === "visible") onFocus();
     };

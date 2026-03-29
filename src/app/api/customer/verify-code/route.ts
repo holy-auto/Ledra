@@ -12,8 +12,6 @@ import {
 } from "@/lib/customerPortalServer";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
-const LAST4_COOKIE = "hc_l4";
-
 const isSecureCookie = process.env.NODE_ENV === "production";
 
 export async function POST(req: Request) {
@@ -64,24 +62,11 @@ export async function POST(req: Request) {
 
     await markCodeUsed(row.id);
 
-    const last4Plain = String((body as any).phone_last4 ?? (body as any).last4 ?? "").trim();
-    if (!/^\d{4}$/.test(last4Plain)) {
-      return NextResponse.json({ error: "phone_last4 required" }, { status: 400 });
-    }
-    const sess = await createSession(tenantId, email, phoneHash, last4Plain);
+    const sess = await createSession(tenantId, email, phoneHash);
 
     const res = NextResponse.json({ ok: true });
 
     res.cookies.set(CUSTOMER_COOKIE, sess.token, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: isSecureCookie,
-      path: "/",
-      maxAge: 30 * 24 * 60 * 60,
-    });
-
-    // フォールバック検索用に last4 も cookie に保持（httpOnlyでOK）
-    res.cookies.set(LAST4_COOKIE, last4Raw.trim(), {
       httpOnly: true,
       sameSite: "lax",
       secure: isSecureCookie,

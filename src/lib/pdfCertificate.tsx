@@ -34,13 +34,15 @@ export type CertRow = {
   public_id: string;
   tenant_custom_domain?: string | null;
   customer_name: string;
-  vehicle_info_json: any;
+  /* eslint-disable @typescript-eslint/no-explicit-any -- DB JSON columns */
+  vehicle_info_json: Record<string, any>;
   content_free_text: string | null;
-  content_preset_json: any;
-  coating_products_json?: any[] | null;
-  ppf_coverage_json?: any[] | null;
-  maintenance_json?: any | null;
-  body_repair_json?: any | null;
+  content_preset_json: Record<string, any>;
+  coating_products_json?: Record<string, any>[] | null;
+  ppf_coverage_json?: Record<string, any>[] | null;
+  maintenance_json?: Record<string, any> | null;
+  body_repair_json?: Record<string, any> | null;
+  /* eslint-enable @typescript-eslint/no-explicit-any */
   service_type?: string | null;
   expiry_type: string | null;
   expiry_value: string | null;
@@ -69,7 +71,7 @@ const styles = StyleSheet.create({
   itemValue: { flex: 1 },
 });
 
-function normValue(v: any): string | null {
+function normValue(v: unknown): string | null {
   if (v === undefined || v === null) return null;
   if (Array.isArray(v)) {
     const s = v.map((x) => String(x)).map((s) => s.trim()).filter(Boolean).join(", ");
@@ -124,7 +126,7 @@ export async function renderCertificatePdf(row: CertRow, publicUrl: string) {
   const isPpf = row.service_type === "ppf";
   const isMaintenance = row.service_type === "maintenance";
   const isBodyRepair = row.service_type === "body_repair";
-  const ppfCoverage: any[] = Array.isArray(row.ppf_coverage_json) ? row.ppf_coverage_json : [];
+  const ppfCoverage: Record<string, any>[] = Array.isArray(row.ppf_coverage_json) ? row.ppf_coverage_json : [];
   const maintenanceData: Record<string, any> = (typeof row.maintenance_json === "object" && row.maintenance_json) ? row.maintenance_json : {};
   const bodyRepairData: Record<string, any> = (typeof row.body_repair_json === "object" && row.body_repair_json) ? row.body_repair_json : {};
 
@@ -222,7 +224,7 @@ export async function renderCertificatePdf(row: CertRow, publicUrl: string) {
         {Array.isArray(row.coating_products_json) && row.coating_products_json.length > 0 ? (
           <View style={styles.box}>
             <Text style={styles.sectionTitle}>{productsTitle}</Text>
-            {row.coating_products_json.map((cp: any, idx: number) => (
+            {row.coating_products_json.map((cp: Record<string, any>, idx: number) => (
               <View key={idx} style={styles.itemRow}>
                 <Text style={styles.itemLabel}>{cp.location || "-"}</Text>
                 <Text style={styles.itemValue}>
@@ -237,7 +239,7 @@ export async function renderCertificatePdf(row: CertRow, publicUrl: string) {
         {isPpf && ppfCoverage.length > 0 ? (
           <View style={styles.box}>
             <Text style={styles.sectionTitle}>施工範囲</Text>
-            {ppfCoverage.map((entry: any, idx: number) => (
+            {ppfCoverage.map((entry: Record<string, any>, idx: number) => (
               <View key={idx} style={styles.itemRow}>
                 <Text style={styles.itemLabel}>{getPanelLabel(entry.panel)}</Text>
                 <Text style={styles.itemValue}>

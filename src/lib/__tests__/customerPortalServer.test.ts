@@ -136,3 +136,108 @@ describe("constants", () => {
     expect(SESSION_TTL_DAYS).toBe(30);
   });
 });
+
+// ─── Edge cases for sha256Hex ───
+describe("sha256Hex — edge cases", () => {
+  it("hashes empty string consistently", () => {
+    const h1 = sha256Hex("");
+    const h2 = sha256Hex("");
+    expect(h1).toBe(h2);
+    expect(h1).toHaveLength(64);
+  });
+
+  it("hashes unicode/Japanese text", () => {
+    const h = sha256Hex("テスト文字列");
+    expect(h).toHaveLength(64);
+    expect(h).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("hashes very long input", () => {
+    const h = sha256Hex("a".repeat(10000));
+    expect(h).toHaveLength(64);
+  });
+
+  it("hash differs with whitespace variations", () => {
+    expect(sha256Hex("hello")).not.toBe(sha256Hex(" hello"));
+    expect(sha256Hex("hello")).not.toBe(sha256Hex("hello "));
+  });
+});
+
+// ─── Edge cases for normalizeEmail ───
+describe("normalizeEmail — edge cases", () => {
+  it("handles mixed case with plus addressing", () => {
+    expect(normalizeEmail("User+Tag@Example.COM")).toBe("user+tag@example.com");
+  });
+
+  it("handles tabs and newlines in whitespace", () => {
+    expect(normalizeEmail("\ttest@example.com\n")).toBe("test@example.com");
+  });
+});
+
+// ─── Edge cases for normalizeLast4 ───
+describe("normalizeLast4 — edge cases", () => {
+  it("handles full-width digits by rejecting them", () => {
+    // Full-width digits ０１２３ should not match /^\d{4}$/
+    expect(() => normalizeLast4("０１２３")).toThrow("phone_last4 must be 4 digits");
+  });
+
+  it("rejects digits with spaces in between", () => {
+    expect(() => normalizeLast4("1 2 3 4")).toThrow("phone_last4 must be 4 digits");
+  });
+
+  it("rejects special characters", () => {
+    expect(() => normalizeLast4("12#4")).toThrow("phone_last4 must be 4 digits");
+  });
+});
+
+// ─── phoneLast4Hash includes pepper ───
+describe("phoneLast4Hash — pepper dependency", () => {
+  it("produces a valid hex hash", () => {
+    const h = phoneLast4Hash("tenant-x", "9999");
+    expect(h).toHaveLength(64);
+    expect(h).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("throws for invalid last4 input", () => {
+    expect(() => phoneLast4Hash("tenant-x", "abc")).toThrow("phone_last4 must be 4 digits");
+  });
+});
+
+// ─── otpCodeHash ───
+describe("otpCodeHash — edge cases", () => {
+  it("different email produces different hash", () => {
+    const h1 = otpCodeHash("t1", "a@b.com", "ph", "123456");
+    const h2 = otpCodeHash("t1", "c@d.com", "ph", "123456");
+    expect(h1).not.toBe(h2);
+  });
+
+  it("different tenant produces different hash", () => {
+    const h1 = otpCodeHash("t1", "a@b.com", "ph", "123456");
+    const h2 = otpCodeHash("t2", "a@b.com", "ph", "123456");
+    expect(h1).not.toBe(h2);
+  });
+
+  it("different phone hash produces different hash", () => {
+    const h1 = otpCodeHash("t1", "a@b.com", "ph1", "123456");
+    const h2 = otpCodeHash("t1", "a@b.com", "ph2", "123456");
+    expect(h1).not.toBe(h2);
+  });
+});
+
+// ─── randomHex edge cases ───
+describe("randomHex — edge cases", () => {
+  it("returns empty string for 0 bytes", () => {
+    expect(randomHex(0)).toBe("");
+  });
+
+  it("returns 2-char hex for 1 byte", () => {
+    const h = randomHex(1);
+    expect(h).toHaveLength(2);
+    expect(h).toMatch(/^[0-9a-f]{2}$/);
+  });
+
+  it("returns 64-char hex for 32 bytes", () => {
+    const h = randomHex(32);
+    expect(h).toHaveLength(64);
+  });
+});

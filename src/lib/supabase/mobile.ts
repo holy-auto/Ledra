@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { normalizeRole, type Role } from "@/lib/auth/roles";
 
 /**
@@ -60,9 +60,8 @@ export type MobileCallerInfo = {
  * checkRole.ts の resolveCallerWithRole と同等だが、
  * Bearer Token を明示的に auth.getUser() に渡す。
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function resolveMobileCaller(
-  client: any,
+  client: SupabaseClient,
   accessToken: string,
 ): Promise<MobileCallerInfo | null> {
   // JWT を検証してユーザー情報を取得

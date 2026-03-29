@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { escapeIlike } from "@/lib/sanitize";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
     let query = supabase
       .from("tenants")
       .select("id, name, slug")
-      .ilike("name", `%${q}%`)
+      .ilike("name", `%${escapeIlike(q)}%`)
       .eq("is_active", true)
       .limit(20);
 

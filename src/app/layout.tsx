@@ -4,6 +4,7 @@ import { Noto_Sans_JP } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ThemeProvider } from "@/lib/theme/ThemeContext";
+import { ServiceWorkerRegistrar } from "@/components/ServiceWorkerRegistrar";
 import { cookies } from "next/headers";
 
 const geistMono = Geist_Mono({
@@ -21,6 +22,24 @@ const notoSansJP = Noto_Sans_JP({
 export const metadata = {
   title: "Ledra",
   description: "WEB施工証明書SaaS",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://ledra.co.jp"),
+  openGraph: {
+    title: "Ledra | WEB施工証明書SaaS",
+    description:
+      "施工証明をデジタルで。施工店と保険会社をつなぐSaaSプラットフォームです。",
+    siteName: "Ledra",
+    locale: "ja_JP",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Ledra | WEB施工証明書SaaS",
+    description:
+      "施工証明をデジタルで。施工店と保険会社をつなぐSaaSプラットフォームです。",
+  },
+  alternates: {
+    canonical: "/",
+  },
 };
 
 /** Inline script to prevent flash of wrong theme on load */
@@ -48,11 +67,13 @@ export default async function RootLayout({
         <meta name="theme-color" content="#0071e3" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <link rel="apple-touch-icon" href="/icon-192.png" />
       </head>
       <body className="bg-base text-primary antialiased">
         <ThemeProvider>
           {children}
         </ThemeProvider>
+        <ServiceWorkerRegistrar />
         <Analytics />
         <SpeedInsights />
       </body>

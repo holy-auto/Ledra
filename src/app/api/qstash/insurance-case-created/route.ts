@@ -17,7 +17,7 @@ async function handler(request: Request) {
     return Response.json({ ok: false, error: "no payload" }, { status: 400 });
   }
 
-  console.log("[QSTASH][insurance-case-created] processing:", JSON.stringify(body));
+  console.info("[QSTASH][insurance-case-created] processing:", JSON.stringify(body));
 
   const {
     certificate_id,
@@ -79,7 +79,7 @@ async function handler(request: Request) {
       }
     }
 
-    console.log("[QSTASH][insurance-case-created] done", {
+    console.info("[QSTASH][insurance-case-created] done", {
       certificate_id,
       public_id,
       shopName,

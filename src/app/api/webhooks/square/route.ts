@@ -125,7 +125,7 @@ async function processEvent(
       await handlePaymentCompleted(merchantId, data);
       break;
     default:
-      console.log(`[square-webhook] Unhandled event type: ${type}`);
+      console.info(`[square-webhook] Unhandled event type: ${type}`);
   }
 }
 
@@ -185,7 +185,7 @@ async function handleOrderUpdated(
   }
 
   await upsertOrder(admin, tenantId, fullOrder);
-  console.log(`[square-webhook] order.updated processed: ${orderId} tenant: ${tenantId}`);
+  console.info(`[square-webhook] order.updated processed: ${orderId} tenant: ${tenantId}`);
 }
 
 /**
@@ -204,7 +204,7 @@ async function handlePaymentCompleted(
   const payment = data?.object as Record<string, unknown> | undefined;
   const orderId = payment?.order_id as string | undefined;
   if (!orderId) {
-    console.log("[square-webhook] payment.completed without order_id — skipping order upsert");
+    console.info("[square-webhook] payment.completed without order_id — skipping order upsert");
     return;
   }
 
@@ -219,7 +219,7 @@ async function handlePaymentCompleted(
   }
 
   await upsertOrder(admin, tenantId, fullOrder);
-  console.log(`[square-webhook] payment.completed processed: order ${orderId} tenant: ${tenantId}`);
+  console.info(`[square-webhook] payment.completed processed: order ${orderId} tenant: ${tenantId}`);
 }
 
 /**

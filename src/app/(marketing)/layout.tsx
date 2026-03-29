@@ -1,6 +1,7 @@
 import { Noto_Sans_JP } from "next/font/google";
 import { Header } from "@/components/marketing/Header";
 import { Footer } from "@/components/marketing/Footer";
+import { OrganizationJsonLd, WebSiteJsonLd } from "@/components/marketing/JsonLd";
 import MarketingThemeWrapper from "./MarketingThemeWrapper";
 
 const notoSansJP = Noto_Sans_JP({
@@ -20,6 +21,14 @@ export const metadata = {
   },
   description:
     "施工証明をデジタルで。Ledraは、施工店と保険会社をつなぐWEB施工証明書プラットフォームです。",
+  openGraph: {
+    title: "Ledra | WEB施工証明書SaaS",
+    description:
+      "施工証明をデジタルで。Ledraは、施工店と保険会社をつなぐWEB施工証明書プラットフォームです。",
+    siteName: "Ledra",
+    locale: "ja_JP",
+    type: "website",
+  },
 };
 
 export default function MarketingLayout({
@@ -32,6 +41,8 @@ export default function MarketingLayout({
       data-theme="marketing"
       className={`${notoSansJP.variable} font-[family-name:var(--font-noto)] bg-[var(--mk-bg-base)]`}
     >
+      <WebSiteJsonLd />
+      <OrganizationJsonLd />
       <Header />
       <main>{children}</main>
       <Footer />

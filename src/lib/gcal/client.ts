@@ -1,4 +1,5 @@
-import { google, calendar_v3 } from "googleapis";
+import { calendar_v3, calendar } from "@googleapis/calendar";
+import { OAuth2Client } from "google-auth-library";
 import { getAdminClient } from "@/lib/api/auth";
 
 /**
@@ -18,7 +19,7 @@ function getOAuth2Client(refreshToken?: string) {
     throw new Error("GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET が未設定です");
   }
 
-  const oauth2 = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+  const oauth2 = new OAuth2Client(clientId, clientSecret, redirectUri);
   if (refreshToken) {
     oauth2.setCredentials({ refresh_token: refreshToken });
   }
@@ -69,13 +70,13 @@ async function getCalendarClient(tenantId: string): Promise<{
   if (!tenant?.gcal_sync_enabled || !tenant.gcal_refresh_token) return null;
 
   const oauth2 = getOAuth2Client(tenant.gcal_refresh_token);
-  const calendar = google.calendar({ version: "v3", auth: oauth2 });
-  const calendarId = tenant.gcal_calendar_id || "primary";
+  const cal = calendar({ version: "v3", auth: oauth2 });
+  const calendarId = (tenant.gcal_calendar_id as string) || "primary";
 
-  return { calendar, calendarId };
+  return { calendar: cal, calendarId };
 }
 
-/** ダブルブッキングチェック関数 */
+/** 同期ログ記録 */
 async function logSync(
   tenantId: string,
   reservationId: string | null,
@@ -108,7 +109,6 @@ type ReservationData = {
 
 /** HH:MM or HH:MM:SS → HH:MM:SS に正規化 */
 function normalizeTime(t: string): string {
-  // "10:00" → "10:00:00", "10:00:00" → "10:00:00"
   return t.length === 5 ? `${t}:00` : t;
 }
 
@@ -161,7 +161,6 @@ export async function syncCreateEvent(
 
     const eventId = res.data.id ?? null;
 
-    // reservations テーブルの gcal_event_id を更新
     if (eventId) {
       const admin = getAdminClient();
       await admin
@@ -196,10 +195,9 @@ export async function syncUpdateEvent(
 
     await logSync(tenantId, reservation.id, "update", reservation.gcal_event_id, "success");
   } catch (e: unknown) {
-    // 404/410 はイベントが既にGCal側で削除済み — ローカルの gcal_event_id をクリア
     const status = (e as { code?: number })?.code ?? (e as { status?: number })?.status;
     if (status === 404 || status === 410) {
-      console.log(`[gcal] update: event ${reservation.gcal_event_id} not found (${status}), clearing gcal_event_id`);
+      console.info(`[gcal] update: event ${reservation.gcal_event_id} not found (${status}), clearing gcal_event_id`);
       const admin = getAdminClient();
       await admin
         .from("reservations")
@@ -230,10 +228,9 @@ export async function syncDeleteEvent(
 
     await logSync(tenantId, reservationId, "delete", gcalEventId, "success");
   } catch (e: unknown) {
-    // 404 (Not Found) / 410 (Gone) はイベントが既に削除済み — 成功扱い
     const status = (e as { code?: number })?.code ?? (e as { status?: number })?.status;
     if (status === 404 || status === 410) {
-      console.log(`[gcal] delete: event ${gcalEventId} already deleted (${status}), treating as success`);
+      console.info(`[gcal] delete: event ${gcalEventId} already deleted (${status}), treating as success`);
       await logSync(tenantId, reservationId, "delete", gcalEventId, "success",
         `GCal event already deleted (HTTP ${status})`);
       return;
@@ -242,10 +239,29 @@ export async function syncDeleteEvent(
   }
 }
 
+interface ReservationRow {
+  id: string;
+  gcal_event_id: string | null;
+  title: string;
+  note: string | null;
+  scheduled_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  status: string;
+}
+
+interface PushReservationRow {
+  id: string;
+  title: string;
+  scheduled_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  note: string | null;
+  customer_id: string | null;
+}
+
 /**
  * Google Calendar → 予約テーブルへ pull 同期
- * - 新規イベント（gcal_event_id がまだない）を予約として取り込む
- * - 既存イベント（gcal_event_id 一致）は更新されていれば反映する
  */
 export async function pullEventsFromCalendar(
   tenantId: string,
@@ -256,14 +272,12 @@ export async function pullEventsFromCalendar(
   try {
     const client = await getCalendarClient(tenantId);
     if (!client) {
-      console.log("[gcal] pull: no calendar client for tenant", tenantId);
+      console.info("[gcal] pull: no calendar client for tenant", tenantId);
       return result;
     }
 
-    console.log(`[gcal] pull: fetching events from ${dateFrom} to ${dateTo} for tenant ${tenantId}`);
+    console.info(`[gcal] pull: fetching events from ${dateFrom} to ${dateTo} for tenant ${tenantId}`);
 
-    // showDeleted: true で削除済みイベントも取得し、ローカル予約をキャンセルできるようにする
-    // Note: showDeleted + orderBy:"startTime" は互換性がないため、updatedMin で代替
     const res = await client.calendar.events.list({
       calendarId: client.calendarId,
       timeMin: `${dateFrom}T00:00:00+09:00`,
@@ -274,9 +288,8 @@ export async function pullEventsFromCalendar(
     });
 
     const events = res.data.items ?? [];
-    console.log(`[gcal] pull: found ${events.length} events in Google Calendar (including deleted)`);
+    console.info(`[gcal] pull: found ${events.length} events in Google Calendar (including deleted)`);
 
-    // 既存の gcal_event_id → 予約データを取得（更新判定用）
     const admin = getAdminClient();
     const { data: existing } = await admin
       .from("reservations")
@@ -285,14 +298,13 @@ export async function pullEventsFromCalendar(
       .not("gcal_event_id", "is", null);
 
     const existingMap = new Map(
-      (existing ?? []).map((r: any) => [r.gcal_event_id, r]),
+      (existing ?? []).map((r: ReservationRow) => [r.gcal_event_id, r]),
     );
 
     if (events.length === 0) return result;
 
     for (const event of events) {
       if (!event.id) continue;
-      // GCal側で削除/キャンセルされたイベント → ローカル予約もキャンセル
       if (event.status === "cancelled") {
         const existingReservation = existingMap.get(event.id);
         if (existingReservation && existingReservation.status !== "cancelled") {
@@ -337,7 +349,6 @@ export async function pullEventsFromCalendar(
       const existingReservation = existingMap.get(event.id);
 
       if (existingReservation) {
-        // 既存予約: 変更があれば更新
         const needsUpdate =
           existingReservation.title !== summary ||
           existingReservation.scheduled_date !== startDate ||
@@ -367,7 +378,6 @@ export async function pullEventsFromCalendar(
           result.skipped++;
         }
       } else {
-        // 新規予約として取り込み
         const { data: inserted, error } = await admin
           .from("reservations")
           .insert({
@@ -394,7 +404,7 @@ export async function pullEventsFromCalendar(
       }
     }
 
-    console.log(`[gcal] pull: imported=${result.imported}, updated=${result.updated}, cancelled=${result.cancelled}, skipped=${result.skipped}`);
+    console.info(`[gcal] pull: imported=${result.imported}, updated=${result.updated}, cancelled=${result.cancelled}, skipped=${result.skipped}`);
     await logSync(tenantId, null, "pull", null, "success",
       `imported=${result.imported}, updated=${result.updated}, cancelled=${result.cancelled}, skipped=${result.skipped}`);
     return result;
@@ -424,7 +434,6 @@ export async function listCalendars(
 
 /**
  * 既存予約を一括で Google Calendar に push 同期
- * gcal_event_id が未設定の予約のみ対象
  */
 export async function pushReservationsToCalendar(
   tenantId: string,
@@ -449,22 +458,23 @@ export async function pushReservationsToCalendar(
 
     if (!reservations || reservations.length === 0) return 0;
 
-    // 顧客名を一括取得
-    const customerIds = [...new Set(reservations.map((r: any) => r.customer_id).filter(Boolean))];
+    const customerIds = [...new Set(
+      (reservations as PushReservationRow[]).map((r) => r.customer_id).filter(Boolean) as string[]
+    )];
     const customerMap: Record<string, string> = {};
     if (customerIds.length > 0) {
       const { data: customers } = await admin
         .from("customers")
         .select("id, name")
         .in("id", customerIds);
-      (customers ?? []).forEach((c: any) => {
+      (customers ?? []).forEach((c: { id: string; name: string }) => {
         customerMap[c.id] = c.name;
       });
     }
 
     let pushed = 0;
 
-    for (const r of reservations) {
+    for (const r of reservations as PushReservationRow[]) {
       try {
         const event = buildEvent({
           id: r.id,
@@ -493,7 +503,6 @@ export async function pushReservationsToCalendar(
         pushed++;
       } catch (e) {
         await logSync(tenantId, r.id, "create", null, "error", String(e));
-        // 個別エラーはスキップして続行
       }
     }
 

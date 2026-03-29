@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     } else {
       results.expired_certificates = data?.length ?? 0;
       if (results.expired_certificates > 0) {
-        console.log(`[cron/maintenance] Expired ${results.expired_certificates} certificates`);
+        console.info(`[cron/maintenance] Expired ${results.expired_certificates} certificates`);
       }
     }
   } catch (err) {
@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
     } else {
       results.cleaned_stripe_events = count ?? 0;
       if (results.cleaned_stripe_events > 0) {
-        console.log(`[cron/maintenance] Cleaned ${results.cleaned_stripe_events} old stripe events`);
+        console.info(`[cron/maintenance] Cleaned ${results.cleaned_stripe_events} old stripe events`);
       }
     }
   } catch (err) {
@@ -73,6 +73,6 @@ export async function GET(req: NextRequest) {
     results.errors.push("stripe_cleanup: unexpected error");
   }
 
-  console.log("[cron/maintenance] Done:", JSON.stringify(results));
+  console.info("[cron/maintenance] Done:", JSON.stringify(results));
   return apiOk(results);
 }

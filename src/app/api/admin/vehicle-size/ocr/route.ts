@@ -8,6 +8,7 @@ import {
   apiValidationError,
 } from "@/lib/api/response";
 import { parseShakensho, calcSizeClass } from "@/lib/ocr/shakensho";
+import { escapeIlike } from "@/lib/sanitize";
 
 export const dynamic = "force-dynamic";
 
@@ -77,7 +78,7 @@ export async function POST(req: NextRequest) {
           .from("vehicle_size_master")
           .select("size_class")
           .eq("maker", parsed.maker)
-          .ilike("model", `%${model}%`)
+          .ilike("model", `%${escapeIlike(model)}%`)
           .limit(1)
           .maybeSingle();
 

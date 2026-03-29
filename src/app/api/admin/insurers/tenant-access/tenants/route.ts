@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { escapeIlike } from "@/lib/sanitize";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 
@@ -30,7 +31,7 @@ export async function GET(req: NextRequest) {
     .limit(50);
 
   if (q) {
-    query = query.ilike("name", `%${q}%`);
+    query = query.ilike("name", `%${escapeIlike(q)}%`);
   }
 
   const { data, error } = await query;

@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
       createdAt: new Date().toISOString(),
     });
 
-    console.log("[QSTASH][test-publish] success:", JSON.stringify(result));
+    console.info("[QSTASH][test-publish] success:", JSON.stringify(result));
 
     return Response.json({
       ok: true,

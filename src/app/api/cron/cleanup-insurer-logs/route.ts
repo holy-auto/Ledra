@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     results.admin_audit_logs = `error: ${e?.message}`;
   }
 
-  console.log("[cron/cleanup-insurer-logs] results:", results);
+  console.info("[cron/cleanup-insurer-logs] results:", results);
 
   return NextResponse.json({ ok: true, results });
 }

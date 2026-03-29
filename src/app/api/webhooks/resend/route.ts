@@ -96,14 +96,14 @@ export async function POST(req: NextRequest) {
     case "email.sent":
     case "email.opened":
     case "email.clicked":
-      console.log(`[resend-webhook] ${type}:`, {
+      console.info(`[resend-webhook] ${type}:`, {
         email_id: data.email_id,
         to: data.to,
       });
       break;
 
     default:
-      console.log(`[resend-webhook] unknown event: ${type}`);
+      console.info(`[resend-webhook] unknown event: ${type}`);
   }
 
   return NextResponse.json({ received: true });

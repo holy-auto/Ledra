@@ -33,7 +33,7 @@ async function publish(path: string, payload: Record<string, unknown>) {
   if (!client) return null;
 
   const targetUrl = `${getBaseUrl()}${path}`;
-  console.log("[QSTASH][publish]", path, { hasToken: true });
+  console.info("[QSTASH][publish]", path, { hasToken: true });
 
   const result = await client.publishJSON({
     url: targetUrl,

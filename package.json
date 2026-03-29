@@ -13,6 +13,7 @@
     "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
+    "@googleapis/calendar": "^14.2.0",
     "@react-pdf/renderer": "^4.3.2",
     "@sentry/nextjs": "^10.44.0",
     "@supabase/ssr": "^0.8.0",
@@ -24,7 +25,7 @@
     "@vercel/speed-insights": "^2.0.0",
     "cheerio": "^1.2.0",
     "driver.js": "^1.4.0",
-    "googleapis": "^171.4.0",
+    "google-auth-library": "^10.6.2",
     "holy-cert": "file:",
     "import-in-the-middle": "^3.0.0",
     "jszip": "^3.10.1",

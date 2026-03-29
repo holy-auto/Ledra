@@ -3,6 +3,7 @@ import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
 
 export const runtime = "nodejs";
 
@@ -53,7 +54,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (category) {
-      query = query.ilike("category", `%${category}%`);
+      query = query.ilike("category", `%${escapeIlike(category)}%`);
     }
 
     if (dateFrom) {
@@ -82,7 +83,8 @@ export async function GET(req: NextRequest) {
     }
 
     if (q) {
-      query = query.or(`title.ilike.%${q}%,case_number.ilike.%${q}%,description.ilike.%${q}%`);
+      const safeQ = escapePostgrestValue(escapeIlike(q));
+      query = query.or(`title.ilike.%${safeQ}%,case_number.ilike.%${safeQ}%,description.ilike.%${safeQ}%`);
     }
 
     const { data, error, count } = await query;

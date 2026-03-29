@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
       }
 
       default:
-        console.log("[cloudsign-webhook] Unhandled event type:", eventType);
+        console.info("[cloudsign-webhook] Unhandled event type:", eventType);
     }
 
     return NextResponse.json({ ok: true });

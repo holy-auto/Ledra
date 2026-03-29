@@ -118,7 +118,7 @@ Ledra — 株式会社HOLY AUTO
     if (!res.ok) {
       console.error("webhook: Resend API error", { status: res.status, body: resBody, tenantId, email });
     } else {
-      console.log("webhook: payment failure email sent", { tenantId, email, resendResponse: resBody });
+      console.info("webhook: payment failure email sent", { tenantId, email, resendResponse: resBody });
     }
   } catch (e) {
     console.error("webhook: failed to send payment failure email", { tenantId, error: e });
@@ -201,7 +201,7 @@ async function syncBySubscription(stripe: Stripe, supabase: ReturnType<typeof ge
   if (customerId) patch.stripe_customer_id = customerId;
   if (plan_tier) patch.plan_tier = plan_tier;
 
-  console.log("webhook: sync subscription", { tenant_id: tenant_id ?? "(lookup)", plan_tier, active, subscriptionId });
+  console.info("webhook: sync subscription", { tenant_id: tenant_id ?? "(lookup)", plan_tier, active, subscriptionId });
   await updateTenantBySelector(supabase, selector, patch);
 
   // Audit log for billing state change
@@ -264,7 +264,7 @@ async function doSyncInsurer(supabase: ReturnType<typeof getSupabaseAdmin>, insu
   if (customerId) patch.stripe_customer_id = customerId;
   if (planTier) patch.plan_tier = planTier;
 
-  console.log("webhook: sync insurer subscription", { insurerId, planTier, active, subscriptionId: sub.id });
+  console.info("webhook: sync insurer subscription", { insurerId, planTier, active, subscriptionId: sub.id });
   const { error } = await supabase.from("insurers").update(patch).eq("id", insurerId);
   if (error) throw error;
   return true;
@@ -301,7 +301,7 @@ export async function POST(req: NextRequest) {
   if (claimError) {
     // unique constraint violation = already claimed by another worker
     if (claimError.code === "23505") {
-      console.log("webhook: duplicate event skipped", { id: event.id, type: event.type });
+      console.info("webhook: duplicate event skipped", { id: event.id, type: event.type });
       return NextResponse.json({ received: true, duplicate: true });
     }
     // Other DB errors — log but continue to avoid losing events
@@ -363,14 +363,14 @@ export async function POST(req: NextRequest) {
                   if (tagErr) {
                     console.error("webhook: nfc_tags provisioning failed", { shopOrderId, tenantId, error: tagErr });
                   } else {
-                    console.log("webhook: nfc_tags provisioned", { shopOrderId, tenantId, count: tagRows.length });
+                    console.info("webhook: nfc_tags provisioned", { shopOrderId, tenantId, count: tagRows.length });
                   }
                 }
               }
             }
           }
 
-          console.log("webhook: shop order paid", { shopOrderId, tenantId });
+          console.info("webhook: shop order paid", { shopOrderId, tenantId });
           break;
         }
 
@@ -396,7 +396,7 @@ export async function POST(req: NextRequest) {
               updated_at: new Date().toISOString(),
             }, { onConflict: "tenant_id,option_type" });
 
-            console.log("webhook: template option subscription created", { tenantId, optionType, subscriptionId });
+            console.info("webhook: template option subscription created", { tenantId, optionType, subscriptionId });
           }
           break;
         }
@@ -449,7 +449,7 @@ export async function POST(req: NextRequest) {
               .eq("tenant_id", tenantId)
               .eq("option_type", optionType);
 
-            console.log("webhook: template option subscription synced", { tenantId, optionType, status });
+            console.info("webhook: template option subscription synced", { tenantId, optionType, status });
           }
           break;
         }
@@ -507,7 +507,7 @@ export async function POST(req: NextRequest) {
               })
               .eq("tenant_id", tenantId)
               .eq("option_type", optionType);
-            console.log("webhook: template option invoice", { tenantId, optionType, event: event.type });
+            console.info("webhook: template option invoice", { tenantId, optionType, event: event.type });
           }
           break;
         }
@@ -518,7 +518,7 @@ export async function POST(req: NextRequest) {
           const campaignSlug = sub.metadata?.campaign_slug;
           if (tenantId && campaignSlug) {
             await confirmCampaignSlot(supabase, tenantId, campaignSlug);
-            console.log("webhook: campaign slot confirmed", { tenantId, campaignSlug });
+            console.info("webhook: campaign slot confirmed", { tenantId, campaignSlug });
           }
         }
 
@@ -570,7 +570,7 @@ export async function POST(req: NextRequest) {
             .from("tenants")
             .update({ stripe_connect_onboarded: onboarded })
             .eq("id", tenant.id);
-          console.log("webhook: connect account synced", { accountId, onboarded });
+          console.info("webhook: connect account synced", { accountId, onboarded });
         }
         break;
       }

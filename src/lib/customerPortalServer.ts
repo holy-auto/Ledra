@@ -116,7 +116,7 @@ export async function markCodeUsed(id: string) {
   if (error) throw new Error(`markCodeUsed failed: ${error.message}`);
 }
 
-export async function createSession(tenantId: string, email: string, phoneHash: string, last4Plain: string) {
+export async function createSession(tenantId: string, email: string, phoneHash: string) {
   const token = randomHex(32);
   const sHash = sessionHash(token);
   const expires = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
@@ -148,7 +148,7 @@ export async function validateSession(tenantId: string, token: string) {
   const sHash = sessionHash(token);
   const { data } = await admin()
     .from("customer_sessions")
-    .select("id, email, phone_last4_hash, phone_last4_plain, expires_at, revoked_at")
+    .select("id, email, phone_last4_hash, expires_at, revoked_at")
     .eq("tenant_id", tenantId)
     .eq("session_hash", sHash)
     .limit(1)
@@ -156,10 +156,10 @@ export async function validateSession(tenantId: string, token: string) {
   if (!data) return null;
   if (data.revoked_at) return null;
   if (new Date(data.expires_at).getTime() < Date.now()) return null;
-  return data as { email: string; phone_last4_hash: string; phone_last4_plain: string | null };
+  return data as { email: string; phone_last4_hash: string };
 }
 
-export async function listCertificatesForCustomer(tenantId: string, phoneHash: string, last4Plain: string) {
+export async function listCertificatesForCustomer(tenantId: string, phoneHash: string) {
   const selectCols = "public_id, customer_name, vehicle_info_json, created_at, status";
   const db = admin();
 
@@ -171,32 +171,12 @@ export async function listCertificatesForCustomer(tenantId: string, phoneHash: s
     .eq("customer_phone_last4_hash", phoneHash)
     .eq("status", "active")
     .order("created_at", { ascending: false });
-  if (r1 && r1.length > 0) return r1;
-
-  // 2) 旧方式：customer_phone_last4 に平文が入っている
-  const { data: r2 } = await db
-    .from("certificates")
-    .select(selectCols)
-    .eq("tenant_id", tenantId)
-    .eq("customer_phone_last4", last4Plain)
-    .eq("status", "active")
-    .order("created_at", { ascending: false });
-  if (r2 && r2.length > 0) return r2;
-
-  // 3) 旧バグ救済：hash列に平文(1234等)が入っていた
-  const { data: r3 } = await db
-    .from("certificates")
-    .select(selectCols)
-    .eq("tenant_id", tenantId)
-    .eq("customer_phone_last4_hash", last4Plain)
-    .eq("status", "active")
-    .order("created_at", { ascending: false });
-  return r3 ?? [];
+  return r1 ?? [];
 }
 
 /** 顧客の施工履歴（vehicle_histories）を取得 */
-export async function listHistoryForCustomer(tenantId: string, phoneHash: string, last4Plain: string) {
-  const certs = await listCertificatesForCustomer(tenantId, phoneHash, last4Plain);
+export async function listHistoryForCustomer(tenantId: string, phoneHash: string) {
+  const certs = await listCertificatesForCustomer(tenantId, phoneHash);
   if (!certs || certs.length === 0) return [];
 
   const certPublicIds = certs.map((c: any) => c.public_id);
@@ -222,8 +202,8 @@ export async function listHistoryForCustomer(tenantId: string, phoneHash: string
 }
 
 /** 顧客の今後の予約を取得 */
-export async function listReservationsForCustomer(tenantId: string, phoneHash: string, last4Plain: string) {
-  const certs = await listCertificatesForCustomer(tenantId, phoneHash, last4Plain);
+export async function listReservationsForCustomer(tenantId: string, phoneHash: string) {
+  const certs = await listCertificatesForCustomer(tenantId, phoneHash);
   if (!certs || certs.length === 0) return [];
 
   const customerNames = [...new Set(certs.map((c: any) => c.customer_name).filter(Boolean))];
@@ -253,8 +233,8 @@ export async function listReservationsForCustomer(tenantId: string, phoneHash: s
 }
 
 /** 顧客プロフィール情報を取得 */
-export async function getCustomerProfile(tenantId: string, phoneHash: string, last4Plain: string) {
-  const certs = await listCertificatesForCustomer(tenantId, phoneHash, last4Plain);
+export async function getCustomerProfile(tenantId: string, phoneHash: string) {
+  const certs = await listCertificatesForCustomer(tenantId, phoneHash);
   if (!certs || certs.length === 0) return null;
 
   const customerNames = [...new Set(certs.map((c: any) => c.customer_name).filter(Boolean))];
