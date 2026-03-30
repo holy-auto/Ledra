@@ -1,16 +1,9 @@
-"use client";
-
-import { useActionState } from "react";
 import { loginAction } from "./actions";
 
 export default function LoginForm() {
-  const [state, formAction, pending] = useActionState(loginAction, { error: "" });
-
   return (
-    <form action={formAction} style={{ maxWidth: 400, width: "100%", textAlign: "center" }}>
+    <form action={loginAction} style={{ maxWidth: 400, width: "100%", textAlign: "center" }}>
       <h1 style={{ fontSize: 24, fontWeight: "bold", marginBottom: 24 }}>Ledra ログイン</h1>
-
-      {state.error !== "" && <p style={{ color: "#ef4444", fontSize: 14, marginBottom: 16 }}>{state.error}</p>}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <input
@@ -39,7 +32,6 @@ export default function LoginForm() {
         />
         <button
           type="submit"
-          disabled={pending}
           style={{
             padding: "10px 24px",
             borderRadius: 8,
@@ -51,7 +43,7 @@ export default function LoginForm() {
             cursor: "pointer",
           }}
         >
-          {pending ? "ログイン中..." : "ログイン"}
+          ログイン
         </button>
       </div>
 
