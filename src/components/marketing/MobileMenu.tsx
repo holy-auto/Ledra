@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 
 export function MobileMenu({
@@ -34,7 +35,7 @@ export function MobileMenu({
         </svg>
       </button>
 
-      {open && (
+      {open && createPortal(
         <div className="fixed inset-0 z-50 bg-[#060a12]">
           <div className="flex items-center justify-between h-16 px-5">
             <Link
@@ -117,7 +118,8 @@ export function MobileMenu({
               </Link>
             </div>
           </nav>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
