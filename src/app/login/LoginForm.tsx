@@ -4,13 +4,13 @@ import { useActionState } from "react";
 import { loginAction } from "./actions";
 
 export default function LoginForm() {
-  const [state, formAction, pending] = useActionState(loginAction, { error: null });
+  const [state, formAction, pending] = useActionState(loginAction, { error: "" });
 
   return (
     <form action={formAction} style={{ maxWidth: 400, width: "100%", textAlign: "center" }}>
       <h1 style={{ fontSize: 24, fontWeight: "bold", marginBottom: 24 }}>Ledra ログイン</h1>
 
-      {state.error && <p style={{ color: "#ef4444", fontSize: 14, marginBottom: 16 }}>{state.error}</p>}
+      {state.error !== "" && <p style={{ color: "#ef4444", fontSize: 14, marginBottom: 16 }}>{state.error}</p>}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <input
