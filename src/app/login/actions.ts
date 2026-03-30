@@ -8,14 +8,14 @@ export async function loginAction(formData: FormData) {
   const password = formData.get("password") as string;
 
   if (!email || !password) {
-    return { error: "メールアドレスとパスワードを入力してください。" };
+    redirect("/login?error=empty");
   }
 
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
-    return { error: "メールアドレスまたはパスワードが正しくありません。" };
+    redirect("/login?error=invalid");
   }
 
   redirect("/admin/certificates");
