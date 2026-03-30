@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { TurnstileWidget } from "@/components/ui/TurnstileWidget";
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6;
 type BusinessType = "corporation" | "sole_proprietor";
@@ -53,6 +54,9 @@ export default function InsurerRegisterPage() {
   // Final state
   const [done, setDone] = useState(false);
 
+  // Turnstile (step 1 only)
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+
   const clearErr = () => setErr(null);
 
   // --- GBiz API lookup ---
@@ -96,19 +100,21 @@ export default function InsurerRegisterPage() {
     if (!email.trim()) return setErr("メールアドレスを入力してください");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
       return setErr("有効なメールアドレスを入力してください");
+    if (step === 1 && !turnstileToken) return setErr("セキュリティ確認が完了していません");
 
     setBusy(true);
     try {
       const res = await fetch("/api/join/send-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+        body: JSON.stringify({ email: email.trim().toLowerCase(), turnstile_token: turnstileToken }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.message ?? json.error ?? "送信に失敗しました");
       setStep(2);
     } catch (e: any) {
       setErr(e?.message ?? "送信に失敗しました");
+      setTurnstileToken(null);
     } finally {
       setBusy(false);
     }
@@ -294,6 +300,7 @@ export default function InsurerRegisterPage() {
               <p className="text-xs text-muted">
                 確認コードをメールでお送りします。
               </p>
+              <TurnstileWidget onTokenChange={setTurnstileToken} />
             </>
           )}
 

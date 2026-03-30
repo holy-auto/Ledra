@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { contactSchema, parseBody } from "@/lib/validation/schemas";
+import { verifyTurnstile } from "@/lib/turnstile";
 
 /** 遅延初期化: ビルド時に API キーが無くてもクラッシュしない */
 function getResend() {
@@ -30,6 +31,14 @@ export async function POST(request: Request) {
     rawBody = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const tsResult = await verifyTurnstile((rawBody as any)?.turnstile_token, ip);
+  if (!tsResult.success) {
+    return NextResponse.json(
+      { error: "captcha_failed", message: "セキュリティ確認に失敗しました。ページを再読み込みして再度お試しください。" },
+      { status: 400 },
+    );
   }
 
   const parsed = parseBody(contactSchema, rawBody);

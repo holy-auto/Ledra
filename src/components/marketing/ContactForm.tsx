@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { TurnstileWidget } from "@/components/ui/TurnstileWidget";
 
 const inputClass =
   "w-full px-4 py-3 rounded-lg border border-white/[0.08] bg-white/[0.05] text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/40 transition-colors";
@@ -9,6 +10,7 @@ export function ContactForm() {
   const [submitted, setSubmitted] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
   if (submitted) {
     return (
@@ -39,6 +41,7 @@ export function ContactForm() {
       company: (fd.get("company") as string) || undefined,
       category: fd.get("category") as string,
       message: fd.get("message") as string,
+      turnstile_token: turnstileToken,
     };
 
     try {
@@ -56,6 +59,7 @@ export function ContactForm() {
       setSubmitted(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "送信に失敗しました。しばらくしてから再度お試しください。");
+      setTurnstileToken(null);
     } finally {
       setSending(false);
     }
@@ -125,12 +129,13 @@ export function ContactForm() {
           placeholder="お問い合わせ内容をご記入ください"
         />
       </div>
+      <TurnstileWidget onTokenChange={setTurnstileToken} />
       {error && (
         <p className="text-red-400 text-sm">{error}</p>
       )}
       <button
         type="submit"
-        disabled={sending}
+        disabled={sending || !turnstileToken}
         className="w-full sm:w-auto inline-flex items-center justify-center font-medium rounded-lg text-[0.938rem] px-8 py-3.5 bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 shadow-[0_1px_12px_rgba(59,130,246,0.3)] hover:shadow-[0_2px_20px_rgba(59,130,246,0.45)] hover:-translate-y-[0.5px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {sending ? "送信中..." : "送信する"}

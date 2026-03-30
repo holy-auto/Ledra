@@ -4,8 +4,8 @@
     {
       "name": "dev",
       "runtimeExecutable": "C:\\Tools\\node-v22.20.0-win-x64\\node.exe",
-      "runtimeArgs": ["node_modules/next/dist/bin/next", "dev", "--turbopack"],
-      "port": 3000,
+      "runtimeArgs": ["node_modules/next/dist/bin/next", "dev", "--turbopack", "--port", "3001"],
+      "port": 3001,
       "autoPort": false
     }
   ]

@@ -3,6 +3,7 @@ import { randomInt } from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { emailSchema } from "@/lib/validation/schemas";
+import { verifyTurnstile } from "@/lib/turnstile";
 
 export const runtime = "nodejs";
 
@@ -91,6 +92,15 @@ export async function POST(req: Request) {
     );
   }
   const email = parsed.data;
+
+  // Turnstile verification
+  const tsResult = await verifyTurnstile((body as any)?.turnstile_token, ip);
+  if (!tsResult.success) {
+    return NextResponse.json(
+      { error: "captcha_failed", message: "セキュリティ確認に失敗しました。ページを再読み込みして再度お試しください。" },
+      { status: 400 },
+    );
+  }
 
   // Email-based rate limit: 3 codes per 10 minutes per email address
   const emailRl = await checkRateLimit(`join-code-email:${email}`, { limit: 3, windowSec: 600 });

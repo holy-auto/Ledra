@@ -2,7 +2,9 @@ import { NextRequest } from "next/server";
 import { signupSchema } from "@/lib/validations/signup";
 import { apiOk, apiError, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import { getClientIp } from "@/lib/rateLimit";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { verifyTurnstile } from "@/lib/turnstile";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +25,17 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json().catch(() => ({}));
+
+    // ── Turnstile検証 ──
+    const tsResult = await verifyTurnstile(body?.turnstile_token as string | undefined, getClientIp(req));
+    if (!tsResult.success) {
+      return apiError({
+        code: "validation_error",
+        message: "セキュリティ確認に失敗しました。ページを再読み込みして再度お試しください。",
+        status: 400,
+        data: { messages: ["セキュリティ確認に失敗しました。ページを再読み込みして再度お試しください。"] },
+      });
+    }
 
     // ── Zodバリデーション ──
     const parsed = signupSchema.safeParse(body);

@@ -4,12 +4,14 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { TurnstileWidget } from "@/components/ui/TurnstileWidget";
 
 export default function SignupPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [success, setSuccess] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -48,6 +50,7 @@ export default function SignupPage() {
           shop_name: shopName,
           display_name: displayName || null,
           contact_phone: contactPhone || null,
+          turnstile_token: turnstileToken,
         }),
       });
 
@@ -74,6 +77,7 @@ export default function SignupPage() {
       router.push("/admin");
     } catch {
       setErrors(["通信エラーが発生しました。再度お試しください。"]);
+      setTurnstileToken(null);
       setLoading(false);
     }
   }
@@ -213,9 +217,11 @@ export default function SignupPage() {
             />
           </div>
 
+          <TurnstileWidget onTokenChange={setTurnstileToken} />
+
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !turnstileToken}
             className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "登録中..." : "無料で始める"}
