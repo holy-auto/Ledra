@@ -53,8 +53,7 @@ export async function GET(req: NextRequest) {
       const { data: rawSettings } = await supabase
         .from("follow_up_settings")
         .select(
-          "tenant_id, reminder_days_before, follow_up_days_after, enabled, " +
-            "send_on_issue, first_reminder_days, warranty_end_days, inspection_pre_days, seasonal_enabled",
+          "tenant_id, reminder_days_before, follow_up_days_after, enabled, send_on_issue, first_reminder_days, warranty_end_days, inspection_pre_days, seasonal_enabled",
         )
         .eq("enabled", true);
       const settings = (rawSettings ?? []) as unknown as FollowUpSetting[];
