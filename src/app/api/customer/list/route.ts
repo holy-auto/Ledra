@@ -9,6 +9,7 @@ import {
   getCustomerProfile,
   validateSession,
 } from "@/lib/customerPortalServer";
+import { GLOBAL_PORTAL_COOKIE, resolvePortalTenantAccessByGlobalToken } from "@/lib/customerPortalGlobal";
 
 export async function GET(req: Request) {
   try {
@@ -21,28 +22,43 @@ export async function GET(req: Request) {
     if (!tenantId) return NextResponse.json({ error: "unknown tenant" }, { status: 404 });
 
     const c = await cookies();
-    const token = c.get(CUSTOMER_COOKIE)?.value ?? "";
-    if (!token) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const tenantToken = c.get(CUSTOMER_COOKIE)?.value ?? "";
+    const globalToken = c.get(GLOBAL_PORTAL_COOKIE)?.value ?? "";
 
-    const sess = await validateSession(tenantId, token);
-    if (!sess) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    let phoneHash = "";
+
+    if (tenantToken) {
+      const tenantSession = await validateSession(tenantId, tenantToken);
+      if (tenantSession) {
+        phoneHash = tenantSession.phone_last4_hash;
+      }
+    }
+
+    if (!phoneHash && globalToken) {
+      const portalAccess = await resolvePortalTenantAccessByGlobalToken(tenant_slug, globalToken);
+      if (portalAccess) {
+        phoneHash = portalAccess.phone_last4_hash;
+      }
+    }
+
+    if (!phoneHash) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     if (action === "history") {
-      const history = await listHistoryForCustomer(tenantId, sess.phone_last4_hash);
+      const history = await listHistoryForCustomer(tenantId, phoneHash);
       return NextResponse.json({ ok: true, history });
     }
 
     if (action === "reservations") {
-      const reservations = await listReservationsForCustomer(tenantId, sess.phone_last4_hash);
+      const reservations = await listReservationsForCustomer(tenantId, phoneHash);
       return NextResponse.json({ ok: true, reservations });
     }
 
     if (action === "profile") {
-      const profile = await getCustomerProfile(tenantId, sess.phone_last4_hash);
+      const profile = await getCustomerProfile(tenantId, phoneHash);
       return NextResponse.json({ ok: true, profile });
     }
 
-    const rows = await listCertificatesForCustomer(tenantId, sess.phone_last4_hash);
+    const rows = await listCertificatesForCustomer(tenantId, phoneHash);
 
     return NextResponse.json({ ok: true, rows });
   } catch (e: any) {

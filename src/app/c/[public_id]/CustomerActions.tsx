@@ -8,11 +8,16 @@ type Props = {
   pdfHref?: string;
   returnTo?: string;
   logoutHref?: string; // 明示指定があれば最優先
-  tenant?: string;     // 明示指定があれば補助に使う
+  tenant?: string; // 明示指定があれば補助に使う
+  portalHref?: string;
 };
 
 function tryDecode(v: string): string {
-  try { return decodeURIComponent(v); } catch { return v; }
+  try {
+    return decodeURIComponent(v);
+  } catch {
+    return v;
+  }
 }
 
 function safeReturnTo(raw: string | null | undefined): string {
@@ -24,7 +29,7 @@ function safeReturnTo(raw: string | null | undefined): string {
   if (decoded.startsWith("http://") || decoded.startsWith("https://")) {
     try {
       const u = new URL(decoded);
-      return (u.pathname + u.search + u.hash) || "";
+      return u.pathname + u.search + u.hash || "";
     } catch {
       return "";
     }
@@ -55,24 +60,30 @@ export default function CustomerActions(props: Props) {
     const tenantFromRt = rt ? extractTenantFromCustomerPath(rt) : "";
     const tenant = (props.tenant ?? "").trim() || tenantFromRt;
 
-    const pdfHref =
-      (props.pdfHref ?? "").trim() ||
-      (pid ? `/api/certificate/pdf?pid=${encodeURIComponent(pid)}` : "");
+    const pdfHref = (props.pdfHref ?? "").trim() || (pid ? `/api/certificate/pdf?pid=${encodeURIComponent(pid)}` : "");
 
-    const listUrl =
-      rt && rt.startsWith("/customer/") ? rt :
-      tenant ? `/customer/${encodeURIComponent(tenant)}` : "";
+    const listUrl = rt && rt.startsWith("/customer/") ? rt : tenant ? `/customer/${encodeURIComponent(tenant)}` : "";
 
-    const loginUrl =
-      tenant ? `/customer/${encodeURIComponent(tenant)}/login` : "/";
+    const loginUrl = tenant ? `/customer/${encodeURIComponent(tenant)}/login` : "/";
 
-    const logoutAfter =
-      (props.logoutHref ?? "").trim() || loginUrl;
+    const explicitLogoutTarget = safeReturnTo(props.logoutHref);
+    const logoutAfter = explicitLogoutTarget || loginUrl;
+
+    const portalUrl =
+      (props.portalHref ?? "").trim() ||
+      (() => {
+        const q = new URLSearchParams();
+        if (tenant) q.set("tenant", tenant);
+        if (pid) q.set("pid", pid);
+        q.set("from", "certificate");
+        const qs = q.toString();
+        return qs ? `/my?${qs}` : "/my";
+      })();
 
     // 初回は “customer導線らしい” と判断できれば表示（query logout=1 はマウント後）
     const showLogout = !!tenant || (!!rt && rt.startsWith("/customer/"));
 
-    return { pid, rt, tenant, pdfHref, listUrl, logoutAfter, showLogout, pdfBlocked: false };
+    return { pid, rt, tenant, pdfHref, listUrl, logoutAfter, showLogout, pdfBlocked: false, portalUrl };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -86,40 +97,48 @@ export default function CustomerActions(props: Props) {
       const rt_q = safeReturnTo(sp.get("rt"));
       const tenant_q = (sp.get("tenant") ?? "").trim();
       const logout_q = sp.get("logout") === "1";
+      const logout_path = safeReturnTo(sp.get("logout"));
+      const portal_q = sp.get("portal") === "1";
+      const entry_q = (sp.get("entry") ?? sp.get("from") ?? "").trim();
 
       const pid_path = extractPublicIdFromPathname(window.location.pathname);
 
       const rt = rt_q || s.rt || "";
-      const tenant =
-        tenant_q ||
-        s.tenant ||
-        (rt ? extractTenantFromCustomerPath(rt) : "") ||
-        "";
+      const tenant = tenant_q || s.tenant || (rt ? extractTenantFromCustomerPath(rt) : "") || "";
 
       const pid = s.pid || pid_path;
 
-      const pdfHref =
-        s.pdfHref ||
-        (pid ? `/api/certificate/pdf?pid=${encodeURIComponent(pid)}` : "");
+      const pdfHref = s.pdfHref || (pid ? `/api/certificate/pdf?pid=${encodeURIComponent(pid)}` : "");
 
-      const listUrl =
-        (rt && rt.startsWith("/customer/")) ? rt :
-        tenant ? `/customer/${encodeURIComponent(tenant)}` : "";
+      const listUrl = rt && rt.startsWith("/customer/") ? rt : tenant ? `/customer/${encodeURIComponent(tenant)}` : "";
 
-      const loginUrl =
-        tenant ? `/customer/${encodeURIComponent(tenant)}/login` : "/";
+      const loginUrl = tenant ? `/customer/${encodeURIComponent(tenant)}/login` : "/";
 
-      const logoutAfter =
-        (props.logoutHref ?? "").trim() || s.logoutAfter || loginUrl;
+      const explicitLogoutTarget = safeReturnTo(props.logoutHref);
+      const logoutAfter = explicitLogoutTarget || logout_path || s.logoutAfter || loginUrl;
 
       const showLogout = logout_q || !!tenant || !!listUrl;
+
+      const portalUrl =
+        (props.portalHref ?? "").trim() ||
+        (() => {
+          const q = new URLSearchParams();
+          if (tenant) q.set("tenant", tenant);
+          if (pid) q.set("pid", pid);
+          if (entry_q) q.set("from", entry_q);
+          else if (portal_q) q.set("from", "portal");
+          else q.set("from", "certificate");
+          const qs = q.toString();
+          return qs ? `/my?${qs}` : "/my";
+        })();
 
       const notice = (sp.get("notice") ?? "").trim();
       const pdfBlocked =
         notice === "pdf_blocked" ||
         notice === "pdf_blocked_grace_expired" ||
         notice === "pdf_blocked_inactive" ||
-        notice === "payment_required";setS({ pid, rt, tenant, pdfHref, listUrl, logoutAfter, showLogout, pdfBlocked });
+        notice === "payment_required";
+      setS({ pid, rt, tenant, pdfHref, listUrl, logoutAfter, showLogout, pdfBlocked, portalUrl });
     } catch {
       // no-op
     }
@@ -130,6 +149,7 @@ export default function CustomerActions(props: Props) {
   const canBack = !!s.rt;
   const canList = !!s.listUrl;
   const canLogout = s.showLogout && !!s.logoutAfter;
+  const canPortal = !!s.portalUrl;
 
   const onPdf = () => {
     if (!s.pdfHref || s.pdfBlocked) return;
@@ -148,7 +168,7 @@ export default function CustomerActions(props: Props) {
   const onLogout = () => {
     startTransition(async () => {
       try {
-        await fetch("/api/customer/logout", { method: "POST", credentials: "include" });
+        await fetch("/api/portal/logout", { method: "POST", credentials: "include" });
       } catch {
         // ignore
       } finally {
@@ -160,12 +180,7 @@ export default function CustomerActions(props: Props) {
 
   return (
     <div className="mb-4 flex flex-wrap gap-2">
-      <button
-        type="button"
-        onClick={onPdf}
-        disabled={!canPdf}
-        className="btn-primary disabled:opacity-50"
-      >
+      <button type="button" onClick={onPdf} disabled={!canPdf} className="btn-primary disabled:opacity-50">
         {s.pdfBlocked ? "PDF（停止中）" : "PDF生成"}
       </button>
 
@@ -178,13 +193,17 @@ export default function CustomerActions(props: Props) {
         戻る
       </button>
 
+      <button type="button" onClick={onList} disabled={!canList} className="btn-secondary disabled:opacity-50">
+        車両一覧に戻る
+      </button>
+
       <button
         type="button"
-        onClick={onList}
-        disabled={!canList}
+        onClick={() => canPortal && router.push(s.portalUrl)}
+        disabled={!canPortal}
         className="btn-secondary disabled:opacity-50"
       >
-        車両一覧に戻る
+        マイページを見る
       </button>
 
       <button
