@@ -8,6 +8,7 @@ import {
 } from "@/lib/certificateImages";
 import { logCertificateAction } from "@/lib/audit/certificateLog";
 import PageHeader from "@/components/ui/PageHeader";
+import AiExplainPanel from "@/components/certificates/AiExplainPanel";
 import { formatDateTime } from "@/lib/format";
 
 type PageProps = {
@@ -276,6 +277,11 @@ export default async function Page({ params }: PageProps) {
           </div>
 
           <aside className="space-y-6">
+            {/* AI説明変換パネル（B-2） */}
+            <section className="glass-card p-5">
+              <AiExplainPanel certificateId={row.id as string} />
+            </section>
+
             <section className="glass-card p-5 space-y-4">
               <div>
                 <div className="text-xs font-semibold tracking-[0.18em] text-muted">OUTPUT</div>

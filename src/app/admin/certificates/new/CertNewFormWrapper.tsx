@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState, useTransition, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createCertAction } from "./actions";
@@ -13,7 +13,9 @@ import BodyRepairDetailsSection from "./BodyRepairDetailsSection";
 import PhotoUploadSection, { type PhotoUploadHandle } from "./PhotoUploadSection";
 import Button from "@/components/ui/Button";
 import type { PlanTier } from "@/lib/billing/planFeatures";
-import { PHOTO_LIMITS } from "@/lib/billing/planFeatures";
+import { PHOTO_LIMITS, canUseFeature } from "@/lib/billing/planFeatures";
+import AiDraftPanel from "./AiDraftPanel";
+import AiQualityPanel from "./AiQualityPanel";
 
 type Vehicle = {
   id: string;
@@ -106,6 +108,26 @@ export default function CertNewFormWrapper({
   const maxPhotos = PHOTO_LIMITS[planTier];
   const planLabel = PLAN_LABELS[planTier];
   const schema = selectedTemplate?.schema_json ?? null;
+  const canAiDraft = canUseFeature(planTier, "ai_draft");
+  const canAiQuality = canUseFeature(planTier, "ai_quality");
+
+  // AI下書き適用時にフォームフィールドを自動入力する
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | undefined>(defaultVehicleId);
+  const [draftApplied, setDraftApplied] = useState(false);
+
+  const handleAiDraftApply = useCallback((draft: {
+    title: string; description: string; cautions: string;
+  }) => {
+    if (!formRef.current) return;
+    const form = formRef.current;
+    // 施工内容フィールドへ自動入力
+    const contentField = form.querySelector<HTMLTextAreaElement>("textarea[name='content_free_text']");
+    if (contentField) {
+      contentField.value = `${draft.title}\n\n${draft.description}${draft.cautions ? `\n\n【注意事項】\n${draft.cautions}` : ""}`;
+    }
+    setDraftApplied(true);
+    setTimeout(() => setDraftApplied(false), 3000);
+  }, []);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -306,12 +328,21 @@ export default function CertNewFormWrapper({
         </section>
 
         {/* ━━━ 4. 施工写真 ━━━ */}
-        <section className="border-t border-border-subtle py-6">
+        <section className="border-t border-border-subtle py-6 space-y-4">
           <PhotoUploadSection
             ref={photoRef}
             maxPhotos={maxPhotos}
             planLabel={planLabel}
           />
+
+          {/* AI品質チェックパネル */}
+          {canAiQuality && serviceType && (
+            <AiQualityPanel
+              category={serviceType}
+              photoUrls={[]}
+              fieldValues={{}}
+            />
+          )}
         </section>
 
         {/* ━━━ 5. 詳細な施工内容 ━━━ */}
@@ -320,6 +351,23 @@ export default function CertNewFormWrapper({
             <div className={sectionTagCls}>WORK DETAILS</div>
             <div className={sectionTitleCls}>詳細な施工内容</div>
           </div>
+
+          {/* AI下書き生成パネル（Standard以上） */}
+          {canAiDraft && (
+            <AiDraftPanel
+              vehicleId={selectedVehicleId}
+              templateCategory={serviceType}
+              onApply={handleAiDraftApply}
+            />
+          )}
+
+          {/* AI下書き適用通知 */}
+          {draftApplied && (
+            <div className="rounded-xl border border-green-300 bg-green-50 px-3 py-2 text-xs text-green-700">
+              ✅ AI下書きをフォームに適用しました。内容を確認・編集してください。
+            </div>
+          )}
+
           <label className={`${labelCls} block`}>
             <span className={labelTextCls}>施工内容（自由記述）</span>
             <textarea

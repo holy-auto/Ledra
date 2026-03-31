@@ -19,6 +19,16 @@ const MATRIX: Record<PlanTier, Record<FeatureKey, boolean>> = {
     manage_templates: false,
     upload_logo: false,
     manage_stores: false,
+    // AI機能
+    ai_draft: false,
+    ai_explain: false,
+    ai_quality: true,          // 基本チェックは全プラン
+    ai_quality_vision: false,
+    ai_follow_up: false,
+    ai_academy_feedback: false,
+    ai_academy_qa: false,
+    ai_proposal: false,
+    ai_follow_up_email: false,
   },
   starter: {
     issue_certificate: true,
@@ -30,6 +40,16 @@ const MATRIX: Record<PlanTier, Record<FeatureKey, boolean>> = {
     manage_templates: false,
     upload_logo: true,
     manage_stores: false,
+    // AI機能
+    ai_draft: false,
+    ai_explain: false,
+    ai_quality: true,
+    ai_quality_vision: false,
+    ai_follow_up: false,
+    ai_academy_feedback: false,
+    ai_academy_qa: false,
+    ai_proposal: false,
+    ai_follow_up_email: false,
   },
   standard: {
     issue_certificate: true,
@@ -41,6 +61,16 @@ const MATRIX: Record<PlanTier, Record<FeatureKey, boolean>> = {
     manage_templates: true,
     upload_logo: true,
     manage_stores: true,
+    // AI機能（Standard以上で全解除）
+    ai_draft: true,
+    ai_explain: true,
+    ai_quality: true,
+    ai_quality_vision: true,
+    ai_follow_up: true,
+    ai_academy_feedback: true,
+    ai_academy_qa: true,
+    ai_proposal: true,
+    ai_follow_up_email: true,
   },
   pro: {
     issue_certificate: true,
@@ -52,6 +82,16 @@ const MATRIX: Record<PlanTier, Record<FeatureKey, boolean>> = {
     manage_templates: true,
     upload_logo: true,
     manage_stores: true,
+    // AI機能
+    ai_draft: true,
+    ai_explain: true,
+    ai_quality: true,
+    ai_quality_vision: true,
+    ai_follow_up: true,
+    ai_academy_feedback: true,
+    ai_academy_qa: true,
+    ai_proposal: true,
+    ai_follow_up_email: true,
   },
 };
 
@@ -80,6 +120,15 @@ export function featureLabel(feature: FeatureKey): string {
     case "manage_templates": return "テンプレート管理";
     case "upload_logo": return "ロゴアップロード";
     case "manage_stores": return "店舗管理";
+    case "ai_draft":            return "AI証明書下書き";
+    case "ai_explain":          return "AI説明変換";
+    case "ai_quality":          return "AI品質チェック";
+    case "ai_quality_vision":   return "AI写真Vision検証";
+    case "ai_follow_up":        return "AIフォローアップ";
+    case "ai_academy_feedback": return "Academy AIフィードバック";
+    case "ai_academy_qa":       return "Academy QAアシスタント";
+    case "ai_proposal":         return "AIヒアリング提案";
+    case "ai_follow_up_email":  return "AIフォローメール";
     default: return feature;
   }
 }
