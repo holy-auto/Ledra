@@ -101,7 +101,7 @@ export default function AiExplainPanel({ certificateId }: Props) {
                 }}
                 className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-xs transition-colors ${
                   audience === opt.value
-                    ? "border-purple-400 bg-purple-100 text-purple-700"
+                    ? "border-purple-400/60 bg-purple-400/15 text-purple-300"
                     : "border-border-default bg-surface text-secondary hover:bg-surface-hover"
                 }`}
               >
@@ -119,11 +119,11 @@ export default function AiExplainPanel({ certificateId }: Props) {
             type="button"
             onClick={generate}
             disabled={loading}
-            className="flex items-center gap-2 rounded-xl border border-purple-400 bg-purple-100 px-4 py-2 text-sm font-medium text-purple-700 hover:bg-purple-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="flex items-center gap-2 rounded-xl border border-purple-400/50 bg-purple-400/15 px-4 py-2 text-sm font-medium text-purple-300 hover:bg-purple-400/25 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {loading ? (
               <>
-                <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
+                <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-purple-400 border-t-transparent" />
                 生成中…
               </>
             ) : (
@@ -135,16 +135,18 @@ export default function AiExplainPanel({ certificateId }: Props) {
 
           {/* エラー */}
           {error && (
-            <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-600">{error}</div>
+            <div className="rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs text-red-400">
+              {error}
+            </div>
           )}
 
           {/* 生成結果 */}
           {result && (
             <div className="space-y-3">
               {/* 件名 */}
-              <div className="rounded-lg bg-purple-50 border border-purple-200 px-3 py-2">
+              <div className="rounded-lg bg-purple-400/10 border border-purple-400/30 px-3 py-2">
                 <p className="text-xs text-muted mb-0.5">件名</p>
-                <p className="text-sm font-medium text-purple-800">{result.subject}</p>
+                <p className="text-sm font-medium text-purple-300">{result.subject}</p>
               </div>
 
               {/* 見出し */}
@@ -178,18 +180,18 @@ export default function AiExplainPanel({ certificateId }: Props) {
 
               {/* CTA */}
               {result.callToAction && (
-                <div className="rounded-lg bg-purple-50 border border-purple-200 px-3 py-2 text-xs text-purple-700">
+                <div className="rounded-lg bg-purple-400/10 border border-purple-400/30 px-3 py-2 text-xs text-purple-300">
                   📣 {result.callToAction}
                 </div>
               )}
 
               {/* 警告フラグ */}
               {result.warningFlags && result.warningFlags.length > 0 && (
-                <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
-                  <p className="text-xs font-medium text-amber-700 mb-1">⚠️ 注意フラグ</p>
+                <div className="rounded-lg bg-amber-400/10 border border-amber-400/30 px-3 py-2">
+                  <p className="text-xs font-medium text-amber-400 mb-1">⚠️ 注意フラグ</p>
                   <ul className="space-y-0.5">
                     {result.warningFlags.map((f, i) => (
-                      <li key={i} className="text-xs text-amber-600">
+                      <li key={i} className="text-xs text-amber-400/80">
                         • {f}
                       </li>
                     ))}
@@ -199,9 +201,9 @@ export default function AiExplainPanel({ certificateId }: Props) {
 
               {/* 内部メモ（社内向けのみ） */}
               {result.internalMemo && (
-                <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2">
-                  <p className="text-xs font-medium text-gray-600 mb-1">📋 内部メモ</p>
-                  <p className="text-xs text-gray-600">{result.internalMemo}</p>
+                <div className="rounded-lg bg-inset border border-border-subtle px-3 py-2">
+                  <p className="text-xs font-medium text-secondary mb-1">📋 内部メモ</p>
+                  <p className="text-xs text-muted">{result.internalMemo}</p>
                 </div>
               )}
 

@@ -59,14 +59,32 @@ interface Props {
 const STATUS_CONFIG = {
   pass: {
     label: "Ledra Standard ✅",
-    bg: "bg-green-50",
-    border: "border-green-300",
-    text: "text-green-700",
+    bg: "bg-green-400/10",
+    border: "border-green-400/40",
+    text: "text-green-400",
     icon: "✅",
   },
-  warning: { label: "要確認 ⚠️", bg: "bg-amber-50", border: "border-amber-300", text: "text-amber-700", icon: "⚠️" },
-  fail: { label: "基準未達 ❌", bg: "bg-red-50", border: "border-red-300", text: "text-red-700", icon: "❌" },
-  pending: { label: "未チェック", bg: "bg-surface", border: "border-border-default", text: "text-muted", icon: "○" },
+  warning: {
+    label: "要確認 ⚠️",
+    bg: "bg-amber-400/10",
+    border: "border-amber-400/40",
+    text: "text-amber-400",
+    icon: "⚠️",
+  },
+  fail: {
+    label: "基準未達 ❌",
+    bg: "bg-red-400/10",
+    border: "border-red-400/40",
+    text: "text-red-400",
+    icon: "❌",
+  },
+  pending: {
+    label: "未チェック",
+    bg: "bg-surface",
+    border: "border-border-default",
+    text: "text-muted",
+    icon: "○",
+  },
 };
 
 export default function AiQualityPanel({ category, photoUrls = [], fieldValues = {} }: Props) {
@@ -149,7 +167,9 @@ export default function AiQualityPanel({ category, photoUrls = [], fieldValues =
 
           {/* エラー */}
           {error && (
-            <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-600">{error}</div>
+            <div className="rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs text-red-400">
+              {error}
+            </div>
           )}
 
           {/* チェック結果 */}
@@ -165,9 +185,9 @@ export default function AiQualityPanel({ category, photoUrls = [], fieldValues =
                   </span>
                 </div>
                 {/* スコアバー */}
-                <div className="h-2 bg-white/60 rounded-full overflow-hidden">
+                <div className="h-2 bg-inset rounded-full overflow-hidden">
                   <div
-                    className={`h-full rounded-full ${status === "pass" ? "bg-green-500" : status === "warning" ? "bg-amber-500" : "bg-red-500"}`}
+                    className={`h-full rounded-full ${status === "pass" ? "bg-green-400" : status === "warning" ? "bg-amber-400" : "bg-red-400"}`}
                     style={{ width: `${result.score}%` }}
                   />
                 </div>
@@ -176,13 +196,13 @@ export default function AiQualityPanel({ category, photoUrls = [], fieldValues =
               {/* エラーメッセージ */}
               {result.warningMessages.filter((w) => w.level === "error").length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-xs font-semibold text-red-600">❌ 必須修正</p>
+                  <p className="text-xs font-semibold text-red-400">❌ 必須修正</p>
                   {result.warningMessages
                     .filter((w) => w.level === "error")
                     .map((w, i) => (
                       <div
                         key={i}
-                        className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700"
+                        className="rounded-lg bg-red-400/10 border border-red-400/30 px-3 py-2 text-xs text-red-400"
                       >
                         {w.message}
                       </div>
@@ -193,13 +213,13 @@ export default function AiQualityPanel({ category, photoUrls = [], fieldValues =
               {/* 警告メッセージ */}
               {result.warningMessages.filter((w) => w.level === "warning").length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-xs font-semibold text-amber-600">⚠️ 推奨修正</p>
+                  <p className="text-xs font-semibold text-amber-400">⚠️ 推奨修正</p>
                   {result.warningMessages
                     .filter((w) => w.level === "warning")
                     .map((w, i) => (
                       <div
                         key={i}
-                        className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700"
+                        className="rounded-lg bg-amber-400/10 border border-amber-400/30 px-3 py-2 text-xs text-amber-400"
                       >
                         {w.message}
                       </div>
@@ -217,12 +237,16 @@ export default function AiQualityPanel({ category, photoUrls = [], fieldValues =
                     {result.missingPhotos.map((p, i) => (
                       <div
                         key={i}
-                        className={`flex items-start gap-2 rounded-lg px-3 py-2 text-xs ${p.required ? "bg-red-50 border border-red-200 text-red-700" : "bg-amber-50 border border-amber-100 text-amber-700"}`}
+                        className={`flex items-start gap-2 rounded-lg px-3 py-2 text-xs ${
+                          p.required
+                            ? "bg-red-400/10 border border-red-400/30 text-red-400"
+                            : "bg-amber-400/10 border border-amber-400/20 text-amber-400"
+                        }`}
                       >
                         <span className="mt-0.5">{p.required ? "🔴" : "🟡"}</span>
                         <div>
                           <span className="font-medium">{p.label}</span>
-                          {p.required && <span className="ml-1 text-red-500">（必須）</span>}
+                          {p.required && <span className="ml-1 opacity-70">（必須）</span>}
                           {p.angle_hint && <p className="text-muted mt-0.5">{p.angle_hint}</p>}
                           {p.count_min && p.count_min > 1 && <p className="mt-0.5">最低{p.count_min}枚</p>}
                         </div>
@@ -242,7 +266,11 @@ export default function AiQualityPanel({ category, photoUrls = [], fieldValues =
                     {result.missingFields.map((f, i) => (
                       <span
                         key={i}
-                        className={`rounded-full px-2.5 py-0.5 text-xs ${f.required ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}
+                        className={`rounded-full px-2.5 py-0.5 text-xs border ${
+                          f.required
+                            ? "bg-red-400/10 border-red-400/30 text-red-400"
+                            : "bg-amber-400/10 border-amber-400/20 text-amber-400"
+                        }`}
                       >
                         {f.label}
                         {f.required ? " *" : ""}
@@ -254,7 +282,7 @@ export default function AiQualityPanel({ category, photoUrls = [], fieldValues =
 
               {/* 合格時メッセージ */}
               {status === "pass" && (
-                <div className="rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-xs text-green-700">
+                <div className="rounded-lg bg-green-400/10 border border-green-400/30 px-3 py-2 text-xs text-green-400">
                   ✅ Ledra Standard 基準をクリアしています！このまま発行できます。
                 </div>
               )}

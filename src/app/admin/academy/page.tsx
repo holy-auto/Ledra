@@ -61,46 +61,38 @@ export default async function AcademyPage() {
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-2">
           <span className="text-3xl">🎓</span>
-          <h1 className="text-2xl font-bold text-gray-900">Ledra Academy</h1>
-          <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">
+          <h1 className="text-2xl font-bold text-primary">Ledra Academy</h1>
+          <span className="px-2 py-1 text-xs font-medium bg-accent-dim text-accent rounded-full border border-accent/20">
             {planTier.toUpperCase()}
           </span>
         </div>
-        <p className="text-sm text-gray-500">AIが施工記録の品質を分析し、現場ノウハウを業界の知識資産に変えます</p>
+        <p className="text-sm text-muted">AIが施工記録の品質を分析し、現場ノウハウを業界の知識資産に変えます</p>
       </div>
 
       {!isAiEnabled && (
-        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
-          <span className="text-amber-500 text-lg">⚠️</span>
+        <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-3">
+          <span className="text-amber-400 text-lg mt-0.5">⚠️</span>
           <div>
-            <p className="text-sm font-medium text-amber-800">AI機能はStandard/Proプランで利用できます</p>
-            <p className="text-xs text-amber-600 mt-1">基本品質チェックは現在のプランでもご利用いただけます</p>
+            <p className="text-sm font-medium text-amber-400">AI機能はStandard/Proプランで利用できます</p>
+            <p className="text-xs text-amber-400/70 mt-1">基本品質チェックは現在のプランでもご利用いただけます</p>
           </div>
         </div>
       )}
 
       {/* 品質スコアサマリー */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-white rounded-xl border p-4 text-center">
-          <div className="text-3xl font-bold text-blue-600">{avgScore}</div>
-          <div className="text-xs text-gray-500 mt-1">平均品質スコア</div>
-          <div className="text-xs text-gray-400">(直近30件)</div>
-        </div>
-        <div className="bg-white rounded-xl border p-4 text-center">
-          <div className="text-3xl font-bold text-yellow-500">{levelCounts["pro"] ?? 0}</div>
-          <div className="text-xs text-gray-500 mt-1">Pro 認定件数</div>
-          <div className="text-xs text-yellow-500">スコア90+</div>
-        </div>
-        <div className="bg-white rounded-xl border p-4 text-center">
-          <div className="text-3xl font-bold text-green-600">{candidateCount ?? 0}</div>
-          <div className="text-xs text-gray-500 mt-1">公開候補事例</div>
-          <div className="text-xs text-gray-400">未公開</div>
-        </div>
-        <div className="bg-white rounded-xl border p-4 text-center">
-          <div className="text-3xl font-bold text-purple-600">{publishedCount ?? 0}</div>
-          <div className="text-xs text-gray-500 mt-1">公開済み事例</div>
-          <div className="text-xs text-gray-400">全加盟店共有</div>
-        </div>
+        {[
+          { value: avgScore, label: "平均品質スコア", sub: "(直近30件)", colorCls: "text-accent" },
+          { value: levelCounts["pro"] ?? 0, label: "Pro 認定件数", sub: "スコア90+", colorCls: "text-yellow-400" },
+          { value: candidateCount ?? 0, label: "公開候補事例", sub: "未公開", colorCls: "text-green-400" },
+          { value: publishedCount ?? 0, label: "公開済み事例", sub: "全加盟店共有", colorCls: "text-purple-400" },
+        ].map((stat) => (
+          <div key={stat.label} className="glass-card p-4 text-center">
+            <div className={`text-3xl font-bold ${stat.colorCls}`}>{stat.value}</div>
+            <div className="text-xs text-secondary mt-1">{stat.label}</div>
+            <div className={`text-xs mt-0.5 ${stat.colorCls}`}>{stat.sub}</div>
+          </div>
+        ))}
       </div>
 
       {/* メニュー */}
@@ -108,19 +100,19 @@ export default async function AcademyPage() {
         {/* QAアシスタント */}
         <Link
           href="/admin/academy/qa"
-          className={`group bg-white rounded-xl border p-5 hover:shadow-md transition-all ${!isAiEnabled ? "opacity-60 cursor-not-allowed pointer-events-none" : ""}`}
+          className={`group glass-card p-5 hover:border-accent/40 transition-all ${
+            !isAiEnabled ? "opacity-50 cursor-not-allowed pointer-events-none" : ""
+          }`}
         >
           <div className="flex items-center gap-3 mb-3">
             <span className="text-2xl">💬</span>
             <div>
-              <div className="font-semibold text-gray-800 group-hover:text-blue-600">QAアシスタント</div>
-              <div className="text-xs text-gray-400">Standard以上</div>
+              <div className="font-semibold text-primary group-hover:text-accent transition-colors">QAアシスタント</div>
+              <div className="text-xs text-muted">Standard以上</div>
             </div>
-            {!isAiEnabled && (
-              <span className="ml-auto text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded">ロック</span>
-            )}
+            {!isAiEnabled && <span className="ml-auto text-xs bg-inset text-muted px-2 py-1 rounded-lg">ロック</span>}
           </div>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-secondary">
             施工に関する質問をAIに聞けます。Academy事例・マニュアルを参照して回答します。
           </p>
         </Link>
@@ -128,45 +120,44 @@ export default async function AcademyPage() {
         {/* AI添削 */}
         <Link
           href="/admin/academy/feedback"
-          className={`group bg-white rounded-xl border p-5 hover:shadow-md transition-all ${!isAiEnabled ? "opacity-60 cursor-not-allowed pointer-events-none" : ""}`}
+          className={`group glass-card p-5 hover:border-accent/40 transition-all ${
+            !isAiEnabled ? "opacity-50 cursor-not-allowed pointer-events-none" : ""
+          }`}
         >
           <div className="flex items-center gap-3 mb-3">
             <span className="text-2xl">✏️</span>
             <div>
-              <div className="font-semibold text-gray-800 group-hover:text-blue-600">証明書AI添削</div>
-              <div className="text-xs text-gray-400">Standard以上</div>
+              <div className="font-semibold text-primary group-hover:text-accent transition-colors">証明書AI添削</div>
+              <div className="text-xs text-muted">Standard以上</div>
             </div>
-            {!isAiEnabled && (
-              <span className="ml-auto text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded">ロック</span>
-            )}
+            {!isAiEnabled && <span className="ml-auto text-xs bg-inset text-muted px-2 py-1 rounded-lg">ロック</span>}
           </div>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-secondary">
             証明書の品質をAIが採点・フィードバック。Ledra Standard達成状況も確認できます。
           </p>
         </Link>
 
         {/* 施工事例 */}
-        <Link
-          href="/admin/academy/cases"
-          className="group bg-white rounded-xl border p-5 hover:shadow-md transition-all"
-        >
+        <Link href="/admin/academy/cases" className="group glass-card p-5 hover:border-accent/40 transition-all">
           <div className="flex items-center gap-3 mb-3">
             <span className="text-2xl">📚</span>
             <div>
-              <div className="font-semibold text-gray-800 group-hover:text-blue-600">施工事例ライブラリ</div>
-              <div className="text-xs text-gray-400">全プラン</div>
+              <div className="font-semibold text-primary group-hover:text-accent transition-colors">
+                施工事例ライブラリ
+              </div>
+              <div className="text-xs text-muted">全プラン</div>
             </div>
           </div>
-          <p className="text-sm text-gray-500">優良施工事例を閲覧・学習。自テナントの候補事例を公開登録できます。</p>
+          <p className="text-sm text-secondary">優良施工事例を閲覧・学習。自テナントの候補事例を公開登録できます。</p>
         </Link>
 
         {/* Ledra Standard 達成状況 */}
-        <div className="bg-white rounded-xl border p-5">
+        <div className="glass-card p-5">
           <div className="flex items-center gap-3 mb-3">
             <span className="text-2xl">🏆</span>
             <div>
-              <div className="font-semibold text-gray-800">Ledra Standard 達成状況</div>
-              <div className="text-xs text-gray-400">品質基準</div>
+              <div className="font-semibold text-primary">Ledra Standard 達成状況</div>
+              <div className="text-xs text-muted">品質基準</div>
             </div>
           </div>
           <div className="space-y-2">
@@ -174,18 +165,18 @@ export default async function AcademyPage() {
               const count = levelCounts[lvl] ?? 0;
               const total = scoreStats?.length ?? 1;
               const pct = Math.round((count / total) * 100);
-              const colors: Record<string, string> = {
+              const barColors: Record<string, string> = {
                 basic: "bg-green-500",
-                standard: "bg-blue-500",
+                standard: "bg-accent",
                 pro: "bg-yellow-400",
               };
               return (
                 <div key={lvl} className="flex items-center gap-2">
-                  <span className="text-xs w-16 text-gray-500 capitalize">{lvl}</span>
-                  <div className="flex-1 bg-gray-100 rounded-full h-2">
-                    <div className={`h-2 rounded-full ${colors[lvl]}`} style={{ width: `${pct}%` }} />
+                  <span className="text-xs w-16 text-muted capitalize">{lvl}</span>
+                  <div className="flex-1 bg-inset rounded-full h-2">
+                    <div className={`h-2 rounded-full ${barColors[lvl]}`} style={{ width: `${pct}%` }} />
                   </div>
-                  <span className="text-xs text-gray-500 w-8">{count}件</span>
+                  <span className="text-xs text-muted w-8 text-right">{count}件</span>
                 </div>
               );
             })}
@@ -194,8 +185,8 @@ export default async function AcademyPage() {
       </div>
 
       {/* 学習パス */}
-      <div className="mt-8 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100 p-6">
-        <h2 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+      <div className="mt-8 glass-card p-6 border-accent/20 bg-accent/5">
+        <h2 className="font-semibold text-primary mb-4 flex items-center gap-2">
           <span>📋</span> 学習パス
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -206,11 +197,13 @@ export default async function AcademyPage() {
           ].map((item, i) => (
             <div
               key={i}
-              className={`rounded-lg p-4 border ${item.done ? "bg-white border-blue-200" : "bg-gray-50 border-gray-200 opacity-60"}`}
+              className={`rounded-xl p-4 border transition-all ${
+                item.done ? "bg-surface border-accent/30" : "bg-inset border-border-subtle opacity-50"
+              }`}
             >
-              <div className="font-medium text-sm text-gray-700 mb-1">{item.level}</div>
-              <div className="text-xs text-gray-500">{item.desc}</div>
-              {item.done && <div className="mt-2 text-xs text-green-600 font-medium">✓ 受講可能</div>}
+              <div className="font-medium text-sm text-primary mb-1">{item.level}</div>
+              <div className="text-xs text-secondary">{item.desc}</div>
+              {item.done && <div className="mt-2 text-xs text-green-400 font-medium">✓ 受講可能</div>}
             </div>
           ))}
         </div>

@@ -28,6 +28,15 @@ const CATEGORIES = [
 
 const DIFFICULTY_STARS = (d: number) => "★".repeat(d) + "☆".repeat(5 - d);
 
+const scoreColor = (score: number) =>
+  score >= 90
+    ? "text-yellow-400 bg-yellow-400/10 border border-yellow-400/20"
+    : score >= 75
+      ? "text-green-400 bg-green-400/10 border border-green-400/20"
+      : score >= 50
+        ? "text-accent bg-accent/10 border border-accent/20"
+        : "text-muted bg-inset border border-border-subtle";
+
 export default function AcademyCasesPage() {
   const [tab, setTab] = useState<"published" | "candidates">("published");
   const [category, setCategory] = useState("");
@@ -69,41 +78,35 @@ export default function AcademyCasesPage() {
     }
   };
 
-  const scoreColor = (score: number) =>
-    score >= 90
-      ? "text-yellow-600 bg-yellow-50"
-      : score >= 75
-        ? "text-green-600 bg-green-50"
-        : score >= 50
-          ? "text-blue-600 bg-blue-50"
-          : "text-gray-500 bg-gray-50";
-
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
+      {/* ヘッダー */}
       <div className="mb-6">
-        <a href="/admin/academy" className="text-sm text-blue-600 hover:underline">
+        <a href="/admin/academy" className="text-sm text-accent hover:underline">
           ← Academy
         </a>
-        <h1 className="text-xl font-bold text-gray-900 mt-2 flex items-center gap-2">
+        <h1 className="text-xl font-bold text-primary mt-2 flex items-center gap-2">
           <span>📚</span> 施工事例ライブラリ
         </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          優良施工事例から学習。自テナントの候補事例をAcademyに登録できます。
-        </p>
+        <p className="text-sm text-muted mt-1">優良施工事例から学習。自テナントの候補事例をAcademyに登録できます。</p>
       </div>
 
       {/* タブ + フィルター */}
       <div className="flex items-center justify-between mb-4">
-        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+        <div className="flex gap-1 bg-inset rounded-lg p-1">
           <button
             onClick={() => setTab("published")}
-            className={`px-4 py-1.5 text-sm rounded-md transition ${tab === "published" ? "bg-white shadow font-medium" : "text-gray-500 hover:text-gray-700"}`}
+            className={`px-4 py-1.5 text-sm rounded-md transition-colors ${
+              tab === "published" ? "bg-surface text-primary font-medium shadow-sm" : "text-muted hover:text-secondary"
+            }`}
           >
             📖 公開事例
           </button>
           <button
             onClick={() => setTab("candidates")}
-            className={`px-4 py-1.5 text-sm rounded-md transition ${tab === "candidates" ? "bg-white shadow font-medium" : "text-gray-500 hover:text-gray-700"}`}
+            className={`px-4 py-1.5 text-sm rounded-md transition-colors ${
+              tab === "candidates" ? "bg-surface text-primary font-medium shadow-sm" : "text-muted hover:text-secondary"
+            }`}
           >
             🌟 候補事例
           </button>
@@ -111,7 +114,7 @@ export default function AcademyCasesPage() {
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value)}
-          className="text-sm border rounded-lg px-3 py-1.5 text-gray-700"
+          className="text-sm bg-inset border border-border-subtle rounded-lg px-3 py-1.5 text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
         >
           {CATEGORIES.map((c) => (
             <option key={c.value} value={c.value}>
@@ -121,19 +124,21 @@ export default function AcademyCasesPage() {
         </select>
       </div>
 
+      {/* 候補バナー */}
       {tab === "candidates" && (
-        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+        <div className="mb-4 p-3 bg-accent/10 border border-accent/30 rounded-xl text-xs text-accent">
           品質スコア80以上・写真4枚以上の証明書が自動的に候補として登録されます。
           「公開する」ボタンでAIが要約を生成し、全加盟店が閲覧できる公開事例になります。
         </div>
       )}
 
+      {/* コンテンツ */}
       {loading ? (
         <div className="flex items-center justify-center py-12">
-          <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
         </div>
       ) : cases.length === 0 ? (
-        <div className="text-center py-12 text-gray-400">
+        <div className="text-center py-12 text-muted">
           <div className="text-4xl mb-2">📭</div>
           <p className="text-sm">
             {tab === "candidates"
@@ -144,25 +149,31 @@ export default function AcademyCasesPage() {
       ) : (
         <div className="space-y-3">
           {cases.map((c) => (
-            <div key={c.id} className="bg-white rounded-xl border hover:border-blue-200 transition">
+            <div key={c.id} className="glass-card hover:border-accent/40 transition-colors">
+              {/* カードヘッダー */}
               <div
                 className="p-4 cursor-pointer flex items-start justify-between gap-3"
                 onClick={() => setExpanded(expanded === c.id ? null : c.id)}
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">{c.category}</span>
+                    <span className="text-xs px-2 py-0.5 bg-accent/10 text-accent border border-accent/20 rounded-full">
+                      {c.category}
+                    </span>
                     {c.tags.slice(0, 3).map((tag) => (
-                      <span key={tag} className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">
+                      <span
+                        key={tag}
+                        className="text-xs px-2 py-0.5 bg-inset text-secondary border border-border-subtle rounded-full"
+                      >
                         {tag}
                       </span>
                     ))}
-                    <span className="text-xs text-yellow-500">{DIFFICULTY_STARS(c.difficulty)}</span>
+                    <span className="text-xs text-yellow-400">{DIFFICULTY_STARS(c.difficulty)}</span>
                   </div>
-                  <p className="text-sm text-gray-700 line-clamp-2">{c.ai_summary ?? "AI要約なし"}</p>
+                  <p className="text-sm text-secondary line-clamp-2">{c.ai_summary ?? "AI要約なし"}</p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  <span className={`text-sm font-bold px-2 py-1 rounded ${scoreColor(c.quality_score)}`}>
+                  <span className={`text-sm font-bold px-2 py-1 rounded-lg ${scoreColor(c.quality_score)}`}>
                     {c.quality_score}
                   </span>
                   {tab === "candidates" && (
@@ -172,25 +183,26 @@ export default function AcademyCasesPage() {
                         handlePublish(c.id);
                       }}
                       disabled={publishing === c.id}
-                      className="text-xs px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                      className="text-xs px-3 py-1.5 bg-green-500 text-white rounded-lg hover:bg-green-400 disabled:opacity-50 transition-colors"
                     >
                       {publishing === c.id ? "処理中..." : "公開する"}
                     </button>
                   )}
-                  <span className="text-gray-300">{expanded === c.id ? "▲" : "▼"}</span>
+                  <span className="text-muted text-xs">{expanded === c.id ? "▲" : "▼"}</span>
                 </div>
               </div>
 
+              {/* 展開コンテンツ */}
               {expanded === c.id && (
-                <div className="px-4 pb-4 border-t pt-4">
+                <div className="px-4 pb-4 border-t border-border-subtle pt-4">
                   <div className="grid md:grid-cols-2 gap-4">
                     {c.good_points.length > 0 && (
                       <div>
-                        <h3 className="text-xs font-semibold text-green-700 mb-2">✅ 良かった点</h3>
+                        <h3 className="text-xs font-semibold text-green-400 mb-2">✅ 良かった点</h3>
                         <ul className="space-y-1">
                           {c.good_points.map((p, i) => (
-                            <li key={i} className="text-xs text-gray-600 flex gap-1">
-                              <span className="text-green-400">•</span>
+                            <li key={i} className="text-xs text-secondary flex gap-1">
+                              <span className="text-green-400 shrink-0">•</span>
                               {p}
                             </li>
                           ))}
@@ -199,11 +211,11 @@ export default function AcademyCasesPage() {
                     )}
                     {c.caution_points.length > 0 && (
                       <div>
-                        <h3 className="text-xs font-semibold text-orange-700 mb-2">⚠️ 注意点</h3>
+                        <h3 className="text-xs font-semibold text-orange-400 mb-2">⚠️ 注意点</h3>
                         <ul className="space-y-1">
                           {c.caution_points.map((p, i) => (
-                            <li key={i} className="text-xs text-gray-600 flex gap-1">
-                              <span className="text-orange-400">•</span>
+                            <li key={i} className="text-xs text-secondary flex gap-1">
+                              <span className="text-orange-400 shrink-0">•</span>
                               {p}
                             </li>
                           ))}
@@ -211,7 +223,7 @@ export default function AcademyCasesPage() {
                       </div>
                     )}
                   </div>
-                  <div className="mt-3 flex items-center gap-4 text-xs text-gray-400">
+                  <div className="mt-3 flex items-center gap-4 text-xs text-muted">
                     <span>👁 {c.view_count}</span>
                     <span>👍 {c.helpful_count}</span>
                   </div>
