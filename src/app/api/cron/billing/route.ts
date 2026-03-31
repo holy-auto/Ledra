@@ -75,6 +75,7 @@ export async function GET(req: NextRequest) {
       }
     } catch (e) {
       console.error("[cron/billing] overdue detection failed:", e);
+      import("@sentry/nextjs").then((Sentry) => Sentry.captureException(e, { tags: { cron: "billing", phase: "overdue_detection" } })).catch(() => {});
     }
 
     // ─── 2. Send reminders ───
@@ -230,6 +231,7 @@ export async function GET(req: NextRequest) {
       }
     } catch (e) {
       console.error("[cron/billing] reminder sending failed:", e);
+      import("@sentry/nextjs").then((Sentry) => Sentry.captureException(e, { tags: { cron: "billing", phase: "reminder_sending" } })).catch(() => {});
     }
 
     return NextResponse.json({

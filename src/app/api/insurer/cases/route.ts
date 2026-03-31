@@ -79,6 +79,18 @@ export async function GET(req: NextRequest) {
       query = query.eq("vehicle_id", vehicleId);
     }
     if (tenantId) {
+      // Verify insurer has an active contract with this tenant before filtering
+      const { data: contract } = await admin
+        .from("insurer_contracts")
+        .select("id")
+        .eq("insurer_id", caller.insurerId)
+        .eq("tenant_id", tenantId)
+        .eq("status", "active")
+        .limit(1)
+        .maybeSingle();
+      if (!contract) {
+        return apiValidationError("指定されたテナントとの契約が見つかりません。");
+      }
       query = query.eq("tenant_id", tenantId);
     }
 
@@ -150,6 +162,21 @@ export async function POST(req: NextRequest) {
         .eq("id", vehicle_id)
         .maybeSingle();
       if (v) tenant_id = v.tenant_id;
+    }
+
+    // Verify insurer has a contract with the resolved tenant
+    if (tenant_id) {
+      const { data: contract } = await admin
+        .from("insurer_contracts")
+        .select("id")
+        .eq("insurer_id", caller.insurerId)
+        .eq("tenant_id", tenant_id)
+        .eq("status", "active")
+        .limit(1)
+        .maybeSingle();
+      if (!contract) {
+        return apiValidationError("指定されたテナントとの契約が見つかりません。");
+      }
     }
 
     const insertData: Record<string, unknown> = {

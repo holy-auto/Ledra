@@ -5,6 +5,8 @@ import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages";
 import { normalizePlanTier, PHOTO_LIMITS } from "@/lib/billing/planFeatures";
 import { apiOk, apiInternalError, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 import { apiError } from "@/lib/api/response";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -40,22 +42,17 @@ function validateMagicBytes(buffer: Buffer): string | null {
 
 export async function POST(req: NextRequest) {
   try {
-    // ── Auth ──────────────────────────────────────────────────────
+    // ── Rate limit: 20 uploads per user per minute ───────────────
+    const limited = await checkRateLimit(req, "general");
+    if (limited) return limited;
+
+    // ── Auth (resolveCallerWithRole for proper tenant isolation) ──
     const supabase = await createSupabaseServerClient();
-    const { data: userRes } = await supabase.auth.getUser();
-    if (!userRes.user) {
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) {
       return apiUnauthorized();
     }
-
-    const { data: mem } = await supabase
-      .from("tenant_memberships")
-      .select("tenant_id")
-      .limit(1)
-      .single();
-    const tenantId = (mem?.tenant_id as string | undefined) ?? null;
-    if (!tenantId) {
-      return apiValidationError("テナントが見つかりません。");
-    }
+    const tenantId = caller.tenantId;
 
     // ── Plan tier → photo limit ───────────────────────────────────
     const { data: tenant } = await supabase

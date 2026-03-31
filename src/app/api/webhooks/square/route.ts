@@ -57,7 +57,8 @@ export async function POST(req: NextRequest) {
   const signatureKey = process.env.SQUARE_WEBHOOK_SIGNATURE_KEY;
   if (!signatureKey) {
     console.error("[square-webhook] SQUARE_WEBHOOK_SIGNATURE_KEY not configured");
-    return NextResponse.json({ received: true }, { status: 200 });
+    // Never process webhooks without signature verification
+    return NextResponse.json({ error: "Webhook signature key not configured" }, { status: 500 });
   }
 
   // Read raw body for signature verification

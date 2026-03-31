@@ -1,6 +1,13 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     await import("./sentry.server.config");
+
+    // Security: validate critical env vars at startup
+    const { assertPlatformTenantId } = await import("@/lib/auth/platformAdmin");
+    assertPlatformTenantId();
+
+    const { validateRequiredEnvVars } = await import("@/lib/envValidation");
+    validateRequiredEnvVars();
   }
 
   if (process.env.NEXT_RUNTIME === "edge") {

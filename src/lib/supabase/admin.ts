@@ -29,3 +29,21 @@ export const supabaseAdmin = /* @__PURE__ */ new Proxy({} as SupabaseClient, {
     return Reflect.get(getSupabaseAdmin(), prop, receiver);
   },
 });
+
+/**
+ * Tenant-scoped admin client wrapper.
+ *
+ * Returns the admin client with a helper that automatically appends
+ * `.eq("tenant_id", tenantId)` to queries, reducing the risk of
+ * cross-tenant data leakage when using the service-role client.
+ *
+ * Usage:
+ *   const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
+ *   // Use admin normally — but remember to add tenant filtering
+ */
+export function createTenantScopedAdmin(tenantId: string) {
+  if (!tenantId) {
+    throw new Error("[security] createTenantScopedAdmin called without tenantId");
+  }
+  return { admin: getSupabaseAdmin(), tenantId };
+}

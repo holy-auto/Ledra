@@ -128,17 +128,23 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "validation_error", message: "不明なアクションです" }, { status: 400 });
     }
 
-    // Log the action for audit
+    // Log the action to admin_audit_logs
     try {
-      await admin.from("vehicle_histories").insert({
-        tenant_id: caller.tenantId,
-        type: "platform_admin_action",
-        title: `運営操作: ${action}`,
-        description: `対象: ${tenant.name} (${tenantId}). ${result.message ?? ""}`,
-        performed_at: new Date().toISOString(),
+      await admin.from("admin_audit_logs").insert({
+        actor_id: caller.userId,
+        actor_tenant_id: caller.tenantId,
+        action: `platform.${action}`,
+        target_type: "tenant",
+        target_id: tenantId,
+        meta: {
+          tenant_name: tenant.name,
+          params: params ?? {},
+          result_message: result.message ?? "",
+        },
       });
-    } catch {
-      // audit log failure should not block the action
+    } catch (auditErr) {
+      // audit log failure should not block the action, but log for monitoring
+      console.error("[platform/tenant-action] audit log failed:", auditErr);
     }
 
     return NextResponse.json({ ok: true, action, ...result });
