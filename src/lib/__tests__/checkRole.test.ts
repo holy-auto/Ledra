@@ -7,6 +7,7 @@ function makeCaller(role: Role): CallerInfo {
     userId: "test-user-id",
     tenantId: "test-tenant-id",
     role,
+    planTier: "pro",
   };
 }
 

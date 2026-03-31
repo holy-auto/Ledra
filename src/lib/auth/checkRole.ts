@@ -7,6 +7,7 @@ export type CallerInfo = {
   userId: string;
   tenantId: string;
   role: Role;
+  planTier: string;
 };
 
 const ACTIVE_TENANT_COOKIE = "active_tenant_id";
@@ -44,10 +45,13 @@ export async function resolveCallerWithRole(
       .maybeSingle();
 
     if (mem?.tenant_id) {
+      const tenantId = mem.tenant_id as string;
+      const { data: tenant } = await supabase.from("tenants").select("plan_tier").eq("id", tenantId).single();
       return {
         userId: userRes.user.id,
-        tenantId: mem.tenant_id as string,
+        tenantId,
         role: normalizeRole(mem.role),
+        planTier: String(tenant?.plan_tier ?? "free"),
       };
     }
   }
@@ -63,10 +67,14 @@ export async function resolveCallerWithRole(
 
   if (!mem?.tenant_id) return null;
 
+  const tenantId = mem.tenant_id as string;
+  const { data: tenant } = await supabase.from("tenants").select("plan_tier").eq("id", tenantId).single();
+
   return {
     userId: userRes.user.id,
-    tenantId: mem.tenant_id as string,
+    tenantId,
     role: normalizeRole(mem.role),
+    planTier: String(tenant?.plan_tier ?? "free"),
   };
 }
 

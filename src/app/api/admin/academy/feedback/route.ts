@@ -7,7 +7,7 @@ import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
-import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
+import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateCertificateFeedback } from "@/lib/ai/academyFeedback";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
@@ -19,11 +19,7 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const { data: tenant } = await supabase.from("tenants").select("plan_tier").eq("id", caller.tenantId).single();
-
-    const planTier = normalizePlanTier(tenant?.plan_tier);
-
-    if (!canUseFeature(planTier, "ai_academy_feedback")) {
+    if (!canUseFeature(caller.planTier, "ai_academy_feedback")) {
       return apiValidationError("この機能はStandardプラン以上でご利用いただけます", {
         code: "plan_limit",
       });
