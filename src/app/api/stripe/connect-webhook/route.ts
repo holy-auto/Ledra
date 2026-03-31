@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
       // ─────────────────────────────────────────────────
       // transfer.paid — 送金完了（connected account に着金）
       // ─────────────────────────────────────────────────
-      case "transfer.paid": {
+      case "transfer.paid" as any: {
         const transfer = event.data.object as Stripe.Transfer;
 
         // stripe_connect_transfers のステータスを paid に
