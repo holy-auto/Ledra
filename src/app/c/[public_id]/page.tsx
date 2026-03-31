@@ -5,7 +5,12 @@ import { logCertificateAction } from "@/lib/audit/certificateLog";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { getPanelLabel, getCoverageLabel, getFilmTypeLabel } from "@/lib/ppf/constants";
 import { getWorkTypeLabel } from "@/lib/maintenance/constants";
-import { getRepairTypeLabel, getRepairPanelLabel, getPaintTypeLabel, getRepairMethodLabel } from "@/lib/bodyRepair/constants";
+import {
+  getRepairTypeLabel,
+  getRepairPanelLabel,
+  getPaintTypeLabel,
+  getRepairMethodLabel,
+} from "@/lib/bodyRepair/constants";
 
 type PageProps = {
   params: Promise<{ public_id: string }>;
@@ -101,7 +106,6 @@ function pickVehicleField(vehicle: Record<string, any> | null | undefined, info:
   return "";
 }
 
-
 function getStatusLabel(status?: string | null) {
   const s = String(status ?? "").toLowerCase();
   if (s === "active") return "有効な施工証明書";
@@ -131,10 +135,9 @@ async function getOrigin() {
 
 async function fetchPublicStatus(publicId: string): Promise<PublicStatusResponse | null> {
   const origin = await getOrigin();
-  const res = await fetch(
-    `${origin}/api/certificate/public-status?pid=${encodeURIComponent(publicId)}`,
-    { cache: "no-store" }
-  );
+  const res = await fetch(`${origin}/api/certificate/public-status?pid=${encodeURIComponent(publicId)}`, {
+    cache: "no-store",
+  });
 
   if (res.status === 404) return null;
 
@@ -177,7 +180,17 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
   const publicUrl = `${origin}/c/${data.certificate.public_id}`;
   const pdfHref = `/api/certificate/pdf?pid=${encodeURIComponent(data.certificate.public_id)}`;
   const returnTo = typeof sp?.returnTo === "string" ? sp.returnTo : undefined;
-  const logoutHref = typeof sp?.logout === "string" ? sp.logout : undefined;
+  const logoutHref = typeof sp?.logout === "string" && sp.logout !== "1" ? sp.logout : undefined;
+  const tenantSlug = asText(data.shop?.slug);
+  const entry = typeof sp?.entry === "string" ? sp.entry : undefined;
+  const from = typeof sp?.from === "string" ? sp.from : undefined;
+  const openedFromNfc = entry === "nfc" || from === "nfc";
+  const portalFrom = openedFromNfc ? "nfc" : from === "portal" ? "portal" : "certificate";
+  const portalParams = new URLSearchParams();
+  if (tenantSlug) portalParams.set("tenant", tenantSlug);
+  portalParams.set("pid", data.certificate.public_id);
+  portalParams.set("from", portalFrom);
+  const portalHref = `/my?${portalParams.toString()}`;
 
   const maker = pickVehicleField(data.vehicle, info, ["maker", "brand", "manufacturer"]);
   const model = pickVehicleField(data.vehicle, info, ["model", "car_model", "vehicle_model"]);
@@ -210,15 +223,14 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
           >
             認証状態: {getStatusLabel(data.certificate.status)}
           </span>
-          <span className="self-center text-xs text-secondary">
-            Public ID: {data.certificate.public_id}
-          </span>
+          <span className="self-center text-xs text-secondary">Public ID: {data.certificate.public_id}</span>
         </div>
       </div>
 
       {certStatus !== "active" ? (
         <div className="mb-4 rounded-xl border border-amber-500/30 bg-[rgba(245,158,11,0.1)] p-4 text-amber-400">
-          この証明書は現在「{getStatusLabel(data.certificate.status)}」状態です。存在は確認できますが、一部機能や扱いが通常と異なる場合があります。
+          この証明書は現在「{getStatusLabel(data.certificate.status)}
+          」状態です。存在は確認できますが、一部機能や扱いが通常と異なる場合があります。
         </div>
       ) : null}
 
@@ -241,26 +253,74 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
       ) : null}
 
       <div className="grid gap-4">
+        {tenantSlug ? (
+          <section className="glass-card p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-sm font-bold text-primary">Ledra マイページ</div>
+                <div className="mt-1 text-sm leading-6 text-secondary">
+                  {openedFromNfc
+                    ? "NFCタグから開いた証明書です。マイページに進むと、この店舗の他の証明書や予約もまとめて確認できます。"
+                    : "この店舗のマイページに進むと、関連する証明書や予約をまとめて確認できます。"}
+                </div>
+              </div>
+              <a
+                href={portalHref}
+                className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white no-underline hover:bg-blue-700"
+              >
+                マイページへ進む
+              </a>
+            </div>
+          </section>
+        ) : null}
         <section className="glass-card p-4">
           <div className="mb-3 font-bold text-primary">車両情報</div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="rounded-lg bg-base px-3 py-2 text-secondary">メーカー: <span className="text-primary">{maker || "-"}</span></div>
-            <div className="rounded-lg bg-base px-3 py-2 text-secondary">車種: <span className="text-primary">{model || "-"}</span></div>
-            <div className="rounded-lg bg-base px-3 py-2 text-secondary">年式: <span className="text-primary">{year || "-"}</span></div>
-            <div className="rounded-lg bg-base px-3 py-2 text-secondary">ナンバー: <span className="text-primary">{plate || "-"}</span></div>
-            <div className="rounded-lg bg-base px-3 py-2 text-secondary">顧客名: <span className="text-primary">{customerName || "-"}</span></div>
-            <div className="rounded-lg bg-base px-3 py-2 text-secondary">記録作成日: <span className="text-primary">{formatDate(data.certificate.created_at)}</span></div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+              メーカー: <span className="text-primary">{maker || "-"}</span>
+            </div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+              車種: <span className="text-primary">{model || "-"}</span>
+            </div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+              年式: <span className="text-primary">{year || "-"}</span>
+            </div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+              ナンバー: <span className="text-primary">{plate || "-"}</span>
+            </div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+              顧客名: <span className="text-primary">{customerName || "-"}</span>
+            </div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+              記録作成日: <span className="text-primary">{formatDate(data.certificate.created_at)}</span>
+            </div>
           </div>
         </section>
 
         <section className="glass-card p-4">
           <div className="mb-3 font-bold text-primary">証明書情報</div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="rounded-lg bg-base px-3 py-2 text-secondary">施工店: <span className="text-primary">{data.shop?.name || "-"}</span></div>
-            <div className="rounded-lg bg-base px-3 py-2 text-secondary">ステータス: <span className="text-primary">{getStatusLabel(data.certificate.status)}</span></div>
-            <div className="rounded-lg bg-base px-3 py-2 text-secondary">有効期限タイプ: <span className="text-primary">{asText(data.certificate.expiry_type) || "-"}</span></div>
-            <div className="rounded-lg bg-base px-3 py-2 text-secondary">有効期限値: <span className="text-primary">{data.certificate.expiry_value != null ? String(data.certificate.expiry_value) : "-"}</span></div>
-            <div className="rounded-lg bg-base px-3 py-2 text-secondary">バージョン: <span className="text-primary">{data.certificate.current_version != null ? String(data.certificate.current_version) : "-"}</span></div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+              施工店: <span className="text-primary">{data.shop?.name || "-"}</span>
+            </div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+              ステータス: <span className="text-primary">{getStatusLabel(data.certificate.status)}</span>
+            </div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+              有効期限タイプ: <span className="text-primary">{asText(data.certificate.expiry_type) || "-"}</span>
+            </div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+              有効期限値:{" "}
+              <span className="text-primary">
+                {data.certificate.expiry_value != null ? String(data.certificate.expiry_value) : "-"}
+              </span>
+            </div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+              バージョン:{" "}
+              <span className="text-primary">
+                {data.certificate.current_version != null ? String(data.certificate.current_version) : "-"}
+              </span>
+            </div>
             <div className="rounded-lg bg-base px-3 py-2 text-secondary sm:col-span-2 lg:col-span-3 min-w-0">
               公開URL:{" "}
               <a href={publicUrl} target="_blank" rel="noreferrer" className="text-accent hover:underline break-all">
@@ -268,15 +328,13 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
               </a>
             </div>
           </div>
-          {freeText ? (
-            <div className="mt-3 whitespace-pre-wrap leading-relaxed text-secondary">
-              {freeText}
-            </div>
-          ) : null}
+          {freeText ? <div className="mt-3 whitespace-pre-wrap leading-relaxed text-secondary">{freeText}</div> : null}
         </section>
 
         {/* PPF施工範囲 */}
-        {data.certificate.service_type === "ppf" && Array.isArray(data.certificate.ppf_coverage_json) && data.certificate.ppf_coverage_json.length > 0 ? (
+        {data.certificate.service_type === "ppf" &&
+        Array.isArray(data.certificate.ppf_coverage_json) &&
+        data.certificate.ppf_coverage_json.length > 0 ? (
           <section className="glass-card p-4">
             <div className="mb-3 font-bold text-primary">PPF施工範囲</div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -286,9 +344,7 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
                   <span className={`font-medium ${entry.coverage === "full" ? "text-emerald-400" : "text-amber-400"}`}>
                     {getCoverageLabel(entry.coverage)}
                   </span>
-                  {entry.partial_note ? (
-                    <span className="ml-1 text-xs text-muted">({entry.partial_note})</span>
-                  ) : null}
+                  {entry.partial_note ? <span className="ml-1 text-xs text-muted">({entry.partial_note})</span> : null}
                 </div>
               ))}
             </div>
@@ -310,9 +366,7 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
                   {cp.film_type ? (
                     <span className="ml-2 text-xs text-muted">({getFilmTypeLabel(cp.film_type)})</span>
                   ) : null}
-                  {cp.location ? (
-                    <div className="text-xs text-muted mt-0.5">{cp.location}</div>
-                  ) : null}
+                  {cp.location ? <div className="text-xs text-muted mt-0.5">{cp.location}</div> : null}
                 </div>
               ))}
             </div>
@@ -320,105 +374,136 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
         ) : null}
 
         {/* 整備内容 */}
-        {data.certificate.service_type === "maintenance" && data.certificate.maintenance_json && typeof data.certificate.maintenance_json === "object" && Object.keys(data.certificate.maintenance_json).length > 0 ? (() => {
-          const m = data.certificate.maintenance_json;
-          return (
-            <section className="glass-card p-4">
-              <div className="mb-3 font-bold text-primary">整備内容</div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {Array.isArray(m.work_types) && m.work_types.length > 0 ? (
-                  <div className="rounded-lg bg-base px-3 py-2 text-secondary sm:col-span-2 lg:col-span-3">
-                    作業種別: <span className="text-primary font-medium">{m.work_types.map((wt: string) => getWorkTypeLabel(wt)).join("、")}</span>
+        {data.certificate.service_type === "maintenance" &&
+        data.certificate.maintenance_json &&
+        typeof data.certificate.maintenance_json === "object" &&
+        Object.keys(data.certificate.maintenance_json).length > 0
+          ? (() => {
+              const m = data.certificate.maintenance_json;
+              return (
+                <section className="glass-card p-4">
+                  <div className="mb-3 font-bold text-primary">整備内容</div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {Array.isArray(m.work_types) && m.work_types.length > 0 ? (
+                      <div className="rounded-lg bg-base px-3 py-2 text-secondary sm:col-span-2 lg:col-span-3">
+                        作業種別:{" "}
+                        <span className="text-primary font-medium">
+                          {m.work_types.map((wt: string) => getWorkTypeLabel(wt)).join("、")}
+                        </span>
+                      </div>
+                    ) : null}
+                    {m.mileage ? (
+                      <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+                        走行距離: <span className="text-primary">{m.mileage} km</span>
+                      </div>
+                    ) : null}
+                    {m.mechanic_name ? (
+                      <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+                        担当整備士: <span className="text-primary">{m.mechanic_name}</span>
+                      </div>
+                    ) : null}
+                    {m.next_service_date ? (
+                      <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+                        次回点検日: <span className="text-primary">{m.next_service_date}</span>
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
-                {m.mileage ? (
-                  <div className="rounded-lg bg-base px-3 py-2 text-secondary">走行距離: <span className="text-primary">{m.mileage} km</span></div>
-                ) : null}
-                {m.mechanic_name ? (
-                  <div className="rounded-lg bg-base px-3 py-2 text-secondary">担当整備士: <span className="text-primary">{m.mechanic_name}</span></div>
-                ) : null}
-                {m.next_service_date ? (
-                  <div className="rounded-lg bg-base px-3 py-2 text-secondary">次回点検日: <span className="text-primary">{m.next_service_date}</span></div>
-                ) : null}
-              </div>
-              {m.parts_replaced ? (
-                <div className="mt-2 rounded-lg bg-base px-3 py-2 text-secondary">
-                  <div className="font-medium text-primary mb-1">交換部品</div>
-                  <div className="whitespace-pre-wrap">{m.parts_replaced}</div>
-                </div>
-              ) : null}
-              {m.findings ? (
-                <div className="mt-2 rounded-lg bg-base px-3 py-2 text-secondary">
-                  <div className="font-medium text-primary mb-1">点検結果・所見</div>
-                  <div className="whitespace-pre-wrap">{m.findings}</div>
-                </div>
-              ) : null}
-            </section>
-          );
-        })() : null}
+                  {m.parts_replaced ? (
+                    <div className="mt-2 rounded-lg bg-base px-3 py-2 text-secondary">
+                      <div className="font-medium text-primary mb-1">交換部品</div>
+                      <div className="whitespace-pre-wrap">{m.parts_replaced}</div>
+                    </div>
+                  ) : null}
+                  {m.findings ? (
+                    <div className="mt-2 rounded-lg bg-base px-3 py-2 text-secondary">
+                      <div className="font-medium text-primary mb-1">点検結果・所見</div>
+                      <div className="whitespace-pre-wrap">{m.findings}</div>
+                    </div>
+                  ) : null}
+                </section>
+              );
+            })()
+          : null}
 
         {/* 鈑金塗装内容 */}
-        {data.certificate.service_type === "body_repair" && data.certificate.body_repair_json && typeof data.certificate.body_repair_json === "object" && Object.keys(data.certificate.body_repair_json).length > 0 ? (() => {
-          const br = data.certificate.body_repair_json;
-          return (
-            <section className="glass-card p-4">
-              <div className="mb-3 font-bold text-primary">鈑金塗装内容</div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {br.repair_type ? (
-                  <div className="rounded-lg bg-base px-3 py-2 text-secondary">修理種別: <span className="text-primary font-medium">{getRepairTypeLabel(br.repair_type)}</span></div>
-                ) : null}
-                {br.paint_color_code ? (
-                  <div className="rounded-lg bg-base px-3 py-2 text-secondary">塗装色: <span className="text-primary">{br.paint_color_code}</span></div>
-                ) : null}
-                {br.paint_type ? (
-                  <div className="rounded-lg bg-base px-3 py-2 text-secondary">塗装タイプ: <span className="text-primary">{getPaintTypeLabel(br.paint_type)}</span></div>
-                ) : null}
-              </div>
-              {Array.isArray(br.affected_panels) && br.affected_panels.length > 0 ? (
-                <div className="mt-2 rounded-lg bg-base px-3 py-2 text-secondary">
-                  <div className="font-medium text-primary mb-1">修理箇所</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {br.affected_panels.map((p: string, idx: number) => (
-                      <span key={idx} className="rounded-md bg-surface px-2 py-0.5 text-xs text-primary border border-border-default">
-                        {getRepairPanelLabel(p)}
-                      </span>
-                    ))}
+        {data.certificate.service_type === "body_repair" &&
+        data.certificate.body_repair_json &&
+        typeof data.certificate.body_repair_json === "object" &&
+        Object.keys(data.certificate.body_repair_json).length > 0
+          ? (() => {
+              const br = data.certificate.body_repair_json;
+              return (
+                <section className="glass-card p-4">
+                  <div className="mb-3 font-bold text-primary">鈑金塗装内容</div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {br.repair_type ? (
+                      <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+                        修理種別: <span className="text-primary font-medium">{getRepairTypeLabel(br.repair_type)}</span>
+                      </div>
+                    ) : null}
+                    {br.paint_color_code ? (
+                      <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+                        塗装色: <span className="text-primary">{br.paint_color_code}</span>
+                      </div>
+                    ) : null}
+                    {br.paint_type ? (
+                      <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+                        塗装タイプ: <span className="text-primary">{getPaintTypeLabel(br.paint_type)}</span>
+                      </div>
+                    ) : null}
                   </div>
-                </div>
-              ) : null}
-              {Array.isArray(br.repair_methods) && br.repair_methods.length > 0 ? (
-                <div className="mt-2 rounded-lg bg-base px-3 py-2 text-secondary">
-                  <div className="font-medium text-primary mb-1">修理方法</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {br.repair_methods.map((m: string, idx: number) => (
-                      <span key={idx} className="rounded-md bg-surface px-2 py-0.5 text-xs text-primary border border-border-default">
-                        {getRepairMethodLabel(m)}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-              {br.before_notes ? (
-                <div className="mt-2 rounded-lg bg-base px-3 py-2 text-secondary">
-                  <div className="font-medium text-primary mb-1">修理前の状態</div>
-                  <div className="whitespace-pre-wrap">{br.before_notes}</div>
-                </div>
-              ) : null}
-              {br.after_notes ? (
-                <div className="mt-2 rounded-lg bg-base px-3 py-2 text-secondary">
-                  <div className="font-medium text-primary mb-1">修理後の状態</div>
-                  <div className="whitespace-pre-wrap">{br.after_notes}</div>
-                </div>
-              ) : null}
-              {br.warranty_info ? (
-                <div className="mt-2 rounded-lg bg-base px-3 py-2 text-secondary">
-                  <div className="font-medium text-primary mb-1">修理保証</div>
-                  <div className="whitespace-pre-wrap">{br.warranty_info}</div>
-                </div>
-              ) : null}
-            </section>
-          );
-        })() : null}
+                  {Array.isArray(br.affected_panels) && br.affected_panels.length > 0 ? (
+                    <div className="mt-2 rounded-lg bg-base px-3 py-2 text-secondary">
+                      <div className="font-medium text-primary mb-1">修理箇所</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {br.affected_panels.map((p: string, idx: number) => (
+                          <span
+                            key={idx}
+                            className="rounded-md bg-surface px-2 py-0.5 text-xs text-primary border border-border-default"
+                          >
+                            {getRepairPanelLabel(p)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {Array.isArray(br.repair_methods) && br.repair_methods.length > 0 ? (
+                    <div className="mt-2 rounded-lg bg-base px-3 py-2 text-secondary">
+                      <div className="font-medium text-primary mb-1">修理方法</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {br.repair_methods.map((m: string, idx: number) => (
+                          <span
+                            key={idx}
+                            className="rounded-md bg-surface px-2 py-0.5 text-xs text-primary border border-border-default"
+                          >
+                            {getRepairMethodLabel(m)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {br.before_notes ? (
+                    <div className="mt-2 rounded-lg bg-base px-3 py-2 text-secondary">
+                      <div className="font-medium text-primary mb-1">修理前の状態</div>
+                      <div className="whitespace-pre-wrap">{br.before_notes}</div>
+                    </div>
+                  ) : null}
+                  {br.after_notes ? (
+                    <div className="mt-2 rounded-lg bg-base px-3 py-2 text-secondary">
+                      <div className="font-medium text-primary mb-1">修理後の状態</div>
+                      <div className="whitespace-pre-wrap">{br.after_notes}</div>
+                    </div>
+                  ) : null}
+                  {br.warranty_info ? (
+                    <div className="mt-2 rounded-lg bg-base px-3 py-2 text-secondary">
+                      <div className="font-medium text-primary mb-1">修理保証</div>
+                      <div className="whitespace-pre-wrap">{br.warranty_info}</div>
+                    </div>
+                  ) : null}
+                </section>
+              );
+            })()
+          : null}
 
         {images.length > 0 ? (
           <section className="glass-card p-4">
@@ -426,7 +511,7 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {images.map((img) => (
                 <a
-                  key={String(img.id ?? img.sort_order ?? Math.random())}
+                  key={String(img.id ?? `${img.sort_order ?? 0}-${img.url ?? img.file_name ?? "image"}`)}
                   href={String(img.url)}
                   target="_blank"
                   rel="noreferrer"
@@ -437,9 +522,7 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
                     alt={img.file_name || `image_${img.sort_order ?? ""}`}
                     className="h-[180px] w-full rounded-lg border border-border-default bg-base object-cover"
                   />
-                  <div className="mt-2 text-xs text-muted">
-                    {img.file_name || `image_${img.sort_order ?? "-"}`}
-                  </div>
+                  <div className="mt-2 text-xs text-muted">{img.file_name || `image_${img.sort_order ?? "-"}`}</div>
                 </a>
               ))}
             </div>
@@ -449,10 +532,18 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
         <section className="glass-card p-4">
           <div className="mb-3 font-bold text-primary">NFC情報</div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="rounded-lg bg-base px-3 py-2 text-secondary">状態: <span className="text-primary">{getNfcStatusLabel(data.nfc?.status)}</span></div>
-            <div className="rounded-lg bg-base px-3 py-2 text-secondary">タグコード: <span className="text-primary">{data.nfc?.tag_code || "-"}</span></div>
-            <div className="rounded-lg bg-base px-3 py-2 text-secondary">書込日時: <span className="text-primary">{formatDateTime(data.nfc?.written_at)}</span></div>
-            <div className="rounded-lg bg-base px-3 py-2 text-secondary">貼付日時: <span className="text-primary">{formatDateTime(data.nfc?.attached_at)}</span></div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+              状態: <span className="text-primary">{getNfcStatusLabel(data.nfc?.status)}</span>
+            </div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+              タグコード: <span className="text-primary">{data.nfc?.tag_code || "-"}</span>
+            </div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+              書込日時: <span className="text-primary">{formatDateTime(data.nfc?.written_at)}</span>
+            </div>
+            <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+              貼付日時: <span className="text-primary">{formatDateTime(data.nfc?.attached_at)}</span>
+            </div>
           </div>
         </section>
 
@@ -468,9 +559,7 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
                     {formatDateTime(row.performed_at ?? row.created_at ?? null)} / {row.type}
                   </div>
                   {row.description ? (
-                    <div className="mt-2 whitespace-pre-wrap leading-relaxed text-secondary">
-                      {row.description}
-                    </div>
+                    <div className="mt-2 whitespace-pre-wrap leading-relaxed text-secondary">{row.description}</div>
                   ) : null}
                 </div>
               ))}
@@ -484,16 +573,17 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
       {!isVoidCertificate ? (
         <div className="mt-4">
           <CustomerActions
+            publicId={data.certificate.public_id}
+            tenant={tenantSlug || undefined}
             pdfHref={pdfHref}
             returnTo={returnTo ?? undefined}
             logoutHref={logoutHref ?? undefined}
+            portalHref={portalHref}
           />
         </div>
       ) : null}
 
-      <footer className="mt-5 text-xs text-muted">
-        この証明書は certificate.info により記録・管理されています
-      </footer>
+      <footer className="mt-5 text-xs text-muted">この証明書は certificate.info により記録・管理されています</footer>
     </main>
   );
 }

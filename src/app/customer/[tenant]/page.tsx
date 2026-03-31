@@ -38,10 +38,18 @@ type Profile = {
 
 type VehicleInfo = Record<string, any> | null;
 
+type ShopMembership = {
+  tenant_slug: string;
+  shop_name: string;
+  display_name: string;
+  certificate_count: number;
+  reservation_count: number;
+  next_reservation_at: string | null;
+  line_linked: boolean;
+};
+
 function normalizeVehicleInfo(v: any): VehicleInfo {
   if (v == null) return null;
-
-  // Supabaseから string で来るケースも吸収
   if (typeof v === "string") {
     const s = v.trim();
     if (!s) return null;
@@ -53,12 +61,10 @@ function normalizeVehicleInfo(v: any): VehicleInfo {
       return { value: s };
     }
   }
-
   if (typeof v === "object") {
     if (Array.isArray(v)) return { list: v };
     return v as Record<string, any>;
   }
-
   return { value: v };
 }
 
@@ -93,11 +99,7 @@ function buildVehicleSummary(info: VehicleInfo) {
   const mileage = pick(info, ["mileage", "odo", "走行距離"]);
 
   const parts: string[] = [];
-  const mk = toText(make).trim();
-  const md = toText(model).trim();
-  const gr = toText(grade).trim();
-  const head = [mk, md, gr].filter(Boolean).join(" / ");
-
+  const head = [toText(make).trim(), toText(model).trim(), toText(grade).trim()].filter(Boolean).join(" / ");
   if (head) parts.push(head);
   if (plate) parts.push(`ナンバー: ${toText(plate)}`);
   if (year) parts.push(`年式: ${toText(year)}`);
@@ -105,10 +107,7 @@ function buildVehicleSummary(info: VehicleInfo) {
   if (mileage) parts.push(`走行距離: ${toText(mileage)}`);
   if (vin) parts.push(`車台番号: ${toText(vin)}`);
 
-  const title = head || "車両情報";
-  const lines = parts.filter((x) => x && x.trim() !== "");
-
-  return { title, lines, raw: info };
+  return { title: head || "車両情報", lines: parts.filter(Boolean), raw: info };
 }
 
 export default function CustomerListPage() {
@@ -120,6 +119,7 @@ export default function CustomerListPage() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [profile, setProfile] = useState<Profile>(null);
+  const [shops, setShops] = useState<ShopMembership[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<"certs" | "history" | "reservations">("certs");
@@ -134,211 +134,261 @@ export default function CustomerListPage() {
       cache: "no-store",
       credentials: "include",
     });
-
-    const j = await res.json().catch(() => ({} as any));
+    const j = await res.json().catch(() => ({}) as any);
 
     if (!res.ok) {
       const e = j?.error ?? "unauthorized";
       setErr(e);
       setRows([]);
       setLoading(false);
-
       if (res.status === 401) {
-        router.replace(`/customer/${tenant}/login`);
+        router.replace(`/my?tenant=${encodeURIComponent(tenant)}`);
       }
       return;
     }
 
-    const rows: Row[] = (j.rows ?? []) as Row[];
-    rows.sort((a, b) => {
+    const nextRows: Row[] = (j.rows ?? []) as Row[];
+    nextRows.sort((a, b) => {
       const av = String(a.status ?? "").toLowerCase() === "void";
       const bv = String(b.status ?? "").toLowerCase() === "void";
-      if (av !== bv) return av ? 1 : -1; // void を下へ
+      if (av !== bv) return av ? 1 : -1;
       const at = Date.parse(String(a.created_at ?? ""));
       const bt = Date.parse(String(b.created_at ?? ""));
-      if (!Number.isNaN(at) && !Number.isNaN(bt) && at !== bt) return bt - at; // 新しい順
+      if (!Number.isNaN(at) && !Number.isNaN(bt) && at !== bt) return bt - at;
       return String(b.created_at ?? "").localeCompare(String(a.created_at ?? ""));
     });
-    setRows(rows);
+    setRows(nextRows);
     setLoading(false);
 
-    // Load additional data in background
-    fetch(`/api/customer/list?tenant=${encodeURIComponent(tenant)}&action=profile`, { cache: "no-store", credentials: "include" })
-      .then((r) => r.json()).then((j) => { if (j.profile) setProfile(j.profile); }).catch(() => {});
-    fetch(`/api/customer/list?tenant=${encodeURIComponent(tenant)}&action=history`, { cache: "no-store", credentials: "include" })
-      .then((r) => r.json()).then((j) => { if (j.history) setHistory(j.history); }).catch(() => {});
-    fetch(`/api/customer/list?tenant=${encodeURIComponent(tenant)}&action=reservations`, { cache: "no-store", credentials: "include" })
-      .then((r) => r.json()).then((j) => { if (j.reservations) setReservations(j.reservations); }).catch(() => {});
+    fetch(`/api/customer/list?tenant=${encodeURIComponent(tenant)}&action=profile`, {
+      cache: "no-store",
+      credentials: "include",
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.profile) setProfile(json.profile);
+      })
+      .catch(() => undefined);
+
+    fetch(`/api/customer/list?tenant=${encodeURIComponent(tenant)}&action=history`, {
+      cache: "no-store",
+      credentials: "include",
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.history) setHistory(json.history);
+      })
+      .catch(() => undefined);
+
+    fetch(`/api/customer/list?tenant=${encodeURIComponent(tenant)}&action=reservations`, {
+      cache: "no-store",
+      credentials: "include",
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.reservations) setReservations(json.reservations);
+      })
+      .catch(() => undefined);
+  }
+
+  async function loadShops() {
+    const res = await fetch(`/api/portal/memberships?tenant=${encodeURIComponent(tenant)}`, {
+      cache: "no-store",
+      credentials: "include",
+    });
+    if (!res.ok) return;
+    const j = await res.json().catch(() => ({}) as any);
+    setShops(j.shops ?? []);
   }
 
   async function logout() {
     try {
-      await fetch("/api/customer/logout", { method: "POST", credentials: "include" });
+      await fetch("/api/portal/logout", { method: "POST", credentials: "include" });
     } finally {
-      router.replace(`/customer/${tenant}/login`);
+      router.replace(`/my?tenant=${encodeURIComponent(tenant)}`);
     }
   }
 
   useEffect(() => {
     if (!tenant) return;
     load();
+    loadShops().catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenant]);
 
   return (
-    <main className="mx-auto max-w-[900px] p-6 font-sans">
-      <header className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold">
-            {profile ? `${profile.name} 様` : "お客様マイページ"}
-          </h1>
-          <div className="mt-1 text-sm text-neutral-500">
-            店舗: {tenant || "..."}
-            {profile && (
-              <span className="ml-3">証明書: {profile.certificateCount}件</span>
-            )}
+    <main className="mx-auto max-w-[960px] p-6 font-sans">
+      <header className="mb-4 rounded-3xl border border-neutral-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="text-sm font-semibold text-blue-600">Ledra マイページ</div>
+            <h1 className="mt-2 text-2xl font-bold text-neutral-900">
+              {profile ? `${profile.name} 様` : "お客様マイページ"}
+            </h1>
+            <div className="mt-2 text-sm text-neutral-500">
+              現在の加盟店:{" "}
+              <span className="font-semibold text-neutral-700">
+                {shops.find((s) => s.tenant_slug === tenant)?.shop_name ?? tenant}
+              </span>
+              {profile ? <span className="ml-3">証明書: {profile.certificateCount}件</span> : null}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={load}
+              disabled={!tenant || loading}
+              className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-60"
+            >
+              {loading ? "更新中…" : "更新"}
+            </button>
+            <button
+              onClick={() => router.push("/my/shops")}
+              className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+            >
+              加盟店を切り替える
+            </button>
+            <button
+              onClick={logout}
+              className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+            >
+              ログアウト
+            </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={load}
-            disabled={!tenant || loading}
-            className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm hover:bg-neutral-50 disabled:cursor-default disabled:opacity-60"
-          >
-            {loading ? "更新中…" : "更新"}
-          </button>
-
-          <button
-            onClick={logout}
-            className="cursor-pointer rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm hover:bg-neutral-50"
-          >
-            ログアウト
-          </button>
-        </div>
+        {shops.length > 1 ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {shops.map((shop) => (
+              <button
+                key={shop.tenant_slug}
+                onClick={() => router.push(`/customer/${encodeURIComponent(shop.tenant_slug)}?from=portal`)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                  shop.tenant_slug === tenant
+                    ? "border-blue-200 bg-blue-50 text-blue-700"
+                    : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
+                }`}
+              >
+                {shop.shop_name}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </header>
 
-      {/* Profile card */}
-      {profile && (profile.email || profile.phone) && (
-        <div className="mb-4 rounded-xl border border-neutral-200 bg-neutral-50 p-3.5 text-sm">
-          <div className="font-semibold text-neutral-700 mb-1">プロフィール</div>
+      {profile && (profile.email || profile.phone) ? (
+        <div className="mb-4 rounded-3xl border border-neutral-200 bg-neutral-50 p-4 text-sm shadow-sm">
+          <div className="mb-2 font-semibold text-neutral-700">プロフィール</div>
           <div className="flex flex-wrap gap-x-6 gap-y-1 text-neutral-600">
-            {profile.email && <div>メール: {profile.email}</div>}
-            {profile.phone && <div>電話: {profile.phone}</div>}
+            {profile.email ? <div>メール: {profile.email}</div> : null}
+            {profile.phone ? <div>電話: {profile.phone}</div> : null}
           </div>
         </div>
-      )}
+      ) : null}
 
-      {/* Tabs */}
       <div className="mb-3 flex gap-1 border-b border-neutral-200">
-        {([
+        {[
           { key: "certs" as const, label: "証明書", count: rows.length },
           { key: "history" as const, label: "施工履歴", count: history.length },
           { key: "reservations" as const, label: "予約", count: reservations.length },
-        ]).map((t) => (
+        ].map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
               tab === t.key
                 ? "border-blue-600 text-blue-600"
                 : "border-transparent text-neutral-500 hover:text-neutral-700"
             }`}
           >
-            {t.label}{t.count > 0 ? ` (${t.count})` : ""}
+            {t.label}
+            {t.count > 0 ? ` (${t.count})` : ""}
           </button>
         ))}
       </div>
 
       {err ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm">
-          {err}（ログインが必要） → <a href={`/customer/${tenant}/login`} className="underline">ログインへ</a>
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          ログイン状態を確認できませんでした。
+          <a href={`/my?tenant=${encodeURIComponent(tenant)}`} className="ml-2 underline">
+            マイページへ
+          </a>
         </div>
       ) : null}
 
-      {/* History tab */}
-      {tab === "history" && (
+      {tab === "history" ? (
         <div className="mt-3 grid gap-2.5">
           {history.length === 0 ? (
             <div className="text-sm text-neutral-500">施工履歴がありません。</div>
           ) : (
             history.map((h) => (
-              <div key={h.id} className="rounded-xl border border-neutral-200 p-3.5">
+              <div key={h.id} className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
                 <div className="flex items-baseline justify-between gap-2">
                   <div className="text-sm font-semibold text-neutral-800">{h.title ?? h.type}</div>
                   <div className="text-xs text-neutral-500">{formatDateTime(h.performed_at)}</div>
                 </div>
-                {h.description && (
-                  <div className="mt-1 text-xs text-neutral-600">{h.description}</div>
-                )}
+                {h.description ? <div className="mt-1 text-xs text-neutral-600">{h.description}</div> : null}
               </div>
             ))
           )}
         </div>
-      )}
+      ) : null}
 
-      {/* Reservations tab */}
-      {tab === "reservations" && (
+      {tab === "reservations" ? (
         <div className="mt-3 grid gap-2.5">
           {reservations.length === 0 ? (
             <div className="text-sm text-neutral-500">今後の予約はありません。</div>
           ) : (
             reservations.map((r) => (
-              <div key={r.id} className="rounded-xl border border-neutral-200 p-3.5">
+              <div key={r.id} className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
                 <div className="flex items-baseline justify-between gap-2">
                   <div className="text-sm font-semibold text-neutral-800">
-                    {r.date}{r.time_slot ? ` ${r.time_slot}` : ""}
+                    {r.date}
+                    {r.time_slot ? ` ${r.time_slot}` : ""}
                   </div>
-                  <div className={`rounded-full border px-2 py-0.5 text-xs ${
-                    r.status === "confirmed" ? "border-blue-200 bg-blue-50 text-blue-700" :
-                    r.status === "in_progress" ? "border-amber-200 bg-amber-50 text-amber-700" :
-                    "border-neutral-200 bg-neutral-50 text-neutral-600"
-                  }`}>
+                  <div
+                    className={`rounded-full border px-2 py-0.5 text-xs ${
+                      r.status === "confirmed"
+                        ? "border-blue-200 bg-blue-50 text-blue-700"
+                        : r.status === "in_progress"
+                          ? "border-amber-200 bg-amber-50 text-amber-700"
+                          : "border-neutral-200 bg-neutral-50 text-neutral-600"
+                    }`}
+                  >
                     {r.status}
                   </div>
                 </div>
-                {r.menu && <div className="mt-1 text-sm text-neutral-700">{r.menu}</div>}
-                {r.note && <div className="mt-1 text-xs text-neutral-500">{r.note}</div>}
+                {r.menu ? <div className="mt-1 text-sm text-neutral-700">{r.menu}</div> : null}
+                {r.note ? <div className="mt-1 text-xs text-neutral-500">{r.note}</div> : null}
               </div>
             ))
           )}
         </div>
-      )}
+      ) : null}
 
-      {/* Certificates tab */}
       <div className="mt-3 grid gap-2.5" style={{ display: tab === "certs" ? undefined : "none" }}>
         {rows.map((r) => {
           const rt = encodeURIComponent(`/customer/${tenant}`);
-          const href = `/c/${r.public_id}?tenant=${encodeURIComponent(tenant)}&rt=${rt}&logout=1`;
-
+          const href = `/c/${r.public_id}?tenant=${encodeURIComponent(tenant)}&rt=${rt}&logout=1&portal=1`;
           const vi = normalizeVehicleInfo(r.vehicle_info_json);
           const vs = buildVehicleSummary(vi);
-
           const isVoid = (r.status ?? "").toLowerCase() === "void";
-          const statusLabel = isVoid ? "VOID（無効）" : (r.status ? String(r.status) : "active");
+          const statusLabel = isVoid ? "VOID（無効）" : r.status ? String(r.status) : "active";
 
           return (
             <a key={r.public_id} href={href} className="no-underline text-inherit">
               <div
-                className={`grid gap-2 rounded-xl border p-3.5 ${
-                  isVoid ? "border-red-200 opacity-80" : "border-neutral-200"
-                }`}
+                className={`grid gap-2 rounded-2xl border bg-white p-4 shadow-sm ${isVoid ? "border-red-200 opacity-80" : "border-neutral-200"}`}
               >
                 <div className="flex items-baseline justify-between gap-2.5">
                   <div className="text-xs text-neutral-500">{formatDateTime(r.created_at)}</div>
                   <div
-                    className={`rounded-full border px-2 py-0.5 text-xs ${
-                      isVoid
-                        ? "border-red-200 bg-red-50 text-red-700"
-                        : "border-neutral-200 bg-green-50 text-green-800"
-                    }`}
+                    className={`rounded-full border px-2 py-0.5 text-xs ${isVoid ? "border-red-200 bg-red-50 text-red-700" : "border-neutral-200 bg-green-50 text-green-800"}`}
                   >
                     {statusLabel}
                   </div>
                 </div>
-
                 <div className="text-base font-semibold">{r.customer_name}</div>
-
                 <div className="text-[13px] text-neutral-700">
                   <div className="mb-0.5 font-semibold">{vs.title}</div>
                   {vs.lines.length ? (
@@ -351,16 +401,12 @@ export default function CustomerListPage() {
                     <div className="text-neutral-500">詳細情報がありません。</div>
                   )}
                 </div>
-
                 {vi ? (
                   <details className="text-xs text-neutral-600">
                     <summary className="cursor-pointer">車両情報（raw）</summary>
-                    <pre className="mt-2 whitespace-pre-wrap">
-                      {JSON.stringify(vi, null, 2)}
-                    </pre>
+                    <pre className="mt-2 whitespace-pre-wrap">{JSON.stringify(vi, null, 2)}</pre>
                   </details>
                 ) : null}
-
                 <div className="flex justify-between gap-2.5">
                   <div className="text-xs text-neutral-500">Public ID: {r.public_id}</div>
                   <div className="text-xs text-neutral-600">証明書を開く →</div>
@@ -370,9 +416,26 @@ export default function CustomerListPage() {
           );
         })}
 
-        {rows.length === 0 && !err && !loading ? <div className="text-sm text-neutral-500">対象の証明書がありません。</div> : null}
+        {rows.length === 0 && !err && !loading ? (
+          <div className="rounded-2xl border border-neutral-200 bg-white p-5 text-sm text-neutral-600 shadow-sm">
+            <div className="font-semibold text-neutral-800">この加盟店では表示できる情報が見つかりませんでした。</div>
+            <div className="mt-2">他の加盟店で発行された証明書や予約がある可能性があります。</div>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <a href="/my/shops" className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white">
+                ご利用中の加盟店一覧を見る
+              </a>
+              {shops.length > 1 ? (
+                <button
+                  onClick={() => router.push("/my/shops")}
+                  className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold text-neutral-700"
+                >
+                  加盟店を切り替える
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </div>
-
     </main>
   );
 }

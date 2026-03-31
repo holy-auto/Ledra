@@ -15,7 +15,6 @@ export default function CustomerLoginPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-
   const sp = useSearchParams();
 
   useEffect(() => {
@@ -28,7 +27,7 @@ export default function CustomerLoginPage() {
     if (qc) setCode(qc);
     if (qp === "verify" || qc) setPhase("verify");
   }, [sp]);
-async function requestCode() {
+  async function requestCode() {
     setBusy(true);
     setMsg(null);
     try {
@@ -67,8 +66,10 @@ async function requestCode() {
     }
   }
 
-  const inputCls = "w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400";
-  const btnCls = "rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm cursor-pointer hover:bg-neutral-50 disabled:opacity-60 disabled:cursor-default";
+  const inputCls =
+    "w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400";
+  const btnCls =
+    "rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm cursor-pointer hover:bg-neutral-50 disabled:opacity-60 disabled:cursor-default";
 
   return (
     <main className="mx-auto max-w-lg p-6 font-sans">
@@ -101,6 +102,14 @@ async function requestCode() {
       </div>
 
       {msg ? <div className="mt-3 text-sm text-red-700">{msg}</div> : null}
+
+      <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-4 text-sm text-blue-700">
+        複数の加盟店をご利用中の場合は、共通の{" "}
+        <a href={`/my?tenant=${encodeURIComponent(tenant)}`} className="font-semibold underline">
+          Ledraマイページ
+        </a>{" "}
+        からログインすると、あとで加盟店を切り替えられます。
+      </div>
     </main>
   );
 }
