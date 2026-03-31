@@ -67,10 +67,10 @@ export default function AiDraftPanel({ vehicleId, hearingId, templateCategory, o
 
   const confidenceColor = draft
     ? draft.confidence >= 0.8
-      ? "text-green-600"
+      ? "text-green-400"
       : draft.confidence >= 0.5
-        ? "text-amber-600"
-        : "text-red-500"
+        ? "text-amber-400"
+        : "text-red-400"
     : "";
 
   return (
@@ -111,7 +111,9 @@ export default function AiDraftPanel({ vehicleId, hearingId, templateCategory, o
 
           {/* エラー */}
           {error && (
-            <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-600">{error}</div>
+            <div className="rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs text-red-400">
+              {error}
+            </div>
           )}
 
           {/* 生成結果 */}
@@ -131,9 +133,9 @@ export default function AiDraftPanel({ vehicleId, hearingId, templateCategory, o
 
               {/* 不足情報警告 */}
               {draft.missingInfo.length > 0 && (
-                <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
-                  <p className="text-xs font-medium text-amber-700 mb-1">⚠ 不足情報</p>
-                  <ul className="text-xs text-amber-600 space-y-0.5">
+                <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2">
+                  <p className="text-xs font-medium text-amber-400 mb-1">⚠ 不足情報</p>
+                  <ul className="text-xs text-amber-400/80 space-y-0.5">
                     {draft.missingInfo.map((m, i) => (
                       <li key={i}>• {m}</li>
                     ))}
