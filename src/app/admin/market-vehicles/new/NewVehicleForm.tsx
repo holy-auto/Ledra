@@ -300,7 +300,7 @@ export default function NewVehicleForm() {
           className="hidden"
           onChange={onOcrFileChange}
         />
-        {ocrMsg && (
+        {ocrMsg != null && (
           <p className={`text-sm ${ocrMsg.startsWith("✓") ? "text-emerald-600" : "text-red-500"}`}>
             {ocrMsg}
           </p>
