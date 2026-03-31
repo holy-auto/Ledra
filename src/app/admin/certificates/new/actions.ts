@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { makePublicId } from "@/lib/publicId";
 import { enqueueInsuranceCaseCreated } from "@/lib/qstash/publish";
 
@@ -198,5 +199,62 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
     }).catch((e) => console.warn("[cert] QStash enqueue failed:", e));
   }
 
+  // 発行直後フォローアップ: send_on_issue が有効なテナントにトリガー（非同期）
+  if (certStatus === "active") {
+    triggerPostIssueFollowUp({
+      tenantId,
+      publicId,
+      customerId: customer_id ?? undefined,
+      customerName: customer_name,
+    }).catch((e) => console.warn("[cert] post_issue follow-up failed:", e));
+  }
+
   return { ok: true, public_id };
+}
+
+/** 発行直後フォローアップを非同期でトリガー */
+async function triggerPostIssueFollowUp(params: {
+  tenantId: string;
+  publicId: string;
+  customerId?: string;
+  customerName: string;
+}) {
+  const admin = getSupabaseAdmin();
+
+  // send_on_issue 設定確認
+  const { data: setting } = await admin
+    .from("follow_up_settings")
+    .select("send_on_issue, enabled")
+    .eq("tenant_id", params.tenantId)
+    .eq("enabled", true)
+    .single();
+
+  if (!setting?.send_on_issue) return;
+
+  // 重複チェック: まだ発行されていない証明書IDのみ処理
+  const { data: cert } = await admin
+    .from("certificates")
+    .select("id, service_name, warranty_period, vehicle_maker, vehicle_model, vehicle_color")
+    .eq("public_id", params.publicId)
+    .single();
+
+  if (!cert || !params.customerId) return;
+
+  const { data: existing } = await admin
+    .from("notification_logs")
+    .select("id")
+    .eq("target_id", cert.id)
+    .eq("type", "post_issue")
+    .limit(1);
+
+  if (existing?.length) return;
+
+  // post_issue 通知ログだけ記録（実際の送信はcronに任せるか、メール送信）
+  await admin.from("notification_logs").insert({
+    tenant_id: params.tenantId,
+    type: "post_issue",
+    target_type: "certificate",
+    target_id: cert.id,
+    status: "queued",
+  });
 }

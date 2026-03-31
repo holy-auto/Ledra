@@ -267,6 +267,7 @@ export default function CertNewFormWrapper({
                 : vehicles
             }
             defaultVehicleId={defaultVehicleId}
+            onVehicleChange={setSelectedVehicleId}
           />
         </section>
 

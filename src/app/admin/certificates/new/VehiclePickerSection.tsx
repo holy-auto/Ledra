@@ -45,9 +45,11 @@ const labelTextCls = "text-sm font-medium text-secondary";
 export default function VehiclePickerSection({
   vehicles: initialVehicles,
   defaultVehicleId,
+  onVehicleChange,
 }: {
   vehicles: Vehicle[];
   defaultVehicleId?: string;
+  onVehicleChange?: (vehicleId: string | undefined) => void;
 }) {
   const uid = useId();
   const [vehicles, setVehicles] = useState<Vehicle[]>(initialVehicles);
@@ -82,6 +84,7 @@ export default function VehiclePickerSection({
         setCustomerName(v.customer.name);
         setCustomerId(v.customer.id);
       }
+      onVehicleChange?.(v.id);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultVehicleId]);
@@ -119,6 +122,7 @@ export default function VehiclePickerSection({
     setModel(vehicleModel(v));
     setPlate(v.plate_display ?? "");
     setVehicleSearchOpen(false);
+    onVehicleChange?.(v.id);
     // Auto-fill customer if vehicle has one
     if (v.customer) {
       setCustomerName(v.customer.name);
@@ -130,6 +134,7 @@ export default function VehiclePickerSection({
   const handleVehicleClear = () => {
     setSelectedId("");
     setMaker("");
+    onVehicleChange?.(undefined);
     setModel("");
     setPlate("");
   };
