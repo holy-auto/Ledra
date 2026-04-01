@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
     let query = admin
       .from("agents")
-      .select("id, name, contact_name, contact_email, contact_phone, address, status, created_at")
+      .select("id, name, contact_name, contact_email, contact_phone, address, status, commission_type, default_commission_rate, default_commission_fixed, stripe_account_id, stripe_onboarding_done, created_at")
       .order("created_at", { ascending: false });
 
     if (status) {
