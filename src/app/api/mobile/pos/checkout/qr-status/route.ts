@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
   }
 
   const stripe = new Stripe(stripeSecretKey, {
-    apiVersion: "2025-02-24.acacia" as Stripe.LatestApiVersion,
+    apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion,
   });
 
   let session: Stripe.Checkout.Session;
