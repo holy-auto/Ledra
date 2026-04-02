@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
       .limit(1);
 
     if (weeklyClosed && weeklyClosed.length > 0) {
-      return apiError({ code: "closed", message: "この日は定休日のため予約を受け付けていません", status: 422 });
+      return apiError({ code: "conflict", message: "この日は定休日のため予約を受け付けていません", status: 422 });
     }
 
     const { data: specificClosed } = await admin
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
     if (specificClosed && specificClosed.length > 0) {
       const note = specificClosed[0].note;
       return apiError({
-        code: "closed",
+        code: "conflict",
         message: note
           ? `この日は休業日のため予約を受け付けていません（${note}）`
           : "この日は休業日のため予約を受け付けていません",
