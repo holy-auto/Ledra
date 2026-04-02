@@ -350,9 +350,15 @@ export default async function HomePage() {
         <Section>
           <SectionHeading title="ご利用状況" />
           <StatsRow>
-            {stats.shopCount !== "—" && <StatCard value={stats.shopCount} label="導入企業数" delay={0} />}
+            {stats.shopCount !== "—" && (
+              <ScrollReveal variant="scale-up" delay={0}>
+                <StatCard value={stats.shopCount} label="導入企業数" />
+              </ScrollReveal>
+            )}
             {stats.certificateCount !== "—" && (
-              <StatCard value={stats.certificateCount} label="証明書発行数" delay={150} />
+              <ScrollReveal variant="scale-up" delay={150}>
+                <StatCard value={stats.certificateCount} label="証明書発行数" />
+              </ScrollReveal>
             )}
           </StatsRow>
         </Section>
