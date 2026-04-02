@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
     // Stripe Checkout Session をConnect経由で作成
     const stripe = getStripe();
     const baseUrl = resolveBaseUrl({ req });
-    const platformFeeRate = 0.05; // 5% プラットフォーム手数料
+    const platformFeeRate = 0.01; // 1% プラットフォーム手数料
     const applicationFee = Math.round(totalYen * platformFeeRate);
 
     const session = await stripe.checkout.sessions.create({
