@@ -79,11 +79,7 @@ async function replyMessage(
  * Webhook 署名検証
  * LINE Platform からのリクエストが正規のものか確認
  */
-export async function verifySignature(
-  body: string,
-  signature: string,
-  channelSecret: string,
-): Promise<boolean> {
+export async function verifySignature(body: string, signature: string, channelSecret: string): Promise<boolean> {
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
     "raw",
@@ -226,17 +222,13 @@ export async function handleWebhookEvents(
 
       if (text === "予約" || text === "booking") {
         // LIFF URL で予約画面へ誘導
-        const liffUrl = config.liffId
-          ? `https://liff.line.me/${config.liffId}`
-          : null;
+        const liffUrl = config.liffId ? `https://liff.line.me/${config.liffId}` : null;
 
         if (event.replyToken) {
           await replyMessage(config.channelAccessToken, event.replyToken, [
             {
               type: "text",
-              text: liffUrl
-                ? `こちらから予約できます:\n${liffUrl}`
-                : "Web予約ページからご予約ください。",
+              text: liffUrl ? `こちらから予約できます:\n${liffUrl}` : "Web予約ページからご予約ください。",
             },
           ]);
         }
@@ -266,11 +258,165 @@ export async function sendDocumentLink(params: {
     .join("\n");
 
   try {
-    await sendMessage(config.channelAccessToken, params.lineUserId, [
-      { type: "text", text },
-    ]);
+    await sendMessage(config.channelAccessToken, params.lineUserId, [{ type: "text", text }]);
     return true;
   } catch {
+    return false;
+  }
+}
+
+/**
+ * 施工進捗通知をLINEで送信（顧客向け）
+ * is_customer_visible なステップ完了時に呼び出す
+ */
+export async function sendProgressUpdate(params: {
+  tenantId: string;
+  lineUserId: string;
+  customerName: string;
+  tenantName: string;
+  stepLabel: string;
+  progressPct: number;
+  currentStep: number;
+  totalSteps: number;
+  estimatedCompletionTime?: string;
+  portalUrl: string;
+}): Promise<boolean> {
+  const config = await getLineConfig(params.tenantId);
+  if (!config) return false;
+
+  // 進捗バー生成 (■□ 形式、10マス)
+  const filled = Math.round(params.progressPct / 10);
+  const bar = "■".repeat(filled) + "□".repeat(10 - filled);
+
+  const lines: string[] = [
+    `【施工進捗】${params.tenantName}`,
+    ``,
+    `${params.customerName} 様`,
+    ``,
+    `${bar} ${params.progressPct}%`,
+    `現在の工程: ${params.stepLabel}`,
+  ];
+
+  if (params.estimatedCompletionTime) {
+    lines.push(`完了予定: ${params.estimatedCompletionTime}`);
+  }
+
+  if (params.progressPct >= 100) {
+    lines.push(``, `✅ 施工が完了しました！`, `お待ちしております。`);
+  }
+
+  const text = lines.join("\n");
+
+  // Flex Message でリッチな見た目（ポータルリンク付き）
+  const flexMessage = {
+    type: "flex",
+    altText: `施工進捗 ${params.progressPct}% - ${params.stepLabel}`,
+    contents: {
+      type: "bubble",
+      size: "kilo",
+      header: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          {
+            type: "text",
+            text: "施工進捗のお知らせ",
+            weight: "bold",
+            size: "sm",
+            color: "#FFFFFF",
+          },
+        ],
+        backgroundColor: "#1a1a2e",
+        paddingAll: "16px",
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        spacing: "md",
+        contents: [
+          {
+            type: "text",
+            text: `${params.customerName} 様`,
+            size: "sm",
+            color: "#555555",
+          },
+          {
+            type: "text",
+            text: params.stepLabel,
+            weight: "bold",
+            size: "xl",
+            color: "#1a1a2e",
+            wrap: true,
+          },
+          {
+            type: "box",
+            layout: "vertical",
+            contents: [
+              {
+                type: "box",
+                layout: "vertical",
+                contents: [
+                  {
+                    type: "filler",
+                  },
+                ],
+                width: `${params.progressPct}%`,
+                height: "8px",
+                backgroundColor: "#4f46e5",
+                cornerRadius: "4px",
+              },
+            ],
+            backgroundColor: "#e5e7eb",
+            height: "8px",
+            cornerRadius: "4px",
+          },
+          {
+            type: "text",
+            text: `${params.progressPct}%`,
+            size: "sm",
+            color: "#4f46e5",
+            weight: "bold",
+            align: "end",
+          },
+          ...(params.estimatedCompletionTime
+            ? [
+                {
+                  type: "text" as const,
+                  text: `完了予定: ${params.estimatedCompletionTime}`,
+                  size: "xs",
+                  color: "#888888",
+                },
+              ]
+            : []),
+        ],
+        paddingAll: "16px",
+      },
+      footer: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          {
+            type: "button",
+            action: {
+              type: "uri",
+              label: "詳細を見る",
+              uri: params.portalUrl,
+            },
+            style: "primary",
+            color: "#4f46e5",
+            height: "sm",
+          },
+        ],
+        paddingAll: "12px",
+      },
+    },
+  };
+
+  try {
+    await sendMessage(config.channelAccessToken, params.lineUserId, [flexMessage]);
+    return true;
+  } catch {
+    // LINE通知失敗はサイレントに無視（メイン処理を止めない）
     return false;
   }
 }

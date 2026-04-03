@@ -312,19 +312,13 @@ export default function AdminTrainingClient() {
       {loading && <div className="text-sm text-muted">読み込み中...</div>}
       {err && <div className="glass-card p-4 text-sm text-red-500">{err}</div>}
 
-      {saveMsg && (
-        <div className={`text-sm ${saveMsg.ok ? "text-emerald-400" : "text-red-500"}`}>
-          {saveMsg.text}
-        </div>
-      )}
+      {saveMsg && <div className={`text-sm ${saveMsg.ok ? "text-emerald-400" : "text-red-500"}`}>{saveMsg.text}</div>}
 
       {/* Create / Edit Form */}
       {showForm && (
         <section className="glass-card p-5 space-y-4">
           <div>
-            <div className="text-xs font-semibold tracking-[0.18em] text-muted">
-              {editingId ? "編集" : "新規登録"}
-            </div>
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted">{editingId ? "編集" : "新規登録"}</div>
             <div className="mt-1 text-base font-semibold text-primary">
               {editingId ? "コース編集" : "新規コース登録"}
             </div>
@@ -483,21 +477,31 @@ export default function AdminTrainingClient() {
         <section className="glass-card overflow-hidden">
           <div className="border-b border-border-subtle p-5">
             <div className="text-xs font-semibold tracking-[0.18em] text-muted">コース一覧</div>
-            <div className="mt-1 text-base font-semibold text-primary">
-              研修コース一覧（{filtered.length}件）
-            </div>
+            <div className="mt-1 text-base font-semibold text-primary">研修コース一覧（{filtered.length}件）</div>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-surface-hover">
                 <tr>
                   <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">タイトル</th>
-                  <th className="hidden md:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">カテゴリ</th>
-                  <th className="hidden md:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">種別</th>
-                  <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">時間</th>
-                  <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">必須</th>
-                  <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">状態</th>
-                  <th className="hidden lg:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">更新日</th>
+                  <th className="hidden md:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                    カテゴリ
+                  </th>
+                  <th className="hidden md:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                    種別
+                  </th>
+                  <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                    時間
+                  </th>
+                  <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                    必須
+                  </th>
+                  <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                    状態
+                  </th>
+                  <th className="hidden lg:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                    更新日
+                  </th>
                   <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">操作</th>
                 </tr>
               </thead>
@@ -507,7 +511,14 @@ export default function AdminTrainingClient() {
                   return (
                     <tr key={course.id} className="hover:bg-surface-hover/60">
                       <td className="px-5 py-3.5">
-                        <div className="font-medium text-primary">{course.title}</div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-primary">{course.title}</span>
+                          {!course.content_url && (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                              URL未設定
+                            </span>
+                          )}
+                        </div>
                         {course.description && (
                           <div className="mt-0.5 text-xs text-muted line-clamp-1">{course.description}</div>
                         )}

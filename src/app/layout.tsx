@@ -28,8 +28,7 @@ export const metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://ledra.co.jp"),
   openGraph: {
     title: "Ledra | WEB施工証明書SaaS",
-    description:
-      "施工証明をデジタルで。施工店と保険会社をつなぐSaaSプラットフォームです。",
+    description: "施工証明をデジタルで。施工店と保険会社をつなぐSaaSプラットフォームです。",
     siteName: "Ledra",
     locale: "ja_JP",
     type: "website",
@@ -37,8 +36,7 @@ export const metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Ledra | WEB施工証明書SaaS",
-    description:
-      "施工証明をデジタルで。施工店と保険会社をつなぐSaaSプラットフォームです。",
+    description: "施工証明をデジタルで。施工店と保険会社をつなぐSaaSプラットフォームです。",
   },
   alternates: {
     canonical: "/",
@@ -48,11 +46,7 @@ export const metadata = {
 /** Inline script to prevent flash of wrong theme on load */
 const THEME_INIT_SCRIPT = `(function(){try{var c=document.cookie.match(/__theme=(light|dark)/);if(c)document.documentElement.setAttribute('data-theme',c[1]);else{var d=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';document.documentElement.setAttribute('data-theme',d)}}catch(e){}})()`;
 
-export default async function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies();
   const themeCookie = cookieStore.get("__theme")?.value;
   const initialTheme = themeCookie === "dark" ? "dark" : undefined;
@@ -73,9 +67,7 @@ export default async function RootLayout({
         <link rel="apple-touch-icon" href="/icon-192.png" />
       </head>
       <body className="bg-base text-primary antialiased">
-        <ThemeProvider>
-          {children}
-        </ThemeProvider>
+        <ThemeProvider>{children}</ThemeProvider>
         <ServiceWorkerRegistrar />
         <Analytics />
         <SpeedInsights />

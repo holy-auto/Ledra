@@ -5,9 +5,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { makePublicId } from "@/lib/publicId";
 import { enqueueInsuranceCaseCreated } from "@/lib/qstash/publish";
 
-export type CreateCertResult =
-  | { ok: true; public_id: string }
-  | { ok: false; error: string };
+export type CreateCertResult = { ok: true; public_id: string } | { ok: false; error: string };
 
 export async function createCertAction(formData: FormData): Promise<CreateCertResult> {
   const supabase = await createSupabaseServerClient();
@@ -16,11 +14,7 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
   const userId = userRes.user?.id ?? null;
   if (!userId) return { ok: false, error: "unauthorized" };
 
-  const { data: mem } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .limit(1)
-    .single();
+  const { data: mem } = await supabase.from("tenant_memberships").select("tenant_id").limit(1).single();
   const tenantId = mem?.tenant_id as string | undefined;
   if (!tenantId) return { ok: false, error: "no_tenant" };
 
@@ -29,11 +23,7 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
 
   // Parallelize independent DB reads
   const [{ data: tenantRow }, templateResult] = await Promise.all([
-    supabase
-      .from("tenants")
-      .select("logo_asset_path")
-      .eq("id", tenantId)
-      .single(),
+    supabase.from("tenants").select("logo_asset_path").eq("id", tenantId).single(),
     template_id
       ? supabase
           .from("templates")
@@ -124,7 +114,10 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
     const key = String(k);
     if (!key.startsWith("f__")) continue;
     const fkey = key.slice(3);
-    if (v === "on") { values[fkey] = true; continue; }
+    if (v === "on") {
+      values[fkey] = true;
+      continue;
+    }
     const sv = String(v);
     if (values[fkey] === undefined) values[fkey] = sv;
     else if (Array.isArray(values[fkey])) values[fkey].push(sv);

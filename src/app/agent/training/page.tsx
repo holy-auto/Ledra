@@ -56,7 +56,10 @@ export default function AgentTrainingPage() {
   useEffect(() => {
     (async () => {
       const { data: u } = await supabase.auth.getUser();
-      if (!u?.user) { window.location.href = "/agent/login"; return; }
+      if (!u?.user) {
+        window.location.href = "/agent/login";
+        return;
+      }
       setReady(true);
       fetchData();
     })();
@@ -85,9 +88,11 @@ export default function AgentTrainingPage() {
   };
 
   const startCourse = async (course: Course) => {
-    if (course.content_url) {
-      window.open(course.content_url, "_blank");
+    if (!course.content_url) {
+      alert("このコンテンツはまだ準備中です。管理者にお問い合わせください。");
+      return;
     }
+    window.open(course.content_url, "_blank");
     if (!course.progress || course.progress.status === "not_started") {
       await fetch("/api/agent/training", {
         method: "PUT",
@@ -100,9 +105,7 @@ export default function AgentTrainingPage() {
 
   if (!ready) return null;
 
-  const filtered = activeCategory === "all"
-    ? courses
-    : courses.filter((c) => c.category === activeCategory);
+  const filtered = activeCategory === "all" ? courses : courses.filter((c) => c.category === activeCategory);
 
   const completionPct = stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0;
   const requiredPct = stats.required > 0 ? Math.round((stats.required_completed / stats.required) * 100) : 0;
@@ -135,11 +138,15 @@ export default function AgentTrainingPage() {
         </div>
         <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
           <div className="text-xs text-neutral-500">完了</div>
-          <div className="mt-1 text-xl font-bold text-neutral-900">{stats.completed}/{stats.total}</div>
+          <div className="mt-1 text-xl font-bold text-neutral-900">
+            {stats.completed}/{stats.total}
+          </div>
         </div>
         <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
           <div className="text-xs text-neutral-500">必修完了</div>
-          <div className="mt-1 text-xl font-bold text-neutral-900">{stats.required_completed}/{stats.required}</div>
+          <div className="mt-1 text-xl font-bold text-neutral-900">
+            {stats.required_completed}/{stats.required}
+          </div>
         </div>
       </div>
 
@@ -148,7 +155,9 @@ export default function AgentTrainingPage() {
         <button
           onClick={() => setActiveCategory("all")}
           className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-            activeCategory === "all" ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
+            activeCategory === "all"
+              ? "bg-neutral-900 text-white"
+              : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
           }`}
         >
           すべて
@@ -158,7 +167,9 @@ export default function AgentTrainingPage() {
             key={key}
             onClick={() => setActiveCategory(key)}
             className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-              activeCategory === key ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
+              activeCategory === key
+                ? "bg-neutral-900 text-white"
+                : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
             }`}
           >
             {val.label}
@@ -168,7 +179,9 @@ export default function AgentTrainingPage() {
 
       {loading ? (
         <div className="animate-pulse space-y-3">
-          {[1, 2, 3].map((i) => <div key={i} className="h-24 rounded-2xl bg-neutral-100" />)}
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-24 rounded-2xl bg-neutral-100" />
+          ))}
         </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-2xl border border-neutral-200 bg-white p-8 text-center text-sm text-neutral-500">
@@ -180,21 +193,39 @@ export default function AgentTrainingPage() {
             const cat = CATEGORY_MAP[course.category] ?? CATEGORY_MAP.basic;
             const status = course.progress?.status ?? "not_started";
             const pct = course.progress?.progress ?? 0;
+            const hasContent = !!course.content_url;
 
             return (
-              <div key={course.id} className="rounded-2xl border border-neutral-200 bg-white shadow-sm overflow-hidden">
+              <div
+                key={course.id}
+                className={`rounded-2xl border shadow-sm overflow-hidden ${hasContent ? "border-neutral-200 bg-white" : "border-neutral-200 bg-neutral-50 opacity-80"}`}
+              >
                 {/* Thumbnail */}
-                <div className="h-32 bg-gradient-to-br from-neutral-100 to-neutral-200 flex items-center justify-center">
-                  <span className="text-2xl font-bold text-neutral-300">
-                    {CONTENT_TYPE_ICONS[course.content_type] ?? "DOC"}
-                  </span>
+                <div
+                  className={`h-32 flex items-center justify-center ${hasContent ? "bg-gradient-to-br from-neutral-100 to-neutral-200" : "bg-gradient-to-br from-neutral-100 to-neutral-150"}`}
+                >
+                  {hasContent ? (
+                    <span className="text-2xl font-bold text-neutral-300">
+                      {CONTENT_TYPE_ICONS[course.content_type] ?? "DOC"}
+                    </span>
+                  ) : (
+                    <div className="text-center">
+                      <div className="text-2xl">🔒</div>
+                      <div className="mt-1 text-[11px] font-medium text-neutral-400">準備中</div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="p-4">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Badge variant={cat.variant}>{cat.label}</Badge>
                     {course.is_required && <Badge variant="danger">必修</Badge>}
                     {status === "completed" && <Badge variant="success">完了</Badge>}
+                    {!hasContent && (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                        準備中
+                      </span>
+                    )}
                   </div>
                   <h3 className="mt-2 text-sm font-semibold text-neutral-900">{course.title}</h3>
                   {course.description && (
@@ -205,7 +236,7 @@ export default function AgentTrainingPage() {
                   )}
 
                   {/* Progress bar */}
-                  {status !== "not_started" && (
+                  {status !== "not_started" && hasContent && (
                     <div className="mt-3">
                       <div className="flex items-center justify-between text-[11px] text-neutral-500">
                         <span>進捗</span>
@@ -221,7 +252,11 @@ export default function AgentTrainingPage() {
                   )}
 
                   <div className="mt-3 flex gap-2">
-                    {status !== "completed" ? (
+                    {!hasContent ? (
+                      <div className="flex-1 rounded-xl bg-neutral-100 px-3 py-2 text-center text-xs font-medium text-neutral-400 cursor-not-allowed">
+                        コンテンツ準備中
+                      </div>
+                    ) : status !== "completed" ? (
                       <>
                         <button
                           onClick={() => startCourse(course)}

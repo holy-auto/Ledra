@@ -13,12 +13,12 @@
 type AnimationVariant = "fade-up" | "fade-in" | "fade-left" | "fade-right" | "scale-up" | "blur-in";
 
 const variantToKeyframes: Record<AnimationVariant, string> = {
-  "fade-up":    "hero-fade-up",
-  "fade-in":    "hero-fade-in",
-  "fade-left":  "scroll-fade-left",
+  "fade-up": "hero-fade-up",
+  "fade-in": "hero-fade-in",
+  "fade-left": "scroll-fade-left",
   "fade-right": "scroll-fade-right",
-  "scale-up":   "scroll-scale-up",
-  "blur-in":    "scroll-blur-in",
+  "scale-up": "scroll-scale-up",
+  "blur-in": "scroll-blur-in",
 };
 
 export function ScrollReveal({

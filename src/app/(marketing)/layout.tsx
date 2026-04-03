@@ -20,23 +20,17 @@ export const metadata = {
     default: "Ledra | WEB施工証明書SaaS",
     template: "%s | Ledra",
   },
-  description:
-    "施工証明をデジタルで。Ledraは、施工店と保険会社をつなぐWEB施工証明書プラットフォームです。",
+  description: "施工証明をデジタルで。Ledraは、施工店と保険会社をつなぐWEB施工証明書プラットフォームです。",
   openGraph: {
     title: "Ledra | WEB施工証明書SaaS",
-    description:
-      "施工証明をデジタルで。Ledraは、施工店と保険会社をつなぐWEB施工証明書プラットフォームです。",
+    description: "施工証明をデジタルで。Ledraは、施工店と保険会社をつなぐWEB施工証明書プラットフォームです。",
     siteName: "Ledra",
     locale: "ja_JP",
     type: "website",
   },
 };
 
-export default function MarketingLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function MarketingLayout({ children }: { children: React.ReactNode }) {
   return (
     <MarketingThemeWrapper
       data-theme="marketing"

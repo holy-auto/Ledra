@@ -21,18 +21,15 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
     if (!requireMinRole(caller, "admin")) return apiForbidden();
 
     const admin = getAdminClient();
-    const { data, error } = await admin
-      .from("agent_applications")
-      .select("*")
-      .eq("id", id)
-      .single();
+    const { data, error } = await admin.from("agent_applications").select("*").eq("id", id).single();
 
     if (error || !data) {
       return apiNotFound("application not found");
     }
 
     // Generate signed URLs for documents
-    const documents = (data.documents as Array<{ name: string; storage_path: string; content_type: string; file_size: number }>) || [];
+    const documents =
+      (data.documents as Array<{ name: string; storage_path: string; content_type: string; file_size: number }>) || [];
     const docsWithUrls = await Promise.all(
       documents.map(async (doc) => {
         const { data: signedData } = await admin.storage
@@ -145,9 +142,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
       } else {
         // auth.users にメールが存在するか確認
         const { data: existingUsers } = await admin.auth.admin.listUsers();
-        const matchedUser = existingUsers?.users?.find(
-          (u) => u.email?.toLowerCase() === app.email.toLowerCase()
-        );
+        const matchedUser = existingUsers?.users?.find((u) => u.email?.toLowerCase() === app.email.toLowerCase());
 
         if (matchedUser) {
           // 既存ユーザーが見つかった → そのまま使う（パスワード変更なし）
@@ -182,9 +177,9 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
         console.error("[admin/agent-applications] RPC error:", rpcError.message);
         // 新規作成したユーザーの場合のみロールバック
         if (!isExistingUser) {
-          await admin.auth.admin.deleteUser(userId).catch((err: unknown) =>
-            console.error("[admin/agent-applications] rollback deleteUser failed:", err),
-          );
+          await admin.auth.admin
+            .deleteUser(userId)
+            .catch((err: unknown) => console.error("[admin/agent-applications] rollback deleteUser failed:", err));
         }
         return apiInternalError(rpcError, "agent-applications approve RPC");
       }

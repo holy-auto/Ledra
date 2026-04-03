@@ -33,13 +33,28 @@ export function Hero() {
         />
 
         {/* Shimmer lines */}
-        <div className="absolute top-[30%] left-0 w-full h-px bg-gradient-to-r from-transparent via-blue-500/20 to-transparent animate-[shimmer_5s_ease-in-out_infinite]" style={{ willChange: "opacity" }} />
-        <div className="absolute top-[70%] left-0 w-full h-px bg-gradient-to-r from-transparent via-blue-400/10 to-transparent animate-[shimmer_7s_ease-in-out_infinite_reverse]" style={{ willChange: "opacity" }} />
+        <div
+          className="absolute top-[30%] left-0 w-full h-px bg-gradient-to-r from-transparent via-blue-500/20 to-transparent animate-[shimmer_5s_ease-in-out_infinite]"
+          style={{ willChange: "opacity" }}
+        />
+        <div
+          className="absolute top-[70%] left-0 w-full h-px bg-gradient-to-r from-transparent via-blue-400/10 to-transparent animate-[shimmer_7s_ease-in-out_infinite_reverse]"
+          style={{ willChange: "opacity" }}
+        />
 
         {/* Floating dots — reduced from 6 to 3 */}
-        <div className="absolute top-[12%] right-[18%] w-1.5 h-1.5 bg-blue-400/40 rounded-full animate-[dark-float_5s_ease-in-out_infinite]" style={{ willChange: "transform" }} />
-        <div className="absolute top-[60%] left-[15%] w-1 h-1 bg-blue-300/30 rounded-full animate-[dark-float_7s_ease-in-out_infinite_1s]" style={{ willChange: "transform" }} />
-        <div className="absolute top-[45%] right-[8%] w-1.5 h-1.5 border border-violet-400/15 rounded-sm rotate-45 animate-[dark-float_8s_ease-in-out_infinite_0.5s]" style={{ willChange: "transform" }} />
+        <div
+          className="absolute top-[12%] right-[18%] w-1.5 h-1.5 bg-blue-400/40 rounded-full animate-[dark-float_5s_ease-in-out_infinite]"
+          style={{ willChange: "transform" }}
+        />
+        <div
+          className="absolute top-[60%] left-[15%] w-1 h-1 bg-blue-300/30 rounded-full animate-[dark-float_7s_ease-in-out_infinite_1s]"
+          style={{ willChange: "transform" }}
+        />
+        <div
+          className="absolute top-[45%] right-[8%] w-1.5 h-1.5 border border-violet-400/15 rounded-sm rotate-45 animate-[dark-float_8s_ease-in-out_infinite_0.5s]"
+          style={{ willChange: "transform" }}
+        />
       </div>
 
       <Container className="relative text-center py-28 md:py-40 lg:py-48">

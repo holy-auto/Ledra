@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { formatDateTime } from "@/lib/format";
+import CustomerProgressBar from "@/components/workflow/CustomerProgressBar";
 
 type Row = {
   public_id: string;
@@ -339,29 +340,55 @@ export default function CustomerListPage() {
           {reservations.length === 0 ? (
             <div className="text-sm text-neutral-500">今後の予約はありません。</div>
           ) : (
-            reservations.map((r) => (
-              <div key={r.id} className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-                <div className="flex items-baseline justify-between gap-2">
-                  <div className="text-sm font-semibold text-neutral-800">
-                    {r.date}
-                    {r.time_slot ? ` ${r.time_slot}` : ""}
+            reservations.map((r) => {
+              const statusJa =
+                r.status === "confirmed"
+                  ? "予約確定"
+                  : r.status === "arrived"
+                    ? "来店受付"
+                    : r.status === "in_progress"
+                      ? "施工中"
+                      : r.status === "completed"
+                        ? "施工完了"
+                        : r.status === "cancelled"
+                          ? "キャンセル"
+                          : r.status;
+
+              const isActive = r.status === "arrived" || r.status === "in_progress";
+
+              return (
+                <div key={r.id} className="space-y-2">
+                  <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <div className="text-sm font-semibold text-neutral-800">
+                        {r.date}
+                        {r.time_slot ? ` ${r.time_slot}` : ""}
+                      </div>
+                      <div
+                        className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
+                          r.status === "confirmed"
+                            ? "border-blue-200 bg-blue-50 text-blue-700"
+                            : r.status === "arrived"
+                              ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                              : r.status === "in_progress"
+                                ? "border-amber-200 bg-amber-50 text-amber-700"
+                                : r.status === "completed"
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                  : "border-neutral-200 bg-neutral-50 text-neutral-600"
+                        }`}
+                      >
+                        {statusJa}
+                      </div>
+                    </div>
+                    {r.menu ? <div className="mt-1 text-sm text-neutral-700">{r.menu}</div> : null}
+                    {r.note ? <div className="mt-1 text-xs text-neutral-500">{r.note}</div> : null}
                   </div>
-                  <div
-                    className={`rounded-full border px-2 py-0.5 text-xs ${
-                      r.status === "confirmed"
-                        ? "border-blue-200 bg-blue-50 text-blue-700"
-                        : r.status === "in_progress"
-                          ? "border-amber-200 bg-amber-50 text-amber-700"
-                          : "border-neutral-200 bg-neutral-50 text-neutral-600"
-                    }`}
-                  >
-                    {r.status}
-                  </div>
+
+                  {/* 施工中の予約には進捗バーを表示 */}
+                  {isActive && <CustomerProgressBar tenantSlug={tenant} reservationId={r.id} pollIntervalMs={30000} />}
                 </div>
-                {r.menu ? <div className="mt-1 text-sm text-neutral-700">{r.menu}</div> : null}
-                {r.note ? <div className="mt-1 text-xs text-neutral-500">{r.note}</div> : null}
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       ) : null}

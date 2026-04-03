@@ -8,6 +8,8 @@ import Button from "@/components/ui/Button";
 import CalendarView from "./CalendarView";
 import { formatDate, formatJpy } from "@/lib/format";
 import { fetcher } from "@/lib/swr";
+import WorkflowStepper from "@/components/workflow/WorkflowStepper";
+import type { WorkflowStep } from "@/components/workflow/WorkflowTemplateEditor";
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -29,6 +31,10 @@ type Reservation = {
   menu_items_json: MenuItem[];
   cancel_reason: string | null;
   created_at: string;
+  workflow_template_id: string | null;
+  current_step_key: string | null;
+  current_step_order: number;
+  progress_pct: number;
 };
 
 type Customer = { id: string; name: string };
@@ -36,6 +42,24 @@ type Vehicle = { id: string; maker: string; model: string; year: number | null; 
 type MenuItemMaster = { id: string; name: string; unit_price: number };
 type Stats = { total: number; today_count: number; active_count: number };
 type ReservationsData = { reservations: Reservation[]; stats: Stats };
+
+type StepLog = {
+  id: string;
+  step_key: string;
+  step_order: number;
+  step_label: string;
+  started_at: string | null;
+  completed_at: string | null;
+  duration_sec: number | null;
+  note: string | null;
+};
+
+type WorkflowTemplate = {
+  id: string;
+  name: string;
+  service_type: string;
+  steps: WorkflowStep[];
+};
 
 // ─── Constants ───────────────────────────────────────────
 
@@ -163,6 +187,13 @@ export default function ReservationsClient() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const detailReservation = reservations.find((r) => r.id === detailId) ?? null;
 
+  // Workflow
+  const [detailSteps, setDetailSteps] = useState<WorkflowStep[]>([]);
+  const [detailStepLogs, setDetailStepLogs] = useState<StepLog[]>([]);
+  const [detailTemplates, setDetailTemplates] = useState<WorkflowTemplate[]>([]);
+  const [detailTemplateLoading, setDetailTemplateLoading] = useState(false);
+  const [workflowTemplateId, setWorkflowTemplateId] = useState("");
+
   // ─── Reference data ──────────────────────────────────────
 
   const fetchMasterData = useCallback(async () => {
@@ -210,6 +241,74 @@ export default function ReservationsClient() {
       setVehicles([]);
     }
   }, []);
+
+  const openWorkflowDetail = async (r: Reservation) => {
+    setDetailId(r.id);
+    if (r.workflow_template_id) {
+      try {
+        const [tplRes, logsRes] = await Promise.all([
+          fetch(`/api/admin/workflow-templates`, { cache: "no-store" }),
+          fetch(`/api/admin/reservations/${r.id}/step-logs`, { cache: "no-store" }),
+        ]);
+        const tplJ = await tplRes.json().catch(() => null);
+        const logsJ = await logsRes.json().catch(() => null);
+        const templates: WorkflowTemplate[] = tplJ?.templates ?? [];
+        const tpl = templates.find((t: WorkflowTemplate) => t.id === r.workflow_template_id);
+        if (tpl) setDetailSteps(tpl.steps);
+        setDetailStepLogs(logsJ?.step_logs ?? []);
+      } catch {
+        /* ignore */
+      }
+    } else {
+      setDetailSteps([]);
+      setDetailStepLogs([]);
+      try {
+        setDetailTemplateLoading(true);
+        const res = await fetch("/api/admin/workflow-templates", { cache: "no-store" });
+        const j = await res.json().catch(() => null);
+        setDetailTemplates(j?.templates ?? []);
+      } catch {
+        /* ignore */
+      } finally {
+        setDetailTemplateLoading(false);
+      }
+    }
+  };
+
+  const handleStartWorkflow = async (reservationId: string) => {
+    if (!workflowTemplateId) return;
+    try {
+      const res = await fetch(`/api/admin/reservations/${reservationId}/start-workflow`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ workflow_template_id: workflowTemplateId }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      mutate();
+      setDetailId(null);
+    } catch (e: unknown) {
+      alert("ワークフロー開始に失敗: " + (e instanceof Error ? e.message : String(e)));
+    }
+  };
+
+  const handleAdvance = async (reservationId: string, note?: string) => {
+    try {
+      const res = await fetch(`/api/admin/reservations/${reservationId}/advance`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ note }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.error ?? "Failed");
+      mutate();
+      // Refresh step logs
+      const logsRes = await fetch(`/api/admin/reservations/${reservationId}/step-logs`);
+      const logsJ = await logsRes.json().catch(() => null);
+      setDetailStepLogs(logsJ?.step_logs ?? []);
+    } catch (e: unknown) {
+      alert("進行に失敗: " + (e instanceof Error ? e.message : String(e)));
+    }
+  };
 
   useEffect(() => {
     fetchMasterData();
@@ -711,6 +810,18 @@ export default function ReservationsClient() {
                                         {r.end_time && ` – ${r.end_time.slice(0, 5)}`}
                                       </span>
                                     )}
+                                    {/* Mini progress bar for workflow-enabled reservations */}
+                                    {r.workflow_template_id && (
+                                      <span className="inline-flex items-center gap-1.5 text-[11px] text-muted">
+                                        <span className="w-16 h-1.5 rounded-full bg-surface-hover overflow-hidden">
+                                          <span
+                                            className="block h-full rounded-full bg-accent transition-all"
+                                            style={{ width: `${r.progress_pct}%` }}
+                                          />
+                                        </span>
+                                        {r.progress_pct}%
+                                      </span>
+                                    )}
                                   </div>
 
                                   {/* Title */}
@@ -775,7 +886,13 @@ export default function ReservationsClient() {
                                 <div className="flex flex-col items-end gap-1.5 shrink-0">
                                   {/* Detail button */}
                                   <button
-                                    onClick={() => setDetailId(detailId === r.id ? null : r.id)}
+                                    onClick={() => {
+                                      if (detailId === r.id) {
+                                        setDetailId(null);
+                                      } else {
+                                        openWorkflowDetail(r);
+                                      }
+                                    }}
                                     className="text-[11px] text-muted hover:text-primary px-2 py-1 rounded-lg hover:bg-surface-hover transition-colors"
                                   >
                                     詳細 {detailId === r.id ? "▲" : "▼"}
@@ -1157,6 +1274,101 @@ export default function ReservationsClient() {
               >
                 キャンセル確定
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Workflow Detail Drawer ─── */}
+      {detailId && detailReservation && (
+        <div
+          className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm"
+          onClick={() => setDetailId(null)}
+        >
+          <div
+            className="w-full max-w-md bg-surface shadow-2xl h-full overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 bg-surface border-b border-border-subtle p-4 flex items-center justify-between z-10">
+              <div>
+                <div className="text-xs text-muted">予約詳細</div>
+                <div className="text-sm font-semibold text-primary">{detailReservation.title}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetailId(null)}
+                className="p-1 rounded-lg hover:bg-surface-hover text-muted"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              {/* Summary */}
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <span className="text-muted">日時</span>
+                  <div className="font-medium text-primary">{formatDate(detailReservation.scheduled_date)}</div>
+                </div>
+                <div>
+                  <span className="text-muted">ステータス</span>
+                  <div>
+                    <Badge variant={cfg(detailReservation.status).variant}>{cfg(detailReservation.status).label}</Badge>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-muted">顧客</span>
+                  <div className="font-medium text-primary">{detailReservation.customer_name ?? "-"}</div>
+                </div>
+                <div>
+                  <span className="text-muted">車両</span>
+                  <div className="font-medium text-primary">{detailReservation.vehicle_label ?? "-"}</div>
+                </div>
+              </div>
+
+              {/* Workflow */}
+              {detailReservation.workflow_template_id ? (
+                <WorkflowStepper
+                  reservationId={detailReservation.id}
+                  templateId={detailReservation.workflow_template_id}
+                  steps={detailSteps}
+                  stepLogs={detailStepLogs}
+                  currentStepOrder={detailReservation.current_step_order}
+                  progressPct={detailReservation.progress_pct}
+                  status={detailReservation.status}
+                  onAdvance={(note) => handleAdvance(detailReservation.id, note)}
+                />
+              ) : (
+                <div className="glass-card p-4 space-y-3">
+                  <div className="text-xs font-semibold text-muted">ワークフロー未設定</div>
+                  <p className="text-xs text-muted">テンプレートを選択してワークフローを開始できます。</p>
+                  {detailTemplateLoading ? (
+                    <div className="text-xs text-muted">読み込み中...</div>
+                  ) : (
+                    <>
+                      <select
+                        className="select-field text-sm"
+                        value={workflowTemplateId}
+                        onChange={(e) => setWorkflowTemplateId(e.target.value)}
+                      >
+                        <option value="">テンプレートを選択</option>
+                        {detailTemplates.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}（{t.steps.length}ステップ）
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="btn-primary w-full text-sm"
+                        disabled={!workflowTemplateId}
+                        onClick={() => handleStartWorkflow(detailReservation.id)}
+                      >
+                        ワークフロー開始
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

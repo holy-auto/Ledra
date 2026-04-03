@@ -172,6 +172,20 @@ const NAV_GROUPS: NavGroup[] = [
         ),
       },
       {
+        href: "/admin/workflow-templates",
+        label: "ワークフロー",
+        requiredPermission: "reservations:view",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z"
+            />
+          </svg>
+        ),
+      },
+      {
         href: "/admin/booking-settings",
         label: "予約受付設定",
         requiredPermission: "settings:view",

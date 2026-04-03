@@ -16,7 +16,9 @@ export async function GET(request: NextRequest) {
 
     let query = admin
       .from("agents")
-      .select("id, name, contact_name, contact_email, contact_phone, address, status, commission_type, default_commission_rate, default_commission_fixed, stripe_account_id, stripe_onboarding_done, created_at")
+      .select(
+        "id, name, contact_name, contact_email, contact_phone, address, status, commission_type, default_commission_rate, default_commission_fixed, stripe_account_id, stripe_onboarding_done, created_at",
+      )
       .order("created_at", { ascending: false });
 
     if (status) {
@@ -37,10 +39,7 @@ export async function GET(request: NextRequest) {
 
     if (agentIds.length > 0) {
       const [refsResult, commsResult] = await Promise.all([
-        admin
-          .from("agent_referrals")
-          .select("agent_id, status")
-          .in("agent_id", agentIds),
+        admin.from("agent_referrals").select("agent_id, status").in("agent_id", agentIds),
         admin
           .from("agent_commissions")
           .select("agent_id, amount")
@@ -51,8 +50,7 @@ export async function GET(request: NextRequest) {
       for (const ref of refsResult.data ?? []) {
         refCountMap[ref.agent_id] = (refCountMap[ref.agent_id] ?? 0) + 1;
         if (ref.status === "contracted") {
-          contractedCountMap[ref.agent_id] =
-            (contractedCountMap[ref.agent_id] ?? 0) + 1;
+          contractedCountMap[ref.agent_id] = (contractedCountMap[ref.agent_id] ?? 0) + 1;
         }
       }
 
