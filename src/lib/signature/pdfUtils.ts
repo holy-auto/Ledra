@@ -48,16 +48,18 @@ export async function generateCertificatePdfBytes(
     throw new Error(`[pdfUtils] Certificate not found: ${certificateId}`);
   }
 
+  // Supabase 生成型と CertRow の差異を unknown 経由で吸収
+  const certRow = cert as unknown as CertRow;
+
   // 公開ページ URL の構築
-  // tenant_custom_domain があればそちらを使用、なければ APP_URL
   const appUrl = process.env.APP_URL ?? 'https://ledra.co.jp';
-  const baseUrl = cert.tenant_custom_domain
-    ? `https://${cert.tenant_custom_domain}`
+  const baseUrl = certRow.tenant_custom_domain
+    ? `https://${certRow.tenant_custom_domain}`
     : appUrl;
-  const publicUrl = `${baseUrl}/c/${cert.public_id}`;
+  const publicUrl = `${baseUrl}/c/${certRow.public_id}`;
 
   // renderCertificatePdf でバイト列を生成（署名セクションなし）
-  const pdfBuffer = await renderCertificatePdf(cert as CertRow, publicUrl);
+  const pdfBuffer = await renderCertificatePdf(certRow, publicUrl);
   return new Uint8Array(pdfBuffer as ArrayBuffer);
 }
 
@@ -95,15 +97,18 @@ export async function generateSignedPdfBytes(
     throw new Error(`[pdfUtils] Certificate not found: ${certificateId}`);
   }
 
+  // Supabase 生成型と CertRow の差異を unknown 経由で吸収
+  const certRow = cert as unknown as CertRow;
+
   const appUrl = process.env.APP_URL ?? 'https://ledra.co.jp';
-  const baseUrl = cert.tenant_custom_domain
-    ? `https://${cert.tenant_custom_domain}`
+  const baseUrl = certRow.tenant_custom_domain
+    ? `https://${certRow.tenant_custom_domain}`
     : appUrl;
-  const publicUrl = `${baseUrl}/c/${cert.public_id}`;
+  const publicUrl = `${baseUrl}/c/${certRow.public_id}`;
 
   // 署名情報を含む PDF を生成
   const pdfBuffer = await renderCertificatePdf(
-    cert as CertRow,
+    certRow,
     publicUrl,
     signatureInfo,
   );
