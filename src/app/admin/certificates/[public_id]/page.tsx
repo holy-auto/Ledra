@@ -6,6 +6,7 @@ import { CERTIFICATE_IMAGE_BUCKET, formatCertificateImageBytes } from "@/lib/cer
 import { logCertificateAction } from "@/lib/audit/certificateLog";
 import PageHeader from "@/components/ui/PageHeader";
 import AiExplainPanel from "@/components/certificates/AiExplainPanel";
+import SignatureRequestPanel from "./SignatureRequestPanel";
 import { formatDateTime } from "@/lib/format";
 
 type PageProps = {
@@ -276,6 +277,17 @@ export default async function Page({ params }: PageProps) {
           <section className="glass-card p-5">
             <AiExplainPanel certificateId={row.id as string} />
           </section>
+
+          {/* 電子署名依頼パネル */}
+          {!isVoid && (
+            <section className="glass-card p-5 space-y-3">
+              <div>
+                <div className="text-xs font-semibold tracking-[0.18em] text-muted">ELECTRONIC SIGNATURE</div>
+                <div className="mt-1 text-lg font-semibold text-primary">電子署名</div>
+              </div>
+              <SignatureRequestPanel certificateId={row.id as string} />
+            </section>
+          )}
 
           <section className="glass-card p-5 space-y-4">
             <div>
