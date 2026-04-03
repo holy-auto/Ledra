@@ -114,7 +114,17 @@ function buildPresetLines(schema: TemplateSchema | null, values: Record<string, 
   return lines;
 }
 
-export async function renderCertificatePdf(row: CertRow, publicUrl: string) {
+/** PDF に埋め込む電子署名情報（省略時は署名セクションなし） */
+export type PdfSignatureSection = {
+  signedAt:             string;   // ISO 8601
+  signerEmailMasked:    string;   // "t****@example.com"
+  signaturePreview:     string;   // 署名値の先頭20文字 + "..."
+  publicKeyFingerprint: string;   // "SHA256:xxxxxxxx..."
+  verifyUrl:            string;   // "https://ledra.co.jp/verify/..."
+  documentHash:         string;   // SHA-256 (hex)
+};
+
+export async function renderCertificatePdf(row: CertRow, publicUrl: string, signatureSection?: PdfSignatureSection) {
   const preset = row.content_preset_json ?? {};
   const schema: TemplateSchema | null = (preset.schema_snapshot as any) ?? null;
   const values: Record<string, any> | null = (preset.values as any) ?? null;
@@ -145,6 +155,42 @@ export async function renderCertificatePdf(row: CertRow, publicUrl: string) {
     : isBodyRepair ? "鈑金塗装証明書"
     : "施工証明書";
   const productsTitle = isPpf ? "使用フィルム" : "コーティング剤";
+
+  // 電子署名セクション（署名情報がある場合のみ表示）
+  const signatureSectionJsx = signatureSection ? (
+    <View style={{ borderWidth: 1.5, borderColor: "#1a56db", padding: 10, borderRadius: 6, marginTop: 14 }}>
+      <Text style={{ fontSize: 10, marginBottom: 6, color: "#1a56db" }}>電子署名（電子署名法第2条）</Text>
+      <View style={{ gap: 3 }}>
+        <View style={{ flexDirection: "row" }}>
+          <Text style={{ color: "#666", fontSize: 9, width: 110 }}>署名日時</Text>
+          <Text style={{ fontSize: 9 }}>{new Date(signatureSection.signedAt).toLocaleString("ja-JP")}</Text>
+        </View>
+        <View style={{ flexDirection: "row" }}>
+          <Text style={{ color: "#666", fontSize: 9, width: 110 }}>署名者</Text>
+          <Text style={{ fontSize: 9 }}>{signatureSection.signerEmailMasked}</Text>
+        </View>
+        <View style={{ flexDirection: "row" }}>
+          <Text style={{ color: "#666", fontSize: 9, width: 110 }}>ハッシュ (SHA-256)</Text>
+          <Text style={{ fontSize: 7, color: "#444" }}>{signatureSection.documentHash}</Text>
+        </View>
+        <View style={{ flexDirection: "row" }}>
+          <Text style={{ color: "#666", fontSize: 9, width: 110 }}>署名値（省略）</Text>
+          <Text style={{ fontSize: 7, color: "#444" }}>{signatureSection.signaturePreview}</Text>
+        </View>
+        <View style={{ flexDirection: "row" }}>
+          <Text style={{ color: "#666", fontSize: 9, width: 110 }}>公開鍵フィンガープリント</Text>
+          <Text style={{ fontSize: 7, color: "#444" }}>{signatureSection.publicKeyFingerprint}</Text>
+        </View>
+        <View style={{ flexDirection: "row", marginTop: 4 }}>
+          <Text style={{ color: "#666", fontSize: 9, width: 110 }}>署名検証URL</Text>
+          <Text style={{ fontSize: 8, color: "#1a56db" }}>{signatureSection.verifyUrl}</Text>
+        </View>
+      </View>
+      <Text style={{ fontSize: 7, color: "#666", marginTop: 6, lineHeight: 1.6 }}>
+        本署名は電子署名法（平成12年法律第102号）第2条に基づく立会人型電子署名です。ECDSA P-256 アルゴリズムにより改ざん検知が可能です。
+      </Text>
+    </View>
+  ) : null;
 
   const doc = (
     <Document>
@@ -379,6 +425,9 @@ export async function renderCertificatePdf(row: CertRow, publicUrl: string) {
           <Text>{row.expiry_type ?? ""}: {row.expiry_value ?? ""}</Text>
         </View>
 
+        {/* コーティング等（PPF/整備/鈑金以外）は Page1 のみ → 署名セクションをここに表示 */}
+        {!isPpf && !isMaintenance && !isBodyRepair && signatureSectionJsx}
+
         <View style={styles.footer}>
           <Text>証明書URL: {publicUrl}</Text>
           <Text style={{ fontSize: 7, color: "#999", marginTop: 2 }}>Powered by Ledra</Text>
@@ -455,13 +504,15 @@ export async function renderCertificatePdf(row: CertRow, publicUrl: string) {
             </Text>
           </View>
 
+          {signatureSectionJsx}
+
           <View style={styles.footer}>
             <Text style={{ fontSize: 7, color: "#999" }}>Powered by Ledra</Text>
           </View>
         </Page>
       )}
 
-      {/* ── ページ2: 注意事項（整備の場合） ── */}
+      {/* ── ページ2: 注意事項（整備の場合） ── */
       {isMaintenance && (
         <Page size="A4" style={styles.page}>
           <View>
@@ -524,13 +575,15 @@ export async function renderCertificatePdf(row: CertRow, publicUrl: string) {
             </Text>
           </View>
 
+          {signatureSectionJsx}
+
           <View style={styles.footer}>
             <Text style={{ fontSize: 7, color: "#999" }}>Powered by Ledra</Text>
           </View>
         </Page>
       )}
 
-      {/* ── ページ2: 保証・注意事項（鈑金塗装の場合） ── */}
+      {/* ── ページ2: 保証・注意事項（鈑金塗装の場合） ── */
       {isBodyRepair && (
         <Page size="A4" style={styles.page}>
           <View>
@@ -601,6 +654,8 @@ export async function renderCertificatePdf(row: CertRow, publicUrl: string) {
               本証明書に記載のQRコードをスマートフォンで読み取ると、Ledra認証プラットフォーム上で本証明書の最新情報をリアルタイムに確認できます。
             </Text>
           </View>
+
+          {signatureSectionJsx}
 
           <View style={styles.footer}>
             <Text style={{ fontSize: 7, color: "#999" }}>Powered by Ledra</Text>

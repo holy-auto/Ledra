@@ -9,6 +9,18 @@ export const dynamic = "force-dynamic";
  * POST /api/webhooks/cloudsign
  * CloudSign webhook handler for document status updates.
  *
+ * @deprecated
+ * このエンドポイントは agent_signing_requests（エージェント契約書/NDA）専用です。
+ * 施工証明書（certificates）への顧客電子署名は Ledra 自前実装に完全移行しました:
+ *   - 署名依頼 API:   POST /api/signature/request
+ *   - 署名実行 API:   POST /api/signature/sign/[token]
+ *   - 署名検証 API:   GET  /api/signature/verify/[sessionId]
+ *   - 署名ページ:     /sign/[token]
+ *   - 検証ページ:     /verify/[sessionId]
+ *
+ * CloudSign を完全廃止する場合は、agent_signing_requests の全レコードを
+ * 新スキーマに移行した後、このファイルと src/lib/agent/cloudsign.ts を削除する。
+ *
  * Events:
  *   - document.signed  → Download PDF, store, update status
  *   - document.viewed  → Update status to viewed

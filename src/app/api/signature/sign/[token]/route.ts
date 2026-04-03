@@ -21,6 +21,7 @@ import { apiOk, apiError } from '@/lib/api/response';
 import { getValidSessionByToken } from '@/lib/signature/session';
 import { buildSigningPayload }     from '@/lib/signature/hash';
 import { signPayload, getPrivateKey, getActiveKeyInfo } from '@/lib/signature/crypto';
+import { generateSignedPdfBytes, maskEmail } from '@/lib/signature/pdfUtils';
 import type { SignatureSignBody } from '@/lib/signature/types';
 
 export const dynamic = 'force-dynamic';
@@ -149,8 +150,28 @@ export async function POST(
   });
 
   // 7. PDF 再生成（署名情報を埋め込み）— 非同期で実行（レスポンスをブロックしない）
-  // TODO: Phase 5 で pdfUtils.regenerateSignedPdf を実装後に有効化
-  // void regenerateSignedPdf(session.certificate_id, { ... });
+  const verifyBaseUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.APP_URL ?? '';
+  void generateSignedPdfBytes(session.certificate_id, {
+    signedAt:             signedAt,
+    signerEmailMasked:    maskEmail(normalizedEmail),
+    signaturePreview:     signature.slice(0, 20) + '...',
+    publicKeyFingerprint: keyInfo.fingerprint,
+    verifyUrl:            `${verifyBaseUrl}/verify/${session.id}`,
+    documentHash:         session.document_hash,
+  }).then(async (pdfBytes) => {
+    // 署名済み PDF を Supabase Storage に保存
+    const supabaseAsync = getSupabaseAdmin();
+    await supabaseAsync.storage
+      .from('certificate-pdfs')
+      .upload(
+        `signed/${session.certificate_id}/${session.id}.pdf`,
+        pdfBytes,
+        { contentType: 'application/pdf', upsert: true },
+      );
+  }).catch((err) => {
+    // PDF 再生成失敗はログのみ（署名自体は成功しているので致命的エラーにしない）
+    console.error('[signature/sign] Signed PDF generation failed:', err);
+  });
 
   // 8. 施工店への完了通知 — 非同期
   // TODO: Phase 4 で通知モジュール実装後に有効化
