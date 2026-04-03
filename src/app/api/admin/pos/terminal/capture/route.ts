@@ -37,12 +37,10 @@ export async function POST(req: NextRequest) {
     const isOnboarded = tenant?.stripe_connect_onboarded as boolean | null;
 
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: "2025-02-24.acacia" as any,
+      apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion,
     });
 
-    const stripeOptions = connectAccountId && isOnboarded
-      ? { stripeAccount: connectAccountId }
-      : undefined;
+    const stripeOptions = connectAccountId && isOnboarded ? { stripeAccount: connectAccountId } : undefined;
 
     // PaymentIntent のステータス確認（Connectアカウント対応）
     const pi = await stripe.paymentIntents.retrieve(paymentIntentId, stripeOptions);
@@ -60,26 +58,23 @@ export async function POST(req: NextRequest) {
     // pos_checkout RPC で支払記録 + 領収書作成
     const { data, error } = await supabase.rpc("pos_checkout", {
       p_tenant_id: caller.tenantId,
-      p_reservation_id: (String(body?.reservation_id ?? "")).trim() || null,
-      p_customer_id: (String(body?.customer_id ?? "")).trim() || null,
-      p_store_id: (String(body?.store_id ?? "")).trim() || null,
-      p_register_session_id: (String(body?.register_session_id ?? "")).trim() || null,
+      p_reservation_id: String(body?.reservation_id ?? "").trim() || null,
+      p_customer_id: String(body?.customer_id ?? "").trim() || null,
+      p_store_id: String(body?.store_id ?? "").trim() || null,
+      p_register_session_id: String(body?.register_session_id ?? "").trim() || null,
       p_payment_method: "card",
       p_amount: pi.amount,
       p_received_amount: pi.amount,
       p_items_json: body?.items_json ?? [],
       p_tax_rate: parseInt(String(body?.tax_rate ?? 10), 10),
-      p_note: (String(body?.note ?? "")).trim() || null,
+      p_note: String(body?.note ?? "").trim() || null,
       p_create_receipt: true,
       p_user_id: caller.userId,
     });
 
     if (error) {
       console.error("[pos/terminal/capture] rpc_error:", error.message);
-      return NextResponse.json(
-        { error: "checkout_failed", detail: error.message },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: "checkout_failed", detail: error.message }, { status: 500 });
     }
 
     return NextResponse.json({

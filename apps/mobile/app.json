@@ -17,7 +17,12 @@
       "bundleIdentifier": "com.ledra.app",
       "infoPlist": {
         "NFCReaderUsageDescription": "Ledraは証明書NFCタグの読み取りと書き込みに使用します",
-        "NSCameraUsageDescription": "Ledraは施工写真の撮影に使用します"
+        "NSCameraUsageDescription": "Ledraは施工写真の撮影に使用します",
+        "NSLocationWhenInUseUsageDescription": "Stripe Terminal の利用に位置情報が必要です",
+        "NSBluetoothAlwaysUsageDescription": "将来のカードリーダー接続にBluetoothを使用します"
+      },
+      "entitlements": {
+        "com.apple.developer.proximity-reader.payment.acceptance": true
       }
     },
     "android": {
@@ -47,6 +52,12 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      [
+        "@stripe/stripe-terminal-react-native",
+        {
+          "bluetoothBackgroundMode": false
+        }
+      ],
       [
         "expo-camera",
         {

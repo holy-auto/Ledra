@@ -1,6 +1,9 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-let adminClient: SupabaseClient | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnySupabaseClient = SupabaseClient<any, any, any>;
+
+let adminClient: AnySupabaseClient | null = null;
 
 /**
  * Returns a lazily-initialized singleton Supabase admin client
@@ -8,7 +11,7 @@ let adminClient: SupabaseClient | null = null;
  *
  * Prefer this over creating ad-hoc clients in individual files.
  */
-export function getSupabaseAdmin(): SupabaseClient {
+export function getSupabaseAdmin(): AnySupabaseClient {
   if (!adminClient) {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -24,7 +27,7 @@ export function getSupabaseAdmin(): SupabaseClient {
 
 // Backward-compatible aliases used by existing code paths
 export const createAdminClient = getSupabaseAdmin;
-export const supabaseAdmin = /* @__PURE__ */ new Proxy({} as SupabaseClient, {
+export const supabaseAdmin = /* @__PURE__ */ new Proxy({} as AnySupabaseClient, {
   get(_target, prop, receiver) {
     return Reflect.get(getSupabaseAdmin(), prop, receiver);
   },

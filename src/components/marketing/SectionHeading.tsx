@@ -1,5 +1,3 @@
-"use client";
-
 import { ScrollReveal } from "./ScrollReveal";
 
 export function SectionHeading({
@@ -20,9 +18,7 @@ export function SectionHeading({
   return (
     <ScrollReveal variant="blur-in">
       <div className={`mb-14 md:mb-16 ${alignClass}`}>
-        <h2
-          className={`text-[1.75rem] md:text-[2.75rem] font-bold leading-[1.2] tracking-tight ${titleColor}`}
-        >
+        <h2 className={`text-[1.75rem] md:text-[2.75rem] font-bold leading-[1.2] tracking-tight ${titleColor}`}>
           {title}
         </h2>
         {subtitle && (

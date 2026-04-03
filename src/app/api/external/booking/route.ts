@@ -43,9 +43,7 @@ export async function POST(req: NextRequest) {
     const endTime = body?.end_time;
 
     if (!tenantSlug || !customerName || !title || !scheduledDate || !startTime || !endTime) {
-      return apiValidationError(
-        "tenant_slug, customer_name, title, scheduled_date, start_time, end_time は必須です"
-      );
+      return apiValidationError("tenant_slug, customer_name, title, scheduled_date, start_time, end_time は必須です");
     }
 
     // 日付フォーマット検証
@@ -70,8 +68,41 @@ export async function POST(req: NextRequest) {
       return apiValidationError("指定された店舗が見つかりません");
     }
 
+    // ── 定休日チェック ──
+    const dayOfWeek = new Date(scheduledDate + "T00:00:00").getDay();
+
+    const { data: weeklyClosed } = await admin
+      .from("closed_days")
+      .select("id")
+      .eq("tenant_id", tenant.id)
+      .eq("type", "weekly")
+      .eq("day_of_week", dayOfWeek)
+      .limit(1);
+
+    if (weeklyClosed && weeklyClosed.length > 0) {
+      return apiError({ code: "conflict", message: "この日は定休日のため予約を受け付けていません", status: 422 });
+    }
+
+    const { data: specificClosed } = await admin
+      .from("closed_days")
+      .select("id, note")
+      .eq("tenant_id", tenant.id)
+      .eq("type", "specific")
+      .eq("closed_date", scheduledDate)
+      .limit(1);
+
+    if (specificClosed && specificClosed.length > 0) {
+      const note = specificClosed[0].note;
+      return apiError({
+        code: "conflict",
+        message: note
+          ? `この日は休業日のため予約を受け付けていません（${note}）`
+          : "この日は休業日のため予約を受け付けていません",
+        status: 422,
+      });
+    }
+
     // ── スロット空き状況チェック ──
-    const dayOfWeek = new Date(scheduledDate).getDay();
     const { data: slots } = await admin
       .from("external_booking_slots")
       .select("max_bookings")
@@ -229,6 +260,10 @@ export async function POST(req: NextRequest) {
 /**
  * GET /api/external/booking?tenant_slug=xxx&date=YYYY-MM-DD
  * 空きスロット一覧を返す（外部予約フォーム用）
+ *
+ * レスポンス:
+ *   { date, slots, closed, message? }
+ *   closed=true の場合は定休日
  */
 export async function GET(req: NextRequest) {
   const limited = await checkRateLimit(req, "general");
@@ -241,6 +276,9 @@ export async function GET(req: NextRequest) {
 
     if (!tenantSlug || !date) {
       return apiValidationError("tenant_slug と date (YYYY-MM-DD) が必要です");
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return apiValidationError("date は YYYY-MM-DD 形式です");
     }
 
     const admin = getAdminClient();
@@ -256,22 +294,55 @@ export async function GET(req: NextRequest) {
       return apiValidationError("指定された店舗が見つかりません");
     }
 
-    const dayOfWeek = new Date(date).getDay();
+    const dayOfWeek = new Date(date + "T00:00:00").getDay();
 
-    // スロット定義を取得
+    // ── 定休日チェック ──────────────────────────────────────
+    // 1) 毎週定休 (type=weekly, day_of_week=dayOfWeek)
+    const { data: weeklyClosed } = await admin
+      .from("closed_days")
+      .select("id")
+      .eq("tenant_id", tenant.id)
+      .eq("type", "weekly")
+      .eq("day_of_week", dayOfWeek)
+      .limit(1);
+
+    if (weeklyClosed && weeklyClosed.length > 0) {
+      return apiOk({ date, slots: [], closed: true, message: "この日は定休日です" });
+    }
+
+    // 2) 特定日定休 (type=specific, closed_date=date)
+    const { data: specificClosed } = await admin
+      .from("closed_days")
+      .select("id, note")
+      .eq("tenant_id", tenant.id)
+      .eq("type", "specific")
+      .eq("closed_date", date)
+      .limit(1);
+
+    if (specificClosed && specificClosed.length > 0) {
+      const note = specificClosed[0].note;
+      return apiOk({
+        date,
+        slots: [],
+        closed: true,
+        message: note ? `この日は休業日です（${note}）` : "この日は休業日です",
+      });
+    }
+
+    // ── スロット定義を取得 ──────────────────────────────────
     const { data: slots } = await admin
       .from("external_booking_slots")
-      .select("start_time, end_time, max_bookings")
+      .select("start_time, end_time, max_bookings, label")
       .eq("tenant_id", tenant.id)
       .eq("day_of_week", dayOfWeek)
       .eq("is_active", true)
       .order("start_time");
 
     if (!slots || slots.length === 0) {
-      return apiOk({ date, slots: [], message: "この日の予約枠は設定されていません" });
+      return apiOk({ date, slots: [], closed: false, message: "この日の予約枠は設定されていません" });
     }
 
-    // 既存予約を取得
+    // ── 既存予約を取得 ──────────────────────────────────────
     const { data: reservations } = await admin
       .from("reservations")
       .select("start_time, end_time")
@@ -280,8 +351,8 @@ export async function GET(req: NextRequest) {
       .neq("status", "cancelled");
 
     const available = slots.map((slot: any) => {
-      const booked = (reservations ?? []).filter((r: any) =>
-        r.start_time < slot.end_time && r.end_time > slot.start_time
+      const booked = (reservations ?? []).filter(
+        (r: any) => r.start_time < slot.end_time && r.end_time > slot.start_time,
       ).length;
 
       return {
@@ -289,10 +360,11 @@ export async function GET(req: NextRequest) {
         end_time: slot.end_time,
         available: Math.max(0, slot.max_bookings - booked),
         max: slot.max_bookings,
+        label: slot.label ?? null,
       };
     });
 
-    return apiOk({ date, slots: available });
+    return apiOk({ date, slots: available, closed: false });
   } catch (e) {
     return apiInternalError(e, "available slots");
   }

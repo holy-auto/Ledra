@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 function getStripe() {
   return new Stripe(process.env.STRIPE_SECRET_KEY!, {
-    apiVersion: "2025-02-24.acacia" as any,
+    apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion,
   });
 }
 
@@ -41,14 +41,14 @@ export async function POST(request: NextRequest) {
     if (role !== "admin") {
       return NextResponse.json(
         { error: "forbidden", message: "Stripe Connect を設定する権限がありません。" },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
     // Fetch agent record to check for existing Stripe account
     const { data: agentProfile, error: profileErr } = await supabase
       .from("agents")
-      .select("id, stripe_connect_account_id, name, contact_email")
+      .select("id, stripe_account_id, name, contact_email")
       .eq("id", agentId)
       .single();
 
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     }
 
     const stripe = getStripe();
-    let accountId = agentProfile.stripe_connect_account_id as string | null;
+    let accountId = agentProfile.stripe_account_id as string | null;
 
     // Create Stripe Connect account if not already linked
     if (!accountId) {
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       const { error: saveErr } = await supabase
         .from("agents")
         .update({
-          stripe_connect_account_id: accountId,
+          stripe_account_id: accountId,
           updated_at: new Date().toISOString(),
         })
         .eq("id", agentId);
@@ -87,9 +87,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate onboarding link
-    const body = await request.json().catch(() => ({} as Record<string, unknown>));
-    const returnUrl = safeUrl(body?.return_url as string | undefined);
-    const refreshUrl = safeUrl(body?.refresh_url as string | undefined);
+    const body = await request.json().catch(() => ({}) as Record<string, unknown>);
+    const base = process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/+$/, "") ?? "";
+    const returnUrl = safeUrl(body?.return_url as string | undefined, `${base}/agent/settings?stripe=success`);
+    const refreshUrl = safeUrl(body?.refresh_url as string | undefined, `${base}/agent/settings?stripe=refresh`);
 
     const accountLink = await stripe.accountLinks.create({
       account: accountId,
@@ -129,7 +130,7 @@ export async function GET() {
 
     const { data: agentProfile, error: profileErr } = await supabase
       .from("agents")
-      .select("stripe_connect_account_id, stripe_connect_onboarded")
+      .select("stripe_account_id, stripe_onboarding_done")
       .eq("id", agentId)
       .single();
 
@@ -137,7 +138,7 @@ export async function GET() {
       return NextResponse.json({ error: "agent_profile_not_found" }, { status: 404 });
     }
 
-    const accountId = agentProfile.stripe_connect_account_id as string | null;
+    const accountId = agentProfile.stripe_account_id as string | null;
     if (!accountId) {
       return NextResponse.json({
         connected: false,
@@ -153,11 +154,11 @@ export async function GET() {
     const onboarded = account.charges_enabled && account.payouts_enabled;
 
     // Update local state if changed
-    if (onboarded !== agentProfile.stripe_connect_onboarded) {
+    if (onboarded !== agentProfile.stripe_onboarding_done) {
       await supabase
         .from("agents")
         .update({
-          stripe_connect_onboarded: onboarded,
+          stripe_onboarding_done: onboarded,
           updated_at: new Date().toISOString(),
         })
         .eq("id", agentId);

@@ -14,10 +14,7 @@ export async function POST(req: NextRequest) {
     const ip = getClientIp(req);
     const rl = await checkRateLimit(`terminal-pi:${ip}`, { limit: 30, windowSec: 60 });
     if (!rl.allowed) {
-      return NextResponse.json(
-        { error: "rate_limited", retry_after: rl.retryAfterSec },
-        { status: 429 },
-      );
+      return NextResponse.json({ error: "rate_limited", retry_after: rl.retryAfterSec }, { status: 429 });
     }
 
     const supabase = await createSupabaseServerClient();
@@ -40,9 +37,7 @@ export async function POST(req: NextRequest) {
     const currency = String(body?.currency ?? "jpy");
     const description = body?.description ? String(body.description) : undefined;
     const extraMetadata =
-      body?.metadata && typeof body.metadata === "object"
-        ? (body.metadata as Record<string, string>)
-        : {};
+      body?.metadata && typeof body.metadata === "object" ? (body.metadata as Record<string, string>) : {};
 
     // テナントのStripe Connectアカウントを取得
     const admin = createAdminClient();
@@ -56,13 +51,11 @@ export async function POST(req: NextRequest) {
     const isOnboarded = tenant?.stripe_connect_onboarded as boolean | null;
 
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: "2025-02-24.acacia" as any,
+      apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion,
     });
 
     // Connectアカウントがある場合はそちらでPaymentIntentを作成
-    const stripeOptions = connectAccountId && isOnboarded
-      ? { stripeAccount: connectAccountId }
-      : undefined;
+    const stripeOptions = connectAccountId && isOnboarded ? { stripeAccount: connectAccountId } : undefined;
 
     const paymentIntent = await stripe.paymentIntents.create(
       {
@@ -120,12 +113,10 @@ export async function GET(req: NextRequest) {
     const isOnboarded = tenant?.stripe_connect_onboarded as boolean | null;
 
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: "2025-02-24.acacia" as any,
+      apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion,
     });
 
-    const stripeOptions = connectAccountId && isOnboarded
-      ? { stripeAccount: connectAccountId }
-      : undefined;
+    const stripeOptions = connectAccountId && isOnboarded ? { stripeAccount: connectAccountId } : undefined;
 
     const pi = await stripe.paymentIntents.retrieve(id, stripeOptions);
 

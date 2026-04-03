@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import Badge from "@/components/ui/Badge";
 import type { BadgeVariant } from "@/lib/statusMaps";
@@ -35,6 +36,7 @@ const DEFAULT_SETTINGS: AgentSettings = {
 
 export default function AgentSettingsPage() {
   const supabase = useMemo(() => createClient(), []);
+  const searchParams = useSearchParams();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +44,7 @@ export default function AgentSettingsPage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [settings, setSettings] = useState<AgentSettings>(DEFAULT_SETTINGS);
   const [stripeLoading, setStripeLoading] = useState(false);
+  const [stripeCheckLoading, setStripeCheckLoading] = useState(false);
 
   const isAdmin = settings.role === "admin";
 
@@ -63,11 +66,17 @@ export default function AgentSettingsPage() {
         if (!res.ok) throw new Error("設定情報の取得に失敗しました");
         const json = await res.json();
         if (!cancelled) {
-          setSettings({ ...DEFAULT_SETTINGS, ...json.settings });
+          const agent = json.agent ?? {};
+          setSettings({
+            ...DEFAULT_SETTINGS,
+            ...agent,
+            stripe_connected: agent.stripe_onboarding_done ?? false,
+            stripe_account_id: agent.stripe_account_id ?? null,
+            role: json.current_user?.role ?? "viewer",
+          });
         }
       } catch (e: unknown) {
-        if (!cancelled)
-          setError(e instanceof Error ? e.message : "エラーが発生しました");
+        if (!cancelled) setError(e instanceof Error ? e.message : "エラーが発生しました");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -77,6 +86,25 @@ export default function AgentSettingsPage() {
       cancelled = true;
     };
   }, []);
+
+  // Auto-check Stripe status when returning from onboarding (?stripe=success or ?stripe=refresh)
+  useEffect(() => {
+    const stripeParam = searchParams.get("stripe");
+    if (stripeParam === "success" || stripeParam === "refresh") {
+      fetch("/api/agent/stripe-connect")
+        .then((r) => r.json())
+        .then((json) => {
+          setSettings((prev) => ({
+            ...prev,
+            stripe_connected: json.onboarded ?? false,
+            stripe_account_id: json.account_id ?? prev.stripe_account_id,
+          }));
+        })
+        .catch(() => {
+          /* ignore */
+        });
+    }
+  }, [searchParams]);
 
   // Save settings
   const handleSave = useCallback(async () => {
@@ -114,7 +142,7 @@ export default function AgentSettingsPage() {
   const handleStripeSetup = useCallback(async () => {
     setStripeLoading(true);
     try {
-      const res = await fetch("/api/agent/stripe/connect", {
+      const res = await fetch("/api/agent/stripe-connect", {
         method: "POST",
       });
       if (!res.ok) throw new Error("Stripe Connect の設定に失敗しました");
@@ -147,6 +175,25 @@ export default function AgentSettingsPage() {
     }
   }, []);
 
+  // Stripe Connect status check (after onboarding)
+  const handleStripeStatusCheck = useCallback(async () => {
+    setStripeCheckLoading(true);
+    try {
+      const res = await fetch("/api/agent/stripe-connect");
+      if (!res.ok) throw new Error("ステータスの確認に失敗しました");
+      const json = await res.json();
+      setSettings((prev) => ({
+        ...prev,
+        stripe_connected: json.onboarded ?? false,
+        stripe_account_id: json.account_id ?? prev.stripe_account_id,
+      }));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "エラーが発生しました");
+    } finally {
+      setStripeCheckLoading(false);
+    }
+  }, []);
+
   // Logout
   const handleLogout = useCallback(async () => {
     await supabase.auth.signOut();
@@ -154,10 +201,7 @@ export default function AgentSettingsPage() {
   }, [supabase]);
 
   // Update field helper
-  const updateField = <K extends keyof AgentSettings>(
-    key: K,
-    value: AgentSettings[K],
-  ) => {
+  const updateField = <K extends keyof AgentSettings>(key: K, value: AgentSettings[K]) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -180,12 +224,8 @@ export default function AgentSettingsPage() {
       <div className="flex flex-wrap items-end justify-between gap-4 pb-2">
         <div className="space-y-1">
           <span className="section-tag">SETTINGS</span>
-          <h1 className="text-[28px] font-semibold tracking-tight text-primary leading-tight">
-            設定
-          </h1>
-          <p className="text-[14px] text-secondary leading-relaxed">
-            アカウント設定・連携情報の管理
-          </p>
+          <h1 className="text-[28px] font-semibold tracking-tight text-primary leading-tight">設定</h1>
+          <p className="text-[14px] text-secondary leading-relaxed">アカウント設定・連携情報の管理</p>
         </div>
       </div>
 
@@ -207,9 +247,7 @@ export default function AgentSettingsPage() {
 
           {/* Profile section */}
           <section className="glass-card p-6 space-y-5">
-            <div className="text-xs font-semibold tracking-[0.18em] text-muted">
-              プロフィール
-            </div>
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted">プロフィール</div>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="space-y-1">
                 <span className="text-xs text-muted">エージェント名</span>
@@ -305,12 +343,7 @@ export default function AgentSettingsPage() {
             </div>
             {isAdmin && (
               <div className="flex justify-end">
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={handleSave}
-                  disabled={saving}
-                >
+                <button type="button" className="btn-primary" onClick={handleSave} disabled={saving}>
                   {saving ? "保存中..." : "プロフィールを保存"}
                 </button>
               </div>
@@ -319,9 +352,7 @@ export default function AgentSettingsPage() {
 
           {/* Stripe Connect section */}
           <section className="glass-card p-6 space-y-4">
-            <div className="text-xs font-semibold tracking-[0.18em] text-muted">
-              振込先設定（STRIPE CONNECT）
-            </div>
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted">振込先設定（STRIPE CONNECT）</div>
             <div className="flex items-center gap-3">
               <span className="text-sm text-secondary">ステータス：</span>
               {settings.stripe_connected ? (
@@ -331,11 +362,9 @@ export default function AgentSettingsPage() {
               )}
             </div>
             {settings.stripe_connected && settings.stripe_account_id && (
-              <p className="text-xs text-muted">
-                アカウントID: {settings.stripe_account_id}
-              </p>
+              <p className="text-xs text-muted">アカウントID: {settings.stripe_account_id}</p>
             )}
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               {settings.stripe_connected ? (
                 <button
                   type="button"
@@ -350,19 +379,25 @@ export default function AgentSettingsPage() {
                   type="button"
                   className="btn-primary"
                   onClick={handleStripeSetup}
-                  disabled={stripeLoading}
+                  disabled={stripeLoading || !isAdmin}
                 >
                   {stripeLoading ? "設定中..." : "Stripe Connect を設定"}
                 </button>
               )}
+              <button
+                type="button"
+                className="btn-ghost text-sm"
+                onClick={handleStripeStatusCheck}
+                disabled={stripeCheckLoading}
+              >
+                {stripeCheckLoading ? "確認中..." : "ステータスを再確認"}
+              </button>
             </div>
           </section>
 
           {/* LINE integration section */}
           <section className="glass-card p-6 space-y-4">
-            <div className="text-xs font-semibold tracking-[0.18em] text-muted">
-              LINE連携
-            </div>
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted">LINE連携</div>
             {settings.line_official_account_id ? (
               <div className="space-y-2">
                 <div className="flex items-center gap-3">
@@ -371,9 +406,7 @@ export default function AgentSettingsPage() {
                 </div>
                 <p className="text-sm text-secondary">
                   LINE公式アカウントID：
-                  <span className="font-mono text-primary">
-                    {settings.line_official_account_id}
-                  </span>
+                  <span className="font-mono text-primary">{settings.line_official_account_id}</span>
                 </p>
               </div>
             ) : (
@@ -386,32 +419,21 @@ export default function AgentSettingsPage() {
 
           {/* Notification settings section */}
           <section className="glass-card p-6 space-y-4">
-            <div className="text-xs font-semibold tracking-[0.18em] text-muted">
-              通知設定
-            </div>
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted">通知設定</div>
             <label className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={settings.email_notifications}
-                onChange={(e) =>
-                  updateField("email_notifications", e.target.checked)
-                }
+                onChange={(e) => updateField("email_notifications", e.target.checked)}
                 className="h-4 w-4 rounded border-border-default text-accent focus:ring-accent"
               />
-              <span className="text-sm text-primary">
-                メール通知を受け取る
-              </span>
+              <span className="text-sm text-primary">メール通知を受け取る</span>
             </label>
             <p className="text-xs text-muted">
               紹介ステータスの変更、コミッション確定、お知らせなどの通知をメールで受け取ります。
             </p>
             <div className="flex justify-end">
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={handleSave}
-                disabled={saving}
-              >
+              <button type="button" className="btn-primary" onClick={handleSave} disabled={saving}>
                 {saving ? "保存中..." : "通知設定を保存"}
               </button>
             </div>
@@ -419,9 +441,7 @@ export default function AgentSettingsPage() {
 
           {/* Logout section */}
           <section className="glass-card p-6 space-y-4">
-            <div className="text-xs font-semibold tracking-[0.18em] text-muted">
-              アカウント
-            </div>
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted">アカウント</div>
             <button
               type="button"
               className="rounded-lg border border-danger/30 bg-danger-dim px-4 py-2 text-sm font-medium text-danger-text hover:bg-danger/10 transition-colors"

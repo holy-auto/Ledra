@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("Missing STRIPE_SECRET_KEY");
-  return new Stripe(key, { apiVersion: "2025-02-24.acacia" as any });
+  return new Stripe(key, { apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion });
 }
 
 function resolveBaseUrl(): string {
@@ -36,10 +36,10 @@ export async function POST(req: NextRequest) {
 
     // Only admin can manage billing
     if (caller.role !== "admin") {
-      return new Response(
-        JSON.stringify({ error: "管理者のみ課金操作が可能です。" }),
-        { status: 403, headers: { "content-type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "管理者のみ課金操作が可能です。" }), {
+        status: 403,
+        headers: { "content-type": "application/json" },
+      });
     }
 
     const body = await req.json().catch(() => ({}));
@@ -95,10 +95,7 @@ export async function POST(req: NextRequest) {
       });
       customerId = customer.id;
 
-      await admin
-        .from("insurers")
-        .update({ stripe_customer_id: customerId })
-        .eq("id", caller.insurerId);
+      await admin.from("insurers").update({ stripe_customer_id: customerId }).eq("id", caller.insurerId);
     }
 
     // Create Checkout session
@@ -153,7 +150,7 @@ export async function GET() {
     if (insurer.stripe_subscription_id) {
       try {
         const stripe = getStripe();
-        const sub = await stripe.subscriptions.retrieve(insurer.stripe_subscription_id) as any;
+        const sub = (await stripe.subscriptions.retrieve(insurer.stripe_subscription_id)) as any;
         subscription = {
           status: sub.status,
           current_period_end: sub.current_period_end ?? null,

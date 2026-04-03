@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
+import Stripe from "stripe";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveCallerFull } from "@/lib/api/auth";
@@ -59,18 +60,16 @@ export async function POST(req: NextRequest) {
 
     // Stripe Customer がなければ作成
     if (!customerId) {
-      const Stripe = (await import("stripe")).default;
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2025-02-24.acacia" as any });
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+        apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion,
+      });
       const customer = await stripe.customers.create({
         name: (tenant.name as string) ?? "Ledra Tenant",
         metadata: { tenant_id: caller.tenantId },
       });
       customerId = customer.id;
 
-      await admin
-        .from("tenants")
-        .update({ stripe_customer_id: customerId })
-        .eq("id", caller.tenantId);
+      await admin.from("tenants").update({ stripe_customer_id: customerId }).eq("id", caller.tenantId);
     }
 
     const appUrl = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "";

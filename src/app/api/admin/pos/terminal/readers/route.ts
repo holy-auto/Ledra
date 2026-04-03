@@ -30,12 +30,10 @@ export async function GET(_req: NextRequest) {
     const isOnboarded = tenant?.stripe_connect_onboarded as boolean | null;
 
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: "2025-02-24.acacia" as any,
+      apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion,
     });
 
-    const stripeOptions = connectAccountId && isOnboarded
-      ? { stripeAccount: connectAccountId }
-      : undefined;
+    const stripeOptions = connectAccountId && isOnboarded ? { stripeAccount: connectAccountId } : undefined;
 
     const list = await stripe.terminal.readers.list({ limit: 100 }, stripeOptions);
 

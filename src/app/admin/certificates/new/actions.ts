@@ -1,12 +1,11 @@
 "use server";
 
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { makePublicId } from "@/lib/publicId";
 import { enqueueInsuranceCaseCreated } from "@/lib/qstash/publish";
 
-export type CreateCertResult =
-  | { ok: true; public_id: string }
-  | { ok: false; error: string };
+export type CreateCertResult = { ok: true; public_id: string } | { ok: false; error: string };
 
 export async function createCertAction(formData: FormData): Promise<CreateCertResult> {
   const supabase = await createSupabaseServerClient();
@@ -15,11 +14,7 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
   const userId = userRes.user?.id ?? null;
   if (!userId) return { ok: false, error: "unauthorized" };
 
-  const { data: mem } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .limit(1)
-    .single();
+  const { data: mem } = await supabase.from("tenant_memberships").select("tenant_id").limit(1).single();
   const tenantId = mem?.tenant_id as string | undefined;
   if (!tenantId) return { ok: false, error: "no_tenant" };
 
@@ -28,11 +23,7 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
 
   // Parallelize independent DB reads
   const [{ data: tenantRow }, templateResult] = await Promise.all([
-    supabase
-      .from("tenants")
-      .select("logo_asset_path")
-      .eq("id", tenantId)
-      .single(),
+    supabase.from("tenants").select("logo_asset_path").eq("id", tenantId).single(),
     template_id
       ? supabase
           .from("templates")
@@ -123,7 +114,10 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
     const key = String(k);
     if (!key.startsWith("f__")) continue;
     const fkey = key.slice(3);
-    if (v === "on") { values[fkey] = true; continue; }
+    if (v === "on") {
+      values[fkey] = true;
+      continue;
+    }
     const sv = String(v);
     if (values[fkey] === undefined) values[fkey] = sv;
     else if (Array.isArray(values[fkey])) values[fkey].push(sv);
@@ -198,5 +192,62 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
     }).catch((e) => console.warn("[cert] QStash enqueue failed:", e));
   }
 
+  // 発行直後フォローアップ: send_on_issue が有効なテナントにトリガー（非同期）
+  if (certStatus === "active") {
+    triggerPostIssueFollowUp({
+      tenantId,
+      publicId: public_id,
+      customerId: customer_id ?? undefined,
+      customerName: customer_name,
+    }).catch((e) => console.warn("[cert] post_issue follow-up failed:", e));
+  }
+
   return { ok: true, public_id };
+}
+
+/** 発行直後フォローアップを非同期でトリガー */
+async function triggerPostIssueFollowUp(params: {
+  tenantId: string;
+  publicId: string;
+  customerId?: string;
+  customerName: string;
+}) {
+  const admin = getSupabaseAdmin();
+
+  // send_on_issue 設定確認
+  const { data: setting } = await admin
+    .from("follow_up_settings")
+    .select("send_on_issue, enabled")
+    .eq("tenant_id", params.tenantId)
+    .eq("enabled", true)
+    .single();
+
+  if (!setting?.send_on_issue) return;
+
+  // 重複チェック: まだ発行されていない証明書IDのみ処理
+  const { data: cert } = await admin
+    .from("certificates")
+    .select("id, service_name, warranty_period, vehicle_maker, vehicle_model, vehicle_color")
+    .eq("public_id", params.publicId)
+    .single();
+
+  if (!cert || !params.customerId) return;
+
+  const { data: existing } = await admin
+    .from("notification_logs")
+    .select("id")
+    .eq("target_id", cert.id)
+    .eq("type", "post_issue")
+    .limit(1);
+
+  if (existing?.length) return;
+
+  // post_issue 通知ログだけ記録（実際の送信はcronに任せるか、メール送信）
+  await admin.from("notification_logs").insert({
+    tenant_id: params.tenantId,
+    type: "post_issue",
+    target_type: "certificate",
+    target_id: cert.id,
+    status: "queued",
+  });
 }

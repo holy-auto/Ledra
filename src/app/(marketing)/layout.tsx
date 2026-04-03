@@ -6,9 +6,10 @@ import MarketingThemeWrapper from "./MarketingThemeWrapper";
 
 const notoSansJP = Noto_Sans_JP({
   subsets: ["latin"],
-  weight: ["400", "500", "700"],
+  weight: ["400", "700"], // 500は実質400/700でブラウザ補間、リクエスト削減
   variable: "--font-noto",
   display: "swap",
+  preload: true,
 });
 
 // ISR: All marketing pages regenerate every 1 hour
@@ -19,23 +20,17 @@ export const metadata = {
     default: "Ledra | WEB施工証明書SaaS",
     template: "%s | Ledra",
   },
-  description:
-    "施工証明をデジタルで。Ledraは、施工店と保険会社をつなぐWEB施工証明書プラットフォームです。",
+  description: "施工証明をデジタルで。Ledraは、施工店と保険会社をつなぐWEB施工証明書プラットフォームです。",
   openGraph: {
     title: "Ledra | WEB施工証明書SaaS",
-    description:
-      "施工証明をデジタルで。Ledraは、施工店と保険会社をつなぐWEB施工証明書プラットフォームです。",
+    description: "施工証明をデジタルで。Ledraは、施工店と保険会社をつなぐWEB施工証明書プラットフォームです。",
     siteName: "Ledra",
     locale: "ja_JP",
     type: "website",
   },
 };
 
-export default function MarketingLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function MarketingLayout({ children }: { children: React.ReactNode }) {
   return (
     <MarketingThemeWrapper
       data-theme="marketing"

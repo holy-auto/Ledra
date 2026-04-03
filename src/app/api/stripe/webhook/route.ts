@@ -25,9 +25,7 @@ function asStringId(v: any): string | null {
 
 /** Stripe SDK v20+: current_period_end moved from Subscription to SubscriptionItem */
 function getCurrentPeriodEnd(sub: Stripe.Subscription): number | null {
-  return (sub as any).current_period_end
-    ?? sub.items?.data?.[0]?.current_period_end
-    ?? null;
+  return (sub as any).current_period_end ?? sub.items?.data?.[0]?.current_period_end ?? null;
 }
 
 // ── Payment failure notification email ──
@@ -61,7 +59,10 @@ async function sendPaymentFailureEmail(
   const { data: userData } = await supabase.auth.admin.getUserById(members[0].user_id);
   const email = userData?.user?.email;
   if (!email) {
-    console.warn("webhook: payment failure email skipped — no email for user", { tenantId, userId: members[0].user_id });
+    console.warn("webhook: payment failure email skipped — no email for user", {
+      tenantId,
+      userId: members[0].user_id,
+    });
     return;
   }
 
@@ -128,7 +129,7 @@ Ledra — 株式会社HOLY AUTO
 function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("Missing STRIPE_SECRET_KEY");
-  return new Stripe(key, { apiVersion: "2025-02-24.acacia" as any });
+  return new Stripe(key, { apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion });
 }
 
 type TenantSelector = { by: "id"; value: string } | { by: "slug"; value: string };
@@ -157,11 +158,7 @@ async function resolveTenantSelector(params: {
   }
 
   if (customerId) {
-    const { data, error } = await supabase
-      .from("tenants")
-      .select("id")
-      .eq("stripe_customer_id", customerId)
-      .limit(1);
+    const { data, error } = await supabase.from("tenants").select("id").eq("stripe_customer_id", customerId).limit(1);
     if (error) throw error;
     if (data?.[0]?.id) return { by: "id", value: data[0].id };
   }
@@ -172,15 +169,18 @@ async function resolveTenantSelector(params: {
 async function updateTenantBySelector(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   selector: TenantSelector,
-  patch: Record<string, any>
+  patch: Record<string, any>,
 ) {
   const q = supabase.from("tenants").update(patch);
-  const { error } =
-    selector.by === "id" ? await q.eq("id", selector.value) : await q.eq("slug", selector.value);
+  const { error } = selector.by === "id" ? await q.eq("id", selector.value) : await q.eq("slug", selector.value);
   if (error) throw error;
 }
 
-async function syncBySubscription(stripe: Stripe, supabase: ReturnType<typeof getSupabaseAdmin>, sub: Stripe.Subscription) {
+async function syncBySubscription(
+  stripe: Stripe,
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  sub: Stripe.Subscription,
+) {
   const subscriptionId = sub.id;
   const customerId = asStringId(sub.customer);
 
@@ -217,7 +217,11 @@ async function syncBySubscription(stripe: Stripe, supabase: ReturnType<typeof ge
 }
 
 // ─── Insurer subscription sync ───
-async function syncInsurerSubscription(stripe: Stripe, supabase: ReturnType<typeof getSupabaseAdmin>, sub: Stripe.Subscription) {
+async function syncInsurerSubscription(
+  stripe: Stripe,
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  sub: Stripe.Subscription,
+) {
   const insurerId = sub.metadata?.insurer_id;
   if (!insurerId) {
     // Try reverse lookup by stripe_subscription_id or customer_id
@@ -236,11 +240,7 @@ async function syncInsurerSubscription(stripe: Stripe, supabase: ReturnType<type
     }
 
     if (!resolvedInsurerId && customerId) {
-      const { data } = await supabase
-        .from("insurers")
-        .select("id")
-        .eq("stripe_customer_id", customerId)
-        .limit(1);
+      const { data } = await supabase.from("insurers").select("id").eq("stripe_customer_id", customerId).limit(1);
       if (data?.[0]?.id) resolvedInsurerId = data[0].id;
     }
 
@@ -251,7 +251,11 @@ async function syncInsurerSubscription(stripe: Stripe, supabase: ReturnType<type
   return await doSyncInsurer(supabase, insurerId, sub);
 }
 
-async function doSyncInsurer(supabase: ReturnType<typeof getSupabaseAdmin>, insurerId: string, sub: Stripe.Subscription) {
+async function doSyncInsurer(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  insurerId: string,
+  sub: Stripe.Subscription,
+) {
   const priceId: string | null = sub.items?.data?.[0]?.price?.id ?? null;
   const planTier = priceId ? insurerPriceIdToPlanTier(priceId) : null;
   const active = isActiveStatus(sub.status);
@@ -339,13 +343,10 @@ export async function POST(req: NextRequest) {
 
           // NFCタグの自動プロビジョニング
           if (tenantId) {
-            const { data: items } = await supabase
-              .from("shop_order_items")
-              .select("*")
-              .eq("order_id", shopOrderId);
+            const { data: items } = await supabase.from("shop_order_items").select("*").eq("order_id", shopOrderId);
 
             for (const item of items ?? []) {
-              const meta = item.meta as Record<string, unknown> ?? {};
+              const meta = (item.meta as Record<string, unknown>) ?? {};
               const qtyPerPack = (meta.quantity_per_pack as number) ?? 0;
               if (qtyPerPack > 0) {
                 // NFCタグ: パックの枚数 × 注文数量分のタグ枠を作成
@@ -357,9 +358,7 @@ export async function POST(req: NextRequest) {
                 }));
 
                 if (tagRows.length > 0) {
-                  const { error: tagErr } = await supabase
-                    .from("nfc_tags")
-                    .insert(tagRows);
+                  const { error: tagErr } = await supabase.from("nfc_tags").insert(tagRows);
                   if (tagErr) {
                     console.error("webhook: nfc_tags provisioning failed", { shopOrderId, tenantId, error: tagErr });
                   } else {
@@ -381,20 +380,23 @@ export async function POST(req: NextRequest) {
           if (tenantId && optionType && subscriptionId) {
             // subscription item ID を取得
             const sub = await stripe.subscriptions.retrieve(subscriptionId);
-            const recurringItem = sub.items?.data?.find(i => i.price?.recurring);
+            const recurringItem = sub.items?.data?.find((i) => i.price?.recurring);
 
-            await supabase.from("tenant_option_subscriptions").upsert({
-              tenant_id: tenantId,
-              option_type: optionType,
-              status: "active",
-              stripe_subscription_id: subscriptionId,
-              stripe_subscription_item_id: recurringItem?.id ?? null,
-              started_at: new Date().toISOString(),
-              current_period_end: getCurrentPeriodEnd(sub)
-                ? new Date(getCurrentPeriodEnd(sub)! * 1000).toISOString()
-                : null,
-              updated_at: new Date().toISOString(),
-            }, { onConflict: "tenant_id,option_type" });
+            await supabase.from("tenant_option_subscriptions").upsert(
+              {
+                tenant_id: tenantId,
+                option_type: optionType,
+                status: "active",
+                stripe_subscription_id: subscriptionId,
+                stripe_subscription_item_id: recurringItem?.id ?? null,
+                started_at: new Date().toISOString(),
+                current_period_end: getCurrentPeriodEnd(sub)
+                  ? new Date(getCurrentPeriodEnd(sub)! * 1000).toISOString()
+                  : null,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "tenant_id,option_type" },
+            );
 
             console.info("webhook: template option subscription created", { tenantId, optionType, subscriptionId });
           }
@@ -433,11 +435,17 @@ export async function POST(req: NextRequest) {
           const optionType = sub.metadata?.option_type;
           if (tenantId && optionType) {
             const active = isActiveStatus(sub.status);
-            const status = sub.status === "canceled" ? "cancelled"
-              : sub.status === "past_due" ? "past_due"
-              : active ? "active" : "suspended";
+            const status =
+              sub.status === "canceled"
+                ? "cancelled"
+                : sub.status === "past_due"
+                  ? "past_due"
+                  : active
+                    ? "active"
+                    : "suspended";
 
-            await supabase.from("tenant_option_subscriptions")
+            await supabase
+              .from("tenant_option_subscriptions")
               .update({
                 status,
                 current_period_end: getCurrentPeriodEnd(sub)
@@ -478,11 +486,12 @@ export async function POST(req: NextRequest) {
         //   legacy: inv.subscription (string)
         //   new:    inv.parent?.subscription_details?.subscription (string)
         //   fallback: inv.lines?.data?.[0]?.parent?.subscription_item_details?.subscription (string)
-        const rawSubId = inv.subscription
-          ?? inv.subscription_id
-          ?? inv.parent?.subscription_details?.subscription
-          ?? inv.lines?.data?.[0]?.parent?.subscription_item_details?.subscription
-          ?? inv.lines?.data?.[0]?.subscription;
+        const rawSubId =
+          inv.subscription ??
+          inv.subscription_id ??
+          inv.parent?.subscription_details?.subscription ??
+          inv.lines?.data?.[0]?.parent?.subscription_item_details?.subscription ??
+          inv.lines?.data?.[0]?.subscription;
         const subscriptionId = asStringId(rawSubId);
         if (!subscriptionId) {
           console.warn("webhook: invoice has no subscription ID, skipping", { eventType: event.type, invId: inv.id });
@@ -497,7 +506,8 @@ export async function POST(req: NextRequest) {
           const optionType = sub.metadata?.option_type;
           if (tenantId && optionType) {
             const isPaid = event.type === "invoice.paid";
-            await supabase.from("tenant_option_subscriptions")
+            await supabase
+              .from("tenant_option_subscriptions")
               .update({
                 status: isPaid ? "active" : "past_due",
                 current_period_end: getCurrentPeriodEnd(sub)
@@ -527,9 +537,18 @@ export async function POST(req: NextRequest) {
           const tenantId = sub.metadata?.tenant_id;
           const customerId = asStringId(sub.customer);
           if (tenantId || customerId) {
-            const resolvedTenantId = tenantId ?? (customerId ? (
-              await supabase.from("tenants").select("id").eq("stripe_customer_id", customerId).limit(1).maybeSingle()
-            ).data?.id : null);
+            const resolvedTenantId =
+              tenantId ??
+              (customerId
+                ? (
+                    await supabase
+                      .from("tenants")
+                      .select("id")
+                      .eq("stripe_customer_id", customerId)
+                      .limit(1)
+                      .maybeSingle()
+                  ).data?.id
+                : null);
 
             if (resolvedTenantId) {
               const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.ledra.co.jp";
@@ -566,10 +585,7 @@ export async function POST(req: NextRequest) {
           .maybeSingle();
 
         if (tenant && tenant.stripe_connect_onboarded !== onboarded) {
-          await supabase
-            .from("tenants")
-            .update({ stripe_connect_onboarded: onboarded })
-            .eq("id", tenant.id);
+          await supabase.from("tenants").update({ stripe_connect_onboarded: onboarded }).eq("id", tenant.id);
           console.info("webhook: connect account synced", { accountId, onboarded });
         }
         break;
@@ -579,7 +595,11 @@ export async function POST(req: NextRequest) {
         break;
     }
   } catch (e) {
-    console.error("stripe webhook handler failed", { type: event.type, id: event.id, error: e instanceof Error ? e.message : e });
+    console.error("stripe webhook handler failed", {
+      type: event.type,
+      id: event.id,
+      error: e instanceof Error ? e.message : e,
+    });
     return apiInternalError(e, "stripe webhook handler");
   }
 

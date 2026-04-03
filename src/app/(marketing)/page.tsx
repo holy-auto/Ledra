@@ -41,9 +41,7 @@ export default async function HomePage() {
             <ScrollReveal variant="fade-up">
               <div className="space-y-5 text-[1.125rem] md:text-[1.25rem] leading-[1.85] text-white/50">
                 <p>腕のいい職人がいる。丁寧な仕事をしている。</p>
-                <p>
-                  でも、その技術は施工が終わった瞬間に見えなくなる。
-                </p>
+                <p>でも、その技術は施工が終わった瞬間に見えなくなる。</p>
                 <p className="text-white/35">
                   写真は個人のスマホに埋もれ、記録は紙のファイルに閉じられ、
                   <br className="hidden md:block" />
@@ -78,9 +76,7 @@ export default async function HomePage() {
                 ].map((line, i) => (
                   <div key={i} className="flex items-center gap-4 py-3">
                     <div className="w-2 h-2 rounded-full bg-gradient-to-r from-blue-400 to-violet-400 flex-shrink-0" />
-                    <span className="text-[1.125rem] md:text-[1.25rem] font-medium text-white/70">
-                      {line}
-                    </span>
+                    <span className="text-[1.125rem] md:text-[1.25rem] font-medium text-white/70">{line}</span>
                   </div>
                 ))}
               </div>
@@ -140,10 +136,7 @@ export default async function HomePage() {
 
       {/* Ledraの解決方法 */}
       <Section>
-        <SectionHeading
-          title="Ledraが解決します"
-          subtitle="デジタル施工証明書で、施工店と保険会社の業務を変えます"
-        />
+        <SectionHeading title="Ledraが解決します" subtitle="デジタル施工証明書で、施工店と保険会社の業務を変えます" />
         <FeatureGrid>
           <FeatureCard
             delay={0}
@@ -180,10 +173,7 @@ export default async function HomePage() {
 
       {/* 証明書発行の流れ */}
       <Section bg="alt">
-        <SectionHeading
-          title="証明書発行の流れ"
-          subtitle="施工完了から証明書の共有まで、わずか数分で完了します"
-        />
+        <SectionHeading title="証明書発行の流れ" subtitle="施工完了から証明書の共有まで、わずか数分で完了します" />
         <div className="max-w-3xl mx-auto">
           {[
             {
@@ -224,10 +214,7 @@ export default async function HomePage() {
 
       {/* Ledraエコシステム */}
       <Section>
-        <SectionHeading
-          title="Ledraのエコシステム"
-          subtitle="記録から始まり、業界全体へ広がるプラットフォーム"
-        />
+        <SectionHeading title="Ledraのエコシステム" subtitle="記録から始まり、業界全体へ広がるプラットフォーム" />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
           {[
             {
@@ -315,7 +302,13 @@ export default async function HomePage() {
                     <div className="mt-1 text-lg font-bold text-white">Ledra</div>
                   </div>
                   <div className="w-10 h-10 rounded-lg bg-blue-500/20 border border-blue-500/30 flex items-center justify-center">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5 text-blue-400">
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      className="w-5 h-5 text-blue-400"
+                    >
                       <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                     </svg>
                   </div>
@@ -342,7 +335,13 @@ export default async function HomePage() {
                 <div className="h-px bg-white/[0.06]" />
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-white/[0.06] flex items-center justify-center">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-green-400">
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      className="w-4 h-4 text-green-400"
+                    >
                       <path d="M5 13l4 4L19 7" />
                     </svg>
                   </div>
@@ -377,17 +376,27 @@ export default async function HomePage() {
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-2.5 text-sm text-white/60">
                     <svg className="w-4 h-4 flex-shrink-0 mt-0.5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      <path
+                        fillRule="evenodd"
+                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                        clipRule="evenodd"
+                      />
                     </svg>
                     {item}
                   </li>
                 ))}
               </ul>
               <div className="mt-8 flex flex-col sm:flex-row gap-3">
-                <Link href="/signup" className="inline-flex items-center justify-center font-medium rounded-lg text-sm px-6 py-3 bg-white text-[#060a12] hover:bg-gray-100 transition-colors">
-                  無料で始める
+                <Link
+                  href="/pricing"
+                  className="inline-flex items-center justify-center font-medium rounded-lg text-sm px-6 py-3 bg-white text-[#060a12] hover:bg-gray-100 transition-colors"
+                >
+                  プランを見る
                 </Link>
-                <Link href="/for-shops" className="inline-flex items-center justify-center font-medium rounded-lg text-sm px-6 py-3 border border-white/20 text-white/70 hover:text-white hover:border-white/40 transition-colors">
+                <Link
+                  href="/for-shops"
+                  className="inline-flex items-center justify-center font-medium rounded-lg text-sm px-6 py-3 border border-white/20 text-white/70 hover:text-white hover:border-white/40 transition-colors"
+                >
                   詳しく見る
                 </Link>
               </div>
@@ -405,18 +414,32 @@ export default async function HomePage() {
                   "既存システムとのAPI連携",
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-2.5 text-sm text-white/60">
-                    <svg className="w-4 h-4 flex-shrink-0 mt-0.5 text-violet-400" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    <svg
+                      className="w-4 h-4 flex-shrink-0 mt-0.5 text-violet-400"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                        clipRule="evenodd"
+                      />
                     </svg>
                     {item}
                   </li>
                 ))}
               </ul>
               <div className="mt-8 flex flex-col sm:flex-row gap-3">
-                <Link href="/contact" className="inline-flex items-center justify-center font-medium rounded-lg text-sm px-6 py-3 bg-white text-[#060a12] hover:bg-gray-100 transition-colors">
+                <Link
+                  href="/contact"
+                  className="inline-flex items-center justify-center font-medium rounded-lg text-sm px-6 py-3 bg-white text-[#060a12] hover:bg-gray-100 transition-colors"
+                >
                   デモを依頼
                 </Link>
-                <Link href="/for-insurers" className="inline-flex items-center justify-center font-medium rounded-lg text-sm px-6 py-3 border border-white/20 text-white/70 hover:text-white hover:border-white/40 transition-colors">
+                <Link
+                  href="/for-insurers"
+                  className="inline-flex items-center justify-center font-medium rounded-lg text-sm px-6 py-3 border border-white/20 text-white/70 hover:text-white hover:border-white/40 transition-colors"
+                >
                   詳しく見る
                 </Link>
               </div>
@@ -436,10 +459,7 @@ export default async function HomePage() {
 
       {/* ユースケース */}
       <Section bg="alt">
-        <SectionHeading
-          title="ご利用シーン"
-          subtitle="さまざまな場面でLedraをご活用いただけます"
-        />
+        <SectionHeading title="ご利用シーン" subtitle="さまざまな場面でLedraをご活用いただけます" />
         <FeatureGrid>
           <FeatureCard
             variant="bordered"
@@ -483,10 +503,14 @@ export default async function HomePage() {
           <SectionHeading title="ご利用状況" />
           <StatsRow>
             {stats.shopCount !== "—" && (
-              <StatCard value={stats.shopCount} label="導入企業数" delay={0} />
+              <ScrollReveal variant="scale-up" delay={0}>
+                <StatCard value={stats.shopCount} label="導入企業数" />
+              </ScrollReveal>
             )}
             {stats.certificateCount !== "—" && (
-              <StatCard value={stats.certificateCount} label="証明書発行数" delay={150} />
+              <ScrollReveal variant="scale-up" delay={150}>
+                <StatCard value={stats.certificateCount} label="証明書発行数" />
+              </ScrollReveal>
             )}
           </StatsRow>
         </Section>
@@ -494,10 +518,7 @@ export default async function HomePage() {
 
       {/* 料金概要 */}
       <Section bg="alt">
-        <SectionHeading
-          title="料金プラン"
-          subtitle="シンプルな料金体系で、すぐに始められます"
-        />
+        <SectionHeading title="料金プラン" subtitle="シンプルな料金体系で、すぐに始められます" />
         <PricingCards>
           <PricingCard
             name={PLANS.free.name}
@@ -538,10 +559,7 @@ export default async function HomePage() {
         </PricingCards>
         <ScrollReveal variant="fade-in" delay={400}>
           <p className="text-center mt-8">
-            <Link
-              href="/pricing"
-              className="text-sm font-medium text-blue-400 hover:underline"
-            >
+            <Link href="/pricing" className="text-sm font-medium text-blue-400 hover:underline">
               料金の詳細を見る &rarr;
             </Link>
           </p>
@@ -571,10 +589,7 @@ export default async function HomePage() {
         </FAQList>
         <ScrollReveal variant="fade-in" delay={200}>
           <p className="text-center mt-8">
-            <Link
-              href="/faq"
-              className="text-sm font-medium text-blue-400 hover:underline"
-            >
+            <Link href="/faq" className="text-sm font-medium text-blue-400 hover:underline">
               すべてのFAQを見る &rarr;
             </Link>
           </p>

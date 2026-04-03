@@ -3,12 +3,7 @@ import Stripe from "stripe";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import {
-  apiOk,
-  apiUnauthorized,
-  apiValidationError,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiOk, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +11,7 @@ export const dynamic = "force-dynamic";
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("Missing STRIPE_SECRET_KEY");
-  return new Stripe(key, { apiVersion: "2025-02-24.acacia" as any });
+  return new Stripe(key, { apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion });
 }
 
 /** POST /api/admin/shop/checkout — Stripe Checkout Session作成 */
@@ -122,10 +117,7 @@ export async function POST(req: NextRequest) {
         metadata: { tenant_id: caller.tenantId },
       });
       customerId = c.id;
-      await admin
-        .from("tenants")
-        .update({ stripe_customer_id: customerId })
-        .eq("id", caller.tenantId);
+      await admin.from("tenants").update({ stripe_customer_id: customerId }).eq("id", caller.tenantId);
     }
 
     // 注文番号生成
@@ -176,10 +168,7 @@ export async function POST(req: NextRequest) {
     });
 
     // checkout session ID を注文に保存
-    await admin
-      .from("shop_orders")
-      .update({ stripe_checkout_session_id: session.id })
-      .eq("id", order.id);
+    await admin.from("shop_orders").update({ stripe_checkout_session_id: session.id }).eq("id", order.id);
 
     return apiOk({ url: session.url, order_id: order.id, order_number: orderNumber });
   } catch (e) {

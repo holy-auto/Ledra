@@ -1,5 +1,3 @@
-"use client";
-
 import { ScrollReveal } from "./ScrollReveal";
 
 export function FeatureCard({

@@ -4,7 +4,14 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveBaseUrl } from "@/lib/url";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiInternalError, apiUnauthorized, apiNotFound, apiValidationError, apiForbidden } from "@/lib/api/response";
+import {
+  apiOk,
+  apiInternalError,
+  apiUnauthorized,
+  apiNotFound,
+  apiValidationError,
+  apiForbidden,
+} from "@/lib/api/response";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +21,7 @@ const paymentLinkSchema = z.object({
 });
 
 function getStripe() {
-  return new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2025-02-24.acacia" as any });
+  return new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion });
 }
 
 /**
@@ -31,7 +38,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const parsed = paymentLinkSchema.safeParse(body);
     if (!parsed.success) {
-      return apiValidationError(parsed.error.issues.map(i => i.message).join(" "));
+      return apiValidationError(parsed.error.issues.map((i) => i.message).join(" "));
     }
 
     const { invoice_id } = parsed.data;
@@ -73,7 +80,7 @@ export async function POST(req: NextRequest) {
     // Stripe Checkout Session をConnect経由で作成
     const stripe = getStripe();
     const baseUrl = resolveBaseUrl({ req });
-    const platformFeeRate = 0.05; // 5% プラットフォーム手数料
+    const platformFeeRate = 0.01; // 1% プラットフォーム手数料
     const applicationFee = Math.round(totalYen * platformFeeRate);
 
     const session = await stripe.checkout.sessions.create({

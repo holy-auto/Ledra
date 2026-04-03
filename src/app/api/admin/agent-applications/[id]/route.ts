@@ -21,18 +21,15 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
     if (!requireMinRole(caller, "admin")) return apiForbidden();
 
     const admin = getAdminClient();
-    const { data, error } = await admin
-      .from("agent_applications")
-      .select("*")
-      .eq("id", id)
-      .single();
+    const { data, error } = await admin.from("agent_applications").select("*").eq("id", id).single();
 
     if (error || !data) {
       return apiNotFound("application not found");
     }
 
     // Generate signed URLs for documents
-    const documents = (data.documents as Array<{ name: string; storage_path: string; content_type: string; file_size: number }>) || [];
+    const documents =
+      (data.documents as Array<{ name: string; storage_path: string; content_type: string; file_size: number }>) || [];
     const docsWithUrls = await Promise.all(
       documents.map(async (doc) => {
         const { data: signedData } = await admin.storage
@@ -128,33 +125,48 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
         return apiNotFound("application not found or already processed");
       }
 
-      // Step 1: Generate temporary password
-      const tempPassword = crypto.randomBytes(12).toString("base64url");
+      // Step 1: auth.users のユーザーを取得または作成
+      //   - 既存ユーザー（施工店アカウントなど）の場合: 既存 user_id を使う
+      //   - 新規ユーザーの場合: 新規作成して user_id を取得
+      let userId: string;
+      let tempPassword: string | null = null;
+      let isExistingUser = false;
 
-      // Step 2: Create auth user
-      const { data: authData, error: authError } = await admin.auth.admin.createUser({
-        email: app.email,
-        password: tempPassword,
-        email_confirm: true,
-        user_metadata: { display_name: app.contact_name },
-      });
+      // まず申請レコードに user_id が紐付いているか確認
+      const existingUserId = (app as Record<string, unknown>).user_id as string | null;
 
-      if (authError) {
-        const msg = authError.message ?? "";
-        console.error("[admin/agent-applications] createUser error:", msg);
+      if (existingUserId) {
+        // 申請時にすでに user_id が記録されている場合はそれを使う
+        userId = existingUserId;
+        isExistingUser = true;
+      } else {
+        // auth.users にメールが存在するか確認
+        const { data: existingUsers } = await admin.auth.admin.listUsers();
+        const matchedUser = existingUsers?.users?.find((u) => u.email?.toLowerCase() === app.email.toLowerCase());
 
-        if (msg.includes("already been registered") || msg.includes("already exists")) {
-          return NextResponse.json(
-            { error: "email_exists", message: "このメールアドレスは既に登録されています" },
-            { status: 409 },
-          );
+        if (matchedUser) {
+          // 既存ユーザーが見つかった → そのまま使う（パスワード変更なし）
+          userId = matchedUser.id;
+          isExistingUser = true;
+        } else {
+          // 新規ユーザーを作成
+          tempPassword = crypto.randomBytes(12).toString("base64url");
+          const { data: authData, error: authError } = await admin.auth.admin.createUser({
+            email: app.email,
+            password: tempPassword,
+            email_confirm: true,
+            user_metadata: { display_name: app.contact_name },
+          });
+
+          if (authError) {
+            console.error("[admin/agent-applications] createUser error:", authError.message);
+            return apiInternalError(authError, "agent-applications approve createUser");
+          }
+          userId = authData.user.id;
         }
-        return apiInternalError(authError, "agent-applications approve createUser");
       }
 
-      const userId = authData.user.id;
-
-      // Step 3: Call RPC to atomically create agent + agent_users + update application
+      // Step 2: Call RPC to atomically create agent + agent_users + update application
       const { data: agentId, error: rpcError } = await admin.rpc("approve_agent_application", {
         p_application_id: id,
         p_user_id: userId,
@@ -162,19 +174,23 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
       });
 
       if (rpcError) {
-        console.error("[admin/agent-applications] RPC error, rolling back auth user:", rpcError.message);
-        await admin.auth.admin.deleteUser(userId).catch((err: unknown) =>
-          console.error("[admin/agent-applications] rollback deleteUser failed:", err),
-        );
+        console.error("[admin/agent-applications] RPC error:", rpcError.message);
+        // 新規作成したユーザーの場合のみロールバック
+        if (!isExistingUser) {
+          await admin.auth.admin
+            .deleteUser(userId)
+            .catch((err: unknown) => console.error("[admin/agent-applications] rollback deleteUser failed:", err));
+        }
         return apiInternalError(rpcError, "agent-applications approve RPC");
       }
 
-      // Step 4: Send approval email
+      // Step 3: Send approval email
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://app.ledra.co.jp";
       await notifyApplicationApproved(app.email, {
         companyName: app.company_name,
         loginEmail: app.email,
-        temporaryPassword: tempPassword,
+        // 既存ユーザーの場合は仮パスワード不要（既存パスワードでログイン可能）
+        temporaryPassword: tempPassword ?? "(既存のパスワードをご使用ください)",
         portalUrl: `${baseUrl}/agent/login`,
       }).catch((e) => console.error("[admin/agent-applications] approve email error:", e));
 

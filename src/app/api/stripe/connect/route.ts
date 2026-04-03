@@ -8,7 +8,7 @@ import { apiInternalError } from "@/lib/api/response";
 export const dynamic = "force-dynamic";
 
 function getStripe() {
-  return new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2025-02-24.acacia" as any });
+  return new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion });
 }
 
 /** オープンリダイレクト対策: 許可済みオリジンのURLのみ通す */
@@ -50,14 +50,11 @@ export async function POST(req: NextRequest) {
       });
       accountId = account.id;
 
-      await admin
-        .from("tenants")
-        .update({ stripe_connect_account_id: accountId })
-        .eq("id", caller.tenantId);
+      await admin.from("tenants").update({ stripe_connect_account_id: accountId }).eq("id", caller.tenantId);
     }
 
     // Generate onboarding link
-    const body = await req.json().catch(() => ({} as any));
+    const body = await req.json().catch(() => ({}) as any);
     const returnUrl = safeUrl(body?.return_url);
     const refreshUrl = safeUrl(body?.refresh_url);
 
@@ -111,10 +108,7 @@ export async function GET() {
 
     // Update local state if changed
     if (onboarded !== tenant.stripe_connect_onboarded) {
-      await admin
-        .from("tenants")
-        .update({ stripe_connect_onboarded: onboarded })
-        .eq("id", caller.tenantId);
+      await admin.from("tenants").update({ stripe_connect_onboarded: onboarded }).eq("id", caller.tenantId);
     }
 
     return NextResponse.json({

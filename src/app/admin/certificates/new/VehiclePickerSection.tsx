@@ -32,9 +32,7 @@ function vehicleLabel(v: Vehicle) {
 }
 
 function vehicleModel(v: Vehicle) {
-  return [v.maker, v.model, v.year ? String(v.year) : null]
-    .filter(Boolean)
-    .join(" ");
+  return [v.maker, v.model, v.year ? String(v.year) : null].filter(Boolean).join(" ");
 }
 
 const inputCls =
@@ -45,9 +43,11 @@ const labelTextCls = "text-sm font-medium text-secondary";
 export default function VehiclePickerSection({
   vehicles: initialVehicles,
   defaultVehicleId,
+  onVehicleChange,
 }: {
   vehicles: Vehicle[];
   defaultVehicleId?: string;
+  onVehicleChange?: (vehicleId: string | undefined) => void;
 }) {
   const uid = useId();
   const [vehicles, setVehicles] = useState<Vehicle[]>(initialVehicles);
@@ -82,8 +82,9 @@ export default function VehiclePickerSection({
         setCustomerName(v.customer.name);
         setCustomerId(v.customer.id);
       }
+      onVehicleChange?.(v.id);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultVehicleId]);
 
   // Customer search debounce
@@ -119,6 +120,7 @@ export default function VehiclePickerSection({
     setModel(vehicleModel(v));
     setPlate(v.plate_display ?? "");
     setVehicleSearchOpen(false);
+    onVehicleChange?.(v.id);
     // Auto-fill customer if vehicle has one
     if (v.customer) {
       setCustomerName(v.customer.name);
@@ -130,6 +132,7 @@ export default function VehiclePickerSection({
   const handleVehicleClear = () => {
     setSelectedId("");
     setMaker("");
+    onVehicleChange?.(undefined);
     setModel("");
     setPlate("");
   };
@@ -169,15 +172,9 @@ export default function VehiclePickerSection({
       {/* Vehicle info section */}
       <div>
         <div className="mb-4">
-          <div className="text-xs font-semibold tracking-[0.18em] text-muted">
-            VEHICLE INFO
-          </div>
-          <div className="mt-1 text-base font-semibold text-primary">
-            車両情報
-          </div>
-          <p className="mt-0.5 text-xs text-muted">
-            車両マスタから選択、または手入力してください
-          </p>
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">VEHICLE INFO</div>
+          <div className="mt-1 text-base font-semibold text-primary">車両情報</div>
+          <p className="mt-0.5 text-xs text-muted">車両マスタから選択、または手入力してください</p>
         </div>
 
         <input type="hidden" name="vehicle_id" value={selectedId} />
@@ -214,19 +211,9 @@ export default function VehiclePickerSection({
                         onMouseDown={() => handleVehicleSelect(v)}
                         className="w-full px-4 py-2.5 text-left text-sm hover:bg-surface-hover"
                       >
-                        <span className="font-medium text-primary">
-                          {vehicleLabel(v)}
-                        </span>
-                        {v.customer && (
-                          <span className="ml-2 text-xs text-emerald-600">
-                            {v.customer.name}
-                          </span>
-                        )}
-                        {v.vin_code && (
-                          <span className="ml-2 text-xs text-neutral-400 font-mono">
-                            {v.vin_code}
-                          </span>
-                        )}
+                        <span className="font-medium text-primary">{vehicleLabel(v)}</span>
+                        {v.customer && <span className="ml-2 text-xs text-emerald-600">{v.customer.name}</span>}
+                        {v.vin_code && <span className="ml-2 text-xs text-neutral-400 font-mono">{v.vin_code}</span>}
                       </button>
                     </li>
                   ))}
@@ -282,12 +269,8 @@ export default function VehiclePickerSection({
       {/* Basic info — customer */}
       <div className="border-t border-border-subtle pt-4">
         <div className="mb-4">
-          <div className="text-xs font-semibold tracking-[0.18em] text-muted">
-            BASIC INFO
-          </div>
-          <div className="mt-1 text-base font-semibold text-primary">
-            基本情報
-          </div>
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">BASIC INFO</div>
+          <div className="mt-1 text-base font-semibold text-primary">基本情報</div>
         </div>
 
         <div className="space-y-4">

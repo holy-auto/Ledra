@@ -18,7 +18,7 @@ function getSupabaseAdmin() {
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("Missing STRIPE_SECRET_KEY");
-  return new Stripe(key, { apiVersion: "2025-02-24.acacia" as any });
+  return new Stripe(key, { apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion });
 }
 
 function json(status: number, body: any, extraHeaders?: Record<string, string>) {
@@ -84,7 +84,12 @@ async function extractTenantId(req: Request): Promise<string | null> {
     const cid = q.get("certificate_id") ?? q.get("certificateId") ?? q.get("id");
     if (cid) {
       const supabase = getSupabaseAdmin();
-      const { data, error } = await supabase.from("certificates").select("tenant_id").eq("id", cid).limit(1).maybeSingle();
+      const { data, error } = await supabase
+        .from("certificates")
+        .select("tenant_id")
+        .eq("id", cid)
+        .limit(1)
+        .maybeSingle();
       if (!error && data?.tenant_id) return data.tenant_id as string;
     }
 
@@ -92,7 +97,12 @@ async function extractTenantId(req: Request): Promise<string | null> {
     const pid = q.get("public_id") ?? q.get("publicId") ?? q.get("pid");
     if (pid) {
       const supabase = getSupabaseAdmin();
-      const { data, error } = await supabase.from("certificates").select("tenant_id").eq("public_id", pid).limit(1).maybeSingle();
+      const { data, error } = await supabase
+        .from("certificates")
+        .select("tenant_id")
+        .eq("public_id", pid)
+        .limit(1)
+        .maybeSingle();
       if (!error && data?.tenant_id) return data.tenant_id as string;
     }
   } catch {}
@@ -107,21 +117,36 @@ async function extractTenantId(req: Request): Promise<string | null> {
     const cid = b?.certificate_id ?? b?.certificateId ?? null;
     if (typeof cid === "string" && cid) {
       const supabase = getSupabaseAdmin();
-      const { data, error } = await supabase.from("certificates").select("tenant_id").eq("id", cid).limit(1).maybeSingle();
+      const { data, error } = await supabase
+        .from("certificates")
+        .select("tenant_id")
+        .eq("id", cid)
+        .limit(1)
+        .maybeSingle();
       if (!error && data?.tenant_id) return data.tenant_id as string;
     }
 
     const pid = b?.public_id ?? b?.publicId ?? b?.pid ?? null;
     if (typeof pid === "string" && pid) {
       const supabase = getSupabaseAdmin();
-      const { data, error } = await supabase.from("certificates").select("tenant_id").eq("public_id", pid).limit(1).maybeSingle();
+      const { data, error } = await supabase
+        .from("certificates")
+        .select("tenant_id")
+        .eq("public_id", pid)
+        .limit(1)
+        .maybeSingle();
       if (!error && data?.tenant_id) return data.tenant_id as string;
     }
 
     const ids = b?.certificate_ids ?? b?.certificateIds ?? b?.ids ?? null;
     if (Array.isArray(ids) && ids.length > 0 && typeof ids[0] === "string") {
       const supabase = getSupabaseAdmin();
-      const { data, error } = await supabase.from("certificates").select("tenant_id").eq("id", ids[0]).limit(1).maybeSingle();
+      const { data, error } = await supabase
+        .from("certificates")
+        .select("tenant_id")
+        .eq("id", ids[0])
+        .limit(1)
+        .maybeSingle();
       if (!error && data?.tenant_id) return data.tenant_id as string;
     }
   } catch {}
@@ -149,7 +174,7 @@ async function graceInfoForTenant(stripe_subscription_id: string | null) {
 
 export async function enforceBilling(
   req: Request,
-  opts: { minPlan: PlanTier; action?: string } = { minPlan: "free" }
+  opts: { minPlan: PlanTier; action?: string } = { minPlan: "free" },
 ): Promise<Response | null> {
   const tenant_id = await extractTenantId(req);
   const action = opts.action ?? null;
@@ -209,7 +234,7 @@ export async function enforceBilling(
             action,
             grace_until: g.grace_until,
           },
-          { "x-billing-url": "/admin/billing" }
+          { "x-billing-url": "/admin/billing" },
         );
       }
 
@@ -229,7 +254,7 @@ export async function enforceBilling(
           billing_url: "/admin/billing",
           action,
         },
-        { "x-billing-url": "/admin/billing" }
+        { "x-billing-url": "/admin/billing" },
       );
     }
 
@@ -243,7 +268,7 @@ export async function enforceBilling(
         billing_url: "/admin/billing",
         action,
       },
-      { "x-billing-url": "/admin/billing" }
+      { "x-billing-url": "/admin/billing" },
     );
   }
 
@@ -259,7 +284,7 @@ export async function enforceBilling(
         action,
         current_plan: plan,
       },
-      { "x-billing-url": "/admin/billing" }
+      { "x-billing-url": "/admin/billing" },
     );
   }
 

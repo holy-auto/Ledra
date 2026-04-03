@@ -24,9 +24,7 @@ export function createMobileClient(request: Request) {
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
   if (!url || !anonKey) {
-    throw new Error(
-      "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY in env."
-    );
+    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY in env.");
   }
 
   const accessToken = extractBearerToken(request);
@@ -53,6 +51,7 @@ export type MobileCallerInfo = {
   userId: string;
   tenantId: string;
   role: Role;
+  planTier: string;
 };
 
 /**
@@ -78,9 +77,13 @@ export async function resolveMobileCaller(
 
   if (!mem?.tenant_id) return null;
 
+  const tenantId = mem.tenant_id as string;
+  const { data: tenant } = await client.from("tenants").select("plan_tier").eq("id", tenantId).single();
+
   return {
     userId: userRes.user.id,
-    tenantId: mem.tenant_id as string,
+    tenantId,
     role: normalizeRole(mem.role as string),
+    planTier: String((tenant as any)?.plan_tier ?? "free"),
   };
 }

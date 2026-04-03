@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("Missing STRIPE_SECRET_KEY");
-  return new Stripe(key, { apiVersion: "2025-02-24.acacia" as any });
+  return new Stripe(key, { apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion });
 }
 
 // ── connected account ID → tenant / agent を逆引き ──
@@ -18,18 +18,8 @@ async function resolveReceiver(
   accountId: string,
 ): Promise<{ tenantId: string | null; agentId: string | null }> {
   const [tenantResult, agentResult] = await Promise.all([
-    supabase
-      .from("tenants")
-      .select("id")
-      .eq("stripe_connect_account_id", accountId)
-      .limit(1)
-      .maybeSingle(),
-    supabase
-      .from("agents")
-      .select("id")
-      .eq("stripe_connect_account_id", accountId)
-      .limit(1)
-      .maybeSingle(),
+    supabase.from("tenants").select("id").eq("stripe_connect_account_id", accountId).limit(1).maybeSingle(),
+    supabase.from("agents").select("id").eq("stripe_connect_account_id", accountId).limit(1).maybeSingle(),
   ]);
   return {
     tenantId: tenantResult.data?.id ?? null,
@@ -76,38 +66,46 @@ export async function POST(req: NextRequest) {
 
   try {
     switch (event.type) {
-
       // ─────────────────────────────────────────────────
       // transfer.created — プラットフォームが送金を開始
       // ─────────────────────────────────────────────────
       case "transfer.created": {
         const transfer = event.data.object as Stripe.Transfer;
         const accountId = transfer.destination
-          ? (typeof transfer.destination === "string" ? transfer.destination : transfer.destination.id)
-          : connectedAccountId ?? "";
+          ? typeof transfer.destination === "string"
+            ? transfer.destination
+            : transfer.destination.id
+          : (connectedAccountId ?? "");
 
         const { tenantId, agentId } = await resolveReceiver(supabase, accountId);
         const meta = transfer.metadata as Record<string, string> | null;
 
-        await supabase.from("stripe_connect_transfers").upsert({
-          stripe_transfer_id:        transfer.id,
-          stripe_account_id:         accountId,
-          stripe_payment_intent_id:  meta?.payment_intent_id ?? null,
-          stripe_application_fee_id: meta?.application_fee_id ?? null,
-          tenant_id:                 tenantId,
-          agent_id:                  agentId,
-          amount:                    transfer.amount,
-          fee_amount:                parseInt(meta?.fee_amount ?? "0", 10),
-          currency:                  transfer.currency,
-          source_type:               (meta?.source_type as any) ?? "other",
-          source_id:                 meta?.source_id ?? null,
-          status:                    "created",
-          metadata:                  transfer.metadata ?? null,
-          updated_at:                new Date().toISOString(),
-        }, { onConflict: "stripe_transfer_id" });
+        await supabase.from("stripe_connect_transfers").upsert(
+          {
+            stripe_transfer_id: transfer.id,
+            stripe_account_id: accountId,
+            stripe_payment_intent_id: meta?.payment_intent_id ?? null,
+            stripe_application_fee_id: meta?.application_fee_id ?? null,
+            tenant_id: tenantId,
+            agent_id: agentId,
+            amount: transfer.amount,
+            fee_amount: parseInt(meta?.fee_amount ?? "0", 10),
+            currency: transfer.currency,
+            source_type: (meta?.source_type as any) ?? "other",
+            source_id: meta?.source_id ?? null,
+            status: "created",
+            metadata: transfer.metadata ?? null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "stripe_transfer_id" },
+        );
 
         console.log("connect-webhook: transfer created", {
-          transferId: transfer.id, accountId, tenantId, agentId, amount: transfer.amount,
+          transferId: transfer.id,
+          accountId,
+          tenantId,
+          agentId,
+          amount: transfer.amount,
         });
         break;
       }
@@ -131,7 +129,10 @@ export async function POST(req: NextRequest) {
             .from("agent_commissions")
             .update({ status: "paid", paid_at: new Date().toISOString(), updated_at: new Date().toISOString() })
             .eq("id", meta.source_id);
-          console.log("connect-webhook: agent commission paid", { commissionId: meta.source_id, transferId: transfer.id });
+          console.log("connect-webhook: agent commission paid", {
+            commissionId: meta.source_id,
+            transferId: transfer.id,
+          });
         }
 
         console.log("connect-webhook: transfer paid", { transferId: transfer.id });
@@ -156,7 +157,10 @@ export async function POST(req: NextRequest) {
             .from("agent_commissions")
             .update({ status: "failed", updated_at: new Date().toISOString() })
             .eq("id", meta.source_id);
-          console.log("connect-webhook: agent commission reversed", { commissionId: meta.source_id, transferId: transfer.id });
+          console.log("connect-webhook: agent commission reversed", {
+            commissionId: meta.source_id,
+            transferId: transfer.id,
+          });
         }
 
         console.log("connect-webhook: transfer reversed", { transferId: transfer.id });
@@ -168,10 +172,10 @@ export async function POST(req: NextRequest) {
       // ─────────────────────────────────────────────────
       case "application_fee.created": {
         const fee = event.data.object as Stripe.ApplicationFee;
-        const accountId = typeof fee.account === "string" ? fee.account : fee.account?.id ?? connectedAccountId ?? "";
+        const accountId = typeof fee.account === "string" ? fee.account : (fee.account?.id ?? connectedAccountId ?? "");
 
         // stripe_connect_transfers の fee_amount を更新（charge から transfer を特定）
-        const chargeId = typeof fee.charge === "string" ? fee.charge : fee.charge?.id ?? null;
+        const chargeId = typeof fee.charge === "string" ? fee.charge : (fee.charge?.id ?? null);
         if (chargeId) {
           await supabase
             .from("stripe_connect_transfers")
@@ -180,7 +184,10 @@ export async function POST(req: NextRequest) {
         }
 
         console.log("connect-webhook: application_fee created", {
-          feeId: fee.id, accountId, amount: fee.amount, chargeId,
+          feeId: fee.id,
+          accountId,
+          amount: fee.amount,
+          chargeId,
         });
         break;
       }
@@ -192,7 +199,10 @@ export async function POST(req: NextRequest) {
         const payout = event.data.object as Stripe.Payout;
         const accountId = connectedAccountId ?? "";
         console.log("connect-webhook: payout paid", {
-          payoutId: payout.id, accountId, amount: payout.amount, arrivalDate: payout.arrival_date,
+          payoutId: payout.id,
+          accountId,
+          amount: payout.amount,
+          arrivalDate: payout.arrival_date,
         });
         break;
       }
@@ -206,8 +216,12 @@ export async function POST(req: NextRequest) {
         const { tenantId, agentId } = await resolveReceiver(supabase, accountId);
 
         console.error("connect-webhook: payout failed", {
-          payoutId: payout.id, accountId, tenantId, agentId,
-          failureCode: payout.failure_code, failureMessage: payout.failure_message,
+          payoutId: payout.id,
+          accountId,
+          tenantId,
+          agentId,
+          failureCode: payout.failure_code,
+          failureMessage: payout.failure_message,
         });
         // TODO: 振込失敗メール通知
         break;
@@ -254,7 +268,11 @@ export async function POST(req: NextRequest) {
         break;
     }
   } catch (e) {
-    console.error("connect-webhook handler failed", { type: event.type, id: event.id, error: e instanceof Error ? e.message : e });
+    console.error("connect-webhook handler failed", {
+      type: event.type,
+      id: event.id,
+      error: e instanceof Error ? e.message : e,
+    });
     return apiInternalError(e, "connect-webhook handler");
   }
 

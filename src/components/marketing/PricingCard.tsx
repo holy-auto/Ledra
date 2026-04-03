@@ -1,5 +1,3 @@
-"use client";
-
 import { CTAButton } from "./CTAButton";
 import { ScrollReveal } from "./ScrollReveal";
 
@@ -39,31 +37,18 @@ export function PricingCard({
       )}
 
       <div className="mb-8">
-        <h3 className="text-lg font-bold text-white">
-          {name}
-        </h3>
-        <p className="mt-1.5 text-sm text-white/50">
-          {description}
-        </p>
+        <h3 className="text-lg font-bold text-white">{name}</h3>
+        <p className="mt-1.5 text-sm text-white/50">{description}</p>
       </div>
 
       <div className="mb-8 min-h-[3.5rem] flex items-baseline">
-        <span className="text-[2.5rem] font-bold tracking-tight text-white">
-          {price}
-        </span>
-        {unit && (
-          <span className="text-sm ml-1.5 text-white/40">
-            {unit.startsWith("/") ? unit : `/${unit}`}
-          </span>
-        )}
+        <span className="text-[2.5rem] font-bold tracking-tight text-white">{price}</span>
+        {unit && <span className="text-sm ml-1.5 text-white/40">{unit.startsWith("/") ? unit : `/${unit}`}</span>}
       </div>
 
       <ul className="space-y-3 mb-10 flex-1">
         {features.map((feature) => (
-          <li
-            key={feature}
-            className="flex items-start gap-2.5 text-[0.8125rem] leading-snug text-white/70"
-          >
+          <li key={feature} className="flex items-start gap-2.5 text-[0.8125rem] leading-snug text-white/70">
             <div
               className="w-5 h-5 flex-shrink-0 mt-0.5 rounded-full flex items-center justify-center"
               style={{
@@ -72,11 +57,7 @@ export function PricingCard({
                 transform: "perspective(400px) rotateX(5deg)",
               }}
             >
-              <svg
-                className="w-3 h-3 text-blue-400"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-              >
+              <svg className="w-3 h-3 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
                 <path
                   fillRule="evenodd"
                   d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
@@ -89,11 +70,7 @@ export function PricingCard({
         ))}
       </ul>
 
-      <CTAButton
-        variant={recommended ? "white" : "outline"}
-        href={ctaHref}
-        className="w-full text-center"
-      >
+      <CTAButton variant={recommended ? "white" : "outline"} href={ctaHref} className="w-full text-center">
         {ctaLabel}
       </CTAButton>
     </div>

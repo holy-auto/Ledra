@@ -1,9 +1,9 @@
-"use client";
-
 /**
- * Marketing pages are always dark-themed regardless of user preference.
- * The dark design (gradients, glows, dark-card) uses hardcoded colors
- * throughout all marketing components, so theme toggling only affects /admin.
+ * MarketingThemeWrapper — Server Component
+ *
+ * マーケティングページは常にダークテーマ固定のため、
+ * クライアントサイドの状態管理は不要。
+ * "use client" を削除して SSR を有効化。
  */
 export default function MarketingThemeWrapper({
   children,
