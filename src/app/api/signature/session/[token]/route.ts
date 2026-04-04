@@ -103,7 +103,7 @@ export async function GET(
       metadata:   { opened_at: new Date().toISOString() },
     });
 
-    const cert = session.certificates as {
+    const cert = session.certificates as unknown as {
       id: string;
       public_id: string;
       created_at: string;
