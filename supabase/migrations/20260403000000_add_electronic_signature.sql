@@ -82,6 +82,7 @@ CREATE TRIGGER trg_signature_sessions_updated_at
 ALTER TABLE signature_sessions ENABLE ROW LEVEL SECURITY;
 
 -- テナントメンバーは自テナントのセッションのみ参照可
+DROP POLICY IF EXISTS "signature_sessions_tenant_select" ON signature_sessions;
 CREATE POLICY "signature_sessions_tenant_select"
   ON signature_sessions FOR SELECT
   USING (
@@ -92,6 +93,7 @@ CREATE POLICY "signature_sessions_tenant_select"
   );
 
 -- テナントメンバーのみ作成可
+DROP POLICY IF EXISTS "signature_sessions_tenant_insert" ON signature_sessions;
 CREATE POLICY "signature_sessions_tenant_insert"
   ON signature_sessions FOR INSERT
   WITH CHECK (
@@ -102,6 +104,7 @@ CREATE POLICY "signature_sessions_tenant_insert"
   );
 
 -- 更新はサービスロール（API Routes で getSupabaseAdmin() 使用）のみ
+DROP POLICY IF EXISTS "signature_sessions_service_update" ON signature_sessions;
 CREATE POLICY "signature_sessions_service_update"
   ON signature_sessions FOR UPDATE
   USING (auth.role() = 'service_role');
@@ -142,11 +145,13 @@ CREATE INDEX IF NOT EXISTS idx_signature_audit_logs_created_at
 ALTER TABLE signature_audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- サービスロールのみ INSERT 可
+DROP POLICY IF EXISTS "audit_logs_service_insert" ON signature_audit_logs;
 CREATE POLICY "audit_logs_service_insert"
   ON signature_audit_logs FOR INSERT
   WITH CHECK (auth.role() = 'service_role');
 
 -- テナントメンバーは自テナントのセッションに紐づくログのみ参照可
+DROP POLICY IF EXISTS "audit_logs_tenant_select" ON signature_audit_logs;
 CREATE POLICY "audit_logs_tenant_select"
   ON signature_audit_logs FOR SELECT
   USING (
@@ -160,10 +165,12 @@ CREATE POLICY "audit_logs_tenant_select"
   );
 
 -- UPDATE・DELETE は全ロール禁止（追記専用ポリシー）
+DROP POLICY IF EXISTS "audit_logs_no_update" ON signature_audit_logs;
 CREATE POLICY "audit_logs_no_update"
   ON signature_audit_logs FOR UPDATE
   USING (false);
 
+DROP POLICY IF EXISTS "audit_logs_no_delete" ON signature_audit_logs;
 CREATE POLICY "audit_logs_no_delete"
   ON signature_audit_logs FOR DELETE
   USING (false);
@@ -188,15 +195,18 @@ CREATE TABLE IF NOT EXISTS signature_public_keys (
 -- 公開鍵は誰でも参照可能（第三者による署名検証のため）
 ALTER TABLE signature_public_keys ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "public_keys_public_read" ON signature_public_keys;
 CREATE POLICY "public_keys_public_read"
   ON signature_public_keys FOR SELECT
   USING (true);
 
 -- 書き込みはサービスロールのみ
+DROP POLICY IF EXISTS "public_keys_service_write" ON signature_public_keys;
 CREATE POLICY "public_keys_service_write"
   ON signature_public_keys FOR INSERT
   WITH CHECK (auth.role() = 'service_role');
 
+DROP POLICY IF EXISTS "public_keys_service_update" ON signature_public_keys;
 CREATE POLICY "public_keys_service_update"
   ON signature_public_keys FOR UPDATE
   USING (auth.role() = 'service_role');
