@@ -125,7 +125,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (e) {
-    console.error("[cloudsign-webhook] Error:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "webhooks/cloudsign");
   }
 }
