@@ -58,13 +58,16 @@ export async function getTenantIdBySlug(slug: string): Promise<string | null> {
   return data?.id ?? null;
 }
 
-export async function tenantHasPhoneHash(tenantId: string, phoneHash: string): Promise<boolean> {
-  const { data } = await admin()
-    .from("certificates")
-    .select("id")
-    .eq("tenant_id", tenantId)
-    .eq("customer_phone_last4_hash", phoneHash)
-    .limit(1);
+export async function tenantHasPhoneHash(tenantId: string, phoneHash: string, phoneLast4?: string): Promise<boolean> {
+  const db = admin();
+  // ハッシュで検索、なければ平文の下4桁でも検索（古いデータへの後方互換）
+  let query = db.from("certificates").select("id").eq("tenant_id", tenantId).neq("status", "void").limit(1);
+  if (phoneLast4) {
+    query = query.or(`customer_phone_last4_hash.eq.${phoneHash},customer_phone_last4.eq.${phoneLast4}`);
+  } else {
+    query = query.eq("customer_phone_last4_hash", phoneHash);
+  }
+  const { data } = await query;
   return Array.isArray(data) && data.length > 0;
 }
 
