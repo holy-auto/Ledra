@@ -183,6 +183,11 @@ export default function ReservationsClient() {
   const [gcalCalendarSaving, setGcalCalendarSaving] = useState(false);
   const [showGcalPanel, setShowGcalPanel] = useState(false);
 
+  // Booking URL
+  const [tenantSlug, setTenantSlug] = useState<string | null>(null);
+  const [showBookingUrlPanel, setShowBookingUrlPanel] = useState(false);
+  const [bookingUrlCopied, setBookingUrlCopied] = useState(false);
+
   // Detail drawer
   const [detailId, setDetailId] = useState<string | null>(null);
   const detailReservation = reservations.find((r) => r.id === detailId) ?? null;
@@ -198,10 +203,16 @@ export default function ReservationsClient() {
 
   const fetchMasterData = useCallback(async () => {
     try {
-      const [custRes, menuRes] = await Promise.all([
+      const [custRes, menuRes, tenantRes] = await Promise.all([
         fetch("/api/admin/customers", { cache: "no-store" }),
         fetch("/api/admin/menu-items", { cache: "no-store" }),
+        fetch("/api/admin/tenants", { cache: "no-store" }),
       ]);
+      const tenantJ = await tenantRes.json().catch(() => null);
+      if (tenantRes.ok && tenantJ?.tenants) {
+        const current = tenantJ.tenants.find((t: any) => t.is_current) ?? tenantJ.tenants[0];
+        if (current?.slug) setTenantSlug(current.slug);
+      }
       const custJ = await custRes.json().catch(() => null);
       if (custRes.ok && custJ?.customers) setCustomers(custJ.customers.map((c: any) => ({ id: c.id, name: c.name })));
       const menuJ = await menuRes.json().catch(() => null);
@@ -600,10 +611,27 @@ export default function ReservationsClient() {
           </div>
         )}
 
+        {/* Booking URL share button */}
+        {tenantSlug && (
+          <button
+            onClick={() => setShowBookingUrlPanel(!showBookingUrlPanel)}
+            className={`ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition-colors shadow-sm ${
+              showBookingUrlPanel
+                ? "border-blue-200 bg-accent-dim text-accent-text"
+                : "border-border-subtle bg-surface text-secondary hover:bg-surface-hover"
+            }`}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m9.86-2.54a4.5 4.5 0 0 0-1.242-7.244l-4.5-4.5a4.5 4.5 0 0 0-6.364 6.364L5.25 9.75" />
+            </svg>
+            予約ページ共有
+          </button>
+        )}
+
         {/* Gcal button */}
         <button
           onClick={() => setShowGcalPanel(!showGcalPanel)}
-          className={`ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition-colors shadow-sm ${
+          className={`${!tenantSlug ? "ml-auto " : ""}flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition-colors shadow-sm ${
             gcalConnected
               ? "border-blue-200 bg-accent-dim text-accent-text"
               : "border-border-subtle bg-surface text-secondary hover:bg-surface-hover"
@@ -619,6 +647,54 @@ export default function ReservationsClient() {
           {gcalConnected ? "Gcal 連携中" : "Gcal 連携"}
         </button>
       </div>
+
+      {/* ── Booking URL panel (collapsible) ── */}
+      {showBookingUrlPanel && tenantSlug && (
+        <section className="glass-card p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-semibold text-primary">予約ページURL</div>
+              <div className="text-xs text-muted mt-0.5">
+                このURLをお客様に共有すると、オンラインで予約を受け付けられます
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              readOnly
+              value={`${typeof window !== "undefined" ? window.location.origin : ""}/customer/${encodeURIComponent(tenantSlug)}/booking`}
+              className="flex-1 rounded-xl border border-border-default bg-inset px-3 py-2.5 text-sm text-primary font-mono select-all"
+              onFocus={(e) => e.target.select()}
+            />
+            <button
+              onClick={async () => {
+                const url = `${window.location.origin}/customer/${encodeURIComponent(tenantSlug)}/booking`;
+                await navigator.clipboard.writeText(url);
+                setBookingUrlCopied(true);
+                setTimeout(() => setBookingUrlCopied(false), 2000);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-accent transition-colors whitespace-nowrap"
+            >
+              {bookingUrlCopied ? (
+                <>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                  </svg>
+                  コピー済み
+                </>
+              ) : (
+                <>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" />
+                  </svg>
+                  URLをコピー
+                </>
+              )}
+            </button>
+          </div>
+        </section>
+      )}
 
       {/* ── Gcal panel (collapsible) ── */}
       {showGcalPanel && (
