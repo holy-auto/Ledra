@@ -10,13 +10,8 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
-
-    if (!requireMinRole(caller, "staff")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    }
+    if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const url = new URL(req.url);
     const date =
@@ -44,8 +39,7 @@ export async function GET(req: NextRequest) {
       .limit(200);
 
     if (error) {
-      console.error("[daily-report] db_error:", error.message);
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
+      return apiInternalError(error, "daily-report");
     }
 
     const rows = payments ?? [];
@@ -99,7 +93,6 @@ export async function GET(req: NextRequest) {
       transactions,
     });
   } catch (e: unknown) {
-    console.error("daily-report failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "daily-report");
   }
 }

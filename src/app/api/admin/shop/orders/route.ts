@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
   const productIds = body.items.map((i) => i.product_id);
   const { data: products, error: pErr } = await supabase
     .from("shop_products")
-    .select("*")
+    .select("id, name, price, tax_rate, unit, min_quantity, meta")
     .in("id", productIds)
     .eq("is_active", true);
 

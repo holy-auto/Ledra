@@ -20,12 +20,8 @@ export async function POST(req: NextRequest) {
 
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
-    if (!requireMinRole(caller, "staff")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    }
+    if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
 
@@ -33,10 +29,10 @@ export async function POST(req: NextRequest) {
     const readerId = String(body?.reader_id ?? "");
 
     if (!paymentIntentId || !paymentIntentId.startsWith("pi_")) {
-      return NextResponse.json({ error: "invalid_payment_intent_id" }, { status: 400 });
+      return apiValidationError("invalid_payment_intent_id");
     }
     if (!readerId || !readerId.startsWith("tmr_")) {
-      return NextResponse.json({ error: "invalid_reader_id" }, { status: 400 });
+      return apiValidationError("invalid_reader_id");
     }
 
     // テナントのStripe Connectアカウントを取得
@@ -80,6 +76,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "pos/terminal/process");
   }
 }

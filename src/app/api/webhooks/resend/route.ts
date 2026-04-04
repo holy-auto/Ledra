@@ -32,10 +32,7 @@ export async function POST(req: NextRequest) {
 
   if (!secret) {
     console.error("[resend-webhook] RESEND_WEBHOOK_SECRET is not configured");
-    return NextResponse.json(
-      { error: "Webhook secret not configured" },
-      { status: 500 },
-    );
+    return apiInternalError(new Error("Webhook secret not configured"), "resend-webhook");
   }
 
   const rawBody = await req.text();
@@ -47,7 +44,7 @@ export async function POST(req: NextRequest) {
     const id = req.headers.get("svix-id");
 
     if (!signature || !timestamp || !id) {
-      return NextResponse.json({ error: "Missing webhook headers" }, { status: 401 });
+      return apiUnauthorized();
     }
 
     try {
@@ -59,7 +56,7 @@ export async function POST(req: NextRequest) {
       });
     } catch (err) {
       console.error("[resend-webhook] Signature verification failed:", err);
-      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+      return apiUnauthorized();
     }
   }
 
@@ -67,11 +64,11 @@ export async function POST(req: NextRequest) {
   try {
     event = JSON.parse(rawBody);
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return apiValidationError("Invalid JSON");
   }
 
   if (!event.type || !event.data) {
-    return NextResponse.json({ error: "Invalid event format" }, { status: 400 });
+    return apiValidationError("Invalid event format");
   }
 
   const { type, data } = event;

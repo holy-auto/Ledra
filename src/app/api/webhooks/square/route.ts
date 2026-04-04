@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { getAdminClient } from "@/lib/api/auth";
+import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest) {
   if (!signatureKey) {
     console.error("[square-webhook] SQUARE_WEBHOOK_SIGNATURE_KEY not configured");
     // Never process webhooks without signature verification
-    return NextResponse.json({ error: "Webhook signature key not configured" }, { status: 500 });
+    return apiInternalError(new Error("Webhook signature key not configured"), "square-webhook");
   }
 
   // Read raw body for signature verification
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
   const signature = req.headers.get("x-square-hmacsha256-signature");
   if (!signature) {
     console.warn("[square-webhook] Missing signature header");
-    return NextResponse.json({ error: "Missing signature" }, { status: 401 });
+    return apiUnauthorized();
   }
 
   // The notification URL must match what was registered in Square Dashboard
@@ -80,11 +81,11 @@ export async function POST(req: NextRequest) {
     const valid = verifySquareSignature(rawBody, signature, signatureKey, notificationUrl);
     if (!valid) {
       console.warn("[square-webhook] Invalid signature");
-      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+      return apiUnauthorized();
     }
   } catch (err) {
     console.error("[square-webhook] Signature verification error:", err);
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    return apiUnauthorized();
   }
 
   // Parse event
@@ -92,14 +93,14 @@ export async function POST(req: NextRequest) {
   try {
     event = JSON.parse(rawBody);
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return apiValidationError("Invalid JSON");
   }
 
   const { type, merchant_id: merchantId, data } = event;
 
   if (!type || !merchantId) {
     console.warn("[square-webhook] Missing type or merchant_id");
-    return NextResponse.json({ error: "Invalid event" }, { status: 400 });
+    return apiValidationError("Invalid event: missing type or merchant_id");
   }
 
   // Process events asynchronously — return 200 quickly to avoid Square retries

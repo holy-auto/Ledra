@@ -12,18 +12,14 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
-    if (!requireMinRole(caller, "staff")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    }
+    if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
 
     const paymentIntentId = String(body?.payment_intent_id ?? "").trim();
     if (!paymentIntentId || !paymentIntentId.startsWith("pi_")) {
-      return NextResponse.json({ error: "invalid_payment_intent_id" }, { status: 400 });
+      return apiValidationError("invalid_payment_intent_id");
     }
 
     // テナントのStripe Connectアカウントを取得
@@ -47,13 +43,7 @@ export async function POST(req: NextRequest) {
     const pi = await stripe.paymentIntents.retrieve(paymentIntentId, stripeOptions);
 
     if (pi.status !== "succeeded") {
-      return NextResponse.json(
-        {
-          error: "payment_not_succeeded",
-          detail: `PaymentIntent status is "${pi.status}"`,
-        },
-        { status: 400 },
-      );
+      return apiValidationError(`payment_not_succeeded: status is "${pi.status}"`);
     }
 
     // pos_checkout RPC で支払記録 + 領収書作成
@@ -74,8 +64,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (error) {
-      console.error("[pos/terminal/capture] rpc_error:", error.message);
-      return NextResponse.json({ error: "checkout_failed", detail: error.message }, { status: 500 });
+      return apiInternalError(error, "pos/terminal/capture");
     }
 
     return NextResponse.json({
@@ -86,7 +75,6 @@ export async function POST(req: NextRequest) {
       result: data,
     });
   } catch (e: unknown) {
-    console.error("[pos/terminal/capture] error:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "pos/terminal/capture");
   }
 }

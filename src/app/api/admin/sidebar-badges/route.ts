@@ -21,9 +21,7 @@ export async function GET() {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+    if (!caller) return apiUnauthorized();
 
     const admin = getAdminClient();
 
@@ -142,7 +140,6 @@ export async function GET() {
       },
     });
   } catch (e) {
-    console.error("[sidebar-badges] error:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "sidebar-badges");
   }
 }

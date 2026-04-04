@@ -4,6 +4,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { apiUnauthorized, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -19,19 +20,15 @@ export async function POST(req: NextRequest) {
 
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
-    if (!requireMinRole(caller, "staff")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    }
+    if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
 
     // amount バリデーション
     const amount = parseInt(String(body?.amount ?? 0), 10);
     if (!amount || amount < 1 || amount > 999_999_999) {
-      return NextResponse.json({ error: "invalid_amount" }, { status: 400 });
+      return apiValidationError("invalid_amount");
     }
 
     const currency = String(body?.currency ?? "jpy");
@@ -79,8 +76,7 @@ export async function POST(req: NextRequest) {
       connect_account: connectAccountId && isOnboarded ? connectAccountId : null,
     });
   } catch (e: unknown) {
-    console.error("[pos/terminal/create-payment-intent] error:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "pos/terminal/create-payment-intent");
   }
 }
 
@@ -89,16 +85,12 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
-    if (!requireMinRole(caller, "staff")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    }
+    if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const id = req.nextUrl.searchParams.get("id");
     if (!id || !id.startsWith("pi_")) {
-      return NextResponse.json({ error: "invalid_id" }, { status: 400 });
+      return apiValidationError("invalid_id");
     }
 
     // テナントのStripe Connectアカウントを取得
@@ -122,7 +114,7 @@ export async function GET(req: NextRequest) {
 
     // tenant_id チェック（自テナントのPIのみ参照可能）
     if (pi.metadata?.tenant_id !== caller.tenantId) {
-      return NextResponse.json({ error: "not_found" }, { status: 404 });
+      return apiNotFound("not_found");
     }
 
     return NextResponse.json({
@@ -131,7 +123,6 @@ export async function GET(req: NextRequest) {
       amount: pi.amount,
     });
   } catch (e: unknown) {
-    console.error("[pos/terminal/create-payment-intent GET] error:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "pos/terminal/create-payment-intent GET");
   }
 }

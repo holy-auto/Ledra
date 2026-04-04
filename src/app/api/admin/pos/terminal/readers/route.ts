@@ -12,12 +12,8 @@ export async function GET(_req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
-    if (!requireMinRole(caller, "staff")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    }
+    if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     // テナントのStripe Connectアカウントを取得
     const admin = createAdminClient();
@@ -55,7 +51,6 @@ export async function GET(_req: NextRequest) {
 
     return NextResponse.json({ readers });
   } catch (e: unknown) {
-    console.error("[pos/terminal/readers] error:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "pos/terminal/readers");
   }
 }

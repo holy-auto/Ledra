@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     if (orderId && wantLogs) {
       const { data: logs } = await admin
         .from("template_order_logs")
-        .select("*")
+        .select("id, order_id, action, from_status, to_status, actor, message, meta_json, created_at")
         .eq("order_id", orderId)
         .order("created_at", { ascending: false })
         .limit(50);

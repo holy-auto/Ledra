@@ -137,7 +137,6 @@ export async function GET(req: NextRequest) {
       amount_total: session.amount_total,
     });
   } catch (e: unknown) {
-    console.error("[pos/checkout-session GET] error:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "pos/checkout-session GET");
   }
 }

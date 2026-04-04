@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     const valid = await verifyWebhookSignature(rawBody, signature);
     if (!valid) {
       console.error("[cloudsign-webhook] Invalid signature");
-      return NextResponse.json({ error: "invalid_signature" }, { status: 401 });
+      return apiUnauthorized();
     }
 
     const event = JSON.parse(rawBody);
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     const documentId = event.data?.document_id as string;
 
     if (!documentId) {
-      return NextResponse.json({ error: "missing_document_id" }, { status: 400 });
+      return apiValidationError("missing_document_id");
     }
 
     const admin = getAdminClient();
