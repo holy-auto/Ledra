@@ -50,7 +50,7 @@ jobs:
       - run: npm ci
 
       - name: Cache Playwright Browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
@@ -65,7 +65,7 @@ jobs:
         run: npx playwright install-deps chromium
 
       - name: Cache Next.js Build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .next
           key: nextjs-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}-${{ hashFiles('src/**') }}
