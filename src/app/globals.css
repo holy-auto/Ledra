@@ -103,7 +103,7 @@
 
   /* Accent adjustments for dark bg */
   --accent-blue: #4d9fff;
-  --accent-blue-dim: rgba(77, 159, 255, 0.12);
+  --accent-blue-dim: rgba(77, 159, 255, 0.25);
   --accent-blue-hover: #66adff;
   --accent-blue-text: #4d9fff;
 

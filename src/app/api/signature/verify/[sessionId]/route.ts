@@ -106,7 +106,7 @@ export async function GET(
       },
     });
 
-    const cert = session.certificates as { public_id: string } | null;
+    const cert = session.certificates as unknown as { public_id: string } | null;
 
     return apiOk({
       is_valid:    isValid,
