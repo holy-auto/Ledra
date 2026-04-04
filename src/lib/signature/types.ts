@@ -147,6 +147,10 @@ export interface SignatureRequestBody {
   signer_email?: string;
   signer_phone?: string;
   notification_method?: NotificationMethod;
+  /** LINE ユーザーID（LINE 通知チャネルの場合に使用） */
+  line_user_id?: string;
+  /** 顧客ID（紐付け用） */
+  customer_id?: string;
 }
 
 /** 署名実行APIのリクエスト */

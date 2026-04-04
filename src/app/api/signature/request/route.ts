@@ -5,25 +5,29 @@
  * 施工店（管理画面）から呼び出し、顧客への署名URLを発行する。
  *
  * 処理フロー:
- * 1. 認証・課金チェック
+ * 1. 認証チェック
  * 2. 証明書の存在確認（テナント境界チェック）
  * 3. 既存 pending セッションの重複チェック
  * 4. PDF バイト列生成（SHA-256 計算用）
  * 5. 署名セッション作成（ワンタイムURL発行）
- * 6. LINE/メール通知送信
+ * 6. LINE / メール 通知送信（自動）
  */
 
 import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getAdminClient } from '@/lib/api/auth';
 import { resolveCallerWithRole } from '@/lib/auth/checkRole';
 import { apiOk, apiError, apiUnauthorized } from '@/lib/api/response';
 import { createSignatureSession, getExistingPendingSession } from '@/lib/signature/session';
 import { generateCertificatePdfBytes } from '@/lib/signature/pdfUtils';
+import { sendSignatureNotification } from '@/lib/signature/notify';
 import type { SignatureRequestBody } from '@/lib/signature/types';
 
 export const dynamic = 'force-dynamic';
 
-const SIGN_BASE_URL = process.env.NEXT_PUBLIC_SIGN_BASE_URL ?? '/sign';
+const SIGN_BASE_URL = process.env.NEXT_PUBLIC_SIGN_BASE_URL ?? process.env.NEXT_PUBLIC_APP_URL
+  ? `${process.env.NEXT_PUBLIC_APP_URL}/sign`
+  : 'https://ledra.co.jp/sign';
 
 export async function POST(req: NextRequest) {
   // 1. 認証チェック
@@ -43,9 +47,14 @@ export async function POST(req: NextRequest) {
   }
 
   // 2. 証明書の存在確認・テナント境界チェック
+  // 車両・店舗情報も取得して通知メッセージに使用する
   const { data: cert, error: certError } = await supabase
     .from('certificates')
-    .select('id, tenant_id, public_id')
+    .select(`
+      id, tenant_id, public_id,
+      vehicles(car_number, car_name),
+      stores(name)
+    `)
     .eq('id', certificate_id)
     .eq('tenant_id', caller.tenantId)
     .single();
@@ -58,15 +67,52 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // テナント名（通知文に使用）
+  const admin = getAdminClient();
+  const { data: tenant } = await admin
+    .from('tenants')
+    .select('name')
+    .eq('id', caller.tenantId)
+    .single();
+
+  const storeName = (cert as unknown as { stores?: { name: string } | null }).stores?.name
+    ?? tenant?.name
+    ?? 'Ledra';
+
+  const vehicle = cert as unknown as {
+    vehicles?: { car_number?: string | null; car_name?: string | null } | null;
+  };
+  const vehicleLabel = [
+    vehicle.vehicles?.car_name,
+    vehicle.vehicles?.car_number,
+  ].filter(Boolean).join(' ') || '未登録';
+
   // 3. 既存の有効な pending セッションがあれば再利用（重複リクエスト防止）
   const existing = await getExistingPendingSession(certificate_id);
   if (existing) {
     const signUrl = `${SIGN_BASE_URL}/${existing.token}`;
+
+    // 既存セッションでも通知を再送できるよう試行
+    if (signer_email || existing.signer_email) {
+      void sendSignatureNotification({
+        signerEmail:   signer_email ?? existing.signer_email ?? undefined,
+        lineUserId:    body.line_user_id ?? undefined,
+        signerName:    signer_name ?? existing.signer_name ?? undefined,
+        storeName,
+        vehicleLabel,
+        signUrl,
+        expiresAt:     existing.expires_at,
+        channel:       (notification_method ?? existing.notification_method ?? 'email') as 'line' | 'email' | 'sms',
+        tenantId:      caller.tenantId,
+      }).catch((e) => console.warn('[signature/request] re-notify failed', e));
+    }
+
     return apiOk({
       session_id:  existing.id,
       sign_url:    signUrl,
       expires_at:  existing.expires_at,
       is_existing: true,
+      notified:    !!(signer_email || existing.signer_email),
       message:     '有効な署名依頼がすでに存在します',
     });
   }
@@ -94,7 +140,7 @@ export async function POST(req: NextRequest) {
       signer_name:         signer_name,
       signer_email:        signer_email,
       signer_phone:        signer_phone,
-      notification_method: notification_method ?? 'line',
+      notification_method: notification_method ?? 'email',
       pdf_bytes:           pdfBytes,
     });
   } catch (err) {
@@ -108,14 +154,37 @@ export async function POST(req: NextRequest) {
 
   const signUrl = `${SIGN_BASE_URL}/${session.token}`;
 
-  // 6. 通知送信（LINE 優先 / メールフォールバック）
-  // TODO: Phase 4 以降で LINE/メール通知モジュールと統合
-  // 現時点では sign_url を返すのみ（手動共有可能）
+  // 6. 通知送信（LINE / メール）
+  let notifyResult = { sent: false, channel: 'none', error: 'no recipient' };
+  try {
+    notifyResult = await sendSignatureNotification({
+      signerEmail:  signer_email ?? undefined,
+      lineUserId:   body.line_user_id ?? undefined,
+      signerName:   signer_name ?? undefined,
+      storeName,
+      vehicleLabel,
+      signUrl,
+      expiresAt:    session.expires_at,
+      channel:      (notification_method ?? 'email') as 'line' | 'email' | 'sms',
+      tenantId:     caller.tenantId,
+    });
+
+    // 通知送信日時を記録
+    if (notifyResult.sent) {
+      await admin
+        .from('signature_sessions')
+        .update({ notification_sent_at: new Date().toISOString() })
+        .eq('id', session.id);
+    }
+  } catch (e) {
+    console.warn('[signature/request] Notification failed (non-fatal):', e);
+  }
 
   return apiOk({
-    session_id: session.id,
-    sign_url:   signUrl,
-    expires_at: session.expires_at,
-    notified:   false,
+    session_id:       session.id,
+    sign_url:         signUrl,
+    expires_at:       session.expires_at,
+    notified:         notifyResult.sent,
+    notified_channel: notifyResult.channel,
   });
 }
