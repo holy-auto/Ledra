@@ -101,7 +101,7 @@ export async function POST(
         old_value: { payment_status: order.payment_status },
         new_value: { payment_status: updateData.payment_status ?? order.payment_status },
       })
-      .then(() => {}).catch(console.error);
+      .then(() => {}, console.error);
 
     return NextResponse.json({ ok: true, order: data });
   } catch (e: unknown) {
