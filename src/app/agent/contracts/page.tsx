@@ -17,6 +17,10 @@ type Contract = {
   signed_at: string | null;
   created_at: string;
   updated_at: string;
+  // Ledra 自前署名エンジン
+  sign_engine?: string;
+  sign_url?: string | null;
+  ledra_session_id?: string | null;
 };
 
 const TEMPLATE_LABELS: Record<string, string> = {
@@ -28,6 +32,15 @@ const TEMPLATE_LABELS: Record<string, string> = {
 export default function AgentContractsPage() {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [loading, setLoading] = useState(true);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const copySignUrl = async (id: string, url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch { /* ignore */ }
+  };
 
   useEffect(() => {
     (async () => {
@@ -80,8 +93,34 @@ export default function AgentContractsPage() {
                     </div>
                   </div>
 
-                  <div className="shrink-0">
-                    {canSign && (
+                  <div className="shrink-0 flex flex-col items-end gap-2">
+                    {/* Ledra 自前署名: 署名ページへのリンク */}
+                    {canSign && c.sign_url && (
+                      <a
+                        href={c.sign_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg
+                                   bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold
+                                   transition-colors"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                        署名する
+                      </a>
+                    )}
+                    {/* Ledra 自前署名: URL コピーボタン（別デバイス共有用） */}
+                    {canSign && c.sign_url && (
+                      <button
+                        onClick={() => copySignUrl(c.id, c.sign_url!)}
+                        className="text-xs text-gray-500 hover:text-indigo-600 transition-colors"
+                      >
+                        {copiedId === c.id ? "✅ コピー済み" : "🔗 URLをコピー"}
+                      </button>
+                    )}
+                    {/* 署名待ち（署名URLなしの場合） */}
+                    {canSign && !c.sign_url && (
                       <span className="inline-flex items-center gap-1 text-xs text-accent font-medium">
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -89,6 +128,7 @@ export default function AgentContractsPage() {
                         署名待ち
                       </span>
                     )}
+                    {/* 署名完了 */}
                     {c.status === "signed" && (
                       <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium">
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -96,6 +136,17 @@ export default function AgentContractsPage() {
                         </svg>
                         署名完了
                       </span>
+                    )}
+                    {/* 検証リンク */}
+                    {c.status === "signed" && c.ledra_session_id && (
+                      <a
+                        href={`/verify/${c.ledra_session_id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-gray-500 hover:text-emerald-600 transition-colors"
+                      >
+                        🔍 署名を検証
+                      </a>
                     )}
                   </div>
                 </div>

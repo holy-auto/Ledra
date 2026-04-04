@@ -931,6 +931,13 @@ type SigningRequest = {
   signed_at: string | null;
   signed_pdf_path: string | null;
   created_at: string;
+  // Ledra 自前署名エンジン
+  sign_engine?: string;
+  sign_url?: string | null;
+  ledra_session_id?: string | null;
+  ledra_status?: string | null;
+  ledra_signed_at?: string | null;
+  notified_at?: string | null;
 };
 
 const TEMPLATE_TYPES = [
@@ -947,6 +954,7 @@ function ContractsTab() {
   const [msg, setMsg] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState({
     template_type: "agent_contract",
     title: "",
@@ -1020,6 +1028,14 @@ function ContractsTab() {
       const res = await fetch(`/api/admin/agent-contracts/${contractId}/download`);
       const json = await res.json();
       if (res.ok && json.url) window.open(json.url, "_blank");
+    } catch { /* ignore */ }
+  };
+
+  const handleCopySignUrl = async (contractId: string, url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedId(contractId);
+      setTimeout(() => setCopiedId(null), 2000);
     } catch { /* ignore */ }
   };
 
@@ -1163,17 +1179,39 @@ function ContractsTab() {
                       <td className="p-3"><Badge variant={s.variant}>{s.label}</Badge></td>
                       <td className="p-3 whitespace-nowrap text-muted">{c.sent_at ? formatDateTime(c.sent_at) : "-"}</td>
                       <td className="p-3">
-                        <div className="flex gap-2">
+                        <div className="flex flex-col gap-1.5">
+                          {/* Ledra 署名URL コピー */}
+                          {c.sign_url && (c.status === "sent" || c.status === "viewed") && (
+                            <button
+                              onClick={() => handleCopySignUrl(c.id, c.sign_url!)}
+                              className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-500 text-xs font-medium"
+                            >
+                              {copiedId === c.id ? "✅ コピー済み" : "🔗 署名URLをコピー"}
+                            </button>
+                          )}
+                          {/* 署名済みPDF */}
                           {c.status === "signed" && c.signed_pdf_path && (
                             <button
                               onClick={() => handleDownload(c.id)}
                               className="text-accent hover:underline text-xs"
                             >
-                              PDF
+                              📄 PDF
                             </button>
                           )}
+                          {/* Ledra 検証リンク */}
+                          {c.ledra_session_id && (c.ledra_status === "signed" || c.status === "signed") && (
+                            <a
+                              href={`/verify/${c.ledra_session_id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-emerald-600 hover:underline text-xs"
+                            >
+                              🔍 署名を検証
+                            </a>
+                          )}
+                          {/* 再送・キャンセル */}
                           {(c.status === "sent" || c.status === "viewed") && (
-                            <>
+                            <div className="flex gap-2">
                               <button
                                 onClick={() => handleAction(c.id, "resend")}
                                 className="text-blue-600 hover:underline text-xs"
@@ -1186,7 +1224,7 @@ function ContractsTab() {
                               >
                                 キャンセル
                               </button>
-                            </>
+                            </div>
                           )}
                         </div>
                       </td>
