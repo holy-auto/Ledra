@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     return apiUnauthorized();
   }
 
-  const deny = await enforceBilling(req, { minPlan: "free", action: "create" });
+  const deny = await enforceBilling(req, { minPlan: "free", action: "create", tenantId: caller.tenantId });
   if (deny) return deny as any;
 
   // ── 月間証明書発行上限チェック ──
