@@ -7,6 +7,7 @@ import { logCertificateAction } from "@/lib/audit/certificateLog";
 import PageHeader from "@/components/ui/PageHeader";
 import AiExplainPanel from "@/components/certificates/AiExplainPanel";
 import SignatureRequestPanel from "./SignatureRequestPanel";
+import SignatureStatusBadge from "./SignatureStatusBadge";
 import { formatDateTime } from "@/lib/format";
 
 type PageProps = {
@@ -80,6 +81,15 @@ export default async function Page({ params }: PageProps) {
   const publicUrl = `/c/${row.public_id}`;
   const csvUrl = `/admin/certificates/export-one?pid=${encodeURIComponent(row.public_id)}`;
   const pdfUrl = `/admin/certificates/pdf-one?pid=${encodeURIComponent(row.public_id)}`;
+
+  // 署名セッション情報（最新の1件）
+  const { data: latestSession } = await admin
+    .from('signature_sessions')
+    .select('id, status, signed_at, expires_at, signer_email, signer_name, notification_sent_at')
+    .eq('certificate_id', row.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
   const { data: imageRowsRaw } = await admin
     .from("certificate_images")
@@ -281,9 +291,22 @@ export default async function Page({ params }: PageProps) {
           {/* 電子署名依頼パネル */}
           {!isVoid && (
             <section className="glass-card p-5 space-y-3">
-              <div>
-                <div className="text-xs font-semibold tracking-[0.18em] text-muted">ELECTRONIC SIGNATURE</div>
-                <div className="mt-1 text-lg font-semibold text-primary">電子署名</div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-semibold tracking-[0.18em] text-muted">ELECTRONIC SIGNATURE</div>
+                  <div className="mt-1 text-lg font-semibold text-primary">電子署名</div>
+                </div>
+                {latestSession && (
+                  <SignatureStatusBadge
+                    status={latestSession.status as string}
+                    signedAt={latestSession.signed_at as string | null}
+                    expiresAt={latestSession.expires_at as string}
+                    signerEmail={latestSession.signer_email as string | null}
+                    signerName={latestSession.signer_name as string | null}
+                    sessionId={latestSession.id as string}
+                    notifiedAt={latestSession.notification_sent_at as string | null}
+                  />
+                )}
               </div>
               <SignatureRequestPanel certificateId={row.id as string} />
             </section>
