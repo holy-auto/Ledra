@@ -47,35 +47,35 @@ export default function GlobalPortalLoginPage() {
   }
 
   const inputCls =
-    "w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-200";
+    "w-full rounded-2xl border border-border-default bg-surface px-4 py-3 text-sm text-primary outline-none focus:ring-2 focus:ring-accent/30";
   const btnCls =
-    "inline-flex items-center justify-center rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60";
+    "inline-flex items-center justify-center rounded-2xl bg-accent px-4 py-3 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60";
 
   return (
     <main className="mx-auto max-w-lg p-6 font-sans">
-      <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
-        <div className="text-sm font-semibold text-blue-600">Ledra</div>
-        <h1 className="mt-2 text-2xl font-bold text-neutral-900">マイページにログイン</h1>
-        <p className="mt-2 text-sm leading-6 text-neutral-600">
+      <div className="rounded-3xl border border-border-default bg-surface p-6 shadow-sm">
+        <div className="text-sm font-semibold text-accent">Ledra</div>
+        <h1 className="mt-2 text-2xl font-bold text-primary">マイページにログイン</h1>
+        <p className="mt-2 text-sm leading-6 text-secondary">
           ご利用中の加盟店情報をまとめて確認できます。まずはご本人確認を行ってください。
         </p>
 
         {from === "nfc" ? (
-          <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-800/50 dark:bg-emerald-950 dark:text-emerald-400">
             NFCタグから開いた証明書に関連するマイページへご案内します。
           </div>
         ) : null}
 
         {tenant ? (
-          <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+          <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:border-blue-800/50 dark:bg-blue-950 dark:text-blue-400">
             {tenant} の情報を優先して表示します。
           </div>
         ) : null}
 
-        <label className="mt-5 block text-sm font-medium text-neutral-700">メールアドレス</label>
+        <label className="mt-5 block text-sm font-medium text-secondary">メールアドレス</label>
         <input value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} autoComplete="email" />
 
-        <label className="mt-4 block text-sm font-medium text-neutral-700">電話番号 下4桁</label>
+        <label className="mt-4 block text-sm font-medium text-secondary">電話番号 下4桁</label>
         <input
           value={last4}
           onChange={(e) => setLast4(e.target.value)}
@@ -89,15 +89,15 @@ export default function GlobalPortalLoginPage() {
         </button>
 
         {msg ? (
-          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{msg}</div>
+          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800/50 dark:bg-red-950 dark:text-red-400">{msg}</div>
         ) : null}
 
-        <div className="mt-5 text-xs leading-6 text-neutral-500">
+        <div className="mt-5 text-xs leading-6 text-muted">
           ご利用中の加盟店が複数ある場合でも、ログイン後に店舗を選べます。
         </div>
-        <div className="mt-2 text-xs text-neutral-500">
+        <div className="mt-2 text-xs text-muted">
           既に店舗URLをお持ちの場合は{" "}
-          <Link href={tenant ? `/customer/${tenant}/login` : "/"} className="text-blue-600 underline">
+          <Link href={tenant ? `/customer/${tenant}/login` : "/"} className="text-accent underline">
             店舗別ログイン
           </Link>{" "}
           も利用できます。
