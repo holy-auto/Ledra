@@ -67,24 +67,24 @@ export default function CustomerLoginPage() {
   }
 
   const inputCls =
-    "w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400";
+    "w-full rounded-xl border border-border-default bg-surface px-3 py-2.5 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-accent/30";
   const btnCls =
-    "rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm cursor-pointer hover:bg-neutral-50 disabled:opacity-60 disabled:cursor-default";
+    "rounded-xl border border-border-default bg-surface px-3 py-2.5 text-sm text-primary cursor-pointer hover:bg-surface-hover disabled:opacity-60 disabled:cursor-default";
 
   return (
     <main className="mx-auto max-w-lg p-6 font-sans">
-      <h1 className="text-xl font-bold">お客様ログイン</h1>
-      <div className="mt-1 text-sm text-neutral-500">店舗: {tenant}</div>
+      <h1 className="text-xl font-bold text-primary">お客様ログイン</h1>
+      <div className="mt-1 text-sm text-muted">店舗: {tenant}</div>
 
-      <label className="mt-4 block text-sm font-medium text-neutral-700">メール</label>
+      <label className="mt-4 block text-sm font-medium text-secondary">メール</label>
       <input value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
 
-      <label className="mt-3 block text-sm font-medium text-neutral-700">電話番号 下4桁</label>
+      <label className="mt-3 block text-sm font-medium text-secondary">電話番号 下4桁</label>
       <input value={last4} onChange={(e) => setLast4(e.target.value)} inputMode="numeric" className={inputCls} />
 
       {phase === "verify" ? (
         <>
-          <label className="mt-3 block text-sm font-medium text-neutral-700">メールに届いた6桁コード</label>
+          <label className="mt-3 block text-sm font-medium text-secondary">メールに届いた6桁コード</label>
           <input value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" className={inputCls} />
         </>
       ) : null}
@@ -101,9 +101,9 @@ export default function CustomerLoginPage() {
         )}
       </div>
 
-      {msg ? <div className="mt-3 text-sm text-red-700">{msg}</div> : null}
+      {msg ? <div className="mt-3 text-sm text-danger-text">{msg}</div> : null}
 
-      <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-4 text-sm text-blue-700">
+      <div className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4 text-sm text-blue-700 dark:border-blue-800/50 dark:bg-blue-950 dark:text-blue-400">
         複数の加盟店をご利用中の場合は、共通の{" "}
         <a href={`/my?tenant=${encodeURIComponent(tenant)}`} className="font-semibold underline">
           Ledraマイページ
