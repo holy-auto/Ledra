@@ -62,8 +62,8 @@ export async function GET(req: Request) {
         "content-disposition": `attachment; filename="${doc.doc_number || "document"}.pdf"`,
       },
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("document pdf generation failed", e);
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
 }

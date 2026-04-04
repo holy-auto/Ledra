@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -8,14 +9,14 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status");
 
     let query = supabase
       .from("hearings")
-      .select("*")
+      .select("id, tenant_id, customer_name, customer_phone, customer_email, vehicle_maker, vehicle_model, vehicle_year, vehicle_plate, vehicle_color, vehicle_vin, service_type, vehicle_size, coating_history, desired_menu, budget_range, concern_areas, scratches_dents, parking_environment, usage_frequency, additional_requests, hearing_json, status, customer_id, vehicle_id, created_at, updated_at")
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
 
@@ -24,12 +25,12 @@ export async function GET(req: NextRequest) {
     }
 
     const { data, error } = await query.limit(200);
-    if (error) return NextResponse.json({ hearings: [], source: "empty" });
+    if (error) return apiInternalError(error, "hearings GET");
 
     return NextResponse.json({ hearings: data ?? [] });
   } catch (e: unknown) {
     console.error("[hearings] GET failed:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "hearings");
   }
 }
 
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const body = await req.json();
 
@@ -71,12 +72,12 @@ export async function POST(req: NextRequest) {
       .select("id")
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "hearings POST");
 
     return NextResponse.json({ ok: true, id: data.id });
   } catch (e: unknown) {
     console.error("[hearings] POST failed:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "hearings");
   }
 }
 
@@ -84,23 +85,23 @@ export async function PUT(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const body = await req.json();
     const { id, action, ...fields } = body;
-    if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+    if (!id) return apiValidationError("id は必須です");
 
     // アクション: 顧客登録連携
     if (action === "link_customer") {
       // 顧客レコード作成
       const { data: hearing } = await supabase
         .from("hearings")
-        .select("*")
+        .select("id, customer_name, customer_phone, customer_email, vehicle_maker, vehicle_model, vehicle_year, vehicle_plate, vehicle_vin, vehicle_size")
         .eq("id", id)
         .eq("tenant_id", caller.tenantId)
         .single();
 
-      if (!hearing) return NextResponse.json({ error: "not_found" }, { status: 404 });
+      if (!hearing) return apiNotFound("ヒアリングが見つかりません。");
 
       // 顧客作成
       const { data: customer, error: custErr } = await supabase
@@ -114,7 +115,7 @@ export async function PUT(req: NextRequest) {
         .select("id")
         .single();
 
-      if (custErr) return NextResponse.json({ error: custErr.message }, { status: 500 });
+      if (custErr) return apiInternalError(custErr, "hearings link_customer");
 
       // 車両作成
       let vehicleId: string | null = null;
@@ -173,10 +174,10 @@ export async function PUT(req: NextRequest) {
       .eq("id", id)
       .eq("tenant_id", caller.tenantId);
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "hearings PUT");
     return NextResponse.json({ ok: true });
   } catch (e: unknown) {
     console.error("[hearings] PUT failed:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "hearings");
   }
 }

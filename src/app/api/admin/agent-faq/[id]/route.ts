@@ -22,7 +22,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
       if (key in body) updates[key] = body[key];
     }
 
-    const { data, error } = await admin.from("agent_faqs").update(updates).eq("id", id).select().single();
+    const { data, error } = await admin.from("agent_faqs").update(updates).eq("id", id).select("id, category_id, question, answer, sort_order, is_published, created_at, updated_at").single();
     if (error) return apiInternalError(error, "agent-faq PUT");
     return NextResponse.json({ faq: data });
   } catch (e) {

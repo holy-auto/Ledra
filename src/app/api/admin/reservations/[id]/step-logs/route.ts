@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const { id } = await params;
 
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       .eq("tenant_id", caller.tenantId)
       .single();
 
-    if (!reservation) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    if (!reservation) return apiNotFound("not_found");
 
     const { data: stepLogs, error } = await supabase
       .from("reservation_step_logs")
@@ -33,13 +34,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       .order("step_order", { ascending: true });
 
     if (error) {
-      console.error("[step-logs] db_error:", error.message);
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
+      return apiInternalError(error, "step-logs list");
     }
 
     return NextResponse.json({ step_logs: stepLogs ?? [] });
   } catch (e: unknown) {
-    console.error("[step-logs] GET failed:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "step-logs GET");
   }
 }

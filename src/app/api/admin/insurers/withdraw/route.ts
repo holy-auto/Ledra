@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { getClientIp } from "@/lib/rateLimit";
+import { apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -18,27 +19,24 @@ export async function POST(req: Request) {
   const supabase = await createClient();
   const caller = await resolveCallerWithRole(supabase);
   if (!caller || !isPlatformAdmin(caller)) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    return apiForbidden();
   }
 
   let body: any;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
+    return apiValidationError("Invalid JSON");
   }
 
   const { insurer_id, confirm } = body;
 
   if (!insurer_id) {
-    return NextResponse.json({ error: "insurer_id is required" }, { status: 400 });
+    return apiValidationError("insurer_id is required");
   }
 
   if (confirm !== true) {
-    return NextResponse.json(
-      { error: "confirmation_required", message: "confirm: true を指定して削除を確定してください" },
-      { status: 400 },
-    );
+    return apiValidationError("confirm: true を指定して削除を確定してください");
   }
 
   const admin = createAdminClient();
@@ -51,19 +49,12 @@ export async function POST(req: Request) {
     .single();
 
   if (!insurer) {
-    return NextResponse.json({ error: "insurer_not_found" }, { status: 404 });
+    return apiNotFound("保険会社が見つかりません。");
   }
 
   // Warn if there's an active Stripe subscription
   if (insurer.stripe_subscription_id) {
-    return NextResponse.json(
-      {
-        error: "active_subscription",
-        message: "Stripeサブスクリプションが存在します。先にサブスクリプションをキャンセルしてください。",
-        stripe_subscription_id: insurer.stripe_subscription_id,
-      },
-      { status: 400 },
-    );
+    return apiValidationError("Stripeサブスクリプションが存在します。先にサブスクリプションをキャンセルしてください。");
   }
 
   // Execute withdrawal via RPC (transactional)
@@ -72,11 +63,7 @@ export async function POST(req: Request) {
   });
 
   if (rpcError) {
-    console.error("[admin/insurers/withdraw] rpc error:", rpcError.message);
-    return NextResponse.json(
-      { error: "withdrawal_failed", message: rpcError.message },
-      { status: 500 },
-    );
+    return apiInternalError(rpcError, "admin/insurers/withdraw");
   }
 
   // Audit log

@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
     if (error) return apiInternalError(error);
 
     return apiOk({ cases: cases ?? [] });
-  } catch (e: any) {
+  } catch (e: unknown) {
     return apiInternalError(e);
   }
 }
@@ -153,7 +153,7 @@ export async function POST(req: NextRequest) {
     }
 
     return apiValidationError("action は publish または unpublish です");
-  } catch (e: any) {
+  } catch (e: unknown) {
     return apiInternalError(e);
   }
 }

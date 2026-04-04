@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const { searchParams } = new URL(req.url);
     const period = searchParams.get("period") ?? "30d";
@@ -38,8 +39,7 @@ export async function GET(req: NextRequest) {
 
     const { data: logs, error: logsError } = await logsQuery;
     if (logsError) {
-      console.error("[workflow-analytics] logs_error:", logsError.message);
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
+      return apiInternalError(logsError, "workflow-analytics logs");
     }
 
     // Fetch completed reservations with workflow templates for service_type filtering
@@ -152,7 +152,6 @@ export async function GET(req: NextRequest) {
       trend,
     });
   } catch (e: unknown) {
-    console.error("[workflow-analytics] GET failed:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "workflow-analytics GET");
   }
 }

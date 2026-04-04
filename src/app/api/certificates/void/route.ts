@@ -74,10 +74,6 @@ export async function POST(req: Request) {
 
     return apiOk({});
   } catch (e) {
-    console.error("[certificates/void]", e);
-    return NextResponse.json(
-      { error: "internal_error", message: "内部エラーが発生しました" },
-      { status: 500 }
-    );
+    return apiInternalError(e, "certificates/void");
   }
 }

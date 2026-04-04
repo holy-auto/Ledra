@@ -31,7 +31,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
       .from("agent_materials")
       .update(updates)
       .eq("id", id)
-      .select()
+      .select("id, category_id, title, description, file_name, file_size, file_type, storage_path, version, is_pinned, is_published, uploaded_by, created_at, updated_at")
       .single();
 
     if (error) {

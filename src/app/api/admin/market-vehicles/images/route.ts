@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -14,15 +15,12 @@ export async function GET(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller)
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
 
     const url = new URL(req.url);
     const vehicleId = url.searchParams.get("vehicle_id");
     if (!vehicleId)
-      return NextResponse.json(
-        { error: "missing vehicle_id" },
-        { status: 400 }
-      );
+      return apiValidationError("missing vehicle_id");
 
     // Verify vehicle belongs to caller's tenant
     const { data: vehicle } = await supabase
@@ -33,33 +31,22 @@ export async function GET(req: NextRequest) {
       .maybeSingle();
 
     if (!vehicle)
-      return NextResponse.json(
-        { error: "vehicle_not_found" },
-        { status: 404 }
-      );
+      return apiNotFound("vehicle_not_found");
 
     const { data: images, error } = await supabase
       .from("market_vehicle_images")
-      .select("*")
+      .select("id, vehicle_id, tenant_id, storage_path, file_name, content_type, file_size, sort_order, created_at")
       .eq("vehicle_id", vehicleId)
       .eq("tenant_id", caller.tenantId)
       .order("sort_order", { ascending: true });
 
     if (error) {
-      console.error("[market-vehicle-images] db_error:", error.message);
-      return NextResponse.json(
-        { error: "db_error" },
-        { status: 500 }
-      );
+      return apiInternalError(error, "market-vehicle-images list");
     }
 
     return NextResponse.json({ images: images ?? [] });
-  } catch (e: any) {
-    console.error("market vehicle images GET error", e);
-    return NextResponse.json(
-      { error: "internal_error" },
-      { status: 500 }
-    );
+  } catch (e: unknown) {
+    return apiInternalError(e, "market-vehicle-images GET");
   }
 }
 
@@ -69,34 +56,25 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller)
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
 
     const form = await req.formData();
     const vehicleId = String(form.get("vehicle_id") ?? "").trim();
     const file = form.get("file") as File | null;
 
     if (!vehicleId)
-      return NextResponse.json(
-        { error: "missing vehicle_id" },
-        { status: 400 }
-      );
+      return apiValidationError("missing vehicle_id");
     if (!file || !file.size)
-      return NextResponse.json({ error: "missing file" }, { status: 400 });
+      return apiValidationError("missing file");
 
     // Validate MIME
     const mime = file.type || "application/octet-stream";
     if (!ALLOWED_MIME.includes(mime))
-      return NextResponse.json(
-        { error: "invalid_file_type", allowed: ALLOWED_MIME },
-        { status: 400 }
-      );
+      return apiValidationError("invalid_file_type");
 
     // Validate size
     if (file.size > MAX_FILE_BYTES)
-      return NextResponse.json(
-        { error: "file_too_large", max_bytes: MAX_FILE_BYTES },
-        { status: 400 }
-      );
+      return apiValidationError("file_too_large");
 
     // Verify vehicle belongs to caller's tenant
     const { data: vehicle } = await supabase
@@ -107,10 +85,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (!vehicle)
-      return NextResponse.json(
-        { error: "vehicle_not_found" },
-        { status: 404 }
-      );
+      return apiNotFound("vehicle_not_found");
 
     // Check max images
     const { count: existingCount } = await supabase
@@ -143,11 +118,7 @@ export async function POST(req: NextRequest) {
       .upload(storagePath, buffer, { contentType: mime, upsert: false });
 
     if (uploadError) {
-      console.error("market image upload error", uploadError);
-      return NextResponse.json(
-        { error: "upload_failed" },
-        { status: 500 }
-      );
+      return apiInternalError(uploadError, "market-vehicle-images upload");
     }
 
     // Insert record
@@ -166,22 +137,14 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (insertError) {
-      console.error("[market-vehicle-images] db_error (insert):", insertError.message);
       // Attempt to clean up uploaded file
       await supabase.storage.from("market").remove([storagePath]);
-      return NextResponse.json(
-        { error: "db_error" },
-        { status: 500 }
-      );
+      return apiInternalError(insertError, "market-vehicle-images insert");
     }
 
     return NextResponse.json({ ok: true, image });
-  } catch (e: any) {
-    console.error("market vehicle images POST error", e);
-    return NextResponse.json(
-      { error: "internal_error" },
-      { status: 500 }
-    );
+  } catch (e: unknown) {
+    return apiInternalError(e, "market-vehicle-images POST");
   }
 }
 
@@ -191,16 +154,13 @@ export async function DELETE(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller)
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
 
     const body = await req.json().catch(() => ({} as any));
     const { id, vehicle_id: vehicleId } = body;
 
     if (!id || !vehicleId)
-      return NextResponse.json(
-        { error: "missing id or vehicle_id" },
-        { status: 400 }
-      );
+      return apiValidationError("missing id or vehicle_id");
 
     // Verify image belongs to caller's tenant
     const { data: image } = await supabase
@@ -212,10 +172,7 @@ export async function DELETE(req: NextRequest) {
       .maybeSingle();
 
     if (!image)
-      return NextResponse.json(
-        { error: "image_not_found" },
-        { status: 404 }
-      );
+      return apiNotFound("image_not_found");
 
     // Delete from storage
     const { error: storageError } = await supabase.storage
@@ -235,19 +192,11 @@ export async function DELETE(req: NextRequest) {
       .eq("tenant_id", caller.tenantId);
 
     if (deleteError) {
-      console.error("[market-vehicle-images] db_error (delete):", deleteError.message);
-      return NextResponse.json(
-        { error: "db_error" },
-        { status: 500 }
-      );
+      return apiInternalError(deleteError, "market-vehicle-images delete");
     }
 
     return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    console.error("market vehicle images DELETE error", e);
-    return NextResponse.json(
-      { error: "internal_error" },
-      { status: 500 }
-    );
+  } catch (e: unknown) {
+    return apiInternalError(e, "market-vehicle-images DELETE");
   }
 }

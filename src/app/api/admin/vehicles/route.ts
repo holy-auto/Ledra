@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { parsePagination } from "@/lib/api/pagination";
+import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +11,7 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const { searchParams } = new URL(req.url);
     const customerId = searchParams.get("customer_id");
@@ -34,8 +35,7 @@ export async function GET(req: NextRequest) {
     const { data: vehicles, error, count } = await query;
 
     if (error) {
-      console.error("[admin/vehicles] db_error:", error.message);
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
+      return apiInternalError(error, "admin/vehicles GET");
     }
 
     const headers = { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" };
@@ -43,8 +43,7 @@ export async function GET(req: NextRequest) {
       vehicles: vehicles ?? [],
       ...(pagination.page > 0 && { page: pagination.page, per_page: pagination.perPage, total: count ?? 0 }),
     }, { headers });
-  } catch (e: any) {
-    console.error("admin vehicles list failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+  } catch (e: unknown) {
+    return apiInternalError(e, "admin/vehicles GET");
   }
 }

@@ -43,7 +43,7 @@ export async function POST(request: NextRequest, ctx: RouteContext) {
         is_admin: true,
         body: message.trim(),
       })
-      .select()
+      .select("id, ticket_id, sender_id, is_admin, body, created_at")
       .single();
 
     if (msgError) {

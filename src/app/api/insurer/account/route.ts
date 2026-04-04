@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiValidationError } from "@/lib/api/response";
+import { apiUnauthorized, apiValidationError, apiForbidden } from "@/lib/api/response";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -34,16 +34,10 @@ export async function PATCH(req: NextRequest) {
   if (!caller) return apiUnauthorized();
 
   if (caller.role !== "admin") {
-    return new Response(
-      JSON.stringify({
-        error: "admin_only",
-        message: "管理者のみ編集できます。",
-      }),
-      { status: 403, headers: { "content-type": "application/json" } },
-    );
+    return apiForbidden("管理者のみ編集できます。");
   }
 
-  let body: any;
+  let body: Record<string, unknown>;
   try {
     body = await req.json();
   } catch {
@@ -51,7 +45,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   const allowedFields = ["contact_email", "contact_phone", "address"];
-  const update: Record<string, any> = {};
+  const update: Record<string, unknown> = {};
   for (const key of allowedFields) {
     if (body[key] !== undefined) update[key] = body[key];
   }
@@ -64,7 +58,7 @@ export async function PATCH(req: NextRequest) {
     .from("insurers")
     .update(update)
     .eq("id", caller.insurerId)
-    .select()
+    .select("id, name, slug, plan_tier, status, contact_email, contact_phone, address, max_users, created_at, updated_at")
     .single();
 
   if (error) return apiValidationError(error.message);

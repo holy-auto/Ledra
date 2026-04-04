@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { contactSchema, parseBody } from "@/lib/validation/schemas";
+import { apiValidationError, apiInternalError } from "@/lib/api/response";
 
 /** 遅延初期化: ビルド時に API キーが無くてもクラッシュしない */
 function getResend() {
@@ -29,12 +30,12 @@ export async function POST(request: Request) {
   try {
     rawBody = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return apiValidationError("Invalid JSON");
   }
 
   const parsed = parseBody(contactSchema, rawBody);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Missing required fields", details: parsed.errors }, { status: 400 });
+    return apiValidationError("Missing required fields", { details: parsed.errors });
   }
 
   const { name, email, company, category, message } = parsed.data;
@@ -66,7 +67,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error("[contact] resend error:", err);
-    return NextResponse.json({ error: "Mail send failed" }, { status: 500 });
+    return apiInternalError(err, "contact email send");
   }
 }

@@ -177,13 +177,13 @@ export async function listPortalMemberships(email: string, last4: string, prefer
   if (customerError) throw new Error(`listPortalMemberships customers failed: ${customerError.message}`);
   if (!customers || customers.length === 0) return [] as PortalMembership[];
 
-  const tenantIds = [...new Set(customers.map((c: any) => String(c.tenant_id)).filter(Boolean))];
+  const tenantIds = [...new Set(customers.map((c: { tenant_id: string }) => String(c.tenant_id)).filter(Boolean))];
   if (tenantIds.length === 0) return [] as PortalMembership[];
 
   const { data: tenants, error: tenantError } = await db.from("tenants").select("id, name, slug").in("id", tenantIds);
   if (tenantError) throw new Error(`listPortalMemberships tenants failed: ${tenantError.message}`);
 
-  const tenantMap = new Map((tenants ?? []).map((t: any) => [String(t.id), t]));
+  const tenantMap = new Map((tenants ?? []).map((t: { id: string; name: string; slug: string }) => [String(t.id), t]));
 
   const membershipsRaw = await Promise.all(
     tenantIds.map(async (tenantId) => {
@@ -191,19 +191,19 @@ export async function listPortalMemberships(email: string, last4: string, prefer
       const slug = String(tenant?.slug ?? "").trim();
       if (!slug) return null;
 
-      const tenantCustomers = (customers ?? []).filter((c: any) => String(c.tenant_id) === String(tenantId));
+      const tenantCustomers = (customers ?? []).filter((c: { tenant_id: string }) => String(c.tenant_id) === String(tenantId));
       const customer =
-        tenantCustomers.find((c: any) => customerPhoneMatchesLast4(c?.phone, last4Norm)) ?? tenantCustomers[0] ?? null;
+        tenantCustomers.find((c: { phone: string | null }) => customerPhoneMatchesLast4(c?.phone, last4Norm)) ?? tenantCustomers[0] ?? null;
       const phoneHash = phoneLast4Hash(String(tenantId), last4Norm);
       const certs = await listCertificatesForCustomer(String(tenantId), phoneHash);
-      const phoneMatched = tenantCustomers.some((c: any) => customerPhoneMatchesLast4(c?.phone, last4Norm));
+      const phoneMatched = tenantCustomers.some((c: { phone: string | null }) => customerPhoneMatchesLast4(c?.phone, last4Norm));
       if (!phoneMatched && certs.length === 0) return null;
 
       const reservations = customer?.id
         ? await listFutureReservationsByCustomer(String(tenantId), String(customer.id))
         : [];
 
-      const nextReservationAt = reservations.length > 0 ? reservationDateTimeIso(reservations[0] as any) : null;
+      const nextReservationAt = reservations.length > 0 ? reservationDateTimeIso(reservations[0] as { date?: string | null; time_slot?: string | null }) : null;
       const lastActivityAt = certs[0]?.created_at ?? customer?.updated_at ?? null;
 
       return {

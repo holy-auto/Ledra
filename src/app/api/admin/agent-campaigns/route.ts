@@ -16,7 +16,7 @@ export async function GET() {
     const admin = getAdminClient();
     const { data } = await admin
       .from("agent_campaigns")
-      .select("*")
+      .select("id, title, description, campaign_type, bonus_rate, bonus_fixed, start_date, end_date, is_active, banner_text, target_agents, created_at, updated_at")
       .order("created_at", { ascending: false });
 
     return NextResponse.json({ campaigns: data ?? [] });
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
         banner_text: body.banner_text || null,
         target_agents: body.target_agents ?? "all",
       })
-      .select()
+      .select("id, title, description, campaign_type, bonus_rate, bonus_fixed, start_date, end_date, is_active, banner_text, target_agents, created_at, updated_at")
       .single();
 
     if (error) return apiInternalError(error, "agent-campaigns POST");

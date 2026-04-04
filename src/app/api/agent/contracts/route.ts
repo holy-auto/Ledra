@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -12,13 +13,13 @@ export async function GET() {
     const supabase = await createClient();
     const { data: auth } = await supabase.auth.getUser();
     if (!auth?.user) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
 
     const { data: agentStatus } = await supabase.rpc("get_my_agent_status");
     const agentRow = Array.isArray(agentStatus) ? agentStatus[0] : agentStatus;
     if (!agentRow?.agent_id) {
-      return NextResponse.json({ error: "not_agent" }, { status: 403 });
+      return apiForbidden("not_agent");
     }
 
     // RLS ensures only own agent's records
@@ -32,9 +33,6 @@ export async function GET() {
 
     return NextResponse.json({ contracts: data ?? [] });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "internal_error" },
-      { status: 500 },
-    );
+    return apiInternalError(e, "agent/contracts GET");
   }
 }

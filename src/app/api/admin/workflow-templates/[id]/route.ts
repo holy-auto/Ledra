@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { apiUnauthorized, apiForbidden, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 import type { WorkflowStep } from "../route";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +11,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const { id } = await params;
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
@@ -22,18 +23,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       .eq("id", id)
       .single();
 
-    if (!existing) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    if (!existing) return apiNotFound("テンプレートが見つかりません。");
     if (existing.is_platform) {
-      return NextResponse.json(
-        {
-          error: "platform_template_immutable",
-          message: "プラットフォームテンプレートは編集できません。コピーして編集してください。",
-        },
-        { status: 403 },
-      );
+      return apiForbidden("プラットフォームテンプレートは編集できません。コピーして編集してください。");
     }
     if (existing.tenant_id !== caller.tenantId) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      return apiForbidden();
     }
 
     const updates: Record<string, unknown> = {};
@@ -41,7 +36,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (body.steps !== undefined) {
       const steps = body.steps as WorkflowStep[];
       if (!Array.isArray(steps) || steps.length === 0) {
-        return NextResponse.json({ error: "steps_required" }, { status: 400 });
+        return apiValidationError("ステップは1つ以上必要です");
       }
       updates.steps = steps;
     }
@@ -63,18 +58,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       .update(updates)
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
-      .select()
+      .select("id, tenant_id, name, service_type, steps, is_default, is_platform, created_at, updated_at")
       .single();
 
     if (error) {
-      console.error("[workflow-templates] update_failed:", error.message);
-      return NextResponse.json({ error: "update_failed" }, { status: 500 });
+      return apiInternalError(error, "workflow-templates PUT");
     }
 
     return NextResponse.json({ ok: true, template: data });
   } catch (e: unknown) {
-    console.error("[workflow-templates/[id]] PUT failed:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "workflow-templates/[id] PUT");
   }
 }
 
@@ -83,7 +76,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const { id } = await params;
 
@@ -94,24 +87,22 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       .eq("id", id)
       .single();
 
-    if (!existing) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    if (!existing) return apiNotFound("テンプレートが見つかりません。");
     if (existing.is_platform) {
-      return NextResponse.json({ error: "platform_template_immutable" }, { status: 403 });
+      return apiForbidden("プラットフォームテンプレートは削除できません。");
     }
     if (existing.tenant_id !== caller.tenantId) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      return apiForbidden();
     }
 
     const { error } = await supabase.from("workflow_templates").delete().eq("id", id).eq("tenant_id", caller.tenantId);
 
     if (error) {
-      console.error("[workflow-templates] delete_failed:", error.message);
-      return NextResponse.json({ error: "delete_failed" }, { status: 500 });
+      return apiInternalError(error, "workflow-templates DELETE");
     }
 
     return NextResponse.json({ ok: true });
   } catch (e: unknown) {
-    console.error("[workflow-templates/[id]] DELETE failed:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "workflow-templates/[id] DELETE");
   }
 }

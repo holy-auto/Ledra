@@ -3,6 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { notifyDealStatusChanged } from "@/lib/market/email";
+import { apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export async function PATCH(
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const { id: dealId } = await params;
     const admin = createAdminClient();
@@ -28,7 +29,7 @@ export async function PATCH(
 
     const newStatus = (body?.status ?? "").trim();
     if (!newStatus) {
-      return NextResponse.json({ error: "status is required" }, { status: 400 });
+      return apiValidationError("status is required");
     }
 
     // Fetch current deal
@@ -40,16 +41,13 @@ export async function PATCH(
       .single();
 
     if (fetchErr || !deal) {
-      return NextResponse.json({ error: "deal_not_found" }, { status: 404 });
+      return apiNotFound("deal_not_found");
     }
 
     // Validate status transition
     const allowed = VALID_TRANSITIONS[deal.status];
     if (!allowed || !allowed.includes(newStatus)) {
-      return NextResponse.json(
-        { error: "invalid_transition", detail: `Cannot transition from ${deal.status} to ${newStatus}` },
-        { status: 400 },
-      );
+      return apiValidationError(`Cannot transition from ${deal.status} to ${newStatus}`);
     }
 
     // Update deal
@@ -64,12 +62,11 @@ export async function PATCH(
       .from("market_deals")
       .update(updates)
       .eq("id", dealId)
-      .select()
+      .select("id, inquiry_id, vehicle_id, seller_tenant_id, buyer_name, buyer_email, buyer_company, agreed_price, note, status, updated_at")
       .single();
 
     if (updateErr) {
-      console.error("[market-deals] update_failed:", updateErr.message);
-      return NextResponse.json({ error: "update_failed" }, { status: 500 });
+      return apiInternalError(updateErr, "market-deals update");
     }
 
     // Update vehicle status based on deal outcome
@@ -114,8 +111,7 @@ export async function PATCH(
     }
 
     return NextResponse.json({ ok: true, deal: updatedDeal });
-  } catch (e: any) {
-    console.error("market deal update failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+  } catch (e: unknown) {
+    return apiInternalError(e, "market-deals update");
   }
 }

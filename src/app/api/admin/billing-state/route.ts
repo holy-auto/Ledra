@@ -15,7 +15,7 @@ function getStripe() {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json().catch(() => ({}) as any);
+    const body = await req.json().catch((): Record<string, unknown> => ({}));
     const parsed = billingStateSchema.safeParse(body);
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "入力が不正です。");
@@ -57,16 +57,17 @@ export async function POST(req: NextRequest) {
     }
 
     // Stripeの期限情報（subscription がある時だけ）
-    let subscription: any = null;
-    const subscriptionId = (t.data as any).stripe_subscription_id as string | null;
+    let subscription: Record<string, unknown> | null = null;
+    const subscriptionId = (t.data as Record<string, unknown>).stripe_subscription_id as string | null;
 
     if (subscriptionId) {
       try {
         const stripe = getStripe();
 
         // Stripe SDKの戻りが Response<Subscription> の場合があるため data を吸収
-        const res: any = await stripe.subscriptions.retrieve(subscriptionId);
-        const sub: any = res?.data ?? res;
+        const res = await stripe.subscriptions.retrieve(subscriptionId);
+        const resRecord = res as unknown as Record<string, unknown>;
+        const sub = ((resRecord.data as Record<string, unknown> | undefined) ?? resRecord) as Stripe.Subscription & Record<string, unknown>;
 
         if (sub?.deleted) {
           subscription = { error: "Subscription is deleted" };

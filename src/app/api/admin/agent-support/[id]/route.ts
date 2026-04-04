@@ -28,7 +28,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
 
     const { data: messages, error: msgError } = await admin
       .from("agent_ticket_messages")
-      .select("*")
+      .select("id, ticket_id, sender_id, is_admin, body, created_at")
       .eq("ticket_id", id)
       .order("created_at", { ascending: true });
 
@@ -68,7 +68,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
       .from("agent_support_tickets")
       .update(updates)
       .eq("id", id)
-      .select()
+      .select("id, agent_id, subject, status, priority, created_at, updated_at")
       .single();
 
     if (error) {

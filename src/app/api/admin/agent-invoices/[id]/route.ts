@@ -29,7 +29,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
       updates.paid_at = new Date().toISOString();
     }
 
-    const { data, error } = await admin.from("agent_invoices").update(updates).eq("id", id).select().single();
+    const { data, error } = await admin.from("agent_invoices").update(updates).eq("id", id).select("id, agent_id, period_start, period_end, subtotal, tax_rate, tax_amount, total, status, notes, issued_at, paid_at, created_at, updated_at").single();
     if (error) return apiInternalError(error, "agent-invoices PUT");
     return NextResponse.json({ invoice: data });
   } catch (e) {

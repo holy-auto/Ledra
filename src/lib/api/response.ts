@@ -1,11 +1,5 @@
 import { NextResponse } from "next/server";
 
-// TODO [Q-6]: Migrate all 113+ API routes to use apiError/apiInternalError helpers
-// instead of raw NextResponse.json error returns. Track progress per directory:
-//   - src/app/api/admin/   (partially done)
-//   - src/app/api/insurer/ (partially done)
-//   - src/app/api/...      (not started)
-
 /**
  * 統一エラーレスポンスヘルパー
  *

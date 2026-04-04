@@ -3,6 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { parsePagination } from "@/lib/api/pagination";
 import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
+import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,7 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const { searchParams } = new URL(req.url);
     const vehicleId = searchParams.get("vehicle_id");
@@ -47,14 +48,12 @@ export async function GET(req: NextRequest) {
     const { data: certificates, error } = await query;
 
     if (error) {
-      console.error("[admin/certificates] db_error:", error.message);
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
+      return apiInternalError(error, "admin/certificates GET");
     }
 
     const headers = { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" };
     return NextResponse.json({ certificates: certificates ?? [] }, { headers });
-  } catch (e: any) {
-    console.error("admin certificates list failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+  } catch (e: unknown) {
+    return apiInternalError(e, "admin/certificates GET");
   }
 }

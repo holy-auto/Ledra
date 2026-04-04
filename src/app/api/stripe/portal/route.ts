@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     const stripe = getStripe();
     const admin = getSupabaseAdmin();
 
-    const body = await req.json().catch(() => ({}) as any);
+    const body = await req.json().catch((): Record<string, unknown> => ({}));
     const parsed = portalSchema.safeParse(body);
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "入力が不正です。");

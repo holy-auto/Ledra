@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
     }
 
     return apiOk({ audit });
-  } catch (e: any) {
+  } catch (e: unknown) {
     return apiInternalError(e);
   }
 }

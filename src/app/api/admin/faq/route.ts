@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -40,9 +41,9 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
     if (!requirePermission(caller, "settings:edit")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      return apiForbidden();
     }
 
     const body = await req.json();
@@ -50,19 +51,19 @@ export async function POST(req: NextRequest) {
     const answer = String(body?.answer ?? "").trim();
 
     if (!question || !answer) {
-      return NextResponse.json({ error: "question and answer required" }, { status: 400 });
+      return apiValidationError("question and answer required");
     }
 
     const { data, error } = await supabase
       .from("support_faq")
       .insert({ question, answer, sort_order: body?.sort_order ?? 0 })
-      .select()
+      .select("id, question, answer, sort_order, created_at")
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiInternalError(error, "faq POST");
     return NextResponse.json({ ok: true, item: data });
-  } catch (e: unknown) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "internal_error" }, { status: 500 });
+  } catch (e) {
+    return apiInternalError(e, "faq POST");
   }
 }
 
@@ -70,18 +71,18 @@ export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
     if (!requirePermission(caller, "settings:edit")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      return apiForbidden();
     }
 
     const body = await req.json();
     const id = String(body?.id ?? "").trim();
-    if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
+    if (!id) return apiValidationError("id is required");
 
     await supabase.from("support_faq").delete().eq("id", id);
     return NextResponse.json({ ok: true });
-  } catch (e: unknown) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "internal_error" }, { status: 500 });
+  } catch (e) {
+    return apiInternalError(e, "faq DELETE");
   }
 }

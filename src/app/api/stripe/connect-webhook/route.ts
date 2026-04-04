@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
   }
 
   // イベントの送信元 connected account ID（Stripe Connect では event.account に入る）
-  const connectedAccountId = (event as any).account as string | undefined;
+  const connectedAccountId = (event as unknown as Record<string, unknown>).account as string | undefined;
 
   // Idempotency
   const { error: claimError } = await supabase
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
             amount: transfer.amount,
             fee_amount: parseInt(meta?.fee_amount ?? "0", 10),
             currency: transfer.currency,
-            source_type: (meta?.source_type as any) ?? "other",
+            source_type: (meta?.source_type as string) ?? "other",
             source_id: meta?.source_id ?? null,
             status: "created",
             metadata: transfer.metadata ?? null,
@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
       // ─────────────────────────────────────────────────
       // transfer.paid — 送金完了（connected account に着金）
       // ─────────────────────────────────────────────────
-      case "transfer.paid" as any: {
+      case "transfer.paid" as Stripe.Event["type"]: {
         const transfer = event.data.object as Stripe.Transfer;
 
         // stripe_connect_transfers のステータスを paid に

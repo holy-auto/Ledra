@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { sha256Hex } from "@/lib/customerPortalServer";
+import { apiValidationError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -24,17 +25,14 @@ export async function POST(req: Request) {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
+    return apiValidationError("invalid JSON");
   }
 
   const email = (body?.email ?? "").trim().toLowerCase();
   const code = (body?.code ?? "").trim();
 
   if (!email || !code) {
-    return NextResponse.json(
-      { error: "validation_error", message: "メールアドレスと確認コードを入力してください" },
-      { status: 400 },
-    );
+    return apiValidationError("メールアドレスと確認コードを入力してください");
   }
 
   const supabase = createAdminClient();
@@ -50,18 +48,12 @@ export async function POST(req: Request) {
     .maybeSingle();
 
   if (fetchErr || !record) {
-    return NextResponse.json(
-      { error: "code_not_found", message: "確認コードが見つかりません。再度コードを送信してください。" },
-      { status: 400 },
-    );
+    return apiValidationError("確認コードが見つかりません。再度コードを送信してください。");
   }
 
   // Check expiry
   if (new Date(record.expires_at) < new Date()) {
-    return NextResponse.json(
-      { error: "code_expired", message: "確認コードの有効期限が切れています。再度コードを送信してください。" },
-      { status: 400 },
-    );
+    return apiValidationError("確認コードの有効期限が切れています。再度コードを送信してください。");
   }
 
   // Check max attempts (5)
@@ -81,10 +73,7 @@ export async function POST(req: Request) {
   // Verify code (compare hashed)
   const codeHash = sha256Hex(`insurer-otp|v1|${email}|${code}`);
   if (record.code !== codeHash) {
-    return NextResponse.json(
-      { error: "invalid_code", message: "確認コードが正しくありません" },
-      { status: 400 },
-    );
+    return apiValidationError("確認コードが正しくありません");
   }
 
   // Mark as verified

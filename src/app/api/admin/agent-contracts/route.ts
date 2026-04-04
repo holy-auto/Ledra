@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     const admin = getAdminClient();
     const { data, error } = await admin
       .from("agent_signing_requests")
-      .select("*")
+      .select("id, agent_id, template_type, title, cloudsign_document_id, status, signer_email, signer_name, sent_at, signed_at, signed_pdf_path, requested_by, created_at, updated_at")
       .eq("agent_id", agentId)
       .order("created_at", { ascending: false });
 
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
         sent_at: new Date().toISOString(),
         requested_by: caller.userId,
       })
-      .select()
+      .select("id, agent_id, template_type, title, cloudsign_document_id, status, signer_email, signer_name, sent_at, requested_by, created_at, updated_at")
       .single();
 
     if (insertErr) throw insertErr;

@@ -76,14 +76,14 @@ export async function POST(req: Request) {
     if (!caller) return apiUnauthorized();
     if (caller.role !== "admin") return apiForbidden("管理者のみユーザーを招待できます。");
 
-    let body: any;
+    let body: Record<string, unknown>;
     try {
       body = await req.json();
     } catch {
       return apiValidationError("invalid JSON");
     }
 
-    const { email, role, display_name } = body;
+    const { email, role, display_name } = body as { email?: string; role?: string; display_name?: string };
     if (!email || typeof email !== "string") {
       return apiValidationError("メールアドレスは必須です。");
     }
@@ -199,14 +199,14 @@ export async function PATCH(req: Request) {
     if (!caller) return apiUnauthorized();
     if (caller.role !== "admin") return apiForbidden("管理者のみユーザー管理が可能です。");
 
-    let body: any;
+    let body: Record<string, unknown>;
     try {
       body = await req.json();
     } catch {
       return apiValidationError("invalid JSON");
     }
 
-    const { insurer_user_id, role, is_active } = body;
+    const { insurer_user_id, role, is_active } = body as { insurer_user_id?: string; role?: string; is_active?: boolean };
     if (!insurer_user_id) {
       return apiValidationError("insurer_user_id is required");
     }
@@ -235,7 +235,7 @@ export async function PATCH(req: Request) {
       return apiValidationError("自分自身を無効化することはできません");
     }
 
-    const updates: Record<string, any> = {};
+    const updates: Record<string, unknown> = {};
     if (role !== undefined && ["admin", "viewer", "auditor"].includes(role)) {
       updates.role = role;
     }
@@ -276,14 +276,14 @@ export async function DELETE(req: Request) {
     if (!caller) return apiUnauthorized();
     if (caller.role !== "admin") return apiForbidden("管理者のみユーザー管理が可能です。");
 
-    let body: any;
+    let body: Record<string, unknown>;
     try {
       body = await req.json();
     } catch {
       return apiValidationError("invalid JSON");
     }
 
-    const { insurer_user_id } = body;
+    const { insurer_user_id } = body as { insurer_user_id?: string };
     if (!insurer_user_id) {
       return apiValidationError("insurer_user_id is required");
     }

@@ -239,7 +239,7 @@ export async function POST(req: NextRequest) {
         line_user_id: body.line_user_id || null,
         status: "confirmed",
       })
-      .select()
+      .select("id, tenant_id, customer_id, title, scheduled_date, start_time, end_time, note, source, line_user_id, status")
       .single();
 
     if (error) return apiInternalError(error, "external booking insert");

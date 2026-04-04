@@ -11,6 +11,7 @@ import {
   CUSTOMER_COOKIE,
 } from "@/lib/customerPortalServer";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 const isSecureCookie = process.env.NODE_ENV === "production";
 
@@ -32,26 +33,26 @@ export async function POST(req: Request) {
     const last4Raw = (body.phone_last4 ?? "").toString();
     const code = (body.code ?? "").toString().trim();
 
-    if (!tenant_slug) return NextResponse.json({ error: "missing tenant_slug" }, { status: 400 });
+    if (!tenant_slug) return apiValidationError("missing tenant_slug");
 
     const tenantId = await getTenantIdBySlug(tenant_slug);
-    if (!tenantId) return NextResponse.json({ error: "unknown tenant" }, { status: 404 });
+    if (!tenantId) return apiNotFound("unknown tenant");
 
     const email = normalizeEmail(emailRaw);
-    if (!email.includes("@")) return NextResponse.json({ error: "invalid email" }, { status: 400 });
+    if (!email.includes("@")) return apiValidationError("invalid email");
 
     let phoneHash: string;
     try {
       phoneHash = phoneLast4Hash(tenantId, last4Raw);
     } catch {
-      return NextResponse.json({ error: "invalid phone_last4" }, { status: 400 });
+      return apiValidationError("invalid phone_last4");
     }
 
     const row = await getLatestValidCodeRow(tenantId, email, phoneHash);
-    if (!row) return NextResponse.json({ error: "no code" }, { status: 404 });
+    if (!row) return apiNotFound("no code");
 
-    if (row.used_at) return NextResponse.json({ error: "code used" }, { status: 400 });
-    if (new Date(row.expires_at).getTime() < Date.now()) return NextResponse.json({ error: "code expired" }, { status: 400 });
+    if (row.used_at) return apiValidationError("code used");
+    if (new Date(row.expires_at).getTime() < Date.now()) return apiValidationError("code expired");
 
     const expected = otpCodeHash(tenantId, email, phoneHash, code);
     if (expected !== row.code_hash) {
@@ -61,7 +62,7 @@ export async function POST(req: Request) {
         await markCodeUsed(row.id);
         return NextResponse.json({ error: "too_many_attempts", message: "試行回数の上限に達しました。再度コードを送信してください。" }, { status: 429 });
       }
-      return NextResponse.json({ error: "invalid code" }, { status: 400 });
+      return apiValidationError("invalid code");
     }
 
     await markCodeUsed(row.id);
@@ -79,8 +80,7 @@ export async function POST(req: Request) {
     });
 
     return res;
-  } catch (e: any) {
-    console.error("customer verify-code error", e);
-    return NextResponse.json({ error: e?.message ?? "verify-code failed" }, { status: 500 });
+  } catch (e: unknown) {
+    return apiInternalError(e, "customer/verify-code");
   }
 }

@@ -150,14 +150,10 @@ export async function POST(req: Request) {
     // Validate that adding these users won't exceed max_users
     const remainingSlots = maxUsers - (currentCount ?? 0);
     if (rows.length > remainingSlots) {
-      return NextResponse.json({
-        ok: false,
-        error: "max_users_exceeded",
-        message: `ユーザー上限を超過します。現在 ${currentCount ?? 0} 名 / 上限 ${maxUsers} 名。追加可能: ${Math.max(0, remainingSlots)} 名`,
-        current: currentCount ?? 0,
-        max: maxUsers,
-        requested: rows.length,
-      }, { status: 400 });
+      return apiValidationError(
+        `ユーザー上限を超過します。現在 ${currentCount ?? 0} 名 / 上限 ${maxUsers} 名。追加可能: ${Math.max(0, remainingSlots)} 名`,
+        { current: currentCount ?? 0, max: maxUsers, requested: rows.length },
+      );
     }
 
     let invited = 0;

@@ -10,6 +10,7 @@ import {
 } from "@/lib/customerPortalServer";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { escapeHtml } from "@/lib/sanitize";
+import { apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 function genCode6(): string {
   // 000000〜999999（先頭ゼロあり）
@@ -58,25 +59,25 @@ export async function POST(req: Request) {
     const emailRaw = (body.email ?? "").toString();
     const last4Raw = (body.last4 ?? body.phone_last4 ?? "").toString().trim();
 
-    if (!tenant_slug) return NextResponse.json({ error: "missing tenant_slug" }, { status: 400 });
-    if (!emailRaw) return NextResponse.json({ error: "missing email" }, { status: 400 });
-    if (!last4Raw) return NextResponse.json({ error: "missing last4" }, { status: 400 });
-    if (!/^\d{4}$/.test(last4Raw)) return NextResponse.json({ error: "invalid last4" }, { status: 400 });
+    if (!tenant_slug) return apiValidationError("missing tenant_slug");
+    if (!emailRaw) return apiValidationError("missing email");
+    if (!last4Raw) return apiValidationError("missing last4");
+    if (!/^\d{4}$/.test(last4Raw)) return apiValidationError("invalid last4");
 
     const email = normalizeEmail(emailRaw);
 
     const tenantId = await getTenantIdBySlug(tenant_slug);
-    if (!tenantId) return NextResponse.json({ error: "unknown tenant" }, { status: 404 });
+    if (!tenantId) return apiNotFound("unknown tenant");
 
     let phoneHash = "";
     try {
       phoneHash = phoneLast4Hash(tenantId, last4Raw);
     } catch {
-      return NextResponse.json({ error: "hash_failed" }, { status: 400 });
+      return apiValidationError("hash_failed");
     }
 
     const ok = await tenantHasPhoneHash(tenantId, phoneHash);
-    if (!ok) return NextResponse.json({ error: "no matching certificates" }, { status: 404 });
+    if (!ok) return apiNotFound("no matching certificates");
 
     const code = genCode6();
     const expires = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10分
@@ -105,8 +106,7 @@ export async function POST(req: Request) {
     await sendEmailResend(email, subject, html);
 
     return NextResponse.json({ ok: true }, { status: 200 });
-  } catch (e: any) {
-    console.error("[request-code] error", e);
-    return NextResponse.json({ error: "server_error" }, { status: 500 });
+  } catch (e: unknown) {
+    return apiInternalError(e, "customer/request-code");
   }
 }

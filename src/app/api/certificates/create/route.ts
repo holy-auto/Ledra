@@ -16,7 +16,7 @@ async function supaInsertCertificate(row: any) {
   const { data, error } = await admin
     .from("certificates")
     .insert(row)
-    .select()
+    .select("id, public_id, vehicle_id, tenant_id, status, created_at, updated_at")
     .single();
 
   if (error) throw new Error(`Supabase insert failed: ${error.message}`);

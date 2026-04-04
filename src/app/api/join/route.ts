@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit as checkUpstashRateLimit } from "@/lib/api/rateLimit";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { joinSchemaV2, parseBody } from "@/lib/validation/schemas";
+import { apiValidationError, apiInternalError, apiError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -37,22 +38,19 @@ export async function POST(req: NextRequest) {
   try {
     rawBody = await req.json();
   } catch {
-    return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
+    return apiValidationError("invalid JSON");
   }
 
   // --- Zod validation ---
   const parsed = parseBody(joinSchemaV2, rawBody);
   if (!parsed.success) {
-    return NextResponse.json({ error: "validation_error", details: parsed.errors }, { status: 400 });
+    return apiValidationError("validation_error", { details: parsed.errors });
   }
 
   const data = parsed.data;
 
   if (!data.terms_accepted) {
-    return NextResponse.json(
-      { error: "terms_required", message: "利用規約への同意が必要です" },
-      { status: 400 },
-    );
+    return apiValidationError("利用規約への同意が必要です");
   }
 
   const supabase = createAdminClient();
@@ -68,20 +66,14 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
 
   if (!verification) {
-    return NextResponse.json(
-      { error: "email_not_verified", message: "メールアドレスの確認が完了していません。確認コードを入力してください。" },
-      { status: 400 },
-    );
+    return apiValidationError("メールアドレスの確認が完了していません。確認コードを入力してください。");
   }
 
   // Validate corporate number format if provided
   if (data.corporate_number) {
     const { isValidCorporateNumber } = await import("@/lib/insurer/corporateNumber");
     if (!isValidCorporateNumber(data.corporate_number)) {
-      return NextResponse.json(
-        { error: "invalid_corporate_number", message: "法人番号の形式が正しくありません（13桁の数字）" },
-        { status: 400 },
-      );
+      return apiValidationError("法人番号の形式が正しくありません（13桁の数字）");
     }
 
     // Check for duplicate corporate number
@@ -93,10 +85,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (existing) {
-      return NextResponse.json(
-        { error: "corporate_number_exists", message: "この法人番号は既に登録されています" },
-        { status: 409 },
-      );
+      return apiError({ code: "conflict", message: "この法人番号は既に登録されています", status: 409 });
     }
   }
 
@@ -117,16 +106,10 @@ export async function POST(req: NextRequest) {
     console.error("[insurer-register] auth.createUser error:", msg);
 
     if (msg.includes("already been registered") || msg.includes("already exists")) {
-      return NextResponse.json(
-        { error: "email_exists", message: "このメールアドレスは既に登録されています" },
-        { status: 409 },
-      );
+      return apiError({ code: "conflict", message: "このメールアドレスは既に登録されています", status: 409 });
     }
 
-    return NextResponse.json(
-      { error: "registration_failed", message: "登録に失敗しました。しばらくしてから再度お試しください。" },
-      { status: 500 },
-    );
+    return apiInternalError(authError, "insurer-register auth");
   }
 
   const userId = authData.user.id;
@@ -157,10 +140,7 @@ export async function POST(req: NextRequest) {
       console.error("[insurer-register] rollback deleteUser failed:", err),
     );
 
-    return NextResponse.json(
-      { error: "registration_failed", message: "登録に失敗しました。しばらくしてから再度お試しください。" },
-      { status: 500 },
-    );
+    return apiInternalError(rpcError, "insurer-register RPC");
   }
 
   // Step 3: Consume the email verification token (one-time use)

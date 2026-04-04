@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
 
     let query = admin
       .from("insurer_tenant_contracts")
-      .select("*, insurers(name, slug), tenants(name, slug)")
+      .select("id, insurer_id, tenant_id, status, terminated_at, created_at, updated_at, insurers(name, slug), tenants(name, slug)")
       .order("created_at", { ascending: false });
 
     // Platform admin can filter by insurer or tenant
@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
         .from("insurer_tenant_contracts")
         .update({ status: "active", terminated_at: null, updated_at: new Date().toISOString() })
         .eq("id", existing.id)
-        .select()
+        .select("id, insurer_id, tenant_id, status, terminated_at, created_at, updated_at")
         .single();
       if (error) return apiInternalError(error, "insurer-contracts reactivate");
       return apiOk({ contract: data });
@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
     const { data, error } = await admin
       .from("insurer_tenant_contracts")
       .insert({ insurer_id, tenant_id })
-      .select()
+      .select("id, insurer_id, tenant_id, status, terminated_at, created_at, updated_at")
       .single();
 
     if (error) return apiInternalError(error, "insurer-contracts create");
@@ -141,7 +141,7 @@ export async function PUT(req: NextRequest) {
       .from("insurer_tenant_contracts")
       .update(patch)
       .eq("id", id)
-      .select()
+      .select("id, insurer_id, tenant_id, status, terminated_at, created_at, updated_at")
       .single();
 
     if (error) return apiInternalError(error, "insurer-contracts update");

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -9,12 +10,12 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const { data: auth } = await supabase.auth.getUser();
     if (!auth?.user) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
 
     const { data: agentData, error: agentErr } = await supabase.rpc("get_my_agent_status");
     if (agentErr || !agentData || (Array.isArray(agentData) && agentData.length === 0)) {
-      return NextResponse.json({ error: "agent_not_found" }, { status: 403 });
+      return apiForbidden("agent_not_found");
     }
 
     const agent = Array.isArray(agentData) ? agentData[0] : agentData;
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
     // Query commissions joined with referrals for shop_name
     let query = supabase
       .from("agent_commissions")
-      .select("*, agent_referrals(shop_name)")
+      .select("id, agent_id, referral_id, amount, rate, status, period_start, period_end, paid_at, notes, created_at, updated_at, agent_referrals(shop_name)")
       .eq("agent_id", agentId)
       .order("period_start", { ascending: false });
 
@@ -41,8 +42,7 @@ export async function GET(request: NextRequest) {
     const { data: commissions, error } = await query;
 
     if (error) {
-      console.error("[agent/commissions] db error:", error.message);
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
+      return apiInternalError(error, "agent/commissions query");
     }
 
     const rows = (commissions ?? []).map((c: Record<string, unknown>) => {
@@ -61,8 +61,7 @@ export async function GET(request: NextRequest) {
       .eq("agent_id", agentId);
 
     if (summaryErr) {
-      console.error("[agent/commissions] summary error:", summaryErr.message);
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
+      return apiInternalError(summaryErr, "agent/commissions summary");
     }
 
     const now = new Date();
@@ -102,7 +101,6 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (e: unknown) {
-    console.error("[agent/commissions] GET error:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "agent/commissions GET");
   }
 }

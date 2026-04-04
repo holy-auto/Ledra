@@ -5,6 +5,7 @@ import { checkRateLimit as checkUpstashRateLimit } from "@/lib/api/rateLimit";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { agentApplicationSchema, parseBody } from "@/lib/validation/schemas";
 import { notifyApplicationReceived } from "@/lib/agent/email";
+import { apiValidationError, apiInternalError } from "@/lib/api/response";
 import crypto from "crypto";
 
 export const runtime = "nodejs";
@@ -38,18 +39,18 @@ export async function POST(req: NextRequest) {
   try {
     rawBody = await req.json();
   } catch {
-    return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
+    return apiValidationError("invalid JSON");
   }
 
   const parsed = parseBody(agentApplicationSchema, rawBody);
   if (!parsed.success) {
-    return NextResponse.json({ error: "validation_error", details: parsed.errors }, { status: 400 });
+    return apiValidationError("validation_error", { details: parsed.errors });
   }
 
   const data = parsed.data;
 
   if (!data.terms_accepted) {
-    return NextResponse.json({ error: "terms_required", message: "利用規約への同意が必要です" }, { status: 400 });
+    return apiValidationError("利用規約への同意が必要です");
   }
 
   const adminClient = createAdminClient();
@@ -160,10 +161,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json(
-      { error: "submission_failed", message: "申請の送信に失敗しました。しばらくしてから再度お試しください。" },
-      { status: 500 },
-    );
+    return apiInternalError(error, "agent/apply insert");
   }
 
   // Send confirmation email (fire-and-forget)

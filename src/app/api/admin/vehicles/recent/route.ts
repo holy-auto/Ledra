@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { getAdminClient } from "@/lib/api/auth";
+import { apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -10,9 +11,9 @@ export async function GET() {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
     if (!requireMinRole(caller, "staff")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      return apiForbidden();
     }
 
     const tenantId = caller.tenantId;
@@ -29,8 +30,7 @@ export async function GET() {
       .limit(200);
 
     if (certErr) {
-      console.error("[vehicles/recent] cert query failed:", certErr.message);
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
+      return apiInternalError(certErr, "vehicles/recent cert query");
     }
 
     if (!recentCerts || recentCerts.length === 0) {
@@ -71,8 +71,7 @@ export async function GET() {
       .in("id", vehicleIds);
 
     if (vehErr) {
-      console.error("[vehicles/recent] vehicle query failed:", vehErr.message);
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
+      return apiInternalError(vehErr, "vehicles/recent vehicle query");
     }
 
     const vehicleDetail = new Map<string, { maker: string | null; model: string | null; plate: string | null }>();
@@ -99,7 +98,6 @@ export async function GET() {
 
     return NextResponse.json({ vehicles: result });
   } catch (e: unknown) {
-    console.error("[vehicles/recent] GET failed:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "vehicles/recent GET");
   }
 }

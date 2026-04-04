@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@/lib/supabase/server";
+import { apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -25,12 +26,12 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient();
     const { data: auth } = await supabase.auth.getUser();
     if (!auth?.user) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
 
     const { data: agentData, error: agentErr } = await supabase.rpc("get_my_agent_status");
     if (agentErr || !agentData || (Array.isArray(agentData) && agentData.length === 0)) {
-      return NextResponse.json({ error: "agent_not_found" }, { status: 403 });
+      return apiForbidden("agent_not_found");
     }
 
     const agent = Array.isArray(agentData) ? agentData[0] : agentData;
@@ -39,10 +40,7 @@ export async function POST(request: NextRequest) {
 
     // Only admin can set up Stripe Connect
     if (role !== "admin") {
-      return NextResponse.json(
-        { error: "forbidden", message: "Stripe Connect を設定する権限がありません。" },
-        { status: 403 },
-      );
+      return apiForbidden("Stripe Connect を設定する権限がありません。");
     }
 
     // Fetch agent record to check for existing Stripe account
@@ -53,7 +51,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (profileErr || !agentProfile) {
-      return NextResponse.json({ error: "agent_profile_not_found" }, { status: 404 });
+      return apiNotFound("agent_profile_not_found");
     }
 
     const stripe = getStripe();
@@ -105,9 +103,7 @@ export async function POST(request: NextRequest) {
       url: accountLink.url,
     });
   } catch (e: unknown) {
-    console.error("[agent/stripe-connect] POST error:", e);
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: "internal_error", message: msg }, { status: 500 });
+    return apiInternalError(e, "agent/stripe-connect POST");
   }
 }
 
@@ -117,12 +113,12 @@ export async function GET() {
     const supabase = await createClient();
     const { data: auth } = await supabase.auth.getUser();
     if (!auth?.user) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
 
     const { data: agentData, error: agentErr } = await supabase.rpc("get_my_agent_status");
     if (agentErr || !agentData || (Array.isArray(agentData) && agentData.length === 0)) {
-      return NextResponse.json({ error: "agent_not_found" }, { status: 403 });
+      return apiForbidden("agent_not_found");
     }
 
     const agent = Array.isArray(agentData) ? agentData[0] : agentData;
@@ -135,7 +131,7 @@ export async function GET() {
       .single();
 
     if (profileErr || !agentProfile) {
-      return NextResponse.json({ error: "agent_profile_not_found" }, { status: 404 });
+      return apiNotFound("agent_profile_not_found");
     }
 
     const accountId = agentProfile.stripe_account_id as string | null;
@@ -172,7 +168,6 @@ export async function GET() {
       payouts_enabled: account.payouts_enabled,
     });
   } catch (e: unknown) {
-    console.error("[agent/stripe-connect] GET error:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "agent/stripe-connect GET");
   }
 }

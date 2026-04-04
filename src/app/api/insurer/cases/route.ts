@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     // Build query
     let query = admin
       .from("insurer_cases")
-      .select("*", { count: "exact" })
+      .select("id, insurer_id, title, description, status, priority, category, case_number, certificate_id, vehicle_id, tenant_id, assigned_to, created_by, resolved_at, closed_at, created_at, updated_at", { count: "exact" })
       .eq("insurer_id", caller.insurerId)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
@@ -196,7 +196,7 @@ export async function POST(req: NextRequest) {
     const { data: newCase, error } = await admin
       .from("insurer_cases")
       .insert(insertData)
-      .select("*")
+      .select("id, insurer_id, title, description, certificate_id, vehicle_id, tenant_id, priority, category, created_by, status, case_number, created_at, updated_at")
       .single();
 
     if (error) return apiValidationError(error.message);

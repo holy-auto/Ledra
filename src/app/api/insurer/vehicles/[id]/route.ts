@@ -6,6 +6,7 @@ import {
   apiUnauthorized,
   apiNotFound,
   apiValidationError,
+  apiInternalError,
 } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 
@@ -63,10 +64,6 @@ export async function GET(
       certificates: certs ?? [],
     });
   } catch (e) {
-    console.error("[insurer/vehicles/id]", e);
-    return NextResponse.json(
-      { error: "internal_error", message: "内部エラーが発生しました" },
-      { status: 500 }
-    );
+    return apiInternalError(e, "GET /api/insurer/vehicles/[id]");
   }
 }

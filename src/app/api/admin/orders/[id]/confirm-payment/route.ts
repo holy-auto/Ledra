@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 /**
  * POST /api/admin/orders/[id]/confirm-payment
@@ -16,7 +17,7 @@ export async function POST(
     const { id } = await params;
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
     const tenantId = caller.tenantId;
 
     const admin = getSupabaseAdmin();
@@ -25,20 +26,17 @@ export async function POST(
     // 注文取得
     const { data: order, error: fetchErr } = await admin
       .from("job_orders")
-      .select("*")
+      .select("id, status, from_tenant_id, to_tenant_id, payment_method, accepted_amount, payment_confirmed_by_client, payment_confirmed_by_vendor, payment_status")
       .eq("id", id)
       .or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`)
       .single();
 
     if (fetchErr || !order) {
-      return NextResponse.json({ error: "not_found" }, { status: 404 });
+      return apiNotFound("not_found");
     }
 
     if (!["payment_pending", "completed"].includes(order.status)) {
-      return NextResponse.json(
-        { error: "支払確認は支払待ちまたは完了ステータスの注文のみ可能です" },
-        { status: 400 },
-      );
+      return apiValidationError("支払確認は支払待ちまたは完了ステータスの注文のみ可能です");
     }
 
     const isFrom = order.from_tenant_id === tenantId;
@@ -82,12 +80,11 @@ export async function POST(
       .from("job_orders")
       .update(updateData)
       .eq("id", id)
-      .select()
+      .select("id, public_id, from_tenant_id, to_tenant_id, title, status, payment_status, payment_method, accepted_amount, payment_confirmed_by_client, payment_confirmed_by_vendor, created_at, updated_at")
       .single();
 
     if (error) {
-      console.error("[confirm-payment] update_failed:", error.message);
-      return NextResponse.json({ error: "update_failed" }, { status: 500 });
+      return apiInternalError(error, "confirm-payment update");
     }
 
     // 監査ログ
@@ -105,7 +102,6 @@ export async function POST(
 
     return NextResponse.json({ ok: true, order: data });
   } catch (e: unknown) {
-    console.error("[confirm-payment] failed:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "confirm-payment POST");
   }
 }

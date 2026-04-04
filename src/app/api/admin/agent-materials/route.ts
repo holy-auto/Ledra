@@ -18,13 +18,11 @@ export async function GET() {
     const [catResult, matResult] = await Promise.all([
       admin
         .from("agent_material_categories")
-        .select("*")
+        .select("id, name, sort_order, created_at, updated_at")
         .order("sort_order", { ascending: true }),
       admin
         .from("agent_materials")
-        .select(`
-          *, agent_material_categories ( name )
-        `)
+        .select("id, category_id, title, description, file_name, file_size, file_type, storage_path, version, is_pinned, is_published, uploaded_by, created_at, updated_at, agent_material_categories(name)")
         .order("created_at", { ascending: false }),
     ]);
 
@@ -95,7 +93,7 @@ export async function POST(request: NextRequest) {
         is_published: true,
         uploaded_by: caller.userId,
       })
-      .select()
+      .select("id, category_id, title, description, file_name, file_size, file_type, storage_path, version, is_pinned, is_published, uploaded_by, created_at, updated_at")
       .single();
 
     if (insertErr) {

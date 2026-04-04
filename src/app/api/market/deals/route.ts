@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +11,7 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const admin = createAdminClient();
     const body = await req.json().catch(() => ({} as any));
@@ -21,10 +22,7 @@ export async function POST(req: NextRequest) {
     const buyerEmail = (body?.buyer_email ?? "").trim();
 
     if (!inquiryId || !vehicleId || !buyerName || !buyerEmail) {
-      return NextResponse.json(
-        { error: "inquiry_id, vehicle_id, buyer_name, and buyer_email are required" },
-        { status: 400 },
-      );
+      return apiValidationError("inquiry_id, vehicle_id, buyer_name, and buyer_email are required");
     }
 
     const row: Record<string, unknown> = {
@@ -43,12 +41,11 @@ export async function POST(req: NextRequest) {
     const { data: deal, error } = await admin
       .from("market_deals")
       .insert(row)
-      .select()
+      .select("id, inquiry_id, vehicle_id, seller_tenant_id, buyer_name, buyer_email, buyer_company, agreed_price, status, created_at")
       .single();
 
     if (error) {
-      console.error("[market-deals] insert_failed:", error.message);
-      return NextResponse.json({ error: "insert_failed" }, { status: 500 });
+      return apiInternalError(error, "market-deals insert");
     }
 
     // Update the inquiry status to "in_negotiation"
@@ -64,9 +61,8 @@ export async function POST(req: NextRequest) {
       .eq("id", vehicleId);
 
     return NextResponse.json({ ok: true, deal });
-  } catch (e: any) {
-    console.error("market deal create failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+  } catch (e: unknown) {
+    return apiInternalError(e, "market-deals create");
   }
 }
 
@@ -75,7 +71,7 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const admin = createAdminClient();
     const url = new URL(req.url);
@@ -94,13 +90,11 @@ export async function GET(req: NextRequest) {
     const { data: deals, error } = await query;
 
     if (error) {
-      console.error("[market-deals] db_error:", error.message);
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
+      return apiInternalError(error, "market-deals list");
     }
 
     return NextResponse.json({ deals: deals ?? [] });
-  } catch (e: any) {
-    console.error("market deals list failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+  } catch (e: unknown) {
+    return apiInternalError(e, "market-deals list");
   }
 }

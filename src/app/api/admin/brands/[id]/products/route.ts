@@ -24,7 +24,7 @@ export async function GET(
 
     const { data: products, error } = await supabase
       .from("coating_products")
-      .select("*")
+      .select("id, brand_id, tenant_id, name, product_code, description, created_at, updated_at")
       .eq("brand_id", brand_id)
       .order("name");
 
@@ -62,7 +62,7 @@ export async function POST(
         product_code: b.product_code ?? null,
         description: b.description ?? null,
       })
-      .select("*")
+      .select("id, brand_id, tenant_id, name, product_code, description, created_at, updated_at")
       .single();
 
     if (error) return apiInternalError(error, "brands/[id]/products POST");
@@ -96,11 +96,11 @@ export async function PUT(
       .update({ ...fields, updated_at: new Date().toISOString() })
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
-      .select("*")
+      .select("id, brand_id, tenant_id, name, product_code, description, created_at, updated_at")
       .single();
 
     if (error || !product) {
-      if (!product) return apiNotFound("製品が見つかりません。");
+      if (!product) return apiNotFound("製品が見つかりませ��。");
       return apiInternalError(error, "brands/[id]/products PUT");
     }
 

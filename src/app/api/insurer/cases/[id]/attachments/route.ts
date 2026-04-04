@@ -107,7 +107,7 @@ export async function POST(
         storage_path: uploadData.path,
         uploaded_by: caller.userId,
       })
-      .select("*")
+      .select("id, case_id, file_name, file_size, file_type, storage_path, uploaded_by, created_at")
       .single();
 
     if (attachErr) return apiValidationError(attachErr.message);

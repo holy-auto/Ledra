@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import type { ReferralStatus } from "@/types/agent";
+import { apiUnauthorized, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -24,32 +25,32 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const supabase = await createClient();
     const { data: auth } = await supabase.auth.getUser();
     if (!auth?.user) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
 
     const { data: agentData, error: agentErr } = await supabase.rpc("get_my_agent_status");
     if (agentErr || !agentData || (Array.isArray(agentData) && agentData.length === 0)) {
-      return NextResponse.json({ error: "agent_not_found" }, { status: 403 });
+      return apiForbidden("agent_not_found");
     }
 
     const agent = Array.isArray(agentData) ? agentData[0] : agentData;
     const agentId = agent.agent_id as string;
 
+    const referralColumns = "id, agent_id, shop_name, contact_name, contact_email, contact_phone, referral_code, status, notes, contract_date, contracted_at, created_at, updated_at";
     const { data: referral, error } = await supabase
       .from("agent_referrals")
-      .select("*")
+      .select(referralColumns)
       .eq("id", id)
       .eq("agent_id", agentId)
       .single();
 
     if (error || !referral) {
-      return NextResponse.json({ error: "not_found" }, { status: 404 });
+      return apiNotFound("not_found");
     }
 
     return NextResponse.json({ referral });
   } catch (e: unknown) {
-    console.error("[agent/referrals/[id]] GET error:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "agent/referrals/[id] GET");
   }
 }
 
@@ -60,12 +61,12 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     const supabase = await createClient();
     const { data: auth } = await supabase.auth.getUser();
     if (!auth?.user) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
 
     const { data: agentData, error: agentErr } = await supabase.rpc("get_my_agent_status");
     if (agentErr || !agentData || (Array.isArray(agentData) && agentData.length === 0)) {
-      return NextResponse.json({ error: "agent_not_found" }, { status: 403 });
+      return apiForbidden("agent_not_found");
     }
 
     const agent = Array.isArray(agentData) ? agentData[0] : agentData;
@@ -74,22 +75,19 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 
     // Only admin or staff can update referrals
     if (role !== "admin" && role !== "staff") {
-      return NextResponse.json(
-        { error: "forbidden", message: "紹介を更新する権限がありません。" },
-        { status: 403 }
-      );
+      return apiForbidden("紹介を更新する権限がありません。");
     }
 
     // Fetch current referral to validate status transition
     const { data: existing, error: fetchErr } = await supabase
       .from("agent_referrals")
-      .select("*")
+      .select("id, status, contracted_at")
       .eq("id", id)
       .eq("agent_id", agentId)
       .single();
 
     if (fetchErr || !existing) {
-      return NextResponse.json({ error: "not_found" }, { status: 404 });
+      return apiNotFound("not_found");
     }
 
     const body = await request.json().catch(() => ({} as Record<string, unknown>));
@@ -117,13 +115,9 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       const allowed = VALID_TRANSITIONS[currentStatus] ?? [];
 
       if (!allowed.includes(newStatus)) {
-        return NextResponse.json(
-          {
-            error: "invalid_status_transition",
-            message: `ステータスを「${currentStatus}」から「${newStatus}」に変更することはできません。`,
-            allowed_transitions: allowed,
-          },
-          { status: 400 }
+        return apiValidationError(
+          `ステータスを「${currentStatus}」から「${newStatus}」に変更することはできません。`,
+          { allowed_transitions: allowed },
         );
       }
 
@@ -136,10 +130,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     }
 
     if (Object.keys(updates).length === 0) {
-      return NextResponse.json(
-        { error: "no_updates", message: "更新するフィールドがありません。" },
-        { status: 400 }
-      );
+      return apiValidationError("更新するフィールドがありません。");
     }
 
     updates.updated_at = new Date().toISOString();
@@ -149,17 +140,15 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       .update(updates)
       .eq("id", id)
       .eq("agent_id", agentId)
-      .select()
+      .select("id, agent_id, shop_name, contact_name, contact_email, contact_phone, referral_code, status, notes, contract_date, contracted_at, created_at, updated_at")
       .single();
 
     if (updateErr) {
-      console.error("[agent/referrals/[id]] update error:", updateErr.message);
-      return NextResponse.json({ error: "update_failed" }, { status: 500 });
+      return apiInternalError(updateErr, "agent/referrals/[id] update");
     }
 
     return NextResponse.json({ ok: true, referral: updated });
   } catch (e: unknown) {
-    console.error("[agent/referrals/[id]] PUT error:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "agent/referrals/[id] PUT");
   }
 }

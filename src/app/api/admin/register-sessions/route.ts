@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { apiUnauthorized, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -9,9 +10,9 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
     if (!requirePermission(caller, "register_sessions:view")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      return apiForbidden();
     }
 
     const url = new URL(req.url);
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabase
       .from("register_sessions")
-      .select("*")
+      .select("id, tenant_id, register_id, opened_by, closed_by, opening_cash, closing_cash, expected_cash, cash_difference, total_sales, total_transactions, status, note, opened_at, closed_at, created_at, updated_at")
       .eq("tenant_id", caller.tenantId)
       .order("opened_at", { ascending: false });
 
@@ -57,8 +58,7 @@ export async function GET(req: NextRequest) {
 
     const [{ data: sessions, error }, { count: totalCount }] = await Promise.all([query, countQuery]);
     if (error) {
-      console.error("[register_sessions] db_error:", error.message);
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
+      return apiInternalError(error, "register_sessions list");
     }
 
     const total = totalCount ?? (sessions ?? []).length;
@@ -75,8 +75,7 @@ export async function GET(req: NextRequest) {
       }),
     });
   } catch (e: unknown) {
-    console.error("register_sessions list failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "register_sessions list");
   }
 }
 
@@ -85,9 +84,9 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
     if (!requirePermission(caller, "register_sessions:operate")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      return apiForbidden();
     }
 
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
@@ -95,7 +94,7 @@ export async function POST(req: NextRequest) {
     const openingCash = parseInt(String(body?.opening_cash ?? 0), 10) || 0;
 
     if (!registerId) {
-      return NextResponse.json({ error: "register_idは必須です" }, { status: 400 });
+      return apiValidationError("register_idは必須です");
     }
 
     // レジがテナントに属するか確認
@@ -107,10 +106,10 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (!register) {
-      return NextResponse.json({ error: "指定されたレジが見つかりません" }, { status: 400 });
+      return apiValidationError("指定されたレジが見つかりません");
     }
     if (!register.is_active) {
-      return NextResponse.json({ error: "このレジは無効になっています" }, { status: 400 });
+      return apiValidationError("このレジは無効になっています");
     }
 
     // 同じレジで既にopenのセッションがないか確認
@@ -122,7 +121,7 @@ export async function POST(req: NextRequest) {
 
     if ((count ?? 0) > 0) {
       return NextResponse.json(
-        { error: "このレジには既に開いているセッションがあります" },
+        { error: "conflict", message: "このレジには既に開いているセッションがあります" },
         { status: 409 },
       );
     }
@@ -137,18 +136,16 @@ export async function POST(req: NextRequest) {
         status: "open",
         note: (String(body?.note ?? "")).trim() || null,
       })
-      .select()
+      .select("id, tenant_id, register_id, opened_by, opening_cash, status, note, opened_at, created_at, updated_at")
       .single();
 
     if (error) {
-      console.error("[register_sessions] insert_failed:", error.message);
-      return NextResponse.json({ error: "insert_failed" }, { status: 500 });
+      return apiInternalError(error, "register_sessions insert");
     }
 
     return NextResponse.json({ ok: true, session }, { status: 201 });
   } catch (e: unknown) {
-    console.error("register_session create failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "register_sessions create");
   }
 }
 
@@ -157,25 +154,25 @@ export async function PUT(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
     if (!requirePermission(caller, "register_sessions:operate")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      return apiForbidden();
     }
 
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const id = (String(body?.id ?? "")).trim();
-    if (!id) return NextResponse.json({ error: "idは必須です" }, { status: 400 });
+    if (!id) return apiValidationError("idは必須です");
 
     // 現在のセッション取得
     const { data: current } = await supabase
       .from("register_sessions")
-      .select("*")
+      .select("id, expected_cash")
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .single();
 
     if (!current) {
-      return NextResponse.json({ error: "セッションが見つかりません" }, { status: 404 });
+      return apiNotFound("セッションが見つかりません");
     }
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -209,18 +206,16 @@ export async function PUT(req: NextRequest) {
       .update(updates)
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
-      .select()
+      .select("id, tenant_id, register_id, opened_by, closed_by, opening_cash, closing_cash, expected_cash, cash_difference, total_sales, total_transactions, status, note, opened_at, closed_at, created_at, updated_at")
       .single();
 
     if (error) {
-      console.error("[register_sessions] update_failed:", error.message);
-      return NextResponse.json({ error: "update_failed" }, { status: 500 });
+      return apiInternalError(error, "register_sessions update");
     }
 
     return NextResponse.json({ ok: true, session });
   } catch (e: unknown) {
-    console.error("register_session update failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "register_sessions update");
   }
 }
 
@@ -229,14 +224,14 @@ export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
     if (!requirePermission(caller, "register_sessions:manage")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      return apiForbidden();
     }
 
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const id = (String(body?.id ?? "")).trim();
-    if (!id) return NextResponse.json({ error: "idは必須です" }, { status: 400 });
+    if (!id) return apiValidationError("idは必須です");
 
     const { error } = await supabase
       .from("register_sessions")
@@ -245,13 +240,11 @@ export async function DELETE(req: NextRequest) {
       .eq("tenant_id", caller.tenantId);
 
     if (error) {
-      console.error("[register_sessions] delete_failed:", error.message);
-      return NextResponse.json({ error: "delete_failed" }, { status: 500 });
+      return apiInternalError(error, "register_sessions delete");
     }
 
     return NextResponse.json({ ok: true });
   } catch (e: unknown) {
-    console.error("register_session delete failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "register_sessions delete");
   }
 }

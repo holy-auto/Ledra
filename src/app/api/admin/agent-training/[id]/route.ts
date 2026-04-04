@@ -22,7 +22,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
       if (key in body) updates[key] = body[key];
     }
 
-    const { data, error } = await admin.from("agent_training_courses").update(updates).eq("id", id).select().single();
+    const { data, error } = await admin.from("agent_training_courses").update(updates).eq("id", id).select("id, title, description, category, content_type, content_url, thumbnail_url, duration_min, is_required, is_published, sort_order, created_at, updated_at").single();
     if (error) return apiInternalError(error, "agent-training PUT");
     return NextResponse.json({ course: data });
   } catch (e) {

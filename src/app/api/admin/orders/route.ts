@@ -4,6 +4,7 @@ import { makePublicId } from "@/lib/publicId";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { enforceBilling } from "@/lib/billing/guard";
+import { apiUnauthorized, apiValidationError, apiNotFound, apiForbidden, apiInternalError } from "@/lib/api/response";
 
 // ─── 有効なステータス一覧 ───
 const VALID_STATUSES = [
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
     const tenantId = caller.tenantId;
 
     const { searchParams } = new URL(req.url);
@@ -156,8 +157,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ orders: orders ?? [] });
   } catch (e: unknown) {
-    console.error("[orders] GET failed:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "orders GET");
   }
 }
 
@@ -165,7 +165,7 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const deny = await enforceBilling(req as any, { minPlan: "free", action: "order_create" });
     if (deny) return deny as any;
@@ -176,7 +176,7 @@ export async function POST(req: NextRequest) {
     const { to_tenant_id, title, description, category, budget, deadline, vehicle_id } = body;
 
     if (!title) {
-      return NextResponse.json({ error: "title is required" }, { status: 400 });
+      return apiValidationError("title is required");
     }
 
     // Use admin client to bypass RLS (API already validated auth above)
@@ -200,22 +200,17 @@ export async function POST(req: NextRequest) {
     const { data, error } = await admin
       .from("job_orders")
       .insert(insertPayload)
-      .select()
+      .select("id, public_id, from_tenant_id, to_tenant_id, title, description, category, budget, deadline, vehicle_id, status, created_at, updated_at")
       .single();
 
     if (error) {
       console.error("[orders] insert_failed:", JSON.stringify({ message: error.message, details: error.details, hint: error.hint, code: error.code }));
-      return NextResponse.json(
-        { error: "注文の作成に失敗しました" },
-        { status: 500 },
-      );
+      return apiInternalError(error, "orders insert");
     }
 
     return NextResponse.json({ order: data }, { status: 201 });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("[orders] POST failed:", msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiInternalError(e, "orders POST");
   }
 }
 
@@ -224,7 +219,7 @@ export async function PUT(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const deny = await enforceBilling(req as any, { minPlan: "free", action: "order_update" });
     if (deny) return deny as any;
@@ -235,11 +230,11 @@ export async function PUT(req: NextRequest) {
     const { id, status, cancel_reason } = body;
 
     if (!id || !status) {
-      return NextResponse.json({ error: "id and status are required" }, { status: 400 });
+      return apiValidationError("id and status are required");
     }
 
     if (!VALID_STATUSES.includes(status)) {
-      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+      return apiValidationError("Invalid status");
     }
 
     // Use admin client to bypass RLS
@@ -254,27 +249,24 @@ export async function PUT(req: NextRequest) {
       .single();
 
     if (fetchError || !current) {
-      return NextResponse.json({ error: "order_not_found" }, { status: 404 });
+      return apiNotFound("order_not_found");
     }
 
     // ステータス遷移チェック
     const allowed = TRANSITIONS[current.status] ?? [];
     const transition = allowed.find((t) => t.next === status);
     if (!transition) {
-      return NextResponse.json(
-        { error: `Cannot transition from '${current.status}' to '${status}'` },
-        { status: 400 },
-      );
+      return apiValidationError(`Cannot transition from '${current.status}' to '${status}'`);
     }
 
     // 操作権限チェック（from/to のどちら側が操作可能か）
     const isFrom = current.from_tenant_id === tenantId;
     const isTo = current.to_tenant_id != null && current.to_tenant_id === tenantId;
     if (transition.side === "from" && !isFrom) {
-      return NextResponse.json({ error: "発注者のみがこの操作を行えます" }, { status: 403 });
+      return apiForbidden("発注者のみがこの操作を行えます");
     }
     if (transition.side === "to" && !isTo) {
-      return NextResponse.json({ error: "受注者のみがこの操作を行えます" }, { status: 403 });
+      return apiForbidden("受注者のみがこの操作を行えます");
     }
 
     // 更新データ構築
@@ -298,12 +290,12 @@ export async function PUT(req: NextRequest) {
       .from("job_orders")
       .update(updateData)
       .eq("id", id)
-      .select()
+      .select("id, public_id, from_tenant_id, to_tenant_id, title, description, category, budget, deadline, vehicle_id, status, cancelled_by, cancel_reason, vendor_completed_at, client_approved_at, created_at, updated_at")
       .single();
 
     if (error) {
       console.error("[orders] update_failed:", error.message, error.details, error.hint);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return apiInternalError(error, "orders update");
     }
 
     // 監査ログ記録（fire-and-forget、失敗しても本体処理は成功扱い）
@@ -321,8 +313,7 @@ export async function PUT(req: NextRequest) {
 
     return NextResponse.json({ ok: true, order: data });
   } catch (e: unknown) {
-    console.error("[orders] PUT failed:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "orders PUT");
   }
 }
 
@@ -331,7 +322,7 @@ export async function PATCH(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const deny = await enforceBilling(req as any, { minPlan: "free", action: "order_accept" });
     if (deny) return deny as any;
@@ -342,7 +333,7 @@ export async function PATCH(req: NextRequest) {
     const { id } = body;
 
     if (!id) {
-      return NextResponse.json({ error: "id is required" }, { status: 400 });
+      return apiValidationError("id is required");
     }
 
     const admin = getSupabaseAdmin();
@@ -355,12 +346,12 @@ export async function PATCH(req: NextRequest) {
       .single();
 
     if (fetchErr || !order) {
-      return NextResponse.json({ error: "order_not_found" }, { status: 404 });
+      return apiNotFound("order_not_found");
     }
 
     // 自テナントの案件は受注不可
     if (order.from_tenant_id === tenantId) {
-      return NextResponse.json({ error: "自社の案件は受注できません" }, { status: 400 });
+      return apiValidationError("自社の案件は受注できません");
     }
 
     // 既に受注者がいる場合は不可
@@ -370,7 +361,7 @@ export async function PATCH(req: NextRequest) {
 
     // pending 以外は不可
     if (order.status !== "pending") {
-      return NextResponse.json({ error: "申請中の案件のみ受注可能です" }, { status: 400 });
+      return apiValidationError("申請中の案件のみ受注可能です");
     }
 
     // 受注: to_tenant_id をセット + ステータスを accepted に
@@ -382,12 +373,12 @@ export async function PATCH(req: NextRequest) {
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
-      .select()
+      .select("id, public_id, from_tenant_id, to_tenant_id, title, description, category, budget, deadline, vehicle_id, status, created_at, updated_at")
       .single();
 
     if (error) {
       console.error("[orders] accept_failed:", error.message);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return apiInternalError(error, "orders accept");
     }
 
     // 監査ログ
@@ -405,7 +396,6 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({ ok: true, order: data });
   } catch (e: unknown) {
-    console.error("[orders] PATCH failed:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "orders PATCH");
   }
 }

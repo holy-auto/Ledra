@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
         hearing_used: !!hearing_id,
       },
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     return apiInternalError(e);
   }
 }

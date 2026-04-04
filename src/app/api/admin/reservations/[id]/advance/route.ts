@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { sendProgressUpdate } from "@/lib/line/client";
+import { apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const { id } = await params;
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
@@ -57,19 +58,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .eq("tenant_id", caller.tenantId)
       .single();
 
-    if (!reservation) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    if (!reservation) return apiNotFound("not_found");
     if (reservation.status === "completed" || reservation.status === "cancelled") {
-      return NextResponse.json(
-        { error: "already_final", message: "この予約はすでに完了またはキャンセルされています" },
-        { status: 400 },
-      );
+      return apiValidationError("この予約はすでに完了またはキャンセルされています");
     }
 
     // ─── テンプレート未設定: レガシーフロー ───
     if (!reservation.workflow_template_id) {
       const currentIdx = LEGACY_STATUS_FLOW.indexOf(reservation.status as (typeof LEGACY_STATUS_FLOW)[number]);
       if (currentIdx < 0 || currentIdx >= LEGACY_STATUS_FLOW.length - 1) {
-        return NextResponse.json({ error: "no_next_step" }, { status: 400 });
+        return apiValidationError("no_next_step");
       }
       const nextStatus = LEGACY_STATUS_FLOW[currentIdx + 1];
       const { data: updated, error } = await supabase
@@ -77,10 +75,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .update({ status: nextStatus })
         .eq("id", id)
         .eq("tenant_id", caller.tenantId)
-        .select()
+        .select("id, status, customer_id, vehicle_id, title, scheduled_date, start_time, end_time, created_at, updated_at")
         .single();
 
-      if (error) return NextResponse.json({ error: "update_failed" }, { status: 500 });
+      if (error) return apiInternalError(error, "advance legacy update");
       return NextResponse.json({ ok: true, reservation: updated, legacy: true });
     }
 
@@ -91,11 +89,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .eq("id", reservation.workflow_template_id)
       .single();
 
-    if (!template) return NextResponse.json({ error: "template_not_found" }, { status: 404 });
+    if (!template) return apiNotFound("template_not_found");
 
     const steps = (template.steps ?? []) as WorkflowStep[];
     const totalSteps = steps.length;
-    if (totalSteps === 0) return NextResponse.json({ error: "no_steps" }, { status: 400 });
+    if (totalSteps === 0) return apiValidationError("no_steps");
 
     const currentOrder = reservation.current_step_order ?? 0;
     const nextOrder = currentOrder + 1;
@@ -135,7 +133,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     if (!isLastStep) {
       nextStep = steps.find((s) => s.order === nextOrder) ?? null;
-      if (!nextStep) return NextResponse.json({ error: "step_not_found" }, { status: 400 });
+      if (!nextStep) return apiValidationError("step_not_found");
 
       // 次ステップのlog挿入
       await supabase.from("reservation_step_logs").upsert(
@@ -178,8 +176,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .single();
 
     if (updateError) {
-      console.error("[advance] update_failed:", updateError.message);
-      return NextResponse.json({ error: "update_failed" }, { status: 500 });
+      return apiInternalError(updateError, "advance update");
     }
 
     // ─── 顧客公開イベント書き込み & LINE通知 ───
@@ -240,7 +237,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       is_completed: isLastStep,
     });
   } catch (e: unknown) {
-    console.error("[reservations/advance] POST failed:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "reservations/advance POST");
   }
 }

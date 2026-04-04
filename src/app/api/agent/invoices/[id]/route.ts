@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -8,22 +9,22 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
     const { id } = await ctx.params;
     const supabase = await createClient();
     const { data: auth } = await supabase.auth.getUser();
-    if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!auth?.user) return apiUnauthorized();
 
     const { data: agentData } = await supabase.rpc("get_my_agent_status");
     const agent = Array.isArray(agentData) ? agentData[0] : agentData;
-    if (!agent?.agent_id) return NextResponse.json({ error: "agent_not_found" }, { status: 403 });
+    if (!agent?.agent_id) return apiForbidden("agent_not_found");
 
     const [invoiceRes, linesRes, agentRes] = await Promise.all([
       supabase
         .from("agent_invoices")
-        .select("*")
+        .select("id, agent_id, invoice_number, amount, tax, total, status, period_start, period_end, issued_at, paid_at, created_at, updated_at")
         .eq("id", id)
         .eq("agent_id", agent.agent_id)
         .single(),
       supabase
         .from("agent_invoice_lines")
-        .select("*")
+        .select("id, invoice_id, description, quantity, unit_price, amount, created_at")
         .eq("invoice_id", id)
         .order("created_at", { ascending: true }),
       supabase
@@ -34,7 +35,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
     ]);
 
     if (!invoiceRes.data) {
-      return NextResponse.json({ error: "invoice_not_found" }, { status: 404 });
+      return apiNotFound("invoice_not_found");
     }
 
     return NextResponse.json({
@@ -43,6 +44,6 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
       agent: agentRes.data,
     });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "internal_error" }, { status: 500 });
+    return apiInternalError(e, "agent/invoices/[id] GET");
   }
 }

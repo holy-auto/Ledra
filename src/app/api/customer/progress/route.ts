@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/api/auth";
+import { apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
     const reservationId = url.searchParams.get("reservation_id");
 
     if (!tenantSlug || !reservationId) {
-      return NextResponse.json({ error: "missing_params" }, { status: 400 });
+      return apiValidationError("missing_params");
     }
 
     const supabase = getAdminClient();
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest) {
     // テナント取得
     const { data: tenant } = await supabase.from("tenants").select("id").eq("slug", tenantSlug).single();
 
-    if (!tenant) return NextResponse.json({ error: "tenant_not_found" }, { status: 404 });
+    if (!tenant) return apiNotFound("tenant_not_found");
 
     // 予約取得
     const { data: reservation } = await supabase
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest) {
       .eq("tenant_id", tenant.id)
       .single();
 
-    if (!reservation) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    if (!reservation) return apiNotFound("not_found");
 
     // テンプレート未設定の場合はシンプルなレスポンス
     if (!reservation.workflow_template_id) {
@@ -86,7 +87,7 @@ export async function GET(req: NextRequest) {
       .eq("id", reservation.workflow_template_id)
       .single();
 
-    if (!template) return NextResponse.json({ error: "template_not_found" }, { status: 404 });
+    if (!template) return apiNotFound("template_not_found");
 
     const allSteps = (template.steps ?? []) as WorkflowStep[];
     // 顧客可視ステップのみ
@@ -153,7 +154,6 @@ export async function GET(req: NextRequest) {
       is_completed: isCompleted,
     });
   } catch (e: unknown) {
-    console.error("[customer/progress] GET failed:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "customer/progress");
   }
 }

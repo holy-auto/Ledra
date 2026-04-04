@@ -3,6 +3,10 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { escapeIlike } from "@/lib/sanitize";
 import { enforceBilling } from "@/lib/billing/guard";
+import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+
+const MV_COLS = "id, tenant_id, maker, model, grade, year, mileage, color, color_code, plate_number, chassis_number, engine_type, displacement, transmission, drive_type, fuel_type, door_count, seating_capacity, body_type, inspection_date, repair_history, condition_grade, condition_note, asking_price, wholesale_price, description, features, status, listed_at, created_at, updated_at";
+const MVI_COLS = "id, vehicle_id, tenant_id, storage_path, file_name, content_type, file_size, sort_order, created_at";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +15,7 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const url = new URL(req.url);
     const singleId = url.searchParams.get("id") ?? "";
@@ -23,18 +27,17 @@ export async function GET(req: NextRequest) {
 
     // Single vehicle by ID
     if (singleId) {
-      let q = supabase.from("market_vehicles").select("*").eq("id", singleId);
+      let q = supabase.from("market_vehicles").select(MV_COLS).eq("id", singleId);
       if (!isPublic) q = q.eq("tenant_id", caller.tenantId);
       else q = q.eq("status", "listed");
       const { data: vehicles, error } = await q;
       if (error) {
-        console.error("[market-vehicles] db_error:", error.message);
-        return NextResponse.json({ error: "db_error" }, { status: 500 });
+        return apiInternalError(error, "market-vehicles single fetch");
       }
       // Fetch images
       let imgs: any[] = [];
       if (vehicles && vehicles.length > 0) {
-        const { data } = await supabase.from("market_vehicle_images").select("*").eq("vehicle_id", singleId).order("sort_order", { ascending: true });
+        const { data } = await supabase.from("market_vehicle_images").select(MVI_COLS).eq("vehicle_id", singleId).order("sort_order", { ascending: true });
         imgs = data ?? [];
       }
       const enriched = (vehicles ?? []).map((v) => ({ ...v, images: imgs }));
@@ -47,14 +50,14 @@ export async function GET(req: NextRequest) {
       // Cross-tenant: only listed vehicles
       query = supabase
         .from("market_vehicles")
-        .select("*")
+        .select(MV_COLS)
         .eq("status", "listed")
         .order("listed_at", { ascending: false });
     } else {
       // Tenant's own vehicles: show all statuses
       query = supabase
         .from("market_vehicles")
-        .select("*")
+        .select(MV_COLS)
         .eq("tenant_id", caller.tenantId)
         .order("created_at", { ascending: false });
 
@@ -70,8 +73,7 @@ export async function GET(req: NextRequest) {
 
     const { data: vehicles, error } = await query;
     if (error) {
-      console.error("[market-vehicles] db_error:", error.message);
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
+      return apiInternalError(error, "market-vehicles list");
     }
 
     // Fetch images for all vehicles
@@ -81,7 +83,7 @@ export async function GET(req: NextRequest) {
     if (vehicleIds.length > 0) {
       const { data: images } = await supabase
         .from("market_vehicle_images")
-        .select("*")
+        .select(MVI_COLS)
         .in("vehicle_id", vehicleIds)
         .order("sort_order", { ascending: true });
 
@@ -106,9 +108,8 @@ export async function GET(req: NextRequest) {
       vehicles: enriched,
       stats: { total, listed, draft },
     });
-  } catch (e: any) {
-    console.error("market-vehicles list failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+  } catch (e: unknown) {
+    return apiInternalError(e, "market-vehicles list");
   }
 }
 
@@ -117,7 +118,7 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const deny = await enforceBilling(req as any, { minPlan: "standard", action: "market_create" });
     if (deny) return deny as any;
@@ -127,7 +128,7 @@ export async function POST(req: NextRequest) {
     const makerVal = (body?.maker ?? "").trim();
     const modelVal = (body?.model ?? "").trim();
     if (!makerVal || !modelVal) {
-      return NextResponse.json({ error: "maker and model are required" }, { status: 400 });
+      return apiValidationError("maker and model are required");
     }
 
     const row: Record<string, unknown> = {
@@ -168,16 +169,14 @@ export async function POST(req: NextRequest) {
       row.listed_at = new Date().toISOString();
     }
 
-    const { data, error } = await supabase.from("market_vehicles").insert(row).select().single();
+    const { data, error } = await supabase.from("market_vehicles").insert(row).select(MV_COLS).single();
     if (error) {
-      console.error("[market-vehicles] insert_failed:", error.message);
-      return NextResponse.json({ error: "insert_failed" }, { status: 500 });
+      return apiInternalError(error, "market-vehicles insert");
     }
 
     return NextResponse.json({ ok: true, vehicle: data });
-  } catch (e: any) {
-    console.error("market-vehicle create failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+  } catch (e: unknown) {
+    return apiInternalError(e, "market-vehicles create");
   }
 }
 
@@ -186,14 +185,14 @@ export async function PUT(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const deny = await enforceBilling(req as any, { minPlan: "standard", action: "market_update" });
     if (deny) return deny as any;
 
     const body = await req.json().catch(() => ({} as any));
     const id = (body?.id ?? "").trim();
-    if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
+    if (!id) return apiValidationError("missing_id");
 
     // Check current status for listed_at logic
     const { data: existing } = await supabase
@@ -203,7 +202,7 @@ export async function PUT(req: NextRequest) {
       .eq("tenant_id", caller.tenantId)
       .single();
 
-    if (!existing) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    if (!existing) return apiNotFound("not_found");
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
@@ -244,18 +243,16 @@ export async function PUT(req: NextRequest) {
       .update(updates)
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
-      .select()
+      .select(MV_COLS)
       .single();
 
     if (error) {
-      console.error("[market-vehicles] update_failed:", error.message);
-      return NextResponse.json({ error: "update_failed" }, { status: 500 });
+      return apiInternalError(error, "market-vehicles update");
     }
 
     return NextResponse.json({ ok: true, vehicle: data });
-  } catch (e: any) {
-    console.error("market-vehicle update failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+  } catch (e: unknown) {
+    return apiInternalError(e, "market-vehicles update");
   }
 }
 
@@ -264,14 +261,14 @@ export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const deny = await enforceBilling(req as any, { minPlan: "standard", action: "market_delete" });
     if (deny) return deny as any;
 
     const body = await req.json().catch(() => ({} as any));
     const id = (body?.id ?? "").trim();
-    if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
+    if (!id) return apiValidationError("missing_id");
 
     // Fetch vehicle to check status
     const { data: vehicle } = await supabase
@@ -281,13 +278,10 @@ export async function DELETE(req: NextRequest) {
       .eq("tenant_id", caller.tenantId)
       .single();
 
-    if (!vehicle) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    if (!vehicle) return apiNotFound("not_found");
 
     if (vehicle.status !== "draft") {
-      return NextResponse.json({
-        error: "not_draft",
-        message: "下書きステータスの車両のみ削除できます。",
-      }, { status: 400 });
+      return apiValidationError("下書きステータスの車両のみ削除できます。");
     }
 
     // Delete associated images from storage
@@ -319,13 +313,11 @@ export async function DELETE(req: NextRequest) {
       .eq("tenant_id", caller.tenantId);
 
     if (error) {
-      console.error("[market-vehicles] delete_failed:", error.message);
-      return NextResponse.json({ error: "delete_failed" }, { status: 500 });
+      return apiInternalError(error, "market-vehicles delete");
     }
 
     return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    console.error("market-vehicle delete failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+  } catch (e: unknown) {
+    return apiInternalError(e, "market-vehicles delete");
   }
 }

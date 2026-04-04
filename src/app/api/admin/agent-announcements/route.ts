@@ -16,7 +16,7 @@ export async function GET() {
     const admin = getAdminClient();
     const { data, error } = await admin
       .from("agent_announcements")
-      .select("*")
+      .select("id, title, body, category, is_pinned, published_at, created_by, created_at, updated_at")
       .order("created_at", { ascending: false });
 
     if (error) return apiInternalError(error, "agent-announcements GET");
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
         published_at: body.published_at ?? new Date().toISOString(),
         created_by: caller.userId,
       })
-      .select()
+      .select("id, title, body, category, is_pinned, published_at, created_by, created_at, updated_at")
       .single();
 
     if (error) return apiInternalError(error, "agent-announcements POST");

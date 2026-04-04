@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export async function GET(_req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const [slotsRes, closedRes] = await Promise.all([
       supabase
@@ -31,11 +32,11 @@ export async function GET(_req: NextRequest) {
 
     if (slotsRes.error) {
       console.error("[booking-settings] slots error:", slotsRes.error.message);
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
+      return apiInternalError(error, "booking-settings");
     }
     if (closedRes.error) {
       console.error("[booking-settings] closed_days error:", closedRes.error.message);
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
+      return apiInternalError(error, "booking-settings");
     }
 
     return NextResponse.json({
@@ -43,8 +44,7 @@ export async function GET(_req: NextRequest) {
       closed_days: closedRes.data ?? [],
     });
   } catch (e) {
-    console.error("[booking-settings] unexpected:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "booking-settings");
   }
 }
 
@@ -76,7 +76,7 @@ export async function PUT(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const body = await req.json().catch(() => ({}));
     const slots: any[] = body.slots ?? [];
@@ -93,7 +93,7 @@ export async function PUT(req: NextRequest) {
         .eq("tenant_id", caller.tenantId);
       if (error) {
         console.error("[booking-settings] delete slots error:", error.message);
-        return NextResponse.json({ error: "db_error" }, { status: 500 });
+        return apiInternalError(error, "booking-settings");
       }
     }
 
@@ -106,7 +106,7 @@ export async function PUT(req: NextRequest) {
         .eq("tenant_id", caller.tenantId);
       if (error) {
         console.error("[booking-settings] delete closed_days error:", error.message);
-        return NextResponse.json({ error: "db_error" }, { status: 500 });
+        return apiInternalError(error, "booking-settings");
       }
     }
 
@@ -130,13 +130,13 @@ export async function PUT(req: NextRequest) {
           .eq("tenant_id", caller.tenantId);
         if (error) {
           console.error("[booking-settings] update slot error:", error.message);
-          return NextResponse.json({ error: "db_error" }, { status: 500 });
+          return apiInternalError(error, "booking-settings");
         }
       } else {
         const { error } = await supabase.from("external_booking_slots").insert(payload);
         if (error) {
           console.error("[booking-settings] insert slot error:", error.message);
-          return NextResponse.json({ error: "db_error" }, { status: 500 });
+          return apiInternalError(error, "booking-settings");
         }
       }
     }
@@ -159,20 +159,19 @@ export async function PUT(req: NextRequest) {
           .eq("tenant_id", caller.tenantId);
         if (error) {
           console.error("[booking-settings] update closed_day error:", error.message);
-          return NextResponse.json({ error: "db_error" }, { status: 500 });
+          return apiInternalError(error, "booking-settings");
         }
       } else {
         const { error } = await supabase.from("closed_days").insert(payload);
         if (error) {
           console.error("[booking-settings] insert closed_day error:", error.message);
-          return NextResponse.json({ error: "db_error" }, { status: 500 });
+          return apiInternalError(error, "booking-settings");
         }
       }
     }
 
     return NextResponse.json({ success: true });
   } catch (e) {
-    console.error("[booking-settings] unexpected:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "booking-settings");
   }
 }

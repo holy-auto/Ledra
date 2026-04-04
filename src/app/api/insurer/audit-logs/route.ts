@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiValidationError } from "@/lib/api/response";
+import { apiUnauthorized, apiValidationError, apiForbidden, apiInternalError } from "@/lib/api/response";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -11,13 +11,7 @@ export async function GET(req: NextRequest) {
     if (!caller) return apiUnauthorized();
 
     if (caller.role !== "admin" && caller.role !== "auditor") {
-      return new Response(
-        JSON.stringify({
-          error: "forbidden",
-          message: "監査ログの閲覧権限がありません。",
-        }),
-        { status: 403, headers: { "content-type": "application/json" } },
-      );
+      return apiForbidden("監査ログの閲覧権限がありません。");
     }
 
     const url = new URL(req.url);
@@ -34,7 +28,7 @@ export async function GET(req: NextRequest) {
     const admin = createAdminClient();
     let query = admin
       .from("insurer_access_logs")
-      .select("*")
+      .select("id, action, meta, ip, user_agent, created_at, certificate_id, insurer_user_id")
       .eq("insurer_id", caller.insurerId)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
@@ -48,10 +42,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ logs: data ?? [], limit, offset });
   } catch (e) {
-    console.error("[insurer/audit-logs]", e);
-    return NextResponse.json(
-      { error: "internal_error", message: "内部エラーが発生しました" },
-      { status: 500 }
-    );
+    return apiInternalError(e, "GET /api/insurer/audit-logs");
   }
 }

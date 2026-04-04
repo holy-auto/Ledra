@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
+import { apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -14,12 +15,12 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const { data: auth } = await supabase.auth.getUser();
     if (!auth?.user) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
 
     const { data: agentData, error: agentErr } = await supabase.rpc("get_my_agent_status");
     if (agentErr || !agentData || (Array.isArray(agentData) && agentData.length === 0)) {
-      return NextResponse.json({ error: "agent_not_found" }, { status: 403 });
+      return apiForbidden("agent_not_found");
     }
 
     const agent = Array.isArray(agentData) ? agentData[0] : agentData;
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from("agent_referrals")
-      .select("*", { count: "exact" })
+      .select("id, agent_id, shop_name, contact_name, contact_email, contact_phone, referral_code, status, notes, contract_date, contracted_at, created_at, updated_at", { count: "exact" })
       .eq("agent_id", agentId)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
@@ -52,8 +53,7 @@ export async function GET(request: NextRequest) {
     const { data: referrals, error, count } = await query;
 
     if (error) {
-      console.error("[agent/referrals] db error:", error.message);
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
+      return apiInternalError(error, "agent/referrals query");
     }
 
     return NextResponse.json({
@@ -63,8 +63,7 @@ export async function GET(request: NextRequest) {
       offset,
     });
   } catch (e: unknown) {
-    console.error("[agent/referrals] GET error:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "agent/referrals GET");
   }
 }
 
@@ -77,12 +76,12 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient();
     const { data: auth } = await supabase.auth.getUser();
     if (!auth?.user) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
 
     const { data: agentData, error: agentErr } = await supabase.rpc("get_my_agent_status");
     if (agentErr || !agentData || (Array.isArray(agentData) && agentData.length === 0)) {
-      return NextResponse.json({ error: "agent_not_found" }, { status: 403 });
+      return apiForbidden("agent_not_found");
     }
 
     const agent = Array.isArray(agentData) ? agentData[0] : agentData;
@@ -91,19 +90,13 @@ export async function POST(request: NextRequest) {
 
     // Only admin or staff can create referrals
     if (role !== "admin" && role !== "staff") {
-      return NextResponse.json(
-        { error: "forbidden", message: "紹介を作成する権限がありません。" },
-        { status: 403 }
-      );
+      return apiForbidden("紹介を作成する権限がありません。");
     }
 
     const body = await request.json().catch(() => ({} as Record<string, unknown>));
     const shopName = ((body?.shop_name as string) ?? "").trim();
     if (!shopName) {
-      return NextResponse.json(
-        { error: "shop_name_required", message: "shop_name は必須です。" },
-        { status: 400 }
-      );
+      return apiValidationError("shop_name は必須です。");
     }
 
     const row = {
@@ -118,17 +111,15 @@ export async function POST(request: NextRequest) {
     const { data: created, error: insertErr } = await supabase
       .from("agent_referrals")
       .insert(row)
-      .select()
+      .select("id, agent_id, shop_name, contact_name, contact_email, contact_phone, referral_code, status, notes, contract_date, contracted_at, created_at, updated_at")
       .single();
 
     if (insertErr) {
-      console.error("[agent/referrals] insert error:", insertErr.message);
-      return NextResponse.json({ error: "insert_failed" }, { status: 500 });
+      return apiInternalError(insertErr, "agent/referrals insert");
     }
 
     return NextResponse.json({ ok: true, referral: created }, { status: 201 });
   } catch (e: unknown) {
-    console.error("[agent/referrals] POST error:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "agent/referrals POST");
   }
 }

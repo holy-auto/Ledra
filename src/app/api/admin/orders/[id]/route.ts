@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 /**
  * GET /api/admin/orders/[id]
@@ -15,7 +16,7 @@ export async function GET(
     const { id } = await params;
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
     const tenantId = caller.tenantId;
 
     const admin = getSupabaseAdmin();
@@ -23,13 +24,13 @@ export async function GET(
     // 注文取得 (admin client to bypass RLS)
     const { data: order, error } = await admin
       .from("job_orders")
-      .select("*")
+      .select("id, public_id, from_tenant_id, to_tenant_id, title, description, category, budget, deadline, vehicle_id, status, cancelled_by, cancel_reason, vendor_completed_at, client_approved_at, payment_status, payment_method, accepted_amount, payment_confirmed_by_client, payment_confirmed_by_vendor, created_at, updated_at")
       .eq("id", id)
       .or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`)
       .single();
 
     if (error || !order) {
-      return NextResponse.json({ error: "not_found" }, { status: 404 });
+      return apiNotFound("not_found");
     }
 
     // 関連テナント情報
@@ -99,7 +100,6 @@ export async function GET(
       counterparty_score: counterpartyScore,
     });
   } catch (e: unknown) {
-    console.error("[orders/[id]] GET failed:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "orders/[id] GET");
   }
 }

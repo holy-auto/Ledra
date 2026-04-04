@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     const { data, error } = await admin
       .from("insurer_tenant_contracts")
       .upsert(rows, { onConflict: "insurer_id,tenant_id", ignoreDuplicates: false })
-      .select();
+      .select("id, insurer_id, tenant_id, status, created_at, updated_at");
 
     if (error) return apiInternalError(error, "insurer-contracts bulk");
     return apiOk({ contracts: data ?? [], created: (data ?? []).length });

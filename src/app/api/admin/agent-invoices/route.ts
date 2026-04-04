@@ -16,7 +16,7 @@ export async function GET() {
     const admin = getAdminClient();
     const { data } = await admin
       .from("agent_invoices")
-      .select("*, agents(name)")
+      .select("id, agent_id, period_start, period_end, subtotal, tax_rate, tax_amount, total, status, notes, issued_at, paid_at, created_at, updated_at, agents(name)")
       .order("created_at", { ascending: false });
 
     const invoices = (data ?? []).map((inv: any) => ({
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
         status: body.status ?? "draft",
         notes: body.notes || null,
       })
-      .select()
+      .select("id, agent_id, period_start, period_end, subtotal, tax_rate, tax_amount, total, status, notes, issued_at, paid_at, created_at, updated_at")
       .single();
 
     if (invErr) return apiInternalError(invErr, "agent-invoices POST");

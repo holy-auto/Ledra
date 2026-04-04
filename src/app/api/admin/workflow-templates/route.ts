@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const url = new URL(req.url);
     const serviceType = url.searchParams.get("service_type");
@@ -34,14 +35,12 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await query;
     if (error) {
-      console.error("[workflow-templates] db_error:", error.message);
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
+      return apiInternalError(error, "workflow-templates GET");
     }
 
     return NextResponse.json({ templates: data ?? [] });
   } catch (e: unknown) {
-    console.error("[workflow-templates] GET failed:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "workflow-templates GET");
   }
 }
 
@@ -50,24 +49,24 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
 
     const name = String(body.name ?? "").trim();
     if (!name)
-      return NextResponse.json({ error: "name_required", message: "テンプレート名は必須です" }, { status: 400 });
+      return apiValidationError("テンプレート名は必須です");
 
     const serviceType = String(body.service_type ?? "other");
     const validTypes = ["coating", "ppf", "wrapping", "body_repair", "other"];
     if (!validTypes.includes(serviceType)) {
-      return NextResponse.json({ error: "invalid_service_type" }, { status: 400 });
+      return apiValidationError("無効なサービスタイプです");
     }
 
     // steps バリデーション
     const steps = (body.steps ?? []) as WorkflowStep[];
     if (!Array.isArray(steps) || steps.length === 0) {
-      return NextResponse.json({ error: "steps_required", message: "ステップは1つ以上必要です" }, { status: 400 });
+      return apiValidationError("ステップは1つ以上必要です");
     }
 
     // is_default を設定する場合、既存のデフォルトを解除
@@ -89,17 +88,15 @@ export async function POST(req: NextRequest) {
         is_default: !!body.is_default,
         is_platform: false,
       })
-      .select()
+      .select("id, tenant_id, name, service_type, steps, is_default, is_platform, created_at, updated_at")
       .single();
 
     if (error) {
-      console.error("[workflow-templates] insert_failed:", error.message);
-      return NextResponse.json({ error: "insert_failed" }, { status: 500 });
+      return apiInternalError(error, "workflow-templates POST");
     }
 
     return NextResponse.json({ ok: true, template: data }, { status: 201 });
   } catch (e: unknown) {
-    console.error("[workflow-templates] POST failed:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "workflow-templates POST");
   }
 }

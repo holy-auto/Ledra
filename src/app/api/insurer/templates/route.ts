@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
   try {
     const { data, error } = await admin
       .from("insurer_case_templates")
-      .select("*")
+      .select("id, insurer_id, name, title_template, category, default_priority, description_template, created_by, created_at")
       .eq("insurer_id", caller.insurerId)
       .order("created_at", { ascending: false });
 
@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
         description_template: description_template?.trim() ?? null,
         created_by: caller.userId,
       })
-      .select("*")
+      .select("id, insurer_id, name, title_template, category, default_priority, description_template, created_by, created_at")
       .single();
 
     if (error) {

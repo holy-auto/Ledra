@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("pii_disclosure_consents")
-    .select("*")
+    .select("id, certificate_id, insurer_id, insurer_requested_at, insurer_requested_by, insurer_reason, tenant_consented_at, is_active, created_at, updated_at")
     .eq("certificate_id", certificateId)
     .eq("insurer_id", caller.insurerId)
     .eq("is_active", true)
@@ -47,14 +47,14 @@ export async function POST(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
-  let body: any;
+  let body: Record<string, unknown>;
   try {
     body = await req.json();
   } catch {
     return apiValidationError("Invalid JSON");
   }
 
-  const { certificate_id, reason } = body;
+  const { certificate_id, reason } = body as { certificate_id?: string; reason?: string };
   if (!certificate_id) return apiValidationError("Missing certificate_id");
 
   const admin = createAdminClient();
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
       },
       { onConflict: "certificate_id,insurer_id" },
     )
-    .select()
+    .select("id, certificate_id, insurer_id, insurer_requested_at, insurer_requested_by, insurer_reason, tenant_consented_at, is_active, created_at, updated_at")
     .single();
 
   if (error) return apiValidationError(error.message);

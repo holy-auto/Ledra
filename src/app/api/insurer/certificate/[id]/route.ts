@@ -23,7 +23,7 @@ export async function GET(
 
   const { data: cert, error } = await sb
     .from("certificates")
-    .select("*")
+    .select("id, public_id, tenant_id, vehicle_id, status, grade, inspection_date, expiry_date, inspector_name, notes, pdf_url, created_at, updated_at")
     .eq("id", id)
     .maybeSingle();
 

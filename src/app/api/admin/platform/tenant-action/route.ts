@@ -3,6 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { apiUnauthorized, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -22,10 +23,10 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
     if (!isPlatformAdmin(caller)) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      return apiForbidden();
     }
 
     const body = await req.json();
@@ -36,7 +37,7 @@ export async function POST(req: NextRequest) {
     };
 
     if (!tenantId || !action) {
-      return NextResponse.json({ error: "validation_error", message: "tenantId と action は必須です" }, { status: 400 });
+      return apiValidationError("tenantId と action は必須です");
     }
 
     const admin = getSupabaseAdmin();
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (tenantError || !tenant) {
-      return NextResponse.json({ error: "not_found", message: "テナントが見つかりません" }, { status: 404 });
+      return apiNotFound("テナントが見つかりません");
     }
 
     let result: Record<string, unknown> = {};
@@ -76,11 +77,11 @@ export async function POST(req: NextRequest) {
       case "change_plan": {
         const newPlan = params?.plan_tier as string;
         if (!newPlan) {
-          return NextResponse.json({ error: "validation_error", message: "plan_tier が必要です" }, { status: 400 });
+          return apiValidationError("plan_tier が必要です");
         }
         const validPlans = ["free", "starter", "pro", "enterprise"];
         if (!validPlans.includes(newPlan)) {
-          return NextResponse.json({ error: "validation_error", message: "無効なプランです" }, { status: 400 });
+          return apiValidationError("無効なプランです");
         }
         const { error } = await admin
           .from("tenants")
@@ -102,7 +103,7 @@ export async function POST(req: NextRequest) {
       case "send_notification": {
         const message = params?.message as string;
         if (!message) {
-          return NextResponse.json({ error: "validation_error", message: "message が必要です" }, { status: 400 });
+          return apiValidationError("message が���要です");
         }
         // Get all members of the tenant
         const { data: members } = await admin
@@ -125,7 +126,7 @@ export async function POST(req: NextRequest) {
         break;
       }
       default:
-        return NextResponse.json({ error: "validation_error", message: "不明なアクションです" }, { status: 400 });
+        return apiValidationError("不明なアクションです");
     }
 
     // Log the action to admin_audit_logs
@@ -149,7 +150,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, action, ...result });
   } catch (e: unknown) {
-    console.error("[platform/tenant-action] POST failed:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "platform/tenant-action POST");
   }
 }

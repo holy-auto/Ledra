@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
     try {
       const { data: slaRow } = await admin
         .from("insurer_sla_config")
-        .select("*")
+        .select("id, insurer_id, urgent_hours, high_hours, normal_hours, low_hours, updated_at")
         .eq("insurer_id", caller.insurerId)
         .maybeSingle();
 

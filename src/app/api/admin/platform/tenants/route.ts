@@ -51,42 +51,32 @@ export async function GET(req: NextRequest) {
       return apiInternalError(error, "GET /api/admin/platform/tenants query");
     }
 
-    // Get member and certificate counts per tenant using parallel count queries
-    const tenantIds = (data ?? []).map((t: any) => t.id);
+    // Get member and certificate counts per tenant using batch queries (2 queries instead of 2*N)
+    const tenantIds = (data ?? []).map((t) => t.id);
     const memberCounts: Record<string, number> = {};
     const certCounts: Record<string, number> = {};
     if (tenantIds.length > 0) {
-      const [memberResults, certResults] = await Promise.all([
-        Promise.all(
-          tenantIds.map((tid: string) =>
-            admin
-              .from("tenant_memberships")
-              .select("*", { count: "exact", head: true })
-              .eq("tenant_id", tid)
-              .then(({ count }) => ({ tid, count: count ?? 0 }))
-          )
-        ),
-        Promise.all(
-          tenantIds.map((tid: string) =>
-            admin
-              .from("certificates")
-              .select("*", { count: "exact", head: true })
-              .eq("tenant_id", tid)
-              .then(({ count }) => ({ tid, count: count ?? 0 }))
-          )
-        ),
+      const [membersRes, certsRes] = await Promise.all([
+        admin
+          .from("tenant_memberships")
+          .select("tenant_id")
+          .in("tenant_id", tenantIds),
+        admin
+          .from("certificates")
+          .select("tenant_id")
+          .in("tenant_id", tenantIds),
       ]);
-      for (const { tid, count } of memberResults) {
-        memberCounts[tid] = count;
+      for (const m of membersRes.data ?? []) {
+        memberCounts[m.tenant_id] = (memberCounts[m.tenant_id] ?? 0) + 1;
       }
-      for (const { tid, count } of certResults) {
-        certCounts[tid] = count;
+      for (const c of certsRes.data ?? []) {
+        certCounts[c.tenant_id] = (certCounts[c.tenant_id] ?? 0) + 1;
       }
     }
 
     return NextResponse.json({
       ok: true,
-      tenants: (data ?? []).map((t: any) => ({
+      tenants: (data ?? []).map((t) => ({
         ...t,
         memberCount: memberCounts[t.id] ?? 0,
         certCount: certCounts[t.id] ?? 0,

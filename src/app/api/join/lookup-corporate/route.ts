@@ -4,6 +4,7 @@ import {
   isValidCorporateNumber,
   verifyCorporateNumberViaApi,
 } from "@/lib/insurer/corporateNumber";
+import { apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -26,19 +27,13 @@ export async function GET(req: NextRequest) {
     const number = req.nextUrl.searchParams.get("number")?.trim() ?? "";
 
     if (!number || !isValidCorporateNumber(number)) {
-      return NextResponse.json(
-        { error: "invalid_number", message: "法人番号の形式が正しくありません（13桁の数字）" },
-        { status: 400 },
-      );
+      return apiValidationError("法人番号の形式が正しくありません（13桁の数字）");
     }
 
     const info = await verifyCorporateNumberViaApi(number);
 
     if (!info) {
-      return NextResponse.json(
-        { error: "not_found", message: "該当する法人情報が見つかりませんでした" },
-        { status: 404 },
-      );
+      return apiNotFound("該当する法人情報が見つかりませんでした");
     }
 
     return NextResponse.json({
@@ -48,10 +43,6 @@ export async function GET(req: NextRequest) {
       representative_name: info.representativeName,
     });
   } catch (e) {
-    console.error("[join/lookup-corporate]", e);
-    return NextResponse.json(
-      { error: "internal_error", message: "内部エラーが発生しました" },
-      { status: 500 }
-    );
+    return apiInternalError(e, "join/lookup-corporate");
   }
 }

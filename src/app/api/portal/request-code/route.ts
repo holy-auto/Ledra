@@ -5,6 +5,7 @@ import { escapeHtml } from "@/lib/sanitize";
 import { resolveBaseUrl } from "@/lib/url";
 import { GLOBAL_OTP_TTL_MIN, createGlobalLoginCode, listPortalMemberships } from "@/lib/customerPortalGlobal";
 import { normalizeEmail, normalizeLast4 } from "@/lib/customerPortalServer";
+import { apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 function genCode6() {
   const n = randomInt(1000000);
@@ -52,11 +53,11 @@ export async function POST(req: Request) {
     const from = String(body.from ?? "").trim();
     const publicId = String(body.public_id ?? body.pid ?? "").trim();
 
-    if (!email.includes("@")) return NextResponse.json({ error: "invalid_email" }, { status: 400 });
+    if (!email.includes("@")) return apiValidationError("invalid_email");
 
     const memberships = await listPortalMemberships(email, last4, preferredTenantSlug);
     if (memberships.length === 0) {
-      return NextResponse.json({ error: "not_found", message: "ご利用情報が見つかりませんでした。" }, { status: 404 });
+      return apiNotFound("ご利用情報が見つかりませんでした。");
     }
 
     const code = genCode6();
@@ -83,8 +84,7 @@ export async function POST(req: Request) {
     await sendEmailResend(email, subject, html);
 
     return NextResponse.json({ ok: true, memberships_count: memberships.length });
-  } catch (e: any) {
-    console.error("portal request-code error", e);
-    return NextResponse.json({ error: e?.message ?? "request-code failed" }, { status: 500 });
+  } catch (e: unknown) {
+    return apiInternalError(e, "portal/request-code");
   }
 }

@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
     .eq("certificate_id", certificate_id)
     .eq("insurer_id", insurer_id)
     .eq("is_active", true)
-    .select()
+    .select("id, certificate_id, insurer_id, tenant_consented_at, tenant_consented_by, is_active, created_at, updated_at")
     .single();
 
   if (error) return apiInternalError(error, "POST /api/admin/pii-disclosure");

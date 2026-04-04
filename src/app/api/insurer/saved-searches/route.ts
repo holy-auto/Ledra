@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
     const { data, error } = await supabase
       .from("insurer_saved_searches")
       .insert(row)
-      .select()
+      .select("id, insurer_id, name, query, status_filter, date_from, date_to, created_at")
       .single();
 
     if (error) {

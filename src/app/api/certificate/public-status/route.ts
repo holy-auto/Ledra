@@ -3,6 +3,87 @@ import { apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/res
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
+type CertificateRow = {
+  id: string;
+  tenant_id: string;
+  public_id: string;
+  vehicle_id: string | null;
+  status: string;
+  customer_name: string | null;
+  created_at: string;
+  updated_at: string;
+  vehicle_info_json: Record<string, unknown> | null;
+  content_free_text: string | null;
+  content_preset_json: Record<string, unknown> | null;
+  expiry_type: string | null;
+  expiry_value: string | null;
+  logo_asset_path: string | null;
+  footer_variant: string | null;
+  current_version: number | null;
+  service_type: string | null;
+  ppf_coverage_json: Record<string, unknown> | null;
+  coating_products_json: Record<string, unknown> | null;
+  warranty_period_end: string | null;
+  warranty_exclusions: string | null;
+  maintenance_json: Record<string, unknown> | null;
+  body_repair_json: Record<string, unknown> | null;
+};
+
+type TenantRow = {
+  name: string | null;
+  slug: string | null;
+  custom_domain: string | null;
+};
+
+type VehicleRow = {
+  id: string;
+  maker: string | null;
+  model: string | null;
+  year: number | null;
+  plate_display: string | null;
+  customer_name: string | null;
+  customer_email: string | null;
+  notes: string | null;
+};
+
+type NfcRow = {
+  id: string;
+  tag_code: string | null;
+  status: string | null;
+  written_at: string | null;
+  attached_at: string | null;
+};
+
+type HistoryRow = {
+  id: string;
+  type: string | null;
+  title: string | null;
+  description: string | null;
+  performed_at: string | null;
+  created_at: string;
+};
+
+type ImageRow = {
+  id: string;
+  file_name: string | null;
+  content_type: string | null;
+  file_size: number | null;
+  sort_order: number | null;
+  created_at: string;
+  storage_path: string | null;
+};
+
+type VehicleCertRow = {
+  id: string;
+  public_id: string;
+  status: string;
+  customer_name: string | null;
+  created_at: string;
+  vehicle_info_json: Record<string, unknown> | null;
+  content_free_text: string | null;
+  expiry_value: string | null;
+};
+
 /** Mask customer name for public display: 山田太郎 → 山田●● */
 function maskName(name: string | null): string | null {
   if (!name) return null;
@@ -54,7 +135,7 @@ export async function GET(req: NextRequest) {
     if (certRes.error) {
       return apiInternalError(certRes.error, "public-status certificate fetch");
     }
-    const cert = certRes.data as any;
+    const cert = certRes.data as CertificateRow | null;
     if (!cert?.tenant_id) {
       return apiNotFound("証明書が見つかりません。");
     }
@@ -100,15 +181,15 @@ export async function GET(req: NextRequest) {
         : Promise.resolve({ data: [], error: null }),
     ]);
 
-    const tenant = (tenantRes.data as any) ?? null;
-    const vehicle = (vehicleRes.data as any) ?? null;
-    const nfc = (nfcRes.data as any) ?? null;
-    const histories = ((histRes.data as any[]) ?? []);
-    const vehicle_certificates = ((vcRes.data as any[]) ?? []);
+    const tenant = (tenantRes.data as TenantRow | null) ?? null;
+    const vehicle = (vehicleRes.data as VehicleRow | null) ?? null;
+    const nfc = (nfcRes.data as NfcRow | null) ?? null;
+    const histories = ((histRes.data as HistoryRow[] | null) ?? []);
+    const vehicle_certificates = ((vcRes.data as VehicleCertRow[] | null) ?? []);
 
-    let images: any[] = [];
+    let images: (ImageRow & { url: string | null })[] = [];
     if (!imgRes.error && imgRes.data) {
-      images = (imgRes.data as any[]).map((img: any) => {
+      images = (imgRes.data as ImageRow[]).map((img) => {
         let url: string | null = null;
         if (img.storage_path) {
           const { data: signedData } = supabase.storage
@@ -157,7 +238,7 @@ export async function GET(req: NextRequest) {
         nfc,
         histories,
         images,
-        vehicle_certificates: vehicle_certificates.map((vc: any) => ({
+        vehicle_certificates: vehicle_certificates.map((vc) => ({
           ...vc,
           content_free_text: undefined,
           customer_name: maskName(vc.customer_name),
@@ -168,9 +249,9 @@ export async function GET(req: NextRequest) {
         warranty_active: warrantyActive,
         shop: tenant
           ? {
-              name: (tenant as any).name ?? (tenant as any).slug ?? null,
-              slug: (tenant as any).slug ?? null,
-              custom_domain: (tenant as any).custom_domain ?? null,
+              name: tenant.name ?? tenant.slug ?? null,
+              slug: tenant.slug ?? null,
+              custom_domain: tenant.custom_domain ?? null,
             }
           : null,
       },

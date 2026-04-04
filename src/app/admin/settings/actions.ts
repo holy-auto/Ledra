@@ -2,10 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type SettingsResult = { ok: true } | { ok: false; error: string };
 
-async function getTenantId(supabase: any): Promise<string | null> {
+async function getTenantId(supabase: SupabaseClient): Promise<string | null> {
   const { data: userRes } = await supabase.auth.getUser();
   if (!userRes.user) return null;
   const { data } = await supabase
@@ -25,7 +26,7 @@ export async function updateTenantSettingsAction(formData: FormData): Promise<Se
   if (!name) return { ok: false, error: "店舗名は必須です" };
 
   // Build update payload — include extended fields only if present in the form
-  const payload: Record<string, any> = { name };
+  const payload: Record<string, unknown> = { name };
   const contact_email = String(formData.get("contact_email") ?? "").trim();
   const contact_phone = String(formData.get("contact_phone") ?? "").trim();
   const address       = String(formData.get("address") ?? "").trim();

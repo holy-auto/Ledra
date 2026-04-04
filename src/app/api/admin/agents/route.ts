@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
         contact_phone: contact_phone || null,
         address: address || null,
       })
-      .select()
+      .select("id, name, contact_name, contact_email, contact_phone, address, status, commission_type, default_commission_rate, default_commission_fixed, created_at, updated_at")
       .single();
 
     if (error) {

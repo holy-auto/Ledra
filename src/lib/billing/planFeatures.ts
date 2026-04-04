@@ -95,7 +95,7 @@ const MATRIX: Record<PlanTier, Record<FeatureKey, boolean>> = {
   },
 };
 
-export function normalizePlanTier(v: any): PlanTier {
+export function normalizePlanTier(v: string | null | undefined): PlanTier {
   const s = String(v ?? "").toLowerCase();
   if (s === "free") return "free";
   if (s === "starter" || s === "mini") return "starter";
@@ -104,7 +104,7 @@ export function normalizePlanTier(v: any): PlanTier {
   return "free";
 }
 
-export function canUseFeature(planTier: any, feature: FeatureKey): boolean {
+export function canUseFeature(planTier: string | null | undefined, feature: FeatureKey): boolean {
   const tier = normalizePlanTier(planTier);
   return !!MATRIX[tier]?.[feature];
 }

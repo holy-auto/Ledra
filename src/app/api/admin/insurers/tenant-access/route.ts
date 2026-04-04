@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { getClientIp } from "@/lib/rateLimit";
+import { apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -46,7 +47,7 @@ export async function GET(req: NextRequest) {
   const supabase = await createClient();
   const caller = await requirePlatformAdmin(supabase);
   if (!caller) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    return apiForbidden();
   }
 
   const url = new URL(req.url);
@@ -65,8 +66,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await query;
   if (error) {
-    console.error("[tenant-access] list error:", error.message);
-    return NextResponse.json({ error: "db_error" }, { status: 500 });
+    return apiInternalError(error, "tenant-access GET");
   }
 
   // Enrich with insurer and tenant names
@@ -103,19 +103,19 @@ export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const caller = await requirePlatformAdmin(supabase);
   if (!caller) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    return apiForbidden();
   }
 
   let body: any;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
+    return apiValidationError("Invalid JSON");
   }
 
   const { insurer_id, tenant_id, notes } = body;
   if (!insurer_id || !tenant_id) {
-    return NextResponse.json({ error: "insurer_id and tenant_id are required" }, { status: 400 });
+    return apiValidationError("insurer_id and tenant_id are required");
   }
 
   const admin = createAdminClient();
@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
 
   if (existing) {
     if (existing.is_active && !existing.revoked_at) {
-      return NextResponse.json({ error: "grant_already_exists", message: "このアクセス許可は既に有効です。" }, { status: 409 });
+      return NextResponse.json({ error: "conflict", message: "このアクセス許可は既に有効です。" }, { status: 409 });
     }
 
     // Reactivate revoked grant
@@ -147,11 +147,11 @@ export async function POST(req: NextRequest) {
         notes: notes || existing.id,
       })
       .eq("id", existing.id)
-      .select("*")
+      .select("id, insurer_id, tenant_id, granted_by, granted_at, revoked_at, is_active, notes, created_at")
       .single();
 
     if (error) {
-      return NextResponse.json({ error: "db_error", message: error.message }, { status: 500 });
+      return apiInternalError(error, "tenant-access reactivate");
     }
 
     logAdminAction({
@@ -178,12 +178,11 @@ export async function POST(req: NextRequest) {
       is_active: true,
       notes: notes || null,
     })
-    .select("*")
+    .select("id, insurer_id, tenant_id, granted_by, granted_at, revoked_at, is_active, notes, created_at")
     .single();
 
   if (error) {
-    console.error("[tenant-access] create error:", error.message);
-    return NextResponse.json({ error: "db_error", message: error.message }, { status: 500 });
+    return apiInternalError(error, "tenant-access POST");
   }
 
   logAdminAction({
@@ -208,19 +207,19 @@ export async function PATCH(req: NextRequest) {
   const supabase = await createClient();
   const caller = await requirePlatformAdmin(supabase);
   if (!caller) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    return apiForbidden();
   }
 
   let body: any;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
+    return apiValidationError("Invalid JSON");
   }
 
   const { id, action, notes } = body;
   if (!id) {
-    return NextResponse.json({ error: "id is required" }, { status: 400 });
+    return apiValidationError("id is required");
   }
 
   const admin = createAdminClient();
@@ -230,12 +229,12 @@ export async function PATCH(req: NextRequest) {
   // Fetch current state
   const { data: before } = await admin
     .from("insurer_tenant_access")
-    .select("*")
+    .select("id, insurer_id, tenant_id, granted_by, granted_at, revoked_at, is_active, notes, created_at")
     .eq("id", id)
     .maybeSingle();
 
   if (!before) {
-    return NextResponse.json({ error: "not_found" }, { status: 404 });
+    return apiNotFound("アクセス許可が見つかりません。");
   }
 
   if (action === "revoke") {
@@ -246,11 +245,11 @@ export async function PATCH(req: NextRequest) {
         revoked_at: new Date().toISOString(),
       })
       .eq("id", id)
-      .select("*")
+      .select("id, insurer_id, tenant_id, granted_by, granted_at, revoked_at, is_active, notes, created_at")
       .single();
 
     if (error) {
-      return NextResponse.json({ error: "db_error", message: error.message }, { status: 500 });
+      return apiInternalError(error, "tenant-access revoke");
     }
 
     logAdminAction({
@@ -272,18 +271,18 @@ export async function PATCH(req: NextRequest) {
   if (notes !== undefined) updates.notes = notes;
 
   if (Object.keys(updates).length === 0) {
-    return NextResponse.json({ error: "no_updates" }, { status: 400 });
+    return apiValidationError("更新するフィールドを指定してください。");
   }
 
   const { data: updated, error } = await admin
     .from("insurer_tenant_access")
     .update(updates)
     .eq("id", id)
-    .select("*")
+    .select("id, insurer_id, tenant_id, granted_by, granted_at, revoked_at, is_active, notes, created_at")
     .single();
 
   if (error) {
-    return NextResponse.json({ error: "db_error", message: error.message }, { status: 500 });
+    return apiInternalError(error, "tenant-access update");
   }
 
   logAdminAction({

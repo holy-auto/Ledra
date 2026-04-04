@@ -122,13 +122,15 @@ export async function POST(req: NextRequest) {
       },
       subscription_data: {
         metadata: { tenant_id, plan_tier },
-        ...(addInvoiceItems.length > 0 ? { add_invoice_items: addInvoiceItems as any } : {}),
+        ...(addInvoiceItems.length > 0
+          ? { add_invoice_items: addInvoiceItems as Stripe.Checkout.SessionCreateParams.SubscriptionData.AddInvoiceItem[] }
+          : {}),
       },
       line_items: [{ price: priceId, quantity: 1 }],
       ...(discounts.length > 0 ? { discounts } : {}),
       success_url: `${appUrl}/admin/billing?status=success`,
       cancel_url: `${appUrl}/admin/billing?status=cancel`,
-    } as any);
+    } as Stripe.Checkout.SessionCreateParams);
 
     return apiOk({ url: session.url });
   } catch (e) {

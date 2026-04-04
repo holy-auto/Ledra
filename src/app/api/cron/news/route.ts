@@ -4,6 +4,7 @@ import * as cheerio from "cheerio";
 import { verifyCronRequest } from "@/lib/cronAuth";
 import { sendCronFailureAlert } from "@/lib/cronAlert";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 // ── 業界キーワード（これにマッチする記事だけ保存）──
 const RELEVANT_KEYWORDS = [
@@ -449,7 +450,7 @@ export async function GET(req: NextRequest) {
   // cron秘密キーで認証
   const { authorized, error: authError } = verifyCronRequest(req);
   if (!authorized) {
-    return NextResponse.json({ error: authError ?? "Unauthorized" }, { status: 401 });
+    return apiUnauthorized(authError ?? undefined);
   }
 
   try {
@@ -550,6 +551,6 @@ export async function GET(req: NextRequest) {
     });
   } catch (e) {
     await sendCronFailureAlert("news", e);
-    return NextResponse.json({ error: "News cron failed" }, { status: 500 });
+    return apiInternalError(e, "news cron");
   }
 }

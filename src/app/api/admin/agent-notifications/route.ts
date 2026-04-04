@@ -16,7 +16,7 @@ export async function GET() {
     const admin = getAdminClient();
     const { data, error } = await admin
       .from("agent_notifications")
-      .select("*, agents(name)")
+      .select("id, agent_id, user_id, type, title, body, link, is_read, created_at, updated_at, agents(name)")
       .order("created_at", { ascending: false });
 
     if (error) return apiInternalError(error, "agent-notifications");
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
         link: body.link || null,
         is_read: false,
       })
-      .select()
+      .select("id, agent_id, user_id, type, title, body, link, is_read, created_at, updated_at")
       .single();
 
     if (error) return apiInternalError(error, "agent-notifications");

@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
   try {
     const { data, error } = await admin
       .from("insurer_assignment_rules")
-      .select("*")
+      .select("id, insurer_id, name, condition_type, condition_value, assign_to, is_active, created_at")
       .eq("insurer_id", caller.insurerId)
       .order("created_at", { ascending: false });
 
@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
         assign_to,
         is_active: is_active !== false,
       })
-      .select("*")
+      .select("id, insurer_id, name, condition_type, condition_value, assign_to, is_active, created_at")
       .single();
 
     if (error) {
@@ -171,7 +171,7 @@ export async function PATCH(req: NextRequest) {
       .update(updateData)
       .eq("id", id)
       .eq("insurer_id", caller.insurerId)
-      .select("*")
+      .select("id, insurer_id, name, condition_type, condition_value, assign_to, is_active, created_at")
       .single();
 
     if (error) {

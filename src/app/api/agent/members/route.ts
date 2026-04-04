@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -10,12 +11,12 @@ export async function GET() {
     const supabase = await createClient();
     const { data: auth } = await supabase.auth.getUser();
     if (!auth?.user) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
 
     const { data: agentData, error: agentErr } = await supabase.rpc("get_my_agent_status");
     if (agentErr || !agentData || (Array.isArray(agentData) && agentData.length === 0)) {
-      return NextResponse.json({ error: "agent_not_found" }, { status: 403 });
+      return apiForbidden("agent_not_found");
     }
 
     const agent = Array.isArray(agentData) ? agentData[0] : agentData;
@@ -29,8 +30,7 @@ export async function GET() {
       .order("created_at", { ascending: true });
 
     if (error) {
-      console.error("[agent/members] db error:", error.message);
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
+      return apiInternalError(error, "agent/members query");
     }
 
     // Enrich with email from auth.users via admin client
@@ -56,8 +56,7 @@ export async function GET() {
 
     return NextResponse.json({ members: enriched });
   } catch (e: unknown) {
-    console.error("[agent/members] GET error:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "agent/members GET");
   }
 }
 
@@ -67,12 +66,12 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient();
     const { data: auth } = await supabase.auth.getUser();
     if (!auth?.user) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
 
     const { data: agentData, error: agentErr } = await supabase.rpc("get_my_agent_status");
     if (agentErr || !agentData || (Array.isArray(agentData) && agentData.length === 0)) {
-      return NextResponse.json({ error: "agent_not_found" }, { status: 403 });
+      return apiForbidden("agent_not_found");
     }
 
     const agent = Array.isArray(agentData) ? agentData[0] : agentData;
@@ -81,10 +80,7 @@ export async function POST(request: NextRequest) {
 
     // Only admin can invite members
     if (callerRole !== "admin") {
-      return NextResponse.json(
-        { error: "forbidden", message: "メンバーを招待する権限がありません。" },
-        { status: 403 }
-      );
+      return apiForbidden("メンバーを招待する権限がありません。");
     }
 
     const body = await request.json().catch(() => ({} as Record<string, unknown>));
@@ -93,18 +89,12 @@ export async function POST(request: NextRequest) {
     const displayName = ((body?.display_name as string) ?? "").trim() || null;
 
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return NextResponse.json(
-        { error: "invalid_email", message: "有効なメールアドレスを入力してください。" },
-        { status: 400 }
-      );
+      return apiValidationError("有効なメールアドレスを入力してください。");
     }
 
     const validRoles = ["admin", "staff", "viewer"];
     if (!validRoles.includes(role)) {
-      return NextResponse.json(
-        { error: "invalid_role", message: "無効なロールです。admin, staff, viewer のいずれかを指定してください。" },
-        { status: 400 }
-      );
+      return apiValidationError("無効なロールです。admin, staff, viewer のいずれかを指定してください。");
     }
 
     // Upsert the agent user via RPC
@@ -116,16 +106,11 @@ export async function POST(request: NextRequest) {
     });
 
     if (upsertErr) {
-      console.error("[agent/members] upsert error:", upsertErr.message);
-      return NextResponse.json(
-        { error: "upsert_failed", message: upsertErr.message },
-        { status: 500 }
-      );
+      return apiInternalError(upsertErr, "agent/members upsert");
     }
 
     return NextResponse.json({ ok: true, member }, { status: 201 });
   } catch (e: unknown) {
-    console.error("[agent/members] POST error:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "agent/members POST");
   }
 }

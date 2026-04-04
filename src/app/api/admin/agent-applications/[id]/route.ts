@@ -21,7 +21,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
     if (!requireMinRole(caller, "admin")) return apiForbidden();
 
     const admin = getAdminClient();
-    const { data, error } = await admin.from("agent_applications").select("*").eq("id", id).single();
+    const { data, error } = await admin.from("agent_applications").select("id, application_number, company_name, contact_name, email, phone, industry, status, documents, rejection_reason, reviewed_by, reviewed_at, user_id, created_at, updated_at").eq("id", id).single();
 
     if (error || !data) {
       return apiNotFound("application not found");
@@ -68,7 +68,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
         .update({ status: "under_review", updated_at: new Date().toISOString() })
         .eq("id", id)
         .eq("status", "submitted")
-        .select()
+        .select("id, application_number, company_name, contact_name, email, phone, industry, status, documents, rejection_reason, reviewed_by, reviewed_at, user_id, created_at, updated_at")
         .single();
 
       if (error || !data) {
@@ -94,7 +94,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
         })
         .eq("id", id)
         .in("status", ["submitted", "under_review"])
-        .select()
+        .select("id, application_number, company_name, contact_name, email, phone, industry, status, rejection_reason, reviewed_by, reviewed_at, created_at, updated_at")
         .single();
 
       if (error || !data) {
@@ -116,7 +116,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
       // Fetch application
       const { data: app, error: fetchErr } = await admin
         .from("agent_applications")
-        .select("*")
+        .select("id, application_number, company_name, contact_name, email, phone, industry, status, documents, rejection_reason, reviewed_by, reviewed_at, user_id, created_at, updated_at")
         .eq("id", id)
         .in("status", ["submitted", "under_review"])
         .single();

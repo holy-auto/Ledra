@@ -4,6 +4,7 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { syncCreateEvent, syncUpdateEvent, syncDeleteEvent } from "@/lib/gcal/client";
 import { enforceBilling } from "@/lib/billing/guard";
 import { parsePagination } from "@/lib/api/pagination";
+import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const url = new URL(req.url);
     const status = url.searchParams.get("status") ?? "";
@@ -48,8 +49,7 @@ export async function GET(req: NextRequest) {
 
     const { data: reservations, error, count } = await query;
     if (error) {
-      console.error("[reservations] db_error:", error.message);
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
+      return apiInternalError(error, "reservations list");
     }
 
     // 顧客名を取得
@@ -101,8 +101,7 @@ export async function GET(req: NextRequest) {
       ...(pagination.page > 0 && { page: pagination.page, per_page: pagination.perPage, total: count ?? 0 }),
     }, { headers });
   } catch (e: unknown) {
-    console.error("reservations list failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "reservations list");
   }
 }
 
@@ -111,7 +110,7 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const deny = await enforceBilling(req as any, { minPlan: "starter", action: "reservation_create" });
     if (deny) return deny as any;
@@ -119,10 +118,10 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
 
     const title = (String(body?.title ?? "")).trim();
-    if (!title) return NextResponse.json({ error: "missing_title" }, { status: 400 });
+    if (!title) return apiValidationError("missing_title");
 
     const scheduledDate = String(body?.scheduled_date ?? "").trim();
-    if (!scheduledDate) return NextResponse.json({ error: "missing_scheduled_date" }, { status: 400 });
+    if (!scheduledDate) return apiValidationError("missing_scheduled_date");
 
     const row = {
       id: crypto.randomUUID(),
@@ -140,10 +139,9 @@ export async function POST(req: NextRequest) {
       estimated_amount: parseInt(String(body?.estimated_amount ?? 0), 10) || 0,
     };
 
-    const { data, error } = await supabase.from("reservations").insert(row).select().single();
+    const { data, error } = await supabase.from("reservations").insert(row).select("id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, status, estimated_amount, created_at, updated_at").single();
     if (error) {
-      console.error("[reservations] insert_failed:", error.message);
-      return NextResponse.json({ error: "insert_failed" }, { status: 500 });
+      return apiInternalError(error, "reservations insert");
     }
 
     // ── Google Calendar 同期（非ブロッキング） ──
@@ -160,8 +158,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, reservation: data });
   } catch (e: unknown) {
-    console.error("reservation create failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "reservations create");
   }
 }
 
@@ -170,14 +167,14 @@ export async function PUT(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const deny = await enforceBilling(req as any, { minPlan: "starter", action: "reservation_update" });
     if (deny) return deny as any;
 
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const id = (String(body?.id ?? "")).trim();
-    if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
+    if (!id) return apiValidationError("missing_id");
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
@@ -206,12 +203,11 @@ export async function PUT(req: NextRequest) {
       .update(updates)
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
-      .select()
+      .select("id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, status, estimated_amount, gcal_event_id, cancelled_at, cancel_reason, created_at, updated_at")
       .single();
 
     if (error) {
-      console.error("[reservations] update_failed:", error.message);
-      return NextResponse.json({ error: "update_failed" }, { status: 500 });
+      return apiInternalError(error, "reservations update");
     }
 
     // ── Google Calendar 同期（非ブロッキング） ──
@@ -244,8 +240,7 @@ export async function PUT(req: NextRequest) {
 
     return NextResponse.json({ ok: true, reservation: data });
   } catch (e: unknown) {
-    console.error("reservation update failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "reservations update");
   }
 }
 
@@ -254,14 +249,14 @@ export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const deny = await enforceBilling(req as any, { minPlan: "starter", action: "reservation_delete" });
     if (deny) return deny as any;
 
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const id = (String(body?.id ?? "")).trim();
-    if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
+    if (!id) return apiValidationError("missing_id");
 
     const hardDelete = body?.hard_delete === true;
 
@@ -274,9 +269,9 @@ export async function DELETE(req: NextRequest) {
         .eq("tenant_id", caller.tenantId)
         .single();
 
-      if (!existing) return NextResponse.json({ error: "not_found" }, { status: 404 });
+      if (!existing) return apiNotFound("not_found");
       if (existing.status !== "cancelled" && existing.status !== "completed") {
-        return NextResponse.json({ error: "active_reservation_cannot_delete" }, { status: 400 });
+        return apiValidationError("active_reservation_cannot_delete");
       }
 
       const { error: delErr } = await supabase
@@ -286,8 +281,7 @@ export async function DELETE(req: NextRequest) {
         .eq("tenant_id", caller.tenantId);
 
       if (delErr) {
-        console.error("[reservations] hard_delete_failed:", delErr.message);
-        return NextResponse.json({ error: "delete_failed" }, { status: 500 });
+        return apiInternalError(delErr, "reservations hard_delete");
       }
       return NextResponse.json({ ok: true, deleted: true });
     }
@@ -313,12 +307,11 @@ export async function DELETE(req: NextRequest) {
       })
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
-      .select()
+      .select("id, tenant_id, customer_id, vehicle_id, title, status, cancelled_at, cancel_reason, gcal_event_id, created_at, updated_at")
       .single();
 
     if (error) {
-      console.error("[reservations] cancel_failed:", error.message);
-      return NextResponse.json({ error: "cancel_failed" }, { status: 500 });
+      return apiInternalError(error, "reservations cancel");
     }
 
     // ── Google Calendar 同期: イベント削除（非ブロッキング） ──
@@ -329,7 +322,6 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({ ok: true, reservation: data });
   } catch (e: unknown) {
-    console.error("reservation cancel failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "reservations cancel");
   }
 }

@@ -1,5 +1,6 @@
 ﻿import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import {
   CUSTOMER_COOKIE,
   getTenantIdBySlug,
@@ -16,10 +17,10 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const tenant_slug = (searchParams.get("tenant") ?? "").trim();
     const action = searchParams.get("action") ?? "";
-    if (!tenant_slug) return NextResponse.json({ error: "missing tenant" }, { status: 400 });
+    if (!tenant_slug) return apiValidationError("missing tenant");
 
     const tenantId = await getTenantIdBySlug(tenant_slug);
-    if (!tenantId) return NextResponse.json({ error: "unknown tenant" }, { status: 404 });
+    if (!tenantId) return apiNotFound("unknown tenant");
 
     const c = await cookies();
     const tenantToken = c.get(CUSTOMER_COOKIE)?.value ?? "";
@@ -41,7 +42,7 @@ export async function GET(req: Request) {
       }
     }
 
-    if (!phoneHash) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!phoneHash) return apiUnauthorized();
 
     if (action === "history") {
       const history = await listHistoryForCustomer(tenantId, phoneHash);
@@ -61,8 +62,7 @@ export async function GET(req: Request) {
     const rows = await listCertificatesForCustomer(tenantId, phoneHash);
 
     return NextResponse.json({ ok: true, rows });
-  } catch (e: any) {
-    console.error("customer list error", e);
-    return NextResponse.json({ error: e?.message ?? "list failed" }, { status: 500 });
+  } catch (e: unknown) {
+    return apiInternalError(e, "customer/list");
   }
 }

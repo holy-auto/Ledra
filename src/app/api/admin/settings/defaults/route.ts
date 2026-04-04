@@ -25,7 +25,7 @@ export async function GET() {
     return NextResponse.json({
       default_warranty_exclusions: data?.default_warranty_exclusions ?? "",
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("admin settings defaults GET failed", e);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
@@ -54,7 +54,7 @@ export async function PUT(req: NextRequest) {
     }
 
     return NextResponse.json({ ok: true });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("admin settings defaults PUT failed", e);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }

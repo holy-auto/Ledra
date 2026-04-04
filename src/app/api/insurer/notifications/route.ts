@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
   try {
     const { data, error } = await admin
       .from("insurer_notifications")
-      .select("*")
+      .select("id, insurer_id, user_id, type, title, body, link, is_read, created_at")
       .eq("insurer_id", caller.insurerId)
       .or(`user_id.eq.${caller.userId},user_id.is.null`)
       .order("created_at", { ascending: false })

@@ -3,6 +3,7 @@ import { createMobileClient, resolveMobileCaller } from "@/lib/supabase/mobile";
 import { requireMinRole } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { VALID_PAYMENT_METHODS } from "@/types/pos-constants";
+import { apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -11,17 +12,17 @@ export async function POST(req: NextRequest) {
   try {
     const { client, accessToken } = createMobileClient(req);
     if (!client) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
 
     const caller = await resolveMobileCaller(client, accessToken);
     if (!caller) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
 
     // staff以上のロールが必要
     if (!requireMinRole(caller, "staff")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      return apiForbidden();
     }
 
     // Rate limiting: Upstash Redis ベース
@@ -33,19 +34,19 @@ export async function POST(req: NextRequest) {
     // amount は必須 + 範囲チェック
     const amount = parseInt(String(body?.amount ?? 0), 10);
     if (!amount || amount < 1 || amount > 999_999_999) {
-      return NextResponse.json({ error: "invalid_amount" }, { status: 400 });
+      return apiValidationError("invalid_amount");
     }
 
     // tax_rate バリデーション (0-100)
     const taxRate = parseInt(String(body?.tax_rate ?? 10), 10);
     if (isNaN(taxRate) || taxRate < 0 || taxRate > 100) {
-      return NextResponse.json({ error: "invalid_tax_rate" }, { status: 400 });
+      return apiValidationError("invalid_tax_rate");
     }
 
     // payment_method バリデーション
     const paymentMethod = String(body?.payment_method ?? "cash");
     if (!VALID_PAYMENT_METHODS.includes(paymentMethod)) {
-      return NextResponse.json({ error: "invalid_payment_method" }, { status: 400 });
+      return apiValidationError("invalid_payment_method");
     }
 
     // RPC呼び出し
@@ -68,13 +69,11 @@ export async function POST(req: NextRequest) {
     });
 
     if (error) {
-      console.error("[mobile/pos/checkout] rpc_error:", error.message);
-      return NextResponse.json({ error: "checkout_failed", detail: error.message }, { status: 500 });
+      return apiInternalError(error, "mobile/pos/checkout");
     }
 
     return NextResponse.json({ ok: true, result: data });
   } catch (e: unknown) {
-    console.error("[mobile/pos/checkout] error:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "mobile/pos/checkout");
   }
 }

@@ -4,6 +4,7 @@ import { createMobileClient, resolveMobileCaller } from "@/lib/supabase/mobile";
 import { requireMinRole } from "@/lib/auth/checkRole";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import { apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -16,22 +17,22 @@ export async function POST(req: NextRequest) {
 
     const { client, accessToken } = createMobileClient(req);
     if (!client) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
 
     const caller = await resolveMobileCaller(client, accessToken);
     if (!caller) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
     if (!requireMinRole(caller, "staff")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      return apiForbidden();
     }
 
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
 
     const paymentIntentId = String(body?.payment_intent_id ?? "").trim();
     if (!paymentIntentId || !paymentIntentId.startsWith("pi_")) {
-      return NextResponse.json({ error: "invalid_payment_intent_id" }, { status: 400 });
+      return apiValidationError("invalid_payment_intent_id");
     }
 
     // テナントのStripe Connectアカウントを取得

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendCronFailureAlert } from "@/lib/cronAlert";
+import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -18,7 +19,7 @@ export async function POST(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
 
   if (!secret || authHeader !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return apiUnauthorized();
   }
 
   try {
@@ -54,6 +55,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, results });
   } catch (e) {
     await sendCronFailureAlert("cleanup-insurer-logs", e);
-    return NextResponse.json({ error: "Cleanup cron failed" }, { status: 500 });
+    return apiInternalError(e, "cleanup-insurer-logs cron");
   }
 }

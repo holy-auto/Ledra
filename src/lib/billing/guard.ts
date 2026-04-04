@@ -21,7 +21,7 @@ function getStripe() {
   return new Stripe(key, { apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion });
 }
 
-function json(status: number, body: any, extraHeaders?: Record<string, string>) {
+function json(status: number, body: Record<string, unknown>, extraHeaders?: Record<string, string>) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -109,7 +109,8 @@ async function extractTenantId(req: Request): Promise<string | null> {
 
   // body: tenant_id / certificate_id / public_id
   try {
-    const b: any = await (req as any).clone().json();
+    const clonedReq = req.clone();
+    const b = (await clonedReq.json()) as Record<string, unknown>;
 
     const tid = b?.tenant_id ?? b?.tenantId ?? b?.tenant ?? null;
     if (typeof tid === "string" && tid) return tid;
@@ -159,8 +160,10 @@ async function graceInfoForTenant(stripe_subscription_id: string | null) {
 
   try {
     const stripe = getStripe();
-    const res: any = await stripe.subscriptions.retrieve(stripe_subscription_id);
-    const sub: any = res?.data ?? res;
+    const res = await stripe.subscriptions.retrieve(stripe_subscription_id);
+    // Stripe SDK may wrap in Response<Subscription> with .data
+    const resRecord = res as unknown as Record<string, unknown>;
+    const sub = (resRecord.data as Record<string, unknown> | undefined) ?? (res as unknown as Record<string, unknown>);
 
     const end = sub?.current_period_end ? Number(sub.current_period_end) : null;
     if (!end) return { ok: false as const, grace_until: null as string | null };
@@ -207,7 +210,7 @@ export async function enforceBilling(
   if (!active) {
     // public_pdf は「猶予期間中だけ許可」
     if (action === "public_pdf") {
-      const g = await graceInfoForTenant((data as any).stripe_subscription_id ?? null);
+      const g = await graceInfoForTenant(((data as Record<string, unknown>).stripe_subscription_id as string | null) ?? null);
       const now = Date.now();
 
       if (g.ok && g.grace_until) {

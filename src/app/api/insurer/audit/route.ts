@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
       // Fallback: if join fails, query without join
       const fallbackQuery = admin
         .from("insurer_access_logs")
-        .select("*")
+        .select("id, action, meta, ip, user_agent, created_at, certificate_id, insurer_user_id")
         .eq("insurer_id", caller.insurerId)
         .order("created_at", { ascending: false })
         .range(offset, offset + limit - 1);

@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { emailSchema } from "@/lib/validation/schemas";
 import { sha256Hex } from "@/lib/customerPortalServer";
+import { apiValidationError, apiInternalError, apiError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -81,15 +82,12 @@ export async function POST(req: Request) {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
+    return apiValidationError("invalid JSON");
   }
 
   const parsed = emailSchema.safeParse((body as any)?.email);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "validation_error", message: "有効なメールアドレスを入力してください" },
-      { status: 400 },
-    );
+    return apiValidationError("有効なメールアドレスを入力してください");
   }
   const email = parsed.data;
 
@@ -110,10 +108,7 @@ export async function POST(req: Request) {
     p_email: email,
   });
   if (emailExists === true) {
-    return NextResponse.json(
-      { error: "email_exists", message: "このメールアドレスは既に登録されています" },
-      { status: 409 },
-    );
+    return apiError({ code: "conflict", message: "このメールアドレスは既に登録されています", status: 409 });
   }
 
   // Invalidate old codes for this email
@@ -138,19 +133,14 @@ export async function POST(req: Request) {
     });
 
   if (insertErr) {
-    console.error("[join/send-code] insert error:", insertErr.message);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(insertErr, "join/send-code insert");
   }
 
   // Send email
   try {
     await sendEmailResend(email, code);
   } catch (e) {
-    console.error("[join/send-code] send error:", e);
-    return NextResponse.json(
-      { error: "email_send_failed", message: "メール送信に失敗しました。しばらくしてから再度お試しください。" },
-      { status: 500 },
-    );
+    return apiInternalError(e, "join/send-code email send");
   }
 
   return NextResponse.json({ ok: true, message: "確認コードを送信しました" });

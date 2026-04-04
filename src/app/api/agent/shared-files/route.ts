@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/api/auth";
+import { apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -24,13 +25,13 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const { data: auth } = await supabase.auth.getUser();
     if (!auth?.user) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
 
     const { data: agentStatus } = await supabase.rpc("get_my_agent_status");
     const agentRow = Array.isArray(agentStatus) ? agentStatus[0] : agentStatus;
     if (!agentRow?.agent_id) {
-      return NextResponse.json({ error: "not_agent" }, { status: 403 });
+      return apiForbidden("not_agent");
     }
 
     const direction = request.nextUrl.searchParams.get("direction");
@@ -50,10 +51,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ files: data ?? [] });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "internal_error" },
-      { status: 500 },
-    );
+    return apiInternalError(e, "agent/shared-files GET");
   }
 }
 
@@ -66,13 +64,13 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient();
     const { data: auth } = await supabase.auth.getUser();
     if (!auth?.user) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
 
     const { data: agentStatus } = await supabase.rpc("get_my_agent_status");
     const agentRow = Array.isArray(agentStatus) ? agentStatus[0] : agentStatus;
     if (!agentRow?.agent_id) {
-      return NextResponse.json({ error: "not_agent" }, { status: 403 });
+      return apiForbidden("not_agent");
     }
 
     const formData = await request.formData();
@@ -80,20 +78,14 @@ export async function POST(request: NextRequest) {
     const note = formData.get("note") as string | null;
 
     if (!file || !(file instanceof File)) {
-      return NextResponse.json({ error: "file is required" }, { status: 400 });
+      return apiValidationError("file is required");
     }
     if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json(
-        { error: `ファイルサイズが上限（10MB）を超えています` },
-        { status: 400 },
-      );
+      return apiValidationError("ファイルサイズが上限（10MB）を超えています");
     }
     const contentType = file.type || "application/octet-stream";
     if (!ALLOWED_TYPES.some((t) => contentType.startsWith(t))) {
-      return NextResponse.json(
-        { error: `許可されていないファイル形式です: ${contentType}` },
-        { status: 400 },
-      );
+      return apiValidationError(`許可されていないファイル形式です: ${contentType}`);
     }
 
     const admin = getAdminClient();
@@ -107,10 +99,7 @@ export async function POST(request: NextRequest) {
       .upload(storagePath, fileBuffer, { contentType, upsert: false });
 
     if (uploadErr) {
-      return NextResponse.json(
-        { error: `アップロードに失敗しました: ${uploadErr.message}` },
-        { status: 500 },
-      );
+      return apiInternalError(uploadErr, "agent/shared-files upload");
     }
 
     const { data: record, error: insertErr } = await admin
@@ -125,16 +114,13 @@ export async function POST(request: NextRequest) {
         storage_path: storagePath,
         note: note?.trim() || null,
       })
-      .select()
+      .select("id, agent_id, uploaded_by, direction, file_name, file_size, file_type, storage_path, note, created_at")
       .single();
 
     if (insertErr) throw insertErr;
 
     return NextResponse.json({ file: record }, { status: 201 });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "internal_error" },
-      { status: 500 },
-    );
+    return apiInternalError(e, "agent/shared-files POST");
   }
 }

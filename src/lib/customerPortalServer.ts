@@ -179,7 +179,7 @@ export async function listHistoryForCustomer(tenantId: string, phoneHash: string
   const certs = await listCertificatesForCustomer(tenantId, phoneHash);
   if (!certs || certs.length === 0) return [];
 
-  const certPublicIds = certs.map((c: any) => c.public_id);
+  const certPublicIds = certs.map((c: { public_id: string }) => c.public_id);
   const db = admin();
 
   // certificate_id ベースで検索するために certificates の id が必要
@@ -190,7 +190,7 @@ export async function listHistoryForCustomer(tenantId: string, phoneHash: string
     .in("public_id", certPublicIds);
   if (!certRows || certRows.length === 0) return [];
 
-  const certIds = certRows.map((c: any) => c.id);
+  const certIds = certRows.map((c: { id: string }) => c.id);
   const { data: histories } = await db
     .from("vehicle_histories")
     .select("id, type, title, description, performed_at, certificate_id")
@@ -206,7 +206,7 @@ export async function listReservationsForCustomer(tenantId: string, phoneHash: s
   const certs = await listCertificatesForCustomer(tenantId, phoneHash);
   if (!certs || certs.length === 0) return [];
 
-  const customerNames = [...new Set(certs.map((c: any) => c.customer_name).filter(Boolean))];
+  const customerNames = [...new Set(certs.map((c: { customer_name: string | null }) => c.customer_name).filter(Boolean))];
   if (customerNames.length === 0) return [];
 
   const db = admin();
@@ -237,7 +237,7 @@ export async function getCustomerProfile(tenantId: string, phoneHash: string) {
   const certs = await listCertificatesForCustomer(tenantId, phoneHash);
   if (!certs || certs.length === 0) return null;
 
-  const customerNames = [...new Set(certs.map((c: any) => c.customer_name).filter(Boolean))];
+  const customerNames = [...new Set(certs.map((c: { customer_name: string | null }) => c.customer_name).filter(Boolean))];
   if (customerNames.length === 0) return null;
 
   const { data: customers } = await admin()

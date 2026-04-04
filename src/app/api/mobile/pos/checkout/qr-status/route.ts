@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { createMobileClient, resolveMobileCaller } from "@/lib/supabase/mobile";
 import { requireMinRole } from "@/lib/auth/checkRole";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { apiUnauthorized, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -20,21 +21,21 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const { client, accessToken } = createMobileClient(req);
   if (!client) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return apiUnauthorized();
   }
 
   const caller = await resolveMobileCaller(client, accessToken);
   if (!caller) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return apiUnauthorized();
   }
 
   if (!requireMinRole(caller, "staff")) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    return apiForbidden();
   }
 
   const sessionId = req.nextUrl.searchParams.get("session_id");
   if (!sessionId) {
-    return NextResponse.json({ error: "session_id required" }, { status: 400 });
+    return apiValidationError("session_id required");
   }
 
   // tenant_id はクエリパラメータから取得（なければ caller のテナントを使用）
@@ -42,7 +43,7 @@ export async function GET(req: NextRequest) {
 
   const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
   if (!stripeSecretKey) {
-    return NextResponse.json({ error: "stripe not configured" }, { status: 500 });
+    return apiInternalError(new Error("stripe not configured"), "mobile/pos/qr-status");
   }
 
   // テナントの Connect アカウントを取得（セッション参照に必要）
@@ -67,7 +68,7 @@ export async function GET(req: NextRequest) {
   try {
     session = await stripe.checkout.sessions.retrieve(sessionId, stripeOptions);
   } catch {
-    return NextResponse.json({ error: "session not found" }, { status: 404 });
+    return apiNotFound("session not found");
   }
 
   // Stripe セッションのステータスを Ledra 用にマッピング

@@ -10,6 +10,7 @@ import {
   markGlobalCodeUsed,
 } from "@/lib/customerPortalGlobal";
 import { normalizeEmail, normalizeLast4 } from "@/lib/customerPortalServer";
+import { apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 const isSecureCookie = process.env.NODE_ENV === "production";
 
@@ -31,16 +32,16 @@ export async function POST(req: Request) {
     const preferredTenantSlug = String(body.preferred_tenant_slug ?? body.tenant ?? "").trim() || null;
 
     const row = await getLatestGlobalCodeRow(email, last4);
-    if (!row) return NextResponse.json({ error: "no_code" }, { status: 404 });
-    if (row.used_at) return NextResponse.json({ error: "code_used" }, { status: 400 });
+    if (!row) return apiNotFound("no_code");
+    if (row.used_at) return apiValidationError("code_used");
     if (new Date(row.expires_at).getTime() < Date.now())
-      return NextResponse.json({ error: "code_expired" }, { status: 400 });
+      return apiValidationError("code_expired");
 
     const expected = globalOtpCodeHash(email, last4, code);
     if (expected !== row.code_hash) {
       const nextAttempts = (row.attempts ?? 0) + 1;
       await markGlobalCodeAttempt(row.id, nextAttempts);
-      return NextResponse.json({ error: "invalid_code" }, { status: 400 });
+      return apiValidationError("invalid_code");
     }
 
     await markGlobalCodeUsed(row.id);
@@ -63,8 +64,7 @@ export async function POST(req: Request) {
       maxAge: 30 * 24 * 60 * 60,
     });
     return res;
-  } catch (e: any) {
-    console.error("portal verify-code error", e);
-    return NextResponse.json({ error: e?.message ?? "verify-code failed" }, { status: 500 });
+  } catch (e: unknown) {
+    return apiInternalError(e, "portal/verify-code");
   }
 }

@@ -68,14 +68,18 @@ export async function PATCH(req: NextRequest) {
   if (!caller) return apiUnauthorized();
   if (caller.role !== "admin") return apiForbidden("管理者のみセキュリティ設定を変更できます。");
 
-  let body: any;
+  let body: Record<string, unknown>;
   try {
     body = await req.json();
   } catch {
     return apiValidationError("invalid JSON");
   }
 
-  const { ip_whitelist_enabled, ip_whitelist, session_timeout_minutes } = body;
+  const { ip_whitelist_enabled, ip_whitelist, session_timeout_minutes } = body as {
+    ip_whitelist_enabled?: boolean;
+    ip_whitelist?: string[];
+    session_timeout_minutes?: number;
+  };
 
   // Validate ip_whitelist entries
   if (ip_whitelist !== undefined) {
@@ -104,7 +108,7 @@ export async function PATCH(req: NextRequest) {
   try {
     const admin = createAdminClient();
 
-    const updates: Record<string, any> = {
+    const updates: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
       updated_by: caller.userId,
     };

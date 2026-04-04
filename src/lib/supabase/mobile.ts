@@ -84,6 +84,6 @@ export async function resolveMobileCaller(
     userId: userRes.user.id,
     tenantId,
     role: normalizeRole(mem.role as string),
-    planTier: String((tenant as any)?.plan_tier ?? "free"),
+    planTier: String((tenant as { plan_tier?: string | null })?.plan_tier ?? "free"),
   };
 }

@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { escapeIlike } from "@/lib/sanitize";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
+import { apiForbidden, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -16,7 +17,7 @@ export async function GET(req: NextRequest) {
     const supabase = await createClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller || !isPlatformAdmin(caller)) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      return apiForbidden();
     }
 
     const url = new URL(req.url);
@@ -37,15 +38,11 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await query;
     if (error) {
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
+      return apiInternalError(error, "tenant-access/tenants GET");
     }
 
     return NextResponse.json({ tenants: data ?? [] });
   } catch (e) {
-    console.error("[admin/insurers/tenant-access/tenants]", e);
-    return NextResponse.json(
-      { error: "internal_error", message: "内部エラーが発生しました" },
-      { status: 500 }
-    );
+    return apiInternalError(e, "admin/insurers/tenant-access/tenants");
   }
 }

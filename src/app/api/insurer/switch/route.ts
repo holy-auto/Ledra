@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import { apiUnauthorized, apiValidationError, apiForbidden } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -12,16 +13,16 @@ export const runtime = "nodejs";
  */
 export async function GET() {
   const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth?.user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) {
+    return apiUnauthorized();
   }
 
   const admin = createAdminClient();
   const { data: memberships } = await admin
     .from("insurer_users")
     .select("insurer_id, role, is_active")
-    .eq("user_id", auth.user.id)
+    .eq("user_id", authData.user.id)
     .eq("is_active", true);
 
   if (!memberships || memberships.length === 0) {
@@ -58,21 +59,21 @@ export async function POST(req: NextRequest) {
   if (limited) return limited;
 
   const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth?.user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) {
+    return apiUnauthorized();
   }
 
-  let body: any;
+  let body: Record<string, unknown>;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
+    return apiValidationError("invalid JSON");
   }
 
-  const { insurer_id } = body;
+  const { insurer_id } = body as { insurer_id?: string };
   if (!insurer_id) {
-    return NextResponse.json({ error: "insurer_id is required" }, { status: 400 });
+    return apiValidationError("insurer_id is required");
   }
 
   // Verify user belongs to this insurer
@@ -80,14 +81,14 @@ export async function POST(req: NextRequest) {
   const { data: membership } = await admin
     .from("insurer_users")
     .select("id")
-    .eq("user_id", auth.user.id)
+    .eq("user_id", authData.user.id)
     .eq("insurer_id", insurer_id)
     .eq("is_active", true)
     .limit(1)
     .maybeSingle();
 
   if (!membership) {
-    return NextResponse.json({ error: "not_member" }, { status: 403 });
+    return apiForbidden("この保険会社のメンバーではありません。");
   }
 
   // Set cookie

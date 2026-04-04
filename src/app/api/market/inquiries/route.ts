@@ -3,6 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -28,10 +29,7 @@ export async function POST(req: NextRequest) {
     const message = (body?.message ?? "").trim();
 
     if (!vehicleId || !buyerName || !buyerEmail || !message) {
-      return NextResponse.json(
-        { error: "vehicle_id, buyer_name, buyer_email, and message are required" },
-        { status: 400 },
-      );
+      return apiValidationError("vehicle_id, buyer_name, buyer_email, and message are required");
     }
 
     // Look up the vehicle to get seller tenant_id
@@ -42,7 +40,7 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (vErr || !vehicle) {
-      return NextResponse.json({ error: "vehicle_not_found" }, { status: 404 });
+      return apiNotFound("vehicle_not_found");
     }
 
     const row: Record<string, unknown> = {
@@ -61,18 +59,16 @@ export async function POST(req: NextRequest) {
     const { data: inquiry, error } = await admin
       .from("market_inquiries")
       .insert(row)
-      .select()
+      .select("id, vehicle_id, seller_tenant_id, buyer_name, buyer_email, buyer_company, buyer_phone, message, status, created_at")
       .single();
 
     if (error) {
-      console.error("[market-inquiries] insert_failed:", error.message);
-      return NextResponse.json({ error: "insert_failed" }, { status: 500 });
+      return apiInternalError(error, "market-inquiries insert");
     }
 
     return NextResponse.json({ ok: true, inquiry });
-  } catch (e: any) {
-    console.error("market inquiry create failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+  } catch (e: unknown) {
+    return apiInternalError(e, "market-inquiries create");
   }
 }
 
@@ -81,7 +77,7 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const admin = createAdminClient();
     const url = new URL(req.url);
@@ -100,13 +96,11 @@ export async function GET(req: NextRequest) {
     const { data: inquiries, error } = await query;
 
     if (error) {
-      console.error("[market-inquiries] db_error:", error.message);
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
+      return apiInternalError(error, "market-inquiries list");
     }
 
     return NextResponse.json({ inquiries: inquiries ?? [] });
-  } catch (e: any) {
-    console.error("market inquiries list failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+  } catch (e: unknown) {
+    return apiInternalError(e, "market-inquiries list");
   }
 }

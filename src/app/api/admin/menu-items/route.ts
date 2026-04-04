@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +10,7 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const url = new URL(req.url);
     const activeOnly = url.searchParams.get("active_only") !== "false";
@@ -25,8 +26,7 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await query;
     if (error) {
-      console.error("[menu-items] db_error:", error.message);
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
+      return apiInternalError(error, "menu-items list");
     }
 
     const res = NextResponse.json({
@@ -35,9 +35,8 @@ export async function GET(req: NextRequest) {
     });
     res.headers.set("Cache-Control", "private, max-age=60, stale-while-revalidate=120");
     return res;
-  } catch (e: any) {
-    console.error("[menu-items] GET failed:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+  } catch (e: unknown) {
+    return apiInternalError(e, "menu-items GET");
   }
 }
 
@@ -46,7 +45,7 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const body = await req.json().catch(() => ({} as any));
 
@@ -69,13 +68,12 @@ export async function POST(req: NextRequest) {
       }).filter((r: any) => r.name);
 
       if (rows.length === 0) {
-        return NextResponse.json({ error: "no_valid_rows", message: "有効な行がありません" }, { status: 400 });
+        return apiValidationError("有効な行がありません");
       }
 
-      const { data, error } = await supabase.from("menu_items").insert(rows).select();
+      const { data, error } = await supabase.from("menu_items").insert(rows).select("id");
       if (error) {
-        console.error("[menu-items] insert_failed (csv):", error.message);
-        return NextResponse.json({ error: "insert_failed" }, { status: 500 });
+        return apiInternalError(error, "menu-items csv insert");
       }
 
       return NextResponse.json({ ok: true, imported: data?.length ?? 0 });
@@ -83,7 +81,7 @@ export async function POST(req: NextRequest) {
 
     // 単一作成
     const name = (body.name ?? "").trim();
-    if (!name) return NextResponse.json({ error: "name_required", message: "品目名は必須です" }, { status: 400 });
+    if (!name) return apiValidationError("品目名は必須です");
 
     const row = {
       tenant_id: caller.tenantId,
@@ -94,16 +92,14 @@ export async function POST(req: NextRequest) {
       sort_order: parseInt(String(body.sort_order ?? 0), 10) || 0,
     };
 
-    const { data, error } = await supabase.from("menu_items").insert(row).select().single();
+    const { data, error } = await supabase.from("menu_items").insert(row).select("id, name, description, unit_price, tax_category, is_active, sort_order, created_at, updated_at").single();
     if (error) {
-      console.error("[menu-items] insert_failed:", error.message);
-      return NextResponse.json({ error: "insert_failed" }, { status: 500 });
+      return apiInternalError(error, "menu-items insert");
     }
 
     return NextResponse.json({ ok: true, item: data });
-  } catch (e: any) {
-    console.error("[menu-items] POST failed:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+  } catch (e: unknown) {
+    return apiInternalError(e, "menu-items POST");
   }
 }
 
@@ -112,11 +108,11 @@ export async function PUT(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const body = await req.json().catch(() => ({} as any));
     const id = (body.id ?? "").trim();
-    if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
+    if (!id) return apiValidationError("missing_id");
 
     const updates: Record<string, unknown> = {};
     if (body.name !== undefined) updates.name = (body.name ?? "").trim();
@@ -131,18 +127,16 @@ export async function PUT(req: NextRequest) {
       .update(updates)
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
-      .select()
+      .select("id, name, description, unit_price, tax_category, is_active, sort_order, created_at, updated_at")
       .single();
 
     if (error) {
-      console.error("[menu-items] update_failed:", error.message);
-      return NextResponse.json({ error: "update_failed" }, { status: 500 });
+      return apiInternalError(error, "menu-items update");
     }
 
     return NextResponse.json({ ok: true, item: data });
-  } catch (e: any) {
-    console.error("[menu-items] PUT failed:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+  } catch (e: unknown) {
+    return apiInternalError(e, "menu-items PUT");
   }
 }
 
@@ -151,11 +145,11 @@ export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
 
     const body = await req.json().catch(() => ({} as any));
     const id = (body.id ?? "").trim();
-    if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
+    if (!id) return apiValidationError("missing_id");
 
     const { error } = await supabase
       .from("menu_items")
@@ -164,13 +158,11 @@ export async function DELETE(req: NextRequest) {
       .eq("tenant_id", caller.tenantId);
 
     if (error) {
-      console.error("[menu-items] delete_failed:", error.message);
-      return NextResponse.json({ error: "delete_failed" }, { status: 500 });
+      return apiInternalError(error, "menu-items delete");
     }
 
     return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    console.error("[menu-items] DELETE failed:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+  } catch (e: unknown) {
+    return apiInternalError(e, "menu-items DELETE");
   }
 }

@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
     });
 
     return apiOk({ explanation });
-  } catch (e: any) {
+  } catch (e: unknown) {
     return apiInternalError(e);
   }
 }

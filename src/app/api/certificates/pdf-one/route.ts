@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { enforceBilling } from "@/lib/billing/guard";
-import { apiValidationError, apiUnauthorized } from "@/lib/api/response";
+import { apiValidationError, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 
@@ -96,11 +96,7 @@ export async function POST(req: NextRequest) {
 
     return proxyToCertificatePdf(req, id);
   } catch (e) {
-    console.error("[certificates/pdf-one]", e);
-    return NextResponse.json(
-      { error: "internal_error", message: "内部エラーが発生しました" },
-      { status: 500 }
-    );
+    return apiInternalError(e, "certificates/pdf-one");
   }
 }
 

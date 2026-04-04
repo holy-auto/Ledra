@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { apiUnauthorized, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -9,12 +10,12 @@ export async function GET() {
     const supabase = await createClient();
     const { data: auth } = await supabase.auth.getUser();
     if (!auth?.user) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
 
     const { data: agentData, error: agentErr } = await supabase.rpc("get_my_agent_status");
     if (agentErr || !agentData || (Array.isArray(agentData) && agentData.length === 0)) {
-      return NextResponse.json({ error: "agent_not_found" }, { status: 403 });
+      return apiForbidden("agent_not_found");
     }
 
     const agent = Array.isArray(agentData) ? agentData[0] : agentData;
@@ -23,13 +24,12 @@ export async function GET() {
     // Fetch agent profile
     const { data: profile, error: profileErr } = await supabase
       .from("agents")
-      .select("*")
+      .select("id, name, contact_name, contact_email, contact_phone, company_name, company_address, website_url, logo_url, status, commission_type, commission_rate, bank_name, bank_branch, bank_account_type, bank_account_number, bank_account_holder, stripe_account_id, stripe_onboarding_done, notes, created_at, updated_at")
       .eq("id", agentId)
       .single();
 
     if (profileErr || !profile) {
-      console.error("[agent/settings] profile fetch error:", profileErr?.message);
-      return NextResponse.json({ error: "agent_profile_not_found" }, { status: 404 });
+      return apiNotFound("agent_profile_not_found");
     }
 
     // Fetch current user's role in this agent org
@@ -53,8 +53,7 @@ export async function GET() {
       },
     });
   } catch (e: unknown) {
-    console.error("[agent/settings] GET error:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "agent/settings GET");
   }
 }
 
@@ -64,12 +63,12 @@ export async function PUT(request: NextRequest) {
     const supabase = await createClient();
     const { data: auth } = await supabase.auth.getUser();
     if (!auth?.user) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
 
     const { data: agentData, error: agentErr } = await supabase.rpc("get_my_agent_status");
     if (agentErr || !agentData || (Array.isArray(agentData) && agentData.length === 0)) {
-      return NextResponse.json({ error: "agent_not_found" }, { status: 403 });
+      return apiForbidden("agent_not_found");
     }
 
     const agent = Array.isArray(agentData) ? agentData[0] : agentData;
@@ -78,10 +77,7 @@ export async function PUT(request: NextRequest) {
 
     // Only admin can update settings
     if (role !== "admin") {
-      return NextResponse.json(
-        { error: "forbidden", message: "設定を更新する権限がありません。" },
-        { status: 403 }
-      );
+      return apiForbidden("設定を更新する権限がありません。");
     }
 
     const body = await request.json().catch(() => ({} as Record<string, unknown>));
@@ -120,10 +116,7 @@ export async function PUT(request: NextRequest) {
     }
 
     if (Object.keys(updates).length === 0) {
-      return NextResponse.json(
-        { error: "no_updates", message: "更新するフィールドがありません。" },
-        { status: 400 }
-      );
+      return apiValidationError("更新するフィールドがありません。");
     }
 
     updates.updated_at = new Date().toISOString();
@@ -132,17 +125,15 @@ export async function PUT(request: NextRequest) {
       .from("agents")
       .update(updates)
       .eq("id", agentId)
-      .select()
+      .select("id, name, contact_name, contact_email, contact_phone, company_name, company_address, website_url, logo_url, status, commission_type, commission_rate, bank_name, bank_branch, bank_account_type, bank_account_number, bank_account_holder, stripe_account_id, stripe_onboarding_done, notes, created_at, updated_at")
       .single();
 
     if (updateErr) {
-      console.error("[agent/settings] update error:", updateErr.message);
-      return NextResponse.json({ error: "update_failed" }, { status: 500 });
+      return apiInternalError(updateErr, "agent/settings update");
     }
 
     return NextResponse.json({ ok: true, agent: updated });
   } catch (e: unknown) {
-    console.error("[agent/settings] PUT error:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "agent/settings PUT");
   }
 }

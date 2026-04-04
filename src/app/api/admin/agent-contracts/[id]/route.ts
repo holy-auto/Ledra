@@ -22,7 +22,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
     const admin = getAdminClient();
     const { data, error } = await admin
       .from("agent_signing_requests")
-      .select("*")
+      .select("id, agent_id, template_type, title, cloudsign_document_id, status, signer_email, signer_name, sent_at, signed_at, signed_pdf_path, requested_by, created_at, updated_at")
       .eq("id", id)
       .single();
 
@@ -63,7 +63,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
 
     const { data: record, error: fetchErr } = await admin
       .from("agent_signing_requests")
-      .select("*")
+      .select("id, agent_id, template_type, title, cloudsign_document_id, status, signer_email, signer_name, sent_at, signed_at, signed_pdf_path, requested_by, created_at, updated_at")
       .eq("id", id)
       .single();
 
@@ -83,7 +83,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
         .from("agent_signing_requests")
         .update({ sent_at: new Date().toISOString() })
         .eq("id", id)
-        .select()
+        .select("id, agent_id, template_type, title, cloudsign_document_id, status, signer_email, signer_name, sent_at, signed_at, signed_pdf_path, requested_by, created_at, updated_at")
         .single();
 
       return NextResponse.json({ contract: updated });
@@ -98,7 +98,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
         .from("agent_signing_requests")
         .update({ status: "expired", updated_at: new Date().toISOString() })
         .eq("id", id)
-        .select()
+        .select("id, agent_id, template_type, title, cloudsign_document_id, status, signer_email, signer_name, sent_at, signed_at, signed_pdf_path, requested_by, created_at, updated_at")
         .single();
 
       return NextResponse.json({ contract: updated });

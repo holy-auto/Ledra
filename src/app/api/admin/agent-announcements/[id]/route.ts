@@ -26,7 +26,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
       .from("agent_announcements")
       .update(updates)
       .eq("id", id)
-      .select()
+      .select("id, title, body, category, is_pinned, published_at, created_by, created_at, updated_at")
       .single();
 
     if (error) return apiInternalError(error, "agent-announcements PUT");

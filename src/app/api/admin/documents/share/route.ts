@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     // Fetch document
     const { data: doc } = await supabase
       .from("documents")
-      .select("*")
+      .select("id, tenant_id, customer_id, recipient_name, doc_type, doc_number, status, total, created_at, updated_at")
       .eq("id", documentId)
       .eq("tenant_id", caller.tenantId)
       .single();
@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
         .update({ status: "sent", updated_at: new Date().toISOString() })
         .eq("id", documentId)
         .eq("tenant_id", caller.tenantId)
-        .select()
+        .select("id, tenant_id, customer_id, recipient_name, doc_type, doc_number, status, total, created_at, updated_at")
         .single();
       if (updated) updatedDoc = updated;
     }

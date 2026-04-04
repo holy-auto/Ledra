@@ -21,7 +21,7 @@ export async function GET(_req: Request) {
 
     const { data: brands, error } = await supabase
       .from("brands")
-      .select("*, coating_products(*)")
+      .select("id, tenant_id, name, description, website_url, created_at, updated_at, coating_products(id, brand_id, name, product_code, description, created_at, updated_at)")
       .or(`tenant_id.is.null,tenant_id.eq.${caller.tenantId}`)
       .order("name");
 
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
         description: b.description ?? null,
         website_url: b.website_url ?? null,
       })
-      .select("*")
+      .select("id, tenant_id, name, description, website_url, created_at, updated_at")
       .single();
 
     if (error) return apiInternalError(error, "brands POST");
@@ -83,7 +83,7 @@ export async function PUT(req: Request) {
       .update({ ...fields, updated_at: new Date().toISOString() })
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
-      .select("*")
+      .select("id, tenant_id, name, description, website_url, created_at, updated_at")
       .single();
 
     if (error || !brand) {

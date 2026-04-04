@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
   try {
     const { data: items, error } = await admin
       .from("insurer_watchlist")
-      .select("*")
+      .select("id, insurer_id, user_id, target_type, target_id, created_at")
       .eq("insurer_id", caller.insurerId)
       .eq("user_id", caller.userId)
       .order("created_at", { ascending: false });
@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
         target_type: type,
         target_id,
       })
-      .select("*")
+      .select("id, insurer_id, user_id, target_type, target_id, created_at")
       .single();
 
     if (error) {

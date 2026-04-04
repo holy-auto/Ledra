@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { createMobileClient, resolveMobileCaller } from "@/lib/supabase/mobile";
 import { requireMinRole } from "@/lib/auth/checkRole";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -22,23 +23,23 @@ export async function POST(req: NextRequest) {
   try {
     const { client, accessToken } = createMobileClient(req);
     if (!client) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
 
     const caller = await resolveMobileCaller(client, accessToken);
     if (!caller) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return apiUnauthorized();
     }
 
     if (!requireMinRole(caller, "staff")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      return apiForbidden();
     }
 
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
 
     const amount = parseInt(String(body?.amount ?? 0), 10);
     if (!amount || amount < 1 || amount > 999_999_999) {
-      return NextResponse.json({ error: "invalid_amount" }, { status: 400 });
+      return apiValidationError("invalid_amount");
     }
 
     const reservationId = String(body?.reservation_id ?? "");
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
     const storeId = String(body?.store_id ?? "");
 
     if (!reservationId || !tenantId) {
-      return NextResponse.json({ error: "reservation_id and tenant_id are required" }, { status: 400 });
+      return apiValidationError("reservation_id and tenant_id are required");
     }
 
     // テナントの Stripe Connect アカウント取得
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest) {
 
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
     if (!stripeSecretKey) {
-      return NextResponse.json({ error: "stripe not configured" }, { status: 500 });
+      return apiInternalError(new Error("stripe not configured"), "mobile/pos/qr-session");
     }
 
     const stripe = new Stripe(stripeSecretKey, {
@@ -120,10 +121,6 @@ export async function POST(req: NextRequest) {
       connect_account: connectAccountId ?? null,
     });
   } catch (e) {
-    console.error("[mobile/pos/checkout/qr-session]", e);
-    return NextResponse.json(
-      { error: "internal_error", message: "内部エラーが発生しました" },
-      { status: 500 }
-    );
+    return apiInternalError(e, "mobile/pos/checkout/qr-session");
   }
 }

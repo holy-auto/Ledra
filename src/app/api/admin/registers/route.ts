@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -9,9 +10,9 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
     if (!requirePermission(caller, "registers:view")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      return apiForbidden();
     }
 
     const url = new URL(req.url);
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabase
       .from("registers")
-      .select("*")
+      .select("id, tenant_id, store_id, name, is_active, sort_order, created_at, updated_at")
       .eq("tenant_id", caller.tenantId)
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: true });
@@ -51,8 +52,7 @@ export async function GET(req: NextRequest) {
 
     const [{ data: registers, error }, { count: totalCount }] = await Promise.all([query, countQuery]);
     if (error) {
-      console.error("[registers] db_error:", error.message);
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
+      return apiInternalError(error, "registers list");
     }
 
     const total = totalCount ?? (registers ?? []).length;
@@ -69,8 +69,7 @@ export async function GET(req: NextRequest) {
       }),
     });
   } catch (e: unknown) {
-    console.error("registers list failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "registers list");
   }
 }
 
@@ -79,17 +78,17 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
     if (!requirePermission(caller, "registers:manage")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      return apiForbidden();
     }
 
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const name = (String(body?.name ?? "")).trim();
     const storeId = (String(body?.store_id ?? "")).trim();
 
-    if (!name) return NextResponse.json({ error: "レジ名は必須です" }, { status: 400 });
-    if (!storeId) return NextResponse.json({ error: "store_idは必須です" }, { status: 400 });
+    if (!name) return apiValidationError("レジ名は必須です");
+    if (!storeId) return apiValidationError("store_idは必須です");
 
     // store_idがテナントに属するか確認
     const { data: store } = await supabase
@@ -100,7 +99,7 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (!store) {
-      return NextResponse.json({ error: "指定された店舗が見つかりません" }, { status: 400 });
+      return apiValidationError("指定された店舗が見つかりません");
     }
 
     const { data: register, error } = await supabase
@@ -112,18 +111,16 @@ export async function POST(req: NextRequest) {
         is_active: body?.is_active !== false,
         sort_order: typeof body?.sort_order === "number" ? body.sort_order : 0,
       })
-      .select()
+      .select("id, tenant_id, store_id, name, is_active, sort_order, created_at, updated_at")
       .single();
 
     if (error) {
-      console.error("[registers] insert_failed:", error.message);
-      return NextResponse.json({ error: "insert_failed" }, { status: 500 });
+      return apiInternalError(error, "registers insert");
     }
 
     return NextResponse.json({ register }, { status: 201 });
   } catch (e: unknown) {
-    console.error("register create failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "registers create");
   }
 }
 
@@ -132,14 +129,14 @@ export async function PUT(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
     if (!requirePermission(caller, "registers:manage")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      return apiForbidden();
     }
 
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const id = (String(body?.id ?? "")).trim();
-    if (!id) return NextResponse.json({ error: "idは必須です" }, { status: 400 });
+    if (!id) return apiValidationError("idは必須です");
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (body.name !== undefined) updates.name = (String(body.name)).trim();
@@ -151,18 +148,16 @@ export async function PUT(req: NextRequest) {
       .update(updates)
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
-      .select()
+      .select("id, tenant_id, store_id, name, is_active, sort_order, created_at, updated_at")
       .single();
 
     if (error) {
-      console.error("[registers] update_failed:", error.message);
-      return NextResponse.json({ error: "update_failed" }, { status: 500 });
+      return apiInternalError(error, "registers update");
     }
 
     return NextResponse.json({ ok: true, register });
   } catch (e: unknown) {
-    console.error("register update failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "registers update");
   }
 }
 
@@ -171,14 +166,14 @@ export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!caller) return apiUnauthorized();
     if (!requirePermission(caller, "registers:manage")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      return apiForbidden();
     }
 
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
-    if (!id) return NextResponse.json({ error: "idは必須です" }, { status: 400 });
+    if (!id) return apiValidationError("idは必須です");
 
     // openセッションがある場合は削除不可
     const { count } = await supabase
@@ -188,10 +183,7 @@ export async function DELETE(req: NextRequest) {
       .eq("status", "open");
 
     if ((count ?? 0) > 0) {
-      return NextResponse.json(
-        { error: "開いているセッションがあるため削除できません" },
-        { status: 400 },
-      );
+      return apiValidationError("開いているセッションがあるため削除できません");
     }
 
     const { error } = await supabase
@@ -201,13 +193,11 @@ export async function DELETE(req: NextRequest) {
       .eq("tenant_id", caller.tenantId);
 
     if (error) {
-      console.error("[registers] delete_failed:", error.message);
-      return NextResponse.json({ error: "delete_failed" }, { status: 500 });
+      return apiInternalError(error, "registers delete");
     }
 
     return NextResponse.json({ ok: true });
   } catch (e: unknown) {
-    console.error("register delete failed", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "registers delete");
   }
 }
