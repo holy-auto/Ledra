@@ -380,7 +380,8 @@ export async function POST(req: NextRequest) {
           const optionType = session.metadata?.option_type as "preset" | "custom" | undefined;
           if (tenantId && optionType && subscriptionId) {
             // subscription item ID を取得
-            const sub = await stripe.subscriptions.retrieve(subscriptionId);
+            const subRes = await stripe.subscriptions.retrieve(subscriptionId);
+            const sub = subRes as unknown as Stripe.Subscription;
             const recurringItem = sub.items?.data?.find((i) => i.price?.recurring);
 
             await supabase.from("tenant_option_subscriptions").upsert(
@@ -411,7 +412,7 @@ export async function POST(req: NextRequest) {
 
         if (!subscriptionId) throw new Error("checkout.session.completed: missing subscription id");
 
-        const sub = await stripe.subscriptions.retrieve(subscriptionId);
+        const sub = await stripe.subscriptions.retrieve(subscriptionId) as unknown as Stripe.Subscription;
 
         if (isInsurer) {
           // Insurer checkout
@@ -499,7 +500,7 @@ export async function POST(req: NextRequest) {
           break;
         }
 
-        const sub = await stripe.subscriptions.retrieve(subscriptionId);
+        const sub = await stripe.subscriptions.retrieve(subscriptionId) as unknown as Stripe.Subscription;
 
         // ─── テンプレートオプション invoice ───
         if (isTemplateOptionEvent(sub.metadata as Record<string, string> | null)) {
