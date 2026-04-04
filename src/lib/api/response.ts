@@ -34,7 +34,8 @@ type ErrorCode =
   | "plan_limit"
   | "db_error"
   | "auth_error"
-  | "internal_error";
+  | "internal_error"
+  | "rate_limit_unavailable";
 
 interface ApiErrorOptions {
   /** クライアントに表示するメッセージ */
