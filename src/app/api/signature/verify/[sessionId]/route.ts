@@ -106,7 +106,11 @@ export async function GET(
       },
     });
 
-    const cert = session.certificates as unknown as { public_id: string } | null;
+    // Supabase リレーションクエリは配列で返るため、先頭要素を取得する
+    const certRaw = session.certificates;
+    const certPublicId: string | null = Array.isArray(certRaw)
+      ? (certRaw[0]?.public_id ?? null)
+      : ((certRaw as any)?.public_id ?? null);
 
     return apiOk({
       is_valid:    isValid,
@@ -124,7 +128,7 @@ export async function GET(
         public_key_fingerprint: session.public_key_fingerprint,
         key_version:            session.key_version,
       },
-      certificate: cert ? { public_id: cert.public_id } : null,
+      certificate: certPublicId ? { public_id: certPublicId } : null,
       verified_at: new Date().toISOString(),
     });
   } catch (e) {

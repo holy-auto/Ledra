@@ -24,12 +24,12 @@ type ErrorCode =
   | "not_found"
   | "conflict"
   | "rate_limited"
+  | "rate_limit_unavailable"
   | "billing_required"
   | "plan_limit"
   | "db_error"
   | "auth_error"
-  | "internal_error"
-  | "rate_limit_unavailable";
+  | "internal_error";
 
 interface ApiErrorOptions {
   /** クライアントに表示するメッセージ */

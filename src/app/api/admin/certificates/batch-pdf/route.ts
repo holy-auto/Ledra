@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Billing check (starter+)
-    const billingDeny = await enforceBilling(req, { minPlan: "starter", action: "batch_pdf" });
+    const billingDeny = await enforceBilling(req, { minPlan: "starter", action: "batch_pdf", tenantId: caller.tenantId });
     if (billingDeny) return billingDeny as any;
 
     // Parse body

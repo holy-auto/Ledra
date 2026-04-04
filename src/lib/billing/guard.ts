@@ -177,9 +177,10 @@ async function graceInfoForTenant(stripe_subscription_id: string | null) {
 
 export async function enforceBilling(
   req: Request,
-  opts: { minPlan: PlanTier; action?: string } = { minPlan: "free" },
+  opts: { minPlan: PlanTier; action?: string; tenantId?: string } = { minPlan: "free" },
 ): Promise<Response | null> {
-  const tenant_id = await extractTenantId(req);
+  // caller から直接渡された tenantId を優先し、なければリクエストから抽出
+  const tenant_id = opts.tenantId ?? await extractTenantId(req);
   const action = opts.action ?? null;
 
   if (!tenant_id) {

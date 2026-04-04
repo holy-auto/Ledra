@@ -167,7 +167,7 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const deny = await enforceBilling(req as any, { minPlan: "free", action: "order_create" });
+    const deny = await enforceBilling(req as any, { minPlan: "free", action: "order_create", tenantId: caller.tenantId });
     if (deny) return deny as any;
 
     const tenantId = caller.tenantId;
@@ -221,7 +221,7 @@ export async function PUT(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const deny = await enforceBilling(req as any, { minPlan: "free", action: "order_update" });
+    const deny = await enforceBilling(req as any, { minPlan: "free", action: "order_update", tenantId: caller.tenantId });
     if (deny) return deny as any;
 
     const tenantId = caller.tenantId;
@@ -324,7 +324,7 @@ export async function PATCH(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const deny = await enforceBilling(req as any, { minPlan: "free", action: "order_accept" });
+    const deny = await enforceBilling(req as any, { minPlan: "free", action: "order_accept", tenantId: caller.tenantId });
     if (deny) return deny as any;
 
     const tenantId = caller.tenantId;

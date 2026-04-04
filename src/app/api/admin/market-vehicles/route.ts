@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const deny = await enforceBilling(req as any, { minPlan: "standard", action: "market_create" });
+    const deny = await enforceBilling(req as any, { minPlan: "standard", action: "market_create", tenantId: caller.tenantId });
     if (deny) return deny as any;
 
     const body = await req.json().catch(() => ({} as any));
@@ -187,7 +187,7 @@ export async function PUT(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const deny = await enforceBilling(req as any, { minPlan: "standard", action: "market_update" });
+    const deny = await enforceBilling(req as any, { minPlan: "standard", action: "market_update", tenantId: caller.tenantId });
     if (deny) return deny as any;
 
     const body = await req.json().catch(() => ({} as any));
@@ -263,7 +263,7 @@ export async function DELETE(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const deny = await enforceBilling(req as any, { minPlan: "standard", action: "market_delete" });
+    const deny = await enforceBilling(req as any, { minPlan: "standard", action: "market_delete", tenantId: caller.tenantId });
     if (deny) return deny as any;
 
     const body = await req.json().catch(() => ({} as any));
