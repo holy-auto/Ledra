@@ -67,19 +67,21 @@ export async function POST(req: NextRequest) {
         // Stripe SDKの戻りが Response<Subscription> の場合があるため data を吸収
         const res = await stripe.subscriptions.retrieve(subscriptionId);
         const resRecord = res as unknown as Record<string, unknown>;
-        const sub = ((resRecord.data as Record<string, unknown> | undefined) ?? resRecord) as Stripe.Subscription & Record<string, unknown>;
+        const sub = ((resRecord.data as Record<string, unknown> | undefined) ?? resRecord) as Stripe.Subscription &
+          Record<string, unknown>;
 
-        if (sub?.deleted) {
+        const subRec = sub as unknown as Record<string, unknown>;
+        if (subRec?.deleted) {
           subscription = { error: "Subscription is deleted" };
         } else {
           subscription = {
             id: sub.id,
             status: sub.status,
-            current_period_start: sub.current_period_start ?? null,
-            current_period_end: sub.current_period_end ?? null,
-            cancel_at_period_end: sub.cancel_at_period_end ?? null,
-            cancel_at: sub.cancel_at ?? null,
-            trial_end: sub.trial_end ?? null,
+            current_period_start: (subRec.current_period_start as number | undefined) ?? null,
+            current_period_end: (subRec.current_period_end as number | undefined) ?? null,
+            cancel_at_period_end: (subRec.cancel_at_period_end as boolean | undefined) ?? null,
+            cancel_at: (subRec.cancel_at as number | undefined) ?? null,
+            trial_end: (subRec.trial_end as number | undefined) ?? null,
           };
         }
       } catch (e) {

@@ -122,9 +122,7 @@ export async function POST(req: NextRequest) {
       },
       subscription_data: {
         metadata: { tenant_id, plan_tier },
-        ...(addInvoiceItems.length > 0
-          ? { add_invoice_items: addInvoiceItems as Stripe.Checkout.SessionCreateParams.SubscriptionData.AddInvoiceItem[] }
-          : {}),
+        ...(addInvoiceItems.length > 0 ? { add_invoice_items: addInvoiceItems as unknown[] } : {}),
       },
       line_items: [{ price: priceId, quantity: 1 }],
       ...(discounts.length > 0 ? { discounts } : {}),

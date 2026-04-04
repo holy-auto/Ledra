@@ -152,10 +152,11 @@ export async function GET() {
         const resRecord = res as unknown as Record<string, unknown>;
         const sub = ((resRecord.data as Record<string, unknown> | undefined) ?? resRecord) as Stripe.Subscription &
           Record<string, unknown>;
+        const subAny = sub as unknown as Record<string, unknown>;
         subscription = {
           status: sub.status,
-          current_period_end: sub.current_period_end ?? null,
-          cancel_at_period_end: sub.cancel_at_period_end ?? false,
+          current_period_end: (subAny.current_period_end as number | undefined) ?? null,
+          cancel_at_period_end: (subAny.cancel_at_period_end as boolean | undefined) ?? false,
         };
       } catch {
         // Subscription may have been deleted
