@@ -1,4 +1,5 @@
-﻿import { NextResponse } from "next/server";
+import { randomInt } from "crypto";
+import { NextResponse } from "next/server";
 import { resolveBaseUrl } from "@/lib/url";
 import {
   createLoginCode,
@@ -12,7 +13,7 @@ import { escapeHtml } from "@/lib/sanitize";
 
 function genCode6(): string {
   // 000000〜999999（先頭ゼロあり）
-  const n = Math.floor(Math.random() * 1000000);
+  const n = randomInt(1000000);
   return String(n).padStart(6, "0");
 }
 

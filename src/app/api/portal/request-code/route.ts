@@ -1,3 +1,4 @@
+import { randomInt } from "crypto";
 import { NextResponse } from "next/server";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { escapeHtml } from "@/lib/sanitize";
@@ -6,7 +7,7 @@ import { GLOBAL_OTP_TTL_MIN, createGlobalLoginCode, listPortalMemberships } from
 import { normalizeEmail, normalizeLast4 } from "@/lib/customerPortalServer";
 
 function genCode6() {
-  const n = Math.floor(Math.random() * 1000000);
+  const n = randomInt(1000000);
   return String(n).padStart(6, "0");
 }
 
