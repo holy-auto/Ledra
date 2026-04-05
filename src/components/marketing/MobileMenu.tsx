@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 export function MobileMenu({
   navItems,
@@ -12,6 +13,25 @@ export function MobileMenu({
   portalItems: { label: string; href: string; description: string }[];
 }) {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+
+  const handleAnchorClick = useCallback(
+    (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+      const hash = href.split("#")[1];
+      if (!hash) return;
+      if (pathname === "/") {
+        e.preventDefault();
+        setOpen(false);
+        setTimeout(() => {
+          const el = document.getElementById(hash);
+          if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 100);
+      } else {
+        setOpen(false);
+      }
+    },
+    [pathname],
+  );
 
   return (
     <div className="md:hidden">
@@ -60,7 +80,13 @@ export function MobileMenu({
                   key={item.href}
                   href={item.href}
                   className="text-lg font-medium text-white/70 hover:text-white px-3 py-3 rounded-lg hover:bg-white/[0.06] transition-colors"
-                  onClick={() => setOpen(false)}
+                  onClick={(e) => {
+                    if (item.href.includes("#")) {
+                      handleAnchorClick(e, item.href);
+                    } else {
+                      setOpen(false);
+                    }
+                  }}
                 >
                   {item.label}
                 </Link>
@@ -96,11 +122,11 @@ export function MobileMenu({
               {/* CTA buttons */}
               <div className="mt-4 pt-4 border-t border-white/[0.08] space-y-3">
                 <Link
-                  href="/pricing"
+                  href="/signup"
                   className="block bg-gradient-to-r from-blue-600 to-blue-500 text-white text-base font-medium px-6 py-3 rounded-lg text-center hover:from-blue-500 hover:to-blue-400 transition-all shadow-[0_1px_12px_rgba(59,130,246,0.3)]"
                   onClick={() => setOpen(false)}
                 >
-                  プランを見る
+                  無料で試す
                 </Link>
                 <Link
                   href="/contact"

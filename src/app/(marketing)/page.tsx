@@ -135,7 +135,7 @@ export default async function HomePage() {
       </Section>
 
       {/* Ledraの解決方法 */}
-      <Section>
+      <Section id="features">
         <SectionHeading title="Ledraが解決します" subtitle="デジタル施工証明書で、施工店と保険会社の業務を変えます" />
         <FeatureGrid>
           <FeatureCard
@@ -213,7 +213,7 @@ export default async function HomePage() {
       </Section>
 
       {/* Ledraエコシステム */}
-      <Section>
+      <Section id="ecosystem">
         <SectionHeading title="Ledraのエコシステム" subtitle="記録から始まり、業界全体へ広がるプラットフォーム" />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
           {[
@@ -357,7 +357,7 @@ export default async function HomePage() {
       </Section>
 
       {/* ターゲット別導線 */}
-      <Section>
+      <Section id="usecases">
         <SectionHeading
           title="あなたの立場に合わせた活用方法"
           subtitle="それぞれに最適な機能と導線をご用意しています"
@@ -458,7 +458,7 @@ export default async function HomePage() {
       </Section>
 
       {/* ユースケース */}
-      <Section bg="alt">
+      <Section bg="alt" id="compare">
         <SectionHeading title="ご利用シーン" subtitle="さまざまな場面でLedraをご活用いただけます" />
         <FeatureGrid>
           <FeatureCard
@@ -517,7 +517,7 @@ export default async function HomePage() {
       )}
 
       {/* 料金概要 */}
-      <Section bg="alt">
+      <Section bg="alt" id="pricing">
         <SectionHeading title="料金プラン" subtitle="シンプルな料金体系で、すぐに始められます" />
         <PricingCards>
           <PricingCard
@@ -567,7 +567,7 @@ export default async function HomePage() {
       </Section>
 
       {/* FAQ抜粋 */}
-      <Section>
+      <Section id="faq">
         <SectionHeading title="よくあるご質問" />
         <FAQList>
           <FAQItem

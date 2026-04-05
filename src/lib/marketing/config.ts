@@ -10,8 +10,7 @@
 
 export const siteConfig = {
   siteName: "Ledra",
-  siteDescription:
-    "車の施工証明をデジタルで。施工店と保険会社をつなぐSaaSプラットフォームです。",
+  siteDescription: "車の施工証明をデジタルで。施工店と保険会社をつなぐSaaSプラットフォームです。",
 
   /** マーケティングサイトのベースURL（ledra.co.jp 移行後に更新） */
   siteUrl: process.env.NEXT_PUBLIC_SITE_URL ?? "https://ledra.co.jp",
@@ -27,8 +26,7 @@ export const siteConfig = {
   loginUrl: process.env.NEXT_PUBLIC_LOGIN_URL ?? "/login",
 
   /** 問い合わせ先メール */
-  contactEmail:
-    process.env.NEXT_PUBLIC_CONTACT_EMAIL ?? "info@ledra.co.jp",
+  contactEmail: process.env.NEXT_PUBLIC_CONTACT_EMAIL ?? "info@ledra.co.jp",
 } as const;
 
 /** ヘッダー・フッターで使うナビゲーションリンク */
@@ -60,7 +58,7 @@ export const footerNavGroups = [
     links: [
       { label: "プライバシーポリシー", href: "/privacy" },
       { label: "利用規約", href: "/terms" },
-      { label: "特定商取引法に基づく表記", href: "/tokusho" },
+      { label: "特定商取引法に基づく表記", href: "/law" },
     ],
   },
 ] as const;

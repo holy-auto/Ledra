@@ -4,10 +4,12 @@ export function Section({
   bg = "white",
   children,
   className = "",
+  id,
 }: {
   bg?: "white" | "alt" | "primary" | "dark" | "dark-alt";
   children: React.ReactNode;
   className?: string;
+  id?: string;
 }) {
   const bgClass =
     bg === "alt" || bg === "dark-alt"
@@ -19,7 +21,11 @@ export function Section({
   const isDark = true;
 
   return (
-    <section className={`relative py-24 md:py-32 overflow-hidden ${bgClass} ${className}`}>
+    <section
+      id={id}
+      className={`relative py-24 md:py-32 overflow-hidden ${bgClass} ${className}`}
+      style={id ? { scrollMarginTop: "80px" } : undefined}
+    >
       {isDark && (
         <div
           className="absolute inset-0 opacity-[0.025] pointer-events-none"

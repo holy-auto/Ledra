@@ -13,8 +13,10 @@ const footerLinks = [
     ],
   },
   {
-    title: "その他",
+    title: "サービス",
     links: [
+      { label: "機能一覧", href: "/#features" },
+      { label: "料金プラン", href: "/#pricing" },
       { label: "お問い合わせ", href: "/contact" },
     ],
   },
@@ -23,7 +25,7 @@ const footerLinks = [
     links: [
       { label: "利用規約", href: "/terms" },
       { label: "プライバシーポリシー", href: "/privacy" },
-      { label: "特定商取引法に基づく表記", href: "/tokusho" },
+      { label: "特定商取引法に基づく表記", href: "/law" },
     ],
   },
 ];
@@ -48,16 +50,11 @@ export function Footer() {
           {/* Link columns */}
           {footerLinks.map((group) => (
             <div key={group.title}>
-              <h3 className="text-xs font-medium text-white/40 uppercase tracking-widest mb-5">
-                {group.title}
-              </h3>
+              <h3 className="text-xs font-medium text-white/40 uppercase tracking-widest mb-5">{group.title}</h3>
               <ul className="space-y-3.5">
                 {group.links.map((link) => (
                   <li key={link.href}>
-                    <Link
-                      href={link.href}
-                      className="text-sm text-white/60 hover:text-white transition-colors"
-                    >
+                    <Link href={link.href} className="text-sm text-white/60 hover:text-white transition-colors">
                       {link.label}
                     </Link>
                   </li>
@@ -68,9 +65,7 @@ export function Footer() {
         </div>
 
         <div className="py-6 border-t border-white/[0.06]">
-          <p className="text-xs text-white/30">
-            &copy; {new Date().getFullYear()} Ledra. All rights reserved.
-          </p>
+          <p className="text-xs text-white/30">&copy; {new Date().getFullYear()} Ledra. All rights reserved.</p>
         </div>
       </Container>
     </footer>

@@ -1,11 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { usePathname } from "next/navigation";
 import { Container } from "./Container";
 import { MobileMenu } from "./MobileMenu";
 
-const navItems: { label: string; href: string }[] = [];
+const navItems: { label: string; href: string }[] = [
+  { label: "機能", href: "/#features" },
+  { label: "活用シーン", href: "/#usecases" },
+  { label: "比較", href: "/#compare" },
+  { label: "料金", href: "/#pricing" },
+  { label: "FAQ", href: "/#faq" },
+];
 
 const portalItems = [
   { label: "施工店ログイン", href: "/login", description: "証明書の作成・管理" },
@@ -34,6 +41,24 @@ export function Header() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const pathname = usePathname();
+  const handleAnchorClick = useCallback(
+    (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+      const hash = href.split("#")[1];
+      if (!hash) return;
+      // If already on the homepage, smooth-scroll instead of navigating
+      if (pathname === "/") {
+        e.preventDefault();
+        const el = document.getElementById(hash);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }
+      // If on another page, Link will navigate to /#hash and the browser scrolls natively
+    },
+    [pathname],
+  );
+
   return (
     <header
       className={`sticky top-0 z-50 transition-all duration-300 ${
@@ -56,6 +81,7 @@ export function Header() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={(e) => handleAnchorClick(e, item.href)}
               className="text-sm text-white/60 hover:text-white px-3 py-2 rounded-lg hover:bg-white/[0.06] transition-colors"
             >
               {item.label}
@@ -112,10 +138,10 @@ export function Header() {
           </div>
 
           <Link
-            href="/contact"
-            className="text-sm font-medium text-white bg-white/[0.08] hover:bg-white/[0.12] px-4 py-2 rounded-lg transition-colors"
+            href="/signup"
+            className="text-sm font-medium text-[#060a12] bg-white hover:bg-gray-100 px-4 py-2 rounded-lg transition-colors"
           >
-            お問い合わせ
+            無料で試す
           </Link>
         </div>
 

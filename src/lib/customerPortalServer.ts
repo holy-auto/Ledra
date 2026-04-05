@@ -163,13 +163,15 @@ export async function listCertificatesForCustomer(tenantId: string, phoneHash: s
   const selectCols = "public_id, customer_name, vehicle_info_json, created_at, status";
   const db = admin();
 
-  // 1) 新方式：hash一致
+  // void以外の全ステータスを取得（active・その他を含む）
+  // ※ status='active' のみに絞ると、ダッシュボードの件数と実際の一覧に差異が生じるため、
+  //   void（無効）のみ除外して残りは全件返す
   const { data: r1 } = await db
     .from("certificates")
     .select(selectCols)
     .eq("tenant_id", tenantId)
     .eq("customer_phone_last4_hash", phoneHash)
-    .eq("status", "active")
+    .neq("status", "void")
     .order("created_at", { ascending: false });
   return r1 ?? [];
 }
