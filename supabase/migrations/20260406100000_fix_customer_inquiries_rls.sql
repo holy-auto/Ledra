@@ -1,12 +1,17 @@
--- Fix: customer_inquiries RLS policies referenced non-existent table "tenant_members"
--- Correct table name is "tenant_memberships"
+-- Fix: customer_inquiries テーブルとRLSポリシーを正しく作成
+-- 旧マイグレーションが "tenant_members"（存在しないテーブル）を参照して失敗したため再作成
 
--- Drop incorrect policies if they were partially created
-drop policy if exists "tenant_members_select" on customer_inquiries;
-drop policy if exists "tenant_members_update" on customer_inquiries;
-drop policy if exists "service_role_all" on customer_inquiries;
+-- 既存ポリシーの削除（テーブルが存在する場合のみ）
+do $$
+begin
+  if exists (select 1 from information_schema.tables where table_name = 'customer_inquiries') then
+    drop policy if exists "tenant_members_select" on customer_inquiries;
+    drop policy if exists "tenant_members_update" on customer_inquiries;
+    drop policy if exists "service_role_all" on customer_inquiries;
+  end if;
+end $$;
 
--- Recreate customer_inquiries table if migration failed mid-way
+-- テーブル作成（既に存在する場合はスキップ）
 create table if not exists customer_inquiries (
   id                  uuid primary key default gen_random_uuid(),
   tenant_id           uuid not null references tenants(id) on delete cascade,
