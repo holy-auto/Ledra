@@ -17,6 +17,7 @@ DECLARE
   v_agent_name   TEXT;
   v_agent_status TEXT;
   v_agent_role   TEXT;
+  v_au_agent_id  UUID;
 BEGIN
   v_user_id := auth.uid();
   IF v_user_id IS NULL THEN
@@ -24,24 +25,32 @@ BEGIN
   END IF;
 
   -- 施工店メンバーシップ確認
-  SELECT tm.tenant_id
+  SELECT tenant_id
   INTO v_tenant_id
-  FROM public.tenant_memberships tm
-  WHERE tm.user_id = v_user_id
+  FROM public.tenant_memberships
+  WHERE user_id = v_user_id
   LIMIT 1;
 
   IF v_tenant_id IS NOT NULL THEN
     v_has_shop := TRUE;
   END IF;
 
-  -- 代理店確認（agent_users 経由）
-  SELECT ag.id, ag.name, ag.status, au.role
-  INTO v_agent_id, v_agent_name, v_agent_status, v_agent_role
-  FROM public.agent_users au
-  JOIN public.agents ag ON ag.id = au.agent_id
-  WHERE au.user_id = v_user_id
-    AND au.is_active = true
+  -- 代理店確認: まず agent_users から agent_id と role を取得
+  SELECT agent_id, role
+  INTO v_au_agent_id, v_agent_role
+  FROM public.agent_users
+  WHERE user_id = v_user_id
+    AND is_active = true
   LIMIT 1;
+
+  -- 次に agents から詳細を取得
+  IF v_au_agent_id IS NOT NULL THEN
+    SELECT id, name, status
+    INTO v_agent_id, v_agent_name, v_agent_status
+    FROM public.agents
+    WHERE id = v_au_agent_id
+    LIMIT 1;
+  END IF;
 
   IF v_agent_id IS NOT NULL THEN
     v_has_agent := TRUE;
