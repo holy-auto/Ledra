@@ -37,16 +37,16 @@ export async function POST(req: Request) {
     const preferredTenantSlug = String(body.preferred_tenant_slug ?? body.tenant ?? "").trim() || null;
 
     const row = await getLatestGlobalCodeRow(email, last4);
-    if (!row) return apiNotFound("no_code");
-    if (row.used_at) return apiValidationError("code_used");
+    if (!row) return apiNotFound("確認コードが見つかりません。再度コードを送信してください。");
+    if (row.used_at) return apiValidationError("このコードは使用済みです。再度コードを送信してください。");
     if (new Date(row.expires_at).getTime() < Date.now())
-      return apiValidationError("code_expired");
+      return apiValidationError("コードの有効期限が切れています。再度コードを送信してください。");
 
     const expected = globalOtpCodeHash(email, last4, code);
     if (expected !== row.code_hash) {
       const nextAttempts = (row.attempts ?? 0) + 1;
       await markGlobalCodeAttempt(row.id, nextAttempts);
-      return apiValidationError("invalid_code");
+      return apiValidationError("コードが正しくありません。再度ご確認ください。");
     }
 
     await markGlobalCodeUsed(row.id);

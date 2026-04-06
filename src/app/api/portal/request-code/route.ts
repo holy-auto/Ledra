@@ -58,7 +58,7 @@ export async function POST(req: Request) {
     const from = String(body.from ?? "").trim();
     const publicId = String(body.public_id ?? body.pid ?? "").trim();
 
-    if (!email.includes("@")) return apiValidationError("invalid_email");
+    if (!email.includes("@")) return apiValidationError("有効なメールアドレスを入力してください");
 
     const memberships = await listPortalMemberships(email, last4, preferredTenantSlug);
     if (memberships.length === 0) {

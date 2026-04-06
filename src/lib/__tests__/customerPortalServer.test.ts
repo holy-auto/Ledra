@@ -70,10 +70,10 @@ describe("normalizeLast4", () => {
   });
 
   it("throws on non-4-digit input", () => {
-    expect(() => normalizeLast4("123")).toThrow("phone_last4 must be 4 digits");
-    expect(() => normalizeLast4("12345")).toThrow("phone_last4 must be 4 digits");
-    expect(() => normalizeLast4("abcd")).toThrow("phone_last4 must be 4 digits");
-    expect(() => normalizeLast4("")).toThrow("phone_last4 must be 4 digits");
+    expect(() => normalizeLast4("123")).toThrow("電話番号下4桁は半角数字4桁で入力してください");
+    expect(() => normalizeLast4("12345")).toThrow("電話番号下4桁は半角数字4桁で入力してください");
+    expect(() => normalizeLast4("abcd")).toThrow("電話番号下4桁は半角数字4桁で入力してください");
+    expect(() => normalizeLast4("")).toThrow("電話番号下4桁は半角数字4桁で入力してください");
   });
 });
 
@@ -178,15 +178,15 @@ describe("normalizeEmail — edge cases", () => {
 describe("normalizeLast4 — edge cases", () => {
   it("handles full-width digits by rejecting them", () => {
     // Full-width digits ０１２３ should not match /^\d{4}$/
-    expect(() => normalizeLast4("０１２３")).toThrow("phone_last4 must be 4 digits");
+    expect(() => normalizeLast4("０１２３")).toThrow("電話番号下4桁は半角数字4桁で入力してください");
   });
 
   it("rejects digits with spaces in between", () => {
-    expect(() => normalizeLast4("1 2 3 4")).toThrow("phone_last4 must be 4 digits");
+    expect(() => normalizeLast4("1 2 3 4")).toThrow("電話番号下4桁は半角数字4桁で入力してください");
   });
 
   it("rejects special characters", () => {
-    expect(() => normalizeLast4("12#4")).toThrow("phone_last4 must be 4 digits");
+    expect(() => normalizeLast4("12#4")).toThrow("電話番号下4桁は半角数字4桁で入力してください");
   });
 });
 
@@ -199,7 +199,7 @@ describe("phoneLast4Hash — pepper dependency", () => {
   });
 
   it("throws for invalid last4 input", () => {
-    expect(() => phoneLast4Hash("tenant-x", "abc")).toThrow("phone_last4 must be 4 digits");
+    expect(() => phoneLast4Hash("tenant-x", "abc")).toThrow("電話番号下4桁は半角数字4桁で入力してください");
   });
 });
 

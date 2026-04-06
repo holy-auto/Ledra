@@ -26,7 +26,7 @@ export function normalizeEmail(email: string) {
 
 export function normalizeLast4(last4: string) {
   const s = last4.trim();
-  if (!/^\d{4}$/.test(s)) throw new Error("phone_last4 must be 4 digits");
+  if (!/^\d{4}$/.test(s)) throw new Error("電話番号下4桁は半角数字4桁で入力してください");
   return s;
 }
 
@@ -54,12 +54,7 @@ function admin() {
 }
 
 export async function getTenantIdBySlug(slug: string): Promise<string | null> {
-  const { data } = await admin()
-    .from("tenants")
-    .select("id")
-    .eq("slug", slug)
-    .limit(1)
-    .maybeSingle();
+  const { data } = await admin().from("tenants").select("id").eq("slug", slug).limit(1).maybeSingle();
   return data?.id ?? null;
 }
 
@@ -73,7 +68,13 @@ export async function tenantHasPhoneHash(tenantId: string, phoneHash: string): P
   return Array.isArray(data) && data.length > 0;
 }
 
-export async function createLoginCode(tenantId: string, email: string, phoneHash: string, code: string, expiresAtIso: string) {
+export async function createLoginCode(
+  tenantId: string,
+  email: string,
+  phoneHash: string,
+  code: string,
+  expiresAtIso: string,
+) {
   const code_hash = otpCodeHash(tenantId, email, phoneHash, code);
   const { error } = await admin()
     .from("customer_login_codes")
@@ -101,10 +102,7 @@ export async function getLatestValidCodeRow(tenantId: string, email: string, pho
 }
 
 export async function markCodeAttempt(id: string, attempts: number) {
-  const { error } = await admin()
-    .from("customer_login_codes")
-    .update({ attempts })
-    .eq("id", id);
+  const { error } = await admin().from("customer_login_codes").update({ attempts }).eq("id", id);
   if (error) throw new Error(`markCodeAttempt failed: ${error.message}`);
 }
 
@@ -208,7 +206,9 @@ export async function listReservationsForCustomer(tenantId: string, phoneHash: s
   const certs = await listCertificatesForCustomer(tenantId, phoneHash);
   if (!certs || certs.length === 0) return [];
 
-  const customerNames = [...new Set(certs.map((c: { customer_name: string | null }) => c.customer_name).filter(Boolean))];
+  const customerNames = [
+    ...new Set(certs.map((c: { customer_name: string | null }) => c.customer_name).filter(Boolean)),
+  ];
   if (customerNames.length === 0) return [];
 
   const db = admin();
@@ -247,7 +247,9 @@ export async function getCustomerProfile(tenantId: string, phoneHash: string) {
   const certs = await listCertificatesForCustomer(tenantId, phoneHash);
   if (!certs || certs.length === 0) return null;
 
-  const customerNames = [...new Set(certs.map((c: { customer_name: string | null }) => c.customer_name).filter(Boolean))];
+  const customerNames = [
+    ...new Set(certs.map((c: { customer_name: string | null }) => c.customer_name).filter(Boolean)),
+  ];
   if (customerNames.length === 0) return null;
 
   const { data: customers } = await admin()

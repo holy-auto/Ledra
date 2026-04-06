@@ -33,26 +33,27 @@ export async function POST(req: Request) {
     const last4Raw = (body.phone_last4 ?? "").toString();
     const code = (body.code ?? "").toString().trim();
 
-    if (!tenant_slug) return apiValidationError("missing tenant_slug");
+    if (!tenant_slug) return apiValidationError("店舗情報が不足しています");
 
     const tenantId = await getTenantIdBySlug(tenant_slug);
-    if (!tenantId) return apiNotFound("unknown tenant");
+    if (!tenantId) return apiNotFound("店舗が見つかりません");
 
     const email = normalizeEmail(emailRaw);
-    if (!email.includes("@")) return apiValidationError("invalid email");
+    if (!email.includes("@")) return apiValidationError("有効なメールアドレスを入力してください");
 
     let phoneHash: string;
     try {
       phoneHash = phoneLast4Hash(tenantId, last4Raw);
     } catch {
-      return apiValidationError("invalid phone_last4");
+      return apiValidationError("電話番号下4桁は半角数字4桁で入力してください");
     }
 
     const row = await getLatestValidCodeRow(tenantId, email, phoneHash);
-    if (!row) return apiNotFound("no code");
+    if (!row) return apiNotFound("確認コードが見つかりません。再度コードを送信してください。");
 
-    if (row.used_at) return apiValidationError("code used");
-    if (new Date(row.expires_at).getTime() < Date.now()) return apiValidationError("code expired");
+    if (row.used_at) return apiValidationError("このコードは使用済みです。再度コードを送信してください。");
+    if (new Date(row.expires_at).getTime() < Date.now())
+      return apiValidationError("コードの有効期限が切れています。再度コードを送信してください。");
 
     const expected = otpCodeHash(tenantId, email, phoneHash, code);
     if (expected !== row.code_hash) {
@@ -60,9 +61,12 @@ export async function POST(req: Request) {
       await markCodeAttempt(row.id, nextAttempts);
       if (nextAttempts >= 5) {
         await markCodeUsed(row.id);
-        return NextResponse.json({ error: "too_many_attempts", message: "試行回数の上限に達しました。再度コードを送信してください。" }, { status: 429 });
+        return NextResponse.json(
+          { error: "too_many_attempts", message: "試行回数の上限に達しました。再度コードを送信してください。" },
+          { status: 429 },
+        );
       }
-      return apiValidationError("invalid code");
+      return apiValidationError("コードが正しくありません。再度ご確認ください。");
     }
 
     await markCodeUsed(row.id);

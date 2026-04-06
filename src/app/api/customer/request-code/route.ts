@@ -53,31 +53,31 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json().catch(() => ({} as any));
+    const body = await req.json().catch(() => ({}) as any);
 
     const tenant_slug = (body.tenant_slug ?? "").toString().trim();
     const emailRaw = (body.email ?? "").toString();
     const last4Raw = (body.last4 ?? body.phone_last4 ?? "").toString().trim();
 
-    if (!tenant_slug) return apiValidationError("missing tenant_slug");
-    if (!emailRaw) return apiValidationError("missing email");
-    if (!last4Raw) return apiValidationError("missing last4");
-    if (!/^\d{4}$/.test(last4Raw)) return apiValidationError("invalid last4");
+    if (!tenant_slug) return apiValidationError("店舗情報が不足しています");
+    if (!emailRaw) return apiValidationError("メールアドレスを入力してください");
+    if (!last4Raw) return apiValidationError("電話番号下4桁を入力してください");
+    if (!/^\d{4}$/.test(last4Raw)) return apiValidationError("電話番号下4桁は半角数字4桁で入力してください");
 
     const email = normalizeEmail(emailRaw);
 
     const tenantId = await getTenantIdBySlug(tenant_slug);
-    if (!tenantId) return apiNotFound("unknown tenant");
+    if (!tenantId) return apiNotFound("店舗が見つかりません");
 
     let phoneHash = "";
     try {
       phoneHash = phoneLast4Hash(tenantId, last4Raw);
     } catch {
-      return apiValidationError("hash_failed");
+      return apiValidationError("電話番号下4桁の処理に失敗しました");
     }
 
     const ok = await tenantHasPhoneHash(tenantId, phoneHash);
-    if (!ok) return apiNotFound("no matching certificates");
+    if (!ok) return apiNotFound("該当する証明書が見つかりません。入力内容をご確認ください。");
 
     const code = genCode6();
     const expires = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10分
