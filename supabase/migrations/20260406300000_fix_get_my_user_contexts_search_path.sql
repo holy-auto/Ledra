@@ -35,10 +35,10 @@ BEGIN
   END IF;
 
   -- 代理店確認（agent_users 経由）
-  SELECT a.id, a.name, a.status, au.role
+  SELECT ag.id, ag.name, ag.status, au.role
   INTO v_agent_id, v_agent_name, v_agent_status, v_agent_role
   FROM public.agent_users au
-  JOIN public.agents a ON a.id = au.agent_id
+  JOIN public.agents ag ON ag.id = au.agent_id
   WHERE au.user_id = v_user_id
     AND au.is_active = true
   LIMIT 1;
