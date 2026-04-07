@@ -160,6 +160,7 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
         {rows.map((r) => {
           const url = `/c/${r.public_id}`;
           const isVoid = r.status === "void";
+          const isDraft = r.status === "draft";
           const checked = !!selected[r.public_id];
 
           return (
@@ -189,6 +190,14 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
               </div>
               {/* Row 2: actions — 公開ページ / PDF / CSV / 削除 を横並び */}
               <div className="flex gap-2 items-center px-4 pb-3 pt-1.5 pl-[2.75rem] flex-wrap">
+                {isDraft && (
+                  <Link
+                    href={`/admin/certificates/new?edit_draft=${encodeURIComponent(r.public_id)}`}
+                    className="btn-primary text-xs py-1.5 px-4"
+                  >
+                    下書きを編集
+                  </Link>
+                )}
                 <Link href={url} target="_blank" className="btn-secondary text-xs py-1.5 px-4">
                   公開ページ
                 </Link>
