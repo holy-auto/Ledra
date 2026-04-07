@@ -41,8 +41,6 @@ type VehicleRow = {
   model: string | null;
   year: number | null;
   plate_display: string | null;
-  customer_name: string | null;
-  customer_email: string | null;
   notes: string | null;
 };
 
@@ -149,7 +147,7 @@ export async function GET(req: NextRequest) {
       // Vehicle
       cert.vehicle_id
         ? supabase.from("vehicles")
-            .select("id, maker, model, year, plate_display, customer_name, customer_email, notes")
+            .select("id, maker, model, year, plate_display, notes")
             .eq("id", cert.vehicle_id).limit(1).maybeSingle()
         : Promise.resolve({ data: null, error: null }),
 
@@ -232,7 +230,6 @@ export async function GET(req: NextRequest) {
         },
         vehicle: vehicle ? {
           ...vehicle,
-          customer_email: undefined,
           notes: undefined,
         } : null,
         nfc,
