@@ -54,7 +54,7 @@ export async function PUT(
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "入力内容に誤りがあります。");
     }
-    const { id: _id, ...fields } = parsed.data;
+    const { id: _id, full_length_mm: _l, full_width_mm: _w, full_height_mm: _h, ...fields } = parsed.data;
 
     const { data: vehicle, error } = await supabase
       .from("vehicles")
