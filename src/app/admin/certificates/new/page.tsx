@@ -56,22 +56,28 @@ export default async function Page({
       .limit(300),
     // ブランドテンプレート確認（2クエリを並列）
     Promise.all([
-      supabase
-        .from("tenant_option_subscriptions")
-        .select("status")
-        .eq("tenant_id", tenantId)
-        .in("status", ["active", "past_due"])
-        .limit(1)
-        .maybeSingle()
-        .catch(() => ({ data: null })),
-      supabase
-        .from("tenant_template_configs")
-        .select("id")
-        .eq("tenant_id", tenantId)
-        .eq("is_active", true)
-        .limit(1)
-        .maybeSingle()
-        .catch(() => ({ data: null })),
+      (async () => {
+        try {
+          return await supabase
+            .from("tenant_option_subscriptions")
+            .select("status")
+            .eq("tenant_id", tenantId)
+            .in("status", ["active", "past_due"])
+            .limit(1)
+            .maybeSingle();
+        } catch { return { data: null }; }
+      })(),
+      (async () => {
+        try {
+          return await supabase
+            .from("tenant_template_configs")
+            .select("id")
+            .eq("tenant_id", tenantId)
+            .eq("is_active", true)
+            .limit(1)
+            .maybeSingle();
+        } catch { return { data: null }; }
+      })(),
     ]),
   ]);
 
