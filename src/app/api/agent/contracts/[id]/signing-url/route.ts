@@ -2,14 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/api/auth";
 import { apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api/response";
-import { getDocumentStatus } from "@/lib/agent/cloudsign";
 
 export const dynamic = "force-dynamic";
 
 /**
  * GET /api/agent/contracts/[id]/signing-url
- * Returns the CloudSign signing URL for an agent's contract.
- * Only accessible when contract status is 'sent' or 'viewed'.
+ * 代理店契約書の自前電子署名 URL を返す。
+ * 署名待ち（sent / viewed）の契約にのみアクセス可能。
  */
 export async function GET(
   _req: NextRequest,
@@ -21,16 +20,16 @@ export async function GET(
     const { data: auth } = await supabase.auth.getUser();
     if (!auth?.user) return apiUnauthorized();
 
-    // Verify agent membership and get agent_id
+    // 代理店メンバーシップ確認
     const { data: agentStatus } = await supabase.rpc("get_my_agent_status");
     const agentRow = Array.isArray(agentStatus) ? agentStatus[0] : agentStatus;
     if (!agentRow?.agent_id) return apiForbidden("not_agent");
 
-    // Fetch the signing request (RLS ensures ownership)
+    // admin client で sign_token を含む完全なレコードを取得（RLS バイパス）
     const admin = getAdminClient();
     const { data: contract, error } = await admin
       .from("agent_signing_requests")
-      .select("id, agent_id, status, cloudsign_document_id, title")
+      .select("id, agent_id, status, sign_token, sign_expires_at, title")
       .eq("id", id)
       .eq("agent_id", agentRow.agent_id)
       .single();
@@ -39,39 +38,38 @@ export async function GET(
 
     if (!["sent", "viewed"].includes(contract.status)) {
       return NextResponse.json(
-        { error: "Contract is not awaiting signature" },
+        { error: "署名待ちの契約書ではありません" },
         { status: 400 },
       );
     }
 
-    if (!contract.cloudsign_document_id) {
+    if (!contract.sign_token) {
       return NextResponse.json(
-        { error: "No CloudSign document associated with this contract" },
+        { error: "署名リンクが発行されていません" },
         { status: 400 },
       );
     }
 
-    // Skip CloudSign API call for demo document IDs (no real CloudSign keys needed)
-    if (contract.cloudsign_document_id.startsWith("demo-")) {
-      return NextResponse.json({
-        signing_url: null,
-        demo: true,
-        message: "デモ用契約書のため、実際のCloudSign署名URLはありません。",
-      });
+    // トークン有効期限チェック
+    if (contract.sign_expires_at && new Date(contract.sign_expires_at) < new Date()) {
+      return NextResponse.json(
+        { error: "署名リンクの有効期限が切れています。本部に再送を依頼してください。" },
+        { status: 400 },
+      );
     }
 
-    // Get signing URL from CloudSign
-    const doc = await getDocumentStatus(contract.cloudsign_document_id);
-
-    // Mark as viewed if previously only 'sent'
+    // 閲覧済みに更新（まだ sent の場合）
     if (contract.status === "sent") {
       await admin
         .from("agent_signing_requests")
-        .update({ status: "viewed" })
+        .update({ status: "viewed", updated_at: new Date().toISOString() })
         .eq("id", id);
     }
 
-    return NextResponse.json({ signing_url: doc.signing_url ?? null });
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+    const signing_url = `${baseUrl}/agent-sign/${contract.sign_token}`;
+
+    return NextResponse.json({ signing_url });
   } catch (e) {
     return apiInternalError(e, "agent/contracts/signing-url GET");
   }
