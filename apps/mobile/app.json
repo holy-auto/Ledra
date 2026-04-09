@@ -44,11 +44,11 @@
     },
     "extra": {
       "eas": {
-        "projectId": "5d5394bd-6242-48ef-9e36-3151e0d3dc8a"
+        "projectId": "82934b68-084f-45f0-8a4e-0abba3d124cd"
       },
       "router": {}
     },
-    "owner": "ledra",
+    "owner": "cartrust",
     "plugins": [
       "expo-router",
       "expo-secure-store",
