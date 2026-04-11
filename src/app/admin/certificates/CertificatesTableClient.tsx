@@ -18,21 +18,31 @@ type Row = {
 
 const statusVariant = (s: string) => {
   switch (s) {
-    case "active": return "success" as const;
-    case "void": return "danger" as const;
-    case "expired": return "warning" as const;
-    case "draft": return "default" as const;
-    default: return "default" as const;
+    case "active":
+      return "success" as const;
+    case "void":
+      return "danger" as const;
+    case "expired":
+      return "warning" as const;
+    case "draft":
+      return "default" as const;
+    default:
+      return "default" as const;
   }
 };
 
 const statusLabel = (s: string) => {
   switch (s) {
-    case "active": return "有効";
-    case "void": return "無効";
-    case "expired": return "期限切れ";
-    case "draft": return "下書き";
-    default: return s;
+    case "active":
+      return "有効";
+    case "void":
+      return "無効";
+    case "expired":
+      return "期限切れ";
+    case "draft":
+      return "下書き";
+    default:
+      return s;
   }
 };
 
@@ -41,24 +51,27 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [voidingId, setVoidingId] = useState<string | null>(null);
 
-  const handleVoid = useCallback(async (publicId: string) => {
-    if (!confirm("この証明書を削除（無効化）しますか？\n※ 内部的にはvoid扱いとなり、復元はできません。")) return;
-    setVoidingId(publicId);
-    try {
-      const res = await fetch("/api/admin/certificates/void", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ public_id: publicId }),
-      });
-      const j = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
-      router.refresh();
-    } catch (e: any) {
-      alert("削除に失敗しました: " + (e?.message ?? String(e)));
-    } finally {
-      setVoidingId(null);
-    }
-  }, [router]);
+  const handleVoid = useCallback(
+    async (publicId: string) => {
+      if (!confirm("この証明書を削除（無効化）しますか？\n※ 内部的にはvoid扱いとなり、復元はできません。")) return;
+      setVoidingId(publicId);
+      try {
+        const res = await fetch("/api/admin/certificates/void", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ public_id: publicId }),
+        });
+        const j = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+        router.refresh();
+      } catch (e: any) {
+        alert("削除に失敗しました: " + (e?.message ?? String(e)));
+      } finally {
+        setVoidingId(null);
+      }
+    },
+    [router],
+  );
 
   const bs = useAdminBillingStatus();
   const isActive = bs.data?.is_active ?? true;
@@ -119,10 +132,20 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
             <span className="text-sm text-muted">
               選択: <span className="font-mono font-semibold text-primary">{selectedIds.length}</span> 件
             </span>
-            <button type="button" className="btn-ghost text-xs" onClick={() => toggleAll(true)} disabled={allIds.length === 0}>
+            <button
+              type="button"
+              className="btn-ghost text-xs"
+              onClick={() => toggleAll(true)}
+              disabled={allIds.length === 0}
+            >
               全選択
             </button>
-            <button type="button" className="btn-ghost text-xs" onClick={() => toggleAll(false)} disabled={allIds.length === 0}>
+            <button
+              type="button"
+              className="btn-ghost text-xs"
+              onClick={() => toggleAll(false)}
+              disabled={allIds.length === 0}
+            >
               全解除
             </button>
           </div>
@@ -146,7 +169,11 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
 
             <Link
               className={btnCls(canCsvSearch)}
-              href={hrefOrBill(canCsvSearch, `/admin/certificates/export?q=${encodeURIComponent(q)}`, "export_search_csv")}
+              href={hrefOrBill(
+                canCsvSearch,
+                `/admin/certificates/export?q=${encodeURIComponent(q)}`,
+                "export_search_csv",
+              )}
               aria-disabled={!canCsvSearch}
             >
               CSV（検索結果）
@@ -183,9 +210,7 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
                   </Link>
                   <span className="text-sm font-medium text-primary truncate">{r.customer_name}</span>
                 </div>
-                <Badge variant={statusVariant(r.status)}>
-                  {statusLabel(r.status)}
-                </Badge>
+                <Badge variant={statusVariant(r.status)}>{statusLabel(r.status)}</Badge>
               </div>
               {/* Row 2: actions — 公開ページ / PDF / CSV / 削除 を横並び */}
               <div className="flex gap-2 items-center px-4 pb-3 pt-1.5 pl-[2.75rem] flex-wrap">
@@ -194,18 +219,34 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
                 </Link>
                 <Link
                   className={btnCls(canPdfOne) + " py-1.5 px-4"}
-                  href={hrefOrBill(canPdfOne, `/admin/certificates/pdf-one?pid=${encodeURIComponent(r.public_id)}`, "pdf_one")}
+                  href={hrefOrBill(
+                    canPdfOne,
+                    `/admin/certificates/pdf-one?pid=${encodeURIComponent(r.public_id)}`,
+                    "pdf_one",
+                  )}
                   aria-disabled={!canPdfOne}
                 >
                   PDF
                 </Link>
                 <Link
                   className={btnCls(canCsvOne) + " py-1.5 px-4"}
-                  href={hrefOrBill(canCsvOne, `/admin/certificates/export-one?pid=${encodeURIComponent(r.public_id)}`, "export_one_csv")}
+                  href={hrefOrBill(
+                    canCsvOne,
+                    `/admin/certificates/export-one?pid=${encodeURIComponent(r.public_id)}`,
+                    "export_one_csv",
+                  )}
                   aria-disabled={!canCsvOne}
                 >
                   CSV
                 </Link>
+                {!isVoid && (
+                  <Link
+                    href={`/admin/certificates/${encodeURIComponent(r.public_id)}`}
+                    className="btn-secondary text-xs py-1.5 px-4"
+                  >
+                    編集
+                  </Link>
+                )}
                 {!isVoid && (
                   <button
                     type="button"
@@ -222,9 +263,7 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
         })}
 
         {rows.length === 0 && (
-          <div className="px-4 py-8 text-center text-sm text-muted">
-            該当する証明書がありません
-          </div>
+          <div className="px-4 py-8 text-center text-sm text-muted">該当する証明書がありません</div>
         )}
       </section>
 
