@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+import { getPublicCertificateData } from "@/lib/certificate/publicData";
 import CustomerActions from "./CustomerActions";
 import HeroCard from "@/components/customer/HeroCard";
 import { highestGrade, type AuthenticityGrade } from "@/lib/anchoring/authenticityGrade";
@@ -89,6 +90,12 @@ type PublicStatusResponse = {
     slug?: string | null;
     custom_domain?: string | null;
   } | null;
+  verification_url?: string | null;
+  days_until_expiry?: number | null;
+  warranty_active?: boolean;
+  vehicle_service_history_count?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  vehicle_certificates?: any[];
 };
 
 function asText(v: unknown) {
@@ -130,27 +137,8 @@ function getNfcStatusLabel(status?: string | null) {
   return "未設定";
 }
 
-async function getOrigin() {
-  const h = await headers();
-  const proto = h.get("x-forwarded-proto") ?? "http";
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  return `${proto}://${host}`;
-}
-
 async function fetchPublicStatus(publicId: string): Promise<PublicStatusResponse | null> {
-  const origin = await getOrigin();
-  const res = await fetch(`${origin}/api/certificate/public-status?pid=${encodeURIComponent(publicId)}`, {
-    cache: "no-store",
-  });
-
-  if (res.status === 404) return null;
-
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`public-status failed: ${res.status} ${txt}`);
-  }
-
-  return (await res.json()) as PublicStatusResponse;
+  return (await getPublicCertificateData(publicId)) as PublicStatusResponse | null;
 }
 
 export default async function CertificatePublicPage({ params, searchParams }: PageProps) {
@@ -174,14 +162,13 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
     });
   }
 
-  const origin = await getOrigin();
   const sp = await searchParams;
   const notice = Array.isArray(sp?.notice) ? sp?.notice[0] : sp?.notice;
   const certStatus = String(data.certificate.status ?? "").toLowerCase();
   const isVoidCertificate = certStatus === "void";
 
   const info = asObj(data.certificate.vehicle_info_json);
-  const publicUrl = `${origin}/c/${data.certificate.public_id}`;
+  const publicUrl = data.verification_url ?? `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/c/${data.certificate.public_id}`;
   const pdfHref = `/api/certificate/pdf?pid=${encodeURIComponent(data.certificate.public_id)}`;
   const returnTo = typeof sp?.returnTo === "string" ? sp.returnTo : undefined;
   const logoutHref = typeof sp?.logout === "string" && sp.logout !== "1" ? sp.logout : undefined;

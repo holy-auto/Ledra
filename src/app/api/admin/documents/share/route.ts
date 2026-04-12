@@ -87,17 +87,21 @@ export async function POST(req: NextRequest) {
       success = false;
     }
 
-    // Log the share attempt
-    const admin = getAdminClient();
-    await admin.from("document_share_log").insert({
-      document_id: documentId,
-      tenant_id: caller.tenantId,
-      channel,
-      recipient,
-      status: success ? "sent" : "failed",
-      error_message: success ? null : (errorMessage ?? "送信に失敗しました"),
-      sent_by: caller.userId,
-    });
+    // Log the share attempt (non-fatal: table may not exist in all environments)
+    try {
+      const admin = getAdminClient();
+      await admin.from("document_share_log").insert({
+        document_id: documentId,
+        tenant_id: caller.tenantId,
+        channel,
+        recipient,
+        status: success ? "sent" : "failed",
+        error_message: success ? null : (errorMessage ?? "送信に失敗しました"),
+        sent_by: caller.userId,
+      });
+    } catch (logErr) {
+      console.error("[document_share] Failed to write share log:", logErr);
+    }
 
     if (!success) {
       return apiInternalError(errorMessage ?? "送信に失敗しました", "document_share");
