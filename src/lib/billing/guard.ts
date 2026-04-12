@@ -205,7 +205,7 @@ export async function enforceBilling(
         }
       })(),
     });
-    return null;
+    return json(400, { error: "Missing tenant_id" });
   }
 
   // --- Platform admin bypass ---
