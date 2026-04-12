@@ -11,6 +11,8 @@
 
 export type AuthenticityGrade = "unverified" | "basic" | "verified" | "premium";
 
+export type C2paKind = "dev-signed" | "production" | "none";
+
 export interface GradeFlags {
   /** SHA-256 hash computed server-side. */
   hasSha256: boolean;
@@ -18,6 +20,12 @@ export interface GradeFlags {
   hasExif: boolean;
   /** C2PA manifest signed and embedded. */
   hasC2pa: boolean;
+  /**
+   * Which type of C2PA signing was used.
+   * `dev-signed` does NOT upgrade the grade (self-signed cert has no trust chain).
+   * Only `production` C2PA counts toward `verified` / `premium`.
+   */
+  c2paKind?: C2paKind;
   /** Play Integrity / App Attest token validated. */
   deviceOk: boolean;
   /** Deepfake check passed. `null` means not evaluated. */
@@ -26,7 +34,9 @@ export interface GradeFlags {
 
 export function computeAuthenticityGrade(flags: GradeFlags): AuthenticityGrade {
   if (!flags.hasSha256) return "unverified";
-  if (!flags.hasC2pa) return "basic";
+  // dev-signed C2PA has no trust chain → does not upgrade grade
+  const effectiveC2pa = flags.hasC2pa && flags.c2paKind !== "dev-signed";
+  if (!effectiveC2pa) return "basic";
   if (!flags.deviceOk) return "basic";
   if (flags.deepfakeOk === true) return "premium";
   return "verified";
