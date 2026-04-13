@@ -31,13 +31,42 @@ export async function GET(req: Request) {
 
   const { data: rows, error } = await supabase
     .from("certificates")
-    .select("public_id,customer_name,vehicle_info_json,content_free_text,content_preset_json,expiry_type,expiry_value,logo_asset_path,created_at,service_type,ppf_coverage_json,coating_products_json,warranty_period_end,warranty_exclusions,current_version,maintenance_json,body_repair_json")
+    .select("id,public_id,customer_name,vehicle_info_json,content_free_text,content_preset_json,expiry_type,expiry_value,logo_asset_path,created_at,service_type,ppf_coverage_json,coating_products_json,warranty_period_end,warranty_exclusions,current_version,maintenance_json,body_repair_json")
     .eq("tenant_id", tenantId)
     .in("public_id", ids);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const pids = (rows ?? []).map((r) => r.public_id as string);
+
+  // 一括で全証明書のアンカー情報を取得 (N+1 クエリを回避)
+  const certIds = (rows ?? []).map((r) => (r as { id: string }).id);
+  const anchorsByCertId = new Map<
+    string,
+    Array<{ sha256: string | null; polygon_tx_hash: string | null; polygon_network: "polygon" | "amoy" | null }>
+  >();
+  if (certIds.length > 0) {
+    const { data: images } = await supabase
+      .from("certificate_images")
+      .select("certificate_id, sha256, polygon_tx_hash, polygon_network, sort_order")
+      .in("certificate_id", certIds)
+      .not("polygon_tx_hash", "is", null)
+      .order("sort_order", { ascending: true });
+    for (const img of images ?? []) {
+      const cid = img.certificate_id as string;
+      const list = anchorsByCertId.get(cid) ?? [];
+      list.push({
+        sha256: (img.sha256 as string | null) ?? null,
+        polygon_tx_hash: (img.polygon_tx_hash as string | null) ?? null,
+        polygon_network:
+          img.polygon_network === "polygon" || img.polygon_network === "amoy"
+            ? (img.polygon_network as "polygon" | "amoy")
+            : null,
+      });
+      anchorsByCertId.set(cid, list);
+    }
+  }
+
   logCertificateAction({
     type: "certificate_pdf_batch",
     tenantId,
@@ -55,7 +84,8 @@ export async function GET(req: Request) {
 
   for (const r of rows ?? []) {
     const publicUrl = `${baseUrl}/c/${r.public_id}`;
-    const pdf = await renderCertificatePdf(r as any, publicUrl);
+    const anchors = anchorsByCertId.get((r as { id: string }).id) ?? [];
+    const pdf = await renderCertificatePdf(r as any, publicUrl, anchors);
     zip.file(`certificate_${r.public_id}.pdf`, pdf);
   }
 

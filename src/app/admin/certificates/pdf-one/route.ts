@@ -28,12 +28,28 @@ export async function GET(req: Request) {
 
   const { data: row, error } = await supabase
     .from("certificates")
-    .select("public_id,customer_name,vehicle_info_json,content_free_text,content_preset_json,expiry_type,expiry_value,logo_asset_path,created_at,service_type,ppf_coverage_json,coating_products_json,warranty_period_end,warranty_exclusions,current_version,maintenance_json,body_repair_json")
+    .select("id,public_id,customer_name,vehicle_info_json,content_free_text,content_preset_json,expiry_type,expiry_value,logo_asset_path,created_at,service_type,ppf_coverage_json,coating_products_json,warranty_period_end,warranty_exclusions,current_version,maintenance_json,body_repair_json")
     .eq("tenant_id", tenantId)
     .eq("public_id", pid)
     .single();
 
   if (error || !row) return NextResponse.json({ error: "not_found" }, { status: 404 });
+
+  // アンカー済み画像を取得 (Polygonscan QR 埋め込み用)
+  const { data: images } = await supabase
+    .from("certificate_images")
+    .select("sha256, polygon_tx_hash, polygon_network")
+    .eq("certificate_id", (row as { id: string }).id)
+    .not("polygon_tx_hash", "is", null)
+    .order("sort_order", { ascending: true });
+  const anchors = (images ?? []).map((i) => ({
+    sha256: (i.sha256 as string | null) ?? null,
+    polygon_tx_hash: (i.polygon_tx_hash as string | null) ?? null,
+    polygon_network:
+      i.polygon_network === "polygon" || i.polygon_network === "amoy"
+        ? (i.polygon_network as "polygon" | "amoy")
+        : null,
+  }));
 
   logCertificateAction({
     type: "certificate_pdf_generated",
@@ -48,7 +64,7 @@ export async function GET(req: Request) {
   const baseUrl = `${proto}://${host}`;
   const publicUrl = `${baseUrl}/c/${row.public_id}`;
 
-  const pdf = await renderCertificatePdf(row as any, publicUrl);
+  const pdf = await renderCertificatePdf(row as any, publicUrl, anchors);
   const body = new Uint8Array(pdf as any);
 
   return new NextResponse(body, {

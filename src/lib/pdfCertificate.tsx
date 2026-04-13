@@ -53,6 +53,19 @@ export type CertRow = {
   current_version?: number | null;
 };
 
+/** 1 枚の施工画像に対するオンチェーンアンカー情報 */
+export type AnchorInfo = {
+  /** SHA-256 ハッシュ (64 桁の16進) */
+  sha256: string | null;
+  /** Polygon トランザクションハッシュ (0x...) */
+  polygon_tx_hash: string | null;
+  /** "polygon" | "amoy" のどちら */
+  polygon_network: "polygon" | "amoy" | null;
+};
+
+/** PDF 本体に QR を載せる最大枚数。これ以上は "+N more" 表記にする */
+const MAX_ANCHOR_QR = 4;
+
 const styles = StyleSheet.create({
   page: { padding: 28, fontSize: 10, fontFamily: "NotoSansJP" },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
@@ -64,12 +77,53 @@ const styles = StyleSheet.create({
   value: { fontSize: 12, marginTop: 2 },
   footer: { marginTop: 16, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#ddd", color: "#666" },
   qr: { width: 90, height: 90, borderWidth: 1, borderColor: "#ddd", borderRadius: 4 },
+  anchorQr: { width: 70, height: 70, borderWidth: 1, borderColor: "#ddd", borderRadius: 4 },
+  anchorItem: { flexDirection: "row", gap: 10, marginTop: 8, alignItems: "flex-start" },
+  anchorText: { flex: 1 },
   small: { fontSize: 8, color: "#666" },
   sectionTitle: { fontSize: 11, marginBottom: 6 },
   itemRow: { flexDirection: "row", gap: 10, marginTop: 3 },
   itemLabel: { width: 140, color: "#666" },
   itemValue: { flex: 1 },
 });
+
+function buildExplorerUrl(txHash: string, network: "polygon" | "amoy"): string {
+  const base = network === "amoy" ? "https://amoy.polygonscan.com" : "https://polygonscan.com";
+  return `${base}/tx/${txHash}`;
+}
+
+/**
+ * 施工画像ごとの anchor 情報から、PDF に埋め込む QR のセットを生成する。
+ * anchored & tx_hash が揃っているものだけを対象とし、上限は MAX_ANCHOR_QR。
+ */
+async function buildAnchorQrs(
+  anchors: AnchorInfo[] | undefined,
+): Promise<Array<{ qrDataUrl: string; txHash: string; network: "polygon" | "amoy"; shaPrefix: string | null }>> {
+  if (!anchors || anchors.length === 0) return [];
+  const valid = anchors.filter(
+    (a): a is AnchorInfo & { polygon_tx_hash: string; polygon_network: "polygon" | "amoy" } =>
+      typeof a.polygon_tx_hash === "string" &&
+      a.polygon_tx_hash.length > 0 &&
+      (a.polygon_network === "polygon" || a.polygon_network === "amoy"),
+  );
+  const capped = valid.slice(0, MAX_ANCHOR_QR);
+  return Promise.all(
+    capped.map(async (a) => {
+      const explorerUrl = buildExplorerUrl(a.polygon_tx_hash, a.polygon_network);
+      const qrDataUrl = await QRCode.toDataURL(explorerUrl, {
+        errorCorrectionLevel: "M",
+        margin: 1,
+        width: 200,
+      });
+      return {
+        qrDataUrl,
+        txHash: a.polygon_tx_hash,
+        network: a.polygon_network,
+        shaPrefix: a.sha256 ? a.sha256.slice(0, 12) : null,
+      };
+    }),
+  );
+}
 
 function normValue(v: unknown): string | null {
   if (v === undefined || v === null) return null;
@@ -114,7 +168,11 @@ function buildPresetLines(schema: TemplateSchema | null, values: Record<string, 
   return lines;
 }
 
-export async function renderCertificatePdf(row: CertRow, publicUrl: string) {
+export async function renderCertificatePdf(
+  row: CertRow,
+  publicUrl: string,
+  anchors?: AnchorInfo[],
+) {
   const preset = row.content_preset_json ?? {};
   const schema: TemplateSchema | null = (preset.schema_snapshot as any) ?? null;
   const values: Record<string, any> | null = (preset.values as any) ?? null;
@@ -140,6 +198,11 @@ export async function renderCertificatePdf(row: CertRow, publicUrl: string) {
   }
 
   const qrDataUrl = await QRCode.toDataURL(publicUrl, { margin: 1, width: 220 });
+  const anchorQrs = await buildAnchorQrs(anchors);
+  const totalAnchored = (anchors ?? []).filter(
+    (a) => typeof a.polygon_tx_hash === "string" && a.polygon_tx_hash.length > 0,
+  ).length;
+  const moreAnchorCount = Math.max(0, totalAnchored - anchorQrs.length);
   const certTitle = isPpf ? "PPF施工証明書"
     : isMaintenance ? "整備証明書"
     : isBodyRepair ? "鈑金塗装証明書"
@@ -378,6 +441,40 @@ export async function renderCertificatePdf(row: CertRow, publicUrl: string) {
           <Text style={styles.label}>有効条件</Text>
           <Text>{row.expiry_type ?? ""}: {row.expiry_value ?? ""}</Text>
         </View>
+
+        {/* ブロックチェーン認証 — Polygon に記録された施工画像があるときだけ表示 */}
+        {anchorQrs.length > 0 ? (
+          <View style={styles.box} wrap={false}>
+            <Text style={styles.sectionTitle}>ブロックチェーン認証 (Polygon)</Text>
+            <Text style={{ fontSize: 8, color: "#444", lineHeight: 1.6 }}>
+              施工画像の SHA-256 ハッシュを Polygon ブロックチェーンに記録しています。
+              各 QR を読み取ると Polygonscan 上で改ざん防止の証跡を独立検証できます。
+            </Text>
+            {anchorQrs.map((a, idx) => (
+              <View key={idx} style={styles.anchorItem}>
+                <Image src={a.qrDataUrl} style={styles.anchorQr} />
+                <View style={styles.anchorText}>
+                  <Text style={{ fontSize: 9 }}>
+                    画像 #{idx + 1} / {a.network === "amoy" ? "Polygon Amoy testnet" : "Polygon mainnet"}
+                  </Text>
+                  {a.shaPrefix ? (
+                    <Text style={{ fontSize: 8, color: "#666", marginTop: 2 }}>
+                      SHA-256: {a.shaPrefix}…
+                    </Text>
+                  ) : null}
+                  <Text style={{ fontSize: 7, color: "#666", marginTop: 2 }}>
+                    TX: {a.txHash.slice(0, 18)}…{a.txHash.slice(-8)}
+                  </Text>
+                </View>
+              </View>
+            ))}
+            {moreAnchorCount > 0 ? (
+              <Text style={{ fontSize: 8, color: "#666", marginTop: 6 }}>
+                ほか {moreAnchorCount} 枚もオンチェーン記録済み (全 {totalAnchored} 枚)
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
 
         <View style={styles.footer}>
           <Text>証明書URL: {publicUrl}</Text>
