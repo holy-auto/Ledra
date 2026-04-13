@@ -39,6 +39,9 @@ const CRITICAL_ENV_VARS: EnvVarCheck[] = [
   { name: "POLYGON_RPC_URL", required: false, warnOnly: true },
   { name: "POLYGON_PRIVATE_KEY", required: false, warnOnly: true },
   { name: "POLYGON_CONTRACT_ADDRESS", required: false, warnOnly: true },
+  // Phase 4: Provider-specific API keys
+  { name: "HIVE_API_KEY", required: false, warnOnly: true },
+  { name: "PINATA_JWT", required: false, warnOnly: true },
 ];
 
 export function validateRequiredEnvVars(): void {

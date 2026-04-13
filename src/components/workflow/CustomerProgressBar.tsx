@@ -63,9 +63,9 @@ export default function CustomerProgressBar({ tenantSlug, reservationId, pollInt
 
   if (loading) {
     return (
-      <div className="animate-pulse rounded-2xl border border-neutral-200 bg-white p-5">
-        <div className="h-3 bg-neutral-200 rounded-full w-3/4 mb-3" />
-        <div className="h-2 bg-neutral-100 rounded-full" />
+      <div className="animate-pulse rounded-2xl border border-border-default bg-surface p-5">
+        <div className="h-3 bg-inset rounded-full w-3/4 mb-3" />
+        <div className="h-2 bg-inset rounded-full" />
       </div>
     );
   }
@@ -77,7 +77,7 @@ export default function CustomerProgressBar({ tenantSlug, reservationId, pollInt
   const { progress_pct, current_step, steps, estimated_completion, is_completed } = data;
 
   return (
-    <div className="rounded-2xl border border-neutral-200 bg-white overflow-hidden shadow-sm">
+    <div className="rounded-2xl border border-border-default bg-surface overflow-hidden shadow-sm">
       {/* ヘッダー */}
       <div
         className={`px-5 py-4 ${
@@ -100,7 +100,7 @@ export default function CustomerProgressBar({ tenantSlug, reservationId, pollInt
       </div>
 
       {/* プログレスバー */}
-      <div className="h-1.5 bg-neutral-100">
+      <div className="h-1.5 bg-inset">
         <div
           className={`h-1.5 transition-all duration-1000 ${is_completed ? "bg-emerald-500" : "bg-indigo-500"}`}
           style={{ width: `${progress_pct}%` }}
@@ -113,7 +113,11 @@ export default function CustomerProgressBar({ tenantSlug, reservationId, pollInt
           <div
             key={i}
             className={`flex items-center gap-3 rounded-xl px-3 py-2 ${
-              step.status === "in_progress" ? "bg-indigo-50" : step.status === "completed" ? "" : "opacity-40"
+              step.status === "in_progress"
+                ? "bg-indigo-50 dark:bg-indigo-950/40"
+                : step.status === "completed"
+                  ? ""
+                  : "opacity-40"
             }`}
           >
             <div
@@ -122,7 +126,7 @@ export default function CustomerProgressBar({ tenantSlug, reservationId, pollInt
                   ? "bg-emerald-500"
                   : step.status === "in_progress"
                     ? "bg-indigo-500"
-                    : "bg-neutral-200"
+                    : "bg-border-default"
               }`}
             >
               {step.status === "completed" ? (
@@ -136,26 +140,26 @@ export default function CustomerProgressBar({ tenantSlug, reservationId, pollInt
               ) : step.status === "in_progress" ? (
                 <span className="animate-ping inline-flex h-2 w-2 rounded-full bg-white opacity-90" />
               ) : (
-                <span className="h-1.5 w-1.5 rounded-full bg-neutral-400" />
+                <span className="h-1.5 w-1.5 rounded-full bg-secondary" />
               )}
             </div>
             <div className="flex-1 min-w-0">
               <span
                 className={`text-sm ${
                   step.status === "completed"
-                    ? "text-neutral-600"
+                    ? "text-secondary"
                     : step.status === "in_progress"
-                      ? "text-indigo-700 font-semibold"
-                      : "text-neutral-400"
+                      ? "text-indigo-700 font-semibold dark:text-indigo-300"
+                      : "text-muted"
                 }`}
               >
                 {step.label}
               </span>
               {step.status === "completed" && step.completed_at && (
-                <span className="ml-2 text-[11px] text-neutral-400">{formatTime(step.completed_at)}完了</span>
+                <span className="ml-2 text-[11px] text-muted">{formatTime(step.completed_at)}完了</span>
               )}
               {step.status === "in_progress" && step.started_at && (
-                <span className="ml-2 text-[11px] text-indigo-400">{formatTime(step.started_at)}開始</span>
+                <span className="ml-2 text-[11px] text-indigo-400 dark:text-indigo-400">{formatTime(step.started_at)}開始</span>
               )}
             </div>
           </div>
@@ -164,7 +168,7 @@ export default function CustomerProgressBar({ tenantSlug, reservationId, pollInt
 
       {is_completed && (
         <div className="px-5 pb-4 text-center">
-          <p className="text-sm text-neutral-500">ご来店ありがとうございました。お気をつけてお帰りください。</p>
+          <p className="text-sm text-secondary">ご来店ありがとうございました。お気をつけてお帰りください。</p>
         </div>
       )}
     </div>

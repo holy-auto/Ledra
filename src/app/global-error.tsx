@@ -50,6 +50,7 @@ export default function GlobalError({
             >
               再読み込み
             </button>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a
               href="/"
               style={{

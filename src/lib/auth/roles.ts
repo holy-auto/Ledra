@@ -22,9 +22,10 @@ export function normalizeRole(v: unknown): Role {
   const s = String(v ?? "").toLowerCase();
   if (s === "super_admin" || s === "superadmin") return "super_admin";
   if (s === "owner") return "owner";
+  if (s === "admin") return "admin";
   if (s === "staff") return "staff";
   if (s === "viewer") return "viewer";
-  return "viewer"; // default fallback
+  return "admin"; // default fallback
 }
 
 /** Check if a role meets the minimum required role level */

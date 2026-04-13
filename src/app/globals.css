@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* data-theme="dark" を Tailwind の dark: バリアントに紐づける */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
 /* ══════════════════════════════════════════════════
    Ledra Design System — Design Tokens
    ══════════════════════════════════════════════════ */

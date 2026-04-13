@@ -12,7 +12,11 @@ const nextConfig: NextConfig = {
   compress: true,
   poweredByHeader: false,
 
-  serverExternalPackages: ["@react-pdf/renderer"],
+  serverExternalPackages: [
+    "@react-pdf/renderer",
+    // Native binary module — cannot be bundled by Turbopack
+    "@contentauth/c2pa-node",
+  ],
 
   // Pin Turbopack root to this directory to prevent path resolution issues in worktrees
   turbopack: {
@@ -52,11 +56,15 @@ const nextConfig: NextConfig = {
   },
 
   async headers() {
+    // unsafe-eval is only permitted in development (Next.js dev server + HMR).
+    // Production builds do not use eval(), so we omit it to tighten the CSP.
+    const unsafeEval = process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
+
     // Trusted external origins for CSP
     const cspDirectives = [
       "default-src 'self'",
       // Scripts: self + Stripe.js + Vercel Analytics/Speed Insights + Sentry + inline for Next.js
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://vercel.live https://*.vercel-scripts.com https://*.sentry-cdn.com",
+      `script-src 'self' 'unsafe-inline'${unsafeEval} https://js.stripe.com https://vercel.live https://*.vercel-scripts.com https://*.sentry-cdn.com`,
       // Styles: self + inline (Tailwind/react-pdf)
       "style-src 'self' 'unsafe-inline'",
       // Images: self + data URIs + Supabase + QR code API + blob

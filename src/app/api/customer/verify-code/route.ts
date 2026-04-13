@@ -70,7 +70,8 @@ export async function POST(req: Request) {
 
     await markCodeUsed(row.id);
 
-    const sess = await createSession(tenantId, email, phoneHash);
+    // last4Raw は後方互換のために保存（ハッシュのない古い証明書を参照するため）
+    const sess = await createSession(tenantId, email, phoneHash, last4Raw || undefined);
 
     const res = NextResponse.json({ ok: true });
 

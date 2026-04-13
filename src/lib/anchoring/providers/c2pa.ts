@@ -2,6 +2,7 @@
  * C2PA content-provenance signing provider.
  *
  * Env: `C2PA_MODE` = "disabled" | "dev-signed" | "production"
+ *      `PINATA_JWT` = Pinata JWT for IPFS pinning (optional)
  * Default: "disabled"
  *
  * - `disabled`: no-op, returns unsigned defaults.
@@ -27,6 +28,48 @@ const DISABLED_RESULT: C2paResult = {
   verified: false,
   signedBuffer: null,
 };
+
+/**
+ * Pin a buffer to IPFS via Pinata and return its CID.
+ * Returns null on failure (non-blocking).
+ */
+async function pinToPinata(signedBuffer: Buffer): Promise<string | null> {
+  const jwt = process.env.PINATA_JWT;
+  if (!jwt) return null;
+
+  try {
+    const blob = new Blob([new Uint8Array(signedBuffer)]);
+    const form = new FormData();
+    form.append("file", blob, "c2pa-manifest.bin");
+    form.append(
+      "pinataMetadata",
+      JSON.stringify({ name: `ledra-c2pa-${Date.now()}` }),
+    );
+
+    const res = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${jwt}` },
+      body: form,
+    });
+
+    if (!res.ok) {
+      console.error(`[c2pa] Pinata returned ${res.status}`);
+      return null;
+    }
+
+    const json = await res.json();
+    const cid: string | undefined = json?.IpfsHash;
+    if (!cid) {
+      console.error("[c2pa] Pinata response missing IpfsHash");
+      return null;
+    }
+
+    return cid;
+  } catch (err) {
+    console.error("[c2pa] IPFS pinning failed", err);
+    return null;
+  }
+}
 
 /**
  * Sign an image buffer with a C2PA manifest.
@@ -65,8 +108,11 @@ export async function signC2pa(buffer: Buffer, mime: string): Promise<C2paResult
       return DISABLED_RESULT;
     }
 
+    // Pin signed manifest to IPFS (non-blocking on failure)
+    const manifestCid = await pinToPinata(output.buffer);
+
     return {
-      manifestCid: null, // IPFS pinning deferred to future phase
+      manifestCid,
       verified: true,
       signedBuffer: output.buffer,
     };

@@ -52,22 +52,22 @@ export default function GlobalPortalVerifyPage() {
   }
 
   const inputCls =
-    "w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-200";
+    "w-full rounded-2xl border border-border-default bg-surface px-4 py-3 text-sm text-primary outline-none focus:ring-2 focus:ring-accent/30";
   const btnPrimary =
-    "inline-flex items-center justify-center rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60";
+    "inline-flex items-center justify-center rounded-2xl bg-accent px-4 py-3 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60";
   const btnSecondary =
-    "inline-flex items-center justify-center rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-60";
+    "inline-flex items-center justify-center rounded-2xl border border-border-default bg-surface px-4 py-3 text-sm font-semibold text-primary hover:bg-surface-hover disabled:opacity-60";
 
   return (
     <main className="mx-auto max-w-lg p-6 font-sans">
-      <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
-        <div className="text-sm font-semibold text-blue-600">Ledra</div>
-        <h1 className="mt-2 text-2xl font-bold text-neutral-900">確認コードを入力</h1>
-        <p className="mt-2 text-sm leading-6 text-neutral-600">
+      <div className="rounded-3xl border border-border-default bg-surface p-6 shadow-sm">
+        <div className="text-sm font-semibold text-accent">Ledra</div>
+        <h1 className="mt-2 text-2xl font-bold text-primary">確認コードを入力</h1>
+        <p className="mt-2 text-sm leading-6 text-secondary">
           {email || "登録メールアドレス"} 宛に6桁コードを送信しました。
         </p>
 
-        <label className="mt-5 block text-sm font-medium text-neutral-700">確認コード</label>
+        <label className="mt-5 block text-sm font-medium text-secondary">確認コード</label>
         <input
           value={code}
           onChange={(e) => setCode(e.target.value)}
@@ -86,10 +86,10 @@ export default function GlobalPortalVerifyPage() {
         </div>
 
         {msg ? (
-          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{msg}</div>
+          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800/50 dark:bg-red-950 dark:text-red-400">{msg}</div>
         ) : null}
 
-        <div className="mt-5 text-xs leading-6 text-neutral-500">
+        <div className="mt-5 text-xs leading-6 text-muted">
           メールが届かない場合は、迷惑メールフォルダをご確認ください。
         </div>
       </div>
