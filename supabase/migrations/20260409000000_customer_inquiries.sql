@@ -8,7 +8,6 @@
 CREATE TABLE IF NOT EXISTS customer_inquiries (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id       uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  customer_id     uuid REFERENCES customers(id) ON DELETE SET NULL,
   customer_name   text NOT NULL,
   customer_email  text NOT NULL,
   customer_phone  text,
@@ -19,6 +18,10 @@ CREATE TABLE IF NOT EXISTS customer_inquiries (
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- customer_id は後から追加されたカラムのため ALTER TABLE で付与する（冪等）
+ALTER TABLE customer_inquiries
+  ADD COLUMN IF NOT EXISTS customer_id uuid REFERENCES customers(id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS idx_customer_inquiries_tenant
   ON customer_inquiries (tenant_id, created_at DESC);
