@@ -10,6 +10,7 @@ import SignatureRequestPanel from "./SignatureRequestPanel";
 import CertEditForm from "./CertEditForm";
 import CertEditHistory from "./CertEditHistory";
 import { formatDateTime } from "@/lib/format";
+import { buildExplorerUrl } from "@/lib/anchoring/providers";
 
 type PageProps = {
   params: Promise<{ public_id: string }>;
@@ -85,7 +86,9 @@ export default async function Page({ params }: PageProps) {
 
   const { data: imageRowsRaw } = await admin
     .from("certificate_images")
-    .select("id,storage_path,file_name,content_type,file_size,sort_order,created_at")
+    .select(
+      "id,storage_path,file_name,content_type,file_size,sort_order,created_at,sha256,authenticity_grade,polygon_tx_hash,polygon_network,c2pa_verified,c2pa_manifest_cid",
+    )
     .eq("certificate_id", row.id)
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true });
@@ -100,6 +103,12 @@ export default async function Page({ params }: PageProps) {
         signedUrl = null;
       }
 
+      const polygonNetworkRaw = (img.polygon_network as string | null) ?? null;
+      const polygonNetwork =
+        polygonNetworkRaw === "polygon" || polygonNetworkRaw === "amoy"
+          ? (polygonNetworkRaw as "polygon" | "amoy")
+          : null;
+
       return {
         id: img.id as string,
         file_name: (img.file_name as string | null) ?? null,
@@ -108,9 +117,19 @@ export default async function Page({ params }: PageProps) {
         sort_order: Number(img.sort_order ?? 0),
         created_at: (img.created_at as string | null) ?? null,
         url: signedUrl,
+        sha256: (img.sha256 as string | null) ?? null,
+        authenticity_grade: (img.authenticity_grade as string | null) ?? null,
+        polygon_tx_hash: (img.polygon_tx_hash as string | null) ?? null,
+        polygon_network: polygonNetwork,
+        c2pa_verified: Boolean(img.c2pa_verified),
+        c2pa_manifest_cid: (img.c2pa_manifest_cid as string | null) ?? null,
       };
     }),
   );
+
+  // Aggregate blockchain stats for summary panel
+  const anchoredCount = images.filter((i) => !!i.polygon_tx_hash).length;
+  const pendingAnchorCount = images.filter((i) => !!i.sha256 && !i.polygon_tx_hash).length;
 
   // Fetch edit history
   const { data: editHistoryRaw } = await admin
@@ -283,37 +302,117 @@ export default async function Page({ params }: PageProps) {
           )}
 
           <section className="glass-card p-5 space-y-4">
-            <div>
-              <div className="text-xs font-semibold tracking-[0.18em] text-muted">ATTACHED IMAGES</div>
-              <div className="mt-1 text-lg font-semibold text-primary">添付画像</div>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-semibold tracking-[0.18em] text-muted">ATTACHED IMAGES</div>
+                <div className="mt-1 text-lg font-semibold text-primary">添付画像</div>
+              </div>
+              {images.length > 0 ? (
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-emerald-400">
+                    記録済 {anchoredCount}
+                  </span>
+                  {pendingAnchorCount > 0 ? (
+                    <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-amber-400">
+                      未記録 {pendingAnchorCount}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             {images.length > 0 ? (
               <div className="grid gap-4 md:grid-cols-2">
-                {images.map((img) => (
-                  <div key={img.id} className="rounded-2xl border border-border-default bg-base p-3 space-y-3">
-                    {img.url ? (
-                      <a href={img.url} target="_blank" rel="noreferrer">
-                        <img
-                          src={img.url}
-                          alt={img.file_name ?? `image_${img.sort_order}`}
-                          className="h-56 w-full rounded-xl border border-border-default bg-surface object-cover"
-                        />
-                      </a>
-                    ) : (
-                      <div className="flex h-56 items-center justify-center rounded-xl border border-border-default bg-surface text-sm text-muted">
-                        画像URLを生成できませんでした
-                      </div>
-                    )}
+                {images.map((img) => {
+                  const explorerUrl = buildExplorerUrl(img.polygon_tx_hash, img.polygon_network);
+                  const gradeLabel =
+                    img.authenticity_grade === "premium"
+                      ? "プレミアム"
+                      : img.authenticity_grade === "verified"
+                        ? "検証済"
+                        : img.authenticity_grade === "basic"
+                          ? "基本"
+                          : "未検証";
+                  const gradeColor =
+                    img.authenticity_grade === "premium"
+                      ? "bg-violet-500/10 text-violet-400"
+                      : img.authenticity_grade === "verified"
+                        ? "bg-emerald-500/10 text-emerald-400"
+                        : img.authenticity_grade === "basic"
+                          ? "bg-sky-500/10 text-sky-400"
+                          : "bg-neutral-500/10 text-neutral-400";
 
-                    <div className="text-sm text-secondary">
-                      <div>順序: {img.sort_order}</div>
-                      <div className="break-all">ファイル名: {img.file_name || "-"}</div>
-                      <div>サイズ: {formatCertificateImageBytes(img.file_size)}</div>
-                      <div>保存日時: {formatDateTime(img.created_at)}</div>
+                  return (
+                    <div key={img.id} className="rounded-2xl border border-border-default bg-base p-3 space-y-3">
+                      {img.url ? (
+                        <a href={img.url} target="_blank" rel="noreferrer">
+                          <img
+                            src={img.url}
+                            alt={img.file_name ?? `image_${img.sort_order}`}
+                            className="h-56 w-full rounded-xl border border-border-default bg-surface object-cover"
+                          />
+                        </a>
+                      ) : (
+                        <div className="flex h-56 items-center justify-center rounded-xl border border-border-default bg-surface text-sm text-muted">
+                          画像URLを生成できませんでした
+                        </div>
+                      )}
+
+                      <div className="text-sm text-secondary">
+                        <div>順序: {img.sort_order}</div>
+                        <div className="break-all">ファイル名: {img.file_name || "-"}</div>
+                        <div>サイズ: {formatCertificateImageBytes(img.file_size)}</div>
+                        <div>保存日時: {formatDateTime(img.created_at)}</div>
+                      </div>
+
+                      {/* ── 真正性 / ブロックチェーン検証 ── */}
+                      <div className="rounded-xl border border-border-default bg-surface p-3 space-y-2 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold tracking-[0.18em] text-muted">AUTHENTICITY</span>
+                          <span className={`rounded-full px-2 py-0.5 ${gradeColor}`}>{gradeLabel}</span>
+                        </div>
+
+                        <div className="grid grid-cols-[auto,1fr] gap-x-2 gap-y-1 text-secondary">
+                          <span className="text-muted">C2PA</span>
+                          <span className={img.c2pa_verified ? "text-emerald-400" : "text-muted"}>
+                            {img.c2pa_verified ? "署名あり" : "-"}
+                          </span>
+
+                          <span className="text-muted">SHA-256</span>
+                          <span className="break-all font-mono text-[10px] text-secondary">
+                            {img.sha256 ? `${img.sha256.slice(0, 16)}…` : "-"}
+                          </span>
+
+                          <span className="text-muted">Polygon</span>
+                          {explorerUrl ? (
+                            <a
+                              href={explorerUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="break-all text-emerald-400 hover:underline"
+                              title={`${img.polygon_network === "amoy" ? "Amoy testnet" : "Polygon mainnet"} で検証`}
+                            >
+                              {img.polygon_tx_hash?.slice(0, 16)}… ↗
+                            </a>
+                          ) : img.sha256 ? (
+                            <span className="text-amber-400">未記録</span>
+                          ) : (
+                            <span className="text-muted">-</span>
+                          )}
+
+                          {img.polygon_tx_hash ? (
+                            <>
+                              <span className="text-muted">ネットワーク</span>
+                              <span className="text-secondary">
+                                {img.polygon_network === "amoy" ? "Amoy (testnet)" : "Polygon mainnet"}
+                              </span>
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="rounded-xl bg-base p-4 text-sm text-muted">添付画像はありません。</div>

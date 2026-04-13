@@ -117,6 +117,16 @@ Vercel で production / preview 環境の環境変数を差し替え、再デプ
 - `polygon_tx_hash IS NULL AND authenticity_grade != 'unverified'` のレコードを監視（アンカリング失敗を検知）
 - ウォレット残高が一定値以下になったら通知
 
+### 既存画像の遡及アンカリング（バックフィル）
+Phase 3e 以前に発行した施工画像は `sha256` だけ計算済みで `polygon_tx_hash` が NULL の状態。管理者ポータルから一括処理できる:
+
+1. `/admin/polygon-backfill` にアクセス（admin ロール必須）
+2. 「残件数」を確認
+3. 1 バッチ = 最大 20 件を逐次処理（nonce 競合を避けるため並列化しない）
+4. Polygonscan リンクで各件を目視確認可能
+
+内部的には `POST /api/admin/polygon/backfill` がエンドポイント。cron 化する場合は `CRON_SECRET` で保護した別エンドポイントを追加。
+
 ### コントラクトのアップグレード
 - 現在のコントラクトは固定（非Upgradable）
 - スキーマ変更時は新コントラクトをデプロイ → 環境変数更新
@@ -140,5 +150,5 @@ Vercel で production / preview 環境の環境変数を差し替え、再デプ
 - [ ] Phase 3e-1: Amoy での動作確認完了
 - [ ] Phase 3e-2: Mainnet デプロイ
 - [ ] Phase 3e-3: 残高監視・アラート設定
-- [ ] Phase 3f: 保険会社向け検証APIエンドポイント
-- [ ] Phase 3g: 一括バックフィル（既存の`authenticity_grade=basic`画像をアンカリング）
+- [x] Phase 3f: 保険会社向け検証APIエンドポイント (`GET /api/insurer/anchor-verify/:sha256`)
+- [x] Phase 3g: 一括バックフィル (`POST /api/admin/polygon/backfill`, `/admin/polygon-backfill` UI)
