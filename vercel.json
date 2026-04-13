@@ -25,6 +25,10 @@
     {
       "path": "/api/cron/monitor",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/polygon-signer",
+      "schedule": "0 * * * *"
     }
   ]
 }
