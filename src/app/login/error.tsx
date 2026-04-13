@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import * as Sentry from "@sentry/nextjs";
 import { useEffect } from "react";
 
@@ -52,9 +53,9 @@ export default function LoginError({
           <button onClick={() => reset()} className="btn-primary">
             再読み込み
           </button>
-          <a href="/" className="btn-secondary">
+          <Link href="/" className="btn-secondary">
             トップへ戻る
-          </a>
+          </Link>
         </div>
       </div>
     </main>

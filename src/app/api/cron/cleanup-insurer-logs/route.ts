@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendCronFailureAlert } from "@/lib/cronAlert";
 import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { verifyCronRequest } from "@/lib/cronAuth";
 
 export const runtime = "nodejs";
 
@@ -12,14 +13,12 @@ export const runtime = "nodejs";
  * - insurer_email_verifications: 24 hours
  * - admin_audit_logs: 365 days
  *
- * Protected by CRON_SECRET header.
+ * Protected by verifyCronRequest (HMAC-SHA256 or Bearer CRON_SECRET).
  */
 export async function POST(req: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  const authHeader = req.headers.get("authorization");
-
-  if (!secret || authHeader !== `Bearer ${secret}`) {
-    return apiUnauthorized();
+  const { authorized, error: authError } = verifyCronRequest(req);
+  if (!authorized) {
+    return apiUnauthorized(authError);
   }
 
   try {

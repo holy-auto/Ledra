@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Badge from "@/components/ui/Badge";
@@ -122,12 +123,12 @@ export default function AgentDashboardPage() {
           </div>
 
           <div className="flex gap-3 items-center">
-            <a
+            <Link
               href="/agent/referrals/new"
               className="btn-primary"
             >
               新規紹介を作成
-            </a>
+            </Link>
             <button
               onClick={onLogout}
               className="rounded-xl border border-border-default bg-[var(--bg-surface)] px-4 py-2 text-sm font-medium text-secondary hover:bg-surface-hover"
@@ -224,12 +225,12 @@ export default function AgentDashboardPage() {
                 </div>
                 <div className="mt-1 text-sm text-muted">未読のお知らせ</div>
                 {data.unread_announcements > 0 && (
-                  <a
+                  <Link
                     href="/agent/announcements"
                     className="mt-3 inline-block text-sm font-medium text-accent hover:underline"
                   >
                     お知らせを確認する
-                  </a>
+                  </Link>
                 )}
               </div>
             </div>
@@ -241,12 +242,12 @@ export default function AgentDashboardPage() {
                   <div className="text-xs font-semibold tracking-[0.18em] text-muted">RECENT REFERRALS</div>
                   <div className="mt-1 text-base font-semibold text-primary">最近の紹介</div>
                 </div>
-                <a
+                <Link
                   href="/agent/referrals"
                   className="text-sm font-medium text-accent hover:underline"
                 >
                   すべて表示
-                </a>
+                </Link>
               </div>
 
               <div className="overflow-x-auto rounded-xl border border-border-default">
@@ -274,12 +275,12 @@ export default function AgentDashboardPage() {
                             {formatDateTime(r.created_at)}
                           </td>
                           <td className="p-3">
-                            <a
+                            <Link
                               href={`/agent/referrals/${encodeURIComponent(r.id)}`}
                               className="rounded-lg border border-border-default bg-[var(--bg-surface)] px-3 py-1.5 text-xs font-medium text-secondary hover:bg-surface-hover"
                             >
                               詳細
-                            </a>
+                            </Link>
                           </td>
                         </tr>
                       );
@@ -334,7 +335,7 @@ export default function AgentDashboardPage() {
 
             {/* ── Quick Links ── */}
             <div className="grid gap-4 sm:grid-cols-2">
-              <a
+              <Link
                 href="/agent/referrals/new"
                 className="rounded-2xl border border-border-default bg-[var(--bg-surface)] p-5 shadow-sm hover:border-accent hover:shadow-md transition-all group"
               >
@@ -345,8 +346,8 @@ export default function AgentDashboardPage() {
                 <p className="mt-1 text-sm text-muted">
                   新しい施工店をLedraに紹介します。
                 </p>
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/agent/commissions"
                 className="rounded-2xl border border-border-default bg-[var(--bg-surface)] p-5 shadow-sm hover:border-accent hover:shadow-md transition-all group"
               >
@@ -357,7 +358,7 @@ export default function AgentDashboardPage() {
                 <p className="mt-1 text-sm text-muted">
                   支払い履歴と明細を確認できます。
                 </p>
-              </a>
+              </Link>
             </div>
           </>
         )}

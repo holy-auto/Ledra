@@ -3,6 +3,7 @@
  * 電子署名法第2条第2号（非改ざん性）の核心ロジックを検証
  */
 
+import { describe, it, expect } from "vitest";
 import { computeDocumentHash, buildSigningPayload } from "../hash";
 
 describe("computeDocumentHash", () => {

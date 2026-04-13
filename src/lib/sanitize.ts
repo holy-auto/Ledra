@@ -17,16 +17,11 @@ export function escapeIlike(str: string): string {
  * Stripped characters:
  *   `,` — condition separator
  *   `(` `)` — grouping / function call syntax
- *   `.` — column/operator separator
- *   `;` — potential query separator
- *   `"` `'` — quoting that could break out of value context
- *   `:` — type cast separator
  *
  * Use this on user-supplied values that are interpolated into `.or()` strings.
  */
 export function escapePostgrestValue(str: string): string {
-  // eslint-disable-next-line no-useless-escape
-  return str.replace(/[,(). ;:"'`:]/g, "");
+  return str.replace(/[,()]/g, "");
 }
 
 /**
