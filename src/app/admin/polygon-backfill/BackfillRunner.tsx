@@ -13,13 +13,16 @@ type Stats = {
 type RunResult = {
   processed: number;
   anchored: number;
+  reused: number;
   failed: number;
   results: Array<{
     id: string;
     sha256_prefix: string;
-    status: "anchored" | "failed" | "skipped";
+    status: "anchored" | "reused" | "failed" | "skipped";
     tx_hash?: string | null;
     network?: string | null;
+    grade_before?: string;
+    grade_after?: string;
     error?: string;
   }>;
 };
@@ -81,6 +84,7 @@ export default function BackfillRunner({ enabled }: { enabled: boolean }) {
         setLastRun({
           processed: json.processed ?? 0,
           anchored: json.anchored ?? 0,
+          reused: json.reused ?? 0,
           failed: json.failed ?? 0,
           results: Array.isArray(json.results) ? json.results : [],
         });
@@ -176,13 +180,18 @@ export default function BackfillRunner({ enabled }: { enabled: boolean }) {
               <div className="text-xs font-semibold tracking-[0.18em] text-muted">LAST RUN</div>
               <div className="mt-1 text-lg font-semibold text-primary">最終実行結果</div>
             </div>
-            <div className="flex gap-2 text-xs">
+            <div className="flex flex-wrap gap-2 text-xs">
               <span className="rounded-full bg-neutral-500/10 px-2.5 py-1 text-muted">
                 処理 {lastRun.processed}
               </span>
               <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-emerald-400">
-                成功 {lastRun.anchored}
+                新規 {lastRun.anchored}
               </span>
+              {lastRun.reused > 0 ? (
+                <span className="rounded-full bg-sky-500/10 px-2.5 py-1 text-sky-400" title="既にオンチェーン記録済みだったのでガスを消費せず tx を再利用">
+                  再利用 {lastRun.reused}
+                </span>
+              ) : null}
               {lastRun.failed > 0 ? (
                 <span className="rounded-full bg-red-500/10 px-2.5 py-1 text-red-400">
                   失敗 {lastRun.failed}
@@ -195,20 +204,33 @@ export default function BackfillRunner({ enabled }: { enabled: boolean }) {
             {lastRun.results.map((r) => (
               <div
                 key={r.id}
-                className="rounded-lg border border-border-default bg-base p-3 text-xs flex items-center gap-3"
+                className="rounded-lg border border-border-default bg-base p-3 text-xs flex flex-wrap items-center gap-3"
               >
                 <span
                   className={
                     r.status === "anchored"
                       ? "text-emerald-400"
-                      : r.status === "failed"
-                        ? "text-red-400"
-                        : "text-muted"
+                      : r.status === "reused"
+                        ? "text-sky-400"
+                        : r.status === "failed"
+                          ? "text-red-400"
+                          : "text-muted"
                   }
                 >
-                  {r.status === "anchored" ? "✓" : r.status === "failed" ? "✗" : "—"}
+                  {r.status === "anchored"
+                    ? "✓"
+                    : r.status === "reused"
+                      ? "↻"
+                      : r.status === "failed"
+                        ? "✗"
+                        : "—"}
                 </span>
                 <span className="font-mono text-muted">{r.sha256_prefix || "-"}</span>
+                {r.grade_before && r.grade_after && r.grade_before !== r.grade_after ? (
+                  <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-violet-400">
+                    {r.grade_before} → {r.grade_after}
+                  </span>
+                ) : null}
                 {r.tx_hash && r.network ? (
                   <a
                     href={`https://${r.network === "amoy" ? "amoy." : ""}polygonscan.com/tx/${r.tx_hash}`}

@@ -23,7 +23,8 @@ import {
   apiValidationError,
   apiInternalError,
 } from "@/lib/api/response";
-import { anchorToPolygon } from "@/lib/anchoring/providers";
+import { anchorToPolygon, verifyAnchor, findAnchorTx } from "@/lib/anchoring/providers";
+import { computeAuthenticityGrade, type AuthenticityGrade, type C2paKind } from "@/lib/anchoring/authenticityGrade";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -92,11 +93,14 @@ export async function POST(req: NextRequest) {
     const limit = Math.min(Math.max(1, Math.floor(requestedLimit)), MAX_BATCH_SIZE);
 
     const admin = createAdminClient();
+    const c2paMode = (process.env.C2PA_MODE ?? "disabled") as "disabled" | "dev-signed" | "production";
 
-    // 対象画像を取得（テナント scope 付き）
+    // 対象画像を取得（テナント scope + 再計算に必要なフラグも同時に取得）
     const { data: candidates, error: fetchErr } = await admin
       .from("certificate_images")
-      .select("id, sha256, certificate_id, certificates!inner(tenant_id)")
+      .select(
+        "id, sha256, authenticity_grade, c2pa_verified, device_attestation_verified, deepfake_verdict, exif_gps_stripped, certificate_id, certificates!inner(tenant_id)",
+      )
       .eq("certificates.tenant_id", caller.tenantId)
       .not("sha256", "is", null)
       .is("polygon_tx_hash", null)
@@ -108,19 +112,22 @@ export async function POST(req: NextRequest) {
     }
 
     if (!candidates || candidates.length === 0) {
-      return apiOk({ processed: 0, anchored: 0, failed: 0, results: [] });
+      return apiOk({ processed: 0, anchored: 0, reused: 0, failed: 0, results: [] });
     }
 
     const results: Array<{
       id: string;
       sha256_prefix: string;
-      status: "anchored" | "failed" | "skipped";
+      status: "anchored" | "reused" | "failed" | "skipped";
       tx_hash?: string | null;
       network?: string | null;
+      grade_before?: AuthenticityGrade;
+      grade_after?: AuthenticityGrade;
       error?: string;
     }> = [];
 
     let anchoredOk = 0;
+    let reused = 0;
     let failed = 0;
 
     // 逐次処理（nonce 競合を避けるため並列化しない）
@@ -133,43 +140,104 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
+      // 現在のフラグから grade を再計算（polygon 記録の有無で変わるわけではないが、
+      // 画像アップロード時と backfill 時でロジックが変わっている可能性があるので毎回再計算して一貫性を保つ）
+      const gradeBefore = ((img as { authenticity_grade?: string }).authenticity_grade ??
+        "unverified") as AuthenticityGrade;
+      const deepfakeVerdict = (img as { deepfake_verdict?: string | null }).deepfake_verdict ?? null;
+      const deepfakeOk =
+        deepfakeVerdict === "likely_real" ? true : deepfakeVerdict === "likely_fake" ? false : null;
+      const gradeAfter = computeAuthenticityGrade({
+        hasSha256: true,
+        hasExif: Boolean((img as { exif_gps_stripped?: boolean }).exif_gps_stripped),
+        hasC2pa: Boolean((img as { c2pa_verified?: boolean }).c2pa_verified),
+        c2paKind: (c2paMode === "disabled" ? "none" : c2paMode) as C2paKind,
+        deviceOk: Boolean((img as { device_attestation_verified?: boolean }).device_attestation_verified),
+        deepfakeOk,
+      });
+
       try {
-        const anchorResult = await anchorToPolygon(sha);
+        // #5: ガス節約 — 既にオンチェーン記録済みなら anchor 書き込みをスキップ
+        const alreadyOnChain = await verifyAnchor(sha);
 
-        if (anchorResult.anchored && anchorResult.txHash) {
-          const { error: updateErr } = await admin
-            .from("certificate_images")
-            .update({
-              polygon_tx_hash: anchorResult.txHash,
-              polygon_network: anchorResult.network,
-            })
-            .eq("id", img.id);
+        let txHash: string | null = null;
+        let network: "polygon" | "amoy" | null = null;
+        let status: "anchored" | "reused" | "failed" = "failed";
+        let errorMsg: string | undefined;
 
-          if (updateErr) {
-            failed += 1;
-            results.push({
-              id: img.id as string,
-              sha256_prefix: shaPrefix,
-              status: "failed",
-              error: `DB update failed: ${updateErr.message}`,
-            });
+        if (alreadyOnChain) {
+          // events ログから元 tx を引っ張る
+          const existing = await findAnchorTx(sha);
+          if (existing) {
+            txHash = existing.txHash;
+            network = existing.network;
+            status = "reused";
           } else {
-            anchoredOk += 1;
-            results.push({
-              id: img.id as string,
-              sha256_prefix: shaPrefix,
-              status: "anchored",
-              tx_hash: anchorResult.txHash,
-              network: anchorResult.network,
-            });
+            // オンチェーンには存在するが tx が見つからない（ログ保持期間外など）
+            // 仕方ないので anchor() を呼んで冪等に no-op 消化させ、その tx を記録
+            const anchorResult = await anchorToPolygon(sha);
+            if (anchorResult.anchored && anchorResult.txHash) {
+              txHash = anchorResult.txHash;
+              network = anchorResult.network;
+              status = "anchored";
+            } else {
+              errorMsg = "already on-chain but couldn't recover tx (contract reverted on re-anchor)";
+            }
           }
         } else {
+          const anchorResult = await anchorToPolygon(sha);
+          if (anchorResult.anchored && anchorResult.txHash) {
+            txHash = anchorResult.txHash;
+            network = anchorResult.network;
+            status = "anchored";
+          } else {
+            errorMsg = "anchor returned disabled/failed result";
+          }
+        }
+
+        if (status === "failed" || !txHash) {
           failed += 1;
           results.push({
             id: img.id as string,
             sha256_prefix: shaPrefix,
             status: "failed",
-            error: "anchor returned disabled/failed result",
+            error: errorMsg,
+          });
+          continue;
+        }
+
+        const updatePayload: Record<string, unknown> = {
+          polygon_tx_hash: txHash,
+          polygon_network: network,
+        };
+        if (gradeAfter !== gradeBefore) {
+          updatePayload.authenticity_grade = gradeAfter;
+        }
+
+        const { error: updateErr } = await admin
+          .from("certificate_images")
+          .update(updatePayload)
+          .eq("id", img.id);
+
+        if (updateErr) {
+          failed += 1;
+          results.push({
+            id: img.id as string,
+            sha256_prefix: shaPrefix,
+            status: "failed",
+            error: `DB update failed: ${updateErr.message}`,
+          });
+        } else {
+          if (status === "reused") reused += 1;
+          else anchoredOk += 1;
+          results.push({
+            id: img.id as string,
+            sha256_prefix: shaPrefix,
+            status,
+            tx_hash: txHash,
+            network,
+            grade_before: gradeBefore,
+            grade_after: gradeAfter,
           });
         }
       } catch (err) {
@@ -184,12 +252,13 @@ export async function POST(req: NextRequest) {
     }
 
     console.info(
-      `[polygon:backfill] tenant=${caller.tenantId} processed=${candidates.length} anchored=${anchoredOk} failed=${failed}`,
+      `[polygon:backfill] tenant=${caller.tenantId} processed=${candidates.length} anchored=${anchoredOk} reused=${reused} failed=${failed}`,
     );
 
     return apiOk({
       processed: candidates.length,
       anchored: anchoredOk,
+      reused,
       failed,
       results,
     });

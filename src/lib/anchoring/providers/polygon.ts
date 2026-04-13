@@ -166,3 +166,50 @@ export function buildExplorerUrl(txHash: string | null | undefined, network: Pol
   const base = network === "amoy" ? "https://amoy.polygonscan.com" : "https://polygonscan.com";
   return `${base}/tx/${txHash}`;
 }
+
+/**
+ * Look up the original transaction hash that anchored this SHA-256.
+ *
+ * Queries past `Anchored` events on the LedraAnchor contract. Used by the
+ * backfill path: when a hash is already on-chain (e.g. because a duplicate
+ * upload anchored it first), we can recover the tx hash instead of spending
+ * gas on a redundant `anchor()` call.
+ *
+ * Returns null if config is missing, RPC is unreachable, or the hash
+ * was anchored before the RPC's log retention window.
+ */
+export async function findAnchorTx(
+  sha256: string,
+): Promise<{ txHash: `0x${string}`; network: PolygonNetwork } | null> {
+  const config = getConfig();
+  if (!config) return null;
+
+  try {
+    const { createPublicClient, http, parseAbiItem } = await import("viem");
+    const { polygon, polygonAmoy } = await import("viem/chains");
+
+    const chain = config.network === "amoy" ? polygonAmoy : polygon;
+    const client = createPublicClient({ chain, transport: http(config.rpcUrl) });
+
+    const hashBytes32 = `0x${sha256.replace(/^0x/, "").padStart(64, "0")}` as `0x${string}`;
+
+    const logs = await client.getLogs({
+      address: config.contractAddress as `0x${string}`,
+      event: parseAbiItem("event Anchored(bytes32 indexed hash, address indexed sender, uint256 timestamp)"),
+      args: { hash: hashBytes32 },
+      fromBlock: "earliest",
+      toBlock: "latest",
+    });
+
+    if (logs.length === 0) return null;
+    // Take the earliest event (first anchor)
+    const first = logs.reduce((acc, cur) =>
+      BigInt(cur.blockNumber ?? 0n) < BigInt(acc.blockNumber ?? 0n) ? cur : acc,
+    );
+
+    return { txHash: first.transactionHash as `0x${string}`, network: config.network };
+  } catch (error) {
+    console.warn("[polygon] findAnchorTx failed:", error instanceof Error ? error.message : error);
+    return null;
+  }
+}
