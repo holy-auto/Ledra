@@ -100,10 +100,17 @@ export async function POST(req: NextRequest) {
       console.warn("[public/verify] DB lookup error:", fetchErr.message);
     }
 
+    // 画像が見つかっていれば、その画像が記録されたネットワークで検証する
+    // (メインネットに移行したあとも、過去に Amoy へ刻まれた画像を正しく検証するため)
+    const rowNetwork =
+      image?.polygon_network === "amoy" || image?.polygon_network === "polygon"
+        ? (image.polygon_network as "amoy" | "polygon")
+        : null;
+
     // オンチェーン検証 (ガス代不要の read-only call)
     let onChainVerified = false;
     try {
-      onChainVerified = await verifyAnchor(sha256);
+      onChainVerified = await verifyAnchor(sha256, rowNetwork);
     } catch (err) {
       console.warn("[public/verify] on-chain check failed:", err);
     }
@@ -117,10 +124,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const network =
-      image.polygon_network === "amoy" || image.polygon_network === "polygon"
-        ? (image.polygon_network as "amoy" | "polygon")
-        : null;
+    const network = rowNetwork;
 
     // Supabase の型推論は join されたリレーションを配列にしがちなので手動キャスト
     const cert = (image as unknown as {

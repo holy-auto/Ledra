@@ -64,18 +64,20 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ sha256: str
     return apiNotFound("該当する施工画像が見つかりません。");
   }
 
-  // オンチェーン検証（読み取り専用、ガス代なし）
-  let onChainVerified = false;
-  try {
-    onChainVerified = await verifyAnchor(sha256);
-  } catch (err) {
-    console.warn("[anchor-verify] on-chain check failed:", err);
-  }
-
   const network =
     image.polygon_network === "amoy" || image.polygon_network === "polygon"
       ? (image.polygon_network as "amoy" | "polygon")
       : null;
+
+  // オンチェーン検証（読み取り専用、ガス代なし）
+  // 画像が記録されたネットワーク (polygon_network) で検証する — ランタイム設定が
+  // メインネットに移行した後でも過去の Amoy アンカーを正しく確認するため。
+  let onChainVerified = false;
+  try {
+    onChainVerified = await verifyAnchor(sha256, network);
+  } catch (err) {
+    console.warn("[anchor-verify] on-chain check failed:", err);
+  }
 
   // 監査ログ
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
