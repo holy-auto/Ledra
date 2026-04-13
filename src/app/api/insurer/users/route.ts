@@ -110,7 +110,10 @@ export async function POST(req: Request) {
     // Check if user already exists in this insurer
     // First, find auth user by email
     const { data: authData } = await admin.auth.admin.listUsers();
-    const existingAuthUser = authData?.users?.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+    const existingAuthUser = authData?.users?.find(
+      (u: { id: string; email?: string }) =>
+        u.email?.toLowerCase() === email.toLowerCase(),
+    );
 
     let authUserId: string;
 

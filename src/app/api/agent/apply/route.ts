@@ -76,7 +76,10 @@ export async function POST(req: NextRequest) {
   // -----------------------------------------------------------------------
   if (!currentUserId) {
     const { data: existingUsers } = await adminClient.auth.admin.listUsers();
-    const matchedUser = existingUsers?.users?.find((u) => u.email?.toLowerCase() === data.email.toLowerCase());
+    const matchedUser = existingUsers?.users?.find(
+      (u: { id: string; email?: string }) =>
+        u.email?.toLowerCase() === data.email.toLowerCase(),
+    );
     if (matchedUser) {
       currentUserId = matchedUser.id;
     }

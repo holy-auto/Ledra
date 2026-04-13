@@ -154,7 +154,10 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
       } else {
         // auth.users にメールが存在するか確認
         const { data: existingUsers } = await admin.auth.admin.listUsers();
-        const matchedUser = existingUsers?.users?.find((u) => u.email?.toLowerCase() === app.email.toLowerCase());
+        const matchedUser = existingUsers?.users?.find(
+          (u: { id: string; email?: string }) =>
+            u.email?.toLowerCase() === app.email.toLowerCase(),
+        );
 
         if (matchedUser) {
           // 既存ユーザーが見つかった → そのまま使う（パスワード変更なし）

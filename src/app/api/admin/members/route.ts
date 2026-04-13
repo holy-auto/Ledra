@@ -51,7 +51,11 @@ export async function GET(req: NextRequest) {
     const {
       data: { users },
     } = await admin.auth.admin.listUsers({ perPage: 1000 });
-    const userMap = new Map(users.map((u) => [u.id, u]));
+    const userMap = new Map(
+      (users as Array<{ id: string; email?: string; user_metadata?: Record<string, unknown> }>).map(
+        (u) => [u.id, u],
+      ),
+    );
 
     const enriched = (members ?? []).map((m) => {
       const user = userMap.get(m.user_id);
@@ -146,7 +150,10 @@ export async function POST(req: NextRequest) {
       while (!found) {
         const { data: page_data } = await admin.auth.admin.listUsers({ page, perPage: 100 });
         if (!page_data?.users?.length) break;
-        const match = page_data.users.find((u) => u.email === email);
+        const match = page_data.users.find(
+          (u: { id: string; email?: string; user_metadata?: Record<string, unknown> }) =>
+            u.email === email,
+        );
         if (match) {
           found = match;
           break;
