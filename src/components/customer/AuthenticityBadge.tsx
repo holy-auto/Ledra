@@ -1,27 +1,64 @@
 import type { AuthenticityGrade } from "@/lib/anchoring/authenticityGrade";
+import type { PolygonNetwork } from "@/lib/anchoring/providers/types";
+import { buildExplorerUrl } from "@/lib/anchoring/providers/polygon";
 
 /**
  * Badge shown on the public certificate page to communicate that
  * the photos attached to the certificate have been hashed / signed
- * / verified on the server side. Phase 1 only emits `basic`, but
- * the component is ready for `verified` and `premium` once the
- * C2PA / deepfake pipeline lands in Phase 3.
+ * / verified on the server side.
+ *
+ * When `polygonTxHash` + `polygonNetwork` are present, the badge
+ * becomes a link to Polygonscan so customers and insurers can
+ * independently verify the anchor on-chain.
  *
  * `unverified` (legacy data without a server-side SHA-256) renders
  * nothing so we don't downgrade existing certificates visually.
  */
-export default function AuthenticityBadge({ grade }: { grade: AuthenticityGrade }) {
+export default function AuthenticityBadge({
+  grade,
+  polygonTxHash,
+  polygonNetwork,
+}: {
+  grade: AuthenticityGrade;
+  polygonTxHash?: string | null;
+  polygonNetwork?: PolygonNetwork | null;
+}) {
   if (grade === "unverified") return null;
 
   const copy = BADGE_COPY[grade];
+  const explorerUrl = buildExplorerUrl(polygonTxHash, polygonNetwork);
 
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${copy.className}`}
-      title={copy.tooltip}
-    >
+  const content = (
+    <>
       <span aria-hidden>✓</span>
       {copy.label}
+      {explorerUrl ? (
+        <span aria-hidden className="ml-1 opacity-70">
+          ↗
+        </span>
+      ) : null}
+    </>
+  );
+
+  const baseClasses = `inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${copy.className}`;
+
+  if (explorerUrl) {
+    return (
+      <a
+        href={explorerUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`${baseClasses} transition-opacity hover:opacity-80`}
+        title={`${copy.tooltip}\nPolygonscan で取引を確認できます。`}
+      >
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    <span className={baseClasses} title={copy.tooltip}>
+      {content}
     </span>
   );
 }

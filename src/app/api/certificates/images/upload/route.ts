@@ -201,6 +201,8 @@ export async function POST(req: NextRequest) {
         device_attestation_verified: providers.deviceAttestation.verified,
         deepfake_score: providers.deepfake.score,
         deepfake_verdict: providers.deepfake.verdict,
+        polygon_tx_hash: providers.polygon.txHash,
+        polygon_network: providers.polygon.network,
         authenticity_grade: grade,
       });
 

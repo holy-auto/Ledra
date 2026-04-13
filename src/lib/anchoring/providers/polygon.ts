@@ -2,41 +2,54 @@
  * Polygon blockchain anchoring provider.
  *
  * Env:
- *   POLYGON_ANCHOR_ENABLED  = "true" | "false" (default: "false")
- *   POLYGON_RPC_URL         = RPC endpoint (e.g. https://polygon-rpc.com)
- *   POLYGON_PRIVATE_KEY     = Hex-encoded private key for signing txs
- *   POLYGON_CONTRACT_ADDRESS = Address of the deployed LedraAnchor contract
+ *   POLYGON_ANCHOR_ENABLED    = "true" | "false" (default: "false")
+ *   POLYGON_NETWORK           = "polygon" | "amoy" (default: "polygon")
+ *   POLYGON_RPC_URL           = RPC endpoint override (optional; defaults per network)
+ *   POLYGON_PRIVATE_KEY       = Hex-encoded private key for signing txs
+ *   POLYGON_CONTRACT_ADDRESS  = Address of the deployed LedraAnchor contract
  *
  * Cost model:
- *   - No monthly fee (uses public RPC or Alchemy free tier)
- *   - Per-transaction gas: ~0.001 MATIC (~$0.001) on Polygon PoS
+ *   - Mainnet: ~$0.001/tx, real POL required
+ *   - Amoy testnet: free, use https://faucet.polygon.technology/ to get test POL
  *
  * The provider submits the SHA-256 hash (as bytes32) to the LedraAnchor
  * smart contract, which emits an `Anchored` event and stores the hash
  * for on-chain verification.
  */
 
-import type { PolygonAnchorResult } from "./types";
+import type { PolygonAnchorResult, PolygonNetwork } from "./types";
 
 const DISABLED_RESULT: PolygonAnchorResult = {
   txHash: null,
   anchored: false,
+  network: null,
+};
+
+const DEFAULT_RPC: Record<PolygonNetwork, string> = {
+  polygon: "https://polygon-rpc.com",
+  amoy: "https://rpc-amoy.polygon.technology",
 };
 
 function isEnabled(): boolean {
   return process.env.POLYGON_ANCHOR_ENABLED === "true";
 }
 
+function resolveNetwork(): PolygonNetwork {
+  const raw = (process.env.POLYGON_NETWORK ?? "polygon").toLowerCase();
+  return raw === "amoy" ? "amoy" : "polygon";
+}
+
 function getConfig() {
-  const rpcUrl = process.env.POLYGON_RPC_URL;
+  const network = resolveNetwork();
+  const rpcUrl = process.env.POLYGON_RPC_URL || DEFAULT_RPC[network];
   const privateKey = process.env.POLYGON_PRIVATE_KEY;
   const contractAddress = process.env.POLYGON_CONTRACT_ADDRESS;
 
-  if (!rpcUrl || !privateKey || !contractAddress) {
+  if (!privateKey || !contractAddress) {
     return null;
   }
 
-  return { rpcUrl, privateKey, contractAddress } as const;
+  return { network, rpcUrl, privateKey, contractAddress } as const;
 }
 
 /**
@@ -46,16 +59,14 @@ function getConfig() {
  * On success, returns the transaction hash for on-chain verification.
  *
  * @param sha256 - The SHA-256 hex string of the image to anchor.
- * @returns PolygonAnchorResult with txHash and anchored status.
+ * @returns PolygonAnchorResult with txHash, anchored status, and network.
  */
 export async function anchorToPolygon(sha256: string): Promise<PolygonAnchorResult> {
   if (!isEnabled()) return DISABLED_RESULT;
 
   const config = getConfig();
   if (!config) {
-    console.warn(
-      "[polygon] enabled but missing config (POLYGON_RPC_URL, POLYGON_PRIVATE_KEY, POLYGON_CONTRACT_ADDRESS)",
-    );
+    console.warn("[polygon] enabled but missing config (POLYGON_PRIVATE_KEY, POLYGON_CONTRACT_ADDRESS)");
     return DISABLED_RESULT;
   }
 
@@ -63,19 +74,20 @@ export async function anchorToPolygon(sha256: string): Promise<PolygonAnchorResu
     // Dynamic import to keep viem tree-shaken when polygon is disabled
     const { createPublicClient, createWalletClient, http } = await import("viem");
     const { privateKeyToAccount } = await import("viem/accounts");
-    const { polygon } = await import("viem/chains");
+    const { polygon, polygonAmoy } = await import("viem/chains");
     const { LEDRA_ANCHOR_ABI } = await import("./polygonContract");
 
+    const chain = config.network === "amoy" ? polygonAmoy : polygon;
     const account = privateKeyToAccount(config.privateKey as `0x${string}`);
 
     const publicClient = createPublicClient({
-      chain: polygon,
+      chain,
       transport: http(config.rpcUrl),
     });
 
     const walletClient = createWalletClient({
       account,
-      chain: polygon,
+      chain,
       transport: http(config.rpcUrl),
     });
 
@@ -97,12 +109,12 @@ export async function anchorToPolygon(sha256: string): Promise<PolygonAnchorResu
     });
 
     if (receipt.status === "success") {
-      console.info(`[polygon] anchored hash=${sha256.slice(0, 12)}… tx=${txHash}`);
-      return { txHash, anchored: true };
+      console.info(`[polygon:${config.network}] anchored hash=${sha256.slice(0, 12)}… tx=${txHash}`);
+      return { txHash, anchored: true, network: config.network };
     }
 
-    console.warn(`[polygon] tx reverted: ${txHash}`);
-    return { txHash, anchored: false };
+    console.warn(`[polygon:${config.network}] tx reverted: ${txHash}`);
+    return { txHash, anchored: false, network: config.network };
   } catch (error) {
     console.error("[polygon] anchoring failed:", error instanceof Error ? error.message : error);
     return DISABLED_RESULT;
@@ -119,11 +131,13 @@ export async function verifyAnchor(sha256: string): Promise<boolean> {
 
   try {
     const { createPublicClient, http } = await import("viem");
-    const { polygon } = await import("viem/chains");
+    const { polygon, polygonAmoy } = await import("viem/chains");
     const { LEDRA_ANCHOR_ABI } = await import("./polygonContract");
 
+    const chain = config.network === "amoy" ? polygonAmoy : polygon;
+
     const client = createPublicClient({
-      chain: polygon,
+      chain,
       transport: http(config.rpcUrl),
     });
 
@@ -141,4 +155,14 @@ export async function verifyAnchor(sha256: string): Promise<boolean> {
     console.error("[polygon] verification failed:", error instanceof Error ? error.message : error);
     return false;
   }
+}
+
+/**
+ * Build a Polygonscan explorer URL for a given transaction hash.
+ * Returns null if inputs are missing.
+ */
+export function buildExplorerUrl(txHash: string | null | undefined, network: PolygonNetwork | null | undefined): string | null {
+  if (!txHash || !network) return null;
+  const base = network === "amoy" ? "https://amoy.polygonscan.com" : "https://polygonscan.com";
+  return `${base}/tx/${txHash}`;
 }

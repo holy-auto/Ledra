@@ -30,7 +30,7 @@ describe("invokeAllUploadProviders", () => {
     expect(result.c2pa).toEqual({ manifestCid: null, verified: false, signedBuffer: null });
     expect(result.deepfake).toEqual({ score: null, verdict: null });
     expect(result.deviceAttestation).toEqual({ provider: "none", verified: false });
-    expect(result.polygon).toEqual({ txHash: null, anchored: false });
+    expect(result.polygon).toEqual({ txHash: null, anchored: false, network: null });
   });
 
   it("falls back gracefully when c2pa signing fails on non-JPEG buffer", async () => {
@@ -96,6 +96,7 @@ describe("anchorToPolygon", () => {
   beforeEach(() => {
     vi.resetModules();
     delete process.env.POLYGON_ANCHOR_ENABLED;
+    delete process.env.POLYGON_NETWORK;
     delete process.env.POLYGON_RPC_URL;
     delete process.env.POLYGON_PRIVATE_KEY;
     delete process.env.POLYGON_CONTRACT_ADDRESS;
@@ -105,7 +106,7 @@ describe("anchorToPolygon", () => {
     vi.resetModules();
     const { anchorToPolygon } = await import("../polygon");
     const result = await anchorToPolygon("abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890");
-    expect(result).toEqual({ txHash: null, anchored: false });
+    expect(result).toEqual({ txHash: null, anchored: false, network: null });
   });
 
   it("returns disabled result when enabled but missing config", async () => {
@@ -117,7 +118,7 @@ describe("anchorToPolygon", () => {
     const { anchorToPolygon } = await import("../polygon");
     const result = await anchorToPolygon("abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890");
 
-    expect(result).toEqual({ txHash: null, anchored: false });
+    expect(result).toEqual({ txHash: null, anchored: false, network: null });
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("[polygon] enabled but missing config"));
 
     warnSpy.mockRestore();
@@ -136,7 +137,7 @@ describe("anchorToPolygon", () => {
     // Will fail because we can't actually connect to RPC in tests
     const result = await anchorToPolygon("abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890");
 
-    expect(result).toEqual({ txHash: null, anchored: false });
+    expect(result).toEqual({ txHash: null, anchored: false, network: null });
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("[polygon] anchoring failed:"), expect.anything());
 
     errorSpy.mockRestore();
@@ -146,6 +147,7 @@ describe("anchorToPolygon", () => {
 describe("verifyAnchor", () => {
   beforeEach(() => {
     vi.resetModules();
+    delete process.env.POLYGON_NETWORK;
     delete process.env.POLYGON_RPC_URL;
     delete process.env.POLYGON_PRIVATE_KEY;
     delete process.env.POLYGON_CONTRACT_ADDRESS;
@@ -156,6 +158,28 @@ describe("verifyAnchor", () => {
     const { verifyAnchor } = await import("../polygon");
     const result = await verifyAnchor("abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890");
     expect(result).toBe(false);
+  });
+});
+
+describe("buildExplorerUrl", () => {
+  it("returns mainnet Polygonscan URL", async () => {
+    const { buildExplorerUrl } = await import("../polygon");
+    expect(buildExplorerUrl("0xabc", "polygon")).toBe("https://polygonscan.com/tx/0xabc");
+  });
+
+  it("returns Amoy testnet Polygonscan URL", async () => {
+    const { buildExplorerUrl } = await import("../polygon");
+    expect(buildExplorerUrl("0xabc", "amoy")).toBe("https://amoy.polygonscan.com/tx/0xabc");
+  });
+
+  it("returns null when tx hash missing", async () => {
+    const { buildExplorerUrl } = await import("../polygon");
+    expect(buildExplorerUrl(null, "polygon")).toBeNull();
+  });
+
+  it("returns null when network missing", async () => {
+    const { buildExplorerUrl } = await import("../polygon");
+    expect(buildExplorerUrl("0xabc", null)).toBeNull();
   });
 });
 

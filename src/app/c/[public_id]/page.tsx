@@ -84,6 +84,8 @@ type PublicStatusResponse = {
     url?: string | null;
     authenticity_grade?: string | null;
     sha256?: string | null;
+    polygon_tx_hash?: string | null;
+    polygon_network?: string | null;
   }>;
   shop?: {
     name?: string | null;
@@ -193,6 +195,13 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
   const heroGrade: AuthenticityGrade = highestGrade(
     images.map((img) => img.authenticity_grade as AuthenticityGrade | null | undefined),
   );
+  // Pick the tx hash from the first image whose grade matches the best grade.
+  const heroAnchorImage = images.find((img) => img.authenticity_grade === heroGrade && !!img.polygon_tx_hash);
+  const heroPolygonTxHash = heroAnchorImage?.polygon_tx_hash ?? null;
+  const heroPolygonNetwork =
+    heroAnchorImage?.polygon_network === "amoy" || heroAnchorImage?.polygon_network === "polygon"
+      ? (heroAnchorImage.polygon_network as "amoy" | "polygon")
+      : null;
 
   const isPdfBlocked =
     notice === "pdf_blocked" ||
@@ -203,7 +212,14 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
   return (
     <main className="mx-auto max-w-[980px] p-4">
       {certStatus === "active" && !isVoidCertificate ? (
-        <HeroCard maker={maker || null} model={model || null} recordCount={images.length} grade={heroGrade} />
+        <HeroCard
+          maker={maker || null}
+          model={model || null}
+          recordCount={images.length}
+          grade={heroGrade}
+          polygonTxHash={heroPolygonTxHash}
+          polygonNetwork={heroPolygonNetwork}
+        />
       ) : null}
       <div className="glass-card mb-4 p-5">
         <div className="text-[28px] font-extrabold tracking-wide text-primary">Ledra</div>

@@ -1,4 +1,5 @@
 import type { AuthenticityGrade } from "@/lib/anchoring/authenticityGrade";
+import type { PolygonNetwork } from "@/lib/anchoring/providers/types";
 import AuthenticityBadge from "./AuthenticityBadge";
 
 export interface HeroCardProps {
@@ -10,6 +11,10 @@ export interface HeroCardProps {
   recordCount: number;
   /** Best grade across all attached images. */
   grade: AuthenticityGrade;
+  /** Polygon tx hash for the representative image (optional). */
+  polygonTxHash?: string | null;
+  /** Polygon network for the representative image (optional). */
+  polygonNetwork?: PolygonNetwork | null;
 }
 
 /**
@@ -17,7 +22,7 @@ export interface HeroCardProps {
  * extra dependencies. Framer Motion and the full `/for-owners`
  * storytelling come later (plan §13.12).
  */
-export default function HeroCard({ maker, model, recordCount, grade }: HeroCardProps) {
+export default function HeroCard({ maker, model, recordCount, grade, polygonTxHash, polygonNetwork }: HeroCardProps) {
   const vehicleLabel = [maker, model].filter(Boolean).join(" ").trim();
 
   return (
@@ -33,7 +38,7 @@ export default function HeroCard({ maker, model, recordCount, grade }: HeroCardP
           {recordCount}件の施工記録
         </p>
         <div className="pt-1">
-          <AuthenticityBadge grade={grade} />
+          <AuthenticityBadge grade={grade} polygonTxHash={polygonTxHash} polygonNetwork={polygonNetwork} />
         </div>
       </div>
     </section>

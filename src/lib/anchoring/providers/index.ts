@@ -9,7 +9,7 @@ import { signC2pa } from "./c2pa";
 import { checkDeepfake } from "./deepfake";
 import { verifyDeviceAttestation } from "./deviceAttestation";
 import { anchorToPolygon } from "./polygon";
-export { verifyAnchor } from "./polygon";
+export { verifyAnchor, buildExplorerUrl } from "./polygon";
 import type { UploadProviderBundle } from "./types";
 
 /**
@@ -39,9 +39,9 @@ export async function invokeAllUploadProviders(
       deviceAttestation.status === "fulfilled"
         ? deviceAttestation.value
         : { provider: "none" as const, verified: false },
-    polygon: polygon.status === "fulfilled" ? polygon.value : { txHash: null, anchored: false },
+    polygon: polygon.status === "fulfilled" ? polygon.value : { txHash: null, anchored: false, network: null },
   };
 }
 
 export type { UploadProviderBundle } from "./types";
-export type { C2paResult, DeepfakeResult, DeviceAttestationResult, PolygonAnchorResult } from "./types";
+export type { C2paResult, DeepfakeResult, DeviceAttestationResult, PolygonAnchorResult, PolygonNetwork } from "./types";

@@ -39,10 +39,14 @@ export interface DeviceAttestationResult {
 
 /* ── Polygon anchoring ─────────────────────────────────────────── */
 
+export type PolygonNetwork = "polygon" | "amoy";
+
 export interface PolygonAnchorResult {
   /** Transaction hash on Polygon, null if not anchored. */
   txHash: string | null;
   anchored: boolean;
+  /** Which network the tx was submitted to (for building explorer links). */
+  network: PolygonNetwork | null;
 }
 
 /* ── Aggregate bundle returned by invokeAllUploadProviders ─────── */
