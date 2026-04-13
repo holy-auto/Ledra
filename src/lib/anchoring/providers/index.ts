@@ -9,7 +9,7 @@ import { signC2pa } from "./c2pa";
 import { checkDeepfake } from "./deepfake";
 import { verifyDeviceAttestation } from "./deviceAttestation";
 import { anchorToPolygon } from "./polygon";
-export { verifyAnchor, buildExplorerUrl, findAnchorTx } from "./polygon";
+export { anchorToPolygon, verifyAnchor, buildExplorerUrl, findAnchorTx } from "./polygon";
 import type { UploadProviderBundle } from "./types";
 
 /**
