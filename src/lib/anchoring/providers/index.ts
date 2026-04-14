@@ -8,9 +8,15 @@
 import { signC2pa } from "./c2pa";
 import { checkDeepfake } from "./deepfake";
 import { verifyDeviceAttestation } from "./deviceAttestation";
-import { anchorToPolygon } from "./polygon";
-export { anchorToPolygon, verifyAnchor, buildExplorerUrl, findAnchorTx } from "./polygon";
+import { anchorToPolygon, verifyAnchor, buildExplorerUrl, findAnchorTx } from "./polygon";
 import type { UploadProviderBundle } from "./types";
+
+// Re-export in a single statement — a combined `import … from "./polygon"`
+// plus `export … from "./polygon"` trips Turbopack (sees the named import
+// as already-resolved and then fails to re-resolve the same symbol on the
+// re-export line). Splitting the re-exports from the value-imports keeps
+// both the webpack and Turbopack bundlers happy.
+export { anchorToPolygon, verifyAnchor, buildExplorerUrl, findAnchorTx };
 
 /**
  * Run all verification providers in parallel.
