@@ -5,6 +5,7 @@ import AdminRouteGuard from "./AdminRouteGuard";
 import BillingFetchGuard from "./BillingFetchGuard";
 import IdleAutoLogout from "./IdleAutoLogout";
 import CommandPalette from "@/components/ui/CommandPalette";
+import NavigationProgress from "@/components/ui/NavigationProgress";
 
 const Sidebar = dynamic(() => import("@/components/ui/Sidebar"), {
   loading: () => <div className="hidden lg:block lg:w-60 lg:shrink-0" />,
@@ -19,6 +20,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       >
         メインコンテンツへスキップ
       </a>
+      <Suspense fallback={null}>
+        <NavigationProgress />
+      </Suspense>
       <BillingFetchGuard />
       <BillingGate />
       <IdleAutoLogout />

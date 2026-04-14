@@ -2,93 +2,25 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import { formatDate, formatJpy } from "@/lib/format";
+import type {
+  MenuItem,
+  JobReservation,
+  JobCustomer,
+  JobVehicle,
+  JobCertificate,
+  JobDocument,
+} from "./types";
 
 /**
- * JobWorkflowClient
+ * JobDetailTabs
  * ------------------------------------------------------------
- * 案件 (予約) 1 件のステータス遷移・関連ドキュメント・請求を
- * 1 画面でまとめて操作する統合ワークスペース。
- *
- * - 上部: ステップインジケータ (confirmed→arrived→in_progress→completed)
- * - 下部: タブ (サマリ / 顧客・車両 / 証明書 / 請求)
- * - 右サイド: 次アクションパネル (証明書発行・請求作成・ステータス進行)
+ * 案件ワークフロー画面の「下部エリア」: タブ切替 (サマリ / 顧客・車両 /
+ * 証明書 / 請求・見積) とその内容。
+ * certificates/documents の取得完了を待つため Suspense 境界内に配置。
  */
-
-type MenuItem = { menu_item_id?: string; name: string; price: number };
-
-type Reservation = {
-  id: string;
-  title: string | null;
-  customer_id: string | null;
-  vehicle_id: string | null;
-  scheduled_date: string;
-  start_time: string | null;
-  end_time: string | null;
-  status: string;
-  estimated_amount: number | null;
-  note: string | null;
-  menu_items_json: MenuItem[] | null;
-  cancelled_at: string | null;
-  cancel_reason: string | null;
-  created_at: string;
-};
-
-type Customer = {
-  id: string;
-  name: string;
-  email: string | null;
-  phone: string | null;
-  company_name: string | null;
-} | null;
-
-type Vehicle = {
-  id: string;
-  maker: string | null;
-  model: string | null;
-  year: number | null;
-  plate_display: string | null;
-  vin: string | null;
-} | null;
-
-type Certificate = {
-  public_id: string;
-  status: string;
-  created_at: string;
-  service_price: number | null;
-  customer_name: string | null;
-};
-
-type Document = {
-  id: string;
-  doc_number: string | null;
-  doc_type: string;
-  status: string;
-  total: number | null;
-  issued_at: string | null;
-  due_date: string | null;
-};
-
-const STATUS_FLOW = ["confirmed", "arrived", "in_progress", "completed"] as const;
-
-const STATUS_LABEL: Record<string, string> = {
-  confirmed: "予約確定",
-  arrived: "来店・受付",
-  in_progress: "作業中",
-  completed: "完了・納車",
-  cancelled: "キャンセル",
-};
-
-const STATUS_HINT: Record<string, string> = {
-  confirmed: "予約を受け付けました。来店確認を待ちます。",
-  arrived: "お客様が来店しました。作業を開始してください。",
-  in_progress: "作業中です。完了したら証明書発行 → 納車に進みます。",
-  completed: "作業が完了しました。請求書発行 → 入金確認を行います。",
-  cancelled: "この予約はキャンセルされています。",
-};
 
 const DOC_TYPE_LABEL: Record<string, string> = {
   invoice: "請求書",
@@ -141,34 +73,21 @@ const certStatusVariant = (s: string) => {
 type TabKey = "summary" | "parties" | "certificates" | "billing";
 
 interface Props {
-  reservation: Reservation;
-  customer: Customer;
-  vehicle: Vehicle;
-  certificates: Certificate[];
-  documents: Document[];
+  reservation: JobReservation;
+  customer: JobCustomer;
+  vehicle: JobVehicle;
+  certificates: JobCertificate[];
+  documents: JobDocument[];
 }
 
-export default function JobWorkflowClient({
+export default function JobDetailTabs({
   reservation,
   customer,
   vehicle,
   certificates,
   documents,
 }: Props) {
-  const router = useRouter();
   const [tab, setTab] = useState<TabKey>("summary");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  const currentStatus = reservation.status;
-  const isCancelled = currentStatus === "cancelled";
-  const currentIndex = STATUS_FLOW.indexOf(
-    currentStatus as (typeof STATUS_FLOW)[number],
-  );
-  const nextStatus =
-    currentIndex >= 0 && currentIndex < STATUS_FLOW.length - 1
-      ? STATUS_FLOW[currentIndex + 1]
-      : null;
 
   const menuItems: MenuItem[] = Array.isArray(reservation.menu_items_json)
     ? reservation.menu_items_json
@@ -194,31 +113,6 @@ export default function JobWorkflowClient({
     [documents],
   );
 
-  const hasActiveCertificate = certificates.some((c) => c.status === "active");
-  const hasPaidInvoice = invoices.some((d) => d.status === "paid");
-
-  async function advanceStatus(target: string) {
-    setBusy(true);
-    setErr(null);
-    try {
-      const res = await fetch("/api/admin/reservations", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: reservation.id, status: target }),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => null);
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
-      }
-      router.refresh();
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // 証明書発行 URL (車両・顧客情報を引き継ぎ)
   const certificateNewUrl = (() => {
     const params = new URLSearchParams();
     if (reservation.vehicle_id) params.set("vehicle_id", reservation.vehicle_id);
@@ -228,141 +122,12 @@ export default function JobWorkflowClient({
     return `/admin/certificates/new${qs ? `?${qs}` : ""}`;
   })();
 
-  // 請求書作成 URL (顧客を引き継ぎ)
   const invoiceNewUrl = reservation.customer_id
     ? `/admin/invoices/new?customer_id=${reservation.customer_id}`
     : `/admin/invoices/new`;
 
   return (
     <div className="space-y-6">
-      {/* ─── Status Stepper ────────────────────────────── */}
-      <Card padding="default">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="space-y-1">
-            <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">
-              Status
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge
-                variant={
-                  isCancelled
-                    ? "danger"
-                    : currentStatus === "completed"
-                      ? "success"
-                      : "info"
-                }
-              >
-                {STATUS_LABEL[currentStatus] ?? currentStatus}
-              </Badge>
-              <span className="text-[13px] text-secondary">
-                {STATUS_HINT[currentStatus] ?? ""}
-              </span>
-            </div>
-          </div>
-          {nextStatus && !isCancelled && (
-            <button
-              onClick={() => advanceStatus(nextStatus)}
-              disabled={busy}
-              className="btn-primary text-sm px-4 py-2 disabled:opacity-50"
-            >
-              {busy ? "更新中..." : `${STATUS_LABEL[nextStatus]} へ進む →`}
-            </button>
-          )}
-        </div>
-
-        {/* Step indicator */}
-        <ol className="mt-5 flex items-center gap-2 overflow-x-auto">
-          {STATUS_FLOW.map((s, i) => {
-            const active = !isCancelled && i === currentIndex;
-            const done = !isCancelled && i < currentIndex;
-            return (
-              <li
-                key={s}
-                className="flex items-center gap-2 whitespace-nowrap"
-              >
-                <div
-                  className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${
-                    active
-                      ? "border-accent bg-accent-dim text-accent-text"
-                      : done
-                        ? "border-success/20 bg-success-dim text-success-text"
-                        : "border-border-default bg-inset text-secondary"
-                  }`}
-                >
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/60 text-[11px] font-bold">
-                    {done ? "✓" : i + 1}
-                  </span>
-                  {STATUS_LABEL[s]}
-                </div>
-                {i < STATUS_FLOW.length - 1 && (
-                  <span className="text-muted">→</span>
-                )}
-              </li>
-            );
-          })}
-        </ol>
-
-        {err && (
-          <div className="mt-4 rounded-lg border border-danger/20 bg-danger-dim px-3 py-2 text-xs text-danger-text">
-            {err}
-          </div>
-        )}
-      </Card>
-
-      {/* ─── Quick Actions ─────────────────────────────── */}
-      <Card padding="default">
-        <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase mb-3">
-          Next Actions
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href={certificateNewUrl}
-            className={`btn-primary text-sm px-4 py-2 ${
-              hasActiveCertificate ? "opacity-60" : ""
-            }`}
-          >
-            🪪 証明書を発行
-            {hasActiveCertificate && (
-              <span className="ml-2 text-[10px]">(発行済)</span>
-            )}
-          </Link>
-          <Link
-            href={invoiceNewUrl}
-            className={`btn-secondary text-sm px-4 py-2 ${
-              hasPaidInvoice ? "opacity-60" : ""
-            }`}
-          >
-            💰 請求書を作成
-            {hasPaidInvoice && (
-              <span className="ml-2 text-[10px]">(入金済あり)</span>
-            )}
-          </Link>
-          {reservation.customer_id && (
-            <Link
-              href={`/admin/customers/${reservation.customer_id}`}
-              className="btn-secondary text-sm px-4 py-2"
-            >
-              👤 顧客詳細
-            </Link>
-          )}
-          {reservation.vehicle_id && (
-            <Link
-              href={`/admin/vehicles/${reservation.vehicle_id}`}
-              className="btn-secondary text-sm px-4 py-2"
-            >
-              🚗 車両詳細
-            </Link>
-          )}
-          <Link
-            href={`/admin/reservations?focus=${reservation.id}`}
-            className="btn-secondary text-sm px-4 py-2"
-          >
-            📅 予約画面で編集
-          </Link>
-        </div>
-      </Card>
-
-      {/* ─── Tabs ──────────────────────────────────────── */}
       <div className="flex items-center gap-1 border-b border-border-subtle">
         {(
           [
@@ -389,7 +154,6 @@ export default function JobWorkflowClient({
         ))}
       </div>
 
-      {/* ─── Tab: Summary ──────────────────────────────── */}
       {tab === "summary" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Card padding="default">
@@ -460,7 +224,6 @@ export default function JobWorkflowClient({
         </div>
       )}
 
-      {/* ─── Tab: Parties ──────────────────────────────── */}
       {tab === "parties" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Card padding="default">
@@ -561,7 +324,6 @@ export default function JobWorkflowClient({
         </div>
       )}
 
-      {/* ─── Tab: Certificates ─────────────────────────── */}
       {tab === "certificates" && (
         <Card padding="none">
           <div className="flex items-center justify-between border-b border-border-subtle p-5">
@@ -640,7 +402,6 @@ export default function JobWorkflowClient({
         </Card>
       )}
 
-      {/* ─── Tab: Billing ──────────────────────────────── */}
       {tab === "billing" && (
         <div className="space-y-4">
           <Card padding="none">
@@ -708,7 +469,7 @@ export default function JobWorkflowClient({
   );
 }
 
-function DocTable({ docs }: { docs: Document[] }) {
+function DocTable({ docs }: { docs: JobDocument[] }) {
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full text-sm">
