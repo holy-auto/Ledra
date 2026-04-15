@@ -174,18 +174,22 @@ export default function JobWorkflowClient({ reservation, customer, vehicle, cert
   const hasActiveCertificate = certificates.some((c) => c.status === "active");
   const hasPaidInvoice = invoices.some((d) => d.status === "paid");
 
-  async function advanceStatus(target: string) {
+  async function advanceStatus(_target?: string) {
+    // /advance エンドポイントに寄せる。
+    // - テンプレート設定済み: 現在ステップを完了 → 次ステップ開始。is_customer_visible
+    //   なステップであれば LINE 通知 (sendProgressUpdate) が自動で発火する。
+    // - テンプレート未設定: レガシーフロー (confirmed→arrived→in_progress→completed) を
+    //   エンドポイント側が内部で処理するので、呼び出し側は単に叩くだけで OK。
     setBusy(true);
     setErr(null);
     try {
-      const res = await fetch("/api/admin/reservations", {
-        method: "PUT",
+      const res = await fetch(`/api/admin/reservations/${reservation.id}/advance`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: reservation.id, status: target }),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => null);
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        throw new Error(j?.error ?? j?.message ?? `HTTP ${res.status}`);
       }
       router.refresh();
     } catch (e: unknown) {
