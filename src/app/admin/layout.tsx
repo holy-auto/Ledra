@@ -5,6 +5,7 @@ import AdminRouteGuard from "./AdminRouteGuard";
 import BillingFetchGuard from "./BillingFetchGuard";
 import IdleAutoLogout from "./IdleAutoLogout";
 import CommandPalette from "@/components/ui/CommandPalette";
+import { ViewModeProvider } from "@/lib/view-mode/ViewModeContext";
 
 const Sidebar = dynamic(() => import("@/components/ui/Sidebar"), {
   loading: () => <div className="hidden lg:block lg:w-60 lg:shrink-0" />,
@@ -12,7 +13,7 @@ const Sidebar = dynamic(() => import("@/components/ui/Sidebar"), {
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <>
+    <ViewModeProvider>
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[9999] focus:rounded-md focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:shadow-lg"
@@ -31,6 +32,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </Suspense>
         </main>
       </div>
-    </>
+    </ViewModeProvider>
   );
 }

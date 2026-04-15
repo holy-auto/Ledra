@@ -11,6 +11,7 @@ import ThemeToggle from "@/lib/theme/ThemeToggle";
 import SidebarShell from "@/components/ui/SidebarShell";
 import NotificationBell from "@/components/ui/NotificationBell";
 import ContextSwitcher from "@/components/ui/ContextSwitcher";
+import ViewModeToggle from "@/components/ui/ViewModeToggle";
 
 /* ------------------------------------------------------------------ */
 /*  Badge counts hook                                                  */
@@ -932,6 +933,12 @@ export default function Sidebar() {
           <ContextSwitcher />
           <NotificationBell />
         </div>
+      </div>
+
+      {/* View Mode Toggle (店頭 / 管理) */}
+      <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-4 py-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">モード</span>
+        <ViewModeToggle />
       </div>
 
       {/* Store Selector */}
