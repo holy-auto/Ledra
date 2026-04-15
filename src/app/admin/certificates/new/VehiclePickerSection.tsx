@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useId, useEffect, useRef } from "react";
+import { useState, useId, useEffect, useRef, useMemo } from "react";
 import Button from "@/components/ui/Button";
 
 type Vehicle = {
@@ -105,14 +105,26 @@ export default function VehiclePickerSection({
     }, 300);
   }, [customerSearch]);
 
-  // Vehicle search — filter local list based on maker input
-  const vehicleFiltered = vehicles.filter((v) => {
-    if (!maker.trim()) return true;
-    const s = maker.toLowerCase();
-    return [v.maker, v.model, v.plate_display, v.vin_code]
-      .filter(Boolean)
-      .some((val) => String(val).toLowerCase().includes(s));
-  });
+  // Vehicle search — filter local list based on maker input.
+  // Memoize so we don't re-iterate ~300 vehicles on every unrelated re-render
+  // (this used to dominate INP while typing in other fields). Cap the visible
+  // dropdown to avoid rendering hundreds of <li> nodes per keystroke.
+  const VEHICLE_DROPDOWN_LIMIT = 50;
+  const vehicleFiltered = useMemo(() => {
+    const s = maker.trim().toLowerCase();
+    if (!s) return vehicles.slice(0, VEHICLE_DROPDOWN_LIMIT);
+    const matched: Vehicle[] = [];
+    for (const v of vehicles) {
+      const hit = [v.maker, v.model, v.plate_display, v.vin_code]
+        .filter(Boolean)
+        .some((val) => String(val).toLowerCase().includes(s));
+      if (hit) {
+        matched.push(v);
+        if (matched.length >= VEHICLE_DROPDOWN_LIMIT) break;
+      }
+    }
+    return matched;
+  }, [vehicles, maker]);
 
   const handleVehicleSelect = (v: Vehicle) => {
     setSelectedId(v.id);
