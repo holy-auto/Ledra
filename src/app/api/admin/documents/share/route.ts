@@ -108,9 +108,11 @@ export async function POST(req: NextRequest) {
     }
 
     // Auto-update status from draft to sent
+    // RLS をバイパスしてサービスロールで UPDATE（tenant_id で必ずスコープ限定）
     let updatedDoc = doc;
     if (doc.status === "draft") {
-      const { data: updated } = await supabase
+      const adminForUpdate = getAdminClient();
+      const { data: updated } = await adminForUpdate
         .from("documents")
         .update({ status: "sent", updated_at: new Date().toISOString() })
         .eq("id", documentId)

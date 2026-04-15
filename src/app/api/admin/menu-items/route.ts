@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 
@@ -73,7 +74,9 @@ export async function POST(req: NextRequest) {
         return apiValidationError("有効な行がありません");
       }
 
-      const { data, error } = await supabase.from("menu_items").insert(rows).select("id");
+      // RLS をバイパスしてサービスロールで INSERT（tenant_id で必ずスコープ限定）
+      const admin = getSupabaseAdmin();
+      const { data, error } = await admin.from("menu_items").insert(rows).select("id");
       if (error) {
         return apiInternalError(error, "menu-items csv insert");
       }
@@ -94,7 +97,9 @@ export async function POST(req: NextRequest) {
       sort_order: parseInt(String(body.sort_order ?? 0), 10) || 0,
     };
 
-    const { data, error } = await supabase
+    // RLS をバイパスしてサービスロールで INSERT（tenant_id で必ずスコープ限定）
+    const admin = getSupabaseAdmin();
+    const { data, error } = await admin
       .from("menu_items")
       .insert(row)
       .select("id, name, description, unit_price, tax_category, is_active, sort_order, created_at, updated_at")
@@ -128,7 +133,9 @@ export async function PUT(req: NextRequest) {
     if (body.sort_order !== undefined) updates.sort_order = parseInt(String(body.sort_order), 10) || 0;
     if (body.is_active !== undefined) updates.is_active = !!body.is_active;
 
-    const { data, error } = await supabase
+    // RLS をバイパスしてサービスロールで UPDATE（tenant_id で必ずスコープ限定）
+    const admin = getSupabaseAdmin();
+    const { data, error } = await admin
       .from("menu_items")
       .update(updates)
       .eq("id", id)
@@ -157,7 +164,9 @@ export async function DELETE(req: NextRequest) {
     const id = (body.id ?? "").trim();
     if (!id) return apiValidationError("missing_id");
 
-    const { error } = await supabase
+    // RLS をバイパスしてサービスロールで論理削除（tenant_id で必ずスコープ限定）
+    const admin = getSupabaseAdmin();
+    const { error } = await admin
       .from("menu_items")
       .update({ is_active: false })
       .eq("id", id)
