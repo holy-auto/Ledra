@@ -22,7 +22,7 @@ import { createClient } from "@supabase/supabase-js";
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
-const DEMO_AGENT_ID = "00000000-demo-0000-0000-agent0000001";
+const DEMO_AGENT_ID = "00000000-0000-0000-0000-de0000000001";
 const DEMO_EMAIL = "demo@agent.ledra.test";
 const DEMO_PASSWORD = "Demo1234!";
 const DEMO_DISPLAY_NAME = "デモ 太郎";

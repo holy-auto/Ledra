@@ -23,7 +23,7 @@ do $$ begin
     default_commission_rate, commission_type,
     notes
   ) values (
-    '00000000-demo-0000-0000-agent0000001'::uuid,
+    '00000000-0000-0000-0000-de0000000001'::uuid,
     'デモ代理店株式会社',
     'demo-agent',
     'active',
@@ -242,7 +242,7 @@ do $$ begin
     sent_at, signed_at
   ) values (
     '20000000-0000-0000-0000-000000000001'::uuid,
-    '00000000-demo-0000-0000-agent0000001'::uuid,
+    '00000000-0000-0000-0000-de0000000001'::uuid,
     'agent_contract',
     '代理店基本契約書 2026年1月締結',
     'demo-cloudsign-doc-001',
@@ -263,7 +263,7 @@ do $$ begin
     sent_at, signed_at
   ) values (
     '20000000-0000-0000-0000-000000000002'::uuid,
-    '00000000-demo-0000-0000-agent0000001'::uuid,
+    '00000000-0000-0000-0000-de0000000001'::uuid,
     'nda',
     '秘密保持契約書（NDA）2026年4月',
     'demo-cloudsign-doc-002',
@@ -284,7 +284,7 @@ do $$ begin
     sent_at, signed_at
   ) values (
     '20000000-0000-0000-0000-000000000003'::uuid,
-    '00000000-demo-0000-0000-agent0000001'::uuid,
+    '00000000-0000-0000-0000-de0000000001'::uuid,
     'other',
     '追加サービス利用契約書（オプション機能）',
     'demo-cloudsign-doc-003',
