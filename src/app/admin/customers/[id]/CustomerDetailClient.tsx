@@ -70,40 +70,79 @@ export default function CustomerDetailClient({ customer: initial }: { customer: 
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1">
-            <label className="text-xs text-muted">顧客名 <span className="text-danger">*</span></label>
-            <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input-field" />
+            <label className="text-xs text-muted">
+              顧客名 <span className="text-danger">*</span>
+            </label>
+            <input
+              type="text"
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              className="input-field"
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">フリガナ</label>
-            <input type="text" value={form.name_kana} onChange={(e) => setForm({ ...form, name_kana: e.target.value })} className="input-field" />
+            <input
+              type="text"
+              value={form.name_kana}
+              onChange={(e) => setForm({ ...form, name_kana: e.target.value })}
+              className="input-field"
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">メールアドレス</label>
-            <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="input-field" />
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              className="input-field"
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">電話番号</label>
-            <input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="input-field" />
+            <input
+              type="tel"
+              value={form.phone}
+              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              className="input-field"
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">郵便番号</label>
-            <input type="text" value={form.postal_code} onChange={(e) => setForm({ ...form, postal_code: e.target.value })} className="input-field" />
+            <input
+              type="text"
+              value={form.postal_code}
+              onChange={(e) => setForm({ ...form, postal_code: e.target.value })}
+              className="input-field"
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">住所</label>
-            <input type="text" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="input-field" />
+            <input
+              type="text"
+              value={form.address}
+              onChange={(e) => setForm({ ...form, address: e.target.value })}
+              className="input-field"
+            />
           </div>
         </div>
         <div className="space-y-1">
           <label className="text-xs text-muted">備考</label>
-          <textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} className="input-field" rows={2} />
+          <textarea
+            value={form.note}
+            onChange={(e) => setForm({ ...form, note: e.target.value })}
+            className="input-field"
+            rows={2}
+          />
         </div>
         {msg && <div className={`text-sm ${msg.ok ? "text-success" : "text-danger"}`}>{msg.text}</div>}
         <div className="flex gap-3">
           <button type="button" className="btn-primary" disabled={saving || !form.name.trim()} onClick={handleSave}>
             {saving ? "更新中…" : "更新"}
           </button>
-          <button type="button" className="btn-ghost" onClick={() => setEditing(false)}>キャンセル</button>
+          <button type="button" className="btn-ghost" onClick={() => setEditing(false)}>
+            キャンセル
+          </button>
         </div>
       </section>
     );
@@ -116,11 +155,16 @@ export default function CustomerDetailClient({ customer: initial }: { customer: 
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">CUSTOMER INFO</div>
           <div className="mt-1 text-lg font-bold text-primary">{customer.name}</div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Link href={`/admin/certificates/new?customer_id=${customer.id}`} className="btn-primary text-xs">
             証明書発行を開始
           </Link>
-          <button type="button" className="btn-ghost text-xs" onClick={() => setEditing(true)}>編集</button>
+          <Link href={`/admin/invoices/new?customer_id=${customer.id}`} className="btn-secondary text-xs">
+            請求書を作成
+          </Link>
+          <button type="button" className="btn-ghost text-xs" onClick={() => setEditing(true)}>
+            編集
+          </button>
         </div>
       </div>
       {msg && <div className={`text-sm ${msg.ok ? "text-success" : "text-danger"}`}>{msg.text}</div>}

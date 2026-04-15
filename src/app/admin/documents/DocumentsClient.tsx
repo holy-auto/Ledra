@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
@@ -31,6 +32,10 @@ const emptyItem = (): DocumentItem => ({
 });
 
 export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilter?: string } = {}) {
+  const searchParams = useSearchParams();
+  const prefillCustomerId = searchParams.get("customer_id") ?? "";
+  const autoOpenForm = searchParams.get("create") === "1";
+
   const [typeFilter, setTypeFilter] = useState<string>(initialTypeFilter ?? "all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [activeTypeFilter, setActiveTypeFilter] = useState<string>(initialTypeFilter ?? "all");
@@ -44,21 +49,28 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
     return `/api/admin/documents?${params.toString()}`;
   })();
 
-  const { data: swrData, error: swrError, isLoading: loading, mutate } = useSWR<DocumentsData>(
-    swrKey,
-    fetcher,
-    { revalidateOnFocus: true, keepPreviousData: true, dedupingInterval: 2000 },
-  );
+  const {
+    data: swrData,
+    error: swrError,
+    isLoading: loading,
+    mutate,
+  } = useSWR<DocumentsData>(swrKey, fetcher, {
+    revalidateOnFocus: true,
+    keepPreviousData: true,
+    dedupingInterval: 2000,
+  });
 
   const docs = swrData?.documents ?? [];
   const stats = swrData?.stats ?? { total: 0, unpaid_amount: 0 };
   const err = swrError ? (swrError.message ?? "読み込みに失敗しました") : null;
 
   // Create form
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(autoOpenForm);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [formDocType, setFormDocType] = useState<DocType>("estimate");
+  const [formDocType, setFormDocType] = useState<DocType>(
+    initialTypeFilter && initialTypeFilter in DOC_TYPES ? (initialTypeFilter as DocType) : "estimate",
+  );
   const [formCustomerId, setFormCustomerId] = useState("");
   const [formRecipientName, setFormRecipientName] = useState("");
   const [formIssuedAt, setFormIssuedAt] = useState(new Date().toISOString().slice(0, 10));
@@ -92,13 +104,15 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
       const res = await fetch("/api/admin/menu-items?active_only=true", { cache: "no-store" });
       const j = await res.json().catch(() => null);
       if (res.ok && j?.items) {
-        setMenuItems(j.items.map((m: any) => ({
-          id: m.id,
-          name: m.name,
-          description: m.description,
-          unit_price: m.unit_price,
-          tax_category: m.tax_category,
-        })));
+        setMenuItems(
+          j.items.map((m: any) => ({
+            id: m.id,
+            name: m.name,
+            description: m.description,
+            unit_price: m.unit_price,
+            tax_category: m.tax_category,
+          })),
+        );
       }
     } catch {}
   }, []);
@@ -106,6 +120,18 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   useEffect(() => {
     Promise.all([fetchCustomers(), fetchMenuItems()]);
   }, [fetchCustomers, fetchMenuItems]);
+
+  // URL クエリ (customer_id) からの自動入力
+  // ワークフローや飛び込み案件の「見積書を作成」から遷移した際に、
+  // 下部フォームの顧客フィールドにも反映される。
+  const prefillAppliedRef = useRef(false);
+  useEffect(() => {
+    if (prefillAppliedRef.current) return;
+    if (!prefillCustomerId) return;
+    if (customers.length === 0) return; // 顧客マスター読込待ち
+    setFormCustomerId(prefillCustomerId);
+    prefillAppliedRef.current = true;
+  }, [customers, prefillCustomerId]);
 
   const handleFilterChange = (newType: string, newStatus: string) => {
     setTypeFilter(newType);
@@ -229,7 +255,10 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
           <button
             type="button"
             className="btn-primary"
-            onClick={() => { setShowForm(!showForm); setSaveMsg(null); }}
+            onClick={() => {
+              setShowForm(!showForm);
+              setSaveMsg(null);
+            }}
           >
             {showForm ? "閉じる" : "新規作成"}
           </button>
@@ -267,7 +296,9 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                 >
                   <option value="all">すべて</option>
                   {DOC_TYPE_LIST.map((dt) => (
-                    <option key={dt.value} value={dt.value}>{dt.label}</option>
+                    <option key={dt.value} value={dt.value}>
+                      {dt.label}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -279,18 +310,16 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                   onChange={(e) => handleFilterChange(typeFilter, e.target.value)}
                 >
                   {STATUS_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
                   ))}
                 </select>
               </div>
             </div>
           </section>
 
-          {saveMsg && (
-            <div className={`text-sm ${saveMsg.ok ? "text-success" : "text-danger"}`}>
-              {saveMsg.text}
-            </div>
-          )}
+          {saveMsg && <div className={`text-sm ${saveMsg.ok ? "text-success" : "text-danger"}`}>{saveMsg.text}</div>}
 
           {/* Create Form */}
           {showForm && (
@@ -309,7 +338,9 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                     onChange={(e) => setFormDocType(e.target.value as DocType)}
                   >
                     {DOC_TYPE_LIST.map((dt) => (
-                      <option key={dt.value} value={dt.value}>{dt.label}</option>
+                      <option key={dt.value} value={dt.value}>
+                        {dt.label}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -318,11 +349,16 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                   <select
                     className="select-field"
                     value={formCustomerId}
-                    onChange={(e) => { setFormCustomerId(e.target.value); if (e.target.value) setFormRecipientName(""); }}
+                    onChange={(e) => {
+                      setFormCustomerId(e.target.value);
+                      if (e.target.value) setFormRecipientName("");
+                    }}
                   >
                     <option value="">選択なし</option>
                     {customers.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -333,7 +369,10 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                     className="input-field"
                     placeholder="顧客未選択時に店舗名を直接入力"
                     value={formRecipientName}
-                    onChange={(e) => { setFormRecipientName(e.target.value); if (e.target.value) setFormCustomerId(""); }}
+                    onChange={(e) => {
+                      setFormRecipientName(e.target.value);
+                      if (e.target.value) setFormCustomerId("");
+                    }}
                   />
                 </div>
                 <div className="space-y-1">
@@ -424,7 +463,9 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                         <select
                           className="select-field py-1 text-xs mb-1"
                           value=""
-                          onChange={(e) => { if (e.target.value) handleMenuItemSelect(e.target.value, idx); }}
+                          onChange={(e) => {
+                            if (e.target.value) handleMenuItemSelect(e.target.value, idx);
+                          }}
                         >
                           <option value="">品目マスタから選択...</option>
                           {menuItems.map((mi) => (
@@ -450,7 +491,9 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                       />
                       <datalist id={`doc-menu-list-${idx}`}>
                         {menuItems.map((m) => (
-                          <option key={m.id} value={m.name}>{m.name} — ¥{(m.unit_price ?? 0).toLocaleString()}</option>
+                          <option key={m.id} value={m.name}>
+                            {m.name} — ¥{(m.unit_price ?? 0).toLocaleString()}
+                          </option>
                         ))}
                       </datalist>
                     </div>
@@ -524,18 +567,16 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
               </div>
 
               <div className="flex gap-3">
-                <button
-                  type="button"
-                  className="btn-primary"
-                  disabled={saving}
-                  onClick={handleCreate}
-                >
+                <button type="button" className="btn-primary" disabled={saving} onClick={handleCreate}>
                   {saving ? "作成中…" : "下書き作成"}
                 </button>
                 <button
                   type="button"
                   className="btn-ghost"
-                  onClick={() => { setShowForm(false); resetForm(); }}
+                  onClick={() => {
+                    setShowForm(false);
+                    resetForm();
+                  }}
                 >
                   キャンセル
                 </button>
@@ -554,10 +595,16 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                   <tr>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">種別</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">書類番号</th>
-                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">顧客名</th>
-                    <th className="hidden md:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">発行日</th>
+                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      顧客名
+                    </th>
+                    <th className="hidden md:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      発行日
+                    </th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">合計</th>
-                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">ステータス</th>
+                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      ステータス
+                    </th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">操作</th>
                   </tr>
                 </thead>
@@ -577,24 +624,19 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                           {doc.doc_number}
                         </Link>
                       </td>
-                      <td className="hidden sm:table-cell px-5 py-3.5 text-secondary">{doc.recipient_name || doc.customer_name || "-"}</td>
+                      <td className="hidden sm:table-cell px-5 py-3.5 text-secondary">
+                        {doc.recipient_name || doc.customer_name || "-"}
+                      </td>
                       <td className="hidden md:table-cell px-5 py-3.5 whitespace-nowrap text-secondary">
                         {formatDate(doc.issued_at)}
                       </td>
-                      <td className="px-5 py-3.5 font-medium text-primary">
-                        {formatJpy(doc.total)}
-                      </td>
+                      <td className="px-5 py-3.5 font-medium text-primary">{formatJpy(doc.total)}</td>
                       <td className="hidden sm:table-cell px-5 py-3.5">
-                        <Badge variant={statusVariant(doc.status)}>
-                          {statusLabel(doc.status)}
-                        </Badge>
+                        <Badge variant={statusVariant(doc.status)}>{statusLabel(doc.status)}</Badge>
                       </td>
                       <td className="px-5 py-3.5">
                         <div className="flex gap-2">
-                          <Link
-                            href={`/admin/documents/${doc.id}`}
-                            className="btn-ghost px-3 py-1 text-xs"
-                          >
+                          <Link href={`/admin/documents/${doc.id}`} className="btn-ghost px-3 py-1 text-xs">
                             詳細
                           </Link>
                           {doc.status === "draft" && (

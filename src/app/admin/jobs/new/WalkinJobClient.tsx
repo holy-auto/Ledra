@@ -33,8 +33,11 @@ export default function WalkinJobClient() {
   const [vehicleId, setVehicleId] = useState<string>("");
   const [estimatedAmount, setEstimatedAmount] = useState<number>(0);
   const [note, setNote] = useState("");
-  const [initialStatus, setInitialStatus] =
-    useState<"arrived" | "in_progress">("arrived");
+  const [initialStatus, setInitialStatus] = useState<"arrived" | "in_progress">("arrived");
+  // 飛び込み案件では「その場で作業」か「別日に作業 (＝まず見積書)」か
+  // 状況によって変わるため、都度選ばせる。未選択時は送信不可。
+  type EstimateChoice = "now" | "skip";
+  const [estimateChoice, setEstimateChoice] = useState<EstimateChoice | null>(null);
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -75,10 +78,9 @@ export default function WalkinJobClient() {
     }
     (async () => {
       try {
-        const res = await fetch(
-          `/api/admin/customers?action=vehicles&customer_id=${encodeURIComponent(customerId)}`,
-          { cache: "no-store" },
-        );
+        const res = await fetch(`/api/admin/customers?action=vehicles&customer_id=${encodeURIComponent(customerId)}`, {
+          cache: "no-store",
+        });
         const j = await res.json().catch(() => null);
         if (res.ok && j?.vehicles) {
           setVehicles(j.vehicles);
@@ -92,19 +94,17 @@ export default function WalkinJobClient() {
   const filteredCustomers = useMemo(() => {
     const q = customerQuery.trim().toLowerCase();
     if (!q) return customers.slice(0, 100);
-    return customers
-      .filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) ||
-          (c.phone && c.phone.includes(q)),
-      )
-      .slice(0, 100);
+    return customers.filter((c) => c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q))).slice(0, 100);
   }, [customers, customerQuery]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
       setErr("案件タイトルを入力してください");
+      return;
+    }
+    if (estimateChoice == null) {
+      setErr("見積書の扱いを選択してください");
       return;
     }
     setSubmitting(true);
@@ -127,8 +127,15 @@ export default function WalkinJobClient() {
       if (!res.ok || !j?.reservation?.id) {
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
-      // そのままワークフロー画面へ
-      router.push(`/admin/jobs/${j.reservation.id}`);
+      // 見積書を作成する場合: 帳票の見積書作成タブへ、顧客を引き継いで遷移。
+      // スキップする場合: そのままワークフロー画面へ。
+      if (estimateChoice === "now") {
+        const params = new URLSearchParams({ view: "estimate", create: "1" });
+        if (customerId) params.set("customer_id", customerId);
+        router.push(`/admin/invoices?${params.toString()}`);
+      } else {
+        router.push(`/admin/jobs/${j.reservation.id}`);
+      }
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
       setSubmitting(false);
@@ -139,8 +146,8 @@ export default function WalkinJobClient() {
     <form onSubmit={handleSubmit} className="space-y-5">
       <Card padding="compact" variant="inset">
         <p className="text-[13px] text-secondary leading-relaxed">
-          飛び込みの案件を即座にワークフローに乗せます。予約日は <strong>本日</strong>、
-          ステータスは「<strong>来店・受付</strong>」で作成され、そのまま作業を開始できます。
+          飛び込みの案件を即座にワークフローに乗せます。予約日は <strong>本日</strong>、 ステータスは「
+          <strong>来店・受付</strong>」で作成され、そのまま作業を開始できます。
           顧客・車両は後からでも紐付けできるので、空のままでも OK です。
         </p>
       </Card>
@@ -164,9 +171,7 @@ export default function WalkinJobClient() {
 
           {/* 初期ステータス */}
           <div className="space-y-1.5">
-            <span className="text-xs font-semibold text-secondary tracking-wide uppercase">
-              開始ステータス
-            </span>
+            <span className="text-xs font-semibold text-secondary tracking-wide uppercase">開始ステータス</span>
             <div className="flex gap-2">
               {(
                 [
@@ -185,9 +190,47 @@ export default function WalkinJobClient() {
                   }`}
                 >
                   <div>{s.label}</div>
-                  <div className="text-[11px] font-normal opacity-75 mt-0.5">
-                    {s.hint}
-                  </div>
+                  <div className="text-[11px] font-normal opacity-75 mt-0.5">{s.hint}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 見積書の扱い (都度選択) */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-semibold text-secondary tracking-wide uppercase">
+              見積書 <span className="text-danger">*</span>
+            </span>
+            <p className="text-[11px] text-muted">
+              飛び込み案件はその場作業か別日作業か都度異なるため、ここで選択してください。
+            </p>
+            <div className="flex gap-2 flex-wrap">
+              {(
+                [
+                  {
+                    k: "now",
+                    label: "📝 見積書を作成",
+                    hint: "別日に作業 / 事前に金額を提示する場合",
+                  },
+                  {
+                    k: "skip",
+                    label: "⏭ 見積もり不要",
+                    hint: "その場で作業するので見積書は作らない",
+                  },
+                ] as const
+              ).map((s) => (
+                <button
+                  key={s.k}
+                  type="button"
+                  onClick={() => setEstimateChoice(s.k)}
+                  className={`flex-1 min-w-[160px] rounded-xl border px-3 py-2.5 text-sm font-medium text-left transition-colors ${
+                    estimateChoice === s.k
+                      ? "border-accent bg-accent-dim text-accent-text"
+                      : "border-border-default bg-surface text-secondary hover:bg-surface-hover"
+                  }`}
+                >
+                  <div>{s.label}</div>
+                  <div className="text-[11px] font-normal opacity-75 mt-0.5">{s.hint}</div>
                 </button>
               ))}
             </div>
@@ -199,9 +242,7 @@ export default function WalkinJobClient() {
       <Card padding="default">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">
-              顧客・車両 (任意)
-            </div>
+            <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">顧客・車両 (任意)</div>
             <p className="text-[12px] text-secondary mt-0.5">
               あとからでも紐付けできます。飛び込みで情報がまだ無ければ空のまま進めて OK。
             </p>
@@ -218,9 +259,7 @@ export default function WalkinJobClient() {
         <div className="space-y-4">
           {/* 顧客検索 */}
           <label className="block space-y-1.5">
-            <span className="text-xs font-semibold text-secondary tracking-wide uppercase">
-              顧客
-            </span>
+            <span className="text-xs font-semibold text-secondary tracking-wide uppercase">顧客</span>
             <input
               type="text"
               value={customerQuery}
@@ -256,17 +295,11 @@ export default function WalkinJobClient() {
                     }`}
                   >
                     {c.name}
-                    {c.phone && (
-                      <span className="ml-2 text-xs text-muted">
-                        {c.phone}
-                      </span>
-                    )}
+                    {c.phone && <span className="ml-2 text-xs text-muted">{c.phone}</span>}
                   </button>
                 ))}
                 {filteredCustomers.length === 0 && (
-                  <div className="px-3 py-2 text-xs text-muted">
-                    該当する顧客がありません
-                  </div>
+                  <div className="px-3 py-2 text-xs text-muted">該当する顧客がありません</div>
                 )}
               </div>
             )}
@@ -275,9 +308,7 @@ export default function WalkinJobClient() {
           {/* 車両 */}
           {customerId && (
             <label className="block space-y-1.5">
-              <span className="text-xs font-semibold text-secondary tracking-wide uppercase">
-                車両
-              </span>
+              <span className="text-xs font-semibold text-secondary tracking-wide uppercase">車両</span>
               <select
                 value={vehicleId}
                 onChange={(e) => setVehicleId(e.target.value)}
@@ -286,17 +317,13 @@ export default function WalkinJobClient() {
                 <option value="">(車両を紐付けない)</option>
                 {vehicles.map((v) => (
                   <option key={v.id} value={v.id}>
-                    {[v.maker, v.model, v.year ? `${v.year}年` : null]
-                      .filter(Boolean)
-                      .join(" ")}
+                    {[v.maker, v.model, v.year ? `${v.year}年` : null].filter(Boolean).join(" ")}
                     {v.plate_display ? ` / ${v.plate_display}` : ""}
                   </option>
                 ))}
               </select>
               {vehicles.length === 0 && (
-                <div className="text-xs text-muted">
-                  この顧客に紐付く車両が登録されていません。後から追加できます。
-                </div>
+                <div className="text-xs text-muted">この顧客に紐付く車両が登録されていません。後から追加できます。</div>
               )}
             </label>
           )}
@@ -307,9 +334,7 @@ export default function WalkinJobClient() {
       <Card padding="default">
         <div className="space-y-4">
           <label className="block space-y-1.5">
-            <span className="text-xs font-semibold text-secondary tracking-wide uppercase">
-              概算金額 (円)
-            </span>
+            <span className="text-xs font-semibold text-secondary tracking-wide uppercase">概算金額 (円)</span>
             <input
               type="number"
               min={0}
@@ -321,9 +346,7 @@ export default function WalkinJobClient() {
             />
           </label>
           <label className="block space-y-1.5">
-            <span className="text-xs font-semibold text-secondary tracking-wide uppercase">
-              備考
-            </span>
+            <span className="text-xs font-semibold text-secondary tracking-wide uppercase">備考</span>
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -336,9 +359,7 @@ export default function WalkinJobClient() {
       </Card>
 
       {err && (
-        <div className="rounded-xl border border-danger/20 bg-danger-dim px-4 py-3 text-sm text-danger-text">
-          {err}
-        </div>
+        <div className="rounded-xl border border-danger/20 bg-danger-dim px-4 py-3 text-sm text-danger-text">{err}</div>
       )}
 
       <div className="flex items-center justify-between gap-3">
@@ -347,10 +368,16 @@ export default function WalkinJobClient() {
         </Link>
         <button
           type="submit"
-          disabled={submitting || !title.trim()}
+          disabled={submitting || !title.trim() || estimateChoice == null}
           className="btn-primary px-6 py-2.5 disabled:opacity-50"
         >
-          {submitting ? "作成中..." : "🧭 案件を開始 →"}
+          {submitting
+            ? "作成中..."
+            : estimateChoice === "now"
+              ? "🧭 案件を開始 → 見積書作成へ"
+              : estimateChoice === "skip"
+                ? "🧭 案件を開始 →"
+                : "🧭 案件を開始 →"}
         </button>
       </div>
     </form>

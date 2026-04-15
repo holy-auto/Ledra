@@ -295,9 +295,14 @@ export default function ReservationsClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ workflow_template_id: workflowTemplateId }),
       });
-      if (!res.ok) throw new Error("Failed");
-      mutate();
-      setDetailId(null);
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.error ?? "Failed");
+      // ワークフロー開始直後にドロワーを閉じずに、そのままステッパーを表示させる。
+      // 返却された steps を即座に反映して「次へ」ボタンで来店→証明書発行→会計と進行できるようにする。
+      if (Array.isArray(j?.steps)) setDetailSteps(j.steps);
+      setDetailStepLogs([]);
+      setWorkflowTemplateId("");
+      await mutate();
     } catch (e: unknown) {
       alert("ワークフロー開始に失敗: " + (e instanceof Error ? e.message : String(e)));
     }

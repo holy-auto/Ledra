@@ -148,13 +148,7 @@ interface Props {
   documents: Document[];
 }
 
-export default function JobWorkflowClient({
-  reservation,
-  customer,
-  vehicle,
-  certificates,
-  documents,
-}: Props) {
+export default function JobWorkflowClient({ reservation, customer, vehicle, certificates, documents }: Props) {
   const router = useRouter();
   const [tab, setTab] = useState<TabKey>("summary");
   const [busy, setBusy] = useState(false);
@@ -162,53 +156,40 @@ export default function JobWorkflowClient({
 
   const currentStatus = reservation.status;
   const isCancelled = currentStatus === "cancelled";
-  const currentIndex = STATUS_FLOW.indexOf(
-    currentStatus as (typeof STATUS_FLOW)[number],
-  );
-  const nextStatus =
-    currentIndex >= 0 && currentIndex < STATUS_FLOW.length - 1
-      ? STATUS_FLOW[currentIndex + 1]
-      : null;
+  const currentIndex = STATUS_FLOW.indexOf(currentStatus as (typeof STATUS_FLOW)[number]);
+  const nextStatus = currentIndex >= 0 && currentIndex < STATUS_FLOW.length - 1 ? STATUS_FLOW[currentIndex + 1] : null;
 
-  const menuItems: MenuItem[] = Array.isArray(reservation.menu_items_json)
-    ? reservation.menu_items_json
-    : [];
+  const menuItems: MenuItem[] = Array.isArray(reservation.menu_items_json) ? reservation.menu_items_json : [];
 
   const invoices = useMemo(
-    () =>
-      documents.filter((d) =>
-        ["invoice", "consolidated_invoice"].includes(d.doc_type),
-      ),
+    () => documents.filter((d) => ["invoice", "consolidated_invoice"].includes(d.doc_type)),
     [documents],
   );
-  const estimates = useMemo(
-    () => documents.filter((d) => d.doc_type === "estimate"),
-    [documents],
-  );
+  const estimates = useMemo(() => documents.filter((d) => d.doc_type === "estimate"), [documents]);
   const otherDocs = useMemo(
-    () =>
-      documents.filter(
-        (d) =>
-          !["invoice", "consolidated_invoice", "estimate"].includes(d.doc_type),
-      ),
+    () => documents.filter((d) => !["invoice", "consolidated_invoice", "estimate"].includes(d.doc_type)),
     [documents],
   );
 
   const hasActiveCertificate = certificates.some((c) => c.status === "active");
   const hasPaidInvoice = invoices.some((d) => d.status === "paid");
 
-  async function advanceStatus(target: string) {
+  async function advanceStatus(_target?: string) {
+    // /advance エンドポイントに寄せる。
+    // - テンプレート設定済み: 現在ステップを完了 → 次ステップ開始。is_customer_visible
+    //   なステップであれば LINE 通知 (sendProgressUpdate) が自動で発火する。
+    // - テンプレート未設定: レガシーフロー (confirmed→arrived→in_progress→completed) を
+    //   エンドポイント側が内部で処理するので、呼び出し側は単に叩くだけで OK。
     setBusy(true);
     setErr(null);
     try {
-      const res = await fetch("/api/admin/reservations", {
-        method: "PUT",
+      const res = await fetch(`/api/admin/reservations/${reservation.id}/advance`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: reservation.id, status: target }),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => null);
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        throw new Error(j?.error ?? j?.message ?? `HTTP ${res.status}`);
       }
       router.refresh();
     } catch (e: unknown) {
@@ -222,16 +203,19 @@ export default function JobWorkflowClient({
   const certificateNewUrl = (() => {
     const params = new URLSearchParams();
     if (reservation.vehicle_id) params.set("vehicle_id", reservation.vehicle_id);
-    if (reservation.customer_id)
-      params.set("customer_id", reservation.customer_id);
+    if (reservation.customer_id) params.set("customer_id", reservation.customer_id);
     const qs = params.toString();
     return `/admin/certificates/new${qs ? `?${qs}` : ""}`;
   })();
 
-  // 請求書作成 URL (顧客を引き継ぎ)
-  const invoiceNewUrl = reservation.customer_id
-    ? `/admin/invoices/new?customer_id=${reservation.customer_id}`
-    : `/admin/invoices/new`;
+  // 請求書作成 URL (顧客・車両を引き継ぎ、新規作成フォームを自動で開く)
+  const invoiceNewUrl = (() => {
+    const params = new URLSearchParams();
+    if (reservation.customer_id) params.set("customer_id", reservation.customer_id);
+    if (reservation.vehicle_id) params.set("vehicle_id", reservation.vehicle_id);
+    const qs = params.toString();
+    return `/admin/invoices/new${qs ? `?${qs}` : ""}`;
+  })();
 
   return (
     <div className="space-y-6">
@@ -239,24 +223,12 @@ export default function JobWorkflowClient({
       <Card padding="default">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="space-y-1">
-            <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">
-              Status
-            </div>
+            <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">Status</div>
             <div className="flex items-center gap-2">
-              <Badge
-                variant={
-                  isCancelled
-                    ? "danger"
-                    : currentStatus === "completed"
-                      ? "success"
-                      : "info"
-                }
-              >
+              <Badge variant={isCancelled ? "danger" : currentStatus === "completed" ? "success" : "info"}>
                 {STATUS_LABEL[currentStatus] ?? currentStatus}
               </Badge>
-              <span className="text-[13px] text-secondary">
-                {STATUS_HINT[currentStatus] ?? ""}
-              </span>
+              <span className="text-[13px] text-secondary">{STATUS_HINT[currentStatus] ?? ""}</span>
             </div>
           </div>
           {nextStatus && !isCancelled && (
@@ -276,10 +248,7 @@ export default function JobWorkflowClient({
             const active = !isCancelled && i === currentIndex;
             const done = !isCancelled && i < currentIndex;
             return (
-              <li
-                key={s}
-                className="flex items-center gap-2 whitespace-nowrap"
-              >
+              <li key={s} className="flex items-center gap-2 whitespace-nowrap">
                 <div
                   className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${
                     active
@@ -294,9 +263,7 @@ export default function JobWorkflowClient({
                   </span>
                   {STATUS_LABEL[s]}
                 </div>
-                {i < STATUS_FLOW.length - 1 && (
-                  <span className="text-muted">→</span>
-                )}
+                {i < STATUS_FLOW.length - 1 && <span className="text-muted">→</span>}
               </li>
             );
           })}
@@ -311,52 +278,33 @@ export default function JobWorkflowClient({
 
       {/* ─── Quick Actions ─────────────────────────────── */}
       <Card padding="default">
-        <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase mb-3">
-          Next Actions
-        </div>
+        <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase mb-3">Next Actions</div>
         <div className="flex flex-wrap gap-2">
           <Link
             href={certificateNewUrl}
-            className={`btn-primary text-sm px-4 py-2 ${
-              hasActiveCertificate ? "opacity-60" : ""
-            }`}
+            className={`btn-primary text-sm px-4 py-2 ${hasActiveCertificate ? "opacity-60" : ""}`}
           >
             🪪 証明書を発行
-            {hasActiveCertificate && (
-              <span className="ml-2 text-[10px]">(発行済)</span>
-            )}
+            {hasActiveCertificate && <span className="ml-2 text-[10px]">(発行済)</span>}
           </Link>
           <Link
             href={invoiceNewUrl}
-            className={`btn-secondary text-sm px-4 py-2 ${
-              hasPaidInvoice ? "opacity-60" : ""
-            }`}
+            className={`btn-secondary text-sm px-4 py-2 ${hasPaidInvoice ? "opacity-60" : ""}`}
           >
             💰 請求書を作成
-            {hasPaidInvoice && (
-              <span className="ml-2 text-[10px]">(入金済あり)</span>
-            )}
+            {hasPaidInvoice && <span className="ml-2 text-[10px]">(入金済あり)</span>}
           </Link>
           {reservation.customer_id && (
-            <Link
-              href={`/admin/customers/${reservation.customer_id}`}
-              className="btn-secondary text-sm px-4 py-2"
-            >
+            <Link href={`/admin/customers/${reservation.customer_id}`} className="btn-secondary text-sm px-4 py-2">
               👤 顧客詳細
             </Link>
           )}
           {reservation.vehicle_id && (
-            <Link
-              href={`/admin/vehicles/${reservation.vehicle_id}`}
-              className="btn-secondary text-sm px-4 py-2"
-            >
+            <Link href={`/admin/vehicles/${reservation.vehicle_id}`} className="btn-secondary text-sm px-4 py-2">
               🚗 車両詳細
             </Link>
           )}
-          <Link
-            href={`/admin/reservations?focus=${reservation.id}`}
-            className="btn-secondary text-sm px-4 py-2"
-          >
+          <Link href={`/admin/reservations?focus=${reservation.id}`} className="btn-secondary text-sm px-4 py-2">
             📅 予約画面で編集
           </Link>
         </div>
@@ -379,9 +327,7 @@ export default function JobWorkflowClient({
             key={t.k}
             onClick={() => setTab(t.k)}
             className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
-              tab === t.k
-                ? "border-accent text-primary"
-                : "border-transparent text-secondary hover:text-primary"
+              tab === t.k ? "border-accent text-primary" : "border-transparent text-secondary hover:text-primary"
             }`}
           >
             {t.label}
@@ -393,15 +339,11 @@ export default function JobWorkflowClient({
       {tab === "summary" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Card padding="default">
-            <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">
-              予約内容
-            </div>
+            <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">予約内容</div>
             <dl className="mt-3 space-y-2 text-sm">
               <div className="flex justify-between">
                 <dt className="text-secondary">予約日</dt>
-                <dd className="text-primary font-medium">
-                  {formatDate(reservation.scheduled_date)}
-                </dd>
+                <dd className="text-primary font-medium">{formatDate(reservation.scheduled_date)}</dd>
               </div>
               <div className="flex justify-between">
                 <dt className="text-secondary">時間</dt>
@@ -412,9 +354,7 @@ export default function JobWorkflowClient({
               </div>
               <div className="flex justify-between">
                 <dt className="text-secondary">概算金額</dt>
-                <dd className="text-primary font-semibold">
-                  {formatJpy(reservation.estimated_amount)}
-                </dd>
+                <dd className="text-primary font-semibold">{formatJpy(reservation.estimated_amount)}</dd>
               </div>
               {reservation.note && (
                 <div>
@@ -440,9 +380,7 @@ export default function JobWorkflowClient({
               メニュー ({menuItems.length})
             </div>
             {menuItems.length === 0 ? (
-              <div className="mt-4 text-sm text-muted">
-                メニューは登録されていません
-              </div>
+              <div className="mt-4 text-sm text-muted">メニューは登録されていません</div>
             ) : (
               <ul className="mt-3 divide-y divide-border-subtle">
                 {menuItems.map((m, i) => (
@@ -465,14 +403,9 @@ export default function JobWorkflowClient({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Card padding="default">
             <div className="flex items-center justify-between">
-              <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">
-                顧客
-              </div>
+              <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">顧客</div>
               {customer && (
-                <Link
-                  href={`/admin/customers/${customer.id}`}
-                  className="text-xs text-accent hover:underline"
-                >
+                <Link href={`/admin/customers/${customer.id}`} className="text-xs text-accent hover:underline">
                   詳細を開く →
                 </Link>
               )}
@@ -503,22 +436,15 @@ export default function JobWorkflowClient({
                 )}
               </dl>
             ) : (
-              <div className="mt-4 text-sm text-muted">
-                顧客は紐付いていません
-              </div>
+              <div className="mt-4 text-sm text-muted">顧客は紐付いていません</div>
             )}
           </Card>
 
           <Card padding="default">
             <div className="flex items-center justify-between">
-              <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">
-                車両
-              </div>
+              <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">車両</div>
               {vehicle && (
-                <Link
-                  href={`/admin/vehicles/${vehicle.id}`}
-                  className="text-xs text-accent hover:underline"
-                >
+                <Link href={`/admin/vehicles/${vehicle.id}`} className="text-xs text-accent hover:underline">
                   詳細を開く →
                 </Link>
               )}
@@ -546,16 +472,12 @@ export default function JobWorkflowClient({
                 {vehicle.vin && (
                   <div className="flex justify-between">
                     <dt className="text-secondary">車台番号</dt>
-                    <dd className="text-primary font-mono text-[12px]">
-                      {vehicle.vin}
-                    </dd>
+                    <dd className="text-primary font-mono text-[12px]">{vehicle.vin}</dd>
                   </div>
                 )}
               </dl>
             ) : (
-              <div className="mt-4 text-sm text-muted">
-                車両は紐付いていません
-              </div>
+              <div className="mt-4 text-sm text-muted">車両は紐付いていません</div>
             )}
           </Card>
         </div>
@@ -566,44 +488,27 @@ export default function JobWorkflowClient({
         <Card padding="none">
           <div className="flex items-center justify-between border-b border-border-subtle p-5">
             <div>
-              <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">
-                Certificates
-              </div>
-              <div className="mt-1 text-base font-semibold text-primary">
-                紐付き証明書 ({certificates.length}件)
-              </div>
+              <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">Certificates</div>
+              <div className="mt-1 text-base font-semibold text-primary">紐付き証明書 ({certificates.length}件)</div>
             </div>
-            <Link
-              href={certificateNewUrl}
-              className="btn-primary text-xs px-3 py-1.5"
-            >
+            <Link href={certificateNewUrl} className="btn-primary text-xs px-3 py-1.5">
               + 新規発行
             </Link>
           </div>
           {certificates.length === 0 ? (
-            <div className="p-8 text-center text-sm text-muted">
-              この車両・顧客に紐付く証明書はまだありません
-            </div>
+            <div className="p-8 text-center text-sm text-muted">この車両・顧客に紐付く証明書はまだありません</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="bg-surface-hover">
                   <tr>
-                    <th className="px-5 py-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">
-                      証明書ID
-                    </th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">証明書ID</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">
                       ステータス
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">
-                      顧客名
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">
-                      施工料金
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">
-                      発行日
-                    </th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">顧客名</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">施工料金</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">発行日</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border-subtle">
@@ -618,19 +523,11 @@ export default function JobWorkflowClient({
                         </Link>
                       </td>
                       <td className="px-5 py-3.5">
-                        <Badge variant={certStatusVariant(cert.status)}>
-                          {cert.status}
-                        </Badge>
+                        <Badge variant={certStatusVariant(cert.status)}>{cert.status}</Badge>
                       </td>
-                      <td className="px-5 py-3.5 text-secondary">
-                        {cert.customer_name ?? "-"}
-                      </td>
-                      <td className="px-5 py-3.5 text-secondary">
-                        {formatJpy(cert.service_price)}
-                      </td>
-                      <td className="px-5 py-3.5 whitespace-nowrap text-secondary">
-                        {formatDate(cert.created_at)}
-                      </td>
+                      <td className="px-5 py-3.5 text-secondary">{cert.customer_name ?? "-"}</td>
+                      <td className="px-5 py-3.5 text-secondary">{formatJpy(cert.service_price)}</td>
+                      <td className="px-5 py-3.5 whitespace-nowrap text-secondary">{formatDate(cert.created_at)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -646,24 +543,15 @@ export default function JobWorkflowClient({
           <Card padding="none">
             <div className="flex items-center justify-between border-b border-border-subtle p-5">
               <div>
-                <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">
-                  Invoices
-                </div>
-                <div className="mt-1 text-base font-semibold text-primary">
-                  請求書 ({invoices.length}件)
-                </div>
+                <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">Invoices</div>
+                <div className="mt-1 text-base font-semibold text-primary">請求書 ({invoices.length}件)</div>
               </div>
-              <Link
-                href={invoiceNewUrl}
-                className="btn-primary text-xs px-3 py-1.5"
-              >
+              <Link href={invoiceNewUrl} className="btn-primary text-xs px-3 py-1.5">
                 + 請求書作成
               </Link>
             </div>
             {invoices.length === 0 ? (
-              <div className="p-8 text-center text-sm text-muted">
-                この顧客宛の請求書はまだありません
-              </div>
+              <div className="p-8 text-center text-sm text-muted">この顧客宛の請求書はまだありません</div>
             ) : (
               <DocTable docs={invoices} />
             )}
@@ -672,18 +560,12 @@ export default function JobWorkflowClient({
           <Card padding="none">
             <div className="flex items-center justify-between border-b border-border-subtle p-5">
               <div>
-                <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">
-                  Estimates
-                </div>
-                <div className="mt-1 text-base font-semibold text-primary">
-                  見積書 ({estimates.length}件)
-                </div>
+                <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">Estimates</div>
+                <div className="mt-1 text-base font-semibold text-primary">見積書 ({estimates.length}件)</div>
               </div>
             </div>
             {estimates.length === 0 ? (
-              <div className="p-8 text-center text-sm text-muted">
-                見積書はありません
-              </div>
+              <div className="p-8 text-center text-sm text-muted">見積書はありません</div>
             ) : (
               <DocTable docs={estimates} />
             )}
@@ -692,12 +574,8 @@ export default function JobWorkflowClient({
           {otherDocs.length > 0 && (
             <Card padding="none">
               <div className="border-b border-border-subtle p-5">
-                <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">
-                  Other Documents
-                </div>
-                <div className="mt-1 text-base font-semibold text-primary">
-                  その他書類 ({otherDocs.length}件)
-                </div>
+                <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">Other Documents</div>
+                <div className="mt-1 text-base font-semibold text-primary">その他書類 ({otherDocs.length}件)</div>
               </div>
               <DocTable docs={otherDocs} />
             </Card>
@@ -714,54 +592,29 @@ function DocTable({ docs }: { docs: Document[] }) {
       <table className="min-w-full text-sm">
         <thead className="bg-surface-hover">
           <tr>
-            <th className="px-5 py-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">
-              番号
-            </th>
-            <th className="px-5 py-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">
-              種類
-            </th>
-            <th className="px-5 py-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">
-              ステータス
-            </th>
-            <th className="px-5 py-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">
-              合計
-            </th>
-            <th className="px-5 py-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">
-              発行日
-            </th>
-            <th className="px-5 py-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">
-              期限
-            </th>
+            <th className="px-5 py-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">番号</th>
+            <th className="px-5 py-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">種類</th>
+            <th className="px-5 py-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">ステータス</th>
+            <th className="px-5 py-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">合計</th>
+            <th className="px-5 py-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">発行日</th>
+            <th className="px-5 py-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">期限</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border-subtle">
           {docs.map((d) => (
             <tr key={d.id} className="hover:bg-surface-hover/60">
               <td className="px-5 py-3.5">
-                <Link
-                  href={`/admin/invoices/${d.id}`}
-                  className="font-mono text-accent underline hover:text-accent"
-                >
+                <Link href={`/admin/invoices/${d.id}`} className="font-mono text-accent underline hover:text-accent">
                   {d.doc_number ?? d.id.slice(0, 8)}
                 </Link>
               </td>
-              <td className="px-5 py-3.5 text-secondary">
-                {DOC_TYPE_LABEL[d.doc_type] ?? d.doc_type}
-              </td>
+              <td className="px-5 py-3.5 text-secondary">{DOC_TYPE_LABEL[d.doc_type] ?? d.doc_type}</td>
               <td className="px-5 py-3.5">
-                <Badge variant={docStatusVariant(d.status)}>
-                  {DOC_STATUS_LABEL[d.status] ?? d.status}
-                </Badge>
+                <Badge variant={docStatusVariant(d.status)}>{DOC_STATUS_LABEL[d.status] ?? d.status}</Badge>
               </td>
-              <td className="px-5 py-3.5 font-medium text-primary">
-                {formatJpy(d.total)}
-              </td>
-              <td className="px-5 py-3.5 whitespace-nowrap text-secondary">
-                {formatDate(d.issued_at)}
-              </td>
-              <td className="px-5 py-3.5 whitespace-nowrap text-secondary">
-                {formatDate(d.due_date)}
-              </td>
+              <td className="px-5 py-3.5 font-medium text-primary">{formatJpy(d.total)}</td>
+              <td className="px-5 py-3.5 whitespace-nowrap text-secondary">{formatDate(d.issued_at)}</td>
+              <td className="px-5 py-3.5 whitespace-nowrap text-secondary">{formatDate(d.due_date)}</td>
             </tr>
           ))}
         </tbody>

@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
     let query = supabase
       .from("reservations")
       .select(
-        "id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, status, estimated_amount, created_at",
+        "id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, status, estimated_amount, created_at, workflow_template_id, current_step_key, current_step_order, progress_pct",
         { count: "exact" },
       )
       .eq("tenant_id", caller.tenantId)
