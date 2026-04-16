@@ -13,32 +13,30 @@
  * 6. LINE/メール通知送信
  */
 
-import { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { resolveCallerWithRole } from '@/lib/auth/checkRole';
-import { apiOk, apiError, apiUnauthorized } from '@/lib/api/response';
-import { createSignatureSession, getExistingPendingSession } from '@/lib/signature/session';
-import { generateCertificatePdfBytes } from '@/lib/signature/pdfUtils';
-import { escapeHtml } from '@/lib/sanitize';
-import type { SignatureRequestBody } from '@/lib/signature/types';
+import { NextRequest } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { apiOk, apiError, apiUnauthorized } from "@/lib/api/response";
+import { createSignatureSession, getExistingPendingSession } from "@/lib/signature/session";
+import { generateCertificatePdfBytes } from "@/lib/signature/pdfUtils";
+import { escapeHtml } from "@/lib/sanitize";
+import type { SignatureRequestBody } from "@/lib/signature/types";
 
 async function sendSignatureRequestEmail(params: {
-  to:         string;
+  to: string;
   signerName: string | null;
-  shopName:   string;
-  signUrl:    string;
-  expiresAt:  string;
+  shopName: string;
+  signUrl: string;
+  expiresAt: string;
 }): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
-  const from   = process.env.RESEND_FROM;
+  const from = process.env.RESEND_FROM;
   if (!apiKey || !from) return;
 
-  const name    = escapeHtml(params.signerName ?? 'お客様');
-  const shop    = escapeHtml(params.shopName);
+  const name = escapeHtml(params.signerName ?? "お客様");
+  const shop = escapeHtml(params.shopName);
   const signUrl = params.signUrl;
-  const expires = escapeHtml(
-    new Date(params.expiresAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }),
-  );
+  const expires = escapeHtml(new Date(params.expiresAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }));
 
   const html = `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;padding:24px;">
@@ -66,24 +64,24 @@ async function sendSignatureRequestEmail(params: {
   `;
 
   try {
-    await fetch('https://api.resend.com/emails', {
-      method:  'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ from, to: params.to, subject: `[${shop}] 施工証明書への電子署名のお願い`, html }),
+    await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to: params.to, subject: `[${shop}] 施工証明書への電子署名のお願い`, html }),
     });
   } catch (err) {
-    console.error('[signature/request] Email send failed:', err);
+    console.error("[signature/request] Email send failed:", err);
   }
 }
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-const SIGN_BASE_URL = process.env.NEXT_PUBLIC_SIGN_BASE_URL ?? '/sign';
+const SIGN_BASE_URL = process.env.NEXT_PUBLIC_SIGN_BASE_URL ?? "/sign";
 
 export async function POST(req: NextRequest) {
   // 1. 認証チェック
   const supabase = await createClient();
-  const caller   = await resolveCallerWithRole(supabase);
+  const caller = await resolveCallerWithRole(supabase);
   if (!caller) return apiUnauthorized();
 
   const body: SignatureRequestBody = await req.json();
@@ -91,25 +89,25 @@ export async function POST(req: NextRequest) {
 
   if (!certificate_id) {
     return apiError({
-      code:    'validation_error',
-      message: 'certificate_id は必須です',
-      status:  400,
+      code: "validation_error",
+      message: "certificate_id は必須です",
+      status: 400,
     });
   }
 
   // 2. 証明書の存在確認・テナント境界チェック
   const { data: cert, error: certError } = await supabase
-    .from('certificates')
-    .select('id, tenant_id, public_id')
-    .eq('id', certificate_id)
-    .eq('tenant_id', caller.tenantId)
+    .from("certificates")
+    .select("id, tenant_id, public_id")
+    .eq("id", certificate_id)
+    .eq("tenant_id", caller.tenantId)
     .single();
 
   if (certError || !cert) {
     return apiError({
-      code:    'not_found',
-      message: '証明書が見つからないか、アクセス権がありません',
-      status:  404,
+      code: "not_found",
+      message: "証明書が見つからないか、アクセス権がありません",
+      status: 404,
     });
   }
 
@@ -118,11 +116,11 @@ export async function POST(req: NextRequest) {
   if (existing) {
     const signUrl = `${SIGN_BASE_URL}/${existing.token}`;
     return apiOk({
-      session_id:  existing.id,
-      sign_url:    signUrl,
-      expires_at:  existing.expires_at,
+      session_id: existing.id,
+      sign_url: signUrl,
+      expires_at: existing.expires_at,
       is_existing: true,
-      message:     '有効な署名依頼がすでに存在します',
+      message: "有効な署名依頼がすでに存在します",
     });
   }
 
@@ -131,11 +129,11 @@ export async function POST(req: NextRequest) {
   try {
     pdfBytes = await generateCertificatePdfBytes(certificate_id);
   } catch (err) {
-    console.error('[signature/request] PDF generation failed:', err);
+    console.error("[signature/request] PDF generation failed:", err);
     return apiError({
-      code:    'internal_error',
-      message: 'PDF の生成に失敗しました',
-      status:  500,
+      code: "internal_error",
+      message: "PDF の生成に失敗しました",
+      status: 500,
     });
   }
 
@@ -144,20 +142,20 @@ export async function POST(req: NextRequest) {
   try {
     session = await createSignatureSession({
       certificate_id,
-      tenant_id:           caller.tenantId,
-      created_by:          caller.userId,
-      signer_name:         signer_name,
-      signer_email:        signer_email,
-      signer_phone:        signer_phone,
-      notification_method: notification_method ?? 'line',
-      pdf_bytes:           pdfBytes,
+      tenant_id: caller.tenantId,
+      created_by: caller.userId,
+      signer_name: signer_name,
+      signer_email: signer_email,
+      signer_phone: signer_phone,
+      notification_method: notification_method ?? "line",
+      pdf_bytes: pdfBytes,
     });
   } catch (err) {
-    console.error('[signature/request] Session creation failed:', err);
+    console.error("[signature/request] Session creation failed:", err);
     return apiError({
-      code:    'db_error',
-      message: '署名セッションの作成に失敗しました',
-      status:  500,
+      code: "db_error",
+      message: "署名セッションの作成に失敗しました",
+      status: 500,
     });
   }
 
@@ -167,25 +165,21 @@ export async function POST(req: NextRequest) {
   let notified = false;
   if (signer_email) {
     // テナント名を取得して送信者名として使用
-    const { data: tenant } = await supabase
-      .from('tenants')
-      .select('name')
-      .eq('id', caller.tenantId)
-      .single();
+    const { data: tenant } = await supabase.from("tenants").select("name").eq("id", caller.tenantId).single();
 
     void sendSignatureRequestEmail({
-      to:         signer_email,
+      to: signer_email,
       signerName: signer_name ?? null,
-      shopName:   tenant?.name ?? 'Ledra',
+      shopName: tenant?.name ?? "Ledra",
       signUrl,
-      expiresAt:  session.expires_at,
+      expiresAt: session.expires_at,
     });
     notified = true;
   }
 
   return apiOk({
     session_id: session.id,
-    sign_url:   signUrl,
+    sign_url: signUrl,
     expires_at: session.expires_at,
     notified,
   });

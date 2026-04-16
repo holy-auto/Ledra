@@ -13,12 +13,12 @@ async function sendPayoutFailedEmail(params: {
   failureMessage: string | null;
 }): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
-  const from   = process.env.RESEND_FROM;
+  const from = process.env.RESEND_FROM;
   if (!apiKey || !from) return;
 
-  const name    = escapeHtml(params.recipientName);
-  const amount  = (params.amount / 100).toLocaleString("ja-JP");
-  const reason  = escapeHtml(params.failureMessage ?? params.failureCode ?? "不明なエラー");
+  const name = escapeHtml(params.recipientName);
+  const amount = (params.amount / 100).toLocaleString("ja-JP");
+  const reason = escapeHtml(params.failureMessage ?? params.failureCode ?? "不明なエラー");
 
   const html = `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;padding:24px;">
@@ -46,9 +46,9 @@ async function sendPayoutFailedEmail(params: {
 
   try {
     await fetch("https://api.resend.com/emails", {
-      method:  "POST",
+      method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body:    JSON.stringify({ from, to: params.to, subject: "[Ledra] 振込処理が失敗しました", html }),
+      body: JSON.stringify({ from, to: params.to, subject: "[Ledra] 振込処理が失敗しました", html }),
     });
   } catch (err) {
     console.error("connect-webhook: payout failed email error:", err);
@@ -287,11 +287,11 @@ export async function POST(req: NextRequest) {
                 .single();
               if (tenant?.contact_email) {
                 await sendPayoutFailedEmail({
-                  to:             tenant.contact_email,
-                  recipientName:  tenant.name ?? "店舗",
-                  payoutId:       payout.id,
-                  amount:         payout.amount,
-                  failureCode:    payout.failure_code ?? null,
+                  to: tenant.contact_email,
+                  recipientName: tenant.name ?? "店舗",
+                  payoutId: payout.id,
+                  amount: payout.amount,
+                  failureCode: payout.failure_code ?? null,
                   failureMessage: payout.failure_message ?? null,
                 });
               }
@@ -303,11 +303,11 @@ export async function POST(req: NextRequest) {
                 .single();
               if (agent?.contact_email) {
                 await sendPayoutFailedEmail({
-                  to:             agent.contact_email,
-                  recipientName:  agent.name ?? "代理店",
-                  payoutId:       payout.id,
-                  amount:         payout.amount,
-                  failureCode:    payout.failure_code ?? null,
+                  to: agent.contact_email,
+                  recipientName: agent.name ?? "代理店",
+                  payoutId: payout.id,
+                  amount: payout.amount,
+                  failureCode: payout.failure_code ?? null,
                   failureMessage: payout.failure_message ?? null,
                 });
               }

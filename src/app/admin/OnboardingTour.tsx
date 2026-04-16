@@ -58,7 +58,8 @@ export default function OnboardingTour() {
             element: "nav ul",
             popover: {
               title: "サイドバーナビゲーション",
-              description: "ここから各機能にアクセスできます。証明書、車両管理、顧客管理など、すべての操作はここから始まります。",
+              description:
+                "ここから各機能にアクセスできます。証明書、車両管理、顧客管理など、すべての操作はここから始まります。",
               side: "right",
               align: "start",
             },
@@ -67,7 +68,8 @@ export default function OnboardingTour() {
             element: 'a[href="/admin/certificates"]',
             popover: {
               title: "証明書一覧",
-              description: "発行済みの施工証明書を一覧で確認・検索できます。ステータスの管理やPDF出力もここから行えます。",
+              description:
+                "発行済みの施工証明書を一覧で確認・検索できます。ステータスの管理やPDF出力もここから行えます。",
               side: "right",
             },
           },
