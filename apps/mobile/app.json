@@ -20,9 +20,6 @@
         "NSCameraUsageDescription": "Ledraは施工写真の撮影に使用します",
         "NSLocationWhenInUseUsageDescription": "Stripe Terminal の利用に位置情報が必要です",
         "NSBluetoothAlwaysUsageDescription": "将来のカードリーダー接続にBluetoothを使用します"
-      },
-      "entitlements": {
-        "com.apple.developer.proximity-reader.payment.acceptance": true
       }
     },
     "android": {
@@ -55,7 +52,10 @@
       [
         "@stripe/stripe-terminal-react-native",
         {
-          "bluetoothBackgroundMode": false
+          "bluetoothBackgroundMode": false,
+          "locationWhenInUsePermission": "Stripe Terminal の利用に位置情報が必要です",
+          "bluetoothPeripheralPermission": "将来のカードリーダー接続にBluetoothを使用します",
+          "bluetoothAlwaysUsagePermission": "将来のカードリーダー接続にBluetoothを使用します"
         }
       ],
       [
