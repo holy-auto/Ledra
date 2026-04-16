@@ -9,50 +9,42 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 export const dynamic = "force-dynamic";
 
 /**
- * POST /api/external/booking
+ * POST /api/customer/booking
  *
- * 外部予約受付 API（Google Maps Reserve with Google / LINE LIFF / Webフォーム等）
- * API Key 認証（テナントごとに発行）
+ * 顧客 Web フォームからの予約作成（API キー不要）
+ * /customer/[tenant]/booking ページから呼び出す内部エンドポイント
  *
  * Body:
  *   tenant_slug: string       — 予約先テナント識別
  *   customer_name: string     — 顧客名
  *   customer_email?: string   — メールアドレス
  *   customer_phone?: string   — 電話番号
- *   line_user_id?: string     — LINE user ID
- *   title: string             — 施工メニュー / 予約タイトル
+ *   title?: string            — 施工メニュー / 予約タイトル（省略時 "Web予約"）
  *   scheduled_date: string    — YYYY-MM-DD
  *   start_time: string        — HH:MM
  *   end_time: string          — HH:MM
  *   note?: string             — 備考
- *   source: "google_maps" | "line" | "web"
  */
 export async function POST(req: NextRequest) {
+  // レート制限（一般エンドポイントと同じ: 60 req / 60s）
   const limited = await checkRateLimit(req, "general");
   if (limited) return limited;
 
   try {
     const body = await req.json().catch(() => ({}));
 
-    // ── API Key 認証 ──
-    const apiKey = req.headers.get("x-api-key");
-    if (!apiKey) {
-      return apiError({ code: "unauthorized", message: "API key required", status: 401 });
-    }
-
     // 必須フィールド検証
     const tenantSlug = body?.tenant_slug;
     const customerName = body?.customer_name;
-    const title = body?.title;
+    const title = body?.title || "Web予約";
     const scheduledDate = body?.scheduled_date;
     const startTime = body?.start_time;
     const endTime = body?.end_time;
 
-    if (!tenantSlug || !customerName || !title || !scheduledDate || !startTime || !endTime) {
-      return apiValidationError("tenant_slug, customer_name, title, scheduled_date, start_time, end_time は必須です");
+    if (!tenantSlug || !customerName || !scheduledDate || !startTime || !endTime) {
+      return apiValidationError("tenant_slug, customer_name, scheduled_date, start_time, end_time は必須です");
     }
 
-    // 日付フォーマット検証
     if (!/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)) {
       return apiValidationError("scheduled_date は YYYY-MM-DD 形式です");
     }
@@ -60,12 +52,20 @@ export async function POST(req: NextRequest) {
       return apiValidationError("start_time / end_time は HH:MM 形式です");
     }
 
+    // 過去日チェック
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const bookingDate = new Date(scheduledDate + "T00:00:00");
+    if (bookingDate < today) {
+      return apiValidationError("過去の日付には予約できません");
+    }
+
     const admin = getAdminClient();
 
-    // テナント解決 + API キー検証（同時に行いタイミング攻撃を防ぐ）
+    // テナント解決
     const { data: tenant } = await admin
       .from("tenants")
-      .select("id, name, external_api_key")
+      .select("id, name")
       .eq("slug", tenantSlug)
       .eq("is_active", true)
       .single();
@@ -74,17 +74,9 @@ export async function POST(req: NextRequest) {
       return apiValidationError("指定された店舗が見つかりません");
     }
 
-    // テナント固有のAPIキーで検証
-    // テナントにキーが設定されていない場合は CRON_SECRET へフォールバック（後方互換）
-    const cronSecret = process.env.CRON_SECRET;
-    const expectedKey = tenant.external_api_key ?? cronSecret;
-    if (!expectedKey || apiKey !== expectedKey) {
-      return apiError({ code: "unauthorized", message: "Invalid API key", status: 401 });
-    }
+    const dayOfWeek = bookingDate.getDay();
 
     // ── 定休日チェック ──
-    const dayOfWeek = new Date(scheduledDate + "T00:00:00").getDay();
-
     const { data: weeklyClosed } = await admin
       .from("closed_days")
       .select("id")
@@ -127,11 +119,9 @@ export async function POST(req: NextRequest) {
       .gte("end_time", endTime)
       .limit(1);
 
-    // スロットが定義されていない場合はデフォルトで受付可能（ただし重複チェックはする）
     if (slots && slots.length > 0) {
       const maxBookings = slots[0].max_bookings;
 
-      // 同時間帯の既存予約数
       const { count } = await admin
         .from("reservations")
         .select("id", { count: "exact", head: true })
@@ -168,22 +158,8 @@ export async function POST(req: NextRequest) {
 
     // ── 顧客レコード作成/取得 ──
     let customerId: string | null = null;
-    if (body.line_user_id) {
-      // LINE user_id で既存顧客検索
-      const { data: existing } = await admin
-        .from("customers")
-        .select("id")
-        .eq("tenant_id", tenant.id)
-        .eq("line_user_id", body.line_user_id)
-        .limit(1)
-        .maybeSingle();
 
-      if (existing) {
-        customerId = existing.id;
-      }
-    }
-
-    if (!customerId && body.customer_email) {
+    if (body.customer_email) {
       const { data: existing } = await admin
         .from("customers")
         .select("id")
@@ -197,8 +173,21 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (!customerId && body.customer_phone) {
+      const { data: existing } = await admin
+        .from("customers")
+        .select("id")
+        .eq("tenant_id", tenant.id)
+        .eq("phone", body.customer_phone)
+        .limit(1)
+        .maybeSingle();
+
+      if (existing) {
+        customerId = existing.id;
+      }
+    }
+
     if (!customerId) {
-      // 新規顧客作成
       const { data: newCustomer } = await admin
         .from("customers")
         .insert({
@@ -206,7 +195,6 @@ export async function POST(req: NextRequest) {
           name: customerName,
           email: body.customer_email || null,
           phone: body.customer_phone || null,
-          line_user_id: body.line_user_id || null,
         })
         .select("id")
         .single();
@@ -227,16 +215,13 @@ export async function POST(req: NextRequest) {
         start_time: startTime.length === 5 ? `${startTime}:00` : startTime,
         end_time: endTime.length === 5 ? `${endTime}:00` : endTime,
         note: body.note || null,
-        source: body.source || "web",
-        line_user_id: body.line_user_id || null,
+        source: "web",
         status: "confirmed",
       })
-      .select(
-        "id, tenant_id, customer_id, title, scheduled_date, start_time, end_time, note, source, line_user_id, status",
-      )
+      .select("id, tenant_id, customer_id, title, scheduled_date, start_time, end_time, note, status")
       .single();
 
-    if (error) return apiInternalError(error, "external booking insert");
+    if (error) return apiInternalError(error, "customer booking insert");
 
     // ── Google Calendar 同期（非ブロッキング） ──
     syncCreateEvent(tenant.id, {
@@ -249,17 +234,6 @@ export async function POST(req: NextRequest) {
       customer_name: customerName,
     }).catch(() => {});
 
-    // ── LINE 予約確認通知（非ブロッキング） ──
-    if (body.line_user_id) {
-      sendBookingConfirmation(tenant.id, body.line_user_id, {
-        title: reservation.title,
-        scheduled_date: reservation.scheduled_date,
-        start_time: reservation.start_time,
-        end_time: reservation.end_time,
-        tenant_name: tenant.name,
-      }).catch(() => {});
-    }
-
     return apiOk({
       reservation_id: reservation.id,
       tenant_name: tenant.name,
@@ -269,122 +243,6 @@ export async function POST(req: NextRequest) {
       status: "confirmed",
     });
   } catch (e) {
-    return apiInternalError(e, "external booking");
-  }
-}
-
-/**
- * GET /api/external/booking?tenant_slug=xxx&date=YYYY-MM-DD
- * 空きスロット一覧を返す（外部予約フォーム用）
- *
- * レスポンス:
- *   { date, slots, closed, message? }
- *   closed=true の場合は定休日
- */
-export async function GET(req: NextRequest) {
-  const limited = await checkRateLimit(req, "general");
-  if (limited) return limited;
-
-  try {
-    const url = new URL(req.url);
-    const tenantSlug = url.searchParams.get("tenant_slug");
-    const date = url.searchParams.get("date");
-
-    if (!tenantSlug || !date) {
-      return apiValidationError("tenant_slug と date (YYYY-MM-DD) が必要です");
-    }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return apiValidationError("date は YYYY-MM-DD 形式です");
-    }
-
-    const admin = getAdminClient();
-
-    const { data: tenant } = await admin
-      .from("tenants")
-      .select("id, name")
-      .eq("slug", tenantSlug)
-      .eq("is_active", true)
-      .single();
-
-    if (!tenant) {
-      return apiValidationError("指定された店舗が見つかりません");
-    }
-
-    const dayOfWeek = new Date(date + "T00:00:00").getDay();
-
-    // ── 定休日チェック ──────────────────────────────────────
-    // 1) 毎週定休 (type=weekly, day_of_week=dayOfWeek)
-    const { data: weeklyClosed } = await admin
-      .from("closed_days")
-      .select("id")
-      .eq("tenant_id", tenant.id)
-      .eq("type", "weekly")
-      .eq("day_of_week", dayOfWeek)
-      .limit(1);
-
-    const tenantName = (tenant as any).name ?? null;
-
-    if (weeklyClosed && weeklyClosed.length > 0) {
-      return apiOk({ date, slots: [], closed: true, message: "この日は定休日です", tenant_name: tenantName });
-    }
-
-    // 2) 特定日定休 (type=specific, closed_date=date)
-    const { data: specificClosed } = await admin
-      .from("closed_days")
-      .select("id, note")
-      .eq("tenant_id", tenant.id)
-      .eq("type", "specific")
-      .eq("closed_date", date)
-      .limit(1);
-
-    if (specificClosed && specificClosed.length > 0) {
-      const note = specificClosed[0].note;
-      return apiOk({
-        date,
-        slots: [],
-        closed: true,
-        message: note ? `この日は休業日です（${note}）` : "この日は休業日です",
-        tenant_name: tenantName,
-      });
-    }
-
-    // ── スロット定義を取得 ──────────────────────────────────
-    const { data: slots } = await admin
-      .from("external_booking_slots")
-      .select("start_time, end_time, max_bookings, label")
-      .eq("tenant_id", tenant.id)
-      .eq("day_of_week", dayOfWeek)
-      .eq("is_active", true)
-      .order("start_time");
-
-    if (!slots || slots.length === 0) {
-      return apiOk({ date, slots: [], closed: false, message: "この日の予約枠は設定されていません", tenant_name: tenantName });
-    }
-
-    // ── 既存予約を取得 ──────────────────────────────────────
-    const { data: reservations } = await admin
-      .from("reservations")
-      .select("start_time, end_time")
-      .eq("tenant_id", tenant.id)
-      .eq("scheduled_date", date)
-      .neq("status", "cancelled");
-
-    const available = slots.map((slot: any) => {
-      const booked = (reservations ?? []).filter(
-        (r: any) => r.start_time < slot.end_time && r.end_time > slot.start_time,
-      ).length;
-
-      return {
-        start_time: slot.start_time,
-        end_time: slot.end_time,
-        available: Math.max(0, slot.max_bookings - booked),
-        max: slot.max_bookings,
-        label: slot.label ?? null,
-      };
-    });
-
-    return apiOk({ date, slots: available, closed: false, tenant_name: (tenant as any).name ?? null });
-  } catch (e) {
-    return apiInternalError(e, "available slots");
+    return apiInternalError(e, "customer booking");
   }
 }

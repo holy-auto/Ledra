@@ -1,8 +1,11 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import PageHeader from "@/components/ui/PageHeader";
-import JobWorkflowModeSwitch from "./JobWorkflowModeSwitch";
+import JobStatusPanel from "./JobStatusPanel";
+import JobTabsLoader from "./JobTabsLoader";
+import type { JobCustomer, JobReservation, JobVehicle } from "./types";
 
 /**
  * 案件ワークフロー (Job Workflow) 画面
@@ -11,10 +14,15 @@ import JobWorkflowModeSwitch from "./JobWorkflowModeSwitch";
  *   予約 → チェックイン → 作業 → 写真 → 証明書 → 請求 → 決済
  * の業務フローを 1 画面に集約する統合ワークスペース。
  *
- * 既存機能を横断的に束ね、画面遷移を挟まずに次のアクションへ
- * 進めるよう設計。ハブ画面 (`/admin/trades`, `/admin/agent-hub`) が
- * 入口をまとめたのに対し、本画面は「1 件の案件」に閉じて
- * 業務の流れそのものを具現化する。
+ * レンダリング戦略:
+ * 1) reservation / customer / vehicle の軽量データは即時フェッチし、
+ *    <JobStatusPanel> (ステッパー + 次アクション) を先に描画
+ *    ※ 店頭モードでは StorefrontJobWorkflow が独自にステータス領域を持つため
+ *      JobStatusPanel 側は自身で非表示化する。
+ * 2) certificates / documents の取得はやや重いため、
+ *    <Suspense> で包んだ <JobTabsLoader> から並列取得してストリーミング
+ *
+ * この分割により「ステータス操作」が一瞬で使える体感を確保する。
  */
 
 async function getMyTenantId(supabase: any) {
@@ -66,58 +74,27 @@ export default async function JobWorkflowPage({ params }: { params: Promise<{ id
     );
   }
 
-  // 顧客
-  const { data: customer } = reservation.customer_id
-    ? await supabase
-        .from("customers")
-        .select("id, name, email, phone, company_name")
-        .eq("id", reservation.customer_id)
-        .eq("tenant_id", tenantId)
-        .single()
-    : { data: null };
-
-  // 車両
-  const { data: vehicle } = reservation.vehicle_id
-    ? await supabase
-        .from("vehicles")
-        .select("id, maker, model, year, plate_display, vin")
-        .eq("id", reservation.vehicle_id)
-        .eq("tenant_id", tenantId)
-        .single()
-    : { data: null };
-
-  // 紐付く証明書 (vehicle_id または customer_id で引当て)
-  let certificates: any[] = [];
-  if (reservation.vehicle_id) {
-    const { data } = await supabase
-      .from("certificates")
-      .select("public_id, status, created_at, service_price, customer_name")
-      .eq("tenant_id", tenantId)
-      .eq("vehicle_id", reservation.vehicle_id)
-      .order("created_at", { ascending: false });
-    certificates = data ?? [];
-  } else if (reservation.customer_id) {
-    const { data } = await supabase
-      .from("certificates")
-      .select("public_id, status, created_at, service_price, customer_name")
-      .eq("tenant_id", tenantId)
-      .eq("customer_id", reservation.customer_id)
-      .order("created_at", { ascending: false });
-    certificates = data ?? [];
-  }
-
-  // 紐付く請求・見積書 (customer_id ベース)
-  let documents: any[] = [];
-  if (reservation.customer_id) {
-    const { data } = await supabase
-      .from("documents")
-      .select("id, doc_number, doc_type, status, total, issued_at, due_date")
-      .eq("tenant_id", tenantId)
-      .eq("customer_id", reservation.customer_id)
-      .in("doc_type", ["invoice", "consolidated_invoice", "estimate", "receipt", "delivery"])
-      .order("created_at", { ascending: false });
-    documents = data ?? [];
-  }
+  // 顧客・車両を並列取得
+  const [customerRes, vehicleRes] = await Promise.all([
+    reservation.customer_id
+      ? supabase
+          .from("customers")
+          .select("id, name, email, phone, company_name")
+          .eq("id", reservation.customer_id)
+          .eq("tenant_id", tenantId)
+          .single()
+      : Promise.resolve({ data: null }),
+    reservation.vehicle_id
+      ? supabase
+          .from("vehicles")
+          .select("id, maker, model, year, plate_display, vin")
+          .eq("id", reservation.vehicle_id)
+          .eq("tenant_id", tenantId)
+          .single()
+      : Promise.resolve({ data: null }),
+  ]);
+  const customer = customerRes.data as JobCustomer;
+  const vehicle = vehicleRes.data as JobVehicle;
 
   return (
     <main className="space-y-6">
@@ -132,13 +109,46 @@ export default async function JobWorkflowPage({ params }: { params: Promise<{ id
         }
       />
 
-      <JobWorkflowModeSwitch
-        reservation={reservation}
-        customer={customer}
-        vehicle={vehicle}
-        certificates={certificates}
-        documents={documents}
+      {/* ステッパー + 次アクション: 軽量データのみで即時描画 (店頭モードでは非表示) */}
+      <JobStatusPanel
+        reservation={reservation as JobReservation}
+        customerId={reservation.customer_id}
+        vehicleId={reservation.vehicle_id}
       />
+
+      {/* 証明書 / 請求 / 見積書: ストリーミング配信 (モードに応じて UI 切替) */}
+      <Suspense fallback={<TabsSkeleton />}>
+        <JobTabsLoader
+          reservation={reservation as JobReservation}
+          customer={customer}
+          vehicle={vehicle}
+          tenantId={tenantId}
+        />
+      </Suspense>
     </main>
+  );
+}
+
+function TabsSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse">
+      {/* タブヘッダ */}
+      <div className="flex items-center gap-2 border-b border-border-subtle">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="h-9 w-28 rounded-t-md bg-[rgba(0,0,0,0.06)] mb-0" />
+        ))}
+      </div>
+      {/* コンテンツ: 2カラムカード風 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {[0, 1].map((i) => (
+          <div key={i} className="rounded-xl border border-border-subtle bg-surface p-5 space-y-3">
+            <div className="h-3 w-20 bg-[rgba(0,0,0,0.06)] rounded" />
+            <div className="h-4 w-full bg-[rgba(0,0,0,0.04)] rounded" />
+            <div className="h-4 w-5/6 bg-[rgba(0,0,0,0.04)] rounded" />
+            <div className="h-4 w-2/3 bg-[rgba(0,0,0,0.04)] rounded" />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

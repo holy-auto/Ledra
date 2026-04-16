@@ -1,15 +1,27 @@
+import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/api/auth";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { apiUnauthorized, apiForbidden, apiInternalError, apiNotFound, apiValidationError } from "@/lib/api/response";
-import { getDocumentStatus, sendSigningRequest } from "@/lib/agent/cloudsign";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
+const TOKEN_TTL_DAYS = 7;
+
+function generateSignToken(): string {
+  return randomBytes(32).toString("hex");
+}
+
+function tokenExpiresAt(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + TOKEN_TTL_DAYS);
+  return d.toISOString();
+}
+
 /**
  * GET /api/admin/agent-contracts/[id]
- * Get full details of a signing request.
+ * 署名依頼の詳細を返す。
  */
 export async function GET(_request: NextRequest, ctx: RouteContext) {
   try {
@@ -23,24 +35,14 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
     const { data, error } = await admin
       .from("agent_signing_requests")
       .select(
-        "id, agent_id, template_type, title, cloudsign_document_id, status, signer_email, signer_name, sent_at, signed_at, signed_pdf_path, requested_by, created_at, updated_at",
+        "id, agent_id, template_type, title, status, signer_email, signer_name, sent_at, signed_at, signed_pdf_path, requested_by, created_at, updated_at",
       )
       .eq("id", id)
       .single();
 
     if (error || !data) return apiNotFound("contract not found");
 
-    // Optionally refresh status from CloudSign
-    let cloudsignStatus = null;
-    if (data.cloudsign_document_id && ["sent", "viewed"].includes(data.status)) {
-      try {
-        cloudsignStatus = await getDocumentStatus(data.cloudsign_document_id);
-      } catch {
-        // Non-critical — just return DB state
-      }
-    }
-
-    return NextResponse.json({ contract: data, cloudsign_status: cloudsignStatus });
+    return NextResponse.json({ contract: data });
   } catch (e) {
     return apiInternalError(e, "admin/agent-contracts [id] GET");
   }
@@ -48,7 +50,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
 
 /**
  * PUT /api/admin/agent-contracts/[id]
- * Re-send or cancel a signing request.
+ * 署名依頼の再送またはキャンセル。
  * Body: { action: "resend" | "cancel" }
  */
 export async function PUT(request: NextRequest, ctx: RouteContext) {
@@ -66,7 +68,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
     const { data: record, error: fetchErr } = await admin
       .from("agent_signing_requests")
       .select(
-        "id, agent_id, template_type, title, cloudsign_document_id, status, signer_email, signer_name, sent_at, signed_at, signed_pdf_path, requested_by, created_at, updated_at",
+        "id, agent_id, template_type, title, status, signer_email, signer_name, sent_at, signed_at, signed_pdf_path, requested_by, created_at, updated_at",
       )
       .eq("id", id)
       .single();
@@ -77,22 +79,33 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
       if (!["sent", "viewed"].includes(record.status)) {
         return apiValidationError("再送は送信済み/閲覧済みのリクエストのみ可能です");
       }
-      if (!record.cloudsign_document_id) {
-        return apiValidationError("CloudSignドキュメントIDがありません");
-      }
 
-      await sendSigningRequest(record.cloudsign_document_id);
+      // 新しいトークンを発行して有効期限を延長
+      const newToken = generateSignToken();
+      const newExpiresAt = tokenExpiresAt();
+      const now = new Date().toISOString();
 
       const { data: updated } = await admin
         .from("agent_signing_requests")
-        .update({ sent_at: new Date().toISOString() })
+        .update({
+          sign_token: newToken,
+          sign_expires_at: newExpiresAt,
+          sent_at: now,
+          status: "sent",
+          updated_at: now,
+        })
         .eq("id", id)
         .select(
-          "id, agent_id, template_type, title, cloudsign_document_id, status, signer_email, signer_name, sent_at, signed_at, signed_pdf_path, requested_by, created_at, updated_at",
+          "id, agent_id, template_type, title, status, signer_email, signer_name, sent_at, signed_at, signed_pdf_path, requested_by, created_at, updated_at",
         )
         .single();
 
-      return NextResponse.json({ contract: updated });
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+      const signUrl = `${baseUrl}/agent-sign/${newToken}`;
+
+      // TODO: resend email with new sign_url
+
+      return NextResponse.json({ contract: updated, sign_url: signUrl });
     }
 
     if (action === "cancel") {
@@ -102,10 +115,14 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
 
       const { data: updated } = await admin
         .from("agent_signing_requests")
-        .update({ status: "expired", updated_at: new Date().toISOString() })
+        .update({
+          status: "expired",
+          sign_token: null,
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", id)
         .select(
-          "id, agent_id, template_type, title, cloudsign_document_id, status, signer_email, signer_name, sent_at, signed_at, signed_pdf_path, requested_by, created_at, updated_at",
+          "id, agent_id, template_type, title, status, signer_email, signer_name, sent_at, signed_at, signed_pdf_path, requested_by, created_at, updated_at",
         )
         .single();
 

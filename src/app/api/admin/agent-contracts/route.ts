@@ -1,15 +1,28 @@
+import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/api/auth";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
-import { getTemplateId, createDocumentFromTemplate, addParticipant, sendSigningRequest } from "@/lib/agent/cloudsign";
 
 export const dynamic = "force-dynamic";
 
+/** トークン有効期間: 7 日 */
+const TOKEN_TTL_DAYS = 7;
+
+function generateSignToken(): string {
+  return randomBytes(32).toString("hex");
+}
+
+function tokenExpiresAt(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + TOKEN_TTL_DAYS);
+  return d.toISOString();
+}
+
 /**
  * GET /api/admin/agent-contracts?agent_id=xxx
- * List signing requests for a specific agent.
+ * 代理店の署名依頼一覧を返す。
  */
 export async function GET(request: NextRequest) {
   try {
@@ -25,7 +38,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await admin
       .from("agent_signing_requests")
       .select(
-        "id, agent_id, template_type, title, cloudsign_document_id, status, signer_email, signer_name, sent_at, signed_at, signed_pdf_path, requested_by, created_at, updated_at",
+        "id, agent_id, template_type, title, status, signer_email, signer_name, sent_at, signed_at, signed_pdf_path, requested_by, created_at, updated_at",
       )
       .eq("agent_id", agentId)
       .order("created_at", { ascending: false });
@@ -40,7 +53,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/admin/agent-contracts
- * Create a signing request and send via CloudSign.
+ * 署名依頼を作成し、署名 URL（自前電子署名）を返す。
  *
  * Body: { agent_id, template_type, title, signer_email, signer_name }
  */
@@ -62,44 +75,46 @@ export async function POST(request: NextRequest) {
 
     const admin = getAdminClient();
 
-    // Verify agent exists
-    const { data: agent, error: agentErr } = await admin.from("agents").select("id").eq("id", agent_id).single();
+    // 代理店の存在確認
+    const { data: agent, error: agentErr } = await admin
+      .from("agents")
+      .select("id")
+      .eq("id", agent_id)
+      .single();
     if (agentErr || !agent) return apiValidationError("agent not found");
 
-    // Step 1: Get template ID
-    const templateId = getTemplateId(template_type);
+    const signToken = generateSignToken();
+    const signExpiresAt = tokenExpiresAt();
+    const now = new Date().toISOString();
 
-    // Step 2: Create document from template
-    const doc = await createDocumentFromTemplate(templateId, title.trim());
-
-    // Step 3: Add participant
-    await addParticipant(doc.id, signer_email.trim(), signer_name.trim());
-
-    // Step 4: Send signing request
-    await sendSigningRequest(doc.id);
-
-    // Step 5: Insert DB record
     const { data: record, error: insertErr } = await admin
       .from("agent_signing_requests")
       .insert({
         agent_id,
         template_type,
         title: title.trim(),
-        cloudsign_document_id: doc.id,
         status: "sent",
         signer_email: signer_email.trim(),
         signer_name: signer_name.trim(),
-        sent_at: new Date().toISOString(),
+        sent_at: now,
+        sign_token: signToken,
+        sign_expires_at: signExpiresAt,
         requested_by: caller.userId,
       })
       .select(
-        "id, agent_id, template_type, title, cloudsign_document_id, status, signer_email, signer_name, sent_at, requested_by, created_at, updated_at",
+        "id, agent_id, template_type, title, status, signer_email, signer_name, sent_at, signed_at, requested_by, created_at, updated_at",
       )
       .single();
 
     if (insertErr) throw insertErr;
 
-    return NextResponse.json({ contract: record }, { status: 201 });
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+    const signUrl = `${baseUrl}/agent-sign/${signToken}`;
+
+    // TODO: send email to signer_email with signUrl
+    // await sendAgentContractEmail({ to: signer_email.trim(), name: signer_name.trim(), title, signUrl });
+
+    return NextResponse.json({ contract: record, sign_url: signUrl }, { status: 201 });
   } catch (e) {
     return apiInternalError(e, "admin/agent-contracts POST");
   }

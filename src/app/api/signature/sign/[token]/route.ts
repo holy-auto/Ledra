@@ -15,38 +15,38 @@
  * 8. 施工店への完了通知 ※非同期
  */
 
-import { NextRequest } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { apiOk, apiError } from '@/lib/api/response';
-import { getValidSessionByToken } from '@/lib/signature/session';
-import { buildSigningPayload }     from '@/lib/signature/hash';
-import { signPayload, getPrivateKey, getActiveKeyInfo } from '@/lib/signature/crypto';
-import { regenerateSignedPdf } from '@/lib/signature/pdfUtils';
-import { escapeHtml } from '@/lib/sanitize';
-import type { SignatureSignBody } from '@/lib/signature/types';
+import { NextRequest } from "next/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { apiOk, apiError } from "@/lib/api/response";
+import { getValidSessionByToken } from "@/lib/signature/session";
+import { buildSigningPayload } from "@/lib/signature/hash";
+import { signPayload, getPrivateKey, getActiveKeyInfo } from "@/lib/signature/crypto";
+import { regenerateSignedPdf } from "@/lib/signature/pdfUtils";
+import { escapeHtml } from "@/lib/sanitize";
+import type { SignatureSignBody } from "@/lib/signature/types";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-const VERIFY_BASE_URL = process.env.NEXT_PUBLIC_VERIFY_BASE_URL ?? '/verify';
+const VERIFY_BASE_URL = process.env.NEXT_PUBLIC_VERIFY_BASE_URL ?? "/verify";
 
 // ── 施工店への署名完了メール通知 ────────────────────────────────────────
 async function notifyShopSignatureComplete(params: {
-  shopEmail:     string;
-  shopName:      string;
-  signerEmail:   string;
-  signerName:    string | null;
+  shopEmail: string;
+  shopName: string;
+  signerEmail: string;
+  signerName: string | null;
   certificateId: string;
-  signedAt:      string;
-  verifyUrl:     string;
+  signedAt: string;
+  verifyUrl: string;
 }): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
-  const from   = process.env.RESEND_FROM;
+  const from = process.env.RESEND_FROM;
   if (!apiKey || !from) return;
 
-  const shop      = escapeHtml(params.shopName);
-  const signer    = escapeHtml(params.signerName ?? params.signerEmail);
-  const email     = escapeHtml(params.signerEmail);
-  const signedAt  = escapeHtml(new Date(params.signedAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }));
+  const shop = escapeHtml(params.shopName);
+  const signer = escapeHtml(params.signerName ?? params.signerEmail);
+  const email = escapeHtml(params.signerEmail);
+  const signedAt = escapeHtml(new Date(params.signedAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }));
   const verifyUrl = params.verifyUrl;
 
   const html = `
@@ -73,50 +73,47 @@ async function notifyShopSignatureComplete(params: {
   `;
 
   try {
-    await fetch('https://api.resend.com/emails', {
-      method:  'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ from, to: params.shopEmail, subject: `[Ledra] 電子署名完了 - ${signer}`, html }),
+    await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to: params.shopEmail, subject: `[Ledra] 電子署名完了 - ${signer}`, html }),
     });
   } catch (err) {
-    console.error('[signature/sign] Shop notification failed:', err);
+    console.error("[signature/sign] Shop notification failed:", err);
   }
 }
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ token: string }> },
-) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? 'unknown';
-  const ua = req.headers.get('user-agent') ?? 'unknown';
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
+  const ua = req.headers.get("user-agent") ?? "unknown";
 
   // 1. リクエストボディのバリデーション
   let body: SignatureSignBody;
   try {
     body = await req.json();
   } catch {
-    return apiError({ code: 'validation_error', message: 'リクエストが不正です', status: 400 });
+    return apiError({ code: "validation_error", message: "リクエストが不正です", status: 400 });
   }
 
   const { signer_email, agreed } = body;
 
   if (!agreed) {
-    return apiError({ code: 'validation_error', message: '内容に同意してください', status: 400 });
+    return apiError({ code: "validation_error", message: "内容に同意してください", status: 400 });
   }
 
-  if (!signer_email || !signer_email.includes('@') || signer_email.length > 254) {
-    return apiError({ code: 'validation_error', message: '有効なメールアドレスを入力してください', status: 400 });
+  if (!signer_email || !signer_email.includes("@") || signer_email.length > 254) {
+    return apiError({ code: "validation_error", message: "有効なメールアドレスを入力してください", status: 400 });
   }
 
   // 2. セッション検証
   const session = await getValidSessionByToken(token);
   if (!session) {
-    return apiError({ code: 'not_found', message: '署名リンクが無効または有効期限切れです', status: 404 });
+    return apiError({ code: "not_found", message: "署名リンクが無効または有効期限切れです", status: 404 });
   }
 
-  const supabase        = getSupabaseAdmin();
-  const signedAt        = new Date().toISOString();
+  const supabase = getSupabaseAdmin();
+  const signedAt = new Date().toISOString();
   const normalizedEmail = signer_email.toLowerCase().trim();
 
   // 3. 署名ペイロードの構築
@@ -130,52 +127,52 @@ export async function POST(
 
   // 4. ECDSA P-256 署名の実行
   let signature: string;
-  let keyInfo:   { version: string; fingerprint: string };
+  let keyInfo: { version: string; fingerprint: string };
   try {
     const privateKey = getPrivateKey();
     signature = signPayload(signingPayload, privateKey);
-    keyInfo   = getActiveKeyInfo();
+    keyInfo = getActiveKeyInfo();
   } catch (err) {
-    console.error('[signature/sign] Signing failed:', err);
-    return apiError({ code: 'internal_error', message: '署名処理中にエラーが発生しました', status: 500 });
+    console.error("[signature/sign] Signing failed:", err);
+    return apiError({ code: "internal_error", message: "署名処理中にエラーが発生しました", status: 500 });
   }
 
   // 5. 署名証跡の保存（.eq('status','pending') で二重署名を防止）
   const { error: updateError } = await supabase
-    .from('signature_sessions')
+    .from("signature_sessions")
     .update({
-      status:                 'signed',
-      signed_at:              signedAt,
-      signer_ip:              ip,
-      signer_user_agent:      ua,
+      status: "signed",
+      signed_at: signedAt,
+      signer_ip: ip,
+      signer_user_agent: ua,
       signer_confirmed_email: normalizedEmail,
       signature,
-      signing_payload:        signingPayload,
+      signing_payload: signingPayload,
       public_key_fingerprint: keyInfo.fingerprint,
-      key_version:            keyInfo.version,
-      updated_at:             new Date().toISOString(),
+      key_version: keyInfo.version,
+      updated_at: new Date().toISOString(),
     })
-    .eq('id', session.id)
-    .eq('status', 'pending');
+    .eq("id", session.id)
+    .eq("status", "pending");
 
   if (updateError) {
-    console.error('[signature/sign] DB update failed:', updateError);
-    return apiError({ code: 'db_error', message: '署名の保存中にエラーが発生しました', status: 500 });
+    console.error("[signature/sign] DB update failed:", updateError);
+    return apiError({ code: "db_error", message: "署名の保存中にエラーが発生しました", status: 500 });
   }
 
   // 6. 監査ログ
-  await supabase.from('signature_audit_logs').insert({
+  await supabase.from("signature_audit_logs").insert({
     session_id: session.id,
-    event:      'signed',
+    event: "signed",
     ip,
     user_agent: ua,
     metadata: {
-      signer_email:           normalizedEmail,
-      signed_at:              signedAt,
-      key_version:            keyInfo.version,
+      signer_email: normalizedEmail,
+      signed_at: signedAt,
+      key_version: keyInfo.version,
       public_key_fingerprint: keyInfo.fingerprint,
-      document_hash:          session.document_hash,
-      signature_preview:      signature.slice(0, 32) + '...',
+      document_hash: session.document_hash,
+      signature_preview: signature.slice(0, 32) + "...",
     },
   });
 
@@ -184,45 +181,45 @@ export async function POST(
   // 7. PDF 再生成（非同期・レスポンスをブロックしない）
   void regenerateSignedPdf(session.certificate_id, {
     signedAt,
-    signerEmail:          normalizedEmail,
-    signerName:           session.signer_name ?? undefined,
-    signaturePreview:     signature.slice(0, 20) + '...',
+    signerEmail: normalizedEmail,
+    signerName: session.signer_name ?? undefined,
+    signaturePreview: signature.slice(0, 20) + "...",
     publicKeyFingerprint: keyInfo.fingerprint,
     verifyUrl,
-    documentHash:         session.document_hash,
+    documentHash: session.document_hash,
   });
 
   // 8. 施工店への完了通知（非同期・テナントの contact_email に送信）
   void (async () => {
     try {
       const { data: cert } = await supabase
-        .from('certificates')
-        .select('tenant:tenants(name, contact_email)')
-        .eq('id', session.certificate_id)
+        .from("certificates")
+        .select("tenant:tenants(name, contact_email)")
+        .eq("id", session.certificate_id)
         .single();
 
       const tenant = cert?.tenant as { name?: string; contact_email?: string | null } | null;
       if (tenant?.contact_email) {
         await notifyShopSignatureComplete({
-          shopEmail:     tenant.contact_email,
-          shopName:      tenant.name ?? 'Ledra',
-          signerEmail:   normalizedEmail,
-          signerName:    session.signer_name ?? null,
+          shopEmail: tenant.contact_email,
+          shopName: tenant.name ?? "Ledra",
+          signerEmail: normalizedEmail,
+          signerName: session.signer_name ?? null,
           certificateId: session.certificate_id,
           signedAt,
           verifyUrl,
         });
       }
     } catch (err) {
-      console.error('[signature/sign] Failed to send shop notification:', err);
+      console.error("[signature/sign] Failed to send shop notification:", err);
     }
   })();
 
   return apiOk({
-    success:           true,
-    signed_at:         signedAt,
-    verify_url:        verifyUrl,
-    session_id:        session.id,
-    signature_preview: signature.slice(0, 20) + '...',
+    success: true,
+    signed_at: signedAt,
+    verify_url: verifyUrl,
+    session_id: session.id,
+    signature_preview: signature.slice(0, 20) + "...",
   });
 }

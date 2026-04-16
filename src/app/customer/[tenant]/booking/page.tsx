@@ -245,7 +245,7 @@ export default function BookingPage() {
     setSubmitting(true);
     setSubmitErr(null);
     try {
-      const res = await fetch("/api/external/booking", {
+      const res = await fetch("/api/customer/booking", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -253,12 +253,10 @@ export default function BookingPage() {
           customer_name: formName,
           customer_phone: formPhone || undefined,
           customer_email: formEmail || undefined,
-          title: "Web予約",
           scheduled_date: selectedDate,
           start_time: selectedSlot.start_time.slice(0, 5),
           end_time: selectedSlot.end_time.slice(0, 5),
           note: formNote || undefined,
-          source: "web",
         }),
       });
       const j = await res.json().catch(() => ({}));

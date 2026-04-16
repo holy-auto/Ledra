@@ -213,6 +213,20 @@ export default async function AdminSettingsPage() {
           <FollowUpSettings />
         </section>
 
+        {/* Security */}
+        <section className="glass-card p-5">
+          <div className="mb-4">
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted">セキュリティ</div>
+            <div className="mt-1 text-base font-semibold text-primary">2 要素認証 (2FA)</div>
+            <p className="mt-1 text-xs text-muted">
+              認証アプリを使ったログイン時の本人確認を有効化し、アカウントを強化します。
+            </p>
+          </div>
+          <Link href="/admin/settings/security" className="btn-secondary">
+            🔐 セキュリティ設定を開く →
+          </Link>
+        </section>
+
         {/* Account info */}
         <section className="glass-card p-5">
           <div className="mb-4">
