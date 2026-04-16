@@ -20,6 +20,8 @@
         "NSCameraUsageDescription": "Ledraは施工写真の撮影に使用します",
         "NSLocationWhenInUseUsageDescription": "Stripe Terminal の利用に位置情報が必要です",
         "NSBluetoothAlwaysUsageDescription": "将来のカードリーダー接続にBluetoothを使用します",
+        "NSBluetoothPeripheralUsageDescription": "将来のカードリーダー接続にBluetoothを使用します",
+        "NSLocalNetworkUsageDescription": "Stripe Terminal のリーダー検出に使用します",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -52,15 +54,6 @@
       "expo-router",
       "expo-secure-store",
       [
-        "@stripe/stripe-terminal-react-native",
-        {
-          "bluetoothBackgroundMode": false,
-          "locationWhenInUsePermission": "Stripe Terminal の利用に位置情報が必要です",
-          "bluetoothPeripheralPermission": "将来のカードリーダー接続にBluetoothを使用します",
-          "bluetoothAlwaysUsagePermission": "将来のカードリーダー接続にBluetoothを使用します"
-        }
-      ],
-      [
         "expo-camera",
         {
           "cameraPermission": "Ledraは施工写真の撮影に使用します"
@@ -71,8 +64,7 @@
         {
           "photosPermission": "Ledraは施工写真の選択に使用します"
         }
-      ],
-      "./plugins/withRemoveTapToPayEntitlement"
+      ]
     ]
   }
 }
