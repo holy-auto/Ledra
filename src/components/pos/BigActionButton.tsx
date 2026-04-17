@@ -35,13 +35,13 @@ function toneClasses(tone: BigActionTone, disabled: boolean): string {
   }
   switch (tone) {
     case "primary":
-      return "border-accent/30 bg-accent-dim text-accent-text hover:bg-accent/15 hover:border-accent/50";
+      return "border-accent/40 bg-accent-dim text-primary hover:bg-accent/15 hover:border-accent/60";
     case "warning":
-      return "border-warning/30 bg-warning-dim text-warning-text hover:bg-warning/15 hover:border-warning/50";
+      return "border-warning/40 bg-warning-dim text-primary hover:bg-warning/15 hover:border-warning/60";
     case "success":
-      return "border-success/30 bg-success-dim text-success-text hover:bg-success/15 hover:border-success/50";
+      return "border-success/40 bg-success-dim text-primary hover:bg-success/15 hover:border-success/60";
     case "danger":
-      return "border-danger/30 bg-danger-dim text-danger-text hover:bg-danger/15 hover:border-danger/50";
+      return "border-danger/40 bg-danger-dim text-primary hover:bg-danger/15 hover:border-danger/60";
     case "neutral":
     default:
       return "border-border-default bg-surface text-primary hover:bg-surface-hover";
@@ -91,10 +91,10 @@ export default function BigActionButton({
         {badge != null && <span className="shrink-0">{badge}</span>}
       </div>
       <div className="min-w-0">
-        <div className="text-base font-bold leading-tight">{title}</div>
-        {subtitle && <div className="mt-0.5 text-[12px] font-medium opacity-80 leading-snug">{subtitle}</div>}
+        <div className="text-base font-bold leading-tight text-primary">{title}</div>
+        {subtitle && <div className="mt-0.5 text-[12px] font-medium text-secondary leading-snug">{subtitle}</div>}
       </div>
-      {hint && <div className="mt-auto text-[11px] font-medium opacity-75">{hint}</div>}
+      {hint && <div className="mt-auto text-[11px] font-medium text-secondary">{hint}</div>}
     </>
   );
 
