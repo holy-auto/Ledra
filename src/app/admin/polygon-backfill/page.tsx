@@ -29,7 +29,7 @@ export default async function PolygonBackfillPage() {
           title="ブロックチェーン・バックフィル"
           description="この機能は管理者 (admin) ロールでのみ利用できます。"
         />
-        <section className="glass-card p-5 text-sm text-amber-400">
+        <section className="glass-card p-5 text-sm text-warning">
           権限が不足しています。管理者に依頼してください。
         </section>
       </div>
@@ -56,7 +56,7 @@ export default async function PolygonBackfillPage() {
         <div className="text-xs font-semibold tracking-[0.18em] text-muted">ENVIRONMENT</div>
         <div className="mt-1 text-sm text-primary">
           <span className="text-muted">状態:</span>{" "}
-          <span className={enabled ? "text-emerald-400" : "text-amber-400"}>
+          <span className={enabled ? "text-success" : "text-warning"}>
             {enabled ? "有効" : "無効（POLYGON_ANCHOR_ENABLED 未設定）"}
           </span>
         </div>

@@ -162,7 +162,7 @@ export default function WorkflowTemplatesClient() {
 
       {loading && <div className="text-sm text-muted">読み込み中...</div>}
       {err && <div className="glass-card p-4 text-sm text-red-500">{err}</div>}
-      {saveMsg && <div className={`text-sm ${saveMsg.ok ? "text-emerald-400" : "text-red-500"}`}>{saveMsg.text}</div>}
+      {saveMsg && <div className={`text-sm ${saveMsg.ok ? "text-success" : "text-danger"}`}>{saveMsg.text}</div>}
 
       {/* プラットフォーム共通テンプレート */}
       {platformTemplates.length > 0 && (
@@ -228,7 +228,7 @@ export default function WorkflowTemplatesClient() {
                       {SERVICE_TYPE_LABELS[t.service_type] ?? t.service_type}
                     </span>
                     {t.is_default && (
-                      <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] text-indigo-700">
+                      <span className="rounded-full bg-accent-dim px-2 py-0.5 text-[11px] text-accent-text">
                         デフォルト
                       </span>
                     )}
@@ -330,7 +330,7 @@ export default function WorkflowTemplatesClient() {
               </label>
 
               {saveMsg && (
-                <div className={`text-sm ${saveMsg.ok ? "text-emerald-400" : "text-red-500"}`}>{saveMsg.text}</div>
+                <div className={`text-sm ${saveMsg.ok ? "text-success" : "text-danger"}`}>{saveMsg.text}</div>
               )}
 
               {/* ボタン */}

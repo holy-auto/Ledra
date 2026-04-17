@@ -105,7 +105,7 @@ export default function WorkflowStepper({
         <div className="h-2 w-full rounded-full bg-surface-hover overflow-hidden">
           <div
             className={`h-2 rounded-full transition-all duration-700 ${
-              isCompleted ? "bg-emerald-500" : "bg-indigo-500"
+              isCompleted ? "bg-success" : "bg-accent"
             }`}
             style={{ width: `${progressPct}%` }}
           />
@@ -124,16 +124,16 @@ export default function WorkflowStepper({
             <div
               key={step.key}
               className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${
-                isActive ? "bg-indigo-50 border border-indigo-200" : isDone ? "bg-inset" : "opacity-50"
+                isActive ? "bg-accent-dim border border-accent/30" : isDone ? "bg-inset" : "opacity-50"
               }`}
             >
               {/* アイコン */}
               <div
                 className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
                   isDone
-                    ? "bg-emerald-500 text-white"
+                    ? "bg-success text-white"
                     : isActive
-                      ? "bg-indigo-500 text-white"
+                      ? "bg-accent text-white"
                       : "bg-surface-active text-muted"
                 }`}
               >
@@ -147,8 +147,8 @@ export default function WorkflowStepper({
                   </svg>
                 ) : isActive ? (
                   <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-surface opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-surface" />
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
                   </span>
                 ) : (
                   step.order
@@ -158,13 +158,13 @@ export default function WorkflowStepper({
               {/* ラベル・情報 */}
               <div className="flex-1 min-w-0">
                 <div
-                  className={`text-sm font-medium ${isActive ? "text-indigo-700" : isDone ? "text-secondary" : "text-muted"}`}
+                  className={`text-sm font-medium ${isActive ? "text-accent-text" : isDone ? "text-secondary" : "text-muted"}`}
                 >
                   {step.label}
-                  {step.is_customer_visible && <span className="ml-1.5 text-[10px] text-indigo-400">📱</span>}
+                  {step.is_customer_visible && <span className="ml-1.5 text-[10px] text-accent">📱</span>}
                 </div>
                 {isActive && currentLog?.started_at && !isCompleted && (
-                  <div className="text-[11px] text-indigo-500">
+                  <div className="text-[11px] text-accent-text">
                     開始 {formatTime(currentLog.started_at)} · 経過 {formatDuration(elapsed)}
                   </div>
                 )}
@@ -189,7 +189,7 @@ export default function WorkflowStepper({
           {showNoteInput && (
             <div>
               <textarea
-                className="w-full rounded-xl border border-border-default bg-surface px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                className="w-full rounded-xl border border-border-default bg-surface px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                 rows={2}
                 placeholder="メモを追加（任意）"
                 value={note}
@@ -202,7 +202,7 @@ export default function WorkflowStepper({
               type="button"
               onClick={handleAdvance}
               disabled={advancing}
-              className="flex-1 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-60 transition-colors"
+              className="flex-1 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-accent/90 active:bg-accent/80 disabled:opacity-60 transition-colors"
             >
               {advancing ? (
                 <span className="flex items-center justify-center gap-2">
@@ -225,7 +225,7 @@ export default function WorkflowStepper({
               onClick={() => setShowNoteInput((v) => !v)}
               className={`rounded-xl border px-3 py-3 text-sm transition-colors ${
                 showNoteInput
-                  ? "border-indigo-300 bg-indigo-50 text-indigo-700"
+                  ? "border-accent/30 bg-accent-dim text-accent-text"
                   : "border-border-default bg-surface text-muted hover:bg-inset"
               }`}
               title="メモを追加"
@@ -240,8 +240,8 @@ export default function WorkflowStepper({
       )}
 
       {isCompleted && (
-        <div className="flex items-center justify-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 py-3">
-          <span className="text-emerald-600 text-sm font-medium">✅ すべての工程が完了しました</span>
+        <div className="flex items-center justify-center gap-2 rounded-xl bg-success-dim border border-success/30 py-3">
+          <span className="text-success-text text-sm font-medium">✅ すべての工程が完了しました</span>
         </div>
       )}
     </div>

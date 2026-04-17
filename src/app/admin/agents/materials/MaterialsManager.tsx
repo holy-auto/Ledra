@@ -279,7 +279,7 @@ export default function MaterialsManager() {
       {loading ? (
         <div className="animate-pulse space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-16 rounded-2xl bg-[rgba(0,0,0,0.04)]" />
+            <div key={i} className="h-16 rounded-2xl bg-border-subtle dark:bg-[rgba(255,255,255,0.06)]" />
           ))}
         </div>
       ) : materials.length === 0 ? (
@@ -307,7 +307,7 @@ export default function MaterialsManager() {
                     <td className="p-3">
                       <div className="flex items-center gap-2">
                         {m.is_pinned && (
-                          <span className="text-amber-500" title="ピン留め">
+                          <span className="text-warning" title="ピン留め">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                               <path d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
                             </svg>
@@ -351,8 +351,8 @@ export default function MaterialsManager() {
                           disabled={actionBusy === m.id}
                           className={`rounded-lg border px-2 py-1 text-xs disabled:opacity-40 ${
                             m.is_published
-                              ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
-                              : "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                              ? "border-warning/30 bg-warning-dim text-warning-text hover:bg-warning/15"
+                              : "border-success/30 bg-success-dim text-success-text hover:bg-success/15"
                           }`}
                         >
                           {m.is_published ? "非公開" : "公開"}

@@ -77,7 +77,7 @@ export default function MaintenanceDetailsSection() {
               onClick={() => toggleWorkType(opt.value)}
               className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
                 data.work_types.includes(opt.value)
-                  ? "border-blue-300 bg-blue-50 text-blue-700"
+                  ? "border-accent/30 bg-accent-dim text-accent-text"
                   : "border-border-default bg-surface text-secondary hover:border-border-strong"
               }`}
             >

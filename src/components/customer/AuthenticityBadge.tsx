@@ -74,12 +74,12 @@ const BADGE_COPY: Record<
   },
   verified: {
     label: "ブロックチェーン検証済み",
-    className: "border-blue-500/30 bg-[rgba(59,130,246,0.12)] text-blue-300",
+    className: "border-accent/30 bg-accent-dim text-accent-text",
     tooltip: "C2PA 署名とデバイス証明で、撮影から保存までの来歴が記録されています。",
   },
   premium: {
     label: "完全検証済み",
-    className: "border-emerald-500/30 bg-[rgba(16,185,129,0.12)] text-emerald-300",
+    className: "border-success/30 bg-success-dim text-success-text",
     tooltip: "C2PA 署名・デバイス証明・deepfake 検出のすべてを通過しています。",
   },
 };

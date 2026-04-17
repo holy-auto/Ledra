@@ -67,9 +67,9 @@ export default function AiDraftPanel({ vehicleId, hearingId, templateCategory, o
 
   const confidenceColor = draft
     ? draft.confidence >= 0.8
-      ? "text-green-400"
+      ? "text-success"
       : draft.confidence >= 0.5
-        ? "text-amber-400"
+        ? "text-warning"
         : "text-red-400"
     : "";
 
@@ -133,9 +133,9 @@ export default function AiDraftPanel({ vehicleId, hearingId, templateCategory, o
 
               {/* 不足情報警告 */}
               {draft.missingInfo.length > 0 && (
-                <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2">
-                  <p className="text-xs font-medium text-amber-400 mb-1">⚠ 不足情報</p>
-                  <ul className="text-xs text-amber-400/80 space-y-0.5">
+                <div className="rounded-lg border border-warning/30 bg-warning-dim px-3 py-2">
+                  <p className="text-xs font-medium text-warning mb-1">⚠ 不足情報</p>
+                  <ul className="text-xs text-warning/80 space-y-0.5">
                     {draft.missingInfo.map((m, i) => (
                       <li key={i}>• {m}</li>
                     ))}

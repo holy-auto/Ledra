@@ -9,30 +9,30 @@ export default function JobWorkflowLoading() {
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-4 pb-2">
         <div className="space-y-2">
-          <div className="h-3 w-12 rounded bg-[rgba(0,0,0,0.06)]" />
-          <div className="h-8 w-64 rounded bg-[rgba(0,0,0,0.06)]" />
-          <div className="h-4 w-96 max-w-full rounded bg-[rgba(0,0,0,0.04)]" />
+          <div className="h-3 w-12 rounded bg-border-subtle dark:bg-[rgba(255,255,255,0.08)]" />
+          <div className="h-8 w-64 rounded bg-border-subtle dark:bg-[rgba(255,255,255,0.08)]" />
+          <div className="h-4 w-96 max-w-full rounded bg-border-subtle dark:bg-[rgba(255,255,255,0.06)]" />
         </div>
-        <div className="h-9 w-28 rounded-xl bg-[rgba(0,0,0,0.06)]" />
+        <div className="h-9 w-28 rounded-xl bg-border-subtle dark:bg-[rgba(255,255,255,0.08)]" />
       </div>
 
       {/* Status Stepper Card */}
       <div className="glass-card p-5 space-y-5">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="space-y-2">
-            <div className="h-3 w-16 rounded bg-[rgba(0,0,0,0.06)]" />
+            <div className="h-3 w-16 rounded bg-border-subtle dark:bg-[rgba(255,255,255,0.08)]" />
             <div className="flex items-center gap-2">
-              <div className="h-6 w-20 rounded-full bg-[rgba(0,0,0,0.06)]" />
-              <div className="h-4 w-48 rounded bg-[rgba(0,0,0,0.04)]" />
+              <div className="h-6 w-20 rounded-full bg-border-subtle dark:bg-[rgba(255,255,255,0.08)]" />
+              <div className="h-4 w-48 rounded bg-border-subtle dark:bg-[rgba(255,255,255,0.06)]" />
             </div>
           </div>
-          <div className="h-9 w-36 rounded-xl bg-[rgba(0,0,0,0.06)]" />
+          <div className="h-9 w-36 rounded-xl bg-border-subtle dark:bg-[rgba(255,255,255,0.08)]" />
         </div>
         <div className="flex items-center gap-2 overflow-x-auto">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="flex items-center gap-2">
-              <div className="h-7 w-28 rounded-full bg-[rgba(0,0,0,0.06)]" />
-              {i < 4 && <div className="h-3 w-3 rounded bg-[rgba(0,0,0,0.04)]" />}
+              <div className="h-7 w-28 rounded-full bg-border-subtle dark:bg-[rgba(255,255,255,0.08)]" />
+              {i < 4 && <div className="h-3 w-3 rounded bg-border-subtle dark:bg-[rgba(255,255,255,0.06)]" />}
             </div>
           ))}
         </div>
@@ -40,10 +40,10 @@ export default function JobWorkflowLoading() {
 
       {/* Quick Actions Card */}
       <div className="glass-card p-5 space-y-3">
-        <div className="h-3 w-24 rounded bg-[rgba(0,0,0,0.06)]" />
+        <div className="h-3 w-24 rounded bg-border-subtle dark:bg-[rgba(255,255,255,0.08)]" />
         <div className="flex flex-wrap gap-2">
           {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-9 w-32 rounded-xl bg-[rgba(0,0,0,0.06)]" />
+            <div key={i} className="h-9 w-32 rounded-xl bg-border-subtle dark:bg-[rgba(255,255,255,0.08)]" />
           ))}
         </div>
       </div>
@@ -51,7 +51,7 @@ export default function JobWorkflowLoading() {
       {/* Tabs */}
       <div className="flex items-center gap-2 border-b border-border-subtle">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-9 w-24 rounded bg-[rgba(0,0,0,0.04)]" />
+          <div key={i} className="h-9 w-24 rounded bg-border-subtle dark:bg-[rgba(255,255,255,0.06)]" />
         ))}
       </div>
 
@@ -59,12 +59,12 @@ export default function JobWorkflowLoading() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {[1, 2].map((i) => (
           <div key={i} className="glass-card p-5 space-y-3">
-            <div className="h-3 w-24 rounded bg-[rgba(0,0,0,0.06)]" />
+            <div className="h-3 w-24 rounded bg-border-subtle dark:bg-[rgba(255,255,255,0.08)]" />
             <div className="space-y-2 mt-3">
               {[1, 2, 3, 4].map((j) => (
                 <div key={j} className="flex justify-between">
-                  <div className="h-4 w-20 rounded bg-[rgba(0,0,0,0.04)]" />
-                  <div className="h-4 w-32 rounded bg-[rgba(0,0,0,0.04)]" />
+                  <div className="h-4 w-20 rounded bg-border-subtle dark:bg-[rgba(255,255,255,0.06)]" />
+                  <div className="h-4 w-32 rounded bg-border-subtle dark:bg-[rgba(255,255,255,0.06)]" />
                 </div>
               ))}
             </div>

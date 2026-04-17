@@ -238,7 +238,7 @@ export default function MenuItemsClient() {
           </section>
 
           {saveMsg && (
-            <div className={`text-sm ${saveMsg.ok ? "text-emerald-400" : "text-red-500"}`}>
+            <div className={`text-sm ${saveMsg.ok ? "text-success" : "text-danger"}`}>
               {saveMsg.text}
             </div>
           )}
@@ -292,7 +292,7 @@ export default function MenuItemsClient() {
                 </div>
               </div>
               {csvMsg && (
-                <div className={`text-sm ${csvMsg.ok ? "text-emerald-400" : "text-red-500"}`}>
+                <div className={`text-sm ${csvMsg.ok ? "text-success" : "text-danger"}`}>
                   {csvMsg.text}
                 </div>
               )}

@@ -172,7 +172,7 @@ export default function AgentSupportPage() {
               <button
                 onClick={sendReply}
                 disabled={sending || !replyText.trim()}
-                className="rounded-xl bg-neutral-900 px-5 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                className="rounded-xl bg-primary px-5 py-2 text-sm font-medium text-inverse hover:bg-primary/90 disabled:opacity-50"
               >
                 {sending ? "送信中..." : "返信する"}
               </button>
@@ -194,7 +194,7 @@ export default function AgentSupportPage() {
       </div>
 
       <div className="flex justify-end">
-        <button onClick={() => setShowNew(!showNew)} className="rounded-xl bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white hover:opacity-90">
+        <button onClick={() => setShowNew(!showNew)} className="rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-inverse hover:bg-primary/90">
           {showNew ? "閉じる" : "新規チケット"}
         </button>
       </div>
@@ -225,7 +225,7 @@ export default function AgentSupportPage() {
           </div>
           <div className="flex justify-end gap-3">
             <button onClick={() => setShowNew(false)} className="rounded-xl border border-border-default px-4 py-2 text-sm font-medium text-secondary hover:bg-inset">キャンセル</button>
-            <button onClick={createTicket} disabled={creating} className="rounded-xl bg-neutral-900 px-5 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">{creating ? "作成中..." : "送信"}</button>
+            <button onClick={createTicket} disabled={creating} className="rounded-xl bg-primary px-5 py-2 text-sm font-medium text-inverse hover:bg-primary/90 disabled:opacity-50">{creating ? "作成中..." : "送信"}</button>
           </div>
         </div>
       )}

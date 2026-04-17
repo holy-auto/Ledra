@@ -135,17 +135,17 @@ function TabsSkeleton() {
       {/* タブヘッダ */}
       <div className="flex items-center gap-2 border-b border-border-subtle">
         {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="h-9 w-28 rounded-t-md bg-[rgba(0,0,0,0.06)] mb-0" />
+          <div key={i} className="h-9 w-28 rounded-t-md bg-border-subtle dark:bg-[rgba(255,255,255,0.08)] mb-0" />
         ))}
       </div>
       {/* コンテンツ: 2カラムカード風 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {[0, 1].map((i) => (
           <div key={i} className="rounded-xl border border-border-subtle bg-surface p-5 space-y-3">
-            <div className="h-3 w-20 bg-[rgba(0,0,0,0.06)] rounded" />
-            <div className="h-4 w-full bg-[rgba(0,0,0,0.04)] rounded" />
-            <div className="h-4 w-5/6 bg-[rgba(0,0,0,0.04)] rounded" />
-            <div className="h-4 w-2/3 bg-[rgba(0,0,0,0.04)] rounded" />
+            <div className="h-3 w-20 bg-border-subtle dark:bg-[rgba(255,255,255,0.08)] rounded" />
+            <div className="h-4 w-full bg-border-subtle dark:bg-[rgba(255,255,255,0.06)] rounded" />
+            <div className="h-4 w-5/6 bg-border-subtle dark:bg-[rgba(255,255,255,0.06)] rounded" />
+            <div className="h-4 w-2/3 bg-border-subtle dark:bg-[rgba(255,255,255,0.06)] rounded" />
           </div>
         ))}
       </div>

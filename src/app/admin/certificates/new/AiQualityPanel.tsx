@@ -59,16 +59,16 @@ interface Props {
 const STATUS_CONFIG = {
   pass: {
     label: "Ledra Standard ✅",
-    bg: "bg-green-400/10",
-    border: "border-green-400/40",
-    text: "text-green-400",
+    bg: "bg-success-dim",
+    border: "border-success/30",
+    text: "text-success",
     icon: "✅",
   },
   warning: {
     label: "要確認 ⚠️",
-    bg: "bg-amber-400/10",
-    border: "border-amber-400/40",
-    text: "text-amber-400",
+    bg: "bg-warning-dim",
+    border: "border-warning/30",
+    text: "text-warning",
     icon: "⚠️",
   },
   fail: {
@@ -187,7 +187,7 @@ export default function AiQualityPanel({ category, photoUrls = [], fieldValues =
                 {/* スコアバー */}
                 <div className="h-2 bg-inset rounded-full overflow-hidden">
                   <div
-                    className={`h-full rounded-full ${status === "pass" ? "bg-green-400" : status === "warning" ? "bg-amber-400" : "bg-red-400"}`}
+                    className={`h-full rounded-full ${status === "pass" ? "bg-success" : status === "warning" ? "bg-warning" : "bg-red-400"}`}
                     style={{ width: `${result.score}%` }}
                   />
                 </div>
@@ -213,13 +213,13 @@ export default function AiQualityPanel({ category, photoUrls = [], fieldValues =
               {/* 警告メッセージ */}
               {result.warningMessages.filter((w) => w.level === "warning").length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-xs font-semibold text-amber-400">⚠️ 推奨修正</p>
+                  <p className="text-xs font-semibold text-warning">⚠️ 推奨修正</p>
                   {result.warningMessages
                     .filter((w) => w.level === "warning")
                     .map((w, i) => (
                       <div
                         key={i}
-                        className="rounded-lg bg-amber-400/10 border border-amber-400/30 px-3 py-2 text-xs text-amber-400"
+                        className="rounded-lg bg-warning-dim border border-warning/30 px-3 py-2 text-xs text-warning"
                       >
                         {w.message}
                       </div>
@@ -240,7 +240,7 @@ export default function AiQualityPanel({ category, photoUrls = [], fieldValues =
                         className={`flex items-start gap-2 rounded-lg px-3 py-2 text-xs ${
                           p.required
                             ? "bg-red-400/10 border border-red-400/30 text-red-400"
-                            : "bg-amber-400/10 border border-amber-400/20 text-amber-400"
+                            : "bg-warning-dim border border-warning/20 text-warning"
                         }`}
                       >
                         <span className="mt-0.5">{p.required ? "🔴" : "🟡"}</span>
@@ -269,7 +269,7 @@ export default function AiQualityPanel({ category, photoUrls = [], fieldValues =
                         className={`rounded-full px-2.5 py-0.5 text-xs border ${
                           f.required
                             ? "bg-red-400/10 border-red-400/30 text-red-400"
-                            : "bg-amber-400/10 border-amber-400/20 text-amber-400"
+                            : "bg-warning-dim border-warning/20 text-warning"
                         }`}
                       >
                         {f.label}
@@ -282,7 +282,7 @@ export default function AiQualityPanel({ category, photoUrls = [], fieldValues =
 
               {/* 合格時メッセージ */}
               {status === "pass" && (
-                <div className="rounded-lg bg-green-400/10 border border-green-400/30 px-3 py-2 text-xs text-green-400">
+                <div className="rounded-lg bg-success-dim border border-success/30 px-3 py-2 text-xs text-success">
                   ✅ Ledra Standard 基準をクリアしています！このまま発行できます。
                 </div>
               )}

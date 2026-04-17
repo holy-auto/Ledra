@@ -29,16 +29,16 @@ interface FeedbackResult {
 
 const GRADE_CONFIG: Record<string, { label: string; border: string; textCls: string; bgCls: string }> = {
   S: { label: "最優秀", border: "border-yellow-400/50", textCls: "text-yellow-400", bgCls: "bg-yellow-400/10" },
-  A: { label: "優良", border: "border-green-400/50", textCls: "text-green-400", bgCls: "bg-green-400/10" },
+  A: { label: "優良", border: "border-success/50", textCls: "text-success", bgCls: "bg-success-dim" },
   B: { label: "良好", border: "border-accent/50", textCls: "text-accent", bgCls: "bg-accent/10" },
-  C: { label: "基準未達", border: "border-orange-400/50", textCls: "text-orange-400", bgCls: "bg-orange-400/10" },
+  C: { label: "基準未達", border: "border-warning/50", textCls: "text-warning", bgCls: "bg-warning-dim" },
   D: { label: "要改善", border: "border-red-400/50", textCls: "text-red-400", bgCls: "bg-red-400/10" },
 };
 
 const PRIORITY_CONFIG: Record<string, { label: string; cls: string }> = {
   high: { label: "重要", cls: "text-red-400 bg-red-400/10 border border-red-400/20" },
-  medium: { label: "推奨", cls: "text-orange-400 bg-orange-400/10 border border-orange-400/20" },
-  low: { label: "任意", cls: "text-green-400 bg-green-400/10 border border-green-400/20" },
+  medium: { label: "推奨", cls: "text-warning bg-warning-dim border border-warning/20" },
+  low: { label: "任意", cls: "text-success bg-success-dim border border-success/20" },
 };
 
 export default function AcademyFeedbackPage() {
@@ -141,7 +141,7 @@ export default function AcademyFeedbackPage() {
                 <div className="w-24 bg-inset rounded-full h-2">
                   <div
                     className={`h-2 rounded-full ${
-                      result.score >= 80 ? "bg-green-400" : result.score >= 60 ? "bg-accent" : "bg-red-400"
+                      result.score >= 80 ? "bg-success" : result.score >= 60 ? "bg-accent" : "bg-red-400"
                     }`}
                     style={{ width: `${result.score}%` }}
                   />
@@ -163,18 +163,18 @@ export default function AcademyFeedbackPage() {
                   <div
                     key={lvl}
                     className={`flex-1 rounded-xl p-3 border text-center transition-all ${
-                      achieved ? "bg-green-400/10 border-green-400/40" : "bg-inset border-border-subtle opacity-40"
+                      achieved ? "bg-success-dim border-success/40" : "bg-inset border-border-subtle opacity-40"
                     }`}
                   >
                     <div className={`text-lg ${achieved ? "opacity-100" : "opacity-30"}`}>
                       {lvl === "basic" ? "🥉" : lvl === "standard" ? "🥈" : "🥇"}
                     </div>
                     <div
-                      className={`text-xs font-medium mt-1 capitalize ${achieved ? "text-green-400" : "text-muted"}`}
+                      className={`text-xs font-medium mt-1 capitalize ${achieved ? "text-success" : "text-muted"}`}
                     >
                       {lvl}
                     </div>
-                    {achieved && <div className="text-xs text-green-400">✓ 達成</div>}
+                    {achieved && <div className="text-xs text-success">✓ 達成</div>}
                   </div>
                 );
               })}
@@ -194,7 +194,7 @@ export default function AcademyFeedbackPage() {
               <div className="space-y-2">
                 {result.strengths.map((s, i) => (
                   <div key={i} className="flex gap-2 text-sm">
-                    <span className="text-green-400 font-bold mt-0.5">+</span>
+                    <span className="text-success font-bold mt-0.5">+</span>
                     <div>
                       <span className="font-medium text-primary">{s.area}: </span>
                       <span className="text-secondary">{s.comment}</span>

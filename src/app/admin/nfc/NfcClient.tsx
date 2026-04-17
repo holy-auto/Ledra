@@ -40,9 +40,9 @@ type Props = {
 
 function tagStatusMeta(status?: string | null) {
   const s = String(status ?? "").toLowerCase();
-  if (s === "attached") return { label: "貼付済", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" };
+  if (s === "attached") return { label: "貼付済", cls: "bg-success-dim text-success-text border-success/30" };
   if (s === "written")  return { label: "書込済", cls: "bg-sky-50 text-sky-700 border-sky-200" };
-  if (s === "prepared") return { label: "未書込", cls: "bg-amber-50 text-amber-700 border-amber-200" };
+  if (s === "prepared") return { label: "未書込", cls: "bg-warning-dim text-warning-text border-warning/30" };
   if (s === "lost")     return { label: "紛失",   cls: "bg-red-50 text-red-700 border-red-200" };
   if (s === "retired")  return { label: "廃止",   cls: "bg-red-50 text-red-700 border-red-200" };
   if (s === "error")    return { label: "エラー", cls: "bg-red-50 text-red-700 border-red-200" };
@@ -51,10 +51,10 @@ function tagStatusMeta(status?: string | null) {
 
 function certStatusMeta(status?: string | null) {
   const s = String(status ?? "").toLowerCase();
-  if (s === "active")   return { label: "有効",     cls: "bg-emerald-50 text-emerald-700 border-emerald-200" };
+  if (s === "active")   return { label: "有効",     cls: "bg-success-dim text-success-text border-success/30" };
   if (s === "void")     return { label: "無効",     cls: "bg-red-50 text-red-700 border-red-200" };
-  if (s === "draft")    return { label: "下書き",   cls: "bg-blue-50 text-blue-700 border-blue-200" };
-  if (s === "expired")  return { label: "期限切れ", cls: "bg-amber-50 text-amber-700 border-amber-200" };
+  if (s === "draft")    return { label: "下書き",   cls: "bg-accent-dim text-accent-text border-accent/30" };
+  if (s === "expired")  return { label: "期限切れ", cls: "bg-warning-dim text-warning-text border-warning/30" };
   return { label: status ?? "不明", cls: "bg-inset text-secondary border-border-default" };
 }
 
@@ -114,20 +114,20 @@ export default function NfcClient({ initialRows, vehicleMap, certMap, isAdmin }:
           <div className="mt-2 text-2xl font-bold text-primary">{total}</div>
           <div className="mt-1 text-xs text-muted">登録タグ数</div>
         </div>
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
-          <div className="text-xs font-semibold tracking-[0.18em] text-emerald-600">紐付済</div>
-          <div className="mt-2 text-2xl font-bold text-emerald-700">{attached}</div>
-          <div className="mt-1 text-xs text-emerald-600">貼付済み</div>
+        <div className="rounded-2xl border border-success/30 bg-success-dim p-5 shadow-sm">
+          <div className="text-xs font-semibold tracking-[0.18em] text-success-text">紐付済</div>
+          <div className="mt-2 text-2xl font-bold text-success-text">{attached}</div>
+          <div className="mt-1 text-xs text-success-text">貼付済み</div>
         </div>
         <div className="rounded-2xl border border-sky-200 bg-sky-50 p-5 shadow-sm">
           <div className="text-xs font-semibold tracking-[0.18em] text-sky-600">書込済</div>
           <div className="mt-2 text-2xl font-bold text-sky-700">{written}</div>
           <div className="mt-1 text-xs text-sky-600">書込済み</div>
         </div>
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
-          <div className="text-xs font-semibold tracking-[0.18em] text-amber-600">準備済</div>
-          <div className="mt-2 text-2xl font-bold text-amber-700">{prepared}</div>
-          <div className="mt-1 text-xs text-amber-600">未書込み</div>
+        <div className="rounded-2xl border border-warning/30 bg-warning-dim p-5 shadow-sm">
+          <div className="text-xs font-semibold tracking-[0.18em] text-warning-text">準備済</div>
+          <div className="mt-2 text-2xl font-bold text-warning-text">{prepared}</div>
+          <div className="mt-1 text-xs text-warning-text">未書込み</div>
         </div>
       </section>
 
@@ -208,7 +208,7 @@ export default function NfcClient({ initialRows, vehicleMap, certMap, isAdmin }:
                             <button
                               onClick={() => handleRetire(row.id)}
                               disabled={isLoading}
-                              className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                              className="rounded-md border border-warning/30 bg-warning-dim px-2.5 py-1 text-[11px] font-medium text-warning-text hover:bg-warning/15 disabled:opacity-50 transition-colors"
                             >
                               {isLoading ? "..." : "廃止"}
                             </button>

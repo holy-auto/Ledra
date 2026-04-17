@@ -26,9 +26,9 @@ type Insurer = {
 };
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  active_pending_review: { label: "審査待ち", color: "bg-amber-100 text-amber-800" },
-  active: { label: "正式", color: "bg-green-100 text-green-800" },
-  suspended: { label: "停止", color: "bg-red-100 text-red-800" },
+  active_pending_review: { label: "審査待ち", color: "bg-warning-dim text-warning-text" },
+  active: { label: "正式", color: "bg-success-dim text-success-text" },
+  suspended: { label: "停止", color: "bg-danger-dim text-danger-text" },
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -110,7 +110,7 @@ export default function InsurerReviewClient() {
       </div>
 
       {msg && (
-        <div className={`rounded-xl border p-3 text-sm ${msg.startsWith("エラー") ? "border-red-200 bg-red-50 text-red-700" : "border-green-200 bg-green-50 text-green-700"}`}>
+        <div className={`rounded-xl border p-3 text-sm ${msg.startsWith("エラー") ? "border-danger/30 bg-danger-dim text-danger-text" : "border-success/30 bg-success-dim text-success-text"}`}>
           {msg}
         </div>
       )}
@@ -176,7 +176,7 @@ export default function InsurerReviewClient() {
                         <button
                           onClick={() => updateInsurer(ins.id, { status: "active" })}
                           disabled={actionBusy === ins.id}
-                          className="rounded-lg bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                          className="rounded-lg bg-success px-3 py-1 text-xs font-medium text-white hover:bg-success/90 disabled:opacity-50"
                         >
                           承認
                         </button>
@@ -185,7 +185,7 @@ export default function InsurerReviewClient() {
                         <button
                           onClick={() => updateInsurer(ins.id, { status: "active" })}
                           disabled={actionBusy === ins.id}
-                          className="rounded-lg bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                          className="rounded-lg bg-accent px-3 py-1 text-xs font-medium text-white hover:bg-accent/90 disabled:opacity-50"
                         >
                           復活
                         </button>

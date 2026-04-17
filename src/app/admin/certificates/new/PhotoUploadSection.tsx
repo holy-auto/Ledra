@@ -210,7 +210,7 @@ const PhotoUploadSection = forwardRef<PhotoUploadHandle, Props>(function PhotoUp
       )}
 
       {full && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+        <div className="rounded-xl border border-warning/30 bg-warning-dim px-3 py-2 text-xs text-warning-text">
           {planLabel} プランの上限（{maxPhotos} 枚）に達しました。
         </div>
       )}

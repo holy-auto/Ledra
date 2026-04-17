@@ -245,7 +245,7 @@ export default function NewVehicleForm() {
       />
 
       {errMsg && (
-        <div className="glass-card p-4 text-sm text-red-500">{errMsg}</div>
+        <div className="glass-card p-4 text-sm text-danger">{errMsg}</div>
       )}
 
       {/* 車検証 OCR — 一時非表示 */}
@@ -301,7 +301,7 @@ export default function NewVehicleForm() {
           onChange={onOcrFileChange}
         />
         {ocrMsg != null && (
-          <p className={`text-sm ${ocrMsg!.startsWith("✓") ? "text-emerald-600" : "text-red-500"}`}>
+          <p className={`text-sm ${ocrMsg!.startsWith("✓") ? "text-success-text" : "text-danger"}`}>
             {ocrMsg}
           </p>
         )}
@@ -312,11 +312,11 @@ export default function NewVehicleForm() {
         <SectionTitle tag="BASIC INFO" title="基本情報" />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="space-y-1">
-            <label className="text-xs text-muted">メーカー <span className="text-red-500">*</span></label>
+            <label className="text-xs text-muted">メーカー <span className="text-danger">*</span></label>
             <input type="text" className="input-field" placeholder="例: トヨタ" value={maker} onChange={(e) => setMaker(e.target.value)} />
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-muted">車名 <span className="text-red-500">*</span></label>
+            <label className="text-xs text-muted">車名 <span className="text-danger">*</span></label>
             <input type="text" className="input-field" placeholder="例: プリウス" value={model} onChange={(e) => setModel(e.target.value)} />
           </div>
           <div className="space-y-1">

@@ -38,7 +38,7 @@ export default function BtoBHubClient() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 rounded-xl p-1" style={{ background: "rgba(0,0,0,0.04)" }}>
+      <div className="flex gap-1 rounded-xl bg-inset p-1">
         {TABS.map((tab) => (
           <button
             key={tab.id}

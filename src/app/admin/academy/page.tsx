@@ -70,11 +70,11 @@ export default async function AcademyPage() {
       </div>
 
       {!isAiEnabled && (
-        <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-3">
-          <span className="text-amber-400 text-lg mt-0.5">⚠️</span>
+        <div className="mb-6 p-4 bg-warning-dim border border-warning/30 rounded-xl flex items-start gap-3">
+          <span className="text-warning text-lg mt-0.5">⚠️</span>
           <div>
-            <p className="text-sm font-medium text-amber-400">AI機能はStandard/Proプランで利用できます</p>
-            <p className="text-xs text-amber-400/70 mt-1">基本品質チェックは現在のプランでもご利用いただけます</p>
+            <p className="text-sm font-medium text-warning">AI機能はStandard/Proプランで利用できます</p>
+            <p className="text-xs text-warning/70 mt-1">基本品質チェックは現在のプランでもご利用いただけます</p>
           </div>
         </div>
       )}
@@ -84,7 +84,7 @@ export default async function AcademyPage() {
         {[
           { value: avgScore, label: "平均品質スコア", sub: "(直近30件)", colorCls: "text-accent" },
           { value: levelCounts["pro"] ?? 0, label: "Pro 認定件数", sub: "スコア90+", colorCls: "text-yellow-400" },
-          { value: candidateCount ?? 0, label: "公開候補事例", sub: "未公開", colorCls: "text-green-400" },
+          { value: candidateCount ?? 0, label: "公開候補事例", sub: "未公開", colorCls: "text-success" },
           { value: publishedCount ?? 0, label: "公開済み事例", sub: "全加盟店共有", colorCls: "text-purple-400" },
         ].map((stat) => (
           <div key={stat.label} className="glass-card p-4 text-center">
@@ -166,7 +166,7 @@ export default async function AcademyPage() {
               const total = scoreStats?.length ?? 1;
               const pct = Math.round((count / total) * 100);
               const barColors: Record<string, string> = {
-                basic: "bg-green-500",
+                basic: "bg-success",
                 standard: "bg-accent",
                 pro: "bg-yellow-400",
               };
@@ -203,7 +203,7 @@ export default async function AcademyPage() {
             >
               <div className="font-medium text-sm text-primary mb-1">{item.level}</div>
               <div className="text-xs text-secondary">{item.desc}</div>
-              {item.done && <div className="mt-2 text-xs text-green-400 font-medium">✓ 受講可能</div>}
+              {item.done && <div className="mt-2 text-xs text-success font-medium">✓ 受講可能</div>}
             </div>
           ))}
         </div>

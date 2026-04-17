@@ -207,7 +207,7 @@ export default async function Page({ params }: PageProps) {
       />
 
       {isVoid ? (
-        <section className="rounded-2xl border border-amber-500/30 bg-[rgba(245,158,11,0.1)] p-4 text-sm text-amber-400">
+        <section className="rounded-2xl border border-warning/30 bg-warning-dim p-4 text-sm text-warning-text">
           この証明書は無効の施工証明書です。公開 / 出力は停止対象です。
         </section>
       ) : null}
@@ -316,11 +316,11 @@ export default async function Page({ params }: PageProps) {
               </div>
               {images.length > 0 ? (
                 <div className="flex flex-wrap gap-2 text-xs">
-                  <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-emerald-400">
+                  <span className="rounded-full bg-success-dim px-2.5 py-1 text-success-text">
                     記録済 {anchoredCount}
                   </span>
                   {pendingAnchorCount > 0 ? (
-                    <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-amber-400">
+                    <span className="rounded-full bg-warning-dim px-2.5 py-1 text-warning-text">
                       未記録 {pendingAnchorCount}
                     </span>
                   ) : null}
@@ -350,12 +350,12 @@ export default async function Page({ params }: PageProps) {
                           : "未検証";
                   const gradeColor =
                     img.authenticity_grade === "premium"
-                      ? "bg-violet-500/10 text-violet-400"
+                      ? "bg-violet-dim text-violet-text"
                       : img.authenticity_grade === "verified"
-                        ? "bg-emerald-500/10 text-emerald-400"
+                        ? "bg-success-dim text-success-text"
                         : img.authenticity_grade === "basic"
-                          ? "bg-sky-500/10 text-sky-400"
-                          : "bg-neutral-500/10 text-muted";
+                          ? "bg-accent-dim text-accent-text"
+                          : "bg-surface-hover text-muted";
 
                   return (
                     <div key={img.id} className="rounded-2xl border border-border-default bg-base p-3 space-y-3">
@@ -389,7 +389,7 @@ export default async function Page({ params }: PageProps) {
 
                         <div className="grid grid-cols-[auto,1fr] gap-x-2 gap-y-1 text-secondary">
                           <span className="text-muted">C2PA</span>
-                          <span className={img.c2pa_verified ? "text-emerald-400" : "text-muted"}>
+                          <span className={img.c2pa_verified ? "text-success" : "text-muted"}>
                             {img.c2pa_verified ? "署名あり" : "-"}
                           </span>
 
@@ -404,13 +404,13 @@ export default async function Page({ params }: PageProps) {
                               href={explorerUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="break-all text-emerald-400 hover:underline"
+                              className="break-all text-success hover:underline"
                               title={`${img.polygon_network === "amoy" ? "Amoy testnet" : "Polygon mainnet"} で検証`}
                             >
                               {img.polygon_tx_hash?.slice(0, 16)}… ↗
                             </a>
                           ) : img.sha256 ? (
-                            <span className="text-amber-400">未記録</span>
+                            <span className="text-warning">未記録</span>
                           ) : (
                             <span className="text-muted">-</span>
                           )}

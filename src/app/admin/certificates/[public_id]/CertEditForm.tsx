@@ -189,7 +189,7 @@ export default function CertEditForm({ cert }: Props) {
       </label>
 
       {error && (
-        <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-danger">{error}</div>
+        <div className="rounded-xl border border-danger/20 bg-danger-dim px-4 py-2 text-sm text-danger">{error}</div>
       )}
 
       <div className="flex gap-3 items-center">

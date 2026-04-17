@@ -578,7 +578,7 @@ export default function InvoicesClient() {
           </section>
 
           {saveMsg && (
-            <div className={`text-sm ${saveMsg.ok ? "text-emerald-400" : "text-red-500"}`}>{saveMsg.text}</div>
+            <div className={`text-sm ${saveMsg.ok ? "text-success" : "text-red-500"}`}>{saveMsg.text}</div>
           )}
 
           {/* Create Form */}
@@ -735,7 +735,7 @@ export default function InvoicesClient() {
                             </option>
                           ))}
                         </select>
-                        {item.certificate_id && <span className="text-[10px] text-emerald-400">✓ 紐付済</span>}
+                        {item.certificate_id && <span className="text-[10px] text-success">✓ 紐付済</span>}
                       </div>
                     )}
                     <div className="grid grid-cols-6 sm:grid-cols-12 gap-2 items-end">

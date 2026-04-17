@@ -310,9 +310,9 @@ export default function AdminTrainingClient() {
       </div>
 
       {loading && <div className="text-sm text-muted">読み込み中...</div>}
-      {err && <div className="glass-card p-4 text-sm text-red-500">{err}</div>}
+      {err && <div className="glass-card p-4 text-sm text-danger">{err}</div>}
 
-      {saveMsg && <div className={`text-sm ${saveMsg.ok ? "text-emerald-400" : "text-red-500"}`}>{saveMsg.text}</div>}
+      {saveMsg && <div className={`text-sm ${saveMsg.ok ? "text-success" : "text-danger"}`}>{saveMsg.text}</div>}
 
       {/* Create / Edit Form */}
       {showForm && (
@@ -328,7 +328,7 @@ export default function AdminTrainingClient() {
             {/* Title */}
             <div className="space-y-1 sm:col-span-2">
               <label className="text-xs text-muted">
-                タイトル <span className="text-red-500">*</span>
+                タイトル <span className="text-danger">*</span>
               </label>
               <input
                 type="text"
@@ -514,7 +514,7 @@ export default function AdminTrainingClient() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-primary">{course.title}</span>
                           {!course.content_url && (
-                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                            <span className="rounded-full bg-warning-dim text-warning-text">
                               URL未設定
                             </span>
                           )}

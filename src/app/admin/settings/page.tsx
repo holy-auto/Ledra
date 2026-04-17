@@ -112,7 +112,7 @@ export default async function AdminSettingsPage() {
             </div>
             <div className="glass-card p-4">
               <div className="text-xs text-muted">ロゴ設定</div>
-              <div className={`mt-1 font-semibold ${hasLogo ? "text-emerald-400" : "text-amber-400"}`}>
+              <div className={`mt-1 font-semibold ${hasLogo ? "text-success" : "text-warning"}`}>
                 {hasLogo ? "設定済み" : "未設定"}
               </div>
             </div>
@@ -131,7 +131,7 @@ export default async function AdminSettingsPage() {
         {!columnsExist && (
           <section className="glass-card glow-amber p-5">
             <div className="mb-3">
-              <div className="text-xs font-semibold tracking-[0.18em] text-amber-400">マイグレーション必要</div>
+              <div className="text-xs font-semibold tracking-[0.18em] text-warning">マイグレーション必要</div>
               <div className="mt-1 text-base font-semibold text-primary">住所・連絡先項目を有効にするには</div>
             </div>
             <p className="text-sm text-secondary mb-3">

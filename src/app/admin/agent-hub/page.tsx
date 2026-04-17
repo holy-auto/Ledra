@@ -86,7 +86,7 @@ export default async function AgentHubPage() {
       <Card padding="compact" variant="inset">
         <p className="text-[13px] text-secondary leading-relaxed">
           従来 7 つに分散していた代理店向け管理画面をここから横断的にアクセスできます。
-          個別の URL (<code className="px-1 py-0.5 rounded bg-[rgba(0,0,0,0.05)]">/admin/agent-*</code>) も引き続き利用可能です。
+          個別の URL (<code className="px-1 py-0.5 rounded bg-border-subtle dark:bg-[rgba(255,255,255,0.07)]">/admin/agent-*</code>) も引き続き利用可能です。
         </p>
       </Card>
 

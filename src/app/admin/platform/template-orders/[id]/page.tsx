@@ -101,7 +101,7 @@ export default function OrderDetailPage() {
   };
 
   if (loading) return <div className="text-sm text-muted p-8">読み込み中...</div>;
-  if (!order) return <div className="text-sm text-red-500 p-8">オーダーが見つかりません</div>;
+  if (!order) return <div className="text-sm text-danger p-8">オーダーが見つかりません</div>;
 
   const hearing = order.hearing_json as Record<string, string> | null;
 
@@ -118,7 +118,7 @@ export default function OrderDetailPage() {
       />
 
       {message && (
-        <div className={`glass-card p-3 text-sm ${message.type === "ok" ? "text-emerald-400" : "text-red-500"}`}>
+        <div className={`glass-card p-3 text-sm ${message.type === "ok" ? "text-success" : "text-danger"}`}>
           {message.text}
         </div>
       )}

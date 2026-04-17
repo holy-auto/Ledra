@@ -4,7 +4,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import PageHeader from "@/components/ui/PageHeader";
 
 const AgentReviewClient = dynamic(() => import("./AgentReviewClient"), {
-  loading: () => <div className="animate-pulse h-40 rounded-2xl bg-[rgba(0,0,0,0.04)]" />,
+  loading: () => <div className="animate-pulse h-40 rounded-2xl bg-border-subtle dark:bg-[rgba(255,255,255,0.06)]" />,
 });
 
 export default async function AdminAgentsPage() {

@@ -161,7 +161,7 @@ export default function CoatingProductsSection({ serviceType }: Props) {
       {brandsLoading ? (
         <p className="text-xs text-muted">ブランドを読み込み中...</p>
       ) : brands.length === 0 && brandsLoaded ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
+        <div className="rounded-xl border border-warning/30 bg-warning-dim p-3 text-xs text-warning-text">
           ブランドが未登録です。先に
           <a href="/admin/settings/brands" target="_blank" className="ml-1 underline font-medium">
             ブランドを追加

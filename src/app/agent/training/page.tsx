@@ -260,7 +260,7 @@ export default function AgentTrainingPage() {
                       <>
                         <button
                           onClick={() => startCourse(course)}
-                          className="flex-1 rounded-xl bg-neutral-900 px-3 py-2 text-xs font-medium text-white hover:opacity-90"
+                          className="flex-1 rounded-xl bg-primary px-3 py-2 text-xs font-medium text-inverse hover:bg-primary/90"
                         >
                           {status === "not_started" ? "受講開始" : "続きから"}
                         </button>

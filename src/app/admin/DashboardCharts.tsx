@@ -39,7 +39,7 @@ function BarChart({ data }: { data: { date: string; count: number }[] }) {
               y1={160 - ratio * 140}
               x2="300"
               y2={160 - ratio * 140}
-              stroke="rgba(0,0,0,0.06)"
+              stroke="var(--border-default)"
               strokeWidth="0.5"
             />
           ))}
@@ -137,7 +137,7 @@ function DonutChart({ data }: { data: { status: string; count: number }[] }) {
       <div className="flex items-center gap-8">
         <div className="relative flex-shrink-0">
           <svg width="150" height="150" viewBox="0 0 150 150">
-            <circle cx={cx} cy={cy} r={radius} fill="none" stroke="rgba(0,0,0,0.06)" strokeWidth={strokeWidth} />
+            <circle cx={cx} cy={cy} r={radius} fill="none" stroke="var(--border-default)" strokeWidth={strokeWidth} />
 
             {segments.map((seg) => (
               <circle

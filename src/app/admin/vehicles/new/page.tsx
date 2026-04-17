@@ -243,7 +243,7 @@ export default function AdminVehicleNewPage() {
               )}
             </div>
             {sizeAuto && sizeClass && (
-              <p className="text-[11px] text-emerald-600">✓ {maker} {model} → {sizeClass} （マスタから自動判定）</p>
+              <p className="text-[11px] text-success-text">✓ {maker} {model} → {sizeClass} （マスタから自動判定）</p>
             )}
             <p className="text-[11px] text-muted">SS=~8㎥, S=8~10㎥, M=10~12㎥, L=12~14㎥, LL=14~16㎥, XL=16㎥~（体積基準）</p>
           </div>
@@ -263,7 +263,7 @@ export default function AdminVehicleNewPage() {
                 autoComplete="off"
               />
               {customerId && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-medium">
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] bg-success-dim text-success-text px-1.5 py-0.5 rounded font-medium">
                   マスタ連携
                 </span>
               )}

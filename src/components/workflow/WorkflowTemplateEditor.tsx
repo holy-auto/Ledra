@@ -78,7 +78,7 @@ export default function WorkflowTemplateEditor({ steps, onChange }: Props) {
             <div key={step.key} className="rounded-xl border border-border-default bg-surface p-3">
               <div className="flex items-start gap-2">
                 {/* 順序バッジ */}
-                <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[11px] font-bold text-indigo-700">
+                <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-accent-dim text-[11px] font-bold text-accent-text">
                   {i + 1}
                 </div>
 
@@ -88,7 +88,7 @@ export default function WorkflowTemplateEditor({ steps, onChange }: Props) {
                     type="text"
                     value={step.label}
                     onChange={(e) => updateStep(i, "label", e.target.value)}
-                    className="w-full rounded-lg border border-border-default bg-inset px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    className="w-full rounded-lg border border-border-default bg-inset px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                     placeholder="ステップ名"
                   />
 
@@ -102,7 +102,7 @@ export default function WorkflowTemplateEditor({ steps, onChange }: Props) {
                         max="999"
                         value={step.estimated_min}
                         onChange={(e) => updateStep(i, "estimated_min", parseInt(e.target.value, 10) || 0)}
-                        className="w-16 rounded-lg border border-border-default bg-inset px-2 py-1 text-xs text-center focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        className="w-16 rounded-lg border border-border-default bg-inset px-2 py-1 text-xs text-center focus:outline-none focus:ring-2 focus:ring-accent"
                       />
                       <span>分</span>
                     </label>
@@ -113,7 +113,7 @@ export default function WorkflowTemplateEditor({ steps, onChange }: Props) {
                         type="checkbox"
                         checked={step.is_customer_visible}
                         onChange={(e) => updateStep(i, "is_customer_visible", e.target.checked)}
-                        className="rounded border-border-default text-indigo-600 focus:ring-indigo-500"
+                        className="rounded border-border-default text-accent focus:ring-accent"
                       />
                       <span>📱 顧客に通知</span>
                     </label>
@@ -155,7 +155,7 @@ export default function WorkflowTemplateEditor({ steps, onChange }: Props) {
                   <button
                     type="button"
                     onClick={() => removeStep(i)}
-                    className="rounded p-1 text-muted hover:bg-red-100 hover:text-red-600"
+                    className="rounded p-1 text-muted hover:bg-danger-dim hover:text-danger"
                     title="削除"
                   >
                     <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
@@ -180,14 +180,14 @@ export default function WorkflowTemplateEditor({ steps, onChange }: Props) {
           value={newLabel}
           onChange={(e) => setNewLabel(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addStep())}
-          className="flex-1 rounded-xl border border-border-default px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          className="flex-1 rounded-xl border border-border-default px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
           placeholder="新しいステップ名を入力..."
         />
         <button
           type="button"
           onClick={addStep}
           disabled={!newLabel.trim()}
-          className="rounded-xl bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          className="rounded-xl bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50 transition-colors"
         >
           追加
         </button>

@@ -250,7 +250,7 @@ export default function AdminCampaignsClient() {
               resetForm();
               setShowForm(true);
             }}
-            className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary/90 transition-colors"
+            className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-inverse shadow-sm hover:bg-primary/90 transition-colors"
           >
             新規作成
           </button>
@@ -403,7 +403,7 @@ export default function AdminCampaignsClient() {
             <button
               type="submit"
               disabled={busy}
-              className="rounded-xl bg-primary px-5 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
+              className="rounded-xl bg-primary px-5 py-2 text-sm font-medium text-inverse shadow-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
             >
               {busy ? "処理中..." : editingId ? "更新" : "作成"}
             </button>
@@ -422,7 +422,7 @@ export default function AdminCampaignsClient() {
       {loading ? (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="animate-pulse h-20 rounded-2xl bg-[rgba(0,0,0,0.04)]" />
+            <div key={i} className="animate-pulse h-20 rounded-2xl bg-border-subtle dark:bg-[rgba(255,255,255,0.06)]" />
           ))}
         </div>
       ) : campaigns.length === 0 ? (

@@ -132,7 +132,7 @@ export default function PpfCoverageSection() {
             key={qs.label}
             type="button"
             onClick={() => applyQuickSet(qs.panels)}
-            className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors"
+            className="rounded-lg border border-accent/30 bg-accent-dim px-3 py-1.5 text-xs font-medium text-accent-text hover:bg-accent/15 transition-colors"
           >
             {qs.label}
           </button>

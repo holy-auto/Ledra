@@ -106,7 +106,7 @@ const PARTNER_RANKS: PartnerRank[] = [
   { key: "platinum", label: "プラチナ", color: "text-violet-600 dark:text-violet-400", bgColor: "bg-violet-100 dark:bg-violet-900/40", minCompleted: 50, minRating: 4.0 },
   { key: "gold",     label: "ゴールド", color: "text-yellow-600 dark:text-yellow-400", bgColor: "bg-yellow-100 dark:bg-yellow-900/40", minCompleted: 20, minRating: 3.5 },
   { key: "silver",   label: "シルバー", color: "text-muted dark:text-muted",     bgColor: "bg-surface-hover dark:bg-gray-800/60",     minCompleted: 5,  minRating: null },
-  { key: "bronze",   label: "ブロンズ", color: "text-orange-600 dark:text-orange-400", bgColor: "bg-orange-100 dark:bg-orange-900/40", minCompleted: 1,  minRating: null },
+  { key: "bronze",   label: "ブロンズ", color: "text-warning", bgColor: "bg-warning-dim", minCompleted: 1,  minRating: null },
   { key: "starter",  label: "スターター", color: "text-muted",                          bgColor: "bg-surface-hover",                    minCompleted: 0,  minRating: null },
 ];
 

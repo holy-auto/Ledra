@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import nextDynamic from "next/dynamic";
 
 const BillingModeSwitch = nextDynamic(() => import("./BillingModeSwitch"), {
-  loading: () => <div className="animate-pulse h-40 rounded-2xl bg-[rgba(0,0,0,0.04)]" />,
+  loading: () => <div className="animate-pulse h-40 rounded-2xl bg-border-subtle dark:bg-[rgba(255,255,255,0.06)]" />,
 });
 
 export const dynamic = "force-dynamic";

@@ -66,7 +66,7 @@ export default function CertEditHistory({ entries }: Props) {
                     <span className="text-xs text-muted break-all whitespace-pre-wrap">{formatValue(change.old)}</span>
                   </div>
                   <div className="flex items-start gap-1.5">
-                    <span className="mt-0.5 shrink-0 inline-flex h-4 w-4 items-center justify-center rounded text-[10px] font-bold bg-green-100 text-green-600">
+                    <span className="mt-0.5 shrink-0 inline-flex h-4 w-4 items-center justify-center rounded text-[10px] font-bold bg-success-dim text-success-text">
                       +
                     </span>
                     <span className="text-xs text-primary break-all whitespace-pre-wrap">

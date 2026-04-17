@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 
 const InquiriesClient = nextDynamic(() => import("./InquiriesClient"), {
-  loading: () => <div className="animate-pulse h-40 rounded-2xl bg-[rgba(0,0,0,0.04)]" />,
+  loading: () => <div className="animate-pulse h-40 rounded-2xl bg-border-subtle dark:bg-[rgba(255,255,255,0.06)]" />,
 });
 
 export const dynamic = "force-dynamic";

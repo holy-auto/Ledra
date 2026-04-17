@@ -216,14 +216,14 @@ export default function CalendarView({ reservations, onDateClick }: CalendarView
                 <div className="flex gap-0.5 mb-1">
                   {confirmedCount > 0 && (
                     <div
-                      className="h-1 rounded-full bg-blue-400"
+                      className="h-1 rounded-full bg-accent"
                       style={{ flex: confirmedCount }}
                       title={`確定 ${confirmedCount}件`}
                     />
                   )}
                   {inProgressCount > 0 && (
                     <div
-                      className="h-1 rounded-full bg-violet-400"
+                      className="h-1 rounded-full bg-violet"
                       style={{ flex: inProgressCount }}
                       title={`進行中 ${inProgressCount}件`}
                     />
@@ -270,8 +270,8 @@ export default function CalendarView({ reservations, onDateClick }: CalendarView
       {/* ── Legend ── */}
       <div className="flex items-center gap-4 px-4 py-2.5 border-t border-border-subtle bg-surface-hover/30">
         {[
-          { dot: "bg-blue-400", label: "予約確定" },
-          { dot: "bg-violet-400", label: "来店・作業中" },
+          { dot: "bg-accent", label: "予約確定" },
+          { dot: "bg-violet", label: "来店・作業中" },
           { dot: "bg-success", label: "完了" },
         ].map((item) => (
           <span key={item.label} className="flex items-center gap-1.5 text-[11px] text-muted">

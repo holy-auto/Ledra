@@ -82,7 +82,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
   const adminContent = (
     <>
       {!isActive ? (
-        <div className="glass-card p-4 text-sm text-amber-400">
+        <div className="glass-card p-4 text-sm text-warning">
           お支払い停止中のため、一部機能（発行/出力）が制限されています。{" "}
           <Link className="underline font-medium" href="/admin/billing">
             課金ページへ

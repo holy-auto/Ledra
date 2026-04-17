@@ -116,11 +116,11 @@ export default function IdleAutoLogout({ logoutUrl = "/login" }: IdleAutoLogoutP
   return (
     <dialog
       ref={warningDialogRef}
-      className="fixed inset-0 z-[9999] m-auto w-[90vw] max-w-md rounded-2xl border border-amber-500/30 bg-[var(--bg-surface-solid)] p-0 shadow-2xl backdrop:bg-black/50"
+      className="fixed inset-0 z-[9999] m-auto w-[90vw] max-w-md rounded-2xl border border-warning/30 bg-[var(--bg-surface-solid)] p-0 shadow-2xl backdrop:bg-black/50"
     >
       <div className="p-6 space-y-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning-dim text-warning-text">
             <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path
                 strokeLinecap="round"
@@ -142,7 +142,7 @@ export default function IdleAutoLogout({ logoutUrl = "/login" }: IdleAutoLogoutP
               dismissWarning();
               resetTimer();
             }}
-            className="rounded-xl bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-neutral-800 transition-colors"
+            className="rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-inverse hover:bg-primary/90 transition-colors"
           >
             操作を続ける
           </button>

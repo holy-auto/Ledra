@@ -92,8 +92,8 @@ export default function SignatureRequestPanel({ certificateId }: Props) {
     return (
       <button
         onClick={() => setOpen(true)}
-        className="w-full rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-3
-                   text-sm font-medium text-blue-400 hover:bg-blue-500/20 transition-colors
+        className="w-full rounded-xl border border-accent/40 bg-accent-dim px-4 py-3
+                   text-sm font-medium text-accent-text hover:bg-accent/20 transition-colors
                    text-left flex items-center gap-2"
       >
         <span>✍️</span>
@@ -105,10 +105,10 @@ export default function SignatureRequestPanel({ certificateId }: Props) {
   // ── 依頼完了後のビュー ──────────────────────────────────────
   if (status === "done" || status === "already_pending") {
     return (
-      <div className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-4 space-y-4">
+      <div className="rounded-2xl border border-accent/30 bg-accent-dim/50 p-4 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-green-400 text-lg">✅</span>
+            <span className="text-success text-lg">✅</span>
             <span className="text-sm font-semibold text-primary">
               {status === "already_pending" ? "有効な署名依頼が存在します" : "署名URLを発行しました"}
             </span>
@@ -127,7 +127,7 @@ export default function SignatureRequestPanel({ certificateId }: Props) {
         {/* 署名URL表示 */}
         <div className="rounded-xl bg-base p-3 space-y-2">
           <p className="text-xs text-muted">署名リンク（有効期限: 24時間）</p>
-          <p className="text-xs font-mono text-blue-300 break-all">{result?.sign_url}</p>
+          <p className="text-xs font-mono text-accent break-all">{result?.sign_url}</p>
           <div className="text-xs text-muted">
             有効期限: {result?.expires_at ? new Date(result.expires_at).toLocaleString("ja-JP") : "—"}
           </div>
@@ -152,7 +152,7 @@ export default function SignatureRequestPanel({ certificateId }: Props) {
 
   // ── 入力フォーム ──────────────────────────────────────────
   return (
-    <div className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-4 space-y-4">
+    <div className="rounded-2xl border border-accent/30 bg-accent-dim/50 p-4 space-y-4">
       {/* ヘッダー */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -184,7 +184,7 @@ export default function SignatureRequestPanel({ certificateId }: Props) {
           placeholder="山田 太郎"
           className="w-full rounded-lg border border-border-default bg-base px-3 py-2
                      text-sm text-primary placeholder-muted
-                     focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                     focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent"
         />
       </div>
 
@@ -201,7 +201,7 @@ export default function SignatureRequestPanel({ certificateId }: Props) {
           autoComplete="off"
           className="w-full rounded-lg border border-border-default bg-base px-3 py-2
                      text-sm text-primary placeholder-muted
-                     focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                     focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent"
         />
         <p className="text-xs text-muted mt-1">署名の本人性証跡として記録されます</p>
       </div>
@@ -216,7 +216,7 @@ export default function SignatureRequestPanel({ certificateId }: Props) {
           placeholder="090-0000-0000"
           className="w-full rounded-lg border border-border-default bg-base px-3 py-2
                      text-sm text-primary placeholder-muted
-                     focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                     focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent"
         />
       </div>
 
@@ -231,7 +231,7 @@ export default function SignatureRequestPanel({ certificateId }: Props) {
               className={`flex-1 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors
                 ${
                   notificationMethod === method
-                    ? "border-blue-500 bg-blue-500/20 text-blue-300"
+                    ? "border-accent bg-accent-dim text-accent-text"
                     : "border-border-default bg-surface text-muted hover:bg-base"
                 }`}
             >
@@ -251,8 +251,8 @@ export default function SignatureRequestPanel({ certificateId }: Props) {
       <button
         onClick={handleSubmit}
         disabled={status === "submitting" || !signerEmail.includes("@")}
-        className="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white
-                   hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="w-full rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white
+                   hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         {status === "submitting" ? (
           <span className="flex items-center justify-center gap-2">

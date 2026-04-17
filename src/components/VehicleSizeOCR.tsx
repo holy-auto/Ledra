@@ -150,7 +150,7 @@ export default function VehicleSizeOCR({ onResult }: VehicleSizeOCRProps) {
 
               {result.master_size_class &&
                 result.master_size_class !== result.size_class && (
-                  <p className="text-amber-600 text-xs">
+                  <p className="text-warning-text text-xs">
                     ※ マスタ判定: {result.master_size_class}（寸法判定と異なります）
                   </p>
                 )}

@@ -253,7 +253,7 @@ export default function StoresClient() {
                   <div className="flex items-center gap-2">
                     <h4 className="text-sm font-semibold text-primary">{store.name}</h4>
                     {store.is_default && (
-                      <span className="inline-flex items-center rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">
+                      <span className="inline-flex items-center rounded bg-accent-dim px-1.5 py-0.5 text-[10px] font-medium text-accent-text">
                         デフォルト
                       </span>
                     )}

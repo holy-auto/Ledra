@@ -210,7 +210,7 @@ export default function VehiclePickerSection({
                 autoComplete="off"
               />
               {selectedId && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-medium">
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] bg-success-dim text-success-text px-1.5 py-0.5 rounded font-medium">
                   マスタ連携
                 </span>
               )}
@@ -224,7 +224,7 @@ export default function VehiclePickerSection({
                         className="w-full px-4 py-2.5 text-left text-sm hover:bg-surface-hover"
                       >
                         <span className="font-medium text-primary">{vehicleLabel(v)}</span>
-                        {v.customer && <span className="ml-2 text-xs text-emerald-600">{v.customer.name}</span>}
+                        {v.customer && <span className="ml-2 text-xs text-success-text">{v.customer.name}</span>}
                         {v.vin_code && <span className="ml-2 text-xs text-muted font-mono">{v.vin_code}</span>}
                       </button>
                     </li>
@@ -237,16 +237,16 @@ export default function VehiclePickerSection({
 
           {/* Selected vehicle banner (when linked to master) */}
           {selectedId && (
-            <div className="flex items-center gap-3 rounded-xl border border-emerald-200/50 bg-emerald-500/10 px-4 py-2.5">
+            <div className="flex items-center gap-3 rounded-xl border border-success/20 bg-success-dim px-4 py-2.5">
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-emerald-600 truncate">
+                <div className="text-sm font-semibold text-success-text truncate">
                   {vehicleLabel(vehicles.find((v) => v.id === selectedId)!)}
                 </div>
               </div>
               <button
                 type="button"
                 onClick={handleVehicleClear}
-                className="shrink-0 rounded-lg border border-emerald-300/50 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-500/20"
+                className="shrink-0 rounded-lg border border-success/30 bg-success-dim px-3 py-1 text-xs font-medium text-success-text hover:bg-success/15"
               >
                 マスタ連携を解除
               </button>
@@ -316,7 +316,7 @@ export default function VehiclePickerSection({
                 autoComplete="off"
               />
               {customerId && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-medium">
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] bg-success-dim text-success-text px-1.5 py-0.5 rounded font-medium">
                   マスタ連携
                 </span>
               )}

@@ -87,7 +87,7 @@ export default function AgentReferralLinksPage() {
           <button
             onClick={createLink}
             disabled={creating}
-            className="rounded-xl bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+            className="rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-inverse hover:bg-primary/90 disabled:opacity-50"
           >
             {creating ? "作成中..." : "リンクを作成"}
           </button>

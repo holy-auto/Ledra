@@ -16,8 +16,8 @@ const statusLabel: Record<SquareConnectionStatus, string> = {
 };
 
 const statusColor: Record<SquareConnectionStatus, { dot: string; text: string }> = {
-  active: { dot: "bg-emerald-500", text: "text-emerald-400" },
-  pending: { dot: "bg-amber-500", text: "text-amber-400" },
+  active: { dot: "bg-success", text: "text-success" },
+  pending: { dot: "bg-warning", text: "text-warning" },
   disconnected: { dot: "bg-[var(--text-muted)]", text: "text-muted" },
   error: { dot: "bg-red-500", text: "text-red-400" },
 };
@@ -159,14 +159,14 @@ export default function SquareConnectSection({ initialConnection }: Props) {
       {syncStatus !== "idle" && (
         <div className="flex items-center gap-2 text-sm">
           {syncStatus === "syncing" && (
-            <span className="inline-flex items-center gap-1.5 text-amber-400">
-              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+            <span className="inline-flex items-center gap-1.5 text-warning">
+              <span className="w-2 h-2 rounded-full bg-warning animate-pulse" />
               同期中…
             </span>
           )}
           {syncStatus === "completed" && (
-            <span className="inline-flex items-center gap-1.5 text-emerald-400">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span className="inline-flex items-center gap-1.5 text-success">
+              <span className="w-2 h-2 rounded-full bg-success" />
               同期完了
             </span>
           )}
@@ -181,7 +181,7 @@ export default function SquareConnectSection({ initialConnection }: Props) {
 
       {/* Success message */}
       {successMsg && (
-        <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-400">
+        <div className="rounded-xl border border-success/30 bg-success-dim px-4 py-3 text-sm text-success">
           {successMsg}
         </div>
       )}
@@ -246,8 +246,8 @@ export default function SquareConnectSection({ initialConnection }: Props) {
 
       {/* Connected hint */}
       {status === "active" && (
-        <div className="mt-3 rounded-lg bg-emerald-400/10 border border-emerald-400/30 p-3">
-          <p className="text-sm text-emerald-400">
+        <div className="mt-3 rounded-lg bg-success-dim border border-success/30 p-3">
+          <p className="text-sm text-success">
             Square売上データは自動的に同期されます。
             <a href="/admin/square" className="underline ml-1">
               Square売上一覧を見る →

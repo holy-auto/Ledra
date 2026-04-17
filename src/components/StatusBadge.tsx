@@ -1,10 +1,10 @@
 import type { CertificateStatus } from "@/types/certificate";
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
-  active:  { bg: "bg-emerald-50 border-emerald-200", text: "text-emerald-700", label: "有効" },
-  void:    { bg: "bg-red-50 border-red-200",         text: "text-red-700",     label: "無効" },
-  expired: { bg: "bg-amber-50 border-amber-200",     text: "text-amber-700",   label: "期限切れ" },
-  draft:   { bg: "bg-inset border-border-default", text: "text-muted",  label: "下書き" },
+  active:  { bg: "bg-success-dim border-success/30", text: "text-success-text", label: "有効" },
+  void:    { bg: "bg-danger-dim border-danger/30",   text: "text-danger-text",  label: "無効" },
+  expired: { bg: "bg-warning-dim border-warning/30", text: "text-warning-text", label: "期限切れ" },
+  draft:   { bg: "bg-inset border-border-default",   text: "text-muted",        label: "下書き" },
 };
 
 export function CertificateStatusBadge({ status }: { status?: string | null }) {

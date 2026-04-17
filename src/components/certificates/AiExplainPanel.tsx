@@ -187,11 +187,11 @@ export default function AiExplainPanel({ certificateId }: Props) {
 
               {/* 警告フラグ */}
               {result.warningFlags && result.warningFlags.length > 0 && (
-                <div className="rounded-lg bg-amber-400/10 border border-amber-400/30 px-3 py-2">
-                  <p className="text-xs font-medium text-amber-400 mb-1">⚠️ 注意フラグ</p>
+                <div className="rounded-lg bg-warning-dim border border-warning/30 px-3 py-2">
+                  <p className="text-xs font-medium text-warning mb-1">⚠️ 注意フラグ</p>
                   <ul className="space-y-0.5">
                     {result.warningFlags.map((f, i) => (
-                      <li key={i} className="text-xs text-amber-400/80">
+                      <li key={i} className="text-xs text-warning-text/80">
                         • {f}
                       </li>
                     ))}

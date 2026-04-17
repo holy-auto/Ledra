@@ -43,7 +43,7 @@ export default function AdminRouteGuard({ children }: { children: ReactNode }) {
     return (
       <div className="space-y-3">
         <div className="glass-card p-4 text-sm glow-amber">
-          <div className="font-semibold text-amber-400">
+          <div className="font-semibold text-warning">
             この画面へのアクセス権限がありません。
           </div>
           <div className="mt-3">
@@ -77,7 +77,7 @@ export default function AdminRouteGuard({ children }: { children: ReactNode }) {
   return (
     <div className="space-y-3">
       <div className="glass-card p-4 text-sm glow-amber">
-        <div className="font-semibold text-amber-400">{title}</div>
+        <div className="font-semibold text-warning">{title}</div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Link className="btn-primary" href={"/admin/billing?next=" + encodeURIComponent(nextUrl)}>
             {cta}

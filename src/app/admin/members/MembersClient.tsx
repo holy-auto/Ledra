@@ -170,10 +170,10 @@ export default function MembersClient() {
           {/* Limit warning */}
           {!data.can_add && (
             <div className="glass-card glow-amber p-5">
-              <div className="text-sm font-semibold text-amber-400">
+              <div className="text-sm font-semibold text-warning">
                 メンバー上限（{limitLabel}）に達しています
               </div>
-              <p className="mt-1 text-sm text-amber-400/80">
+              <p className="mt-1 text-sm text-warning/80">
                 追加するには{" "}
                 <Link className="font-medium underline" href="/admin/billing">
                   プランをアップグレード
@@ -238,12 +238,12 @@ export default function MembersClient() {
             </div>
             <p className="text-xs text-muted">※ 招待メールが送信されます。ユーザーがメール内のリンクからパスワードを設定します。</p>
             {addMsg && (
-              <div className={`text-sm ${addMsg.ok ? "text-emerald-400" : "text-red-500"}`}>
+              <div className={`text-sm ${addMsg.ok ? "text-success" : "text-danger"}`}>
                 {addMsg.text}
               </div>
             )}
             {!data.can_add && (
-              <div className="text-xs text-amber-400">
+              <div className="text-xs text-warning">
                 上限に達しているため追加できません。
               </div>
             )}

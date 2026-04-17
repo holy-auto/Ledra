@@ -144,7 +144,7 @@ export default function InvoiceDetailClient({
   return (
     <div className="space-y-6">
       {msg && (
-        <div className={`text-sm ${msg.ok ? "text-emerald-400" : "text-red-500"}`}>{msg.text}</div>
+        <div className={`text-sm ${msg.ok ? "text-success" : "text-danger"}`}>{msg.text}</div>
       )}
 
       {/* Status & Actions */}

@@ -117,9 +117,9 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
   return (
     <div className="space-y-4">
       {bs.data && !bs.data.is_active ? (
-        <div className="glass-card p-4 text-sm text-amber-400">
+        <div className="glass-card p-4 text-sm text-warning">
           お支払い停止中のため、出力（CSV/PDF）はご利用いただけません。{" "}
-          <Link className="underline text-amber-300 hover:text-amber-200" href="/admin/billing">
+          <Link className="underline text-warning hover:text-warning/80" href="/admin/billing">
             課金ページへ
           </Link>
         </div>

@@ -86,14 +86,14 @@ const STATUS_CONFIG: Record<
     variant: "info" | "warning" | "success" | "danger" | "default";
   }
 > = {
-  confirmed: { label: "予約確定", bg: "bg-blue-50", text: "text-blue-700", dot: "bg-blue-500", variant: "info" },
-  arrived: { label: "来店", bg: "bg-amber-50", text: "text-amber-700", dot: "bg-amber-500", variant: "warning" },
-  in_progress: { label: "作業中", bg: "bg-violet-50", text: "text-violet-700", dot: "bg-violet-500", variant: "info" },
+  confirmed: { label: "予約確定", bg: "bg-accent-dim", text: "text-accent-text", dot: "bg-accent", variant: "info" },
+  arrived: { label: "来店", bg: "bg-warning-dim", text: "text-warning-text", dot: "bg-warning", variant: "warning" },
+  in_progress: { label: "作業中", bg: "bg-violet-dim", text: "text-violet-text", dot: "bg-violet", variant: "info" },
   completed: {
     label: "完了",
     bg: "bg-success-dim",
     text: "text-success-text",
-    dot: "bg-success-dim0",
+    dot: "bg-success",
     variant: "success",
   },
   cancelled: { label: "キャンセル", bg: "bg-inset", text: "text-secondary", dot: "bg-muted", variant: "danger" },
@@ -539,7 +539,7 @@ export default function ReservationsClient() {
             window.history.replaceState({}, "", window.location.pathname);
             if (!gcalConnected) setGcalConnected(true);
             return (
-              <div className="rounded-xl border border-blue-200 bg-accent-dim p-3 text-sm text-accent-text">
+              <div className="rounded-xl border border-accent/30 bg-accent-dim p-3 text-sm text-accent-text">
                 ✅ Googleカレンダーとの連携が完了しました！
               </div>
             );
@@ -632,7 +632,7 @@ export default function ReservationsClient() {
             onClick={() => setShowBookingUrlPanel(!showBookingUrlPanel)}
             className={`ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition-colors shadow-sm ${
               showBookingUrlPanel
-                ? "border-blue-200 bg-accent-dim text-accent-text"
+                ? "border-accent/30 bg-accent-dim text-accent-text"
                 : "border-border-subtle bg-surface text-secondary hover:bg-surface-hover"
             }`}
           >
@@ -652,7 +652,7 @@ export default function ReservationsClient() {
           onClick={() => setShowGcalPanel(!showGcalPanel)}
           className={`${!tenantSlug ? "ml-auto " : ""}flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition-colors shadow-sm ${
             gcalConnected
-              ? "border-blue-200 bg-accent-dim text-accent-text"
+              ? "border-accent/30 bg-accent-dim text-accent-text"
               : "border-border-subtle bg-surface text-secondary hover:bg-surface-hover"
           }`}
         >
