@@ -118,8 +118,8 @@ export default function LineConnectSection() {
       {/* Status indicator */}
       <div className="flex items-center gap-3 text-sm">
         <span className="text-muted">ステータス:</span>
-        <span className={`inline-flex items-center gap-1.5 font-medium ${isConnected ? "text-emerald-400" : "text-muted"}`}>
-          <span className={`w-2 h-2 rounded-full ${isConnected ? "bg-emerald-500" : "bg-[var(--text-muted)]"}`} />
+        <span className={`inline-flex items-center gap-1.5 font-medium ${isConnected ? "text-success" : "text-muted"}`}>
+          <span className={`w-2 h-2 rounded-full ${isConnected ? "bg-success" : "bg-[var(--text-muted)]"}`} />
           {isConnected ? "連携中" : "未連携"}
         </span>
       </div>
@@ -157,7 +157,7 @@ export default function LineConnectSection() {
 
       {/* Success message */}
       {successMsg && (
-        <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-400">
+        <div className="rounded-xl border border-success/30 bg-success-dim px-4 py-3 text-sm text-success">
           {successMsg}
         </div>
       )}
@@ -270,8 +270,8 @@ export default function LineConnectSection() {
 
       {/* Connected hint */}
       {isConnected && !editing && (
-        <div className="mt-3 rounded-lg bg-emerald-400/10 border border-emerald-400/30 p-3">
-          <p className="text-sm text-emerald-400">
+        <div className="mt-3 rounded-lg bg-success-dim border border-success/30 p-3">
+          <p className="text-sm text-success">
             LINE連携が有効です。予約確認・リマインダー・書類リンクが自動送信されます。
           </p>
         </div>

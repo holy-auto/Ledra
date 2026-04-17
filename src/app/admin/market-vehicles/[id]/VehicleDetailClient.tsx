@@ -333,7 +333,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
         }
       />
 
-      {msg && <div className={`text-sm ${msg.ok ? "text-emerald-600" : "text-red-500"}`}>{msg.text}</div>}
+      {msg && <div className={`text-sm ${msg.ok ? "text-success-text" : "text-danger"}`}>{msg.text}</div>}
 
       {/* Status */}
       <section className="glass-card p-5">
@@ -604,7 +604,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
               <div className="rounded-lg border border-border-subtle bg-surface-hover p-4 space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs text-muted">顧客名 <span className="text-red-500">*</span></label>
+                    <label className="text-xs text-muted">顧客名 <span className="text-danger">*</span></label>
                     <input type="text" className="input-field" placeholder="山田太郎" value={newInterest.customer_name} onChange={(e) => setNewInterest((p) => ({ ...p, customer_name: e.target.value }))} />
                   </div>
                   <div className="space-y-1">

@@ -46,8 +46,8 @@ const PARTNER_RANKS: PartnerRank[] = [
   {
     key: "bronze",
     label: "ブロンズ",
-    color: "text-orange-600 dark:text-orange-400",
-    bgColor: "bg-orange-100 dark:bg-orange-900/40",
+    color: "text-warning",
+    bgColor: "bg-warning-dim",
     minCompleted: 1,
     minRating: null,
   },

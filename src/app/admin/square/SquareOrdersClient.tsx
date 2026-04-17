@@ -214,7 +214,7 @@ export default function SquareOrdersClient() {
 
       {/* Sync message */}
       {syncMsg && (
-        <div className={`text-sm ${syncMsg.ok ? "text-emerald-400" : "text-red-500"}`}>
+        <div className={`text-sm ${syncMsg.ok ? "text-success" : "text-danger"}`}>
           {syncMsg.text}
         </div>
       )}

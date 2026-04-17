@@ -89,8 +89,8 @@ export default async function Page({
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-primary">ロゴ・角印 設定</h1>
 
-      {sp.ok === "1" && <div className="glass-card p-3 text-sm text-emerald-400">ロゴを保存しました</div>}
-      {sp.ok === "seal" && <div className="glass-card p-3 text-sm text-emerald-400">角印を保存しました</div>}
+      {sp.ok === "1" && <div className="glass-card p-3 text-sm text-success">ロゴを保存しました</div>}
+      {sp.ok === "seal" && <div className="glass-card p-3 text-sm text-success">角印を保存しました</div>}
       {sp.e === "png" && <div className="glass-card p-3 text-sm text-red-500">PNGのみ対応です</div>}
       {sp.e === "seal_png" && <div className="glass-card p-3 text-sm text-red-500">角印はPNGのみ対応です</div>}
       {sp.e && !["png", "seal_png"].includes(sp.e) && <div className="glass-card p-3 text-sm text-red-500">エラー: {sp.e}</div>}

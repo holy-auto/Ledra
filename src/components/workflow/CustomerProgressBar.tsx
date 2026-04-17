@@ -82,8 +82,8 @@ export default function CustomerProgressBar({ tenantSlug, reservationId, pollInt
       <div
         className={`px-5 py-4 ${
           is_completed
-            ? "bg-gradient-to-r from-emerald-600 to-emerald-500"
-            : "bg-gradient-to-r from-indigo-700 to-indigo-500"
+            ? "bg-gradient-to-r from-success to-success/80"
+            : "bg-gradient-to-r from-accent to-accent/80"
         }`}
       >
         <div className="text-white text-sm font-medium opacity-90">施工進捗</div>
@@ -102,7 +102,7 @@ export default function CustomerProgressBar({ tenantSlug, reservationId, pollInt
       {/* プログレスバー */}
       <div className="h-1.5 bg-inset">
         <div
-          className={`h-1.5 transition-all duration-1000 ${is_completed ? "bg-emerald-500" : "bg-indigo-500"}`}
+          className={`h-1.5 transition-all duration-1000 ${is_completed ? "bg-success" : "bg-accent"}`}
           style={{ width: `${progress_pct}%` }}
         />
       </div>
@@ -114,7 +114,7 @@ export default function CustomerProgressBar({ tenantSlug, reservationId, pollInt
             key={i}
             className={`flex items-center gap-3 rounded-xl px-3 py-2 ${
               step.status === "in_progress"
-                ? "bg-indigo-50 dark:bg-indigo-950/40"
+                ? "bg-accent-dim"
                 : step.status === "completed"
                   ? ""
                   : "opacity-40"
@@ -123,9 +123,9 @@ export default function CustomerProgressBar({ tenantSlug, reservationId, pollInt
             <div
               className={`h-5 w-5 flex-shrink-0 rounded-full flex items-center justify-center ${
                 step.status === "completed"
-                  ? "bg-emerald-500"
+                  ? "bg-success"
                   : step.status === "in_progress"
-                    ? "bg-indigo-500"
+                    ? "bg-accent"
                     : "bg-border-default"
               }`}
             >
@@ -149,7 +149,7 @@ export default function CustomerProgressBar({ tenantSlug, reservationId, pollInt
                   step.status === "completed"
                     ? "text-secondary"
                     : step.status === "in_progress"
-                      ? "text-indigo-700 font-semibold dark:text-indigo-300"
+                      ? "text-accent-text font-semibold"
                       : "text-muted"
                 }`}
               >
@@ -159,7 +159,7 @@ export default function CustomerProgressBar({ tenantSlug, reservationId, pollInt
                 <span className="ml-2 text-[11px] text-muted">{formatTime(step.completed_at)}完了</span>
               )}
               {step.status === "in_progress" && step.started_at && (
-                <span className="ml-2 text-[11px] text-indigo-400 dark:text-indigo-400">{formatTime(step.started_at)}開始</span>
+                <span className="ml-2 text-[11px] text-accent">{formatTime(step.started_at)}開始</span>
               )}
             </div>
           </div>

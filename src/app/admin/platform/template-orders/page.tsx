@@ -86,7 +86,7 @@ export default function PlatformTemplateOrdersPage() {
       <PageHeader tag="プラットフォーム管理" title="テンプレートオーダー管理" />
 
       {loading && <div className="text-sm text-muted">読み込み中...</div>}
-      {error && <div className="glass-card p-4 text-sm text-red-500">{error}</div>}
+      {error && <div className="glass-card p-4 text-sm text-danger">{error}</div>}
 
       {/* サブスクリプション一覧 */}
       {!loading && subs.length > 0 && (
@@ -115,9 +115,9 @@ export default function PlatformTemplateOrdersPage() {
                   </td>
                   <td className="p-3">
                     <span className={`inline-block px-2 py-0.5 rounded-full text-xs ${
-                      sub.status === "active" ? "bg-emerald-900/30 text-emerald-400" :
+                      sub.status === "active" ? "bg-success-dim text-success" :
                       sub.status === "cancelled" ? "bg-red-900/30 text-red-400" :
-                      "bg-amber-900/30 text-amber-400"
+                      "bg-warning-dim text-warning-text"
                     }`}>
                       {SUBSCRIPTION_STATUS_LABELS[sub.status as keyof typeof SUBSCRIPTION_STATUS_LABELS] ?? sub.status}
                     </span>
@@ -170,7 +170,7 @@ export default function PlatformTemplateOrdersPage() {
                     </td>
                     <td className="p-3">
                       <span className={`inline-block px-2 py-0.5 rounded-full text-xs ${
-                        order.status === "active" ? "bg-emerald-900/30 text-emerald-400" :
+                        order.status === "active" ? "bg-success-dim text-success" :
                         order.status === "cancelled" ? "bg-red-900/30 text-red-400" :
                         "bg-accent-dim text-accent"
                       }`}>

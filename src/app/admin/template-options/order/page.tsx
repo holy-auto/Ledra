@@ -86,7 +86,7 @@ export default function OrderPage() {
       />
 
       {message && (
-        <div className={`glass-card p-3 text-sm ${message.type === "ok" ? "text-emerald-400" : "text-red-500"}`}>
+        <div className={`glass-card p-3 text-sm ${message.type === "ok" ? "text-success" : "text-danger"}`}>
           {message.text}
         </div>
       )}
@@ -116,7 +116,7 @@ export default function OrderPage() {
                   </td>
                   <td className="p-3">
                     <span className={`inline-block px-2 py-0.5 rounded-full text-xs ${
-                      order.status === "active" ? "bg-emerald-900/30 text-emerald-400" :
+                      order.status === "active" ? "bg-success-dim text-success" :
                       order.status === "cancelled" ? "bg-red-900/30 text-red-400" :
                       "bg-accent-dim text-accent"
                     }`}>

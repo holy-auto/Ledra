@@ -202,7 +202,7 @@ export default function ShopPage() {
               </svg>
               カート
               {cartCount > 0 && (
-                <span className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">
+                <span className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-[11px] font-bold text-white">
                   {cartCount}
                 </span>
               )}
@@ -213,17 +213,17 @@ export default function ShopPage() {
 
       {/* Status banners */}
       {status === "success" && (
-        <div className="rounded-lg border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20 p-4 text-sm text-green-800 dark:text-green-200">
+        <div className="rounded-lg border border-success/30 bg-success-dim p-4 text-sm text-success-text">
           お支払いが完了しました{orderNumber ? `（注文番号: ${orderNumber}）` : ""}。ご注文ありがとうございます。
         </div>
       )}
       {status === "cancel" && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 p-4 text-sm text-amber-800 dark:text-amber-200">
+        <div className="rounded-lg border border-warning/30 bg-warning-dim p-4 text-sm text-warning-text">
           お支払いがキャンセルされました。
         </div>
       )}
       {status === "invoice_sent" && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20 p-4 text-sm text-blue-800 dark:text-blue-200">
+        <div className="rounded-lg border border-accent/30 bg-accent-dim p-4 text-sm text-accent-text">
           ご注文を受け付けました{orderNumber ? `（注文番号: ${orderNumber}）` : ""}。請求書を送付いたしますのでお支払いをお待ちください。
         </div>
       )}
@@ -367,7 +367,7 @@ export default function ShopPage() {
                         onClick={() => setPaymentMethod("stripe")}
                         className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
                           paymentMethod === "stripe"
-                            ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                            ? "border-accent bg-accent-dim text-accent-text"
                             : "border-primary/20 text-secondary hover:bg-muted"
                         }`}
                       >
@@ -377,7 +377,7 @@ export default function ShopPage() {
                         onClick={() => setPaymentMethod("invoice")}
                         className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
                           paymentMethod === "invoice"
-                            ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                            ? "border-accent bg-accent-dim text-accent-text"
                             : "border-primary/20 text-secondary hover:bg-muted"
                         }`}
                       >
@@ -393,7 +393,7 @@ export default function ShopPage() {
                   <button
                     onClick={handleCheckout}
                     disabled={checkoutBusy || cartItems.length === 0}
-                    className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                    className="w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-50 transition-colors"
                   >
                     {checkoutBusy
                       ? "処理中..."
@@ -419,7 +419,7 @@ export default function ShopPage() {
             <button
               onClick={handleCheckout}
               disabled={checkoutBusy}
-              className="rounded-lg bg-blue-600 px-6 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              className="rounded-lg bg-accent px-6 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-50"
             >
               {checkoutBusy ? "処理中..." : "購入手続きへ"}
             </button>
@@ -484,7 +484,7 @@ function ProductCard({
         {product.category === "certificate_template" ? (
           <Link
             href="/admin/template-options"
-            className="block w-full text-center rounded-lg border border-blue-500 px-3 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+            className="block w-full text-center rounded-lg border border-accent px-3 py-2 text-sm font-medium text-accent hover:bg-accent-dim transition-colors"
           >
             詳細・申し込み
           </Link>
@@ -493,8 +493,8 @@ function ProductCard({
             onClick={onAdd}
             className={`w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
               inCart
-                ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 border border-green-300 dark:border-green-700"
-                : "bg-blue-600 text-white hover:bg-blue-700"
+                ? "bg-success-dim text-success-text border border-success/30"
+                : "bg-accent text-white hover:bg-accent/90"
             }`}
           >
             {inCart ? "カートに追加済み +" : "カートに追加"}

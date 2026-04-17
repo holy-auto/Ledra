@@ -288,13 +288,13 @@ export default async function AdminVehicleDetailPage({
       </div>
 
       {savedFlag ? (
-        <div className="rounded-xl border border-emerald-500/30 bg-[rgba(16,185,129,0.1)] p-3 text-sm text-emerald-400">
+        <div className="rounded-xl border border-success/30 bg-success-dim p-3 text-sm text-success-text">
           車両情報を保存しました。
         </div>
       ) : null}
 
       {voidedFlag ? (
-        <div className="rounded-xl border border-amber-500/30 bg-[rgba(245,158,11,0.1)] p-3 text-sm text-amber-400">
+        <div className="rounded-xl border border-warning/30 bg-warning-dim p-3 text-sm text-warning-text">
           証明書を削除しました。内部的には履歴保全のため「void（無効化）」として処理しています。
         </div>
       ) : null}

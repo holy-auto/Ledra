@@ -74,7 +74,7 @@ export default function MaintenanceUrlPage() {
       />
 
       {message && (
-        <div className={`glass-card p-3 text-sm ${message.type === "ok" ? "text-emerald-400" : "text-red-500"}`}>
+        <div className={`glass-card p-3 text-sm ${message.type === "ok" ? "text-success" : "text-danger"}`}>
           {message.text}
         </div>
       )}

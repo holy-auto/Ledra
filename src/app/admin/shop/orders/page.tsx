@@ -14,12 +14,12 @@ import {
 const fmt = (n: number) => `¥${n.toLocaleString("ja-JP")}`;
 
 const STATUS_COLORS: Record<ShopOrderStatus, string> = {
-  pending: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
-  paid: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-  processing: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
-  shipped: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300",
-  completed: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-  cancelled: "bg-surface-hover text-secondary dark:bg-gray-800 dark:text-muted",
+  pending: "bg-warning-dim text-warning-text",
+  paid: "bg-accent-dim text-accent-text",
+  processing: "bg-violet-dim text-violet-text",
+  shipped: "bg-accent-dim text-accent-text",
+  completed: "bg-success-dim text-success-text",
+  cancelled: "bg-surface-hover text-secondary",
 };
 
 type OrderWithItems = ShopOrderRow & { shop_order_items: ShopOrderItemRow[] };

@@ -30,7 +30,7 @@ export default function AdminFeatureGuard({ feature, children }: { feature: Feat
   return (
     <div className="space-y-3">
       <div className="glass-card p-4 text-sm glow-amber">
-        <div className="font-semibold text-amber-400">{title}</div>
+        <div className="font-semibold text-warning">{title}</div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Link className="btn-primary" href={`/admin/billing?next=${encodeURIComponent(nextUrl)}`}>
             {cta}

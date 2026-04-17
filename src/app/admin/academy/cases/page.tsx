@@ -32,7 +32,7 @@ const scoreColor = (score: number) =>
   score >= 90
     ? "text-yellow-400 bg-yellow-400/10 border border-yellow-400/20"
     : score >= 75
-      ? "text-green-400 bg-green-400/10 border border-green-400/20"
+      ? "text-success bg-success-dim border border-success/20"
       : score >= 50
         ? "text-accent bg-accent/10 border border-accent/20"
         : "text-muted bg-inset border border-border-subtle";
@@ -183,7 +183,7 @@ export default function AcademyCasesPage() {
                         handlePublish(c.id);
                       }}
                       disabled={publishing === c.id}
-                      className="text-xs px-3 py-1.5 bg-green-500 text-white rounded-lg hover:bg-green-400 disabled:opacity-50 transition-colors"
+                      className="text-xs px-3 py-1.5 bg-success text-white rounded-lg hover:bg-success/90 disabled:opacity-50 transition-colors"
                     >
                       {publishing === c.id ? "処理中..." : "公開する"}
                     </button>
@@ -198,11 +198,11 @@ export default function AcademyCasesPage() {
                   <div className="grid md:grid-cols-2 gap-4">
                     {c.good_points.length > 0 && (
                       <div>
-                        <h3 className="text-xs font-semibold text-green-400 mb-2">✅ 良かった点</h3>
+                        <h3 className="text-xs font-semibold text-success mb-2">✅ 良かった点</h3>
                         <ul className="space-y-1">
                           {c.good_points.map((p, i) => (
                             <li key={i} className="text-xs text-secondary flex gap-1">
-                              <span className="text-green-400 shrink-0">•</span>
+                              <span className="text-success shrink-0">•</span>
                               {p}
                             </li>
                           ))}
@@ -211,11 +211,11 @@ export default function AcademyCasesPage() {
                     )}
                     {c.caution_points.length > 0 && (
                       <div>
-                        <h3 className="text-xs font-semibold text-orange-400 mb-2">⚠️ 注意点</h3>
+                        <h3 className="text-xs font-semibold text-warning mb-2">⚠️ 注意点</h3>
                         <ul className="space-y-1">
                           {c.caution_points.map((p, i) => (
                             <li key={i} className="text-xs text-secondary flex gap-1">
-                              <span className="text-orange-400 shrink-0">•</span>
+                              <span className="text-warning shrink-0">•</span>
                               {p}
                             </li>
                           ))}

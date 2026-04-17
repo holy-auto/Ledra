@@ -174,7 +174,7 @@ export default function TenantAccessClient() {
 
         <button
           onClick={() => setShowForm((v) => !v)}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90"
         >
           {showForm ? "キャンセル" : "新規許可"}
         </button>
@@ -186,7 +186,7 @@ export default function TenantAccessClient() {
 
       {/* Messages */}
       {msg && (
-        <div className={`rounded-xl border p-3 text-sm ${msg.type === "err" ? "border-red-200 bg-red-50 text-red-700" : "border-green-200 bg-green-50 text-green-700"}`}>
+        <div className={`rounded-xl border p-3 text-sm ${msg.type === "err" ? "border-danger/30 bg-danger-dim text-danger-text" : "border-success/30 bg-success-dim text-success-text"}`}>
           {msg.text}
         </div>
       )}
@@ -256,7 +256,7 @@ export default function TenantAccessClient() {
             <button
               type="submit"
               disabled={submitting || !formInsurerId || !formTenantId}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50"
             >
               {submitting ? "許可中..." : "アクセスを許可"}
             </button>
@@ -288,11 +288,11 @@ export default function TenantAccessClient() {
                 </td>
                 <td className="p-3">
                   {g.is_active && !g.revoked_at ? (
-                    <span className="inline-block rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800">
+                    <span className="inline-block rounded-full bg-success-dim px-2.5 py-0.5 text-xs font-semibold text-success-text">
                       有効
                     </span>
                   ) : (
-                    <span className="inline-block rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-800">
+                    <span className="inline-block rounded-full bg-danger-dim px-2.5 py-0.5 text-xs font-semibold text-danger-text">
                       取消済み
                     </span>
                   )}

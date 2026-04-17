@@ -155,7 +155,7 @@ export default function ConfigurePage() {
       />
 
       {message && (
-        <div className={`glass-card p-3 text-sm ${message.type === "ok" ? "text-emerald-400" : "text-red-500"}`}>
+        <div className={`glass-card p-3 text-sm ${message.type === "ok" ? "text-success" : "text-danger"}`}>
           {message.text}
         </div>
       )}
@@ -396,7 +396,7 @@ export default function ConfigurePage() {
             {savedConfigId && (
               <button
                 type="button"
-                className="btn-primary w-full bg-emerald-600 hover:bg-emerald-700"
+                className="btn-primary w-full bg-success hover:bg-success/90"
                 disabled={publishing}
                 onClick={handlePublish}
               >
@@ -471,11 +471,11 @@ function LogoUploader({
             />
           </label>
           {uploaded && (
-            <span className="text-xs text-emerald-400">アップロード済み</span>
+            <span className="text-xs text-success">アップロード済み</span>
           )}
         </div>
       </label>
-      {error && <div className="text-xs text-red-500">{error}</div>}
+      {error && <div className="text-xs text-danger">{error}</div>}
     </div>
   );
 }

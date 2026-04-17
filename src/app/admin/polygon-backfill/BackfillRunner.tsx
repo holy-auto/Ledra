@@ -109,14 +109,14 @@ export default function BackfillRunner({ enabled }: { enabled: boolean }) {
         <div className="grid gap-4 sm:grid-cols-3 text-sm">
           <div className="rounded-xl bg-base p-4">
             <div className="text-xs text-muted">未記録</div>
-            <div className="mt-1 text-2xl font-semibold text-amber-400">
+            <div className="mt-1 text-2xl font-semibold text-warning">
               {loading ? "…" : (stats?.pending ?? 0)}
             </div>
             <div className="text-xs text-muted">件</div>
           </div>
           <div className="rounded-xl bg-base p-4">
             <div className="text-xs text-muted">記録済</div>
-            <div className="mt-1 text-2xl font-semibold text-emerald-400">
+            <div className="mt-1 text-2xl font-semibold text-success">
               {loading ? "…" : (stats?.anchored ?? 0)}
             </div>
             <div className="text-xs text-muted">件</div>
@@ -161,7 +161,7 @@ export default function BackfillRunner({ enabled }: { enabled: boolean }) {
         </div>
 
         {!enabled ? (
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-400">
+          <div className="rounded-xl border border-warning/30 bg-warning-dim p-3 text-xs text-warning">
             POLYGON_ANCHOR_ENABLED が無効です。環境変数を true に設定してください。
           </div>
         ) : null}
@@ -184,7 +184,7 @@ export default function BackfillRunner({ enabled }: { enabled: boolean }) {
               <span className="rounded-full bg-neutral-500/10 px-2.5 py-1 text-muted">
                 処理 {lastRun.processed}
               </span>
-              <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-emerald-400">
+              <span className="rounded-full bg-success-dim px-2.5 py-1 text-success">
                 新規 {lastRun.anchored}
               </span>
               {lastRun.reused > 0 ? (
@@ -209,7 +209,7 @@ export default function BackfillRunner({ enabled }: { enabled: boolean }) {
                 <span
                   className={
                     r.status === "anchored"
-                      ? "text-emerald-400"
+                      ? "text-success"
                       : r.status === "reused"
                         ? "text-sky-400"
                         : r.status === "failed"
@@ -236,7 +236,7 @@ export default function BackfillRunner({ enabled }: { enabled: boolean }) {
                     href={`https://${r.network === "amoy" ? "amoy." : ""}polygonscan.com/tx/${r.tx_hash}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="ml-auto text-emerald-400 hover:underline break-all"
+                    className="ml-auto text-success hover:underline break-all"
                   >
                     {r.tx_hash.slice(0, 16)}… ↗
                   </a>

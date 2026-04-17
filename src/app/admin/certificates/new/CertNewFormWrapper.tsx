@@ -251,7 +251,7 @@ export default function CertNewFormWrapper({
           </button>
         </form>
         {!tenantLogoPath && (
-          <p className="mt-2 text-xs text-amber-600">
+          <p className="mt-2 text-xs text-warning-text">
             ロゴ未設定 —{" "}
             <Link href="/admin/logo" className="underline">
               ロゴを設定する

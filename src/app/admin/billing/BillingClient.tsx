@@ -436,7 +436,7 @@ export default function BillingPage() {
       <PageHeader tag="課金管理" title="請求・プラン" />
 
       {status && (
-        <div className={`glass-card p-4 text-sm ${status === "success" ? "text-accent glow-cyan" : "text-amber-400 glow-amber"}`}>
+        <div className={`glass-card p-4 text-sm ${status === "success" ? "text-accent glow-cyan" : "text-warning glow-amber"}`}>
           決済結果: <b>{status === "success" ? "成功" : status === "cancel" ? "キャンセル" : status}</b>
         </div>
       )}
@@ -540,7 +540,7 @@ export default function BillingPage() {
 
           {tenant.is_active === false && (
             <div className="glass-card p-4 text-sm">
-              <div className="font-semibold text-amber-400">支払いが停止しています</div>
+              <div className="font-semibold text-warning">支払いが停止しています</div>
               <div className="mt-1 text-muted">この状態では機能が制限されます。下の「支払いを再開」で再決済してください。</div>
             </div>
           )}

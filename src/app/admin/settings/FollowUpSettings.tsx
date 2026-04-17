@@ -73,7 +73,7 @@ export default function FollowUpSettings() {
           type="button"
           onClick={() => setSettings((prev) => ({ ...prev, enabled: !prev.enabled }))}
           className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-            settings.enabled ? "bg-emerald-500" : "bg-surface-active"
+            settings.enabled ? "bg-success" : "bg-surface-active"
           }`}
         >
           <span

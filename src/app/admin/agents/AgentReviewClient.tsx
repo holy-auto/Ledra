@@ -341,7 +341,7 @@ function AgentsTab() {
                             <button
                               onClick={() => updateStatus(a.id, "active")}
                               disabled={actionBusy === a.id}
-                              className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-40"
+                              className="rounded-lg border border-success/30 bg-success-dim px-3 py-1 text-xs font-medium text-success-text hover:bg-success/15 disabled:opacity-40"
                             >
                               承認
                             </button>
@@ -359,7 +359,7 @@ function AgentsTab() {
                             <button
                               onClick={() => updateStatus(a.id, "active")}
                               disabled={actionBusy === a.id}
-                              className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-40"
+                              className="rounded-lg border border-accent/30 bg-accent-dim px-3 py-1 text-xs font-medium text-accent-text hover:bg-accent/15 disabled:opacity-40"
                             >
                               復活
                             </button>
@@ -621,7 +621,7 @@ function ApplicationsTab() {
                   <button
                     onClick={() => updateAppStatus(detail.id, "under_review")}
                     disabled={actionBusy === detail.id}
-                    className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-40"
+                    className="rounded-lg border border-accent/30 bg-accent-dim px-4 py-2 text-sm font-medium text-accent-text hover:bg-accent/15 disabled:opacity-40"
                   >
                     {actionBusy === detail.id ? "処理中..." : "審査開始"}
                   </button>
@@ -702,7 +702,7 @@ function ApplicationsTab() {
                             <button
                               onClick={() => updateAppStatus(app.id, "under_review")}
                               disabled={actionBusy === app.id}
-                              className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-40"
+                              className="rounded-lg border border-accent/30 bg-accent-dim px-3 py-1 text-xs font-medium text-accent-text hover:bg-accent/15 disabled:opacity-40"
                             >
                               審査開始
                             </button>
@@ -712,7 +712,7 @@ function ApplicationsTab() {
                               <button
                                 onClick={() => updateAppStatus(app.id, "approved")}
                                 disabled={actionBusy === app.id}
-                                className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-40"
+                                className="rounded-lg border border-success/30 bg-success-dim px-3 py-1 text-xs font-medium text-success-text hover:bg-success/15 disabled:opacity-40"
                               >
                                 承認
                               </button>
@@ -1176,7 +1176,7 @@ function ContractsTab() {
                             <>
                               <button
                                 onClick={() => handleAction(c.id, "resend")}
-                                className="text-blue-600 hover:underline text-xs"
+                                className="text-accent hover:underline text-xs"
                               >
                                 再送
                               </button>

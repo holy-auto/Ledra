@@ -185,7 +185,7 @@ export default function SettingsForm({ name, contactEmail, contactPhone, address
           </div>
         </>
       ) : (
-        <p className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-400">
+        <p className="rounded-xl border border-warning/30 bg-warning-dim px-3 py-2 text-xs text-warning">
           住所・連絡先はDBマイグレーション後に入力できます（上記のSQL実行後にページを再読み込み）
         </p>
       )}
@@ -197,7 +197,7 @@ export default function SettingsForm({ name, contactEmail, contactPhone, address
       )}
 
       {success && (
-        <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-400">
+        <div className="rounded-xl border border-success/30 bg-success-dim px-4 py-3 text-sm text-success">
           設定を保存しました。
         </div>
       )}
@@ -293,13 +293,13 @@ function StripeConnectSection({ connectStatus }: { connectStatus: ConnectStatus 
       <div className="flex items-center gap-3 text-sm">
         <span className="text-muted">ステータス:</span>
         {isOnboarded ? (
-          <span className="inline-flex items-center gap-1.5 text-emerald-400 font-medium">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+          <span className="inline-flex items-center gap-1.5 text-success font-medium">
+            <span className="w-2 h-2 rounded-full bg-success" />
             接続済み
           </span>
         ) : isConnected ? (
-          <span className="inline-flex items-center gap-1.5 text-amber-400 font-medium">
-            <span className="w-2 h-2 rounded-full bg-amber-500" />
+          <span className="inline-flex items-center gap-1.5 text-warning font-medium">
+            <span className="w-2 h-2 rounded-full bg-warning" />
             オンボーディング未完了
           </span>
         ) : (
@@ -355,8 +355,8 @@ function StripeConnectSection({ connectStatus }: { connectStatus: ConnectStatus 
       </div>
 
       {isOnboarded && (
-        <div className="mt-3 rounded-lg bg-emerald-400/10 border border-emerald-400/30 p-3">
-          <p className="text-sm text-emerald-400">
+        <div className="mt-3 rounded-lg bg-success-dim border border-success/30 p-3">
+          <p className="text-sm text-success">
             請求書の詳細画面から「決済リンクを作成」ボタンで、顧客にオンライン決済リンクを送信できます。
           </p>
         </div>

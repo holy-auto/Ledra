@@ -103,18 +103,18 @@ export default function TemplateOptionsPage() {
       />
 
       {status === "success" && (
-        <div className="glass-card p-4 text-sm text-emerald-400 glow-cyan">
+        <div className="glass-card p-4 text-sm text-success glow-cyan">
           お申し込みが完了しました。テンプレートの設定を開始できます。
         </div>
       )}
       {status === "cancel" && (
-        <div className="glass-card p-4 text-sm text-amber-400 glow-amber">
+        <div className="glass-card p-4 text-sm text-warning glow-amber">
           お申し込みがキャンセルされました。
         </div>
       )}
 
       {loading && <div className="text-sm text-muted">読み込み中...</div>}
-      {error && <div className="glass-card p-4 text-sm text-red-500">{error}</div>}
+      {error && <div className="glass-card p-4 text-sm text-danger">{error}</div>}
 
       {/* 契約状況 */}
       {!loading && (
@@ -312,7 +312,7 @@ function SubscribeConfirmation({
       <div className="border-t border-[var(--border-default)] pt-3 text-xs text-muted">
         「申込に進む」を押すとStripe決済画面に移動します。決済完了後、テンプレートオプションが即時有効になります。
       </div>
-      {error && <div className="text-sm text-red-500">{error}</div>}
+      {error && <div className="text-sm text-danger">{error}</div>}
       <div className="flex gap-3">
         <button
           type="button"

@@ -273,7 +273,7 @@ export default function AdminVehicleEditPage() {
                 autoComplete="off"
               />
               {customerId && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-medium">
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] bg-success-dim text-success-text px-1.5 py-0.5 rounded font-medium">
                   マスタ連携
                 </span>
               )}
