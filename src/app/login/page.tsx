@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { LoginSubmitButton } from "@/components/ui/LoginSubmitButton";
 
 /**
  * ログイン後のリダイレクト先を安全に決定する。
@@ -135,7 +136,7 @@ export default async function Page({
         <form action={signIn} className="space-y-4">
           <input name="email" type="email" placeholder="Email" className="input-field w-full" required />
           <input name="password" type="password" placeholder="Password" className="input-field w-full" required />
-          <button className="btn-primary w-full">ログイン</button>
+          <LoginSubmitButton />
         </form>
 
         <div className="text-center space-y-2">

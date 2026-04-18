@@ -1,10 +1,12 @@
 import "./globals.css";
+import { Suspense } from "react";
 import { Geist_Mono } from "next/font/google";
 import { Noto_Sans_JP } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ThemeProvider } from "@/lib/theme/ThemeContext";
 import { ServiceWorkerRegistrar } from "@/components/ServiceWorkerRegistrar";
+import PageTransitionOverlay from "@/components/ui/PageTransitionOverlay";
 import { cookies } from "next/headers";
 
 const geistMono = Geist_Mono({
@@ -68,7 +70,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <link rel="apple-touch-icon" href="/icon-192.png" />
       </head>
       <body className="bg-base text-primary antialiased">
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <Suspense fallback={null}>
+            <PageTransitionOverlay />
+          </Suspense>
+          {children}
+        </ThemeProvider>
         <ServiceWorkerRegistrar />
         <Analytics />
         <SpeedInsights />

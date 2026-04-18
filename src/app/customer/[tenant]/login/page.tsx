@@ -93,11 +93,21 @@ export default function CustomerLoginPage() {
       <div className="mt-4 flex gap-2.5">
         {phase === "request" ? (
           <button disabled={busy} onClick={requestCode} className={btnCls}>
-            コード送信
+            {busy ? (
+              <span className="flex items-center gap-2">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-current/30 border-t-current" />
+                送信中...
+              </span>
+            ) : "コード送信"}
           </button>
         ) : (
           <button disabled={busy} onClick={verifyCode} className={btnCls}>
-            ログイン
+            {busy ? (
+              <span className="flex items-center gap-2">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-current/30 border-t-current" />
+                確認中...
+              </span>
+            ) : "ログイン"}
           </button>
         )}
       </div>
