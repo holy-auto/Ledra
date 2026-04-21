@@ -107,7 +107,16 @@ export async function checkRateLimit(
   }
 
   const id = identifier || getClientIp(req);
-  const result = await limiter.limit(id);
+
+  let result: Awaited<ReturnType<typeof limiter.limit>>;
+  try {
+    result = await limiter.limit(id);
+  } catch (limiterErr) {
+    // Redis 接続エラー — Sentry に報告して通過させる（アップロードをブロックしない）
+    console.error("[rateLimit] Redis error during limit check:", limiterErr);
+    import("@sentry/nextjs").then((Sentry) => Sentry.captureException(limiterErr)).catch(() => {});
+    return null;
+  }
 
   if (!result.success) {
     return apiError({

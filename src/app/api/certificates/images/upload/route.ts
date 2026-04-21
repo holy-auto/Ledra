@@ -214,6 +214,15 @@ export async function POST(req: NextRequest) {
       uploaded++;
     }
 
+    if (uploaded === 0) {
+      return apiError({
+        code: "validation_error",
+        message:
+          "写真のアップロードに失敗しました。ファイル形式（JPEG・PNG・WebP・HEIC）またはサイズ（上限20MB）を確認してください。",
+        status: 422,
+      });
+    }
+
     return apiOk({ uploaded, max: maxPhotos, plan: planTier });
   } catch (e) {
     return apiInternalError(e, "image upload");
