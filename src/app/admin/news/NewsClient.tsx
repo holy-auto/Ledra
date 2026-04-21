@@ -62,7 +62,7 @@ export default function NewsClient() {
   const fetchNews = useCallback(async () => {
     setErr(null);
     try {
-      const res = await fetch("/api/admin/news", { cache: "no-store" });
+      const res = await fetch("/api/admin/news");
       const j = await res.json().catch(() => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setNews(j.news ?? []);

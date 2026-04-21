@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { unstable_cache } from "next/cache";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import Parser from "rss-parser";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
@@ -27,45 +28,40 @@ const parser = new Parser({
   headers: { "User-Agent": "Ledra/1.0 NewsAggregator" },
 });
 
-// In-memory cache for live RSS (5 min TTL)
-let cachedNews: any[] | null = null;
-let cacheTime = 0;
-const CACHE_TTL = 5 * 60 * 1000;
+// RSSフェッチ結果をNext.jsデータキャッシュに5分間保存（サーバーレス再起動をまたいでも有効）
+const fetchLiveFeeds = unstable_cache(
+  async () => {
+    const allItems: any[] = [];
+    const results = await Promise.allSettled(
+      RSS_FEEDS.map(async (feed) => {
+        try {
+          const parsed = await parser.parseURL(feed.url);
+          return (parsed.items ?? []).slice(0, 15).map((item) => ({
+            id: item.guid || item.link || `${feed.source}-${item.title}`,
+            title: item.title ?? "",
+            summary: item.contentSnippet?.slice(0, 200) || item.content?.replace(/<[^>]*>/g, "").slice(0, 200) || "",
+            category: feed.category,
+            source: feed.source,
+            url: item.link ?? null,
+            published_at: item.isoDate || item.pubDate || new Date().toISOString(),
+            keywords: [],
+            saved: false,
+          }));
+        } catch {
+          return [];
+        }
+      }),
+    );
 
-async function fetchLiveFeeds() {
-  const now = Date.now();
-  if (cachedNews && now - cacheTime < CACHE_TTL) return cachedNews;
-
-  const allItems: any[] = [];
-  const results = await Promise.allSettled(
-    RSS_FEEDS.map(async (feed) => {
-      try {
-        const parsed = await parser.parseURL(feed.url);
-        return (parsed.items ?? []).slice(0, 15).map((item) => ({
-          id: item.guid || item.link || `${feed.source}-${item.title}`,
-          title: item.title ?? "",
-          summary: item.contentSnippet?.slice(0, 200) || item.content?.replace(/<[^>]*>/g, "").slice(0, 200) || "",
-          category: feed.category,
-          source: feed.source,
-          url: item.link ?? null,
-          published_at: item.isoDate || item.pubDate || new Date().toISOString(),
-          keywords: [],
-          saved: false,
-        }));
-      } catch {
-        return [];
-      }
-    }),
-  );
-
-  for (const r of results) {
-    if (r.status === "fulfilled") allItems.push(...r.value);
-  }
-  allItems.sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime());
-  cachedNews = allItems.slice(0, 60);
-  cacheTime = now;
-  return cachedNews;
-}
+    for (const r of results) {
+      if (r.status === "fulfilled") allItems.push(...r.value);
+    }
+    allItems.sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime());
+    return allItems.slice(0, 60);
+  },
+  ["admin-news-feeds"],
+  { revalidate: 300 },
+);
 
 export async function GET() {
   try {
