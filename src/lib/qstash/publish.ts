@@ -71,3 +71,11 @@ export async function enqueueBatchPdf(payload: {
 }) {
   return publish("/api/qstash/batch-pdf", payload, { retries: 2 });
 }
+
+/** Enqueue Square order sync job for async processing */
+export async function enqueueSquareSync(payload: {
+  job_id: string;
+  tenant_id: string;
+}) {
+  return publish("/api/qstash/square-sync", payload, { retries: 2 });
+}
