@@ -62,3 +62,12 @@ export async function enqueuePolygonBackfill(payload: {
 }) {
   return publish("/api/qstash/polygon-backfill", payload, { retries: 2 });
 }
+
+/** Enqueue batch PDF generation job for async processing */
+export async function enqueueBatchPdf(payload: {
+  job_id: string;
+  tenant_id: string;
+  public_ids: string[];
+}) {
+  return publish("/api/qstash/batch-pdf", payload, { retries: 2 });
+}

@@ -3,32 +3,26 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { createAdminClient } from "@/lib/supabase/admin";
 import { enforceBilling } from "@/lib/billing/guard";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
-import { renderCertificatePdf } from "@/lib/pdfCertificate";
-import { apiUnauthorized, apiValidationError, apiForbidden, apiInternalError } from "@/lib/api/response";
+import {
+  apiOk,
+  apiUnauthorized,
+  apiValidationError,
+  apiForbidden,
+  apiInternalError,
+} from "@/lib/api/response";
+import { enqueueBatchPdf } from "@/lib/qstash/publish";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
 
-const MAX_BATCH = 20;
-
-function buildBaseUrl(req: Request) {
-  const proto = req.headers.get("x-forwarded-proto") ?? "http";
-  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "localhost:3000";
-  return `${proto}://${host}`;
-}
+const MAX_BATCH = 100;
 
 /**
- * POST /api/admin/certificates/batch-pdf
- * Body: { public_ids: string[] }   (max 20)
- *
- * Returns array of { public_id, pdf_url } or { public_id, error }.
- * PDFs are uploaded to Supabase Storage and signed URLs are returned.
+ * GET /api/admin/certificates/batch-pdf?job_id=xxx
+ * ジョブの進捗を返す（フロントエンドのポーリング用）
  */
-export async function POST(req: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
-    // Auth
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
@@ -36,7 +30,43 @@ export async function POST(req: NextRequest) {
       return apiForbidden("この操作を行う権限がありません。");
     }
 
-    // Billing check (starter+)
+    const jobId = req.nextUrl.searchParams.get("job_id");
+    if (!jobId) return apiValidationError("job_id は必須です。");
+
+    const admin = createAdminClient();
+    const { data: job, error } = await admin
+      .from("batch_pdf_jobs")
+      .select(
+        "id, status, total_count, processed_count, result_urls, error_message, created_at, updated_at",
+      )
+      .eq("id", jobId)
+      .eq("tenant_id", caller.tenantId)
+      .single();
+
+    if (error || !job) return apiValidationError("ジョブが見つかりません。");
+
+    return apiOk(job);
+  } catch (e) {
+    return apiInternalError(e, "admin/certificates/batch-pdf GET");
+  }
+}
+
+/**
+ * POST /api/admin/certificates/batch-pdf
+ * Body: { public_ids: string[] }   (max 100)
+ *
+ * ジョブを作成して QStash にキューイング。job_id を即座に返す。
+ * 進捗は GET エンドポイントをポーリングして確認。
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const supabase = await createSupabaseServerClient();
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "staff")) {
+      return apiForbidden("この操作を行う権限がありません。");
+    }
+
     const billingDeny = await enforceBilling(req, {
       minPlan: "starter",
       action: "batch_pdf",
@@ -44,7 +74,6 @@ export async function POST(req: NextRequest) {
     });
     if (billingDeny) return billingDeny as any;
 
-    // Parse body
     const body = await req.json().catch(() => null);
     const publicIds: unknown = body?.public_ids;
 
@@ -54,131 +83,48 @@ export async function POST(req: NextRequest) {
     if (publicIds.length > MAX_BATCH) {
       return apiValidationError(`一度に処理できるのは最大 ${MAX_BATCH} 件です。`);
     }
-    const ids = publicIds.filter((v): v is string => typeof v === "string" && v.trim().length > 0);
+    const ids = publicIds.filter(
+      (v): v is string => typeof v === "string" && v.trim().length > 0,
+    );
     if (ids.length === 0) {
       return apiValidationError("有効な public_id がありません。");
     }
 
     const admin = createAdminClient();
 
-    // Verify all certificates belong to caller's tenant
-    const { data: certs, error: fetchErr } = await admin
-      .from("certificates")
-      .select(
-        "id, public_id, status, customer_name, vehicle_info_json, content_free_text, content_preset_json, expiry_type, expiry_value, logo_asset_path, created_at, service_type, ppf_coverage_json, coating_products_json, warranty_period_end, warranty_exclusions, current_version, maintenance_json, body_repair_json",
-      )
-      .eq("tenant_id", caller.tenantId)
-      .in("public_id", ids);
+    const { data: job, error: jobErr } = await admin
+      .from("batch_pdf_jobs")
+      .insert({
+        tenant_id: caller.tenantId,
+        status: "queued",
+        public_ids: ids,
+        total_count: ids.length,
+        processed_count: 0,
+      })
+      .select("id")
+      .single();
 
-    if (fetchErr) {
-      return apiInternalError(fetchErr, "admin/certificates/batch-pdf fetch");
-    }
+    if (jobErr) return apiInternalError(jobErr, "admin/certificates/batch-pdf job create");
 
-    const certMap = new Map((certs ?? []).map((c) => [c.public_id, c]));
+    await enqueueBatchPdf({
+      job_id: job.id,
+      tenant_id: caller.tenantId,
+      public_ids: ids,
+    });
 
-    // 事前に全証明書のアンカー情報を 1 クエリで取得 (N+1 回避)
-    const certIds = (certs ?? []).map((c) => (c as { id: string }).id);
-    const anchorsByCertId = new Map<
-      string,
-      Array<{ sha256: string | null; polygon_tx_hash: string | null; polygon_network: "polygon" | "amoy" | null }>
-    >();
-    if (certIds.length > 0) {
-      const { data: images } = await admin
-        .from("certificate_images")
-        .select("certificate_id, sha256, polygon_tx_hash, polygon_network, sort_order")
-        .in("certificate_id", certIds)
-        .not("polygon_tx_hash", "is", null)
-        .order("sort_order", { ascending: true });
-      for (const img of images ?? []) {
-        const cid = img.certificate_id as string;
-        const list = anchorsByCertId.get(cid) ?? [];
-        list.push({
-          sha256: (img.sha256 as string | null) ?? null,
-          polygon_tx_hash: (img.polygon_tx_hash as string | null) ?? null,
-          polygon_network:
-            img.polygon_network === "polygon" || img.polygon_network === "amoy"
-              ? (img.polygon_network as "polygon" | "amoy")
-              : null,
-        });
-        anchorsByCertId.set(cid, list);
-      }
-    }
+    console.info(
+      `[batch-pdf] tenant=${caller.tenantId} queued job=${job.id} count=${ids.length}`,
+    );
 
-    const baseUrl = buildBaseUrl(req);
-    const { ip, userAgent } = getRequestMeta(req);
-
-    type ResultItem = { public_id: string; pdf_url: string } | { public_id: string; error: string };
-
-    // Process a single PDF
-    const processSinglePdf = async (pid: string): Promise<ResultItem> => {
-      const cert = certMap.get(pid);
-      if (!cert) {
-        return { public_id: pid, error: "証明書が見つかりません。" };
-      }
-
-      try {
-        const publicUrl = `${baseUrl}/c/${cert.public_id}`;
-        const anchors = anchorsByCertId.get((cert as { id: string }).id) ?? [];
-        const pdfBuffer = await renderCertificatePdf(cert as any, publicUrl, anchors);
-        const pdfBytes = new Uint8Array(pdfBuffer as any);
-
-        // Upload to Supabase Storage
-        const storagePath = `batch-pdf/${caller.tenantId}/${pid}-${Date.now()}.pdf`;
-        const { error: uploadErr } = await admin.storage.from("certificates").upload(storagePath, pdfBytes, {
-          contentType: "application/pdf",
-          upsert: true,
-        });
-
-        if (uploadErr) {
-          return { public_id: pid, error: "PDF アップロードに失敗しました。" };
-        }
-
-        // Create signed URL (valid for 1 hour)
-        const { data: signedData, error: signErr } = await admin.storage
-          .from("certificates")
-          .createSignedUrl(storagePath, 3600);
-
-        if (signErr || !signedData?.signedUrl) {
-          return { public_id: pid, error: "署名付きURL の生成に失敗しました。" };
-        }
-
-        // Audit (fire-and-forget)
-        logCertificateAction({
-          type: "certificate_pdf_batch",
-          tenantId: caller.tenantId,
-          publicId: pid,
-          certificateId: cert.id,
-          userId: caller.userId,
-          description: "一括PDF生成",
-          ip,
-          userAgent,
-        });
-
-        return { public_id: pid, pdf_url: signedData.signedUrl };
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "不明なエラー";
-        return { public_id: pid, error: `PDF 生成に失敗: ${msg}` };
-      }
-    };
-
-    // Process in chunks of 5 concurrent PDFs
-    const CONCURRENCY = 5;
-    const results: ResultItem[] = [];
-    for (let i = 0; i < ids.length; i += CONCURRENCY) {
-      const chunk = ids.slice(i, i + CONCURRENCY);
-      const settled = await Promise.allSettled(chunk.map(processSinglePdf));
-      for (const result of settled) {
-        if (result.status === "fulfilled") {
-          results.push(result.value);
-        } else {
-          // Should not happen since processSinglePdf catches internally, but handle gracefully
-          results.push({ public_id: "unknown", error: "予期しないエラー" });
-        }
-      }
-    }
-
-    return NextResponse.json({ ok: true, results }, { status: 200 });
+    return NextResponse.json(
+      {
+        ok: true,
+        message: `${ids.length}件のPDF生成を開始しました`,
+        job_id: job.id,
+      },
+      { status: 200 },
+    );
   } catch (e) {
-    return apiInternalError(e, "admin/certificates/batch-pdf");
+    return apiInternalError(e, "admin/certificates/batch-pdf POST");
   }
 }
