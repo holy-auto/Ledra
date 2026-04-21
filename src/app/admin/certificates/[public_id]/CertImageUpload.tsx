@@ -9,6 +9,43 @@ type Props = {
   maxPhotos: number;
 };
 
+// Vercel serverless function request body limit is 4.5 MB.
+// iPhone HEIC photos are typically 3–8 MB, so we compress large files
+// to JPEG before uploading. iOS Safari can render HEIC on Canvas natively.
+const COMPRESS_THRESHOLD_BYTES = 3.5 * 1024 * 1024; // 3.5 MB
+
+async function compressToJpeg(file: File): Promise<File> {
+  if (file.size <= COMPRESS_THRESHOLD_BYTES) return file;
+  return new Promise((resolve) => {
+    const objectUrl = URL.createObjectURL(file);
+    const img = document.createElement("img");
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { resolve(file); return; }
+        ctx.drawImage(img, 0, 0);
+        canvas.toBlob(
+          (blob) => {
+            if (!blob || blob.size >= file.size) { resolve(file); return; }
+            const newName = file.name.replace(/\.[^.]+$/, ".jpg");
+            resolve(new File([blob], newName, { type: "image/jpeg" }));
+          },
+          "image/jpeg",
+          0.85,
+        );
+      } catch {
+        resolve(file);
+      }
+    };
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve(file); };
+    img.src = objectUrl;
+  });
+}
+
 export default function CertImageUpload({ publicId, remaining, maxPhotos }: Props) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -30,21 +67,32 @@ export default function CertImageUpload({ publicId, remaining, maxPhotos }: Prop
 
     startTransition(async () => {
       try {
-        const form = new FormData();
-        form.append("public_id", publicId);
-        toUpload.forEach((f) => form.append("photos", f));
-        const res = await fetch("/api/certificates/images/upload", {
-          method: "POST",
-          body: form,
-        });
-        const json = await res.json();
-        if (!res.ok) {
-          setMessage(null);
-          setError(json?.message ?? json?.error ?? "アップロードに失敗しました。");
-          return;
+        let totalUploaded = 0;
+
+        // Upload one file at a time to stay within Vercel's 4.5 MB request limit.
+        for (let idx = 0; idx < toUpload.length; idx++) {
+          setMessage(`アップロード中 (${idx + 1}/${toUpload.length})…`);
+
+          const compressed = await compressToJpeg(toUpload[idx]);
+
+          const form = new FormData();
+          form.append("public_id", publicId);
+          form.append("photos", compressed);
+
+          const res = await fetch("/api/certificates/images/upload", {
+            method: "POST",
+            body: form,
+          });
+          const json = await res.json();
+          if (!res.ok) {
+            setMessage(null);
+            setError(json?.message ?? json?.error ?? "アップロードに失敗しました。");
+            return;
+          }
+          totalUploaded += json?.uploaded ?? 0;
         }
-        const uploaded = json?.uploaded ?? 0;
-        setMessage(`${uploaded} 枚の写真を追加しました。`);
+
+        setMessage(`${totalUploaded} 枚の写真を追加しました。`);
         router.refresh();
       } catch (e) {
         console.warn("upload error", e);
