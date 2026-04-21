@@ -24,6 +24,9 @@ export async function POST(req: NextRequest) {
     const channel = (body?.channel ?? "").trim() as Channel;
     const recipient = (body?.recipient ?? "").trim();
     const message = (body?.message ?? "").trim() || undefined;
+    // クライアントがリトライ時に同一キーを送ることで二重送信を防ぐ
+    const idempotencyKey: string | undefined =
+      typeof body?.idempotency_key === "string" ? body.idempotency_key.trim() : undefined;
 
     if (!documentId) return apiValidationError("document_id は必須です。");
     if (!VALID_CHANNELS.includes(channel))
@@ -42,6 +45,28 @@ export async function POST(req: NextRequest) {
 
     const docType = doc.doc_type as DocType;
     const docLabel = DOC_TYPES[docType]?.label ?? doc.doc_type;
+
+    // 冪等キーがある場合は既送信チェック（二重送信防止）
+    if (idempotencyKey) {
+      try {
+        const admin = getAdminClient();
+        const { data: existing } = await admin
+          .from("document_share_log")
+          .select("id")
+          .eq("idempotency_key", idempotencyKey)
+          .eq("channel", channel)
+          .eq("status", "sent")
+          .maybeSingle();
+
+        if (existing) {
+          // 既に送信済み — 冪等レスポンスを返してスキップ
+          return apiOk({ document: doc, channel, sent: true, idempotent: true });
+        }
+      } catch (checkErr) {
+        console.error("[document_share] idempotency check failed:", checkErr);
+        // チェック失敗は致命的ではないので送信処理を継続
+      }
+    }
 
     // Fetch tenant name for email sender
     const { data: tenant } = await supabase.from("tenants").select("name").eq("id", caller.tenantId).single();
@@ -98,6 +123,7 @@ export async function POST(req: NextRequest) {
         status: success ? "sent" : "failed",
         error_message: success ? null : (errorMessage ?? "送信に失敗しました"),
         sent_by: caller.userId,
+        ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
       });
     } catch (logErr) {
       console.error("[document_share] Failed to write share log:", logErr);

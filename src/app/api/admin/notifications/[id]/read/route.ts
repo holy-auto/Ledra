@@ -21,6 +21,7 @@ export async function PUT(
       .from("notifications")
       .update({ read_at: new Date().toISOString() })
       .eq("id", id)
+      .eq("tenant_id", caller.tenantId)
       .is("read_at", null);
 
     if (error) return apiInternalError(error, "mark notification read");

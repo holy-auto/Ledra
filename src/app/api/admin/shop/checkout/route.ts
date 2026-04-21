@@ -123,13 +123,13 @@ export async function POST(req: NextRequest) {
     // 注文番号生成
     const orderNumber = `SO-${Date.now().toString(36).toUpperCase()}`;
 
-    // 注文レコード作成（status: pending → webhook で paid に更新）
+    // Step 1: 仮レコード作成（order_id を先に確保）
     const { data: order, error: oErr } = await supabase
       .from("shop_orders")
       .insert({
         tenant_id: caller.tenantId,
         order_number: orderNumber,
-        status: "pending",
+        status: "pending_checkout",
         payment_method: "stripe",
         subtotal,
         tax,
@@ -142,33 +142,46 @@ export async function POST(req: NextRequest) {
 
     if (oErr) return apiInternalError(oErr, "shop_orders insert");
 
-    // 明細作成
+    // 明細作成（内部DBなので Stripe 前に実行してOK）
     const itemsToInsert = orderItems.map((item) => ({
       ...item,
       order_id: order.id,
     }));
     await supabase.from("shop_order_items").insert(itemsToInsert);
 
-    // Stripe Checkout Session作成
+    // Step 2: Stripe Checkout Session作成
     const appUrl = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL;
     if (!appUrl) throw new Error("Missing APP_URL");
 
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      customer: customerId,
-      client_reference_id: caller.tenantId,
-      metadata: {
-        tenant_id: caller.tenantId,
-        shop_order_id: order.id,
-        order_number: orderNumber,
-      },
-      line_items: lineItems,
-      success_url: `${appUrl}/admin/shop?status=success&order=${orderNumber}`,
-      cancel_url: `${appUrl}/admin/shop?status=cancel`,
-    });
+    let session: Stripe.Checkout.Session;
+    try {
+      session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        customer: customerId,
+        client_reference_id: caller.tenantId,
+        metadata: {
+          tenant_id: caller.tenantId,
+          shop_order_id: order.id,
+          order_number: orderNumber,
+        },
+        line_items: lineItems,
+        success_url: `${appUrl}/admin/shop?status=success&order=${orderNumber}`,
+        cancel_url: `${appUrl}/admin/shop?status=cancel&order=${orderNumber}`,
+      });
+    } catch (stripeErr) {
+      // Stripe 失敗 → 仮レコードをクリーンアップして孤立オーダーを防ぐ
+      await admin
+        .from("shop_orders")
+        .update({ status: "checkout_failed" })
+        .eq("id", order.id);
+      throw stripeErr;
+    }
 
-    // checkout session ID を注文に保存
-    await admin.from("shop_orders").update({ stripe_checkout_session_id: session.id }).eq("id", order.id);
+    // Step 3: セッションID・ステータスを記録
+    await admin
+      .from("shop_orders")
+      .update({ stripe_checkout_session_id: session.id, status: "pending_payment" })
+      .eq("id", order.id);
 
     return apiOk({ url: session.url, order_id: order.id, order_number: orderNumber });
   } catch (e) {
