@@ -95,17 +95,14 @@ export async function checkRateLimit(
 ) {
   const limiter = presets[preset]();
   if (!limiter) {
-    // Redis 未設定
+    // Redis 未設定 — Sentry に報告して通過させる（アップロードをブロックしない）
+    const msg = "[rateLimit] Upstash Redis is not configured (UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN missing). Rate limiting is disabled.";
     if (process.env.NODE_ENV === "production") {
-      // Fail closed in production — do not silently allow unmetered requests
-      return apiError({
-        code: "rate_limit_unavailable",
-        message: "Rate limiting service is unavailable. Request denied.",
-        status: 503,
-      });
+      console.error(msg);
+      import("@sentry/nextjs").then((Sentry) => Sentry.captureMessage(msg, "error")).catch(() => {});
+    } else {
+      console.warn(msg);
     }
-    // Non-production: allow through but warn
-    console.warn("[rateLimit] Redis is not configured — rate limiting is disabled (non-production)");
     return null;
   }
 

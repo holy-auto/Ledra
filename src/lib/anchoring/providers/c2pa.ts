@@ -101,7 +101,7 @@ export async function signC2pa(buffer: Buffer, mime: string): Promise<C2paResult
     const input = { buffer, mimeType: mime };
     const output: { buffer: Buffer | null } = { buffer: null };
 
-    builder.sign(signer, input, output);
+    await builder.sign(signer, input, output);
 
     if (!output.buffer) {
       console.error("[c2pa] signing produced no output buffer");
