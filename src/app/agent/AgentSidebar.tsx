@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -307,9 +308,7 @@ export default function AgentSidebar() {
     <SidebarShell>
       {/* Brand */}
       <div className="flex h-14 items-center gap-2.5 border-b border-border-subtle px-5">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-[#5856d6]">
-          <span className="text-xs font-bold text-white">C</span>
-        </div>
+        <Image src="/icon-192.png" alt="Ledra" width={28} height={28} className="rounded-lg" priority />
         <div className="flex flex-col">
           <span className="text-[13px] font-semibold tracking-wide text-primary">Ledra</span>
           <span className="text-[10px] font-medium uppercase tracking-widest text-muted">Agent Portal</span>
