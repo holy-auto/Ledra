@@ -112,6 +112,35 @@ interface RawResponse {
   plate_display: string | null;
 }
 
+export type ShakenshoSource = "qr" | "ocr";
+
+export interface ShakenshoParseResult {
+  data: ShakenshoData;
+  source: ShakenshoSource;
+}
+
+/**
+ * 車検証画像を「2Dコード→失敗時はClaude Vision OCR」の順で解析する。
+ *
+ * 2Dコードが取れた場合でもフィールドは限定的な場合があるので、
+ * 呼び出し側は result.source を記録しておくと将来のデータ品質追跡に使える。
+ */
+export async function parseShakenshoAuto(imageBuffer: Buffer): Promise<ShakenshoParseResult> {
+  // QR/DataMatrix が読めれば高精度・低コスト
+  const { decode2DCode, parseShakenshoCode } = await import("./shakensho-qr");
+  const raw = await decode2DCode(imageBuffer);
+  if (raw) {
+    const parsed = parseShakenshoCode(raw);
+    if (parsed && Object.keys(parsed).length > 0) {
+      return { data: parsed, source: "qr" };
+    }
+  }
+
+  // フォールバック: Claude Vision OCR
+  const data = await parseShakensho(imageBuffer);
+  return { data, source: "ocr" };
+}
+
 /**
  * 車検証画像を Claude Vision で解析し、構造化データを返す。
  *

@@ -1,7 +1,7 @@
 import { apiInternalError, apiUnauthorized, apiValidationError } from "@/lib/api/response";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { parseShakensho } from "@/lib/ocr/shakensho";
+import { parseShakenshoAuto } from "@/lib/ocr/shakensho";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,10 +53,11 @@ export async function POST(req: Request) {
     const arrayBuffer = await file.arrayBuffer();
     const imageBuffer = Buffer.from(arrayBuffer);
 
-    const parsed = await parseShakensho(imageBuffer);
+    const { data: parsed, source } = await parseShakenshoAuto(imageBuffer);
 
     return Response.json({
       ok: true,
+      source,
       extracted: {
         maker: parsed.maker ?? null,
         model: parsed.model ?? null,

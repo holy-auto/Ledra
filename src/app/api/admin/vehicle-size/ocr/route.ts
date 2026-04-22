@@ -7,7 +7,7 @@ import {
   apiInternalError,
   apiValidationError,
 } from "@/lib/api/response";
-import { parseShakensho, calcSizeClass } from "@/lib/ocr/shakensho";
+import { parseShakenshoAuto, calcSizeClass } from "@/lib/ocr/shakensho";
 import { escapeIlike } from "@/lib/sanitize";
 
 export const dynamic = "force-dynamic";
@@ -43,8 +43,8 @@ export async function POST(req: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const imageBuffer = Buffer.from(arrayBuffer);
 
-    // --- OCR ---
-    const parsed = await parseShakensho(imageBuffer);
+    // --- 2D code → OCR フォールバック ---
+    const { data: parsed, source } = await parseShakenshoAuto(imageBuffer);
 
     // --- Calculate size_class from dimensions if available ---
     let size_class: string | null = null;
@@ -89,6 +89,7 @@ export async function POST(req: NextRequest) {
     }
 
     return apiOk({
+      source,
       size_class,
       volume_m3,
       dimensions: parsed.length_mm && parsed.width_mm && parsed.height_mm
