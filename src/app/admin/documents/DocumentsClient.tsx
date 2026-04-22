@@ -23,6 +23,7 @@ type Customer = { id: string; name: string };
 type MenuItem = { id: string; name: string; description: string | null; unit_price: number; tax_category: number };
 type Stats = { total: number; unpaid_amount: number };
 type DocumentsData = { documents: DocumentRow[]; stats: Stats };
+type TemplateOption = { id: string; name: string; doc_type: string | null };
 
 const emptyItem = (): DocumentItem => ({
   description: "",
@@ -82,6 +83,8 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   const [formPeriodEnd, setFormPeriodEnd] = useState("");
   const [formPaymentTerms, setFormPaymentTerms] = useState("");
   const [formDeliveryDate, setFormDeliveryDate] = useState("");
+  const [formTemplateId, setFormTemplateId] = useState<string>("");
+  const [templates, setTemplates] = useState<TemplateOption[]>([]);
   const [formIssuedAt, setFormIssuedAt] = useState(new Date().toISOString().slice(0, 10));
   const [formDueDate, setFormDueDate] = useState("");
   const [formNote, setFormNote] = useState("");
@@ -126,9 +129,19 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
     } catch {}
   }, []);
 
+  const fetchTemplates = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/document-templates", { cache: "no-store" });
+      const j = await res.json().catch(() => null);
+      if (res.ok && j?.templates) {
+        setTemplates(j.templates.map((t: any) => ({ id: t.id, name: t.name, doc_type: t.doc_type })));
+      }
+    } catch {}
+  }, []);
+
   useEffect(() => {
-    Promise.all([fetchCustomers(), fetchMenuItems()]);
-  }, [fetchCustomers, fetchMenuItems]);
+    Promise.all([fetchCustomers(), fetchMenuItems(), fetchTemplates()]);
+  }, [fetchCustomers, fetchMenuItems, fetchTemplates]);
 
   // URL クエリ (customer_id) からの自動入力
   // ワークフローや飛び込み案件の「見積書を作成」から遷移した際に、
@@ -191,6 +204,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
           period_end: formPeriodEnd || null,
           payment_terms: formPaymentTerms || null,
           delivery_date: formDeliveryDate || null,
+          template_id: formTemplateId || null,
           issued_at: formIssuedAt,
           due_date: formDueDate || null,
           note: formNote,
@@ -228,6 +242,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
     setFormPeriodEnd("");
     setFormPaymentTerms("");
     setFormDeliveryDate("");
+    setFormTemplateId("");
     setFormIssuedAt(new Date().toISOString().slice(0, 10));
     setFormDueDate("");
     setFormNote("");
@@ -533,6 +548,31 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* テンプレート選択 */}
+              <div className="flex flex-wrap items-end gap-4">
+                <div className="space-y-1 min-w-[280px]">
+                  <label className="text-xs text-muted">帳票テンプレート</label>
+                  <select
+                    className="select-field"
+                    value={formTemplateId}
+                    onChange={(e) => setFormTemplateId(e.target.value)}
+                  >
+                    <option value="">（既定のレイアウトを使用）</option>
+                    {templates
+                      .filter((t) => !t.doc_type || t.doc_type === formDocType)
+                      .map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                          {t.doc_type ? "" : "（共通）"}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                <Link href="/admin/document-templates" className="btn-ghost text-xs" target="_blank">
+                  テンプレートを管理 →
+                </Link>
               </div>
 
               {/* Options */}

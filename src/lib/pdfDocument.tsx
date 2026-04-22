@@ -2,6 +2,10 @@ import React from "react";
 import { Document, Page, Text, View, Image, StyleSheet, Font } from "@react-pdf/renderer";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { createSignedAssetUrl } from "@/lib/signedUrl";
+import { DEFAULT_LAYOUT, type LayoutConfig, mergeLayout } from "@/types/documentTemplate";
+
+export { DEFAULT_LAYOUT, mergeLayout };
+export type { LayoutConfig };
 
 const NOTO_SANS_JP = "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-400-normal.ttf";
 const NOTO_SANS_JP_BOLD = "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-700-normal.ttf";
@@ -105,55 +109,6 @@ export type TenantForDocPdf = {
   logo_asset_path: string | null;
   company_seal_path: string | null;
   bank_info: BankInfo | null;
-};
-
-/** テンプレート設定（Phase2 で導入）— 未指定時は DEFAULT_LAYOUT */
-export type LayoutConfig = {
-  title: {
-    prefix: boolean; // "御" プレフィックス
-    spacing: number; // letterSpacing
-    align: "center" | "left" | "right";
-    fontSize: number;
-  };
-  logo: {
-    show: boolean;
-    position: "top-right" | "top-left";
-    height: number;
-  };
-  seal: {
-    show: boolean;
-    position: "below-issuer" | "over-total";
-    size: number;
-  };
-  issuer: {
-    position: "top-right" | "top-left";
-    align: "left" | "right";
-  };
-  recipient: {
-    showAddress: boolean;
-    showPhone: boolean;
-    showPostalCode: boolean;
-  };
-  items: {
-    showUnit: boolean;
-    showTaxLabel: boolean;
-  };
-  colors: {
-    primary: string; // アクセント色（合計ラベル等）
-    headerRule: string; // 明細表ヘッダー下線
-  };
-  fontSizeBase: number;
-};
-
-export const DEFAULT_LAYOUT: LayoutConfig = {
-  title: { prefix: true, spacing: 4, align: "center", fontSize: 22 },
-  logo: { show: true, position: "top-right", height: 70 },
-  seal: { show: true, position: "below-issuer", size: 60 },
-  issuer: { position: "top-right", align: "right" },
-  recipient: { showAddress: true, showPhone: true, showPostalCode: true },
-  items: { showUnit: true, showTaxLabel: true },
-  colors: { primary: "#c00", headerRule: "#333" },
-  fontSizeBase: 10,
 };
 
 function fmtJpy(n: number | null | undefined): string {
@@ -537,19 +492,4 @@ export async function renderDocumentPdf(
   );
 
   return await renderToBuffer(pdfDoc);
-}
-
-/** 浅い深さ 2 段マージ（各セクション単位で上書き） */
-export function mergeLayout(base: LayoutConfig, override?: Partial<LayoutConfig>): LayoutConfig {
-  if (!override) return base;
-  return {
-    title: { ...base.title, ...(override.title ?? {}) },
-    logo: { ...base.logo, ...(override.logo ?? {}) },
-    seal: { ...base.seal, ...(override.seal ?? {}) },
-    issuer: { ...base.issuer, ...(override.issuer ?? {}) },
-    recipient: { ...base.recipient, ...(override.recipient ?? {}) },
-    items: { ...base.items, ...(override.items ?? {}) },
-    colors: { ...base.colors, ...(override.colors ?? {}) },
-    fontSizeBase: override.fontSizeBase ?? base.fontSizeBase,
-  };
 }
