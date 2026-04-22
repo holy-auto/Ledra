@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
     const { page, perPage, from, to } = parsePagination(req, { maxPerPage: 200 });
 
     const selectCols =
-      "id, tenant_id, customer_id, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, note, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, recipient_name, created_at, updated_at";
+      "id, tenant_id, customer_id, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, note, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, created_at, updated_at";
 
     let query = supabase
       .from("documents")
@@ -181,6 +181,16 @@ export async function POST(req: NextRequest) {
     const showLogo = body?.show_logo !== false;
     const showBankInfo = !!body?.show_bank_info;
     const recipientName = (body?.recipient_name ?? "").trim() || null;
+    const recipientHonorific = body?.recipient_honorific ?? "御中";
+    const recipientPostalCode = (body?.recipient_postal_code ?? "").trim() || null;
+    const recipientAddress = (body?.recipient_address ?? "").trim() || null;
+    const recipientPhone = (body?.recipient_phone ?? "").trim() || null;
+    const subject = (body?.subject ?? "").trim() || null;
+    const periodStart = body?.period_start || null;
+    const periodEnd = body?.period_end || null;
+    const paymentTerms = (body?.payment_terms ?? "").trim() || null;
+    const deliveryDate = body?.delivery_date || null;
+    const templateId = body?.template_id || null;
     const metaJson = body?.meta_json ?? {};
 
     const { itemsJson, subtotal, tax, total } = calcItems(items, taxRate);
@@ -190,6 +200,16 @@ export async function POST(req: NextRequest) {
       tenant_id: caller.tenantId,
       customer_id: customerId,
       recipient_name: recipientName,
+      recipient_honorific: recipientHonorific,
+      recipient_postal_code: recipientPostalCode,
+      recipient_address: recipientAddress,
+      recipient_phone: recipientPhone,
+      subject,
+      period_start: periodStart,
+      period_end: periodEnd,
+      payment_terms: paymentTerms,
+      delivery_date: deliveryDate,
+      template_id: templateId,
       doc_type: docType,
       doc_number: docNumber,
       issued_at: issuedAt,
@@ -215,7 +235,7 @@ export async function POST(req: NextRequest) {
       .from("documents")
       .insert(row)
       .select(
-        "id, tenant_id, customer_id, recipient_name, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, items_json, note, meta_json, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, created_at, updated_at",
+        "id, tenant_id, customer_id, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, items_json, note, meta_json, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, created_at, updated_at",
       )
       .single();
     if (error) {
@@ -252,6 +272,17 @@ export async function PUT(req: NextRequest) {
     if (body.show_logo !== undefined) updates.show_logo = !!body.show_logo;
     if (body.show_bank_info !== undefined) updates.show_bank_info = !!body.show_bank_info;
     if (body.recipient_name !== undefined) updates.recipient_name = (body.recipient_name ?? "").trim() || null;
+    if (body.recipient_honorific !== undefined) updates.recipient_honorific = body.recipient_honorific;
+    if (body.recipient_postal_code !== undefined)
+      updates.recipient_postal_code = (body.recipient_postal_code ?? "").trim() || null;
+    if (body.recipient_address !== undefined) updates.recipient_address = (body.recipient_address ?? "").trim() || null;
+    if (body.recipient_phone !== undefined) updates.recipient_phone = (body.recipient_phone ?? "").trim() || null;
+    if (body.subject !== undefined) updates.subject = (body.subject ?? "").trim() || null;
+    if (body.period_start !== undefined) updates.period_start = body.period_start || null;
+    if (body.period_end !== undefined) updates.period_end = body.period_end || null;
+    if (body.payment_terms !== undefined) updates.payment_terms = (body.payment_terms ?? "").trim() || null;
+    if (body.delivery_date !== undefined) updates.delivery_date = body.delivery_date || null;
+    if (body.template_id !== undefined) updates.template_id = body.template_id || null;
     if (body.meta_json !== undefined) updates.meta_json = body.meta_json;
 
     if (body.items !== undefined) {
@@ -272,7 +303,7 @@ export async function PUT(req: NextRequest) {
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .select(
-        "id, tenant_id, customer_id, recipient_name, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, items_json, note, meta_json, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, created_at, updated_at",
+        "id, tenant_id, customer_id, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, items_json, note, meta_json, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, created_at, updated_at",
       )
       .single();
 

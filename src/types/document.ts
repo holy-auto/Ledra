@@ -36,13 +36,20 @@ export function statusLabel(s: string): string {
 
 export function statusVariant(s: string) {
   switch (s) {
-    case "draft": return "default" as const;
-    case "sent": return "info" as const;
-    case "accepted": return "info" as const;
-    case "paid": return "success" as const;
-    case "rejected": return "danger" as const;
-    case "cancelled": return "warning" as const;
-    default: return "default" as const;
+    case "draft":
+      return "default" as const;
+    case "sent":
+      return "info" as const;
+    case "accepted":
+      return "info" as const;
+    case "paid":
+      return "success" as const;
+    case "rejected":
+      return "danger" as const;
+    case "cancelled":
+      return "warning" as const;
+    default:
+      return "default" as const;
   }
 }
 
@@ -65,6 +72,19 @@ export type DocumentItem = {
   tax_category?: number; // 10 or 8 (軽減税率)
   certificate_id?: string | null;
   certificate_public_id?: string | null;
+};
+
+export type RecipientHonorific = "御中" | "様" | "";
+
+export const GREETING_BY_DOC_TYPE: Record<DocType, string> = {
+  estimate: "下記のとおりお見積り申し上げます。",
+  invoice: "下記のとおりご請求申し上げます。",
+  consolidated_invoice: "下記のとおりご請求申し上げます。",
+  delivery: "下記のとおり納品いたしました。",
+  purchase_order: "下記のとおり発注いたします。",
+  order_confirmation: "下記のとおりご注文を承りました。",
+  inspection: "下記のとおり検収いたしました。",
+  receipt: "下記のとおり領収いたしました。",
 };
 
 export type DocumentRow = {
@@ -90,6 +110,16 @@ export type DocumentRow = {
   show_logo: boolean;
   show_bank_info: boolean;
   recipient_name: string | null;
+  recipient_honorific: RecipientHonorific;
+  recipient_postal_code: string | null;
+  recipient_address: string | null;
+  recipient_phone: string | null;
+  subject: string | null;
+  period_start: string | null;
+  period_end: string | null;
+  payment_terms: string | null;
+  delivery_date: string | null;
+  template_id: string | null;
   payment_date: string | null;
   vehicle_id: string | null;
   vehicle_info_json: Record<string, unknown>;

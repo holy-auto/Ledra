@@ -23,6 +23,7 @@ type Customer = { id: string; name: string };
 type MenuItem = { id: string; name: string; description: string | null; unit_price: number; tax_category: number };
 type Stats = { total: number; unpaid_amount: number };
 type DocumentsData = { documents: DocumentRow[]; stats: Stats };
+type TemplateOption = { id: string; name: string; doc_type: string | null };
 
 const emptyItem = (): DocumentItem => ({
   description: "",
@@ -73,6 +74,17 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   );
   const [formCustomerId, setFormCustomerId] = useState("");
   const [formRecipientName, setFormRecipientName] = useState("");
+  const [formRecipientHonorific, setFormRecipientHonorific] = useState<"御中" | "様" | "">("御中");
+  const [formRecipientPostalCode, setFormRecipientPostalCode] = useState("");
+  const [formRecipientAddress, setFormRecipientAddress] = useState("");
+  const [formRecipientPhone, setFormRecipientPhone] = useState("");
+  const [formSubject, setFormSubject] = useState("");
+  const [formPeriodStart, setFormPeriodStart] = useState("");
+  const [formPeriodEnd, setFormPeriodEnd] = useState("");
+  const [formPaymentTerms, setFormPaymentTerms] = useState("");
+  const [formDeliveryDate, setFormDeliveryDate] = useState("");
+  const [formTemplateId, setFormTemplateId] = useState<string>("");
+  const [templates, setTemplates] = useState<TemplateOption[]>([]);
   const [formIssuedAt, setFormIssuedAt] = useState(new Date().toISOString().slice(0, 10));
   const [formDueDate, setFormDueDate] = useState("");
   const [formNote, setFormNote] = useState("");
@@ -117,9 +129,19 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
     } catch {}
   }, []);
 
+  const fetchTemplates = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/document-templates", { cache: "no-store" });
+      const j = await res.json().catch(() => null);
+      if (res.ok && j?.templates) {
+        setTemplates(j.templates.map((t: any) => ({ id: t.id, name: t.name, doc_type: t.doc_type })));
+      }
+    } catch {}
+  }, []);
+
   useEffect(() => {
-    Promise.all([fetchCustomers(), fetchMenuItems()]);
-  }, [fetchCustomers, fetchMenuItems]);
+    Promise.all([fetchCustomers(), fetchMenuItems(), fetchTemplates()]);
+  }, [fetchCustomers, fetchMenuItems, fetchTemplates]);
 
   // URL クエリ (customer_id) からの自動入力
   // ワークフローや飛び込み案件の「見積書を作成」から遷移した際に、
@@ -173,6 +195,16 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
           doc_type: formDocType,
           customer_id: formCustomerId || null,
           recipient_name: formRecipientName || null,
+          recipient_honorific: formRecipientHonorific,
+          recipient_postal_code: formRecipientPostalCode || null,
+          recipient_address: formRecipientAddress || null,
+          recipient_phone: formRecipientPhone || null,
+          subject: formSubject || null,
+          period_start: formPeriodStart || null,
+          period_end: formPeriodEnd || null,
+          payment_terms: formPaymentTerms || null,
+          delivery_date: formDeliveryDate || null,
+          template_id: formTemplateId || null,
           issued_at: formIssuedAt,
           due_date: formDueDate || null,
           note: formNote,
@@ -201,6 +233,16 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   const resetForm = () => {
     setFormCustomerId("");
     setFormRecipientName("");
+    setFormRecipientHonorific("御中");
+    setFormRecipientPostalCode("");
+    setFormRecipientAddress("");
+    setFormRecipientPhone("");
+    setFormSubject("");
+    setFormPeriodStart("");
+    setFormPeriodEnd("");
+    setFormPaymentTerms("");
+    setFormDeliveryDate("");
+    setFormTemplateId("");
     setFormIssuedAt(new Date().toISOString().slice(0, 10));
     setFormDueDate("");
     setFormNote("");
@@ -410,6 +452,127 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                     <option value={8}>8%（軽減税率）</option>
                   </select>
                 </div>
+              </div>
+
+              {/* 宛先詳細 & 案件情報 */}
+              <div className="border-t border-border-subtle pt-4 space-y-3">
+                <div className="text-xs font-semibold text-muted tracking-[0.18em]">
+                  宛先詳細・案件情報（帳票に表示）
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted">敬称</label>
+                    <select
+                      className="select-field"
+                      value={formRecipientHonorific}
+                      onChange={(e) => setFormRecipientHonorific(e.target.value as "御中" | "様" | "")}
+                    >
+                      <option value="御中">御中</option>
+                      <option value="様">様</option>
+                      <option value="">（なし）</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted">宛先 郵便番号</label>
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder="123-4567"
+                      value={formRecipientPostalCode}
+                      onChange={(e) => setFormRecipientPostalCode(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-xs text-muted">宛先 住所</label>
+                    <input
+                      type="text"
+                      className="input-field"
+                      value={formRecipientAddress}
+                      onChange={(e) => setFormRecipientAddress(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted">宛先 電話番号</label>
+                    <input
+                      type="tel"
+                      className="input-field"
+                      value={formRecipientPhone}
+                      onChange={(e) => setFormRecipientPhone(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-xs text-muted">件名</label>
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder="例：○○工事 一式"
+                      value={formSubject}
+                      onChange={(e) => setFormSubject(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted">期間（開始）</label>
+                    <input
+                      type="date"
+                      className="input-field"
+                      value={formPeriodStart}
+                      onChange={(e) => setFormPeriodStart(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted">期間（終了）</label>
+                    <input
+                      type="date"
+                      className="input-field"
+                      value={formPeriodEnd}
+                      onChange={(e) => setFormPeriodEnd(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted">支払条件</label>
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder="例：月末締翌月末払"
+                      value={formPaymentTerms}
+                      onChange={(e) => setFormPaymentTerms(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted">納期日</label>
+                    <input
+                      type="date"
+                      className="input-field"
+                      value={formDeliveryDate}
+                      onChange={(e) => setFormDeliveryDate(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* テンプレート選択 */}
+              <div className="flex flex-wrap items-end gap-4">
+                <div className="space-y-1 min-w-[280px]">
+                  <label className="text-xs text-muted">帳票テンプレート</label>
+                  <select
+                    className="select-field"
+                    value={formTemplateId}
+                    onChange={(e) => setFormTemplateId(e.target.value)}
+                  >
+                    <option value="">（既定のレイアウトを使用）</option>
+                    {templates
+                      .filter((t) => !t.doc_type || t.doc_type === formDocType)
+                      .map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                          {t.doc_type ? "" : "（共通）"}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                <Link href="/admin/document-templates" className="btn-ghost text-xs" target="_blank">
+                  テンプレートを管理 →
+                </Link>
               </div>
 
               {/* Options */}
