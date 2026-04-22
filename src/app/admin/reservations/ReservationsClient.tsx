@@ -205,9 +205,9 @@ export default function ReservationsClient() {
   const fetchMasterData = useCallback(async () => {
     try {
       const [custRes, menuRes, tenantRes] = await Promise.all([
-        fetch("/api/admin/customers", { cache: "no-store" }),
-        fetch("/api/admin/menu-items", { cache: "no-store" }),
-        fetch("/api/admin/tenants", { cache: "no-store" }),
+        fetch("/api/admin/customers"),
+        fetch("/api/admin/menu-items"),
+        fetch("/api/admin/tenants"),
       ]);
       const tenantJ = await tenantRes.json().catch(() => null);
       if (tenantRes.ok && tenantJ?.tenants) {
@@ -221,7 +221,7 @@ export default function ReservationsClient() {
         setMenuItems(menuJ.items.map((m: any) => ({ id: m.id, name: m.name, unit_price: m.unit_price })));
 
       try {
-        const gcRes = await fetch("/api/admin/gcal", { cache: "no-store" });
+        const gcRes = await fetch("/api/admin/gcal");
         const gcJ = await gcRes.json().catch(() => null);
         if (gcRes.ok && gcJ?.connected) {
           setGcalConnected(true);
@@ -246,7 +246,7 @@ export default function ReservationsClient() {
       const url = customerId
         ? `/api/admin/customers?action=vehicles&customer_id=${encodeURIComponent(customerId)}`
         : "/api/admin/customers?action=vehicles";
-      const res = await fetch(url, { cache: "no-store" });
+      const res = await fetch(url);
       const j = await res.json().catch(() => null);
       if (res.ok && j?.vehicles) setVehicles(j.vehicles);
     } catch {
@@ -259,7 +259,7 @@ export default function ReservationsClient() {
     if (r.workflow_template_id) {
       try {
         const [tplRes, logsRes] = await Promise.all([
-          fetch(`/api/admin/workflow-templates`, { cache: "no-store" }),
+          fetch(`/api/admin/workflow-templates`),
           fetch(`/api/admin/reservations/${r.id}/step-logs`, { cache: "no-store" }),
         ]);
         const tplJ = await tplRes.json().catch(() => null);
@@ -276,7 +276,7 @@ export default function ReservationsClient() {
       setDetailStepLogs([]);
       try {
         setDetailTemplateLoading(true);
-        const res = await fetch("/api/admin/workflow-templates", { cache: "no-store" });
+        const res = await fetch("/api/admin/workflow-templates");
         const j = await res.json().catch(() => null);
         setDetailTemplates(j?.templates ?? []);
       } catch {

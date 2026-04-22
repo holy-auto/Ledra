@@ -15,11 +15,7 @@ import CertificatesModeSwitch from "./CertificatesModeSwitch";
 type SearchParams = { q?: string };
 
 async function getMyTenantId(supabase: any) {
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes.user) return null;
-
   const { data, error } = await supabase.from("tenant_memberships").select("tenant_id").limit(1).single();
-
   if (error || !data) return null;
   return data.tenant_id as string;
 }
@@ -45,17 +41,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
     );
   }
 
-  const { data: t } = await supabase.from("tenants").select("plan_tier,is_active").eq("id", tenantId).single();
-  const planTier = String(t?.plan_tier ?? "pro");
-  const isActive = !!t?.is_active;
-  const canIssue = isActive && canUseFeature(planTier, "issue_certificate");
-
-  const denyReason = !isActive ? "inactive" : "plan";
-  const issueHref = canIssue
-    ? "/admin/certificates/new"
-    : buildBillingDenyUrl({ reason: denyReason, action: "issue_certificate", returnTo });
-
-  let query = supabase
+  let certQuery = supabase
     .from("certificates")
     .select("public_id,status,customer_name,created_at")
     .eq("tenant_id", tenantId)
@@ -64,10 +50,22 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
 
   if (q) {
     const sq = escapePostgrestValue(escapeIlike(q));
-    query = query.or(`public_id.ilike.%${sq}%,customer_name.ilike.%${sq}%`);
+    certQuery = certQuery.or(`public_id.ilike.%${sq}%,customer_name.ilike.%${sq}%`);
   }
 
-  const { data: rows, error } = await query;
+  const [{ data: t }, { data: rows, error }] = await Promise.all([
+    supabase.from("tenants").select("plan_tier,is_active").eq("id", tenantId).single(),
+    certQuery,
+  ]);
+
+  const planTier = String(t?.plan_tier ?? "pro");
+  const isActive = !!t?.is_active;
+  const canIssue = isActive && canUseFeature(planTier, "issue_certificate");
+
+  const denyReason = !isActive ? "inactive" : "plan";
+  const issueHref = canIssue
+    ? "/admin/certificates/new"
+    : buildBillingDenyUrl({ reason: denyReason, action: "issue_certificate", returnTo });
   if (error)
     return (
       <div className="space-y-6">
