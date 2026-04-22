@@ -9,39 +9,74 @@ type Props = {
   maxPhotos: number;
 };
 
-// Vercel serverless function request body limit is 4.5 MB.
-// iPhone HEIC photos are typically 3–8 MB, so we compress large files
-// to JPEG before uploading. iOS Safari can render HEIC on Canvas natively.
-const COMPRESS_THRESHOLD_BYTES = 3.5 * 1024 * 1024; // 3.5 MB
+// Stay well under Vercel's 4.5 MB serverless body limit.
+const TARGET_BYTES = 3.5 * 1024 * 1024; // 3.5 MB target after compression
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024; // 4 MB hard cap — reject if can't compress below this
+const MAX_DIMENSION = 2048; // scale long side down to 2048 px before compressing
 
-async function compressToJpeg(file: File): Promise<File> {
-  if (file.size <= COMPRESS_THRESHOLD_BYTES) return file;
+// Compress large images (any format) to JPEG via Canvas.
+// Scales dimensions then tries quality 0.85 → 0.70 → 0.55 until under TARGET_BYTES.
+// iOS Safari natively decodes HEIC in Canvas (iOS 11+).
+async function compressToJpeg(file: File): Promise<File | null> {
+  if (file.size <= TARGET_BYTES) return file;
+
   return new Promise((resolve) => {
     const objectUrl = URL.createObjectURL(file);
     const img = document.createElement("img");
+
     img.onload = () => {
       URL.revokeObjectURL(objectUrl);
       try {
+        let w = img.naturalWidth;
+        let h = img.naturalHeight;
+
+        if (!w || !h) { resolve(null); return; }
+
+        // Scale down so the longest side is at most MAX_DIMENSION
+        if (w > MAX_DIMENSION || h > MAX_DIMENSION) {
+          if (w >= h) {
+            h = Math.round((h * MAX_DIMENSION) / w);
+            w = MAX_DIMENSION;
+          } else {
+            w = Math.round((w * MAX_DIMENSION) / h);
+            h = MAX_DIMENSION;
+          }
+        }
+
         const canvas = document.createElement("canvas");
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
+        canvas.width = w;
+        canvas.height = h;
         const ctx = canvas.getContext("2d");
-        if (!ctx) { resolve(file); return; }
-        ctx.drawImage(img, 0, 0);
-        canvas.toBlob(
-          (blob) => {
-            if (!blob || blob.size >= file.size) { resolve(file); return; }
-            const newName = file.name.replace(/\.[^.]+$/, ".jpg");
-            resolve(new File([blob], newName, { type: "image/jpeg" }));
-          },
-          "image/jpeg",
-          0.85,
-        );
+        if (!ctx) { resolve(null); return; }
+        ctx.drawImage(img, 0, 0, w, h);
+
+        const newName = file.name.replace(/\.[^.]+$/, ".jpg");
+        const qualities = [0.85, 0.70, 0.55];
+        let qi = 0;
+
+        const tryNext = () => {
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) { resolve(null); return; }
+              if (blob.size <= TARGET_BYTES || qi >= qualities.length - 1) {
+                resolve(new File([blob], newName, { type: "image/jpeg" }));
+              } else {
+                qi++;
+                tryNext();
+              }
+            },
+            "image/jpeg",
+            qualities[qi],
+          );
+        };
+
+        tryNext();
       } catch {
-        resolve(file);
+        resolve(null);
       }
     };
-    img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve(file); };
+
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve(null); };
     img.src = objectUrl;
   });
 }
@@ -69,27 +104,57 @@ export default function CertImageUpload({ publicId, remaining, maxPhotos }: Prop
       try {
         let totalUploaded = 0;
 
-        // Upload one file at a time to stay within Vercel's 4.5 MB request limit.
         for (let idx = 0; idx < toUpload.length; idx++) {
+          const file = toUpload[idx];
           setMessage(`アップロード中 (${idx + 1}/${toUpload.length})…`);
 
-          const compressed = await compressToJpeg(toUpload[idx]);
+          // Compress if over target; null means Canvas failed to load the image
+          let toSend: File;
+          if (file.size > TARGET_BYTES) {
+            const compressed = await compressToJpeg(file);
+            if (!compressed) {
+              // Canvas couldn't decode this file — upload as-is and let the server validate
+              toSend = file;
+            } else {
+              toSend = compressed;
+            }
+          } else {
+            toSend = file;
+          }
+
+          // Hard reject before network call — avoids hitting Vercel's 413 wall
+          if (toSend.size > MAX_UPLOAD_BYTES) {
+            setMessage(null);
+            setError(
+              `「${file.name}」のファイルサイズが大きすぎます（圧縮後 ${Math.round(toSend.size / 1024 / 1024)}MB）。別の写真を選んでください。`,
+            );
+            return;
+          }
 
           const form = new FormData();
           form.append("public_id", publicId);
-          form.append("photos", compressed);
+          form.append("photos", toSend);
 
           const res = await fetch("/api/certificates/images/upload", {
             method: "POST",
             body: form,
           });
-          const json = await res.json();
+
+          // Vercel returns HTML on 413 — parse JSON safely
+          let json: Record<string, unknown> = {};
+          try { json = await res.json(); } catch {}
+
           if (!res.ok) {
             setMessage(null);
-            setError(json?.message ?? json?.error ?? "アップロードに失敗しました。");
+            const msg =
+              res.status === 413
+                ? "ファイルが大きすぎます。写真を選び直してください。"
+                : (json?.message as string) ?? (json?.error as string) ?? "アップロードに失敗しました。";
+            setError(msg);
             return;
           }
-          totalUploaded += json?.uploaded ?? 0;
+
+          totalUploaded += (json?.uploaded as number) ?? 0;
         }
 
         setMessage(`${totalUploaded} 枚の写真を追加しました。`);
