@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -56,9 +57,7 @@ export default function ResetPasswordPage() {
       <main className="min-h-screen flex items-center justify-center bg-base p-6">
         <div className="glass-card w-full max-w-sm space-y-6 p-8 text-center">
           <div className="flex items-center justify-center gap-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg" style={{ background: "linear-gradient(135deg, var(--accent-blue), #5856d6)" }}>
-              C
-            </div>
+            <Image src="/icon-192.png" alt="Ledra" width={40} height={40} className="rounded-lg" priority />
             <span className="text-xl font-bold text-primary tracking-wide">Ledra</span>
           </div>
           <div className="text-success">
@@ -77,9 +76,7 @@ export default function ResetPasswordPage() {
     <main className="min-h-screen flex items-center justify-center bg-base p-6">
       <div className="glass-card w-full max-w-sm space-y-6 p-8">
         <div className="flex items-center justify-center gap-3">
-          <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg" style={{ background: "linear-gradient(135deg, var(--accent-blue), #5856d6)" }}>
-            C
-          </div>
+          <Image src="/icon-192.png" alt="Ledra" width={40} height={40} className="rounded-lg" priority />
           <span className="text-xl font-bold text-primary tracking-wide">Ledra</span>
         </div>
 
