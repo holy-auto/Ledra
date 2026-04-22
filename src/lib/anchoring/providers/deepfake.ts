@@ -18,7 +18,7 @@ function getProvider(): DeepfakeProvider {
 
 const DISABLED_RESULT: DeepfakeResult = { score: null, verdict: null };
 
-const HIVE_TIMEOUT_MS = 15_000;
+const HIVE_TIMEOUT_MS = 8_000;
 
 function scoreToVerdict(score: number): DeepfakeVerdict {
   if (score >= 0.8) return "likely_fake";

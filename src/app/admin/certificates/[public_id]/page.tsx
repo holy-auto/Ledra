@@ -10,6 +10,7 @@ import SignatureRequestPanel from "./SignatureRequestPanel";
 import CertEditForm from "./CertEditForm";
 import CertEditHistory from "./CertEditHistory";
 import CertImageUpload from "./CertImageUpload";
+import CertImageDeleteButton from "./CertImageDeleteButton";
 import { formatDateTime } from "@/lib/format";
 import { buildExplorerUrl } from "@/lib/anchoring/providers";
 import { normalizePlanTier, PHOTO_LIMITS } from "@/lib/billing/planFeatures";
@@ -425,6 +426,8 @@ export default async function Page({ params }: PageProps) {
                           ) : null}
                         </div>
                       </div>
+
+                      {!isVoid && <CertImageDeleteButton imageId={img.id} />}
                     </div>
                   );
                 })}

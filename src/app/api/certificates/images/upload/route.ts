@@ -13,6 +13,11 @@ import { computeAuthenticityGrade } from "@/lib/anchoring/authenticityGrade";
 import { invokeAllUploadProviders } from "@/lib/anchoring/providers";
 
 export const runtime = "nodejs";
+// Allow up to 60s for image processing + verification providers.
+// Without this, Vercel Hobby caps at 10s and slow providers (polygon
+// anchoring, deepfake detection) can cause a 504 HTML response, which
+// the client sees as a generic "アップロードに失敗しました" error.
+export const maxDuration = 60;
 
 const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
 const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB per file
@@ -116,20 +121,31 @@ export async function POST(req: NextRequest) {
     // ── Upload files ───────────────────────────────────────────────
     const toUpload = files.slice(0, remaining);
     let uploaded = 0;
+    // Capture the last failure so we can return a specific error to the
+    // client instead of a generic "invalid format or size" message.
+    let lastFailure:
+      | { code: "validation_error" | "db_error" | "internal_error"; message: string }
+      | null = null;
 
     for (let i = 0; i < toUpload.length; i++) {
       const file = toUpload[i];
       if (!file || !file.size) continue;
 
       // Validate size
-      if (file.size > MAX_FILE_BYTES) continue;
+      if (file.size > MAX_FILE_BYTES) {
+        lastFailure = { code: "validation_error", message: `ファイルサイズが大きすぎます（上限 ${MAX_FILE_BYTES / 1024 / 1024}MB）。` };
+        continue;
+      }
 
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
 
       // Validate magic bytes (not client-provided MIME)
       const detectedMime = validateMagicBytes(buffer);
-      if (!detectedMime) continue;
+      if (!detectedMime) {
+        lastFailure = { code: "validation_error", message: "対応していないファイル形式です（JPEG・PNG・WebP・HEIC のみ）。" };
+        continue;
+      }
 
       const mime = detectedMime;
       const ext = mime.split("/")[1]?.replace("jpeg", "jpg") ?? "jpg";
@@ -164,6 +180,10 @@ export async function POST(req: NextRequest) {
 
       if (uploadError) {
         console.error("storage upload error", uploadError);
+        lastFailure = {
+          code: "internal_error",
+          message: `ストレージへの保存に失敗しました: ${uploadError.message ?? "unknown"}`,
+        };
         continue;
       }
 
@@ -208,10 +228,27 @@ export async function POST(req: NextRequest) {
 
       if (insertError) {
         console.error("certificate_images insert error", insertError);
+        // Best-effort: remove the just-uploaded storage object so we don't
+        // orphan it when the DB row can't be written.
+        admin.storage.from(CERTIFICATE_IMAGE_BUCKET).remove([storagePath]).catch(() => {});
+        lastFailure = {
+          code: "db_error",
+          message: `データベースへの登録に失敗しました: ${insertError.message ?? "unknown"}`,
+        };
         continue;
       }
 
       uploaded++;
+    }
+
+    if (uploaded === 0) {
+      return apiError({
+        code: lastFailure?.code ?? "validation_error",
+        message:
+          lastFailure?.message ??
+          "写真のアップロードに失敗しました。ファイル形式（JPEG・PNG・WebP・HEIC）またはサイズ（上限20MB）を確認してください。",
+        status: 422,
+      });
     }
 
     return apiOk({ uploaded, max: maxPhotos, plan: planTier });
