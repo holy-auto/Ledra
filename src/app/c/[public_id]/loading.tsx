@@ -1,6 +1,13 @@
+/**
+ * Public certificate loading state.
+ *
+ * Wrapper mirrors the real page's `<main className="mx-auto max-w-[980px] p-4">`
+ * so the container width / gutters stay stable when the streamed content swaps
+ * in — prevents the horizontal/content CLS that inflates mobile share-link RES.
+ */
 export default function CPublicIdLoading() {
   return (
-    <div className="space-y-6 animate-pulse">
+    <div className="mx-auto max-w-[980px] space-y-6 animate-pulse">
       <div className="space-y-2">
         <div className="h-3 w-24 rounded bg-border-subtle dark:bg-[rgba(255,255,255,0.08)]" />
         <div className="h-8 w-48 rounded bg-border-subtle dark:bg-[rgba(255,255,255,0.08)]" />

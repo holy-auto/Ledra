@@ -925,7 +925,7 @@ export default function Sidebar() {
     <SidebarShell>
       {/* Brand */}
       <div className="flex h-14 items-center gap-2.5 border-b border-border-subtle px-5">
-        <Image src="/icon-192.png" alt="Ledra" width={28} height={28} className="rounded-lg" priority />
+        <Image src="/icon-192.png" alt="Ledra" width={28} height={28} className="rounded-lg" />
         <span className="text-[13px] font-semibold tracking-wide text-primary">Ledra</span>
         <div className="ml-auto flex items-center gap-2">
           {/* 施工店・代理店 両方の権限を持つ場合のみ表示されるモード切替 */}

@@ -38,39 +38,45 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [mode, setModeState] = useState<ThemeMode>("system");
   const [resolved, setResolved] = useState<"light" | "dark">("light");
 
-  // Initialize from localStorage
+  // Initialize from localStorage (client-only; SSR keeps "system" to avoid
+  // hydration mismatch — the real theme is already applied to <html> by the
+  // inline THEME_INIT_SCRIPT in RootLayout).
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY) as ThemeMode | null;
-    if (saved && ["light", "dark", "system"].includes(saved)) {
-      setModeState(saved);
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY) as ThemeMode | null;
+      if (saved === "light" || saved === "dark" || saved === "system") {
+        setModeState(saved);
+      }
+    } catch {
+      /* ignore */
     }
   }, []);
 
-  // Resolve and apply theme
+  // Resolve + apply theme, and (only in system mode) subscribe to OS changes.
+  // Merged into one effect so we don't double-commit on every mode change.
   useEffect(() => {
     const resolvedTheme = mode === "system" ? getSystemTheme() : mode;
     setResolved(resolvedTheme);
     applyTheme(resolvedTheme);
-  }, [mode]);
 
-  // Listen for OS theme changes when in system mode
-  useEffect(() => {
     if (mode !== "system") return;
-
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const handler = (e: MediaQueryListEvent) => {
       const r = e.matches ? "dark" : "light";
       setResolved(r);
       applyTheme(r);
     };
-
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, [mode]);
 
   const setMode = useCallback((newMode: ThemeMode) => {
     setModeState(newMode);
-    localStorage.setItem(STORAGE_KEY, newMode);
+    try {
+      localStorage.setItem(STORAGE_KEY, newMode);
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   return (

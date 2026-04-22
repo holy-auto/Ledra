@@ -1,6 +1,8 @@
 export default function MyLoading() {
+  // Match real /my page wrapper (`mx-auto max-w-lg p-6`) so the container width
+  // / gutters stay stable when streamed content swaps in — prevents CLS.
   return (
-    <div className="space-y-6 animate-pulse">
+    <div className="mx-auto max-w-lg space-y-6 p-6 animate-pulse">
       <div className="space-y-2">
         <div className="h-3 w-24 rounded bg-border-subtle dark:bg-[rgba(255,255,255,0.08)]" />
         <div className="h-8 w-48 rounded bg-border-subtle dark:bg-[rgba(255,255,255,0.08)]" />

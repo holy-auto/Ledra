@@ -308,7 +308,7 @@ export default function AgentSidebar() {
     <SidebarShell>
       {/* Brand */}
       <div className="flex h-14 items-center gap-2.5 border-b border-border-subtle px-5">
-        <Image src="/icon-192.png" alt="Ledra" width={28} height={28} className="rounded-lg" priority />
+        <Image src="/icon-192.png" alt="Ledra" width={28} height={28} className="rounded-lg" />
         <div className="flex flex-col">
           <span className="text-[13px] font-semibold tracking-wide text-primary">Ledra</span>
           <span className="text-[10px] font-medium uppercase tracking-widest text-muted">Agent Portal</span>
