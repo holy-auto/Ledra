@@ -104,9 +104,8 @@ export default async function Page({
     <main className="min-h-screen flex items-center justify-center bg-base p-6">
       <div className="glass-card w-full max-w-sm space-y-6 p-8">
         {/* Branding */}
-        <div className="flex items-center justify-center gap-3">
-          <Image src="/icon-192.png" alt="Ledra" width={40} height={40} className="rounded-lg" priority />
-          <span className="text-xl font-bold text-primary tracking-wide">Ledra</span>
+        <div className="flex items-center justify-center">
+          <Image src="/login-logo.png" alt="Ledra" width={200} height={87} className="h-auto w-[200px]" priority />
         </div>
 
         <h1 className="text-xl font-bold text-primary text-center">ログイン</h1>
