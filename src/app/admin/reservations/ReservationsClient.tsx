@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import PageHeader from "@/components/ui/PageHeader";
@@ -145,6 +145,10 @@ export default function ReservationsClient() {
   const stats = swrData?.stats ?? null;
   const [mutationErr, setMutationErr] = useState<string | null>(null);
   const err = swrError ? (swrError.message ?? "読み込みに失敗しました") : mutationErr;
+
+  // Transitions — defers heavy re-renders so button presses feel instant
+  const [, startFilterTransition] = useTransition();
+  const [, startFormTransition] = useTransition();
 
   // View
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
@@ -334,17 +338,19 @@ export default function ReservationsClient() {
   // ─── Filter handlers ──────────────────────────────────────
 
   const handleFilterChange = (val: string) => {
-    setStatusFilter(val);
-    setActiveStatusFilter(val);
+    setStatusFilter(val); // urgent: reflect selection immediately
+    startFilterTransition(() => setActiveStatusFilter(val)); // deferred: triggers SWR refetch
   };
   const handleDateChange = (val: string) => {
-    setDateFilter(val);
-    setActiveDateFilter(val);
+    setDateFilter(val); // urgent
+    startFilterTransition(() => setActiveDateFilter(val)); // deferred
   };
   const handleCalendarDateClick = (date: string) => {
-    setDateFilter(date);
-    setActiveDateFilter(date);
-    setViewMode("list");
+    startFilterTransition(() => {
+      setDateFilter(date);
+      setActiveDateFilter(date);
+      setViewMode("list");
+    });
   };
 
   // ─── Form handlers ────────────────────────────────────────
@@ -365,25 +371,29 @@ export default function ReservationsClient() {
   };
 
   const openCreateForm = () => {
-    resetForm();
-    setShowForm(true);
+    startFormTransition(() => {
+      resetForm();
+      setShowForm(true);
+    });
     fetchVehicles();
   };
 
   const openEditForm = (r: Reservation) => {
-    setEditingId(r.id);
-    setFormTitle(r.title);
-    setFormCustomerId(r.customer_id ?? "");
-    setFormVehicleId(r.vehicle_id ?? "");
-    setFormDate(r.scheduled_date);
-    setFormStartTime(r.start_time?.slice(0, 5) ?? "");
-    setFormEndTime(r.end_time?.slice(0, 5) ?? "");
-    setFormNote(r.note ?? "");
-    setFormMenuItems(r.menu_items_json ?? []);
-    setFormAmount(r.estimated_amount ?? 0);
-    setSaveMsg(null);
-    setFormStep(1);
-    setShowForm(true);
+    startFormTransition(() => {
+      setEditingId(r.id);
+      setFormTitle(r.title);
+      setFormCustomerId(r.customer_id ?? "");
+      setFormVehicleId(r.vehicle_id ?? "");
+      setFormDate(r.scheduled_date);
+      setFormStartTime(r.start_time?.slice(0, 5) ?? "");
+      setFormEndTime(r.end_time?.slice(0, 5) ?? "");
+      setFormNote(r.note ?? "");
+      setFormMenuItems(r.menu_items_json ?? []);
+      setFormAmount(r.estimated_amount ?? 0);
+      setSaveMsg(null);
+      setFormStep(1);
+      setShowForm(true);
+    });
     if (r.customer_id) fetchVehicles(r.customer_id);
     else fetchVehicles();
   };
@@ -481,12 +491,16 @@ export default function ReservationsClient() {
 
   // ─── Group reservations by date ──────────────────────────
 
-  const grouped = reservations.reduce<Record<string, Reservation[]>>((acc, r) => {
-    if (!acc[r.scheduled_date]) acc[r.scheduled_date] = [];
-    acc[r.scheduled_date].push(r);
-    return acc;
-  }, {});
-  const sortedDates = Object.keys(grouped).sort();
+  const grouped = useMemo(
+    () =>
+      reservations.reduce<Record<string, Reservation[]>>((acc, r) => {
+        if (!acc[r.scheduled_date]) acc[r.scheduled_date] = [];
+        acc[r.scheduled_date].push(r);
+        return acc;
+      }, {}),
+    [reservations],
+  );
+  const sortedDates = useMemo(() => Object.keys(grouped).sort(), [grouped]);
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -583,7 +597,7 @@ export default function ReservationsClient() {
           {(["list", "calendar"] as const).map((m) => (
             <button
               key={m}
-              onClick={() => setViewMode(m)}
+              onClick={() => startFilterTransition(() => setViewMode(m))}
               className={`px-3.5 py-2 text-xs font-semibold transition-colors ${
                 viewMode === m ? "bg-accent text-white" : "bg-surface text-secondary hover:bg-surface-hover"
               }`}
