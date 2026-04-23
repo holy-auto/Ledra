@@ -6,38 +6,40 @@ import { ImageResponse } from "next/og";
  * Design: dark gradient (matches Hero), brand logotype top-left, optional
  * badge chip, big title, subtitle, and the brand tagline at the bottom.
  *
- * Japanese font is fetched at request time from Google Fonts using the
- * subset API (`text=` param) so we only download glyphs actually used.
- * If the fetch fails (offline preview, etc.) we fall back to the default
- * embedded font — Latin text still renders cleanly.
+ * Font loading:
+ *   - satori (used by next/og) only accepts TTF/OTF, not WOFF2.
+ *   - We fetch the Japanese Noto Sans JP TTF from fontsource's CDN (same
+ *     source as `src/lib/pdfCertificate.tsx`). The fetch is cached by
+ *     Next.js data cache; for static OG routes this happens once at build
+ *     time, for dynamic ones it's deduped across requests.
+ *   - On fetch failure we fall back to the default embedded font so that
+ *     builds never hard-fail on OG generation.
  */
 
 export const OG_SIZE = { width: 1200, height: 630 } as const;
 export const OG_CONTENT_TYPE = "image/png";
 
-async function loadJapaneseFont(text: string): Promise<ArrayBuffer | null> {
-  try {
-    const cssUrl = `https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@700&display=swap&text=${encodeURIComponent(text)}`;
-    const css = await (
-      await fetch(cssUrl, {
-        headers: {
-          // Google returns the WOFF2 URL when a modern UA is used
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
-        },
-        // Cache on CDN edge but not for long — font subsets may rotate
-        next: { revalidate: 86400 },
-      })
-    ).text();
+const NOTO_SANS_JP_BOLD_TTF =
+  "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-700-normal.ttf";
 
-    const match = css.match(/src:\s*url\((.+?)\)\s*format\('(woff2|truetype)'\)/);
-    if (!match) return null;
-    const fontRes = await fetch(match[1]);
-    if (!fontRes.ok) return null;
-    return await fontRes.arrayBuffer();
-  } catch {
-    return null;
-  }
+let cachedFontPromise: Promise<ArrayBuffer | null> | null = null;
+
+async function loadJapaneseFont(): Promise<ArrayBuffer | null> {
+  if (cachedFontPromise) return cachedFontPromise;
+  cachedFontPromise = (async () => {
+    try {
+      const res = await fetch(NOTO_SANS_JP_BOLD_TTF, {
+        // Next.js data cache: OG image generation is idempotent, so caching
+        // the font for a week is safe and keeps subsequent builds fast.
+        next: { revalidate: 60 * 60 * 24 * 7 },
+      });
+      if (!res.ok) return null;
+      return await res.arrayBuffer();
+    } catch {
+      return null;
+    }
+  })();
+  return cachedFontPromise;
 }
 
 type OgInput = {
@@ -49,9 +51,8 @@ type OgInput = {
 export async function makeOgImage({ title, subtitle, badge }: OgInput) {
   const tagline = "記録を、業界の共通言語にする。";
   const brand = "Ledra";
-  const allText = [brand, badge ?? "", title, subtitle ?? "", tagline, "WEB施工証明書SaaS"].join(" ");
 
-  const fontData = await loadJapaneseFont(allText);
+  const fontData = await loadJapaneseFont();
   const fontFamily = fontData ? "NotoSansJP" : "sans-serif";
 
   return new ImageResponse(

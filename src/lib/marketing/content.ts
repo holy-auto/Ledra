@@ -107,7 +107,11 @@ async function safeReaddir(dir: string): Promise<string[]> {
 
 export async function listContent(collection: ContentCollection): Promise<ContentEntry[]> {
   const dir = path.join(CONTENT_ROOT, collection);
-  const files = (await safeReaddir(dir)).filter((f) => f.endsWith(".mdx") || f.endsWith(".md"));
+  const files = (await safeReaddir(dir)).filter(
+    // Files starting with `_` are conventionally treated as drafts/templates
+    // and never exposed. Same for dotfiles and non-mdx files.
+    (f) => !f.startsWith("_") && !f.startsWith(".") && (f.endsWith(".mdx") || f.endsWith(".md")),
+  );
 
   const entries: ContentEntry[] = [];
   for (const file of files) {

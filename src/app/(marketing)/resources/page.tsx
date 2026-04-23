@@ -16,9 +16,10 @@ const resources: Resource[] = [
     key: "service-overview",
     title: "サービス概要資料",
     description:
-      "Ledra がどんな課題を解くサービスか、4ポータル設計、初期導入の流れを20ページにまとめた基本資料です。最初の1本としてお勧めします。",
+      "Ledra がどんな課題を解くサービスか、4ポータル設計、初期導入の流れをコンパクトにまとめた基本資料です。最初の1本としてお勧めします。",
     badge: "最初にお勧め",
-    pageCount: 20,
+    pageCount: 4,
+    downloadUrl: "/api/marketing/resources/service-overview/pdf",
   },
   {
     key: "features-deep-dive",

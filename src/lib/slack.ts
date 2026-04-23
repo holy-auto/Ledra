@@ -13,10 +13,7 @@ export type SlackPayload = {
   color?: string;
 };
 
-export async function notifySlack(
-  webhookUrl: string | undefined,
-  payload: SlackPayload,
-): Promise<void> {
+export async function notifySlack(webhookUrl: string | undefined, payload: SlackPayload): Promise<void> {
   if (!webhookUrl) {
     if (process.env.NODE_ENV !== "production") {
       console.info("[slack] webhook not configured, skipping:", payload.text);

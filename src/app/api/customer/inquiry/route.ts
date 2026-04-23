@@ -2,12 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
-import {
-  CUSTOMER_COOKIE,
-  getTenantIdBySlug,
-  validateSession,
-  getCustomerProfile,
-} from "@/lib/customerPortalServer";
+import { CUSTOMER_COOKIE, getTenantIdBySlug, validateSession, getCustomerProfile } from "@/lib/customerPortalServer";
 import { GLOBAL_PORTAL_COOKIE, resolvePortalTenantAccessByGlobalToken } from "@/lib/customerPortalGlobal";
 import { notifySlack } from "@/lib/slack";
 

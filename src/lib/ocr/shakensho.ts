@@ -34,11 +34,7 @@ export interface ShakenshoData {
  * Volume thresholds in cubic meters:
  *   SS: < 8.0, S: 8.0-10.0, M: 10.0-12.0, L: 12.0-14.0, LL: 14.0-16.0, XL: 16.0+
  */
-export function calcSizeClass(
-  length_mm: number,
-  width_mm: number,
-  height_mm: number,
-): string {
+export function calcSizeClass(length_mm: number, width_mm: number, height_mm: number): string {
   const volume = (length_mm * width_mm * height_mm) / 1e9;
   if (volume < 8.0) return "SS";
   if (volume < 10.0) return "S";
@@ -54,22 +50,22 @@ function detectMediaType(buf: Buffer): SupportedMediaType {
   if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
     return "image/jpeg";
   }
-  if (
-    buf.length >= 8 &&
-    buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47
-  ) {
+  if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
     return "image/png";
   }
-  if (
-    buf.length >= 6 &&
-    buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38
-  ) {
+  if (buf.length >= 6 && buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38) {
     return "image/gif";
   }
   if (
     buf.length >= 12 &&
-    buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
-    buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50
+    buf[0] === 0x52 &&
+    buf[1] === 0x49 &&
+    buf[2] === 0x46 &&
+    buf[3] === 0x46 &&
+    buf[8] === 0x57 &&
+    buf[9] === 0x45 &&
+    buf[10] === 0x42 &&
+    buf[11] === 0x50
   ) {
     return "image/webp";
   }

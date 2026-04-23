@@ -15,7 +15,10 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,css}\"",
     "prepare": "husky",
-    "demo:setup": "tsx scripts/setup-demo-agent.ts"
+    "demo:setup": "tsx scripts/setup-demo-agent.ts",
+    "demo:setup-tenant": "tsx scripts/setup-demo-tenant.ts",
+    "demo:setup-tenant-user": "tsx scripts/setup-demo-tenant-user.ts",
+    "demo:reset-tenant": "tsx scripts/setup-demo-tenant.ts --reset"
   },
   "lint-staged": {
     "src/**/*.{ts,tsx}": [

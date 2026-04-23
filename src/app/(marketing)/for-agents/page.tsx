@@ -11,8 +11,7 @@ import { CTAButton } from "@/components/marketing/CTAButton";
 
 export const metadata = {
   title: "代理店の方へ",
-  description:
-    "Ledra パートナープログラム。施工店を紹介して継続コミッションを受け取る、代理店向けの仕組みです。",
+  description: "Ledra パートナープログラム。施工店を紹介して継続コミッションを受け取る、代理店向けの仕組みです。",
   alternates: { canonical: "/for-agents" },
 };
 
@@ -38,43 +37,35 @@ const reasons = [
 const features = [
   {
     title: "専用ダッシュボード",
-    description:
-      "紹介数・成約率・コミッション実績・顧客ステータスをリアルタイム把握。",
+    description: "紹介数・成約率・コミッション実績・顧客ステータスをリアルタイム把握。",
   },
   {
     title: "紹介リンク管理",
-    description:
-      "代理店ごとのトラッキング URL を生成。どの紹介がどの成約に繋がったかを完全可視化。",
+    description: "代理店ごとのトラッキング URL を生成。どの紹介がどの成約に繋がったかを完全可視化。",
   },
   {
     title: "営業資料・素材",
-    description:
-      "提案書・パンフレット・動画素材・FAQ集をダウンロード可能。紙にも、メールにも、商談にも。",
+    description: "提案書・パンフレット・動画素材・FAQ集をダウンロード可能。紙にも、メールにも、商談にも。",
   },
   {
     title: "デモ環境",
-    description:
-      "サンプルデータ入りのデモテナントをご提供。実画面を見せながらの提案ができます。",
+    description: "サンプルデータ入りのデモテナントをご提供。実画面を見せながらの提案ができます。",
   },
   {
     title: "ランキング・特別報酬",
-    description:
-      "パートナー間の実績ランキング。上位パートナーには別途特別報酬・優先オファーをご用意。",
+    description: "パートナー間の実績ランキング。上位パートナーには別途特別報酬・優先オファーをご用意。",
   },
   {
     title: "研修プログラム",
-    description:
-      "Ledra の機能・販売ノウハウ・業界動向を学べる研修コンテンツ。新任担当者の立ち上げにも。",
+    description: "Ledra の機能・販売ノウハウ・業界動向を学べる研修コンテンツ。新任担当者の立ち上げにも。",
   },
   {
     title: "Stripe Connect 自動振込",
-    description:
-      "コミッションは Stripe Connect 経由で月次自動振込。請求書発行・税務処理の手間を最小化。",
+    description: "コミッションは Stripe Connect 経由で月次自動振込。請求書発行・税務処理の手間を最小化。",
   },
   {
     title: "専用サポート",
-    description:
-      "代理店専用のサポート窓口・FAQ・コミュニティ。営業現場の疑問を即解消できる体制。",
+    description: "代理店専用のサポート窓口・FAQ・コミュニティ。営業現場の疑問を即解消できる体制。",
   },
 ];
 
@@ -123,13 +114,7 @@ export default function ForAgentsPage() {
         />
         <FeatureGrid className="mt-10">
           {reasons.map((r, i) => (
-            <FeatureCard
-              key={r.title}
-              variant="bordered"
-              title={r.title}
-              description={r.desc}
-              delay={i * 70}
-            />
+            <FeatureCard key={r.title} variant="bordered" title={r.title} description={r.desc} delay={i * 70} />
           ))}
         </FeatureGrid>
       </Section>
@@ -152,9 +137,7 @@ export default function ForAgentsPage() {
           </ScrollReveal>
           <ScrollReveal variant="fade-up" delay={100}>
             <div className="rounded-2xl border border-blue-500/30 bg-gradient-to-br from-blue-500/[0.1] to-violet-500/[0.05] p-6 text-center relative overflow-hidden">
-              <span className="absolute top-3 right-3 text-[0.6rem] uppercase tracking-wider text-blue-200">
-                MAIN
-              </span>
+              <span className="absolute top-3 right-3 text-[0.6rem] uppercase tracking-wider text-blue-200">MAIN</span>
               <p className="text-xs uppercase tracking-wider text-blue-300">継続報酬</p>
               <p className="mt-3 text-3xl font-bold text-white tracking-tight">月額の 10%</p>
               <p className="mt-3 text-xs leading-relaxed text-white/55">
@@ -192,10 +175,7 @@ export default function ForAgentsPage() {
 
       {/* Workflow */}
       <Section>
-        <SectionHeading
-          title="パートナー登録の流れ"
-          subtitle="申請から運用開始まで、最短で1週間程度。"
-        />
+        <SectionHeading title="パートナー登録の流れ" subtitle="申請から運用開始まで、最短で1週間程度。" />
         <div className="mx-auto mt-10 max-w-3xl space-y-4">
           {steps.map((s, i) => (
             <ScrollReveal key={s.step} variant="fade-up" delay={i * 60}>
