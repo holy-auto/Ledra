@@ -4,11 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import PageHeader from "@/components/ui/PageHeader";
-import {
-  ORDER_STATUS_LABELS,
-  type TemplateOrderStatus,
-  type TemplateOrderLogRow,
-} from "@/types/templateOption";
+import { ORDER_STATUS_LABELS, type TemplateOrderStatus, type TemplateOrderLogRow } from "@/types/templateOption";
 
 type OrderDetail = {
   id: string;
@@ -28,8 +24,16 @@ type OrderDetail = {
 };
 
 const STATUS_OPTIONS: TemplateOrderStatus[] = [
-  "pending_payment", "paid", "hearing", "in_production",
-  "review", "revision", "test_issued", "approved", "active", "cancelled",
+  "pending_payment",
+  "paid",
+  "hearing",
+  "in_production",
+  "review",
+  "revision",
+  "test_issued",
+  "approved",
+  "active",
+  "cancelled",
 ];
 
 export default function OrderDetailPage() {
@@ -66,12 +70,15 @@ export default function OrderDetailPage() {
         const logJ = await logRes.json();
         setLogs(logJ.logs ?? []);
       }
-    } catch {} finally {
+    } catch {
+    } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchData(); }, [orderId]);
+  useEffect(() => {
+    fetchData();
+  }, [orderId]);
 
   const handleUpdate = async () => {
     setUpdating(true);
@@ -88,7 +95,7 @@ export default function OrderDetailPage() {
         }),
       });
       if (!res.ok) {
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         throw new Error(j?.message ?? `HTTP ${res.status}`);
       }
       setMessage({ type: "ok", text: "更新しました" });
@@ -136,9 +143,13 @@ export default function OrderDetailPage() {
               <div className="flex justify-between">
                 <span className="text-muted">種別</span>
                 <span className="text-primary">
-                  {order.order_type === "custom_production" ? "オリジナル制作" :
-                   order.order_type === "preset_setup" ? "テンプレ設定" :
-                   order.order_type === "modification" ? "修正" : "追加"}
+                  {order.order_type === "custom_production"
+                    ? "オリジナル制作"
+                    : order.order_type === "preset_setup"
+                      ? "テンプレ設定"
+                      : order.order_type === "modification"
+                        ? "修正"
+                        : "追加"}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -147,7 +158,9 @@ export default function OrderDetailPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-muted">修正回数</span>
-                <span className="text-primary">{order.revision_count} / {order.max_revisions}</span>
+                <span className="text-primary">
+                  {order.revision_count} / {order.max_revisions}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted">作成日</span>
@@ -190,7 +203,9 @@ export default function OrderDetailPage() {
                 onChange={(e) => setNewStatus(e.target.value)}
               >
                 {STATUS_OPTIONS.map((s) => (
-                  <option key={s} value={s}>{ORDER_STATUS_LABELS[s]}</option>
+                  <option key={s} value={s}>
+                    {ORDER_STATUS_LABELS[s]}
+                  </option>
                 ))}
               </select>
             </label>
@@ -213,12 +228,7 @@ export default function OrderDetailPage() {
                 placeholder="社内メモ"
               />
             </label>
-            <button
-              type="button"
-              className="btn-primary w-full"
-              disabled={updating}
-              onClick={handleUpdate}
-            >
+            <button type="button" className="btn-primary w-full" disabled={updating} onClick={handleUpdate}>
               {updating ? "更新中..." : "更新する"}
             </button>
           </div>
@@ -233,11 +243,15 @@ export default function OrderDetailPage() {
                 {logs.map((log) => (
                   <div key={log.id} className="flex gap-3">
                     <div className="flex flex-col items-center">
-                      <div className={`w-2.5 h-2.5 rounded-full mt-1.5 ${
-                        log.action === "status_change" ? "bg-accent" :
-                        log.action === "test_issue" ? "bg-violet-400" :
-                        "bg-muted"
-                      }`} />
+                      <div
+                        className={`w-2.5 h-2.5 rounded-full mt-1.5 ${
+                          log.action === "status_change"
+                            ? "bg-accent"
+                            : log.action === "test_issue"
+                              ? "bg-violet-400"
+                              : "bg-muted"
+                        }`}
+                      />
                       <div className="w-px flex-1 bg-border-default" />
                     </div>
                     <div className="pb-3">
@@ -250,9 +264,7 @@ export default function OrderDetailPage() {
                           ? `${ORDER_STATUS_LABELS[log.from_status as TemplateOrderStatus] ?? log.from_status} → ${ORDER_STATUS_LABELS[log.to_status as TemplateOrderStatus] ?? log.to_status}`
                           : log.action}
                       </div>
-                      {log.message && (
-                        <div className="text-xs text-muted mt-0.5">{log.message}</div>
-                      )}
+                      {log.message && <div className="text-xs text-muted mt-0.5">{log.message}</div>}
                     </div>
                   </div>
                 ))}

@@ -7,7 +7,7 @@ import "driver.js/dist/driver.css";
 
 const TOUR_DONE_KEY = "ledra_tour_done";
 
-export default function OnboardingTour() {
+export default function OnboardingTour(): null {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {

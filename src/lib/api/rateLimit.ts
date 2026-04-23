@@ -70,10 +70,12 @@ const presets: Record<RateLimitPreset, () => Ratelimit | null> = {
 };
 
 /**
- * リクエストのIPアドレスを取得
+ * リクエストのIPアドレスを取得。Cloudflare / Vercel / 通常プロキシに対応し、
+ * 取得できない場合は User-Agent でバケットを分散させる。
  */
+import { getClientIp as getClientIpCore } from "@/lib/rateLimit";
 function getClientIp(req: NextRequest): string {
-  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || "unknown";
+  return getClientIpCore(req);
 }
 
 /**
@@ -96,7 +98,8 @@ export async function checkRateLimit(
   const limiter = presets[preset]();
   if (!limiter) {
     // Redis 未設定 — Sentry に報告して通過させる（アップロードをブロックしない）
-    const msg = "[rateLimit] Upstash Redis is not configured (UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN missing). Rate limiting is disabled.";
+    const msg =
+      "[rateLimit] Upstash Redis is not configured (UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN missing). Rate limiting is disabled.";
     if (process.env.NODE_ENV === "production") {
       console.error(msg);
       import("@sentry/nextjs").then((Sentry) => Sentry.captureMessage(msg, "error")).catch(() => {});

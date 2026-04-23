@@ -8,9 +8,15 @@ import Button from "@/components/ui/Button";
 import { formatJpy, formatDate } from "@/lib/format";
 
 type OrderStatus =
-  | "pending" | "quoting" | "accepted" | "in_progress"
-  | "approval_pending" | "payment_pending" | "completed"
-  | "rejected" | "cancelled";
+  | "pending"
+  | "quoting"
+  | "accepted"
+  | "in_progress"
+  | "approval_pending"
+  | "payment_pending"
+  | "completed"
+  | "rejected"
+  | "cancelled";
 
 interface OrderRow {
   id: string;
@@ -80,8 +86,14 @@ const statusVariant = (s: OrderStatus): "default" | "success" | "warning" | "dan
 };
 
 const CATEGORY_OPTIONS = [
-  "PPF施工", "コーティング", "板金塗装", "ラッピング", "ウィンドウフィルム",
-  "インテリアリペア", "デントリペア", "その他",
+  "PPF施工",
+  "コーティング",
+  "板金塗装",
+  "ラッピング",
+  "ウィンドウフィルム",
+  "インテリアリペア",
+  "デントリペア",
+  "その他",
 ];
 
 interface PartnerScore {
@@ -103,11 +115,46 @@ interface PartnerRank {
 }
 
 const PARTNER_RANKS: PartnerRank[] = [
-  { key: "platinum", label: "プラチナ", color: "text-violet-600 dark:text-violet-400", bgColor: "bg-violet-100 dark:bg-violet-900/40", minCompleted: 50, minRating: 4.0 },
-  { key: "gold",     label: "ゴールド", color: "text-yellow-600 dark:text-yellow-400", bgColor: "bg-yellow-100 dark:bg-yellow-900/40", minCompleted: 20, minRating: 3.5 },
-  { key: "silver",   label: "シルバー", color: "text-muted dark:text-muted",     bgColor: "bg-surface-hover dark:bg-gray-800/60",     minCompleted: 5,  minRating: null },
-  { key: "bronze",   label: "ブロンズ", color: "text-warning", bgColor: "bg-warning-dim", minCompleted: 1,  minRating: null },
-  { key: "starter",  label: "スターター", color: "text-muted",                          bgColor: "bg-surface-hover",                    minCompleted: 0,  minRating: null },
+  {
+    key: "platinum",
+    label: "プラチナ",
+    color: "text-violet-600 dark:text-violet-400",
+    bgColor: "bg-violet-100 dark:bg-violet-900/40",
+    minCompleted: 50,
+    minRating: 4.0,
+  },
+  {
+    key: "gold",
+    label: "ゴールド",
+    color: "text-yellow-600 dark:text-yellow-400",
+    bgColor: "bg-yellow-100 dark:bg-yellow-900/40",
+    minCompleted: 20,
+    minRating: 3.5,
+  },
+  {
+    key: "silver",
+    label: "シルバー",
+    color: "text-muted dark:text-muted",
+    bgColor: "bg-surface-hover dark:bg-gray-800/60",
+    minCompleted: 5,
+    minRating: null,
+  },
+  {
+    key: "bronze",
+    label: "ブロンズ",
+    color: "text-warning",
+    bgColor: "bg-warning-dim",
+    minCompleted: 1,
+    minRating: null,
+  },
+  {
+    key: "starter",
+    label: "スターター",
+    color: "text-muted",
+    bgColor: "bg-surface-hover",
+    minCompleted: 0,
+    minRating: null,
+  },
 ];
 
 function resolveRank(completedOrders: number, avgRating: number | null): PartnerRank {
@@ -122,7 +169,11 @@ function resolveRank(completedOrders: number, avgRating: number | null): Partner
 }
 
 const RANK_LETTERS: Record<string, string> = {
-  platinum: "P", gold: "G", silver: "S", bronze: "B", starter: "—",
+  platinum: "P",
+  gold: "G",
+  silver: "S",
+  bronze: "B",
+  starter: "—",
 };
 
 interface TenantOption {
@@ -186,7 +237,7 @@ export default function OrdersClient() {
       if (type && type !== "all") params.set("type", type);
       if (status && status !== "all") params.set("status", status);
       const res = await fetch(`/api/admin/orders?${params.toString()}`, { cache: "no-store" });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setOrders(j.orders ?? []);
     } catch (e: unknown) {
@@ -201,7 +252,7 @@ export default function OrdersClient() {
       const params = new URLSearchParams({ type: "browse" });
       if (q) params.set("q", q);
       const res = await fetch(`/api/admin/orders?${params.toString()}`, { cache: "no-store" });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       setBrowseOrders(j?.orders ?? []);
     } catch {
       setBrowseOrders([]);
@@ -215,7 +266,7 @@ export default function OrdersClient() {
       setLoading(true);
       try {
         const res = await fetch("/api/admin/orders?_tenants=1", { cache: "no-store" });
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         if (j?.myTenants?.length) setMyTenants(j.myTenants);
         if (j?.myScore) setMyScore(j.myScore);
       } catch (e) {
@@ -241,7 +292,9 @@ export default function OrdersClient() {
     browseTimeoutRef.current = setTimeout(() => {
       fetchBrowseOrders(browseQuery || undefined);
     }, 400);
-    return () => { if (browseTimeoutRef.current) clearTimeout(browseTimeoutRef.current); };
+    return () => {
+      if (browseTimeoutRef.current) clearTimeout(browseTimeoutRef.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [browseQuery]);
 
@@ -259,7 +312,9 @@ export default function OrdersClient() {
         const j = await res.json();
         setTenantResults(j.tenants ?? []);
         setShowTenantDropdown(true);
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
       setSearchingTenants(false);
     }, 300);
   }, [tenantQuery]);
@@ -290,7 +345,7 @@ export default function OrdersClient() {
           deadline: formData.deadline || null,
         }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setShowForm(false);
       setFormData({ title: "", description: "", category: "", budget: "", deadline: "" });
@@ -314,7 +369,7 @@ export default function OrdersClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: orderId }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       alert("受注しました！");
       // ブラウズリストから削除し、自社案件を更新
@@ -340,11 +395,7 @@ export default function OrdersClient() {
         title="受発注管理"
         description="他の施工店との仕事の受発注を管理します。"
         actions={
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => setShowForm(!showForm)}
-          >
+          <button type="button" className="btn-primary" onClick={() => setShowForm(!showForm)}>
             {showForm ? "閉じる" : "新規発注"}
           </button>
         }
@@ -370,65 +421,75 @@ export default function OrdersClient() {
       </div>
 
       {/* Partner Score */}
-      {myScore && (() => {
-        const rank = resolveRank(myScore.completed_orders, myScore.avg_rating);
-        const completionRate = myScore.total_orders > 0
-          ? Math.round((myScore.completed_orders / myScore.total_orders) * 100) : null;
-        const onTimeRate = myScore.completed_orders > 0
-          ? Math.round((myScore.on_time_orders / myScore.completed_orders) * 100) : null;
-        const currentIdx = PARTNER_RANKS.findIndex((r) => r.key === rank.key);
-        const nextRank = currentIdx > 0 ? PARTNER_RANKS[currentIdx - 1] : null;
-        return (
-          <div className="glass-card p-5">
-            <div className="flex items-center gap-4 mb-4">
-              <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${rank.bgColor}`}>
-                <span className={`text-xl font-bold ${rank.color}`}>{RANK_LETTERS[rank.key] ?? "—"}</span>
-              </div>
-              <div>
-                <div className={`text-base font-bold ${rank.color}`}>{rank.label}</div>
-                <div className="text-[11px] text-muted">自社パートナーランク</div>
-              </div>
-              {myScore.avg_rating != null && (
-                <div className="ml-auto text-right">
-                  <div className="text-lg font-bold text-yellow-500">
-                    {"★".repeat(Math.round(myScore.avg_rating))}{"☆".repeat(5 - Math.round(myScore.avg_rating))}
+      {myScore &&
+        (() => {
+          const rank = resolveRank(myScore.completed_orders, myScore.avg_rating);
+          const completionRate =
+            myScore.total_orders > 0 ? Math.round((myScore.completed_orders / myScore.total_orders) * 100) : null;
+          const onTimeRate =
+            myScore.completed_orders > 0 ? Math.round((myScore.on_time_orders / myScore.completed_orders) * 100) : null;
+          const currentIdx = PARTNER_RANKS.findIndex((r) => r.key === rank.key);
+          const nextRank = currentIdx > 0 ? PARTNER_RANKS[currentIdx - 1] : null;
+          return (
+            <div className="glass-card p-5">
+              <div className="flex items-center gap-4 mb-4">
+                <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${rank.bgColor}`}>
+                  <span className={`text-xl font-bold ${rank.color}`}>{RANK_LETTERS[rank.key] ?? "—"}</span>
+                </div>
+                <div>
+                  <div className={`text-base font-bold ${rank.color}`}>{rank.label}</div>
+                  <div className="text-[11px] text-muted">自社パートナーランク</div>
+                </div>
+                {myScore.avg_rating != null && (
+                  <div className="ml-auto text-right">
+                    <div className="text-lg font-bold text-yellow-500">
+                      {"★".repeat(Math.round(myScore.avg_rating))}
+                      {"☆".repeat(5 - Math.round(myScore.avg_rating))}
+                    </div>
+                    <div className="text-[11px] text-muted">
+                      {myScore.avg_rating.toFixed(1)} / 5.0（{myScore.rating_count}件）
+                    </div>
                   </div>
-                  <div className="text-[11px] text-muted">{myScore.avg_rating.toFixed(1)} / 5.0（{myScore.rating_count}件）</div>
+                )}
+              </div>
+              <div className="grid gap-3 grid-cols-4 text-center">
+                <div className="p-2 rounded-lg bg-surface-hover">
+                  <div className="text-xl font-bold text-primary">{myScore.completed_orders}</div>
+                  <div className="text-[10px] text-muted">完了取引</div>
+                </div>
+                <div className="p-2 rounded-lg bg-surface-hover">
+                  <div className="text-xl font-bold text-primary">
+                    {completionRate != null ? `${completionRate}%` : "—"}
+                  </div>
+                  <div className="text-[10px] text-muted">完了率</div>
+                </div>
+                <div className="p-2 rounded-lg bg-surface-hover">
+                  <div className="text-xl font-bold text-primary">{onTimeRate != null ? `${onTimeRate}%` : "—"}</div>
+                  <div className="text-[10px] text-muted">納期遵守率</div>
+                </div>
+                <div className="p-2 rounded-lg bg-surface-hover">
+                  <div className="text-xl font-bold text-danger">{myScore.cancelled_orders}</div>
+                  <div className="text-[10px] text-muted">キャンセル</div>
+                </div>
+              </div>
+              {nextRank && (
+                <div className="mt-3 p-2 rounded-lg bg-surface-hover text-[11px] text-muted">
+                  <span className={`font-semibold ${nextRank.color}`}>{nextRank.label}</span>まであと
+                  {myScore.completed_orders < nextRank.minCompleted && (
+                    <span className="font-semibold text-primary">
+                      {" "}
+                      {nextRank.minCompleted - myScore.completed_orders}件の完了取引
+                    </span>
+                  )}
+                  {nextRank.minRating != null &&
+                    (myScore.avg_rating == null || myScore.avg_rating < nextRank.minRating) && (
+                      <span className="font-semibold text-primary"> 平均評価{nextRank.minRating}以上</span>
+                    )}
                 </div>
               )}
             </div>
-            <div className="grid gap-3 grid-cols-4 text-center">
-              <div className="p-2 rounded-lg bg-surface-hover">
-                <div className="text-xl font-bold text-primary">{myScore.completed_orders}</div>
-                <div className="text-[10px] text-muted">完了取引</div>
-              </div>
-              <div className="p-2 rounded-lg bg-surface-hover">
-                <div className="text-xl font-bold text-primary">{completionRate != null ? `${completionRate}%` : "—"}</div>
-                <div className="text-[10px] text-muted">完了率</div>
-              </div>
-              <div className="p-2 rounded-lg bg-surface-hover">
-                <div className="text-xl font-bold text-primary">{onTimeRate != null ? `${onTimeRate}%` : "—"}</div>
-                <div className="text-[10px] text-muted">納期遵守率</div>
-              </div>
-              <div className="p-2 rounded-lg bg-surface-hover">
-                <div className="text-xl font-bold text-danger">{myScore.cancelled_orders}</div>
-                <div className="text-[10px] text-muted">キャンセル</div>
-              </div>
-            </div>
-            {nextRank && (
-              <div className="mt-3 p-2 rounded-lg bg-surface-hover text-[11px] text-muted">
-                <span className={`font-semibold ${nextRank.color}`}>{nextRank.label}</span>まであと
-                {myScore.completed_orders < nextRank.minCompleted && (
-                  <span className="font-semibold text-primary"> {nextRank.minCompleted - myScore.completed_orders}件の完了取引</span>
-                )}
-                {nextRank.minRating != null && (myScore.avg_rating == null || myScore.avg_rating < nextRank.minRating) && (
-                  <span className="font-semibold text-primary"> 平均評価{nextRank.minRating}以上</span>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })()}
+          );
+        })()}
 
       {/* New order form */}
       {showForm && (
@@ -459,7 +520,10 @@ export default function OrdersClient() {
                     <button
                       type="button"
                       className="text-xs text-red-500 hover:underline"
-                      onClick={() => { setSelectedTenant(null); setTenantQuery(""); }}
+                      onClick={() => {
+                        setSelectedTenant(null);
+                        setTenantQuery("");
+                      }}
                     >
                       変更
                     </button>
@@ -498,11 +562,14 @@ export default function OrdersClient() {
                         ))}
                       </div>
                     )}
-                    {showTenantDropdown && tenantResults.length === 0 && tenantQuery.length >= 1 && !searchingTenants && (
-                      <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-surface border border-border rounded-lg shadow-lg p-3 text-xs text-muted">
-                        該当する施工店が見つかりません
-                      </div>
-                    )}
+                    {showTenantDropdown &&
+                      tenantResults.length === 0 &&
+                      tenantQuery.length >= 1 &&
+                      !searchingTenants && (
+                        <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-surface border border-border rounded-lg shadow-lg p-3 text-xs text-muted">
+                          該当する施工店が見つかりません
+                        </div>
+                      )}
                   </>
                 )}
               </div>
@@ -515,7 +582,9 @@ export default function OrdersClient() {
                 >
                   <option value="">選択してください</option>
                   {CATEGORY_OPTIONS.map((c) => (
-                    <option key={c} value={c}>{c}</option>
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -583,9 +652,7 @@ export default function OrdersClient() {
             <button
               type="button"
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === "my"
-                  ? "border-accent text-accent"
-                  : "border-transparent text-muted hover:text-primary"
+                activeTab === "my" ? "border-accent text-accent" : "border-transparent text-muted hover:text-primary"
               }`}
               onClick={() => setActiveTab("my")}
             >
@@ -618,7 +685,9 @@ export default function OrdersClient() {
                       onChange={(e) => applyFilters(e.target.value, undefined)}
                     >
                       {TYPE_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -630,7 +699,9 @@ export default function OrdersClient() {
                       onChange={(e) => applyFilters(undefined, e.target.value)}
                     >
                       {STATUS_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -665,14 +736,10 @@ export default function OrdersClient() {
                               )}
                               <span className="text-sm font-semibold text-primary truncate">{order.title}</span>
                             </div>
-                            {order.category && (
-                              <span className="text-xs text-secondary">{order.category}</span>
-                            )}
+                            {order.category && <span className="text-xs text-secondary">{order.category}</span>}
                           </div>
                           <div className="flex items-center gap-3 shrink-0">
-                            <Badge variant={statusVariant(order.status)}>
-                              {statusLabel(order.status)}
-                            </Badge>
+                            <Badge variant={statusVariant(order.status)}>{statusLabel(order.status)}</Badge>
                             <span className="text-xs text-muted">{formatDate(order.created_at)}</span>
                           </div>
                         </div>
@@ -691,9 +758,17 @@ export default function OrdersClient() {
                             </span>
                           )}
                           {order.deadline && (
-                            <span>納期: <span className="font-semibold text-primary">{formatDate(order.deadline)}</span></span>
+                            <span>
+                              納期: <span className="font-semibold text-primary">{formatDate(order.deadline)}</span>
+                            </span>
                           )}
-                          <span>発注先: <span className="text-secondary">{order.to_company || (order.to_tenant_id ? order.to_tenant_id.slice(0, 8) : "未指定（公開中）")}</span></span>
+                          <span>
+                            発注先:{" "}
+                            <span className="text-secondary">
+                              {order.to_company ||
+                                (order.to_tenant_id ? order.to_tenant_id.slice(0, 8) : "未指定（公開中）")}
+                            </span>
+                          </span>
                         </div>
                       </div>
                     </Link>
@@ -711,9 +786,7 @@ export default function OrdersClient() {
                   <div>
                     <div className="text-xs font-semibold tracking-[0.18em] text-muted">公開案件</div>
                     <div className="mt-1 text-base font-semibold text-primary">受注できる案件を探す</div>
-                    <p className="text-xs text-muted mt-1">
-                      他の施工店が公開している案件を検索して受注できます。
-                    </p>
+                    <p className="text-xs text-muted mt-1">他の施工店が公開している案件を検索して受注できます。</p>
                   </div>
                   <div className="flex gap-3 items-end">
                     <div className="flex-1 space-y-1">
@@ -740,9 +813,7 @@ export default function OrdersClient() {
               {browseLoading && <div className="text-sm text-muted text-center py-4">検索中...</div>}
 
               {!browseLoading && browseOrders.length === 0 && (
-                <div className="glass-card p-8 text-center text-muted">
-                  現在公開されている案件はありません。
-                </div>
+                <div className="glass-card p-8 text-center text-muted">現在公開されている案件はありません。</div>
               )}
 
               <div className="space-y-3">
@@ -754,7 +825,9 @@ export default function OrdersClient() {
                           <span className="text-sm font-semibold text-primary truncate">{order.title}</span>
                         </div>
                         {order.category && (
-                          <span className="inline-block mt-1 text-xs bg-accent/10 text-accent px-2 py-0.5 rounded">{order.category}</span>
+                          <span className="inline-block mt-1 text-xs bg-accent/10 text-accent px-2 py-0.5 rounded">
+                            {order.category}
+                          </span>
                         )}
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
@@ -775,13 +848,19 @@ export default function OrdersClient() {
 
                     <div className="flex items-center gap-6 text-xs text-muted flex-wrap">
                       {order.from_company && (
-                        <span>発注元: <span className="font-semibold text-primary">{order.from_company}</span></span>
+                        <span>
+                          発注元: <span className="font-semibold text-primary">{order.from_company}</span>
+                        </span>
                       )}
                       {order.budget && (
-                        <span>予算: <span className="font-semibold text-primary">{formatJpy(order.budget)}</span></span>
+                        <span>
+                          予算: <span className="font-semibold text-primary">{formatJpy(order.budget)}</span>
+                        </span>
                       )}
                       {order.deadline && (
-                        <span>納期: <span className="font-semibold text-primary">{formatDate(order.deadline)}</span></span>
+                        <span>
+                          納期: <span className="font-semibold text-primary">{formatDate(order.deadline)}</span>
+                        </span>
                       )}
                       <span>掲載日: {formatDate(order.created_at)}</span>
                     </div>

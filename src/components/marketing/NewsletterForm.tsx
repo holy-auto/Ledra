@@ -19,9 +19,7 @@ export function NewsletterForm() {
 
   if (submitted) {
     return (
-      <p className="text-xs text-white/50 leading-relaxed">
-        ご登録ありがとうございます。確認メールをお送りしました。
-      </p>
+      <p className="text-xs text-white/50 leading-relaxed">ご登録ありがとうございます。確認メールをお送りしました。</p>
     );
   }
 
@@ -47,7 +45,7 @@ export function NewsletterForm() {
         body: JSON.stringify({ source: "newsletter", email, consent }),
       });
       if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as { message?: string } | null;
+        const data = (await res.json().catch((): null => null)) as { message?: string } | null;
         throw new Error(data?.message ?? "登録に失敗しました。");
       }
       track({ name: "lead_submitted", props: { source: "newsletter" } });

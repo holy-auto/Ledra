@@ -127,7 +127,9 @@ export default function CustomerListPage() {
   const [tab, setTab] = useState<"certs" | "history" | "reservations" | "inquiry">("certs");
 
   // Inquiry state
-  const [inquiries, setInquiries] = useState<{ id: string; subject: string; message: string; status: string; created_at: string; admin_reply: string | null }[]>([]);
+  const [inquiries, setInquiries] = useState<
+    { id: string; subject: string; message: string; status: string; created_at: string; admin_reply: string | null }[]
+  >([]);
   const [inquirySubject, setInquirySubject] = useState("");
   const [inquiryMessage, setInquiryMessage] = useState("");
   const [inquirySending, setInquirySending] = useState(false);
@@ -177,7 +179,7 @@ export default function CustomerListPage() {
       .then((json) => {
         if (json.profile) setProfile(json.profile);
       })
-      .catch(() => undefined);
+      .catch((): void => undefined);
 
     fetch(`/api/customer/list?tenant=${encodeURIComponent(tenant)}&action=history`, {
       cache: "no-store",
@@ -187,7 +189,7 @@ export default function CustomerListPage() {
       .then((json) => {
         if (json.history) setHistory(json.history);
       })
-      .catch(() => undefined);
+      .catch((): void => undefined);
 
     fetch(`/api/customer/list?tenant=${encodeURIComponent(tenant)}&action=reservations`, {
       cache: "no-store",
@@ -197,7 +199,7 @@ export default function CustomerListPage() {
       .then((json) => {
         if (json.reservations) setReservations(json.reservations);
       })
-      .catch(() => undefined);
+      .catch((): void => undefined);
   }
 
   async function loadShops() {
@@ -229,14 +231,18 @@ export default function CustomerListPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ tenant_slug: tenant, subject: inquirySubject.trim() || "お問い合わせ", message: inquiryMessage.trim() }),
+        body: JSON.stringify({
+          tenant_slug: tenant,
+          subject: inquirySubject.trim() || "お問い合わせ",
+          message: inquiryMessage.trim(),
+        }),
       });
       const j = await res.json().catch(() => ({}) as any);
       if (!res.ok) throw new Error(j?.error ?? "送信に失敗しました");
       setInquiryMsg({ ok: true, text: "お問い合わせを送信しました。" });
       setInquirySubject("");
       setInquiryMessage("");
-      loadInquiries().catch(() => undefined);
+      loadInquiries().catch((): void => undefined);
     } catch (e: any) {
       setInquiryMsg({ ok: false, text: e?.message ?? "エラーが発生しました" });
     } finally {
@@ -255,8 +261,8 @@ export default function CustomerListPage() {
   useEffect(() => {
     if (!tenant) return;
     load();
-    loadShops().catch(() => undefined);
-    loadInquiries().catch(() => undefined);
+    loadShops().catch((): void => undefined);
+    loadInquiries().catch((): void => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenant]);
 
@@ -354,9 +360,7 @@ export default function CustomerListPage() {
             key={t.key}
             onClick={() => setTab(t.key)}
             className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-              tab === t.key
-                ? "border-accent text-accent"
-                : "border-transparent text-muted hover:text-secondary"
+              tab === t.key ? "border-accent text-accent" : "border-transparent text-muted hover:text-secondary"
             }`}
           >
             {t.label}
@@ -534,7 +538,9 @@ export default function CustomerListPage() {
               placeholder="例）施工内容について"
               className="w-full rounded-xl border border-border-default bg-surface px-3 py-2 text-sm text-primary outline-none focus:ring-2 focus:ring-accent/30 mb-3"
             />
-            <label className="block text-xs font-medium text-secondary mb-1">メッセージ <span className="text-danger-text">*</span></label>
+            <label className="block text-xs font-medium text-secondary mb-1">
+              メッセージ <span className="text-danger-text">*</span>
+            </label>
             <textarea
               value={inquiryMessage}
               onChange={(e) => setInquiryMessage(e.target.value)}
@@ -543,7 +549,9 @@ export default function CustomerListPage() {
               className="w-full rounded-xl border border-border-default bg-surface px-3 py-2 text-sm text-primary outline-none focus:ring-2 focus:ring-accent/30 resize-none mb-3"
             />
             {inquiryMsg ? (
-              <div className={`mb-3 rounded-xl px-3 py-2 text-sm ${inquiryMsg.ok ? "bg-success-dim text-success-text" : "bg-danger-dim text-danger-text"}`}>
+              <div
+                className={`mb-3 rounded-xl px-3 py-2 text-sm ${inquiryMsg.ok ? "bg-success-dim text-success-text" : "bg-danger-dim text-danger-text"}`}
+              >
                 {inquiryMsg.text}
               </div>
             ) : null}
@@ -564,7 +572,9 @@ export default function CustomerListPage() {
                 <div key={inq.id} className="rounded-2xl border border-border-default bg-surface p-4 shadow-sm">
                   <div className="flex items-baseline justify-between gap-2 mb-1">
                     <div className="text-sm font-semibold text-primary">{inq.subject}</div>
-                    <span className={`text-xs rounded-full px-2 py-0.5 ${inq.status === "replied" ? "bg-success-dim text-success-text" : inq.status === "read" ? "bg-accent-dim text-accent-text" : "bg-warning-dim text-warning-text"}`}>
+                    <span
+                      className={`text-xs rounded-full px-2 py-0.5 ${inq.status === "replied" ? "bg-success-dim text-success-text" : inq.status === "read" ? "bg-accent-dim text-accent-text" : "bg-warning-dim text-warning-text"}`}
+                    >
                       {inq.status === "replied" ? "返信あり" : inq.status === "read" ? "確認済" : "受付中"}
                     </span>
                   </div>

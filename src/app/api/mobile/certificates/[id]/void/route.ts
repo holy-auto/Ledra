@@ -21,7 +21,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const { id } = await params;
 
-    const body = await request.json().catch(() => null);
+    const body = await request.json().catch((): null => null);
     if (!body?.reason) {
       return apiValidationError("reason is required");
     }

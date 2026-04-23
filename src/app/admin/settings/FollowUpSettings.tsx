@@ -34,7 +34,9 @@ export default function FollowUpSettings() {
     }
   }, []);
 
-  useEffect(() => { fetchSettings(); }, [fetchSettings]);
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -45,7 +47,7 @@ export default function FollowUpSettings() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(settings),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setMsg({ text: "保存しました", ok: true });
     } catch (e: any) {
@@ -120,11 +122,7 @@ export default function FollowUpSettings() {
         >
           {saving ? "保存中…" : "保存"}
         </button>
-        {msg && (
-          <span className={`text-sm ${msg.ok ? "text-success" : "text-red-500"}`}>
-            {msg.text}
-          </span>
-        )}
+        {msg && <span className={`text-sm ${msg.ok ? "text-success" : "text-red-500"}`}>{msg.text}</span>}
       </div>
     </div>
   );

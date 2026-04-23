@@ -3,7 +3,13 @@
 import { useState } from "react";
 
 export default function InquiryForm({ vehicleId, vehicleLabel }: { vehicleId: string; vehicleLabel: string }) {
-  const [form, setForm] = useState({ buyer_name: "", buyer_company: "", buyer_email: "", buyer_phone: "", message: "" });
+  const [form, setForm] = useState({
+    buyer_name: "",
+    buyer_company: "",
+    buyer_email: "",
+    buyer_phone: "",
+    message: "",
+  });
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -17,7 +23,7 @@ export default function InquiryForm({ vehicleId, vehicleLabel }: { vehicleId: st
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ vehicle_id: vehicleId, ...form }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `送信に失敗しました (${res.status})`);
       setResult({ ok: true, text: "お問い合わせを送信しました。担当者より連絡いたします。" });
       setForm({ buyer_name: "", buyer_company: "", buyer_email: "", buyer_phone: "", message: "" });
@@ -34,17 +40,15 @@ export default function InquiryForm({ vehicleId, vehicleLabel }: { vehicleId: st
       <h3 className="text-lg font-bold text-primary mb-4">この車両について問い合わせる</h3>
       <p className="text-sm text-muted mb-4">「{vehicleLabel}」に関するお問い合わせ</p>
 
-      {result && (
-        <div className={`mb-4 text-sm ${result.ok ? "text-emerald-600" : "text-red-500"}`}>
-          {result.text}
-        </div>
-      )}
+      {result && <div className={`mb-4 text-sm ${result.ok ? "text-emerald-600" : "text-red-500"}`}>{result.text}</div>}
 
-      {(!result?.ok) && (
+      {!result?.ok && (
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <label className="block space-y-1">
-              <span className="text-sm font-medium text-secondary">お名前 <span className="text-red-500">*</span></span>
+              <span className="text-sm font-medium text-secondary">
+                お名前 <span className="text-red-500">*</span>
+              </span>
               <input
                 type="text"
                 required
@@ -65,7 +69,9 @@ export default function InquiryForm({ vehicleId, vehicleLabel }: { vehicleId: st
               />
             </label>
             <label className="block space-y-1">
-              <span className="text-sm font-medium text-secondary">メールアドレス <span className="text-red-500">*</span></span>
+              <span className="text-sm font-medium text-secondary">
+                メールアドレス <span className="text-red-500">*</span>
+              </span>
               <input
                 type="email"
                 required
@@ -87,7 +93,9 @@ export default function InquiryForm({ vehicleId, vehicleLabel }: { vehicleId: st
             </label>
           </div>
           <label className="block space-y-1">
-            <span className="text-sm font-medium text-secondary">メッセージ <span className="text-red-500">*</span></span>
+            <span className="text-sm font-medium text-secondary">
+              メッセージ <span className="text-red-500">*</span>
+            </span>
             <textarea
               required
               rows={4}

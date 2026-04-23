@@ -62,7 +62,7 @@ export default function StorefrontBilling() {
         body: JSON.stringify({ id, status: "paid", payment_date: today }),
       });
       if (!res.ok) {
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       await mutate();

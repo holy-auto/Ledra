@@ -61,7 +61,7 @@ export default function DocumentDetailClient({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: doc.id, status: newStatus }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setDoc(j.document);
       setMsg({ text: `ステータスを「${statusLabel(newStatus)}」に変更しました`, ok: true });
@@ -92,7 +92,7 @@ export default function DocumentDetailClient({
           note: doc.note,
         }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setMsg({ text: `請求書 ${j.document?.doc_number} を作成しました`, ok: true });
     } catch (e: any) {
@@ -131,21 +131,15 @@ export default function DocumentDetailClient({
 
   return (
     <div className="space-y-6">
-      {msg && (
-        <div className={`text-sm ${msg.ok ? "text-success" : "text-danger"}`}>{msg.text}</div>
-      )}
+      {msg && <div className={`text-sm ${msg.ok ? "text-success" : "text-danger"}`}>{msg.text}</div>}
 
       {/* Status & Actions */}
       <section className="glass-card p-5">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <span className="text-sm text-muted">ステータス:</span>
-            <Badge variant={statusVariant(doc.status)}>
-              {statusLabel(doc.status)}
-            </Badge>
-            {doc.is_invoice_compliant && (
-              <Badge variant="info">インボイス対応</Badge>
-            )}
+            <Badge variant={statusVariant(doc.status)}>{statusLabel(doc.status)}</Badge>
+            {doc.is_invoice_compliant && <Badge variant="info">インボイス対応</Badge>}
           </div>
           <div className="flex gap-2 flex-wrap">
             {nextStatuses.map((ns) => (
@@ -172,19 +166,10 @@ export default function DocumentDetailClient({
             <button type="button" className="btn-ghost text-xs" onClick={handlePrint}>
               印刷
             </button>
-            <button
-              type="button"
-              className="btn-secondary text-xs"
-              disabled={downloading}
-              onClick={handlePdfDownload}
-            >
+            <button type="button" className="btn-secondary text-xs" disabled={downloading} onClick={handlePdfDownload}>
               {downloading ? "生成中…" : "PDFダウンロード"}
             </button>
-            <button
-              type="button"
-              className="btn-primary text-xs"
-              onClick={() => setShareOpen(true)}
-            >
+            <button type="button" className="btn-primary text-xs" onClick={() => setShareOpen(true)}>
               共有
             </button>
           </div>
@@ -198,9 +183,7 @@ export default function DocumentDetailClient({
           <div className="flex justify-between items-start flex-wrap gap-4">
             <div>
               <h2 className="text-xl font-bold text-primary print:text-black">{docLabel}</h2>
-              <div className="text-sm text-muted print:text-gray-600 mt-1 font-mono">
-                {doc.doc_number}
-              </div>
+              <div className="text-sm text-muted print:text-gray-600 mt-1 font-mono">{doc.doc_number}</div>
               {doc.is_invoice_compliant && tenant?.registration_number && (
                 <div className="text-xs text-secondary print:text-gray-600 mt-1">
                   登録番号: {tenant.registration_number}
@@ -231,8 +214,12 @@ export default function DocumentDetailClient({
                 <div className="text-sm text-primary print:text-black mt-1 space-y-0.5">
                   <div className="font-semibold">{tenant.name}</div>
                   {tenant.address && <div className="text-secondary print:text-gray-600">{tenant.address}</div>}
-                  {tenant.contact_phone && <div className="text-secondary print:text-gray-600">TEL: {tenant.contact_phone}</div>}
-                  {tenant.contact_email && <div className="text-secondary print:text-gray-600">{tenant.contact_email}</div>}
+                  {tenant.contact_phone && (
+                    <div className="text-secondary print:text-gray-600">TEL: {tenant.contact_phone}</div>
+                  )}
+                  {tenant.contact_email && (
+                    <div className="text-secondary print:text-gray-600">{tenant.contact_email}</div>
+                  )}
                 </div>
               </div>
             )}
@@ -254,9 +241,7 @@ export default function DocumentDetailClient({
                   <tr key={idx} className="border-b border-border-subtle print:border-gray-200">
                     <td className="py-3 px-3 text-primary print:text-black">
                       {item.description || "-"}
-                      {item.tax_category === 8 && (
-                        <span className="ml-1 text-[10px] text-muted">※軽減</span>
-                      )}
+                      {item.tax_category === 8 && <span className="ml-1 text-[10px] text-muted">※軽減</span>}
                     </td>
                     <td className="py-3 px-3 text-right text-secondary print:text-gray-700">{item.quantity}</td>
                     <td className="py-3 px-3 text-right text-secondary print:text-gray-700">
@@ -269,7 +254,9 @@ export default function DocumentDetailClient({
                 ))}
                 {items.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="py-6 text-center text-muted">明細がありません</td>
+                    <td colSpan={4} className="py-6 text-center text-muted">
+                      明細がありません
+                    </td>
                   </tr>
                 )}
               </tbody>
@@ -321,8 +308,17 @@ export default function DocumentDetailClient({
             <div className="border-t border-border-subtle pt-4 print:border-gray-300">
               <div className="text-xs font-semibold text-muted print:text-gray-500 mb-2">振込先口座情報</div>
               <div className="text-sm text-secondary print:text-gray-700 space-y-0.5">
-                {tenant.bank_info.bank_name && <div>{tenant.bank_info.bank_name}{tenant.bank_info.branch_name ? ` ${tenant.bank_info.branch_name}` : ""}</div>}
-                {tenant.bank_info.account_type && <div>{tenant.bank_info.account_type} {tenant.bank_info.account_number ?? ""}</div>}
+                {tenant.bank_info.bank_name && (
+                  <div>
+                    {tenant.bank_info.bank_name}
+                    {tenant.bank_info.branch_name ? ` ${tenant.bank_info.branch_name}` : ""}
+                  </div>
+                )}
+                {tenant.bank_info.account_type && (
+                  <div>
+                    {tenant.bank_info.account_type} {tenant.bank_info.account_number ?? ""}
+                  </div>
+                )}
                 {tenant.bank_info.account_holder && <div>口座名義: {tenant.bank_info.account_holder}</div>}
               </div>
             </div>
@@ -332,9 +328,7 @@ export default function DocumentDetailClient({
           {doc.note && (
             <div className="border-t border-border-subtle pt-4 print:border-gray-300">
               <div className="text-xs text-muted print:text-gray-500">備考</div>
-              <div className="text-sm text-secondary print:text-gray-700 mt-1 whitespace-pre-wrap">
-                {doc.note}
-              </div>
+              <div className="text-sm text-secondary print:text-gray-700 mt-1 whitespace-pre-wrap">{doc.note}</div>
             </div>
           )}
 
@@ -351,10 +345,7 @@ export default function DocumentDetailClient({
       {doc.source_document_id && (
         <section className="glass-card p-5 text-sm print:hidden">
           <span className="text-muted">元帳票: </span>
-          <a
-            href={`/admin/documents/${doc.source_document_id}`}
-            className="text-accent hover:text-accent underline"
-          >
+          <a href={`/admin/documents/${doc.source_document_id}`} className="text-accent hover:text-accent underline">
             {doc.source_document_id}
           </a>
         </section>
@@ -362,7 +353,9 @@ export default function DocumentDetailClient({
 
       {/* Meta */}
       <section className="glass-card p-5 text-xs text-muted space-y-1 print:hidden">
-        <div>ID: <span className="font-mono">{doc.id}</span></div>
+        <div>
+          ID: <span className="font-mono">{doc.id}</span>
+        </div>
         <div>作成日: {formatDateTime(doc.created_at)}</div>
         {doc.updated_at && <div>更新日: {formatDateTime(doc.updated_at)}</div>}
       </section>

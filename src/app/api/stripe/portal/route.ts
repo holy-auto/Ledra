@@ -26,10 +26,27 @@ function safeReturnUrl(req: NextRequest, candidate?: string | null) {
   const fallback = `${appUrl.replace(/\/+$/, "")}/admin/billing`;
 
   if (!candidate) return fallback;
-  // open redirect 対策：APP_URL または Origin で始まるURLのみ許可
-  if (appUrl && candidate.startsWith(appUrl)) return candidate;
-  if (origin && candidate.startsWith(origin)) return candidate;
-  return fallback;
+
+  // `startsWith` 判定は `https://app.example.com.evil.com` 等にマッチするため、
+  // URL.origin で厳密一致させる (open-redirect 対策)
+  let candidateOrigin: string;
+  try {
+    candidateOrigin = new URL(candidate).origin;
+  } catch {
+    return fallback;
+  }
+
+  const allowedOrigins = new Set<string>();
+  for (const source of [appUrl, origin]) {
+    if (!source) continue;
+    try {
+      allowedOrigins.add(new URL(source).origin);
+    } catch {
+      // 不正な値は無視
+    }
+  }
+
+  return allowedOrigins.has(candidateOrigin) ? candidate : fallback;
 }
 
 export async function POST(req: NextRequest) {

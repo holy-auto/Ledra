@@ -81,7 +81,7 @@ export default function InquiriesClient() {
       const params = new URLSearchParams();
       if (status && status !== "all") params.set("status", status);
       const res = await fetch(`/api/market/inquiries?${params.toString()}`, { cache: "no-store" });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setInquiries(j.inquiries ?? j ?? []);
     } catch (e: unknown) {
@@ -114,7 +114,7 @@ export default function InquiriesClient() {
     setRepliesLoading(true);
     try {
       const res = await fetch(`/api/market/inquiries/${id}/reply`, { cache: "no-store" });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setReplies(j.replies ?? j ?? []);
     } catch {
@@ -133,12 +133,12 @@ export default function InquiriesClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body: replyText }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setReplyText("");
       // Refresh replies
       const rRes = await fetch(`/api/market/inquiries/${inquiryId}/reply`, { cache: "no-store" });
-      const rJ = await rRes.json().catch(() => null);
+      const rJ = await rRes.json().catch((): null => null);
       setReplies(rJ?.replies ?? rJ ?? []);
       // Refresh list
       await fetchInquiries(statusFilter);
@@ -159,7 +159,7 @@ export default function InquiriesClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ inquiry_id: inquiryId }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       alert("商談を作成しました");
       await fetchInquiries(statusFilter);
@@ -194,13 +194,11 @@ export default function InquiriesClient() {
             <div className="flex gap-4 items-end flex-wrap">
               <div className="space-y-1">
                 <label className="text-xs text-muted">ステータス</label>
-                <select
-                  className="select-field"
-                  value={statusFilter}
-                  onChange={(e) => applyFilter(e.target.value)}
-                >
+                <select className="select-field" value={statusFilter} onChange={(e) => applyFilter(e.target.value)}>
                   {STATUS_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -218,9 +216,7 @@ export default function InquiriesClient() {
             </div>
 
             {inquiries.length === 0 && (
-              <div className="glass-card p-8 text-center text-muted">
-                問い合わせがありません
-              </div>
+              <div className="glass-card p-8 text-center text-muted">問い合わせがありません</div>
             )}
 
             <div className="space-y-3">
@@ -238,9 +234,7 @@ export default function InquiriesClient() {
                           <div className="text-sm font-semibold text-primary truncate">
                             {inq.buyer_name}
                             {inq.buyer_company && (
-                              <span className="ml-2 text-xs font-normal text-secondary">
-                                {inq.buyer_company}
-                              </span>
+                              <span className="ml-2 text-xs font-normal text-secondary">{inq.buyer_company}</span>
                             )}
                           </div>
                           <div className="text-xs text-secondary mt-0.5">
@@ -249,9 +243,7 @@ export default function InquiriesClient() {
                         </div>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
-                        <Badge variant={statusVariant(inq.status)}>
-                          {statusLabel(inq.status)}
-                        </Badge>
+                        <Badge variant={statusVariant(inq.status)}>{statusLabel(inq.status)}</Badge>
                         <span className="text-xs text-muted">{formatDate(inq.created_at)}</span>
                       </div>
                     </div>
@@ -269,9 +261,7 @@ export default function InquiriesClient() {
                       {/* Message thread */}
                       <div>
                         <div className="text-xs text-muted mb-2">メッセージスレッド</div>
-                        {repliesLoading && (
-                          <div className="text-xs text-muted">読み込み中...</div>
-                        )}
+                        {repliesLoading && <div className="text-xs text-muted">読み込み中...</div>}
                         {!repliesLoading && replies.length === 0 && (
                           <div className="text-xs text-muted">返信はまだありません</div>
                         )}
@@ -317,11 +307,7 @@ export default function InquiriesClient() {
                               {creatingDealId === inq.id ? "作成中..." : "商談に進む"}
                             </button>
                           )}
-                          <button
-                            type="button"
-                            className="btn-ghost"
-                            onClick={() => toggleExpand(inq.id)}
-                          >
+                          <button type="button" className="btn-ghost" onClick={() => toggleExpand(inq.id)}>
                             閉じる
                           </button>
                         </div>

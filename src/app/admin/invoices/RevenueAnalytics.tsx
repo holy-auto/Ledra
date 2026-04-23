@@ -54,7 +54,8 @@ function GrowthBadge({ rate }: { rate: number | null }) {
           d={isPositive ? "M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" : "M4.5 4.5l15 15m0 0V8.25m0 11.25H8.25"}
         />
       </svg>
-      {isPositive ? "+" : ""}{rate.toFixed(1)}%
+      {isPositive ? "+" : ""}
+      {rate.toFixed(1)}%
     </span>
   );
 }
@@ -68,7 +69,7 @@ export default function RevenueAnalytics() {
     (async () => {
       try {
         const res = await fetch("/api/admin/billing-analytics", { cache: "no-store" });
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         if (res.ok && j) setData(j);
       } catch {}
       setLoading(false);
@@ -143,9 +144,7 @@ export default function RevenueAnalytics() {
               type="button"
               onClick={() => setViewMode("monthly")}
               className={`px-3 py-1.5 rounded-md text-[11px] font-medium transition-all ${
-                viewMode === "monthly"
-                  ? "bg-surface text-accent shadow-sm"
-                  : "text-secondary hover:text-primary"
+                viewMode === "monthly" ? "bg-surface text-accent shadow-sm" : "text-secondary hover:text-primary"
               }`}
             >
               月別
@@ -154,9 +153,7 @@ export default function RevenueAnalytics() {
               type="button"
               onClick={() => setViewMode("yearly")}
               className={`px-3 py-1.5 rounded-md text-[11px] font-medium transition-all ${
-                viewMode === "yearly"
-                  ? "bg-surface text-accent shadow-sm"
-                  : "text-secondary hover:text-primary"
+                viewMode === "yearly" ? "bg-surface text-accent shadow-sm" : "text-secondary hover:text-primary"
               }`}
             >
               年別
@@ -172,9 +169,7 @@ export default function RevenueAnalytics() {
                 const height = maxVal > 0 ? (m.combinedTotal / maxVal) * 100 : 0;
                 const isCurrentMonth = idx === chartMonths.length - 1;
                 const prevMonthTotal = idx > 0 ? chartMonths[idx - 1].combinedTotal : 0;
-                const growth = prevMonthTotal > 0
-                  ? ((m.combinedTotal - prevMonthTotal) / prevMonthTotal * 100)
-                  : null;
+                const growth = prevMonthTotal > 0 ? ((m.combinedTotal - prevMonthTotal) / prevMonthTotal) * 100 : null;
 
                 return (
                   <div key={m.month} className="flex-1 flex flex-col items-center gap-1 group">
@@ -189,7 +184,8 @@ export default function RevenueAnalytics() {
                           className="text-[9px] font-semibold opacity-0 group-hover:opacity-100 transition-opacity"
                           style={{ color: growth >= 0 ? "var(--color-success)" : "var(--color-danger)" }}
                         >
-                          {growth >= 0 ? "+" : ""}{growth.toFixed(0)}%
+                          {growth >= 0 ? "+" : ""}
+                          {growth.toFixed(0)}%
                         </span>
                       )}
                     </div>
@@ -210,9 +206,7 @@ export default function RevenueAnalytics() {
                       {m.label.replace(/^\d+年/, "")}
                     </div>
                     {/* Count */}
-                    <div className="text-[9px] text-muted">
-                      {m.count}件
-                    </div>
+                    <div className="text-[9px] text-muted">{m.count}件</div>
                   </div>
                 );
               })}
@@ -225,30 +219,48 @@ export default function RevenueAnalytics() {
                   <thead>
                     <tr>
                       <th className="text-left py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">月</th>
-                      <th className="hidden sm:table-cell text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">請求書</th>
-                      <th className="hidden sm:table-cell text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">帳票</th>
-                      <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">合計</th>
-                      <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">件数</th>
-                      <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">前月比</th>
+                      <th className="hidden sm:table-cell text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
+                        請求書
+                      </th>
+                      <th className="hidden sm:table-cell text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
+                        帳票
+                      </th>
+                      <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
+                        合計
+                      </th>
+                      <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
+                        件数
+                      </th>
+                      <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
+                        前月比
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border-subtle">
                     {[...months].reverse().map((m, idx, arr) => {
                       const prevMonth = arr[idx + 1];
-                      const growth = prevMonth && prevMonth.combinedTotal > 0
-                        ? ((m.combinedTotal - prevMonth.combinedTotal) / prevMonth.combinedTotal * 100)
-                        : null;
+                      const growth =
+                        prevMonth && prevMonth.combinedTotal > 0
+                          ? ((m.combinedTotal - prevMonth.combinedTotal) / prevMonth.combinedTotal) * 100
+                          : null;
                       return (
                         <tr key={m.month} className={idx === 0 ? "bg-accent-dim" : ""}>
                           <td className="py-2 px-2 text-secondary font-medium">{m.label}</td>
-                          <td className="hidden sm:table-cell py-2 px-2 text-right text-secondary">{formatJpy(m.invoiceTotal)}</td>
-                          <td className="hidden sm:table-cell py-2 px-2 text-right text-secondary">{formatJpy(m.documentTotal)}</td>
-                          <td className="py-2 px-2 text-right font-semibold text-primary">{formatJpy(m.combinedTotal)}</td>
+                          <td className="hidden sm:table-cell py-2 px-2 text-right text-secondary">
+                            {formatJpy(m.invoiceTotal)}
+                          </td>
+                          <td className="hidden sm:table-cell py-2 px-2 text-right text-secondary">
+                            {formatJpy(m.documentTotal)}
+                          </td>
+                          <td className="py-2 px-2 text-right font-semibold text-primary">
+                            {formatJpy(m.combinedTotal)}
+                          </td>
                           <td className="py-2 px-2 text-right text-muted">{m.count}</td>
                           <td className="py-2 px-2 text-right">
                             {growth !== null && m.combinedTotal > 0 ? (
                               <span style={{ color: growth >= 0 ? "var(--color-success)" : "var(--color-danger)" }}>
-                                {growth >= 0 ? "+" : ""}{growth.toFixed(1)}%
+                                {growth >= 0 ? "+" : ""}
+                                {growth.toFixed(1)}%
                               </span>
                             ) : (
                               <span className="text-muted">-</span>
@@ -270,9 +282,8 @@ export default function RevenueAnalytics() {
                 const yearMax = Math.max(...years.map((yr) => yr.total), 1);
                 const height = yearMax > 0 ? (y.total / yearMax) * 100 : 0;
                 const prevYear = years[idx - 1];
-                const growth = prevYear && prevYear.total > 0
-                  ? ((y.total - prevYear.total) / prevYear.total * 100)
-                  : null;
+                const growth =
+                  prevYear && prevYear.total > 0 ? ((y.total - prevYear.total) / prevYear.total) * 100 : null;
 
                 return (
                   <div key={y.year} className="flex-1 flex flex-col items-center gap-1 group">
@@ -285,7 +296,8 @@ export default function RevenueAnalytics() {
                           className="text-[10px] font-semibold"
                           style={{ color: growth >= 0 ? "var(--color-success)" : "var(--color-danger)" }}
                         >
-                          {growth >= 0 ? "+" : ""}{growth.toFixed(1)}%
+                          {growth >= 0 ? "+" : ""}
+                          {growth.toFixed(1)}%
                         </span>
                       )}
                     </div>
@@ -293,12 +305,15 @@ export default function RevenueAnalytics() {
                       className="w-full rounded-t-lg transition-all duration-500 ease-out min-h-[4px]"
                       style={{
                         height: `${Math.max(height, 3)}%`,
-                        background: idx === years.length - 1
-                          ? "linear-gradient(180deg, var(--accent-blue), var(--accent-violet))"
-                          : "linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 30%, transparent), color-mix(in srgb, var(--accent-violet) 20%, transparent))",
+                        background:
+                          idx === years.length - 1
+                            ? "linear-gradient(180deg, var(--accent-blue), var(--accent-violet))"
+                            : "linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 30%, transparent), color-mix(in srgb, var(--accent-violet) 20%, transparent))",
                       }}
                     />
-                    <div className={`text-[12px] mt-1 font-semibold ${idx === years.length - 1 ? "text-accent" : "text-secondary"}`}>
+                    <div
+                      className={`text-[12px] mt-1 font-semibold ${idx === years.length - 1 ? "text-accent" : "text-secondary"}`}
+                    >
                       {y.year}年
                     </div>
                     <div className="text-[10px] text-muted">{y.count}件</div>
@@ -313,17 +328,22 @@ export default function RevenueAnalytics() {
                 <thead>
                   <tr>
                     <th className="text-left py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">年度</th>
-                    <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">年間売上</th>
-                    <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">件数</th>
-                    <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">前年比</th>
+                    <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
+                      年間売上
+                    </th>
+                    <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
+                      件数
+                    </th>
+                    <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
+                      前年比
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border-subtle">
                   {[...years].reverse().map((y, idx, arr) => {
                     const prevYear = arr[idx + 1];
-                    const growth = prevYear && prevYear.total > 0
-                      ? ((y.total - prevYear.total) / prevYear.total * 100)
-                      : null;
+                    const growth =
+                      prevYear && prevYear.total > 0 ? ((y.total - prevYear.total) / prevYear.total) * 100 : null;
                     return (
                       <tr key={y.year} className={idx === 0 ? "bg-accent-dim" : ""}>
                         <td className="py-2 px-2 font-semibold text-primary">{y.year}年</td>
@@ -332,7 +352,8 @@ export default function RevenueAnalytics() {
                         <td className="py-2 px-2 text-right">
                           {growth !== null ? (
                             <span style={{ color: growth >= 0 ? "var(--color-success)" : "var(--color-danger)" }}>
-                              {growth >= 0 ? "+" : ""}{growth.toFixed(1)}%
+                              {growth >= 0 ? "+" : ""}
+                              {growth.toFixed(1)}%
                             </span>
                           ) : (
                             <span className="text-muted">-</span>

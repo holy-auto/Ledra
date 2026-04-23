@@ -58,7 +58,7 @@ export default function PortalShopListPage() {
   }, [router, tenant]);
 
   async function logout() {
-    await fetch("/api/portal/logout", { method: "POST", credentials: "include" }).catch(() => undefined);
+    await fetch("/api/portal/logout", { method: "POST", credentials: "include" }).catch((): void => undefined);
     router.replace("/my");
   }
 
@@ -74,7 +74,9 @@ export default function PortalShopListPage() {
 
       {loading ? <div className="text-sm text-muted">読み込み中…</div> : null}
       {err ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800/50 dark:bg-red-950 dark:text-red-400">{err}</div>
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800/50 dark:bg-red-950 dark:text-red-400">
+          {err}
+        </div>
       ) : null}
 
       <div className="grid gap-4 md:grid-cols-2">

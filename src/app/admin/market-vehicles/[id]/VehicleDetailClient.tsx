@@ -61,10 +61,18 @@ type Vehicle = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  draft: "下書き", listed: "出品中", reserved: "商談中", sold: "成約済", withdrawn: "取下げ",
+  draft: "下書き",
+  listed: "出品中",
+  reserved: "商談中",
+  sold: "成約済",
+  withdrawn: "取下げ",
 };
 const STATUS_VARIANTS: Record<string, "default" | "success" | "warning" | "info" | "danger"> = {
-  draft: "default", listed: "success", reserved: "warning", sold: "info", withdrawn: "danger",
+  draft: "default",
+  listed: "success",
+  reserved: "warning",
+  sold: "info",
+  withdrawn: "danger",
 };
 const TRANSITIONS: Record<string, string[]> = {
   draft: ["listed"],
@@ -93,14 +101,23 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
   const [editData, setEditData] = useState<Record<string, unknown>>({});
   const [interests, setInterests] = useState<CustomerInterest[]>([]);
   const [showAddInterest, setShowAddInterest] = useState(false);
-  const [newInterest, setNewInterest] = useState({ customer_name: "", customer_phone: "", customer_email: "", interest_level: "warm", note: "", follow_up_date: "" });
+  const [newInterest, setNewInterest] = useState({
+    customer_name: "",
+    customer_phone: "",
+    customer_email: "",
+    interest_level: "warm",
+    note: "",
+    follow_up_date: "",
+  });
 
   const fetchInterests = useCallback(async () => {
     try {
       const res = await fetch(`/api/admin/vehicle-interests?vehicle_id=${vehicleId}`, { cache: "no-store" });
       const j = await res.json();
       if (res.ok) setInterests(j.interests ?? []);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [vehicleId]);
 
   const addInterest = async () => {
@@ -113,10 +130,19 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
       });
       if (res.ok) {
         await fetchInterests();
-        setNewInterest({ customer_name: "", customer_phone: "", customer_email: "", interest_level: "warm", note: "", follow_up_date: "" });
+        setNewInterest({
+          customer_name: "",
+          customer_phone: "",
+          customer_email: "",
+          interest_level: "warm",
+          note: "",
+          follow_up_date: "",
+        });
         setShowAddInterest(false);
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   };
 
   const updateInterestStatus = async (id: string, status: string) => {
@@ -127,13 +153,15 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
         body: JSON.stringify({ id, status }),
       });
       await fetchInterests();
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   };
 
   const fetchVehicle = useCallback(async () => {
     try {
       const res = await fetch(`/api/admin/market-vehicles?id=${vehicleId}`, { cache: "no-store" });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (res.ok && j?.vehicles?.length > 0) {
         setVehicle(j.vehicles[0]);
         setImages(j.vehicles[0].images ?? []);
@@ -142,33 +170,45 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
   }, [vehicleId]);
 
   useEffect(() => {
-    (async () => { setLoading(true); await fetchVehicle(); await fetchInterests(); setLoading(false); })();
+    (async () => {
+      setLoading(true);
+      await fetchVehicle();
+      await fetchInterests();
+      setLoading(false);
+    })();
   }, [fetchVehicle, fetchInterests]);
 
   const handleStatusChange = async (newStatus: string) => {
-    setUpdating(true); setMsg(null);
+    setUpdating(true);
+    setMsg(null);
     try {
       const res = await fetch("/api/admin/market-vehicles", {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: vehicleId, status: newStatus }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setVehicle(j.vehicle);
       setMsg({ text: `ステータスを「${STATUS_LABELS[newStatus] ?? newStatus}」に変更しました`, ok: true });
     } catch (e: any) {
       setMsg({ text: e?.message ?? String(e), ok: false });
-    } finally { setUpdating(false); }
+    } finally {
+      setUpdating(false);
+    }
   };
 
   const handleSave = async () => {
-    setUpdating(true); setMsg(null);
+    setUpdating(true);
+    setMsg(null);
     try {
       const payload: Record<string, unknown> = { ...editData, id: vehicleId };
       // Ensure features is an array (may already be from EquipmentPicker)
       if (typeof payload.features === "string") {
-        payload.features = (payload.features as string).split(",").map((s: string) => s.trim()).filter(Boolean);
+        payload.features = (payload.features as string)
+          .split(",")
+          .map((s: string) => s.trim())
+          .filter(Boolean);
       }
       // Send null if empty array
       if (Array.isArray(payload.features) && (payload.features as string[]).length === 0) {
@@ -179,54 +219,77 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setVehicle(j.vehicle);
       setEditMode(false);
       setMsg({ text: "保存しました", ok: true });
     } catch (e: any) {
       setMsg({ text: e?.message ?? String(e), ok: false });
-    } finally { setUpdating(false); }
+    } finally {
+      setUpdating(false);
+    }
   };
 
   const startEdit = () => {
     if (!vehicle) return;
     setEditData({
-      maker: vehicle.maker, model: vehicle.model, grade: vehicle.grade,
-      year: vehicle.year, mileage: vehicle.mileage, color: vehicle.color,
-      color_code: vehicle.color_code, plate_number: vehicle.plate_number,
-      chassis_number: vehicle.chassis_number, engine_type: vehicle.engine_type,
-      displacement: vehicle.displacement, transmission: vehicle.transmission,
-      drive_type: vehicle.drive_type, fuel_type: vehicle.fuel_type,
-      door_count: vehicle.door_count, seating_capacity: vehicle.seating_capacity,
-      body_type: vehicle.body_type, inspection_date: vehicle.inspection_date,
-      repair_history: vehicle.repair_history, condition_grade: vehicle.condition_grade,
-      condition_note: vehicle.condition_note, asking_price: vehicle.asking_price,
-      wholesale_price: vehicle.wholesale_price, cost_price: vehicle.cost_price,
-      supplier_name: vehicle.supplier_name, acquisition_date: vehicle.acquisition_date,
-      description: vehicle.description, features: vehicle.features ?? [],
+      maker: vehicle.maker,
+      model: vehicle.model,
+      grade: vehicle.grade,
+      year: vehicle.year,
+      mileage: vehicle.mileage,
+      color: vehicle.color,
+      color_code: vehicle.color_code,
+      plate_number: vehicle.plate_number,
+      chassis_number: vehicle.chassis_number,
+      engine_type: vehicle.engine_type,
+      displacement: vehicle.displacement,
+      transmission: vehicle.transmission,
+      drive_type: vehicle.drive_type,
+      fuel_type: vehicle.fuel_type,
+      door_count: vehicle.door_count,
+      seating_capacity: vehicle.seating_capacity,
+      body_type: vehicle.body_type,
+      inspection_date: vehicle.inspection_date,
+      repair_history: vehicle.repair_history,
+      condition_grade: vehicle.condition_grade,
+      condition_note: vehicle.condition_note,
+      asking_price: vehicle.asking_price,
+      wholesale_price: vehicle.wholesale_price,
+      cost_price: vehicle.cost_price,
+      supplier_name: vehicle.supplier_name,
+      acquisition_date: vehicle.acquisition_date,
+      description: vehicle.description,
+      features: vehicle.features ?? [],
     });
     setEditMode(true);
     setMsg(null);
   };
 
   const handleUpload = async (files: FileList) => {
-    if (images.length >= 20) { setMsg({ text: "画像は最大20枚までです", ok: false }); return; }
-    setUploading(true); setMsg(null);
+    if (images.length >= 20) {
+      setMsg({ text: "画像は最大20枚までです", ok: false });
+      return;
+    }
+    setUploading(true);
+    setMsg(null);
     try {
       for (let i = 0; i < files.length && images.length + i < 20; i++) {
         const fd = new FormData();
         fd.append("file", files[i]);
         fd.append("vehicle_id", vehicleId);
         const res = await fetch("/api/admin/market-vehicles/images", { method: "POST", body: fd });
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         if (!res.ok) throw new Error(j?.error ?? "Upload failed");
       }
       await fetchVehicle();
       setMsg({ text: "画像をアップロードしました", ok: true });
     } catch (e: any) {
       setMsg({ text: e?.message ?? String(e), ok: false });
-    } finally { setUploading(false); }
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleDeleteImage = async (imageId: string) => {
@@ -253,7 +316,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: vehicleId }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       window.location.href = "/admin/market-vehicles";
     } catch (e: any) {
@@ -263,15 +326,33 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
 
   const setField = (key: string, val: unknown) => setEditData((d) => ({ ...d, [key]: val }));
 
-  const EditField = ({ label, field, type = "text", options }: { label: string; field: string; type?: string; options?: string[] }) => {
+  const EditField = ({
+    label,
+    field,
+    type = "text",
+    options,
+  }: {
+    label: string;
+    field: string;
+    type?: string;
+    options?: string[];
+  }) => {
     const val = editData[field] ?? "";
     if (type === "select" && options) {
       return (
         <div className="space-y-1">
           <label className="text-xs text-muted">{label}</label>
-          <select className="select-field" value={String(val)} onChange={(e) => setField(field, e.target.value || null)}>
+          <select
+            className="select-field"
+            value={String(val)}
+            onChange={(e) => setField(field, e.target.value || null)}
+          >
             <option value="">-</option>
-            {options.map((o) => <option key={o} value={o}>{o}</option>)}
+            {options.map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
           </select>
         </div>
       );
@@ -280,7 +361,12 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
       return (
         <div className="space-y-1">
           <label className="text-xs text-muted">{label}</label>
-          <textarea className="input-field" rows={3} value={String(val)} onChange={(e) => setField(field, e.target.value || null)} />
+          <textarea
+            className="input-field"
+            rows={3}
+            value={String(val)}
+            onChange={(e) => setField(field, e.target.value || null)}
+          />
         </div>
       );
     }
@@ -291,7 +377,12 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
           type={type}
           className="input-field"
           value={String(val)}
-          onChange={(e) => setField(field, type === "number" ? (e.target.value ? parseInt(e.target.value, 10) : null) : (e.target.value || null))}
+          onChange={(e) =>
+            setField(
+              field,
+              type === "number" ? (e.target.value ? parseInt(e.target.value, 10) : null) : e.target.value || null,
+            )
+          }
         />
       </div>
     );
@@ -301,8 +392,12 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
   if (!vehicle) {
     return (
       <div className="space-y-4">
-        <div className="glass-card p-8 text-center"><p className="text-primary font-medium">車両が見つかりません</p></div>
-        <Link href="/admin/market-vehicles" className="text-sm text-accent hover:underline">一覧に戻る</Link>
+        <div className="glass-card p-8 text-center">
+          <p className="text-primary font-medium">車両が見つかりません</p>
+        </div>
+        <Link href="/admin/market-vehicles" className="text-sm text-accent hover:underline">
+          一覧に戻る
+        </Link>
       </div>
     );
   }
@@ -327,8 +422,14 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
         description={vehicle.grade ?? undefined}
         actions={
           <div className="flex items-center gap-2">
-            {!editMode && <button type="button" className="btn-secondary" onClick={startEdit}>編集</button>}
-            <Link href="/admin/market-vehicles" className="btn-ghost">← 一覧</Link>
+            {!editMode && (
+              <button type="button" className="btn-secondary" onClick={startEdit}>
+                編集
+              </button>
+            )}
+            <Link href="/admin/market-vehicles" className="btn-ghost">
+              ← 一覧
+            </Link>
           </div>
         }
       />
@@ -340,16 +441,28 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <span className="text-sm text-muted">ステータス:</span>
-            <Badge variant={STATUS_VARIANTS[vehicle.status] ?? "default"}>{STATUS_LABELS[vehicle.status] ?? vehicle.status}</Badge>
+            <Badge variant={STATUS_VARIANTS[vehicle.status] ?? "default"}>
+              {STATUS_LABELS[vehicle.status] ?? vehicle.status}
+            </Badge>
             {vehicle.listed_at && <span className="text-xs text-muted">出品日: {formatDate(vehicle.listed_at)}</span>}
           </div>
           <div className="flex gap-2 flex-wrap">
             {nextStatuses.map((ns) => (
-              <button key={ns} type="button" className={ns === "withdrawn" ? "btn-danger text-xs" : "btn-secondary text-xs"} disabled={updating} onClick={() => handleStatusChange(ns)}>
+              <button
+                key={ns}
+                type="button"
+                className={ns === "withdrawn" ? "btn-danger text-xs" : "btn-secondary text-xs"}
+                disabled={updating}
+                onClick={() => handleStatusChange(ns)}
+              >
                 {STATUS_LABELS[ns] ?? ns}に変更
               </button>
             ))}
-            {vehicle.status === "draft" && <button type="button" className="btn-danger text-xs" onClick={handleDelete}>削除</button>}
+            {vehicle.status === "draft" && (
+              <button type="button" className="btn-danger text-xs" onClick={handleDelete}>
+                削除
+              </button>
+            )}
           </div>
         </div>
       </section>
@@ -402,14 +515,18 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
             <div className="space-y-1">
               <label className="text-xs text-muted">装備・オプション</label>
               <EquipmentPicker
-                selected={Array.isArray(editData.features) ? editData.features as string[] : []}
+                selected={Array.isArray(editData.features) ? (editData.features as string[]) : []}
                 onChange={(val) => setField("features", val)}
               />
             </div>
           </section>
           <div className="flex gap-3">
-            <button type="button" className="btn-primary" disabled={updating} onClick={handleSave}>{updating ? "保存中…" : "保存"}</button>
-            <button type="button" className="btn-ghost" onClick={() => setEditMode(false)}>キャンセル</button>
+            <button type="button" className="btn-primary" disabled={updating} onClick={handleSave}>
+              {updating ? "保存中…" : "保存"}
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => setEditMode(false)}>
+              キャンセル
+            </button>
           </div>
         </div>
       ) : (
@@ -419,7 +536,14 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
             <div className="space-y-3">
               <div className="relative aspect-[4/3] glass-card overflow-hidden flex items-center justify-center bg-surface-hover">
                 {images.length > 0 ? (
-                  <Image src={images[mainIdx]?.storage_path} alt={`${vehicle.maker} ${vehicle.model}`} fill sizes="(max-width: 1024px) 100vw, 50vw" className="object-cover" priority />
+                  <Image
+                    src={images[mainIdx]?.storage_path}
+                    alt={`${vehicle.maker} ${vehicle.model}`}
+                    fill
+                    sizes="(max-width: 1024px) 100vw, 50vw"
+                    className="object-cover"
+                    priority
+                  />
                 ) : (
                   <div className="text-muted text-sm">写真なし</div>
                 )}
@@ -428,17 +552,41 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
                 <div className="flex gap-2 overflow-x-auto pb-2">
                   {images.map((img, idx) => (
                     <div key={img.id} className="relative flex-shrink-0">
-                      <button type="button" onClick={() => setMainIdx(idx)} className={`w-16 h-16 rounded-lg overflow-hidden border-2 ${idx === mainIdx ? "border-accent" : "border-transparent"}`}>
+                      <button
+                        type="button"
+                        onClick={() => setMainIdx(idx)}
+                        className={`w-16 h-16 rounded-lg overflow-hidden border-2 ${idx === mainIdx ? "border-accent" : "border-transparent"}`}
+                      >
                         <img src={img.storage_path} alt="" className="w-full h-full object-cover" />
                       </button>
-                      <button type="button" onClick={() => handleDeleteImage(img.id)} className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center hover:bg-red-600">×</button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteImage(img.id)}
+                        className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center hover:bg-red-600"
+                      >
+                        ×
+                      </button>
                     </div>
                   ))}
                 </div>
               )}
               <div className="flex items-center gap-3">
-                <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={(e) => { if (e.target.files?.length) handleUpload(e.target.files); }} />
-                <button type="button" className="btn-secondary text-xs" disabled={uploading || images.length >= 20} onClick={() => fileInputRef.current?.click()}>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files?.length) handleUpload(e.target.files);
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn-secondary text-xs"
+                  disabled={uploading || images.length >= 20}
+                  onClick={() => fileInputRef.current?.click()}
+                >
                   {uploading ? "アップロード中…" : `写真を追加（${images.length}/20）`}
                 </button>
               </div>
@@ -449,13 +597,22 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
               <div className="glass-card p-5 space-y-3">
                 <div className="text-xs font-semibold tracking-[0.18em] text-muted">PRICE</div>
                 {vehicle.asking_price != null && (
-                  <div><div className="text-xs text-muted">販売価格</div><div className="text-2xl font-bold text-primary">{formatJpy(vehicle.asking_price)}</div></div>
+                  <div>
+                    <div className="text-xs text-muted">販売価格</div>
+                    <div className="text-2xl font-bold text-primary">{formatJpy(vehicle.asking_price)}</div>
+                  </div>
                 )}
                 {vehicle.wholesale_price != null && (
-                  <div><div className="text-xs text-muted">卸価格</div><div className="text-lg font-semibold text-secondary">{formatJpy(vehicle.wholesale_price)}</div></div>
+                  <div>
+                    <div className="text-xs text-muted">卸価格</div>
+                    <div className="text-lg font-semibold text-secondary">{formatJpy(vehicle.wholesale_price)}</div>
+                  </div>
                 )}
                 {vehicle.cost_price != null && (
-                  <div><div className="text-xs text-muted">仕入原価</div><div className="text-lg font-semibold text-secondary">{formatJpy(vehicle.cost_price)}</div></div>
+                  <div>
+                    <div className="text-xs text-muted">仕入原価</div>
+                    <div className="text-lg font-semibold text-secondary">{formatJpy(vehicle.cost_price)}</div>
+                  </div>
                 )}
               </div>
 
@@ -467,22 +624,35 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
                     {vehicle.asking_price != null && (
                       <div>
                         <div className="text-xs text-muted">販売利益</div>
-                        <div className={`text-lg font-bold ${vehicle.asking_price - vehicle.cost_price >= 0 ? "text-success" : "text-danger"}`}>
+                        <div
+                          className={`text-lg font-bold ${vehicle.asking_price - vehicle.cost_price >= 0 ? "text-success" : "text-danger"}`}
+                        >
                           {formatJpy(vehicle.asking_price - vehicle.cost_price)}
                         </div>
-                        <div className={`text-xs ${vehicle.asking_price - vehicle.cost_price >= 0 ? "text-success" : "text-danger"}`}>
-                          利益率 {((vehicle.asking_price - vehicle.cost_price) / vehicle.asking_price * 100).toFixed(1)}%
+                        <div
+                          className={`text-xs ${vehicle.asking_price - vehicle.cost_price >= 0 ? "text-success" : "text-danger"}`}
+                        >
+                          利益率{" "}
+                          {(((vehicle.asking_price - vehicle.cost_price) / vehicle.asking_price) * 100).toFixed(1)}%
                         </div>
                       </div>
                     )}
                     {vehicle.wholesale_price != null && (
                       <div>
                         <div className="text-xs text-muted">卸利益</div>
-                        <div className={`text-lg font-bold ${vehicle.wholesale_price - vehicle.cost_price >= 0 ? "text-success" : "text-danger"}`}>
+                        <div
+                          className={`text-lg font-bold ${vehicle.wholesale_price - vehicle.cost_price >= 0 ? "text-success" : "text-danger"}`}
+                        >
                           {formatJpy(vehicle.wholesale_price - vehicle.cost_price)}
                         </div>
-                        <div className={`text-xs ${vehicle.wholesale_price - vehicle.cost_price >= 0 ? "text-success" : "text-danger"}`}>
-                          利益率 {((vehicle.wholesale_price - vehicle.cost_price) / vehicle.wholesale_price * 100).toFixed(1)}%
+                        <div
+                          className={`text-xs ${vehicle.wholesale_price - vehicle.cost_price >= 0 ? "text-success" : "text-danger"}`}
+                        >
+                          利益率{" "}
+                          {(((vehicle.wholesale_price - vehicle.cost_price) / vehicle.wholesale_price) * 100).toFixed(
+                            1,
+                          )}
+                          %
                         </div>
                       </div>
                     )}
@@ -510,9 +680,14 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
                     <span className="text-muted">在庫日数</span>
                     {(() => {
                       const startDate = vehicle.acquisition_date ?? vehicle.created_at.slice(0, 10);
-                      const days = Math.max(0, Math.floor((Date.now() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)));
+                      const days = Math.max(
+                        0,
+                        Math.floor((Date.now() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)),
+                      );
                       return (
-                        <span className={`font-bold ${days >= 90 ? "text-danger" : days >= 60 ? "text-warning" : "text-primary"}`}>
+                        <span
+                          className={`font-bold ${days >= 90 ? "text-danger" : days >= 60 ? "text-warning" : "text-primary"}`}
+                        >
                           {days}日
                         </span>
                       );
@@ -522,7 +697,9 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
               )}
               <div className="flex gap-2 text-sm text-secondary flex-wrap">
                 {vehicle.year && <span className="glass-card px-3 py-1.5">{vehicle.year}年式</span>}
-                {vehicle.mileage != null && <span className="glass-card px-3 py-1.5">{vehicle.mileage.toLocaleString()} km</span>}
+                {vehicle.mileage != null && (
+                  <span className="glass-card px-3 py-1.5">{vehicle.mileage.toLocaleString()} km</span>
+                )}
                 {vehicle.color && <span className="glass-card px-3 py-1.5">{vehicle.color}</span>}
                 {vehicle.transmission && <span className="glass-card px-3 py-1.5">{vehicle.transmission}</span>}
                 {vehicle.fuel_type && <span className="glass-card px-3 py-1.5">{vehicle.fuel_type}</span>}
@@ -532,7 +709,12 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
                   <div className="text-xs font-semibold tracking-[0.18em] text-muted mb-2">FEATURES</div>
                   <div className="flex flex-wrap gap-1.5">
                     {vehicle.features.map((f, i) => (
-                      <span key={i} className="rounded-full border border-border-subtle bg-surface-hover px-2.5 py-0.5 text-xs text-secondary">{f}</span>
+                      <span
+                        key={i}
+                        className="rounded-full border border-border-subtle bg-surface-hover px-2.5 py-0.5 text-xs text-secondary"
+                      >
+                        {f}
+                      </span>
                     ))}
                   </div>
                 </div>
@@ -549,16 +731,25 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
                 <SpecRow label="車種" value={vehicle.model} />
                 <SpecRow label="グレード" value={vehicle.grade} />
                 <SpecRow label="年式" value={vehicle.year ? `${vehicle.year}年` : null} />
-                <SpecRow label="走行距離" value={vehicle.mileage != null ? `${vehicle.mileage.toLocaleString()} km` : null} />
+                <SpecRow
+                  label="走行距離"
+                  value={vehicle.mileage != null ? `${vehicle.mileage.toLocaleString()} km` : null}
+                />
                 <SpecRow label="色" value={vehicle.color} />
                 <SpecRow label="ナンバー" value={vehicle.plate_number} />
                 <SpecRow label="車台番号" value={vehicle.chassis_number} />
-                <SpecRow label="車検満了日" value={vehicle.inspection_date ? formatDate(vehicle.inspection_date) : null} />
+                <SpecRow
+                  label="車検満了日"
+                  value={vehicle.inspection_date ? formatDate(vehicle.inspection_date) : null}
+                />
                 <SpecRow label="修復歴" value={vehicle.repair_history} />
               </div>
               <div>
                 <SpecRow label="ボディタイプ" value={vehicle.body_type} />
-                <SpecRow label="排気量" value={vehicle.displacement ? `${vehicle.displacement.toLocaleString()} cc` : null} />
+                <SpecRow
+                  label="排気量"
+                  value={vehicle.displacement ? `${vehicle.displacement.toLocaleString()} cc` : null}
+                />
                 <SpecRow label="トランスミッション" value={vehicle.transmission} />
                 <SpecRow label="駆動方式" value={vehicle.drive_type} />
                 <SpecRow label="燃料" value={vehicle.fuel_type} />
@@ -604,20 +795,44 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
               <div className="rounded-lg border border-border-subtle bg-surface-hover p-4 space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs text-muted">顧客名 <span className="text-danger">*</span></label>
-                    <input type="text" className="input-field" placeholder="山田太郎" value={newInterest.customer_name} onChange={(e) => setNewInterest((p) => ({ ...p, customer_name: e.target.value }))} />
+                    <label className="text-xs text-muted">
+                      顧客名 <span className="text-danger">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder="山田太郎"
+                      value={newInterest.customer_name}
+                      onChange={(e) => setNewInterest((p) => ({ ...p, customer_name: e.target.value }))}
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs text-muted">電話番号</label>
-                    <input type="tel" className="input-field" placeholder="090-1234-5678" value={newInterest.customer_phone} onChange={(e) => setNewInterest((p) => ({ ...p, customer_phone: e.target.value }))} />
+                    <input
+                      type="tel"
+                      className="input-field"
+                      placeholder="090-1234-5678"
+                      value={newInterest.customer_phone}
+                      onChange={(e) => setNewInterest((p) => ({ ...p, customer_phone: e.target.value }))}
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs text-muted">メール</label>
-                    <input type="email" className="input-field" placeholder="email@example.com" value={newInterest.customer_email} onChange={(e) => setNewInterest((p) => ({ ...p, customer_email: e.target.value }))} />
+                    <input
+                      type="email"
+                      className="input-field"
+                      placeholder="email@example.com"
+                      value={newInterest.customer_email}
+                      onChange={(e) => setNewInterest((p) => ({ ...p, customer_email: e.target.value }))}
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs text-muted">興味度</label>
-                    <select className="select-field" value={newInterest.interest_level} onChange={(e) => setNewInterest((p) => ({ ...p, interest_level: e.target.value }))}>
+                    <select
+                      className="select-field"
+                      value={newInterest.interest_level}
+                      onChange={(e) => setNewInterest((p) => ({ ...p, interest_level: e.target.value }))}
+                    >
                       <option value="hot">高（来店済み）</option>
                       <option value="warm">中（問い合わせ）</option>
                       <option value="cold">低（検討中）</option>
@@ -625,14 +840,27 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs text-muted">フォローアップ日</label>
-                    <input type="date" className="input-field" value={newInterest.follow_up_date} onChange={(e) => setNewInterest((p) => ({ ...p, follow_up_date: e.target.value }))} />
+                    <input
+                      type="date"
+                      className="input-field"
+                      value={newInterest.follow_up_date}
+                      onChange={(e) => setNewInterest((p) => ({ ...p, follow_up_date: e.target.value }))}
+                    />
                   </div>
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs text-muted">メモ</label>
-                  <textarea className="input-field" rows={2} placeholder="商談内容や要望など" value={newInterest.note} onChange={(e) => setNewInterest((p) => ({ ...p, note: e.target.value }))} />
+                  <textarea
+                    className="input-field"
+                    rows={2}
+                    placeholder="商談内容や要望など"
+                    value={newInterest.note}
+                    onChange={(e) => setNewInterest((p) => ({ ...p, note: e.target.value }))}
+                  />
                 </div>
-                <button type="button" className="btn-primary text-xs" onClick={addInterest}>追加</button>
+                <button type="button" className="btn-primary text-xs" onClick={addInterest}>
+                  追加
+                </button>
               </div>
             )}
 
@@ -641,17 +869,25 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
             ) : (
               <div className="space-y-2">
                 {interests.map((i) => {
-                  const levelConfig = { hot: { label: "高", color: "text-danger", bg: "bg-danger/10" }, warm: { label: "中", color: "text-warning", bg: "bg-warning/10" }, cold: { label: "低", color: "text-secondary", bg: "bg-surface-hover" } }[i.interest_level] ?? { label: "-", color: "text-muted", bg: "bg-surface-hover" };
+                  const levelConfig = {
+                    hot: { label: "高", color: "text-danger", bg: "bg-danger/10" },
+                    warm: { label: "中", color: "text-warning", bg: "bg-warning/10" },
+                    cold: { label: "低", color: "text-secondary", bg: "bg-surface-hover" },
+                  }[i.interest_level] ?? { label: "-", color: "text-muted", bg: "bg-surface-hover" };
                   return (
                     <div key={i.id} className="rounded-lg border border-border-subtle p-3 flex items-start gap-3">
-                      <span className={`mt-0.5 inline-flex h-6 min-w-6 items-center justify-center rounded-full text-[10px] font-bold ${levelConfig.color} ${levelConfig.bg}`}>
+                      <span
+                        className={`mt-0.5 inline-flex h-6 min-w-6 items-center justify-center rounded-full text-[10px] font-bold ${levelConfig.color} ${levelConfig.bg}`}
+                      >
                         {levelConfig.label}
                       </span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-semibold text-primary">{i.customer_name}</span>
                           {i.status !== "active" && (
-                            <span className={`text-[10px] font-medium ${i.status === "converted" ? "text-success" : "text-muted"}`}>
+                            <span
+                              className={`text-[10px] font-medium ${i.status === "converted" ? "text-success" : "text-muted"}`}
+                            >
                               {i.status === "converted" ? "成約" : "失注"}
                             </span>
                           )}
@@ -660,7 +896,9 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
                           {i.customer_phone && <span>{i.customer_phone}</span>}
                           {i.customer_email && <span>{i.customer_email}</span>}
                           {i.follow_up_date && (
-                            <span className={new Date(i.follow_up_date) <= new Date() ? "text-danger font-semibold" : ""}>
+                            <span
+                              className={new Date(i.follow_up_date) <= new Date() ? "text-danger font-semibold" : ""}
+                            >
                               フォロー: {formatDate(i.follow_up_date)}
                             </span>
                           )}
@@ -669,8 +907,20 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
                       </div>
                       {i.status === "active" && (
                         <div className="flex gap-1">
-                          <button type="button" className="rounded px-2 py-1 text-[10px] font-medium bg-success/10 text-success hover:bg-success/15" onClick={() => updateInterestStatus(i.id, "converted")}>成約</button>
-                          <button type="button" className="rounded px-2 py-1 text-[10px] font-medium bg-surface-hover text-muted hover:bg-border-default" onClick={() => updateInterestStatus(i.id, "lost")}>失注</button>
+                          <button
+                            type="button"
+                            className="rounded px-2 py-1 text-[10px] font-medium bg-success/10 text-success hover:bg-success/15"
+                            onClick={() => updateInterestStatus(i.id, "converted")}
+                          >
+                            成約
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded px-2 py-1 text-[10px] font-medium bg-surface-hover text-muted hover:bg-border-default"
+                            onClick={() => updateInterestStatus(i.id, "lost")}
+                          >
+                            失注
+                          </button>
                         </div>
                       )}
                     </div>
@@ -681,7 +931,9 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
           </section>
 
           <section className="glass-card p-5 text-xs text-muted space-y-1">
-            <div>ID: <span className="font-mono">{vehicle.id}</span></div>
+            <div>
+              ID: <span className="font-mono">{vehicle.id}</span>
+            </div>
             <div>登録日: {formatDate(vehicle.created_at)}</div>
             {vehicle.updated_at && <div>更新日: {formatDate(vehicle.updated_at)}</div>}
           </section>

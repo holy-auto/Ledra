@@ -8,16 +8,9 @@ import { track } from "@/lib/marketing/analytics";
 const inputClass =
   "w-full px-4 py-3 rounded-lg border border-white/[0.08] bg-white/[0.05] text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/40 transition-colors";
 
-const successCardClass =
-  "text-center py-16 px-8 rounded-xl bg-white/[0.04] border border-white/[0.07]";
+const successCardClass = "text-center py-16 px-8 rounded-xl bg-white/[0.04] border border-white/[0.07]";
 
-const UTM_KEYS = [
-  "utm_source",
-  "utm_medium",
-  "utm_campaign",
-  "utm_term",
-  "utm_content",
-] as const;
+const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"] as const;
 
 type FieldsConfig = {
   /** Require a phone field (default: false) */
@@ -29,12 +22,14 @@ type FieldsConfig = {
   /** Add a timing select (default: false) */
   timing?: boolean;
   /** Message textarea: omit => no field, object => shown with options */
-  message?: false | {
-    required?: boolean;
-    placeholder?: string;
-    label?: string;
-    rows?: number;
-  };
+  message?:
+    | false
+    | {
+        required?: boolean;
+        placeholder?: string;
+        label?: string;
+        rows?: number;
+      };
 };
 
 export type LeadFormProps = {
@@ -109,9 +104,7 @@ export function LeadForm({
             <path d="M5 13l4 4L19 7" />
           </svg>
         </div>
-        <h3 className="mt-6 text-xl font-bold text-white">
-          {success?.title ?? "送信を受け付けました"}
-        </h3>
+        <h3 className="mt-6 text-xl font-bold text-white">{success?.title ?? "送信を受け付けました"}</h3>
         <p className="mt-3 text-white/50 leading-relaxed whitespace-pre-line">
           {success?.body ?? "ご登録いただいたメールアドレスに追ってご連絡いたします。\n通常1営業日以内にお届けします。"}
         </p>
@@ -158,7 +151,7 @@ export function LeadForm({
       });
 
       if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as { message?: string } | null;
+        const data = (await res.json().catch((): null => null)) as { message?: string } | null;
         throw new Error(data?.message ?? "送信に失敗しました。");
       }
 
@@ -167,11 +160,7 @@ export function LeadForm({
       if (data.id) onSubmitted?.(data.id);
       setSubmitted(true);
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "送信に失敗しました。しばらくしてから再度お試しください。",
-      );
+      setError(err instanceof Error ? err.message : "送信に失敗しました。しばらくしてから再度お試しください。");
     } finally {
       setSending(false);
     }

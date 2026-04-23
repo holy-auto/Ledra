@@ -68,7 +68,7 @@ export default function CustomerInquiriesClient() {
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({ id, status: "read" }),
-    }).catch(() => undefined);
+    }).catch((): void => undefined);
     setInquiries((prev: InquiryRow[]) => prev.map((i: InquiryRow) => (i.id === id ? { ...i, status: "read" } : i)));
   }
 
@@ -103,7 +103,11 @@ export default function CustomerInquiriesClient() {
 
   return (
     <div className="mx-auto max-w-4xl p-6">
-      <PageHeader tag="顧客管理" title="お客様問い合わせ" description="マイページから届いたお客様からの問い合わせを管理します" />
+      <PageHeader
+        tag="顧客管理"
+        title="お客様問い合わせ"
+        description="マイページから届いたお客様からの問い合わせを管理します"
+      />
 
       {/* フィルタ */}
       <div className="mb-4 flex gap-2 flex-wrap">
@@ -161,8 +165,7 @@ export default function CustomerInquiriesClient() {
                       </span>
                     </div>
                     <div className="mt-0.5 text-xs text-muted">
-                      {inq.customer_name ?? "お客様"} ·{" "}
-                      {new Date(inq.created_at).toLocaleString("ja-JP")}
+                      {inq.customer_name ?? "お客様"} · {new Date(inq.created_at).toLocaleString("ja-JP")}
                     </div>
                   </div>
                   <span className="text-muted text-sm shrink-0">{isExpanded ? "▲" : "▼"}</span>
@@ -174,7 +177,9 @@ export default function CustomerInquiriesClient() {
                 <div className="border-t border-border-subtle px-5 py-4 space-y-4">
                   {/* メッセージ */}
                   <div>
-                    <div className="text-xs font-semibold text-muted mb-1 uppercase tracking-wide">お客様メッセージ</div>
+                    <div className="text-xs font-semibold text-muted mb-1 uppercase tracking-wide">
+                      お客様メッセージ
+                    </div>
                     <p className="text-sm text-primary whitespace-pre-wrap leading-relaxed">{inq.message}</p>
                   </div>
 
@@ -184,7 +189,9 @@ export default function CustomerInquiriesClient() {
                       <div className="text-xs font-semibold text-accent mb-1">返信済み内容</div>
                       <p className="text-sm text-primary whitespace-pre-wrap">{inq.admin_reply}</p>
                       {inq.replied_at && (
-                        <div className="text-xs text-muted mt-1">{new Date(inq.replied_at).toLocaleString("ja-JP")}</div>
+                        <div className="text-xs text-muted mt-1">
+                          {new Date(inq.replied_at).toLocaleString("ja-JP")}
+                        </div>
                       )}
                     </div>
                   )}
@@ -201,9 +208,7 @@ export default function CustomerInquiriesClient() {
                       placeholder="お客様への返信内容を入力…"
                       className="w-full rounded-xl border border-border-default bg-surface px-3 py-2 text-sm text-primary outline-none focus:ring-2 focus:ring-accent/30 resize-none"
                     />
-                    {replyMsg && (
-                      <div className="mt-2 text-xs text-success-text">{replyMsg}</div>
-                    )}
+                    {replyMsg && <div className="mt-2 text-xs text-success-text">{replyMsg}</div>}
                     <div className="mt-2 flex gap-2">
                       <button
                         onClick={() => sendReply(inq.id)}

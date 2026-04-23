@@ -17,22 +17,22 @@ interface NewsItem {
 }
 
 const SOURCE_VARIANT: Record<string, "default" | "success" | "warning" | "danger" | "info"> = {
-  "日本塗装時報": "danger",
-  "PPF専門店": "warning",
-  "レスポンス": "info",
+  日本塗装時報: "danger",
+  PPF専門店: "warning",
+  レスポンス: "info",
   "Car Watch": "success",
   "WEB CARTOP": "info",
-  "ベストカー": "default",
-  "くるまのニュース": "success",
-  "clicccar": "default",
+  ベストカー: "default",
+  くるまのニュース: "success",
+  clicccar: "default",
   // スクレイピングソース
-  "KeePer技研": "success",
+  KeePer技研: "success",
   "日整連（JASPA）": "danger",
   "国土交通省（自動車）": "danger",
-  "JAF": "info",
+  JAF: "info",
   "STEK Japan": "warning",
   "XPEL Japan": "warning",
-  "GAZOO": "info",
+  GAZOO: "info",
   // 法改正・行政
   "国交省（リコール）": "danger",
   "環境省（自動車排出ガス）": "danger",
@@ -41,12 +41,12 @@ const SOURCE_VARIANT: Record<string, "default" | "success" | "warning" | "danger
   "Automotive News": "info",
   "Just Auto": "info",
   "Green Car Reports": "success",
-  "Autoblog": "info",
+  Autoblog: "info",
   "BodyShop Business": "warning",
   "Fender Bender": "warning",
   "SEMA Show": "success",
   "IDA（国際ディテイリング協会）": "success",
-  "Automechanika": "info",
+  Automechanika: "info",
 };
 
 export default function NewsClient() {
@@ -63,7 +63,7 @@ export default function NewsClient() {
     setErr(null);
     try {
       const res = await fetch("/api/admin/news");
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setNews(j.news ?? []);
       setFeedCount(j.feedCount ?? 0);
@@ -86,18 +86,20 @@ export default function NewsClient() {
 
   // カテゴリをグループ化
   const CATEGORY_GROUPS: Record<string, string[]> = {
-    "国内ニュース": ["自動車ニュース", "塗装・コーティング", "PPF", "コーティング", "整備業界", "自動車団体"],
+    国内ニュース: ["自動車ニュース", "塗装・コーティング", "PPF", "コーティング", "整備業界", "自動車団体"],
     "法改正・規制": ["法改正・規制", "行政・規制"],
-    "海外動向": ["海外動向", "海外EV動向", "海外・板金塗装", "海外・展示会", "海外・ディテイリング"],
+    海外動向: ["海外動向", "海外EV動向", "海外・板金塗装", "海外・展示会", "海外・ディテイリング"],
   };
 
   const afterSavedFilter = showSavedOnly ? news.filter((n) => n.saved) : news;
-  const afterCategoryFilter = categoryFilter === "all"
-    ? afterSavedFilter
-    : CATEGORY_GROUPS[categoryFilter]
-      ? afterSavedFilter.filter((n) => CATEGORY_GROUPS[categoryFilter].includes(n.category))
-      : afterSavedFilter.filter((n) => n.category === categoryFilter);
-  const filtered = sourceFilter === "all" ? afterCategoryFilter : afterCategoryFilter.filter((n) => n.source === sourceFilter);
+  const afterCategoryFilter =
+    categoryFilter === "all"
+      ? afterSavedFilter
+      : CATEGORY_GROUPS[categoryFilter]
+        ? afterSavedFilter.filter((n) => CATEGORY_GROUPS[categoryFilter].includes(n.category))
+        : afterSavedFilter.filter((n) => n.category === categoryFilter);
+  const filtered =
+    sourceFilter === "all" ? afterCategoryFilter : afterCategoryFilter.filter((n) => n.source === sourceFilter);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -124,9 +126,7 @@ export default function NewsClient() {
               <button
                 type="button"
                 className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                  !showSavedOnly
-                    ? "bg-primary text-inverse"
-                    : "bg-surface-hover text-secondary hover:bg-border-default"
+                  !showSavedOnly ? "bg-primary text-inverse" : "bg-surface-hover text-secondary hover:bg-border-default"
                 }`}
                 onClick={() => setShowSavedOnly(false)}
               >
@@ -135,9 +135,7 @@ export default function NewsClient() {
               <button
                 type="button"
                 className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                  showSavedOnly
-                    ? "bg-success text-inverse"
-                    : "bg-surface-hover text-secondary hover:bg-border-default"
+                  showSavedOnly ? "bg-success text-inverse" : "bg-surface-hover text-secondary hover:bg-border-default"
                 }`}
                 onClick={() => setShowSavedOnly(true)}
               >
@@ -214,11 +212,12 @@ export default function NewsClient() {
             )}
 
             {filtered.map((item) => (
-              <article key={item.id} className={`glass-card p-5 space-y-2 hover:bg-surface-hover transition-colors ${item.saved ? "border-l-2 border-l-success" : ""}`}>
+              <article
+                key={item.id}
+                className={`glass-card p-5 space-y-2 hover:bg-surface-hover transition-colors ${item.saved ? "border-l-2 border-l-success" : ""}`}
+              >
                 <div className="flex items-center gap-2 flex-wrap">
-                  <Badge variant={SOURCE_VARIANT[item.source] ?? "default"}>
-                    {item.source}
-                  </Badge>
+                  <Badge variant={SOURCE_VARIANT[item.source] ?? "default"}>{item.source}</Badge>
                   {item.saved && (
                     <span className="px-1.5 py-0.5 rounded text-[10px] bg-success-dim text-success-text font-medium">
                       自動収集
@@ -230,16 +229,19 @@ export default function NewsClient() {
                 </div>
                 <h3 className="text-sm font-semibold text-primary leading-relaxed">
                   {item.url ? (
-                    <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:underline hover:text-accent">
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:underline hover:text-accent"
+                    >
                       {item.title}
                     </a>
                   ) : (
                     item.title
                   )}
                 </h3>
-                {item.summary && (
-                  <p className="text-[13px] text-secondary leading-relaxed">{item.summary}</p>
-                )}
+                {item.summary && <p className="text-[13px] text-secondary leading-relaxed">{item.summary}</p>}
                 {item.keywords && item.keywords.length > 0 && (
                   <div className="flex gap-1 flex-wrap">
                     {item.keywords.slice(0, 5).map((kw) => (

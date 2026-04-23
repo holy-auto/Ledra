@@ -10,7 +10,7 @@ import { track } from "@/lib/marketing/analytics";
  * carries a `data-cta-location` attribute. Rendered once at the marketing
  * layout level so `CTAButton` can stay a server component.
  */
-export function CTATracker() {
+export function CTATracker(): null {
   useEffect(() => {
     if (typeof document === "undefined") return;
 

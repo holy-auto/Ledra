@@ -55,18 +55,36 @@ function GrowthBadge({ rate, suffix = "%" }: { rate: number | null; suffix?: str
   if (rate === null) return <span className="text-[11px] text-muted">-</span>;
   const isPositive = rate >= 0;
   return (
-    <span className="inline-flex items-center gap-0.5 text-[12px] font-semibold" style={{ color: isPositive ? "var(--accent-emerald)" : "var(--accent-red)" }}>
+    <span
+      className="inline-flex items-center gap-0.5 text-[12px] font-semibold"
+      style={{ color: isPositive ? "var(--accent-emerald)" : "var(--accent-red)" }}
+    >
       <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-        <path strokeLinecap="round" strokeLinejoin="round"
-          d={isPositive ? "M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" : "M4.5 4.5l15 15m0 0V8.25m0 11.25H8.25"} />
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d={isPositive ? "M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" : "M4.5 4.5l15 15m0 0V8.25m0 11.25H8.25"}
+        />
       </svg>
-      {isPositive ? "+" : ""}{rate.toFixed(1)}{suffix}
+      {isPositive ? "+" : ""}
+      {rate.toFixed(1)}
+      {suffix}
     </span>
   );
 }
 
-function KPICard({ tag, value, sub, color, danger }: {
-  tag: string; value: string; sub?: string; color?: string; danger?: boolean;
+function KPICard({
+  tag,
+  value,
+  sub,
+  color,
+  danger,
+}: {
+  tag: string;
+  value: string;
+  sub?: string;
+  color?: string;
+  danger?: boolean;
 }) {
   return (
     <div className="glass-card p-4 space-y-1">
@@ -79,7 +97,11 @@ function KPICard({ tag, value, sub, color, danger }: {
   );
 }
 
-function MiniBar({ data, maxVal, color = "var(--accent-blue)" }: {
+function MiniBar({
+  data,
+  maxVal,
+  color = "var(--accent-blue)",
+}: {
   data: { label: string; value: number }[];
   maxVal: number;
   color?: string;
@@ -105,7 +127,15 @@ function MiniBar({ data, maxVal, color = "var(--accent-blue)" }: {
   );
 }
 
-function ProgressRing({ rate, size = 80, color = "var(--accent-blue)" }: { rate: number | null; size?: number; color?: string }) {
+function ProgressRing({
+  rate,
+  size = 80,
+  color = "var(--accent-blue)",
+}: {
+  rate: number | null;
+  size?: number;
+  color?: string;
+}) {
   const pct = rate ?? 0;
   const r = (size - 8) / 2;
   const circumference = 2 * Math.PI * r;
@@ -116,15 +146,20 @@ function ProgressRing({ rate, size = 80, color = "var(--accent-blue)" }: { rate:
       <svg width={size} height={size} className="-rotate-90">
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(0,0,0,0.06)" strokeWidth={6} />
         <circle
-          cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={6}
-          strokeDasharray={circumference} strokeDashoffset={offset}
-          strokeLinecap="round" className="transition-all duration-1000 ease-out"
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth={6}
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          className="transition-all duration-1000 ease-out"
         />
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-[14px] font-bold text-primary">
-          {rate !== null ? `${rate.toFixed(0)}%` : "-"}
-        </span>
+        <span className="text-[14px] font-bold text-primary">{rate !== null ? `${rate.toFixed(0)}%` : "-"}</span>
       </div>
     </div>
   );
@@ -141,7 +176,7 @@ export default function ManagementClient() {
     (async () => {
       try {
         const res = await fetch("/api/admin/management-kpi", { cache: "no-store" });
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
         setData(j);
       } catch (e: unknown) {
@@ -159,7 +194,7 @@ export default function ManagementClient() {
           <div className="h-8 w-48 rounded bg-surface-hover" />
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4].map(i => (
+          {[1, 2, 3, 4].map((i) => (
             <div key={i} className="glass-card p-5 space-y-2">
               <div className="h-3 w-16 rounded bg-surface-hover" />
               <div className="h-7 w-24 rounded bg-surface-hover" />
@@ -181,19 +216,15 @@ export default function ManagementClient() {
   if (!data) return null;
 
   const { cashFlow, collection, customers, profitability, conversion, certificates } = data;
-  const custMax = Math.max(...customers.growthByMonth.map(m => m.count), 1);
-  const certMax = Math.max(...certificates.byMonth.map(m => m.count), 1);
+  const custMax = Math.max(...customers.growthByMonth.map((m) => m.count), 1);
+  const certMax = Math.max(...certificates.byMonth.map((m) => m.count), 1);
 
   return (
     <div className="mx-auto max-w-6xl space-y-8">
       {/* Header */}
       <div className="space-y-1">
-        <span className="text-[11px] font-medium tracking-[0.12em] text-secondary uppercase">
-          管理KPI
-        </span>
-        <h1 className="text-[28px] font-semibold tracking-tight text-primary leading-tight">
-          経営ダッシュボード
-        </h1>
+        <span className="text-[11px] font-medium tracking-[0.12em] text-secondary uppercase">管理KPI</span>
+        <h1 className="text-[28px] font-semibold tracking-tight text-primary leading-tight">経営ダッシュボード</h1>
         <p className="text-[14px] text-secondary leading-relaxed">
           キャッシュフロー・収益性・顧客指標など経営に重要なKPIを一覧表示
         </p>
@@ -205,10 +236,16 @@ export default function ManagementClient() {
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="glass-card p-4 space-y-1 relative overflow-hidden">
-            <div className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: cashFlow.operatingCF >= 0 ? "var(--accent-emerald)" : "var(--accent-red)" }} />
+            <div
+              className="absolute left-0 top-0 bottom-0 w-1"
+              style={{ backgroundColor: cashFlow.operatingCF >= 0 ? "var(--accent-emerald)" : "var(--accent-red)" }}
+            />
             <div className="pl-2">
               <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">営業CF（累計）</div>
-              <div className="text-xl font-bold" style={{ color: cashFlow.operatingCF >= 0 ? "var(--accent-emerald)" : "var(--accent-red)" }}>
+              <div
+                className="text-xl font-bold"
+                style={{ color: cashFlow.operatingCF >= 0 ? "var(--accent-emerald)" : "var(--accent-red)" }}
+              >
                 {formatJpy(cashFlow.operatingCF)}
               </div>
               <div className="text-[11px] text-muted">入金 - 支出</div>
@@ -217,7 +254,10 @@ export default function ManagementClient() {
 
           <div className="glass-card p-4 space-y-1">
             <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">今月のCF</div>
-            <div className="text-xl font-bold" style={{ color: cashFlow.thisMonth.cf >= 0 ? "var(--accent-emerald)" : "var(--accent-red)" }}>
+            <div
+              className="text-xl font-bold"
+              style={{ color: cashFlow.thisMonth.cf >= 0 ? "var(--accent-emerald)" : "var(--accent-red)" }}
+            >
               {formatJpy(cashFlow.thisMonth.cf)}
             </div>
             <div className="flex items-center gap-2">
@@ -226,7 +266,12 @@ export default function ManagementClient() {
             </div>
           </div>
 
-          <KPICard tag="累計入金額" value={formatJpy(cashFlow.totalCashIn)} sub="Cash In" color="var(--accent-emerald)" />
+          <KPICard
+            tag="累計入金額"
+            value={formatJpy(cashFlow.totalCashIn)}
+            sub="Cash In"
+            color="var(--accent-emerald)"
+          />
           <KPICard tag="累計支出" value={formatJpy(cashFlow.totalCashOut)} sub="Cash Out" color="var(--accent-amber)" />
         </div>
 
@@ -266,8 +311,18 @@ export default function ManagementClient() {
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <KPICard tag="売上高（累計）" value={formatJpy(profitability.totalRevenue)} sub="Total Revenue" />
-          <KPICard tag="仕入原価" value={formatJpy(profitability.totalPurchases)} sub="Cost of Goods" color="var(--accent-amber)" />
-          <KPICard tag="粗利益" value={formatJpy(profitability.grossProfit)} sub="Gross Profit" color="var(--accent-emerald)" />
+          <KPICard
+            tag="仕入原価"
+            value={formatJpy(profitability.totalPurchases)}
+            sub="Cost of Goods"
+            color="var(--accent-amber)"
+          />
+          <KPICard
+            tag="粗利益"
+            value={formatJpy(profitability.grossProfit)}
+            sub="Gross Profit"
+            color="var(--accent-emerald)"
+          />
 
           <div className="glass-card p-4 flex items-center gap-4">
             <ProgressRing rate={profitability.grossMarginRate} color="var(--accent-emerald)" />
@@ -287,7 +342,11 @@ export default function ManagementClient() {
           <div className="glass-card p-4 flex items-center gap-4">
             <ProgressRing
               rate={collection.collectionRate}
-              color={collection.collectionRate !== null && collection.collectionRate >= 80 ? "var(--accent-emerald)" : "var(--accent-amber)"}
+              color={
+                collection.collectionRate !== null && collection.collectionRate >= 80
+                  ? "var(--accent-emerald)"
+                  : "var(--accent-amber)"
+              }
             />
             <div>
               <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">回収率</div>
@@ -329,7 +388,9 @@ export default function ManagementClient() {
                 <div className="h-1.5 rounded-full bg-surface-hover overflow-hidden">
                   <div
                     className="h-full rounded-full bg-success"
-                    style={{ width: `${collection.totalInvoiced > 0 ? (collection.totalPaid / collection.totalInvoiced * 100) : 0}%` }}
+                    style={{
+                      width: `${collection.totalInvoiced > 0 ? (collection.totalPaid / collection.totalInvoiced) * 100 : 0}%`,
+                    }}
                   />
                 </div>
               </div>
@@ -343,7 +404,12 @@ export default function ManagementClient() {
         <h2 className="text-xs font-semibold tracking-[0.18em] text-muted">CUSTOMER METRICS / 顧客指標</h2>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <KPICard tag="顧客数" value={String(customers.total)} sub={`取引顧客 ${customers.activeCustomers}社`} color="var(--accent-blue)" />
+          <KPICard
+            tag="顧客数"
+            value={String(customers.total)}
+            sub={`取引顧客 ${customers.activeCustomers}社`}
+            color="var(--accent-blue)"
+          />
           <KPICard
             tag="顧客単価（ARPU）"
             value={customers.arpu !== null ? formatJpy(customers.arpu) : "-"}
@@ -357,7 +423,7 @@ export default function ManagementClient() {
           <div className="glass-card p-4 space-y-2">
             <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">顧客数推移</div>
             <MiniBar
-              data={customers.growthByMonth.slice(-6).map(m => ({ label: m.label, value: m.count }))}
+              data={customers.growthByMonth.slice(-6).map((m) => ({ label: m.label, value: m.count }))}
               maxVal={custMax}
               color="var(--accent-blue)"
             />
@@ -371,10 +437,7 @@ export default function ManagementClient() {
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div className="glass-card p-4 flex items-center gap-4">
-            <ProgressRing
-              rate={conversion.conversionRate}
-              color="var(--accent-violet)"
-            />
+            <ProgressRing rate={conversion.conversionRate} color="var(--accent-violet)" />
             <div>
               <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">見積→受注 転換率</div>
               <div className="text-[12px] text-muted mt-0.5">
@@ -383,8 +446,18 @@ export default function ManagementClient() {
             </div>
           </div>
 
-          <KPICard tag="見積書（総数）" value={`${conversion.totalEstimates}件`} sub="Total Estimates" color="var(--accent-violet)" />
-          <KPICard tag="受注件数" value={`${conversion.convertedEstimates}件`} sub="Converted" color="var(--accent-emerald)" />
+          <KPICard
+            tag="見積書（総数）"
+            value={`${conversion.totalEstimates}件`}
+            sub="Total Estimates"
+            color="var(--accent-violet)"
+          />
+          <KPICard
+            tag="受注件数"
+            value={`${conversion.convertedEstimates}件`}
+            sub="Converted"
+            color="var(--accent-emerald)"
+          />
         </div>
       </section>
 
@@ -393,7 +466,12 @@ export default function ManagementClient() {
         <h2 className="text-xs font-semibold tracking-[0.18em] text-muted">CERTIFICATES / 施工証明書</h2>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <KPICard tag="発行総数" value={String(certificates.total)} sub={`有効 ${certificates.active}件`} color="var(--accent-blue)" />
+          <KPICard
+            tag="発行総数"
+            value={String(certificates.total)}
+            sub={`有効 ${certificates.active}件`}
+            color="var(--accent-blue)"
+          />
           <KPICard
             tag="平均施工単価"
             value={certificates.avgServicePrice !== null ? formatJpy(certificates.avgServicePrice) : "-"}
@@ -402,7 +480,7 @@ export default function ManagementClient() {
           <div className="glass-card p-4 space-y-2 sm:col-span-2">
             <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">月別発行数</div>
             <MiniBar
-              data={certificates.byMonth.slice(-6).map(m => ({ label: m.label, value: m.count }))}
+              data={certificates.byMonth.slice(-6).map((m) => ({ label: m.label, value: m.count }))}
               maxVal={certMax}
               color="var(--accent-violet)"
             />

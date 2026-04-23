@@ -101,11 +101,16 @@ export default function SquareOrdersClient() {
     return `/api/admin/square/orders?${params.toString()}`;
   })();
 
-  const { data, error: swrError, isLoading: loading, mutate } = useSWR<SquareOrdersData>(
-    swrKey,
-    fetcher,
-    { revalidateOnFocus: true, keepPreviousData: true, dedupingInterval: 2000 },
-  );
+  const {
+    data,
+    error: swrError,
+    isLoading: loading,
+    mutate,
+  } = useSWR<SquareOrdersData>(swrKey, fetcher, {
+    revalidateOnFocus: true,
+    keepPreviousData: true,
+    dedupingInterval: 2000,
+  });
 
   const err = swrError ? (swrError.message ?? "読み込みに失敗しました") : null;
   const isConnected = data?.connection?.status === "active";
@@ -114,7 +119,7 @@ export default function SquareOrdersClient() {
     setConnecting(true);
     try {
       const res = await fetch("/api/admin/square/connect", { method: "POST" });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
       if (j?.auth_url) window.location.href = j.auth_url;
     } catch (e: any) {
@@ -128,7 +133,7 @@ export default function SquareOrdersClient() {
     setSyncMsg(null);
     try {
       const res = await fetch("/api/admin/square/sync", { method: "POST" });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setSyncMsg({
         text: `同期完了: ${j.orders_imported ?? 0}件取り込み`,
@@ -166,20 +171,11 @@ export default function SquareOrdersClient() {
         description="Square POSから取り込んだ売上データを管理します。"
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className="btn-ghost text-sm"
-              onClick={() => setShowSyncHistory(!showSyncHistory)}
-            >
+            <button type="button" className="btn-ghost text-sm" onClick={() => setShowSyncHistory(!showSyncHistory)}>
               {showSyncHistory ? "同期履歴を閉じる" : "同期履歴"}
             </button>
             {isConnected && (
-              <button
-                type="button"
-                className="btn-primary"
-                disabled={syncing}
-                onClick={handleSync}
-              >
+              <button type="button" className="btn-primary" disabled={syncing} onClick={handleSync}>
                 {syncing ? "同期中…" : "手動同期"}
               </button>
             )}
@@ -198,31 +194,18 @@ export default function SquareOrdersClient() {
       {/* Not connected state */}
       {data && !isConnected && (
         <section className="glass-card p-8 text-center space-y-4">
-          <div className="text-muted text-sm">
-            Squareアカウントが接続されていません。
-          </div>
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={connecting}
-            onClick={handleConnect}
-          >
+          <div className="text-muted text-sm">Squareアカウントが接続されていません。</div>
+          <button type="button" className="btn-primary" disabled={connecting} onClick={handleConnect}>
             {connecting ? "接続中…" : "Squareアカウントを接続してください →"}
           </button>
         </section>
       )}
 
       {/* Sync message */}
-      {syncMsg && (
-        <div className={`text-sm ${syncMsg.ok ? "text-success" : "text-danger"}`}>
-          {syncMsg.text}
-        </div>
-      )}
+      {syncMsg && <div className={`text-sm ${syncMsg.ok ? "text-success" : "text-danger"}`}>{syncMsg.text}</div>}
 
       {/* Sync history panel */}
-      {showSyncHistory && (
-        <SyncHistoryPanel />
-      )}
+      {showSyncHistory && <SyncHistoryPanel />}
 
       {data && isConnected && (
         <>
@@ -240,12 +223,7 @@ export default function SquareOrdersClient() {
               </div>
               <div className="space-y-1">
                 <label className="text-xs text-muted">終了日</label>
-                <input
-                  type="date"
-                  className="input-field"
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
-                />
+                <input type="date" className="input-field" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
               </div>
               <button type="button" className="btn-secondary" onClick={handleFilter}>
                 絞り込み
@@ -265,15 +243,33 @@ export default function SquareOrdersClient() {
               <table className="min-w-full text-sm">
                 <thead className="bg-surface-hover">
                   <tr>
-                    <th className="text-left px-3 sm:px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">日時</th>
-                    <th className="text-left px-3 sm:px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">金額</th>
-                    <th className="hidden sm:table-cell text-left px-3 sm:px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">決済方法</th>
-                    <th className="hidden md:table-cell text-left px-3 sm:px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">Square注文ID</th>
-                    <th className="hidden md:table-cell text-left px-3 sm:px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">顧客</th>
-                    <th className="hidden lg:table-cell text-left px-3 sm:px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">車両</th>
-                    <th className="hidden lg:table-cell text-left px-3 sm:px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">証明書</th>
-                    <th className="text-left px-3 sm:px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">ステータス</th>
-                    <th className="text-left px-3 sm:px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">操作</th>
+                    <th className="text-left px-3 sm:px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      日時
+                    </th>
+                    <th className="text-left px-3 sm:px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      金額
+                    </th>
+                    <th className="hidden sm:table-cell text-left px-3 sm:px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      決済方法
+                    </th>
+                    <th className="hidden md:table-cell text-left px-3 sm:px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      Square注文ID
+                    </th>
+                    <th className="hidden md:table-cell text-left px-3 sm:px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      顧客
+                    </th>
+                    <th className="hidden lg:table-cell text-left px-3 sm:px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      車両
+                    </th>
+                    <th className="hidden lg:table-cell text-left px-3 sm:px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      証明書
+                    </th>
+                    <th className="text-left px-3 sm:px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      ステータス
+                    </th>
+                    <th className="text-left px-3 sm:px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      操作
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border-subtle">
@@ -282,18 +278,12 @@ export default function SquareOrdersClient() {
                       <td className="px-3 sm:px-5 py-3.5 whitespace-nowrap text-secondary">
                         {formatDateTime(order.square_created_at)}
                       </td>
-                      <td className="px-3 sm:px-5 py-3.5 font-medium text-primary">
-                        {formatJpy(order.total_amount)}
-                      </td>
+                      <td className="px-3 sm:px-5 py-3.5 font-medium text-primary">{formatJpy(order.total_amount)}</td>
                       <td className="hidden sm:table-cell px-3 sm:px-5 py-3.5 text-secondary">
-                        {order.payment_methods.length > 0
-                          ? order.payment_methods.join(", ")
-                          : "-"}
+                        {order.payment_methods.length > 0 ? order.payment_methods.join(", ") : "-"}
                       </td>
                       <td className="hidden md:table-cell px-3 sm:px-5 py-3.5">
-                        <span className="font-mono text-xs text-muted">
-                          {order.square_order_id.slice(0, 12)}…
-                        </span>
+                        <span className="font-mono text-xs text-muted">{order.square_order_id.slice(0, 12)}…</span>
                         {order.square_receipt_url && (
                           <a
                             href={order.square_receipt_url}
@@ -306,14 +296,10 @@ export default function SquareOrdersClient() {
                         )}
                       </td>
                       <td className="hidden md:table-cell px-3 sm:px-5 py-3.5 text-secondary">
-                        {order.customer_name ?? (
-                          <span className="text-muted">未紐付</span>
-                        )}
+                        {order.customer_name ?? <span className="text-muted">未紐付</span>}
                       </td>
                       <td className="hidden lg:table-cell px-3 sm:px-5 py-3.5 text-secondary">
-                        {order.vehicle_display ?? (
-                          <span className="text-muted">-</span>
-                        )}
+                        {order.vehicle_display ?? <span className="text-muted">-</span>}
                       </td>
                       <td className="hidden lg:table-cell px-3 sm:px-5 py-3.5 text-secondary">
                         {order.certificate_id ? (
@@ -362,13 +348,7 @@ export default function SquareOrdersClient() {
       )}
 
       {/* Link Modal */}
-      {linkTarget && (
-        <SquareLinkModal
-          order={linkTarget}
-          onClose={() => setLinkTarget(null)}
-          onSave={handleLinkSave}
-        />
-      )}
+      {linkTarget && <SquareLinkModal order={linkTarget} onClose={() => setLinkTarget(null)} onSave={handleLinkSave} />}
     </div>
   );
 }

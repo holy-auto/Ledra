@@ -50,7 +50,7 @@ export default function WorkflowTemplatesClient() {
     setErr(null);
     try {
       const res = await fetch("/api/admin/workflow-templates", { cache: "no-store" });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setTemplates(j.templates ?? []);
     } catch (e: unknown) {
@@ -115,7 +115,7 @@ export default function WorkflowTemplatesClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(form),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setSaveMsg({ text: editingId ? "テンプレートを更新しました" : "テンプレートを作成しました", ok: true });
       closeForm();
@@ -132,7 +132,7 @@ export default function WorkflowTemplatesClient() {
     setDeletingId(id);
     try {
       const res = await fetch(`/api/admin/workflow-templates/${id}`, { method: "DELETE" });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setSaveMsg({ text: "テンプレートを削除しました", ok: true });
       await fetchTemplates();

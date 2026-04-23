@@ -98,7 +98,7 @@ export default function MaterialsManager() {
         body: fd,
       });
       if (!res.ok) {
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
 
@@ -172,19 +172,12 @@ export default function MaterialsManager() {
       {/* Actions bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="text-sm text-muted">{materials.length} 件の資料</span>
-        <button
-          onClick={() => setShowUpload(!showUpload)}
-          className="btn-primary"
-        >
+        <button onClick={() => setShowUpload(!showUpload)} className="btn-primary">
           {showUpload ? "閉じる" : "新規アップロード"}
         </button>
       </div>
 
-      {msg && (
-        <div className="rounded-xl border border-default bg-surface-solid p-3 text-sm text-secondary">
-          {msg}
-        </div>
-      )}
+      {msg && <div className="rounded-xl border border-default bg-surface-solid p-3 text-sm text-secondary">{msg}</div>}
 
       {/* Upload form */}
       {showUpload && (
@@ -203,13 +196,11 @@ export default function MaterialsManager() {
             </div>
             <div>
               <label className="text-sm text-secondary mb-1 block">カテゴリ *</label>
-              <select
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                className="input-field w-full"
-              >
+              <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="input-field w-full">
                 {categories.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
                 ))}
               </select>
             </div>
@@ -264,11 +255,7 @@ export default function MaterialsManager() {
             >
               キャンセル
             </button>
-            <button
-              onClick={handleUpload}
-              disabled={uploading}
-              className="btn-primary"
-            >
+            <button onClick={handleUpload} disabled={uploading} className="btn-primary">
               {uploading ? "アップロード中..." : "アップロード"}
             </button>
           </div>

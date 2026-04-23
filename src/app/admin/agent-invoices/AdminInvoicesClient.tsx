@@ -26,10 +26,10 @@ type Invoice = {
 
 /* ── Status map ── */
 const STATUS_MAP: Record<string, { label: string; variant: BadgeVariant }> = {
-  draft:     { label: "下書き",       variant: "default" },
-  issued:    { label: "発行済",       variant: "info" },
-  paid:      { label: "支払済",       variant: "success" },
-  cancelled: { label: "キャンセル",   variant: "danger" },
+  draft: { label: "下書き", variant: "default" },
+  issued: { label: "発行済", variant: "info" },
+  paid: { label: "支払済", variant: "success" },
+  cancelled: { label: "キャンセル", variant: "danger" },
 };
 
 function statusEntry(s: string) {
@@ -91,7 +91,7 @@ export default function AdminInvoicesClient() {
         }),
       });
       if (!res.ok) {
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       setMsg("請求書を作成しました");
@@ -125,7 +125,7 @@ export default function AdminInvoicesClient() {
         body: JSON.stringify({ status: newStatus }),
       });
       if (!res.ok) {
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       setMsg(`ステータスを「${statusEntry(newStatus).label}」に変更しました`);
@@ -154,20 +154,13 @@ export default function AdminInvoicesClient() {
       {/* Actions bar */}
       <div className="flex flex-wrap gap-3 items-center justify-between">
         <span className="text-sm text-muted">{invoices.length} 件</span>
-        <button
-          onClick={() => setShowForm((v) => !v)}
-          className="btn-primary"
-        >
+        <button onClick={() => setShowForm((v) => !v)} className="btn-primary">
           {showForm ? "閉じる" : "新規作成"}
         </button>
       </div>
 
       {/* Message */}
-      {msg && (
-        <div className="rounded-xl border border-default bg-surface-solid p-3 text-sm text-secondary">
-          {msg}
-        </div>
-      )}
+      {msg && <div className="rounded-xl border border-default bg-surface-solid p-3 text-sm text-secondary">{msg}</div>}
 
       {/* Create form */}
       {showForm && (
@@ -242,7 +235,10 @@ export default function AdminInvoicesClient() {
 
           <div className="flex gap-3 justify-end">
             <button
-              onClick={() => { setShowForm(false); resetForm(); }}
+              onClick={() => {
+                setShowForm(false);
+                resetForm();
+              }}
               className="rounded-xl border border-default bg-surface-solid px-4 py-2 text-sm font-medium text-secondary hover:bg-surface-hover"
             >
               キャンセル
@@ -287,7 +283,10 @@ export default function AdminInvoicesClient() {
                   const s = statusEntry(inv.status);
                   const allowed = nextStatuses(inv.status);
                   return (
-                    <tr key={inv.id} className="border-t border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)]">
+                    <tr
+                      key={inv.id}
+                      className="border-t border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)]"
+                    >
                       <td className="p-3 font-medium text-primary">{inv.agent_name || inv.agent_id}</td>
                       <td className="p-3 font-mono text-muted">{inv.invoice_number || "-"}</td>
                       <td className="p-3 whitespace-nowrap text-muted">

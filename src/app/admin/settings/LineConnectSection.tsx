@@ -26,7 +26,7 @@ export default function LineConnectSection() {
   const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/line");
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (res.ok && j) {
         setStatus(j);
         if (j.channel_id) setChannelId(j.channel_id);
@@ -60,7 +60,7 @@ export default function LineConnectSection() {
           liff_id: liffId || undefined,
         }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setSuccessMsg("LINE連携が完了しました");
       setEditing(false);
@@ -85,7 +85,7 @@ export default function LineConnectSection() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action: "disconnect" }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setStatus({ enabled: false, channel_id: null, liff_id: null, webhook_url: null });
       setChannelId("");
@@ -127,14 +127,8 @@ export default function LineConnectSection() {
       {/* Connection details (when connected and not editing) */}
       {isConnected && !editing && (
         <div className="text-sm text-secondary space-y-2">
-          <div className="text-xs text-muted font-mono">
-            Channel ID: {status?.channel_id}
-          </div>
-          {status?.liff_id && (
-            <div className="text-xs text-muted font-mono">
-              LIFF ID: {status.liff_id}
-            </div>
-          )}
+          <div className="text-xs text-muted font-mono">Channel ID: {status?.channel_id}</div>
+          {status?.liff_id && <div className="text-xs text-muted font-mono">LIFF ID: {status.liff_id}</div>}
           {status?.webhook_url && (
             <div>
               <div className="text-xs text-muted mb-1">Webhook URL（LINE Developers Consoleに設定）:</div>
@@ -142,11 +136,7 @@ export default function LineConnectSection() {
                 <code className="flex-1 text-xs font-mono bg-[var(--bg-inset)] border border-border-subtle rounded-lg px-3 py-2 text-secondary break-all">
                   {status.webhook_url}
                 </code>
-                <button
-                  type="button"
-                  onClick={copyWebhookUrl}
-                  className="btn-ghost text-xs shrink-0"
-                >
+                <button type="button" onClick={copyWebhookUrl} className="btn-ghost text-xs shrink-0">
                   {copied ? "コピー済み" : "コピー"}
                 </button>
               </div>
@@ -228,20 +218,11 @@ export default function LineConnectSection() {
       <div className="flex gap-3 flex-wrap">
         {showForm && (
           <>
-            <button
-              type="button"
-              className="btn-primary text-sm"
-              disabled={busy}
-              onClick={handleConfigure}
-            >
+            <button type="button" className="btn-primary text-sm" disabled={busy} onClick={handleConfigure}>
               {busy ? "処理中..." : isConnected ? "設定を更新" : "連携する"}
             </button>
             {editing && (
-              <button
-                type="button"
-                className="btn-ghost text-sm"
-                onClick={() => setEditing(false)}
-              >
+              <button type="button" className="btn-ghost text-sm" onClick={() => setEditing(false)}>
                 キャンセル
               </button>
             )}
@@ -249,11 +230,7 @@ export default function LineConnectSection() {
         )}
         {isConnected && !editing && (
           <>
-            <button
-              type="button"
-              className="btn-secondary text-sm"
-              onClick={() => setEditing(true)}
-            >
+            <button type="button" className="btn-secondary text-sm" onClick={() => setEditing(true)}>
               設定変更
             </button>
             <button

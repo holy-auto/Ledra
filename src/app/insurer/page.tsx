@@ -32,7 +32,11 @@ export default function InsurerHomePage() {
   const [billingBusy, setBillingBusy] = useState(false);
   const [planTier, setPlanTier] = useState<string>("");
   const [insurerStatus, setInsurerStatus] = useState<string | null>(null);
-  const [caseSummary, setCaseSummary] = useState<{open_count: number; active_count: number; today_count: number} | null>(null);
+  const [caseSummary, setCaseSummary] = useState<{
+    open_count: number;
+    active_count: number;
+    today_count: number;
+  } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -106,7 +110,7 @@ export default function InsurerHomePage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ plan_tier: "pro" }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       if (j?.checkout_url) {
         window.location.href = j.checkout_url;
@@ -133,7 +137,10 @@ export default function InsurerHomePage() {
           <p className="text-sm text-red-700 mb-4">
             このアカウントは現在停止されています。詳細は管理者にお問い合わせください。
           </p>
-          <button onClick={onLogout} className="rounded-xl border border-red-300 bg-surface px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">
+          <button
+            onClick={onLogout}
+            className="rounded-xl border border-red-300 bg-surface px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+          >
             ログアウト
           </button>
         </div>
@@ -152,7 +159,6 @@ export default function InsurerHomePage() {
     <div className="min-h-screen p-4 sm:p-6">
       <InsurerIdleAutoLogout />
       <div className="mx-auto max-w-7xl space-y-6">
-
         {/* Header */}
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-3">
@@ -160,9 +166,7 @@ export default function InsurerHomePage() {
               INSURER PORTAL
             </div>
             <div>
-              <h1 className="text-3xl font-bold tracking-tight text-primary">
-                証明書検索
-              </h1>
+              <h1 className="text-3xl font-bold tracking-tight text-primary">証明書検索</h1>
               <p className="mt-2 text-sm text-secondary">
                 保険会社ポータル — 施工証明書を public_id・顧客名・車両で検索します。
               </p>
@@ -195,7 +199,9 @@ export default function InsurerHomePage() {
         {isPending && (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
             <div className="flex items-start gap-3">
-              <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-200 text-amber-800 text-xs font-bold">!</div>
+              <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-200 text-amber-800 text-xs font-bold">
+                !
+              </div>
               <div>
                 <div className="text-sm font-semibold text-amber-800">仮登録中</div>
                 <p className="mt-1 text-sm text-amber-700">
@@ -210,15 +216,24 @@ export default function InsurerHomePage() {
         {/* Case summary widget */}
         {caseSummary && (
           <div className="grid gap-4 sm:grid-cols-3">
-            <Link href="/insurer/cases?status=open" className="rounded-2xl border border-border-default bg-[var(--bg-surface)] p-5 shadow-sm hover:shadow-md transition">
+            <Link
+              href="/insurer/cases?status=open"
+              className="rounded-2xl border border-border-default bg-[var(--bg-surface)] p-5 shadow-sm hover:shadow-md transition"
+            >
               <p className="text-3xl font-bold text-blue-600">{caseSummary.open_count}</p>
               <p className="mt-1 text-sm text-muted">未対応案件</p>
             </Link>
-            <Link href="/insurer/cases?status=in_progress" className="rounded-2xl border border-border-default bg-[var(--bg-surface)] p-5 shadow-sm hover:shadow-md transition">
+            <Link
+              href="/insurer/cases?status=in_progress"
+              className="rounded-2xl border border-border-default bg-[var(--bg-surface)] p-5 shadow-sm hover:shadow-md transition"
+            >
               <p className="text-3xl font-bold text-amber-600">{caseSummary.active_count}</p>
               <p className="mt-1 text-sm text-muted">対応中案件</p>
             </Link>
-            <Link href="/insurer/cases" className="rounded-2xl border border-border-default bg-[var(--bg-surface)] p-5 shadow-sm hover:shadow-md transition">
+            <Link
+              href="/insurer/cases"
+              className="rounded-2xl border border-border-default bg-[var(--bg-surface)] p-5 shadow-sm hover:shadow-md transition"
+            >
               <p className="text-3xl font-bold text-primary">{caseSummary.today_count}</p>
               <p className="mt-1 text-sm text-muted">今日更新</p>
             </Link>
@@ -241,11 +256,7 @@ export default function InsurerHomePage() {
                 placeholder="public_id / 顧客名 / 車両型式 / ナンバー"
                 className="flex-1 rounded-xl border border-border-default bg-[var(--bg-inset)] px-4 py-2.5 text-sm focus:bg-[var(--bg-surface)] focus:outline-none focus:ring-2 focus:ring-border-default"
               />
-              <button
-                onClick={runSearch}
-                disabled={busy}
-                className="btn-primary disabled:opacity-50"
-              >
+              <button onClick={runSearch} disabled={busy} className="btn-primary disabled:opacity-50">
                 {busy ? "検索中..." : "検索"}
               </button>
               {isPending ? (
@@ -299,11 +310,7 @@ export default function InsurerHomePage() {
             </div>
           </div>
 
-          {err && (
-            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              {err}
-            </div>
-          )}
+          {err && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{err}</div>}
         </div>
 
         {/* Results */}
@@ -341,11 +348,12 @@ export default function InsurerHomePage() {
                       {[r.vehicle_model, r.vehicle_plate].filter(Boolean).join(" / ") || "-"}
                     </td>
                     <td className="p-3">
-                      {(() => { const s = getStatusEntry(CERTIFICATE_STATUS_MAP, r.status); return <Badge variant={s.variant}>{s.label}</Badge>; })()}
+                      {(() => {
+                        const s = getStatusEntry(CERTIFICATE_STATUS_MAP, r.status);
+                        return <Badge variant={s.variant}>{s.label}</Badge>;
+                      })()}
                     </td>
-                    <td className="p-3 whitespace-nowrap text-secondary">
-                      {formatDateTime(r.created_at)}
-                    </td>
+                    <td className="p-3 whitespace-nowrap text-secondary">{formatDateTime(r.created_at)}</td>
                     <td className="p-3">
                       <a
                         href={`/insurer/c/${encodeURIComponent(r.public_id)}`}
@@ -367,7 +375,6 @@ export default function InsurerHomePage() {
             </table>
           </div>
         </section>
-
       </div>
     </div>
   );

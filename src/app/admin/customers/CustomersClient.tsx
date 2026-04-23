@@ -68,11 +68,16 @@ export default function CustomersClient() {
     return `/api/admin/customers?${params.toString()}`;
   })();
 
-  const { data, error: swrError, isLoading: loading, mutate } = useSWR<CustomersData>(
-    swrKey,
-    fetcher,
-    { revalidateOnFocus: true, keepPreviousData: true, dedupingInterval: 2000 },
-  );
+  const {
+    data,
+    error: swrError,
+    isLoading: loading,
+    mutate,
+  } = useSWR<CustomersData>(swrKey, fetcher, {
+    revalidateOnFocus: true,
+    keepPreviousData: true,
+    dedupingInterval: 2000,
+  });
 
   const err = swrError ? (swrError.message ?? "読み込みに失敗しました") : null;
 
@@ -105,7 +110,7 @@ export default function CustomersClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(form),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setForm({ ...emptyForm });
       setShowForm(false);
@@ -140,7 +145,7 @@ export default function CustomersClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: editingId, ...editForm }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setEditingId(null);
       mutate();
@@ -160,7 +165,7 @@ export default function CustomersClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       mutate();
     } catch (e: any) {
@@ -180,7 +185,10 @@ export default function CustomersClient() {
           <button
             type="button"
             className="btn-primary"
-            onClick={() => { setShowForm(!showForm); setSaveMsg(null); }}
+            onClick={() => {
+              setShowForm(!showForm);
+              setSaveMsg(null);
+            }}
           >
             {showForm ? "閉じる" : "新規追加"}
           </button>
@@ -221,26 +229,30 @@ export default function CustomersClient() {
                   placeholder="検索キーワード"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleSearch(); }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSearch();
+                  }}
                   className="input-field"
                 />
               </div>
-              <button type="button" className="btn-secondary" onClick={handleSearch}>検索</button>
+              <button type="button" className="btn-secondary" onClick={handleSearch}>
+                検索
+              </button>
               <button
                 type="button"
                 className="btn-ghost"
-                onClick={() => { setSearch(""); setActiveSearch(""); setPage(1); }}
+                onClick={() => {
+                  setSearch("");
+                  setActiveSearch("");
+                  setPage(1);
+                }}
               >
                 クリア
               </button>
             </div>
           </section>
 
-          {saveMsg && (
-            <div className={`text-sm ${saveMsg.ok ? "text-success" : "text-danger"}`}>
-              {saveMsg.text}
-            </div>
-          )}
+          {saveMsg && <div className={`text-sm ${saveMsg.ok ? "text-success" : "text-danger"}`}>{saveMsg.text}</div>}
 
           {/* Add Form */}
           {showForm && (
@@ -251,7 +263,9 @@ export default function CustomersClient() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs text-muted">顧客名 <span className="text-danger">*</span></label>
+                  <label className="text-xs text-muted">
+                    顧客名 <span className="text-danger">*</span>
+                  </label>
                   <input
                     type="text"
                     value={form.name}
@@ -332,7 +346,10 @@ export default function CustomersClient() {
                 <button
                   type="button"
                   className="btn-ghost"
-                  onClick={() => { setShowForm(false); setForm({ ...emptyForm }); }}
+                  onClick={() => {
+                    setShowForm(false);
+                    setForm({ ...emptyForm });
+                  }}
                 >
                   キャンセル
                 </button>
@@ -349,7 +366,9 @@ export default function CustomersClient() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs text-muted">顧客名 <span className="text-danger">*</span></label>
+                  <label className="text-xs text-muted">
+                    顧客名 <span className="text-danger">*</span>
+                  </label>
                   <input
                     type="text"
                     value={editForm.name}
@@ -421,11 +440,7 @@ export default function CustomersClient() {
                 >
                   {editSaving ? "更新中…" : "更新"}
                 </button>
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  onClick={() => setEditingId(null)}
-                >
+                <button type="button" className="btn-ghost" onClick={() => setEditingId(null)}>
                   キャンセル
                 </button>
               </div>
@@ -442,9 +457,15 @@ export default function CustomersClient() {
                 <thead className="bg-surface-hover">
                   <tr>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">顧客名</th>
-                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">フリガナ</th>
-                    <th className="hidden md:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">メール</th>
-                    <th className="hidden md:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">電話番号</th>
+                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      フリガナ
+                    </th>
+                    <th className="hidden md:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      メール
+                    </th>
+                    <th className="hidden md:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      電話番号
+                    </th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">証明書</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">登録日</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">操作</th>
@@ -465,30 +486,18 @@ export default function CustomersClient() {
                       <td className="hidden md:table-cell px-5 py-3.5 text-secondary">{c.email ?? "-"}</td>
                       <td className="hidden md:table-cell px-5 py-3.5 text-secondary">{c.phone ?? "-"}</td>
                       <td className="px-5 py-3.5">
-                        <Badge variant={c.certificates_count > 0 ? "info" : "default"}>
-                          {c.certificates_count}
-                        </Badge>
+                        <Badge variant={c.certificates_count > 0 ? "info" : "default"}>{c.certificates_count}</Badge>
                       </td>
-                      <td className="px-5 py-3.5 whitespace-nowrap text-secondary">
-                        {formatDate(c.created_at)}
-                      </td>
+                      <td className="px-5 py-3.5 whitespace-nowrap text-secondary">{formatDate(c.created_at)}</td>
                       <td className="px-5 py-3.5">
                         <div className="flex gap-2">
-                          <button
-                            type="button"
-                            className="btn-ghost px-3 py-1 text-xs"
-                            onClick={() => startEdit(c)}
-                          >
+                          <button type="button" className="btn-ghost px-3 py-1 text-xs" onClick={() => startEdit(c)}>
                             編集
                           </button>
                           <button
                             type="button"
                             className="btn-danger px-3 py-1 text-xs"
-                            disabled={
-                              deletingId === c.id ||
-                              c.certificates_count > 0 ||
-                              c.invoices_count > 0
-                            }
+                            disabled={deletingId === c.id || c.certificates_count > 0 || c.invoices_count > 0}
                             title={
                               c.certificates_count > 0 || c.invoices_count > 0
                                 ? "証明書・請求書が紐付いているため削除できません"

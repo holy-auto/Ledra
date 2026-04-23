@@ -99,7 +99,7 @@ export default function AdminTrainingClient() {
     setErr(null);
     try {
       const res = await fetch("/api/admin/agent-training", { cache: "no-store" });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setCourses(j.courses ?? []);
     } catch (e: unknown) {
@@ -174,7 +174,7 @@ export default function AdminTrainingClient() {
           is_published: form.is_published,
         }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       closeForm();
       setSaveMsg({ text: `コース「${j.course?.title ?? form.title}」を登録しました`, ok: true });
@@ -209,7 +209,7 @@ export default function AdminTrainingClient() {
           is_published: form.is_published,
         }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       closeForm();
       setSaveMsg({ text: "コースを更新しました", ok: true });
@@ -230,7 +230,7 @@ export default function AdminTrainingClient() {
       const res = await fetch(`/api/admin/agent-training/${id}`, {
         method: "DELETE",
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setSaveMsg({ text: "コースを削除しました", ok: true });
       await fetchCourses();
@@ -514,9 +514,7 @@ export default function AdminTrainingClient() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-primary">{course.title}</span>
                           {!course.content_url && (
-                            <span className="rounded-full bg-warning-dim text-warning-text">
-                              URL未設定
-                            </span>
+                            <span className="rounded-full bg-warning-dim text-warning-text">URL未設定</span>
                           )}
                         </div>
                         {course.description && (

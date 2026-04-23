@@ -161,8 +161,18 @@ export async function validateSession(tenantId: string, token: string) {
   return data as { email: string; phone_last4_hash: string; phone_last4: string | null };
 }
 
-export async function listCertificatesForCustomer(tenantId: string, phoneHash: string, phoneLast4?: string) {
-  const selectCols = "public_id, customer_name, vehicle_info_json, created_at, status";
+export async function listCertificatesForCustomer(
+  tenantId: string,
+  phoneHash: string,
+  phoneLast4?: string,
+  /**
+   * セッションから取得した email。渡された場合、certificates.customer_email
+   * との一致で絞り込む (同一テナントで末尾4桁が衝突した別顧客のデータを
+   * 返さないための防御層)。
+   */
+  email?: string,
+) {
+  const selectCols = "public_id, customer_name, customer_email, vehicle_info_json, created_at, status";
   const db = admin();
 
   // void以外の全ステータスを取得（active・その他を含む）
@@ -181,12 +191,23 @@ export async function listCertificatesForCustomer(tenantId: string, phoneHash: s
   }
 
   const { data } = await query;
-  return data ?? [];
+  if (!data) return [];
+
+  // email が渡されている場合、cert 側 email と一致するもののみ返す。
+  // cert 側が null のレガシーデータは除外しない (後方互換)。
+  if (email) {
+    const normalized = normalizeEmail(email);
+    return data.filter((c) => {
+      const certEmail = c.customer_email ? normalizeEmail(c.customer_email) : null;
+      return certEmail === null || certEmail === normalized;
+    });
+  }
+  return data;
 }
 
 /** 顧客の施工履歴（vehicle_histories）を取得 */
-export async function listHistoryForCustomer(tenantId: string, phoneHash: string, phoneLast4?: string) {
-  const certs = await listCertificatesForCustomer(tenantId, phoneHash, phoneLast4);
+export async function listHistoryForCustomer(tenantId: string, phoneHash: string, phoneLast4?: string, email?: string) {
+  const certs = await listCertificatesForCustomer(tenantId, phoneHash, phoneLast4, email);
   if (!certs || certs.length === 0) return [];
 
   const certPublicIds = certs.map((c: { public_id: string }) => c.public_id);
@@ -212,8 +233,13 @@ export async function listHistoryForCustomer(tenantId: string, phoneHash: string
 }
 
 /** 顧客の今後の予約を取得 */
-export async function listReservationsForCustomer(tenantId: string, phoneHash: string, phoneLast4?: string) {
-  const certs = await listCertificatesForCustomer(tenantId, phoneHash, phoneLast4);
+export async function listReservationsForCustomer(
+  tenantId: string,
+  phoneHash: string,
+  phoneLast4?: string,
+  email?: string,
+) {
+  const certs = await listCertificatesForCustomer(tenantId, phoneHash, phoneLast4, email);
   if (!certs || certs.length === 0) return [];
 
   const customerNames = [
@@ -253,8 +279,8 @@ export async function listReservationsForCustomer(tenantId: string, phoneHash: s
 }
 
 /** 顧客プロフィール情報を取得 */
-export async function getCustomerProfile(tenantId: string, phoneHash: string, phoneLast4?: string) {
-  const certs = await listCertificatesForCustomer(tenantId, phoneHash, phoneLast4);
+export async function getCustomerProfile(tenantId: string, phoneHash: string, phoneLast4?: string, email?: string) {
+  const certs = await listCertificatesForCustomer(tenantId, phoneHash, phoneLast4, email);
   if (!certs || certs.length === 0) return null;
 
   const customerNames = [

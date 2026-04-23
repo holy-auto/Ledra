@@ -3,7 +3,7 @@
 import { useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-export default function BillingGate() {
+export default function BillingGate(): null {
   const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
@@ -29,7 +29,9 @@ export default function BillingGate() {
               redirectToBilling();
               return;
             }
-          } catch { /* ignore corrupt cache */ }
+          } catch {
+            /* ignore corrupt cache */
+          }
         }
 
         // No cache or expired — fetch and block
@@ -49,7 +51,7 @@ export default function BillingGate() {
         });
 
         if (!res.ok) return;
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
 
         sessionStorage.setItem("ledra_billing_state", JSON.stringify({ data: j, ts: Date.now() }));
 

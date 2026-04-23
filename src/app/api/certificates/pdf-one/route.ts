@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
     const deny = await enforceBilling(req, { minPlan: "free", action: "pdf_one", tenantId: caller.tenantId });
     if (deny) return deny as any;
 
-    const body = await req.json().catch(() => null);
+    const body = await req.json().catch((): null => null);
     const id = pickId(body);
 
     if (!id) {

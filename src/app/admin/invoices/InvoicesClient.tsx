@@ -205,7 +205,7 @@ export default function InvoicesClient() {
   const fetchCustomers = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/customers", { cache: "no-store" });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (res.ok && j?.customers) {
         setCustomers(j.customers.map((c: any) => ({ id: c.id, name: c.name })));
       }
@@ -215,7 +215,7 @@ export default function InvoicesClient() {
   const fetchVehicles = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/vehicles", { cache: "no-store" });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (res.ok && j?.vehicles) {
         setVehicles(
           j.vehicles.map((v: any) => ({
@@ -236,7 +236,7 @@ export default function InvoicesClient() {
   const fetchMenuItems = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/menu-items?active_only=true", { cache: "no-store" });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (res.ok && j?.items) {
         setMenuItems(
           j.items.map((m: any) => ({
@@ -289,7 +289,7 @@ export default function InvoicesClient() {
       const res = await fetch(`/api/admin/invoices?action=certificates&customer_id=${encodeURIComponent(customerId)}`, {
         cache: "no-store",
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (res.ok && j?.certificates) {
         setCertificates(j.certificates);
       } else {
@@ -415,7 +415,7 @@ export default function InvoicesClient() {
               : null,
         }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setShowForm(false);
       setFormCustomerId("");
@@ -450,7 +450,7 @@ export default function InvoicesClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       mutate();
     } catch (e: any) {
@@ -577,9 +577,7 @@ export default function InvoicesClient() {
             </div>
           </section>
 
-          {saveMsg && (
-            <div className={`text-sm ${saveMsg.ok ? "text-success" : "text-red-500"}`}>{saveMsg.text}</div>
-          )}
+          {saveMsg && <div className={`text-sm ${saveMsg.ok ? "text-success" : "text-red-500"}`}>{saveMsg.text}</div>}
 
           {/* Create Form */}
           {showForm && (

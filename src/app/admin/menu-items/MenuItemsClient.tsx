@@ -28,11 +28,16 @@ type MenuItemsData = {
 
 export default function MenuItemsClient() {
   // SWR for main data
-  const { data, error: swrError, isLoading: loading, mutate } = useSWR<MenuItemsData>(
-    "/api/admin/menu-items",
-    fetcher,
-    { revalidateOnFocus: false, keepPreviousData: true, dedupingInterval: 2000 },
-  );
+  const {
+    data,
+    error: swrError,
+    isLoading: loading,
+    mutate,
+  } = useSWR<MenuItemsData>("/api/admin/menu-items", fetcher, {
+    revalidateOnFocus: false,
+    keepPreviousData: true,
+    dedupingInterval: 2000,
+  });
 
   const err = swrError ? (swrError.message ?? "読み込みに失敗しました") : null;
 
@@ -80,7 +85,7 @@ export default function MenuItemsClient() {
           tax_category: parseInt(formTaxCategory, 10),
         }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setShowForm(false);
       setFormName("");
@@ -125,7 +130,7 @@ export default function MenuItemsClient() {
           tax_category: parseInt(editTaxCategory, 10),
         }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setEditingId(null);
       setSaveMsg({ text: "品目を更新しました", ok: true });
@@ -148,7 +153,7 @@ export default function MenuItemsClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setSaveMsg({ text: "品目を無効化しました", ok: true });
       mutate();
@@ -182,7 +187,7 @@ export default function MenuItemsClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action: "csv_import", csv: csvText }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setCsvText("");
       setCsvMsg({ text: j.message ?? "CSVインポートが完了しました", ok: true });
@@ -208,14 +213,20 @@ export default function MenuItemsClient() {
             <button
               type="button"
               className="btn-secondary"
-              onClick={() => { setShowCsv(!showCsv); setCsvMsg(null); }}
+              onClick={() => {
+                setShowCsv(!showCsv);
+                setCsvMsg(null);
+              }}
             >
               {showCsv ? "閉じる" : "CSVインポート"}
             </button>
             <button
               type="button"
               className="btn-primary"
-              onClick={() => { setShowForm(!showForm); setSaveMsg(null); }}
+              onClick={() => {
+                setShowForm(!showForm);
+                setSaveMsg(null);
+              }}
             >
               {showForm ? "閉じる" : "新規登録"}
             </button>
@@ -237,11 +248,7 @@ export default function MenuItemsClient() {
             </div>
           </section>
 
-          {saveMsg && (
-            <div className={`text-sm ${saveMsg.ok ? "text-success" : "text-danger"}`}>
-              {saveMsg.text}
-            </div>
-          )}
+          {saveMsg && <div className={`text-sm ${saveMsg.ok ? "text-success" : "text-danger"}`}>{saveMsg.text}</div>}
 
           {/* CSV Import */}
           {showCsv && (
@@ -258,11 +265,14 @@ export default function MenuItemsClient() {
                   type="button"
                   className="btn-ghost text-xs px-3 py-1"
                   onClick={() => {
-                    const sample = "品目名,説明,単価,税率区分\nガラスコーティング,ボディ全面ガラスコーティング施工,55000,10\nPPFフィルム施工,フロントバンパーPPF貼付,88000,10\nヘッドライトコーティング,ヘッドライト黄ばみ除去+コーティング,15000,10\nインテリアコーティング,本革シートコーティング,35000,10\nホイールコーティング,4本セット,12000,10\nウィンドウフィルム施工,フロント3面,25000,10\n鈑金塗装,バンパー修理塗装,45000,10\n証明書発行手数料,施工証明書の発行,3300,10\nNFCタグ取付,NFCタグ1枚取付,1100,10\n消耗品,コーティング剤等消耗品,2200,10";
+                    const sample =
+                      "品目名,説明,単価,税率区分\nガラスコーティング,ボディ全面ガラスコーティング施工,55000,10\nPPFフィルム施工,フロントバンパーPPF貼付,88000,10\nヘッドライトコーティング,ヘッドライト黄ばみ除去+コーティング,15000,10\nインテリアコーティング,本革シートコーティング,35000,10\nホイールコーティング,4本セット,12000,10\nウィンドウフィルム施工,フロント3面,25000,10\n鈑金塗装,バンパー修理塗装,45000,10\n証明書発行手数料,施工証明書の発行,3300,10\nNFCタグ取付,NFCタグ1枚取付,1100,10\n消耗品,コーティング剤等消耗品,2200,10";
                     const blob = new Blob(["\uFEFF" + sample], { type: "text/csv;charset=utf-8" });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement("a");
-                    a.href = url; a.download = "ledra_品目マスタ_見本.csv"; a.click();
+                    a.href = url;
+                    a.download = "ledra_品目マスタ_見本.csv";
+                    a.click();
                     URL.revokeObjectURL(url);
                   }}
                 >
@@ -291,11 +301,7 @@ export default function MenuItemsClient() {
                   <span className="text-xs text-muted">またはテキストエリアに直接貼り付け</span>
                 </div>
               </div>
-              {csvMsg && (
-                <div className={`text-sm ${csvMsg.ok ? "text-success" : "text-danger"}`}>
-                  {csvMsg.text}
-                </div>
-              )}
+              {csvMsg && <div className={`text-sm ${csvMsg.ok ? "text-success" : "text-danger"}`}>{csvMsg.text}</div>}
               <div className="flex gap-3">
                 <button
                   type="button"
@@ -308,7 +314,11 @@ export default function MenuItemsClient() {
                 <button
                   type="button"
                   className="btn-ghost"
-                  onClick={() => { setShowCsv(false); setCsvText(""); setCsvMsg(null); }}
+                  onClick={() => {
+                    setShowCsv(false);
+                    setCsvText("");
+                    setCsvMsg(null);
+                  }}
                 >
                   キャンセル
                 </button>
@@ -383,7 +393,9 @@ export default function MenuItemsClient() {
                 <button
                   type="button"
                   className="btn-ghost"
-                  onClick={() => { setShowForm(false); }}
+                  onClick={() => {
+                    setShowForm(false);
+                  }}
                 >
                   キャンセル
                 </button>
@@ -402,10 +414,16 @@ export default function MenuItemsClient() {
                 <thead className="bg-surface-hover">
                   <tr>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">品目名</th>
-                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">説明</th>
+                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      説明
+                    </th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">単価</th>
-                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">税率</th>
-                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">状態</th>
+                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      税率
+                    </th>
+                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      状態
+                    </th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">操作</th>
                   </tr>
                 </thead>
@@ -465,11 +483,7 @@ export default function MenuItemsClient() {
                               >
                                 {editSaving ? "保存中…" : "保存"}
                               </button>
-                              <button
-                                type="button"
-                                className="btn-ghost px-3 py-1 text-xs"
-                                onClick={cancelEdit}
-                              >
+                              <button type="button" className="btn-ghost px-3 py-1 text-xs" onClick={cancelEdit}>
                                 取消
                               </button>
                             </div>

@@ -129,7 +129,7 @@ export default function ConfigurePage() {
         body: JSON.stringify({ config }),
       });
       if (!res.ok) {
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         throw new Error(j?.message ?? `HTTP ${res.status}`);
       }
       const blob = await res.blob();
@@ -298,9 +298,7 @@ export default function ConfigurePage() {
                 <option value="top-right">右上</option>
               </select>
             </label>
-            <div className="text-xs text-muted">
-              ※ PNG, JPEG, SVG, WebP（2MB以下）に対応しています。
-            </div>
+            <div className="text-xs text-muted">※ PNG, JPEG, SVG, WebP（2MB以下）に対応しています。</div>
           </div>
 
           {/* スタイル */}
@@ -377,12 +375,7 @@ export default function ConfigurePage() {
         <div className="space-y-4">
           <div className="glass-card p-4 space-y-3 sticky top-4">
             <div className="text-xs font-semibold tracking-[0.18em] text-muted">操作</div>
-            <button
-              type="button"
-              className="btn-secondary w-full"
-              disabled={previewing}
-              onClick={handlePreview}
-            >
+            <button type="button" className="btn-secondary w-full" disabled={previewing} onClick={handlePreview}>
               {previewing ? "生成中..." : "プレビュー（PDF）"}
             </button>
             <button
@@ -470,9 +463,7 @@ function LogoUploader({
               onChange={handleUpload}
             />
           </label>
-          {uploaded && (
-            <span className="text-xs text-success">アップロード済み</span>
-          )}
+          {uploaded && <span className="text-xs text-success">アップロード済み</span>}
         </div>
       </label>
       {error && <div className="text-xs text-danger">{error}</div>}

@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
     const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();
 
-    const body = await request.json().catch(() => null);
+    const body = await request.json().catch((): null => null);
     if (!body?.token || typeof body.token !== "string") {
       return apiValidationError("token is required");
     }
@@ -47,7 +47,7 @@ export async function DELETE(request: NextRequest) {
     const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();
 
-    const body = await request.json().catch(() => null);
+    const body = await request.json().catch((): null => null);
     if (!body?.token || typeof body.token !== "string") {
       return apiValidationError("token is required");
     }

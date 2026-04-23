@@ -26,12 +26,18 @@ type MembersData = {
 
 function planLabel(tier?: string | null) {
   switch (tier) {
-    case "free": return "フリー";
-    case "starter": return "スターター";
-    case "mini": return "スターター"; // 旧プラン互換
-    case "standard": return "スタンダード";
-    case "pro": return "プロ";
-    default: return tier ?? "-";
+    case "free":
+      return "フリー";
+    case "starter":
+      return "スターター";
+    case "mini":
+      return "スターター"; // 旧プラン互換
+    case "standard":
+      return "スタンダード";
+    case "pro":
+      return "プロ";
+    default:
+      return tier ?? "-";
   }
 }
 
@@ -53,7 +59,7 @@ export default function MembersClient() {
     setErr(null);
     try {
       const res = await fetch("/api/admin/members", { cache: "no-store" });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setData(j as MembersData);
     } catch (e: any) {
@@ -79,7 +85,7 @@ export default function MembersClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email: email.trim(), display_name: displayName.trim() || undefined, role: addRole }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) {
         throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
@@ -104,7 +110,7 @@ export default function MembersClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ user_id: userId }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       await fetchMembers();
     } catch (e: any) {
@@ -122,7 +128,7 @@ export default function MembersClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ user_id: userId, role: newRole }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       await fetchMembers();
     } catch (e: any) {
@@ -136,7 +142,6 @@ export default function MembersClient() {
 
   return (
     <div className="space-y-6">
-
       <PageHeader
         tag="メンバー管理"
         title="メンバー管理"
@@ -170,9 +175,7 @@ export default function MembersClient() {
           {/* Limit warning */}
           {!data.can_add && (
             <div className="glass-card glow-amber p-5">
-              <div className="text-sm font-semibold text-warning">
-                メンバー上限（{limitLabel}）に達しています
-              </div>
+              <div className="text-sm font-semibold text-warning">メンバー上限（{limitLabel}）に達しています</div>
               <p className="mt-1 text-sm text-warning/80">
                 追加するには{" "}
                 <Link className="font-medium underline" href="/admin/billing">
@@ -191,13 +194,17 @@ export default function MembersClient() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto_auto] gap-3 items-end">
               <div className="space-y-1">
-                <label className="text-xs text-muted">メールアドレス <span className="text-red-500">*</span></label>
+                <label className="text-xs text-muted">
+                  メールアドレス <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="email"
                   placeholder="example@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleAdd();
+                  }}
                   disabled={!data.can_add || adding}
                   className="input-field disabled:opacity-50"
                 />
@@ -209,7 +216,9 @@ export default function MembersClient() {
                   placeholder="山田 太郎"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleAdd();
+                  }}
                   disabled={!data.can_add || adding}
                   className="input-field disabled:opacity-50"
                 />
@@ -223,7 +232,9 @@ export default function MembersClient() {
                   className="select-field disabled:opacity-50"
                 >
                   {ASSIGNABLE_ROLES.map((r) => (
-                    <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                    <option key={r} value={r}>
+                      {ROLE_LABELS[r]}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -236,17 +247,11 @@ export default function MembersClient() {
                 {adding ? "追加中…" : "追加"}
               </button>
             </div>
-            <p className="text-xs text-muted">※ 招待メールが送信されます。ユーザーがメール内のリンクからパスワードを設定します。</p>
-            {addMsg && (
-              <div className={`text-sm ${addMsg.ok ? "text-success" : "text-danger"}`}>
-                {addMsg.text}
-              </div>
-            )}
-            {!data.can_add && (
-              <div className="text-xs text-warning">
-                上限に達しているため追加できません。
-              </div>
-            )}
+            <p className="text-xs text-muted">
+              ※ 招待メールが送信されます。ユーザーがメール内のリンクからパスワードを設定します。
+            </p>
+            {addMsg && <div className={`text-sm ${addMsg.ok ? "text-success" : "text-danger"}`}>{addMsg.text}</div>}
+            {!data.can_add && <div className="text-xs text-warning">上限に達しているため追加できません。</div>}
           </section>
 
           {/* Member list */}
@@ -259,9 +264,13 @@ export default function MembersClient() {
                 <thead className="bg-surface-hover">
                   <tr>
                     <th className="text-left px-4 py-3 text-xs font-semibold tracking-[0.12em] text-muted">名前</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold tracking-[0.12em] text-muted">メールアドレス</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      メールアドレス
+                    </th>
                     <th className="text-left px-4 py-3 text-xs font-semibold tracking-[0.12em] text-muted">ロール</th>
-                    <th className="hidden sm:table-cell text-left px-4 py-3 text-xs font-semibold tracking-[0.12em] text-muted">追加日</th>
+                    <th className="hidden sm:table-cell text-left px-4 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      追加日
+                    </th>
                     <th className="text-left px-4 py-3 text-xs font-semibold tracking-[0.12em] text-muted">操作</th>
                   </tr>
                 </thead>
@@ -274,9 +283,7 @@ export default function MembersClient() {
                           {m.is_self && <Badge variant="info">自分</Badge>}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-secondary">
-                        {m.email ?? "-"}
-                      </td>
+                      <td className="px-4 py-3 text-secondary">{m.email ?? "-"}</td>
                       <td className="px-4 py-3">
                         {m.is_self || m.role === "owner" ? (
                           <Badge variant={m.role === "owner" ? "warning" : "default"}>
@@ -290,7 +297,9 @@ export default function MembersClient() {
                             className="select-field py-1 px-2 text-xs min-w-[100px] disabled:opacity-50"
                           >
                             {ASSIGNABLE_ROLES.map((r) => (
-                              <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                              <option key={r} value={r}>
+                                {ROLE_LABELS[r]}
+                              </option>
                             ))}
                           </select>
                         )}

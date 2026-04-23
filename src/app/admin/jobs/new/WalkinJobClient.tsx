@@ -51,7 +51,7 @@ export default function WalkinJobClient() {
     (async () => {
       try {
         const res = await fetch("/api/admin/customers", { cache: "no-store" });
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         if (res.ok && j?.customers) {
           setCustomers(
             j.customers.map((c: any) => ({
@@ -81,7 +81,7 @@ export default function WalkinJobClient() {
         const res = await fetch(`/api/admin/customers?action=vehicles&customer_id=${encodeURIComponent(customerId)}`, {
           cache: "no-store",
         });
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         if (res.ok && j?.vehicles) {
           setVehicles(j.vehicles);
         }
@@ -123,7 +123,7 @@ export default function WalkinJobClient() {
           status: initialStatus, // 飛び込みなので arrived から開始
         }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok || !j?.reservation?.id) {
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }

@@ -51,7 +51,7 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
         body: JSON.stringify({ id: reservation.id, status: target }),
       });
       if (!res.ok) {
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       router.refresh();

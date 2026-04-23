@@ -47,24 +47,40 @@ const SERVICE_TYPES = [
 
 const SIZE_OPTIONS = ["SS", "S", "M", "L", "LL", "XL"];
 
-const BUDGET_OPTIONS = ["〜5万円", "5〜10万円", "10〜20万円", "20〜30万円", "30〜50万円", "50万円〜", "相談して決めたい"];
+const BUDGET_OPTIONS = [
+  "〜5万円",
+  "5〜10万円",
+  "10〜20万円",
+  "20〜30万円",
+  "30〜50万円",
+  "50万円〜",
+  "相談して決めたい",
+];
 
 const PARKING_OPTIONS = ["屋内ガレージ", "屋根付き駐車場", "屋外青空駐車", "マンション地下", "その他"];
 
 const statusLabel = (s: string) => {
   switch (s) {
-    case "draft": return "下書き";
-    case "completed": return "完了";
-    case "linked": return "連携済み";
-    default: return s;
+    case "draft":
+      return "下書き";
+    case "completed":
+      return "完了";
+    case "linked":
+      return "連携済み";
+    default:
+      return s;
   }
 };
 const statusVariant = (s: string) => {
   switch (s) {
-    case "draft": return "default" as const;
-    case "completed": return "warning" as const;
-    case "linked": return "success" as const;
-    default: return "default" as const;
+    case "draft":
+      return "default" as const;
+    case "completed":
+      return "warning" as const;
+    case "linked":
+      return "success" as const;
+    default:
+      return "default" as const;
   }
 };
 
@@ -80,13 +96,24 @@ export default function HearingClient() {
 
   // Form state
   const [form, setForm] = useState({
-    customer_name: "", customer_phone: "", customer_email: "",
-    vehicle_maker: "", vehicle_model: "", vehicle_year: "",
-    vehicle_plate: "", vehicle_color: "", vehicle_vin: "",
-    service_type: "", vehicle_size: "",
-    coating_history: "", desired_menu: "", budget_range: "",
-    concern_areas: "", scratches_dents: "",
-    parking_environment: "", usage_frequency: "",
+    customer_name: "",
+    customer_phone: "",
+    customer_email: "",
+    vehicle_maker: "",
+    vehicle_model: "",
+    vehicle_year: "",
+    vehicle_plate: "",
+    vehicle_color: "",
+    vehicle_vin: "",
+    service_type: "",
+    vehicle_size: "",
+    coating_history: "",
+    desired_menu: "",
+    budget_range: "",
+    concern_areas: "",
+    scratches_dents: "",
+    parking_environment: "",
+    usage_frequency: "",
     additional_requests: "",
   });
 
@@ -95,9 +122,11 @@ export default function HearingClient() {
   const fetchHearings = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/hearings", { cache: "no-store" });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       setHearings(j?.hearings ?? []);
-    } catch { setHearings([]); }
+    } catch {
+      setHearings([]);
+    }
   }, []);
 
   useEffect(() => {
@@ -110,7 +139,10 @@ export default function HearingClient() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.customer_name.trim()) { alert("お客様名は必須です"); return; }
+    if (!form.customer_name.trim()) {
+      alert("お客様名は必須です");
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch("/api/admin/hearings", {
@@ -118,23 +150,36 @@ export default function HearingClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...form, vehicle_year: form.vehicle_year ? Number(form.vehicle_year) : null }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? "保存に失敗しました");
       setShowForm(false);
       setForm({
-        customer_name: "", customer_phone: "", customer_email: "",
-        vehicle_maker: "", vehicle_model: "", vehicle_year: "",
-        vehicle_plate: "", vehicle_color: "", vehicle_vin: "",
-        service_type: "", vehicle_size: "",
-        coating_history: "", desired_menu: "", budget_range: "",
-        concern_areas: "", scratches_dents: "",
-        parking_environment: "", usage_frequency: "",
+        customer_name: "",
+        customer_phone: "",
+        customer_email: "",
+        vehicle_maker: "",
+        vehicle_model: "",
+        vehicle_year: "",
+        vehicle_plate: "",
+        vehicle_color: "",
+        vehicle_vin: "",
+        service_type: "",
+        vehicle_size: "",
+        coating_history: "",
+        desired_menu: "",
+        budget_range: "",
+        concern_areas: "",
+        scratches_dents: "",
+        parking_environment: "",
+        usage_frequency: "",
         additional_requests: "",
       });
       await fetchHearings();
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "保存に失敗しました");
-    } finally { setSaving(false); }
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleLink = async (hearingId: string) => {
@@ -146,7 +191,7 @@ export default function HearingClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: hearingId, action: "link_customer" }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? "連携に失敗しました");
       await fetchHearings();
       // 連携後、証明書作成に遷移するかリロード
@@ -155,10 +200,13 @@ export default function HearingClient() {
       }
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "連携に失敗しました");
-    } finally { setLinking(null); }
+    } finally {
+      setLinking(null);
+    }
   };
 
-  const inputCls = "w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-accent/40";
+  const inputCls =
+    "w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-accent/40";
   const labelCls = "text-xs font-medium text-muted";
   const sectionCls = "space-y-4";
 
@@ -181,58 +229,119 @@ export default function HearingClient() {
 
           {/* お客様情報 */}
           <fieldset className={sectionCls}>
-            <legend className="text-sm font-semibold text-primary border-b border-border pb-2 mb-3 w-full">👤 お客様情報</legend>
+            <legend className="text-sm font-semibold text-primary border-b border-border pb-2 mb-3 w-full">
+              👤 お客様情報
+            </legend>
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-1">
                 <label className={labelCls}>お名前 *</label>
-                <input className={inputCls} value={form.customer_name} onChange={(e) => setField("customer_name", e.target.value)} required placeholder="山田 太郎" />
+                <input
+                  className={inputCls}
+                  value={form.customer_name}
+                  onChange={(e) => setField("customer_name", e.target.value)}
+                  required
+                  placeholder="山田 太郎"
+                />
               </div>
               <div className="space-y-1">
                 <label className={labelCls}>電話番号</label>
-                <input className={inputCls} type="tel" value={form.customer_phone} onChange={(e) => setField("customer_phone", e.target.value)} placeholder="090-1234-5678" />
+                <input
+                  className={inputCls}
+                  type="tel"
+                  value={form.customer_phone}
+                  onChange={(e) => setField("customer_phone", e.target.value)}
+                  placeholder="090-1234-5678"
+                />
               </div>
               <div className="space-y-1">
                 <label className={labelCls}>メールアドレス</label>
-                <input className={inputCls} type="email" value={form.customer_email} onChange={(e) => setField("customer_email", e.target.value)} placeholder="example@email.com" />
+                <input
+                  className={inputCls}
+                  type="email"
+                  value={form.customer_email}
+                  onChange={(e) => setField("customer_email", e.target.value)}
+                  placeholder="example@email.com"
+                />
               </div>
             </div>
           </fieldset>
 
           {/* 車両情報 */}
           <fieldset className={sectionCls}>
-            <legend className="text-sm font-semibold text-primary border-b border-border pb-2 mb-3 w-full">🚗 車両情報</legend>
+            <legend className="text-sm font-semibold text-primary border-b border-border pb-2 mb-3 w-full">
+              🚗 車両情報
+            </legend>
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-1">
                 <label className={labelCls}>メーカー</label>
-                <input className={inputCls} value={form.vehicle_maker} onChange={(e) => setField("vehicle_maker", e.target.value)} placeholder="トヨタ" />
+                <input
+                  className={inputCls}
+                  value={form.vehicle_maker}
+                  onChange={(e) => setField("vehicle_maker", e.target.value)}
+                  placeholder="トヨタ"
+                />
               </div>
               <div className="space-y-1">
                 <label className={labelCls}>車種</label>
-                <input className={inputCls} value={form.vehicle_model} onChange={(e) => setField("vehicle_model", e.target.value)} placeholder="アルファード" />
+                <input
+                  className={inputCls}
+                  value={form.vehicle_model}
+                  onChange={(e) => setField("vehicle_model", e.target.value)}
+                  placeholder="アルファード"
+                />
               </div>
               <div className="space-y-1">
                 <label className={labelCls}>年式</label>
-                <input className={inputCls} type="number" value={form.vehicle_year} onChange={(e) => setField("vehicle_year", e.target.value)} placeholder="2024" />
+                <input
+                  className={inputCls}
+                  type="number"
+                  value={form.vehicle_year}
+                  onChange={(e) => setField("vehicle_year", e.target.value)}
+                  placeholder="2024"
+                />
               </div>
               <div className="space-y-1">
                 <label className={labelCls}>ナンバー</label>
-                <input className={inputCls} value={form.vehicle_plate} onChange={(e) => setField("vehicle_plate", e.target.value)} placeholder="品川 300 あ 12-34" />
+                <input
+                  className={inputCls}
+                  value={form.vehicle_plate}
+                  onChange={(e) => setField("vehicle_plate", e.target.value)}
+                  placeholder="品川 300 あ 12-34"
+                />
               </div>
               <div className="space-y-1">
                 <label className={labelCls}>ボディカラー</label>
-                <input className={inputCls} value={form.vehicle_color} onChange={(e) => setField("vehicle_color", e.target.value)} placeholder="パールホワイト" />
+                <input
+                  className={inputCls}
+                  value={form.vehicle_color}
+                  onChange={(e) => setField("vehicle_color", e.target.value)}
+                  placeholder="パールホワイト"
+                />
               </div>
               <div className="space-y-1">
                 <label className={labelCls}>車台番号</label>
-                <input className={inputCls} value={form.vehicle_vin} onChange={(e) => setField("vehicle_vin", e.target.value)} placeholder="JTEBH9FJ..." />
+                <input
+                  className={inputCls}
+                  value={form.vehicle_vin}
+                  onChange={(e) => setField("vehicle_vin", e.target.value)}
+                  placeholder="JTEBH9FJ..."
+                />
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1">
                 <label className={labelCls}>サイズ分類</label>
-                <select className={inputCls} value={form.vehicle_size} onChange={(e) => setField("vehicle_size", e.target.value)}>
+                <select
+                  className={inputCls}
+                  value={form.vehicle_size}
+                  onChange={(e) => setField("vehicle_size", e.target.value)}
+                >
                   <option value="">選択してください</option>
-                  {SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                  {SIZE_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -240,70 +349,132 @@ export default function HearingClient() {
 
           {/* 施工内容 */}
           <fieldset className={sectionCls}>
-            <legend className="text-sm font-semibold text-primary border-b border-border pb-2 mb-3 w-full">🔧 施工内容</legend>
+            <legend className="text-sm font-semibold text-primary border-b border-border pb-2 mb-3 w-full">
+              🔧 施工内容
+            </legend>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1">
                 <label className={labelCls}>施工タイプ</label>
-                <select className={inputCls} value={form.service_type} onChange={(e) => setField("service_type", e.target.value)}>
+                <select
+                  className={inputCls}
+                  value={form.service_type}
+                  onChange={(e) => setField("service_type", e.target.value)}
+                >
                   <option value="">選択してください</option>
-                  {SERVICE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  {SERVICE_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="space-y-1">
                 <label className={labelCls}>ご予算</label>
-                <select className={inputCls} value={form.budget_range} onChange={(e) => setField("budget_range", e.target.value)}>
+                <select
+                  className={inputCls}
+                  value={form.budget_range}
+                  onChange={(e) => setField("budget_range", e.target.value)}
+                >
                   <option value="">選択してください</option>
-                  {BUDGET_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
+                  {BUDGET_OPTIONS.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
             <div className="space-y-1">
               <label className={labelCls}>希望メニュー・施工内容</label>
-              <textarea className={inputCls + " min-h-[80px]"} value={form.desired_menu} onChange={(e) => setField("desired_menu", e.target.value)} placeholder="ガラスコーティング、ホイールコーティングなど" />
+              <textarea
+                className={inputCls + " min-h-[80px]"}
+                value={form.desired_menu}
+                onChange={(e) => setField("desired_menu", e.target.value)}
+                placeholder="ガラスコーティング、ホイールコーティングなど"
+              />
             </div>
             <div className="space-y-1">
               <label className={labelCls}>過去の施工歴</label>
-              <textarea className={inputCls + " min-h-[60px]"} value={form.coating_history} onChange={(e) => setField("coating_history", e.target.value)} placeholder="例: 新車購入時にディーラーコーティング済み" />
+              <textarea
+                className={inputCls + " min-h-[60px]"}
+                value={form.coating_history}
+                onChange={(e) => setField("coating_history", e.target.value)}
+                placeholder="例: 新車購入時にディーラーコーティング済み"
+              />
             </div>
           </fieldset>
 
           {/* 車両状態 */}
           <fieldset className={sectionCls}>
-            <legend className="text-sm font-semibold text-primary border-b border-border pb-2 mb-3 w-full">🔍 車両状態</legend>
+            <legend className="text-sm font-semibold text-primary border-b border-border pb-2 mb-3 w-full">
+              🔍 車両状態
+            </legend>
             <div className="space-y-1">
               <label className={labelCls}>気になる箇所</label>
-              <textarea className={inputCls + " min-h-[60px]"} value={form.concern_areas} onChange={(e) => setField("concern_areas", e.target.value)} placeholder="ボンネットの水垢、ドアの飛び石傷など" />
+              <textarea
+                className={inputCls + " min-h-[60px]"}
+                value={form.concern_areas}
+                onChange={(e) => setField("concern_areas", e.target.value)}
+                placeholder="ボンネットの水垢、ドアの飛び石傷など"
+              />
             </div>
             <div className="space-y-1">
               <label className={labelCls}>傷・凹み</label>
-              <textarea className={inputCls + " min-h-[60px]"} value={form.scratches_dents} onChange={(e) => setField("scratches_dents", e.target.value)} placeholder="右フロントフェンダーに小さな飛び石傷あり" />
+              <textarea
+                className={inputCls + " min-h-[60px]"}
+                value={form.scratches_dents}
+                onChange={(e) => setField("scratches_dents", e.target.value)}
+                placeholder="右フロントフェンダーに小さな飛び石傷あり"
+              />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1">
                 <label className={labelCls}>駐車環境</label>
-                <select className={inputCls} value={form.parking_environment} onChange={(e) => setField("parking_environment", e.target.value)}>
+                <select
+                  className={inputCls}
+                  value={form.parking_environment}
+                  onChange={(e) => setField("parking_environment", e.target.value)}
+                >
                   <option value="">選択してください</option>
-                  {PARKING_OPTIONS.map((p) => <option key={p} value={p}>{p}</option>)}
+                  {PARKING_OPTIONS.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="space-y-1">
                 <label className={labelCls}>使用頻度</label>
-                <input className={inputCls} value={form.usage_frequency} onChange={(e) => setField("usage_frequency", e.target.value)} placeholder="通勤で毎日 / 週末のみ" />
+                <input
+                  className={inputCls}
+                  value={form.usage_frequency}
+                  onChange={(e) => setField("usage_frequency", e.target.value)}
+                  placeholder="通勤で毎日 / 週末のみ"
+                />
               </div>
             </div>
           </fieldset>
 
           {/* その他 */}
           <fieldset className={sectionCls}>
-            <legend className="text-sm font-semibold text-primary border-b border-border pb-2 mb-3 w-full">💬 その他</legend>
+            <legend className="text-sm font-semibold text-primary border-b border-border pb-2 mb-3 w-full">
+              💬 その他
+            </legend>
             <div className="space-y-1">
               <label className={labelCls}>その他のご要望</label>
-              <textarea className={inputCls + " min-h-[80px]"} value={form.additional_requests} onChange={(e) => setField("additional_requests", e.target.value)} placeholder="納車予定日、仕上がりの希望など自由にご記入ください" />
+              <textarea
+                className={inputCls + " min-h-[80px]"}
+                value={form.additional_requests}
+                onChange={(e) => setField("additional_requests", e.target.value)}
+                placeholder="納車予定日、仕上がりの希望など自由にご記入ください"
+              />
             </div>
           </fieldset>
 
           <div className="flex gap-3 justify-end pt-4 border-t border-border">
-            <button type="button" onClick={() => setShowForm(false)} className="btn-ghost">キャンセル</button>
+            <button type="button" onClick={() => setShowForm(false)} className="btn-ghost">
+              キャンセル
+            </button>
             <button type="submit" disabled={saving} className="btn-primary">
               {saving ? "保存中..." : "チェックシートを保存"}
             </button>
@@ -334,11 +505,17 @@ export default function HearingClient() {
                       </span>
                     )}
                     {h.vehicle_size && (
-                      <span className="text-[11px] font-mono text-muted bg-surface-hover px-2 py-0.5 rounded">{h.vehicle_size}</span>
+                      <span className="text-[11px] font-mono text-muted bg-surface-hover px-2 py-0.5 rounded">
+                        {h.vehicle_size}
+                      </span>
                     )}
                   </div>
                   <div className="text-xs text-muted flex gap-3 flex-wrap">
-                    {h.vehicle_maker && <span>{h.vehicle_maker} {h.vehicle_model}</span>}
+                    {h.vehicle_maker && (
+                      <span>
+                        {h.vehicle_maker} {h.vehicle_model}
+                      </span>
+                    )}
                     {h.vehicle_plate && <span>{h.vehicle_plate}</span>}
                     <span>{formatDate(h.created_at)}</span>
                   </div>
@@ -368,7 +545,10 @@ export default function HearingClient() {
                       </Link>
                     )}
                     {h.vehicle_id && (
-                      <Link href={`/admin/certificates/new?vehicle_id=${h.vehicle_id}`} className="btn-primary text-xs py-1.5 px-4">
+                      <Link
+                        href={`/admin/certificates/new?vehicle_id=${h.vehicle_id}`}
+                        className="btn-primary text-xs py-1.5 px-4"
+                      >
                         証明書発行
                       </Link>
                     )}

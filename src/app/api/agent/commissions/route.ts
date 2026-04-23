@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
       return {
         ...c,
         shop_name: ref?.shop_name ?? null,
-        agent_referrals: undefined,
+        agent_referrals: undefined as undefined,
       };
     });
 

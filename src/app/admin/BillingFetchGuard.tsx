@@ -12,7 +12,7 @@ function redirectToBilling(billingUrl: string | null) {
   window.location.href = dest.toString();
 }
 
-export default function BillingFetchGuard() {
+export default function BillingFetchGuard(): null {
   useEffect(() => {
     if ((window as any).__billingFetchGuardInstalled) return;
     (window as any).__billingFetchGuardInstalled = true;

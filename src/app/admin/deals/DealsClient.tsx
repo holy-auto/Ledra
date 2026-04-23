@@ -82,7 +82,7 @@ export default function DealsClient() {
       const params = new URLSearchParams();
       if (status && status !== "all") params.set("status", status);
       const res = await fetch(`/api/market/deals?${params.toString()}`, { cache: "no-store" });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setDeals(j?.deals ?? []);
     } catch (e: unknown) {
@@ -119,7 +119,7 @@ export default function DealsClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       await fetchDeals(statusFilter);
     } catch (e: unknown) {
@@ -143,7 +143,7 @@ export default function DealsClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ agreed_price: price }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setEditingPriceId(null);
       await fetchDeals(statusFilter);
@@ -163,7 +163,7 @@ export default function DealsClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ note: editingNoteValue || null }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setEditingNoteId(null);
       await fetchDeals(statusFilter);
@@ -177,11 +177,7 @@ export default function DealsClient() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <PageHeader
-        tag="取引"
-        title="商談管理"
-        description="商談の進捗を管理します。"
-      />
+      <PageHeader tag="取引" title="商談管理" description="商談の進捗を管理します。" />
 
       {loading && <div className="text-sm text-muted">読み込み中...</div>}
       {err && <div className="glass-card p-4 text-sm text-red-500">{err}</div>}
@@ -193,13 +189,11 @@ export default function DealsClient() {
             <div className="flex gap-4 items-end flex-wrap">
               <div className="space-y-1">
                 <label className="text-xs text-muted">ステータス</label>
-                <select
-                  className="select-field"
-                  value={statusFilter}
-                  onChange={(e) => applyFilter(e.target.value)}
-                >
+                <select className="select-field" value={statusFilter} onChange={(e) => applyFilter(e.target.value)}>
                   {STATUS_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -216,11 +210,7 @@ export default function DealsClient() {
               <div className="text-sm text-muted">{deals.length} 件</div>
             </div>
 
-            {deals.length === 0 && (
-              <div className="glass-card p-8 text-center text-muted">
-                商談がありません
-              </div>
-            )}
+            {deals.length === 0 && <div className="glass-card p-8 text-center text-muted">商談がありません</div>}
 
             <div className="space-y-3">
               {deals.map((deal) => (
@@ -231,9 +221,7 @@ export default function DealsClient() {
                       <div className="text-sm font-semibold text-primary truncate">
                         {deal.buyer_name}
                         {deal.buyer_company && (
-                          <span className="ml-2 text-xs font-normal text-secondary">
-                            {deal.buyer_company}
-                          </span>
+                          <span className="ml-2 text-xs font-normal text-secondary">{deal.buyer_company}</span>
                         )}
                       </div>
                       <div className="text-xs text-secondary mt-0.5">
@@ -241,9 +229,7 @@ export default function DealsClient() {
                       </div>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
-                      <Badge variant={statusVariant(deal.status)}>
-                        {statusLabel(deal.status)}
-                      </Badge>
+                      <Badge variant={statusVariant(deal.status)}>{statusLabel(deal.status)}</Badge>
                       <span className="text-xs text-muted">{formatDate(deal.created_at)}</span>
                     </div>
                   </div>
@@ -343,7 +329,9 @@ export default function DealsClient() {
                         <button
                           key={ns}
                           type="button"
-                          className={ns === "cancelled" ? "btn-danger px-3 py-1 text-xs" : "btn-primary px-3 py-1 text-xs"}
+                          className={
+                            ns === "cancelled" ? "btn-danger px-3 py-1 text-xs" : "btn-primary px-3 py-1 text-xs"
+                          }
                           disabled={updatingId === deal.id}
                           onClick={() => handleStatusChange(deal.id, ns)}
                         >

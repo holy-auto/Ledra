@@ -70,22 +70,45 @@ describe("checkRateLimit", () => {
 });
 
 describe("getClientIp", () => {
-  it("extracts IP from x-forwarded-for header", () => {
+  it("prefers cf-connecting-ip over other headers", () => {
+    const req = new Request("http://localhost", {
+      headers: {
+        "cf-connecting-ip": "3.3.3.3",
+        "x-forwarded-for": "1.2.3.4",
+        "x-real-ip": "2.2.2.2",
+      },
+    });
+    expect(getClientIp(req)).toBe("3.3.3.3");
+  });
+
+  it("prefers x-real-ip over x-forwarded-for when cf header absent", () => {
+    const req = new Request("http://localhost", {
+      headers: {
+        "x-forwarded-for": "1.2.3.4",
+        "x-real-ip": "2.2.2.2",
+      },
+    });
+    expect(getClientIp(req)).toBe("2.2.2.2");
+  });
+
+  it("extracts first IP from x-forwarded-for header", () => {
     const req = new Request("http://localhost", {
       headers: { "x-forwarded-for": "1.2.3.4, 5.6.7.8" },
     });
     expect(getClientIp(req)).toBe("1.2.3.4");
   });
 
-  it("falls back to x-real-ip", () => {
-    const req = new Request("http://localhost", {
-      headers: { "x-real-ip": "10.0.0.1" },
-    });
-    expect(getClientIp(req)).toBe("10.0.0.1");
+  it("returns a UA-bucketed 'unknown:...' when no IP headers", () => {
+    const req = new Request("http://localhost");
+    const id = getClientIp(req);
+    expect(id).toMatch(/^unknown:/);
   });
 
-  it("returns 'unknown' when no IP headers", () => {
-    const req = new Request("http://localhost");
-    expect(getClientIp(req)).toBe("unknown");
+  it("splits unknown into different buckets per User-Agent", () => {
+    const a = getClientIp(new Request("http://localhost", { headers: { "user-agent": "curl/8.0" } }));
+    const b = getClientIp(new Request("http://localhost", { headers: { "user-agent": "Mozilla/5.0" } }));
+    expect(a).not.toBe(b);
+    expect(a).toMatch(/^unknown:/);
+    expect(b).toMatch(/^unknown:/);
   });
 });

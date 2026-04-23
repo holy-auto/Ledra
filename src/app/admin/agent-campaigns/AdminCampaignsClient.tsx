@@ -40,20 +40,20 @@ type FormData = {
 
 const CAMPAIGN_TYPE_MAP: Record<string, { label: string; variant: BadgeVariant }> = {
   commission_boost: { label: "コミッション増額", variant: "success" },
-  bonus:           { label: "ボーナス",         variant: "info" },
-  referral_bonus:  { label: "紹介ボーナス",     variant: "violet" },
-  other:           { label: "その他",           variant: "default" },
+  bonus: { label: "ボーナス", variant: "info" },
+  referral_bonus: { label: "紹介ボーナス", variant: "violet" },
+  other: { label: "その他", variant: "default" },
 };
 
 const CAMPAIGN_TYPE_OPTIONS = [
   { value: "commission_boost", label: "コミッション増額" },
-  { value: "bonus",            label: "ボーナス" },
-  { value: "referral_bonus",   label: "紹介ボーナス" },
-  { value: "other",            label: "その他" },
+  { value: "bonus", label: "ボーナス" },
+  { value: "referral_bonus", label: "紹介ボーナス" },
+  { value: "other", label: "その他" },
 ];
 
 const TARGET_AGENTS_OPTIONS = [
-  { value: "all",      label: "全代理店" },
+  { value: "all", label: "全代理店" },
   { value: "selected", label: "選択した代理店" },
 ];
 
@@ -147,9 +147,7 @@ export default function AdminCampaignsClient() {
         banner_text: form.banner_text || null,
       };
 
-      const url = editingId
-        ? `/api/admin/agent-campaigns/${editingId}`
-        : "/api/admin/agent-campaigns";
+      const url = editingId ? `/api/admin/agent-campaigns/${editingId}` : "/api/admin/agent-campaigns";
       const method = editingId ? "PUT" : "POST";
 
       const res = await fetch(url, {
@@ -159,7 +157,7 @@ export default function AdminCampaignsClient() {
       });
 
       if (!res.ok) {
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
 
@@ -180,7 +178,7 @@ export default function AdminCampaignsClient() {
     try {
       const res = await fetch(`/api/admin/agent-campaigns/${id}`, { method: "DELETE" });
       if (!res.ok) {
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       flash("削除しました", true);
@@ -229,9 +227,7 @@ export default function AdminCampaignsClient() {
       {msg && (
         <div
           className={`rounded-2xl px-4 py-3 text-sm font-medium ${
-            msg.ok
-              ? "bg-success-dim text-success-text"
-              : "bg-danger-dim text-danger-text"
+            msg.ok ? "bg-success-dim text-success-text" : "bg-danger-dim text-danger-text"
           }`}
         >
           {msg.text}
@@ -240,9 +236,7 @@ export default function AdminCampaignsClient() {
 
       {/* Toolbar */}
       <div className="flex items-center justify-between">
-        <p className="text-sm text-secondary">
-          {loading ? "読み込み中..." : `${campaigns.length} 件`}
-        </p>
+        <p className="text-sm text-secondary">{loading ? "読み込み中..." : `${campaigns.length} 件`}</p>
         {!showForm && (
           <button
             type="button"
@@ -434,26 +428,17 @@ export default function AdminCampaignsClient() {
           {campaigns.map((c) => {
             const typeInfo = CAMPAIGN_TYPE_MAP[c.campaign_type] ?? CAMPAIGN_TYPE_MAP.other;
             return (
-              <div
-                key={c.id}
-                className="rounded-2xl border border-border-default bg-surface p-4 shadow-sm"
-              >
+              <div key={c.id} className="rounded-2xl border border-border-default bg-surface p-4 shadow-sm">
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                   {/* Left */}
                   <div className="flex-1 min-w-0 space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Badge variant={typeInfo.variant}>{typeInfo.label}</Badge>
-                      {c.is_active ? (
-                        <Badge variant="success">有効</Badge>
-                      ) : (
-                        <Badge variant="default">無効</Badge>
-                      )}
+                      {c.is_active ? <Badge variant="success">有効</Badge> : <Badge variant="default">無効</Badge>}
                       <h4 className="text-sm font-semibold text-primary truncate">{c.title}</h4>
                     </div>
                     {c.description && (
-                      <p className="text-xs text-secondary line-clamp-2 whitespace-pre-wrap">
-                        {c.description}
-                      </p>
+                      <p className="text-xs text-secondary line-clamp-2 whitespace-pre-wrap">{c.description}</p>
                     )}
                     <div className="flex items-center gap-4 text-[11px] text-tertiary flex-wrap">
                       {(c.bonus_rate != null || c.bonus_fixed != null) && (

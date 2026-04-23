@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Badge from "@/components/ui/Badge";
-import { AGENT_STATUS_MAP, AGENT_APPLICATION_STATUS_MAP, SHARED_FILE_DIRECTION_MAP, SIGNING_STATUS_MAP, getStatusEntry } from "@/lib/statusMaps";
+import {
+  AGENT_STATUS_MAP,
+  AGENT_APPLICATION_STATUS_MAP,
+  SHARED_FILE_DIRECTION_MAP,
+  SIGNING_STATUS_MAP,
+  getStatusEntry,
+} from "@/lib/statusMaps";
 import { formatDateTime, formatJpy } from "@/lib/format";
 
 type Agent = {
@@ -63,9 +69,7 @@ export default function AgentReviewClient() {
             key={t.key}
             onClick={() => setTab(t.key)}
             className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-              tab === t.key
-                ? "bg-surface-solid text-primary shadow-sm"
-                : "text-secondary hover:text-primary"
+              tab === t.key ? "bg-surface-solid text-primary shadow-sm" : "text-secondary hover:text-primary"
             }`}
           >
             {t.label}
@@ -122,7 +126,7 @@ function AgentsTab() {
         body: JSON.stringify({ status }),
       });
       if (!res.ok) {
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       setMsg(`ステータスを ${status} に更新しました`);
@@ -153,7 +157,7 @@ function AgentsTab() {
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       setMsg("コミッション設定を更新しました");
@@ -187,24 +191,16 @@ function AgentsTab() {
           <option value="active">有効</option>
           <option value="suspended">停止</option>
         </select>
-        <span className="text-sm text-muted">
-          {agents.length} 件
-        </span>
+        <span className="text-sm text-muted">{agents.length} 件</span>
       </div>
 
-      {msg && (
-        <div className="rounded-xl border border-default bg-surface-solid p-3 text-sm text-secondary">
-          {msg}
-        </div>
-      )}
+      {msg && <div className="rounded-xl border border-default bg-surface-solid p-3 text-sm text-secondary">{msg}</div>}
 
       {/* Commission Edit Modal */}
       {editingAgent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--bg-overlay)]">
           <div className="glass-card w-full max-w-md p-6 space-y-4">
-            <h3 className="text-lg font-bold text-primary">
-              コミッション設定 — {editingAgent.name}
-            </h3>
+            <h3 className="text-lg font-bold text-primary">コミッション設定 — {editingAgent.name}</h3>
 
             <div>
               <label className="text-sm text-secondary mb-1 block">報酬タイプ</label>
@@ -253,11 +249,7 @@ function AgentsTab() {
               >
                 キャンセル
               </button>
-              <button
-                onClick={updateCommission}
-                disabled={actionBusy === editingAgent.id}
-                className="btn-primary"
-              >
+              <button onClick={updateCommission} disabled={actionBusy === editingAgent.id} className="btn-primary">
                 {actionBusy === editingAgent.id ? "更新中..." : "更新"}
               </button>
             </div>
@@ -273,9 +265,7 @@ function AgentsTab() {
           ))}
         </div>
       ) : agents.length === 0 ? (
-        <div className="glass-card p-8 text-center text-muted">
-          代理店が登録されていません
-        </div>
+        <div className="glass-card p-8 text-center text-muted">代理店が登録されていません</div>
       ) : (
         <div className="glass-card overflow-hidden">
           <div className="overflow-x-auto">
@@ -298,7 +288,10 @@ function AgentsTab() {
                 {agents.map((a) => {
                   const s = getStatusEntry(AGENT_STATUS_MAP, a.status);
                   return (
-                    <tr key={a.id} className="border-t border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)]">
+                    <tr
+                      key={a.id}
+                      className="border-t border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)]"
+                    >
                       <td className="p-3">
                         <div className="font-medium text-primary">{a.name}</div>
                         {a.slug && <div className="text-xs font-mono text-muted">{a.slug}</div>}
@@ -311,10 +304,7 @@ function AgentsTab() {
                         <div className="text-xs text-muted">{a.contact_email}</div>
                       </td>
                       <td className="p-3">
-                        <button
-                          onClick={() => openCommissionEdit(a)}
-                          className="text-accent hover:underline text-sm"
-                        >
+                        <button onClick={() => openCommissionEdit(a)} className="text-accent hover:underline text-sm">
                           {a.commission_type === "percentage"
                             ? `${a.default_commission_rate}%`
                             : formatJpy(a.default_commission_fixed)}
@@ -332,9 +322,7 @@ function AgentsTab() {
                           <Badge variant="default">未設定</Badge>
                         )}
                       </td>
-                      <td className="p-3 whitespace-nowrap text-muted">
-                        {formatDateTime(a.created_at)}
-                      </td>
+                      <td className="p-3 whitespace-nowrap text-muted">{formatDateTime(a.created_at)}</td>
                       <td className="p-3">
                         <div className="flex gap-2">
                           {a.status === "active_pending_review" && (
@@ -472,16 +460,10 @@ function ApplicationsTab() {
           <option value="approved">承認済み</option>
           <option value="rejected">却下</option>
         </select>
-        <span className="text-sm text-muted">
-          {apps.length} 件
-        </span>
+        <span className="text-sm text-muted">{apps.length} 件</span>
       </div>
 
-      {msg && (
-        <div className="rounded-xl border border-default bg-surface-solid p-3 text-sm text-secondary">
-          {msg}
-        </div>
-      )}
+      {msg && <div className="rounded-xl border border-default bg-surface-solid p-3 text-sm text-secondary">{msg}</div>}
 
       {/* Reject Modal */}
       {rejectId && (
@@ -502,7 +484,10 @@ function ApplicationsTab() {
             </div>
             <div className="flex gap-3 justify-end">
               <button
-                onClick={() => { setRejectId(null); setRejectReason(""); }}
+                onClick={() => {
+                  setRejectId(null);
+                  setRejectReason("");
+                }}
                 className="rounded-xl border border-default bg-surface-solid px-4 py-2 text-sm font-medium text-secondary hover:bg-surface-hover"
               >
                 キャンセル
@@ -524,13 +509,8 @@ function ApplicationsTab() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--bg-overlay)] overflow-y-auto">
           <div className="glass-card w-full max-w-2xl m-6 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold text-primary">
-                申請詳細 — {detail.application_number}
-              </h3>
-              <button
-                onClick={() => setDetail(null)}
-                className="text-muted hover:text-primary text-xl leading-none"
-              >
+              <h3 className="text-lg font-bold text-primary">申請詳細 — {detail.application_number}</h3>
+              <button onClick={() => setDetail(null)} className="text-muted hover:text-primary text-xl leading-none">
                 &times;
               </button>
             </div>
@@ -627,7 +607,10 @@ function ApplicationsTab() {
                   </button>
                 )}
                 <button
-                  onClick={() => { setDetail(null); setRejectId(detail.id); }}
+                  onClick={() => {
+                    setDetail(null);
+                    setRejectId(detail.id);
+                  }}
                   className="btn-danger"
                 >
                   却下
@@ -653,9 +636,7 @@ function ApplicationsTab() {
           ))}
         </div>
       ) : apps.length === 0 ? (
-        <div className="glass-card p-8 text-center text-muted">
-          申請がありません
-        </div>
+        <div className="glass-card p-8 text-center text-muted">申請がありません</div>
       ) : (
         <div className="glass-card overflow-hidden">
           <div className="overflow-x-auto">
@@ -676,26 +657,22 @@ function ApplicationsTab() {
                 {apps.map((app) => {
                   const s = getStatusEntry(AGENT_APPLICATION_STATUS_MAP, app.status);
                   return (
-                    <tr key={app.id} className="border-t border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)]">
+                    <tr
+                      key={app.id}
+                      className="border-t border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)]"
+                    >
                       <td className="p-3 font-mono text-primary">{app.application_number}</td>
                       <td className="p-3 font-medium text-primary">{app.company_name}</td>
                       <td className="p-3 text-primary">{app.contact_name}</td>
                       <td className="p-3 text-muted">{app.email}</td>
-                      <td className="p-3 text-primary">
-                        {INDUSTRY_LABELS[app.industry] || app.industry || "-"}
-                      </td>
+                      <td className="p-3 text-primary">{INDUSTRY_LABELS[app.industry] || app.industry || "-"}</td>
                       <td className="p-3">
                         <Badge variant={s.variant}>{s.label}</Badge>
                       </td>
-                      <td className="p-3 whitespace-nowrap text-muted">
-                        {formatDateTime(app.created_at)}
-                      </td>
+                      <td className="p-3 whitespace-nowrap text-muted">{formatDateTime(app.created_at)}</td>
                       <td className="p-3">
                         <div className="flex gap-2">
-                          <button
-                            onClick={() => openDetail(app.id)}
-                            className="text-accent hover:underline text-xs"
-                          >
+                          <button onClick={() => openDetail(app.id)} className="text-accent hover:underline text-xs">
                             詳細
                           </button>
                           {app.status === "submitted" && (
@@ -717,7 +694,10 @@ function ApplicationsTab() {
                                 承認
                               </button>
                               <button
-                                onClick={() => { setRejectId(app.id); setRejectReason(""); }}
+                                onClick={() => {
+                                  setRejectId(app.id);
+                                  setRejectReason("");
+                                }}
                                 disabled={actionBusy === app.id}
                                 className="rounded-lg border border-red-300 bg-red-50 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-40"
                               >
@@ -767,22 +747,32 @@ function SharedFilesTab() {
         const res = await fetch("/api/admin/agents", { cache: "no-store" });
         const json = await res.json();
         if (res.ok) setAgents((json.agents ?? []).map((a: Agent) => ({ id: a.id, name: a.name })));
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     })();
   }, []);
 
   const fetchFiles = async () => {
-    if (!selectedAgent) { setFiles([]); return; }
+    if (!selectedAgent) {
+      setFiles([]);
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/agent-shared-files?agent_id=${selectedAgent}`, { cache: "no-store" });
       const json = await res.json();
       if (res.ok) setFiles(json.files ?? []);
-    } catch { /* ignore */ }
-    finally { setLoading(false); }
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { fetchFiles(); }, [selectedAgent]);
+  useEffect(() => {
+    fetchFiles();
+  }, [selectedAgent]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -796,7 +786,7 @@ function SharedFilesTab() {
     try {
       const res = await fetch("/api/admin/agent-shared-files", { method: "POST", body: fd });
       if (!res.ok) {
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         throw new Error(j?.message ?? `HTTP ${res.status}`);
       }
       setMsg("アップロードしました");
@@ -818,7 +808,9 @@ function SharedFilesTab() {
         setFiles((prev) => prev.filter((f) => f.id !== fileId));
         setMsg("削除しました");
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   };
 
   return (
@@ -833,15 +825,15 @@ function SharedFilesTab() {
           >
             <option value="">選択してください</option>
             {agents.map((a) => (
-              <option key={a.id} value={a.id}>{a.name}</option>
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
             ))}
           </select>
         </div>
       </div>
 
-      {msg && (
-        <div className="rounded-xl border border-default bg-surface-solid p-3 text-sm text-secondary">{msg}</div>
-      )}
+      {msg && <div className="rounded-xl border border-default bg-surface-solid p-3 text-sm text-secondary">{msg}</div>}
 
       {selectedAgent && (
         <div className="glass-card p-4 space-y-3">
@@ -869,7 +861,9 @@ function SharedFilesTab() {
 
       {loading ? (
         <div className="animate-pulse space-y-3">
-          {[1, 2].map((i) => <div key={i} className="h-12 rounded-2xl bg-border-subtle dark:bg-[rgba(255,255,255,0.06)]" />)}
+          {[1, 2].map((i) => (
+            <div key={i} className="h-12 rounded-2xl bg-border-subtle dark:bg-[rgba(255,255,255,0.06)]" />
+          ))}
         </div>
       ) : files.length === 0 && selectedAgent ? (
         <div className="glass-card p-8 text-center text-muted">ファイルはまだありません</div>
@@ -891,17 +885,19 @@ function SharedFilesTab() {
                 {files.map((f) => {
                   const d = getStatusEntry(SHARED_FILE_DIRECTION_MAP, f.direction);
                   return (
-                    <tr key={f.id} className="border-t border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)]">
+                    <tr
+                      key={f.id}
+                      className="border-t border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)]"
+                    >
                       <td className="p-3 font-medium text-primary truncate max-w-[200px]">{f.file_name}</td>
-                      <td className="p-3"><Badge variant={d.variant}>{d.label}</Badge></td>
+                      <td className="p-3">
+                        <Badge variant={d.variant}>{d.label}</Badge>
+                      </td>
                       <td className="p-3 text-muted">{(f.file_size / 1024).toFixed(0)} KB</td>
                       <td className="p-3 text-muted truncate max-w-[150px]">{f.note || "-"}</td>
                       <td className="p-3 whitespace-nowrap text-muted">{formatDateTime(f.created_at)}</td>
                       <td className="p-3">
-                        <button
-                          onClick={() => handleDelete(f.id)}
-                          className="text-red-500 hover:text-red-700 text-xs"
-                        >
+                        <button onClick={() => handleDelete(f.id)} className="text-red-500 hover:text-red-700 text-xs">
                           削除
                         </button>
                       </td>
@@ -940,7 +936,9 @@ const TEMPLATE_TYPES = [
 ];
 
 function ContractsTab() {
-  const [agents, setAgents] = useState<{ id: string; name: string; contact_email: string | null; contact_name: string | null }[]>([]);
+  const [agents, setAgents] = useState<
+    { id: string; name: string; contact_email: string | null; contact_name: string | null }[]
+  >([]);
   const [selectedAgent, setSelectedAgent] = useState("");
   const [contracts, setContracts] = useState<SigningRequest[]>([]);
   const [loading, setLoading] = useState(false);
@@ -959,25 +957,41 @@ function ContractsTab() {
       try {
         const res = await fetch("/api/admin/agents", { cache: "no-store" });
         const json = await res.json();
-        if (res.ok) setAgents((json.agents ?? []).map((a: Agent) => ({
-          id: a.id, name: a.name, contact_email: a.contact_email, contact_name: a.contact_name,
-        })));
-      } catch { /* ignore */ }
+        if (res.ok)
+          setAgents(
+            (json.agents ?? []).map((a: Agent) => ({
+              id: a.id,
+              name: a.name,
+              contact_email: a.contact_email,
+              contact_name: a.contact_name,
+            })),
+          );
+      } catch {
+        /* ignore */
+      }
     })();
   }, []);
 
   const fetchContracts = async () => {
-    if (!selectedAgent) { setContracts([]); return; }
+    if (!selectedAgent) {
+      setContracts([]);
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/agent-contracts?agent_id=${selectedAgent}`, { cache: "no-store" });
       const json = await res.json();
       if (res.ok) setContracts(json.contracts ?? []);
-    } catch { /* ignore */ }
-    finally { setLoading(false); }
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { fetchContracts(); }, [selectedAgent]);
+  useEffect(() => {
+    fetchContracts();
+  }, [selectedAgent]);
 
   const openCreate = () => {
     const agent = agents.find((a) => a.id === selectedAgent);
@@ -1020,7 +1034,9 @@ function ContractsTab() {
       const res = await fetch(`/api/admin/agent-contracts/${contractId}/download`);
       const json = await res.json();
       if (res.ok && json.url) window.open(json.url, "_blank");
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   };
 
   const handleAction = async (contractId: string, action: string) => {
@@ -1034,7 +1050,7 @@ function ContractsTab() {
         body: JSON.stringify({ action }),
       });
       if (!res.ok) {
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         throw new Error(j?.message ?? `HTTP ${res.status}`);
       }
       setMsg(`${label}しました`);
@@ -1056,7 +1072,9 @@ function ContractsTab() {
           >
             <option value="">選択してください</option>
             {agents.map((a) => (
-              <option key={a.id} value={a.id}>{a.name}</option>
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
             ))}
           </select>
         </div>
@@ -1067,9 +1085,7 @@ function ContractsTab() {
         )}
       </div>
 
-      {msg && (
-        <div className="rounded-xl border border-default bg-surface-solid p-3 text-sm text-secondary">{msg}</div>
-      )}
+      {msg && <div className="rounded-xl border border-default bg-surface-solid p-3 text-sm text-secondary">{msg}</div>}
 
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--bg-overlay)]">
@@ -1083,12 +1099,16 @@ function ContractsTab() {
                 className="input-field w-full"
               >
                 {TEMPLATE_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="text-sm text-secondary mb-1 block">タイトル <span className="text-red-500">*</span></label>
+              <label className="text-sm text-secondary mb-1 block">
+                タイトル <span className="text-red-500">*</span>
+              </label>
               <input
                 value={createForm.title}
                 onChange={(e) => setCreateForm((f) => ({ ...f, title: e.target.value }))}
@@ -1097,7 +1117,9 @@ function ContractsTab() {
               />
             </div>
             <div>
-              <label className="text-sm text-secondary mb-1 block">署名者メール <span className="text-red-500">*</span></label>
+              <label className="text-sm text-secondary mb-1 block">
+                署名者メール <span className="text-red-500">*</span>
+              </label>
               <input
                 type="email"
                 value={createForm.signer_email}
@@ -1106,7 +1128,9 @@ function ContractsTab() {
               />
             </div>
             <div>
-              <label className="text-sm text-secondary mb-1 block">署名者名 <span className="text-red-500">*</span></label>
+              <label className="text-sm text-secondary mb-1 block">
+                署名者名 <span className="text-red-500">*</span>
+              </label>
               <input
                 value={createForm.signer_name}
                 onChange={(e) => setCreateForm((f) => ({ ...f, signer_name: e.target.value }))}
@@ -1130,7 +1154,9 @@ function ContractsTab() {
 
       {loading ? (
         <div className="animate-pulse space-y-3">
-          {[1, 2].map((i) => <div key={i} className="h-12 rounded-2xl bg-border-subtle dark:bg-[rgba(255,255,255,0.06)]" />)}
+          {[1, 2].map((i) => (
+            <div key={i} className="h-12 rounded-2xl bg-border-subtle dark:bg-[rgba(255,255,255,0.06)]" />
+          ))}
         </div>
       ) : contracts.length === 0 && selectedAgent ? (
         <div className="glass-card p-8 text-center text-muted">契約書はまだありません</div>
@@ -1153,15 +1179,22 @@ function ContractsTab() {
                   const s = getStatusEntry(SIGNING_STATUS_MAP, c.status);
                   const typeLabel = TEMPLATE_TYPES.find((t) => t.value === c.template_type)?.label ?? c.template_type;
                   return (
-                    <tr key={c.id} className="border-t border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)]">
+                    <tr
+                      key={c.id}
+                      className="border-t border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)]"
+                    >
                       <td className="p-3 font-medium text-primary">{c.title}</td>
                       <td className="p-3 text-muted">{typeLabel}</td>
                       <td className="p-3">
                         <div className="text-primary">{c.signer_name}</div>
                         <div className="text-xs text-muted">{c.signer_email}</div>
                       </td>
-                      <td className="p-3"><Badge variant={s.variant}>{s.label}</Badge></td>
-                      <td className="p-3 whitespace-nowrap text-muted">{c.sent_at ? formatDateTime(c.sent_at) : "-"}</td>
+                      <td className="p-3">
+                        <Badge variant={s.variant}>{s.label}</Badge>
+                      </td>
+                      <td className="p-3 whitespace-nowrap text-muted">
+                        {c.sent_at ? formatDateTime(c.sent_at) : "-"}
+                      </td>
                       <td className="p-3">
                         <div className="flex gap-2">
                           {c.status === "signed" && c.signed_pdf_path && (

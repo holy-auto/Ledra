@@ -1,2 +1,0 @@
-## git last commit
-145839d (HEAD -> main, origin/main, origin/HEAD) admin: fix billing/cert pages split + UI disable issue/export by billing/plan

@@ -119,7 +119,7 @@ export default function MarketVehiclesClient() {
       if (maker) params.set("maker", maker);
       if (bodyType) params.set("body_type", bodyType);
       const res = await fetch(`/api/admin/market-vehicles?${params.toString()}`, { cache: "no-store" });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setVehicles(j?.vehicles ?? []);
       setStats(j?.stats ?? { total: 0, listed: 0, draft: 0 });
@@ -151,7 +151,7 @@ export default function MarketVehiclesClient() {
       const res = await fetch(`/api/admin/market-vehicles/${id}`, {
         method: "DELETE",
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       await fetchVehicles(statusFilter, makerFilter, bodyTypeFilter);
     } catch (e: unknown) {
@@ -200,14 +200,22 @@ export default function MarketVehiclesClient() {
             <div className="glass-card p-5">
               <div className="text-xs font-semibold tracking-[0.18em] text-muted">在庫総額</div>
               <div className="mt-2 text-2xl font-bold text-accent">
-                {formatJpy(vehicles.filter((v) => v.status !== "sold").reduce((s, v) => s + (v.cost_price ?? v.asking_price ?? 0), 0))}
+                {formatJpy(
+                  vehicles
+                    .filter((v) => v.status !== "sold")
+                    .reduce((s, v) => s + (v.cost_price ?? v.asking_price ?? 0), 0),
+                )}
               </div>
               <div className="mt-1 text-xs text-muted">仕入原価ベース</div>
             </div>
             <div className="glass-card p-5">
               <div className="text-xs font-semibold tracking-[0.18em] text-muted">想定利益</div>
               <div className="mt-2 text-2xl font-bold text-success">
-                {formatJpy(vehicles.filter((v) => v.status !== "sold" && v.cost_price != null && v.asking_price != null).reduce((s, v) => s + ((v.asking_price ?? 0) - (v.cost_price ?? 0)), 0))}
+                {formatJpy(
+                  vehicles
+                    .filter((v) => v.status !== "sold" && v.cost_price != null && v.asking_price != null)
+                    .reduce((s, v) => s + ((v.asking_price ?? 0) - (v.cost_price ?? 0)), 0),
+                )}
               </div>
               <div className="mt-1 text-xs text-muted">販売時見込み</div>
             </div>
@@ -215,13 +223,30 @@ export default function MarketVehiclesClient() {
 
           {/* Long-stock alerts */}
           {(() => {
-            const longStock = vehicles.filter((v) => v.status !== "sold" && v.status !== "withdrawn" && calcDaysInStock(v.acquisition_date, v.created_at) >= 60);
+            const longStock = vehicles.filter(
+              (v) =>
+                v.status !== "sold" &&
+                v.status !== "withdrawn" &&
+                calcDaysInStock(v.acquisition_date, v.created_at) >= 60,
+            );
             if (longStock.length === 0) return null;
             return (
               <div className="rounded-xl border border-warning/20 bg-warning/5 p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="text-warning">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                  <svg
+                    width="16"
+                    height="16"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    className="text-warning"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"
+                    />
                   </svg>
                   <span className="text-sm font-semibold text-warning">長期在庫アラート</span>
                   <span className="text-xs text-warning">({longStock.length}台が60日以上)</span>
@@ -253,7 +278,9 @@ export default function MarketVehiclesClient() {
                   onChange={(e) => applyFilters(e.target.value, makerFilter, bodyTypeFilter)}
                 >
                   {STATUS_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -275,7 +302,9 @@ export default function MarketVehiclesClient() {
                   onChange={(e) => applyFilters(statusFilter, makerFilter, e.target.value)}
                 >
                   {BODY_TYPES.map((bt) => (
-                    <option key={bt.value} value={bt.value}>{bt.label}</option>
+                    <option key={bt.value} value={bt.value}>
+                      {bt.label}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -292,11 +321,7 @@ export default function MarketVehiclesClient() {
               <div className="text-sm text-muted">{vehicles.length} 件</div>
             </div>
 
-            {vehicles.length === 0 && (
-              <div className="glass-card p-8 text-center text-muted">
-                車両がありません
-              </div>
-            )}
+            {vehicles.length === 0 && <div className="glass-card p-8 text-center text-muted">車両がありません</div>}
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {vehicles.map((v) => (
@@ -312,14 +337,10 @@ export default function MarketVehiclesClient() {
                         sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
                       />
                     ) : (
-                      <div className="flex h-full items-center justify-center text-muted text-sm">
-                        No Image
-                      </div>
+                      <div className="flex h-full items-center justify-center text-muted text-sm">No Image</div>
                     )}
                     <div className="absolute top-2 right-2">
-                      <Badge variant={statusVariant(v.status)}>
-                        {statusLabel(v.status)}
-                      </Badge>
+                      <Badge variant={statusVariant(v.status)}>{statusLabel(v.status)}</Badge>
                     </div>
                   </div>
 
@@ -348,7 +369,9 @@ export default function MarketVehiclesClient() {
                       {v.cost_price != null && (
                         <div>
                           <div className="text-[10px] text-muted">利益</div>
-                          <div className={`text-sm font-bold ${calcProfit(v.asking_price, v.cost_price)! >= 0 ? "text-success" : "text-danger"}`}>
+                          <div
+                            className={`text-sm font-bold ${calcProfit(v.asking_price, v.cost_price)! >= 0 ? "text-success" : "text-danger"}`}
+                          >
                             {formatJpy(calcProfit(v.asking_price, v.cost_price))}
                           </div>
                         </div>
@@ -365,10 +388,7 @@ export default function MarketVehiclesClient() {
 
                     {/* Actions */}
                     <div className="flex gap-2 pt-2">
-                      <Link
-                        href={`/admin/market-vehicles/${v.id}`}
-                        className="btn-ghost px-3 py-1 text-xs"
-                      >
+                      <Link href={`/admin/market-vehicles/${v.id}`} className="btn-ghost px-3 py-1 text-xs">
                         詳細
                       </Link>
                       {v.status === "draft" && (

@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-export function ServiceWorkerRegistrar() {
+export function ServiceWorkerRegistrar(): null {
   useEffect(() => {
     if ("serviceWorker" in navigator && process.env.NODE_ENV === "production") {
       navigator.serviceWorker.register("/sw.js").catch(() => {

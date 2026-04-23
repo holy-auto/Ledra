@@ -21,19 +21,19 @@ type Notification = {
 
 /* ── Type map ── */
 const TYPE_MAP: Record<string, { label: string; variant: BadgeVariant }> = {
-  info:            { label: "情報",           variant: "info" },
-  referral_status: { label: "紹介",           variant: "success" },
-  commission:      { label: "コミッション",   variant: "violet" },
-  campaign:        { label: "キャンペーン",   variant: "warning" },
-  system:          { label: "システム",       variant: "default" },
+  info: { label: "情報", variant: "info" },
+  referral_status: { label: "紹介", variant: "success" },
+  commission: { label: "コミッション", variant: "violet" },
+  campaign: { label: "キャンペーン", variant: "warning" },
+  system: { label: "システム", variant: "default" },
 };
 
 const TYPE_OPTIONS = [
-  { value: "info",            label: "情報" },
+  { value: "info", label: "情報" },
   { value: "referral_status", label: "紹介" },
-  { value: "commission",      label: "コミッション" },
-  { value: "campaign",        label: "キャンペーン" },
-  { value: "system",          label: "システム" },
+  { value: "commission", label: "コミッション" },
+  { value: "campaign", label: "キャンペーン" },
+  { value: "system", label: "システム" },
 ];
 
 function typeEntry(t: string) {
@@ -93,7 +93,7 @@ export default function AdminNotificationsClient() {
         }),
       });
       if (!res.ok) {
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       setMsg("通知を送信しました");
@@ -120,20 +120,13 @@ export default function AdminNotificationsClient() {
       {/* Actions bar */}
       <div className="flex flex-wrap gap-3 items-center justify-between">
         <span className="text-sm text-muted">{notifications.length} 件</span>
-        <button
-          onClick={() => setShowForm((v) => !v)}
-          className="btn-primary"
-        >
+        <button onClick={() => setShowForm((v) => !v)} className="btn-primary">
           {showForm ? "閉じる" : "新規通知"}
         </button>
       </div>
 
       {/* Message */}
-      {msg && (
-        <div className="rounded-xl border border-default bg-surface-solid p-3 text-sm text-secondary">
-          {msg}
-        </div>
-      )}
+      {msg && <div className="rounded-xl border border-default bg-surface-solid p-3 text-sm text-secondary">{msg}</div>}
 
       {/* Create form */}
       {showForm && (
@@ -153,11 +146,7 @@ export default function AdminNotificationsClient() {
             </div>
             <div>
               <label className="text-sm text-secondary mb-1 block">種別 *</label>
-              <select
-                value={formType}
-                onChange={(e) => setFormType(e.target.value)}
-                className="input-field w-full"
-              >
+              <select value={formType} onChange={(e) => setFormType(e.target.value)} className="input-field w-full">
                 {TYPE_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label}
@@ -202,7 +191,10 @@ export default function AdminNotificationsClient() {
 
           <div className="flex gap-3 justify-end">
             <button
-              onClick={() => { setShowForm(false); resetForm(); }}
+              onClick={() => {
+                setShowForm(false);
+                resetForm();
+              }}
               className="rounded-xl border border-default bg-surface-solid px-4 py-2 text-sm font-medium text-secondary hover:bg-surface-hover"
             >
               キャンセル
@@ -243,7 +235,10 @@ export default function AdminNotificationsClient() {
                 {notifications.map((n) => {
                   const t = typeEntry(n.type);
                   return (
-                    <tr key={n.id} className="border-t border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)]">
+                    <tr
+                      key={n.id}
+                      className="border-t border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)]"
+                    >
                       <td className="p-3 font-medium text-primary">{n.agent_name || n.agent_id}</td>
                       <td className="p-3">
                         <Badge variant={t.variant}>{t.label}</Badge>

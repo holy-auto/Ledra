@@ -145,7 +145,7 @@ export default function StorefrontInventory() {
           reason: reason.trim() || null,
         }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
       // サーバ応答と差異があった時のために背後で再検証
       mutate();

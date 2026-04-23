@@ -30,16 +30,16 @@ type FormData = {
 /* ── Category helpers ── */
 
 const CATEGORY_MAP: Record<string, { label: string; variant: BadgeVariant }> = {
-  general:   { label: "一般",         variant: "info" },
-  campaign:  { label: "キャンペーン", variant: "success" },
-  system:    { label: "システム",     variant: "warning" },
-  important: { label: "重要",         variant: "danger" },
+  general: { label: "一般", variant: "info" },
+  campaign: { label: "キャンペーン", variant: "success" },
+  system: { label: "システム", variant: "warning" },
+  important: { label: "重要", variant: "danger" },
 };
 
 const CATEGORY_OPTIONS = [
-  { value: "general",   label: "一般" },
-  { value: "campaign",  label: "キャンペーン" },
-  { value: "system",    label: "システム" },
+  { value: "general", label: "一般" },
+  { value: "campaign", label: "キャンペーン" },
+  { value: "system", label: "システム" },
   { value: "important", label: "重要" },
 ];
 
@@ -121,9 +121,7 @@ export default function AdminAnnouncementsClient() {
         published_at: form.published_at ? new Date(form.published_at).toISOString() : new Date().toISOString(),
       };
 
-      const url = editingId
-        ? `/api/admin/agent-announcements/${editingId}`
-        : "/api/admin/agent-announcements";
+      const url = editingId ? `/api/admin/agent-announcements/${editingId}` : "/api/admin/agent-announcements";
       const method = editingId ? "PUT" : "POST";
 
       const res = await fetch(url, {
@@ -133,7 +131,7 @@ export default function AdminAnnouncementsClient() {
       });
 
       if (!res.ok) {
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
 
@@ -154,7 +152,7 @@ export default function AdminAnnouncementsClient() {
     try {
       const res = await fetch(`/api/admin/agent-announcements/${id}`, { method: "DELETE" });
       if (!res.ok) {
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       flash("削除しました", true);
@@ -198,9 +196,7 @@ export default function AdminAnnouncementsClient() {
       {msg && (
         <div
           className={`rounded-2xl px-4 py-3 text-sm font-medium ${
-            msg.ok
-              ? "bg-success-dim text-success-text"
-              : "bg-danger-dim text-danger-text"
+            msg.ok ? "bg-success-dim text-success-text" : "bg-danger-dim text-danger-text"
           }`}
         >
           {msg.text}
@@ -209,9 +205,7 @@ export default function AdminAnnouncementsClient() {
 
       {/* Toolbar */}
       <div className="flex items-center justify-between">
-        <p className="text-sm text-secondary">
-          {loading ? "読み込み中..." : `${announcements.length} 件`}
-        </p>
+        <p className="text-sm text-secondary">{loading ? "読み込み中..." : `${announcements.length} 件`}</p>
         {!showForm && (
           <button
             type="button"
@@ -232,9 +226,7 @@ export default function AdminAnnouncementsClient() {
           onSubmit={handleSubmit}
           className="rounded-2xl border border-border-default bg-surface p-6 shadow-sm space-y-4"
         >
-          <h3 className="text-base font-semibold text-primary">
-            {editingId ? "お知らせ編集" : "新規お知らせ"}
-          </h3>
+          <h3 className="text-base font-semibold text-primary">{editingId ? "お知らせ編集" : "新規お知らせ"}</h3>
 
           {/* Title */}
           <div>
@@ -336,10 +328,7 @@ export default function AdminAnnouncementsClient() {
           {announcements.map((a) => {
             const cat = CATEGORY_MAP[a.category] ?? CATEGORY_MAP.general;
             return (
-              <div
-                key={a.id}
-                className="rounded-2xl border border-border-default bg-surface p-4 shadow-sm"
-              >
+              <div key={a.id} className="rounded-2xl border border-border-default bg-surface p-4 shadow-sm">
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                   {/* Left */}
                   <div className="flex-1 min-w-0 space-y-1">
@@ -348,11 +337,7 @@ export default function AdminAnnouncementsClient() {
                       {a.is_pinned && <Badge variant="violet">ピン留め</Badge>}
                       <h4 className="text-sm font-semibold text-primary truncate">{a.title}</h4>
                     </div>
-                    {a.body && (
-                      <p className="text-xs text-secondary line-clamp-2 whitespace-pre-wrap">
-                        {a.body}
-                      </p>
-                    )}
+                    {a.body && <p className="text-xs text-secondary line-clamp-2 whitespace-pre-wrap">{a.body}</p>}
                     <div className="flex items-center gap-4 text-[11px] text-tertiary">
                       <span>公開: {formatDateTime(a.published_at)}</span>
                       <span>作成: {formatDateTime(a.created_at)}</span>

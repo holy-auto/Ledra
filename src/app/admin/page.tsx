@@ -287,10 +287,10 @@ async function PlatformStats() {
   const supabase = await createSupabaseServerClient();
 
   const [pcsResult, csResult, icResult, rsResult] = await Promise.all([
-    Promise.resolve(supabase.rpc("platform_certificate_stats")).catch(() => ({ data: null })),
-    Promise.resolve(supabase.rpc("platform_tenant_category_stats")).catch(() => ({ data: null })),
-    Promise.resolve(supabase.rpc("platform_insurer_count")).catch(() => ({ data: 0 })),
-    Promise.resolve(supabase.rpc("platform_regional_stats")).catch(() => ({ data: null })),
+    Promise.resolve(supabase.rpc("platform_certificate_stats")).catch((): { data: null } => ({ data: null })),
+    Promise.resolve(supabase.rpc("platform_tenant_category_stats")).catch((): { data: null } => ({ data: null })),
+    Promise.resolve(supabase.rpc("platform_insurer_count")).catch((): { data: number } => ({ data: 0 })),
+    Promise.resolve(supabase.rpc("platform_regional_stats")).catch((): { data: null } => ({ data: null })),
   ]);
 
   const platformCertStats = pcsResult?.data ?? null;

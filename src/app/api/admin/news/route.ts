@@ -44,7 +44,7 @@ const fetchLiveFeeds = unstable_cache(
             source: feed.source,
             url: item.link ?? null,
             published_at: item.isoDate || item.pubDate || new Date().toISOString(),
-            keywords: [],
+            keywords: [] as string[],
             saved: false,
           }));
         } catch {

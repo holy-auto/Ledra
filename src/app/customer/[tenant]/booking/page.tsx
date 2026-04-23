@@ -145,7 +145,7 @@ export default function BookingPage() {
         const res = await fetch(`/api/external/booking?tenant_slug=${encodeURIComponent(tenantSlug)}&date=${date}`, {
           cache: "no-store",
         });
-        const j = await res.json().catch(() => ({ slots: [] }));
+        const j = await res.json().catch((): { slots: SlotInfo[] } => ({ slots: [] }));
         const slots: SlotInfo[] = (j.slots ?? []).map((s: any) => ({
           start_time: s.start_time,
           end_time: s.end_time,
@@ -781,7 +781,11 @@ export default function BookingPage() {
                     <th
                       key={date}
                       className={`border-b border-r border-border-subtle py-2 text-center ${
-                        dow === 0 ? "bg-red-50/30 dark:bg-red-950/20" : dow === 6 ? "bg-blue-50/30 dark:bg-blue-950/20" : "bg-surface"
+                        dow === 0
+                          ? "bg-red-50/30 dark:bg-red-950/20"
+                          : dow === 6
+                            ? "bg-blue-50/30 dark:bg-blue-950/20"
+                            : "bg-surface"
                       }`}
                     >
                       <div
@@ -845,7 +849,11 @@ export default function BookingPage() {
                         <td
                           key={date}
                           className={`border-b border-r border-border-subtle py-3 text-center align-middle transition-colors ${
-                            dow === 0 ? "bg-red-50/20 dark:bg-red-950/10" : dow === 6 ? "bg-blue-50/20 dark:bg-blue-950/10" : ""
+                            dow === 0
+                              ? "bg-red-50/20 dark:bg-red-950/10"
+                              : dow === 6
+                                ? "bg-blue-50/20 dark:bg-blue-950/10"
+                                : ""
                           } ${!isPast && slot?.available ? "hover:bg-accent-dim" : ""}`}
                         >
                           {cellContent}
@@ -942,9 +950,7 @@ function StepIndicator({ current }: { current: number }) {
                   stepNum
                 )}
               </div>
-              <span className={`mt-1 text-[10px] font-medium ${active ? "text-accent" : "text-muted"}`}>
-                {label}
-              </span>
+              <span className={`mt-1 text-[10px] font-medium ${active ? "text-accent" : "text-muted"}`}>{label}</span>
             </div>
             {i < steps.length - 1 && (
               <div className={`h-0.5 flex-1 mx-1 mb-4 transition-all ${done ? "bg-accent" : "bg-border-default"}`} />

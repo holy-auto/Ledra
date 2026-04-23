@@ -38,7 +38,7 @@ function isValidStatus(v: unknown): v is CertStatus {
  */
 export async function PUT(req: Request) {
   try {
-    const body = await req.json().catch(() => null);
+    const body = await req.json().catch((): null => null);
     const publicId = (body?.public_id ?? "").trim();
     const newStatus = (body?.status ?? "").trim().toLowerCase();
 
@@ -84,16 +84,12 @@ export async function PUT(req: Request) {
     const allowed = TRANSITIONS[currentStatus];
     const transition = allowed?.find((t) => t.to === newStatus);
     if (!transition) {
-      return apiValidationError(
-        `ステータス遷移 ${currentStatus} → ${newStatus} は許可されていません。`,
-      );
+      return apiValidationError(`ステータス遷移 ${currentStatus} → ${newStatus} は許可されていません。`);
     }
 
     // Check the role required for this specific transition
     if (!requireMinRole(caller, transition.minRole)) {
-      return apiForbidden(
-        `${currentStatus} → ${newStatus} の遷移には ${transition.minRole} 以上の権限が必要です。`,
-      );
+      return apiForbidden(`${currentStatus} → ${newStatus} の遷移には ${transition.minRole} 以上の権限が必要です。`);
     }
 
     // Perform the update via admin client (bypasses RLS)

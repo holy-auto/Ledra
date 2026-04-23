@@ -9,7 +9,7 @@ import posthog from "posthog-js";
  *
  * Only active when `NEXT_PUBLIC_POSTHOG_KEY` is set. Otherwise no-ops.
  */
-export function PostHogProvider() {
+export function PostHogProvider(): null {
   useEffect(() => {
     const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
     if (!key) return;

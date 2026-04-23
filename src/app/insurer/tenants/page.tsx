@@ -27,7 +27,7 @@ export default function TenantsPage() {
       try {
         const res = await fetch("/api/insurer/tenants");
         if (!res.ok) {
-          const j = await res.json().catch(() => null);
+          const j = await res.json().catch((): null => null);
           throw new Error(j?.message ?? `HTTP ${res.status}`);
         }
         const j = await res.json();
@@ -64,8 +64,7 @@ export default function TenantsPage() {
           cmp = a.case_count - b.case_count;
           break;
         case "last_access":
-          cmp =
-            (a.last_access ?? "").localeCompare(b.last_access ?? "");
+          cmp = (a.last_access ?? "").localeCompare(b.last_access ?? "");
           break;
       }
       return sortDir === "asc" ? cmp : -cmp;
@@ -88,9 +87,7 @@ export default function TenantsPage() {
               TENANTS
             </div>
             <div>
-              <h1 className="text-3xl font-bold tracking-tight text-primary">
-                テナント別統計
-              </h1>
+              <h1 className="text-3xl font-bold tracking-tight text-primary">テナント別統計</h1>
               <p className="mt-2 text-sm text-secondary">
                 契約テナントごとの証明書数・案件数・最新アクセスを確認します。
               </p>
@@ -110,29 +107,18 @@ export default function TenantsPage() {
           </div>
         )}
 
-        {error && (
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
-            {error}
-          </div>
-        )}
+        {error && <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">{error}</div>}
 
         {!loading && !error && (
           <section className="rounded-2xl border border-border-default bg-surface p-5 shadow-sm">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <div className="text-xs font-semibold tracking-[0.18em] text-muted">
-                  TENANT LIST
-                </div>
-                <div className="mt-1 text-lg font-semibold text-primary">
-                  契約テナント一覧
-                </div>
+                <div className="text-xs font-semibold tracking-[0.18em] text-muted">TENANT LIST</div>
+                <div className="mt-1 text-lg font-semibold text-primary">契約テナント一覧</div>
               </div>
               {tenants.length > 0 && (
                 <div className="text-sm text-muted">
-                  <span className="font-semibold text-primary">
-                    {tenants.length}
-                  </span>{" "}
-                  テナント
+                  <span className="font-semibold text-primary">{tenants.length}</span> テナント
                 </div>
               )}
             </div>
@@ -169,19 +155,10 @@ export default function TenantsPage() {
                 </thead>
                 <tbody>
                   {sorted.map((t) => (
-                    <tr
-                      key={t.tenant_id}
-                      className="border-t hover:bg-inset"
-                    >
-                      <td className="p-3 font-medium text-primary">
-                        {t.name}
-                      </td>
-                      <td className="p-3 text-right text-secondary">
-                        {t.certificate_count.toLocaleString()}
-                      </td>
-                      <td className="p-3 text-right text-secondary">
-                        {t.case_count.toLocaleString()}
-                      </td>
+                    <tr key={t.tenant_id} className="border-t hover:bg-inset">
+                      <td className="p-3 font-medium text-primary">{t.name}</td>
+                      <td className="p-3 text-right text-secondary">{t.certificate_count.toLocaleString()}</td>
+                      <td className="p-3 text-right text-secondary">{t.case_count.toLocaleString()}</td>
                       <td className="p-3 text-secondary whitespace-nowrap">
                         {t.last_access ? formatDateTime(t.last_access) : "-"}
                       </td>
@@ -189,10 +166,7 @@ export default function TenantsPage() {
                   ))}
                   {sorted.length === 0 && (
                     <tr>
-                      <td
-                        colSpan={4}
-                        className="p-8 text-center text-sm text-muted"
-                      >
+                      <td colSpan={4} className="p-8 text-center text-sm text-muted">
                         契約テナントがありません。
                       </td>
                     </tr>

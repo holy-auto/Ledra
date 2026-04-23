@@ -28,12 +28,21 @@ type Props = {
   connectStatus?: ConnectStatus;
 };
 
-const inputCls =
-  "input-field";
+const inputCls = "input-field";
 const labelCls = "block space-y-1.5";
 const labelTextCls = "text-sm font-medium text-secondary";
 
-export default function SettingsForm({ name, contactEmail, contactPhone, address, websiteUrl, registrationNumber, bankInfo, columnsExist, connectStatus }: Props) {
+export default function SettingsForm({
+  name,
+  contactEmail,
+  contactPhone,
+  address,
+  websiteUrl,
+  registrationNumber,
+  bankInfo,
+  columnsExist,
+  connectStatus,
+}: Props) {
   const [isPending, startTransition] = useTransition();
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +65,9 @@ export default function SettingsForm({ name, contactEmail, contactPhone, address
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <label className={labelCls}>
-        <span className={labelTextCls}>店舗名 <span className="text-red-500">*</span></span>
+        <span className={labelTextCls}>
+          店舗名 <span className="text-red-500">*</span>
+        </span>
         <input
           name="name"
           defaultValue={name}
@@ -152,11 +163,7 @@ export default function SettingsForm({ name, contactEmail, contactPhone, address
 
               <label className={labelCls}>
                 <span className={labelTextCls}>口座種別</span>
-                <select
-                  name="bank_account_type"
-                  defaultValue={bankInfo?.account_type ?? "普通"}
-                  className={inputCls}
-                >
+                <select name="bank_account_type" defaultValue={bankInfo?.account_type ?? "普通"} className={inputCls}>
                   <option value="普通">普通</option>
                   <option value="当座">当座</option>
                 </select>
@@ -191,9 +198,7 @@ export default function SettingsForm({ name, contactEmail, contactPhone, address
       )}
 
       {error && (
-        <div className="rounded-xl border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-400">
-          {error}
-        </div>
+        <div className="rounded-xl border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-400">{error}</div>
       )}
 
       {success && (
@@ -202,11 +207,7 @@ export default function SettingsForm({ name, contactEmail, contactPhone, address
         </div>
       )}
 
-      <button
-        type="submit"
-        disabled={isPending}
-        className="btn-primary disabled:opacity-50"
-      >
+      <button type="submit" disabled={isPending} className="btn-primary disabled:opacity-50">
         {isPending ? "保存中…" : "設定を保存"}
       </button>
 
@@ -235,7 +236,7 @@ function StripeConnectSection({ connectStatus }: { connectStatus: ConnectStatus 
   const checkStatus = useCallback(async () => {
     try {
       const res = await fetch("/api/stripe/connect");
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (res.ok && j) setLiveStatus(j);
     } catch {}
   }, []);
@@ -252,7 +253,7 @@ function StripeConnectSection({ connectStatus }: { connectStatus: ConnectStatus 
           refresh_url: window.location.href,
         }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       if (j?.onboarding_url) {
         window.location.href = j.onboarding_url;
@@ -270,7 +271,7 @@ function StripeConnectSection({ connectStatus }: { connectStatus: ConnectStatus 
     setConnectErr(null);
     try {
       const res = await fetch("/api/stripe/connect", { method: "DELETE" });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setLiveStatus({ connected: false, onboarded: false, account_id: null });
     } catch (e) {
@@ -286,9 +287,7 @@ function StripeConnectSection({ connectStatus }: { connectStatus: ConnectStatus 
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-secondary">
-        Stripeアカウントを接続すると、オンライン決済を受け付けることができます。
-      </p>
+      <p className="text-sm text-secondary">Stripeアカウントを接続すると、オンライン決済を受け付けることができます。</p>
 
       <div className="flex items-center gap-3 text-sm">
         <span className="text-muted">ステータス:</span>
@@ -312,33 +311,26 @@ function StripeConnectSection({ connectStatus }: { connectStatus: ConnectStatus 
 
       {isOnboarded && liveStatus && (
         <div className="text-sm text-secondary space-y-1">
-          <div>課金受付: <b className="text-primary">{liveStatus.charges_enabled ? "有効" : "無効"}</b></div>
-          <div>入金: <b className="text-primary">{liveStatus.payouts_enabled ? "有効" : "無効"}</b></div>
+          <div>
+            課金受付: <b className="text-primary">{liveStatus.charges_enabled ? "有効" : "無効"}</b>
+          </div>
+          <div>
+            入金: <b className="text-primary">{liveStatus.payouts_enabled ? "有効" : "無効"}</b>
+          </div>
           {accountId && <div className="text-xs text-muted font-mono">ID: {accountId}</div>}
         </div>
       )}
 
-      {connectErr && (
-        <div className="text-sm text-red-500">{connectErr}</div>
-      )}
+      {connectErr && <div className="text-sm text-red-500">{connectErr}</div>}
 
       <div className="flex gap-3 flex-wrap">
         {!isOnboarded && (
-          <button
-            type="button"
-            className="btn-primary text-sm"
-            disabled={busy}
-            onClick={handleConnect}
-          >
+          <button type="button" className="btn-primary text-sm" disabled={busy} onClick={handleConnect}>
             {busy ? "処理中…" : isConnected ? "オンボーディングを再開" : "Stripeアカウントを接続"}
           </button>
         )}
         {isConnected && (
-          <button
-            type="button"
-            className="btn-ghost text-sm"
-            onClick={checkStatus}
-          >
+          <button type="button" className="btn-ghost text-sm" onClick={checkStatus}>
             ステータスを更新
           </button>
         )}

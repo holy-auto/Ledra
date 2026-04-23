@@ -136,7 +136,7 @@ export default function StorefrontJobWorkflow({ reservation, customer, vehicle, 
         headers: { "Content-Type": "application/json" },
       });
       if (!res.ok) {
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         throw new Error(j?.error ?? j?.message ?? `HTTP ${res.status}`);
       }
       router.refresh();

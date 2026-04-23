@@ -140,7 +140,7 @@ export default function StorefrontReservations() {
     try {
       const res = await fetch(`/api/admin/reservations/${id}/advance`, { method: "POST" });
       if (!res.ok) {
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         throw new Error(j?.error ?? j?.message ?? `HTTP ${res.status}`);
       }
       // 背後でサーバ状態と再同期

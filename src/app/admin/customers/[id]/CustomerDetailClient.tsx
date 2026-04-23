@@ -42,7 +42,7 @@ export default function CustomerDetailClient({ customer: initial }: { customer: 
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: customer.id, ...form }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setCustomer(j.customer);
       setEditing(false);

@@ -10,14 +10,27 @@ const PLANS = [
     name: "スターター",
     price: "¥9,800/月",
     priceNote: "初期費用なし",
-    features: ["月80件まで証明書発行", "基本テンプレート＋ロゴ", "PDF/CSV単体出力", "車両台帳・顧客台帳", "保険会社ポータル反映"],
+    features: [
+      "月80件まで証明書発行",
+      "基本テンプレート＋ロゴ",
+      "PDF/CSV単体出力",
+      "車両台帳・顧客台帳",
+      "保険会社ポータル反映",
+    ],
   },
   {
     tier: "standard",
     name: "スタンダード",
     price: "¥24,800/月",
     priceNote: "初期費用 ¥29,800",
-    features: ["月300件まで証明書発行", "カスタムテンプレート", "CSV/PDF一括出力", "2店舗・7ユーザー", "基本レポート", "優先サポート"],
+    features: [
+      "月300件まで証明書発行",
+      "カスタムテンプレート",
+      "CSV/PDF一括出力",
+      "2店舗・7ユーザー",
+      "基本レポート",
+      "優先サポート",
+    ],
     recommended: true,
   },
   {
@@ -47,14 +60,17 @@ function PlanSelector({ currentPlan, isActive }: { currentPlan: string | null; i
     try {
       const sessionRes = await supabase.auth.getSession();
       const access_token = sessionRes.data?.session?.access_token;
-      if (!access_token) { window.location.href = "/login"; return; }
+      if (!access_token) {
+        window.location.href = "/login";
+        return;
+      }
 
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ access_token, plan_tier: selectedPlan }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       if (!j?.url) throw new Error("checkout url missing");
       window.location.href = j.url;
@@ -100,9 +116,7 @@ function PlanSelector({ currentPlan, isActive }: { currentPlan: string | null; i
                 ))}
               </ul>
               {isCurrent ? (
-                <div className="btn-ghost text-xs text-center w-full cursor-default">
-                  現在のプラン
-                </div>
+                <div className="btn-ghost text-xs text-center w-full cursor-default">現在のプラン</div>
               ) : (
                 <button
                   type="button"
@@ -154,11 +168,7 @@ function PlanSelector({ currentPlan, isActive }: { currentPlan: string | null; i
             >
               {busy ? "処理中…" : "決済に進む"}
             </button>
-            <button
-              type="button"
-              className="btn-ghost text-sm"
-              onClick={() => setSelectedPlan(null)}
-            >
+            <button type="button" className="btn-ghost text-sm" onClick={() => setSelectedPlan(null)}>
               キャンセル
             </button>
           </div>
@@ -204,26 +214,41 @@ function fmtUnix(unix?: number | null) {
 
 function planLabel(tier?: string | null) {
   switch (tier) {
-    case "free": return "フリー";
-    case "starter": return "スターター";
-    case "mini": return "スターター"; // 旧プラン互換
-    case "standard": return "スタンダード";
-    case "pro": return "プロ";
-    default: return tier ?? "-";
+    case "free":
+      return "フリー";
+    case "starter":
+      return "スターター";
+    case "mini":
+      return "スターター"; // 旧プラン互換
+    case "standard":
+      return "スタンダード";
+    case "pro":
+      return "プロ";
+    default:
+      return tier ?? "-";
   }
 }
 
 function subStatusLabel(status?: string) {
   switch (status) {
-    case "active": return "有効";
-    case "trialing": return "トライアル中";
-    case "past_due": return "支払い遅延（リトライ中）";
-    case "canceled": return "解約済み";
-    case "unpaid": return "未払い";
-    case "incomplete": return "未完了";
-    case "incomplete_expired": return "期限切れ";
-    case "paused": return "一時停止";
-    default: return status ?? "-";
+    case "active":
+      return "有効";
+    case "trialing":
+      return "トライアル中";
+    case "past_due":
+      return "支払い遅延（リトライ中）";
+    case "canceled":
+      return "解約済み";
+    case "unpaid":
+      return "未払い";
+    case "incomplete":
+      return "未完了";
+    case "incomplete_expired":
+      return "期限切れ";
+    case "paused":
+      return "一時停止";
+    default:
+      return status ?? "-";
   }
 }
 
@@ -287,7 +312,7 @@ export default function BillingPage() {
         cache: "no-store",
       });
 
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) {
         throw new Error(j?.error ? `${j.error}${j.detail ? " / " + j.detail : ""}` : `HTTP ${res.status}`);
       }
@@ -326,7 +351,7 @@ export default function BillingPage() {
       timers.push(
         setTimeout(() => {
           fetchBillingState().catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)));
-        }, d)
+        }, d),
       );
     }
 
@@ -379,7 +404,7 @@ export default function BillingPage() {
         cache: "no-store",
       });
 
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) {
         throw new Error(j?.error ? `${j.error}${j.detail ? " / " + j.detail : ""}` : `HTTP ${res.status}`);
       }
@@ -412,7 +437,7 @@ export default function BillingPage() {
         cache: "no-store",
       });
 
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) {
         throw new Error(j?.error ? `${j.error}${j.detail ? " / " + j.detail : ""}` : `HTTP ${res.status}`);
       }
@@ -436,7 +461,9 @@ export default function BillingPage() {
       <PageHeader tag="課金管理" title="請求・プラン" />
 
       {status && (
-        <div className={`glass-card p-4 text-sm ${status === "success" ? "text-accent glow-cyan" : "text-warning glow-amber"}`}>
+        <div
+          className={`glass-card p-4 text-sm ${status === "success" ? "text-accent glow-cyan" : "text-warning glow-amber"}`}
+        >
           決済結果: <b>{status === "success" ? "成功" : status === "cancel" ? "キャンセル" : status}</b>
         </div>
       )}
@@ -448,8 +475,8 @@ export default function BillingPage() {
             {reason === "inactive"
               ? "支払いが停止しているため、この操作は実行できません。下の「支払いを再開」から再開してください。"
               : reason === "plan"
-              ? "現在のプランではこの機能は利用できません。プラン変更をご検討ください。"
-              : "この操作は制限されています。"}
+                ? "現在のプランではこの機能は利用できません。プラン変更をご検討ください。"
+                : "この操作は制限されています。"}
           </div>
           {action && (
             <div className="mt-2 text-muted">
@@ -493,7 +520,9 @@ export default function BillingPage() {
 
           {tenant.stripe_subscription_id && (
             <details className="pt-2">
-              <summary className="cursor-pointer text-muted hover:text-secondary">サポート用ID（必要なときだけ）</summary>
+              <summary className="cursor-pointer text-muted hover:text-secondary">
+                サポート用ID（必要なときだけ）
+              </summary>
               <div className="mt-2 space-y-1 text-secondary">
                 <div>
                   顧客ID: <span className="text-accent font-mono">{short(tenant.stripe_customer_id)}</span>
@@ -525,7 +554,8 @@ export default function BillingPage() {
                 </div>
                 {subOk.cancel_at_period_end && (
                   <div>
-                    解約予約: <b className="text-primary">あり</b>（終了日: <b className="text-primary">{fmtUnix(subOk.current_period_end)}</b>）
+                    解約予約: <b className="text-primary">あり</b>（終了日:{" "}
+                    <b className="text-primary">{fmtUnix(subOk.current_period_end)}</b>）
                   </div>
                 )}
                 {subOk.trial_end && (
@@ -541,7 +571,9 @@ export default function BillingPage() {
           {tenant.is_active === false && (
             <div className="glass-card p-4 text-sm">
               <div className="font-semibold text-warning">支払いが停止しています</div>
-              <div className="mt-1 text-muted">この状態では機能が制限されます。下の「支払いを再開」で再決済してください。</div>
+              <div className="mt-1 text-muted">
+                この状態では機能が制限されます。下の「支払いを再開」で再決済してください。
+              </div>
             </div>
           )}
 
@@ -558,9 +590,7 @@ export default function BillingPage() {
       )}
 
       {/* Plan selection */}
-      {!loading && tenant && (
-        <PlanSelector currentPlan={tenant.plan_tier} isActive={tenant.is_active === true} />
-      )}
+      {!loading && tenant && <PlanSelector currentPlan={tenant.plan_tier} isActive={tenant.is_active === true} />}
     </div>
   );
 }

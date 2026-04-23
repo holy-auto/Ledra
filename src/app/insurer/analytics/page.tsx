@@ -47,7 +47,7 @@ export default function AnalyticsPage() {
       try {
         const res = await fetch("/api/insurer/analytics");
         if (!res.ok) {
-          const j = await res.json().catch(() => null);
+          const j = await res.json().catch((): null => null);
           throw new Error(j?.message ?? `HTTP ${res.status}`);
         }
         setData(await res.json());
@@ -59,13 +59,9 @@ export default function AnalyticsPage() {
     })();
   }, []);
 
-  const maxDaily = data
-    ? Math.max(...data.daily_counts.map((d) => d.count), 1)
-    : 1;
+  const maxDaily = data ? Math.max(...data.daily_counts.map((d) => d.count), 1) : 1;
 
-  const totalActions = data
-    ? data.action_breakdown.reduce((sum, a) => sum + a.count, 0)
-    : 0;
+  const totalActions = data ? data.action_breakdown.reduce((sum, a) => sum + a.count, 0) : 0;
 
   return (
     <main className="min-h-screen bg-inset p-6">
@@ -77,12 +73,8 @@ export default function AnalyticsPage() {
               ANALYTICS
             </div>
             <div>
-              <h1 className="text-3xl font-bold tracking-tight text-primary">
-                検索分析ダッシュボード
-              </h1>
-              <p className="mt-2 text-sm text-secondary">
-                過去30日間の検索・閲覧・エクスポート状況を分析します。
-              </p>
+              <h1 className="text-3xl font-bold tracking-tight text-primary">検索分析ダッシュボード</h1>
+              <p className="mt-2 text-sm text-secondary">過去30日間の検索・閲覧・エクスポート状況を分析します。</p>
             </div>
           </div>
           <Link
@@ -99,23 +91,15 @@ export default function AnalyticsPage() {
           </div>
         )}
 
-        {error && (
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
-            {error}
-          </div>
-        )}
+        {error && <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">{error}</div>}
 
         {data && (
           <>
             {/* Daily counts bar chart */}
             <section className="rounded-2xl border border-border-default bg-surface p-5 shadow-sm">
               <div className="mb-4">
-                <div className="text-xs font-semibold tracking-[0.18em] text-muted">
-                  DAILY SEARCH VOLUME
-                </div>
-                <div className="mt-1 text-lg font-semibold text-primary">
-                  検索回数推移（過去30日）
-                </div>
+                <div className="text-xs font-semibold tracking-[0.18em] text-muted">DAILY SEARCH VOLUME</div>
+                <div className="mt-1 text-lg font-semibold text-primary">検索回数推移（過去30日）</div>
               </div>
               <div className="flex items-end gap-[2px] h-40 overflow-x-auto">
                 {data.daily_counts.map((d) => {
@@ -142,9 +126,7 @@ export default function AnalyticsPage() {
               </div>
               <div className="mt-2 flex justify-between text-[10px] text-muted">
                 <span>{data.daily_counts[0]?.date.slice(5) ?? ""}</span>
-                <span>
-                  {data.daily_counts[data.daily_counts.length - 1]?.date.slice(5) ?? ""}
-                </span>
+                <span>{data.daily_counts[data.daily_counts.length - 1]?.date.slice(5) ?? ""}</span>
               </div>
             </section>
 
@@ -153,17 +135,11 @@ export default function AnalyticsPage() {
               {/* Top keywords */}
               <section className="rounded-2xl border border-border-default bg-surface p-5 shadow-sm">
                 <div className="mb-4">
-                  <div className="text-xs font-semibold tracking-[0.18em] text-muted">
-                    TOP KEYWORDS
-                  </div>
-                  <div className="mt-1 text-lg font-semibold text-primary">
-                    よく検索されるキーワード TOP10
-                  </div>
+                  <div className="text-xs font-semibold tracking-[0.18em] text-muted">TOP KEYWORDS</div>
+                  <div className="mt-1 text-lg font-semibold text-primary">よく検索されるキーワード TOP10</div>
                 </div>
                 {data.top_keywords.length === 0 ? (
-                  <p className="text-sm text-muted">
-                    検索データがありません。
-                  </p>
+                  <p className="text-sm text-muted">検索データがありません。</p>
                 ) : (
                   <div className="space-y-2">
                     {data.top_keywords.map((kw, i) => {
@@ -171,23 +147,14 @@ export default function AnalyticsPage() {
                       const pct = (kw.count / maxKw) * 100;
                       return (
                         <div key={kw.keyword} className="flex items-center gap-3">
-                          <span className="w-5 text-right text-xs font-semibold text-muted">
-                            {i + 1}
-                          </span>
+                          <span className="w-5 text-right text-xs font-semibold text-muted">{i + 1}</span>
                           <div className="flex-1">
                             <div className="flex items-center justify-between text-sm">
-                              <span className="font-medium text-primary">
-                                {kw.keyword}
-                              </span>
-                              <span className="text-muted">
-                                {kw.count}回
-                              </span>
+                              <span className="font-medium text-primary">{kw.keyword}</span>
+                              <span className="text-muted">{kw.count}回</span>
                             </div>
                             <div className="mt-1 h-1.5 w-full rounded-full bg-surface-hover">
-                              <div
-                                className="h-1.5 rounded-full bg-blue-500"
-                                style={{ width: `${pct}%` }}
-                              />
+                              <div className="h-1.5 rounded-full bg-blue-500" style={{ width: `${pct}%` }} />
                             </div>
                           </div>
                         </div>
@@ -200,34 +167,21 @@ export default function AnalyticsPage() {
               {/* Action breakdown */}
               <section className="rounded-2xl border border-border-default bg-surface p-5 shadow-sm">
                 <div className="mb-4">
-                  <div className="text-xs font-semibold tracking-[0.18em] text-muted">
-                    ACTION BREAKDOWN
-                  </div>
-                  <div className="mt-1 text-lg font-semibold text-primary">
-                    アクション別内訳
-                  </div>
+                  <div className="text-xs font-semibold tracking-[0.18em] text-muted">ACTION BREAKDOWN</div>
+                  <div className="mt-1 text-lg font-semibold text-primary">アクション別内訳</div>
                 </div>
                 {data.action_breakdown.length === 0 ? (
-                  <p className="text-sm text-muted">
-                    アクションデータがありません。
-                  </p>
+                  <p className="text-sm text-muted">アクションデータがありません。</p>
                 ) : (
                   <div className="space-y-3">
                     {data.action_breakdown.map((a) => {
-                      const pct =
-                        totalActions > 0
-                          ? Math.round((a.count / totalActions) * 100)
-                          : 0;
+                      const pct = totalActions > 0 ? Math.round((a.count / totalActions) * 100) : 0;
                       return (
                         <div key={a.action}>
                           <div className="flex items-center justify-between text-sm">
                             <div className="flex items-center gap-2">
-                              <div
-                                className={`h-3 w-3 rounded-full ${getActionColor(a.action)}`}
-                              />
-                              <span className="font-medium text-primary">
-                                {getActionLabel(a.action)}
-                              </span>
+                              <div className={`h-3 w-3 rounded-full ${getActionColor(a.action)}`} />
+                              <span className="font-medium text-primary">{getActionLabel(a.action)}</span>
                             </div>
                             <span className="text-muted">
                               {a.count}回 ({pct}%)
@@ -242,9 +196,7 @@ export default function AnalyticsPage() {
                         </div>
                       );
                     })}
-                    <div className="pt-2 border-t border-border-subtle text-sm text-muted">
-                      合計: {totalActions}件
-                    </div>
+                    <div className="pt-2 border-t border-border-subtle text-sm text-muted">合計: {totalActions}件</div>
                   </div>
                 )}
               </section>

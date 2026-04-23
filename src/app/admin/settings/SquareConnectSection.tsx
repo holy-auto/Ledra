@@ -25,9 +25,7 @@ const statusColor: Record<SquareConnectionStatus, { dot: string; text: string }>
 export default function SquareConnectSection({ initialConnection }: Props) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [connection, setConnection] = useState<SquareConnection | null>(
-    initialConnection ?? null,
-  );
+  const [connection, setConnection] = useState<SquareConnection | null>(initialConnection ?? null);
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "completed" | "error">("idle");
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -48,7 +46,7 @@ export default function SquareConnectSection({ initialConnection }: Props) {
   const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/square/connect");
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (res.ok && j) {
         setConnection(j);
       }
@@ -68,7 +66,7 @@ export default function SquareConnectSection({ initialConnection }: Props) {
           return_url: window.location.origin + "/admin/settings?square=connected",
         }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       if (j?.auth_url) {
         window.location.href = j.auth_url;
@@ -86,7 +84,7 @@ export default function SquareConnectSection({ initialConnection }: Props) {
     setErr(null);
     try {
       const res = await fetch("/api/admin/square/connect", { method: "DELETE" });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setConnection(null);
     } catch (e) {
@@ -101,7 +99,7 @@ export default function SquareConnectSection({ initialConnection }: Props) {
     setErr(null);
     try {
       const res = await fetch("/api/admin/square/sync", { method: "POST" });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setSyncStatus("completed");
       // Refresh connection to get updated last_synced_at
@@ -120,9 +118,7 @@ export default function SquareConnectSection({ initialConnection }: Props) {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-secondary">
-        Squareアカウントを接続すると、POS売上データを自動的に取り込めます。
-      </p>
+      <p className="text-sm text-secondary">Squareアカウントを接続すると、POS売上データを自動的に取り込めます。</p>
 
       {/* Status indicator */}
       <div className="flex items-center gap-3 text-sm">
@@ -137,14 +133,10 @@ export default function SquareConnectSection({ initialConnection }: Props) {
       {isConnected && connection && (
         <div className="text-sm text-secondary space-y-1">
           {connection.square_merchant_id && (
-            <div className="text-xs text-muted font-mono">
-              Merchant ID: {connection.square_merchant_id}
-            </div>
+            <div className="text-xs text-muted font-mono">Merchant ID: {connection.square_merchant_id}</div>
           )}
           {connection.square_location_ids.length > 0 && (
-            <div className="text-xs text-muted">
-              ロケーション数: {connection.square_location_ids.length}
-            </div>
+            <div className="text-xs text-muted">ロケーション数: {connection.square_location_ids.length}</div>
           )}
           <div>
             最終同期:{" "}
@@ -187,29 +179,17 @@ export default function SquareConnectSection({ initialConnection }: Props) {
       )}
 
       {/* Error */}
-      {err && (
-        <div className="text-sm text-red-500">{err}</div>
-      )}
+      {err && <div className="text-sm text-red-500">{err}</div>}
 
       {/* Action buttons */}
       <div className="flex gap-3 flex-wrap">
         {!isConnected && (
-          <button
-            type="button"
-            className="btn-primary text-sm"
-            disabled={busy}
-            onClick={handleConnect}
-          >
+          <button type="button" className="btn-primary text-sm" disabled={busy} onClick={handleConnect}>
             {busy ? "処理中…" : "Squareアカウントを接続"}
           </button>
         )}
         {status === "error" && (
-          <button
-            type="button"
-            className="btn-primary text-sm"
-            disabled={busy}
-            onClick={handleConnect}
-          >
+          <button type="button" className="btn-primary text-sm" disabled={busy} onClick={handleConnect}>
             {busy ? "処理中…" : "再接続する"}
           </button>
         )}
@@ -224,11 +204,7 @@ export default function SquareConnectSection({ initialConnection }: Props) {
           </button>
         )}
         {isConnected && (
-          <button
-            type="button"
-            className="btn-ghost text-sm"
-            onClick={fetchStatus}
-          >
+          <button type="button" className="btn-ghost text-sm" onClick={fetchStatus}>
             ステータスを更新
           </button>
         )}

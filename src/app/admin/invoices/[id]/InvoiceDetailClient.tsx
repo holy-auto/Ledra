@@ -54,23 +54,35 @@ type TenantInfo = {
 
 const statusVariant = (s: string) => {
   switch (s) {
-    case "draft": return "default" as const;
-    case "sent": return "info" as const;
-    case "paid": return "success" as const;
-    case "overdue": return "danger" as const;
-    case "cancelled": return "warning" as const;
-    default: return "default" as const;
+    case "draft":
+      return "default" as const;
+    case "sent":
+      return "info" as const;
+    case "paid":
+      return "success" as const;
+    case "overdue":
+      return "danger" as const;
+    case "cancelled":
+      return "warning" as const;
+    default:
+      return "default" as const;
   }
 };
 
 const statusLabel = (s: string) => {
   switch (s) {
-    case "draft": return "下書き";
-    case "sent": return "送付済";
-    case "paid": return "入金済";
-    case "overdue": return "期限超過";
-    case "cancelled": return "キャンセル";
-    default: return s;
+    case "draft":
+      return "下書き";
+    case "sent":
+      return "送付済";
+    case "paid":
+      return "入金済";
+    case "overdue":
+      return "期限超過";
+    case "cancelled":
+      return "キャンセル";
+    default:
+      return s;
   }
 };
 
@@ -103,7 +115,7 @@ export default function InvoiceDetailClient({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: invoice.id, status: newStatus }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setInvoice(j.invoice);
       setMsg({ text: `ステータスを「${statusLabel(newStatus)}」に変更しました`, ok: true });
@@ -143,21 +155,15 @@ export default function InvoiceDetailClient({
 
   return (
     <div className="space-y-6">
-      {msg && (
-        <div className={`text-sm ${msg.ok ? "text-success" : "text-danger"}`}>{msg.text}</div>
-      )}
+      {msg && <div className={`text-sm ${msg.ok ? "text-success" : "text-danger"}`}>{msg.text}</div>}
 
       {/* Status & Actions */}
       <section className="glass-card p-5">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <span className="text-sm text-muted">ステータス:</span>
-            <Badge variant={statusVariant(invoice.status)}>
-              {statusLabel(invoice.status)}
-            </Badge>
-            {invoice.is_invoice_compliant && (
-              <Badge variant="info">インボイス対応</Badge>
-            )}
+            <Badge variant={statusVariant(invoice.status)}>{statusLabel(invoice.status)}</Badge>
+            {invoice.is_invoice_compliant && <Badge variant="info">インボイス対応</Badge>}
           </div>
           <div className="flex gap-2 flex-wrap">
             {nextStatuses.map((ns) => (
@@ -174,12 +180,7 @@ export default function InvoiceDetailClient({
             <button type="button" className="btn-ghost text-xs" onClick={handlePrint}>
               印刷
             </button>
-            <button
-              type="button"
-              className="btn-secondary text-xs"
-              disabled={downloading}
-              onClick={handlePdfDownload}
-            >
+            <button type="button" className="btn-secondary text-xs" disabled={downloading} onClick={handlePdfDownload}>
               {downloading ? "生成中…" : "PDFダウンロード"}
             </button>
           </div>
@@ -193,9 +194,7 @@ export default function InvoiceDetailClient({
           <div className="flex justify-between items-start flex-wrap gap-4">
             <div>
               <h2 className="text-xl font-bold text-primary print:text-black">請求書</h2>
-              <div className="text-sm text-muted print:text-gray-600 mt-1 font-mono">
-                {invoice.invoice_number}
-              </div>
+              <div className="text-sm text-muted print:text-gray-600 mt-1 font-mono">{invoice.invoice_number}</div>
               {invoice.is_invoice_compliant && tenant?.registration_number && (
                 <div className="text-xs text-secondary print:text-gray-600 mt-1">
                   登録番号: {tenant.registration_number}
@@ -226,8 +225,12 @@ export default function InvoiceDetailClient({
                 <div className="text-sm text-primary print:text-black mt-1 space-y-0.5">
                   <div className="font-semibold">{tenant.name}</div>
                   {tenant.address && <div className="text-secondary print:text-gray-600">{tenant.address}</div>}
-                  {tenant.contact_phone && <div className="text-secondary print:text-gray-600">TEL: {tenant.contact_phone}</div>}
-                  {tenant.contact_email && <div className="text-secondary print:text-gray-600">{tenant.contact_email}</div>}
+                  {tenant.contact_phone && (
+                    <div className="text-secondary print:text-gray-600">TEL: {tenant.contact_phone}</div>
+                  )}
+                  {tenant.contact_email && (
+                    <div className="text-secondary print:text-gray-600">{tenant.contact_email}</div>
+                  )}
                 </div>
               </div>
             )}
@@ -266,7 +269,9 @@ export default function InvoiceDetailClient({
                 ))}
                 {items.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="py-6 text-center text-muted">明細がありません</td>
+                    <td colSpan={4} className="py-6 text-center text-muted">
+                      明細がありません
+                    </td>
                   </tr>
                 )}
               </tbody>
@@ -316,8 +321,17 @@ export default function InvoiceDetailClient({
             <div className="border-t border-border-subtle pt-4 print:border-gray-300">
               <div className="text-xs font-semibold text-muted print:text-gray-500 mb-2">振込先口座情報</div>
               <div className="text-sm text-secondary print:text-gray-700 space-y-0.5">
-                {tenant.bank_info.bank_name && <div>{tenant.bank_info.bank_name}{tenant.bank_info.branch_name ? ` ${tenant.bank_info.branch_name}` : ""}</div>}
-                {tenant.bank_info.account_type && <div>{tenant.bank_info.account_type} {tenant.bank_info.account_number ?? ""}</div>}
+                {tenant.bank_info.bank_name && (
+                  <div>
+                    {tenant.bank_info.bank_name}
+                    {tenant.bank_info.branch_name ? ` ${tenant.bank_info.branch_name}` : ""}
+                  </div>
+                )}
+                {tenant.bank_info.account_type && (
+                  <div>
+                    {tenant.bank_info.account_type} {tenant.bank_info.account_number ?? ""}
+                  </div>
+                )}
                 {tenant.bank_info.account_holder && <div>口座名義: {tenant.bank_info.account_holder}</div>}
               </div>
             </div>
@@ -327,9 +341,7 @@ export default function InvoiceDetailClient({
           {invoice.note && (
             <div className="border-t border-border-subtle pt-4 print:border-gray-300">
               <div className="text-xs text-muted print:text-gray-500">備考</div>
-              <div className="text-sm text-secondary print:text-gray-700 mt-1 whitespace-pre-wrap">
-                {invoice.note}
-              </div>
+              <div className="text-sm text-secondary print:text-gray-700 mt-1 whitespace-pre-wrap">{invoice.note}</div>
             </div>
           )}
 
@@ -344,11 +356,11 @@ export default function InvoiceDetailClient({
 
       {/* Meta */}
       <section className="glass-card p-5 text-xs text-muted space-y-1 print:hidden">
-        <div>ID: <span className="font-mono">{invoice.id}</span></div>
+        <div>
+          ID: <span className="font-mono">{invoice.id}</span>
+        </div>
         <div>作成日: {formatDateTime(invoice.created_at)}</div>
-        {invoice.updated_at && (
-          <div>更新日: {formatDateTime(invoice.updated_at)}</div>
-        )}
+        {invoice.updated_at && <div>更新日: {formatDateTime(invoice.updated_at)}</div>}
       </section>
     </div>
   );

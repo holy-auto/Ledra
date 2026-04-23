@@ -84,7 +84,7 @@ export default function InsurerWatchlistPage() {
         }),
       });
       if (!res.ok) {
-        const json = await res.json().catch(() => null);
+        const json = await res.json().catch((): null => null);
         throw new Error(json?.message ?? "追加に失敗しました");
       }
       setFormTargetId("");
@@ -131,33 +131,21 @@ export default function InsurerWatchlistPage() {
           <div className="inline-flex rounded-full border border-border-default bg-surface px-3 py-1 text-[11px] font-semibold tracking-[0.18em] text-secondary">
             ウォッチリスト
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary">
-            ウォッチリスト
-          </h1>
-          <p className="text-sm text-muted">
-            注目している証明書や車両をブックマークして追跡できます
-          </p>
+          <h1 className="text-3xl font-bold tracking-tight text-primary">ウォッチリスト</h1>
+          <p className="text-sm text-muted">注目している証明書や車両をブックマークして追跡できます</p>
         </div>
-        <button
-          onClick={() => setShowForm((v) => !v)}
-          className="btn-primary self-start"
-        >
+        <button onClick={() => setShowForm((v) => !v)} className="btn-primary self-start">
           {showForm ? "キャンセル" : "追加"}
         </button>
       </header>
 
       {/* add form */}
       {showForm && (
-        <form
-          onSubmit={handleAdd}
-          className="rounded-2xl border border-border-default bg-surface p-6 space-y-4"
-        >
+        <form onSubmit={handleAdd} className="rounded-2xl border border-border-default bg-surface p-6 space-y-4">
           <h2 className="text-lg font-bold text-primary">ウォッチリストに追加</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm font-medium text-secondary">
-                タイプ
-              </label>
+              <label className="mb-1 block text-sm font-medium text-secondary">タイプ</label>
               <select
                 value={formType}
                 onChange={(e) => setFormType(e.target.value as "certificate" | "vehicle")}
@@ -177,9 +165,7 @@ export default function InsurerWatchlistPage() {
                 value={formTargetId}
                 onChange={(e) => setFormTargetId(e.target.value)}
                 className="w-full rounded-xl border border-border-default px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                placeholder={
-                  formType === "certificate" ? "証明書のUUID" : "車両のUUID"
-                }
+                placeholder={formType === "certificate" ? "証明書のUUID" : "車両のUUID"}
               />
             </div>
           </div>
@@ -203,11 +189,7 @@ export default function InsurerWatchlistPage() {
       )}
 
       {/* error */}
-      {err && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {err}
-        </div>
-      )}
+      {err && <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>}
 
       {/* watchlist items */}
       {busy ? (
@@ -236,10 +218,7 @@ export default function InsurerWatchlistPage() {
             </thead>
             <tbody>
               {items.map((item) => (
-                <tr
-                  key={item.id}
-                  className="border-b border-border-subtle last:border-0 hover:bg-inset"
-                >
+                <tr key={item.id} className="border-b border-border-subtle last:border-0 hover:bg-inset">
                   <td className="px-4 py-3">
                     <span
                       className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${TYPE_COLORS[item.target_type] ?? "bg-surface-hover text-secondary"}`}
@@ -249,29 +228,18 @@ export default function InsurerWatchlistPage() {
                   </td>
                   <td className="px-4 py-3 font-medium text-primary">
                     {item.target_detail ? (
-                      <Link
-                        href={getDetailLink(item)}
-                        className="text-blue-600 hover:text-blue-800 hover:underline"
-                      >
+                      <Link href={getDetailLink(item)} className="text-blue-600 hover:text-blue-800 hover:underline">
                         {item.target_detail.identifier}
                       </Link>
                     ) : (
-                      <span className="text-muted font-mono text-xs">
-                        {item.target_id.slice(0, 8)}…（削除済み）
-                      </span>
+                      <span className="text-muted font-mono text-xs">{item.target_id.slice(0, 8)}…（削除済み）</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-secondary">
-                    {item.target_detail?.status ?? "—"}
-                  </td>
+                  <td className="px-4 py-3 text-secondary">{item.target_detail?.status ?? "—"}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-muted">
-                    {item.target_detail?.updated_at
-                      ? formatDateTime(item.target_detail.updated_at)
-                      : "—"}
+                    {item.target_detail?.updated_at ? formatDateTime(item.target_detail.updated_at) : "—"}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-muted">
-                    {formatDateTime(item.created_at)}
-                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-muted">{formatDateTime(item.created_at)}</td>
                   <td className="px-4 py-3">
                     <button
                       onClick={() => handleRemove(item.id)}

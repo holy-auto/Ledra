@@ -135,7 +135,7 @@ export default function AdminSupportClient() {
         body: JSON.stringify({ message: replyText }),
       });
       if (!res.ok) {
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       setReplyText("");
@@ -161,7 +161,7 @@ export default function AdminSupportClient() {
         body: JSON.stringify({ status: newStatus }),
       });
       if (!res.ok) {
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       setMsg(`ステータスを「${STATUS_MAP[newStatus]?.label ?? newStatus}」に更新しました`);
@@ -183,7 +183,10 @@ export default function AdminSupportClient() {
       <div className="space-y-4">
         {/* Back button */}
         <button
-          onClick={() => { setSelected(null); setMsg(null); }}
+          onClick={() => {
+            setSelected(null);
+            setMsg(null);
+          }}
           className="text-sm text-accent hover:underline"
         >
           &larr; チケット一覧に戻る
@@ -227,9 +230,7 @@ export default function AdminSupportClient() {
         </div>
 
         {msg && (
-          <div className="rounded-xl border border-default bg-surface-solid p-3 text-sm text-secondary">
-            {msg}
-          </div>
+          <div className="rounded-xl border border-default bg-surface-solid p-3 text-sm text-secondary">{msg}</div>
         )}
 
         {/* Messages */}
@@ -256,9 +257,7 @@ export default function AdminSupportClient() {
                   }`}
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-medium text-secondary">
-                      {m.is_admin ? "管理者" : "代理店"}
-                    </span>
+                    <span className="text-xs font-medium text-secondary">{m.is_admin ? "管理者" : "代理店"}</span>
                     <span className="text-xs text-muted">{formatDateTime(m.created_at)}</span>
                   </div>
                   <p className="text-primary whitespace-pre-wrap">{m.body}</p>
@@ -277,11 +276,7 @@ export default function AdminSupportClient() {
               className="w-full rounded-xl border border-default bg-surface-solid px-4 py-3 text-sm text-primary placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] resize-none"
             />
             <div className="flex justify-end">
-              <button
-                onClick={sendReply}
-                disabled={sending || !replyText.trim()}
-                className="btn-primary"
-              >
+              <button onClick={sendReply} disabled={sending || !replyText.trim()} className="btn-primary">
                 {sending ? "送信中..." : "返信する"}
               </button>
             </div>
@@ -321,9 +316,7 @@ export default function AdminSupportClient() {
           ))}
         </div>
       ) : tickets.length === 0 ? (
-        <div className="glass-card p-8 text-center text-muted">
-          チケットがありません
-        </div>
+        <div className="glass-card p-8 text-center text-muted">チケットがありません</div>
       ) : (
         <div className="glass-card overflow-hidden">
           <div className="overflow-x-auto">
@@ -349,25 +342,17 @@ export default function AdminSupportClient() {
                       onClick={() => openTicket(t)}
                       className="border-t border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)] cursor-pointer"
                     >
-                      <td className="p-3 font-medium text-primary">
-                        {t.agents?.name ?? "不明"}
-                      </td>
+                      <td className="p-3 font-medium text-primary">{t.agents?.name ?? "不明"}</td>
                       <td className="p-3 text-primary">{t.subject}</td>
-                      <td className="p-3 text-muted">
-                        {CATEGORY_MAP[t.category] ?? t.category}
-                      </td>
+                      <td className="p-3 text-muted">{CATEGORY_MAP[t.category] ?? t.category}</td>
                       <td className="p-3">
                         <Badge variant={s.variant}>{s.label}</Badge>
                       </td>
                       <td className="p-3">
                         <Badge variant={p.variant}>{p.label}</Badge>
                       </td>
-                      <td className="p-3 whitespace-nowrap text-muted">
-                        {formatDateTime(t.created_at)}
-                      </td>
-                      <td className="p-3 whitespace-nowrap text-muted">
-                        {formatDateTime(t.updated_at)}
-                      </td>
+                      <td className="p-3 whitespace-nowrap text-muted">{formatDateTime(t.created_at)}</td>
+                      <td className="p-3 whitespace-nowrap text-muted">{formatDateTime(t.updated_at)}</td>
                     </tr>
                   );
                 })}

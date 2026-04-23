@@ -129,7 +129,7 @@ describe("webhook: idempotency / duplicate event detection", () => {
   });
 
   it("null claim error means event was claimed successfully", () => {
-    const claimError = null;
+    const claimError: { code: string } | null = null;
     const isDuplicate = claimError !== null && (claimError as any).code === "23505";
     expect(isDuplicate).toBe(false);
   });
@@ -145,11 +145,7 @@ describe("webhook: idempotency / duplicate event detection", () => {
 // ─── getCurrentPeriodEnd pattern ───
 describe("webhook: getCurrentPeriodEnd logic", () => {
   function getCurrentPeriodEnd(sub: any): number | null {
-    return (
-      sub?.current_period_end ??
-      sub?.items?.data?.[0]?.current_period_end ??
-      null
-    );
+    return sub?.current_period_end ?? sub?.items?.data?.[0]?.current_period_end ?? null;
   }
 
   it("returns top-level current_period_end when present", () => {
@@ -184,10 +180,7 @@ describe("webhook: getCurrentPeriodEnd logic", () => {
   it("handles items.data with multiple items — uses first", () => {
     const sub = {
       items: {
-        data: [
-          { current_period_end: 1700001000 },
-          { current_period_end: 1700002000 },
-        ],
+        data: [{ current_period_end: 1700001000 }, { current_period_end: 1700002000 }],
       },
     };
     expect(getCurrentPeriodEnd(sub)).toBe(1700001000);
@@ -226,7 +219,7 @@ describe("webhook: idempotency edge cases", () => {
   });
 
   it("successful claim (no error) allows processing", () => {
-    const claimError = null;
+    const claimError: { code: string } | null = null;
     const shouldProcess = claimError === null || (claimError as any)?.code !== "23505";
     expect(shouldProcess).toBe(true);
   });

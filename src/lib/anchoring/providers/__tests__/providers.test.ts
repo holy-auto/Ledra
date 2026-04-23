@@ -125,6 +125,8 @@ describe("anchorToPolygon", () => {
     warnSpy.mockRestore();
   });
 
+  // このテストは実際に RPC への DNS / TCP 解決を行うため、ネットワーク状況
+  // により 5s default を超えて flaky になる。30s まで許容する。
   it("returns disabled result when transaction fails", async () => {
     process.env.POLYGON_ANCHOR_ENABLED = "true";
     process.env.POLYGON_RPC_URL = "https://polygon-rpc.com";
@@ -142,7 +144,7 @@ describe("anchorToPolygon", () => {
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("[polygon] anchoring failed:"), expect.anything());
 
     errorSpy.mockRestore();
-  });
+  }, 30_000);
 });
 
 describe("verifyAnchor", () => {

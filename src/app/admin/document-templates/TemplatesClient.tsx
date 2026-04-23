@@ -92,7 +92,7 @@ export default function TemplatesClient() {
           layout_config: editor.layout,
         }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setMsg({ text: "保存しました", ok: true });
       await load();
@@ -120,7 +120,7 @@ export default function TemplatesClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
       if (editor?.id === id) setEditor(null);
       await load();

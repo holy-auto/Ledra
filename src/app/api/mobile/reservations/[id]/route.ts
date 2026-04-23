@@ -1,21 +1,12 @@
 import { NextRequest } from "next/server";
 import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { hasPermission } from "@/lib/auth/permissions";
-import {
-  apiOk,
-  apiUnauthorized,
-  apiForbidden,
-  apiNotFound,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiOk, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
 // ─── GET: Reservation detail ───
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();
@@ -44,17 +35,14 @@ export async function GET(
 }
 
 // ─── PUT: Update reservation ───
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();
     if (!hasPermission(caller.role, "reservations:edit")) return apiForbidden();
 
     const { id } = await params;
-    const body = await request.json().catch(() => null);
+    const body = await request.json().catch((): null => null);
     if (!body) return apiNotFound();
 
     // Only allow safe fields to be updated

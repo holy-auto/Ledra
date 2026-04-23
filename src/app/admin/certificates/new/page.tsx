@@ -48,7 +48,7 @@ export default async function Page({
         .limit(300),
       // ブランドテンプレート確認（2クエリを並列）
       Promise.all([
-        (async () => {
+        (async (): Promise<{ data: { status: string } | null }> => {
           try {
             return await supabase
               .from("tenant_option_subscriptions")
@@ -61,7 +61,7 @@ export default async function Page({
             return { data: null };
           }
         })(),
-        (async () => {
+        (async (): Promise<{ data: { id: string } | null }> => {
           try {
             return await supabase
               .from("tenant_template_configs")

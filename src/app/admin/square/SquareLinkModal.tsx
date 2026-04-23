@@ -53,7 +53,7 @@ export default function SquareLinkModal({ order, onClose, onSave }: Props) {
       if (customerSearch) params.set("q", customerSearch);
       params.set("per_page", "100");
       const res = await fetch(`/api/admin/customers?${params.toString()}`);
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (res.ok && j?.customers) {
         setCustomers(j.customers.map((c: any) => ({ id: c.id, name: c.name })));
       }
@@ -68,7 +68,7 @@ export default function SquareLinkModal({ order, onClose, onSave }: Props) {
     }
     try {
       const res = await fetch(`/api/admin/vehicles?customer_id=${encodeURIComponent(custId)}`);
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (res.ok && j?.vehicles) {
         setVehicles(
           j.vehicles.map((v: any) => ({
@@ -93,10 +93,8 @@ export default function SquareLinkModal({ order, onClose, onSave }: Props) {
       return;
     }
     try {
-      const res = await fetch(
-        `/api/admin/certificates?vehicle_id=${encodeURIComponent(vehId)}&per_page=100`,
-      );
-      const j = await res.json().catch(() => null);
+      const res = await fetch(`/api/admin/certificates?vehicle_id=${encodeURIComponent(vehId)}&per_page=100`);
+      const j = await res.json().catch((): null => null);
       if (res.ok && j?.certificates) {
         setCertificates(
           j.certificates.map((c: any) => ({
@@ -152,7 +150,7 @@ export default function SquareLinkModal({ order, onClose, onSave }: Props) {
           note: note || null,
         }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       onSave(j);
     } catch (e: any) {
@@ -165,9 +163,7 @@ export default function SquareLinkModal({ order, onClose, onSave }: Props) {
   // Items summary
   const itemsSummary =
     order.items_json && order.items_json.length > 0
-      ? order.items_json
-          .map((item: any) => item.name || item.description || "不明")
-          .join(", ")
+      ? order.items_json.map((item: any) => item.name || item.description || "不明").join(", ")
       : "品目情報なし";
 
   const vehicleLabel = (v: Vehicle) => {
@@ -182,19 +178,10 @@ export default function SquareLinkModal({ order, onClose, onSave }: Props) {
       title="Square売上 紐付け"
       footer={
         <>
-          <button
-            type="button"
-            className="btn-ghost"
-            onClick={onClose}
-          >
+          <button type="button" className="btn-ghost" onClick={onClose}>
             キャンセル
           </button>
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={saving}
-            onClick={handleSave}
-          >
+          <button type="button" className="btn-primary" disabled={saving} onClick={handleSave}>
             {saving ? "保存中…" : "保存"}
           </button>
         </>
@@ -226,11 +213,7 @@ export default function SquareLinkModal({ order, onClose, onSave }: Props) {
             if (e.key === "Enter") fetchCustomers();
           }}
         />
-        <select
-          className="input-field"
-          value={customerId}
-          onChange={(e) => handleCustomerChange(e.target.value)}
-        >
+        <select className="input-field" value={customerId} onChange={(e) => handleCustomerChange(e.target.value)}>
           <option value="">選択なし</option>
           {customers.map((c) => (
             <option key={c.id} value={c.id}>
@@ -296,9 +279,7 @@ export default function SquareLinkModal({ order, onClose, onSave }: Props) {
 
       {/* Error */}
       {err && (
-        <div className="rounded-xl border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-400">
-          {err}
-        </div>
+        <div className="rounded-xl border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-400">{err}</div>
       )}
     </Modal>
   );

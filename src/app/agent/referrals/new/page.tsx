@@ -18,10 +18,8 @@ export default function NewReferralPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const set =
-    (field: keyof typeof form) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-      setForm((prev) => ({ ...prev, [field]: e.target.value }));
+  const set = (field: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,7 +35,7 @@ export default function NewReferralPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(form),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       router.push("/agent/referrals");
     } catch (err: any) {
@@ -68,9 +66,7 @@ export default function NewReferralPage() {
 
         {/* Error display */}
         {error && (
-          <div className="rounded-xl border border-danger/20 bg-danger-dim px-4 py-3 text-sm text-danger">
-            {error}
-          </div>
+          <div className="rounded-xl border border-danger/20 bg-danger-dim px-4 py-3 text-sm text-danger">{error}</div>
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -140,11 +136,7 @@ export default function NewReferralPage() {
 
         {/* Actions */}
         <div className="flex gap-3 pt-2">
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={saving || !form.shop_name.trim()}
-          >
+          <button type="submit" className="btn-primary" disabled={saving || !form.shop_name.trim()}>
             {saving ? "登録中…" : "登録する"}
           </button>
           <Link href="/agent/referrals" className="btn-secondary rounded-xl border bg-surface">

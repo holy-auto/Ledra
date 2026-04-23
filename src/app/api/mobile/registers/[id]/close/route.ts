@@ -13,10 +13,7 @@ import {
 export const dynamic = "force-dynamic";
 
 // ─── POST: Close register session ───
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();
@@ -31,7 +28,7 @@ export async function POST(
 
     const { id } = await params;
 
-    const body = await request.json().catch(() => null);
+    const body = await request.json().catch((): null => null);
     if (body?.closing_cash == null || typeof body.closing_cash !== "number") {
       return apiValidationError("closing_cash (number) is required");
     }
@@ -72,9 +69,7 @@ export async function POST(
       record_id: session.id,
       action: "register_session_closed",
       performed_by: caller.userId,
-      ip_address:
-        request.headers.get("x-forwarded-for") ??
-        request.headers.get("x-real-ip"),
+      ip_address: request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip"),
     });
 
     return apiOk({ register_session: data });

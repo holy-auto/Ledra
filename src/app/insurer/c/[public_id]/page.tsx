@@ -55,12 +55,17 @@ export default function InsurerCertificatePage() {
     tenant_consented: boolean;
   } | null>(null);
   const [disclosureBusy, setDisclosureBusy] = useState(false);
-  const [relatedCases, setRelatedCases] = useState<Array<{id: string; case_number: string; title: string; status: string}>>([]);
+  const [relatedCases, setRelatedCases] = useState<
+    Array<{ id: string; case_number: string; title: string; status: string }>
+  >([]);
 
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getUser();
-      if (!data?.user) { window.location.href = "/insurer/login"; return; }
+      if (!data?.user) {
+        window.location.href = "/insurer/login";
+        return;
+      }
       setReady(true);
     })();
   }, [supabase]);
@@ -87,7 +92,7 @@ export default function InsurerCertificatePage() {
             const casesRes = await fetch(`/api/insurer/cases?certificate_id=${c.id}`);
             if (casesRes.ok) {
               const casesJson = await casesRes.json();
-              setRelatedCases(Array.isArray(casesJson) ? casesJson : casesJson?.cases ?? []);
+              setRelatedCases(Array.isArray(casesJson) ? casesJson : (casesJson?.cases ?? []));
             }
           } catch {}
           // Also fetch detailed disclosure status
@@ -122,10 +127,10 @@ export default function InsurerCertificatePage() {
         }),
       });
       if (!res.ok) {
-        const j = await res.json().catch(() => null);
+        const j = await res.json().catch((): null => null);
         throw new Error(j?.error ?? "request_failed");
       }
-      setDisclosureStatus(prev => prev ? { ...prev, insurer_requested: true } : prev);
+      setDisclosureStatus((prev) => (prev ? { ...prev, insurer_requested: true } : prev));
     } catch (e: any) {
       setErr(e?.message ?? "request_failed");
     } finally {
@@ -171,16 +176,26 @@ export default function InsurerCertificatePage() {
               案件作成
             </Link>
           )}
-          <a href={pdfOneUrl} className="rounded-xl border border-border-default bg-surface px-4 py-2 text-sm font-medium text-secondary hover:bg-surface-hover">
+          <a
+            href={pdfOneUrl}
+            className="rounded-xl border border-border-default bg-surface px-4 py-2 text-sm font-medium text-secondary hover:bg-surface-hover"
+          >
             PDF
           </a>
-          <a href={csvOneUrl} className="rounded-xl border border-border-default bg-surface px-4 py-2 text-sm font-medium text-secondary hover:bg-surface-hover">
+          <a
+            href={csvOneUrl}
+            className="rounded-xl border border-border-default bg-surface px-4 py-2 text-sm font-medium text-secondary hover:bg-surface-hover"
+          >
             CSV
           </a>
         </div>
       </header>
 
-      {!publicId && <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">public_id が取得できません</div>}
+      {!publicId && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          public_id が取得できません
+        </div>
+      )}
       {err && <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{err}</div>}
 
       {cert && (
@@ -189,7 +204,9 @@ export default function InsurerCertificatePage() {
           {disclosureStatus && !disclosureStatus.disclosed && (
             <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
               <div className="flex items-start gap-3">
-                <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-200 text-amber-800 text-xs font-bold">!</div>
+                <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-200 text-amber-800 text-xs font-bold">
+                  !
+                </div>
                 <div className="flex-1">
                   <div className="text-sm font-semibold text-amber-800">個人情報マスキング中</div>
                   <p className="mt-1 text-sm text-amber-700">
@@ -207,12 +224,16 @@ export default function InsurerCertificatePage() {
                       </button>
                     ) : (
                       <div className="flex items-center gap-3 text-sm">
-                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">保険会社側: 申請済み</span>
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                          disclosureStatus.tenant_consented
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-surface-hover text-muted"
-                        }`}>
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                          保険会社側: 申請済み
+                        </span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                            disclosureStatus.tenant_consented
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-surface-hover text-muted"
+                          }`}
+                        >
                           施工店側: {disclosureStatus.tenant_consented ? "承認済み" : "未承認"}
                         </span>
                       </div>
@@ -237,7 +258,9 @@ export default function InsurerCertificatePage() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div>
                 <div className="text-xs font-medium text-muted">ステータス</div>
-                <div className={`mt-1 text-sm font-bold ${cert.status === "void" ? "text-red-600" : "text-emerald-600"}`}>
+                <div
+                  className={`mt-1 text-sm font-bold ${cert.status === "void" ? "text-red-600" : "text-emerald-600"}`}
+                >
                   {cert.status === "active" ? "有効" : cert.status === "void" ? "無効" : cert.status}
                 </div>
               </div>
@@ -304,9 +327,7 @@ export default function InsurerCertificatePage() {
               <div className="text-xs font-semibold tracking-[0.18em] text-muted mb-4">施工内容</div>
               {sections.map((sec, i) => (
                 <div key={i} className={i > 0 ? "mt-6 border-t border-border-subtle pt-6" : ""}>
-                  <div className="text-sm font-bold text-primary mb-3">
-                    {sec.title ?? `セクション${i + 1}`}
-                  </div>
+                  <div className="text-sm font-bold text-primary mb-3">{sec.title ?? `セクション${i + 1}`}</div>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {(sec.fields ?? []).map((f) => {
                       const label = f.label ?? f.key;
@@ -342,7 +363,11 @@ export default function InsurerCertificatePage() {
               <h2 className="text-lg font-bold text-primary">関連案件 ({relatedCases.length})</h2>
               <div className="space-y-2">
                 {relatedCases.map((c) => (
-                  <Link key={c.id} href={`/insurer/cases/${c.id}`} className="flex items-center justify-between rounded-xl border border-border-subtle px-4 py-3 hover:bg-inset">
+                  <Link
+                    key={c.id}
+                    href={`/insurer/cases/${c.id}`}
+                    className="flex items-center justify-between rounded-xl border border-border-subtle px-4 py-3 hover:bg-inset"
+                  >
                     <div>
                       <span className="font-mono text-xs text-muted">{c.case_number}</span>
                       <span className="ml-2 text-sm font-medium text-primary">{c.title}</span>

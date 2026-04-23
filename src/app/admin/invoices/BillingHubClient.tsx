@@ -83,8 +83,12 @@ export default function BillingHubClient() {
     (async () => {
       try {
         const [invRes, docRes] = await Promise.all([
-          fetch("/api/admin/invoices", { cache: "no-store" }).then(r => r.json()).catch(() => null),
-          fetch("/api/admin/documents", { cache: "no-store" }).then(r => r.json()).catch(() => null),
+          fetch("/api/admin/invoices", { cache: "no-store" })
+            .then((r) => r.json())
+            .catch((): null => null),
+          fetch("/api/admin/documents", { cache: "no-store" })
+            .then((r) => r.json())
+            .catch((): null => null),
         ]);
         const c: Record<string, number> = {};
         c.invoice = invRes?.stats?.total ?? invRes?.invoices?.length ?? 0;
@@ -130,7 +134,7 @@ export default function BillingHubClient() {
   }
 
   if (activeView && activeView !== "invoice") {
-    const card = DOC_TYPE_CARDS.find(c => c.id === activeView);
+    const card = DOC_TYPE_CARDS.find((c) => c.id === activeView);
     return (
       <div className="space-y-4">
         <button
@@ -153,15 +157,9 @@ export default function BillingHubClient() {
     <div className="mx-auto max-w-4xl space-y-6">
       {/* Header */}
       <div className="space-y-1">
-        <span className="text-[11px] font-medium tracking-[0.12em] text-secondary">
-          請求・帳票
-        </span>
-        <h1 className="text-[28px] font-semibold tracking-tight text-primary leading-tight">
-          請求・帳票管理
-        </h1>
-        <p className="text-[14px] text-secondary leading-relaxed">
-          作成したい書類の種類を選択してください
-        </p>
+        <span className="text-[11px] font-medium tracking-[0.12em] text-secondary">請求・帳票</span>
+        <h1 className="text-[28px] font-semibold tracking-tight text-primary leading-tight">請求・帳票管理</h1>
+        <p className="text-[14px] text-secondary leading-relaxed">作成したい書類の種類を選択してください</p>
       </div>
 
       {/* Revenue Analytics */}
@@ -210,7 +208,12 @@ export default function BillingHubClient() {
 
               {/* Arrow */}
               <svg
-                width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}
+                width="16"
+                height="16"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.5}
                 className="shrink-0 text-muted group-hover:text-primary transition-all duration-200 group-hover:translate-x-0.5 mt-1"
               >
                 <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />

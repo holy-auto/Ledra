@@ -13,10 +13,7 @@ import {
 export const dynamic = "force-dynamic";
 
 // ─── POST: Create customer-facing progress event ───
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ reservationId: string }> },
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ reservationId: string }> }) {
   try {
     const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();
@@ -24,7 +21,7 @@ export async function POST(
 
     const { reservationId } = await params;
 
-    const body = await request.json().catch(() => null);
+    const body = await request.json().catch((): null => null);
     if (!body?.progress_label) {
       return apiValidationError("progress_label is required");
     }
@@ -39,9 +36,7 @@ export async function POST(
 
     if (!reservation) return apiNotFound();
     if (!reservation.vehicle_id) {
-      return apiValidationError(
-        "Reservation has no vehicle_id assigned",
-      );
+      return apiValidationError("Reservation has no vehicle_id assigned");
     }
 
     const { data, error } = await caller.supabase

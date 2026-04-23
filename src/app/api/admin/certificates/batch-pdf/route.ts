@@ -3,13 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { createAdminClient } from "@/lib/supabase/admin";
 import { enforceBilling } from "@/lib/billing/guard";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import {
-  apiOk,
-  apiUnauthorized,
-  apiValidationError,
-  apiForbidden,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiOk, apiUnauthorized, apiValidationError, apiForbidden, apiInternalError } from "@/lib/api/response";
 import { enqueueBatchPdf } from "@/lib/qstash/publish";
 
 export const runtime = "nodejs";
@@ -36,9 +30,7 @@ export async function GET(req: NextRequest) {
     const admin = createAdminClient();
     const { data: job, error } = await admin
       .from("batch_pdf_jobs")
-      .select(
-        "id, status, total_count, processed_count, result_urls, error_message, created_at, updated_at",
-      )
+      .select("id, status, total_count, processed_count, result_urls, error_message, created_at, updated_at")
       .eq("id", jobId)
       .eq("tenant_id", caller.tenantId)
       .single();
@@ -74,7 +66,7 @@ export async function POST(req: NextRequest) {
     });
     if (billingDeny) return billingDeny as any;
 
-    const body = await req.json().catch(() => null);
+    const body = await req.json().catch((): null => null);
     const publicIds: unknown = body?.public_ids;
 
     if (!Array.isArray(publicIds) || publicIds.length === 0) {
@@ -83,9 +75,7 @@ export async function POST(req: NextRequest) {
     if (publicIds.length > MAX_BATCH) {
       return apiValidationError(`一度に処理できるのは最大 ${MAX_BATCH} 件です。`);
     }
-    const ids = publicIds.filter(
-      (v): v is string => typeof v === "string" && v.trim().length > 0,
-    );
+    const ids = publicIds.filter((v): v is string => typeof v === "string" && v.trim().length > 0);
     if (ids.length === 0) {
       return apiValidationError("有効な public_id がありません。");
     }
@@ -112,9 +102,7 @@ export async function POST(req: NextRequest) {
       public_ids: ids,
     });
 
-    console.info(
-      `[batch-pdf] tenant=${caller.tenantId} queued job=${job.id} count=${ids.length}`,
-    );
+    console.info(`[batch-pdf] tenant=${caller.tenantId} queued job=${job.id} count=${ids.length}`);
 
     return NextResponse.json(
       {

@@ -76,7 +76,7 @@ export default function ShareDocumentModal({
           message: message.trim() || undefined,
         }),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) {
         throw new Error(j?.message ?? `送信に失敗しました (${res.status})`);
       }

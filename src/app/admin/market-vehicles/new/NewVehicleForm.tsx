@@ -191,7 +191,7 @@ export default function NewVehicleForm() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       });
-      const j = await res.json().catch(() => null);
+      const j = await res.json().catch((): null => null);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
 
       const vehicleId = j.vehicle?.id ?? j.id;
@@ -205,7 +205,7 @@ export default function NewVehicleForm() {
           body: formData,
         });
         if (!imgRes.ok) {
-          const imgJ = await imgRes.json().catch(() => null);
+          const imgJ = await imgRes.json().catch((): null => null);
           console.error("Image upload failed:", imgJ?.error ?? imgRes.status);
         }
       }
@@ -234,110 +234,162 @@ export default function NewVehicleForm() {
         title="新規車両登録"
         description="BtoB在庫に新しい車両を登録します。"
         actions={
-          <button
-            type="button"
-            className="btn-ghost"
-            onClick={() => router.push("/admin/market-vehicles")}
-          >
+          <button type="button" className="btn-ghost" onClick={() => router.push("/admin/market-vehicles")}>
             一覧に戻る
           </button>
         }
       />
 
-      {errMsg && (
-        <div className="glass-card p-4 text-sm text-danger">{errMsg}</div>
-      )}
+      {errMsg && <div className="glass-card p-4 text-sm text-danger">{errMsg}</div>}
 
       {/* 車検証 OCR — 一時非表示 */}
-      {false && <section className="glass-card p-5 space-y-3">
-        <div>
-          <div className="text-xs font-semibold tracking-[0.18em] text-muted">QUICK FILL</div>
-          <div className="mt-1 text-base font-semibold text-primary">車検証から自動入力</div>
-          <p className="mt-1 text-sm text-secondary">
-            車検証を撮影またはアップロードすると、メーカー・車名・年式・車台番号・ナンバーを自動入力します。
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            disabled={ocrBusy}
-            onClick={() => {
-              if (ocrInputRef.current) {
-                ocrInputRef.current.removeAttribute("multiple");
-                ocrInputRef.current.setAttribute("capture", "environment");
-                ocrInputRef.current.click();
-              }
-            }}
-            className="inline-flex items-center gap-2 rounded-lg border border-border-default bg-surface px-4 py-2 text-sm font-medium text-secondary shadow-sm hover:bg-surface-hover transition-colors disabled:opacity-50"
-          >
-            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Z" />
-            </svg>
-            {ocrBusy ? "読み取り中..." : "カメラで撮影"}
-          </button>
-          <button
-            type="button"
-            disabled={ocrBusy}
-            onClick={() => {
-              if (ocrInputRef.current) {
-                ocrInputRef.current.removeAttribute("capture");
-                ocrInputRef.current.click();
-              }
-            }}
-            className="inline-flex items-center gap-2 rounded-lg border border-border-default bg-surface px-4 py-2 text-sm font-medium text-secondary shadow-sm hover:bg-surface-hover transition-colors disabled:opacity-50"
-          >
-            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
-            </svg>
-            ファイルを選択
-          </button>
-        </div>
-        <input
-          ref={ocrInputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/gif,image/webp"
-          className="hidden"
-          onChange={onOcrFileChange}
-        />
-        {ocrMsg != null && (
-          <p className={`text-sm ${ocrMsg!.startsWith("✓") ? "text-success-text" : "text-danger"}`}>
-            {ocrMsg}
-          </p>
-        )}
-      </section>}
+      {false && (
+        <section className="glass-card p-5 space-y-3">
+          <div>
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted">QUICK FILL</div>
+            <div className="mt-1 text-base font-semibold text-primary">車検証から自動入力</div>
+            <p className="mt-1 text-sm text-secondary">
+              車検証を撮影またはアップロードすると、メーカー・車名・年式・車台番号・ナンバーを自動入力します。
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              disabled={ocrBusy}
+              onClick={() => {
+                if (ocrInputRef.current) {
+                  ocrInputRef.current.removeAttribute("multiple");
+                  ocrInputRef.current.setAttribute("capture", "environment");
+                  ocrInputRef.current.click();
+                }
+              }}
+              className="inline-flex items-center gap-2 rounded-lg border border-border-default bg-surface px-4 py-2 text-sm font-medium text-secondary shadow-sm hover:bg-surface-hover transition-colors disabled:opacity-50"
+            >
+              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Z"
+                />
+              </svg>
+              {ocrBusy ? "読み取り中..." : "カメラで撮影"}
+            </button>
+            <button
+              type="button"
+              disabled={ocrBusy}
+              onClick={() => {
+                if (ocrInputRef.current) {
+                  ocrInputRef.current.removeAttribute("capture");
+                  ocrInputRef.current.click();
+                }
+              }}
+              className="inline-flex items-center gap-2 rounded-lg border border-border-default bg-surface px-4 py-2 text-sm font-medium text-secondary shadow-sm hover:bg-surface-hover transition-colors disabled:opacity-50"
+            >
+              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"
+                />
+              </svg>
+              ファイルを選択
+            </button>
+          </div>
+          <input
+            ref={ocrInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            className="hidden"
+            onChange={onOcrFileChange}
+          />
+          {ocrMsg != null && (
+            <p className={`text-sm ${ocrMsg!.startsWith("✓") ? "text-success-text" : "text-danger"}`}>{ocrMsg}</p>
+          )}
+        </section>
+      )}
 
       {/* 基本情報 */}
       <section className="glass-card p-5 space-y-4">
         <SectionTitle tag="BASIC INFO" title="基本情報" />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="space-y-1">
-            <label className="text-xs text-muted">メーカー <span className="text-danger">*</span></label>
-            <input type="text" className="input-field" placeholder="例: トヨタ" value={maker} onChange={(e) => setMaker(e.target.value)} />
+            <label className="text-xs text-muted">
+              メーカー <span className="text-danger">*</span>
+            </label>
+            <input
+              type="text"
+              className="input-field"
+              placeholder="例: トヨタ"
+              value={maker}
+              onChange={(e) => setMaker(e.target.value)}
+            />
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-muted">車名 <span className="text-danger">*</span></label>
-            <input type="text" className="input-field" placeholder="例: プリウス" value={model} onChange={(e) => setModel(e.target.value)} />
+            <label className="text-xs text-muted">
+              車名 <span className="text-danger">*</span>
+            </label>
+            <input
+              type="text"
+              className="input-field"
+              placeholder="例: プリウス"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">グレード</label>
-            <input type="text" className="input-field" placeholder="例: S ツーリングセレクション" value={grade} onChange={(e) => setGrade(e.target.value)} />
+            <input
+              type="text"
+              className="input-field"
+              placeholder="例: S ツーリングセレクション"
+              value={grade}
+              onChange={(e) => setGrade(e.target.value)}
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">年式</label>
-            <input type="number" className="input-field" placeholder="例: 2022" value={year} onChange={(e) => setYear(e.target.value)} />
+            <input
+              type="number"
+              className="input-field"
+              placeholder="例: 2022"
+              value={year}
+              onChange={(e) => setYear(e.target.value)}
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">走行距離 (km)</label>
-            <input type="number" className="input-field" placeholder="例: 35000" value={mileage} onChange={(e) => setMileage(e.target.value)} />
+            <input
+              type="number"
+              className="input-field"
+              placeholder="例: 35000"
+              value={mileage}
+              onChange={(e) => setMileage(e.target.value)}
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">色</label>
-            <input type="text" className="input-field" placeholder="例: パールホワイト" value={color} onChange={(e) => setColor(e.target.value)} />
+            <input
+              type="text"
+              className="input-field"
+              placeholder="例: パールホワイト"
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">カラーコード</label>
-            <input type="text" className="input-field" placeholder="例: 070" value={colorCode} onChange={(e) => setColorCode(e.target.value)} />
+            <input
+              type="text"
+              className="input-field"
+              placeholder="例: 070"
+              value={colorCode}
+              onChange={(e) => setColorCode(e.target.value)}
+            />
           </div>
         </div>
       </section>
@@ -348,11 +400,23 @@ export default function NewVehicleForm() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1">
             <label className="text-xs text-muted">ナンバープレート</label>
-            <input type="text" className="input-field" placeholder="例: 品川 300 あ 1234" value={plateNumber} onChange={(e) => setPlateNumber(e.target.value)} />
+            <input
+              type="text"
+              className="input-field"
+              placeholder="例: 品川 300 あ 1234"
+              value={plateNumber}
+              onChange={(e) => setPlateNumber(e.target.value)}
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">車台番号</label>
-            <input type="text" className="input-field" placeholder="例: ZVW50-1234567" value={chassisNumber} onChange={(e) => setChassisNumber(e.target.value)} />
+            <input
+              type="text"
+              className="input-field"
+              placeholder="例: ZVW50-1234567"
+              value={chassisNumber}
+              onChange={(e) => setChassisNumber(e.target.value)}
+            />
           </div>
         </div>
       </section>
@@ -363,46 +427,86 @@ export default function NewVehicleForm() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="space-y-1">
             <label className="text-xs text-muted">エンジン型式</label>
-            <input type="text" className="input-field" placeholder="例: 2ZR-FXE" value={engineType} onChange={(e) => setEngineType(e.target.value)} />
+            <input
+              type="text"
+              className="input-field"
+              placeholder="例: 2ZR-FXE"
+              value={engineType}
+              onChange={(e) => setEngineType(e.target.value)}
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">排気量 (cc)</label>
-            <input type="number" className="input-field" placeholder="例: 1800" value={displacement} onChange={(e) => setDisplacement(e.target.value)} />
+            <input
+              type="number"
+              className="input-field"
+              placeholder="例: 1800"
+              value={displacement}
+              onChange={(e) => setDisplacement(e.target.value)}
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">トランスミッション</label>
             <select className="select-field" value={transmission} onChange={(e) => setTransmission(e.target.value)}>
               <option value="">選択してください</option>
-              {TRANSMISSIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+              {TRANSMISSIONS.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
             </select>
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">駆動方式</label>
             <select className="select-field" value={driveType} onChange={(e) => setDriveType(e.target.value)}>
               <option value="">選択してください</option>
-              {DRIVE_TYPES.map((d) => <option key={d} value={d}>{d}</option>)}
+              {DRIVE_TYPES.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
             </select>
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">燃料</label>
             <select className="select-field" value={fuelType} onChange={(e) => setFuelType(e.target.value)}>
               <option value="">選択してください</option>
-              {FUEL_TYPES.map((f) => <option key={f} value={f}>{f}</option>)}
+              {FUEL_TYPES.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
             </select>
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">ドア数</label>
-            <input type="number" className="input-field" placeholder="例: 5" value={doorCount} onChange={(e) => setDoorCount(e.target.value)} />
+            <input
+              type="number"
+              className="input-field"
+              placeholder="例: 5"
+              value={doorCount}
+              onChange={(e) => setDoorCount(e.target.value)}
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">乗車定員</label>
-            <input type="number" className="input-field" placeholder="例: 5" value={seatingCapacity} onChange={(e) => setSeatingCapacity(e.target.value)} />
+            <input
+              type="number"
+              className="input-field"
+              placeholder="例: 5"
+              value={seatingCapacity}
+              onChange={(e) => setSeatingCapacity(e.target.value)}
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">ボディタイプ</label>
             <select className="select-field" value={bodyType} onChange={(e) => setBodyType(e.target.value)}>
               <option value="">選択してください</option>
-              {BODY_TYPES.map((bt) => <option key={bt} value={bt}>{bt}</option>)}
+              {BODY_TYPES.map((bt) => (
+                <option key={bt} value={bt}>
+                  {bt}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -414,20 +518,33 @@ export default function NewVehicleForm() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="space-y-1">
             <label className="text-xs text-muted">車検満了日</label>
-            <input type="date" className="input-field" value={inspectionDate} onChange={(e) => setInspectionDate(e.target.value)} />
+            <input
+              type="date"
+              className="input-field"
+              value={inspectionDate}
+              onChange={(e) => setInspectionDate(e.target.value)}
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">修復歴</label>
             <select className="select-field" value={repairHistory} onChange={(e) => setRepairHistory(e.target.value)}>
               <option value="">選択してください</option>
-              {REPAIR_HISTORY.map((r) => <option key={r} value={r}>{r}</option>)}
+              {REPAIR_HISTORY.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
             </select>
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">評価点</label>
             <select className="select-field" value={conditionGrade} onChange={(e) => setConditionGrade(e.target.value)}>
               <option value="">選択してください</option>
-              {CONDITION_GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+              {CONDITION_GRADES.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -449,23 +566,52 @@ export default function NewVehicleForm() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="space-y-1">
             <label className="text-xs text-muted">販売価格 (税込)</label>
-            <input type="number" className="input-field" placeholder="例: 2500000" value={askingPrice} onChange={(e) => setAskingPrice(e.target.value)} />
+            <input
+              type="number"
+              className="input-field"
+              placeholder="例: 2500000"
+              value={askingPrice}
+              onChange={(e) => setAskingPrice(e.target.value)}
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">卸価格</label>
-            <input type="number" className="input-field" placeholder="例: 2200000" value={wholesalePrice} onChange={(e) => setWholesalePrice(e.target.value)} />
+            <input
+              type="number"
+              className="input-field"
+              placeholder="例: 2200000"
+              value={wholesalePrice}
+              onChange={(e) => setWholesalePrice(e.target.value)}
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">仕入原価</label>
-            <input type="number" className="input-field" placeholder="例: 1800000" value={costPrice} onChange={(e) => setCostPrice(e.target.value)} />
+            <input
+              type="number"
+              className="input-field"
+              placeholder="例: 1800000"
+              value={costPrice}
+              onChange={(e) => setCostPrice(e.target.value)}
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">仕入先</label>
-            <input type="text" className="input-field" placeholder="例: オートオークション AA" value={supplierName} onChange={(e) => setSupplierName(e.target.value)} />
+            <input
+              type="text"
+              className="input-field"
+              placeholder="例: オートオークション AA"
+              value={supplierName}
+              onChange={(e) => setSupplierName(e.target.value)}
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">仕入日</label>
-            <input type="date" className="input-field" value={acquisitionDate} onChange={(e) => setAcquisitionDate(e.target.value)} />
+            <input
+              type="date"
+              className="input-field"
+              value={acquisitionDate}
+              onChange={(e) => setAcquisitionDate(e.target.value)}
+            />
           </div>
         </div>
         {/* Profit preview */}
@@ -474,20 +620,26 @@ export default function NewVehicleForm() {
             <div className="flex gap-6 text-sm">
               <div>
                 <span className="text-xs text-muted">販売利益</span>
-                <div className={`font-semibold ${parseInt(askingPrice) - parseInt(costPrice) >= 0 ? "text-success" : "text-danger"}`}>
+                <div
+                  className={`font-semibold ${parseInt(askingPrice) - parseInt(costPrice) >= 0 ? "text-success" : "text-danger"}`}
+                >
                   ¥{(parseInt(askingPrice) - parseInt(costPrice)).toLocaleString()}
                 </div>
               </div>
               <div>
                 <span className="text-xs text-muted">利益率</span>
-                <div className={`font-semibold ${parseInt(askingPrice) - parseInt(costPrice) >= 0 ? "text-success" : "text-danger"}`}>
-                  {((parseInt(askingPrice) - parseInt(costPrice)) / parseInt(askingPrice) * 100).toFixed(1)}%
+                <div
+                  className={`font-semibold ${parseInt(askingPrice) - parseInt(costPrice) >= 0 ? "text-success" : "text-danger"}`}
+                >
+                  {(((parseInt(askingPrice) - parseInt(costPrice)) / parseInt(askingPrice)) * 100).toFixed(1)}%
                 </div>
               </div>
               {wholesalePrice && (
                 <div>
                   <span className="text-xs text-muted">卸利益</span>
-                  <div className={`font-semibold ${parseInt(wholesalePrice) - parseInt(costPrice) >= 0 ? "text-success" : "text-danger"}`}>
+                  <div
+                    className={`font-semibold ${parseInt(wholesalePrice) - parseInt(costPrice) >= 0 ? "text-success" : "text-danger"}`}
+                  >
                     ¥{(parseInt(wholesalePrice) - parseInt(costPrice)).toLocaleString()}
                   </div>
                 </div>
@@ -502,17 +654,13 @@ export default function NewVehicleForm() {
         <SectionTitle tag="PHOTOS" title="写真" />
         <div
           className={`relative rounded-lg border-2 border-dashed p-8 text-center transition-colors ${
-            dragActive
-              ? "border-accent bg-accent-dim"
-              : "border-border-subtle hover:border-border-default"
+            dragActive ? "border-accent bg-accent-dim" : "border-border-subtle hover:border-border-default"
           }`}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
         >
-          <div className="text-sm text-muted">
-            写真を追加 (最大 {MAX_IMAGES} 枚)
-          </div>
+          <div className="text-sm text-muted">写真を追加 (最大 {MAX_IMAGES} 枚)</div>
           <div className="mt-1 text-xs text-muted">
             {images.length}/{MAX_IMAGES} 枚アップロード済み
           </div>
@@ -525,8 +673,16 @@ export default function NewVehicleForm() {
               className="inline-flex items-center gap-2 rounded-lg border border-border-default bg-surface px-4 py-2 text-sm font-medium text-secondary shadow-sm hover:bg-surface-hover hover:border-border-default transition-colors"
             >
               <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Z"
+                />
               </svg>
               カメラで撮影
             </button>
@@ -536,14 +692,16 @@ export default function NewVehicleForm() {
               className="inline-flex items-center gap-2 rounded-lg border border-border-default bg-surface px-4 py-2 text-sm font-medium text-secondary shadow-sm hover:bg-surface-hover hover:border-border-default transition-colors"
             >
               <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z"
+                />
               </svg>
               アルバムから選択
             </button>
           </div>
-          <div className="mt-2 text-xs text-muted opacity-60">
-            ドラッグ&ドロップにも対応しています
-          </div>
+          <div className="mt-2 text-xs text-muted opacity-60">ドラッグ&ドロップにも対応しています</div>
 
           {/* Camera input */}
           <input
@@ -575,13 +733,7 @@ export default function NewVehicleForm() {
           <div className="grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-6 gap-2">
             {images.map((img, idx) => (
               <div key={idx} className="group relative aspect-square rounded-lg overflow-hidden bg-surface-hover">
-                <Image
-                  src={img.preview}
-                  alt={`Upload ${idx + 1}`}
-                  fill
-                  className="object-cover"
-                  sizes="120px"
-                />
+                <Image src={img.preview} alt={`Upload ${idx + 1}`} fill className="object-cover" sizes="120px" />
                 <button
                   type="button"
                   className="absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity"
@@ -621,19 +773,10 @@ export default function NewVehicleForm() {
 
       {/* Submit */}
       <div className="flex gap-3 pb-8">
-        <button
-          type="button"
-          className="btn-primary"
-          disabled={saving}
-          onClick={handleSubmit}
-        >
+        <button type="button" className="btn-primary" disabled={saving} onClick={handleSubmit}>
           {saving ? "登録中..." : "車両を登録"}
         </button>
-        <button
-          type="button"
-          className="btn-ghost"
-          onClick={() => router.push("/admin/market-vehicles")}
-        >
+        <button type="button" className="btn-ghost" onClick={() => router.push("/admin/market-vehicles")}>
           キャンセル
         </button>
       </div>

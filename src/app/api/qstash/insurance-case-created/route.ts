@@ -12,7 +12,7 @@ import { apiValidationError, apiInternalError } from "@/lib/api/response";
  * 3. Future: notify relevant insurers via email
  */
 async function handler(request: Request) {
-  const body = await request.json().catch(() => null);
+  const body = await request.json().catch((): null => null);
 
   if (!body) {
     return apiValidationError("no payload");

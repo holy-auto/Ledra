@@ -15,18 +15,25 @@ async function resolveSession(tenantSlug: string) {
   const globalToken = c.get(GLOBAL_PORTAL_COOKIE)?.value ?? "";
 
   let phoneHash = "";
+  let email: string | undefined;
 
   if (tenantToken) {
     const sess = await validateSession(tenantId, tenantToken);
-    if (sess) phoneHash = sess.phone_last4_hash;
+    if (sess) {
+      phoneHash = sess.phone_last4_hash;
+      email = sess.email;
+    }
   }
   if (!phoneHash && globalToken) {
     const access = await resolvePortalTenantAccessByGlobalToken(tenantSlug, globalToken);
-    if (access) phoneHash = access.phone_last4_hash;
+    if (access) {
+      phoneHash = access.phone_last4_hash;
+      if ("email" in access && typeof access.email === "string") email = access.email;
+    }
   }
 
   if (!phoneHash) return null;
-  return { tenantId, phoneHash };
+  return { tenantId, phoneHash, email };
 }
 
 /** GET /api/customer/inquiry?tenant=xxx — 顧客の問い合わせ一覧 */
@@ -71,7 +78,9 @@ export async function POST(req: Request) {
     if (!sess) return apiUnauthorized();
 
     // 顧客名を取得（ベストエフォート）
-    const profile = await getCustomerProfile(sess.tenantId, sess.phoneHash).catch(() => null);
+    const profile = await getCustomerProfile(sess.tenantId, sess.phoneHash, undefined, sess.email).catch(
+      (): null => null,
+    );
     const customerName = profile?.name ?? null;
 
     const { data, error } = await getSupabaseAdmin()

@@ -21,7 +21,7 @@ import {
  */
 export async function POST(req: Request) {
   try {
-    const json = await req.json().catch(() => null);
+    const json = await req.json().catch((): null => null);
     const parsed = certificateVoidSchema.safeParse(json);
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "入力内容に誤りがあります。");
