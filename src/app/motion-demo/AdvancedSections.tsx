@@ -918,6 +918,354 @@ function AmbientSection() {
 }
 
 // ═══════════════════════════════════════════════════
+// 16 · FORM — Floating label input / Validation state
+// ═══════════════════════════════════════════════════
+type FieldKind = "text" | "email" | "password";
+type FieldState = { value: string; touched: boolean };
+
+function FloatingLabelInput({
+  label,
+  type = "text",
+  state,
+  onChange,
+  error,
+}: {
+  label: string;
+  type?: FieldKind;
+  state: FieldState;
+  onChange: (v: string) => void;
+  error?: string | null;
+}) {
+  const [focused, setFocused] = useState(false);
+  const floating = focused || state.value.length > 0;
+  const showError = state.touched && !!error;
+  return (
+    <label
+      className={`${styles.floatField} ${floating ? styles.floatFieldUp : ""} ${
+        showError ? styles.floatFieldError : ""
+      }`}
+    >
+      <input
+        type={type}
+        className={styles.floatInput}
+        value={state.value}
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        autoComplete="off"
+      />
+      <span className={styles.floatLabel}>{label}</span>
+      <span className={styles.floatUnderline} aria-hidden />
+      <span className={styles.floatError} aria-live="polite">
+        {showError ? error : ""}
+      </span>
+    </label>
+  );
+}
+
+function FormSection() {
+  const [email, setEmail] = useState<FieldState>({ value: "", touched: false });
+  const [password, setPassword] = useState<FieldState>({ value: "", touched: false });
+  const [name, setName] = useState<FieldState>({ value: "", touched: false });
+  const [submitState, setSubmitState] = useState<"idle" | "shake" | "ok">("idle");
+
+  const emailError = !/^\S+@\S+\.\S+$/.test(email.value) ? "有効なメールを入力してください" : null;
+  const passwordError = password.value.length < 6 ? "6文字以上で入力してください" : null;
+  const nameError = name.value.trim().length < 1 ? "お名前を入力してください" : null;
+
+  const submit = () => {
+    setEmail((s) => ({ ...s, touched: true }));
+    setPassword((s) => ({ ...s, touched: true }));
+    setName((s) => ({ ...s, touched: true }));
+    if (emailError || passwordError || nameError) {
+      setSubmitState("shake");
+      window.setTimeout(() => setSubmitState("idle"), 500);
+      return;
+    }
+    setSubmitState("ok");
+    window.setTimeout(() => setSubmitState("idle"), 1600);
+  };
+
+  return (
+    <Section
+      id="form"
+      tag="16 · Form"
+      title="フローティングラベル & バリデーション"
+      description="ラベルが入力エリア内から上部に浮き上がる。フォーカス中は下線がスライド、エラー時は軽くシェイク。"
+    >
+      <div className={styles.grid2}>
+        <div className={styles.card}>
+          <p className={styles.cardLabel}>ログインフォーム</p>
+          <div className={`${styles.floatForm} ${submitState === "shake" ? styles.floatFormShake : ""}`}>
+            <FloatingLabelInput
+              label="メールアドレス"
+              type="email"
+              state={email}
+              onChange={(v) => setEmail({ value: v, touched: email.touched })}
+              error={emailError}
+            />
+            <FloatingLabelInput
+              label="パスワード"
+              type="password"
+              state={password}
+              onChange={(v) => setPassword({ value: v, touched: password.touched })}
+              error={passwordError}
+            />
+            <FloatingLabelInput
+              label="お名前"
+              state={name}
+              onChange={(v) => setName({ value: v, touched: name.touched })}
+              error={nameError}
+            />
+            <button type="button" className="btn-primary" onClick={submit}>
+              {submitState === "ok" ? "送信しました ✓" : "サインアップ"}
+            </button>
+          </div>
+        </div>
+        <div className={styles.card}>
+          <p className={styles.cardLabel}>状態プレビュー</p>
+          <ul className={styles.floatStates}>
+            <li>
+              <span className={styles.floatStateDot} data-k="idle" /> 初期: ラベルは入力欄内
+            </li>
+            <li>
+              <span className={styles.floatStateDot} data-k="focus" /> フォーカス: ラベルが上へ / 下線がスライド
+            </li>
+            <li>
+              <span className={styles.floatStateDot} data-k="filled" /> 入力済: ラベル位置を保持
+            </li>
+            <li>
+              <span className={styles.floatStateDot} data-k="error" /> エラー: 色変化 + 軽いシェイク
+            </li>
+          </ul>
+          <p className={styles.cardText}>
+            ログイン / サインアップ画面での使用を想定。ラベルとプレースホルダを兼ねることで視線移動を減らし、余白を節約できる。
+          </p>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+// ═══════════════════════════════════════════════════
+// 17 · FLOW — Stepper with progress fill & check draw
+// ═══════════════════════════════════════════════════
+const STEPS = ["情報入力", "内容確認", "電子署名", "発行完了"] as const;
+
+function Stepper({ step }: { step: number }) {
+  const fillPct = STEPS.length <= 1 ? 0 : (Math.min(step, STEPS.length - 1) / (STEPS.length - 1)) * 100;
+  return (
+    <div className={styles.stepper}>
+      <div className={styles.stepperTrack} aria-hidden>
+        <div className={styles.stepperFill} style={{ width: `${fillPct}%` }} />
+      </div>
+      <ol className={styles.stepperList}>
+        {STEPS.map((label, i) => {
+          const state = i < step ? "done" : i === step ? "current" : "todo";
+          return (
+            <li key={label} className={`${styles.stepItem} ${styles[`step_${state}`]}`}>
+              <span className={styles.stepDot}>
+                {state === "done" ? (
+                  <svg viewBox="0 0 24 24" className={styles.stepCheck} aria-hidden>
+                    <path d="M5 12l5 5L20 7" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                ) : (
+                  <span className={styles.stepNum}>{i + 1}</span>
+                )}
+                {state === "current" && <span className={styles.stepPulse} aria-hidden />}
+              </span>
+              <span className={styles.stepLabel}>{label}</span>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+function FlowSection() {
+  const [step, setStep] = useState(0);
+  const [auto, setAuto] = useState(true);
+
+  useEffect(() => {
+    if (!auto) return;
+    const id = window.setInterval(() => {
+      setStep((s) => (s >= STEPS.length - 1 ? 0 : s + 1));
+    }, 1800);
+    return () => window.clearInterval(id);
+  }, [auto]);
+
+  return (
+    <Section
+      id="flow"
+      tag="17 · Flow"
+      title="ステッパー進捗バー"
+      description="証明書の発行フローや申込ウィザードで。完了ステップは描画されたチェック、現在ステップはパルスで示す。"
+    >
+      <div className={styles.card} style={{ padding: "2.5rem 1.75rem" }}>
+        <Stepper step={step} />
+        <div className={styles.stepperCtrls}>
+          <button
+            type="button"
+            className="btn-ghost"
+            data-size="sm"
+            onClick={() => {
+              setAuto(false);
+              setStep((s) => Math.max(0, s - 1));
+            }}
+          >
+            ← 戻る
+          </button>
+          <button
+            type="button"
+            className="btn-secondary"
+            data-size="sm"
+            onClick={() => {
+              setAuto(false);
+              setStep((s) => Math.min(STEPS.length - 1, s + 1));
+            }}
+          >
+            次へ →
+          </button>
+          <button
+            type="button"
+            className="btn-ghost"
+            data-size="sm"
+            onClick={() => {
+              setStep(0);
+              setAuto(true);
+            }}
+          >
+            ⟳ 自動再生
+          </button>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+// ═══════════════════════════════════════════════════
+// 18 · LOADING — Skeleton shimmer for cards / tables / charts
+// ═══════════════════════════════════════════════════
+function SkeletonCard() {
+  return (
+    <div className={styles.skelCard}>
+      <div className={`${styles.skel} ${styles.skelAvatar}`} />
+      <div className={styles.skelLines}>
+        <div className={`${styles.skel} ${styles.skelLine}`} style={{ width: "70%" }} />
+        <div className={`${styles.skel} ${styles.skelLine}`} style={{ width: "40%" }} />
+      </div>
+    </div>
+  );
+}
+
+function SkeletonTable() {
+  return (
+    <div className={styles.skelTable}>
+      {[0, 1, 2, 3].map((r) => (
+        <div key={r} className={styles.skelRow}>
+          <div className={`${styles.skel} ${styles.skelCell}`} style={{ width: "28%" }} />
+          <div className={`${styles.skel} ${styles.skelCell}`} style={{ width: "20%" }} />
+          <div className={`${styles.skel} ${styles.skelCell}`} style={{ width: "16%" }} />
+          <div className={`${styles.skel} ${styles.skelCellBadge}`} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SkeletonChart() {
+  return (
+    <div className={styles.skelChart}>
+      <div className={`${styles.skel} ${styles.skelChartTitle}`} />
+      <div className={styles.skelChartBars}>
+        {[52, 78, 34, 88, 64, 72, 46].map((h, i) => (
+          <div key={i} className={`${styles.skel} ${styles.skelBar}`} style={{ height: `${h}%` }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LoadingSection() {
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!loading) return;
+    const id = window.setTimeout(() => setLoading(false), 3200);
+    return () => window.clearTimeout(id);
+  }, [loading]);
+
+  return (
+    <Section
+      id="loading"
+      tag="18 · Loading"
+      title="スケルトンシマー"
+      description="ダッシュボードなど読み込み待ちの空白を滑らかに埋める。シマー波がコンテンツの形状を先行表示して体感待ち時間を短くする。"
+    >
+      <div className={styles.grid3}>
+        <div className={styles.card}>
+          <p className={styles.cardLabel}>カード</p>
+          {loading ? (
+            <SkeletonCard />
+          ) : (
+            <div className={styles.skelCard}>
+              <div className={styles.skelAvatarReal}>L</div>
+              <div className={styles.skelLines}>
+                <p className={styles.skelLineReal}>Ledra Inc.</p>
+                <p className={styles.skelLineSub}>info@holy-auto.com</p>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className={styles.card}>
+          <p className={styles.cardLabel}>テーブル</p>
+          {loading ? (
+            <SkeletonTable />
+          ) : (
+            <div className={styles.skelTable}>
+              {[
+                { a: "A-0421", b: "横浜市", c: "2026-04-20", badge: "発行済" },
+                { a: "A-0422", b: "川崎市", c: "2026-04-22", badge: "下書き" },
+                { a: "A-0423", b: "藤沢市", c: "2026-04-22", badge: "署名中" },
+                { a: "A-0424", b: "平塚市", c: "2026-04-23", badge: "発行済" },
+              ].map((row) => (
+                <div key={row.a} className={styles.skelRow}>
+                  <span className={styles.skelCellReal}>{row.a}</span>
+                  <span className={styles.skelCellReal}>{row.b}</span>
+                  <span className={styles.skelCellReal}>{row.c}</span>
+                  <span className={styles.skelBadgeReal}>{row.badge}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className={styles.card}>
+          <p className={styles.cardLabel}>グラフ</p>
+          {loading ? (
+            <SkeletonChart />
+          ) : (
+            <div className={styles.skelChart}>
+              <p className={styles.skelChartTitleReal}>今月の発行数</p>
+              <div className={styles.skelChartBars}>
+                {[52, 78, 34, 88, 64, 72, 46].map((h, i) => (
+                  <div key={i} className={styles.skelBarReal} style={{ height: `${h}%` }} />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+      <div className={styles.ctaRow} style={{ marginTop: "1.5rem" }}>
+        <button type="button" className="btn-secondary" data-size="sm" onClick={() => setLoading((v) => !v)}>
+          {loading ? "ロード完了" : "もう一度ロードする"}
+        </button>
+      </div>
+    </Section>
+  );
+}
+
+// ═══════════════════════════════════════════════════
 // Exported: all advanced sections
 // ═══════════════════════════════════════════════════
 export function AdvancedSections() {
@@ -933,6 +1281,9 @@ export function AdvancedSections() {
       <EffectsSection />
       <InteractionSection />
       <AmbientSection />
+      <FormSection />
+      <FlowSection />
+      <LoadingSection />
     </>
   );
 }

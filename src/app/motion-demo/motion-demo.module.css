@@ -1698,6 +1698,423 @@
   text-transform: uppercase;
 }
 
+/* ══════════════════════════════════════════════════
+   16 · FORM — Floating label input
+   ══════════════════════════════════════════════════ */
+.floatForm {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+.floatFormShake {
+  animation: formShake 440ms var(--ease-out);
+}
+@keyframes formShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-5px); }
+  80% { transform: translateX(5px); }
+}
+.floatField {
+  position: relative;
+  display: block;
+  padding-top: 1.2rem;
+}
+.floatInput {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  border-bottom: 1px solid var(--border-default);
+  padding: 0.6rem 0;
+  font-size: 1rem;
+  color: var(--text-primary);
+  font-family: inherit;
+  transition: border-color 220ms var(--ease-out);
+}
+.floatLabel {
+  position: absolute;
+  left: 0;
+  top: 1.9rem;
+  color: var(--text-muted);
+  font-size: 1rem;
+  pointer-events: none;
+  transform-origin: left center;
+  transition:
+    transform 260ms var(--ease-spring),
+    color 220ms var(--ease-out);
+}
+.floatFieldUp .floatLabel {
+  transform: translateY(-1.8rem) scale(0.78);
+  color: var(--accent-blue);
+  letter-spacing: 0.04em;
+}
+.floatUnderline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 1.25rem;
+  height: 2px;
+  background: var(--accent-blue);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 320ms var(--ease-spring);
+}
+.floatField:focus-within .floatUnderline {
+  transform: scaleX(1);
+}
+.floatError {
+  display: block;
+  min-height: 1.1rem;
+  margin-top: 0.25rem;
+  font-size: 0.78rem;
+  color: #ef4444;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition:
+    opacity 220ms var(--ease-out),
+    transform 220ms var(--ease-out);
+}
+.floatFieldError .floatInput {
+  border-bottom-color: #ef4444;
+}
+.floatFieldError .floatLabel {
+  color: #ef4444;
+}
+.floatFieldError .floatUnderline {
+  background: #ef4444;
+  transform: scaleX(1);
+}
+.floatFieldError .floatError {
+  opacity: 1;
+  transform: translateY(0);
+}
+.floatStates {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+.floatStates li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.floatStateDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  display: inline-block;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+.floatStateDot[data-k="focus"] { background: #60a5fa; box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.2); }
+.floatStateDot[data-k="filled"] { background: #34d399; }
+.floatStateDot[data-k="error"] { background: #ef4444; animation: dotShake 1.4s var(--ease-out) infinite; }
+@keyframes dotShake {
+  0%, 90%, 100% { transform: translateX(0); }
+  92% { transform: translateX(-2px); }
+  94% { transform: translateX(2px); }
+  96% { transform: translateX(-1px); }
+  98% { transform: translateX(1px); }
+}
+
+/* ══════════════════════════════════════════════════
+   17 · FLOW — Stepper
+   ══════════════════════════════════════════════════ */
+.stepper {
+  position: relative;
+  margin-bottom: 1.5rem;
+}
+.stepperTrack {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  right: 18px;
+  height: 3px;
+  background: var(--border-default);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.stepperFill {
+  height: 100%;
+  background: linear-gradient(90deg, #60a5fa, #a78bfa);
+  border-radius: 999px;
+  transition: width 640ms var(--ease-spring);
+}
+.stepperList {
+  position: relative;
+  z-index: 1;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.stepItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  text-align: center;
+  font-size: 0.85rem;
+}
+.stepDot {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface-solid);
+  border: 2px solid var(--border-default);
+  color: var(--text-secondary);
+  font-weight: 600;
+  transition:
+    background 320ms var(--ease-spring),
+    border-color 320ms var(--ease-spring),
+    color 320ms var(--ease-spring),
+    transform 320ms var(--ease-spring);
+}
+.stepNum {
+  font-size: 0.9rem;
+  font-feature-settings: "tnum";
+}
+.stepLabel {
+  margin-top: 0.6rem;
+  color: var(--text-muted);
+  transition: color 320ms var(--ease-out);
+}
+.step_todo {
+  /* default state — no overrides */
+}
+.step_done .stepDot {
+  background: #34d399;
+  border-color: #34d399;
+  color: #fff;
+}
+.step_done .stepLabel {
+  color: var(--text-primary);
+}
+.step_current .stepDot {
+  background: var(--bg-surface-solid);
+  border-color: #60a5fa;
+  color: #60a5fa;
+  transform: scale(1.1);
+}
+.step_current .stepLabel {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.stepCheck {
+  width: 18px;
+  height: 18px;
+  animation: stepCheckDraw 420ms var(--ease-out);
+}
+.stepCheck path {
+  stroke-dasharray: 28;
+  stroke-dashoffset: 28;
+  animation: stepCheckPath 380ms 80ms var(--ease-out) forwards;
+}
+@keyframes stepCheckDraw {
+  0% { transform: scale(0.6); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes stepCheckPath {
+  to { stroke-dashoffset: 0; }
+}
+.stepPulse {
+  position: absolute;
+  inset: -4px;
+  border-radius: 999px;
+  border: 2px solid #60a5fa;
+  animation: stepPulse 1.6s var(--ease-out) infinite;
+}
+@keyframes stepPulse {
+  0% { transform: scale(1); opacity: 0.8; }
+  80% { transform: scale(1.35); opacity: 0; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+.stepperCtrls {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+/* ══════════════════════════════════════════════════
+   18 · LOADING — Skeleton shimmer
+   ══════════════════════════════════════════════════ */
+.skel {
+  position: relative;
+  background: var(--bg-surface-solid);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.skel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 45%,
+    rgba(255, 255, 255, 0.18) 50%,
+    rgba(255, 255, 255, 0.08) 55%,
+    transparent 100%
+  );
+  transform: translateX(-100%);
+  animation: skelShimmer 1.6s var(--ease-out) infinite;
+}
+@keyframes skelShimmer {
+  to { transform: translateX(100%); }
+}
+.skelCard {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.25rem 0;
+}
+.skelAvatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.skelAvatarReal {
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #60a5fa, #a78bfa);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 700;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+  animation: fadeIn 360ms var(--ease-out);
+}
+.skelLines {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.skelLine {
+  height: 12px;
+}
+.skelLineReal {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-primary);
+  animation: fadeIn 360ms var(--ease-out);
+}
+.skelLineSub {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  animation: fadeIn 360ms 80ms var(--ease-out) both;
+}
+.skelTable {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.skelRow {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border-default);
+  font-size: 0.85rem;
+}
+.skelRow:last-child {
+  border-bottom: none;
+}
+.skelCell {
+  height: 10px;
+}
+.skelCellBadge {
+  height: 18px;
+  width: 52px;
+  border-radius: 999px;
+  margin-left: auto;
+}
+.skelCellReal {
+  color: var(--text-secondary);
+  animation: fadeIn 360ms var(--ease-out);
+}
+.skelCellReal:first-child {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+.skelBadgeReal {
+  margin-left: auto;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(96, 165, 250, 0.12);
+  color: #60a5fa;
+  font-size: 0.75rem;
+  font-weight: 600;
+  animation: fadeIn 360ms var(--ease-out);
+}
+.skelChart {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  height: 160px;
+}
+.skelChartTitle {
+  height: 14px;
+  width: 50%;
+}
+.skelChartTitleReal {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-primary);
+  animation: fadeIn 360ms var(--ease-out);
+}
+.skelChartBars {
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-end;
+  flex: 1;
+}
+.skelBar {
+  flex: 1;
+  border-radius: 4px 4px 0 0;
+  min-height: 10%;
+}
+.skelBarReal {
+  flex: 1;
+  border-radius: 4px 4px 0 0;
+  min-height: 10%;
+  background: linear-gradient(180deg, #60a5fa, rgba(96, 165, 250, 0.4));
+  transform-origin: bottom;
+  animation: barRise 680ms var(--ease-spring) both;
+}
+@keyframes barRise {
+  0% { transform: scaleY(0); }
+  100% { transform: scaleY(1); }
+}
+.skelBarReal:nth-child(1) { animation-delay: 40ms; }
+.skelBarReal:nth-child(2) { animation-delay: 120ms; }
+.skelBarReal:nth-child(3) { animation-delay: 200ms; }
+.skelBarReal:nth-child(4) { animation-delay: 280ms; }
+.skelBarReal:nth-child(5) { animation-delay: 360ms; }
+.skelBarReal:nth-child(6) { animation-delay: 440ms; }
+.skelBarReal:nth-child(7) { animation-delay: 520ms; }
+
 @media (prefers-reduced-motion: reduce) {
   .charSplitChar,
   .shimmerText,
@@ -1708,7 +2125,11 @@
   .isoLayer,
   .breath,
   .noise,
-  .logoPath {
+  .logoPath,
+  .skel::after,
+  .stepPulse,
+  .floatFormShake,
+  .skelBarReal {
     animation: none !important;
   }
 }
