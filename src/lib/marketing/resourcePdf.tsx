@@ -7,7 +7,7 @@
  */
 
 import React from "react";
-import { Document, Page, Text, View, StyleSheet, Font } from "@react-pdf/renderer";
+import { Document, Page, Text, View, StyleSheet, Font, type DocumentProps } from "@react-pdf/renderer";
 
 const NOTO = "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-400-normal.ttf";
 const NOTO_BOLD = "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-700-normal.ttf";
@@ -142,7 +142,7 @@ function Footer({ pageLabel }: { pageLabel: string }) {
     <View style={styles.footer} fixed>
       <Text>Ledra | WEB施工証明書SaaS</Text>
       <Text>
-        {pageLabel}  ·  更新: {updated}
+        {pageLabel} · 更新: {updated}
       </Text>
     </View>
   );
@@ -153,11 +153,11 @@ function Page1Cover() {
     <Page size="A4" style={styles.page}>
       <Text style={styles.pageTitle}>SERVICE OVERVIEW</Text>
       <View style={styles.gradientBar} />
-      <Text style={styles.h1}>
-        記録を、業界の共通言語にする。
-      </Text>
+      <Text style={styles.h1}>記録を、業界の共通言語にする。</Text>
       <Text style={styles.lead}>
-        Ledra は、自動車施工（コーティング・フィルム・ラッピング・板金・整備）の記録を、改ざん不可能なデジタル証明書として発行・共有する WEB 施工証明書 SaaS です。
+        Ledra
+        は、自動車施工（コーティング・フィルム・ラッピング・板金・整備）の記録を、改ざん不可能なデジタル証明書として発行・共有する
+        WEB 施工証明書 SaaS です。
       </Text>
       <Text style={styles.lead}>
         施工店・代理店・保険会社・顧客の4ポータルが、同じ「施工の事実」を役割に応じて閲覧・検証できる設計により、業界全体の記録文化を一段引き上げます。
@@ -181,7 +181,7 @@ function Page1Cover() {
 function Page2Problems() {
   return (
     <Page size="A4" style={styles.page}>
-      <Text style={styles.pageTitle}>01  PROBLEM</Text>
+      <Text style={styles.pageTitle}>01 PROBLEM</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>いま、施工現場の記録に起きていること</Text>
       <Text style={styles.lead}>
@@ -219,12 +219,10 @@ function Page2Problems() {
 function Page3Features() {
   return (
     <Page size="A4" style={styles.page}>
-      <Text style={styles.pageTitle}>02  WHAT IT DELIVERS</Text>
+      <Text style={styles.pageTitle}>02 WHAT IT DELIVERS</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>Ledra が提供するもの</Text>
-      <Text style={styles.lead}>
-        施工証明だけではありません。現場の1日の時間の形全体を穏やかに更新します。
-      </Text>
+      <Text style={styles.lead}>施工証明だけではありません。現場の1日の時間の形全体を穏やかに更新します。</Text>
 
       <View style={styles.grid2}>
         <View style={styles.gridItem}>
@@ -236,15 +234,11 @@ function Page3Features() {
           </View>
           <View style={styles.card}>
             <Text style={styles.cardTitle}>車両・顧客 360° ビュー</Text>
-            <Text style={styles.cardDesc}>
-              1台・1人の履歴を、証明書・予約・請求までタイムラインで横断参照。
-            </Text>
+            <Text style={styles.cardDesc}>1台・1人の履歴を、証明書・予約・請求までタイムラインで横断参照。</Text>
           </View>
           <View style={styles.card}>
             <Text style={styles.cardTitle}>POS・請求書・予約</Text>
-            <Text style={styles.cardDesc}>
-              Tap to Pay 決済、請求書 PDF 自動生成、Google Calendar 同期。
-            </Text>
+            <Text style={styles.cardDesc}>Tap to Pay 決済、請求書 PDF 自動生成、Google Calendar 同期。</Text>
           </View>
         </View>
         <View style={styles.gridItem}>
@@ -277,12 +271,10 @@ function Page3Features() {
 function Page4NextSteps() {
   return (
     <Page size="A4" style={styles.page}>
-      <Text style={styles.pageTitle}>03  NEXT STEPS</Text>
+      <Text style={styles.pageTitle}>03 NEXT STEPS</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>次のステップ</Text>
-      <Text style={styles.lead}>
-        無料プランから始められます。導入支援・トレーニングは担当チームが伴走します。
-      </Text>
+      <Text style={styles.lead}>無料プランから始められます。導入支援・トレーニングは担当チームが伴走します。</Text>
 
       <Text style={styles.h2}>導入プログラム（標準4〜6週間）</Text>
       <Text style={styles.bullet}>1. キックオフ・業務棚卸し（1週目）</Text>
@@ -292,25 +284,13 @@ function Page4NextSteps() {
       <Text style={styles.bullet}>5. ローンチ・運用定着（4週目以降）</Text>
 
       <Text style={styles.h2}>ご相談の窓口</Text>
-      <Text style={styles.body}>
-        Web: https://ledra.co.jp/contact
-      </Text>
-      <Text style={styles.body}>
-        Email: info@ledra.co.jp
-      </Text>
-      <Text style={styles.body}>
-        資料一覧: https://ledra.co.jp/resources
-      </Text>
-      <Text style={styles.body}>
-        ROIシミュレーター: https://ledra.co.jp/roi
-      </Text>
+      <Text style={styles.body}>Web: https://ledra.co.jp/contact</Text>
+      <Text style={styles.body}>Email: info@ledra.co.jp</Text>
+      <Text style={styles.body}>資料一覧: https://ledra.co.jp/resources</Text>
+      <Text style={styles.body}>ROIシミュレーター: https://ledra.co.jp/roi</Text>
 
-      <Text style={[styles.tagline, { marginTop: 40 }]}>
-        記録を、業界の共通言語にする。
-      </Text>
-      <Text style={[styles.body, { color: colors.mute2, marginTop: 4 }]}>
-        — Ledra チーム
-      </Text>
+      <Text style={[styles.tagline, { marginTop: 40 }]}>記録を、業界の共通言語にする。</Text>
+      <Text style={[styles.body, { color: colors.mute2, marginTop: 4 }]}>— Ledra チーム</Text>
 
       <Footer pageLabel="4 / 4" />
     </Page>
@@ -340,7 +320,7 @@ export function ServiceOverviewPdf() {
  * downloadable resources; the API route `/api/marketing/resources/[key]/pdf`
  * reads from this map.
  */
-export const RESOURCE_PDFS: Record<string, { filename: string; doc: () => React.ReactElement }> = {
+export const RESOURCE_PDFS: Record<string, { filename: string; doc: () => React.ReactElement<DocumentProps> }> = {
   "service-overview": {
     filename: "Ledra_Service_Overview.pdf",
     doc: () => <ServiceOverviewPdf />,

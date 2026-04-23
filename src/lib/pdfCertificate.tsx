@@ -2,10 +2,8 @@
 import { Document, Page, Text, View, Image, StyleSheet, Font } from "@react-pdf/renderer";
 import { renderToBuffer } from "@react-pdf/renderer";
 
-const NOTO_SANS_JP =
-  "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-400-normal.ttf";
-const NOTO_SANS_JP_BOLD =
-  "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-700-normal.ttf";
+const NOTO_SANS_JP = "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-400-normal.ttf";
+const NOTO_SANS_JP_BOLD = "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-700-normal.ttf";
 
 Font.register({
   family: "NotoSansJP",
@@ -18,7 +16,12 @@ import { createSignedAssetUrl } from "@/lib/signedUrl";
 import QRCode from "qrcode";
 import { getPanelLabel, getCoverageLabel, getFilmTypeLabel } from "@/lib/ppf/constants";
 import { getWorkTypeLabel } from "@/lib/maintenance/constants";
-import { getRepairTypeLabel, getRepairPanelLabel, getPaintTypeLabel, getRepairMethodLabel } from "@/lib/bodyRepair/constants";
+import {
+  getRepairTypeLabel,
+  getRepairPanelLabel,
+  getPaintTypeLabel,
+  getRepairMethodLabel,
+} from "@/lib/bodyRepair/constants";
 
 type FieldType = "text" | "textarea" | "number" | "date" | "select" | "multiselect" | "checkbox";
 
@@ -405,7 +408,11 @@ async function buildAnchorQrs(
 function normValue(v: unknown): string | null {
   if (v === undefined || v === null) return null;
   if (Array.isArray(v)) {
-    const s = v.map((x) => String(x)).map((s) => s.trim()).filter(Boolean).join(", ");
+    const s = v
+      .map((x) => String(x))
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .join(", ");
     return s || null;
   }
   const s = String(v).trim();
@@ -445,11 +452,7 @@ function buildPresetLines(schema: TemplateSchema | null, values: Record<string, 
   return lines;
 }
 
-export async function renderCertificatePdf(
-  row: CertRow,
-  publicUrl: string,
-  anchors?: AnchorInfo[],
-) {
+export async function renderCertificatePdf(row: CertRow, publicUrl: string, anchors?: AnchorInfo[]) {
   const preset = row.content_preset_json ?? {};
   const schema: TemplateSchema | null = (preset.schema_snapshot as any) ?? null;
   const values: Record<string, any> | null = (preset.values as any) ?? null;
@@ -462,8 +465,10 @@ export async function renderCertificatePdf(
   const isMaintenance = row.service_type === "maintenance";
   const isBodyRepair = row.service_type === "body_repair";
   const ppfCoverage: Record<string, any>[] = Array.isArray(row.ppf_coverage_json) ? row.ppf_coverage_json : [];
-  const maintenanceData: Record<string, any> = (typeof row.maintenance_json === "object" && row.maintenance_json) ? row.maintenance_json : {};
-  const bodyRepairData: Record<string, any> = (typeof row.body_repair_json === "object" && row.body_repair_json) ? row.body_repair_json : {};
+  const maintenanceData: Record<string, any> =
+    typeof row.maintenance_json === "object" && row.maintenance_json ? row.maintenance_json : {};
+  const bodyRepairData: Record<string, any> =
+    typeof row.body_repair_json === "object" && row.body_repair_json ? row.body_repair_json : {};
 
   const presetLines = buildPresetLines(schema, values);
 
@@ -480,10 +485,13 @@ export async function renderCertificatePdf(
     (a) => typeof a.polygon_tx_hash === "string" && a.polygon_tx_hash.length > 0,
   ).length;
   const moreAnchorCount = Math.max(0, totalAnchored - anchorQrs.length);
-  const certTitle = isPpf ? "PPF施工証明書"
-    : isMaintenance ? "整備証明書"
-    : isBodyRepair ? "鈑金塗装証明書"
-    : "施工証明書";
+  const certTitle = isPpf
+    ? "PPF施工証明書"
+    : isMaintenance
+      ? "整備証明書"
+      : isBodyRepair
+        ? "鈑金塗装証明書"
+        : "施工証明書";
   const productsTitle = isPpf ? "使用フィルム" : "コーティング剤";
 
   const issueDate = new Date(row.created_at).toLocaleDateString("ja-JP", {
@@ -516,7 +524,9 @@ export async function renderCertificatePdf(
               <Text style={styles.brandSub}>Construction Record · Verified</Text>
             </View>
           </View>
-          <Text style={styles.badge}>CERTIFICATE · {(row.current_version ?? 1) > 1 ? `v${row.current_version}` : "v1"}</Text>
+          <Text style={styles.badge}>
+            CERTIFICATE · {(row.current_version ?? 1) > 1 ? `v${row.current_version}` : "v1"}
+          </Text>
         </View>
 
         {/* Hero */}
@@ -530,9 +540,7 @@ export async function renderCertificatePdf(
           <View>
             <Text style={styles.certNumberLabel}>Certificate No.</Text>
             <Text style={styles.certNumber}>{row.public_id}</Text>
-            {(row.current_version ?? 1) > 1 && (
-              <Text style={styles.reissue}>再発行版 (第{row.current_version}版)</Text>
-            )}
+            {(row.current_version ?? 1) > 1 && <Text style={styles.reissue}>再発行版 (第{row.current_version}版)</Text>}
           </View>
           <View style={{ alignItems: "center" }}>
             <View style={styles.qrInner}>
@@ -594,8 +602,8 @@ export async function renderCertificatePdf(
           <View style={styles.cardTall} wrap={false}>
             <Text style={styles.cardEyebrow}>Tamper Proof · Polygon Anchoring</Text>
             <Text style={[styles.cardBody, { marginBottom: 10 }]}>
-              施工画像の SHA-256 ハッシュを Polygon ブロックチェーンに刻印しています。
-              各 QR を読み取ると Polygonscan 上で改ざん防止の証跡を独立して検証できます。
+              施工画像の SHA-256 ハッシュを Polygon ブロックチェーンに刻印しています。 各 QR を読み取ると Polygonscan
+              上で改ざん防止の証跡を独立して検証できます。
             </Text>
             {anchorQrs.map((a, idx) => (
               <View key={idx} style={styles.anchorBlock}>
@@ -603,15 +611,9 @@ export async function renderCertificatePdf(
                   <Image src={a.qrDataUrl} style={styles.anchorQr} />
                 </View>
                 <View style={styles.anchorMeta}>
-                  <Text style={{ fontSize: 9.5, color: colors.text, fontWeight: 700 }}>
-                    画像 #{idx + 1}
-                  </Text>
-                  <Text style={{ fontSize: 8.5, color: colors.dim, marginTop: 2 }}>
-                    {networkLabel(a.network)}
-                  </Text>
-                  {a.sha256 ? (
-                    <Text style={styles.hashText}>SHA-256: {a.sha256}</Text>
-                  ) : null}
+                  <Text style={{ fontSize: 9.5, color: colors.text, fontWeight: 700 }}>画像 #{idx + 1}</Text>
+                  <Text style={{ fontSize: 8.5, color: colors.dim, marginTop: 2 }}>{networkLabel(a.network)}</Text>
+                  {a.sha256 ? <Text style={styles.hashText}>SHA-256: {a.sha256}</Text> : null}
                   <Text style={[styles.hashText, { color: colors.blue }]}>TX: {a.txHash}</Text>
                 </View>
               </View>
@@ -629,7 +631,7 @@ export async function renderCertificatePdf(
           <View style={styles.card}>
             <Text style={styles.cardEyebrow}>{productsTitle}</Text>
             {row.coating_products_json.map((cp: Record<string, any>, idx: number) => (
-              <View key={idx} style={[styles.row, idx === 0 && styles.rowFirst]}>
+              <View key={idx} style={[styles.row, idx === 0 ? styles.rowFirst : {}]}>
                 <Text style={styles.rowLabel}>{cp.location || "-"}</Text>
                 <Text style={styles.rowValue}>
                   {[cp.brand_name, cp.product_name, cp.film_type ? getFilmTypeLabel(cp.film_type) : null]
@@ -646,7 +648,7 @@ export async function renderCertificatePdf(
           <View style={styles.card}>
             <Text style={styles.cardEyebrow}>施工範囲 · PPF Coverage</Text>
             {ppfCoverage.map((entry: Record<string, any>, idx: number) => (
-              <View key={idx} style={[styles.row, idx === 0 && styles.rowFirst]}>
+              <View key={idx} style={[styles.row, idx === 0 ? styles.rowFirst : {}]}>
                 <Text style={styles.rowLabel}>{getPanelLabel(entry.panel)}</Text>
                 <Text style={styles.rowValue}>
                   {getCoverageLabel(entry.coverage)}
@@ -766,8 +768,10 @@ export async function renderCertificatePdf(
           <View style={styles.card}>
             <Text style={styles.cardEyebrow}>施工内容 · Service Details</Text>
             {presetLines.map((it, idx) => (
-              <View key={idx} style={[styles.row, idx === 0 && styles.rowFirst]}>
-                <Text style={styles.rowLabel}>[{it.section}] {it.label}</Text>
+              <View key={idx} style={[styles.row, idx === 0 ? styles.rowFirst : {}]}>
+                <Text style={styles.rowLabel}>
+                  [{it.section}] {it.label}
+                </Text>
                 <Text style={styles.rowValue}>{it.value}</Text>
               </View>
             ))}
@@ -930,8 +934,8 @@ export async function renderCertificatePdf(
           <View style={styles.card}>
             <Text style={styles.cardEyebrow}>オンライン照会 · Verify Online</Text>
             <Text style={styles.cardBody}>
-              本証明書に記載の QR コードをスマートフォンで読み取ると、
-              Ledra 認証プラットフォーム上で本証明書の最新情報をリアルタイムに確認できます。
+              本証明書に記載の QR コードをスマートフォンで読み取ると、 Ledra
+              認証プラットフォーム上で本証明書の最新情報をリアルタイムに確認できます。
             </Text>
           </View>
 
