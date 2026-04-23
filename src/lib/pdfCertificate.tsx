@@ -89,18 +89,18 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 10,
     fontFamily: "NotoSansJP",
-    padding: 44,
-    paddingBottom: 72,
+    padding: 32,
+    paddingBottom: 52,
   },
   // Top row with brand + badge
   topRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 28,
+    marginBottom: 18,
   },
   brand: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: 700,
     color: colors.text,
     letterSpacing: 1,
@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
     borderColor: "#2f5a8f",
     borderRadius: 999,
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 3,
     fontSize: 8,
     color: colors.blue,
     letterSpacing: 2,
@@ -125,81 +125,76 @@ const styles = StyleSheet.create({
   },
   // Hero
   heroBar: {
-    width: 54,
+    width: 48,
     height: 3,
     backgroundColor: colors.blue,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   heroEyebrow: {
-    fontSize: 8,
+    fontSize: 7.5,
     color: colors.dim,
     letterSpacing: 3,
     textTransform: "uppercase",
-    marginBottom: 10,
+    marginBottom: 6,
   },
   heroTitle: {
-    fontSize: 30,
+    fontSize: 22,
     fontWeight: 700,
     color: colors.text,
     lineHeight: 1.15,
     letterSpacing: -0.5,
-    marginBottom: 10,
+    marginBottom: 6,
   },
   heroSub: {
-    fontSize: 9,
+    fontSize: 8.5,
     color: colors.faint,
     letterSpacing: 4,
     textTransform: "uppercase",
-    marginBottom: 24,
+    marginBottom: 14,
   },
   // Cert number block
   certMeta: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: 16,
+    marginBottom: 10,
   },
   certNumberLabel: {
-    fontSize: 8,
+    fontSize: 7.5,
     color: colors.faint,
     letterSpacing: 2,
     textTransform: "uppercase",
   },
   certNumber: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: 700,
     color: colors.violet,
     letterSpacing: 1,
-    marginTop: 4,
+    marginTop: 3,
   },
   certDateLabel: {
-    fontSize: 8,
+    fontSize: 7.5,
     color: colors.faint,
     letterSpacing: 2,
     textTransform: "uppercase",
   },
   certDate: {
-    fontSize: 12,
+    fontSize: 11,
     color: colors.text,
     fontWeight: 700,
-    marginTop: 4,
+    marginTop: 3,
   },
-  // Card
-  card: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 12,
-    backgroundColor: colors.bgCard,
+  // Section (replaces card — no border/bg, just a thin top divider)
+  section: {
+    paddingTop: 10,
+    paddingBottom: 2,
+    borderTopWidth: 0.5,
+    borderTopColor: colors.border,
+    marginBottom: 4,
   },
-  cardTall: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    padding: 18,
-    marginBottom: 12,
-    backgroundColor: colors.bgCard,
+  sectionFirst: {
+    borderTopWidth: 0,
+    paddingTop: 4,
   },
   cardEyebrow: {
     fontSize: 7.5,
@@ -209,57 +204,57 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   cardTitle: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 700,
     color: colors.text,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   cardBody: {
-    fontSize: 10,
+    fontSize: 9.5,
     color: colors.muted,
-    lineHeight: 1.7,
+    lineHeight: 1.55,
   },
-  // Label/value row (within card)
+  // Label/value row
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    paddingTop: 8,
-    paddingBottom: 8,
+    paddingTop: 4,
+    paddingBottom: 4,
     borderTopWidth: 0.5,
     borderTopColor: "#141d2e",
   },
   rowFirst: { borderTopWidth: 0 },
   rowLabel: {
-    fontSize: 9.5,
+    fontSize: 9,
     color: colors.dim,
-    width: 120,
+    width: 96,
   },
   rowValue: {
     flex: 1,
-    fontSize: 10.5,
+    fontSize: 10,
     color: colors.text,
     fontWeight: 700,
   },
-  // Section
+  // Section label
   sectionLabel: {
     fontSize: 9,
     fontWeight: 700,
     color: colors.blue,
     letterSpacing: 3,
     textTransform: "uppercase",
-    marginTop: 20,
-    marginBottom: 10,
+    marginTop: 16,
+    marginBottom: 8,
   },
-  // QR (inside Customer · Vehicle card)
+  // QR (inside Customer · Vehicle section)
   qrInner: {
-    padding: 6,
-    borderRadius: 6,
+    padding: 5,
+    borderRadius: 4,
     backgroundColor: "#ffffff",
   },
   qr: {
-    width: 84,
-    height: 84,
+    width: 72,
+    height: 72,
   },
   qrCaption: {
     fontSize: 7,
@@ -283,8 +278,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
   },
   anchorQr: {
-    width: 64,
-    height: 64,
+    width: 60,
+    height: 60,
   },
   anchorMeta: {
     flex: 1,
@@ -297,23 +292,23 @@ const styles = StyleSheet.create({
   },
   // Tagline
   tagline: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: 700,
     color: colors.violet,
     letterSpacing: 1,
     textAlign: "center",
-    marginTop: 24,
+    marginTop: 14,
   },
   // Footer
   footer: {
     position: "absolute",
-    bottom: 28,
-    left: 44,
-    right: 44,
+    bottom: 20,
+    left: 32,
+    right: 32,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingTop: 10,
+    paddingTop: 8,
     borderTopWidth: 0.5,
     borderTopColor: colors.border,
   },
@@ -332,15 +327,15 @@ const styles = StyleSheet.create({
   reissue: {
     fontSize: 8,
     color: colors.danger,
-    marginTop: 4,
+    marginTop: 3,
     letterSpacing: 1,
   },
   // Bullet list
   bullet: {
-    fontSize: 9.5,
+    fontSize: 9,
     color: colors.muted,
-    lineHeight: 1.75,
-    marginBottom: 3,
+    lineHeight: 1.55,
+    marginBottom: 2,
   },
   // Page 2 title
   page2Eyebrow: {
@@ -348,19 +343,19 @@ const styles = StyleSheet.create({
     color: colors.dim,
     letterSpacing: 3,
     textTransform: "uppercase",
-    marginBottom: 8,
+    marginBottom: 6,
   },
   page2Title: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 700,
     color: colors.text,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   page2Sub: {
     fontSize: 9,
     color: colors.faint,
     letterSpacing: 2,
-    marginBottom: 24,
+    marginBottom: 16,
   },
 });
 
@@ -541,13 +536,13 @@ export async function renderCertificatePdf(
         </View>
 
         {/* Declaration */}
-        <View style={styles.card}>
+        <View style={[styles.section, styles.sectionFirst]}>
           <Text style={styles.cardEyebrow}>Declaration</Text>
           <Text style={styles.cardBody}>{serviceStatement}</Text>
         </View>
 
         {/* Customer + Vehicle (QR on the right) */}
-        <View style={styles.card}>
+        <View style={styles.section}>
           <Text style={styles.cardEyebrow}>Customer · Vehicle</Text>
           <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 16 }}>
             <View style={{ flex: 1 }}>
@@ -585,7 +580,7 @@ export async function renderCertificatePdf(
 
         {/* 使用フィルム / コーティング剤 */}
         {Array.isArray(row.coating_products_json) && row.coating_products_json.length > 0 ? (
-          <View style={styles.card}>
+          <View style={styles.section}>
             <Text style={styles.cardEyebrow}>{productsTitle}</Text>
             {row.coating_products_json.map((cp: Record<string, any>, idx: number) => (
               <View key={idx} style={[styles.row, idx === 0 && styles.rowFirst]}>
@@ -602,7 +597,7 @@ export async function renderCertificatePdf(
 
         {/* PPF施工範囲 */}
         {isPpf && ppfCoverage.length > 0 ? (
-          <View style={styles.card}>
+          <View style={styles.section}>
             <Text style={styles.cardEyebrow}>施工範囲 · PPF Coverage</Text>
             {ppfCoverage.map((entry: Record<string, any>, idx: number) => (
               <View key={idx} style={[styles.row, idx === 0 && styles.rowFirst]}>
@@ -618,7 +613,7 @@ export async function renderCertificatePdf(
 
         {/* 整備内容 */}
         {isMaintenance && Object.keys(maintenanceData).length > 0 ? (
-          <View style={styles.card}>
+          <View style={styles.section}>
             <Text style={styles.cardEyebrow}>整備内容 · Maintenance</Text>
             {Array.isArray(maintenanceData.work_types) && maintenanceData.work_types.length > 0 ? (
               <View style={[styles.row, styles.rowFirst]}>
@@ -663,7 +658,7 @@ export async function renderCertificatePdf(
 
         {/* 鈑金塗装内容 */}
         {isBodyRepair && Object.keys(bodyRepairData).length > 0 ? (
-          <View style={styles.card}>
+          <View style={styles.section}>
             <Text style={styles.cardEyebrow}>鈑金塗装内容 · Body Repair</Text>
             {bodyRepairData.repair_type ? (
               <View style={[styles.row, styles.rowFirst]}>
@@ -722,7 +717,7 @@ export async function renderCertificatePdf(
 
         {/* Preset (generic schema) */}
         {presetLines.length > 0 ? (
-          <View style={styles.card}>
+          <View style={styles.section}>
             <Text style={styles.cardEyebrow}>施工内容 · Service Details</Text>
             {presetLines.map((it, idx) => (
               <View key={idx} style={[styles.row, idx === 0 && styles.rowFirst]}>
@@ -735,14 +730,14 @@ export async function renderCertificatePdf(
 
         {/* Free-text */}
         {row.content_free_text ? (
-          <View style={styles.card}>
+          <View style={styles.section}>
             <Text style={styles.cardEyebrow}>施工内容（自由記述）</Text>
             <Text style={styles.cardBody}>{row.content_free_text}</Text>
           </View>
         ) : null}
 
         {/* Validity */}
-        <View style={styles.card}>
+        <View style={styles.section}>
           <Text style={styles.cardEyebrow}>有効条件 · Validity</Text>
           <Text style={styles.cardBody}>{[row.expiry_type, row.expiry_value].filter(Boolean).join(": ") || "—"}</Text>
         </View>
@@ -764,7 +759,7 @@ export async function renderCertificatePdf(
 
           {/* Polygon anchoring — 改ざん防止の根拠 */}
           {anchorQrs.length > 0 && (
-            <View style={styles.cardTall} wrap={false}>
+            <View style={[styles.section, styles.sectionFirst]} wrap={false}>
               <Text style={styles.cardEyebrow}>Tamper Proof · Polygon Anchoring</Text>
               <Text style={[styles.cardBody, { marginBottom: 10 }]}>
                 施工画像の SHA-256 ハッシュを Polygon ブロックチェーンに刻印しています。
@@ -801,7 +796,7 @@ export async function renderCertificatePdf(
 
           {/* 保証情報 */}
           {row.warranty_period_end && (
-            <View style={styles.card}>
+            <View style={styles.section}>
               <Text style={styles.cardEyebrow}>保証情報 · Warranty</Text>
               <View style={[styles.row, styles.rowFirst]}>
                 <Text style={styles.rowLabel}>保証期間終了日</Text>
@@ -812,7 +807,7 @@ export async function renderCertificatePdf(
 
           {/* 鈑金塗装の修理保証内容 */}
           {isBodyRepair && bodyRepairData.warranty_info && (
-            <View style={styles.card}>
+            <View style={styles.section}>
               <Text style={styles.cardEyebrow}>修理保証内容 · Repair Warranty</Text>
               <Text style={styles.cardBody}>{bodyRepairData.warranty_info}</Text>
             </View>
@@ -820,7 +815,7 @@ export async function renderCertificatePdf(
 
           {/* 保証対象外 */}
           {row.warranty_exclusions && (
-            <View style={styles.card}>
+            <View style={styles.section}>
               <Text style={styles.cardEyebrow}>保証対象外事項 · Exclusions</Text>
               <Text style={styles.cardBody}>{row.warranty_exclusions}</Text>
             </View>
@@ -828,7 +823,7 @@ export async function renderCertificatePdf(
 
           {/* サービス別 注意事項 */}
           {isPpf && (
-            <View style={styles.card}>
+            <View style={styles.section}>
               <Text style={styles.cardEyebrow}>フィルムのお取り扱い · Care</Text>
               {[
                 "施工後 48 時間は洗車およびフィルム端部への接触をお控えください。",
@@ -845,7 +840,7 @@ export async function renderCertificatePdf(
           )}
 
           {isMaintenance && (
-            <View style={styles.card}>
+            <View style={styles.section}>
               <Text style={styles.cardEyebrow}>整備後のご注意 · Aftercare</Text>
               {[
                 "整備後は慣らし運転を推奨します。急加速・急ブレーキはお控えください。",
@@ -862,7 +857,7 @@ export async function renderCertificatePdf(
           )}
 
           {isBodyRepair && (
-            <View style={styles.card}>
+            <View style={styles.section}>
               <Text style={styles.cardEyebrow}>塗装後のご注意 · Aftercare</Text>
               {[
                 "塗装後 1 週間は洗車をお控えください。",
@@ -881,7 +876,7 @@ export async function renderCertificatePdf(
 
           {/* 免責事項 — 共通 */}
           {(isPpf || isMaintenance || isBodyRepair) && (
-            <View style={styles.card}>
+            <View style={styles.section}>
               <Text style={styles.cardEyebrow}>免責事項 · Disclaimer</Text>
               <Text style={[styles.cardBody, { marginBottom: 6 }]}>
                 本証明書は作業が実施された事実を証明するものであり、車両の状態や性能を保証するものではありません。
@@ -923,7 +918,7 @@ export async function renderCertificatePdf(
           )}
 
           {/* オンライン照会 */}
-          <View style={styles.card}>
+          <View style={styles.section}>
             <Text style={styles.cardEyebrow}>オンライン照会 · Verify Online</Text>
             <Text style={styles.cardBody}>
               本証明書に記載の QR コードをスマートフォンで読み取ると、
