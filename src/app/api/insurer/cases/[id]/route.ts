@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiValidationError, apiNotFound, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendCaseStatusNotification } from "@/lib/insurer/notifications";
@@ -22,18 +22,20 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const admin = createAdminClient();
 
   try {
-    // Fetch case
+    // Fetch case with insurer scope filter so that we never accidentally
+    // read another insurer's case via IDOR (defense in depth over the
+    // manual insurer_id check below).
     const { data: caseData, error: caseErr } = await admin
       .from("insurer_cases")
       .select(
         "id, insurer_id, title, description, status, priority, category, case_number, certificate_id, vehicle_id, tenant_id, assigned_to, created_by, resolved_at, closed_at, created_at, updated_at",
       )
       .eq("id", id)
+      .eq("insurer_id", caller.insurerId)
       .maybeSingle();
 
     if (caseErr) return apiValidationError(caseErr.message);
     if (!caseData) return apiNotFound("ケースが見つかりません。");
-    if (caseData.insurer_id !== caller.insurerId) return apiForbidden();
 
     // Fetch messages
     const { data: messages } = await admin
@@ -82,16 +84,17 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const admin = createAdminClient();
 
   try {
-    // Verify case belongs to caller's insurer
+    // Verify case exists AND belongs to caller's insurer in one query
+    // (avoids TOCTOU between check and update).
     const { data: existing, error: fetchErr } = await admin
       .from("insurer_cases")
       .select("id, insurer_id, status")
       .eq("id", id)
+      .eq("insurer_id", caller.insurerId)
       .maybeSingle();
 
     if (fetchErr) return apiValidationError(fetchErr.message);
     if (!existing) return apiNotFound("ケースが見つかりません。");
-    if (existing.insurer_id !== caller.insurerId) return apiForbidden();
 
     // Build update payload with allowed fields only
     const allowedFields = ["title", "description", "status", "priority", "category", "assigned_to"] as const;
@@ -117,10 +120,13 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
     updateData.updated_at = new Date().toISOString();
 
+    // Scope the UPDATE itself by insurer_id so no race between the check
+    // above and the write can touch another insurer's row.
     const { data: updated, error: updateErr } = await admin
       .from("insurer_cases")
       .update(updateData)
       .eq("id", id)
+      .eq("insurer_id", caller.insurerId)
       .select(
         "id, insurer_id, title, description, status, priority, category, case_number, certificate_id, vehicle_id, tenant_id, assigned_to, created_by, resolved_at, closed_at, created_at, updated_at",
       )
@@ -160,12 +166,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
           if (insurerUsers && insurerUsers.length > 0) {
             const userIds = insurerUsers.map((u) => u.user_id).filter((uid) => uid !== caller.userId);
             if (userIds.length > 0) {
-              const { data: authUsers } = await admin
-                .from("insurer_users")
-                .select("user_id, display_name")
-                .in("user_id", userIds);
-
-              // Get emails from auth.users via insurer contact_email or individual lookup
+              // Notification email lives on the insurer row (shared address),
+              // so no extra lookup per-user is needed.
               const { data: insurer } = await admin
                 .from("insurers")
                 .select("contact_email, name")

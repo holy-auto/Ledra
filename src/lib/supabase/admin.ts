@@ -64,3 +64,36 @@ export function createTenantScopedAdmin(tenantId: string) {
   }
   return { admin: getSupabaseAdmin(), tenantId };
 }
+
+/**
+ * Insurer-scoped admin client wrapper.
+ *
+ * Use for insurer-facing routes (`/api/insurer/*`) where authorization is
+ * bounded by `insurer_id` rather than `tenant_id`. Every query built from
+ * `admin` **MUST** include `.eq("insurer_id", insurerId)` (or equivalent).
+ *
+ * @security **CRITICAL** — Same contract as `createTenantScopedAdmin`:
+ * the returned client bypasses RLS. Cross-insurer data leakage is the
+ * failure mode this wrapper exists to discourage.
+ *
+ * @example
+ * ```ts
+ * const { admin, insurerId } = createInsurerScopedAdmin(caller.insurerId);
+ * const { data } = await admin
+ *   .from("insurer_cases")
+ *   .select("*")
+ *   .eq("id", caseId)
+ *   .eq("insurer_id", insurerId); // <-- REQUIRED
+ * ```
+ *
+ * @throws {Error} if insurerId is falsy (empty string, null, undefined)
+ */
+export function createInsurerScopedAdmin(insurerId: string) {
+  if (!insurerId || typeof insurerId !== "string" || insurerId.trim() === "") {
+    throw new Error(
+      "[security] createInsurerScopedAdmin called with falsy or empty insurerId. " +
+        "This is a critical error — aborting to prevent cross-insurer data leakage.",
+    );
+  }
+  return { admin: getSupabaseAdmin(), insurerId };
+}

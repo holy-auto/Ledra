@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiValidationError, apiNotFound, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -29,16 +29,17 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const admin = createAdminClient();
 
   try {
-    // Verify case belongs to caller's insurer
+    // Verify case exists AND belongs to caller's insurer in a single query
+    // (filter baked into the query, not a post-hoc check).
     const { data: caseData, error: caseErr } = await admin
       .from("insurer_cases")
       .select("id, insurer_id")
       .eq("id", id)
+      .eq("insurer_id", caller.insurerId)
       .maybeSingle();
 
     if (caseErr) return apiValidationError(caseErr.message);
     if (!caseData) return apiNotFound("ケースが見つかりません。");
-    if (caseData.insurer_id !== caller.insurerId) return apiForbidden();
 
     // Parse multipart form data
     const formData = await req.formData();

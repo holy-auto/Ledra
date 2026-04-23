@@ -55,12 +55,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return apiInternalError(insertErr, "inquiry-reply insert");
     }
 
-    // Update inquiry status to "responded" if currently "new"
+    // Update inquiry status to "responded" if currently "new". Scope the
+    // UPDATE by seller_tenant_id to prevent any TOCTOU / future refactor
+    // from writing into another tenant's row.
     if (inquiry.status === "new") {
       await admin
         .from("market_inquiries")
         .update({ status: "responded", updated_at: new Date().toISOString() })
-        .eq("id", inquiryId);
+        .eq("id", inquiryId)
+        .eq("seller_tenant_id", caller.tenantId);
     }
 
     // Notify buyer via email when seller replies (non-blocking)

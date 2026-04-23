@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiValidationError, apiNotFound, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendCaseMessageNotification } from "@/lib/insurer/notifications";
@@ -9,14 +9,20 @@ export const runtime = "nodejs";
 
 /**
  * Verify the case exists and belongs to the caller's insurer.
- * Returns the case data or a Response (error).
+ *
+ * The insurer_id filter is baked into the query itself (not a post-hoc check)
+ * so this function never returns a case that belongs to a different insurer.
  */
 async function verifyCase(admin: ReturnType<typeof createAdminClient>, caseId: string, insurerId: string) {
-  const { data, error } = await admin.from("insurer_cases").select("id, insurer_id").eq("id", caseId).maybeSingle();
+  const { data, error } = await admin
+    .from("insurer_cases")
+    .select("id, insurer_id")
+    .eq("id", caseId)
+    .eq("insurer_id", insurerId)
+    .maybeSingle();
 
   if (error) return apiValidationError(error.message);
   if (!data) return apiNotFound("ケースが見つかりません。");
-  if (data.insurer_id !== insurerId) return apiForbidden();
   return data;
 }
 

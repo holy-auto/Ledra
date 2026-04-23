@@ -55,10 +55,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (body.agreed_price !== undefined) updates.agreed_price = body.agreed_price;
     if (body.note !== undefined) updates.note = body.note;
 
+    // Scope the UPDATE by seller_tenant_id so no race between the
+    // select above and the write can touch another tenant's deal.
     const { data: updatedDeal, error: updateErr } = await admin
       .from("market_deals")
       .update(updates)
       .eq("id", dealId)
+      .eq("seller_tenant_id", caller.tenantId)
       .select(
         "id, inquiry_id, vehicle_id, seller_tenant_id, buyer_name, buyer_email, buyer_company, agreed_price, note, status, updated_at",
       )

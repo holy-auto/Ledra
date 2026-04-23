@@ -24,6 +24,37 @@ const eslintConfig = defineConfig([
       "react-hooks/config": "warn",
       "react-hooks/gating": "warn",
       "react-hooks/component-hook-factories": "warn",
+
+      // Guard against bypassing RLS without a scoped admin wrapper.
+      // `getSupabaseAdmin` / `createAdminClient` / `supabaseAdmin` all return
+      // a service-role client that sees every tenant. Prefer
+      // `createTenantScopedAdmin(tenantId)` or `createInsurerScopedAdmin(insurerId)`
+      // so a caller is forced to thread a scope identifier through.
+      //
+      // This rule is intentionally `warn` (not `error`) during the migration;
+      // once the legacy callsites are converted, raise to `error`.
+      "no-restricted-imports": [
+        "warn",
+        {
+          paths: [
+            {
+              name: "@/lib/supabase/admin",
+              importNames: ["getSupabaseAdmin", "createAdminClient", "supabaseAdmin"],
+              message:
+                "Prefer createTenantScopedAdmin(tenantId) or createInsurerScopedAdmin(insurerId). " +
+                "Raw admin clients bypass RLS across every tenant.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // The admin client module itself and its tests are allowed to import the
+    // raw symbols — that's where they live.
+    files: ["src/lib/supabase/admin.ts", "src/lib/**/__tests__/**"],
+    rules: {
+      "no-restricted-imports": "off",
     },
   },
   // Override default ignores of eslint-config-next.
