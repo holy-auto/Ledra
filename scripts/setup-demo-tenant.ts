@@ -288,14 +288,25 @@ async function main(): Promise<void> {
   //    `demo/placeholder-XX.jpg` に placeholder 画像を 1 枚だけ置けば、全ての seed
   //    画像が同じ見た目で表示されるようにパスを共有している)
   console.log("─ Certificate images");
+  // 既存の seed 残骸を一旦削除（storage_path UNIQUE 制約回避）
+  const certIds = certRows.map((c) => c.id);
+  const { error: imgDelErr } = await admin
+    .from("certificate_images")
+    .delete()
+    .in("certificate_id", certIds);
+  if (imgDelErr && !imgDelErr.message.includes("not exist")) {
+    console.error("⚠️ 既存 certificate_images の掃除に失敗:", imgDelErr.message);
+  }
+
   const imageRows = certRows.flatMap((cert, certIdx) => {
     // 1 枚の証明書につき 3〜5 枚の施工写真メタデータを作る
     const count = 3 + (certIdx % 3);
+    // storage_path はテーブル側に UNIQUE 制約があるので、cert 単位でユニーク化
     return Array.from({ length: count }).map((_, i) => ({
       id: uuid("cf01", certIdx * 10 + i + 1),
       tenant_id: TENANT_ID,
       certificate_id: cert.id,
-      storage_path: `demo/placeholder-${((certIdx * 10 + i) % 5) + 1}.jpg`,
+      storage_path: `demo/${cert.public_id}/${String(i + 1).padStart(2, "0")}.jpg`,
       file_name: `${cert.public_id}-${String(i + 1).padStart(2, "0")}.jpg`,
       content_type: "image/jpeg",
       file_size: 320000 + i * 12000,
@@ -303,10 +314,19 @@ async function main(): Promise<void> {
     }));
   });
   await upsert("certificate_images", imageRows, "id");
-  console.log(`  ✓ ${imageRows.length} 件（※実ファイルは別途 demo/placeholder-1..5.jpg をストレージに配置）`);
+  console.log(`  ✓ ${imageRows.length} 件（※実ファイルはストレージに任意で配置）`);
 
   // 6) Vehicle histories (車両ページ・公開証明書ページの「履歴」セクション用)
   console.log("─ Vehicle histories");
+  // こちらも念のため既存 seed 分を掃除
+  const vehicleIds = vehicleRows.map((v) => v.id);
+  const { error: histDelErr } = await admin
+    .from("vehicle_histories")
+    .delete()
+    .in("vehicle_id", vehicleIds);
+  if (histDelErr && !histDelErr.message.includes("not exist")) {
+    console.error("⚠️ 既存 vehicle_histories の掃除に失敗:", histDelErr.message);
+  }
   const historyRows: Record<string, unknown>[] = [];
   let histCounter = 0;
   for (const cert of CERTS) {
