@@ -5,7 +5,7 @@ import { priceIdToPlanTier } from "@/lib/stripe/plan";
 import { insurerPriceIdToPlanTier } from "@/lib/stripe/insurerPlan";
 import { isTemplateOptionEvent } from "@/lib/template-options/stripe";
 import { confirmCampaignSlot } from "@/lib/billing/campaign";
-import { apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiValidationError, apiInternalError, apiError } from "@/lib/api/response";
 import { logAuditEvent } from "@/lib/audit/certificateLog";
 
 export const runtime = "nodejs";
@@ -309,8 +309,19 @@ export async function POST(req: NextRequest) {
       console.info("webhook: duplicate event skipped", { id: event.id, type: event.type });
       return NextResponse.json({ received: true, duplicate: true });
     }
-    // Other DB errors — log but continue to avoid losing events
-    console.warn("webhook: idempotency claim error (proceeding)", { id: event.id, error: claimError.message });
+    // 他の DB エラー: claim できていない状態で処理を進めると二重課金・二重
+    // サブスク更新を引き起こすため、503 を返して Stripe に再送させる。
+    console.error("webhook: idempotency claim failed — requesting Stripe retry", {
+      id: event.id,
+      type: event.type,
+      code: claimError.code,
+      message: claimError.message,
+    });
+    return apiError({
+      code: "internal_error",
+      message: "Idempotency claim failed; please retry.",
+      status: 503,
+    });
   }
 
   try {

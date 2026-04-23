@@ -48,7 +48,7 @@ yarn-error.log*
 *.bak_*
 
 _backup/
-
+_diag/
 
 # backups
 *.bak.*
@@ -56,5 +56,14 @@ _backup/
 # temp clip patch
 scripts/_clip_patch.ps1
 scripts/_clip_patch*.ps1
+
+# PowerShell one-off patch scripts (historical, no longer executed)
+/fix-insurer-build.ps1
+
+# Dev server log (must never be committed)
+/dev-server.log
+
+# Scratch notes (Japanese-named temp files)
+/上で出たパス.txt
 
 .vercel

@@ -145,10 +145,7 @@ async function checkRateLimitRedis(key: string, opts: RateLimitOptions): Promise
  * }
  * ```
  */
-export async function checkRateLimit(
-  key: string,
-  opts: RateLimitOptions,
-): Promise<RateLimitResult> {
+export async function checkRateLimit(key: string, opts: RateLimitOptions): Promise<RateLimitResult> {
   const r = getRedis();
   if (r) {
     return checkRateLimitRedis(key, opts);
@@ -158,12 +155,31 @@ export async function checkRateLimit(
 
 /**
  * Extract client IP from request headers.
- * Works with Vercel, Cloudflare, and standard proxies.
+ *
+ * 優先順位:
+ *   1. `cf-connecting-ip`   (Cloudflare)
+ *   2. `true-client-ip`     (Akamai / Cloudflare Enterprise)
+ *   3. `x-real-ip`          (Nginx / Vercel が直接書き込む)
+ *   4. `x-forwarded-for`    (左端 = クライアント)
+ *
+ * いずれも取得できないときは `unknown:<UA-hash>` を返し、全員が同じバケットを
+ * 共有しないようにする (DOS 緩和)。
  */
 export function getClientIp(req: Request): string {
-  return (
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    req.headers.get("x-real-ip") ||
-    "unknown"
-  );
+  const h = req.headers;
+  const ip =
+    h.get("cf-connecting-ip")?.trim() ||
+    h.get("true-client-ip")?.trim() ||
+    h.get("x-real-ip")?.trim() ||
+    h.get("x-forwarded-for")?.split(",")[0]?.trim();
+  if (ip) return ip;
+
+  // unknown を 1 バケット共有にすると、匿名 UA からのスパイクで全員が 429 に
+  // なるため、UA を簡易ハッシュしてバケットを分散させる。
+  const ua = h.get("user-agent") ?? "";
+  let hash = 0;
+  for (let i = 0; i < ua.length; i++) {
+    hash = (hash * 31 + ua.charCodeAt(i)) | 0;
+  }
+  return `unknown:${(hash >>> 0).toString(36)}`;
 }
