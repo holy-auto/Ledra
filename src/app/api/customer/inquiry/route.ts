@@ -9,6 +9,7 @@ import {
   getCustomerProfile,
 } from "@/lib/customerPortalServer";
 import { GLOBAL_PORTAL_COOKIE, resolvePortalTenantAccessByGlobalToken } from "@/lib/customerPortalGlobal";
+import { notifySlack } from "@/lib/slack";
 
 async function resolveSession(tenantSlug: string) {
   const tenantId = await getTenantIdBySlug(tenantSlug);
@@ -92,6 +93,21 @@ export async function POST(req: Request) {
       .single();
 
     if (error) return apiInternalError(error, "customer/inquiry POST");
+
+    try {
+      await notifySlack(process.env.SLACK_CUSTOMER_INQUIRY_WEBHOOK_URL, {
+        text: `:speech_balloon: 顧客ポータル新規問い合わせ: *${subject || "お問い合わせ"}*`,
+        fields: [
+          { title: "件名", value: subject || "お問い合わせ", short: true },
+          { title: "テナント", value: tenantSlug, short: true },
+          ...(customerName ? [{ title: "お客様", value: customerName, short: true }] : []),
+          { title: "問い合わせID", value: String(data.id), short: true },
+          { title: "本文", value: message.slice(0, 500) },
+        ],
+      });
+    } catch (err) {
+      console.error("[customer/inquiry] slack notify failed:", err);
+    }
 
     return NextResponse.json({ ok: true, id: data.id }, { status: 201 });
   } catch (e) {

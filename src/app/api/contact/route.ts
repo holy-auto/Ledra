@@ -3,6 +3,7 @@ import { Resend } from "resend";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { contactSchema, parseBody } from "@/lib/validation/schemas";
 import { apiValidationError, apiInternalError } from "@/lib/api/response";
+import { notifySlack } from "@/lib/slack";
 
 /** 遅延初期化: ビルド時に API キーが無くてもクラッシュしない */
 function getResend() {
@@ -67,6 +68,21 @@ export async function POST(request: Request) {
         .filter((l) => l !== null)
         .join("\n"),
     });
+
+    try {
+      await notifySlack(process.env.SLACK_ADMIN_SUPPORT_WEBHOOK_URL, {
+        text: `:inbox_tray: 新規お問い合わせ: *${category}*`,
+        fields: [
+          { title: "お名前", value: name, short: true },
+          { title: "メール", value: email, short: true },
+          ...(company ? [{ title: "会社名", value: company, short: true }] : []),
+          { title: "種別", value: category, short: true },
+          { title: "メッセージ", value: message.slice(0, 500) },
+        ],
+      });
+    } catch (err) {
+      console.error("[contact] slack notify failed:", err);
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {

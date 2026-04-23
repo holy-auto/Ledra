@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { notifySlack } from "@/lib/slack";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +69,22 @@ export async function POST(request: NextRequest) {
       is_admin: false,
       body: message,
     });
+
+    try {
+      await notifySlack(process.env.SLACK_AGENT_SUPPORT_WEBHOOK_URL, {
+        text: `:ticket: 代理店サポート新規チケット: *${subject}*`,
+        fields: [
+          { title: "件名", value: subject },
+          { title: "種別", value: String(category), short: true },
+          { title: "優先度", value: String(priority), short: true },
+          { title: "代理店ID", value: String(agent.agent_id), short: true },
+          { title: "チケットID", value: String(ticket.id), short: true },
+          { title: "本文", value: message.slice(0, 500) },
+        ],
+      });
+    } catch (err) {
+      console.error("[agent/support] slack notify failed:", err);
+    }
 
     return NextResponse.json({ ticket }, { status: 201 });
   } catch (e) {
