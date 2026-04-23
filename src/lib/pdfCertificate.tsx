@@ -251,23 +251,6 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 10,
   },
-  // QR (inside Customer · Vehicle card)
-  qrInner: {
-    padding: 6,
-    borderRadius: 6,
-    backgroundColor: "#ffffff",
-  },
-  qr: {
-    width: 84,
-    height: 84,
-  },
-  qrCaption: {
-    fontSize: 7,
-    color: colors.dim,
-    letterSpacing: 2,
-    textTransform: "uppercase",
-    marginTop: 4,
-  },
   // Anchor QR
   anchorBlock: {
     flexDirection: "row",
@@ -474,7 +457,6 @@ export async function renderCertificatePdf(
     logoUrl = null;
   }
 
-  const qrDataUrl = await QRCode.toDataURL(publicUrl, { margin: 1, width: 220 });
   const anchorQrs = await buildAnchorQrs(anchors);
   const totalAnchored = (anchors ?? []).filter(
     (a) => typeof a.polygon_tx_hash === "string" && a.polygon_tx_hash.length > 0,
@@ -546,41 +528,31 @@ export async function renderCertificatePdf(
           <Text style={styles.cardBody}>{serviceStatement}</Text>
         </View>
 
-        {/* Customer + Vehicle (QR on the right) */}
+        {/* Customer + Vehicle */}
         <View style={styles.card}>
           <Text style={styles.cardEyebrow}>Customer · Vehicle</Text>
-          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 16 }}>
-            <View style={{ flex: 1 }}>
-              <View style={[styles.row, styles.rowFirst]}>
-                <Text style={styles.rowLabel}>お客様名</Text>
-                <Text style={styles.rowValue}>{row.customer_name}</Text>
-              </View>
-              {model ? (
-                <View style={styles.row}>
-                  <Text style={styles.rowLabel}>車種</Text>
-                  <Text style={styles.rowValue}>{model}</Text>
-                </View>
-              ) : null}
-              {plate ? (
-                <View style={styles.row}>
-                  <Text style={styles.rowLabel}>ナンバー</Text>
-                  <Text style={styles.rowValue}>{plate}</Text>
-                </View>
-              ) : null}
-              {color ? (
-                <View style={styles.row}>
-                  <Text style={styles.rowLabel}>ボディカラー</Text>
-                  <Text style={styles.rowValue}>{color}</Text>
-                </View>
-              ) : null}
-            </View>
-            <View style={{ alignItems: "center", paddingTop: 4 }}>
-              <View style={styles.qrInner}>
-                <Image src={qrDataUrl} style={styles.qr} />
-              </View>
-              <Text style={styles.qrCaption}>Scan to verify</Text>
-            </View>
+          <View style={[styles.row, styles.rowFirst]}>
+            <Text style={styles.rowLabel}>お客様名</Text>
+            <Text style={styles.rowValue}>{row.customer_name}</Text>
           </View>
+          {model ? (
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>車種</Text>
+              <Text style={styles.rowValue}>{model}</Text>
+            </View>
+          ) : null}
+          {plate ? (
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>ナンバー</Text>
+              <Text style={styles.rowValue}>{plate}</Text>
+            </View>
+          ) : null}
+          {color ? (
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>ボディカラー</Text>
+              <Text style={styles.rowValue}>{color}</Text>
+            </View>
+          ) : null}
         </View>
 
         {/* Tamper Proof · Polygon Anchoring — 改ざん防止の根拠（前面に配置） */}
