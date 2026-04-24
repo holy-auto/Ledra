@@ -1473,6 +1473,319 @@ export function SecurityWhitepaperPdf() {
   );
 }
 
+/* ══════════════════════════════════════════════════════════════════
+ * Case Studies — 導入事例集（パイロット版）
+ * ══════════════════════════════════════════════════════════════════ */
+
+const CASES_PAGE_TOTAL = 8;
+
+function CasesCover() {
+  return (
+    <Page size="A4" style={styles.page}>
+      <Text style={styles.pageTitle}>CASE STUDIES</Text>
+      <View style={styles.gradientBar} />
+      <Text style={styles.h1}>導入事例集（パイロット版）</Text>
+      <Text style={styles.lead}>
+        Ledra
+        は正式サービスを開始したばかりです。本資料は、先行導入いただくパイロット企業様の事例をどのように記録・共有していくのか、そしてどんな指標で変化を語っていくのかを整理した、サービス現在地のスナップショットです。
+      </Text>
+
+      <View style={[styles.card, { marginTop: 14 }]}>
+        <Text style={styles.cardTitle}>本資料の立ち位置</Text>
+        <Text style={styles.bullet}>• 事例は随時アップデート。公開次第、本資料 v1.x として差し替えます。</Text>
+        <Text style={styles.bullet}>• 現時点では、業界別の典型的な導入パターンと計測フレームを提示します。</Text>
+        <Text style={styles.bullet}>• 実在の数値はパイロット企業様の同意取得後に順次反映します。</Text>
+      </View>
+
+      <View style={[styles.card, { marginTop: 10 }]}>
+        <Text style={styles.cardTitle}>このドキュメントで得られる情報</Text>
+        <Text style={styles.bullet}>• 事例で扱う定量・定性指標（6種類）</Text>
+        <Text style={styles.bullet}>• 5業種（コーティング / フィルム / ラッピング / 板金 / 整備）での変化パターン</Text>
+        <Text style={styles.bullet}>• パイロット参加の流れと、Ledra による伴走内容</Text>
+        <Text style={styles.bullet}>• 事例取材・公開までのタイムライン</Text>
+      </View>
+
+      <Text style={styles.tagline}>あなたの1社目が、業界の記録文化を作る。</Text>
+      <Footer pageLabel={`1 / ${CASES_PAGE_TOTAL}`} />
+    </Page>
+  );
+}
+
+function CasesMetrics() {
+  return (
+    <Page size="A4" style={styles.page}>
+      <Text style={styles.pageTitle}>01 METRICS</Text>
+      <View style={styles.gradientBar} />
+      <Text style={styles.h1}>事例で扱う指標</Text>
+      <Text style={[styles.lead, { marginBottom: 10 }]}>
+        Ledra
+        の事例記事は、定量・定性の両面から現場の変化を捉えます。各パイロット企業様に合わせて、測る項目をあらかじめ合意の上で記録します。
+      </Text>
+
+      <Text style={styles.h2}>定量指標（before / after）</Text>
+      <View style={styles.tableHead}>
+        <Text style={[styles.th, styles.col1]}>指標</Text>
+        <Text style={[styles.th, styles.col2]}>記録単位</Text>
+      </View>
+      <View style={styles.tableRow}>
+        <Text style={[styles.td, styles.col1]}>証明書1件あたりの発行時間</Text>
+        <Text style={[styles.td, styles.col2]}>分 / 件</Text>
+      </View>
+      <View style={styles.tableRow}>
+        <Text style={[styles.td, styles.col1]}>過去施工の再問い合わせ対応時間</Text>
+        <Text style={[styles.td, styles.col2]}>分 / 件</Text>
+      </View>
+      <View style={styles.tableRow}>
+        <Text style={[styles.td, styles.col1]}>顧客ポータルでの自己閲覧率</Text>
+        <Text style={[styles.td, styles.col2]}>%</Text>
+      </View>
+      <View style={styles.tableRow}>
+        <Text style={[styles.td, styles.col1]}>月間証明書発行数</Text>
+        <Text style={[styles.td, styles.col2]}>件 / 月</Text>
+      </View>
+      <View style={styles.tableRow}>
+        <Text style={[styles.td, styles.col1]}>保険会社・代理店への情報連携時間</Text>
+        <Text style={[styles.td, styles.col2]}>分 / 件</Text>
+      </View>
+      <View style={styles.tableRow}>
+        <Text style={[styles.td, styles.col1]}>紙書類の保管ファイル数</Text>
+        <Text style={[styles.td, styles.col2]}>冊</Text>
+      </View>
+
+      <Text style={styles.h2}>定性指標（スタッフ・顧客の声）</Text>
+      <Text style={styles.bullet}>• 『あの車にいつ何をしたか』を探す時間・思考の変化</Text>
+      <Text style={styles.bullet}>• 顧客への引渡し・説明時の空気の変化</Text>
+      <Text style={styles.bullet}>• 新規顧客からの信頼獲得エピソード（QR/NFC 体験）</Text>
+      <Text style={styles.bullet}>• 保険会社・代理店との連携における摩擦の減り方</Text>
+
+      <Footer pageLabel={`2 / ${CASES_PAGE_TOTAL}`} />
+    </Page>
+  );
+}
+
+type IndustryPattern = {
+  industry: string;
+  profile: string;
+  before: string[];
+  after: string[];
+};
+
+const INDUSTRY_PATTERNS: IndustryPattern[] = [
+  {
+    industry: "コーティング専門店",
+    profile: "月間施工 30〜120件、スタッフ 2〜6名、保証書管理が課題。",
+    before: [
+      "紙の保証書を製本、顧客への再発行対応に担当者が取られる",
+      "過去施工の確認電話が毎日数件、紙ファイルを漁る時間が積み上がる",
+      "施工写真は個人スマホに散在、退職時にデータが消える",
+    ],
+    after: [
+      "QR コードで顧客が自分の保証書・写真に即アクセス",
+      "再発行問い合わせが減り、バックオフィスが施工に集中可能",
+      "C2PA 署名で写真の出自が保証、SNS 掲載の信頼にも寄与",
+    ],
+  },
+  {
+    industry: "フィルム施工店",
+    profile: "複数車種・複数メーカー、施工差分の記録が分析の鍵。",
+    before: [
+      "フィルム種別・施工面積の記録が Excel 依存でブレる",
+      "UV/IR の測定値を残しても、顧客への証明手段がない",
+      "代理店紹介案件の成果共有が口頭・メール",
+    ],
+    after: [
+      "車両 360° ビューでフィルム種別・過去施工を即参照",
+      "測定値・施工写真付き証明書を URL で即共有、広告素材にも",
+      "代理店ポータルで成果を可視化、紹介元との信頼関係強化",
+    ],
+  },
+  {
+    industry: "ラッピング / カスタム",
+    profile: "単価が高く、記録の品質が次回案件の獲得に直結。",
+    before: [
+      "施工過程の写真が膨大、顧客共有の方法が SNS 依存",
+      "車両の過去ラッピング履歴が残らず、剥離・再施工の判断に時間",
+      "イベント会場での商談時、実績を示す資料がその場で出せない",
+    ],
+    after: [
+      "タイムライン＋写真付き証明書で、1台の歴史がそのままポートフォリオ",
+      "NFC タグでその場で実績提示、イベント会場での商談速度が上がる",
+      "顧客ごとの車両履歴が蓄積され、リピート提案の質が向上",
+    ],
+  },
+  {
+    industry: "板金・塗装",
+    profile: "保険案件の比率が高く、代理店・保険会社との記録共有が命。",
+    before: [
+      "事故車の写真・修理内容を保険会社に都度 FAX/PDF で送付",
+      "中古査定や再修理時に過去の板金箇所を証明する手段が乏しい",
+      "代理店からの紹介経路の記録・コミッション計算が手作業",
+    ],
+    after: [
+      "保険会社ポータルで修理証明を自動連携、査定時の往復が激減",
+      "過去板金箇所が Polygon anchoring で第三者検証可能に",
+      "代理店コミッション・紹介成果が自動集計、締め処理が効率化",
+    ],
+  },
+  {
+    industry: "整備・車検",
+    profile: "定期来店の顧客基盤、履歴連続性が価値の源泉。",
+    before: [
+      "紙の整備記録簿の発行・保管に時間がかかる",
+      "代替わり・担当変更で過去履歴の引き継ぎに抜けが出る",
+      "車検時の見積根拠が口頭ベースで説得力に限界",
+    ],
+    after: [
+      "デジタル整備証明書で発行時間短縮、写真付きで見積根拠が明確",
+      "車両 360° ビューで担当変更でも履歴連続、顧客体験が安定",
+      "車検後の顧客フォローを顧客ポータル経由で継続可能",
+    ],
+  },
+];
+
+function CasesIndustryPatternPage({ pattern, index }: { pattern: IndustryPattern; index: number }) {
+  return (
+    <Page size="A4" style={styles.page}>
+      <Text style={styles.pageTitle}>{String(index + 2).padStart(2, "0")} INDUSTRY PATTERN</Text>
+      <View style={styles.gradientBar} />
+      <Text style={styles.h1}>{pattern.industry}</Text>
+      <Text style={[styles.planDesc, { marginBottom: 10 }]}>{pattern.profile}</Text>
+
+      <View style={styles.grid2}>
+        <View style={styles.gridItem}>
+          <Text style={styles.h2}>導入前</Text>
+          {pattern.before.map((b) => (
+            <Text key={b} style={styles.bullet}>
+              • {b}
+            </Text>
+          ))}
+        </View>
+        <View style={styles.gridItem}>
+          <Text style={[styles.h2, { color: colors.accent }]}>導入後</Text>
+          {pattern.after.map((a) => (
+            <Text key={a} style={styles.bullet}>
+              • {a}
+            </Text>
+          ))}
+        </View>
+      </View>
+
+      <Text style={[styles.cardDesc, { marginTop: 14 }]}>
+        ※ 上記はパイロット設計段階での想定パターンです。実数値は実施企業様ごとに異なります。
+      </Text>
+
+      <Footer pageLabel={`${index + 3} / ${CASES_PAGE_TOTAL}`} />
+    </Page>
+  );
+}
+
+function CasesPilotProgram() {
+  return (
+    <Page size="A4" style={styles.page}>
+      <Text style={styles.pageTitle}>07 PILOT PROGRAM</Text>
+      <View style={styles.gradientBar} />
+      <Text style={styles.h1}>パイロット参加の流れ</Text>
+      <Text style={[styles.lead, { marginBottom: 10 }]}>
+        事例記事は Ledra 編集部が伴走して制作します。貴社の追加負担なく、業界への発信素材としてご活用いただけます。
+      </Text>
+
+      <Text style={styles.h2}>3ステップ</Text>
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Step 1: 事前ヒアリング（約 60 分）</Text>
+        <Text style={styles.cardDesc}>
+          貴社の現状業務・課題・数値の捉え方をお聞きし、事例で扱う指標と取材範囲を合意します。
+        </Text>
+      </View>
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Step 2: 導入・運用定着（約 4〜12 週）</Text>
+        <Text style={styles.cardDesc}>
+          通常の導入支援と並行して、before の数値を記録。運用定着後、after の数値を同じ基準で採集します。
+        </Text>
+      </View>
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Step 3: 取材・記事化・公開（約 2〜3 週）</Text>
+        <Text style={styles.cardDesc}>
+          現場インタビュー・写真撮影は Ledra 側で手配。草案・数値確認・公開タイミングも貴社にて最終承認後に反映します。
+        </Text>
+      </View>
+
+      <Text style={styles.h2}>Ledra が提供するもの</Text>
+      <Text style={styles.bullet}>• 記事のライティング・編集・校正</Text>
+      <Text style={styles.bullet}>• 取材当日の撮影・機材手配</Text>
+      <Text style={styles.bullet}>• 記事の転載許可（貴社 Web サイト・パンフレット・営業資料）</Text>
+      <Text style={styles.bullet}>• プレスリリース配信のサポート（希望時）</Text>
+
+      <Text style={styles.h2}>パイロット参加特典</Text>
+      <Text style={styles.bullet}>• 初期100店舗限定キャンペーン適用（料金プラン詳細資料参照）</Text>
+      <Text style={styles.bullet}>• 優先機能リクエスト受付（ロードマップ反映）</Text>
+      <Text style={styles.bullet}>• Ledra 公式イベント・ウェビナーでの登壇機会</Text>
+
+      <Footer pageLabel={`7 / ${CASES_PAGE_TOTAL}`} />
+    </Page>
+  );
+}
+
+function CasesClosing() {
+  return (
+    <Page size="A4" style={styles.page}>
+      <Text style={styles.pageTitle}>08 NEXT STEPS</Text>
+      <View style={styles.gradientBar} />
+      <Text style={styles.h1}>次のステップ</Text>
+
+      <Text style={styles.lead}>
+        「はじめての1社」として、業界の記録文化を一緒に作り直していただける方と、まずはお話ししたいと考えています。
+      </Text>
+
+      <Text style={styles.h2}>お声がけの経路</Text>
+      <Text style={styles.body}>パイロット参加申込: https://ledra.co.jp/contact</Text>
+      <Text style={styles.body}>Email: info@ledra.co.jp</Text>
+      <Text style={styles.body}>事例一覧（随時更新）: https://ledra.co.jp/cases</Text>
+
+      <Text style={[styles.h2, { marginTop: 18 }]}>事前にご用意いただくもの</Text>
+      <Text style={styles.bullet}>• 直近3ヶ月程度の施工件数・記録方法のメモ（概算で構いません）</Text>
+      <Text style={styles.bullet}>• 既存で利用している会計・予約・決済ツール一覧</Text>
+      <Text style={styles.bullet}>• 事例化に際して外せない条件（匿名化・非公開項目など）</Text>
+
+      <View style={[styles.card, { marginTop: 16 }]}>
+        <Text style={styles.cardTitle}>よくいただくご質問</Text>
+        <Text style={[styles.cardDesc, { marginBottom: 8 }]}>Q. 事例は必ず実名公開ですか？</Text>
+        <Text style={[styles.cardDesc, { marginBottom: 8 }]}>
+          A. 企業名匿名・業種のみ公開も可能です。数値の取り扱いも個別に合意します。
+        </Text>
+        <Text style={[styles.cardDesc, { marginBottom: 8 }]}>Q. 途中で辞退できますか？</Text>
+        <Text style={styles.cardDesc}>
+          A. 公開前であればいつでも辞退いただけます。取材済み素材の取り扱いも事前に合意します。
+        </Text>
+      </View>
+
+      <Text style={[styles.tagline, { marginTop: 30 }]}>記録を、業界の共通言語にする。</Text>
+
+      <Footer pageLabel={`${CASES_PAGE_TOTAL} / ${CASES_PAGE_TOTAL}`} />
+    </Page>
+  );
+}
+
+export function CaseStudiesPdf() {
+  ensureFonts();
+  return (
+    <Document
+      title="Ledra 導入事例集（パイロット版）"
+      author="Ledra"
+      subject="Ledra 導入事例のフレームワークとパイロット参加のご案内"
+      creator="Ledra"
+      producer="Ledra"
+    >
+      {CasesCover()}
+      {CasesMetrics()}
+      {INDUSTRY_PATTERNS.map((p, i) => (
+        <React.Fragment key={p.industry}>{CasesIndustryPatternPage({ pattern: p, index: i })}</React.Fragment>
+      ))}
+      {CasesPilotProgram()}
+      {CasesClosing()}
+    </Document>
+  );
+}
+
 /**
  * Registry of available marketing PDFs. Add entries here to expose new
  * downloadable resources; the API route `/api/marketing/resources/[key]/pdf`
@@ -1494,5 +1807,9 @@ export const RESOURCE_PDFS: Record<string, { filename: string; doc: () => React.
   "security-whitepaper": {
     filename: "Ledra_Security_Whitepaper.pdf",
     doc: () => <SecurityWhitepaperPdf />,
+  },
+  "case-studies": {
+    filename: "Ledra_Case_Studies.pdf",
+    doc: () => <CaseStudiesPdf />,
   },
 };
