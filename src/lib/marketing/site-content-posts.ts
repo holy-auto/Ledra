@@ -1,4 +1,4 @@
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { createPublicClient } from "@/lib/supabase/public";
 import type { SiteContentType } from "@/lib/validations/site-content-post";
 
 export type PublicContentPost = {
@@ -25,7 +25,7 @@ export async function listPublishedPosts(
   types: SiteContentType[],
   opts: { limit?: number } = {},
 ): Promise<PublicContentPost[]> {
-  const supabase = await createSupabaseServerClient();
+  const supabase = createPublicClient();
   const { data, error } = await supabase
     .from("site_content_posts")
     .select(
@@ -44,7 +44,7 @@ export async function listPublishedPosts(
 }
 
 export async function getPublishedPostBySlug(type: SiteContentType, slug: string): Promise<PublicContentPost | null> {
-  const supabase = await createSupabaseServerClient();
+  const supabase = createPublicClient();
   const { data, error } = await supabase
     .from("site_content_posts")
     .select(
