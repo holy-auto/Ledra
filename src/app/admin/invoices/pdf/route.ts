@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { renderInvoicePdf } from "@/lib/pdfInvoice";
+import { renderInvoicePdf, type InvoiceForPdf, type TenantForPdf } from "@/lib/pdfInvoice";
 
 export const dynamic = "force-dynamic";
 
@@ -53,8 +53,12 @@ export async function GET(req: Request) {
       ...invoice,
       invoice_number: invoice.doc_number,
     };
-    const pdf = await renderInvoicePdf(invoiceForPdf as any, tenant as any, customerName);
-    const body = new Uint8Array(pdf as any);
+    const pdf = await renderInvoicePdf(
+      invoiceForPdf as unknown as InvoiceForPdf,
+      tenant as unknown as TenantForPdf,
+      customerName,
+    );
+    const body = new Uint8Array(pdf);
     return new NextResponse(body, {
       status: 200,
       headers: {

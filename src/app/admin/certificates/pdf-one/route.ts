@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { renderCertificatePdf } from "@/lib/pdfCertificate";
+import { renderCertificatePdf, type CertRow } from "@/lib/pdfCertificate";
 import { checkAdminFeature, billingDenyResponse } from "@/lib/billing/adminFeatureGate";
 import { logCertificateAction } from "@/lib/audit/certificateLog";
 
@@ -62,8 +62,10 @@ export async function GET(req: Request) {
   const baseUrl = `${proto}://${host}`;
   const publicUrl = `${baseUrl}/c/${row.public_id}`;
 
-  const pdf = await renderCertificatePdf(row as any, publicUrl, anchors);
-  const body = new Uint8Array(pdf as any);
+  // row は supabase select の戻り値で CertRow の subset。該当コラムは
+  // 全て select しているので CertRow として扱う。
+  const pdf = await renderCertificatePdf(row as unknown as CertRow, publicUrl, anchors);
+  const body = new Uint8Array(pdf);
 
   return new NextResponse(body, {
     status: 200,

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { renderCertificatePdf } from "@/lib/pdfCertificate";
+import { renderCertificatePdf, type CertRow } from "@/lib/pdfCertificate";
 import { checkAdminFeature, billingDenyResponse } from "@/lib/billing/adminFeatureGate";
 import { logCertificateAction } from "@/lib/audit/certificateLog";
 
@@ -87,13 +87,13 @@ export async function GET(req: Request) {
   for (const r of rows ?? []) {
     const publicUrl = `${baseUrl}/c/${r.public_id}`;
     const anchors = anchorsByCertId.get((r as { id: string }).id) ?? [];
-    const pdf = await renderCertificatePdf(r as any, publicUrl, anchors);
+    const pdf = await renderCertificatePdf(r as unknown as CertRow, publicUrl, anchors);
     zip.file(`certificate_${r.public_id}.pdf`, pdf);
   }
 
   const out = await zip.generateAsync({ type: "nodebuffer" });
   const filename = `certificates_selected_${new Date().toISOString().slice(0, 10)}.zip`;
-  const body = new Uint8Array(out as any);
+  const body = new Uint8Array(out);
   return new NextResponse(body, {
     status: 200,
     headers: {

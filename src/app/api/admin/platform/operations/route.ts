@@ -13,6 +13,17 @@ export const dynamic = "force-dynamic";
  *
  * Returns: system health, tenant overview, error stats, recent activity
  */
+type TenantOverviewRow = {
+  id: string;
+  name: string | null;
+  plan_tier: string | null;
+  is_active: boolean | null;
+  created_at: string | null;
+  stripe_subscription_id: string | null;
+};
+
+type HeavyAccessLog = { insurer_id: string };
+
 export async function GET() {
   try {
     const supabase = await createSupabaseServerClient();
@@ -44,7 +55,10 @@ export async function GET() {
       recentCertsResult,
     ] = await Promise.allSettled([
       // 1. Tenant overview
-      admin.from("tenants").select("id, name, plan_tier, is_active, created_at, stripe_subscription_id"),
+      admin
+        .from("tenants")
+        .select("id, name, plan_tier, is_active, created_at, stripe_subscription_id")
+        .returns<TenantOverviewRow[]>(),
       // 2. Total certificates
       admin.from("certificates").select("id", { count: "exact", head: true }),
       // 3. Certificates last 24h
@@ -62,7 +76,7 @@ export async function GET() {
         .not("stripe_subscription_id", "is", null)
         .eq("is_active", false),
       // 8. Heavy insurer access 24h
-      admin.from("insurer_access_logs").select("insurer_id").gte("created_at", oneDayAgo),
+      admin.from("insurer_access_logs").select("insurer_id").gte("created_at", oneDayAgo).returns<HeavyAccessLog[]>(),
       // 9. Agent applications pending
       admin.from("agent_applications").select("id", { count: "exact", head: true }).eq("status", "pending"),
       // 10. Recent certificates (for activity feed)
@@ -74,15 +88,15 @@ export async function GET() {
     ]);
 
     // Process tenants
-    const tenants = tenantsResult.status === "fulfilled" ? (tenantsResult.value.data ?? []) : [];
-    const activeTenants = tenants.filter((t: any) => t.is_active);
-    const inactiveTenants = tenants.filter((t: any) => !t.is_active);
-    const recentTenants = tenants.filter((t: any) => t.created_at && t.created_at >= sevenDaysAgo);
+    const tenants: TenantOverviewRow[] = tenantsResult.status === "fulfilled" ? (tenantsResult.value.data ?? []) : [];
+    const activeTenants = tenants.filter((t) => t.is_active);
+    const inactiveTenants = tenants.filter((t) => !t.is_active);
+    const recentTenants = tenants.filter((t) => t.created_at && t.created_at >= sevenDaysAgo);
 
     // Plan distribution
     const planDistribution: Record<string, number> = {};
     for (const t of tenants) {
-      const plan = (t as any).plan_tier ?? "free";
+      const plan = t.plan_tier ?? "free";
       planDistribution[plan] = (planDistribution[plan] ?? 0) + 1;
     }
 
@@ -101,10 +115,11 @@ export async function GET() {
     const billingIssues = billingIssuesResult.status === "fulfilled" ? (billingIssuesResult.value.data ?? []) : [];
 
     // Heavy access
-    const accessLogs = heavyAccessResult.status === "fulfilled" ? (heavyAccessResult.value.data ?? []) : [];
+    const accessLogs: HeavyAccessLog[] =
+      heavyAccessResult.status === "fulfilled" ? (heavyAccessResult.value.data ?? []) : [];
     const accessCounts: Record<string, number> = {};
     for (const log of accessLogs) {
-      const id = (log as any).insurer_id;
+      const id = log.insurer_id;
       accessCounts[id] = (accessCounts[id] ?? 0) + 1;
     }
     const heavyAccessors = Object.entries(accessCounts)
