@@ -26,24 +26,36 @@ export const dynamic = "force-dynamic";
  *   200 成功 / 400 リクエストエラー / 403 認証エラー / 500 サーバーエラー
  */
 
+type ExtractedKey =
+  | { ok: true; key: string; source: "x-api-key" | "basic-auth" }
+  | { ok: false; reason: "no-header" | "invalid-basic" };
+
 /** Basic 認証 / x-api-key ヘッダのどちらからでも APIキーを抽出する */
-function extractApiKey(req: NextRequest): string | null {
+function extractApiKey(req: NextRequest): ExtractedKey {
   const headerKey = req.headers.get("x-api-key");
-  if (headerKey) return headerKey;
+  if (headerKey) return { ok: true, key: headerKey, source: "x-api-key" };
 
   const auth = req.headers.get("authorization");
-  if (!auth) return null;
+  if (!auth) return { ok: false, reason: "no-header" };
   const match = auth.match(/^Basic\s+(.+)$/i);
-  if (!match) return null;
+  if (!match) return { ok: false, reason: "invalid-basic" };
   try {
     const decoded = atob(match[1].trim());
     const colon = decoded.indexOf(":");
     // 慣例: password 部分をキーとして扱う。username は任意。
     const password = colon >= 0 ? decoded.slice(colon + 1) : decoded;
-    return password || null;
+    if (!password) return { ok: false, reason: "invalid-basic" };
+    return { ok: true, key: password, source: "basic-auth" };
   } catch {
-    return null;
+    return { ok: false, reason: "invalid-basic" };
   }
+}
+
+/** 鍵の末尾4文字だけ残したマスク（ログ出力用。先頭はキーのprefixのみ残す） */
+function maskKey(key: string): string {
+  if (!key) return "(empty)";
+  if (key.length <= 8) return "****";
+  return key.slice(0, 4) + "****" + key.slice(-4);
 }
 
 type PlaceId = "left" | "right" | "top" | "back";
@@ -175,10 +187,16 @@ export async function POST(req: NextRequest) {
 
   try {
     // ── API Key 認証（x-api-key または Basic Auth の password 部分）──
-    const apiKey = extractApiKey(req);
-    if (!apiKey) {
-      return apiError({ code: "unauthorized", message: "API key required", status: 403 });
+    const extracted = extractApiKey(req);
+    if (!extracted.ok) {
+      const reason =
+        extracted.reason === "no-header"
+          ? "Missing credentials: set Password field to your Ledra API key (Basic Auth) or send x-api-key header"
+          : "Invalid Authorization header: expected Basic auth with API key in password field";
+      console.warn("[nexptg.sync] auth failed:", extracted.reason);
+      return apiError({ code: "unauthorized", message: reason, status: 403 });
     }
+    const apiKey = extracted.key;
 
     const body = (await req.json().catch((): null => null)) as NexPtgEnvelope | null;
     if (!body || typeof body !== "object" || !body.data) {
@@ -197,8 +215,23 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (tenantErr) return apiInternalError(tenantErr, "nexptg tenant lookup");
-    if (!tenant || !tenant.is_active) {
-      return apiError({ code: "unauthorized", message: "Invalid API key", status: 403 });
+    if (!tenant) {
+      console.warn(
+        `[nexptg.sync] API key did not match any tenant. source=${extracted.source} masked=${maskKey(apiKey)}`,
+      );
+      return apiError({
+        code: "unauthorized",
+        message: "API key does not match any tenant. Re-check the key issued in Ledra settings.",
+        status: 403,
+      });
+    }
+    if (!tenant.is_active) {
+      console.warn(`[nexptg.sync] tenant is inactive. tenant_id=${tenant.id}`);
+      return apiError({
+        code: "unauthorized",
+        message: "Tenant is not active.",
+        status: 403,
+      });
     }
 
     const tenantId = tenant.id as string;
