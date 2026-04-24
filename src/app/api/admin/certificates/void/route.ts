@@ -1,14 +1,21 @@
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { apiOk, apiInternalError, apiUnauthorized, apiValidationError, apiNotFound, apiForbidden } from "@/lib/api/response";
+import {
+  apiOk,
+  apiInternalError,
+  apiUnauthorized,
+  apiValidationError,
+  apiNotFound,
+  apiForbidden,
+} from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({} as any));
-    const publicId = (body?.public_id ?? "").trim();
+    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    const publicId = typeof body.public_id === "string" ? body.public_id.trim() : "";
 
     if (!publicId) {
       return apiValidationError("public_id は必須です。");

@@ -72,8 +72,12 @@ export async function POST(req: NextRequest) {
     const tenantId = caller.tenantId;
 
     // ── Plan tier → photo limit ───────────────────────────────────
-    const { data: tenant } = await supabase.from("tenants").select("plan_tier").eq("id", tenantId).single();
-    const planTier = normalizePlanTier((tenant as any)?.plan_tier);
+    const { data: tenant } = await supabase
+      .from("tenants")
+      .select("plan_tier")
+      .eq("id", tenantId)
+      .single<{ plan_tier: string | null }>();
+    const planTier = normalizePlanTier(tenant?.plan_tier);
     const maxPhotos = PHOTO_LIMITS[planTier];
 
     // ── Parse multipart form ──────────────────────────────────────

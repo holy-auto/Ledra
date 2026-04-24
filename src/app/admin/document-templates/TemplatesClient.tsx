@@ -9,6 +9,7 @@ import LayoutPreview from "./LayoutPreview";
 type ApiResp = {
   templates: DocumentTemplate[];
   tenant_default_template_id: string | null;
+  message?: string;
 };
 
 type EditorState = {
@@ -41,7 +42,7 @@ export default function TemplatesClient() {
     try {
       const res = await fetch("/api/admin/document-templates", { cache: "no-store" });
       const j = (await res.json()) as ApiResp;
-      if (!res.ok) throw new Error((j as any)?.message ?? "読み込み失敗");
+      if (!res.ok) throw new Error(j?.message ?? "読み込み失敗");
       setTemplates(j.templates ?? []);
       setTenantDefaultId(j.tenant_default_template_id ?? null);
       setErr(null);

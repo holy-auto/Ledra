@@ -210,8 +210,8 @@ export default async function AdminSettingsPage() {
           connectStatus={
             columnsExist
               ? {
-                  accountId: (ext as any).stripe_connect_account_id ?? null,
-                  onboarded: (ext as any).stripe_connect_onboarded ?? false,
+                  accountId: ext.stripe_connect_account_id ?? null,
+                  onboarded: ext.stripe_connect_onboarded ?? false,
                 }
               : null
           }
