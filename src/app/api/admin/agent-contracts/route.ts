@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/api/auth";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { notifyAgentSignRequest } from "@/lib/agent/email";
 
 export const dynamic = "force-dynamic";
 
@@ -76,11 +77,7 @@ export async function POST(request: NextRequest) {
     const admin = getAdminClient();
 
     // 代理店の存在確認
-    const { data: agent, error: agentErr } = await admin
-      .from("agents")
-      .select("id")
-      .eq("id", agent_id)
-      .single();
+    const { data: agent, error: agentErr } = await admin.from("agents").select("id").eq("id", agent_id).single();
     if (agentErr || !agent) return apiValidationError("agent not found");
 
     const signToken = generateSignToken();
@@ -111,8 +108,13 @@ export async function POST(request: NextRequest) {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
     const signUrl = `${baseUrl}/agent-sign/${signToken}`;
 
-    // TODO: send email to signer_email with signUrl
-    // await sendAgentContractEmail({ to: signer_email.trim(), name: signer_name.trim(), title, signUrl });
+    await notifyAgentSignRequest(signer_email.trim(), {
+      signerName: signer_name.trim(),
+      title: title.trim(),
+      signUrl,
+      expiresAt: signExpiresAt,
+      idempotencyKey: `agent-contract-send:${record.id}`,
+    });
 
     return NextResponse.json({ contract: record, sign_url: signUrl }, { status: 201 });
   } catch (e) {

@@ -5,6 +5,7 @@ import { getAdminClient } from "@/lib/api/auth";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { apiUnauthorized, apiForbidden, apiInternalError, apiNotFound, apiValidationError } from "@/lib/api/response";
+import { notifyAgentSignRequest } from "@/lib/agent/email";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -104,7 +105,16 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
       const signUrl = `${baseUrl}/agent-sign/${newToken}`;
 
-      // TODO: resend email with new sign_url
+      if (updated) {
+        await notifyAgentSignRequest(updated.signer_email, {
+          signerName: updated.signer_name,
+          title: updated.title,
+          signUrl,
+          expiresAt: newExpiresAt,
+          // 新しい token を使うので idempotency key も token に紐付けて常に再送される
+          idempotencyKey: `agent-contract-resend:${updated.id}:${newToken}`,
+        });
+      }
 
       return NextResponse.json({ contract: updated, sign_url: signUrl });
     }

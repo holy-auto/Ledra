@@ -94,7 +94,10 @@ const nextConfig: NextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          // 車検証 QR スキャナ (src/components/vehicles/ShakenshoScanner.tsx) が
+          // navigator.mediaDevices.getUserMedia({ video }) を呼ぶため camera は
+          // 自サイトに限り許可。マイクと位置情報は現状使っていないので禁止のまま。
+          { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=()" },
           // HSTS: enforce HTTPS, 1 year, include subdomains
           { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
           // CSP enforced — validated and switched from Report-Only for launch

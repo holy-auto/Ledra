@@ -9,15 +9,14 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { renderBrandedCertificatePdf } from "@/lib/template-options/renderBrandedCertificate";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { logger } from "@/lib/logger";
 import type { TemplateConfig } from "@/types/templateOption";
 import type { CertRow } from "@/lib/pdfCertificate";
 
 export const dynamic = "force-dynamic";
 
-const NOTO_SANS_JP =
-  "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-400-normal.ttf";
-const NOTO_SANS_JP_BOLD =
-  "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-700-normal.ttf";
+const NOTO_SANS_JP = "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-400-normal.ttf";
+const NOTO_SANS_JP_BOLD = "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-700-normal.ttf";
 
 Font.register({
   family: "NotoSansJP",
@@ -119,28 +118,28 @@ function PdfDocEl(cert: CertPublic, publicUrl: string, qrDataUrl: string) {
           null,
           E(Text, { style: styles.title }, cert.tenant_name ?? "施工店"),
           E(Text, { style: styles.meta }, "施工証明書（PDF）"),
-          E(Text, { style: styles.meta }, `Public ID: ${cert.public_id}`)
+          E(Text, { style: styles.meta }, `Public ID: ${cert.public_id}`),
         ),
         E(
           View,
           { style: { alignItems: "flex-end" } },
           E(Image, { src: qrDataUrl, style: styles.qr }),
-          E(Text, { style: styles.small }, publicUrl)
-        )
+          E(Text, { style: styles.small }, publicUrl),
+        ),
       ),
 
       E(
         View,
         { style: styles.box },
         E(Text, { style: styles.label }, "お客様"),
-        E(Text, { style: styles.value }, cert.customer_name ?? "-")
+        E(Text, { style: styles.value }, cert.customer_name ?? "-"),
       ),
 
       E(
         View,
         { style: styles.box },
         E(Text, { style: styles.label }, "施工内容"),
-        E(Text, { style: styles.value }, cert.content_free_text ?? "-")
+        E(Text, { style: styles.value }, cert.content_free_text ?? "-"),
       ),
 
       E(
@@ -150,17 +149,17 @@ function PdfDocEl(cert: CertPublic, publicUrl: string, qrDataUrl: string) {
         E(
           Text,
           { style: styles.value },
-          `${(cert.expiry_type ?? "").toString()}: ${(cert.expiry_value ?? "").toString()}`
-        )
+          `${(cert.expiry_type ?? "").toString()}: ${(cert.expiry_value ?? "").toString()}`,
+        ),
       ),
 
       E(
         View,
         { style: styles.footer },
         E(Text, null, `公開URL: ${publicUrl}`),
-        E(Text, null, "HOLY監修フッター（信頼担保）")
-      )
-    )
+        E(Text, null, "HOLY監修フッター（信頼担保）"),
+      ),
+    ),
   );
 }
 
@@ -213,7 +212,10 @@ export async function GET(req: Request) {
         userAgent: meta.userAgent,
       });
     }
-  } catch { /* audit failure should not block PDF */ }
+  } catch (e: unknown) {
+    // audit log failure must not block PDF delivery, but we still want it in logs
+    logger.warn("certificate pdf audit log failed", { err: e instanceof Error ? e.message : String(e) });
+  }
 
   const fallbackOrigin = await getFallbackOrigin();
   const origin = buildOriginFromCert(cert, fallbackOrigin);
@@ -251,7 +253,9 @@ export async function GET(req: Request) {
           // Fetch additional fields for PPF support
           const { data: fullCert } = await adm2
             .from("certificates")
-            .select("ppf_coverage_json, service_type, coating_products_json, warranty_period_end, warranty_exclusions, current_version, maintenance_json, body_repair_json")
+            .select(
+              "ppf_coverage_json, service_type, coating_products_json, warranty_period_end, warranty_exclusions, current_version, maintenance_json, body_repair_json",
+            )
             .eq("public_id", pid)
             .limit(1)
             .maybeSingle();
@@ -284,7 +288,10 @@ export async function GET(req: Request) {
           );
 
           const ab = (brandedBuf as any).buffer
-            ? (brandedBuf as any).buffer.slice((brandedBuf as any).byteOffset ?? 0, ((brandedBuf as any).byteOffset ?? 0) + (brandedBuf as any).byteLength)
+            ? (brandedBuf as any).buffer.slice(
+                (brandedBuf as any).byteOffset ?? 0,
+                ((brandedBuf as any).byteOffset ?? 0) + (brandedBuf as any).byteLength,
+              )
             : brandedBuf;
 
           return new NextResponse(ab as any, {

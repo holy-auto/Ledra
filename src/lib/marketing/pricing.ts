@@ -160,7 +160,6 @@ export const ANNUAL_DISCOUNT_PERCENT = 20;
 export const ADD_ON_OPTIONS = {
   additionalStore: { name: "追加店舗", price: "¥4,980", unit: "/店舗/月" },
   additionalUser: { name: "追加ユーザー", price: "¥1,480", unit: "/人/月" },
-  invoicePayment: { name: "請求書機能＋オンライン決済", price: "¥3,980", unit: "/月" },
   prioritySupport: { name: "優先サポート", price: "¥4,980", unit: "/月" },
   onboarding: { name: "導入伴走", price: "¥19,800", unit: "/月", packPrice: "¥49,800", packUnit: "/3ヶ月" },
 } as const;
@@ -182,7 +181,6 @@ export const LAUNCH_CAMPAIGN = {
   plans: ["standard", "pro"] as const,
   durationMonths: 12,
   nfcFreeAllocation: 30,
-  invoiceOptionPrice: "¥1,980",
   description: "初期100店舗限定キャンペーン（初年度のみ適用・Standard/Pro対象）",
 } as const;
 

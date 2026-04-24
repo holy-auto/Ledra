@@ -36,7 +36,12 @@ export default function BillingGate(): null {
 
         // No cache or expired — fetch and block
         await revalidate();
-      } catch {}
+      } catch (e) {
+        // Surface unexpected errors so they show up in Sentry / devtools.
+        // The gate itself is best-effort: it must never prevent the admin
+        // UI from loading, so we swallow the error after reporting.
+        console.warn("[billing-gate] revalidate failed", e);
+      }
 
       async function revalidate() {
         const s = await supabase.auth.getSession();
@@ -50,8 +55,15 @@ export default function BillingGate(): null {
           cache: "no-store",
         });
 
-        if (!res.ok) return;
-        const j = await res.json().catch((): null => null);
+        if (!res.ok) {
+          console.warn("[billing-gate] revalidate non-ok", { status: res.status });
+          return;
+        }
+        const j = await res.json().catch((e: unknown): null => {
+          console.warn("[billing-gate] revalidate json parse failed", e);
+          return null;
+        });
+        if (!j) return;
 
         sessionStorage.setItem("ledra_billing_state", JSON.stringify({ data: j, ts: Date.now() }));
 
