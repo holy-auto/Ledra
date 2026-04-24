@@ -13,7 +13,10 @@ export const dynamic = "force-dynamic";
  * レポート保存時（Android）または手動同期時（iOS）に JSON が POST される。
  *
  *   URL:      https://<ledra-host>/api/external/nexptg/sync
- *   Header:   x-api-key: <tenants.external_api_key>
+ *   Auth:     NexPTGアプリは Basic Authentication のみサポート。
+ *             username 欄は任意（空 or 任意文字列）、
+ *             password 欄に tenants.external_api_key を入力する。
+ *             後方互換として x-api-key ヘッダも受け付ける。
  *   Body:     application/json（NexPTG 仕様そのまま）
  *
  * 仕様書のトップレベル構造:
@@ -22,6 +25,26 @@ export const dynamic = "force-dynamic";
  * レスポンスコード（NexPTG 側の想定に揃える）:
  *   200 成功 / 400 リクエストエラー / 403 認証エラー / 500 サーバーエラー
  */
+
+/** Basic 認証 / x-api-key ヘッダのどちらからでも APIキーを抽出する */
+function extractApiKey(req: NextRequest): string | null {
+  const headerKey = req.headers.get("x-api-key");
+  if (headerKey) return headerKey;
+
+  const auth = req.headers.get("authorization");
+  if (!auth) return null;
+  const match = auth.match(/^Basic\s+(.+)$/i);
+  if (!match) return null;
+  try {
+    const decoded = atob(match[1].trim());
+    const colon = decoded.indexOf(":");
+    // 慣例: password 部分をキーとして扱う。username は任意。
+    const password = colon >= 0 ? decoded.slice(colon + 1) : decoded;
+    return password || null;
+  } catch {
+    return null;
+  }
+}
 
 type PlaceId = "left" | "right" | "top" | "back";
 
@@ -151,8 +174,8 @@ export async function POST(req: NextRequest) {
   if (limited) return limited;
 
   try {
-    // ── API Key 認証 ──
-    const apiKey = req.headers.get("x-api-key");
+    // ── API Key 認証（x-api-key または Basic Auth の password 部分）──
+    const apiKey = extractApiKey(req);
     if (!apiKey) {
       return apiError({ code: "unauthorized", message: "API key required", status: 403 });
     }
