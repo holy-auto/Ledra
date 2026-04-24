@@ -160,6 +160,12 @@ describe("default security headers", () => {
     expect(res.headers.get("vary")).toBe("Cookie");
   });
 
+  it("apiOk sets noindex + Pragma defense-in-depth headers", () => {
+    const res = apiOk({ foo: "bar" }) as any;
+    expect(res.headers.get("x-robots-tag")).toBe("noindex, nofollow, noarchive");
+    expect(res.headers.get("pragma")).toBe("no-cache");
+  });
+
   it("apiOk allows cacheControl override", () => {
     const res = apiOk({ foo: "bar" }, 200, { cacheControl: "private, max-age=10" }) as any;
     expect(res.headers.get("cache-control")).toBe("private, max-age=10");

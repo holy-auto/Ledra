@@ -58,12 +58,17 @@ const isProd = process.env.NODE_ENV === "production";
 /**
  * Default response security headers. API 応答は既定で:
  * - 共有 proxy / CDN に載せない (private, no-store)
+ * - HTTP/1.0 古い proxy / browser 向けフォールバック (Pragma: no-cache)
  * - cookie 変化で cache key 分離 (Vary: Cookie) — 万一どこかでキャッシュ
  *   される場合でも別ユーザの応答を返さない
+ * - 検索エンジンが誤って index しない (X-Robots-Tag: noindex, nofollow) —
+ *   API URL が何らかの事故で公開された場合でも SERP 露出を防ぐ
  */
 const DEFAULT_API_SECURITY_HEADERS: Record<string, string> = {
   "cache-control": "private, no-store, max-age=0",
+  pragma: "no-cache",
   vary: "Cookie",
+  "x-robots-tag": "noindex, nofollow, noarchive",
 };
 
 function buildSecurityHeaders(overrides?: {

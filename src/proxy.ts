@@ -219,6 +219,20 @@ export async function proxy(request: NextRequest) {
 
   response.headers.set("x-request-id", requestId);
   response.headers.set("Content-Security-Policy", cspHeader);
+
+  // Defense-in-depth for raw binary responses (PDF / CSV exports) that do
+  // not go through apiOk/apiError/apiJson helpers. Safe to always add
+  // because they don't conflict with Cache-Control or Vary which routes
+  // may customize.
+  if (pathname.startsWith("/api/")) {
+    if (!response.headers.has("x-robots-tag")) {
+      response.headers.set("x-robots-tag", "noindex, nofollow, noarchive");
+    }
+    if (!response.headers.has("pragma")) {
+      response.headers.set("pragma", "no-cache");
+    }
+  }
+
   return response;
 }
 
