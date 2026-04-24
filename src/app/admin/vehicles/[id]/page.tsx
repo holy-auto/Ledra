@@ -195,6 +195,16 @@ export default async function AdminVehicleDetailPage({
     .eq("vehicle_id", id)
     .order("scheduled_date", { ascending: false });
 
+  // NexPTG膜厚測定レポート（thickness_reports ＋ 測定値サマリ）
+  const { data: thicknessReports } = await supabase
+    .from("thickness_reports")
+    .select(
+      "id, name, measured_at, device_serial_number, comment, unit_of_measure, thickness_measurements(value_um, interpretation, is_inside)",
+    )
+    .eq("tenant_id", membership.tenant_id)
+    .eq("vehicle_id", id)
+    .order("measured_at", { ascending: false });
+
   // ─── タイムラインイベントを合成 ───
   const timelineEvents: TimelineEvent[] = [];
 
@@ -203,9 +213,12 @@ export default async function AdminVehicleDetailPage({
     const occurredAt = h.performed_at ?? h.created_at ?? null;
     if (!occurredAt) continue;
 
+    const type = String(h.type ?? "").toLowerCase();
+    // 膜厚測定は thickness_reports から直接描画するため重複を避ける
+    if (type.includes("thickness")) continue;
+
     const title = h.title ?? h.label ?? "車両履歴イベント";
     const description = h.description ?? h.note ?? null;
-    const type = String(h.type ?? "").toLowerCase();
 
     const isVoid = type.includes("void") || title.includes("削除");
     const isCertificate = type.includes("certificate") || title.includes("証明書") || !!h.certificate_id;
@@ -265,6 +278,52 @@ export default async function AdminVehicleDetailPage({
         occurredAt: t.written_at,
       });
     }
+  }
+
+  // 5) NexPTG膜厚測定レポート
+  for (const report of thicknessReports ?? []) {
+    const occurredAt = (report as any).measured_at ?? null;
+    if (!occurredAt) continue;
+
+    const measurements = ((report as any).thickness_measurements ?? []) as Array<{
+      value_um: number | null;
+      interpretation: number | null;
+      is_inside: boolean;
+    }>;
+    const count = measurements.length;
+    let maxValue: number | null = null;
+    let maxInterpretation: number | null = null;
+    for (const m of measurements) {
+      if (typeof m.value_um === "number" && (maxValue === null || m.value_um > maxValue)) {
+        maxValue = m.value_um;
+      }
+      if (
+        typeof m.interpretation === "number" &&
+        (maxInterpretation === null || m.interpretation > maxInterpretation)
+      ) {
+        maxInterpretation = m.interpretation;
+      }
+    }
+
+    const unit = (report as any).unit_of_measure ?? "μm";
+    const parts: string[] = [];
+    if (count > 0) parts.push(`測定値 ${count}件`);
+    if (maxValue !== null) parts.push(`最大 ${maxValue}${unit}`);
+    if (maxInterpretation !== null) parts.push(`判定最大 ${maxInterpretation}`);
+    const summary = parts.length > 0 ? parts.join(" ・ ") : null;
+    const comment = ((report as any).comment as string | null)?.trim() || null;
+    const serial = (report as any).device_serial_number as string | null;
+    const description = [summary, comment, serial ? `機器: ${serial}` : null].filter(Boolean).join("\n") || null;
+
+    timelineEvents.push({
+      key: `thickness-${(report as any).id}`,
+      kindLabel: "膜厚測定",
+      kindVariant: "thickness",
+      title: (report as any).name ? `膜厚測定（NexPTG）: ${(report as any).name}` : "膜厚測定（NexPTG）",
+      description,
+      occurredAt,
+      href: `/admin/vehicles/${id}/thickness/${(report as any).id}`,
+    });
   }
 
   // 降順ソート (新しい順)

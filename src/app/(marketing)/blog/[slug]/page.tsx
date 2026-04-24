@@ -6,29 +6,74 @@ import { MarkdownBody } from "@/components/marketing/MarkdownBody";
 import { CTABanner } from "@/components/marketing/CTABanner";
 import { ArticleHero } from "@/components/marketing/ArticleHero";
 import { getContentBySlug, listContent } from "@/lib/marketing/content";
+import { getPublishedPostBySlug, listPublishedPosts } from "@/lib/marketing/site-content-posts";
 
 type Props = { params: Promise<{ slug: string }> };
 
+type ResolvedArticle = {
+  slug: string;
+  title: string;
+  excerpt?: string;
+  body: string;
+  publishedAt?: string;
+  tags?: string[];
+  author?: string;
+  heroImageUrl?: string;
+};
+
+async function resolveArticle(slug: string): Promise<ResolvedArticle | null> {
+  const dbPost = await getPublishedPostBySlug("blog", slug);
+  if (dbPost) {
+    return {
+      slug: dbPost.slug,
+      title: dbPost.title,
+      excerpt: dbPost.excerpt ?? undefined,
+      body: dbPost.body,
+      publishedAt: dbPost.published_at ?? undefined,
+      tags: dbPost.tags,
+      author: dbPost.author ?? undefined,
+      heroImageUrl: dbPost.hero_image_url ?? undefined,
+    };
+  }
+
+  const entry = await getContentBySlug("blog", slug);
+  if (!entry) return null;
+
+  return {
+    slug: entry.frontmatter.slug,
+    title: entry.frontmatter.title,
+    excerpt: entry.frontmatter.excerpt,
+    body: entry.body,
+    publishedAt: entry.frontmatter.publishedAt,
+    tags: entry.frontmatter.tags,
+    author: entry.frontmatter.author,
+    heroImageUrl: typeof entry.frontmatter.hero === "string" ? entry.frontmatter.hero : undefined,
+  };
+}
+
 export async function generateStaticParams() {
-  const entries = await listContent("blog");
-  return entries.map((e) => ({ slug: e.frontmatter.slug }));
+  const [mdx, db] = await Promise.all([listContent("blog"), listPublishedPosts(["blog"], { limit: 200 })]);
+  const slugs = new Set<string>();
+  for (const e of mdx) slugs.add(e.frontmatter.slug);
+  for (const p of db) slugs.add(p.slug);
+  return Array.from(slugs).map((slug) => ({ slug }));
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const entry = await getContentBySlug("blog", slug);
-  if (!entry) return { title: "Not Found" };
+  const article = await resolveArticle(slug);
+  if (!article) return { title: "Not Found" };
   return {
-    title: entry.frontmatter.title,
-    description: entry.frontmatter.excerpt,
-    alternates: { canonical: `/blog/${entry.frontmatter.slug}` },
+    title: article.title,
+    description: article.excerpt,
+    alternates: { canonical: `/blog/${article.slug}` },
   };
 }
 
 export default async function BlogDetailPage({ params }: Props) {
   const { slug } = await params;
-  const entry = await getContentBySlug("blog", slug);
-  if (!entry) notFound();
+  const article = await resolveArticle(slug);
+  if (!article) notFound();
 
   return (
     <>
@@ -41,20 +86,23 @@ export default async function BlogDetailPage({ params }: Props) {
             ← ブログ一覧に戻る
           </Link>
           <div className="mt-8">
-            <ArticleHero
-              seed={entry.frontmatter.slug}
-              tag={entry.frontmatter.tags?.[0]}
-              className="aspect-[5/2]"
-            />
+            {article.heroImageUrl ? (
+              // User-supplied external URL; next/image requires remotePatterns config per-host,
+              // so fall back to a plain <img>. This is expected for CMS-style content.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={article.heroImageUrl}
+                alt=""
+                className="w-full aspect-[5/2] rounded-2xl object-cover border border-white/[0.08]"
+              />
+            ) : (
+              <ArticleHero seed={article.slug} tag={article.tags?.[0]} className="aspect-[5/2]" />
+            )}
           </div>
           <div className="mt-6 flex flex-wrap items-center gap-3 text-xs text-white/40">
-            {entry.frontmatter.publishedAt && (
-              <time dateTime={entry.frontmatter.publishedAt}>
-                {formatDate(entry.frontmatter.publishedAt)}
-              </time>
-            )}
-            {entry.frontmatter.author && <span>by {entry.frontmatter.author}</span>}
-            {entry.frontmatter.tags?.map((t) => (
+            {article.publishedAt && <time dateTime={article.publishedAt}>{formatDate(article.publishedAt)}</time>}
+            {article.author && <span>by {article.author}</span>}
+            {article.tags?.map((t) => (
               <span
                 key={t}
                 className="inline-flex items-center rounded-full border border-white/[0.08] px-2.5 py-0.5 text-[0.688rem] font-medium text-white/60"
@@ -64,15 +112,11 @@ export default async function BlogDetailPage({ params }: Props) {
             ))}
           </div>
           <h1 className="mt-5 text-2xl md:text-3xl lg:text-4xl font-bold text-white leading-tight tracking-tight">
-            {entry.frontmatter.title}
+            {article.title}
           </h1>
-          {entry.frontmatter.excerpt && (
-            <p className="mt-6 text-base leading-relaxed text-white/60">
-              {entry.frontmatter.excerpt}
-            </p>
-          )}
+          {article.excerpt && <p className="mt-6 text-base leading-relaxed text-white/60">{article.excerpt}</p>}
           <div className="mt-10">
-            <MarkdownBody content={entry.body} />
+            <MarkdownBody content={article.body} />
           </div>
         </article>
       </Section>
@@ -90,7 +134,8 @@ export default async function BlogDetailPage({ params }: Props) {
 }
 
 function formatDate(iso: string): string {
-  const [y, m, d] = iso.split("-");
+  const datePart = iso.slice(0, 10);
+  const [y, m, d] = datePart.split("-");
   if (!y || !m || !d) return iso;
   return `${y}年${Number(m)}月${Number(d)}日`;
 }

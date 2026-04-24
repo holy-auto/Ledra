@@ -141,11 +141,13 @@ export const TEMPLATE_FAQ = [
   },
   {
     question: "解約した場合、テンプレートはどうなりますか？",
-    answer: "解約後はLedra標準テンプレートに切り替わります。カスタムテンプレートのデータは30日間保持され、再契約時に復元可能です。",
+    answer:
+      "解約後はLedra標準テンプレートに切り替わります。カスタムテンプレートのデータは30日間保持され、再契約時に復元可能です。",
   },
   {
     question: "証明書の必須項目を非表示にできますか？",
-    answer: "いいえ。お客様名・車両情報・施工内容・Ledra認証マーク等の必須項目は、証明書としての信頼性を担保するため非表示にできません。",
+    answer:
+      "いいえ。お客様名・車両情報・施工内容・Ledra認証マーク等の必須項目は、証明書としての信頼性を担保するため非表示にできません。",
   },
   {
     question: "保証文言の内容はチェックしてもらえますか？",
@@ -160,7 +162,6 @@ export const ANNUAL_DISCOUNT_PERCENT = 20;
 export const ADD_ON_OPTIONS = {
   additionalStore: { name: "追加店舗", price: "¥4,980", unit: "/店舗/月" },
   additionalUser: { name: "追加ユーザー", price: "¥1,480", unit: "/人/月" },
-  invoicePayment: { name: "請求書機能＋オンライン決済", price: "¥3,980", unit: "/月" },
   prioritySupport: { name: "優先サポート", price: "¥4,980", unit: "/月" },
   onboarding: { name: "導入伴走", price: "¥19,800", unit: "/月", packPrice: "¥49,800", packUnit: "/3ヶ月" },
 } as const;
@@ -182,13 +183,18 @@ export const LAUNCH_CAMPAIGN = {
   plans: ["standard", "pro"] as const,
   durationMonths: 12,
   nfcFreeAllocation: 30,
-  invoiceOptionPrice: "¥1,980",
   description: "初期100店舗限定キャンペーン（初年度のみ適用・Standard/Pro対象）",
 } as const;
 
 /** プラン別機能比較テーブルデータ */
 export const FEATURE_COMPARISON = [
-  { feature: "証明書発行数", free: PLANS.free.certLimitShort, starter: PLANS.starter.certLimitShort, standard: PLANS.standard.certLimitShort, pro: PLANS.pro.certLimitShort },
+  {
+    feature: "証明書発行数",
+    free: PLANS.free.certLimitShort,
+    starter: PLANS.starter.certLimitShort,
+    standard: PLANS.standard.certLimitShort,
+    pro: PLANS.pro.certLimitShort,
+  },
   { feature: "店舗数", free: "1", starter: "1", standard: "2", pro: "5" },
   { feature: "ユーザー数", free: "1", starter: "3", standard: "7", pro: "15" },
   { feature: "テンプレート", free: "基本", starter: "基本+ロゴ", standard: "カスタム", pro: "フルカスタム" },

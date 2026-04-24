@@ -69,6 +69,8 @@ export type Permission =
   // Other
   | "announcements:view"
   | "news:view"
+  | "site_content:view"
+  | "site_content:manage"
   | "price_stats:view"
   | "management:view"
   | "audit:view"
@@ -126,6 +128,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "register_sessions:manage",
     "announcements:view",
     "news:view",
+    "site_content:view",
+    "site_content:manage",
     "price_stats:view",
     "management:view",
     "audit:view",
@@ -182,6 +186,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "register_sessions:manage",
     "announcements:view",
     "news:view",
+    "site_content:view",
+    "site_content:manage",
     "price_stats:view",
     "management:view",
     "audit:view",
@@ -235,6 +241,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "register_sessions:manage",
     "announcements:view",
     "news:view",
+    "site_content:view",
+    "site_content:manage",
     "price_stats:view",
     "management:view",
     "audit:view",
@@ -276,6 +284,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "payments:create",
     "announcements:view",
     "news:view",
+    "site_content:view",
+    "site_content:manage",
     "price_stats:view",
     "template_options:view",
     "shop:view",
@@ -295,6 +305,7 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "payments:view",
     "announcements:view",
     "news:view",
+    "site_content:view",
     "price_stats:view",
     "template_options:view",
     "shop:view",
@@ -343,6 +354,7 @@ export const ROUTE_PERMISSIONS: Record<string, Permission> = {
   "/admin/price-stats": "price_stats:view",
   "/admin/announcements": "announcements:view",
   "/admin/news": "news:view",
+  "/admin/site-content": "site_content:view",
   "/admin/inquiries": "market:view",
   "/admin/insurers": "insurers:view",
   "/admin/insurers/tenant-access": "insurers:manage",
