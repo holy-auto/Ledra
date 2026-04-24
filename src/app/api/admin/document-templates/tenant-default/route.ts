@@ -1,8 +1,13 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiUnauthorized, apiInternalError, apiOk, apiValidationError } from "@/lib/api/response";
+
+const tenantDefaultSchema = z.object({
+  template_id: z.string().uuid().nullable(),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -13,12 +18,11 @@ export async function PUT(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const templateId = body?.template_id ?? null;
-
-    if (templateId !== null && typeof templateId !== "string") {
-      return apiValidationError("template_id must be a UUID string or null");
+    const parsed = tenantDefaultSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
+    const templateId = parsed.data.template_id;
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 

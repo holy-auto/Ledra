@@ -4,6 +4,7 @@ import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { parsePagination } from "@/lib/api/pagination";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { paymentCreateSchema, paymentDeleteSchema, paymentUpdateSchema } from "@/lib/validations/payment";
 
 export const dynamic = "force-dynamic";
 
@@ -131,43 +132,30 @@ export async function POST(req: NextRequest) {
       return apiForbidden();
     }
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-
-    const paymentMethod = String(body?.payment_method ?? "").trim();
-    if (!paymentMethod) return apiValidationError("missing_payment_method");
-
-    const validMethods = ["cash", "card", "qr", "bank_transfer", "other"];
-    if (!validMethods.includes(paymentMethod)) {
-      return apiValidationError("invalid_payment_method");
+    const parsed = paymentCreateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-
-    const amount = parseInt(String(body?.amount ?? ""), 10);
-    if (isNaN(amount) || amount < 1 || amount > 999_999_999) {
-      return apiValidationError("invalid_amount");
-    }
-
-    const receivedAmount = body?.received_amount != null ? parseInt(String(body.received_amount), 10) : null;
-    if (receivedAmount != null && (isNaN(receivedAmount) || receivedAmount < 0)) {
-      return apiValidationError("invalid_received_amount");
-    }
-    const changeAmount = receivedAmount != null && receivedAmount > amount ? receivedAmount - amount : 0;
+    const input = parsed.data;
+    const changeAmount =
+      input.received_amount != null && input.received_amount > input.amount ? input.received_amount - input.amount : 0;
 
     const row = {
       id: crypto.randomUUID(),
       tenant_id: caller.tenantId,
-      store_id: String(body?.store_id ?? "").trim() || null,
-      document_id: String(body?.document_id ?? "").trim() || null,
-      reservation_id: String(body?.reservation_id ?? "").trim() || null,
-      customer_id: String(body?.customer_id ?? "").trim() || null,
-      register_session_id: String(body?.register_session_id ?? "").trim() || null,
-      payment_method: paymentMethod,
-      amount,
-      received_amount: receivedAmount,
+      store_id: input.store_id,
+      document_id: input.document_id,
+      reservation_id: input.reservation_id,
+      customer_id: input.customer_id,
+      register_session_id: input.register_session_id,
+      payment_method: input.payment_method,
+      amount: input.amount,
+      received_amount: input.received_amount ?? null,
       change_amount: changeAmount,
       status: "completed",
       refund_amount: 0,
-      note: String(body?.note ?? "").trim() || null,
-      paid_at: body?.paid_at || new Date().toISOString(),
+      note: input.note,
+      paid_at: input.paid_at || new Date().toISOString(),
       created_by: caller.userId,
     };
 
@@ -199,38 +187,14 @@ export async function PUT(req: NextRequest) {
       return apiForbidden();
     }
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const id = String(body?.id ?? "").trim();
-    if (!id) return apiValidationError("missing_id");
-
+    const parsed = paymentUpdateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { id, ...fields } = parsed.data;
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-
-    if (body.store_id !== undefined) updates.store_id = String(body.store_id ?? "").trim() || null;
-    if (body.document_id !== undefined) updates.document_id = String(body.document_id ?? "").trim() || null;
-    if (body.reservation_id !== undefined) updates.reservation_id = String(body.reservation_id ?? "").trim() || null;
-    if (body.customer_id !== undefined) updates.customer_id = String(body.customer_id ?? "").trim() || null;
-    if (body.payment_method !== undefined) updates.payment_method = body.payment_method;
-    if (body.amount !== undefined) updates.amount = parseInt(String(body.amount), 10);
-    if (body.received_amount !== undefined)
-      updates.received_amount = body.received_amount != null ? parseInt(String(body.received_amount), 10) : null;
-    if (body.change_amount !== undefined) updates.change_amount = parseInt(String(body.change_amount ?? 0), 10);
-    if (body.note !== undefined) updates.note = String(body.note ?? "").trim() || null;
-    if (body.paid_at !== undefined) updates.paid_at = body.paid_at;
-
-    // ステータス変更（返金処理）
-    if (body.status !== undefined) {
-      updates.status = body.status;
-      if (body.status === "refunded" || body.status === "partial_refund") {
-        if (body.refund_amount !== undefined) {
-          updates.refund_amount = parseInt(String(body.refund_amount), 10) || 0;
-        }
-        if (body.refund_reason !== undefined) {
-          updates.refund_reason = String(body.refund_reason ?? "").trim() || null;
-        }
-      }
-      if (body.status === "voided") {
-        updates.refund_reason = String(body.refund_reason ?? "").trim() || null;
-      }
+    for (const [k, v] of Object.entries(fields)) {
+      if (v !== undefined) updates[k] = v;
     }
 
     const { data, error } = await supabase
@@ -264,9 +228,11 @@ export async function DELETE(req: NextRequest) {
       return apiForbidden();
     }
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const id = String(body?.id ?? "").trim();
-    if (!id) return apiValidationError("missing_id");
+    const parsed = paymentDeleteSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { id } = parsed.data;
 
     const { error } = await supabase.from("payments").delete().eq("id", id).eq("tenant_id", caller.tenantId);
 

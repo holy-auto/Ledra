@@ -1,12 +1,13 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import {
-  apiOk,
-  apiUnauthorized,
-  apiValidationError,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiOk, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+
+const equipmentMasterCreateSchema = z.object({
+  category: z.string().trim().min(1, "category は必須です。").max(100),
+  name: z.string().trim().min(1, "name は必須です。").max(200),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -50,25 +51,18 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json();
-    const { category, name } = body;
-
-    if (!category || !name) {
-      return apiValidationError("category と name は必須です。");
+    const parsed = equipmentMasterCreateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-
-    const trimmedName = String(name).trim();
-    const trimmedCategory = String(category).trim();
-    if (!trimmedName || !trimmedCategory) {
-      return apiValidationError("category と name は空にできません。");
-    }
+    const { category, name } = parsed.data;
 
     const { data, error } = await supabase
       .from("equipment_master")
       .insert({
         tenant_id: caller.tenantId,
-        category: trimmedCategory,
-        name: trimmedName,
+        category,
+        name,
       })
       .select("id, category, name")
       .single();
