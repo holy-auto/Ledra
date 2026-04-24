@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
 
     const { data, error, count } = await query;
 
-    if (error) return apiValidationError(error.message);
+    if (error) return apiInternalError(error, "insurer.cases");
 
     const headers = { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" };
     return apiJson({ cases: data ?? [], total: count ?? 0 }, { headers });
@@ -201,7 +201,7 @@ export async function POST(req: NextRequest) {
       )
       .single();
 
-    if (error) return apiValidationError(error.message);
+    if (error) return apiInternalError(error, "insurer.cases");
 
     // Log to insurer_access_logs
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;

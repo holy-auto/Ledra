@@ -6,6 +6,10 @@ import { apiOk, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } f
 
 export const dynamic = "force-dynamic";
 
+/** Mobile-facing reservation fields. Explicit list to gate schema additions. */
+const MOBILE_RESERVATION_COLUMNS =
+  "id, title, scheduled_date, start_time, end_time, status, payment_status, estimated_amount, customer_id, vehicle_id, menu_items_json, note, assigned_user_id, sub_status, progress_note";
+
 // ─── GET: Reservation detail ───
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -17,12 +21,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const { data, error } = await caller.supabase
       .from("reservations")
-      .select(
-        `id, title, scheduled_date, start_time, end_time, status,
-         payment_status, estimated_amount, customer_id, vehicle_id,
-         menu_items_json, note, assigned_user_id, sub_status, progress_note,
-         customers(name), vehicles(maker, model, plate_display)`,
-      )
+      .select(`${MOBILE_RESERVATION_COLUMNS}, customers(name), vehicles(maker, model, plate_display)`)
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .single();
@@ -73,7 +72,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       .update(updates)
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
-      .select()
+      .select(MOBILE_RESERVATION_COLUMNS)
       .single();
 
     if (error || !data) return apiNotFound();

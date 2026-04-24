@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveInsurerCaller, enforceInsurerPlan } from "@/lib/api/insurerAuth";
-import { apiJson, apiUnauthorized, apiValidationError } from "@/lib/api/response";
+import { apiInternalError, apiJson, apiUnauthorized, apiValidationError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const runtime = "nodejs";
@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
       p_ip: ip,
       p_user_agent: ua,
     });
-    if (error) return apiValidationError(error.message);
+    if (error) return apiInternalError(error, "insurer.export");
 
     const { error: logErr } = await supabase.rpc("insurer_audit_log", {
       p_action: "insurer.export.csv",

@@ -30,7 +30,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         opened_by: caller.userId,
         opened_at: new Date().toISOString(),
       })
-      .select()
+      .select("id, register_id, status, opening_cash, opened_by, opened_at")
       .single();
 
     if (error) return apiInternalError(error, "registers.open");

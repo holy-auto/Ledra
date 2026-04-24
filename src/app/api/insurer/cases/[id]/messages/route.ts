@@ -25,7 +25,7 @@ async function verifyCase(
     .eq("insurer_id", insurerId)
     .maybeSingle();
 
-  if (error) return apiValidationError(error.message);
+  if (error) return apiInternalError(error, "insurer.cases.[id].messages");
   if (!data) return apiNotFound("ケースが見つかりません。");
   return data;
 }
@@ -55,7 +55,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       .eq("case_id", id)
       .order("created_at", { ascending: true });
 
-    if (error) return apiValidationError(error.message);
+    if (error) return apiInternalError(error, "insurer.cases.[id].messages");
 
     // Collect unique sender_ids to look up display names from insurer_users
     const senderIds = [...new Set((messages ?? []).map((m) => m.sender_id).filter(Boolean))];
@@ -127,7 +127,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       .select("id, case_id, sender_id, sender_type, content, created_at")
       .single();
 
-    if (error) return apiValidationError(error.message);
+    if (error) return apiInternalError(error, "insurer.cases.[id].messages");
 
     // Log to insurer_access_logs
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;

@@ -180,7 +180,7 @@ export async function PATCH(req: NextRequest) {
 
       if (error) {
         console.error("[sla] PATCH update error:", error.message);
-        return apiValidationError(error.message);
+        return apiInternalError(error, "insurer.sla");
       }
     } else {
       const insertData = {
@@ -194,7 +194,7 @@ export async function PATCH(req: NextRequest) {
 
       if (error) {
         console.error("[sla] PATCH insert error:", error.message);
-        return apiValidationError(error.message);
+        return apiInternalError(error, "insurer.sla");
       }
     }
 

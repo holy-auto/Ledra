@@ -355,7 +355,10 @@ export async function POST(req: NextRequest) {
 
           // NFCタグの自動プロビジョニング
           if (tenantId) {
-            const { data: items } = await supabase.from("shop_order_items").select("*").eq("order_id", shopOrderId);
+            const { data: items } = await supabase
+              .from("shop_order_items")
+              .select("meta, quantity")
+              .eq("order_id", shopOrderId);
 
             for (const item of items ?? []) {
               const meta = (item.meta as Record<string, unknown>) ?? {};

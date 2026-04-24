@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       console.error("[rules] POST error:", error.message);
-      return apiValidationError(error.message);
+      return apiInternalError(error, "insurer.rules");
     }
 
     return apiJson({ rule: data }, { status: 201 });
@@ -176,7 +176,7 @@ export async function PATCH(req: NextRequest) {
 
     if (error) {
       console.error("[rules] PATCH error:", error.message);
-      return apiValidationError(error.message);
+      return apiInternalError(error, "insurer.rules");
     }
 
     return apiJson({ rule: data });
@@ -211,7 +211,7 @@ export async function DELETE(req: NextRequest) {
 
     if (error) {
       console.error("[rules] DELETE error:", error.message);
-      return apiValidationError(error.message);
+      return apiInternalError(error, "insurer.rules");
     }
 
     return apiJson({ ok: true });

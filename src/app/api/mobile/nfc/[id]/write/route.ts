@@ -13,10 +13,7 @@ import {
 export const dynamic = "force-dynamic";
 
 // ─── POST: Record NFC write event (prepared → written) ───
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();
@@ -33,9 +30,7 @@ export async function POST(
 
     if (!tag) return apiNotFound();
     if (tag.status !== "prepared") {
-      return apiValidationError(
-        `Cannot write: current status is "${tag.status}", expected "prepared"`,
-      );
+      return apiValidationError(`Cannot write: current status is "${tag.status}", expected "prepared"`);
     }
 
     const { data, error } = await caller.supabase
@@ -43,7 +38,7 @@ export async function POST(
       .update({ status: "written", written_at: new Date().toISOString() })
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
-      .select()
+      .select("id, status, written_at, certificate_id, uid")
       .single();
 
     if (error) return apiInternalError(error, "nfc.write");
@@ -55,9 +50,7 @@ export async function POST(
       record_id: id,
       action: "nfc_tag_written",
       performed_by: caller.userId,
-      ip_address:
-        request.headers.get("x-forwarded-for") ??
-        request.headers.get("x-real-ip"),
+      ip_address: request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip"),
     });
 
     return apiOk({ nfc_tag: data });

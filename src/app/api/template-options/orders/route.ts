@@ -21,7 +21,12 @@ export async function GET(_req: NextRequest) {
 
     const { data: orders, error } = await supabase
       .from("template_orders")
-      .select("*")
+      // Explicit columns only — omits internal Stripe identifiers
+      // (stripe_payment_intent_id / stripe_invoice_id), internal process
+      // fields (hearing_json / assets_json / assigned_to / notes) and
+      // operational counters (revision_count / max_revisions) that the
+      // admin orders list UI never consumes.
+      .select("id, order_type, status, amount, due_date, completed_at, created_at, updated_at")
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
 

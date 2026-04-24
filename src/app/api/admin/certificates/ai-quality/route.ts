@@ -32,10 +32,10 @@ export async function POST(req: NextRequest) {
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
-    // Standard ルール取得
+    // Standard ルール取得 (StandardRule interface の最小集合のみ)
     const { data: rule } = await admin
       .from("standard_rules")
-      .select("*")
+      .select("id, category, category_label, required_photos, required_fields, warning_rules, standard_level")
       .eq("category", category)
       .eq("is_active", true)
       .order("version", { ascending: false })

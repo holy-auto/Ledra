@@ -18,7 +18,9 @@ export async function GET(req: Request) {
     const { admin } = createTenantScopedAdmin(caller.tenantId);
     let query = admin
       .from("customer_inquiries")
-      .select("id, customer_name, phone_last4_hash, subject, message, status, admin_reply, replied_at, created_at")
+      // phone_last4_hash は server-side の scope 判定にのみ使う内部識別子。
+      // 管理画面 UI は表示せず、クライアントに送る必要がない。
+      .select("id, customer_name, subject, message, status, admin_reply, replied_at, created_at")
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false })
       .limit(50);

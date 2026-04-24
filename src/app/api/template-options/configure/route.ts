@@ -30,7 +30,9 @@ export async function GET(_req: NextRequest) {
 
     const { data: configs } = await supabase
       .from("tenant_template_configs")
-      .select("*")
+      // Explicit column list — avoid leaking platform_template_id, updated_at,
+      // created_at etc. that the UI does not consume.
+      .select("id, option_type, name, config_json, layout_key, is_active, is_default, published_at")
       .eq("tenant_id", caller.tenantId)
       .order("is_default", { ascending: false });
 

@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
       if (error.message.includes("does not exist") || error.code === "42P01") {
         return apiJson({ notifications: [], unread_count: 0 });
       }
-      return apiValidationError(error.message);
+      return apiInternalError(error, "insurer.notifications");
     }
 
     const unreadCount = (data ?? []).filter((n) => !n.is_read).length;
@@ -101,7 +101,7 @@ export async function PATCH(req: NextRequest) {
         if (error.message.includes("does not exist") || error.code === "42P01") {
           return apiJson({ ok: true, updated: 0 });
         }
-        return apiValidationError(error.message);
+        return apiInternalError(error, "insurer.notifications");
       }
     } else {
       // Mark specific notifications as read
@@ -116,7 +116,7 @@ export async function PATCH(req: NextRequest) {
         if (error.message.includes("does not exist") || error.code === "42P01") {
           return apiJson({ ok: true, updated: 0 });
         }
-        return apiValidationError(error.message);
+        return apiInternalError(error, "insurer.notifications");
       }
     }
 

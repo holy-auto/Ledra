@@ -13,10 +13,7 @@ import {
 export const dynamic = "force-dynamic";
 
 // ─── POST: Start reservation (arrived → in_progress) ───
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();
@@ -33,9 +30,7 @@ export async function POST(
 
     if (!reservation) return apiNotFound();
     if (reservation.status !== "arrived") {
-      return apiValidationError(
-        `Cannot start: current status is "${reservation.status}", expected "arrived"`,
-      );
+      return apiValidationError(`Cannot start: current status is "${reservation.status}", expected "arrived"`);
     }
 
     const { data, error } = await caller.supabase
@@ -43,7 +38,7 @@ export async function POST(
       .update({ status: "in_progress" })
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
-      .select()
+      .select("id, status, updated_at")
       .single();
 
     if (error) return apiInternalError(error, "reservations.start");

@@ -12,7 +12,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { logInsurerAccess } from "@/lib/insurer/audit";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiValidationError, apiNotFound, apiOk } from "@/lib/api/response";
+import { apiInternalError, apiUnauthorized, apiValidationError, apiNotFound, apiOk } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { verifyAnchor, buildExplorerUrl } from "@/lib/anchoring/providers";
 
@@ -46,7 +46,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ sha256: str
     .limit(1)
     .maybeSingle();
 
-  if (error) return apiValidationError(error.message);
+  if (error) return apiInternalError(error, "insurer.anchor-verify.[sha256]");
   if (!image) return apiNotFound("該当する施工画像が見つかりません。");
 
   // 保険会社が契約している施工店の証明書のみ開示可能

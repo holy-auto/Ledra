@@ -51,7 +51,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         is_public: true,
         created_by: caller.userId,
       })
-      .select()
+      .select("id, vehicle_id, reservation_id, label, note, is_public, created_at")
       .single();
 
     if (error) return apiInternalError(error, "progress.create");

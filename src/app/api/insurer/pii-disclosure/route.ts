@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiJson, apiUnauthorized, apiValidationError } from "@/lib/api/response";
+import { apiInternalError, apiJson, apiUnauthorized, apiValidationError } from "@/lib/api/response";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
     .eq("is_active", true)
     .maybeSingle();
 
-  if (error) return apiValidationError(error.message);
+  if (error) return apiInternalError(error, "insurer.pii-disclosure");
 
   const disclosed = data && data.insurer_requested_at !== null && data.tenant_consented_at !== null;
 
@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
     )
     .single();
 
-  if (error) return apiValidationError(error.message);
+  if (error) return apiInternalError(error, "insurer.pii-disclosure");
 
   await admin.from("insurer_access_logs").insert({
     insurer_id: caller.insurerId,

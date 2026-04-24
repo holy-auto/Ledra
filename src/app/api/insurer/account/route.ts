@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiJson, apiUnauthorized, apiValidationError, apiForbidden } from "@/lib/api/response";
+import { apiInternalError, apiJson, apiUnauthorized, apiValidationError, apiForbidden } from "@/lib/api/response";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -16,7 +16,7 @@ export async function GET(_req: NextRequest) {
     .eq("id", caller.insurerId)
     .maybeSingle();
 
-  if (error) return apiValidationError(error.message);
+  if (error) return apiInternalError(error, "insurer.account");
 
   const { count } = await admin
     .from("insurer_users")
@@ -60,7 +60,7 @@ export async function PATCH(req: NextRequest) {
     )
     .single();
 
-  if (error) return apiValidationError(error.message);
+  if (error) return apiInternalError(error, "insurer.account");
 
   return apiJson({ insurer: data });
 }

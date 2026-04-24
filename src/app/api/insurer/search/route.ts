@@ -106,7 +106,7 @@ export async function GET(req: NextRequest) {
         return apiJson({ rows });
       }
 
-      return apiValidationError(error.message);
+      return apiInternalError(error, "insurer.search");
     }
 
     return apiJson({ rows: data ?? [] });

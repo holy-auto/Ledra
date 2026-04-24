@@ -140,7 +140,7 @@ export async function POST(req: NextRequest) {
         return apiValidationError("このアイテムは既にウォッチリストに登録されています。");
       }
       console.error("[watchlist] POST error:", error.message);
-      return apiValidationError(error.message);
+      return apiInternalError(error, "insurer.watchlist");
     }
 
     return apiJson({ item: data }, { status: 201 });
@@ -171,7 +171,7 @@ export async function DELETE(req: NextRequest) {
 
     if (error) {
       console.error("[watchlist] DELETE error:", error.message);
-      return apiValidationError(error.message);
+      return apiInternalError(error, "insurer.watchlist");
     }
 
     return apiJson({ ok: true });

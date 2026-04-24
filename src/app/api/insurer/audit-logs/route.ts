@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     }
 
     const { data, error } = await query;
-    if (error) return apiValidationError(error.message);
+    if (error) return apiInternalError(error, "insurer.audit-logs");
 
     return apiJson({ logs: data ?? [], limit, offset });
   } catch (e) {

@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
       if (error.message.includes("does not exist") || error.code === "42P01") {
         return apiJson({ preferences: DEFAULT_PREFS });
       }
-      return apiValidationError(error.message);
+      return apiInternalError(error, "insurer.settings");
     }
 
     const prefs = data?.notification_prefs ?? DEFAULT_PREFS;

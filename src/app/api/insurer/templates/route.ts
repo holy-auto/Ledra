@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       console.error("[templates] POST error:", error.message);
-      return apiValidationError(error.message);
+      return apiInternalError(error, "insurer.templates");
     }
 
     return apiJson({ template: data }, { status: 201 });
@@ -145,7 +145,7 @@ export async function DELETE(req: NextRequest) {
 
     if (error) {
       console.error("[templates] DELETE error:", error.message);
-      return apiValidationError(error.message);
+      return apiInternalError(error, "insurer.templates");
     }
 
     return apiJson({ ok: true });

@@ -6,7 +6,7 @@ import QRCode from "qrcode";
 import React from "react";
 import { pdf } from "@react-pdf/renderer";
 import { InsurerPdfDoc } from "@/lib/insurerPdfDoc";
-import { apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
+import { apiInternalError, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const runtime = "nodejs";
@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
     p_ip: ip,
     p_user_agent: ua,
   });
-  if (error) return apiValidationError(error.message);
+  if (error) return apiInternalError(error, "insurer.pdf-one");
 
   const cert = Array.isArray(data) ? data[0] : null;
   if (!cert) return apiNotFound("証明書が見つかりません。");

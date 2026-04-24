@@ -6,6 +6,14 @@ import { apiOk, apiUnauthorized, apiForbidden, apiValidationError, apiInternalEr
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Mobile-facing reservation fields. Explicit list to prevent
+ * accidentally returning new schema columns (e.g. internal flags,
+ * audit metadata) to the mobile app.
+ */
+const MOBILE_RESERVATION_COLUMNS =
+  "id, title, scheduled_date, start_time, end_time, status, payment_status, estimated_amount, customer_id, vehicle_id, menu_items_json, note, assigned_user_id, sub_status, progress_note";
+
 // ─── GET: List reservations for tenant ───
 export async function GET(request: NextRequest) {
   try {
@@ -20,12 +28,7 @@ export async function GET(request: NextRequest) {
 
     let query = caller.supabase
       .from("reservations")
-      .select(
-        `id, title, scheduled_date, start_time, end_time, status,
-         payment_status, estimated_amount, customer_id, vehicle_id,
-         menu_items_json, note, assigned_user_id, sub_status, progress_note,
-         customers(name), vehicles(maker, model, plate_display)`,
-      )
+      .select(`${MOBILE_RESERVATION_COLUMNS}, customers(name), vehicles(maker, model, plate_display)`)
       .eq("tenant_id", caller.tenantId)
       .order("scheduled_date", { ascending: true });
 
@@ -76,7 +79,7 @@ export async function POST(request: NextRequest) {
         status: "confirmed",
         created_by: caller.userId,
       })
-      .select()
+      .select(MOBILE_RESERVATION_COLUMNS)
       .single();
 
     if (error) return apiInternalError(error, "reservations.create");
