@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { hearingCreateSchema, hearingUpdateSchema } from "@/lib/validations/hearing";
 
 export const dynamic = "force-dynamic";
 
@@ -42,33 +43,37 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json();
+    const parsed = hearingCreateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
 
-    // ヒアリングレコード作成
+    // ヒアリングレコード作成 (null を空文字に詰め直して DB の既存慣例に合わせる)
+    const toEmpty = (v: string | null) => v ?? "";
     const { data, error } = await supabase
       .from("hearings")
       .insert({
         tenant_id: caller.tenantId,
-        customer_name: body.customer_name || "",
-        customer_phone: body.customer_phone || "",
-        customer_email: body.customer_email || "",
-        vehicle_maker: body.vehicle_maker || "",
-        vehicle_model: body.vehicle_model || "",
-        vehicle_year: body.vehicle_year ? Number(body.vehicle_year) : null,
-        vehicle_plate: body.vehicle_plate || "",
-        vehicle_color: body.vehicle_color || "",
-        vehicle_vin: body.vehicle_vin || "",
-        service_type: body.service_type || "",
-        vehicle_size: body.vehicle_size || "",
-        coating_history: body.coating_history || "",
-        desired_menu: body.desired_menu || "",
-        budget_range: body.budget_range || "",
-        concern_areas: body.concern_areas || "",
-        scratches_dents: body.scratches_dents || "",
-        parking_environment: body.parking_environment || "",
-        usage_frequency: body.usage_frequency || "",
-        additional_requests: body.additional_requests || "",
-        hearing_json: body.hearing_json || {},
+        customer_name: toEmpty(parsed.data.customer_name),
+        customer_phone: toEmpty(parsed.data.customer_phone),
+        customer_email: toEmpty(parsed.data.customer_email),
+        vehicle_maker: toEmpty(parsed.data.vehicle_maker),
+        vehicle_model: toEmpty(parsed.data.vehicle_model),
+        vehicle_year: parsed.data.vehicle_year ?? null,
+        vehicle_plate: toEmpty(parsed.data.vehicle_plate),
+        vehicle_color: toEmpty(parsed.data.vehicle_color),
+        vehicle_vin: toEmpty(parsed.data.vehicle_vin),
+        service_type: toEmpty(parsed.data.service_type),
+        vehicle_size: toEmpty(parsed.data.vehicle_size),
+        coating_history: toEmpty(parsed.data.coating_history),
+        desired_menu: toEmpty(parsed.data.desired_menu),
+        budget_range: toEmpty(parsed.data.budget_range),
+        concern_areas: toEmpty(parsed.data.concern_areas),
+        scratches_dents: toEmpty(parsed.data.scratches_dents),
+        parking_environment: toEmpty(parsed.data.parking_environment),
+        usage_frequency: toEmpty(parsed.data.usage_frequency),
+        additional_requests: toEmpty(parsed.data.additional_requests),
+        hearing_json: parsed.data.hearing_json ?? {},
         status: "draft",
       })
       .select("id")
@@ -89,9 +94,11 @@ export async function PUT(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json();
-    const { id, action, ...fields } = body;
-    if (!id) return apiValidationError("id は必須です");
+    const parsed = hearingUpdateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { id, action, ...fields } = parsed.data;
 
     // アクション: 顧客登録連携
     if (action === "link_customer") {
@@ -159,33 +166,10 @@ export async function PUT(req: NextRequest) {
       });
     }
 
-    // 通常更新
+    // 通常更新 — zod が allowlist / 型検証済みなので、undefined を剥がしてそのまま。
     const updateFields: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    const allowedFields = [
-      "customer_name",
-      "customer_phone",
-      "customer_email",
-      "vehicle_maker",
-      "vehicle_model",
-      "vehicle_year",
-      "vehicle_plate",
-      "vehicle_color",
-      "vehicle_vin",
-      "service_type",
-      "vehicle_size",
-      "coating_history",
-      "desired_menu",
-      "budget_range",
-      "concern_areas",
-      "scratches_dents",
-      "parking_environment",
-      "usage_frequency",
-      "additional_requests",
-      "hearing_json",
-      "status",
-    ];
-    for (const k of allowedFields) {
-      if (k in fields) updateFields[k] = fields[k];
+    for (const [k, v] of Object.entries(fields)) {
+      if (v !== undefined) updateFields[k] = v;
     }
 
     const { error } = await supabase

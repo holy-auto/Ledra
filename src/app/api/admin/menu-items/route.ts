@@ -3,6 +3,12 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import {
+  menuItemCreateSchema,
+  menuItemCsvImportSchema,
+  menuItemDeleteSchema,
+  menuItemUpdateSchema,
+} from "@/lib/validations/menu-item";
 
 export const dynamic = "force-dynamic";
 
@@ -51,15 +57,19 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
 
     // CSV一括インポート
-    if (body.action === "csv_import" && body.csv) {
-      const lines = (body.csv as string)
+    if (body.action === "csv_import") {
+      const csvParsed = menuItemCsvImportSchema.safeParse(body);
+      if (!csvParsed.success) {
+        return apiValidationError(csvParsed.error.issues[0]?.message ?? "invalid payload");
+      }
+      const lines = csvParsed.data.csv
         .split("\n")
-        .map((l: string) => l.trim())
-        .filter((l: string) => l && !l.startsWith("品目名")); // ヘッダー行をスキップ
+        .map((l) => l.trim())
+        .filter((l) => l && !l.startsWith("品目名")); // ヘッダー行をスキップ
 
       const rows = lines
-        .map((line: string) => {
-          const parts = line.split(",").map((s: string) => s.trim());
+        .map((line) => {
+          const parts = line.split(",").map((s) => s.trim());
           return {
             tenant_id: caller.tenantId,
             name: parts[0] || "",
@@ -68,7 +78,7 @@ export async function POST(req: NextRequest) {
             tax_category: parseInt(parts[3] || "10", 10) === 8 ? 8 : 10,
           };
         })
-        .filter((r: any) => r.name);
+        .filter((r) => r.name);
 
       if (rows.length === 0) {
         return apiValidationError("有効な行がありません");
@@ -85,16 +95,14 @@ export async function POST(req: NextRequest) {
     }
 
     // 単一作成
-    const name = (body.name ?? "").trim();
-    if (!name) return apiValidationError("品目名は必須です");
+    const parsed = menuItemCreateSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
 
     const row = {
       tenant_id: caller.tenantId,
-      name,
-      description: (body.description ?? "").trim() || null,
-      unit_price: parseInt(String(body.unit_price ?? 0), 10) || 0,
-      tax_category: parseInt(String(body.tax_category ?? 10), 10) === 8 ? 8 : 10,
-      sort_order: parseInt(String(body.sort_order ?? 0), 10) || 0,
+      ...parsed.data,
     };
 
     // RLS をバイパスしてサービスロールで INSERT（tenant_id で必ずスコープ限定）
@@ -121,17 +129,12 @@ export async function PUT(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const id = (body.id ?? "").trim();
-    if (!id) return apiValidationError("missing_id");
-
-    const updates: Record<string, unknown> = {};
-    if (body.name !== undefined) updates.name = (body.name ?? "").trim();
-    if (body.description !== undefined) updates.description = (body.description ?? "").trim() || null;
-    if (body.unit_price !== undefined) updates.unit_price = parseInt(String(body.unit_price), 10) || 0;
-    if (body.tax_category !== undefined) updates.tax_category = parseInt(String(body.tax_category), 10) === 8 ? 8 : 10;
-    if (body.sort_order !== undefined) updates.sort_order = parseInt(String(body.sort_order), 10) || 0;
-    if (body.is_active !== undefined) updates.is_active = !!body.is_active;
+    const parsed = menuItemUpdateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { id, ...fields } = parsed.data;
+    const updates: Record<string, unknown> = { ...fields };
 
     // RLS をバイパスしてサービスロールで UPDATE（tenant_id で必ずスコープ限定）
     const admin = getSupabaseAdmin();
@@ -160,9 +163,11 @@ export async function DELETE(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const id = (body.id ?? "").trim();
-    if (!id) return apiValidationError("missing_id");
+    const parsed = menuItemDeleteSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { id } = parsed.data;
 
     // RLS をバイパスしてサービスロールで論理削除（tenant_id で必ずスコープ限定）
     const admin = getSupabaseAdmin();

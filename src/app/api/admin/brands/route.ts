@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { brandCreateSchema, brandUpdateSchema } from "@/lib/validations/brand";
+import { brandCreateSchema, brandDeleteSchema, brandUpdateSchema } from "@/lib/validations/brand";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import {
   apiOk,
@@ -105,8 +105,11 @@ export async function DELETE(req: Request) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const { id } = await req.json();
-    if (!id) return apiValidationError("IDが必要です。");
+    const parsed = brandDeleteSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力内容に誤りがあります。");
+    }
+    const { id } = parsed.data;
 
     // Check for linked products
     const { count } = await supabase
