@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
+
+const followUpSettingsSchema = z.object({
+  reminder_days_before: z.array(z.coerce.number().int().positive()).max(10).default([30, 7, 1]),
+  follow_up_days_after: z.array(z.coerce.number().int().positive()).max(10).default([90, 180]),
+  enabled: z.boolean().default(true),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -37,20 +44,14 @@ export async function PUT(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const reminderDays = Array.isArray(body.reminder_days_before)
-      ? body.reminder_days_before.filter((n: number) => typeof n === "number" && n > 0)
-      : [30, 7, 1];
-    const followUpDays = Array.isArray(body.follow_up_days_after)
-      ? body.follow_up_days_after.filter((n: number) => typeof n === "number" && n > 0)
-      : [90, 180];
-    const enabled = body.enabled !== false;
+    const parsed = followUpSettingsSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
 
     const row = {
       tenant_id: caller.tenantId,
-      reminder_days_before: reminderDays,
-      follow_up_days_after: followUpDays,
-      enabled,
+      ...parsed.data,
       updated_at: new Date().toISOString(),
     };
 

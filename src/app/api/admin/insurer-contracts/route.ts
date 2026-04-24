@@ -4,6 +4,7 @@ import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { apiUnauthorized, apiForbidden, apiValidationError, apiOk, apiInternalError } from "@/lib/api/response";
 import { isPlatformTenantId } from "@/lib/auth/platformAdmin";
 import { getAdminClient } from "@/lib/api/auth";
+import { insurerContractCreateSchema, insurerContractUpdateSchema } from "@/lib/validations/insurer-contract";
 
 export const runtime = "nodejs";
 
@@ -59,12 +60,11 @@ export async function POST(req: NextRequest) {
     if (!requireMinRole(caller, "admin")) return apiForbidden();
     if (!isPlatformTenantId(caller.tenantId)) return apiForbidden();
 
-    const body = await req.json();
-    const { insurer_id, tenant_id } = body;
-
-    if (!insurer_id || !tenant_id) {
-      return apiValidationError("insurer_id と tenant_id は必須です。");
+    const parsed = insurerContractCreateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
+    const { insurer_id, tenant_id } = parsed.data;
 
     const admin = getAdminClient();
 
@@ -116,19 +116,14 @@ export async function PUT(req: NextRequest) {
     if (!requireMinRole(caller, "admin")) return apiForbidden();
     if (!isPlatformTenantId(caller.tenantId)) return apiForbidden();
 
-    const body = await req.json();
-    const { id, status } = body;
-
-    if (!id || !status) {
-      return apiValidationError("id と status は必須です。");
+    const parsed = insurerContractUpdateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-
-    if (!["active", "suspended", "terminated"].includes(status)) {
-      return apiValidationError("status は active, suspended, terminated のいずれかです。");
-    }
+    const { id, status } = parsed.data;
 
     const admin = getAdminClient();
-    const patch: Record<string, any> = {
+    const patch: Record<string, unknown> = {
       status,
       updated_at: new Date().toISOString(),
     };

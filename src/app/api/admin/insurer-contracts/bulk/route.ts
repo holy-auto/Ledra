@@ -4,6 +4,7 @@ import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { apiUnauthorized, apiForbidden, apiValidationError, apiOk, apiInternalError } from "@/lib/api/response";
 import { isPlatformTenantId } from "@/lib/auth/platformAdmin";
 import { getAdminClient } from "@/lib/api/auth";
+import { insurerContractBulkSchema } from "@/lib/validations/insurer-contract";
 
 export const runtime = "nodejs";
 
@@ -19,19 +20,14 @@ export async function POST(req: NextRequest) {
     if (!requireMinRole(caller, "admin")) return apiForbidden();
     if (!isPlatformTenantId(caller.tenantId)) return apiForbidden();
 
-    const body = await req.json();
-    const { insurer_id, tenant_ids } = body;
-
-    if (!insurer_id) return apiValidationError("insurer_id は必須です。");
-    if (!Array.isArray(tenant_ids) || tenant_ids.length === 0) {
-      return apiValidationError("tenant_ids は1件以上必要です。");
+    const parsed = insurerContractBulkSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-    if (tenant_ids.length > 100) {
-      return apiValidationError("一度に作成できる契約は100件までです。");
-    }
+    const { insurer_id, tenant_ids } = parsed.data;
 
     const admin = getAdminClient();
-    const rows = tenant_ids.map((tid: string) => ({
+    const rows = tenant_ids.map((tid) => ({
       insurer_id,
       tenant_id: tid,
     }));
