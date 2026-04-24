@@ -6,6 +6,7 @@ import { escapeIlike } from "@/lib/sanitize";
 import { enforceBilling } from "@/lib/billing/guard";
 import { parsePagination } from "@/lib/api/pagination";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { customerCreateSchema, customerDeleteSchema, customerUpdateSchema } from "@/lib/validations/customer";
 
 export const dynamic = "force-dynamic";
 
@@ -54,8 +55,8 @@ export async function GET(req: NextRequest) {
 
     // 各顧客の証明書数・請求書数を並列で取得（customer_idのみselectしてカウント）
     const customerIds = (customers ?? []).map((c) => c.id);
-    let certCounts: Record<string, number> = {};
-    let invoiceCounts: Record<string, number> = {};
+    const certCounts: Record<string, number> = {};
+    const invoiceCounts: Record<string, number> = {};
 
     if (customerIds.length > 0) {
       const [{ data: certs }, { data: invs }] = await Promise.all([
@@ -129,27 +130,22 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const deny = await enforceBilling(req as any, {
+    const deny = await enforceBilling(req, {
       minPlan: "free",
       action: "customer_create",
       tenantId: caller.tenantId,
     });
-    if (deny) return deny as any;
+    if (deny) return deny;
 
-    const body = await req.json().catch(() => ({}) as any);
-    const name = (body?.name ?? "").trim();
-    if (!name) return apiValidationError("顧客名は必須です。");
+    const parsed = customerCreateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
 
     const row = {
       id: crypto.randomUUID(),
       tenant_id: caller.tenantId,
-      name,
-      name_kana: (body?.name_kana ?? "").trim() || null,
-      email: (body?.email ?? "").trim() || null,
-      phone: (body?.phone ?? "").trim() || null,
-      postal_code: (body?.postal_code ?? "").trim() || null,
-      address: (body?.address ?? "").trim() || null,
-      note: (body?.note ?? "").trim() || null,
+      ...parsed.data,
     };
 
     // RLS をバイパスしてサービスロールで INSERT（tenant_id で必ずスコープ限定）
@@ -176,28 +172,21 @@ export async function PUT(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const deny = await enforceBilling(req as any, {
+    const deny = await enforceBilling(req, {
       minPlan: "free",
       action: "customer_update",
       tenantId: caller.tenantId,
     });
-    if (deny) return deny as any;
+    if (deny) return deny;
 
-    const body = await req.json().catch(() => ({}) as any);
-    const id = (body?.id ?? "").trim();
-    if (!id) return apiValidationError("id is required");
+    const parsed = customerUpdateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { id, ...fields } = parsed.data;
 
-    const name = (body?.name ?? "").trim();
-    if (!name) return apiValidationError("顧客名は必須です。");
-
-    const updates: Record<string, unknown> = {
-      name,
-      name_kana: (body?.name_kana ?? "").trim() || null,
-      email: (body?.email ?? "").trim() || null,
-      phone: (body?.phone ?? "").trim() || null,
-      postal_code: (body?.postal_code ?? "").trim() || null,
-      address: (body?.address ?? "").trim() || null,
-      note: (body?.note ?? "").trim() || null,
+    const updates = {
+      ...fields,
       updated_at: new Date().toISOString(),
     };
 
@@ -248,16 +237,18 @@ export async function DELETE(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const deny = await enforceBilling(req as any, {
+    const deny = await enforceBilling(req, {
       minPlan: "free",
       action: "customer_delete",
       tenantId: caller.tenantId,
     });
-    if (deny) return deny as any;
+    if (deny) return deny;
 
-    const body = await req.json().catch(() => ({}) as any);
-    const id = (body?.id ?? "").trim();
-    if (!id) return apiValidationError("id is required");
+    const parsed = customerDeleteSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { id } = parsed.data;
 
     // RLS をバイパスしてサービスロールで操作（tenant_id で必ずスコープ限定）
     const { admin } = createTenantScopedAdmin(caller.tenantId);

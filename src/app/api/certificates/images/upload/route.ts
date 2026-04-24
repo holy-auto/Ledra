@@ -72,8 +72,12 @@ export async function POST(req: NextRequest) {
     const tenantId = caller.tenantId;
 
     // ── Plan tier → photo limit ───────────────────────────────────
-    const { data: tenant } = await supabase.from("tenants").select("plan_tier").eq("id", tenantId).single();
-    const planTier = normalizePlanTier((tenant as any)?.plan_tier);
+    const { data: tenant } = await supabase
+      .from("tenants")
+      .select("plan_tier")
+      .eq("id", tenantId)
+      .single<{ plan_tier: string | null }>();
+    const planTier = normalizePlanTier(tenant?.plan_tier);
     const maxPhotos = PHOTO_LIMITS[planTier];
 
     // ── Parse multipart form ──────────────────────────────────────
@@ -233,11 +237,19 @@ export async function POST(req: NextRequest) {
       if (insertError) {
         console.error("certificate_images insert error", insertError);
         // Best-effort: remove the just-uploaded storage object so we don't
-        // orphan it when the DB row can't be written.
+        // orphan it when the DB row can't be written. Failures here turn
+        // into paid storage we cannot reach, so surface the cleanup error
+        // loudly instead of swallowing it.
         admin.storage
           .from(CERTIFICATE_IMAGE_BUCKET)
           .remove([storagePath])
-          .catch(() => {});
+          .catch((removeErr: unknown) => {
+            console.error("certificate_images orphan cleanup failed", {
+              storagePath,
+              insertError: insertError.message,
+              removeError: removeErr instanceof Error ? removeErr.message : String(removeErr),
+            });
+          });
         lastFailure = {
           code: "db_error",
           message: `データベースへの登録に失敗しました: ${insertError.message ?? "unknown"}`,

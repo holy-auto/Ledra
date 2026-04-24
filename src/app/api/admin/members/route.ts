@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
       return apiForbidden("メンバー追加の権限がありません。");
     }
 
-    const body = await req.json().catch(() => ({}) as any);
+    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const email = (body?.email ?? "").trim().toLowerCase();
     const displayName = (body?.display_name ?? "").trim() || null;
     const role = (body?.role ?? "").trim() || null; // null → DB default
@@ -229,7 +229,7 @@ export async function PUT(req: NextRequest) {
       return apiForbidden("ロール変更の権限がありません。");
     }
 
-    const body = await req.json().catch(() => ({}) as any);
+    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const targetUserId = (body?.user_id ?? "").trim();
     const newRole = (body?.role ?? "").trim();
 
@@ -298,7 +298,7 @@ export async function DELETE(req: NextRequest) {
       return apiForbidden("メンバー削除の権限がありません。");
     }
 
-    const body = await req.json().catch(() => ({}) as any);
+    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const targetUserId = (body?.user_id ?? "").trim();
 
     if (!targetUserId) {

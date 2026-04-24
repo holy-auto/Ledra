@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
 
     // free以上 + is_active 必須（certificate_id が来れば guard 側で tenant 逆引き可能）
     const deny = await enforceBilling(req, { minPlan: "free", action: "pdf_one", tenantId: caller.tenantId });
-    if (deny) return deny as any;
+    if (deny) return deny;
 
     const body = await parseJsonSafe(req);
     const id = pickId(body);

@@ -253,7 +253,11 @@ export const config = {
 
 /** Refresh Supabase session cookies only when token is near expiry */
 async function refreshSession(request: NextRequest) {
-  const response = NextResponse.next({ request });
+  // Forward the modified request headers (x-nonce / x-request-id set upstream
+  // in proxy()) so that server components can read them via `headers()`.
+  // `NextResponse.next({ request })` alone does NOT reliably forward header
+  // mutations in Next.js; the `request.headers` must be passed explicitly.
+  const response = NextResponse.next({ request: { headers: request.headers } });
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -299,7 +303,11 @@ async function refreshSession(request: NextRequest) {
 /** Refresh session + redirect unauthenticated users */
 async function refreshSessionAndProtect(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const response = NextResponse.next({ request });
+  // Forward the modified request headers (x-nonce / x-request-id set upstream
+  // in proxy()) so that server components can read them via `headers()`.
+  // `NextResponse.next({ request })` alone does NOT reliably forward header
+  // mutations in Next.js; the `request.headers` must be passed explicitly.
+  const response = NextResponse.next({ request: { headers: request.headers } });
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

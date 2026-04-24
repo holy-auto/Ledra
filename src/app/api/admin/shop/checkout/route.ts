@@ -169,7 +169,10 @@ export async function POST(req: NextRequest) {
         cancel_url: `${appUrl}/admin/shop?status=cancel&order=${orderNumber}`,
       });
     } catch (stripeErr) {
-      // Stripe 失敗 → 仮レコードをクリーンアップして孤立オーダーを防ぐ
+      // Stripe 失敗 → 仮レコードをクリーンアップして孤立オーダーを防ぐ。
+      // shop_order_items も合わせて削除しないと、failed order に対する
+      // items が DB に残って在庫集計などが歪む。
+      await admin.from("shop_order_items").delete().eq("order_id", order.id);
       await admin.from("shop_orders").update({ status: "checkout_failed" }).eq("id", order.id);
       throw stripeErr;
     }

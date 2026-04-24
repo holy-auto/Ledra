@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     if (!caller) return apiUnauthorized();
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
-    const body = await req.json().catch(() => ({}) as any);
+    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
 
     const inquiryId = (body?.inquiry_id ?? "").trim();
     const vehicleId = (body?.vehicle_id ?? "").trim();

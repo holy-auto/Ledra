@@ -33,13 +33,15 @@ export default function CertEditForm({ cert }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const info = cert.vehicle_info_json ?? {};
+  // vehicle_info_json は DB の JSON カラム。maker/model/plate だけ読みたい
+  // ので necessary fields だけ narrow して扱う。
+  const info = (cert.vehicle_info_json ?? {}) as { maker?: unknown; model?: unknown; plate?: unknown };
 
   const [form, setForm] = useState({
     customer_name: cert.customer_name ?? "",
-    vehicle_maker: String((info as any).maker ?? ""),
-    vehicle_model: String((info as any).model ?? ""),
-    vehicle_plate: String((info as any).plate ?? ""),
+    vehicle_maker: String(info.maker ?? ""),
+    vehicle_model: String(info.model ?? ""),
+    vehicle_plate: String(info.plate ?? ""),
     content_free_text: cert.content_free_text ?? "",
     expiry_value: cert.expiry_value ?? "",
     expiry_date: cert.expiry_date ?? "",

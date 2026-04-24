@@ -35,7 +35,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const rows = certificates ?? [];
 
     // Fetch image counts per certificate
-    let imageCounts: Record<string, number> = {};
+    const imageCounts: Record<string, number> = {};
     if (rows.length > 0) {
       const certIds = rows.map((c) => c.id);
       const { data: images } = await supabase

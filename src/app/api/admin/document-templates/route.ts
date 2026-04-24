@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as any);
+    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const parsed = templateCreateSchema.safeParse(body);
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "入力値が不正です");
@@ -107,7 +107,7 @@ export async function PUT(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as any);
+    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const parsed = templateUpdateSchema.safeParse(body);
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "入力値が不正です");
@@ -158,7 +158,7 @@ export async function DELETE(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as any);
+    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const id = (body?.id ?? "").trim();
     if (!id) return apiValidationError("id is required");
 

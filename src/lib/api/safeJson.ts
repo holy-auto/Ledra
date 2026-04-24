@@ -101,6 +101,16 @@ export async function safeFetchJson<T = unknown>(
     };
   }
 
+  // 204 No Content / 205 Reset Content are successful responses with an
+  // empty body. Calling res.json() on them would throw and we'd misreport
+  // the request as a parse failure. Return ok:true with data=null so
+  // callers can treat "no-content success" identically to "success with
+  // null body" — at the call site `data` is typed `T | null` anyway after
+  // narrowing via `if (result.ok)`.
+  if (res.status === 204 || res.status === 205) {
+    return { ok: true, status: res.status, data: null as T };
+  }
+
   let data: T | null = null;
   try {
     data = (await res.json()) as T;

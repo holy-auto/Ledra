@@ -100,6 +100,26 @@ describe("safeFetchJson", () => {
       expect(result.error.message).toMatch(/failed to fetch/);
     }
   });
+
+  it("treats 204 No Content as success with null body (not a parse error)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
+    const result = await safeFetchJson("/api/foo");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.status).toBe(204);
+      expect(result.data).toBeNull();
+    }
+  });
+
+  it("treats 205 Reset Content as success with null body", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 205 })));
+    const result = await safeFetchJson("/api/foo");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.status).toBe(205);
+      expect(result.data).toBeNull();
+    }
+  });
 });
 
 describe("safeJson", () => {

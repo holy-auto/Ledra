@@ -434,7 +434,7 @@ async function makeQrDataUrl(publicUrl: string): Promise<string> {
   });
 }
 
-function buildPresetLines(schema: TemplateSchema | null, values: Record<string, any> | null) {
+function buildPresetLines(schema: TemplateSchema | null, values: Record<string, unknown> | null) {
   if (!schema || !values) return [];
   const lines: Array<{ section: string; label: string; value: string }> = [];
   for (const sec of schema.sections) {
@@ -454,8 +454,10 @@ function buildPresetLines(schema: TemplateSchema | null, values: Record<string, 
 
 export async function renderCertificatePdf(row: CertRow, publicUrl: string, anchors?: AnchorInfo[]) {
   const preset = row.content_preset_json ?? {};
-  const schema: TemplateSchema | null = (preset.schema_snapshot as any) ?? null;
-  const values: Record<string, any> | null = (preset.values as any) ?? null;
+  // content_preset_json は DB JSON カラムのため動的。TemplateSchema /
+  // Record<string, unknown> に narrow するため unknown 経由で cast する。
+  const schema: TemplateSchema | null = (preset.schema_snapshot as unknown as TemplateSchema) ?? null;
+  const values: Record<string, unknown> | null = (preset.values as Record<string, unknown>) ?? null;
 
   const vehicle = row.vehicle_info_json ?? {};
   const model = String(vehicle.model ?? "").trim();

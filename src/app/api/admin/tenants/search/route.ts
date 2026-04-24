@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
 
     // partner_scores があれば付与
     const tenantIds = (tenants ?? []).map((t) => t.id);
-    let scoresMap: Record<string, { completed_orders: number; avg_rating: number | null }> = {};
+    const scoresMap: Record<string, { completed_orders: number; avg_rating: number | null }> = {};
     if (tenantIds.length > 0) {
       const { data: scores } = await supabase
         .from("partner_scores")

@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { resolveInsurerCaller, enforceInsurerPlan } from "@/lib/api/insurerAuth";
 import QRCode from "qrcode";
 import React from "react";
-import { pdf } from "@react-pdf/renderer";
+import { pdf, type DocumentProps } from "@react-pdf/renderer";
 import { InsurerPdfDoc } from "@/lib/insurerPdfDoc";
 import { apiInternalError, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
@@ -70,7 +70,14 @@ export async function GET(req: NextRequest) {
     qrDataUrl = "";
   }
 
-  const docEl = React.createElement(InsurerPdfDoc, { cert, qrDataUrl, publicUrl }) as any;
+  // InsurerPdfDoc は <Document> を返すが戻り値型に DocumentProps の
+  // element 型を持っていないため、@react-pdf/renderer の pdf() に渡すには
+  // ReactElement<DocumentProps> として narrow する必要がある。
+  const docEl = React.createElement(InsurerPdfDoc, {
+    cert,
+    qrDataUrl,
+    publicUrl,
+  }) as unknown as React.ReactElement<DocumentProps>;
 
   // Resolve certificate_id reliably from pid (public_id)
   const { data: certIdRow, error: certIdErr } = await supabase
@@ -90,9 +97,15 @@ export async function GET(req: NextRequest) {
     userAgent: ua,
   });
 
-  const buffer = await pdf(docEl as any).toBuffer();
-
-  const buf = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer as any);
+  // @react-pdf/renderer's browser lib types this as `Buffer | ReadableStream`,
+  // but on Node runtime it is always a Buffer. Narrow and copy to a fresh
+  // Uint8Array<ArrayBuffer> so NextResponse gets a valid BodyInit and we
+  // detach from Node's shared Buffer pool.
+  const buffer = await pdf(docEl).toBuffer();
+  if (!(buffer instanceof Uint8Array)) {
+    throw new Error("[insurer/pdf-one] renderer returned a stream instead of a buffer");
+  }
+  const buf = Uint8Array.from(buffer);
   return new NextResponse(buf, {
     headers: {
       "content-type": "application/pdf",

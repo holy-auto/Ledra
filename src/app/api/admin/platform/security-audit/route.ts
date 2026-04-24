@@ -30,6 +30,25 @@ export async function GET(req: NextRequest) {
     const days = Math.min(30, Math.max(1, parseInt(url.searchParams.get("days") ?? "7", 10)));
     const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
 
+    type InsurerAccessLog = {
+      id: string;
+      insurer_id: string | null;
+      action: string | null;
+      ip_address: string | null;
+      user_agent: string | null;
+      certificate_id: string | null;
+      created_at: string | null;
+    };
+    type StripeEventRow = { id: number; event_type: string | null; created_at: string | null };
+    type PiiLogRow = {
+      id: string;
+      tenant_id: string | null;
+      user_id: string | null;
+      action: string | null;
+      target_type: string | null;
+      created_at: string | null;
+    };
+
     const [accessResult, webhookResult, piiResult] = await Promise.allSettled([
       // Insurer access logs
       admin
@@ -37,33 +56,37 @@ export async function GET(req: NextRequest) {
         .select("id, insurer_id, action, ip_address, user_agent, certificate_id, created_at")
         .gte("created_at", since)
         .order("created_at", { ascending: false })
-        .limit(500),
+        .limit(500)
+        .returns<InsurerAccessLog[]>(),
       // Stripe webhook events
       admin
         .from("stripe_processed_events")
         .select("id, event_type, created_at")
         .gte("created_at", since)
         .order("created_at", { ascending: false })
-        .limit(200),
+        .limit(200)
+        .returns<StripeEventRow[]>(),
       // PII disclosure logs
       admin
         .from("pii_disclosure_logs")
         .select("id, tenant_id, user_id, action, target_type, created_at")
         .gte("created_at", since)
         .order("created_at", { ascending: false })
-        .limit(200),
+        .limit(200)
+        .returns<PiiLogRow[]>(),
     ]);
 
-    const accessLogs = accessResult.status === "fulfilled" ? (accessResult.value.data ?? []) : [];
-    const webhookEvents = webhookResult.status === "fulfilled" ? (webhookResult.value.data ?? []) : [];
-    const piiLogs = piiResult.status === "fulfilled" ? (piiResult.value.data ?? []) : [];
+    const accessLogs: InsurerAccessLog[] = accessResult.status === "fulfilled" ? (accessResult.value.data ?? []) : [];
+    const webhookEvents: StripeEventRow[] =
+      webhookResult.status === "fulfilled" ? (webhookResult.value.data ?? []) : [];
+    const piiLogs: PiiLogRow[] = piiResult.status === "fulfilled" ? (piiResult.value.data ?? []) : [];
 
     // Analyze access patterns
     const ipCounts: Record<string, number> = {};
     const insurerCounts: Record<string, number> = {};
     for (const log of accessLogs) {
-      const ip = (log as any).ip_address ?? "unknown";
-      const iid = (log as any).insurer_id ?? "unknown";
+      const ip = log.ip_address ?? "unknown";
+      const iid = log.insurer_id ?? "unknown";
       ipCounts[ip] = (ipCounts[ip] ?? 0) + 1;
       insurerCounts[iid] = (insurerCounts[iid] ?? 0) + 1;
     }
@@ -81,7 +104,7 @@ export async function GET(req: NextRequest) {
     // Webhook event type distribution
     const webhookTypes: Record<string, number> = {};
     for (const evt of webhookEvents) {
-      const t = (evt as any).event_type ?? "unknown";
+      const t = evt.event_type ?? "unknown";
       webhookTypes[t] = (webhookTypes[t] ?? 0) + 1;
     }
 

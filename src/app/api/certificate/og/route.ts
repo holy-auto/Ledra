@@ -77,9 +77,9 @@ export async function GET(req: NextRequest) {
         .select("maker, model")
         .eq("id", cert.vehicle_id)
         .limit(1)
-        .maybeSingle();
+        .maybeSingle<{ maker: string | null; model: string | null }>();
       if (vehicle) {
-        vehicleLabel = [(vehicle as any).maker, (vehicle as any).model].filter(Boolean).join(" ");
+        vehicleLabel = [vehicle.maker, vehicle.model].filter(Boolean).join(" ");
       }
     }
 

@@ -33,9 +33,9 @@ export async function GET(request: NextRequest) {
     // Enrich with referral/commission stats (batch queries to avoid N+1)
     const agentIds = (agents ?? []).map((a) => a.id);
 
-    let refCountMap: Record<string, number> = {};
-    let contractedCountMap: Record<string, number> = {};
-    let commMap: Record<string, number> = {};
+    const refCountMap: Record<string, number> = {};
+    const contractedCountMap: Record<string, number> = {};
+    const commMap: Record<string, number> = {};
 
     if (agentIds.length > 0) {
       const [refsResult, commsResult] = await Promise.all([

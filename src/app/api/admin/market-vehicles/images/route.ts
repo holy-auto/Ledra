@@ -146,7 +146,7 @@ export async function DELETE(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as any);
+    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const { id, vehicle_id: vehicleId } = body;
 
     if (!id || !vehicleId) return apiValidationError("missing id or vehicle_id");

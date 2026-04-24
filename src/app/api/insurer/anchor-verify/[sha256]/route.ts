@@ -44,14 +44,26 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ sha256: str
     )
     .eq("sha256", sha256)
     .limit(1)
-    .maybeSingle();
+    .maybeSingle<{
+      id: string;
+      certificate_id: string;
+      sha256: string | null;
+      authenticity_grade: string | null;
+      polygon_tx_hash: string | null;
+      polygon_network: "polygon" | "amoy" | null;
+      c2pa_verified: boolean | null;
+      exif_captured_at: string | null;
+      exif_device_model: string | null;
+      created_at: string | null;
+      certificates: { tenant_id: string; public_id: string; status: string } | null;
+    }>();
 
   if (error) return apiInternalError(error, "insurer.anchor-verify.[sha256]");
   if (!image) return apiNotFound("該当する施工画像が見つかりません。");
 
   // 保険会社が契約している施工店の証明書のみ開示可能
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cert = (image as any).certificates;
+  const cert = image.certificates;
+  if (!cert) return apiNotFound("証明書が取得できません。");
   const { data: contract } = await sb
     .from("insurer_tenant_contracts")
     .select("id")

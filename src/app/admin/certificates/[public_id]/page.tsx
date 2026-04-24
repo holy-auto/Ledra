@@ -135,8 +135,12 @@ export default async function Page({ params }: PageProps) {
   const pendingAnchorCount = images.filter((i) => !!i.sha256 && !i.polygon_tx_hash).length;
 
   // Plan tier → photo upload limit
-  const { data: tenantRow } = await admin.from("tenants").select("plan_tier").eq("id", tenantId).single();
-  const planTier = normalizePlanTier((tenantRow as any)?.plan_tier);
+  const { data: tenantRow } = await admin
+    .from("tenants")
+    .select("plan_tier")
+    .eq("id", tenantId)
+    .single<{ plan_tier: string | null }>();
+  const planTier = normalizePlanTier(tenantRow?.plan_tier);
   const maxPhotos = PHOTO_LIMITS[planTier];
   const remainingPhotos = Math.max(maxPhotos - images.length, 0);
 

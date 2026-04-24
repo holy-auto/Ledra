@@ -58,7 +58,18 @@ export async function GET(req: NextRequest) {
     });
     if (logErr) return apiValidationError(logErr.message);
 
-    const rows = (data ?? []) as any[];
+    // RPC insurer_search_certificates の戻り row 型 (明示的に select していないので
+    // 必要なフィールドのみ拾う)。
+    type InsurerExportRow = {
+      public_id: string;
+      status: string | null;
+      customer_name: string | null;
+      vehicle_model?: string | null;
+      vehicle_plate?: string | null;
+      created_at: string | null;
+      tenant_id: string | null;
+    };
+    const rows: InsurerExportRow[] = (data ?? []) as InsurerExportRow[];
     const header = [
       "public_id",
       "status",

@@ -38,9 +38,9 @@ type Vehicle = {
   customer?: { id: string; name: string } | null;
 };
 
-type FieldType = "text" | "textarea" | "number" | "date" | "select" | "multiselect" | "checkbox";
+export type FieldType = "text" | "textarea" | "number" | "date" | "select" | "multiselect" | "checkbox";
 
-type TemplateSchema = {
+export type TemplateSchema = {
   version: number;
   sections: Array<{
     title: string;
@@ -54,7 +54,7 @@ type TemplateSchema = {
   }>;
 };
 
-type Template = {
+export type Template = {
   id: string;
   name: string;
   schema_json: TemplateSchema | null;

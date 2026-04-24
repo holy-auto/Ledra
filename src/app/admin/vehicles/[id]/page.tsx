@@ -124,12 +124,27 @@ export default async function AdminVehicleDetailPage({
     redirect(`/admin/vehicles/${id}?voided=1`);
   }
 
+  type VehicleDetailRow = {
+    id: string;
+    maker: string | null;
+    model: string | null;
+    year: number | null;
+    plate_display: string | null;
+    vin_code: string | null;
+    notes: string | null;
+    created_at: string | null;
+    updated_at: string | null;
+    customer_id: string | null;
+    customer: { id: string; name: string | null } | null;
+    // 新カラム (存在しないテナントもあるので optional)
+    size_class?: string | null;
+  };
   const { data: vehicle, error: vehicleError } = await supabase
     .from("vehicles")
     .select("*, customer:customers(id, name)")
     .eq("tenant_id", membership.tenant_id)
     .eq("id", id)
-    .single();
+    .single<VehicleDetailRow>();
 
   if (vehicleError || !vehicle) {
     return <div className="p-6 text-primary">車両が見つかりません。</div>;
@@ -144,12 +159,26 @@ export default async function AdminVehicleDetailPage({
 
   // vehicle_histories は新旧スキーマが混在する可能性があるため
   // 想定される全カラムを select("*") で取得し、実行時に両対応する。
+  // スキーマ移行期間中のため title/label・description/note など両方の
+  // カラムが出現しうる。後段で両方読むので optional にしておく。
+  type VehicleHistoryRow = {
+    id: string;
+    type?: string | null;
+    title?: string | null;
+    label?: string | null;
+    description?: string | null;
+    note?: string | null;
+    performed_at?: string | null;
+    created_at?: string | null;
+    certificate_id?: string | null;
+  };
   const { data: historiesRaw } = await supabase
     .from("vehicle_histories")
     .select("*")
     .eq("tenant_id", membership.tenant_id)
     .eq("vehicle_id", id)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .returns<VehicleHistoryRow[]>();
 
   const { data: tags } = await supabase
     .from("nfc_tags")
@@ -181,21 +210,21 @@ export default async function AdminVehicleDetailPage({
 
   // 1) vehicle_histories (新旧スキーマ両対応)
   for (const h of historiesRaw ?? []) {
-    const occurredAt = (h as any).performed_at ?? (h as any).created_at ?? null;
+    const occurredAt = h.performed_at ?? h.created_at ?? null;
     if (!occurredAt) continue;
 
-    const type = String((h as any).type ?? "").toLowerCase();
+    const type = String(h.type ?? "").toLowerCase();
     // 膜厚測定は thickness_reports から直接描画するため重複を避ける
     if (type.includes("thickness")) continue;
 
-    const title = (h as any).title ?? (h as any).label ?? "車両履歴イベント";
-    const description = (h as any).description ?? (h as any).note ?? null;
+    const title = h.title ?? h.label ?? "車両履歴イベント";
+    const description = h.description ?? h.note ?? null;
 
     const isVoid = type.includes("void") || title.includes("削除");
-    const isCertificate = type.includes("certificate") || title.includes("証明書") || !!(h as any).certificate_id;
+    const isCertificate = type.includes("certificate") || title.includes("証明書") || !!h.certificate_id;
 
     timelineEvents.push({
-      key: `history-${(h as any).id}`,
+      key: `history-${h.id}`,
       kindLabel: isVoid ? "証明書削除" : isCertificate ? "証明書" : "履歴",
       kindVariant: isVoid ? "void" : isCertificate ? "certificate" : "other",
       title,
@@ -349,16 +378,16 @@ export default async function AdminVehicleDetailPage({
           <div>ナンバー: {vehicle.plate_display ?? "-"}</div>
           <div>
             サイズ:{" "}
-            {(vehicle as any).size_class ? (
+            {vehicle.size_class ? (
               <span className="inline-flex items-center rounded-md bg-accent-dim px-2 py-0.5 text-xs font-bold text-accent">
-                {(vehicle as any).size_class}
+                {vehicle.size_class}
               </span>
             ) : (
               <span className="text-muted">未設定</span>
             )}
           </div>
           <div className="font-mono">車体番号: {vehicle.vin_code ?? "-"}</div>
-          <div>現所有者: {(vehicle as any).customer?.name ?? <span className="text-muted">未設定</span>}</div>
+          <div>現所有者: {vehicle.customer?.name ?? <span className="text-muted">未設定</span>}</div>
         </div>
         {vehicle.notes ? <div className="text-sm text-secondary">メモ: {vehicle.notes}</div> : null}
       </section>

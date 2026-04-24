@@ -49,6 +49,27 @@ type SquareWebhookEvent = {
   };
 };
 
+/** Subset of the Square Orders API response we care about. */
+type SquareMoney = { amount?: number | null; currency?: string | null };
+type SquareTender = {
+  type?: string;
+  receipt_url?: string;
+};
+type SquareOrderApi = {
+  id: string;
+  location_id?: string;
+  state?: string;
+  customer_id?: string | null;
+  created_at?: string;
+  closed_at?: string | null;
+  total_money?: SquareMoney | null;
+  total_tax_money?: SquareMoney | null;
+  total_discount_money?: SquareMoney | null;
+  total_tip_money?: SquareMoney | null;
+  line_items?: unknown[];
+  tenders?: SquareTender[];
+};
+
 // ─── POST handler ───
 
 export async function POST(req: NextRequest) {
@@ -218,7 +239,7 @@ async function handlePaymentCompleted(merchantId: string, data: SquareWebhookEve
 /**
  * Fetch a single order from Square Orders API.
  */
-async function fetchSquareOrder(accessToken: string, orderId: string): Promise<Record<string, unknown> | null> {
+async function fetchSquareOrder(accessToken: string, orderId: string): Promise<SquareOrderApi | null> {
   try {
     const res = await fetch(`https://connect.squareup.com/v2/orders/${encodeURIComponent(orderId)}`, {
       headers: {
@@ -232,7 +253,7 @@ async function fetchSquareOrder(accessToken: string, orderId: string): Promise<R
       return null;
     }
 
-    const body = await res.json();
+    const body = (await res.json()) as { order?: SquareOrderApi | null };
     return body.order ?? null;
   } catch (err) {
     console.error(`[square-webhook] Fetch order ${orderId} error:`, err);
@@ -243,41 +264,37 @@ async function fetchSquareOrder(accessToken: string, orderId: string): Promise<R
 /**
  * Upsert an order into square_orders (matching pattern from sync endpoint).
  */
-async function upsertOrder(
-  admin: ReturnType<typeof createServiceRoleAdmin>,
-  tenantId: string,
-  order: Record<string, unknown>,
-) {
-  const orderId = order.id as string;
-  const totalMoney = (order.total_money as any)?.amount ?? 0;
-  const taxMoney = (order.total_tax_money as any)?.amount ?? 0;
-  const discountMoney = (order.total_discount_money as any)?.amount ?? 0;
-  const tipMoney = (order.total_tip_money as any)?.amount ?? 0;
+async function upsertOrder(admin: ReturnType<typeof createServiceRoleAdmin>, tenantId: string, order: SquareOrderApi) {
+  const orderId = order.id;
+  const totalMoney = order.total_money?.amount ?? 0;
+  const taxMoney = order.total_tax_money?.amount ?? 0;
+  const discountMoney = order.total_discount_money?.amount ?? 0;
+  const tipMoney = order.total_tip_money?.amount ?? 0;
   const netAmount = totalMoney - taxMoney;
 
-  const tenders = (order.tenders ?? []) as any[];
-  const paymentMethods: string[] = tenders.map((t: any) => t.type ?? "UNKNOWN");
-  const receiptUrl = tenders.find((t: any) => t.receipt_url)?.receipt_url ?? null;
+  const tenders = order.tenders ?? [];
+  const paymentMethods: string[] = tenders.map((t) => t.type ?? "UNKNOWN");
+  const receiptUrl = tenders.find((t) => t.receipt_url)?.receipt_url ?? null;
 
   const row = {
     tenant_id: tenantId,
     square_order_id: orderId,
-    square_location_id: order.location_id as string,
-    order_state: order.state as string,
+    square_location_id: order.location_id ?? "",
+    order_state: order.state ?? "",
     total_amount: totalMoney,
     tax_amount: taxMoney,
     discount_amount: discountMoney,
     tip_amount: tipMoney,
     net_amount: netAmount,
-    currency: (order.total_money as any)?.currency ?? "JPY",
+    currency: order.total_money?.currency ?? "JPY",
     payment_methods: paymentMethods,
-    items_json: (order.line_items as any[]) ?? [],
+    items_json: order.line_items ?? [],
     tenders_json: tenders,
-    square_customer_id: (order.customer_id as string) ?? null,
+    square_customer_id: order.customer_id ?? null,
     square_receipt_url: receiptUrl,
-    square_created_at: order.created_at as string,
-    square_closed_at: (order.closed_at as string) ?? null,
-    raw_json: order,
+    square_created_at: order.created_at ?? "",
+    square_closed_at: order.closed_at ?? null,
+    raw_json: order as unknown as Record<string, unknown>,
   };
 
   // Check if order already exists

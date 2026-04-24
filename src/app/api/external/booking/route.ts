@@ -304,7 +304,7 @@ export async function GET(req: NextRequest) {
       .select("id, name")
       .eq("slug", tenantSlug)
       .eq("is_active", true)
-      .single();
+      .single<{ id: string; name: string | null }>();
 
     if (!tenant) {
       return apiValidationError("指定された店舗が見つかりません");
@@ -322,7 +322,7 @@ export async function GET(req: NextRequest) {
       .eq("day_of_week", dayOfWeek)
       .limit(1);
 
-    const tenantName = (tenant as any).name ?? null;
+    const tenantName = tenant.name ?? null;
 
     if (weeklyClosed && weeklyClosed.length > 0) {
       return apiOk({ date, slots: [], closed: true, message: "この日は定休日です", tenant_name: tenantName });
@@ -389,7 +389,7 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    return apiOk({ date, slots: available, closed: false, tenant_name: (tenant as any).name ?? null });
+    return apiOk({ date, slots: available, closed: false, tenant_name: tenant.name ?? null });
   } catch (e) {
     return apiInternalError(e, "available slots");
   }

@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
       action: "batch_pdf",
       tenantId: caller.tenantId,
     });
-    if (billingDeny) return billingDeny as any;
+    if (billingDeny) return billingDeny;
 
     const body = await parseJsonSafe(req);
     const publicIds: unknown = body?.public_ids;

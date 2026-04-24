@@ -21,6 +21,30 @@ export interface PdfSignatureInfo {
   documentHash: string;
 }
 
+/** select した列を Row 型として取り出すための形。`certificates` テーブルの JSON カラムは構造が
+ * 多岐にわたるため CertRow と同じく `Record<string, unknown>` / `unknown[]` に絞る。 */
+type CertSelectRow = {
+  id: string;
+  public_id: string;
+  customer_name: string | null;
+  vehicle_info_json: Record<string, unknown> | null;
+  content_free_text: string | null;
+  content_preset_json: Record<string, unknown> | null;
+  coating_products_json: Record<string, unknown>[] | null;
+  ppf_coverage_json: Record<string, unknown>[] | null;
+  maintenance_json: Record<string, unknown> | null;
+  body_repair_json: Record<string, unknown> | null;
+  service_type: string | null;
+  expiry_type: string | null;
+  expiry_value: string | null;
+  warranty_period_end: string | null;
+  warranty_exclusions: string | null;
+  logo_asset_path: string | null;
+  current_version: number | null;
+  created_at: string | null;
+  tenant: { custom_domain: string | null } | null;
+};
+
 /**
  * 証明書 PDF のバイト列を生成する。
  *
@@ -60,33 +84,30 @@ export async function generateCertificatePdfBytes(certificateId: string): Promis
     `,
     )
     .eq("id", certificateId)
-    .single();
+    .single<CertSelectRow>();
 
   if (error || !cert) {
     throw new Error(`[pdfUtils] Certificate not found: ${certificateId}`);
   }
 
-  const tenantDomain = (cert.tenant as { custom_domain?: string | null } | null)?.custom_domain ?? null;
+  const tenantDomain = cert.tenant?.custom_domain ?? null;
   const origin = tenantDomain ? `https://${tenantDomain}` : BASE_URL;
   const publicUrl = `${origin}/c/${cert.public_id}`;
 
+  // CertRow は Record<string, any> を許容するので Record<string, unknown>
+  // からは直接代入できない。ここだけ一度 any 経由で橋渡しする。将来
+  // CertRow 自体を unknown ベースに絞る PR を別に切る想定。
   const row: CertRow = {
     public_id: cert.public_id,
     tenant_custom_domain: tenantDomain,
     customer_name: cert.customer_name ?? "",
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vehicle_info_json: (cert.vehicle_info_json as any) ?? {},
+    vehicle_info_json: (cert.vehicle_info_json ?? {}) as Record<string, unknown>,
     content_free_text: cert.content_free_text ?? null,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    content_preset_json: (cert.content_preset_json as any) ?? {},
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    coating_products_json: (cert.coating_products_json as any[]) ?? null,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ppf_coverage_json: (cert.ppf_coverage_json as any[]) ?? null,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    maintenance_json: (cert.maintenance_json as any) ?? null,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    body_repair_json: (cert.body_repair_json as any) ?? null,
+    content_preset_json: (cert.content_preset_json ?? {}) as Record<string, unknown>,
+    coating_products_json: cert.coating_products_json ?? null,
+    ppf_coverage_json: cert.ppf_coverage_json ?? null,
+    maintenance_json: cert.maintenance_json ?? null,
+    body_repair_json: cert.body_repair_json ?? null,
     service_type: cert.service_type ?? null,
     expiry_type: cert.expiry_type ?? null,
     expiry_value: cert.expiry_value ?? null,
@@ -98,7 +119,7 @@ export async function generateCertificatePdfBytes(certificateId: string): Promis
   };
 
   const buffer = await renderCertificatePdf(row, publicUrl);
-  return new Uint8Array(buffer as unknown as ArrayBuffer);
+  return new Uint8Array(buffer);
 }
 
 /**

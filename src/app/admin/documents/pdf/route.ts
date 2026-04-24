@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { renderDocumentPdf } from "@/lib/pdfDocument";
+import { renderDocumentPdf, type DocForPdf, type TenantForDocPdf } from "@/lib/pdfDocument";
 import { layoutConfigSchema, type LayoutConfig } from "@/types/documentTemplate";
 
 export const dynamic = "force-dynamic";
@@ -90,8 +90,13 @@ export async function GET(req: Request) {
   );
 
   try {
-    const pdf = await renderDocumentPdf(doc as any, tenant as any, customerName, layoutOverride);
-    const body = new Uint8Array(pdf as any);
+    const pdf = await renderDocumentPdf(
+      doc as unknown as DocForPdf,
+      tenant as unknown as TenantForDocPdf,
+      customerName,
+      layoutOverride,
+    );
+    const body = new Uint8Array(pdf);
     return new NextResponse(body, {
       status: 200,
       headers: {
