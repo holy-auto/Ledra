@@ -6,33 +6,11 @@ import { resolveBaseUrl } from "@/lib/url";
 import { GLOBAL_OTP_TTL_MIN, createGlobalLoginCode, listPortalMemberships } from "@/lib/customerPortalGlobal";
 import { normalizeEmail, normalizeLast4 } from "@/lib/customerPortalServer";
 import { apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { isResendFailure, sendResendEmail } from "@/lib/email/resendSend";
 
 function genCode6() {
   const n = randomInt(1000000);
   return String(n).padStart(6, "0");
-}
-
-async function sendEmailResend(to: string, subject: string, html: string) {
-  const apiKey = (process.env.RESEND_API_KEY ?? "").trim();
-  const from = (process.env.RESEND_FROM ?? "").trim();
-
-  if (!apiKey) throw new Error("missing RESEND_API_KEY");
-  if (!from) throw new Error("missing RESEND_FROM");
-
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ from, to, subject, html }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    console.error("[portal/request-code] Resend failed", res.status, body);
-    throw new Error(`resend_failed:${res.status}`);
-  }
 }
 
 export async function POST(req: Request) {
@@ -86,7 +64,18 @@ export async function POST(req: Request) {
       `</div>` +
       `<p><a href=\"${safeUrl}\">確認コード入力画面を開く</a></p>`;
 
-    await sendEmailResend(email, subject, html);
+    const sent = await sendResendEmail({
+      to: email,
+      subject,
+      html,
+      // OTP は毎回新鮮な code のため idempotency は効かせない
+    });
+    if (isResendFailure(sent)) {
+      return apiInternalError(
+        new Error(`resend_failed:${sent.status ?? "network"}:${sent.error}`),
+        "portal/request-code",
+      );
+    }
 
     return NextResponse.json({ ok: true, memberships_count: memberships.length });
   } catch (e: unknown) {
