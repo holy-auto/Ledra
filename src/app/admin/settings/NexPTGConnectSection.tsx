@@ -152,12 +152,15 @@ export default function NexPTGConnectSection() {
           <li>NexPTGアプリで「Synchronization」タブを開く</li>
           <li>URL 欄に上記エンドポイントURLを貼り付け</li>
           <li>
-            ユーザー名/パスワード欄は空欄のまま、APIキーは <code className="font-mono">x-api-key</code>{" "}
-            ヘッダで送信される想定
+            Username 欄: 任意（空欄または <code className="font-mono">nexptg</code> など任意の文字列でOK）
+          </li>
+          <li>
+            <strong>Password 欄に発行したAPIキーを貼り付け</strong>（これがLedraへの認証キーになります）
           </li>
           <li>Android: レポート保存時に自動同期 / iOS: 手動で同期ボタンを押下</li>
         </ol>
         <p className="mt-2 text-xs">
+          ※ NexPTGアプリはBasic認証のみサポートのため、Password欄にAPIキーを入れる運用です。<br />
           ※ このキーは外部予約API（/api/external/booking）と共通です。再発行すると両方の連携が一度切断されます。
         </p>
       </details>
