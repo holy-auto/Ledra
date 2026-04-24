@@ -35,6 +35,7 @@ import {
   apiPlanLimit,
   applySecurityHeaders,
   auditResponseBodyForSecrets,
+  redactScopeIds,
 } from "./response";
 
 // ─── apiOk ───
@@ -259,5 +260,58 @@ describe("auditResponseBodyForSecrets", () => {
   it("apiJson auto-audits body", () => {
     apiJson({ api_key: "sk_live_xxx" });
     expect(loggerWarn).toHaveBeenCalledOnce();
+  });
+});
+
+// ─── redactScopeIds ───
+describe("redactScopeIds", () => {
+  it("strips tenant_id / insurer_id / user_id by default", () => {
+    const body = {
+      tenant_id: "tnt-1",
+      insurer_id: "ins-1",
+      user_id: "usr-1",
+      customer_id: "cus-1", // preserved (not a caller-scope id)
+      value: 42,
+    };
+    expect(redactScopeIds(body)).toEqual({ customer_id: "cus-1", value: 42 });
+  });
+
+  it("recursively strips from nested arrays / objects", () => {
+    const body = {
+      orders: [
+        { id: "o1", tenant_id: "t1", customer_id: "c1" },
+        { id: "o2", tenant_id: "t1", customer_id: "c2" },
+      ],
+      meta: { tenant_id: "t1", pages: 2 },
+    };
+    expect(redactScopeIds(body)).toEqual({
+      orders: [
+        { id: "o1", customer_id: "c1" },
+        { id: "o2", customer_id: "c2" },
+      ],
+      meta: { pages: 2 },
+    });
+  });
+
+  it("respects keep allowlist", () => {
+    const body = { tenant_id: "t1", user_id: "u1", data: 1 };
+    expect(redactScopeIds(body, { keep: ["tenant_id"] })).toEqual({
+      tenant_id: "t1",
+      data: 1,
+    });
+  });
+
+  it("honors custom keys override", () => {
+    const body = { stripe_customer_id: "cus_x", customer_id: "c1", id: 1 };
+    expect(redactScopeIds(body, { keys: ["stripe_customer_id"] })).toEqual({
+      customer_id: "c1",
+      id: 1,
+    });
+  });
+
+  it("is a no-op on primitives", () => {
+    expect(redactScopeIds("hello")).toBe("hello");
+    expect(redactScopeIds(42)).toBe(42);
+    expect(redactScopeIds(null)).toBeNull();
   });
 });

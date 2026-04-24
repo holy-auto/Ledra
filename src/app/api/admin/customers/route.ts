@@ -28,7 +28,10 @@ export async function GET(req: NextRequest) {
 
     let query = supabase
       .from("customers")
-      .select("id, tenant_id, name, name_kana, email, phone, postal_code, address, note, created_at, updated_at")
+      // tenant_id は `.eq("tenant_id", caller.tenantId)` でフィルタするのみ。
+      // caller は既に自テナント下で認証されているので response body に
+      // 含める必要はなく、外す (see `redactScopeIds`).
+      .select("id, name, name_kana, email, phone, postal_code, address, note, created_at, updated_at")
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
 

@@ -159,6 +159,64 @@ export function auditResponseBodyForSecrets(body: unknown, route?: string): void
   });
 }
 
+/**
+ * Scope-identifier keys that a caller has already supplied to the server
+ * via session. Echoing them back in the response body is redundant and
+ * enlarges the blast radius of leaked logs / screenshots / shared screens.
+ *
+ * `vehicle_id`, `customer_id` etc. are **not** in this list because they
+ * are legitimate foreign-key references a UI needs for navigation; the
+ * pattern targets the **caller's own scope** specifically.
+ */
+const DEFAULT_SCOPE_ID_KEYS: ReadonlySet<string> = new Set([
+  "tenant_id",
+  "insurer_id",
+  "insurer_user_id",
+  "user_id", // caller's own user id (session already knows it)
+]);
+
+type Plain = Record<string, unknown>;
+
+function stripScopeKeys(value: unknown, toStrip: ReadonlySet<string>, keep: ReadonlySet<string>): unknown {
+  if (Array.isArray(value)) {
+    return value.map((v) => stripScopeKeys(v, toStrip, keep));
+  }
+  if (value && typeof value === "object") {
+    const out: Plain = {};
+    for (const [k, v] of Object.entries(value as Plain)) {
+      if (!keep.has(k) && toStrip.has(k)) continue;
+      out[k] = stripScopeKeys(v, toStrip, keep);
+    }
+    return out;
+  }
+  return value;
+}
+
+/**
+ * Return a clone of `body` with scope identifier keys removed.
+ *
+ * Call this for routes where the caller is already authenticated under
+ * a specific scope (tenant/insurer/user) and the response therefore does
+ * not need to echo that identifier back. The clone is produced recursively
+ * so nested shapes (e.g. an array of rows) are all stripped.
+ *
+ * @example
+ * ```ts
+ * const rows = await admin.from("job_orders").select(...);
+ * return apiJson(redactScopeIds({ orders: rows }));
+ * ```
+ *
+ * @param keep - allowlist of keys to keep even if they match `keys`. Useful
+ *   when a single response has both the caller's own tenant_id (redundant)
+ *   and a *different* tenant_id (e.g. counter-party on a shared record)
+ *   and you want to drop only the former via explicit reshaping.
+ */
+export function redactScopeIds<T>(body: T, opts?: { keys?: readonly string[]; keep?: readonly string[] }): T {
+  const keys = opts?.keys ? new Set(opts.keys) : DEFAULT_SCOPE_ID_KEYS;
+  const keep = new Set(opts?.keep ?? []);
+  return stripScopeKeys(body, keys, keep) as T;
+}
+
 /** 統一エラーレスポンス */
 export function apiError(opts: ApiErrorOptions) {
   return NextResponse.json(
