@@ -4,32 +4,12 @@
  */
 
 import { escapeHtml } from "@/lib/sanitize";
+import { isResendFailure, sendResendEmail } from "@/lib/email/resendSend";
 
-const RESEND_API = "https://api.resend.com/emails";
-
-async function sendEmail(to: string, subject: string, html: string) {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM;
-  if (!apiKey || !from) {
-    console.warn("[agent/email] RESEND_API_KEY or RESEND_FROM not set, skipping email:", subject);
-    return;
-  }
-
-  try {
-    const res = await fetch(RESEND_API, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ from, to, subject, html }),
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      console.error("[agent/email] send failed:", res.status, text);
-    }
-  } catch (e) {
-    console.error("[agent/email] send error:", e);
+async function sendEmail(to: string, subject: string, html: string, idempotencyKey?: string) {
+  const r = await sendResendEmail({ to, subject, html, idempotencyKey });
+  if (isResendFailure(r)) {
+    console.error("[agent/email] send failed:", { subject, status: r.status, error: r.error });
   }
 }
 
@@ -115,6 +95,45 @@ export async function notifyApplicationApproved(
     `,
   );
   await sendEmail(email, "[Ledra] 代理店申請承認 - ログイン情報のご案内", html);
+}
+
+/** Notify a signer that a new agent contract awaits their signature. */
+export async function notifyAgentSignRequest(
+  email: string,
+  data: {
+    signerName: string;
+    title: string;
+    signUrl: string;
+    /** ISO-8601 timestamp. Used for display only. */
+    expiresAt: string;
+    /** Stable key to dedupe reminder/resend flows within Resend's 24h window. */
+    idempotencyKey?: string;
+  },
+) {
+  const name = escapeHtml(data.signerName);
+  const title = escapeHtml(data.title);
+  const signUrl = escapeHtml(data.signUrl);
+  const expiresDisplay = escapeHtml(new Date(data.expiresAt).toLocaleString("ja-JP"));
+  const html = wrap(
+    "電子署名のお願い",
+    `
+      <p style="color: #1d1d1f; font-size: 14px;">
+        ${name} 様<br /><br />
+        Ledra より「<strong>${title}</strong>」の電子署名をお願いいたします。
+      </p>
+      <p style="margin: 20px 0;">
+        <a href="${signUrl}" style="display: inline-block; background: #0071e3; color: #ffffff; padding: 10px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">署名する</a>
+      </p>
+      <p style="font-size: 13px; color: #86868b;">
+        このリンクは <strong>${expiresDisplay}</strong> まで有効です。
+      </p>
+      <p style="font-size: 12px; color: #86868b; word-break: break-all;">
+        もしボタンが開けない場合は、以下のURLをブラウザに貼り付けてください。<br />
+        ${signUrl}
+      </p>
+    `,
+  );
+  await sendEmail(email, `[Ledra] 電子署名のお願い: ${data.title}`, html, data.idempotencyKey);
 }
 
 /** Notify applicant that application was rejected */

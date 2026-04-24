@@ -8,6 +8,14 @@
  * reads `null` and the UI shows "no records" instead of "fetch failed".
  * This module keeps the drop-in shape but routes every failure through the
  * structured logger so the silent bug leaves a breadcrumb.
+ *
+ * Three helpers are exported:
+ *   - parseJsonSafe(res|req)     — drop-in, returns T | null, logs on parse error
+ *   - safeFetchJson(input, init) — wraps fetch; returns discriminated result
+ *   - safeJson(res, { fallback, context, requireOk }) — same idea as
+ *     parseJsonSafe but typed with a caller-provided fallback, optionally
+ *     treating non-2xx as failure. Adopt incrementally where a silent
+ *     empty state is user-visible.
  */
 
 import { logger } from "@/lib/logger";
@@ -121,4 +129,58 @@ export async function safeFetchJson<T = unknown>(
   }
 
   return { ok: true, status: res.status, data };
+}
+
+/**
+ * Fallback-typed variant of parseJsonSafe. Returns `fallback` on parse
+ * failure and (optionally) on non-2xx responses.
+ *
+ * Prefer this when the caller already owns an explicit empty/default value
+ * for the response shape — `safeJson` removes the `| null` from the return
+ * type so you get a concrete `T` back.
+ *
+ * @example
+ * ```ts
+ * const data = await safeJson(res, {
+ *   fallback: { orders: [] as Order[] },
+ *   context: "admin.orders",
+ * });
+ * ```
+ */
+export type SafeJsonOptions<T> = {
+  /** Fallback to return when parsing fails. */
+  fallback: T;
+  /** Route/label for logging. Recommended. */
+  context?: string;
+  /**
+   * Treat non-OK responses as parse failures even if the body was JSON?
+   * Defaults to `false` — most callers want to parse error envelopes.
+   */
+  requireOk?: boolean;
+};
+
+export async function safeJson<T>(res: Response, opts: SafeJsonOptions<T>): Promise<T> {
+  const { fallback, context, requireOk = false } = opts;
+
+  if (res.status === 204 || res.status === 205) return fallback;
+  if (requireOk && !res.ok) {
+    logger.warn("safeJson: non-OK response treated as failure", {
+      context,
+      status: res.status,
+      url: res.url || undefined,
+    });
+    return fallback;
+  }
+
+  try {
+    return (await res.json()) as T;
+  } catch (err) {
+    logger.warn("safeJson: response body was not valid JSON", {
+      context,
+      status: res.status,
+      url: res.url || undefined,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return fallback;
+  }
 }

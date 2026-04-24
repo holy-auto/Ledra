@@ -9,6 +9,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { renderBrandedCertificatePdf } from "@/lib/template-options/renderBrandedCertificate";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { logger } from "@/lib/logger";
 import type { TemplateConfig } from "@/types/templateOption";
 import type { CertRow } from "@/lib/pdfCertificate";
 
@@ -211,8 +212,9 @@ export async function GET(req: Request) {
         userAgent: meta.userAgent,
       });
     }
-  } catch {
-    /* audit failure should not block PDF */
+  } catch (e: unknown) {
+    // audit log failure must not block PDF delivery, but we still want it in logs
+    logger.warn("certificate pdf audit log failed", { err: e instanceof Error ? e.message : String(e) });
   }
 
   const fallbackOrigin = await getFallbackOrigin();

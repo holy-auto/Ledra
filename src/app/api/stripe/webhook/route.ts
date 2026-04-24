@@ -7,6 +7,7 @@ import { isTemplateOptionEvent } from "@/lib/template-options/stripe";
 import { confirmCampaignSlot } from "@/lib/billing/campaign";
 import { apiJson, apiValidationError, apiInternalError, apiError } from "@/lib/api/response";
 import { logAuditEvent } from "@/lib/audit/certificateLog";
+import { isResendFailure, sendResendEmail } from "@/lib/email/resendSend";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,20 +31,12 @@ function getCurrentPeriodEnd(sub: Stripe.Subscription): number | null {
 }
 
 // ── Payment failure notification email ──
-const RESEND_API = "https://api.resend.com/emails";
-
 async function sendPaymentFailureEmail(
   supabase: ReturnType<typeof createServiceRoleAdmin>,
   tenantId: string,
   billingPortalUrl: string,
+  idempotencyKey?: string,
 ) {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM;
-  if (!apiKey || !from) {
-    console.warn("webhook: payment failure email skipped — missing RESEND_API_KEY or RESEND_FROM");
-    return;
-  }
-
   // Resolve owner email from tenant membership (try owner first, then admin)
   const { data: members } = await supabase
     .from("tenant_memberships")
@@ -103,27 +96,25 @@ async function sendPaymentFailureEmail(
 Ledra — 株式会社HOLY AUTO
 `;
 
-  try {
-    const res = await fetch(RESEND_API, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from,
-        to: email,
-        reply_to: "support@ledra.co.jp",
-        subject: "【Ledra】お支払いについてのご連絡",
-        html,
-        text,
-      }),
+  const sent = await sendResendEmail({
+    to: email,
+    reply_to: "support@ledra.co.jp",
+    subject: "【Ledra】お支払いについてのご連絡",
+    html,
+    text,
+    // Stripe re-sends webhooks on failure; use event-derived idempotency
+    // key so Resend returns the same email instead of double-sending.
+    idempotencyKey,
+  });
+  if (isResendFailure(sent)) {
+    console.error("webhook: payment failure email send failed", {
+      tenantId,
+      email,
+      status: sent.status,
+      error: sent.error,
     });
-    const resBody = await res.text();
-    if (!res.ok) {
-      console.error("webhook: Resend API error", { status: res.status, body: resBody, tenantId, email });
-    } else {
-      console.info("webhook: payment failure email sent", { tenantId, email, resendResponse: resBody });
-    }
-  } catch (e) {
-    console.error("webhook: failed to send payment failure email", { tenantId, error: e });
+  } else {
+    console.info("webhook: payment failure email sent", { tenantId, email, resendId: sent.id });
   }
 }
 
@@ -570,7 +561,12 @@ export async function POST(req: NextRequest) {
 
             if (resolvedTenantId) {
               const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.ledra.co.jp";
-              await sendPaymentFailureEmail(supabase, resolvedTenantId, `${appUrl}/admin/billing`);
+              await sendPaymentFailureEmail(
+                supabase,
+                resolvedTenantId,
+                `${appUrl}/admin/billing`,
+                `payment-failure:${event.id}`,
+              );
             }
           }
         }

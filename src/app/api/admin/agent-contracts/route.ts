@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { notifyAgentSignRequest } from "@/lib/agent/email";
 
 export const dynamic = "force-dynamic";
 
@@ -107,8 +108,13 @@ export async function POST(request: NextRequest) {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
     const signUrl = `${baseUrl}/agent-sign/${signToken}`;
 
-    // TODO: send email to signer_email with signUrl
-    // await sendAgentContractEmail({ to: signer_email.trim(), name: signer_name.trim(), title, signUrl });
+    await notifyAgentSignRequest(signer_email.trim(), {
+      signerName: signer_name.trim(),
+      title: title.trim(),
+      signUrl,
+      expiresAt: signExpiresAt,
+      idempotencyKey: `agent-contract-send:${record.id}`,
+    });
 
     return apiJson({ contract: record, sign_url: signUrl }, { status: 201 });
   } catch (e) {

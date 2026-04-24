@@ -11,7 +11,7 @@ export async function sendCronFailureAlert(jobName: string, error: unknown): Pro
   console.error(`[cron/${jobName}] FAILURE:`, message);
 
   const apiKey = process.env.RESEND_API_KEY;
-  const alertEmail = process.env.CONTACT_EMAIL_TO;
+  const alertEmail = process.env.CONTACT_TO_EMAIL;
   const from = process.env.RESEND_FROM ?? "noreply@ledra.co.jp";
 
   if (!apiKey || !alertEmail) return;

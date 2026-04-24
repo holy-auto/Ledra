@@ -6,6 +6,7 @@ import SettingsForm from "./SettingsForm";
 import FollowUpSettings from "./FollowUpSettings";
 import SquareConnectSection from "./SquareConnectSection";
 import LineConnectSection from "./LineConnectSection";
+import NexPTGConnectSection from "./NexPTGConnectSection";
 import RestartTourButton from "./RestartTourButton";
 import PageHeader from "@/components/ui/PageHeader";
 import { formatDate } from "@/lib/format";
@@ -238,6 +239,18 @@ export default async function AdminSettingsPage() {
           </p>
         </div>
         <LineConnectSection />
+      </section>
+
+      {/* NexPTG（膜厚計）連携 */}
+      <section className="glass-card p-5">
+        <div className="mb-5">
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">外部連携</div>
+          <div className="mt-1 text-base font-semibold text-primary">NexPTG（膜厚計）連携</div>
+          <p className="mt-1 text-xs text-muted">
+            NexPTGアプリで測定した膜厚データをLedraへ自動同期します。APIキーを発行してアプリに設定してください。
+          </p>
+        </div>
+        <NexPTGConnectSection />
       </section>
 
       {/* Coating products master */}

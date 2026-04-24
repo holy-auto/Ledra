@@ -161,41 +161,42 @@ export default async function AdminVehicleDetailPage({
   // 予約イベント: 作業開始・完了を時系列に混ぜる
   const { data: reservations } = await supabase
     .from("reservations")
-    .select(
-      "id, title, status, scheduled_date, start_time, end_time, created_at, updated_at",
-    )
+    .select("id, title, status, scheduled_date, start_time, end_time, created_at, updated_at")
     .eq("tenant_id", membership.tenant_id)
     .eq("vehicle_id", id)
     .order("scheduled_date", { ascending: false });
+
+  // NexPTG膜厚測定レポート（thickness_reports ＋ 測定値サマリ）
+  const { data: thicknessReports } = await supabase
+    .from("thickness_reports")
+    .select(
+      "id, name, measured_at, device_serial_number, comment, unit_of_measure, thickness_measurements(value_um, interpretation, is_inside)",
+    )
+    .eq("tenant_id", membership.tenant_id)
+    .eq("vehicle_id", id)
+    .order("measured_at", { ascending: false });
 
   // ─── タイムラインイベントを合成 ───
   const timelineEvents: TimelineEvent[] = [];
 
   // 1) vehicle_histories (新旧スキーマ両対応)
   for (const h of historiesRaw ?? []) {
-    const occurredAt =
-      (h as any).performed_at ?? (h as any).created_at ?? null;
+    const occurredAt = (h as any).performed_at ?? (h as any).created_at ?? null;
     if (!occurredAt) continue;
 
-    const title =
-      (h as any).title ?? (h as any).label ?? "車両履歴イベント";
-    const description =
-      (h as any).description ?? (h as any).note ?? null;
     const type = String((h as any).type ?? "").toLowerCase();
+    // 膜厚測定は thickness_reports から直接描画するため重複を避ける
+    if (type.includes("thickness")) continue;
+
+    const title = (h as any).title ?? (h as any).label ?? "車両履歴イベント";
+    const description = (h as any).description ?? (h as any).note ?? null;
 
     const isVoid = type.includes("void") || title.includes("削除");
-    const isCertificate =
-      type.includes("certificate") ||
-      title.includes("証明書") ||
-      !!(h as any).certificate_id;
+    const isCertificate = type.includes("certificate") || title.includes("証明書") || !!(h as any).certificate_id;
 
     timelineEvents.push({
       key: `history-${(h as any).id}`,
-      kindLabel: isVoid
-        ? "証明書削除"
-        : isCertificate
-          ? "証明書"
-          : "履歴",
+      kindLabel: isVoid ? "証明書削除" : isCertificate ? "証明書" : "履歴",
       kindVariant: isVoid ? "void" : isCertificate ? "certificate" : "other",
       title,
       description,
@@ -230,10 +231,7 @@ export default async function AdminVehicleDetailPage({
       kindLabel: RESERVATION_STATUS_LABEL[status] ?? status,
       kindVariant: "reservation",
       title: r.title ?? "(無題の予約)",
-      description:
-        r.start_time || r.end_time
-          ? `${r.start_time ?? "-"}${r.end_time ? ` 〜 ${r.end_time}` : ""}`
-          : null,
+      description: r.start_time || r.end_time ? `${r.start_time ?? "-"}${r.end_time ? ` 〜 ${r.end_time}` : ""}` : null,
       occurredAt,
       href: `/admin/jobs/${r.id}`,
     });
@@ -253,11 +251,54 @@ export default async function AdminVehicleDetailPage({
     }
   }
 
+  // 5) NexPTG膜厚測定レポート
+  for (const report of thicknessReports ?? []) {
+    const occurredAt = (report as any).measured_at ?? null;
+    if (!occurredAt) continue;
+
+    const measurements = ((report as any).thickness_measurements ?? []) as Array<{
+      value_um: number | null;
+      interpretation: number | null;
+      is_inside: boolean;
+    }>;
+    const count = measurements.length;
+    let maxValue: number | null = null;
+    let maxInterpretation: number | null = null;
+    for (const m of measurements) {
+      if (typeof m.value_um === "number" && (maxValue === null || m.value_um > maxValue)) {
+        maxValue = m.value_um;
+      }
+      if (
+        typeof m.interpretation === "number" &&
+        (maxInterpretation === null || m.interpretation > maxInterpretation)
+      ) {
+        maxInterpretation = m.interpretation;
+      }
+    }
+
+    const unit = (report as any).unit_of_measure ?? "μm";
+    const parts: string[] = [];
+    if (count > 0) parts.push(`測定値 ${count}件`);
+    if (maxValue !== null) parts.push(`最大 ${maxValue}${unit}`);
+    if (maxInterpretation !== null) parts.push(`判定最大 ${maxInterpretation}`);
+    const summary = parts.length > 0 ? parts.join(" ・ ") : null;
+    const comment = ((report as any).comment as string | null)?.trim() || null;
+    const serial = (report as any).device_serial_number as string | null;
+    const description = [summary, comment, serial ? `機器: ${serial}` : null].filter(Boolean).join("\n") || null;
+
+    timelineEvents.push({
+      key: `thickness-${(report as any).id}`,
+      kindLabel: "膜厚測定",
+      kindVariant: "thickness",
+      title: (report as any).name ? `膜厚測定（NexPTG）: ${(report as any).name}` : "膜厚測定（NexPTG）",
+      description,
+      occurredAt,
+      href: `/admin/vehicles/${id}/thickness/${(report as any).id}`,
+    });
+  }
+
   // 降順ソート (新しい順)
-  timelineEvents.sort(
-    (a, b) =>
-      new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime(),
-  );
+  timelineEvents.sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime());
 
   return (
     <div className="p-6 space-y-8">
@@ -272,16 +313,10 @@ export default async function AdminVehicleDetailPage({
         </div>
 
         <div className="flex gap-2">
-          <Link
-            href={`/admin/vehicles/${vehicle.id}/edit`}
-            className="btn-secondary"
-          >
+          <Link href={`/admin/vehicles/${vehicle.id}/edit`} className="btn-secondary">
             編集
           </Link>
-          <Link
-            href={`/admin/certificates/new?vehicle_id=${vehicle.id}`}
-            className="btn-primary"
-          >
+          <Link href={`/admin/certificates/new?vehicle_id=${vehicle.id}`} className="btn-primary">
             + 証明書を作成
           </Link>
         </div>
@@ -313,16 +348,17 @@ export default async function AdminVehicleDetailPage({
           <div>年式: {vehicle.year ?? "-"}</div>
           <div>ナンバー: {vehicle.plate_display ?? "-"}</div>
           <div>
-            サイズ: {(vehicle as any).size_class ? (
+            サイズ:{" "}
+            {(vehicle as any).size_class ? (
               <span className="inline-flex items-center rounded-md bg-accent-dim px-2 py-0.5 text-xs font-bold text-accent">
                 {(vehicle as any).size_class}
               </span>
-            ) : <span className="text-muted">未設定</span>}
+            ) : (
+              <span className="text-muted">未設定</span>
+            )}
           </div>
           <div className="font-mono">車体番号: {vehicle.vin_code ?? "-"}</div>
-          <div>
-            現所有者: {(vehicle as any).customer?.name ?? <span className="text-muted">未設定</span>}
-          </div>
+          <div>現所有者: {(vehicle as any).customer?.name ?? <span className="text-muted">未設定</span>}</div>
         </div>
         {vehicle.notes ? <div className="text-sm text-secondary">メモ: {vehicle.notes}</div> : null}
       </section>
@@ -347,12 +383,13 @@ export default async function AdminVehicleDetailPage({
                   const isVoid = String(row.status ?? "").toLowerCase() === "void";
 
                   return (
-                    <tr key={row.id} className="border-t border-border-default hover:bg-surface-hover transition-colors">
+                    <tr
+                      key={row.id}
+                      className="border-t border-border-default hover:bg-surface-hover transition-colors"
+                    >
                       <td className="px-4 py-3 text-primary">{row.certificate_no ?? "-"}</td>
                       <td className="px-4 py-3 text-primary">{row.service_type ?? "-"}</td>
-                      <td className="px-4 py-3 text-primary">
-                        {formatDate(row.created_at)}
-                      </td>
+                      <td className="px-4 py-3 text-primary">{formatDate(row.created_at)}</td>
                       <td className="px-4 py-3 text-primary">{row.status ?? "-"}</td>
                       <td className="px-4 py-3">
                         {row.public_id ? (
@@ -374,10 +411,7 @@ export default async function AdminVehicleDetailPage({
                         ) : (
                           <form action={voidCertificate}>
                             <input type="hidden" name="certificate_id" value={row.id} />
-                            <button
-                              type="submit"
-                              className="btn-danger text-xs"
-                            >
+                            <button type="submit" className="btn-danger text-xs">
                               削除
                             </button>
                           </form>
@@ -396,12 +430,8 @@ export default async function AdminVehicleDetailPage({
 
       <section className="glass-card p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-primary">
-            サービス履歴タイムライン
-          </h2>
-          <span className="text-xs text-muted">
-            証明書 / 予約 / NFC を時系列で統合表示
-          </span>
+          <h2 className="text-lg font-semibold text-primary">サービス履歴タイムライン</h2>
+          <span className="text-xs text-muted">証明書 / 予約 / NFC を時系列で統合表示</span>
         </div>
         <ServiceTimeline events={timelineEvents} />
       </section>
@@ -424,12 +454,8 @@ export default async function AdminVehicleDetailPage({
                   <tr key={row.id} className="border-t border-border-default hover:bg-surface-hover transition-colors">
                     <td className="px-4 py-3 text-primary">{row.tag_code}</td>
                     <td className="px-4 py-3 text-primary">{row.status}</td>
-                    <td className="px-4 py-3 text-primary">
-                      {formatDateTime(row.written_at)}
-                    </td>
-                    <td className="px-4 py-3 text-primary">
-                      {formatDateTime(row.attached_at)}
-                    </td>
+                    <td className="px-4 py-3 text-primary">{formatDateTime(row.written_at)}</td>
+                    <td className="px-4 py-3 text-primary">{formatDateTime(row.attached_at)}</td>
                   </tr>
                 ))}
               </tbody>

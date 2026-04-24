@@ -29,6 +29,14 @@
     {
       "path": "/api/cron/polygon-signer",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-insurer-logs",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/square-sync",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

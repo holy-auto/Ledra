@@ -1,10 +1,17 @@
-import { NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { apiJson, apiInternalError } from "@/lib/api/response";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
 // GET: Fetch published announcements (with read status)
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    // 公開エンドポイントなので IP ベースで緩めにレート制限をかける
+    const rl = await checkRateLimit(`announcements:${getClientIp(req)}`, { limit: 60, windowSec: 60 });
+    if (!rl.allowed) {
+      return apiJson({ error: "rate_limited" }, { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } });
+    }
+
     const supabase = await createSupabaseServerClient();
     const { data: userRes } = await supabase.auth.getUser();
     const userId = userRes.user?.id;

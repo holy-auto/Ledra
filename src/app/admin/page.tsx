@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { logger } from "@/lib/logger";
 import PageHeader from "@/components/ui/PageHeader";
 import DashboardCharts from "./DashboardCharts";
 import OnboardingTour from "./OnboardingTour";
@@ -287,10 +288,22 @@ async function PlatformStats() {
   const supabase = await createSupabaseServerClient();
 
   const [pcsResult, csResult, icResult, rsResult] = await Promise.all([
-    Promise.resolve(supabase.rpc("platform_certificate_stats")).catch((): { data: null } => ({ data: null })),
-    Promise.resolve(supabase.rpc("platform_tenant_category_stats")).catch((): { data: null } => ({ data: null })),
-    Promise.resolve(supabase.rpc("platform_insurer_count")).catch((): { data: number } => ({ data: 0 })),
-    Promise.resolve(supabase.rpc("platform_regional_stats")).catch((): { data: null } => ({ data: null })),
+    Promise.resolve(supabase.rpc("platform_certificate_stats")).catch((e: unknown): { data: null } => {
+      logger.warn("platform_certificate_stats failed", { err: e instanceof Error ? e.message : String(e) });
+      return { data: null };
+    }),
+    Promise.resolve(supabase.rpc("platform_tenant_category_stats")).catch((e: unknown): { data: null } => {
+      logger.warn("platform_tenant_category_stats failed", { err: e instanceof Error ? e.message : String(e) });
+      return { data: null };
+    }),
+    Promise.resolve(supabase.rpc("platform_insurer_count")).catch((e: unknown): { data: number } => {
+      logger.warn("platform_insurer_count failed", { err: e instanceof Error ? e.message : String(e) });
+      return { data: 0 };
+    }),
+    Promise.resolve(supabase.rpc("platform_regional_stats")).catch((e: unknown): { data: null } => {
+      logger.warn("platform_regional_stats failed", { err: e instanceof Error ? e.message : String(e) });
+      return { data: null };
+    }),
   ]);
 
   const platformCertStats = pcsResult?.data ?? null;

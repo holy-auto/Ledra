@@ -39,7 +39,7 @@ type PublicStatusResponse = {
     expiry_value?: string | null;
     logo_asset_path?: string | null;
     footer_variant?: string | null;
-    current_version?: string | null;
+    current_version?: string | number | null;
     service_type?: string | null;
     ppf_coverage_json?: Record<string, any>[] | null;
     coating_products_json?: Record<string, any>[] | null;
