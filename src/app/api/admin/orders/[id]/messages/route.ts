@@ -1,8 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
+
+const orderMessageCreateSchema = z.object({
+  body: z.string().trim().min(1, "メッセージを入力してください").max(5000),
+  attachment_path: z
+    .string()
+    .trim()
+    .max(500)
+    .nullable()
+    .optional()
+    .transform((v) => v || null),
+  attachment_type: z
+    .string()
+    .trim()
+    .max(100)
+    .nullable()
+    .optional()
+    .transform((v) => v || null),
+});
 
 /**
  * GET /api/admin/orders/[id]/messages
@@ -71,12 +90,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!caller) return apiUnauthorized();
     const tenantId = caller.tenantId;
 
-    const reqBody = await req.json();
-    const { body, attachment_path, attachment_type } = reqBody;
-
-    if (!body || typeof body !== "string" || body.trim().length === 0) {
-      return apiValidationError("メッセージを入力してください");
+    const parsed = orderMessageCreateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
+    const { body, attachment_path, attachment_type } = parsed.data;
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
@@ -105,9 +123,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         sender_tenant_id: tenantId,
         from_tenant_id: order.from_tenant_id,
         to_tenant_id: order.to_tenant_id,
-        body: body.trim(),
-        attachment_path: attachment_path || null,
-        attachment_type: attachment_type || null,
+        body,
+        attachment_path,
+        attachment_type,
         is_system: false,
       })
       .select(

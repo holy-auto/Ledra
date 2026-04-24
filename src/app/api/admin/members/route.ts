@@ -8,6 +8,7 @@ import { logAuditEvent } from "@/lib/audit/certificateLog";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { hasPermission } from "@/lib/auth/permissions";
 import { ASSIGNABLE_ROLES, type Role } from "@/lib/auth/roles";
+import { memberAddSchema, memberDeleteSchema, memberRoleChangeSchema } from "@/lib/validations/member";
 import {
   apiJson,
   apiUnauthorized,
@@ -104,18 +105,15 @@ export async function POST(req: NextRequest) {
       return apiForbidden("メンバー追加の権限がありません。");
     }
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const email = (body?.email ?? "").trim().toLowerCase();
-    const displayName = (body?.display_name ?? "").trim() || null;
-    const role = (body?.role ?? "").trim() || null; // null → DB default
+    const parsed = memberAddSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { email, display_name: displayName, role } = parsed.data;
 
     // Validate role is assignable (prevent escalation to "owner")
     if (role && !ASSIGNABLE_ROLES.includes(role as Role)) {
       return apiValidationError(`無効なロールです。指定可能: ${ASSIGNABLE_ROLES.join(", ")}`);
-    }
-
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return apiValidationError("無効なメールアドレスです。");
     }
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
@@ -229,18 +227,11 @@ export async function PUT(req: NextRequest) {
       return apiForbidden("ロール変更の権限がありません。");
     }
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const targetUserId = (body?.user_id ?? "").trim();
-    const newRole = (body?.role ?? "").trim();
-
-    if (!targetUserId || !newRole) {
-      return apiValidationError("user_id と role は必須です。");
+    const parsed = memberRoleChangeSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-
-    const validRoles = ["admin", "staff", "viewer"];
-    if (!validRoles.includes(newRole)) {
-      return apiValidationError("無効なロールです。");
-    }
+    const { user_id: targetUserId, role: newRole } = parsed.data;
 
     // 自分自身のロール変更は不可
     if (targetUserId === caller.userId) {
@@ -298,12 +289,11 @@ export async function DELETE(req: NextRequest) {
       return apiForbidden("メンバー削除の権限がありません。");
     }
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const targetUserId = (body?.user_id ?? "").trim();
-
-    if (!targetUserId) {
-      return apiValidationError("user_id は必須です。");
+    const parsed = memberDeleteSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
+    const { user_id: targetUserId } = parsed.data;
 
     // 自分自身は削除不可
     if (targetUserId === caller.userId) {

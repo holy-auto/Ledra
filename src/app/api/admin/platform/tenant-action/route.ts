@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
@@ -14,7 +15,28 @@ import {
 
 export const dynamic = "force-dynamic";
 
-type TenantAction = "activate" | "deactivate" | "change_plan" | "reset_billing" | "send_notification";
+const tenantActionSchema = z
+  .object({
+    tenantId: z.string().uuid("tenantId は必須です"),
+    action: z.enum(["activate", "deactivate", "change_plan", "reset_billing", "send_notification"], {
+      message: "不明なアクションです",
+    }),
+    params: z
+      .object({
+        plan_tier: z.enum(["free", "starter", "pro", "enterprise"]).optional(),
+        message: z.string().trim().max(2000).optional(),
+      })
+      .partial()
+      .optional(),
+  })
+  .refine((v) => v.action !== "change_plan" || !!v.params?.plan_tier, {
+    message: "plan_tier が必要です",
+    path: ["params", "plan_tier"],
+  })
+  .refine((v) => v.action !== "send_notification" || !!v.params?.message, {
+    message: "message が必要です",
+    path: ["params", "message"],
+  });
 
 /**
  * POST /api/admin/platform/tenant-action
@@ -31,16 +53,11 @@ export async function POST(req: NextRequest) {
       return apiForbidden();
     }
 
-    const body = await req.json();
-    const { tenantId, action, params } = body as {
-      tenantId: string;
-      action: TenantAction;
-      params?: Record<string, unknown>;
-    };
-
-    if (!tenantId || !action) {
-      return apiValidationError("tenantId と action は必須です");
+    const parsed = tenantActionSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
+    const { tenantId, action, params } = parsed.data;
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
@@ -71,14 +88,8 @@ export async function POST(req: NextRequest) {
         break;
       }
       case "change_plan": {
-        const newPlan = params?.plan_tier as string;
-        if (!newPlan) {
-          return apiValidationError("plan_tier が必要です");
-        }
-        const validPlans = ["free", "starter", "pro", "enterprise"];
-        if (!validPlans.includes(newPlan)) {
-          return apiValidationError("無効なプランです");
-        }
+        // zod の refine で params.plan_tier の存在を強制済み。
+        const newPlan = params!.plan_tier!;
         const { error } = await admin.from("tenants").update({ plan_tier: newPlan }).eq("id", tenantId);
         if (error) throw error;
         result = { message: `${tenant.name} のプランを ${newPlan} に変更しました`, plan_tier: newPlan };
@@ -91,13 +102,10 @@ export async function POST(req: NextRequest) {
         break;
       }
       case "send_notification": {
-        const message = params?.message as string;
-        if (!message) {
-          return apiValidationError("message が���要です");
-        }
+        const message = params!.message!;
         // Get all members of the tenant
         const { data: members } = await admin.from("tenant_memberships").select("user_id").eq("tenant_id", tenantId);
-        const userIds = (members ?? []).map((m: any) => m.user_id);
+        const userIds = (members ?? []).map((m) => m.user_id as string);
         // Create notifications for each member
         if (userIds.length > 0) {
           const notifications = userIds.map((userId: string) => ({
@@ -112,8 +120,6 @@ export async function POST(req: NextRequest) {
         result = { message: `${tenant.name} の ${userIds.length}名に通知を送信しました` };
         break;
       }
-      default:
-        return apiValidationError("不明なアクションです");
     }
 
     // Log the action to admin_audit_logs

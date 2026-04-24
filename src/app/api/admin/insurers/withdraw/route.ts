@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
@@ -22,22 +23,15 @@ export async function POST(req: Request) {
     return apiForbidden();
   }
 
-  let body: any;
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("Invalid JSON");
+  const schema = z.object({
+    insurer_id: z.string().uuid("insurer_id is required"),
+    confirm: z.literal(true, { message: "confirm: true を指定して削除を確定してください" }),
+  });
+  const parsed = schema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
-
-  const { insurer_id, confirm } = body;
-
-  if (!insurer_id) {
-    return apiValidationError("insurer_id is required");
-  }
-
-  if (confirm !== true) {
-    return apiValidationError("confirm: true を指定して削除を確定してください");
-  }
+  const { insurer_id } = parsed.data;
 
   const { admin } = createTenantScopedAdmin(caller.tenantId);
 

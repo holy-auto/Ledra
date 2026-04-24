@@ -5,6 +5,11 @@ import { syncCreateEvent, syncUpdateEvent, syncDeleteEvent } from "@/lib/gcal/cl
 import { enforceBilling } from "@/lib/billing/guard";
 import { parsePagination } from "@/lib/api/pagination";
 import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import {
+  reservationCreateSchema,
+  reservationDeleteSchema,
+  reservationUpdateSchema,
+} from "@/lib/validations/reservation";
 
 export const dynamic = "force-dynamic";
 
@@ -122,38 +127,29 @@ export async function POST(req: NextRequest) {
     });
     if (deny) return deny;
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-
-    const title = String(body?.title ?? "").trim();
-    if (!title) return apiValidationError("missing_title");
-
-    const scheduledDate = String(body?.scheduled_date ?? "").trim();
-    if (!scheduledDate) return apiValidationError("missing_scheduled_date");
-
-    // 初期ステータス (未指定時は confirmed)。飛び込み案件用に arrived も許可。
-    const VALID_INITIAL_STATUS = ["confirmed", "arrived", "in_progress"] as const;
-    const requestedStatus = String(body?.status ?? "confirmed").trim();
-    const initialStatus: string = (VALID_INITIAL_STATUS as readonly string[]).includes(requestedStatus)
-      ? requestedStatus
-      : "confirmed";
+    const parsed = reservationCreateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const input = parsed.data;
 
     const row = {
       id: crypto.randomUUID(),
       tenant_id: caller.tenantId,
-      customer_id: String(body?.customer_id ?? "").trim() || null,
-      vehicle_id: String(body?.vehicle_id ?? "").trim() || null,
-      title,
-      menu_items_json: body?.menu_items_json ?? [],
-      note: String(body?.note ?? "").trim() || null,
-      scheduled_date: scheduledDate,
-      start_time: String(body?.start_time ?? "").trim() || null,
-      end_time: String(body?.end_time ?? "").trim() || null,
-      assigned_user_id: String(body?.assigned_user_id ?? "").trim() || null,
-      status: initialStatus,
-      estimated_amount: parseInt(String(body?.estimated_amount ?? 0), 10) || 0,
+      customer_id: input.customer_id,
+      vehicle_id: input.vehicle_id,
+      title: input.title,
+      menu_items_json: input.menu_items_json ?? [],
+      note: input.note,
+      scheduled_date: input.scheduled_date,
+      start_time: input.start_time,
+      end_time: input.end_time,
+      assigned_user_id: input.assigned_user_id,
+      status: input.status,
+      estimated_amount: input.estimated_amount ?? 0,
     };
 
-    const { data, error } = await supabase
+    const { data: reservation, error } = await supabase
       .from("reservations")
       .insert(row)
       .select(
@@ -166,17 +162,17 @@ export async function POST(req: NextRequest) {
 
     // ── Google Calendar 同期（非ブロッキング） ──
     syncCreateEvent(caller.tenantId, {
-      id: data.id,
-      title: data.title,
-      scheduled_date: data.scheduled_date,
-      start_time: data.start_time,
-      end_time: data.end_time,
-      note: data.note,
+      id: reservation.id,
+      title: reservation.title,
+      scheduled_date: reservation.scheduled_date,
+      start_time: reservation.start_time,
+      end_time: reservation.end_time,
+      note: reservation.note,
       customer_name: null,
       vehicle_label: null,
     }).catch((e) => console.error("[reservations] gcal sync create failed:", e));
 
-    return apiJson({ ok: true, reservation: data });
+    return apiJson({ ok: true, reservation });
   } catch (e: unknown) {
     return apiInternalError(e, "reservations create");
   }
@@ -196,31 +192,26 @@ export async function PUT(req: NextRequest) {
     });
     if (deny) return deny;
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const id = String(body?.id ?? "").trim();
-    if (!id) return apiValidationError("missing_id");
+    const parsed = reservationUpdateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { id, cancel_reason, ...rest } = parsed.data;
 
-    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    const updates: Record<string, unknown> = {
+      ...rest,
+      updated_at: new Date().toISOString(),
+    };
 
-    if (body.title !== undefined) updates.title = String(body.title).trim();
-    if (body.customer_id !== undefined) updates.customer_id = String(body.customer_id).trim() || null;
-    if (body.vehicle_id !== undefined) updates.vehicle_id = String(body.vehicle_id).trim() || null;
-    if (body.menu_items_json !== undefined) updates.menu_items_json = body.menu_items_json;
-    if (body.note !== undefined) updates.note = String(body.note ?? "").trim() || null;
-    if (body.scheduled_date !== undefined) updates.scheduled_date = body.scheduled_date;
-    if (body.start_time !== undefined) updates.start_time = String(body.start_time).trim() || null;
-    if (body.end_time !== undefined) updates.end_time = String(body.end_time).trim() || null;
-    if (body.assigned_user_id !== undefined) updates.assigned_user_id = String(body.assigned_user_id).trim() || null;
-    if (body.estimated_amount !== undefined)
-      updates.estimated_amount = parseInt(String(body.estimated_amount), 10) || 0;
+    // menu_items_json が undefined のキーは update で上書きしたくないので剥がす
+    for (const key of Object.keys(updates)) {
+      if (updates[key] === undefined) delete updates[key];
+    }
 
-    // ステータス変更
-    if (body.status !== undefined) {
-      updates.status = body.status;
-      if (body.status === "cancelled") {
-        updates.cancelled_at = new Date().toISOString();
-        updates.cancel_reason = String(body.cancel_reason ?? "").trim() || null;
-      }
+    // キャンセル時はタイムスタンプと理由を追記
+    if (rest.status === "cancelled") {
+      updates.cancelled_at = new Date().toISOString();
+      updates.cancel_reason = cancel_reason ?? null;
     }
 
     const { data, error } = await supabase
@@ -286,11 +277,14 @@ export async function DELETE(req: NextRequest) {
     });
     if (deny) return deny;
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const id = String(body?.id ?? "").trim();
-    if (!id) return apiValidationError("missing_id");
+    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = reservationDeleteSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { id } = parsed.data;
 
-    const hardDelete = body?.hard_delete === true;
+    const hardDelete = body.hard_delete === true;
 
     if (hardDelete) {
       // 完全削除（キャンセル済み or 完了のみ許可）

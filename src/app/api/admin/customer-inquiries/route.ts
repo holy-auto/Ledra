@@ -3,6 +3,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { customerInquiryPatchSchema } from "@/lib/validations/customer-inquiry";
 
 /** GET /api/admin/customer-inquiries — テナントの問い合わせ一覧 */
 export async function GET(req: Request) {
@@ -44,12 +45,11 @@ export async function PATCH(req: Request) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}));
-    const id = (body?.id ?? "").trim();
-    const newStatus = body?.status;
-    const reply = typeof body?.admin_reply === "string" ? body.admin_reply.trim() : undefined;
-
-    if (!id) return apiValidationError("missing id");
+    const parsed = customerInquiryPatchSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { id, status: newStatus, admin_reply: reply } = parsed.data;
 
     // 所属テナントの問い合わせのみ更新可
     const { admin } = createTenantScopedAdmin(caller.tenantId);
@@ -63,7 +63,7 @@ export async function PATCH(req: Request) {
     if (!existing) return apiValidationError("not found");
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (newStatus && ["new", "read", "replied"].includes(newStatus)) updates.status = newStatus;
+    if (newStatus) updates.status = newStatus;
     if (reply !== undefined) {
       updates.admin_reply = reply;
       updates.status = "replied";

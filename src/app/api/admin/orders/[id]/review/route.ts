@@ -1,8 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
+
+const orderReviewCreateSchema = z.object({
+  rating: z.coerce
+    .number()
+    .int()
+    .min(1, "rating は 1〜5 の整数で指定してください")
+    .max(5, "rating は 1〜5 の整数で指定してください"),
+  comment: z
+    .string()
+    .trim()
+    .max(1000)
+    .nullable()
+    .optional()
+    .transform((v) => v || null),
+});
 
 /**
  * POST /api/admin/orders/[id]/review
@@ -18,12 +34,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!caller) return apiUnauthorized();
     const tenantId = caller.tenantId;
 
-    const body = await req.json();
-    const { rating, comment } = body;
-
-    if (!rating || typeof rating !== "number" || rating < 1 || rating > 5) {
-      return apiValidationError("rating は 1〜5 の整数で指定してください");
+    const parsed = orderReviewCreateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
+    const { rating, comment } = parsed.data;
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
@@ -70,8 +85,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         job_order_id: id,
         reviewer_tenant_id: reviewerTenantId,
         reviewed_tenant_id: reviewedTenantId,
-        rating: Math.round(rating),
-        comment: comment?.trim() || null,
+        rating,
+        comment,
       })
       .select(
         "id, job_order_id, reviewer_tenant_id, reviewed_tenant_id, rating, comment, published_at, created_at, updated_at",
@@ -93,7 +108,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         actor_user_id: caller.userId,
         actor_tenant_id: tenantId,
         action: "review_submitted",
-        new_value: { rating: Math.round(rating), reviewed_tenant_id: reviewedTenantId },
+        new_value: { rating, reviewed_tenant_id: reviewedTenantId },
       })
       .then(() => {}, console.error);
 

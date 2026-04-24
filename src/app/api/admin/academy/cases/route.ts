@@ -3,11 +3,17 @@
  * Academy事例一覧取得 & 事例公開（C-1）
  */
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { generateAcademyCaseSummary } from "@/lib/ai/academyFeedback";
+
+const academyCaseActionSchema = z.object({
+  case_id: z.string().uuid("case_id が必要です"),
+  action: z.enum(["publish", "unpublish"], { message: "action は publish または unpublish です" }),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -57,10 +63,11 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json();
-    const { case_id, action } = body as { case_id?: string; action?: "publish" | "unpublish" };
-
-    if (!case_id) return apiValidationError("case_id が必要です");
+    const parsed = academyCaseActionSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { case_id, action } = parsed.data;
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
@@ -143,16 +150,13 @@ export async function POST(req: NextRequest) {
       return apiOk({ message: "事例を公開しました" });
     }
 
-    if (action === "unpublish") {
-      await admin
-        .from("academy_cases")
-        .update({ is_published: false, updated_at: new Date().toISOString() })
-        .eq("id", case_id);
+    // action === "unpublish"
+    await admin
+      .from("academy_cases")
+      .update({ is_published: false, updated_at: new Date().toISOString() })
+      .eq("id", case_id);
 
-      return apiOk({ message: "事例を非公開にしました" });
-    }
-
-    return apiValidationError("action は publish または unpublish です");
+    return apiOk({ message: "事例を非公開にしました" });
   } catch (e: unknown) {
     return apiInternalError(e);
   }

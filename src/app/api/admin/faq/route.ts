@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { faqCreateSchema, faqDeleteSchema } from "@/lib/validations/faq";
 
 export const dynamic = "force-dynamic";
 
@@ -46,17 +47,14 @@ export async function POST(req: NextRequest) {
       return apiForbidden();
     }
 
-    const body = await req.json();
-    const question = String(body?.question ?? "").trim();
-    const answer = String(body?.answer ?? "").trim();
-
-    if (!question || !answer) {
-      return apiValidationError("question and answer required");
+    const parsed = faqCreateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
 
     const { data, error } = await supabase
       .from("support_faq")
-      .insert({ question, answer, sort_order: body?.sort_order ?? 0 })
+      .insert(parsed.data)
       .select("id, question, answer, sort_order, created_at")
       .single();
 
@@ -76,11 +74,12 @@ export async function DELETE(req: NextRequest) {
       return apiForbidden();
     }
 
-    const body = await req.json();
-    const id = String(body?.id ?? "").trim();
-    if (!id) return apiValidationError("id is required");
+    const parsed = faqDeleteSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
 
-    await supabase.from("support_faq").delete().eq("id", id);
+    await supabase.from("support_faq").delete().eq("id", parsed.data.id);
     return apiJson({ ok: true });
   } catch (e) {
     return apiInternalError(e, "faq DELETE");

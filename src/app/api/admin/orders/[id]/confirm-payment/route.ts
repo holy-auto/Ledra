@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
+
+const confirmPaymentSchema = z.object({
+  payment_method: z.string().trim().max(50).optional(),
+  amount: z.coerce.number().int().min(0).optional(),
+});
 
 /**
  * POST /api/admin/orders/[id]/confirm-payment
@@ -18,7 +24,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const tenantId = caller.tenantId;
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
-    const body = await req.json().catch(() => ({}));
+    const parsed = confirmPaymentSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const body = parsed.data;
 
     // 注文取得
     const { data: order, error: fetchErr } = await admin
@@ -75,17 +85,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       updateData.payment_status = "confirmed_by_vendor";
     }
 
+    // UPDATE にも tenant 検証フィルタをコピー (TOCTOU 対策)。
+    // 別テナントの注文を誤って更新しないよう id + or(...) で二重にスコープ。
     const { data, error } = await admin
       .from("job_orders")
       .update(updateData)
       .eq("id", id)
+      .or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`)
       .select(
         "id, public_id, from_tenant_id, to_tenant_id, title, status, payment_status, payment_method, accepted_amount, payment_confirmed_by_client, payment_confirmed_by_vendor, created_at, updated_at",
       )
-      .single();
+      .maybeSingle();
 
     if (error) {
       return apiInternalError(error, "confirm-payment update");
+    }
+    if (!data) {
+      return apiNotFound("not_found_or_conflict");
     }
 
     // 監査ログ

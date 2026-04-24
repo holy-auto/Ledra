@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
@@ -11,6 +12,11 @@ import {
   apiInternalError,
 } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+
+const piiDisclosureConsentSchema = z.object({
+  certificate_id: z.string().uuid("certificate_id は必須です。"),
+  insurer_id: z.string().uuid("insurer_id は必須です。"),
+});
 
 export const runtime = "nodejs";
 
@@ -55,17 +61,11 @@ export async function POST(req: NextRequest) {
   if (!caller) return apiUnauthorized();
   if (!requireMinRole(caller, "admin")) return apiForbidden("管理者権限が必要です。");
 
-  let body: { certificate_id?: string; insurer_id?: string };
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("Invalid JSON");
+  const parsed = piiDisclosureConsentSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
-
-  const { certificate_id, insurer_id } = body;
-  if (!certificate_id || !insurer_id) {
-    return apiValidationError("certificate_id と insurer_id は必須です。");
-  }
+  const { certificate_id, insurer_id } = parsed.data;
 
   const { admin } = createTenantScopedAdmin(caller.tenantId);
 

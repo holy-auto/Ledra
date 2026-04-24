@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { bookingSettingsPutSchema } from "@/lib/validations/booking-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -78,11 +79,16 @@ export async function PUT(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}));
-    const slots: any[] = body.slots ?? [];
-    const closedDays: any[] = body.closed_days ?? [];
-    const deletedSlotIds: string[] = body.deleted_slot_ids ?? [];
-    const deletedClosedDayIds: string[] = body.deleted_closed_day_ids ?? [];
+    const parsed = bookingSettingsPutSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const {
+      slots,
+      closed_days: closedDays,
+      deleted_slot_ids: deletedSlotIds,
+      deleted_closed_day_ids: deletedClosedDayIds,
+    } = parsed.data;
 
     // ── スロット削除 ──
     if (deletedSlotIds.length > 0) {
@@ -143,7 +149,7 @@ export async function PUT(req: NextRequest) {
 
     // ── 定休日 upsert ──
     for (const cd of closedDays) {
-      const payload: any = {
+      const payload: Record<string, unknown> = {
         tenant_id: caller.tenantId,
         type: cd.type,
         note: cd.note ?? null,

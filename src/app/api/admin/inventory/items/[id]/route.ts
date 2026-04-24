@@ -2,20 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError, apiNotFound } from "@/lib/api/response";
+import { inventoryItemUpdateSchema } from "@/lib/validations/inventory";
 
 export const dynamic = "force-dynamic";
-
-function toNumber(v: unknown, fallback = 0): number {
-  if (v === null || v === undefined || v === "") return fallback;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function toInt(v: unknown): number | null {
-  if (v === null || v === undefined || v === "") return null;
-  const n = parseInt(String(v), 10);
-  return Number.isFinite(n) ? n : null;
-}
 
 // ─── GET: 個別取得 (履歴含む) ───
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -60,22 +49,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!caller) return apiUnauthorized();
 
     const { id } = await params;
-    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-
-    const updates: Record<string, unknown> = {};
-    if (body.name !== undefined) {
-      const name = String(body.name ?? "").trim();
-      if (!name) return apiValidationError("品目名は必須です");
-      updates.name = name;
+    const parsed = inventoryItemUpdateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-    if (body.sku !== undefined) updates.sku = String(body.sku ?? "").trim() || null;
-    if (body.category !== undefined) updates.category = String(body.category ?? "").trim() || null;
-    if (body.unit !== undefined) updates.unit = String(body.unit ?? "").trim() || "個";
-    if (body.min_stock !== undefined) updates.min_stock = toNumber(body.min_stock, 0);
-    if (body.unit_cost !== undefined) updates.unit_cost = toInt(body.unit_cost);
-    if (body.note !== undefined) updates.note = String(body.note ?? "").trim() || null;
-    if (body.is_active !== undefined) updates.is_active = !!body.is_active;
-    // current_stock は apply_inventory_movement 経由でのみ更新（監査証跡のため）
+
+    // current_stock は zod スキーマに含めず、apply_inventory_movement 経由のみ許可
+    // (監査証跡のため)。
+    const updates: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(parsed.data)) {
+      if (v !== undefined) updates[k] = v;
+    }
 
     const { data, error } = await supabase
       .from("inventory_items")

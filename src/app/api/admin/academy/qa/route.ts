@@ -4,11 +4,17 @@
  * minPlan: standard
  */
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateQAAnswer } from "@/lib/ai/qaAssistant";
+
+const qaSchema = z.object({
+  question: z.string().trim().min(5, "質問を5文字以上で入力してください").max(2000),
+  category: z.string().trim().max(100).optional(),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -24,19 +30,14 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const body = await req.json();
-    const { question, category } = body as {
-      question?: string;
-      category?: string;
-    };
-
-    if (!question || question.trim().length < 5) {
-      return apiValidationError("質問を5文字以上で入力してください");
+    const parsed = qaSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
 
     const answer = await generateQAAnswer({
-      question: question.trim(),
-      category,
+      question: parsed.data.question,
+      category: parsed.data.category,
       tenantId: caller.tenantId,
     });
 

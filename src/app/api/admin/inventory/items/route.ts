@@ -3,6 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError, apiOk } from "@/lib/api/response";
 import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
+import { inventoryItemCreateSchema } from "@/lib/validations/inventory";
 
 export const dynamic = "force-dynamic";
 
@@ -20,18 +21,6 @@ type InventoryItemRow = {
   created_at: string;
   updated_at: string;
 };
-
-function toNumber(v: unknown, fallback = 0): number {
-  if (v === null || v === undefined || v === "") return fallback;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function toInt(v: unknown): number | null {
-  if (v === null || v === undefined || v === "") return null;
-  const n = parseInt(String(v), 10);
-  return Number.isFinite(n) ? n : null;
-}
 
 // ─── GET: 在庫アイテム一覧 ───
 export async function GET(req: NextRequest) {
@@ -89,20 +78,14 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-    const name = String(body.name ?? "").trim();
-    if (!name) return apiValidationError("品目名は必須です");
+    const parsed = inventoryItemCreateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
 
     const row = {
       tenant_id: caller.tenantId,
-      name,
-      sku: String(body.sku ?? "").trim() || null,
-      category: String(body.category ?? "").trim() || null,
-      unit: String(body.unit ?? "").trim() || "個",
-      current_stock: toNumber(body.current_stock, 0),
-      min_stock: toNumber(body.min_stock, 0),
-      unit_cost: toInt(body.unit_cost),
-      note: String(body.note ?? "").trim() || null,
+      ...parsed.data,
     };
 
     const { data, error } = await supabase
