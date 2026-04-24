@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import PageHeader from "@/components/ui/PageHeader";
@@ -9,6 +10,7 @@ import LayoutPreview from "./LayoutPreview";
 type ApiResp = {
   templates: DocumentTemplate[];
   tenant_default_template_id: string | null;
+  message?: string;
 };
 
 type EditorState = {
@@ -41,7 +43,7 @@ export default function TemplatesClient() {
     try {
       const res = await fetch("/api/admin/document-templates", { cache: "no-store" });
       const j = (await res.json()) as ApiResp;
-      if (!res.ok) throw new Error((j as any)?.message ?? "読み込み失敗");
+      if (!res.ok) throw new Error(j?.message ?? "読み込み失敗");
       setTemplates(j.templates ?? []);
       setTenantDefaultId(j.tenant_default_template_id ?? null);
       setErr(null);
@@ -92,7 +94,7 @@ export default function TemplatesClient() {
           layout_config: editor.layout,
         }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setMsg({ text: "保存しました", ok: true });
       await load();
@@ -120,7 +122,7 @@ export default function TemplatesClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
       if (editor?.id === id) setEditor(null);
       await load();

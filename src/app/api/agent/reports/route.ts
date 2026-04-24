@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
       .filter((c) => c.status === "approved" || c.status === "paid")
       .reduce((s, c) => s + ((c.amount as number) ?? 0), 0);
 
-    return NextResponse.json({
+    return apiJson({
       monthly: monthlyData,
       status_breakdown: statusCounts,
       totals: {

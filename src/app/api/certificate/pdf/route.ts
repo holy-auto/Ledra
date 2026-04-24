@@ -5,19 +5,18 @@ import { NextResponse } from "next/server";
 import { Document, Page, Text, View, Image, StyleSheet, Font } from "@react-pdf/renderer";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { renderBrandedCertificatePdf } from "@/lib/template-options/renderBrandedCertificate";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { logger } from "@/lib/logger";
 import type { TemplateConfig } from "@/types/templateOption";
 import type { CertRow } from "@/lib/pdfCertificate";
 
 export const dynamic = "force-dynamic";
 
-const NOTO_SANS_JP =
-  "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-400-normal.ttf";
-const NOTO_SANS_JP_BOLD =
-  "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-700-normal.ttf";
+const NOTO_SANS_JP = "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-400-normal.ttf";
+const NOTO_SANS_JP_BOLD = "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-700-normal.ttf";
 
 Font.register({
   family: "NotoSansJP",
@@ -119,28 +118,28 @@ function PdfDocEl(cert: CertPublic, publicUrl: string, qrDataUrl: string) {
           null,
           E(Text, { style: styles.title }, cert.tenant_name ?? "施工店"),
           E(Text, { style: styles.meta }, "施工証明書（PDF）"),
-          E(Text, { style: styles.meta }, `Public ID: ${cert.public_id}`)
+          E(Text, { style: styles.meta }, `Public ID: ${cert.public_id}`),
         ),
         E(
           View,
           { style: { alignItems: "flex-end" } },
           E(Image, { src: qrDataUrl, style: styles.qr }),
-          E(Text, { style: styles.small }, publicUrl)
-        )
+          E(Text, { style: styles.small }, publicUrl),
+        ),
       ),
 
       E(
         View,
         { style: styles.box },
         E(Text, { style: styles.label }, "お客様"),
-        E(Text, { style: styles.value }, cert.customer_name ?? "-")
+        E(Text, { style: styles.value }, cert.customer_name ?? "-"),
       ),
 
       E(
         View,
         { style: styles.box },
         E(Text, { style: styles.label }, "施工内容"),
-        E(Text, { style: styles.value }, cert.content_free_text ?? "-")
+        E(Text, { style: styles.value }, cert.content_free_text ?? "-"),
       ),
 
       E(
@@ -150,17 +149,17 @@ function PdfDocEl(cert: CertPublic, publicUrl: string, qrDataUrl: string) {
         E(
           Text,
           { style: styles.value },
-          `${(cert.expiry_type ?? "").toString()}: ${(cert.expiry_value ?? "").toString()}`
-        )
+          `${(cert.expiry_type ?? "").toString()}: ${(cert.expiry_value ?? "").toString()}`,
+        ),
       ),
 
       E(
         View,
         { style: styles.footer },
         E(Text, null, `公開URL: ${publicUrl}`),
-        E(Text, null, "HOLY監修フッター（信頼担保）")
-      )
-    )
+        E(Text, null, "HOLY監修フッター（信頼担保）"),
+      ),
+    ),
   );
 }
 
@@ -169,14 +168,14 @@ export async function GET(req: Request) {
   const ip = getClientIp(req);
   const rl = await checkRateLimit(`pdf:${ip}`, { limit: 10, windowSec: 60 });
   if (!rl.allowed) {
-    return NextResponse.json(
+    return apiJson(
       { error: "rate_limited", message: "リクエストが多すぎます。しばらくしてから再度お試しください。" },
       { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
     );
   }
 
-  const deny = await enforceBilling(req as any, { minPlan: "free", action: "public_pdf" });
-  if (deny) return deny as any;
+  const deny = await enforceBilling(req, { minPlan: "free", action: "public_pdf" });
+  if (deny) return deny;
   const { searchParams } = new URL(req.url);
   const pid = (searchParams.get("pid") ?? "").trim();
 
@@ -194,7 +193,7 @@ export async function GET(req: Request) {
 
   // 公開PDF閲覧ログ（tenant_id を取得して記録）
   try {
-    const adm = createAdminClient();
+    const adm = createServiceRoleAdmin("public certificate PDF — lookup by public_id, caller is anonymous");
     const { data: certRow } = await adm
       .from("certificates")
       .select("tenant_id,id,vehicle_id")
@@ -213,7 +212,10 @@ export async function GET(req: Request) {
         userAgent: meta.userAgent,
       });
     }
-  } catch { /* audit failure should not block PDF */ }
+  } catch (e: unknown) {
+    // audit log failure must not block PDF delivery, but we still want it in logs
+    logger.warn("certificate pdf audit log failed", { err: e instanceof Error ? e.message : String(e) });
+  }
 
   const fallbackOrigin = await getFallbackOrigin();
   const origin = buildOriginFromCert(cert, fallbackOrigin);
@@ -221,7 +223,7 @@ export async function GET(req: Request) {
 
   // ── ブランドテンプレートが有効ならブランドPDFを生成 ──
   try {
-    const adm2 = createAdminClient();
+    const adm2 = createServiceRoleAdmin("public certificate PDF — lookup by public_id for brand PDF");
     const certForTenant = await adm2
       .from("certificates")
       .select("tenant_id")
@@ -248,13 +250,28 @@ export async function GET(req: Request) {
           .maybeSingle();
 
         if (tplConfig?.config_json) {
-          // Fetch additional fields for PPF support
+          // Fetch additional fields for PPF support. `.maybeSingle<T>()`
+          // propagates the column types so downstream reads don't need
+          // per-field `as any` casts.
+          type FullCertRow = Pick<
+            CertRow,
+            | "ppf_coverage_json"
+            | "service_type"
+            | "coating_products_json"
+            | "warranty_period_end"
+            | "warranty_exclusions"
+            | "current_version"
+            | "maintenance_json"
+            | "body_repair_json"
+          >;
           const { data: fullCert } = await adm2
             .from("certificates")
-            .select("ppf_coverage_json, service_type, coating_products_json, warranty_period_end, warranty_exclusions, current_version, maintenance_json, body_repair_json")
+            .select(
+              "ppf_coverage_json, service_type, coating_products_json, warranty_period_end, warranty_exclusions, current_version, maintenance_json, body_repair_json",
+            )
             .eq("public_id", pid)
             .limit(1)
-            .maybeSingle();
+            .maybeSingle<FullCertRow>();
 
           const brandedRow: CertRow = {
             public_id: cert.public_id,
@@ -262,19 +279,19 @@ export async function GET(req: Request) {
             vehicle_info_json: cert.vehicle_info_json ?? {},
             content_free_text: cert.content_free_text ?? null,
             content_preset_json: cert.content_preset_json ?? {},
-            coating_products_json: (fullCert?.coating_products_json as any[] | null) ?? null,
-            ppf_coverage_json: (fullCert?.ppf_coverage_json as any[] | null) ?? null,
-            maintenance_json: (fullCert?.maintenance_json as any) ?? null,
-            body_repair_json: (fullCert?.body_repair_json as any) ?? null,
-            service_type: (fullCert?.service_type as string | null) ?? null,
+            coating_products_json: fullCert?.coating_products_json ?? null,
+            ppf_coverage_json: fullCert?.ppf_coverage_json ?? null,
+            maintenance_json: fullCert?.maintenance_json ?? null,
+            body_repair_json: fullCert?.body_repair_json ?? null,
+            service_type: fullCert?.service_type ?? null,
             expiry_type: cert.expiry_type ?? null,
             expiry_value: cert.expiry_value ?? null,
-            warranty_period_end: (fullCert?.warranty_period_end as string | null) ?? null,
-            warranty_exclusions: (fullCert?.warranty_exclusions as string | null) ?? null,
+            warranty_period_end: fullCert?.warranty_period_end ?? null,
+            warranty_exclusions: fullCert?.warranty_exclusions ?? null,
             logo_asset_path: cert.logo_asset_path ?? null,
             created_at: cert.created_at ?? new Date().toISOString(),
             tenant_custom_domain: cert.tenant_custom_domain,
-            current_version: (fullCert?.current_version as number | null) ?? null,
+            current_version: fullCert?.current_version ?? null,
           };
 
           const brandedBuf = await renderBrandedCertificatePdf(
@@ -283,11 +300,9 @@ export async function GET(req: Request) {
             tplConfig.config_json as TemplateConfig,
           );
 
-          const ab = (brandedBuf as any).buffer
-            ? (brandedBuf as any).buffer.slice((brandedBuf as any).byteOffset ?? 0, ((brandedBuf as any).byteOffset ?? 0) + (brandedBuf as any).byteLength)
-            : brandedBuf;
-
-          return new NextResponse(ab as any, {
+          // Copy out of Node's shared Buffer pool before handing to the
+          // network layer, so later allocations can't overwrite our bytes.
+          return new NextResponse(new Uint8Array(brandedBuf), {
             status: 200,
             headers: {
               "Content-Type": "application/pdf",
@@ -308,11 +323,9 @@ export async function GET(req: Request) {
 
   const buf = await renderToBuffer(PdfDocEl(cert, publicUrl, qrDataUrl));
 
-  const ab = (buf as any).buffer
-    ? (buf as any).buffer.slice((buf as any).byteOffset ?? 0, ((buf as any).byteOffset ?? 0) + (buf as any).byteLength)
-    : buf;
-
-  return new NextResponse(ab as any, {
+  // See branded-template path above: detach from Node's shared Buffer pool
+  // before sending, so the response body bytes are stable.
+  return new NextResponse(new Uint8Array(buf), {
     status: 200,
     headers: {
       "Content-Type": "application/pdf",

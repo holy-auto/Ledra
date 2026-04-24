@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { apiJson, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   const offset = Math.max(parseInt(url.searchParams.get("offset") ?? "0", 10) || 0, 0);
 
   try {
-    const admin = createAdminClient();
+    const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
     // Build query with join to insurer_users for display_name
     let query = admin
@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
       const { data: fallbackData, error: fallbackErr } = await fallbackQuery;
       if (fallbackErr) return apiInternalError(fallbackErr, "insurer audit logs");
 
-      return NextResponse.json({
+      return apiJson({
         logs: (fallbackData ?? []).map((l: any) => ({
           ...l,
           user_display_name: null,
@@ -106,7 +106,7 @@ export async function GET(req: NextRequest) {
       .eq("insurer_id", caller.insurerId)
       .order("display_name", { ascending: true });
 
-    return NextResponse.json({
+    return apiJson({
       logs,
       users: userList ?? [],
       limit,

@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { apiJson, apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data: tenant } = await admin
       .from("tenants")
       .select("stripe_connect_account_id, stripe_connect_onboarded, name")
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
       type: "account_onboarding",
     });
 
-    return NextResponse.json({
+    return apiJson({
       ok: true,
       account_id: accountId,
       onboarding_url: accountLink.url,
@@ -82,7 +82,7 @@ export async function GET() {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data: tenant } = await admin
       .from("tenants")
       .select("stripe_connect_account_id, stripe_connect_onboarded")
@@ -93,7 +93,7 @@ export async function GET() {
 
     const accountId = tenant.stripe_connect_account_id as string | null;
     if (!accountId) {
-      return NextResponse.json({
+      return apiJson({
         connected: false,
         onboarded: false,
         account_id: null,
@@ -111,7 +111,7 @@ export async function GET() {
       await admin.from("tenants").update({ stripe_connect_onboarded: onboarded }).eq("id", caller.tenantId);
     }
 
-    return NextResponse.json({
+    return apiJson({
       connected: true,
       onboarded,
       account_id: accountId,

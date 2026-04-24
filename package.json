@@ -20,6 +20,9 @@
     "demo:setup-tenant-user": "tsx scripts/setup-demo-tenant-user.ts",
     "demo:reset-tenant": "tsx scripts/setup-demo-tenant.ts --reset"
   },
+  "overrides": {
+    "picomatch": "^4.0.4"
+  },
   "lint-staged": {
     "src/**/*.{ts,tsx}": [
       "prettier --write",
@@ -53,7 +56,7 @@
     "google-auth-library": "^10.6.2",
     "import-in-the-middle": "^3.0.0",
     "jszip": "^3.10.1",
-    "next": "16.2.2",
+    "next": "^16.2.4",
     "posthog-js": "^1.369.5",
     "qrcode": "^1.5.4",
     "react": "19.2.4",

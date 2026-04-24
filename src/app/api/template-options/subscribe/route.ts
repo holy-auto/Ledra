@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import Stripe from "stripe";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerFull } from "@/lib/api/auth";
 import { apiOk, apiUnauthorized, apiValidationError, apiInternalError, apiError } from "@/lib/api/response";
 import { createTemplateOptionCheckout } from "@/lib/template-options/stripe";
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerFull(supabase);
     if (!caller) return apiUnauthorized();
 
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { option_type, platform_template_id } = parsed.data;
 
     // 既存契約チェック

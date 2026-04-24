@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +33,7 @@ export async function GET() {
 
     if (error) throw error;
 
-    return NextResponse.json({ contracts: data ?? [] });
+    return apiJson({ contracts: data ?? [] });
   } catch (e) {
     return apiInternalError(e, "agent/contracts GET");
   }

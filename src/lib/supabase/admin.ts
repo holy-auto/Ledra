@@ -66,6 +66,38 @@ export function createTenantScopedAdmin(tenantId: string) {
 }
 
 /**
+ * Platform-admin escape hatch for legitimate service-role uses that
+ * genuinely span every tenant (cron jobs, webhooks, public token lookups,
+ * pre-authentication flows).
+ *
+ * The `reason` string is a **mandatory breadcrumb**: it shows up in the
+ * call site and in ESLint grep results so that reviewers can confirm why
+ * the un-scoped client is justified. The string itself is not validated
+ * at runtime beyond non-emptiness.
+ *
+ * @security **CRITICAL** — This client bypasses RLS across every tenant.
+ * Use `createTenantScopedAdmin(tenantId)` / `createInsurerScopedAdmin(insurerId)`
+ * whenever a scope identifier is available. Only reach for this helper
+ * when the work is truly platform-wide.
+ *
+ * @example
+ * ```ts
+ * const admin = createServiceRoleAdmin("cron:billing sweeps every tenant");
+ * ```
+ *
+ * @throws {Error} if reason is falsy or empty
+ */
+export function createServiceRoleAdmin(reason: string): AnySupabaseClient {
+  if (!reason || typeof reason !== "string" || reason.trim() === "") {
+    throw new Error(
+      "[security] createServiceRoleAdmin requires a non-empty reason string. " +
+        "Document why platform-wide access is legitimate here.",
+    );
+  }
+  return getSupabaseAdmin();
+}
+
+/**
  * Insurer-scoped admin client wrapper.
  *
  * Use for insurer-facing routes (`/api/insurer/*`) where authorization is

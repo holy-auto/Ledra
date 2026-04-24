@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +22,7 @@ export async function GET() {
       .eq("agent_id", agent.agent_id)
       .order("created_at", { ascending: false });
 
-    return NextResponse.json({ invoices: invoices ?? [] });
+    return apiJson({ invoices: invoices ?? [] });
   } catch (e) {
     return apiInternalError(e, "agent/invoices GET");
   }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     const ip = getClientIp(req);
     const rl = await checkRateLimit(`cert-verify:${ip}`, { limit: 10, windowSec: 60 });
     if (!rl.allowed) {
-      return NextResponse.json(
+      return apiJson(
         { error: "rate_limited", message: "リクエストが多すぎます。しばらくしてから再度お試しください。" },
         { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
       );
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     const pid = req.nextUrl.searchParams.get("pid");
     if (!pid) return apiValidationError("pid は必須です。");
 
-    const supabase = getSupabaseAdmin();
+    const supabase = createServiceRoleAdmin("public certificate — lookup by public_id, no caller");
 
     const { data: cert, error } = await supabase
       .from("certificates")
@@ -43,10 +43,7 @@ export async function GET(req: NextRequest) {
 
     // Return unverified for non-existent IDs without revealing existence
     if (!cert) {
-      return NextResponse.json(
-        { verified: false },
-        { status: 200, headers: { "cache-control": "no-store" } },
-      );
+      return apiJson({ verified: false }, { status: 200, headers: { "cache-control": "no-store" } });
     }
 
     // Fetch shop name
@@ -57,8 +54,8 @@ export async function GET(req: NextRequest) {
         .select("name, slug")
         .eq("id", cert.tenant_id)
         .limit(1)
-        .maybeSingle();
-      shopName = (tenant as any)?.name ?? (tenant as any)?.slug ?? null;
+        .maybeSingle<{ name: string | null; slug: string | null }>();
+      shopName = tenant?.name ?? tenant?.slug ?? null;
     }
 
     const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/c/${cert.public_id}`;
@@ -66,7 +63,7 @@ export async function GET(req: NextRequest) {
     // Format issued_at as YYYY-MM-DD
     const issuedAt = cert.created_at ? cert.created_at.slice(0, 10) : null;
 
-    return NextResponse.json(
+    return apiJson(
       {
         verified: true,
         status: cert.status,

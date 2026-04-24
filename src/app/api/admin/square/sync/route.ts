@@ -1,7 +1,7 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { getAdminClient } from "@/lib/api/auth";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import {
   apiOk,
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     const limited = await checkRateLimit(req, "auth", `square-sync:${caller.tenantId}`);
     if (limited) return limited;
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // 接続情報を確認
     const { data: conn } = await admin
@@ -67,9 +67,7 @@ export async function POST(req: NextRequest) {
     // リクエストボディから日付範囲を取得（デフォルト: 過去90日）
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const now = new Date();
-    const defaultFrom = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
-      .toISOString()
-      .slice(0, 10);
+    const defaultFrom = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const defaultTo = now.toISOString().slice(0, 10);
     const from = (body?.from as string) || defaultFrom;
     const to = (body?.to as string) || defaultTo;

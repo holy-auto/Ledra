@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useRef, useState } from "react";
 import useSWR from "swr";
@@ -85,7 +86,7 @@ export default function MenuItemsClient() {
           tax_category: parseInt(formTaxCategory, 10),
         }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setShowForm(false);
       setFormName("");
@@ -130,7 +131,7 @@ export default function MenuItemsClient() {
           tax_category: parseInt(editTaxCategory, 10),
         }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setEditingId(null);
       setSaveMsg({ text: "品目を更新しました", ok: true });
@@ -153,7 +154,7 @@ export default function MenuItemsClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setSaveMsg({ text: "品目を無効化しました", ok: true });
       mutate();
@@ -187,7 +188,7 @@ export default function MenuItemsClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action: "csv_import", csv: csvText }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setCsvText("");
       setCsvMsg({ text: j.message ?? "CSVインポートが完了しました", ok: true });

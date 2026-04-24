@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { apiInternalError, apiUnauthorized, apiForbidden } from "@/lib/api/response";
+import { apiJson, apiInternalError, apiUnauthorized, apiForbidden } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +42,7 @@ export async function GET() {
     const requiredCourses = enriched.filter((c: any) => c.is_required).length;
     const requiredCompleted = enriched.filter((c: any) => c.is_required && c.progress?.status === "completed").length;
 
-    return NextResponse.json({
+    return apiJson({
       courses: enriched,
       stats: {
         total: totalCourses,
@@ -91,7 +91,7 @@ export async function PUT(request: NextRequest) {
       .single();
 
     if (error) return apiInternalError(error, "agent training PUT");
-    return NextResponse.json({ progress: data });
+    return apiJson({ progress: data });
   } catch (e) {
     return apiInternalError(e, "agent training PUT");
   }

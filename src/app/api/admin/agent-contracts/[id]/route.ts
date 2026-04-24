@@ -1,10 +1,18 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getAdminClient } from "@/lib/api/auth";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
-import { apiUnauthorized, apiForbidden, apiInternalError, apiNotFound, apiValidationError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiForbidden,
+  apiInternalError,
+  apiNotFound,
+  apiValidationError,
+} from "@/lib/api/response";
+import { notifyAgentSignRequest } from "@/lib/agent/email";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -32,7 +40,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
     if (!caller) return apiUnauthorized();
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data, error } = await admin
       .from("agent_signing_requests")
       .select(
@@ -43,7 +51,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
 
     if (error || !data) return apiNotFound("contract not found");
 
-    return NextResponse.json({ contract: data });
+    return apiJson({ contract: data });
   } catch (e) {
     return apiInternalError(e, "admin/agent-contracts [id] GET");
   }
@@ -64,7 +72,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
 
     const body = await request.json();
     const { action } = body;
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     const { data: record, error: fetchErr } = await admin
       .from("agent_signing_requests")
@@ -104,9 +112,18 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
       const signUrl = `${baseUrl}/agent-sign/${newToken}`;
 
-      // TODO: resend email with new sign_url
+      if (updated) {
+        await notifyAgentSignRequest(updated.signer_email, {
+          signerName: updated.signer_name,
+          title: updated.title,
+          signUrl,
+          expiresAt: newExpiresAt,
+          // 新しい token を使うので idempotency key も token に紐付けて常に再送される
+          idempotencyKey: `agent-contract-resend:${updated.id}:${newToken}`,
+        });
+      }
 
-      return NextResponse.json({ contract: updated, sign_url: signUrl });
+      return apiJson({ contract: updated, sign_url: signUrl });
     }
 
     if (action === "cancel") {
@@ -127,7 +144,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
         )
         .single();
 
-      return NextResponse.json({ contract: updated });
+      return apiJson({ contract: updated });
     }
 
     return apiValidationError("invalid action. Must be: resend, cancel");

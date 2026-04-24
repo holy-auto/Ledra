@@ -1,8 +1,8 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getAdminClient } from "@/lib/api/auth";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     const agentId = request.nextUrl.searchParams.get("agent_id");
     if (!agentId) return apiValidationError("agent_id is required");
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data, error } = await admin
       .from("agent_shared_files")
       .select(
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    return NextResponse.json({ files: data ?? [] });
+    return apiJson({ files: data ?? [] });
   } catch (e) {
     return apiInternalError(e, "admin/agent-shared-files GET");
   }
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       return apiValidationError(`許可されていないファイル形式です: ${contentType}`);
     }
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // Verify agent exists
     const { data: agent, error: agentErr } = await admin.from("agents").select("id").eq("id", agentId).single();
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
 
     if (insertErr) throw insertErr;
 
-    return NextResponse.json({ file: record }, { status: 201 });
+    return apiJson({ file: record }, { status: 201 });
   } catch (e) {
     return apiInternalError(e, "admin/agent-shared-files POST");
   }

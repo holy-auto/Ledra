@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,7 @@ export async function GET() {
       .eq("tenant_id", caller.tenantId)
       .maybeSingle();
 
-    return NextResponse.json({
+    return apiJson({
       settings: data ?? {
         reminder_days_before: [30, 7, 1],
         follow_up_days_after: [90, 180],
@@ -37,7 +37,7 @@ export async function PUT(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as any);
+    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const reminderDays = Array.isArray(body.reminder_days_before)
       ? body.reminder_days_before.filter((n: number) => typeof n === "number" && n > 0)
       : [30, 7, 1];
@@ -67,7 +67,7 @@ export async function PUT(req: NextRequest) {
       await supabase.from("follow_up_settings").insert({ ...row, id: crypto.randomUUID() });
     }
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (e: unknown) {
     return apiInternalError(e, "follow-up-settings");
   }

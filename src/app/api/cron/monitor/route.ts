@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { apiUnauthorized } from "@/lib/api/response";
+import { apiJson, apiUnauthorized } from "@/lib/api/response";
 import { verifyCronRequest } from "@/lib/cronAuth";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +22,9 @@ export async function GET(req: NextRequest) {
     return apiUnauthorized(authError);
   }
 
-  const supabase = getSupabaseAdmin();
+  const supabase = createServiceRoleAdmin(
+    "cron:monitor — scans billing/certificate/webhook anomalies across every tenant",
+  );
   const alerts: string[] = [];
   const now = new Date();
   const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
@@ -131,5 +133,5 @@ export async function GET(req: NextRequest) {
   }
 
   console.info("[cron/monitor] daily check complete", summary);
-  return NextResponse.json(summary);
+  return apiJson(summary);
 }

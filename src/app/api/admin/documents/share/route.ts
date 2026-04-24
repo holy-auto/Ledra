@@ -1,8 +1,8 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiValidationError, apiInternalError, apiNotFound } from "@/lib/api/response";
-import { getAdminClient } from "@/lib/api/auth";
 import { DOC_TYPES, type DocType } from "@/types/document";
 import { sendDocumentEmail } from "@/lib/documents/share-email";
 import { sendDocumentLink } from "@/lib/line/client";
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as any);
+    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const documentId = (body?.document_id ?? "").trim();
     const channel = (body?.channel ?? "").trim() as Channel;
     const recipient = (body?.recipient ?? "").trim();
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     // 冪等キーがある場合は既送信チェック（二重送信防止）
     if (idempotencyKey) {
       try {
-        const admin = getAdminClient();
+        const { admin } = createTenantScopedAdmin(caller.tenantId);
         const { data: existing } = await admin
           .from("document_share_log")
           .select("id")
@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
 
     // Log the share attempt (non-fatal: table may not exist in all environments)
     try {
-      const admin = getAdminClient();
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
       await admin.from("document_share_log").insert({
         document_id: documentId,
         tenant_id: caller.tenantId,
@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
     // RLS をバイパスしてサービスロールで UPDATE（tenant_id で必ずスコープ限定）
     let updatedDoc = doc;
     if (doc.status === "draft") {
-      const adminForUpdate = getAdminClient();
+      const { admin: adminForUpdate } = createTenantScopedAdmin(caller.tenantId);
       const { data: updated } = await adminForUpdate
         .from("documents")
         .update({ status: "sent", updated_at: new Date().toISOString() })

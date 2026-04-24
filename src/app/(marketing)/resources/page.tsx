@@ -6,8 +6,7 @@ import { ResourceCard, type Resource } from "@/components/marketing/ResourceCard
 
 export const metadata = {
   title: "資料ダウンロード",
-  description:
-    "Ledra のサービス概要・機能紹介・技術ホワイトペーパー・導入事例集を、まとめてダウンロードいただけます。",
+  description: "Ledra のサービス概要・機能紹介・技術ホワイトペーパー・導入事例集を、まとめてダウンロードいただけます。",
   alternates: { canonical: "/resources" },
 };
 
@@ -25,35 +24,43 @@ const resources: Resource[] = [
     key: "features-deep-dive",
     title: "機能紹介資料",
     description:
-      "証明書発行・車両管理・POS・帳票・分析・連携など、全機能をカテゴリ別に詳説。Admin/Agent/Insurer/Customer の画面例も収録。",
-    pageCount: 32,
+      "証明書発行・車両管理・POS・帳票・分析・連携など、全機能をカテゴリ別に詳説。Admin/Agent/Insurer/Customer の4ポータル構成も収録。",
+    pageCount: 10,
+    downloadUrl: "/api/marketing/resources/features-deep-dive/pdf",
   },
   {
     key: "security-whitepaper",
     title: "セキュリティホワイトペーパー",
     description:
-      "暗号化方式・鍵管理・RLS設計・監査ログ仕様・Polygon anchoring の動作を、技術担当者・情報セキュリティ担当者向けにまとめた資料です。",
+      "暗号化方式・鍵管理・RLS設計・監査ログ仕様・Polygon anchoring の動作・データライフサイクルを、技術担当者・情報セキュリティ担当者向けにまとめた資料です。",
     badge: "技術者向け",
-    pageCount: 18,
+    pageCount: 10,
+    downloadUrl: "/api/marketing/resources/security-whitepaper/pdf",
   },
   {
     key: "case-studies",
     title: "導入事例集",
     description:
-      "先行導入いただいているパイロット企業様の導入背景・運用の変化・成果を業種別にまとめた事例集。随時アップデートしてお届けします。",
+      "先行導入いただいているパイロット企業様の導入背景・運用の変化・成果を業種別にまとめた事例集。現時点ではパイロット版として、計測フレームと業界別の変化パターンをまとめています。記事が公開されるたびに PDF にも順次反映します。",
     badge: "随時更新",
+    pageCount: 9,
+    downloadUrl: "/api/marketing/resources/case-studies/pdf",
   },
   {
     key: "roi-template",
     title: "ROIシミュレーション計算テンプレート",
     description:
-      "月間発行数・紙管理に要する時間・書類再発行頻度から、年間の削減効果を算出するシート。ご経営判断の資料として。",
+      "月間発行数・紙管理に要する時間・書類再発行頻度から、年間の削減効果を算出する記入テンプレート。計算式・代表スケール参考値・感度分析まで収録。",
+    pageCount: 7,
+    downloadUrl: "/api/marketing/resources/roi-template/pdf",
   },
   {
     key: "pricing-overview",
     title: "料金プラン詳細資料",
     description:
       "各プランに含まれる機能・対応件数・サポート範囲・オプション料金まで、見積提示に必要な情報をまとめた資料です。",
+    pageCount: 5,
+    downloadUrl: "/api/marketing/resources/pricing-overview/pdf",
   },
 ];
 
@@ -77,8 +84,7 @@ export default function ResourcesPage() {
           ))}
         </div>
         <p className="mt-12 text-center text-xs text-white/40">
-          ご入力いただいた情報は、資料送付およびご案内のみに使用いたします。
-          詳しくは{" "}
+          ご入力いただいた情報は、資料送付およびご案内のみに使用いたします。 詳しくは{" "}
           <a href="/privacy" className="underline hover:text-white/60">
             プライバシーポリシー
           </a>

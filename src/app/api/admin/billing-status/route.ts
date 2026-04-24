@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     // --- Platform admin bypass: always report pro / active ---
     const caller = await resolveCallerWithRole(supabase);
     if (caller && isPlatformAdmin(caller)) {
-      return NextResponse.json(
+      return apiJson(
         {
           tenant_id: caller.tenantId,
           tenant_name: "Ledra Platform",
@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
       return apiNotFound("テナントが見つかりません。");
     }
 
-    return NextResponse.json(
+    return apiJson(
       {
         tenant_id: t.id,
         tenant_name: t.name ?? null,

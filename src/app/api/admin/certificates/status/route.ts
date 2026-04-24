@@ -1,5 +1,6 @@
+import { parseJsonSafe } from "@/lib/api/safeJson";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import {
@@ -38,7 +39,7 @@ function isValidStatus(v: unknown): v is CertStatus {
  */
 export async function PUT(req: Request) {
   try {
-    const body = await req.json().catch((): null => null);
+    const body = await parseJsonSafe(req);
     const publicId = (body?.public_id ?? "").trim();
     const newStatus = (body?.status ?? "").trim().toLowerCase();
 
@@ -58,7 +59,7 @@ export async function PUT(req: Request) {
       return apiForbidden("この操作を行う権限がありません。");
     }
 
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // Fetch current certificate (scoped to caller's tenant)
     const { data: cert, error: fetchErr } = await admin

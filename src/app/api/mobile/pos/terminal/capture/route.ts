@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createMobileClient, resolveMobileCaller } from "@/lib/supabase/mobile";
 import { requireMinRole } from "@/lib/auth/checkRole";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     }
 
     // テナントのStripe Connectアカウントを取得
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data: tenant } = await admin
       .from("tenants")
       .select("stripe_connect_account_id, stripe_connect_onboarded")
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
       return apiInternalError(error, "mobile/pos/terminal/capture");
     }
 
-    return NextResponse.json({
+    return apiJson({
       ok: true,
       payment_intent_id: pi.id,
       amount: pi.amount,

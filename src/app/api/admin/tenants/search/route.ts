@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { escapeIlike } from "@/lib/sanitize";
 
 export const dynamic = "force-dynamic";
@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
 
     // partner_scores があれば付与
     const tenantIds = (tenants ?? []).map((t) => t.id);
-    let scoresMap: Record<string, { completed_orders: number; avg_rating: number | null }> = {};
+    const scoresMap: Record<string, { completed_orders: number; avg_rating: number | null }> = {};
     if (tenantIds.length > 0) {
       const { data: scores } = await supabase
         .from("partner_scores")
@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
       avg_rating: scoresMap[t.id]?.avg_rating ?? null,
     }));
 
-    return NextResponse.json({ tenants: results });
+    return apiJson({ tenants: results });
   } catch (e) {
     return apiInternalError(e, "search tenants");
   }

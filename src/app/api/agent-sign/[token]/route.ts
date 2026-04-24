@@ -16,8 +16,9 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createSign } from "crypto";
-import { getAdminClient } from "@/lib/api/auth";
-import { apiInternalError } from "@/lib/api/response";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { apiJson, apiInternalError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { getPrivateKey, getActiveKeyInfo } from "@/lib/signature/crypto";
 
 export const dynamic = "force-dynamic";
@@ -55,40 +56,39 @@ function signPayload(payload: string, privateKey: string): string {
 }
 
 // ── GET ──────────────────────────────────────────────────────
-export async function GET(_req: NextRequest, ctx: RouteCtx) {
+export async function GET(req: NextRequest, ctx: RouteCtx) {
+  // Token-based public endpoint — bruteforce protection (10 req / 60s / IP).
+  const limited = await checkRateLimit(req, "auth");
+  if (limited) return limited;
+
   try {
     const { token } = await ctx.params;
-    const admin = getAdminClient();
+    const admin = createServiceRoleAdmin("agent flow — agent-scoped / token-based, not tenant-scoped");
 
     const { data: record, error } = await admin
       .from("agent_signing_requests")
-      .select(
-        "id, template_type, title, status, signer_name, signer_email, sign_expires_at",
-      )
+      .select("id, template_type, title, status, signer_name, signer_email, sign_expires_at")
       .eq("sign_token", token)
       .single();
 
     if (error || !record) {
-      return NextResponse.json(
-        { status: "not_found", message: "署名リンクが見つかりません" },
-        { status: 404 },
-      );
+      return apiJson({ status: "not_found", message: "署名リンクが見つかりません" }, { status: 404 });
     }
 
     // 期限チェック
     if (record.sign_expires_at && new Date(record.sign_expires_at) < new Date()) {
-      return NextResponse.json({ status: "expired" }, { status: 200 });
+      return apiJson({ status: "expired" }, { status: 200 });
     }
 
     if (record.status === "signed") {
-      return NextResponse.json({ status: "already_signed" }, { status: 200 });
+      return apiJson({ status: "already_signed" }, { status: 200 });
     }
 
     if (record.status === "expired") {
-      return NextResponse.json({ status: "expired" }, { status: 200 });
+      return apiJson({ status: "expired" }, { status: 200 });
     }
 
-    return NextResponse.json({
+    return apiJson({
       status: "pending",
       request_id: record.id,
       template_type: record.template_type,
@@ -104,6 +104,10 @@ export async function GET(_req: NextRequest, ctx: RouteCtx) {
 
 // ── POST ─────────────────────────────────────────────────────
 export async function POST(req: NextRequest, ctx: RouteCtx) {
+  // Token-based public signing — strict limit (10 req / 60s / IP).
+  const limited = await checkRateLimit(req, "auth");
+  if (limited) return limited;
+
   try {
     const { token } = await ctx.params;
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
@@ -113,22 +117,19 @@ export async function POST(req: NextRequest, ctx: RouteCtx) {
     try {
       body = await req.json();
     } catch {
-      return NextResponse.json({ message: "リクエストが不正です" }, { status: 400 });
+      return apiJson({ message: "リクエストが不正です" }, { status: 400 });
     }
 
     const { signer_email, agreed } = body;
 
     if (!agreed) {
-      return NextResponse.json({ message: "内容に同意してください" }, { status: 400 });
+      return apiJson({ message: "内容に同意してください" }, { status: 400 });
     }
     if (!signer_email?.includes("@") || signer_email.length > 254) {
-      return NextResponse.json(
-        { message: "有効なメールアドレスを入力してください" },
-        { status: 400 },
-      );
+      return apiJson({ message: "有効なメールアドレスを入力してください" }, { status: 400 });
     }
 
-    const admin = getAdminClient();
+    const admin = createServiceRoleAdmin("agent flow — agent-scoped / token-based, not tenant-scoped");
 
     // トークンで記録を取得
     const { data: record, error: fetchErr } = await admin
@@ -138,34 +139,26 @@ export async function POST(req: NextRequest, ctx: RouteCtx) {
       .single();
 
     if (fetchErr || !record) {
-      return NextResponse.json(
-        { message: "署名リンクが見つかりません" },
-        { status: 404 },
-      );
+      return apiJson({ message: "署名リンクが見つかりません" }, { status: 404 });
     }
 
     if (record.sign_expires_at && new Date(record.sign_expires_at) < new Date()) {
-      return NextResponse.json({ message: "署名リンクの有効期限が切れています" }, { status: 400 });
+      return apiJson({ message: "署名リンクの有効期限が切れています" }, { status: 400 });
     }
 
     if (record.status === "signed") {
-      return NextResponse.json({ message: "この契約書はすでに署名されています" }, { status: 400 });
+      return apiJson({ message: "この契約書はすでに署名されています" }, { status: 400 });
     }
 
     if (!["sent", "viewed"].includes(record.status)) {
-      return NextResponse.json({ message: "署名できない状態の契約書です" }, { status: 400 });
+      return apiJson({ message: "署名できない状態の契約書です" }, { status: 400 });
     }
 
     const signedAt = new Date().toISOString();
     const normalizedEmail = signer_email.toLowerCase().trim();
 
     // 署名ペイロードと ECDSA P-256 署名
-    const payload = buildAgentContractPayload(
-      record.id,
-      record.template_type,
-      signedAt,
-      normalizedEmail,
-    );
+    const payload = buildAgentContractPayload(record.id, record.template_type, signedAt, normalizedEmail);
 
     let signature: string;
     let keyInfo: { version: string; fingerprint: string };
@@ -175,7 +168,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx) {
       keyInfo = getActiveKeyInfo();
     } catch (err) {
       console.error("[agent-sign] Signing failed:", err);
-      return NextResponse.json({ message: "署名処理中にエラーが発生しました" }, { status: 500 });
+      return apiJson({ message: "署名処理中にエラーが発生しました" }, { status: 500 });
     }
 
     // 署名証跡を保存（status = 'pending' の楽観的ロックで二重署名防止）
@@ -190,18 +183,18 @@ export async function POST(req: NextRequest, ctx: RouteCtx) {
         signing_payload: payload,
         public_key_fingerprint: keyInfo.fingerprint,
         key_version: keyInfo.version,
-        sign_token: null,  // トークン無効化（再利用防止）
+        sign_token: null, // トークン無効化（再利用防止）
         updated_at: signedAt,
       })
       .eq("id", record.id)
-      .in("status", ["sent", "viewed"]);  // 二重署名防止
+      .in("status", ["sent", "viewed"]); // 二重署名防止
 
     if (updateErr) {
       console.error("[agent-sign] DB update failed:", updateErr);
-      return NextResponse.json({ message: "署名の保存中にエラーが発生しました" }, { status: 500 });
+      return apiJson({ message: "署名の保存中にエラーが発生しました" }, { status: 500 });
     }
 
-    return NextResponse.json({
+    return apiJson({
       success: true,
       signed_at: signedAt,
       session_id: record.id,

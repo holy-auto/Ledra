@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiForbidden, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiForbidden,
+  apiNotFound,
+  apiValidationError,
+  apiInternalError,
+} from "@/lib/api/response";
 import type { WorkflowStep } from "../route";
 
 export const dynamic = "force-dynamic";
@@ -65,7 +72,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       return apiInternalError(error, "workflow-templates PUT");
     }
 
-    return NextResponse.json({ ok: true, template: data });
+    return apiJson({ ok: true, template: data });
   } catch (e: unknown) {
     return apiInternalError(e, "workflow-templates/[id] PUT");
   }
@@ -101,7 +108,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       return apiInternalError(error, "workflow-templates DELETE");
     }
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (e: unknown) {
     return apiInternalError(e, "workflow-templates/[id] DELETE");
   }

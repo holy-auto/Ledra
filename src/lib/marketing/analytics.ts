@@ -29,6 +29,8 @@ export type MarketingEvent =
   | { name: "cta_clicked"; props: { location: string; label: string; href?: string } }
   | { name: "lead_submitted"; props: { source: LeadSource; resource_key?: string } }
   | { name: "document_download_started"; props: { resource_key: string } }
+  | { name: "document_download_completed"; props: { resource_key: string; bytes: number; ms: number } }
+  | { name: "document_download_failed"; props: { resource_key: string; reason: string } }
   | { name: "roi_calculated"; props: { monthly_certs: number; hours_per_cert: number; estimated_saving_yen: number } }
   | { name: "form_validation_failed"; props: { source: LeadSource; reason?: string } }
   | { name: "page_section_viewed"; props: { section: string } };

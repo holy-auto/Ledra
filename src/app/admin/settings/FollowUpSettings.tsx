@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useCallback, useEffect, useState } from "react";
 
@@ -47,7 +48,7 @@ export default function FollowUpSettings() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(settings),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setMsg({ text: "保存しました", ok: true });
     } catch (e: any) {

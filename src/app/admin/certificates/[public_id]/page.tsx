@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { createAdminClient as createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { CERTIFICATE_IMAGE_BUCKET, formatCertificateImageBytes } from "@/lib/certificateImages";
 import { logCertificateAction } from "@/lib/audit/certificateLog";
 import PageHeader from "@/components/ui/PageHeader";
@@ -44,7 +44,6 @@ export default async function Page({ params }: PageProps) {
   const publicId = (public_id ?? "").trim();
 
   const supabase = await createSupabaseServerClient();
-  const admin = createSupabaseAdminClient();
 
   const { data: userRes } = await supabase.auth.getUser();
   if (!userRes.user) redirect("/login?next=/admin/certificates");
@@ -57,6 +56,8 @@ export default async function Page({ params }: PageProps) {
       </div>
     );
   }
+
+  const { admin } = createTenantScopedAdmin(tenantId);
 
   const { data: row, error } = await supabase
     .from("certificates")
@@ -134,8 +135,12 @@ export default async function Page({ params }: PageProps) {
   const pendingAnchorCount = images.filter((i) => !!i.sha256 && !i.polygon_tx_hash).length;
 
   // Plan tier → photo upload limit
-  const { data: tenantRow } = await admin.from("tenants").select("plan_tier").eq("id", tenantId).single();
-  const planTier = normalizePlanTier((tenantRow as any)?.plan_tier);
+  const { data: tenantRow } = await admin
+    .from("tenants")
+    .select("plan_tier")
+    .eq("id", tenantId)
+    .single<{ plan_tier: string | null }>();
+  const planTier = normalizePlanTier(tenantRow?.plan_tier);
   const maxPhotos = PHOTO_LIMITS[planTier];
   const remainingPhotos = Math.max(maxPhotos - images.length, 0);
 
@@ -330,11 +335,7 @@ export default async function Page({ params }: PageProps) {
             </div>
 
             {!isVoid && (
-              <CertImageUpload
-                publicId={row.public_id as string}
-                remaining={remainingPhotos}
-                maxPhotos={maxPhotos}
-              />
+              <CertImageUpload publicId={row.public_id as string} remaining={remainingPhotos} maxPhotos={maxPhotos} />
             )}
 
             {images.length > 0 ? (
@@ -466,7 +467,6 @@ export default async function Page({ params }: PageProps) {
             </div>
             <CertEditHistory entries={editHistory} />
           </section>
-
         </aside>
       </div>
     </div>

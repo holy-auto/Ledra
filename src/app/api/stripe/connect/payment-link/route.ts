@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import Stripe from "stripe";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveBaseUrl } from "@/lib/url";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import {
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { invoice_id } = parsed.data;
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // テナントのConnect状態を確認
     const { data: tenant } = await admin

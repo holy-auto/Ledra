@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiForbidden,
+  apiValidationError,
+  apiNotFound,
+  apiInternalError,
+} from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -65,7 +72,7 @@ export async function GET(req: NextRequest) {
 
     const total = totalCount ?? (sessions ?? []).length;
 
-    return NextResponse.json({
+    return apiJson({
       sessions: sessions ?? [],
       ...(page > 0 && {
         pagination: {
@@ -122,10 +129,7 @@ export async function POST(req: NextRequest) {
       .eq("status", "open");
 
     if ((count ?? 0) > 0) {
-      return NextResponse.json(
-        { error: "conflict", message: "このレジには既に開いているセッションがあります" },
-        { status: 409 },
-      );
+      return apiJson({ error: "conflict", message: "このレジには既に開いているセッションがあります" }, { status: 409 });
     }
 
     const { data: session, error } = await supabase
@@ -145,7 +149,7 @@ export async function POST(req: NextRequest) {
       return apiInternalError(error, "register_sessions insert");
     }
 
-    return NextResponse.json({ ok: true, session }, { status: 201 });
+    return apiJson({ ok: true, session }, { status: 201 });
   } catch (e: unknown) {
     return apiInternalError(e, "register_sessions create");
   }
@@ -217,7 +221,7 @@ export async function PUT(req: NextRequest) {
       return apiInternalError(error, "register_sessions update");
     }
 
-    return NextResponse.json({ ok: true, session });
+    return apiJson({ ok: true, session });
   } catch (e: unknown) {
     return apiInternalError(e, "register_sessions update");
   }
@@ -243,7 +247,7 @@ export async function DELETE(req: NextRequest) {
       return apiInternalError(error, "register_sessions delete");
     }
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (e: unknown) {
     return apiInternalError(e, "register_sessions delete");
   }

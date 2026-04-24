@@ -1,13 +1,8 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { getAdminClient } from "@/lib/api/auth";
-import {
-  apiOk,
-  apiUnauthorized,
-  apiForbidden,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiOk, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +33,7 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const days = Math.min(7, Math.max(1, parseInt(url.searchParams.get("days") ?? "1", 10)));
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const tenantId = caller.tenantId;
 
     // Calculate the cutoff timestamp
@@ -75,15 +70,10 @@ export async function GET(req: NextRequest) {
         if (!data || data.length === 0) return [];
 
         // Resolve customer names
-        const customerIds = [
-          ...new Set(data.filter((d) => d.customer_id).map((d) => d.customer_id as string)),
-        ];
+        const customerIds = [...new Set(data.filter((d) => d.customer_id).map((d) => d.customer_id as string))];
         const customerNames: Record<string, string> = {};
         if (customerIds.length > 0) {
-          const { data: customers } = await admin
-            .from("customers")
-            .select("id, name")
-            .in("id", customerIds);
+          const { data: customers } = await admin.from("customers").select("id, name").in("id", customerIds);
           for (const c of customers ?? []) {
             customerNames[c.id] = c.name;
           }

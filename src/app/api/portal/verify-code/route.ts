@@ -10,7 +10,7 @@ import {
   markGlobalCodeUsed,
 } from "@/lib/customerPortalGlobal";
 import { normalizeEmail, normalizeLast4 } from "@/lib/customerPortalServer";
-import { apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 const isSecureCookie = process.env.NODE_ENV === "production";
 
@@ -19,7 +19,7 @@ export async function POST(req: Request) {
     const ip = getClientIp(req);
     const rl = await checkRateLimit(`portal-verify:${ip}`, { limit: 10, windowSec: 300 });
     if (!rl.allowed) {
-      return NextResponse.json(
+      return apiJson(
         { error: "rate_limited", message: "試行回数が多すぎます。しばらくしてから再度お試しください。" },
         { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
       );
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
       redirectTo = `/customer/${encodeURIComponent(memberships[0].tenant_slug)}?from=portal`;
     }
 
-    const res = NextResponse.json({ ok: true, redirect_to: redirectTo, memberships_count: memberships.length });
+    const res = apiJson({ ok: true, redirect_to: redirectTo, memberships_count: memberships.length });
     res.cookies.set(GLOBAL_PORTAL_COOKIE, sess.token, {
       httpOnly: true,
       sameSite: "lax",

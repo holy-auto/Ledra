@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useState } from "react";
 import Badge from "@/components/ui/Badge";
@@ -61,7 +62,7 @@ export default function DocumentDetailClient({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: doc.id, status: newStatus }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setDoc(j.document);
       setMsg({ text: `ステータスを「${statusLabel(newStatus)}」に変更しました`, ok: true });
@@ -92,7 +93,7 @@ export default function DocumentDetailClient({
           note: doc.note,
         }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setMsg({ text: `請求書 ${j.document?.doc_number} を作成しました`, ok: true });
     } catch (e: any) {

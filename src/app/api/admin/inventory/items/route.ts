@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiValidationError, apiInternalError, apiOk } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError, apiOk } from "@/lib/api/response";
 import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
 
 export const dynamic = "force-dynamic";
@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
       return apiInternalError(error, "inventory-items insert");
     }
 
-    return NextResponse.json({ ok: true, item: data });
+    return apiJson({ ok: true, item: data });
   } catch (e: unknown) {
     return apiInternalError(e, "inventory-items POST");
   }

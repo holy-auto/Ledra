@@ -1,12 +1,8 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { getAdminClient } from "@/lib/api/auth";
-import {
-  apiOk,
-  apiUnauthorized,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiOk, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -19,12 +15,15 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
-    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("per_page") ?? searchParams.get("limit") ?? "20", 10)));
+    const limit = Math.min(
+      100,
+      Math.max(1, parseInt(searchParams.get("per_page") ?? searchParams.get("limit") ?? "20", 10)),
+    );
     const from = searchParams.get("from");
     const to = searchParams.get("to");
     const offset = (page - 1) * limit;
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // Fetch connection status for UI
     const { data: conn } = await admin

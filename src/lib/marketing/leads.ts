@@ -5,7 +5,7 @@
  * from the public marketing site.
  */
 
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { notifySlack } from "./slack";
 
 export type LeadSource =
@@ -59,7 +59,7 @@ const SOURCE_LABEL: Record<LeadSource, string> = {
 type SaveResult = { id: string } | { error: string };
 
 export async function saveLead(input: LeadInput): Promise<SaveResult> {
-  const supabase = getSupabaseAdmin();
+  const supabase = createServiceRoleAdmin("marketing public forms — anonymous leads / aggregated stats");
   const { data, error } = await supabase
     .from("marketing_leads")
     .insert({
@@ -92,6 +92,28 @@ export async function saveLead(input: LeadInput): Promise<SaveResult> {
     return { error: error.message };
   }
   return { id: data.id as string };
+}
+
+/**
+ * Mark a lead as having successfully received its requested resource PDF.
+ * Called from the PDF route after bytes have been generated and handed
+ * back to the client. Failures are logged but never surfaced — the primary
+ * user action (downloading the PDF) must not be blocked by analytics.
+ */
+export async function markLeadDownloaded(leadId: string): Promise<void> {
+  // UUID v4 rough shape check to reject junk query params before touching DB.
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(leadId)) {
+    return;
+  }
+  const supabase = createServiceRoleAdmin("marketing lead download tag — anonymous lead-id lookup");
+  const { error } = await supabase
+    .from("marketing_leads")
+    .update({ downloaded_at: new Date().toISOString() })
+    .eq("id", leadId)
+    .is("downloaded_at", null);
+  if (error) {
+    console.error("[leads] markLeadDownloaded failed:", error);
+  }
 }
 
 export async function notifyLeadToSlack(input: LeadInput): Promise<void> {

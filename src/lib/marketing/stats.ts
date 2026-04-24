@@ -1,5 +1,5 @@
 import { unstable_cache } from "next/cache";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 
 /**
  * マーケティングページ用のリアルタイム統計情報を取得
@@ -47,7 +47,7 @@ const fetchMarketingStats = unstable_cache(
     try {
       let supabase;
       try {
-        supabase = getSupabaseAdmin();
+        supabase = createServiceRoleAdmin("marketing public forms — anonymous leads / aggregated stats");
       } catch {
         return fallback;
       }

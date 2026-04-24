@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useCallback, useEffect, useState } from "react";
 import PageHeader from "@/components/ui/PageHeader";
@@ -47,7 +48,7 @@ export default function PriceStatsClient() {
   const fetchData = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/price-stats", { cache: "no-store" });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setData(j);
     } catch (e: unknown) {

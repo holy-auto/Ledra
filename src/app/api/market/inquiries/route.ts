@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin, createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
-import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { inquiryCreateSchema } from "@/lib/validations/market";
 
 export const dynamic = "force-dynamic";
 
@@ -14,29 +15,26 @@ export async function POST(req: NextRequest) {
     const ip = getClientIp(req);
     const rl = await checkRateLimit(`market-inquiry:${ip}`, { limit: 5, windowSec: 900 });
     if (!rl.allowed) {
-      return NextResponse.json(
+      return apiJson(
         { error: "rate_limited", message: "送信回数の上限に達しました。しばらくしてからお試しください。" },
         { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
       );
     }
 
-    const admin = createAdminClient();
-    const body = await req.json().catch(() => ({}) as any);
-
-    const vehicleId = (body?.vehicle_id ?? "").trim();
-    const buyerName = (body?.buyer_name ?? "").trim();
-    const buyerEmail = (body?.buyer_email ?? "").trim();
-    const message = (body?.message ?? "").trim();
-
-    if (!vehicleId || !buyerName || !buyerEmail || !message) {
-      return apiValidationError("vehicle_id, buyer_name, buyer_email, and message are required");
+    // Public inquiry form — the seller tenant is derived from the vehicle lookup
+    // below, so this initial query must be pre-resolution (service-role).
+    const admin = createServiceRoleAdmin("market public inquiry — seller tenant resolved from vehicle_id after lookup");
+    const parsed = inquiryCreateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
+    const { vehicle_id, buyer_name, buyer_email, message, buyer_company, buyer_phone } = parsed.data;
 
     // Look up the vehicle to get seller tenant_id
     const { data: vehicle, error: vErr } = await admin
       .from("market_vehicles")
       .select("tenant_id")
-      .eq("id", vehicleId)
+      .eq("id", vehicle_id)
       .single();
 
     if (vErr || !vehicle) {
@@ -45,16 +43,16 @@ export async function POST(req: NextRequest) {
 
     const row: Record<string, unknown> = {
       id: crypto.randomUUID(),
-      vehicle_id: vehicleId,
+      vehicle_id,
       seller_tenant_id: vehicle.tenant_id,
-      buyer_name: buyerName,
-      buyer_email: buyerEmail,
+      buyer_name,
+      buyer_email,
       message,
       status: "new",
     };
 
-    if (body.buyer_company !== undefined) row.buyer_company = body.buyer_company;
-    if (body.buyer_phone !== undefined) row.buyer_phone = body.buyer_phone;
+    if (buyer_company) row.buyer_company = buyer_company;
+    if (buyer_phone) row.buyer_phone = buyer_phone;
 
     const { data: inquiry, error } = await admin
       .from("market_inquiries")
@@ -68,7 +66,7 @@ export async function POST(req: NextRequest) {
       return apiInternalError(error, "market-inquiries insert");
     }
 
-    return NextResponse.json({ ok: true, inquiry });
+    return apiJson({ ok: true, inquiry });
   } catch (e: unknown) {
     return apiInternalError(e, "market-inquiries create");
   }
@@ -81,7 +79,7 @@ export async function GET(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const url = new URL(req.url);
     const status = url.searchParams.get("status") ?? "";
 
@@ -101,7 +99,7 @@ export async function GET(req: NextRequest) {
       return apiInternalError(error, "market-inquiries list");
     }
 
-    return NextResponse.json({ inquiries: inquiries ?? [] });
+    return apiJson({ inquiries: inquiries ?? [] });
   } catch (e: unknown) {
     return apiInternalError(e, "market-inquiries list");
   }

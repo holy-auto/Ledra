@@ -3,7 +3,7 @@ import { unstable_cache } from "next/cache";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import Parser from "rss-parser";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 const RSS_FEEDS = [
   // ── 塗装・コーティング専門 ──
@@ -99,7 +99,7 @@ export async function GET() {
     // 日付順ソート
     merged.sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime());
 
-    return NextResponse.json({
+    return apiJson({
       news: merged.slice(0, 80),
       source: "hybrid",
       feedCount: RSS_FEEDS.length + 12, // RSS + スクレイピングサイト

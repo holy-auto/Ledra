@@ -2,6 +2,14 @@
 
 import { useEffect } from "react";
 
+declare global {
+  interface Window {
+    __billingFetchGuardInstalled?: boolean;
+  }
+}
+
+type XhrWithGuardUrl = XMLHttpRequest & { __billing_guard_url?: string };
+
 function redirectToBilling(billingUrl: string | null) {
   if (window.location.pathname.startsWith("/admin/billing")) return;
 
@@ -12,28 +20,34 @@ function redirectToBilling(billingUrl: string | null) {
   window.location.href = dest.toString();
 }
 
+function fetchInputToUrl(input: RequestInfo | URL): string {
+  if (typeof input === "string") return input;
+  if (input instanceof URL) return input.toString();
+  return (input as Request).url;
+}
+
 export default function BillingFetchGuard(): null {
   useEffect(() => {
-    if ((window as any).__billingFetchGuardInstalled) return;
-    (window as any).__billingFetchGuardInstalled = true;
+    if (window.__billingFetchGuardInstalled) return;
+    window.__billingFetchGuardInstalled = true;
 
     // ---- fetch hook (optimized: early-exit for non-API and success responses) ----
     const origFetch = window.fetch.bind(window);
     const OrigXhrOpen = XMLHttpRequest.prototype.open;
     const OrigXhrSend = XMLHttpRequest.prototype.send;
 
-    window.fetch = async (input: any, init?: any) => {
+    window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const res = await origFetch(input, init);
 
       // Fast path: skip non-error responses (vast majority of requests)
       if (res.status !== 402 && res.status !== 403) return res;
 
       try {
-        const rawUrl = typeof input === "string" ? input : input?.url;
+        const rawUrl = fetchInputToUrl(input);
         if (!rawUrl) return res;
 
         // Only intercept same-origin /api/ calls
-        if (typeof rawUrl === "string" && !rawUrl.startsWith("/api/") && !rawUrl.includes("/api/")) return res;
+        if (!rawUrl.startsWith("/api/") && !rawUrl.includes("/api/")) return res;
 
         const u = new URL(rawUrl, window.location.origin);
         if (u.origin !== window.location.origin) return res;
@@ -44,33 +58,48 @@ export default function BillingFetchGuard(): null {
 
         if (!billingUrl) {
           try {
-            const j = await res.clone().json();
+            const j = (await res.clone().json()) as { billing_url?: string } | null;
             billingUrl = j?.billing_url ?? null;
-          } catch {}
+          } catch {
+            /* body is not JSON — fall through to default /admin/billing */
+          }
         }
 
         redirectToBilling(billingUrl);
-      } catch {}
+      } catch {
+        /* any failure in the guard must not surface to callers */
+      }
 
       return res;
     };
 
     // ---- XHR hook (axios 等) ----
-    XMLHttpRequest.prototype.open = function (...args: any[]) {
+    // XMLHttpRequest.open has two DOM overload signatures. Calling the
+    // original through `.call` with all five parameters covers both — Node
+    // optional args default to undefined and Chrome/Firefox both tolerate
+    // trailing undefineds on the 2-arg form.
+    XMLHttpRequest.prototype.open = function (
+      this: XhrWithGuardUrl,
+      method: string,
+      url: string | URL,
+      async: boolean = true,
+      username?: string | null,
+      password?: string | null,
+    ): void {
       try {
-        // open(method, url, ...)
-        (this as any).__billing_guard_url = String(args?.[1] ?? "");
-      } catch {}
-      return (OrigXhrOpen as any).apply(this, args);
-    };
+        this.__billing_guard_url = String(url ?? "");
+      } catch {
+        /* ignore */
+      }
+      OrigXhrOpen.call(this, method, url, async, username ?? null, password ?? null);
+    } as typeof XMLHttpRequest.prototype.open;
 
-    XMLHttpRequest.prototype.send = function (...args: any[]) {
-      this.addEventListener("loadend", function () {
+    XMLHttpRequest.prototype.send = function (this: XhrWithGuardUrl, body?: Document | XMLHttpRequestBodyInit | null) {
+      this.addEventListener("loadend", function (this: XhrWithGuardUrl) {
         try {
-          const status = (this as any).status as number;
-          if (status !== 402 && status !== 403) return;
+          if (this.status !== 402 && this.status !== 403) return;
 
-          const rawUrl = (this as any).__billing_guard_url as string | undefined;
+          const rawUrl = this.__billing_guard_url;
           if (!rawUrl) return;
 
           const u = new URL(rawUrl, window.location.origin);
@@ -78,17 +107,19 @@ export default function BillingFetchGuard(): null {
           if (!u.pathname.startsWith("/api/")) return;
 
           redirectToBilling("/admin/billing");
-        } catch {}
+        } catch {
+          /* ignore */
+        }
       });
 
-      return (OrigXhrSend as any).apply(this, args);
+      return OrigXhrSend.call(this, body);
     };
 
     return () => {
       window.fetch = origFetch;
       XMLHttpRequest.prototype.open = OrigXhrOpen;
       XMLHttpRequest.prototype.send = OrigXhrSend;
-      (window as any).__billingFetchGuardInstalled = false;
+      window.__billingFetchGuardInstalled = false;
     };
   }, []);
 

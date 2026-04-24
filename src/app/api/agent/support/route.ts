@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { notifySlack } from "@/lib/slack";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,7 @@ export async function GET() {
       .eq("agent_id", agent.agent_id)
       .order("updated_at", { ascending: false });
 
-    return NextResponse.json({ tickets: tickets ?? [] });
+    return apiJson({ tickets: tickets ?? [] });
   } catch (e) {
     return apiInternalError(e, "agent/support GET");
   }
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
       console.error("[agent/support] slack notify failed:", err);
     }
 
-    return NextResponse.json({ ticket }, { status: 201 });
+    return apiJson({ ticket }, { status: 201 });
   } catch (e) {
     return apiInternalError(e, "agent/support POST");
   }

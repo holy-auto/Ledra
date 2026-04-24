@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +26,7 @@ export async function GET(_req: NextRequest) {
       return apiInternalError(error, "insurer-saved-searches GET");
     }
 
-    return NextResponse.json({ saved_searches: data ?? [] });
+    return apiJson({ saved_searches: data ?? [] });
   } catch (e) {
     return apiInternalError(e, "insurer-saved-searches GET");
   }
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
       return apiInternalError(error, "insurer-saved-searches POST");
     }
 
-    return NextResponse.json({ ok: true, saved_search: data }, { status: 201 });
+    return apiJson({ ok: true, saved_search: data }, { status: 201 });
   } catch (e) {
     return apiInternalError(e, "insurer-saved-searches POST");
   }
@@ -100,7 +100,7 @@ export async function DELETE(req: NextRequest) {
       return apiInternalError(error, "insurer-saved-searches DELETE");
     }
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (e) {
     return apiInternalError(e, "insurer-saved-searches DELETE");
   }

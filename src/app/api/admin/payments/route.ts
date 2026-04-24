@@ -3,7 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { parsePagination } from "@/lib/api/pagination";
-import { apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -94,7 +94,7 @@ export async function GET(req: NextRequest) {
     const totalAmount = enriched.filter((p) => p.status === "completed").reduce((sum, p) => sum + (p.amount ?? 0), 0);
 
     const headers = { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" };
-    return NextResponse.json(
+    return apiJson(
       {
         payments: enriched,
         stats: {
@@ -182,7 +182,7 @@ export async function POST(req: NextRequest) {
       return apiInternalError(error, "payments insert");
     }
 
-    return NextResponse.json({ ok: true, payment: data });
+    return apiJson({ ok: true, payment: data });
   } catch (e: unknown) {
     return apiInternalError(e, "payments create");
   }
@@ -247,7 +247,7 @@ export async function PUT(req: NextRequest) {
       return apiInternalError(error, "payments update");
     }
 
-    return NextResponse.json({ ok: true, payment: data });
+    return apiJson({ ok: true, payment: data });
   } catch (e: unknown) {
     return apiInternalError(e, "payments update");
   }
@@ -274,7 +274,7 @@ export async function DELETE(req: NextRequest) {
       return apiInternalError(error, "payments delete");
     }
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (e: unknown) {
     return apiInternalError(e, "payments delete");
   }

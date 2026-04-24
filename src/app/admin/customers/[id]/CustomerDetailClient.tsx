@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useState } from "react";
 import Link from "next/link";
@@ -42,7 +43,7 @@ export default function CustomerDetailClient({ customer: initial }: { customer: 
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: customer.id, ...form }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setCustomer(j.customer);
       setEditing(false);

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { createAdminClient as createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiInternalError, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
@@ -45,7 +45,7 @@ export async function PUT(req: NextRequest) {
     const publicId = String(body.public_id ?? "").trim();
     if (!publicId) return apiValidationError("public_id は必須です。");
 
-    const admin = createSupabaseAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // Fetch current certificate
     const { data: cert, error: fetchError } = await admin

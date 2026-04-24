@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,7 @@ export async function GET() {
       .eq("agent_id", agent.agent_id)
       .order("created_at", { ascending: false });
 
-    return NextResponse.json({ links: links ?? [] });
+    return apiJson({ links: links ?? [] });
   } catch (e) {
     return apiInternalError(e, "agent/referral-links GET");
   }
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) return apiInternalError(error, "agent/referral-links insert");
-    return NextResponse.json({ link }, { status: 201 });
+    return apiJson({ link }, { status: 201 });
   } catch (e) {
     return apiInternalError(e, "agent/referral-links POST");
   }

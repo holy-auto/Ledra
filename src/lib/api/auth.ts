@@ -1,6 +1,5 @@
 import { cookies } from "next/headers";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeRole, type Role } from "@/lib/auth/roles";
 import { normalizePlanTier, type PlanTier } from "@/lib/billing/planFeatures";
 
@@ -13,9 +12,6 @@ export type CallerContext = {
   role: Role;
   planTier: PlanTier;
 };
-
-/** Supabase Admin クライアント取得 */
-export { getSupabaseAdmin as getAdminClient } from "@/lib/supabase/admin";
 
 /**
  * Read the active_tenant_id cookie.
@@ -83,11 +79,7 @@ export async function resolveCallerFull(
   const mem = await resolveMembership(supabase, userRes.user.id, "tenant_id, role");
   if (!mem?.tenant_id) return null;
 
-  const { data: tenant } = await supabase
-    .from("tenants")
-    .select("plan_tier")
-    .eq("id", mem.tenant_id)
-    .single();
+  const { data: tenant } = await supabase.from("tenants").select("plan_tier").eq("id", mem.tenant_id).single();
 
   return {
     userId: userRes.user.id,
@@ -96,4 +88,3 @@ export async function resolveCallerFull(
     planTier: normalizePlanTier(tenant?.plan_tier),
   };
 }
-

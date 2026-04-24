@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import type { InsurerPlanTier, InsurerRole } from "@/types/insurer";
 import { normalizeInsurerPlanTier, normalizeInsurerRole, INSURER_PLAN_RANK } from "@/types/insurer";
 
@@ -28,7 +28,7 @@ export async function resolveInsurerCaller(): Promise<InsurerCallerContext | nul
   const { data: auth } = await supabase.auth.getUser();
   if (!auth?.user) return null;
 
-  const admin = createAdminClient();
+  const admin = createServiceRoleAdmin("insurerAuth — resolves insurer_id from user session, pre-resolution");
 
   // Check for active insurer cookie
   const cookieStore = await cookies();
@@ -46,10 +46,7 @@ export async function resolveInsurerCaller(): Promise<InsurerCallerContext | nul
     query = query.eq("insurer_id", activeInsurerId);
   }
 
-  const { data: iu, error: iuErr } = await query
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const { data: iu, error: iuErr } = await query.order("created_at", { ascending: true }).limit(1).maybeSingle();
 
   // If cookie-specified insurer not found, fall back to any
   if (!iu && activeInsurerId) {
@@ -72,7 +69,7 @@ export async function resolveInsurerCaller(): Promise<InsurerCallerContext | nul
 }
 
 async function resolveInsurerContext(
-  admin: ReturnType<typeof createAdminClient>,
+  admin: ReturnType<typeof createServiceRoleAdmin>,
   userId: string,
   iu: { id: string; insurer_id: string; role: string },
 ): Promise<InsurerCallerContext | null> {
@@ -102,10 +99,7 @@ async function resolveInsurerContext(
  * Enforce insurer plan tier for a given action.
  * Returns a Response if access is denied, or null if allowed.
  */
-export function enforceInsurerPlan(
-  caller: InsurerCallerContext,
-  minPlan: InsurerPlanTier
-): Response | null {
+export function enforceInsurerPlan(caller: InsurerCallerContext, minPlan: InsurerPlanTier): Response | null {
   if (INSURER_PLAN_RANK[caller.planTier] < INSURER_PLAN_RANK[minPlan]) {
     return new Response(
       JSON.stringify({
@@ -116,7 +110,7 @@ export function enforceInsurerPlan(
       {
         status: 403,
         headers: { "content-type": "application/json; charset=utf-8" },
-      }
+      },
     );
   }
   return null;

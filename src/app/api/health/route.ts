@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { apiJson } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ export async function GET() {
   // Check Supabase DB connectivity
   const dbStart = Date.now();
   try {
-    const supabase = getSupabaseAdmin();
+    const supabase = createServiceRoleAdmin("health check — probes DB connectivity, not tenant-scoped");
     const { error } = await supabase.from("tenants").select("id").limit(1);
     checks.database = {
       ok: !error,
@@ -69,15 +69,12 @@ export async function GET() {
   };
   if (missingEnvVars.length > 0) allHealthy = false;
 
-  return NextResponse.json(
+  return apiJson(
     {
       status: allHealthy ? "healthy" : "degraded",
       timestamp: new Date().toISOString(),
       checks,
     },
-    {
-      status: allHealthy ? 200 : 503,
-      headers: { "cache-control": "no-store" },
-    },
+    { status: allHealthy ? 200 : 503 },
   );
 }

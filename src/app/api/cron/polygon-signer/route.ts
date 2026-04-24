@@ -22,7 +22,7 @@
  */
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { apiUnauthorized } from "@/lib/api/response";
+import { apiJson, apiUnauthorized } from "@/lib/api/response";
 import { verifyCronRequest } from "@/lib/cronAuth";
 
 export const runtime = "nodejs";
@@ -89,9 +89,7 @@ async function sendAlertEmail(summary: SignerSummary): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
   const to = process.env.CONTACT_TO_EMAIL;
   if (!apiKey || !to) {
-    console.warn(
-      "[cron/polygon-signer] would alert but RESEND_API_KEY / CONTACT_TO_EMAIL not configured",
-    );
+    console.warn("[cron/polygon-signer] would alert but RESEND_API_KEY / CONTACT_TO_EMAIL not configured");
     return;
   }
 
@@ -149,7 +147,7 @@ export async function GET(req: NextRequest) {
       thresholds: { warn_pol: warnPol, alert_pol: alertPol },
       message: "POLYGON_ANCHOR_ENABLED is not 'true'; skipping balance check.",
     };
-    return NextResponse.json(summary);
+    return apiJson(summary);
   }
 
   const config = getConfig();
@@ -165,7 +163,7 @@ export async function GET(req: NextRequest) {
       message: "POLYGON_PRIVATE_KEY not set; cannot derive signer address.",
     };
     console.warn("[cron/polygon-signer] skipped: missing POLYGON_PRIVATE_KEY");
-    return NextResponse.json(summary);
+    return apiJson(summary);
   }
 
   try {
@@ -206,10 +204,8 @@ export async function GET(req: NextRequest) {
       await sendAlertEmail(summary);
     }
 
-    console.info(
-      `[cron/polygon-signer] ${status} network=${config.network} balance=${summary.balance_pol} POL`,
-    );
-    return NextResponse.json(summary);
+    console.info(`[cron/polygon-signer] ${status} network=${config.network} balance=${summary.balance_pol} POL`);
+    return apiJson(summary);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[cron/polygon-signer] balance check failed:", msg);
@@ -223,6 +219,6 @@ export async function GET(req: NextRequest) {
       thresholds: { warn_pol: warnPol, alert_pol: alertPol },
       message: `RPC error: ${msg}`,
     };
-    return NextResponse.json(summary, { status: 200 });
+    return apiJson(summary, { status: 200 });
   }
 }

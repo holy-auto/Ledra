@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerFull } from "@/lib/api/auth";
 import { apiOk, apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
 import { getTemplateOptionStatus } from "@/lib/template-options/templateOptionFeatures";
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
       return apiValidationError("ファイル形式が不正です。PNG, JPEG, WebP 形式のみアップロードできます。");
     }
 
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const ext = detectedMime.split("/")[1]?.replace("jpeg", "jpg") ?? "png";
     const storagePath = `template-logos/${caller.tenantId}/${Date.now()}.${ext}`;
 

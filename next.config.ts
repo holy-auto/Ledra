@@ -56,37 +56,9 @@ const nextConfig: NextConfig = {
   },
 
   async headers() {
-    // unsafe-eval is only permitted in development (Next.js dev server + HMR).
-    // Production builds do not use eval(), so we omit it to tighten the CSP.
-    const unsafeEval = process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
-
-    // Trusted external origins for CSP
-    const cspDirectives = [
-      "default-src 'self'",
-      // Scripts: self + Stripe.js + Vercel Analytics/Speed Insights + Sentry + inline for Next.js
-      `script-src 'self' 'unsafe-inline'${unsafeEval} https://js.stripe.com https://vercel.live https://*.vercel-scripts.com https://*.sentry-cdn.com`,
-      // Styles: self + inline (Tailwind/react-pdf)
-      "style-src 'self' 'unsafe-inline'",
-      // Images: self + data URIs + Supabase + QR code API + blob
-      "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in https://api.qrserver.com",
-      // Fonts: self + fontsource CDN (for NotoSansJP in PDF generation)
-      "font-src 'self' data: https://cdn.jsdelivr.net",
-      // Connect: self + Supabase + Stripe + Sentry + Vercel + Upstash
-      "connect-src 'self' https://*.supabase.co https://*.supabase.in https://api.stripe.com https://*.sentry.io https://*.ingest.sentry.io https://vercel.live https://*.vercel-scripts.com https://*.upstash.io",
-      // Frames: Stripe checkout iframe
-      "frame-src https://js.stripe.com https://hooks.stripe.com https://vercel.live",
-      // Media: none needed
-      "media-src 'none'",
-      // Object: none
-      "object-src 'none'",
-      // Base URI restriction
-      "base-uri 'self'",
-      // Form action restriction
-      "form-action 'self'",
-      // Frame ancestors: none (replaces X-Frame-Options)
-      "frame-ancestors 'none'",
-    ].join("; ");
-
+    // NOTE: Content-Security-Policy is set per-request in `src/proxy.ts` so
+    // that it can include a per-request nonce for `script-src`. Setting it
+    // here would override with a static (and weaker) policy.
     return [
       {
         source: "/(.*)",
@@ -94,11 +66,12 @@ const nextConfig: NextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          // 車検証 QR スキャナ (src/components/vehicles/ShakenshoScanner.tsx) が
+          // navigator.mediaDevices.getUserMedia({ video }) を呼ぶため camera は
+          // 自サイトに限り許可。マイクと位置情報は現状使っていないので禁止のまま。
+          { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=()" },
           // HSTS: enforce HTTPS, 1 year, include subdomains
           { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
-          // CSP enforced — validated and switched from Report-Only for launch
-          { key: "Content-Security-Policy", value: cspDirectives },
         ],
       },
     ];

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -13,8 +13,8 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const admin = createAdminClient();
-    const body = await req.json().catch(() => ({}) as any);
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
 
     const inquiryId = (body?.inquiry_id ?? "").trim();
     const vehicleId = (body?.vehicle_id ?? "").trim();
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
       .update({ status: "reserved", updated_at: new Date().toISOString() })
       .eq("id", vehicleId);
 
-    return NextResponse.json({ ok: true, deal });
+    return apiJson({ ok: true, deal });
   } catch (e: unknown) {
     return apiInternalError(e, "market-deals create");
   }
@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const url = new URL(req.url);
     const status = url.searchParams.get("status") ?? "";
 
@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
       return apiInternalError(error, "market-deals list");
     }
 
-    return NextResponse.json({ deals: deals ?? [] });
+    return apiJson({ deals: deals ?? [] });
   } catch (e: unknown) {
     return apiInternalError(e, "market-deals list");
   }

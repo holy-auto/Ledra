@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { signupSchema } from "@/lib/validations/signup";
 import { apiOk, apiError, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { email, password, shop_name, display_name, contact_phone } = parsed.data;
-    const admin = getSupabaseAdmin();
+    const admin = createServiceRoleAdmin("signup — creates new tenant + owner user (pre-auth, no scope yet)");
 
     // ── 1) Supabase Auth ユーザー作成 ──
     const { data: authData, error: authError } = await admin.auth.admin.createUser({
@@ -79,14 +79,12 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 3) テナントメンバーシップ作成（owner ロール） ──
-    const { error: membershipError } = await admin
-      .from("tenant_memberships")
-      .insert({
-        id: crypto.randomUUID(),
-        tenant_id: tenant.id,
-        user_id: userId,
-        role: "owner",
-      });
+    const { error: membershipError } = await admin.from("tenant_memberships").insert({
+      id: crypto.randomUUID(),
+      tenant_id: tenant.id,
+      user_id: userId,
+      role: "owner",
+    });
 
     if (membershipError) {
       console.error("signup: membership creation failed, rolling back", membershipError);
@@ -95,12 +93,15 @@ export async function POST(req: NextRequest) {
       return apiInternalError(membershipError, "signup: membership creation");
     }
 
-    return apiOk({
-      user_id: userId,
-      tenant_id: tenant.id,
-      email,
-      shop_name,
-    }, 201);
+    return apiOk(
+      {
+        user_id: userId,
+        tenant_id: tenant.id,
+        email,
+        shop_name,
+      },
+      201,
+    );
   } catch (e) {
     return apiInternalError(e, "signup");
   }

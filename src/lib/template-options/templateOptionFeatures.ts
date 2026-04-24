@@ -1,5 +1,5 @@
 import type { TemplateOptionType, OptionSubscriptionStatus } from "@/types/templateOption";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 /** テンプレートオプション契約情報 */
 export type TemplateOptionStatus = {
@@ -13,7 +13,7 @@ export type TemplateOptionStatus = {
  * テナントのテンプレートオプション契約状況を取得
  */
 export async function getTemplateOptionStatus(tenantId: string): Promise<TemplateOptionStatus> {
-  const supabase = createAdminClient();
+  const { admin: supabase } = createTenantScopedAdmin(tenantId);
   const { data } = await supabase
     .from("tenant_option_subscriptions")
     .select("option_type, status, template_config_id")

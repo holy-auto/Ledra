@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { createAdminClient as createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import SettingsForm from "./SettingsForm";
 import FollowUpSettings from "./FollowUpSettings";
 import SquareConnectSection from "./SquareConnectSection";
 import LineConnectSection from "./LineConnectSection";
+import NexPTGConnectSection from "./NexPTGConnectSection";
 import RestartTourButton from "./RestartTourButton";
 import PageHeader from "@/components/ui/PageHeader";
 import { formatDate } from "@/lib/format";
@@ -45,7 +46,7 @@ const EMPTY_TENANT_EXTENDED: TenantExtended = {
 /** Attempt to fetch extended tenant columns added via migration.
  *  Returns null values gracefully if columns don't exist yet. */
 async function fetchTenantExtended(tenantId: string): Promise<TenantExtended> {
-  const admin = createSupabaseAdminClient();
+  const { admin } = createTenantScopedAdmin(tenantId);
   try {
     const { data, error } = await admin
       .from("tenants")
@@ -115,7 +116,7 @@ export default async function AdminSettingsPage() {
     Object.keys(ext).length > 0; // always true, indicates columns exist
 
   // Actually detect if columns exist by checking error on a small query
-  const admin = createSupabaseAdminClient();
+  const { admin } = createTenantScopedAdmin(tenantId);
   const { error: detectErr } = await admin.from("tenants").select("contact_email").eq("id", tenantId).limit(1).single();
   const columnsExist = !detectErr || !detectErr.message.includes("does not exist");
 
@@ -210,8 +211,8 @@ export default async function AdminSettingsPage() {
           connectStatus={
             columnsExist
               ? {
-                  accountId: (ext as any).stripe_connect_account_id ?? null,
-                  onboarded: (ext as any).stripe_connect_onboarded ?? false,
+                  accountId: ext.stripe_connect_account_id ?? null,
+                  onboarded: ext.stripe_connect_onboarded ?? false,
                 }
               : null
           }
@@ -238,6 +239,18 @@ export default async function AdminSettingsPage() {
           </p>
         </div>
         <LineConnectSection />
+      </section>
+
+      {/* NexPTG（膜厚計）連携 */}
+      <section className="glass-card p-5">
+        <div className="mb-5">
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">外部連携</div>
+          <div className="mt-1 text-base font-semibold text-primary">NexPTG（膜厚計）連携</div>
+          <p className="mt-1 text-xs text-muted">
+            NexPTGアプリで測定した膜厚データをLedraへ自動同期します。APIキーを発行してアプリに設定してください。
+          </p>
+        </div>
+        <NexPTGConnectSection />
       </section>
 
       {/* Coating products master */}

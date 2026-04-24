@@ -1,9 +1,9 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getAdminClient } from "@/lib/api/auth";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
-import { apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -16,7 +16,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const body = await request.json();
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     const updates: Record<string, unknown> = {};
     const allowed = ["title", "description", "category_id", "version", "is_pinned", "is_published"];
@@ -41,7 +41,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
       return apiInternalError(error, "agent-materials PUT");
     }
 
-    return NextResponse.json({ material: data });
+    return apiJson({ material: data });
   } catch (e) {
     return apiInternalError(e, "agent-materials PUT");
   }
@@ -55,7 +55,7 @@ export async function DELETE(_request: NextRequest, ctx: RouteContext) {
     if (!caller) return apiUnauthorized();
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // Get storage path before deleting
     const { data: material } = await admin.from("agent_materials").select("storage_path").eq("id", id).single();
@@ -70,7 +70,7 @@ export async function DELETE(_request: NextRequest, ctx: RouteContext) {
       return apiInternalError(error, "agent-materials DELETE");
     }
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (e) {
     return apiInternalError(e, "agent-materials DELETE");
   }

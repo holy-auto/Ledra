@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { normalizeRole } from "@/lib/auth/roles";
+import { normalizeRole, hasMinRole } from "@/lib/auth/roles";
 import {
   parseSiteContentFormData,
   siteContentPostSchema,
@@ -34,8 +34,7 @@ async function authorize(): Promise<AuthContext | Err> {
     .maybeSingle();
 
   const role = normalizeRole(mem?.role);
-  // HPコンテンツはLedra社内（super_admin）のみ管理可能
-  if (role !== "super_admin") {
+  if (!hasMinRole(role, "staff")) {
     return { ok: false, error: "forbidden" };
   }
 

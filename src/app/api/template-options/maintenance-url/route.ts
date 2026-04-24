@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerFull } from "@/lib/api/auth";
 import { apiOk, apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
 import { getTemplateOptionStatus, MAINTENANCE_URL_LIMITS } from "@/lib/template-options/templateOptionFeatures";
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
       return apiForbidden("テンプレートオプションの契約が必要です。");
     }
 
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // 設定の所有権チェック
     const { data: config } = await admin

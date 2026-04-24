@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useTransition, useState, useCallback } from "react";
 import { updateTenantSettingsAction } from "./actions";
@@ -236,7 +237,7 @@ function StripeConnectSection({ connectStatus }: { connectStatus: ConnectStatus 
   const checkStatus = useCallback(async () => {
     try {
       const res = await fetch("/api/stripe/connect");
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (res.ok && j) setLiveStatus(j);
     } catch {}
   }, []);
@@ -253,7 +254,7 @@ function StripeConnectSection({ connectStatus }: { connectStatus: ConnectStatus 
           refresh_url: window.location.href,
         }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       if (j?.onboarding_url) {
         window.location.href = j.onboarding_url;
@@ -271,7 +272,7 @@ function StripeConnectSection({ connectStatus }: { connectStatus: ConnectStatus 
     setConnectErr(null);
     try {
       const res = await fetch("/api/stripe/connect", { method: "DELETE" });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setLiveStatus({ connected: false, onboarded: false, account_id: null });
     } catch (e) {

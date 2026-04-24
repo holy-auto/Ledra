@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -191,7 +192,7 @@ export default function NewVehicleForm() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
 
       const vehicleId = j.vehicle?.id ?? j.id;
@@ -205,7 +206,7 @@ export default function NewVehicleForm() {
           body: formData,
         });
         if (!imgRes.ok) {
-          const imgJ = await imgRes.json().catch((): null => null);
+          const imgJ = await parseJsonSafe(imgRes);
           console.error("Image upload failed:", imgJ?.error ?? imgRes.status);
         }
       }

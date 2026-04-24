@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@/lib/supabase/server";
-import { apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
       type: "account_onboarding",
     });
 
-    return NextResponse.json({
+    return apiJson({
       ok: true,
       account_id: accountId,
       url: accountLink.url,
@@ -136,7 +136,7 @@ export async function GET() {
 
     const accountId = agentProfile.stripe_account_id as string | null;
     if (!accountId) {
-      return NextResponse.json({
+      return apiJson({
         connected: false,
         onboarded: false,
         account_id: null,
@@ -160,7 +160,7 @@ export async function GET() {
         .eq("id", agentId);
     }
 
-    return NextResponse.json({
+    return apiJson({
       connected: true,
       onboarded,
       account_id: accountId,

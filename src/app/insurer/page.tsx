@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -110,7 +111,7 @@ export default function InsurerHomePage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ plan_tier: "pro" }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       if (j?.checkout_url) {
         window.location.href = j.checkout_url;

@@ -13,19 +13,25 @@
  */
 
 import { NextRequest } from "next/server";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiError, apiInternalError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { verifySignature } from "@/lib/signature/crypto";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ sessionId: string }> }) {
+  // Public verification — general rate limit (60 req / 60s / IP).
+  // Relatively cheap read, but still unauth so IP-scope the bucket.
+  const limited = await checkRateLimit(req, "general");
+  if (limited) return limited;
+
   try {
     const { sessionId } = await params;
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
     const ua = req.headers.get("user-agent") ?? "unknown";
 
-    const supabase = getSupabaseAdmin();
+    const supabase = createServiceRoleAdmin("signature flow — opaque token lookup, customer is unauthenticated");
 
     // セッションと関連情報を取得
     const { data: session, error } = await supabase
@@ -100,10 +106,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ sess
     });
 
     // Supabase リレーションクエリは配列で返るため、先頭要素を取得する
-    const certRaw = session.certificates;
+    const certRaw = session.certificates as { public_id?: string | null } | Array<{ public_id?: string | null }> | null;
     const certPublicId: string | null = Array.isArray(certRaw)
       ? (certRaw[0]?.public_id ?? null)
-      : ((certRaw as any)?.public_id ?? null);
+      : (certRaw?.public_id ?? null);
 
     return apiOk({
       is_valid: isValid,

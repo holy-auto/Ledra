@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -237,7 +238,7 @@ export default function OrdersClient() {
       if (type && type !== "all") params.set("type", type);
       if (status && status !== "all") params.set("status", status);
       const res = await fetch(`/api/admin/orders?${params.toString()}`, { cache: "no-store" });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setOrders(j.orders ?? []);
     } catch (e: unknown) {
@@ -252,7 +253,7 @@ export default function OrdersClient() {
       const params = new URLSearchParams({ type: "browse" });
       if (q) params.set("q", q);
       const res = await fetch(`/api/admin/orders?${params.toString()}`, { cache: "no-store" });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       setBrowseOrders(j?.orders ?? []);
     } catch {
       setBrowseOrders([]);
@@ -266,7 +267,7 @@ export default function OrdersClient() {
       setLoading(true);
       try {
         const res = await fetch("/api/admin/orders?_tenants=1", { cache: "no-store" });
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         if (j?.myTenants?.length) setMyTenants(j.myTenants);
         if (j?.myScore) setMyScore(j.myScore);
       } catch (e) {
@@ -345,7 +346,7 @@ export default function OrdersClient() {
           deadline: formData.deadline || null,
         }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setShowForm(false);
       setFormData({ title: "", description: "", category: "", budget: "", deadline: "" });
@@ -369,7 +370,7 @@ export default function OrdersClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: orderId }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       alert("受注しました！");
       // ブラウズリストから削除し、自社案件を更新

@@ -1,8 +1,8 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getAdminClient } from "@/lib/api/auth";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     if (!caller) return apiUnauthorized();
     if (!requireMinRole(caller, "admin")) return apiForbidden();
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const status = request.nextUrl.searchParams.get("status");
 
     let query = admin
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
       return apiInternalError(error, "agent-support GET");
     }
 
-    return NextResponse.json({ tickets: tickets ?? [] });
+    return apiJson({ tickets: tickets ?? [] });
   } catch (e) {
     return apiInternalError(e, "agent-support GET");
   }

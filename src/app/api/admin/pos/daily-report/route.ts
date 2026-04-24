@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
       customer_name: p.customer_id ? (customerMap[p.customer_id] ?? null) : null,
     }));
 
-    return NextResponse.json({
+    return apiJson({
       date,
       summary: {
         total_sales: totalSales,

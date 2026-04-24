@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { apiJson, apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 /**
  * GET /api/admin/orders/[id]
@@ -16,7 +16,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     if (!caller) return apiUnauthorized();
     const tenantId = caller.tenantId;
 
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // 注文取得 (admin client to bypass RLS)
     const { data: order, error } = await admin
@@ -84,7 +84,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       counterpartyScore = ps;
     }
 
-    return NextResponse.json({
+    return apiJson({
       order,
       from_tenant: mapTenant(fromTenant.data),
       to_tenant: mapTenant(toTenant.data),

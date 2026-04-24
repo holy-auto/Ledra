@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { apiJson, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +16,7 @@ export async function GET(_req: NextRequest) {
     if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     // テナントのStripe Connectアカウントを取得
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data: tenant } = await admin
       .from("tenants")
       .select("stripe_connect_account_id, stripe_connect_onboarded")
@@ -49,7 +49,7 @@ export async function GET(_req: NextRequest) {
         location: r.location ?? null,
       }));
 
-    return NextResponse.json({ readers });
+    return apiJson({ readers });
   } catch (e: unknown) {
     return apiInternalError(e, "pos/terminal/readers");
   }

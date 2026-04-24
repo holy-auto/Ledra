@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import Link from "next/link";
 import Image from "next/image";
@@ -119,7 +120,7 @@ export default function MarketVehiclesClient() {
       if (maker) params.set("maker", maker);
       if (bodyType) params.set("body_type", bodyType);
       const res = await fetch(`/api/admin/market-vehicles?${params.toString()}`, { cache: "no-store" });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setVehicles(j?.vehicles ?? []);
       setStats(j?.stats ?? { total: 0, listed: 0, draft: 0 });
@@ -151,7 +152,7 @@ export default function MarketVehiclesClient() {
       const res = await fetch(`/api/admin/market-vehicles/${id}`, {
         method: "DELETE",
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       await fetchVehicles(statusFilter, makerFilter, bodyTypeFilter);
     } catch (e: unknown) {

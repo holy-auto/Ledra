@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { apiOk, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -8,41 +9,27 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { data: auth } = await supabase.auth.getUser();
-    if (!auth?.user) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+    if (!auth?.user) return apiUnauthorized();
 
     // Verify the user is an agent user
     const { data: agentData, error: agentErr } = await supabase.rpc("get_my_agent_status");
     if (agentErr || !agentData || (Array.isArray(agentData) && agentData.length === 0)) {
-      return NextResponse.json({ error: "agent_not_found" }, { status: 403 });
+      return apiForbidden("代理店情報が見つかりません。");
     }
 
-    const body = await request.json().catch(() => ({} as Record<string, unknown>));
+    const body = await request.json().catch(() => ({}) as Record<string, unknown>);
     const announcementId = ((body?.announcement_id as string) ?? "").trim();
 
-    if (!announcementId) {
-      return NextResponse.json(
-        { error: "announcement_id_required", message: "announcement_id は必須です。" },
-        { status: 400 }
-      );
-    }
+    if (!announcementId) return apiValidationError("announcement_id は必須です。");
 
     const { error } = await supabase
       .from("agent_announcement_reads")
-      .upsert(
-        { announcement_id: announcementId, user_id: auth.user.id },
-        { onConflict: "announcement_id,user_id" }
-      );
+      .upsert({ announcement_id: announcementId, user_id: auth.user.id }, { onConflict: "announcement_id,user_id" });
 
-    if (error) {
-      console.error("[agent/announcements/read] upsert error:", error.message);
-      return NextResponse.json({ error: "db_error" }, { status: 500 });
-    }
+    if (error) return apiInternalError(error, "agent/announcements/read upsert");
 
-    return NextResponse.json({ ok: true });
+    return apiOk({});
   } catch (e: unknown) {
-    console.error("[agent/announcements/read] POST error:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiInternalError(e, "agent/announcements/read POST");
   }
 }

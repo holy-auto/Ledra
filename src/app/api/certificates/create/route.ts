@@ -1,18 +1,25 @@
 import { NextResponse } from "next/server";
 import { phoneLast4Hash } from "@/lib/customerPortalServer";
 import { certificateCreateSchema } from "@/lib/validations/certificate";
-import { apiInternalError, apiValidationError, apiUnauthorized, apiForbidden, apiPlanLimit } from "@/lib/api/response";
+import {
+  apiJson,
+  apiInternalError,
+  apiValidationError,
+  apiUnauthorized,
+  apiForbidden,
+  apiPlanLimit,
+} from "@/lib/api/response";
 import { enforceBilling } from "@/lib/billing/guard";
 import { CERT_LIMITS, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { logCertificateAction } from "@/lib/audit/certificateLog";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
-async function supaInsertCertificate(row: any) {
-  const admin = getSupabaseAdmin();
+async function supaInsertCertificate(tenantId: string, row: any) {
+  const { admin } = createTenantScopedAdmin(tenantId);
   const { data, error } = await admin
     .from("certificates")
     .insert(row)
@@ -32,11 +39,11 @@ export async function POST(req: Request) {
   }
 
   const deny = await enforceBilling(req, { minPlan: "free", action: "create", tenantId: caller.tenantId });
-  if (deny) return deny as any;
+  if (deny) return deny;
 
   // ── 月間証明書発行上限チェック ──
   try {
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data: tenant } = await admin
       .from("tenants")
       .select("plan_tier")
@@ -100,7 +107,7 @@ export async function POST(req: Request) {
       footer_variant: b.footer_variant ?? "holy",
     };
 
-    const certificate = await supaInsertCertificate(insertRow);
+    const certificate = await supaInsertCertificate(caller.tenantId, insertRow);
 
     // Fire-and-forget audit log
     logCertificateAction({
@@ -113,7 +120,7 @@ export async function POST(req: Request) {
       description: `顧客: ${b.customer_name}`,
     });
 
-    return NextResponse.json({ certificate }, { status: 200 });
+    return apiJson({ certificate }, { status: 200 });
   } catch (e) {
     return apiInternalError(e, "certificates/create");
   }

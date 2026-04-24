@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useEffect, useState } from "react";
 import Badge from "@/components/ui/Badge";
@@ -93,7 +94,7 @@ export default function AdminNotificationsClient() {
         }),
       });
       if (!res.ok) {
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       setMsg("通知を送信しました");

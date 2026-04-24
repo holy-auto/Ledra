@@ -1,7 +1,7 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { exchangeCodeAndSave } from "@/lib/gcal/client";
 import { createClient } from "@/lib/supabase/server";
-import { getAdminClient } from "@/lib/api/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
   }
 
   // ユーザーが対象テナントのメンバーであるか確認
-  const admin = getAdminClient();
+  const { admin } = createTenantScopedAdmin(state);
   const { data: membership } = await admin
     .from("tenant_members")
     .select("id")

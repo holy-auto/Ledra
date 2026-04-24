@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { parsePagination } from "@/lib/api/pagination";
-import { apiUnauthorized, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiForbidden,
+  apiValidationError,
+  apiNotFound,
+  apiInternalError,
+} from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +65,7 @@ export async function GET(req: NextRequest) {
         .eq("customer_id", customerId)
         .order("created_at", { ascending: false });
 
-      return NextResponse.json({ certificates: certs ?? [] });
+      return apiJson({ certificates: certs ?? [] });
     }
 
     const selectCols =
@@ -97,7 +104,7 @@ export async function GET(req: NextRequest) {
 
     // 顧客名を取得
     const customerIds = [...new Set((docs ?? []).map((i) => i.customer_id).filter(Boolean))];
-    let customerNames: Record<string, string> = {};
+    const customerNames: Record<string, string> = {};
     if (customerIds.length > 0) {
       const { data: customers } = await supabase.from("customers").select("id, name").in("id", customerIds);
       (customers ?? []).forEach((c) => {
@@ -122,7 +129,7 @@ export async function GET(req: NextRequest) {
     const thisMonthIssued = allInvoices.filter((i) => i.issued_at && i.issued_at >= thisMonthStart).length;
 
     const headers = { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" };
-    return NextResponse.json(
+    return apiJson(
       {
         invoices: enriched,
         stats: {
@@ -156,7 +163,7 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as any);
+    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
 
     const docNumber = body?.invoice_number?.trim() || (await generateInvoiceNumber(supabase, caller.tenantId));
     const customerId = body?.customer_id?.trim() || null;
@@ -222,7 +229,7 @@ export async function POST(req: NextRequest) {
     };
 
     // RLS をバイパスしてサービスロールで INSERT（tenant_id で必ずスコープ限定）
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data, error } = await admin
       .from("documents")
       .insert(row)
@@ -235,7 +242,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 後方互換: invoice_number エイリアス
-    return NextResponse.json({ ok: true, invoice: { ...data, invoice_number: data.doc_number } });
+    return apiJson({ ok: true, invoice: { ...data, invoice_number: data.doc_number } });
   } catch (e: unknown) {
     return apiInternalError(e, "invoices create");
   }
@@ -248,7 +255,7 @@ export async function PUT(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as any);
+    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const id = (body?.id ?? "").trim();
     if (!id) return apiValidationError("missing_id");
 
@@ -298,7 +305,7 @@ export async function PUT(req: NextRequest) {
     }
 
     // RLS をバイパスしてサービスロールで UPDATE（tenant_id と doc_type で必ずスコープ限定）
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data, error } = await admin
       .from("documents")
       .update(updates)
@@ -314,7 +321,7 @@ export async function PUT(req: NextRequest) {
       return apiInternalError(error, "invoices update");
     }
 
-    return NextResponse.json({ ok: true, invoice: { ...data, invoice_number: data.doc_number } });
+    return apiJson({ ok: true, invoice: { ...data, invoice_number: data.doc_number } });
   } catch (e: unknown) {
     return apiInternalError(e, "invoices update");
   }
@@ -331,7 +338,7 @@ export async function DELETE(req: NextRequest) {
     }
     const caller = { userId: callerWithRole.userId, tenantId: callerWithRole.tenantId };
 
-    const body = await req.json().catch(() => ({}) as any);
+    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const id = (body?.id ?? "").trim();
     if (!id) return apiValidationError("missing_id");
 
@@ -351,14 +358,14 @@ export async function DELETE(req: NextRequest) {
     }
 
     // RLS をバイパスしてサービスロールで DELETE（tenant_id で必ずスコープ限定）
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { error } = await admin.from("documents").delete().eq("id", id).eq("tenant_id", caller.tenantId);
 
     if (error) {
       return apiInternalError(error, "invoices delete");
     }
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (e: unknown) {
     return apiInternalError(e, "invoices delete");
   }

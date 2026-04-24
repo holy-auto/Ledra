@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
@@ -17,8 +17,17 @@ export async function GET(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
   const insurerId = caller.insurerId;
+
+  type TenantAccessRow = {
+    tenant_id: string;
+    tenants: { id: string; name: string | null } | null;
+  };
+  type InsurerAccessLogRow = {
+    meta: { tenant_id?: string } | null;
+    created_at: string;
+  };
 
   try {
     // Get active tenant access records with tenant info
@@ -26,13 +35,14 @@ export async function GET(req: NextRequest) {
       .from("insurer_tenant_access")
       .select("tenant_id, tenants(id, name)")
       .eq("insurer_id", insurerId)
-      .eq("is_active", true);
+      .eq("is_active", true)
+      .returns<TenantAccessRow[]>();
 
     if (accessErr) throw accessErr;
 
     const tenantRows = access ?? [];
     if (tenantRows.length === 0) {
-      return NextResponse.json({ tenants: [] });
+      return apiJson({ tenants: [] });
     }
 
     const tenantIds = tenantRows.map((r) => r.tenant_id);
@@ -69,21 +79,22 @@ export async function GET(req: NextRequest) {
       .from("insurer_access_logs")
       .select("meta, created_at")
       .eq("insurer_id", insurerId)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .returns<InsurerAccessLogRow[]>();
 
     if (logErr) throw logErr;
 
     // Build a map of tenant_id -> latest access date from logs that reference tenants
     const lastAccessMap: Record<string, string> = {};
     for (const log of accessLogs ?? []) {
-      const tid = (log.meta as any)?.tenant_id;
+      const tid = log.meta?.tenant_id;
       if (tid && tenantIds.includes(tid) && !lastAccessMap[tid]) {
         lastAccessMap[tid] = log.created_at;
       }
     }
 
     const tenants = tenantRows.map((r) => {
-      const tenant = r.tenants as any;
+      const tenant = r.tenants;
       const tid = r.tenant_id;
       return {
         tenant_id: tid,
@@ -94,7 +105,7 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    return NextResponse.json({ tenants });
+    return apiJson({ tenants });
   } catch (err) {
     return apiInternalError(err, "GET /api/insurer/tenants");
   }

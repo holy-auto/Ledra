@@ -32,7 +32,7 @@ export default async function MarketPage({ searchParams }: { searchParams: Promi
 
   // Fetch images for all vehicles
   const vehicleIds = (vehicles ?? []).map((v: any) => v.id);
-  let imagesMap: Record<string, any[]> = {};
+  const imagesMap: Record<string, any[]> = {};
 
   if (vehicleIds.length > 0) {
     const { data: images } = await supabase
@@ -65,7 +65,9 @@ export default async function MarketPage({ searchParams }: { searchParams: Promi
             {q && <span className="ml-2">/ 検索: &quot;{q}&quot;</span>}
           </p>
         </div>
-        <Link href="/admin" className="btn-ghost">管理画面へ戻る</Link>
+        <Link href="/admin" className="btn-ghost">
+          管理画面へ戻る
+        </Link>
       </header>
 
       <MarketClient vehicles={enriched} />

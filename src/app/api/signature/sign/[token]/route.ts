@@ -16,8 +16,9 @@
  */
 
 import { NextRequest } from "next/server";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { getValidSessionByToken } from "@/lib/signature/session";
 import { buildSigningPayload } from "@/lib/signature/hash";
 import { signPayload, getPrivateKey, getActiveKeyInfo } from "@/lib/signature/crypto";
@@ -84,6 +85,10 @@ async function notifyShopSignatureComplete(params: {
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
+  // Public signing endpoint — bruteforce protection (10 req / 60s / IP).
+  const limited = await checkRateLimit(req, "auth");
+  if (limited) return limited;
+
   const { token } = await params;
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
   const ua = req.headers.get("user-agent") ?? "unknown";
@@ -112,7 +117,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     return apiError({ code: "not_found", message: "署名リンクが無効または有効期限切れです", status: 404 });
   }
 
-  const supabase = getSupabaseAdmin();
+  const supabase = createServiceRoleAdmin("signature flow — opaque token lookup, customer is unauthenticated");
   const signedAt = new Date().toISOString();
   const normalizedEmail = signer_email.toLowerCase().trim();
 

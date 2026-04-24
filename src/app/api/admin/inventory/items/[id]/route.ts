@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiValidationError, apiInternalError, apiNotFound } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError, apiNotFound } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +46,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       .order("created_at", { ascending: false })
       .limit(50);
 
-    return NextResponse.json({ ok: true, item, movements: movements ?? [] });
+    return apiJson({ ok: true, item, movements: movements ?? [] });
   } catch (e: unknown) {
     return apiInternalError(e, "inventory-item GET");
   }
@@ -94,7 +94,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       return apiInternalError(error, "inventory-item update");
     }
 
-    return NextResponse.json({ ok: true, item: data });
+    return apiJson({ ok: true, item: data });
   } catch (e: unknown) {
     return apiInternalError(e, "inventory-item PUT");
   }
@@ -117,7 +117,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
     if (error) return apiInternalError(error, "inventory-item delete");
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (e: unknown) {
     return apiInternalError(e, "inventory-item DELETE");
   }

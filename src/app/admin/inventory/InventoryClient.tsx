@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useMemo, useState } from "react";
 import useSWR from "swr";
@@ -125,7 +126,7 @@ export default function InventoryClient() {
           unit_cost: form.unit_cost ? parseInt(form.unit_cost, 10) : null,
         }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
       setMsg({ text: `在庫「${j.item?.name ?? form.name}」を登録しました`, ok: true });
       resetForm();
@@ -177,7 +178,7 @@ export default function InventoryClient() {
           unit_cost: editForm.unit_cost ? parseInt(editForm.unit_cost, 10) : null,
         }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
       setEditingId(null);
       setMsg({ text: "在庫情報を更新しました", ok: true });
@@ -222,7 +223,7 @@ export default function InventoryClient() {
           reason: moveReason.trim() || null,
         }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
       const label = moveType === "in" ? "入庫" : moveType === "out" ? "出庫" : "棚卸調整";
       setMsg({ text: `${movingItem.name}：${label}を記録しました`, ok: true });
@@ -244,7 +245,7 @@ export default function InventoryClient() {
     setDeletingId(id);
     try {
       const res = await fetch(`/api/admin/inventory/items/${id}`, { method: "DELETE" });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
       setMsg({ text: "無効化しました", ok: true });
       mutate();

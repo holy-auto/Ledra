@@ -33,10 +33,27 @@ export default async function AdminVehicleListPage() {
 
   const { data: vehicles, error } = await supabase
     .from("vehicles")
-    .select("id,maker,model,year,plate_display,vin_code,notes,created_at,updated_at,customer_id,customer:customers(id,name)")
+    .select(
+      "id,maker,model,year,plate_display,vin_code,notes,created_at,updated_at,customer_id,customer:customers(id,name)",
+    )
     .eq("tenant_id", membership.tenant_id)
     .order("created_at", { ascending: false })
-    .limit(200);
+    .limit(200)
+    .returns<
+      Array<{
+        id: string;
+        maker: string | null;
+        model: string | null;
+        year: number | null;
+        plate_display: string | null;
+        vin_code: string | null;
+        notes: string | null;
+        created_at: string | null;
+        updated_at: string | null;
+        customer_id: string | null;
+        customer: { id: string; name: string | null } | null;
+      }>
+    >();
 
   if (error) {
     return (
@@ -56,7 +73,9 @@ export default async function AdminVehicleListPage() {
         description="登録済み車両の確認・詳細閲覧・証明書発行への導線。"
         actions={
           <div className="flex gap-3 items-center">
-            <Link href="/admin" className="btn-secondary">ダッシュボード</Link>
+            <Link href="/admin" className="btn-secondary">
+              ダッシュボード
+            </Link>
             <VehicleListActions />
           </div>
         }
@@ -79,13 +98,8 @@ export default async function AdminVehicleListPage() {
 
         {rows.length === 0 ? (
           <div className="p-8 text-center">
-            <p className="text-sm text-muted">
-              車両が登録されていません。
-            </p>
-            <Link
-              href="/admin/vehicles/new"
-              className="btn-primary mt-4 inline-block"
-            >
+            <p className="text-sm text-muted">車両が登録されていません。</p>
+            <Link href="/admin/vehicles/new" className="btn-primary mt-4 inline-block">
               最初の車両を登録する
             </Link>
           </div>
@@ -97,43 +111,34 @@ export default async function AdminVehicleListPage() {
                   <th className="p-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">登録日</th>
                   <th className="p-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">メーカー</th>
                   <th className="p-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">車種</th>
-                  <th className="hidden sm:table-cell p-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">年式</th>
-                  <th className="hidden sm:table-cell p-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">ナンバー</th>
-                  <th className="hidden md:table-cell p-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">車体番号</th>
-                  <th className="hidden sm:table-cell p-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">所有者</th>
+                  <th className="hidden sm:table-cell p-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">
+                    年式
+                  </th>
+                  <th className="hidden sm:table-cell p-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">
+                    ナンバー
+                  </th>
+                  <th className="hidden md:table-cell p-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">
+                    車体番号
+                  </th>
+                  <th className="hidden sm:table-cell p-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">
+                    所有者
+                  </th>
                   <th className="p-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-subtle">
                 {rows.map((v) => (
                   <tr key={v.id} className="hover:bg-surface-hover/60">
-                    <td className="p-3 whitespace-nowrap text-secondary">
-                      {formatDate(v.created_at)}
-                    </td>
-                    <td className="p-3 font-medium text-primary">
-                      {v.maker || "-"}
-                    </td>
-                    <td className="p-3 text-primary">
-                      {v.model || "-"}
-                    </td>
-                    <td className="hidden sm:table-cell p-3 text-secondary">
-                      {v.year ? String(v.year) : "-"}
-                    </td>
-                    <td className="hidden sm:table-cell p-3 font-mono text-primary">
-                      {v.plate_display || "-"}
-                    </td>
-                    <td className="hidden md:table-cell p-3 font-mono text-secondary text-xs">
-                      {v.vin_code || "-"}
-                    </td>
-                    <td className="hidden sm:table-cell p-3 text-secondary text-sm">
-                      {(v as any).customer?.name || "-"}
-                    </td>
+                    <td className="p-3 whitespace-nowrap text-secondary">{formatDate(v.created_at)}</td>
+                    <td className="p-3 font-medium text-primary">{v.maker || "-"}</td>
+                    <td className="p-3 text-primary">{v.model || "-"}</td>
+                    <td className="hidden sm:table-cell p-3 text-secondary">{v.year ? String(v.year) : "-"}</td>
+                    <td className="hidden sm:table-cell p-3 font-mono text-primary">{v.plate_display || "-"}</td>
+                    <td className="hidden md:table-cell p-3 font-mono text-secondary text-xs">{v.vin_code || "-"}</td>
+                    <td className="hidden sm:table-cell p-3 text-secondary text-sm">{v.customer?.name || "-"}</td>
                     <td className="p-3">
                       <div className="flex gap-2 flex-wrap">
-                        <Link
-                          href={`/admin/vehicles/${v.id}`}
-                          className="btn-ghost px-3 py-1 text-xs"
-                        >
+                        <Link href={`/admin/vehicles/${v.id}`} className="btn-ghost px-3 py-1 text-xs">
                           詳細
                         </Link>
                         <Link

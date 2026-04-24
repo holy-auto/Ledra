@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiValidationError } from "@/lib/api/response";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { apiInternalError, apiJson, apiUnauthorized, apiValidationError } from "@/lib/api/response";
+import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const runtime = "nodejs";
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const certificateId = req.nextUrl.searchParams.get("certificate_id");
   if (!certificateId) return apiValidationError("Missing certificate_id");
 
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
   const { data, error } = await admin
     .from("pii_disclosure_consents")
     .select(
@@ -27,11 +27,11 @@ export async function GET(req: NextRequest) {
     .eq("is_active", true)
     .maybeSingle();
 
-  if (error) return apiValidationError(error.message);
+  if (error) return apiInternalError(error, "insurer.pii-disclosure");
 
   const disclosed = data && data.insurer_requested_at !== null && data.tenant_consented_at !== null;
 
-  return NextResponse.json({
+  return apiJson({
     consent: data,
     disclosed,
     insurer_requested: !!data?.insurer_requested_at,
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
   const { certificate_id, reason } = body as { certificate_id?: string; reason?: string };
   if (!certificate_id) return apiValidationError("Missing certificate_id");
 
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
   const { data, error } = await admin
     .from("pii_disclosure_consents")
@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
     )
     .single();
 
-  if (error) return apiValidationError(error.message);
+  if (error) return apiInternalError(error, "insurer.pii-disclosure");
 
   await admin.from("insurer_access_logs").insert({
     insurer_id: caller.insurerId,
@@ -88,5 +88,5 @@ export async function POST(req: NextRequest) {
     user_agent: req.headers.get("user-agent") ?? null,
   });
 
-  return NextResponse.json({ consent: data });
+  return apiJson({ consent: data });
 }

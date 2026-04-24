@@ -11,8 +11,8 @@ function csvEscape(v: any) {
 
 export async function GET(req: Request) {
   // @holy-guard:export_one_csv
-  const __gate = await checkAdminFeature("export_one_csv" as any, "/admin/certificates");
-  if (!__gate.ok) return billingDenyResponse(__gate as any, "export_one_csv" as any, "/admin/certificates");
+  const __gate = await checkAdminFeature("export_one_csv", "/admin/certificates");
+  if (!__gate.ok) return billingDenyResponse(__gate, "export_one_csv", "/admin/certificates");
   const supabase = await createSupabaseServerClient();
 
   const { data: userRes } = await supabase.auth.getUser();
@@ -22,17 +22,15 @@ export async function GET(req: Request) {
   const pid = (url.searchParams.get("pid") ?? "").trim();
   if (!pid) return NextResponse.json({ error: "missing pid" }, { status: 400 });
 
-  const { data: mem } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .limit(1)
-    .single();
+  const { data: mem } = await supabase.from("tenant_memberships").select("tenant_id").limit(1).single();
   const tenantId = mem?.tenant_id as string | undefined;
   if (!tenantId) return NextResponse.json({ error: "tenant_not_found" }, { status: 400 });
 
   const { data: r, error } = await supabase
     .from("certificates")
-    .select("public_id,status,customer_name,vehicle_info_json,content_free_text,expiry_type,expiry_value,created_at,updated_at")
+    .select(
+      "public_id,status,customer_name,vehicle_info_json,content_free_text,expiry_type,expiry_value,created_at,updated_at",
+    )
     .eq("tenant_id", tenantId)
     .eq("public_id", pid)
     .single();
@@ -44,8 +42,16 @@ export async function GET(req: Request) {
   const plate = (v.plate ?? "").toString();
 
   const header = [
-    "public_id","status","customer_name","vehicle_model","vehicle_plate",
-    "content_free_text","expiry_type","expiry_value","created_at","updated_at",
+    "public_id",
+    "status",
+    "customer_name",
+    "vehicle_model",
+    "vehicle_plate",
+    "content_free_text",
+    "expiry_type",
+    "expiry_value",
+    "created_at",
+    "updated_at",
   ];
 
   const line = [

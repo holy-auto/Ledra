@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useEffect, useState, useCallback } from "react";
 import Badge from "@/components/ui/Badge";
@@ -131,7 +132,7 @@ export default function AdminAnnouncementsClient() {
       });
 
       if (!res.ok) {
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
 
@@ -152,7 +153,7 @@ export default function AdminAnnouncementsClient() {
     try {
       const res = await fetch(`/api/admin/agent-announcements/${id}`, { method: "DELETE" });
       if (!res.ok) {
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       flash("削除しました", true);

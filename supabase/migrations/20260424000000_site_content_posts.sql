@@ -59,13 +59,13 @@ DROP POLICY IF EXISTS "site_content_posts_insert_own_tenant" ON site_content_pos
 DROP POLICY IF EXISTS "site_content_posts_update_own_tenant" ON site_content_posts;
 DROP POLICY IF EXISTS "site_content_posts_delete_own_tenant" ON site_content_posts;
 
+
 -- 公開済みは誰でも閲覧可能（HP表示用）
 CREATE POLICY "site_content_posts_select_published" ON site_content_posts
   FOR SELECT
   USING (status = 'published');
 
 -- 認証済みユーザーは所属テナントの全投稿を閲覧可能
--- （注: follow-up マイグレーションで super_admin 限定に差し替えられます）
 CREATE POLICY "site_content_posts_select_own_tenant" ON site_content_posts
   FOR SELECT
   TO authenticated

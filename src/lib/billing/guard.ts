@@ -1,4 +1,4 @@
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import Stripe from "stripe";
 import { type PlanTier, PLAN_RANK as RANK } from "@/types/billing";
 import { isPlatformTenantId } from "@/lib/auth/platformAdmin";
@@ -11,8 +11,11 @@ function graceDays(): number {
   return n;
 }
 
-function getSupabaseAdmin() {
-  return createAdminClient();
+/** Pre-resolution helper: extractTenantId uses this to discover the tenant from a request */
+function getBillingLookupAdmin() {
+  return createServiceRoleAdmin(
+    "billing guard — extractTenantId resolves tenant from request (cert_id/public_id lookup)",
+  );
 }
 
 function getStripe() {
@@ -83,7 +86,7 @@ async function extractTenantId(req: Request): Promise<string | null> {
     // query: certificate_id -> tenant_id
     const cid = q.get("certificate_id") ?? q.get("certificateId") ?? q.get("id");
     if (cid) {
-      const supabase = getSupabaseAdmin();
+      const supabase = getBillingLookupAdmin();
       const { data, error } = await supabase
         .from("certificates")
         .select("tenant_id")
@@ -96,7 +99,7 @@ async function extractTenantId(req: Request): Promise<string | null> {
     // query: public_id -> tenant_id
     const pid = q.get("public_id") ?? q.get("publicId") ?? q.get("pid");
     if (pid) {
-      const supabase = getSupabaseAdmin();
+      const supabase = getBillingLookupAdmin();
       const { data, error } = await supabase
         .from("certificates")
         .select("tenant_id")
@@ -117,7 +120,7 @@ async function extractTenantId(req: Request): Promise<string | null> {
 
     const cid = b?.certificate_id ?? b?.certificateId ?? null;
     if (typeof cid === "string" && cid) {
-      const supabase = getSupabaseAdmin();
+      const supabase = getBillingLookupAdmin();
       const { data, error } = await supabase
         .from("certificates")
         .select("tenant_id")
@@ -129,7 +132,7 @@ async function extractTenantId(req: Request): Promise<string | null> {
 
     const pid = b?.public_id ?? b?.publicId ?? b?.pid ?? null;
     if (typeof pid === "string" && pid) {
-      const supabase = getSupabaseAdmin();
+      const supabase = getBillingLookupAdmin();
       const { data, error } = await supabase
         .from("certificates")
         .select("tenant_id")
@@ -141,7 +144,7 @@ async function extractTenantId(req: Request): Promise<string | null> {
 
     const ids = b?.certificate_ids ?? b?.certificateIds ?? b?.ids ?? null;
     if (Array.isArray(ids) && ids.length > 0 && typeof ids[0] === "string") {
-      const supabase = getSupabaseAdmin();
+      const supabase = getBillingLookupAdmin();
       const { data, error } = await supabase
         .from("certificates")
         .select("tenant_id")
@@ -213,7 +216,7 @@ export async function enforceBilling(
     return null;
   }
 
-  const supabase = getSupabaseAdmin();
+  const supabase = getBillingLookupAdmin();
   const { data, error } = await supabase
     .from("tenants")
     .select("plan_tier, is_active, stripe_subscription_id")

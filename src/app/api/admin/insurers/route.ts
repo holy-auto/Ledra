@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin, createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { getClientIp } from "@/lib/rateLimit";
-import { apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -32,7 +32,7 @@ async function logAdminAction(params: {
   ip?: string;
   userAgent?: string;
 }) {
-  const admin = createAdminClient();
+  const admin = createServiceRoleAdmin("admin audit log — writes platform-wide admin_audit_logs (no tenant scope)");
   await admin
     .from("admin_audit_logs")
     .insert({
@@ -175,7 +175,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const statusFilter = url.searchParams.get("status") ?? "";
 
-  const admin = createAdminClient();
+  const { admin } = createTenantScopedAdmin(caller.tenantId);
   let query = admin
     .from("insurers")
     .select(
@@ -193,7 +193,7 @@ export async function GET(req: Request) {
     return apiInternalError(error, "insurers GET");
   }
 
-  return NextResponse.json({ insurers: data ?? [] });
+  return apiJson({ insurers: data ?? [] });
 }
 
 /**
@@ -235,7 +235,7 @@ export async function PATCH(req: Request) {
     return apiValidationError(`Invalid plan_tier. Must be one of: ${VALID_PLAN_TIERS.join(", ")}`);
   }
 
-  const admin = createAdminClient();
+  const { admin } = createTenantScopedAdmin(caller.tenantId);
 
   // Fetch current state for audit log
   const { data: beforeInsurer } = await admin
@@ -314,5 +314,5 @@ export async function PATCH(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, insurer: data });
+  return apiJson({ ok: true, insurer: data });
 }

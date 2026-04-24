@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getAdminClient } from "@/lib/api/auth";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiUnauthorized, apiInternalError, apiError } from "@/lib/api/response";
 import { verifyCronRequest } from "@/lib/cronAuth";
 import { sendCronFailureAlert } from "@/lib/cronAlert";
@@ -34,7 +34,9 @@ async function refreshSquareToken(
     }
 
     const data = await res.json();
-    const admin = getAdminClient();
+    const admin = createServiceRoleAdmin(
+      "cron:square-sync — fans out Square OAuth refresh across every connected tenant",
+    );
     await admin
       .from("square_connections")
       .update({
@@ -135,7 +137,9 @@ export async function GET(req: NextRequest) {
       return apiUnauthorized(authError);
     }
 
-    const admin = getAdminClient();
+    const admin = createServiceRoleAdmin(
+      "cron:square-sync — fans out Square OAuth refresh across every connected tenant",
+    );
 
     // Fetch all active square connections
     const { data: connections, error: connErr } = await admin

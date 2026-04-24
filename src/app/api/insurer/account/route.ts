@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiValidationError, apiForbidden } from "@/lib/api/response";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { apiInternalError, apiJson, apiUnauthorized, apiValidationError, apiForbidden } from "@/lib/api/response";
+import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
@@ -9,14 +9,14 @@ export async function GET(_req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
   const { data: insurer, error } = await admin
     .from("insurers")
     .select("id, name, slug, plan_tier, status, contact_email, contact_phone, address, max_users, created_at")
     .eq("id", caller.insurerId)
     .maybeSingle();
 
-  if (error) return apiValidationError(error.message);
+  if (error) return apiInternalError(error, "insurer.account");
 
   const { count } = await admin
     .from("insurer_users")
@@ -24,7 +24,7 @@ export async function GET(_req: NextRequest) {
     .eq("insurer_id", caller.insurerId)
     .eq("is_active", true);
 
-  return NextResponse.json({ insurer, user_count: count ?? 0 });
+  return apiJson({ insurer, user_count: count ?? 0 });
 }
 
 export async function PATCH(req: NextRequest) {
@@ -50,7 +50,7 @@ export async function PATCH(req: NextRequest) {
 
   if (Object.keys(update).length === 0) return apiValidationError("No valid fields to update");
 
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
   const { data, error } = await admin
     .from("insurers")
     .update(update)
@@ -60,7 +60,7 @@ export async function PATCH(req: NextRequest) {
     )
     .single();
 
-  if (error) return apiValidationError(error.message);
+  if (error) return apiInternalError(error, "insurer.account");
 
-  return NextResponse.json({ insurer: data });
+  return apiJson({ insurer: data });
 }

@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { CUSTOMER_COOKIE, getTenantIdBySlug, validateSession, getCustomerProfile } from "@/lib/customerPortalServer";
 import { GLOBAL_PORTAL_COOKIE, resolvePortalTenantAccessByGlobalToken } from "@/lib/customerPortalGlobal";
 import { notifySlack } from "@/lib/slack";
@@ -46,7 +47,8 @@ export async function GET(req: Request) {
     const sess = await resolveSession(tenantSlug);
     if (!sess) return apiUnauthorized();
 
-    const { data, error } = await getSupabaseAdmin()
+    const { admin } = createTenantScopedAdmin(sess.tenantId);
+    const { data, error } = await admin
       .from("customer_inquiries")
       .select("id, subject, message, status, admin_reply, replied_at, created_at")
       .eq("tenant_id", sess.tenantId)
@@ -56,14 +58,18 @@ export async function GET(req: Request) {
 
     if (error) return apiInternalError(error, "customer/inquiry GET");
 
-    return NextResponse.json({ ok: true, inquiries: data ?? [] });
+    return apiJson({ ok: true, inquiries: data ?? [] });
   } catch (e) {
     return apiInternalError(e, "customer/inquiry GET");
   }
 }
 
 /** POST /api/customer/inquiry — 問い合わせ送信 */
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  // Customer portal inquiries — strict per-IP limit to prevent spam campaigns.
+  const limited = await checkRateLimit(req, "auth");
+  if (limited) return limited;
+
   try {
     const body = await req.json().catch(() => ({}));
     const tenantSlug = (body?.tenant_slug ?? "").trim();
@@ -83,7 +89,8 @@ export async function POST(req: Request) {
     );
     const customerName = profile?.name ?? null;
 
-    const { data, error } = await getSupabaseAdmin()
+    const { admin } = createTenantScopedAdmin(sess.tenantId);
+    const { data, error } = await admin
       .from("customer_inquiries")
       .insert({
         tenant_id: sess.tenantId,
@@ -113,7 +120,7 @@ export async function POST(req: Request) {
       console.error("[customer/inquiry] slack notify failed:", err);
     }
 
-    return NextResponse.json({ ok: true, id: data.id }, { status: 201 });
+    return apiJson({ ok: true, id: data.id }, { status: 201 });
   } catch (e) {
     return apiInternalError(e, "customer/inquiry POST");
   }

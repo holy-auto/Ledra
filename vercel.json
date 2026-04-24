@@ -3,6 +3,14 @@
     "src/app/api/certificates/images/upload/route.ts": {
       "memory": 1024,
       "maxDuration": 30
+    },
+    "src/app/api/certificate/pdf/route.ts": {
+      "memory": 1024,
+      "maxDuration": 30
+    },
+    "src/app/admin/certificates/pdf-selected/route.ts": {
+      "memory": 1024,
+      "maxDuration": 60
     }
   },
   "crons": [
@@ -29,6 +37,14 @@
     {
       "path": "/api/cron/polygon-signer",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-insurer-logs",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/square-sync",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
