@@ -10,7 +10,7 @@
  * fonts) so unbounded traffic would be a trivial DoS vector.
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { apiNotFound, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
@@ -19,7 +19,7 @@ import { RESOURCE_PDFS, isSupportedPdfLocale, type PdfLocale } from "@/lib/marke
 
 export const runtime = "nodejs";
 
-export async function GET(request: Request, ctx: { params: Promise<{ key: string }> }) {
+export async function GET(request: NextRequest, ctx: { params: Promise<{ key: string }> }) {
   const { key } = await ctx.params;
   const entry = RESOURCE_PDFS[key];
   if (!entry) {

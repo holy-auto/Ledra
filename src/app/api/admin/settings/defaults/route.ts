@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +22,7 @@ export async function GET() {
       return apiInternalError(error, "admin/settings/defaults GET");
     }
 
-    return NextResponse.json({
+    return apiJson({
       default_warranty_exclusions: data?.default_warranty_exclusions ?? "",
     });
   } catch (e: unknown) {
@@ -49,7 +49,7 @@ export async function PUT(req: NextRequest) {
       return apiInternalError(error, "admin/settings/defaults PUT");
     }
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (e: unknown) {
     return apiInternalError(e, "admin/settings/defaults PUT");
   }

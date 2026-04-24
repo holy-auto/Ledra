@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { type PlanTier, planTierToPriceId } from "@/lib/stripe/plan";
 import { resumeSchema } from "@/lib/validations/stripe";
 import { apiOk, apiInternalError, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
@@ -23,7 +23,9 @@ function baseUrl(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const stripe = getStripe();
-    const admin = getSupabaseAdmin();
+    const admin = createServiceRoleAdmin(
+      "stripe auth flow — validates access_token then resolves tenant, pre-resolution",
+    );
 
     const body = await req.json().catch((): Record<string, unknown> => ({}));
     const parsed = resumeSchema.safeParse(body);

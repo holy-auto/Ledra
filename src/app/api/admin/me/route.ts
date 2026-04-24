@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,7 @@ export async function GET() {
       .eq("id", caller.tenantId)
       .single();
 
-    return NextResponse.json({
+    return apiJson({
       user_id: caller.userId,
       email: (await supabase.auth.getUser()).data?.user?.email ?? null,
       tenant_id: caller.tenantId,

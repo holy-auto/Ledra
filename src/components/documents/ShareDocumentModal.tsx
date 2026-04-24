@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useState } from "react";
 import Modal from "@/components/ui/Modal";
@@ -76,7 +77,7 @@ export default function ShareDocumentModal({
           message: message.trim() || undefined,
         }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) {
         throw new Error(j?.message ?? `送信に失敗しました (${res.status})`);
       }

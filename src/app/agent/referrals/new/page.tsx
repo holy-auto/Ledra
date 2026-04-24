@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -35,7 +36,7 @@ export default function NewReferralPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(form),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       router.push("/agent/referrals");
     } catch (err: any) {

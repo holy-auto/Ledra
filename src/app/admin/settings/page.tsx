@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { createAdminClient as createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import SettingsForm from "./SettingsForm";
 import FollowUpSettings from "./FollowUpSettings";
 import SquareConnectSection from "./SquareConnectSection";
@@ -46,7 +46,7 @@ const EMPTY_TENANT_EXTENDED: TenantExtended = {
 /** Attempt to fetch extended tenant columns added via migration.
  *  Returns null values gracefully if columns don't exist yet. */
 async function fetchTenantExtended(tenantId: string): Promise<TenantExtended> {
-  const admin = createSupabaseAdminClient();
+  const { admin } = createTenantScopedAdmin(tenantId);
   try {
     const { data, error } = await admin
       .from("tenants")
@@ -116,7 +116,7 @@ export default async function AdminSettingsPage() {
     Object.keys(ext).length > 0; // always true, indicates columns exist
 
   // Actually detect if columns exist by checking error on a small query
-  const admin = createSupabaseAdminClient();
+  const { admin } = createTenantScopedAdmin(tenantId);
   const { error: detectErr } = await admin.from("tenants").select("contact_email").eq("id", tenantId).limit(1).single();
   const columnsExist = !detectErr || !detectErr.message.includes("does not exist");
 

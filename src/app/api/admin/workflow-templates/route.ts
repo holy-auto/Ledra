@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
       return apiInternalError(error, "workflow-templates GET");
     }
 
-    return NextResponse.json({ templates: data ?? [] });
+    return apiJson({ templates: data ?? [] });
   } catch (e: unknown) {
     return apiInternalError(e, "workflow-templates GET");
   }
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
       return apiInternalError(error, "workflow-templates POST");
     }
 
-    return NextResponse.json({ ok: true, template: data }, { status: 201 });
+    return apiJson({ ok: true, template: data }, { status: 201 });
   } catch (e: unknown) {
     return apiInternalError(e, "workflow-templates POST");
   }

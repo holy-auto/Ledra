@@ -1,4 +1,4 @@
-import { getAdminClient } from "@/lib/api/auth";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 export type OverlapResult = {
   overlapping_id: string;
@@ -21,7 +21,7 @@ export async function checkOverlap(params: {
   excludeId?: string;
   assignedUserId?: string;
 }): Promise<OverlapResult[]> {
-  const admin = getAdminClient();
+  const { admin } = createTenantScopedAdmin(params.tenantId);
 
   const { data, error } = await admin.rpc("check_reservation_overlap", {
     p_tenant_id: params.tenantId,

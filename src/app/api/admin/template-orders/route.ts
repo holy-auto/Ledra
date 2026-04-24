@@ -1,6 +1,7 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getAdminClient, resolveCallerFull } from "@/lib/api/auth";
+import { resolveCallerFull } from "@/lib/api/auth";
 import { apiOk, apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
 
 /** GET: 全テナントのテンプレートオーダー一覧（管理者用） */
@@ -13,7 +14,7 @@ export async function GET(req: NextRequest) {
       return apiForbidden("管理者権限が必要です。");
     }
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // 個別オーダーのログ取得
     const url = new URL(req.url);
@@ -67,7 +68,7 @@ export async function PUT(req: NextRequest) {
       return apiForbidden("管理者権限が必要です。");
     }
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // 現在のステータスを取得
     const { data: current } = await admin.from("template_orders").select("status").eq("id", order_id).single();

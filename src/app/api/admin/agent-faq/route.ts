@@ -1,8 +1,8 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getAdminClient } from "@/lib/api/auth";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +13,7 @@ export async function GET() {
     if (!caller) return apiUnauthorized();
     if (!requireMinRole(caller, "admin")) return apiForbidden();
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const [catRes, faqRes] = await Promise.all([
       admin.from("agent_faq_categories").select("id, name, sort_order, created_at, updated_at").order("sort_order"),
       admin
@@ -30,7 +30,7 @@ export async function GET() {
       agent_faq_categories: undefined,
     }));
 
-    return NextResponse.json({ categories: catRes.data ?? [], faqs });
+    return apiJson({ categories: catRes.data ?? [], faqs });
   } catch (e) {
     return apiInternalError(e, "agent-faq GET");
   }
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     if (!requireMinRole(caller, "admin")) return apiForbidden();
 
     const body = await request.json();
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     const { data, error } = await admin
       .from("agent_faqs")
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) return apiInternalError(error, "agent-faq POST");
-    return NextResponse.json({ faq: data }, { status: 201 });
+    return apiJson({ faq: data }, { status: 201 });
   } catch (e) {
     return apiInternalError(e, "agent-faq POST");
   }

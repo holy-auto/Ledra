@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { createAdminClient as createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { CERTIFICATE_IMAGE_BUCKET, formatCertificateImageBytes } from "@/lib/certificateImages";
 import { logCertificateAction } from "@/lib/audit/certificateLog";
 import PageHeader from "@/components/ui/PageHeader";
@@ -44,7 +44,6 @@ export default async function Page({ params }: PageProps) {
   const publicId = (public_id ?? "").trim();
 
   const supabase = await createSupabaseServerClient();
-  const admin = createSupabaseAdminClient();
 
   const { data: userRes } = await supabase.auth.getUser();
   if (!userRes.user) redirect("/login?next=/admin/certificates");
@@ -57,6 +56,8 @@ export default async function Page({ params }: PageProps) {
       </div>
     );
   }
+
+  const { admin } = createTenantScopedAdmin(tenantId);
 
   const { data: row, error } = await supabase
     .from("certificates")

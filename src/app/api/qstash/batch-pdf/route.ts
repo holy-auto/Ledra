@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { apiJson } from "@/lib/api/response";
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { renderCertificatePdf, type CertRow } from "@/lib/pdfCertificate";
 
 export const runtime = "nodejs";
@@ -27,7 +28,7 @@ async function handler(req: NextRequest) {
     public_ids: string[];
   };
 
-  const admin = createAdminClient();
+  const { admin } = createTenantScopedAdmin(tenant_id);
 
   await admin
     .from("batch_pdf_jobs")
@@ -178,7 +179,7 @@ async function handler(req: NextRequest) {
 
     console.info(`[batch-pdf] job=${job_id} completed count=${public_ids.length}`);
 
-    return NextResponse.json({ success: true });
+    return apiJson({ success: true });
   } catch (e) {
     console.error("[batch-pdf] job failed:", e);
     await admin
@@ -189,7 +190,7 @@ async function handler(req: NextRequest) {
         updated_at: new Date().toISOString(),
       })
       .eq("id", job_id);
-    return NextResponse.json({ error: "Job failed" }, { status: 500 });
+    return apiJson({ error: "Job failed" }, { status: 500 });
   }
 }
 

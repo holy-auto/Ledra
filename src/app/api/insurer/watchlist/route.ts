@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
   try {
     const { data: items, error } = await admin
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
 
     if (error) {
       console.warn("[watchlist] GET error (table may not exist):", error.message);
-      return NextResponse.json({ items: [] });
+      return apiJson({ items: [] });
     }
 
     // Enrich items with target details
@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
       }),
     );
 
-    return NextResponse.json({ items: enriched });
+    return apiJson({ items: enriched });
   } catch (err) {
     return apiInternalError(err, "GET /api/insurer/watchlist");
   }
@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
     return apiValidationError("target_id is required.");
   }
 
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
   try {
     const { data, error } = await admin
@@ -140,10 +140,10 @@ export async function POST(req: NextRequest) {
         return apiValidationError("このアイテムは既にウォッチリストに登録されています。");
       }
       console.error("[watchlist] POST error:", error.message);
-      return apiValidationError(error.message);
+      return apiInternalError(error, "insurer.watchlist");
     }
 
-    return NextResponse.json({ item: data }, { status: 201 });
+    return apiJson({ item: data }, { status: 201 });
   } catch (err) {
     return apiInternalError(err, "POST /api/insurer/watchlist");
   }
@@ -164,17 +164,17 @@ export async function DELETE(req: NextRequest) {
   const id = url.searchParams.get("id");
   if (!id) return apiValidationError("id query parameter is required.");
 
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
   try {
     const { error } = await admin.from("insurer_watchlist").delete().eq("id", id).eq("user_id", caller.userId);
 
     if (error) {
       console.error("[watchlist] DELETE error:", error.message);
-      return apiValidationError(error.message);
+      return apiInternalError(error, "insurer.watchlist");
     }
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (err) {
     return apiInternalError(err, "DELETE /api/insurer/watchlist");
   }

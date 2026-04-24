@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { createAdminClient as createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages";
 import { apiOk, apiInternalError, apiUnauthorized, apiNotFound } from "@/lib/api/response";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
@@ -20,7 +20,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const { id } = await params;
     if (!id) return apiNotFound("画像が見つかりません。");
 
-    const admin = createSupabaseAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // Verify image belongs to this tenant via certificate ownership
     const { data: imageRow } = await admin
@@ -33,9 +33,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     if (!imageRow) return apiNotFound("画像が見つかりません。");
 
     // Delete from storage first (non-fatal if storage delete fails — DB row removal is canonical)
-    const { error: storageError } = await admin.storage
-      .from(CERTIFICATE_IMAGE_BUCKET)
-      .remove([imageRow.storage_path]);
+    const { error: storageError } = await admin.storage.from(CERTIFICATE_IMAGE_BUCKET).remove([imageRow.storage_path]);
 
     if (storageError) {
       console.error("[image delete] storage remove error", storageError);

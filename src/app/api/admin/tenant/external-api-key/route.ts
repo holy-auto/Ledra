@@ -1,9 +1,16 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { randomBytes } from "node:crypto";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiForbidden, apiValidationError, apiInternalError, apiOk } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiForbidden,
+  apiValidationError,
+  apiInternalError,
+  apiOk,
+} from "@/lib/api/response";
 
 /**
  * テナントの外部APIキー（tenants.external_api_key）管理エンドポイント。
@@ -34,13 +41,13 @@ export async function GET() {
     if (!caller) return apiUnauthorized();
     if (!requirePermission(caller, "settings:view")) return apiForbidden();
 
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data, error } = await admin.from("tenants").select("external_api_key").eq("id", caller.tenantId).single();
 
     if (error) return apiInternalError(error, "external-api-key GET");
 
     const key = (data?.external_api_key as string | null) ?? null;
-    return NextResponse.json({
+    return apiJson({
       status: key ? "active" : "not_set",
       masked: key ? maskKey(key) : null,
     });
@@ -59,7 +66,7 @@ export async function POST(req: NextRequest) {
     const body = (await req.json().catch((): null => null)) as { action?: string } | null;
     const action = body?.action;
 
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     if (action === "issue") {
       const newKey = generateApiKey();

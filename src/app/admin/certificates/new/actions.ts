@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { makePublicId } from "@/lib/publicId";
 import { enqueueInsuranceCaseCreated } from "@/lib/qstash/publish";
 
@@ -296,7 +296,7 @@ async function triggerPostIssueFollowUp(params: {
   customerId?: string;
   customerName: string;
 }) {
-  const admin = getSupabaseAdmin();
+  const { admin } = createTenantScopedAdmin(params.tenantId);
 
   // send_on_issue 設定確認
   const { data: setting } = await admin

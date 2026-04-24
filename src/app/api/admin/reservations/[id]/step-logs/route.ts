@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return apiInternalError(error, "step-logs list");
     }
 
-    return NextResponse.json({ step_logs: stepLogs ?? [] });
+    return apiJson({ step_logs: stepLogs ?? [] });
   } catch (e: unknown) {
     return apiInternalError(e, "step-logs GET");
   }

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { escapeIlike } from "@/lib/sanitize";
 import { enforceBilling } from "@/lib/billing/guard";
 import { parsePagination } from "@/lib/api/pagination";
-import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { customerCreateSchema, customerDeleteSchema, customerUpdateSchema } from "@/lib/validations/customer";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +29,10 @@ export async function GET(req: NextRequest) {
 
     let query = supabase
       .from("customers")
-      .select("id, tenant_id, name, name_kana, email, phone, postal_code, address, note, created_at, updated_at")
+      // tenant_id は `.eq("tenant_id", caller.tenantId)` でフィルタするのみ。
+      // caller は既に自テナント下で認証されているので response body に
+      // 含める必要はなく、外す (see `redactScopeIds`).
+      .select("id, name, name_kana, email, phone, postal_code, address, note, created_at, updated_at")
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
 
@@ -96,7 +99,7 @@ export async function GET(req: NextRequest) {
     const totalCerts = Object.values(certCounts).reduce((a, b) => a + b, 0);
 
     const headers = { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" };
-    return NextResponse.json(
+    return apiJson(
       {
         customers: enriched,
         stats: {
@@ -146,7 +149,7 @@ export async function POST(req: NextRequest) {
     };
 
     // RLS をバイパスしてサービスロールで INSERT（tenant_id で必ずスコープ限定）
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data, error } = await admin
       .from("customers")
       .insert(row)
@@ -156,7 +159,7 @@ export async function POST(req: NextRequest) {
       return apiInternalError(error, "customers POST");
     }
 
-    return NextResponse.json({ ok: true, customer: data });
+    return apiJson({ ok: true, customer: data });
   } catch (e) {
     return apiInternalError(e, "customers POST");
   }
@@ -188,7 +191,7 @@ export async function PUT(req: NextRequest) {
     };
 
     // RLS をバイパスしてサービスロールで UPDATE（tenant_id で必ずスコープ限定）
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data, error } = await admin
       .from("customers")
       .update(updates)
@@ -221,7 +224,7 @@ export async function PUT(req: NextRequest) {
       console.warn("[customers] vehicle sync warning:", syncErr);
     }
 
-    return NextResponse.json({ ok: true, customer: data });
+    return apiJson({ ok: true, customer: data });
   } catch (e) {
     return apiInternalError(e, "customers PUT");
   }
@@ -248,7 +251,7 @@ export async function DELETE(req: NextRequest) {
     const { id } = parsed.data;
 
     // RLS をバイパスしてサービスロールで操作（tenant_id で必ずスコープ限定）
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // リンク済み証明書/請求書があるか確認（並列実行）
     const [{ count: certCount }, { count: invCount }] = await Promise.all([
@@ -275,7 +278,7 @@ export async function DELETE(req: NextRequest) {
       return apiInternalError(error, "customers DELETE");
     }
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (e) {
     return apiInternalError(e, "customers DELETE");
   }

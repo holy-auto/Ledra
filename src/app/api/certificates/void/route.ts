@@ -1,6 +1,7 @@
+import { parseJsonSafe } from "@/lib/api/safeJson";
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
 import { certificateVoidSchema } from "@/lib/validations/certificate";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
@@ -21,7 +22,7 @@ import {
  */
 export async function POST(req: Request) {
   try {
-    const json = await req.json().catch((): null => null);
+    const json = await parseJsonSafe(req);
     const parsed = certificateVoidSchema.safeParse(json);
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "入力内容に誤りがあります。");
@@ -38,7 +39,7 @@ export async function POST(req: Request) {
     const tenantId = caller.tenantId;
 
     // Verify certificate belongs to this tenant
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data: cert, error: fetchErr } = await admin
       .from("certificates")
       .select("id, vehicle_id, status")

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +42,7 @@ export async function GET() {
       tenants[0].is_current = true;
     }
 
-    return NextResponse.json({ tenants, count: tenants.length });
+    return apiJson({ tenants, count: tenants.length });
   } catch (e) {
     return apiInternalError(e, "list tenants");
   }
@@ -86,7 +86,7 @@ export async function PUT(req: NextRequest) {
       maxAge: 60 * 60 * 24 * 365, // 1 year
     });
 
-    return NextResponse.json({
+    return apiJson({
       ok: true,
       tenant_id: tenantId,
       role: mem.role,

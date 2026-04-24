@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useState, useEffect } from "react";
 import useSWR from "swr";
@@ -119,7 +120,7 @@ export default function SquareOrdersClient() {
     setConnecting(true);
     try {
       const res = await fetch("/api/admin/square/connect", { method: "POST" });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
       if (j?.auth_url) window.location.href = j.auth_url;
     } catch (e: any) {
@@ -133,7 +134,7 @@ export default function SquareOrdersClient() {
     setSyncMsg(null);
     try {
       const res = await fetch("/api/admin/square/sync", { method: "POST" });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setSyncMsg({
         text: `同期完了: ${j.orders_imported ?? 0}件取り込み`,

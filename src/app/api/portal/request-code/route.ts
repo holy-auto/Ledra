@@ -5,7 +5,7 @@ import { escapeHtml } from "@/lib/sanitize";
 import { resolveBaseUrl } from "@/lib/url";
 import { GLOBAL_OTP_TTL_MIN, createGlobalLoginCode, listPortalMemberships } from "@/lib/customerPortalGlobal";
 import { normalizeEmail, normalizeLast4 } from "@/lib/customerPortalServer";
-import { apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { isResendFailure, sendResendEmail } from "@/lib/email/resendSend";
 
 function genCode6() {
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     const ip = getClientIp(req);
     const rl = await checkRateLimit(`portal-otp:${ip}`, { limit: 5, windowSec: 300 });
     if (!rl.allowed) {
-      return NextResponse.json(
+      return apiJson(
         { error: "rate_limited", message: "リクエストが多すぎます。しばらくしてから再度お試しください。" },
         { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
       );
@@ -77,7 +77,7 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({ ok: true, memberships_count: memberships.length });
+    return apiJson({ ok: true, memberships_count: memberships.length });
   } catch (e: unknown) {
     return apiInternalError(e, "portal/request-code");
   }

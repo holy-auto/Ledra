@@ -1,8 +1,8 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getAdminClient } from "@/lib/api/auth";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     if (!caller) return apiUnauthorized();
     if (!requireMinRole(caller, "admin")) return apiForbidden();
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const status = request.nextUrl.searchParams.get("status");
 
     let query = admin
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
     }));
 
     const headers = { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" };
-    return NextResponse.json({ agents: enriched }, { headers });
+    return apiJson({ agents: enriched }, { headers });
   } catch (e) {
     return apiInternalError(e, "agents GET");
   }
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
       return apiValidationError("name is required");
     }
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data, error } = await admin
       .from("agents")
       .insert({
@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
       return apiInternalError(error, "agents POST");
     }
 
-    return NextResponse.json({ agent: data }, { status: 201 });
+    return apiJson({ agent: data }, { status: 201 });
   } catch (e) {
     return apiInternalError(e, "agents POST");
   }

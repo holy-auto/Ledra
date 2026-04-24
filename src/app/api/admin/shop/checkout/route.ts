@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import Stripe from "stripe";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
     const total = subtotal + tax;
 
     // テナント情報取得（Stripe Customer ID用）
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data: tenant, error: tErr } = await admin
       .from("tenants")
       .select("id, name, stripe_customer_id")

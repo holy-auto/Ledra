@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
   try {
     // 1. Load SLA config (gracefully handle missing table)
@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
 
     if (casesErr) {
       console.error("[sla] Cases query error:", casesErr.message);
-      return NextResponse.json({ config, at_risk: [], overdue: [] });
+      return apiJson({ config, at_risk: [], overdue: [] });
     }
 
     // 3. Classify cases
@@ -108,7 +108,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ config, at_risk, overdue });
+    return apiJson({ config, at_risk, overdue });
   } catch (err) {
     return apiInternalError(err, "GET /api/insurer/sla");
   }
@@ -162,7 +162,7 @@ export async function PATCH(req: NextRequest) {
     return apiValidationError("At least one SLA value must be provided.");
   }
 
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
   try {
     // Upsert: try update first, then insert if not found
@@ -180,7 +180,7 @@ export async function PATCH(req: NextRequest) {
 
       if (error) {
         console.error("[sla] PATCH update error:", error.message);
-        return apiValidationError(error.message);
+        return apiInternalError(error, "insurer.sla");
       }
     } else {
       const insertData = {
@@ -194,11 +194,11 @@ export async function PATCH(req: NextRequest) {
 
       if (error) {
         console.error("[sla] PATCH insert error:", error.message);
-        return apiValidationError(error.message);
+        return apiInternalError(error, "insurer.sla");
       }
     }
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (err) {
     return apiInternalError(err, "PATCH /api/insurer/sla");
   }

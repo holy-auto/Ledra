@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useState } from "react";
 
@@ -23,7 +24,7 @@ export default function InquiryForm({ vehicleId, vehicleLabel }: { vehicleId: st
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ vehicle_id: vehicleId, ...form }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `送信に失敗しました (${res.status})`);
       setResult({ ok: true, text: "お問い合わせを送信しました。担当者より連絡いたします。" });
       setForm({ buyer_name: "", buyer_company: "", buyer_email: "", buyer_phone: "", message: "" });

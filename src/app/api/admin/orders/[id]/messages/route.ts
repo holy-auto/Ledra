@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 /**
  * GET /api/admin/orders/[id]/messages
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!caller) return apiUnauthorized();
     const tenantId = caller.tenantId;
 
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const cursor = req.nextUrl.searchParams.get("before"); // pagination cursor
     const limit = Math.min(Number(req.nextUrl.searchParams.get("limit")) || 50, 100);
 
@@ -49,7 +49,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return apiInternalError(error, "messages fetch");
     }
 
-    return NextResponse.json({
+    return apiJson({
       messages: (messages ?? []).reverse(),
       has_more: (messages ?? []).length === limit,
     });
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return apiValidationError("メッセージを入力してください");
     }
 
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // 注文取得（from/to テナント情報を冗長保持するため）
     const { data: order } = await admin
@@ -119,7 +119,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return apiInternalError(error, "messages insert");
     }
 
-    return NextResponse.json({ message: data }, { status: 201 });
+    return apiJson({ message: data }, { status: 201 });
   } catch (e: unknown) {
     return apiInternalError(e, "messages POST");
   }

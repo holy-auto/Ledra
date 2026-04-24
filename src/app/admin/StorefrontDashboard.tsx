@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -82,7 +83,7 @@ export default function StorefrontDashboard() {
     try {
       const res = await fetch(`/api/admin/reservations/${reservationId}/advance`, { method: "POST" });
       if (!res.ok) {
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         throw new Error(j?.error ?? j?.message ?? `HTTP ${res.status}`);
       }
       await mutate();
@@ -99,7 +100,7 @@ export default function StorefrontDashboard() {
     try {
       const res = await fetch(`/api/admin/reservations/${reservationId}/advance`, { method: "POST" });
       if (!res.ok) {
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         throw new Error(j?.error ?? j?.message ?? `HTTP ${res.status}`);
       }
       await mutate();

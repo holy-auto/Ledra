@@ -1,4 +1,4 @@
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 
 /** Mask customer name for public display: 山田太郎 → 山田●● */
 export function maskName(name: string | null): string | null {
@@ -132,7 +132,7 @@ export type PublicCertificateData = {
  * null → 証明書が存在しない (404 相当)
  */
 export async function getPublicCertificateData(pid: string): Promise<PublicCertificateData | null> {
-  const supabase = getSupabaseAdmin();
+  const supabase = createServiceRoleAdmin("public certificate data — lookup by public_id, anonymous caller");
 
   const certRes = await supabase
     .from("certificates")

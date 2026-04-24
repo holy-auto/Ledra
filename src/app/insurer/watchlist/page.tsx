@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
@@ -84,7 +85,7 @@ export default function InsurerWatchlistPage() {
         }),
       });
       if (!res.ok) {
-        const json = await res.json().catch((): null => null);
+        const json = await parseJsonSafe(res);
         throw new Error(json?.message ?? "追加に失敗しました");
       }
       setFormTargetId("");

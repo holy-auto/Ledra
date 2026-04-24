@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -59,10 +60,7 @@ export default function BillingGate(): null {
           console.warn("[billing-gate] revalidate non-ok", { status: res.status });
           return;
         }
-        const j = await res.json().catch((e: unknown): null => {
-          console.warn("[billing-gate] revalidate json parse failed", e);
-          return null;
-        });
+        const j = await parseJsonSafe(res);
         if (!j) return;
 
         sessionStorage.setItem("ledra_billing_state", JSON.stringify({ data: j, ts: Date.now() }));

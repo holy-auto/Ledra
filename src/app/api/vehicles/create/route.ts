@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { vehicleCreateSchema } from "@/lib/validations/vehicle";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiInternalError, apiUnauthorized, apiValidationError } from "@/lib/api/response";
+import { apiJson, apiOk, apiInternalError, apiUnauthorized, apiValidationError } from "@/lib/api/response";
 import { calcSizeClass } from "@/lib/ocr/shakensho";
 import type { VehicleSizeClass } from "@/lib/validations/vehicle";
 
@@ -62,7 +62,7 @@ export async function POST(req: Request) {
       return apiInternalError(error, "vehicles/create insert");
     }
 
-    return NextResponse.json({ id: vehicle.id }, { status: 200 });
+    return apiJson({ id: vehicle.id }, { status: 200 });
   } catch (e) {
     return apiInternalError(e, "vehicles/create");
   }

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiUnauthorized, apiInternalError, apiOk, apiValidationError } from "@/lib/api/response";
 
@@ -20,7 +20,7 @@ export async function PUT(req: NextRequest) {
       return apiValidationError("template_id must be a UUID string or null");
     }
 
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     if (templateId) {
       const { data: tpl } = await admin

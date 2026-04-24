@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Webhook } from "svix";
-import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -112,5 +112,5 @@ export async function POST(req: NextRequest) {
       console.info(`[resend-webhook] unknown event: ${type}`);
   }
 
-  return NextResponse.json({ received: true });
+  return apiJson({ received: true });
 }

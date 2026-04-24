@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { sendCronFailureAlert } from "@/lib/cronAlert";
-import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 import { verifyCronRequest } from "@/lib/cronAuth";
 
 export const runtime = "nodejs";
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const supabase = createAdminClient();
+    const supabase = createServiceRoleAdmin("cron:cleanup-insurer-logs — platform-wide retention sweep");
     const results: Record<string, number | string> = {};
 
     // Cleanup insurer_access_logs (90 days)
@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
 
     console.info("[cron/cleanup-insurer-logs] results:", results);
 
-    return NextResponse.json({ ok: true, results });
+    return apiJson({ ok: true, results });
   } catch (e) {
     await sendCronFailureAlert("cleanup-insurer-logs", e);
     return apiInternalError(e, "cleanup-insurer-logs cron");

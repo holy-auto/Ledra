@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { apiInternalError } from "@/lib/api/response";
+import { apiJson, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
 // GET: Fetch published announcements (with read status)
@@ -9,10 +9,7 @@ export async function GET(req: NextRequest) {
     // 公開エンドポイントなので IP ベースで緩めにレート制限をかける
     const rl = await checkRateLimit(`announcements:${getClientIp(req)}`, { limit: 60, windowSec: 60 });
     if (!rl.allowed) {
-      return NextResponse.json(
-        { error: "rate_limited" },
-        { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
-      );
+      return apiJson({ error: "rate_limited" }, { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } });
     }
 
     const supabase = await createSupabaseServerClient();
@@ -46,7 +43,7 @@ export async function GET(req: NextRequest) {
 
     const unreadCount = result.filter((a) => !a.is_read).length;
 
-    return NextResponse.json({ announcements: result, unread_count: unreadCount });
+    return apiJson({ announcements: result, unread_count: unreadCount });
   } catch (e: unknown) {
     return apiInternalError(e, "announcements");
   }

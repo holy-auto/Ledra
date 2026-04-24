@@ -7,7 +7,7 @@
  * Note: pgvector が利用できない場合は全文検索フォールバック。
  */
 import { getAnthropicClient, AI_MODEL, parseJsonResponse } from "@/lib/ai/client";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin, createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { escapeIlike } from "@/lib/sanitize";
 
 // ─────────────────────────────────────────────
@@ -44,7 +44,7 @@ async function searchKnowledge(params: {
   tenantId: string;
   limit?: number;
 }): Promise<Array<{ content: string; source_type: string; source_id: string | null }>> {
-  const admin = getSupabaseAdmin();
+  const { admin } = createTenantScopedAdmin(params.tenantId);
 
   // キーワード抽出（簡易版）
   const keywords = params.question
@@ -81,7 +81,9 @@ async function searchAcademyCases(params: {
   category?: string;
   limit?: number;
 }): Promise<Array<{ id: string; ai_summary: string; tags: string[]; category: string }>> {
-  const admin = getSupabaseAdmin();
+  const admin = createServiceRoleAdmin(
+    "QA assistant — reads published academy_cases (platform-shared knowledge base, no tenant scope)",
+  );
 
   let query = admin
     .from("academy_cases")

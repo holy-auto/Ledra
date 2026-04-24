@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { insurerPlanTierToPriceId } from "@/lib/stripe/insurerPlan";
-import { apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import type { InsurerPlanTier } from "@/types/insurer";
 
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     }
 
     const stripe = getStripe();
-    const admin = createAdminClient();
+    const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
     // Get insurer record
     const { data: insurer } = await admin
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
         return_url: `${resolveBaseUrl()}/insurer`,
       });
 
-      return NextResponse.json({ portal_url: portalSession.url });
+      return apiJson({ portal_url: portalSession.url });
     }
 
     // Create or reuse Stripe customer
@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ checkout_url: session.url });
+    return apiJson({ checkout_url: session.url });
   } catch (e) {
     return apiInternalError(e, "insurer billing");
   }
@@ -129,7 +129,7 @@ export async function GET() {
     const caller = await resolveInsurerCaller();
     if (!caller) return apiUnauthorized();
 
-    const admin = createAdminClient();
+    const { admin } = createInsurerScopedAdmin(caller.insurerId);
     const { data: insurer } = await admin
       .from("insurers")
       .select("plan_tier, is_active, stripe_customer_id, stripe_subscription_id")
@@ -163,7 +163,7 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json({
+    return apiJson({
       plan_tier: insurer.plan_tier,
       is_active: insurer.is_active,
       has_subscription: !!insurer.stripe_subscription_id,

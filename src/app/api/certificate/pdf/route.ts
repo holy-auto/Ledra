@@ -5,8 +5,8 @@ import { NextResponse } from "next/server";
 import { Document, Page, Text, View, Image, StyleSheet, Font } from "@react-pdf/renderer";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { renderBrandedCertificatePdf } from "@/lib/template-options/renderBrandedCertificate";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { logger } from "@/lib/logger";
@@ -168,7 +168,7 @@ export async function GET(req: Request) {
   const ip = getClientIp(req);
   const rl = await checkRateLimit(`pdf:${ip}`, { limit: 10, windowSec: 60 });
   if (!rl.allowed) {
-    return NextResponse.json(
+    return apiJson(
       { error: "rate_limited", message: "リクエストが多すぎます。しばらくしてから再度お試しください。" },
       { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
     );
@@ -193,7 +193,7 @@ export async function GET(req: Request) {
 
   // 公開PDF閲覧ログ（tenant_id を取得して記録）
   try {
-    const adm = createAdminClient();
+    const adm = createServiceRoleAdmin("public certificate PDF — lookup by public_id, caller is anonymous");
     const { data: certRow } = await adm
       .from("certificates")
       .select("tenant_id,id,vehicle_id")
@@ -223,7 +223,7 @@ export async function GET(req: Request) {
 
   // ── ブランドテンプレートが有効ならブランドPDFを生成 ──
   try {
-    const adm2 = createAdminClient();
+    const adm2 = createServiceRoleAdmin("public certificate PDF — lookup by public_id for brand PDF");
     const certForTenant = await adm2
       .from("certificates")
       .select("tenant_id")

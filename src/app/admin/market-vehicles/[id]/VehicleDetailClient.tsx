@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import Link from "next/link";
 import Image from "next/image";
@@ -161,7 +162,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
   const fetchVehicle = useCallback(async () => {
     try {
       const res = await fetch(`/api/admin/market-vehicles?id=${vehicleId}`, { cache: "no-store" });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (res.ok && j?.vehicles?.length > 0) {
         setVehicle(j.vehicles[0]);
         setImages(j.vehicles[0].images ?? []);
@@ -187,7 +188,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: vehicleId, status: newStatus }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setVehicle(j.vehicle);
       setMsg({ text: `ステータスを「${STATUS_LABELS[newStatus] ?? newStatus}」に変更しました`, ok: true });
@@ -219,7 +220,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setVehicle(j.vehicle);
       setEditMode(false);
@@ -280,7 +281,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
         fd.append("file", files[i]);
         fd.append("vehicle_id", vehicleId);
         const res = await fetch("/api/admin/market-vehicles/images", { method: "POST", body: fd });
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         if (!res.ok) throw new Error(j?.error ?? "Upload failed");
       }
       await fetchVehicle();
@@ -316,7 +317,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: vehicleId }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       window.location.href = "/admin/market-vehicles";
     } catch (e: any) {

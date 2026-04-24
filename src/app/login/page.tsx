@@ -2,7 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 
 /**
  * ログイン後のリダイレクト先を安全に決定する。
@@ -27,7 +27,9 @@ function safeNextPath(value: string | undefined) {
  * - どちらでもない → /admin/certificates (施工店登録フローへ)
  */
 async function resolveDefaultRedirect(userId: string, activeContext: string | null): Promise<string> {
-  const admin = getSupabaseAdmin();
+  const admin = createServiceRoleAdmin(
+    "login redirect — resolves whether user has tenant membership or agent record, pre-resolution",
+  );
 
   // 施工店メンバーシップ確認
   const { data: membership } = await admin

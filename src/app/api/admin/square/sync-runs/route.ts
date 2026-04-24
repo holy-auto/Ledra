@@ -1,11 +1,7 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { getAdminClient } from "@/lib/api/auth";
-import {
-  apiOk,
-  apiUnauthorized,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiOk, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +12,7 @@ export async function GET() {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data: runs, error } = await admin
       .from("square_sync_runs")
       .select(

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await query;
     if (error) return apiInternalError(error, "inventory-movements list");
 
-    return NextResponse.json({ ok: true, movements: data ?? [] });
+    return apiJson({ ok: true, movements: data ?? [] });
   } catch (e: unknown) {
     return apiInternalError(e, "inventory-movements GET");
   }
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
       return apiInternalError(error, "apply_inventory_movement");
     }
 
-    return NextResponse.json({ ok: true, result: data });
+    return apiJson({ ok: true, result: data });
   } catch (e: unknown) {
     return apiInternalError(e, "inventory-movements POST");
   }

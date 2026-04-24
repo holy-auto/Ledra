@@ -1,9 +1,16 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getAdminClient } from "@/lib/api/auth";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
-import { apiUnauthorized, apiForbidden, apiInternalError, apiNotFound, apiValidationError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiForbidden,
+  apiInternalError,
+  apiNotFound,
+  apiValidationError,
+} from "@/lib/api/response";
 import { notifyApplicationApproved, notifyApplicationRejected } from "@/lib/agent/email";
 import crypto from "crypto";
 
@@ -21,7 +28,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
     if (!caller) return apiUnauthorized();
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data, error } = await admin
       .from("agent_applications")
       .select(
@@ -46,7 +53,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
       }),
     );
 
-    return NextResponse.json({ application: { ...data, documents: docsWithUrls } });
+    return apiJson({ application: { ...data, documents: docsWithUrls } });
   } catch (e) {
     return apiInternalError(e, "agent-applications [id] GET");
   }
@@ -66,7 +73,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
 
     const body = await request.json();
     const { status, rejection_reason } = body;
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // --- Mark as under_review ---
     if (status === "under_review") {
@@ -83,7 +90,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
       if (error || !data) {
         return apiNotFound("application not found or not in submitted status");
       }
-      return NextResponse.json({ application: data });
+      return apiJson({ application: data });
     }
 
     // --- Reject ---
@@ -119,7 +126,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
         rejectionReason: rejection_reason.trim(),
       }).catch((e) => console.error("[admin/agent-applications] reject email error:", e));
 
-      return NextResponse.json({ application: data });
+      return apiJson({ application: data });
     }
 
     // --- Approve ---
@@ -156,8 +163,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
         // auth.users にメールが存在するか確認
         const { data: existingUsers } = await admin.auth.admin.listUsers();
         const matchedUser = existingUsers?.users?.find(
-          (u: { id: string; email?: string }) =>
-            u.email?.toLowerCase() === app.email.toLowerCase(),
+          (u: { id: string; email?: string }) => u.email?.toLowerCase() === app.email.toLowerCase(),
         );
 
         if (matchedUser) {
@@ -210,7 +216,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
         portalUrl: `${baseUrl}/agent/login`,
       }).catch((e) => console.error("[admin/agent-applications] approve email error:", e));
 
-      return NextResponse.json({
+      return apiJson({
         application: { ...app, status: "approved", agent_id: agentId },
         agent_id: agentId,
       });

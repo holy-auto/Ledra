@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { GLOBAL_PORTAL_COOKIE, listPortalMemberships, validateGlobalSession } from "@/lib/customerPortalGlobal";
-import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 export async function GET(req: Request) {
   try {
@@ -16,7 +16,7 @@ export async function GET(req: Request) {
     if (!sess) return apiUnauthorized();
 
     const shops = await listPortalMemberships(sess.email, sess.phone_last4, preferredTenantSlug);
-    return NextResponse.json({ ok: true, shops });
+    return apiJson({ ok: true, shops });
   } catch (e: unknown) {
     return apiInternalError(e, "portal/memberships");
   }

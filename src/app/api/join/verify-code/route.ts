@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { sha256Hex } from "@/lib/customerPortalServer";
-import { apiValidationError } from "@/lib/api/response";
+import { apiJson, apiValidationError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -15,7 +15,7 @@ export async function POST(req: Request) {
   const ip = getClientIp(req);
   const rl = await checkRateLimit(`join-verify:${ip}`, { limit: 10, windowSec: 600 });
   if (!rl.allowed) {
-    return NextResponse.json(
+    return apiJson(
       { error: "rate_limited", message: "リクエストが多すぎます。しばらくお待ちください。" },
       { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
     );
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     return apiValidationError("メールアドレスと確認コードを入力してください");
   }
 
-  const supabase = createAdminClient();
+  const supabase = createServiceRoleAdmin("join flow — pre-auth invitation / verification");
 
   // Find the latest unverified code for this email
   const { data: record, error: fetchErr } = await supabase
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
 
   // Check max attempts (5)
   if (record.attempts >= 5) {
-    return NextResponse.json(
+    return apiJson(
       { error: "too_many_attempts", message: "試行回数の上限に達しました。再度コードを送信してください。" },
       { status: 429 },
     );
@@ -79,5 +79,5 @@ export async function POST(req: Request) {
   // Mark as verified
   await supabase.from("insurer_email_verifications").update({ verified: true }).eq("id", record.id);
 
-  return NextResponse.json({ ok: true, verified: true });
+  return apiJson({ ok: true, verified: true });
 }

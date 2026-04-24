@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { DOC_TYPES, type DocType } from "@/types/document";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { parsePagination } from "@/lib/api/pagination";
-import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -134,7 +134,7 @@ export async function GET(req: NextRequest) {
       .filter((d) => d.status === "sent" || d.status === "accepted")
       .reduce((sum, d) => sum + (d.total ?? 0), 0);
 
-    return NextResponse.json({
+    return apiJson({
       documents: enriched,
       stats: { total: totalCount ?? total, unpaid_amount: unpaidAmount },
       ...(page > 0 && {
@@ -230,7 +230,7 @@ export async function POST(req: NextRequest) {
     };
 
     // RLS をバイパスしてサービスロールで INSERT（tenant_id で必ずスコープ限定）
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data, error } = await admin
       .from("documents")
       .insert(row)
@@ -242,7 +242,7 @@ export async function POST(req: NextRequest) {
       return apiInternalError(error, "documents POST");
     }
 
-    return NextResponse.json({ ok: true, document: data });
+    return apiJson({ ok: true, document: data });
   } catch (e) {
     return apiInternalError(e, "documents POST");
   }
@@ -296,7 +296,7 @@ export async function PUT(req: NextRequest) {
     }
 
     // RLS をバイパスしてサービスロールで UPDATE（tenant_id で必ずスコープ限定）
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data, error } = await admin
       .from("documents")
       .update(updates)
@@ -311,7 +311,7 @@ export async function PUT(req: NextRequest) {
       return apiInternalError(error, "documents PUT");
     }
 
-    return NextResponse.json({ ok: true, document: data });
+    return apiJson({ ok: true, document: data });
   } catch (e) {
     return apiInternalError(e, "documents PUT");
   }
@@ -342,14 +342,14 @@ export async function DELETE(req: NextRequest) {
     }
 
     // RLS をバイパスしてサービスロールで DELETE（tenant_id で必ずスコープ限定）
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { error } = await admin.from("documents").delete().eq("id", id).eq("tenant_id", caller.tenantId);
 
     if (error) {
       return apiInternalError(error, "documents DELETE");
     }
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (e) {
     return apiInternalError(e, "documents DELETE");
   }

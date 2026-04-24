@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useEffect, useState } from "react";
 import { formatJpy } from "@/lib/format";
@@ -69,7 +70,7 @@ export default function RevenueAnalytics() {
     (async () => {
       try {
         const res = await fetch("/api/admin/billing-analytics", { cache: "no-store" });
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         if (res.ok && j) setData(j);
       } catch {}
       setLoading(false);

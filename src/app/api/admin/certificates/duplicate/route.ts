@@ -1,9 +1,16 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { getAdminClient } from "@/lib/api/auth";
 import { enforceBilling } from "@/lib/billing/guard";
-import { apiUnauthorized, apiForbidden, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiForbidden,
+  apiNotFound,
+  apiValidationError,
+  apiInternalError,
+} from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +31,7 @@ export async function POST(req: NextRequest) {
       return apiValidationError("source_public_id は必須です。");
     }
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // ── 元の証明書を取得 ──
     const { data: source, error: fetchErr } = await admin
@@ -80,7 +87,7 @@ export async function POST(req: NextRequest) {
       return apiInternalError(insertErr, "certificates/duplicate");
     }
 
-    return NextResponse.json({
+    return apiJson({
       ok: true,
       public_id: newCert.public_id,
     });

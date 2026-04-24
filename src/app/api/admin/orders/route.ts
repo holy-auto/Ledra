@@ -2,9 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { makePublicId } from "@/lib/publicId";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { enforceBilling } from "@/lib/billing/guard";
-import { apiUnauthorized, apiValidationError, apiNotFound, apiForbidden, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiValidationError,
+  apiNotFound,
+  apiForbidden,
+  apiInternalError,
+} from "@/lib/api/response";
 import { orderAcceptSchema, orderCreateSchema, orderUpdateSchema } from "@/lib/validations/order";
 
 // ─── ステータス遷移ルール ───
@@ -47,7 +54,7 @@ export async function GET(req: NextRequest) {
 
       if (memErr) {
         console.error("[orders] _tenants memberships failed:", memErr.message);
-        return NextResponse.json({ myTenants: [] });
+        return apiJson({ myTenants: [] });
       }
 
       const tenantIds = (memberships ?? []).map((m) => m.tenant_id as string);
@@ -68,7 +75,8 @@ export async function GET(req: NextRequest) {
       // 自社のパートナースコアも返す
       let myScore = null;
       if (tenantId) {
-        const { data: ps } = await getSupabaseAdmin()
+        const { admin: scopedAdmin } = createTenantScopedAdmin(tenantId);
+        const { data: ps } = await scopedAdmin
           .from("partner_scores")
           .select("total_orders, completed_orders, on_time_orders, cancelled_orders, avg_rating, rating_count")
           .eq("tenant_id", tenantId)
@@ -76,7 +84,7 @@ export async function GET(req: NextRequest) {
         myScore = ps;
       }
 
-      return NextResponse.json({ myTenants, myScore });
+      return apiJson({ myTenants, myScore });
     }
 
     const type = searchParams.get("type"); // sent | received | all | browse
@@ -85,7 +93,7 @@ export async function GET(req: NextRequest) {
 
     // ─── 公開案件ブラウズモード ───
     if (type === "browse") {
-      const admin = getSupabaseAdmin();
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
       let query = admin
         .from("job_orders")
         .select(
@@ -110,7 +118,7 @@ export async function GET(req: NextRequest) {
       const { data: orders, error } = await query.limit(100);
       if (error) {
         console.error("[orders] browse_failed:", error.message);
-        return NextResponse.json({ orders: [] });
+        return apiJson({ orders: [] });
       }
 
       // 発注元テナント名を付与
@@ -128,7 +136,7 @@ export async function GET(req: NextRequest) {
         from_company: tenantNameMap[o.from_tenant_id] ?? "",
       }));
 
-      return NextResponse.json({ orders: enriched });
+      return apiJson({ orders: enriched });
     }
 
     let query = supabase
@@ -155,10 +163,10 @@ export async function GET(req: NextRequest) {
 
     if (error) {
       console.error("[orders] list_failed:", error.message, error.details);
-      return NextResponse.json({ orders: [], source: "empty" });
+      return apiJson({ orders: [], source: "empty" });
     }
 
-    return NextResponse.json({ orders: orders ?? [] });
+    return apiJson({ orders: orders ?? [] });
   } catch (e: unknown) {
     return apiInternalError(e, "orders GET");
   }
@@ -186,7 +194,7 @@ export async function POST(req: NextRequest) {
     const { to_tenant_id, title, description, category, budget, deadline, vehicle_id } = parsed.data;
 
     // Use admin client to bypass RLS (API already validated auth above)
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // Build insert payload — only include non-null fields to avoid
     // hitting unexpected NOT NULL constraints on columns with defaults
@@ -219,7 +227,7 @@ export async function POST(req: NextRequest) {
       return apiInternalError(error, "orders insert");
     }
 
-    return NextResponse.json({ order: data }, { status: 201 });
+    return apiJson({ order: data }, { status: 201 });
   } catch (e: unknown) {
     return apiInternalError(e, "orders POST");
   }
@@ -248,7 +256,7 @@ export async function PUT(req: NextRequest) {
     const { id, status, cancel_reason } = parsed.data;
 
     // Use admin client to bypass RLS
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // 現在の注文を取得
     const { data: current, error: fetchError } = await admin
@@ -333,7 +341,7 @@ export async function PUT(req: NextRequest) {
         (e: unknown) => console.error("[orders] audit log failed:", e),
       );
 
-    return NextResponse.json({ ok: true, order: data });
+    return apiJson({ ok: true, order: data });
   } catch (e: unknown) {
     return apiInternalError(e, "orders PUT");
   }
@@ -361,7 +369,7 @@ export async function PATCH(req: NextRequest) {
     }
     const { id } = parsed.data;
 
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // 注文取得
     const { data: order, error: fetchErr } = await admin
@@ -381,7 +389,7 @@ export async function PATCH(req: NextRequest) {
 
     // 既に受注者がいる場合は不可
     if (order.to_tenant_id) {
-      return NextResponse.json({ error: "この案件は既に受注済みです" }, { status: 409 });
+      return apiJson({ error: "この案件は既に受注済みです" }, { status: 409 });
     }
 
     // pending 以外は不可
@@ -432,7 +440,7 @@ export async function PATCH(req: NextRequest) {
         (e: unknown) => console.error("[orders] audit log failed:", e),
       );
 
-    return NextResponse.json({ ok: true, order: data });
+    return apiJson({ ok: true, order: data });
   } catch (e: unknown) {
     return apiInternalError(e, "orders PATCH");
   }

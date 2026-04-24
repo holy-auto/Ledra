@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useState, useEffect, useCallback } from "react";
 import Modal from "@/components/ui/Modal";
@@ -53,7 +54,7 @@ export default function SquareLinkModal({ order, onClose, onSave }: Props) {
       if (customerSearch) params.set("q", customerSearch);
       params.set("per_page", "100");
       const res = await fetch(`/api/admin/customers?${params.toString()}`);
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (res.ok && j?.customers) {
         setCustomers(j.customers.map((c: any) => ({ id: c.id, name: c.name })));
       }
@@ -68,7 +69,7 @@ export default function SquareLinkModal({ order, onClose, onSave }: Props) {
     }
     try {
       const res = await fetch(`/api/admin/vehicles?customer_id=${encodeURIComponent(custId)}`);
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (res.ok && j?.vehicles) {
         setVehicles(
           j.vehicles.map((v: any) => ({
@@ -94,7 +95,7 @@ export default function SquareLinkModal({ order, onClose, onSave }: Props) {
     }
     try {
       const res = await fetch(`/api/admin/certificates?vehicle_id=${encodeURIComponent(vehId)}&per_page=100`);
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (res.ok && j?.certificates) {
         setCertificates(
           j.certificates.map((c: any) => ({
@@ -150,7 +151,7 @@ export default function SquareLinkModal({ order, onClose, onSave }: Props) {
           note: note || null,
         }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       onSave(j);
     } catch (e: any) {

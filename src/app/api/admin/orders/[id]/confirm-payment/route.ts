@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 /**
  * POST /api/admin/orders/[id]/confirm-payment
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!caller) return apiUnauthorized();
     const tenantId = caller.tenantId;
 
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const body = await req.json().catch(() => ({}));
 
     // 注文取得
@@ -101,7 +101,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       })
       .then(() => {}, console.error);
 
-    return NextResponse.json({ ok: true, order: data });
+    return apiJson({ ok: true, order: data });
   } catch (e: unknown) {
     return apiInternalError(e, "confirm-payment POST");
   }

@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@/lib/supabase/server";
-import { apiUnauthorized, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiForbidden,
+  apiValidationError,
+  apiNotFound,
+  apiInternalError,
+} from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -50,13 +57,13 @@ export async function POST() {
     // For Standard accounts, redirect directly to https://dashboard.stripe.com
     try {
       const loginLink = await stripe.accounts.createLoginLink(accountId);
-      return NextResponse.json({ ok: true, url: loginLink.url });
+      return apiJson({ ok: true, url: loginLink.url });
     } catch (loginErr: unknown) {
       // Standard accounts don't support login links — return direct Stripe dashboard URL
       const errMsg = loginErr instanceof Error ? loginErr.message : String(loginErr);
       if (errMsg.includes("not an Express account") || errMsg.includes("login_link")) {
         // Standard account: open Stripe dashboard directly
-        return NextResponse.json({
+        return apiJson({
           ok: true,
           url: "https://dashboard.stripe.com/",
           note: "standard_account",

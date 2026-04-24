@@ -6,7 +6,7 @@
  */
 
 import { randomUUID } from "crypto";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { computeDocumentHash } from "./hash";
 import type { CreateSignatureSessionInput, SignatureSession } from "./types";
 
@@ -31,7 +31,7 @@ const EXPIRES_HOURS = Number(process.env.SIGNATURE_SESSION_EXPIRES_HOURS ?? 72);
  * @throws DB エラー時
  */
 export async function createSignatureSession(input: CreateSignatureSessionInput): Promise<SignatureSession> {
-  const supabase = getSupabaseAdmin();
+  const supabase = createServiceRoleAdmin("signature session — opaque token lookup for unauthenticated customer");
 
   const token = randomUUID();
   const expiresAt = new Date(Date.now() + EXPIRES_HOURS * 60 * 60 * 1000).toISOString();
@@ -91,7 +91,7 @@ export async function createSignatureSession(input: CreateSignatureSessionInput)
  * @returns 有効なセッション、または null（無効・期限切れ・署名済み）
  */
 export async function getValidSessionByToken(token: string): Promise<SignatureSession | null> {
-  const supabase = getSupabaseAdmin();
+  const supabase = createServiceRoleAdmin("signature session — opaque token lookup for unauthenticated customer");
 
   const { data, error } = await supabase
     .from("signature_sessions")
@@ -112,7 +112,7 @@ export async function getValidSessionByToken(token: string): Promise<SignatureSe
  * @returns SignatureSession または null
  */
 export async function getSessionById(sessionId: string): Promise<SignatureSession | null> {
-  const supabase = getSupabaseAdmin();
+  const supabase = createServiceRoleAdmin("signature session — opaque token lookup for unauthenticated customer");
 
   const { data, error } = await supabase.from("signature_sessions").select("*").eq("id", sessionId).single();
 
@@ -128,7 +128,7 @@ export async function getSessionById(sessionId: string): Promise<SignatureSessio
  * @returns 有効な pending セッション、または null
  */
 export async function getExistingPendingSession(certificateId: string): Promise<SignatureSession | null> {
-  const supabase = getSupabaseAdmin();
+  const supabase = createServiceRoleAdmin("signature session — opaque token lookup for unauthenticated customer");
 
   const { data, error } = await supabase
     .from("signature_sessions")
@@ -157,7 +157,7 @@ export async function getExistingPendingSession(certificateId: string): Promise<
  * @returns 更新したセッション数
  */
 export async function expireOldSessions(): Promise<number> {
-  const supabase = getSupabaseAdmin();
+  const supabase = createServiceRoleAdmin("signature session — opaque token lookup for unauthenticated customer");
 
   const { data, error } = await supabase
     .from("signature_sessions")
@@ -197,7 +197,7 @@ export async function expireOldSessions(): Promise<number> {
  * @param cancelledBy   - キャンセルを実行したユーザー ID
  */
 export async function cancelPendingSessions(certificateId: string, reason: string, cancelledBy: string): Promise<void> {
-  const supabase = getSupabaseAdmin();
+  const supabase = createServiceRoleAdmin("signature session — opaque token lookup for unauthenticated customer");
 
   const { data: sessions } = await supabase
     .from("signature_sessions")

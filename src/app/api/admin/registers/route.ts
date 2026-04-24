@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
 
     const total = totalCount ?? (registers ?? []).length;
 
-    return NextResponse.json({
+    return apiJson({
       registers: registers ?? [],
       ...(page > 0 && {
         pagination: {
@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
       return apiInternalError(error, "registers insert");
     }
 
-    return NextResponse.json({ register }, { status: 201 });
+    return apiJson({ register }, { status: 201 });
   } catch (e: unknown) {
     return apiInternalError(e, "registers create");
   }
@@ -155,7 +155,7 @@ export async function PUT(req: NextRequest) {
       return apiInternalError(error, "registers update");
     }
 
-    return NextResponse.json({ ok: true, register });
+    return apiJson({ ok: true, register });
   } catch (e: unknown) {
     return apiInternalError(e, "registers update");
   }
@@ -192,7 +192,7 @@ export async function DELETE(req: NextRequest) {
       return apiInternalError(error, "registers delete");
     }
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (e: unknown) {
     return apiInternalError(e, "registers delete");
   }

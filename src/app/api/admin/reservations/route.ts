@@ -4,7 +4,7 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { syncCreateEvent, syncUpdateEvent, syncDeleteEvent } from "@/lib/gcal/client";
 import { enforceBilling } from "@/lib/billing/guard";
 import { parsePagination } from "@/lib/api/pagination";
-import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -91,7 +91,7 @@ export async function GET(req: NextRequest) {
     const activeCount = enriched.filter((r) => r.status !== "cancelled" && r.status !== "completed").length;
 
     const headers = { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" };
-    return NextResponse.json(
+    return apiJson(
       {
         reservations: enriched,
         stats: {
@@ -176,7 +176,7 @@ export async function POST(req: NextRequest) {
       vehicle_label: null,
     }).catch((e) => console.error("[reservations] gcal sync create failed:", e));
 
-    return NextResponse.json({ ok: true, reservation: data });
+    return apiJson({ ok: true, reservation: data });
   } catch (e: unknown) {
     return apiInternalError(e, "reservations create");
   }
@@ -266,7 +266,7 @@ export async function PUT(req: NextRequest) {
       }).catch((e) => console.error("[reservations] gcal sync create failed:", e));
     }
 
-    return NextResponse.json({ ok: true, reservation: data });
+    return apiJson({ ok: true, reservation: data });
   } catch (e: unknown) {
     return apiInternalError(e, "reservations update");
   }
@@ -315,7 +315,7 @@ export async function DELETE(req: NextRequest) {
       if (delErr) {
         return apiInternalError(delErr, "reservations hard_delete");
       }
-      return NextResponse.json({ ok: true, deleted: true });
+      return apiJson({ ok: true, deleted: true });
     }
 
     // ソフトデリート（キャンセル扱い）
@@ -355,7 +355,7 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ ok: true, reservation: data });
+    return apiJson({ ok: true, reservation: data });
   } catch (e: unknown) {
     return apiInternalError(e, "reservations cancel");
   }

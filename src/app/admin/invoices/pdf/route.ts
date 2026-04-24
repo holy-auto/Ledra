@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { renderInvoicePdf, type InvoiceForPdf, type TenantForPdf } from "@/lib/pdfInvoice";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +18,7 @@ export async function GET(req: Request) {
   const id = (url.searchParams.get("id") ?? "").trim();
   if (!id) return NextResponse.json({ error: "missing id" }, { status: 400 });
 
-  const admin = createAdminClient();
+  const { admin } = createTenantScopedAdmin(tenantId!);
 
   // Fetch invoice from documents table
   const { data: invoice, error } = await admin

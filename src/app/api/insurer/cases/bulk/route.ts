@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
@@ -32,7 +32,7 @@ export async function PATCH(req: NextRequest) {
     return apiValidationError("status must be 'resolved' or 'closed'.");
   }
 
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
   try {
     const { data: cases, error: fetchErr } = await admin
@@ -53,10 +53,7 @@ export async function PATCH(req: NextRequest) {
     if (status === "resolved") updateData.resolved_at = now;
     if (status === "closed") updateData.closed_at = now;
 
-    const { error: updateErr } = await admin
-      .from("insurer_cases")
-      .update(updateData)
-      .in("id", validIds);
+    const { error: updateErr } = await admin.from("insurer_cases").update(updateData).in("id", validIds);
 
     if (updateErr) return apiValidationError(updateErr.message);
 
@@ -72,7 +69,7 @@ export async function PATCH(req: NextRequest) {
       user_agent: ua,
     });
 
-    return NextResponse.json({ updated_count: validIds.length });
+    return apiJson({ updated_count: validIds.length });
   } catch (err) {
     return apiInternalError(err, "PATCH /api/insurer/cases/bulk");
   }

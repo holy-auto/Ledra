@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
-import { apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     const ip = getClientIp(req);
     const rl = await checkRateLimit(`checkout-session:${ip}`, { limit: 20, windowSec: 60 });
     if (!rl.allowed) {
-      return NextResponse.json({ error: "rate_limited", retry_after: rl.retryAfterSec }, { status: 429 });
+      return apiJson({ error: "rate_limited", retry_after: rl.retryAfterSec }, { status: 429 });
     }
 
     const supabase = await createSupabaseServerClient();
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     const description = body?.description ? String(body.description) : "POS会計";
 
     // テナントのStripe Connectアカウントを取得
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data: tenant } = await admin
       .from("tenants")
       .select("stripe_connect_account_id, stripe_connect_onboarded")
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
       stripeOptions,
     );
 
-    return NextResponse.json({
+    return apiJson({
       session_id: session.id,
       url: session.url,
     });
@@ -107,7 +107,7 @@ export async function GET(req: NextRequest) {
     }
 
     // テナントのStripe Connectアカウントを取得
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data: tenant } = await admin
       .from("tenants")
       .select("stripe_connect_account_id, stripe_connect_onboarded")
@@ -127,10 +127,10 @@ export async function GET(req: NextRequest) {
 
     // tenant_id チェック（自テナントのセッションのみ参照可能）
     if (session.metadata?.tenant_id !== caller.tenantId) {
-      return NextResponse.json({ error: "not_found" }, { status: 404 });
+      return apiJson({ error: "not_found" }, { status: 404 });
     }
 
-    return NextResponse.json({
+    return apiJson({
       id: session.id,
       status: session.status,
       payment_status: session.payment_status,

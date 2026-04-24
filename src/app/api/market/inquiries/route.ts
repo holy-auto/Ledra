@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin, createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
-import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { inquiryCreateSchema } from "@/lib/validations/market";
 
 export const dynamic = "force-dynamic";
@@ -15,13 +15,15 @@ export async function POST(req: NextRequest) {
     const ip = getClientIp(req);
     const rl = await checkRateLimit(`market-inquiry:${ip}`, { limit: 5, windowSec: 900 });
     if (!rl.allowed) {
-      return NextResponse.json(
+      return apiJson(
         { error: "rate_limited", message: "送信回数の上限に達しました。しばらくしてからお試しください。" },
         { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
       );
     }
 
-    const admin = createAdminClient();
+    // Public inquiry form — the seller tenant is derived from the vehicle lookup
+    // below, so this initial query must be pre-resolution (service-role).
+    const admin = createServiceRoleAdmin("market public inquiry — seller tenant resolved from vehicle_id after lookup");
     const parsed = inquiryCreateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
@@ -64,7 +66,7 @@ export async function POST(req: NextRequest) {
       return apiInternalError(error, "market-inquiries insert");
     }
 
-    return NextResponse.json({ ok: true, inquiry });
+    return apiJson({ ok: true, inquiry });
   } catch (e: unknown) {
     return apiInternalError(e, "market-inquiries create");
   }
@@ -77,7 +79,7 @@ export async function GET(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const url = new URL(req.url);
     const status = url.searchParams.get("status") ?? "";
 
@@ -97,7 +99,7 @@ export async function GET(req: NextRequest) {
       return apiInternalError(error, "market-inquiries list");
     }
 
-    return NextResponse.json({ inquiries: inquiries ?? [] });
+    return apiJson({ inquiries: inquiries ?? [] });
   } catch (e: unknown) {
     return apiInternalError(e, "market-inquiries list");
   }

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { escapeIlike } from "@/lib/sanitize";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
-import { apiForbidden, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiForbidden, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const q = url.searchParams.get("q")?.trim() ?? "";
 
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     let query = admin
       .from("tenants")
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
       return apiInternalError(error, "tenant-access/tenants GET");
     }
 
-    return NextResponse.json({ tenants: data ?? [] });
+    return apiJson({ tenants: data ?? [] });
   } catch (e) {
     return apiInternalError(e, "admin/insurers/tenant-access/tenants");
   }

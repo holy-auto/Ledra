@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
       return apiInternalError(error, "market-vehicle-images list");
     }
 
-    return NextResponse.json({ images: images ?? [] });
+    return apiJson({ images: images ?? [] });
   } catch (e: unknown) {
     return apiInternalError(e, "market-vehicle-images GET");
   }
@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
 
     const existing = existingCount ?? 0;
     if (existing >= MAX_IMAGES_PER_VEHICLE)
-      return NextResponse.json(
+      return apiJson(
         {
           error: "image_limit_reached",
           max: MAX_IMAGES_PER_VEHICLE,
@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
       return apiInternalError(insertError, "market-vehicle-images insert");
     }
 
-    return NextResponse.json({ ok: true, image });
+    return apiJson({ ok: true, image });
   } catch (e: unknown) {
     return apiInternalError(e, "market-vehicle-images POST");
   }
@@ -181,7 +181,7 @@ export async function DELETE(req: NextRequest) {
       return apiInternalError(deleteError, "market-vehicle-images delete");
     }
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (e: unknown) {
     return apiInternalError(e, "market-vehicle-images DELETE");
   }

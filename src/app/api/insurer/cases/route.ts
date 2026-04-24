@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
 
 export const runtime = "nodejs";
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50", 10) || 50, 200);
   const offset = Math.max(parseInt(url.searchParams.get("offset") ?? "0", 10) || 0, 0);
 
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
   try {
     // Build query
@@ -98,10 +98,10 @@ export async function GET(req: NextRequest) {
 
     const { data, error, count } = await query;
 
-    if (error) return apiValidationError(error.message);
+    if (error) return apiInternalError(error, "insurer.cases");
 
     const headers = { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" };
-    return NextResponse.json({ cases: data ?? [], total: count ?? 0 }, { headers });
+    return apiJson({ cases: data ?? [], total: count ?? 0 }, { headers });
   } catch (err) {
     return apiInternalError(err, "GET /api/insurer/cases");
   }
@@ -147,7 +147,7 @@ export async function POST(req: NextRequest) {
     return apiValidationError("title is required.");
   }
 
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
   try {
     // Resolve tenant_id from certificate, vehicle, or direct parameter
@@ -201,7 +201,7 @@ export async function POST(req: NextRequest) {
       )
       .single();
 
-    if (error) return apiValidationError(error.message);
+    if (error) return apiInternalError(error, "insurer.cases");
 
     // Log to insurer_access_logs
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
@@ -216,7 +216,7 @@ export async function POST(req: NextRequest) {
       user_agent: ua,
     });
 
-    return NextResponse.json({ case: newCase }, { status: 201 });
+    return apiJson({ case: newCase }, { status: 201 });
   } catch (err) {
     return apiInternalError(err, "POST /api/insurer/cases");
   }

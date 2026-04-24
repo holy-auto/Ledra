@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 /**
  * PUT /api/admin/notifications/[id]/read
  * 通知を既読にする
  */
-export async function PUT(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function PUT(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const supabase = await createClient();
@@ -26,7 +23,7 @@ export async function PUT(
 
     if (error) return apiInternalError(error, "mark notification read");
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (e) {
     return apiInternalError(e, "mark notification read");
   }

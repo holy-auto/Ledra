@@ -1,3 +1,4 @@
+import { parseJsonSafe } from "@/lib/api/safeJson";
 import { NextRequest } from "next/server";
 import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { hasPermission } from "@/lib/auth/permissions";
@@ -21,7 +22,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const { reservationId } = await params;
 
-    const body = await request.json().catch((): null => null);
+    const body = await parseJsonSafe(request);
     if (!body?.progress_label) {
       return apiValidationError("progress_label is required");
     }
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         is_public: true,
         created_by: caller.userId,
       })
-      .select()
+      .select("id, vehicle_id, reservation_id, label, note, is_public, created_at")
       .single();
 
     if (error) return apiInternalError(error, "progress.create");

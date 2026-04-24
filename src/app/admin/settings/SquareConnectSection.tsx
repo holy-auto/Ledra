@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useState, useCallback, useEffect } from "react";
 import type { SquareConnection, SquareConnectionStatus } from "@/types/square";
@@ -46,7 +47,7 @@ export default function SquareConnectSection({ initialConnection }: Props) {
   const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/square/connect");
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (res.ok && j) {
         setConnection(j);
       }
@@ -66,7 +67,7 @@ export default function SquareConnectSection({ initialConnection }: Props) {
           return_url: window.location.origin + "/admin/settings?square=connected",
         }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       if (j?.auth_url) {
         window.location.href = j.auth_url;
@@ -84,7 +85,7 @@ export default function SquareConnectSection({ initialConnection }: Props) {
     setErr(null);
     try {
       const res = await fetch("/api/admin/square/connect", { method: "DELETE" });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setConnection(null);
     } catch (e) {
@@ -99,7 +100,7 @@ export default function SquareConnectSection({ initialConnection }: Props) {
     setErr(null);
     try {
       const res = await fetch("/api/admin/square/sync", { method: "POST" });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setSyncStatus("completed");
       // Refresh connection to get updated last_synced_at

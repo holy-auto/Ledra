@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import { getAdminClient } from "@/lib/api/auth";
-import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
     console.error("[square-webhook] Event processing error:", err);
   });
 
-  return NextResponse.json({ received: true }, { status: 200 });
+  return apiJson({ received: true }, { status: 200 });
 }
 
 // ─── Event processing ───
@@ -147,7 +147,9 @@ async function processEvent(type: string, merchantId: string, data: SquareWebhoo
  * Look up the tenant by square_merchant_id from square_connections.
  */
 async function resolveTenant(merchantId: string) {
-  const admin = getAdminClient();
+  const admin = createServiceRoleAdmin(
+    "square webhook — resolves tenant from merchant_id then scopes writes by tenant_id",
+  );
   const { data: conn, error } = await admin
     .from("square_connections")
     .select("tenant_id, square_access_token, square_location_ids")
@@ -184,7 +186,9 @@ async function handleOrderUpdated(merchantId: string, data: SquareWebhookEvent["
     return;
   }
 
-  const admin = getAdminClient();
+  const admin = createServiceRoleAdmin(
+    "square webhook — resolves tenant from merchant_id then scopes writes by tenant_id",
+  );
   const tenantId = conn.tenant_id as string;
 
   // Fetch the full order from Square API
@@ -216,7 +220,9 @@ async function handlePaymentCompleted(merchantId: string, data: SquareWebhookEve
     return;
   }
 
-  const admin = getAdminClient();
+  const admin = createServiceRoleAdmin(
+    "square webhook — resolves tenant from merchant_id then scopes writes by tenant_id",
+  );
   const tenantId = conn.tenant_id as string;
   const accessToken = conn.square_access_token as string;
 
@@ -258,7 +264,7 @@ async function fetchSquareOrder(accessToken: string, orderId: string): Promise<S
 /**
  * Upsert an order into square_orders (matching pattern from sync endpoint).
  */
-async function upsertOrder(admin: ReturnType<typeof getAdminClient>, tenantId: string, order: SquareOrderApi) {
+async function upsertOrder(admin: ReturnType<typeof createServiceRoleAdmin>, tenantId: string, order: SquareOrderApi) {
   const orderId = order.id;
   const totalMoney = order.total_money?.amount ?? 0;
   const taxMoney = order.total_tax_money?.amount ?? 0;

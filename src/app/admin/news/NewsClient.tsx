@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useCallback, useEffect, useState } from "react";
 import PageHeader from "@/components/ui/PageHeader";
@@ -63,7 +64,7 @@ export default function NewsClient() {
     setErr(null);
     try {
       const res = await fetch("/api/admin/news");
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setNews(j.news ?? []);
       setFeedCount(j.feedCount ?? 0);

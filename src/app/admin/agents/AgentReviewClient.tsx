@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useEffect, useState } from "react";
 import Badge from "@/components/ui/Badge";
@@ -126,7 +127,7 @@ function AgentsTab() {
         body: JSON.stringify({ status }),
       });
       if (!res.ok) {
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       setMsg(`ステータスを ${status} に更新しました`);
@@ -157,7 +158,7 @@ function AgentsTab() {
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       setMsg("コミッション設定を更新しました");
@@ -786,7 +787,7 @@ function SharedFilesTab() {
     try {
       const res = await fetch("/api/admin/agent-shared-files", { method: "POST", body: fd });
       if (!res.ok) {
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         throw new Error(j?.message ?? `HTTP ${res.status}`);
       }
       setMsg("アップロードしました");
@@ -1050,7 +1051,7 @@ function ContractsTab() {
         body: JSON.stringify({ action }),
       });
       if (!res.ok) {
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         throw new Error(j?.message ?? `HTTP ${res.status}`);
       }
       setMsg(`${label}しました`);

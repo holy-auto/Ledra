@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getAdminClient } from "@/lib/api/auth";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiInternalError, apiValidationError, apiError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 
@@ -162,7 +162,9 @@ export async function POST(req: NextRequest) {
       return apiValidationError("Invalid payload: expected { data: { history, reports } }");
     }
 
-    const admin = getAdminClient();
+    const admin = createServiceRoleAdmin(
+      "nexptg webhook — tenant resolved from external_api_key then queries continue with same admin",
+    );
 
     // テナント解決（API キーの一致のみで特定する）
     const { data: tenant, error: tenantErr } = await admin

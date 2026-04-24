@@ -10,7 +10,7 @@ import {
 } from "@/lib/customerPortalServer";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { escapeHtml } from "@/lib/sanitize";
-import { apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 function genCode6(): string {
   // 000000〜999999（先頭ゼロあり）
@@ -47,7 +47,7 @@ export async function POST(req: Request) {
     const ip = getClientIp(req);
     const rl = await checkRateLimit(`otp:${ip}`, { limit: 5, windowSec: 300 });
     if (!rl.allowed) {
-      return NextResponse.json(
+      return apiJson(
         { error: "rate_limited", message: "リクエストが多すぎます。しばらくしてから再度お試しください。" },
         { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
       );
@@ -105,7 +105,7 @@ export async function POST(req: Request) {
 
     await sendEmailResend(email, subject, html);
 
-    return NextResponse.json({ ok: true }, { status: 200 });
+    return apiJson({ ok: true }, { status: 200 });
   } catch (e: unknown) {
     return apiInternalError(e, "customer/request-code");
   }

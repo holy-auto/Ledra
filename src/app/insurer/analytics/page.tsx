@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -47,7 +48,7 @@ export default function AnalyticsPage() {
       try {
         const res = await fetch("/api/insurer/analytics");
         if (!res.ok) {
-          const j = await res.json().catch((): null => null);
+          const j = await parseJsonSafe(res);
           throw new Error(j?.message ?? `HTTP ${res.status}`);
         }
         setData(await res.json());

@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useEffect, useState } from "react";
 import Badge from "@/components/ui/Badge";
@@ -91,7 +92,7 @@ export default function AdminInvoicesClient() {
         }),
       });
       if (!res.ok) {
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       setMsg("請求書を作成しました");
@@ -125,7 +126,7 @@ export default function AdminInvoicesClient() {
         body: JSON.stringify({ status: newStatus }),
       });
       if (!res.ok) {
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       setMsg(`ステータスを「${statusEntry(newStatus).label}」に変更しました`);

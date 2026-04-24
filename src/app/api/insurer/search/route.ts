@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const runtime = "nodejs";
@@ -103,13 +103,13 @@ export async function GET(req: NextRequest) {
           }
         }
 
-        return NextResponse.json({ rows });
+        return apiJson({ rows });
       }
 
-      return apiValidationError(error.message);
+      return apiInternalError(error, "insurer.search");
     }
 
-    return NextResponse.json({ rows: data ?? [] });
+    return apiJson({ rows: data ?? [] });
   } catch (e) {
     return apiInternalError(e, "GET /api/insurer/search");
   }

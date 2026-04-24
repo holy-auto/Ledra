@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { normalizePlanTier, STORE_LIMITS } from "@/lib/billing/planFeatures";
-import { apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +27,7 @@ export async function GET() {
     if (error) {
       // テーブル未作成またはRLSエラー時は空配列を返す
       console.warn("[stores] GET error:", error.message);
-      return NextResponse.json({ stores: [] });
+      return apiJson({ stores: [] });
     }
 
     // Get member counts per store
@@ -46,7 +46,7 @@ export async function GET() {
       member_count: memberCounts[s.id] || 0,
     }));
 
-    const res = NextResponse.json({ stores: storesWithCounts });
+    const res = apiJson({ stores: storesWithCounts });
     res.headers.set("Cache-Control", "private, max-age=60, stale-while-revalidate=120");
     return res;
   } catch (e: unknown) {
@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
 
     if (error) return apiInternalError(error, "stores insert");
 
-    return NextResponse.json({ store }, { status: 201 });
+    return apiJson({ store }, { status: 201 });
   } catch (e: unknown) {
     return apiInternalError(e, "stores create");
   }
@@ -149,7 +149,7 @@ export async function PUT(req: NextRequest) {
 
     if (error) return apiInternalError(error, "stores update");
 
-    return NextResponse.json({ store });
+    return apiJson({ store });
   } catch (e: unknown) {
     return apiInternalError(e, "stores update");
   }
@@ -184,7 +184,7 @@ export async function DELETE(req: NextRequest) {
 
     if (error) return apiInternalError(error, "stores delete");
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (e: unknown) {
     return apiInternalError(e, "stores delete");
   }

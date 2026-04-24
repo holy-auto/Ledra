@@ -7,7 +7,7 @@
  */
 
 import React from "react";
-import { Document, Page, Text, View, StyleSheet, Font } from "@react-pdf/renderer";
+import { Document, Page, Text, View, StyleSheet, Font, type DocumentProps } from "@react-pdf/renderer";
 import {
   PLANS,
   TEMPLATE_OPTIONS,
@@ -1642,7 +1642,7 @@ function CasesPublishedPage({
   );
 }
 
-export async function CaseStudiesPdf(): Promise<React.ReactElement> {
+export async function CaseStudiesPdf(): Promise<React.ReactElement<DocumentProps>> {
   ensureFonts();
   // Pull any published case-study MDX so the PDF reflects the live /cases
   // index instead of going stale every time a new entry lands.
@@ -2105,7 +2105,7 @@ export type ResourcePdfEntry = {
    * loads MDX content at render time. The API route awaits before handing
    * to renderToBuffer.
    */
-  doc: (opts: ResourcePdfOpts) => React.ReactElement | Promise<React.ReactElement>;
+  doc: (opts: ResourcePdfOpts) => React.ReactElement<DocumentProps> | Promise<React.ReactElement<DocumentProps>>;
 };
 
 /**

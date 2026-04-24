@@ -5,7 +5,7 @@
  * from the public marketing site.
  */
 
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { notifySlack } from "./slack";
 
 export type LeadSource =
@@ -59,7 +59,7 @@ const SOURCE_LABEL: Record<LeadSource, string> = {
 type SaveResult = { id: string } | { error: string };
 
 export async function saveLead(input: LeadInput): Promise<SaveResult> {
-  const supabase = getSupabaseAdmin();
+  const supabase = createServiceRoleAdmin("marketing public forms — anonymous leads / aggregated stats");
   const { data, error } = await supabase
     .from("marketing_leads")
     .insert({
@@ -105,7 +105,7 @@ export async function markLeadDownloaded(leadId: string): Promise<void> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(leadId)) {
     return;
   }
-  const supabase = getSupabaseAdmin();
+  const supabase = createServiceRoleAdmin("marketing lead download tag — anonymous lead-id lookup");
   const { error } = await supabase
     .from("marketing_leads")
     .update({ downloaded_at: new Date().toISOString() })

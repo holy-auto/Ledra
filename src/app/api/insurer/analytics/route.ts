@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
   try {
     const { data, error } = await admin.rpc("analytics_insurer_30days", {
@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
     if (error) throw error;
 
     const payload = (data as AnalyticsPayload | null) ?? EMPTY_PAYLOAD;
-    return NextResponse.json(payload);
+    return apiJson(payload);
   } catch (err) {
     return apiInternalError(err, "GET /api/insurer/analytics");
   }

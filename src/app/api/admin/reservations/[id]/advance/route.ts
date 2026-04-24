@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { sendProgressUpdate } from "@/lib/line/client";
-import { apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .single();
 
       if (error) return apiInternalError(error, "advance legacy update");
-      return NextResponse.json({ ok: true, reservation: updated, legacy: true });
+      return apiJson({ ok: true, reservation: updated, legacy: true });
     }
 
     // ─── ワークフローテンプレート取得 ───
@@ -235,7 +235,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
     }
 
-    return NextResponse.json({
+    return apiJson({
       ok: true,
       reservation: updatedReservation,
       next_step: nextStep,

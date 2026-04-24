@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getAdminClient } from "@/lib/api/auth";
-import { apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query;
     if (error) throw error;
 
-    return NextResponse.json({ files: data ?? [] });
+    return apiJson({ files: data ?? [] });
   } catch (e) {
     return apiInternalError(e, "agent/shared-files GET");
   }
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
       return apiValidationError(`許可されていないファイル形式です: ${contentType}`);
     }
 
-    const admin = getAdminClient();
+    const admin = createServiceRoleAdmin("agent flow — agent-scoped / token-based, not tenant-scoped");
     const uuid = crypto.randomUUID();
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
     const storagePath = `${agentRow.agent_id}/to_hq/${uuid}_${safeName}`;
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
 
     if (insertErr) throw insertErr;
 
-    return NextResponse.json({ file: record }, { status: 201 });
+    return apiJson({ file: record }, { status: 201 });
   } catch (e) {
     return apiInternalError(e, "agent/shared-files POST");
   }

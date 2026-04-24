@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +61,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       service_type: c.service_type,
     }));
 
-    return NextResponse.json({ certificates: result });
+    return apiJson({ certificates: result });
   } catch (e) {
     return apiInternalError(e, "customer-certificates");
   }

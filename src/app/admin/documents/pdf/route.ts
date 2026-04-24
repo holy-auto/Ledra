@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { renderDocumentPdf, type DocForPdf, type TenantForDocPdf } from "@/lib/pdfDocument";
 import { layoutConfigSchema, type LayoutConfig } from "@/types/documentTemplate";
 
 export const dynamic = "force-dynamic";
 
 async function resolveLayoutForDoc(
-  admin: ReturnType<typeof createAdminClient>,
+  admin: ReturnType<typeof createTenantScopedAdmin>["admin"],
   tenantId: string,
   docTypeFromDoc: string,
   templateIdFromDoc: string | null,
@@ -56,7 +56,7 @@ export async function GET(req: Request) {
   const id = (url.searchParams.get("id") ?? "").trim();
   if (!id) return NextResponse.json({ error: "missing id" }, { status: 400 });
 
-  const admin = createAdminClient();
+  const { admin } = createTenantScopedAdmin(tenantId!);
 
   const { data: doc, error } = await admin
     .from("documents")

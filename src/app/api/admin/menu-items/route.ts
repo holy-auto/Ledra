@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
       return apiInternalError(error, "menu-items list");
     }
 
-    const res = NextResponse.json({
+    const res = apiJson({
       items: data ?? [],
       stats: { total: data?.length ?? 0 },
     });
@@ -75,13 +75,13 @@ export async function POST(req: NextRequest) {
       }
 
       // RLS をバイパスしてサービスロールで INSERT（tenant_id で必ずスコープ限定）
-      const admin = getSupabaseAdmin();
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
       const { data, error } = await admin.from("menu_items").insert(rows).select("id");
       if (error) {
         return apiInternalError(error, "menu-items csv insert");
       }
 
-      return NextResponse.json({ ok: true, imported: data?.length ?? 0 });
+      return apiJson({ ok: true, imported: data?.length ?? 0 });
     }
 
     // 単一作成
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
     };
 
     // RLS をバイパスしてサービスロールで INSERT（tenant_id で必ずスコープ限定）
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data, error } = await admin
       .from("menu_items")
       .insert(row)
@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
       return apiInternalError(error, "menu-items insert");
     }
 
-    return NextResponse.json({ ok: true, item: data });
+    return apiJson({ ok: true, item: data });
   } catch (e: unknown) {
     return apiInternalError(e, "menu-items POST");
   }
@@ -134,7 +134,7 @@ export async function PUT(req: NextRequest) {
     if (body.is_active !== undefined) updates.is_active = !!body.is_active;
 
     // RLS をバイパスしてサービスロールで UPDATE（tenant_id で必ずスコープ限定）
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data, error } = await admin
       .from("menu_items")
       .update(updates)
@@ -147,7 +147,7 @@ export async function PUT(req: NextRequest) {
       return apiInternalError(error, "menu-items update");
     }
 
-    return NextResponse.json({ ok: true, item: data });
+    return apiJson({ ok: true, item: data });
   } catch (e: unknown) {
     return apiInternalError(e, "menu-items PUT");
   }
@@ -165,7 +165,7 @@ export async function DELETE(req: NextRequest) {
     if (!id) return apiValidationError("missing_id");
 
     // RLS をバイパスしてサービスロールで論理削除（tenant_id で必ずスコープ限定）
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { error } = await admin
       .from("menu_items")
       .update({ is_active: false })
@@ -176,7 +176,7 @@ export async function DELETE(req: NextRequest) {
       return apiInternalError(error, "menu-items delete");
     }
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (e: unknown) {
     return apiInternalError(e, "menu-items DELETE");
   }

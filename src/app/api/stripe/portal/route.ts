@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { portalSchema } from "@/lib/validations/stripe";
 import {
   apiOk,
@@ -52,7 +52,9 @@ function safeReturnUrl(req: NextRequest, candidate?: string | null) {
 export async function POST(req: NextRequest) {
   try {
     const stripe = getStripe();
-    const admin = getSupabaseAdmin();
+    const admin = createServiceRoleAdmin(
+      "stripe auth flow — validates access_token then resolves tenant, pre-resolution",
+    );
 
     const body = await req.json().catch((): Record<string, unknown> => ({}));
     const parsed = portalSchema.safeParse(body);

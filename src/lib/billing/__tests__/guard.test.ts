@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock dependencies before importing the module under test
 vi.mock("@/lib/supabase/admin", () => ({
-  createAdminClient: vi.fn(() => mockSupabase),
+  createServiceRoleAdmin: vi.fn(() => mockSupabase),
+  createTenantScopedAdmin: vi.fn((tenantId: string) => ({ admin: mockSupabase, tenantId })),
+  createInsurerScopedAdmin: vi.fn((insurerId: string) => ({ admin: mockSupabase, insurerId })),
 }));
 
 vi.mock("@/lib/auth/platformAdmin", () => ({

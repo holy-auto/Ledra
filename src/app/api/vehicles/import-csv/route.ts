@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { vehicleCreateSchema } from "@/lib/validations/vehicle";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,8 +26,7 @@ function parseCsv(text: string): CsvRow[] {
 
   if (lines.length === 0) return [];
 
-  const splitLine = (l: string) =>
-    l.split(",").map((x) => x.trim().replace(/^"(.*)"$/, "$1"));
+  const splitLine = (l: string) => l.split(",").map((x) => x.trim().replace(/^"(.*)"$/, "$1"));
 
   let start = 0;
   const head = splitLine(lines[0]).map((x) => x.toLowerCase());
@@ -73,11 +72,18 @@ export async function POST(req: Request) {
     }
 
     if (rows.length === 0) {
-      return NextResponse.json({ ok: true, total: 0, inserted: 0, errors: [] });
+      return apiJson({ ok: true, total: 0, inserted: 0, errors: [] });
     }
 
     const errors: Array<{ row: number; error: string }> = [];
-    const validRows: Array<{ maker: string; model: string; year: number | null; plate_display: string | null; vin_code: string | null; notes: string | null }> = [];
+    const validRows: Array<{
+      maker: string;
+      model: string;
+      year: number | null;
+      plate_display: string | null;
+      vin_code: string | null;
+      notes: string | null;
+    }> = [];
 
     // Validate all rows first
     for (let i = 0; i < rows.length; i++) {
@@ -87,7 +93,7 @@ export async function POST(req: Request) {
         errors.push({ row: i + 1, error: parsed.error.issues[0]?.message ?? "バリデーションエラー" });
         continue;
       }
-      validRows.push(parsed.data as typeof validRows[number]);
+      validRows.push(parsed.data as (typeof validRows)[number]);
     }
 
     // Batch insert valid rows in chunks of 100
@@ -130,7 +136,7 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({
+    return apiJson({
       ok: errors.length === 0,
       total: rows.length,
       inserted,

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { notifyInquiryReply } from "@/lib/market/email";
-import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!caller) return apiUnauthorized();
 
     const { id: inquiryId } = await params;
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
 
     const message = (body?.message ?? "").trim();
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
     }
 
-    return NextResponse.json({ ok: true, reply });
+    return apiJson({ ok: true, reply });
   } catch (e: unknown) {
     return apiInternalError(e, "inquiry-reply");
   }
@@ -112,7 +112,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     if (!caller) return apiUnauthorized();
 
     const { id: inquiryId } = await params;
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // Verify the caller owns this inquiry
     const { data: inquiry, error: iqErr } = await admin
@@ -136,7 +136,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       return apiInternalError(error, "inquiry-reply list");
     }
 
-    return NextResponse.json({ messages: messages ?? [] });
+    return apiJson({ messages: messages ?? [] });
   } catch (e: unknown) {
     return apiInternalError(e, "inquiry-reply list");
   }

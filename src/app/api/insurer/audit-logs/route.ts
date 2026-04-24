@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiValidationError, apiForbidden, apiInternalError } from "@/lib/api/response";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { apiJson, apiUnauthorized, apiValidationError, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     const offset = Math.max(parseInt(url.searchParams.get("offset") ?? "0", 10) || 0, 0);
     const action = url.searchParams.get("action") ?? "";
 
-    const admin = createAdminClient();
+    const { admin } = createInsurerScopedAdmin(caller.insurerId);
     let query = admin
       .from("insurer_access_logs")
       .select("id, action, meta, ip, user_agent, created_at, certificate_id, insurer_user_id")
@@ -32,9 +32,9 @@ export async function GET(req: NextRequest) {
     }
 
     const { data, error } = await query;
-    if (error) return apiValidationError(error.message);
+    if (error) return apiInternalError(error, "insurer.audit-logs");
 
-    return NextResponse.json({ logs: data ?? [], limit, offset });
+    return apiJson({ logs: data ?? [], limit, offset });
   } catch (e) {
     return apiInternalError(e, "GET /api/insurer/audit-logs");
   }

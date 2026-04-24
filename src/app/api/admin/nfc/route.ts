@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { requireMinRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiForbidden, apiValidationError, apiNotFound, apiError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiNotFound, apiError } from "@/lib/api/response";
 
 /**
  * PATCH /api/admin/nfc — 論理削除（status → retired）
@@ -48,7 +48,7 @@ export async function PATCH(request: NextRequest) {
     return apiError({ code: "db_error", message: "更新に失敗しました。", status: 500 });
   }
 
-  return NextResponse.json({ ok: true });
+  return apiJson({ ok: true });
 }
 
 /**
@@ -81,15 +81,11 @@ export async function DELETE(request: NextRequest) {
     return apiNotFound("NFCタグが見つかりません。");
   }
 
-  const { error: delErr } = await supabase
-    .from("nfc_tags")
-    .delete()
-    .eq("id", id)
-    .eq("tenant_id", caller.tenantId);
+  const { error: delErr } = await supabase.from("nfc_tags").delete().eq("id", id).eq("tenant_id", caller.tenantId);
 
   if (delErr) {
     return apiError({ code: "db_error", message: "削除に失敗しました。", status: 500 });
   }
 
-  return NextResponse.json({ ok: true });
+  return apiJson({ ok: true });
 }

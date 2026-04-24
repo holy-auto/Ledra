@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { createAdminClient as createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages";
 import { normalizePlanTier, PHOTO_LIMITS } from "@/lib/billing/planFeatures";
 import { apiOk, apiInternalError, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Verify certificate belongs to this tenant ─────────────────
-    const admin = createSupabaseAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data: cert } = await admin
       .from("certificates")
       .select("id, tenant_id")

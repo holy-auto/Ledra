@@ -3,7 +3,7 @@ import { createMobileClient, resolveMobileCaller } from "@/lib/supabase/mobile";
 import { requireMinRole } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { VALID_PAYMENT_METHODS } from "@/types/pos-constants";
-import { apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
       return apiInternalError(error, "mobile/pos/checkout");
     }
 
-    return NextResponse.json({ ok: true, result: data });
+    return apiJson({ ok: true, result: data });
   } catch (e: unknown) {
     return apiInternalError(e, "mobile/pos/checkout");
   }

@@ -14,15 +14,9 @@
  */
 import type { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import {
-  apiOk,
-  apiUnauthorized,
-  apiForbidden,
-  apiValidationError,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiOk, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { enqueuePolygonBackfill } from "@/lib/qstash/publish";
 
 export const runtime = "nodejs";
@@ -38,7 +32,7 @@ export async function GET() {
       return apiForbidden("この操作は管理者のみ実行できます。");
     }
 
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     const [{ count: pendingCount }, { count: anchoredCount }] = await Promise.all([
       admin
@@ -81,7 +75,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     const { count, error: countErr } = await admin
       .from("certificate_images")
@@ -111,9 +105,7 @@ export async function POST(req: NextRequest) {
 
     await enqueuePolygonBackfill({ job_id: job.id, tenant_id: caller.tenantId });
 
-    console.info(
-      `[polygon:backfill] tenant=${caller.tenantId} queued job=${job.id} total=${count}`,
-    );
+    console.info(`[polygon:backfill] tenant=${caller.tenantId} queued job=${job.id} total=${count}`);
 
     return apiOk({
       message: `${count}件のアンカリングをキューに追加しました`,

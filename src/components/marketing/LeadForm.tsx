@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -151,7 +152,7 @@ export function LeadForm({
       });
 
       if (!res.ok) {
-        const data = (await res.json().catch((): null => null)) as { message?: string } | null;
+        const data = (await parseJsonSafe(res)) as { message?: string } | null;
         throw new Error(data?.message ?? "送信に失敗しました。");
       }
 

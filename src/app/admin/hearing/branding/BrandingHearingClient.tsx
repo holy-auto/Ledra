@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -120,7 +121,7 @@ export default function BrandingHearingClient() {
   const fetchHearings = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/hearings", { cache: "no-store" });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       const all: BrandingHearing[] = j?.hearings ?? [];
       // ブランディングヒアリングのみ表示
       setHearings(all.filter((h) => h.hearing_json?.hearing_type === "branding"));
@@ -162,7 +163,7 @@ export default function BrandingHearingClient() {
           hearing_json: bd,
         }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? "保存に失敗しました");
       setShowForm(false);
       resetForm();

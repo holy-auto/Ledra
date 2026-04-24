@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { escapeIlike } from "@/lib/sanitize";
 
 export const dynamic = "force-dynamic";
@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
       avg_rating: scoresMap[t.id]?.avg_rating ?? null,
     }));
 
-    return NextResponse.json({ tenants: results });
+    return apiJson({ tenants: results });
   } catch (e) {
     return apiInternalError(e, "search tenants");
   }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiInternalError, apiNotFound, apiError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiInternalError, apiNotFound, apiError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const runtime = "nodejs";
@@ -15,7 +15,7 @@ export async function GET() {
     const caller = await resolveInsurerCaller();
     if (!caller) return apiUnauthorized();
 
-    const admin = createAdminClient();
+    const { admin } = createInsurerScopedAdmin(caller.insurerId);
     const { data: insurer } = await admin
       .from("insurers")
       .select("onboarding_completed_at, name, contact_email, contact_phone, corporate_number, address, plan_tier")
@@ -31,11 +31,11 @@ export async function GET() {
     // Determine what's missing
     const checklist = {
       profile_complete: !!(insurer.name && insurer.contact_email),
-      contact_info: !!(insurer.contact_phone),
+      contact_info: !!insurer.contact_phone,
       plan_selected: !!(insurer.plan_tier && insurer.plan_tier !== "basic"),
     };
 
-    return NextResponse.json({
+    return apiJson({
       completed: isComplete,
       completed_at: insurer.onboarding_completed_at,
       checklist,
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
     const caller = await resolveInsurerCaller();
     if (!caller) return apiUnauthorized();
 
-    const admin = createAdminClient();
+    const { admin } = createInsurerScopedAdmin(caller.insurerId);
     const { error } = await admin
       .from("insurers")
       .update({ onboarding_completed_at: new Date().toISOString() })
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
       return apiInternalError(error, "insurer onboarding update");
     }
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (e) {
     return apiInternalError(e, "insurer onboarding complete");
   }

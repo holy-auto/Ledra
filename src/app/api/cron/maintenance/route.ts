@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { apiUnauthorized, apiInternalError, apiOk } from "@/lib/api/response";
 import { verifyCronRequest } from "@/lib/cronAuth";
 import { sendCronFailureAlert } from "@/lib/cronAlert";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,9 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const supabase = getSupabaseAdmin();
+    const supabase = createServiceRoleAdmin(
+      "cron:maintenance — expires certificates & cleans stripe events platform-wide",
+    );
     const todayStr = new Date().toISOString().slice(0, 10);
     const results = {
       expired_certificates: 0,

@@ -633,7 +633,7 @@ export async function renderCertificatePdf(row: CertRow, publicUrl: string, anch
           <View style={styles.card}>
             <Text style={styles.cardEyebrow}>{productsTitle}</Text>
             {row.coating_products_json.map((cp: Record<string, any>, idx: number) => (
-              <View key={idx} style={[styles.row, idx === 0 && styles.rowFirst]}>
+              <View key={idx} style={[styles.row, idx === 0 ? styles.rowFirst : {}]}>
                 <Text style={styles.rowLabel}>{cp.location || "-"}</Text>
                 <Text style={styles.rowValue}>
                   {[cp.brand_name, cp.product_name, cp.film_type ? getFilmTypeLabel(cp.film_type) : null]
@@ -650,7 +650,7 @@ export async function renderCertificatePdf(row: CertRow, publicUrl: string, anch
           <View style={styles.card}>
             <Text style={styles.cardEyebrow}>施工範囲 · PPF Coverage</Text>
             {ppfCoverage.map((entry: Record<string, any>, idx: number) => (
-              <View key={idx} style={[styles.row, idx === 0 && styles.rowFirst]}>
+              <View key={idx} style={[styles.row, idx === 0 ? styles.rowFirst : {}]}>
                 <Text style={styles.rowLabel}>{getPanelLabel(entry.panel)}</Text>
                 <Text style={styles.rowValue}>
                   {getCoverageLabel(entry.coverage)}
@@ -770,7 +770,7 @@ export async function renderCertificatePdf(row: CertRow, publicUrl: string, anch
           <View style={styles.card}>
             <Text style={styles.cardEyebrow}>施工内容 · Service Details</Text>
             {presetLines.map((it, idx) => (
-              <View key={idx} style={[styles.row, idx === 0 && styles.rowFirst]}>
+              <View key={idx} style={[styles.row, idx === 0 ? styles.rowFirst : {}]}>
                 <Text style={styles.rowLabel}>
                   [{it.section}] {it.label}
                 </Text>

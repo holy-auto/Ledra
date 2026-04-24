@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 
 export type AuditAction = "view" | "search" | "download_pdf" | "export_csv";
 
@@ -26,7 +26,8 @@ export async function logInsurerAccess(params: {
   if (meErr) throw meErr;
   if (!me) throw new Error("Insurer user not found");
 
-  const { error: insErr } = await supabaseAdmin.from("insurer_access_logs").insert({
+  const { admin } = createInsurerScopedAdmin(me.insurer_id);
+  const { error: insErr } = await admin.from("insurer_access_logs").insert({
     insurer_id: me.insurer_id,
     insurer_user_id: me.id,
     certificate_id: certificateId,

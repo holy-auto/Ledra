@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { apiJson, apiValidationError, apiInternalError, applySecurityHeaders } from "@/lib/api/response";
 import crypto from "crypto";
 
 export const runtime = "nodejs";
@@ -36,9 +37,11 @@ export async function POST(req: NextRequest) {
   const ip = getClientIp(req);
   const rl = await checkRateLimit(`apply-upload:${ip}`, { limit: 10, windowSec: 600 });
   if (!rl.allowed) {
-    return NextResponse.json(
-      { error: "rate_limited", message: "アップロード回数の上限に達しました。しばらくしてから再度お試しください。" },
-      { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
+    return applySecurityHeaders(
+      apiJson(
+        { error: "rate_limited", message: "アップロード回数の上限に達しました。しばらくしてから再度お試しください。" },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
+      ),
     );
   }
 
@@ -46,37 +49,24 @@ export async function POST(req: NextRequest) {
   try {
     formData = await req.formData();
   } catch {
-    return NextResponse.json({ error: "invalid form data" }, { status: 400 });
+    return apiValidationError("invalid form data");
   }
 
   const files = formData.getAll("files") as File[];
-  if (files.length === 0) {
-    return NextResponse.json({ error: "no_files", message: "ファイルが選択されていません" }, { status: 400 });
-  }
-  if (files.length > MAX_FILES) {
-    return NextResponse.json(
-      { error: "too_many_files", message: `ファイルは${MAX_FILES}個まで添付できます` },
-      { status: 400 },
-    );
-  }
+  if (files.length === 0) return apiValidationError("ファイルが選択されていません");
+  if (files.length > MAX_FILES) return apiValidationError(`ファイルは${MAX_FILES}個まで添付できます`);
 
-  const supabase = createAdminClient();
+  const supabase = createServiceRoleAdmin("agent apply flow — pre-tenant registration");
   const uploaded: { name: string; storage_path: string; content_type: string; file_size: number }[] = [];
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
 
     if (!ALLOWED_TYPES.includes(file.type)) {
-      return NextResponse.json(
-        { error: "invalid_type", message: `${file.name}: PDF、JPEG、PNGのみ対応しています` },
-        { status: 400 },
-      );
+      return apiValidationError(`${file.name}: PDF、JPEG、PNGのみ対応しています`);
     }
     if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json(
-        { error: "file_too_large", message: `${file.name}: ファイルサイズは10MB以下にしてください` },
-        { status: 400 },
-      );
+      return apiValidationError(`${file.name}: ファイルサイズは10MB以下にしてください`);
     }
 
     const buf = Buffer.from(await file.arrayBuffer());
@@ -84,10 +74,7 @@ export async function POST(req: NextRequest) {
     // Validate magic bytes to prevent spoofed content types
     const detectedMime = validateMagicBytes(buf);
     if (!detectedMime || !ALLOWED_TYPES.includes(detectedMime)) {
-      return NextResponse.json(
-        { error: "invalid_type", message: `${file.name}: ファイル形式が不正です。PDF、JPEG、PNGのみ対応しています` },
-        { status: 400 },
-      );
+      return apiValidationError(`${file.name}: ファイル形式が不正です。PDF、JPEG、PNGのみ対応しています`);
     }
 
     const ext = detectedMime === "application/pdf" ? "pdf" : detectedMime === "image/png" ? "png" : "jpg";
@@ -98,13 +85,7 @@ export async function POST(req: NextRequest) {
       .from("agent-applications")
       .upload(storagePath, buf, { contentType: detectedMime, upsert: false });
 
-    if (error) {
-      console.error("[agent/apply/upload] storage error:", error.message);
-      return NextResponse.json(
-        { error: "upload_failed", message: "ファイルのアップロードに失敗しました" },
-        { status: 500 },
-      );
-    }
+    if (error) return apiInternalError(error, "agent/apply/upload storage");
 
     uploaded.push({
       name: file.name,
@@ -114,5 +95,5 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  return NextResponse.json({ files: uploaded });
+  return apiJson({ files: uploaded });
 }

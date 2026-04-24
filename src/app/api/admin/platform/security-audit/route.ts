@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { apiJson, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
       return apiForbidden();
     }
 
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const now = new Date();
     const url = new URL(req.url);
     const days = Math.min(30, Math.max(1, parseInt(url.searchParams.get("days") ?? "7", 10)));
@@ -108,7 +108,7 @@ export async function GET(req: NextRequest) {
       webhookTypes[t] = (webhookTypes[t] ?? 0) + 1;
     }
 
-    return NextResponse.json({
+    return apiJson({
       ok: true,
       period: { days, since },
       access: {
