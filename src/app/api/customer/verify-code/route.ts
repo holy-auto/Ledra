@@ -11,7 +11,7 @@ import {
   CUSTOMER_COOKIE,
 } from "@/lib/customerPortalServer";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
-import { apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 const isSecureCookie = process.env.NODE_ENV === "production";
 
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     const ip = getClientIp(req);
     const rl = await checkRateLimit(`verify:${ip}`, { limit: 10, windowSec: 300 });
     if (!rl.allowed) {
-      return NextResponse.json(
+      return apiJson(
         { error: "rate_limited", message: "試行回数が多すぎます。しばらくしてから再度お試しください。" },
         { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
       );
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
       await markCodeAttempt(row.id, nextAttempts);
       if (nextAttempts >= 5) {
         await markCodeUsed(row.id);
-        return NextResponse.json(
+        return apiJson(
           { error: "too_many_attempts", message: "試行回数の上限に達しました。再度コードを送信してください。" },
           { status: 429 },
         );
@@ -73,7 +73,7 @@ export async function POST(req: Request) {
     // last4Raw は後方互換のために保存（ハッシュのない古い証明書を参照するため）
     const sess = await createSession(tenantId, email, phoneHash, last4Raw || undefined);
 
-    const res = NextResponse.json({ ok: true });
+    const res = apiJson({ ok: true });
 
     res.cookies.set(CUSTOMER_COOKIE, sess.token, {
       httpOnly: true,

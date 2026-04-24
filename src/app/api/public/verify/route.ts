@@ -21,7 +21,7 @@
  *   - レート制限は `general` プリセット (60 req / 60s / IP)
  */
 import type { NextRequest } from "next/server";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { verifyAnchor, buildExplorerUrl } from "@/lib/anchoring/providers";
@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
 
     // DB から最小限のメタデータを取得 (全テナント横断。この sha256 に一致する
     // 画像が 1 件でもあれば、発行元店舗は公開してよい情報として返す)
-    const admin = getSupabaseAdmin();
+    const admin = createServiceRoleAdmin("public verify — anonymous SHA-256 lookup spans every tenant");
     const { data: image, error: fetchErr } = await admin
       .from("certificate_images")
       .select(

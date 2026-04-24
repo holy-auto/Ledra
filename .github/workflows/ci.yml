@@ -20,8 +20,11 @@ jobs:
 
       - run: npm ci
 
-      - name: Security audit
-        run: npm audit --audit-level=high --omit=dev || true
+      - name: Security audit (production dependencies)
+        # Fails CI when a high or critical CVE is surfaced in prod deps.
+        # Moderate/low are tracked separately (see dependabot) and do not
+        # block merges.
+        run: npm audit --audit-level=high --omit=dev
 
       - name: Lint, Type Check & Unit Tests (parallel)
         run: |

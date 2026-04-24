@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getAdminClient } from "@/lib/api/auth";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiInternalError, apiError } from "@/lib/api/response";
 import { verifySignature, handleWebhookEvents } from "@/lib/line/client";
 
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     }
 
     // テナントの LINE 設定を取得
-    const admin = getAdminClient();
+    const admin = createServiceRoleAdmin("LINE webhook — resolves tenant from LINE channel id, pre-resolution");
     const { data: tenant } = await admin
       .from("tenants")
       .select("line_channel_secret, line_enabled")

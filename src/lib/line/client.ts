@@ -1,4 +1,4 @@
-import { getAdminClient } from "@/lib/api/auth";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 /**
  * LINE Messaging API クライアント
@@ -16,7 +16,7 @@ type LineConfig = {
 
 /** テナントの LINE 設定を取得 */
 async function getLineConfig(tenantId: string): Promise<LineConfig | null> {
-  const admin = getAdminClient();
+  const { admin } = createTenantScopedAdmin(tenantId);
   const { data: tenant } = await admin
     .from("tenants")
     .select("line_channel_id, line_channel_secret, line_channel_access_token, line_liff_id, line_enabled")

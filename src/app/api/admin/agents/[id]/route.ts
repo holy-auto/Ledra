@@ -1,9 +1,16 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getAdminClient } from "@/lib/api/auth";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
-import { apiUnauthorized, apiForbidden, apiInternalError, apiNotFound, apiValidationError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiForbidden,
+  apiInternalError,
+  apiNotFound,
+  apiValidationError,
+} from "@/lib/api/response";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -15,7 +22,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
     if (!caller) return apiUnauthorized();
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data, error } = await admin
       .from("agents")
       .select(
@@ -49,7 +56,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
         .order("created_at", { ascending: true }),
     ]);
 
-    return NextResponse.json({
+    return apiJson({
       agent: data,
       referrals: referrals ?? [],
       commissions: commissions ?? [],
@@ -69,7 +76,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const body = await request.json();
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // Whitelist of updatable fields
     const updates: Record<string, unknown> = {};
@@ -110,7 +117,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
       return apiInternalError(error, "agents [id] PUT");
     }
 
-    return NextResponse.json({ agent: data });
+    return apiJson({ agent: data });
   } catch (e) {
     return apiInternalError(e, "agents [id] PUT");
   }

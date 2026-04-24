@@ -1,9 +1,16 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiForbidden, apiValidationError, apiOk, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiForbidden,
+  apiValidationError,
+  apiOk,
+  apiInternalError,
+} from "@/lib/api/response";
 import { isPlatformTenantId } from "@/lib/auth/platformAdmin";
-import { getAdminClient } from "@/lib/api/auth";
 
 export const runtime = "nodejs";
 
@@ -18,7 +25,7 @@ export async function GET(req: NextRequest) {
     if (!caller) return apiUnauthorized();
     if (!requireMinRole(caller, "admin")) return apiForbidden();
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const insurerId = req.nextUrl.searchParams.get("insurer_id");
     const tenantId = req.nextUrl.searchParams.get("tenant_id");
 
@@ -66,7 +73,7 @@ export async function POST(req: NextRequest) {
       return apiValidationError("insurer_id と tenant_id は必須です。");
     }
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // Check for existing contract
     const { data: existing } = await admin
@@ -98,7 +105,7 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) return apiInternalError(error, "insurer-contracts create");
-    return NextResponse.json({ contract: data }, { status: 201 });
+    return apiJson({ contract: data }, { status: 201 });
   } catch (e) {
     return apiInternalError(e, "insurer-contracts create");
   }
@@ -127,7 +134,7 @@ export async function PUT(req: NextRequest) {
       return apiValidationError("status は active, suspended, terminated のいずれかです。");
     }
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const patch: Record<string, any> = {
       status,
       updated_at: new Date().toISOString(),

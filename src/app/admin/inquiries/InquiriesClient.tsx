@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -81,7 +82,7 @@ export default function InquiriesClient() {
       const params = new URLSearchParams();
       if (status && status !== "all") params.set("status", status);
       const res = await fetch(`/api/market/inquiries?${params.toString()}`, { cache: "no-store" });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setInquiries(j.inquiries ?? j ?? []);
     } catch (e: unknown) {
@@ -114,7 +115,7 @@ export default function InquiriesClient() {
     setRepliesLoading(true);
     try {
       const res = await fetch(`/api/market/inquiries/${id}/reply`, { cache: "no-store" });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setReplies(j.replies ?? j ?? []);
     } catch {
@@ -133,12 +134,12 @@ export default function InquiriesClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body: replyText }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setReplyText("");
       // Refresh replies
       const rRes = await fetch(`/api/market/inquiries/${inquiryId}/reply`, { cache: "no-store" });
-      const rJ = await rRes.json().catch((): null => null);
+      const rJ = await parseJsonSafe(rRes);
       setReplies(rJ?.replies ?? rJ ?? []);
       // Refresh list
       await fetchInquiries(statusFilter);
@@ -159,7 +160,7 @@ export default function InquiriesClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ inquiry_id: inquiryId }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       alert("商談を作成しました");
       await fetchInquiries(statusFilter);

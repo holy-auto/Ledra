@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import {
+  apiJson,
   apiUnauthorized,
   apiValidationError,
   apiNotFound,
@@ -53,7 +54,7 @@ export async function GET(req: NextRequest) {
     const cert = Array.isArray(data) ? data[0] : data;
     if (!cert) return apiNotFound("証明書が見つかりません。");
 
-    return NextResponse.json({ certificate: cert });
+    return apiJson({ certificate: cert });
   } catch (e) {
     return apiInternalError(e, "GET /api/insurer/certificate");
   }

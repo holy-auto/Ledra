@@ -1,3 +1,4 @@
+import { parseJsonSafe } from "@/lib/api/safeJson";
 import { NextRequest } from "next/server";
 import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { apiOk, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
@@ -10,7 +11,7 @@ export async function POST(request: NextRequest) {
     const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();
 
-    const body = await request.json().catch((): null => null);
+    const body = await parseJsonSafe(request);
     if (!body?.token || typeof body.token !== "string") {
       return apiValidationError("token is required");
     }
@@ -47,7 +48,7 @@ export async function DELETE(request: NextRequest) {
     const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();
 
-    const body = await request.json().catch((): null => null);
+    const body = await parseJsonSafe(request);
     if (!body?.token || typeof body.token !== "string") {
       return apiValidationError("token is required");
     }

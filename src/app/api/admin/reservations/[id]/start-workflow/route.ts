@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -82,7 +82,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return apiInternalError(updateError, "start-workflow update");
     }
 
-    return NextResponse.json({
+    return apiJson({
       ok: true,
       reservation: updated,
       steps,

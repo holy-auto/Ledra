@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerFull } from "@/lib/api/auth";
 import { apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
 import { templateConfigSchema } from "@/lib/template-options/configSchema";
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
 
     // テスト発行回数制限チェック
     const limit = TEST_ISSUE_LIMITS[optionStatus.optionType!];
-    const admin = (await import("@/lib/supabase/admin")).createAdminClient();
+    const { admin } = (await import("@/lib/supabase/admin")).createTenantScopedAdmin(caller.tenantId);
     const monthStart = new Date();
     monthStart.setDate(1);
     monthStart.setHours(0, 0, 0, 0);
@@ -74,12 +74,12 @@ export async function POST(req: NextRequest) {
       .select("*", { count: "exact", head: true })
       .eq("action", "test_issue")
       .gte("created_at", monthStart.toISOString())
-      .in("order_id", (
-        await admin
-          .from("template_orders")
-          .select("id")
-          .eq("tenant_id", caller.tenantId)
-      ).data?.map((o: any) => o.id) ?? []);
+      .in(
+        "order_id",
+        (await admin.from("template_orders").select("id").eq("tenant_id", caller.tenantId)).data?.map(
+          (o: any) => o.id,
+        ) ?? [],
+      );
 
     const usedCount = count ?? 0;
     if (usedCount >= limit) {

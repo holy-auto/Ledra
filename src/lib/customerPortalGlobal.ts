@@ -1,4 +1,4 @@
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import {
   SESSION_TTL_DAYS,
   getTenantIdBySlug,
@@ -36,7 +36,7 @@ function assertEnv() {
 
 function admin() {
   assertEnv();
-  return getSupabaseAdmin();
+  return createServiceRoleAdmin("customer portal global — cross-tenant customer identity");
 }
 
 function digitsOnly(v: string | null | undefined) {

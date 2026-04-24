@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
@@ -127,7 +128,7 @@ export default function InsurerCertificatePage() {
         }),
       });
       if (!res.ok) {
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         throw new Error(j?.error ?? "request_failed");
       }
       setDisclosureStatus((prev) => (prev ? { ...prev, insurer_requested: true } : prev));

@@ -1,16 +1,56 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 const PREFECTURES = [
-  "北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県",
-  "茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県",
-  "新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県",
-  "静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県",
-  "奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県",
-  "徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県",
-  "熊本県","大分県","宮崎県","鹿児島県","沖縄県",
+  "北海道",
+  "青森県",
+  "岩手県",
+  "宮城県",
+  "秋田県",
+  "山形県",
+  "福島県",
+  "茨城県",
+  "栃木県",
+  "群馬県",
+  "埼玉県",
+  "千葉県",
+  "東京都",
+  "神奈川県",
+  "新潟県",
+  "富山県",
+  "石川県",
+  "福井県",
+  "山梨県",
+  "長野県",
+  "岐阜県",
+  "静岡県",
+  "愛知県",
+  "三重県",
+  "滋賀県",
+  "京都府",
+  "大阪府",
+  "兵庫県",
+  "奈良県",
+  "和歌山県",
+  "鳥取県",
+  "島根県",
+  "岡山県",
+  "広島県",
+  "山口県",
+  "徳島県",
+  "香川県",
+  "愛媛県",
+  "高知県",
+  "福岡県",
+  "佐賀県",
+  "長崎県",
+  "熊本県",
+  "大分県",
+  "宮崎県",
+  "鹿児島県",
+  "沖縄県",
 ];
 
 export async function GET() {
@@ -28,9 +68,7 @@ export async function GET() {
       .gt("service_price", 0);
 
     // Get tenant info with prefecture
-    const { data: tenants } = await supabase
-      .from("tenants")
-      .select("id, prefecture, name");
+    const { data: tenants } = await supabase.from("tenants").select("id, prefecture, name");
 
     const tenantMap = new Map<string, string>();
     for (const t of tenants ?? []) {
@@ -67,16 +105,17 @@ export async function GET() {
 
     // Overall stats
     const allPrices = (certs ?? []).map((c: any) => c.service_price as number);
-    const overall = allPrices.length > 0
-      ? {
-          count: allPrices.length,
-          avg: Math.round(allPrices.reduce((a, b) => a + b, 0) / allPrices.length),
-          min: Math.min(...allPrices),
-          max: Math.max(...allPrices),
-        }
-      : { count: 0, avg: 0, min: 0, max: 0 };
+    const overall =
+      allPrices.length > 0
+        ? {
+            count: allPrices.length,
+            avg: Math.round(allPrices.reduce((a, b) => a + b, 0) / allPrices.length),
+            min: Math.min(...allPrices),
+            max: Math.max(...allPrices),
+          }
+        : { count: 0, avg: 0, min: 0, max: 0 };
 
-    return NextResponse.json({ regionalStats, overall });
+    return apiJson({ regionalStats, overall });
   } catch (e) {
     return apiInternalError(e, "price-stats");
   }

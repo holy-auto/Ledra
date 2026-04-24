@@ -1,9 +1,9 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getAdminClient } from "@/lib/api/auth";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
-import { apiUnauthorized, apiForbidden, apiInternalError, apiNotFound } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiInternalError, apiNotFound } from "@/lib/api/response";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -19,7 +19,7 @@ export async function DELETE(_request: NextRequest, ctx: RouteContext) {
     if (!caller) return apiUnauthorized();
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // Fetch file record
     const { data: file, error: fetchErr } = await admin
@@ -31,19 +31,14 @@ export async function DELETE(_request: NextRequest, ctx: RouteContext) {
     if (fetchErr || !file) return apiNotFound("file not found");
 
     // Delete from storage
-    await admin.storage
-      .from("agent-shared-files")
-      .remove([file.storage_path]);
+    await admin.storage.from("agent-shared-files").remove([file.storage_path]);
 
     // Delete DB record
-    const { error: deleteErr } = await admin
-      .from("agent_shared_files")
-      .delete()
-      .eq("id", id);
+    const { error: deleteErr } = await admin.from("agent_shared_files").delete().eq("id", id);
 
     if (deleteErr) throw deleteErr;
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (e) {
     return apiInternalError(e, "admin/agent-shared-files DELETE");
   }

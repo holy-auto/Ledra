@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
@@ -110,7 +111,7 @@ export default function CustomersClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(form),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setForm({ ...emptyForm });
       setShowForm(false);
@@ -145,7 +146,7 @@ export default function CustomersClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: editingId, ...editForm }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setEditingId(null);
       mutate();
@@ -165,7 +166,7 @@ export default function CustomersClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       mutate();
     } catch (e: any) {

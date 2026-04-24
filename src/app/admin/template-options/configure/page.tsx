@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -129,7 +130,7 @@ export default function ConfigurePage() {
         body: JSON.stringify({ config }),
       });
       if (!res.ok) {
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         throw new Error(j?.message ?? `HTTP ${res.status}`);
       }
       const blob = await res.blob();

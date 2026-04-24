@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { resolveInsurerCaller, enforceInsurerPlan } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -114,7 +114,7 @@ export async function POST(req: Request) {
     const planDeny = enforceInsurerPlan(caller, "pro");
     if (planDeny) return planDeny;
 
-    const adminSb = createAdminClient();
+    const { admin: adminSb } = createInsurerScopedAdmin(caller.insurerId);
 
     // Check max_users limit before processing
     const { INSURER_PLAN_FEATURES } = await import("@/types/insurer");
@@ -140,7 +140,7 @@ export async function POST(req: Request) {
     }
 
     if (rows.length === 0) {
-      return NextResponse.json({ ok: true, inserted: 0, invited: 0, existing_auth: 0, errors: [] });
+      return apiJson({ ok: true, inserted: 0, invited: 0, existing_auth: 0, errors: [] });
     }
 
     // Validate that adding these users won't exceed max_users
@@ -194,7 +194,7 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({
+    return apiJson({
       ok: errors.length === 0,
       insurer_id: caller.insurerId,
       total: rows.length,

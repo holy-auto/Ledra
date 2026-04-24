@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import {
-  apiUnauthorized,
-  apiValidationError,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
@@ -46,7 +42,7 @@ export async function GET(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
   try {
     const { data, error } = await admin
@@ -58,18 +54,15 @@ export async function GET(req: NextRequest) {
 
     if (error) {
       // Table may not exist yet — return defaults
-      if (
-        error.message.includes("does not exist") ||
-        error.code === "42P01"
-      ) {
-        return NextResponse.json({ preferences: DEFAULT_PREFS });
+      if (error.message.includes("does not exist") || error.code === "42P01") {
+        return apiJson({ preferences: DEFAULT_PREFS });
       }
-      return apiValidationError(error.message);
+      return apiInternalError(error, "insurer.settings");
     }
 
     const prefs = data?.notification_prefs ?? DEFAULT_PREFS;
 
-    return NextResponse.json({
+    return apiJson({
       preferences: { ...DEFAULT_PREFS, ...prefs },
     });
   } catch (err) {
@@ -105,12 +98,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   // Validate keys — only allow known preference keys
-  const allowedKeys = new Set([
-    "case_update",
-    "pii_decision",
-    "new_message",
-    "sla_alert",
-  ]);
+  const allowedKeys = new Set(["case_update", "pii_decision", "new_message", "sla_alert"]);
   const sanitized: Record<string, boolean> = {};
   for (const [key, val] of Object.entries(preferences)) {
     if (allowedKeys.has(key) && typeof val === "boolean") {
@@ -118,7 +106,7 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
   try {
     // Try upsert — if user_id + insurer_id row exists, merge prefs
@@ -131,11 +119,8 @@ export async function PATCH(req: NextRequest) {
 
     if (fetchErr) {
       // Table may not exist yet
-      if (
-        fetchErr.message.includes("does not exist") ||
-        fetchErr.code === "42P01"
-      ) {
-        return NextResponse.json({
+      if (fetchErr.message.includes("does not exist") || fetchErr.code === "42P01") {
+        return apiJson({
           ok: true,
           preferences: { ...DEFAULT_PREFS, ...sanitized },
           _note: "Table does not exist yet. Preferences saved in-memory only.",
@@ -161,18 +146,16 @@ export async function PATCH(req: NextRequest) {
 
       if (updateErr) return apiValidationError(updateErr.message);
     } else {
-      const { error: insertErr } = await admin
-        .from("insurer_user_preferences")
-        .insert({
-          insurer_id: caller.insurerId,
-          user_id: caller.userId,
-          notification_prefs: mergedPrefs,
-        });
+      const { error: insertErr } = await admin.from("insurer_user_preferences").insert({
+        insurer_id: caller.insurerId,
+        user_id: caller.userId,
+        notification_prefs: mergedPrefs,
+      });
 
       if (insertErr) return apiValidationError(insertErr.message);
     }
 
-    return NextResponse.json({ ok: true, preferences: mergedPrefs });
+    return apiJson({ ok: true, preferences: mergedPrefs });
   } catch (err) {
     return apiInternalError(err, "PATCH /api/insurer/settings");
   }

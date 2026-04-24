@@ -1,8 +1,8 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { getAdminClient } from "@/lib/api/auth";
-import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 /**
  * GET /api/admin/sidebar-badges
@@ -21,7 +21,7 @@ export async function GET() {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // Today's date in JST (UTC+9)
     const now = new Date();
@@ -117,7 +117,7 @@ export async function GET() {
       pendingOrdersPromise,
     ]);
 
-    return NextResponse.json(
+    return apiJson(
       {
         ok: true,
         reservations_today: reservationsRes.count ?? 0,

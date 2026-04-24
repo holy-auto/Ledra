@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { apiJson, apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
@@ -32,7 +32,7 @@ export async function GET() {
   if (caller.role !== "admin") return apiForbidden("管理者のみセキュリティ設定を表示できます。");
 
   try {
-    const admin = createAdminClient();
+    const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
     const { data, error } = await admin
       .from("insurer_security_settings")
@@ -43,18 +43,18 @@ export async function GET() {
     if (error) {
       // Table may not exist yet — return defaults
       console.warn("[security settings] query error, returning defaults:", error.message);
-      return NextResponse.json({ settings: DEFAULT_SETTINGS });
+      return apiJson({ settings: DEFAULT_SETTINGS });
     }
 
     if (!data) {
-      return NextResponse.json({ settings: DEFAULT_SETTINGS });
+      return apiJson({ settings: DEFAULT_SETTINGS });
     }
 
-    return NextResponse.json({ settings: data });
+    return apiJson({ settings: data });
   } catch (e) {
     // Gracefully handle missing table
     console.warn("[security settings] exception, returning defaults:", e);
-    return NextResponse.json({ settings: DEFAULT_SETTINGS });
+    return apiJson({ settings: DEFAULT_SETTINGS });
   }
 }
 
@@ -101,7 +101,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   try {
-    const admin = createAdminClient();
+    const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
     const updates: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
@@ -150,7 +150,7 @@ export async function PATCH(req: NextRequest) {
       return apiInternalError(result.error, "security settings update");
     }
 
-    return NextResponse.json({ ok: true, settings: result.data });
+    return apiJson({ ok: true, settings: result.data });
   } catch (e) {
     return apiInternalError(e, "security settings update");
   }

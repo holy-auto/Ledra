@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
@@ -95,7 +96,7 @@ export default function OrderDetailPage() {
         }),
       });
       if (!res.ok) {
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         throw new Error(j?.message ?? `HTTP ${res.status}`);
       }
       setMessage({ type: "ok", text: "更新しました" });

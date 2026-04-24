@@ -1,4 +1,4 @@
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 export type CertificateAuditType =
   | "certificate_issued"
@@ -62,7 +62,7 @@ export async function logCertificateAction(params: {
   userAgent?: string | null;
 }): Promise<void> {
   try {
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(params.tenantId);
     const desc =
       params.description ??
       [
@@ -100,7 +100,7 @@ export async function logAuditEvent(params: {
   certificateId?: string | null;
 }): Promise<void> {
   try {
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(params.tenantId);
     await admin.from("vehicle_histories").insert({
       tenant_id: params.tenantId,
       vehicle_id: params.vehicleId ?? null,

@@ -1,11 +1,20 @@
 /**
  * JSON-LD structured data for marketing pages.
  * Renders a <script type="application/ld+json"> tag.
+ *
+ * These are async server components so they can read the per-request CSP
+ * nonce (set by src/proxy.ts) and attach it to the inline script. Without
+ * the nonce, the strict CSP would block the tag.
  */
 
+import { headers } from "next/headers";
 import { siteConfig } from "@/lib/marketing/config";
 
-export function OrganizationJsonLd() {
+async function getNonce(): Promise<string | undefined> {
+  return (await headers()).get("x-nonce") ?? undefined;
+}
+
+export async function OrganizationJsonLd() {
   const data = {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
@@ -29,15 +38,11 @@ export function OrganizationJsonLd() {
     },
   };
 
-  return (
-    <script
-      type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
-    />
-  );
+  const nonce = await getNonce();
+  return <script type="application/ld+json" nonce={nonce} dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />;
 }
 
-export function WebSiteJsonLd() {
+export async function WebSiteJsonLd() {
   const data = {
     "@context": "https://schema.org",
     "@type": "WebSite",
@@ -47,10 +52,6 @@ export function WebSiteJsonLd() {
     inLanguage: "ja",
   };
 
-  return (
-    <script
-      type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
-    />
-  );
+  const nonce = await getNonce();
+  return <script type="application/ld+json" nonce={nonce} dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />;
 }

@@ -12,8 +12,8 @@ function csvEscape(v: any) {
 
 export async function GET(req: Request) {
   // @holy-guard:export_search_csv
-  const __gate = await checkAdminFeature("export_search_csv" as any, "/admin/certificates");
-  if (!__gate.ok) return billingDenyResponse(__gate as any, "export_search_csv" as any, "/admin/certificates");
+  const __gate = await checkAdminFeature("export_search_csv", "/admin/certificates");
+  if (!__gate.ok) return billingDenyResponse(__gate, "export_search_csv", "/admin/certificates");
   const supabase = await createSupabaseServerClient();
 
   const { data: userRes } = await supabase.auth.getUser();
@@ -24,11 +24,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const q = (url.searchParams.get("q") ?? "").trim();
 
-  const { data: mem } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .limit(1)
-    .single();
+  const { data: mem } = await supabase.from("tenant_memberships").select("tenant_id").limit(1).single();
 
   const tenantId = mem?.tenant_id as string | undefined;
   if (!tenantId) {
@@ -37,7 +33,9 @@ export async function GET(req: Request) {
 
   let query = supabase
     .from("certificates")
-    .select("public_id,status,customer_name,vehicle_info_json,content_free_text,expiry_type,expiry_value,created_at,updated_at")
+    .select(
+      "public_id,status,customer_name,vehicle_info_json,content_free_text,expiry_type,expiry_value,created_at,updated_at",
+    )
     .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false })
     .limit(5000);
@@ -93,7 +91,7 @@ export async function GET(req: Request) {
   const bom = "\uFEFF";
   const body = bom + lines.join("\r\n");
 
-  const filename = `certificates_${new Date().toISOString().slice(0,10)}.csv`;
+  const filename = `certificates_${new Date().toISOString().slice(0, 10)}.csv`;
 
   return new NextResponse(body, {
     status: 200,

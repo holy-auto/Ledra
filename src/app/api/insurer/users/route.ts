@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiForbidden, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiForbidden,
+  apiInternalError,
+  apiValidationError,
+  apiNotFound,
+} from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -16,7 +23,7 @@ export async function GET() {
     if (!caller) return apiUnauthorized();
     if (caller.role !== "admin") return apiForbidden("管理者のみユーザー一覧を表示できます。");
 
-    const admin = createAdminClient();
+    const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
     const { data, error } = await admin
       .from("insurer_users")
@@ -51,7 +58,7 @@ export async function GET() {
     // Fetch max_users from insurers table
     const { data: insurer } = await admin.from("insurers").select("max_users").eq("id", caller.insurerId).maybeSingle();
 
-    return NextResponse.json({
+    return apiJson({
       users,
       max_users: insurer?.max_users ?? 5,
     });
@@ -87,7 +94,7 @@ export async function POST(req: Request) {
       return apiValidationError("ロールは admin / viewer / auditor のいずれかを指定してください。");
     }
 
-    const admin = createAdminClient();
+    const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
     // Check max_users limit
     const { data: insurer } = await admin.from("insurers").select("max_users").eq("id", caller.insurerId).maybeSingle();
@@ -111,8 +118,7 @@ export async function POST(req: Request) {
     // First, find auth user by email
     const { data: authData } = await admin.auth.admin.listUsers();
     const existingAuthUser = authData?.users?.find(
-      (u: { id: string; email?: string }) =>
-        u.email?.toLowerCase() === email.toLowerCase(),
+      (u: { id: string; email?: string }) => u.email?.toLowerCase() === email.toLowerCase(),
     );
 
     let authUserId: string;
@@ -141,7 +147,7 @@ export async function POST(req: Request) {
           .single();
 
         if (reactivateErr) return apiInternalError(reactivateErr, "insurer users reactivate");
-        return NextResponse.json({ ok: true, user: reactivated, reactivated: true }, { status: 200 });
+        return apiJson({ ok: true, user: reactivated, reactivated: true }, { status: 200 });
       }
     } else {
       // Create a new auth user with a random password (they'll use password reset)
@@ -178,7 +184,7 @@ export async function POST(req: Request) {
       return apiInternalError(insertErr, "insurer users invite insert");
     }
 
-    return NextResponse.json({ ok: true, user: newInsurerUser }, { status: 201 });
+    return apiJson({ ok: true, user: newInsurerUser }, { status: 201 });
   } catch (e) {
     return apiInternalError(e, "insurer users invite");
   }
@@ -211,7 +217,7 @@ export async function PATCH(req: Request) {
       return apiValidationError("insurer_user_id is required");
     }
 
-    const admin = createAdminClient();
+    const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
     // Verify target user belongs to same insurer
     const { data: target } = await admin
@@ -259,7 +265,7 @@ export async function PATCH(req: Request) {
       return apiInternalError(error, "insurer users update");
     }
 
-    return NextResponse.json({ ok: true, user: updated });
+    return apiJson({ ok: true, user: updated });
   } catch (e) {
     return apiInternalError(e, "insurer users update");
   }
@@ -288,7 +294,7 @@ export async function DELETE(req: Request) {
       return apiValidationError("insurer_user_id is required");
     }
 
-    const admin = createAdminClient();
+    const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
     // Verify target user belongs to same insurer
     const { data: target } = await admin
@@ -330,7 +336,7 @@ export async function DELETE(req: Request) {
       return apiInternalError(error, "insurer users delete");
     }
 
-    return NextResponse.json({ ok: true, deleted: insurer_user_id });
+    return apiJson({ ok: true, deleted: insurer_user_id });
   } catch (e) {
     return apiInternalError(e, "insurer users delete");
   }

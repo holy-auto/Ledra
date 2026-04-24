@@ -4,7 +4,7 @@ import { planTierToPriceId } from "@/lib/stripe/plan";
 import { checkoutSchema } from "@/lib/validations/stripe";
 import { apiOk, apiInternalError, apiValidationError, apiNotFound, apiUnauthorized } from "@/lib/api/response";
 import { resolveCampaign } from "@/lib/billing/campaign";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,7 +26,9 @@ export async function POST(req: NextRequest) {
     const { access_token, plan_tier, annual } = parsed.data;
 
     const stripe = getStripe();
-    const supabase = getSupabaseAdmin();
+    const supabase = createServiceRoleAdmin(
+      "stripe auth flow — validates access_token then resolves tenant, pre-resolution",
+    );
 
     // access_token を検証して user_id を確定
     const u = await supabase.auth.getUser(access_token);

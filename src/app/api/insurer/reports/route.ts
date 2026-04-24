@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
   const insurerId = caller.insurerId;
 
   const url = new URL(req.url);
@@ -91,18 +91,16 @@ export async function GET(req: NextRequest) {
     let resolvedCount = 0;
     for (const c of rows) {
       if (c.resolved_at && c.created_at) {
-        const diff =
-          new Date(c.resolved_at).getTime() - new Date(c.created_at).getTime();
+        const diff = new Date(c.resolved_at).getTime() - new Date(c.created_at).getTime();
         if (diff > 0) {
           totalHours += diff / (1000 * 60 * 60);
           resolvedCount++;
         }
       }
     }
-    const avg_resolution_hours =
-      resolvedCount > 0 ? Math.round((totalHours / resolvedCount) * 10) / 10 : null;
+    const avg_resolution_hours = resolvedCount > 0 ? Math.round((totalHours / resolvedCount) * 10) / 10 : null;
 
-    return NextResponse.json({
+    return apiJson({
       period,
       period_trend,
       status_breakdown,

@@ -9,7 +9,7 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateExplanation, type Audience } from "@/lib/ai/explainCertificate";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
       return apiValidationError(`audience は ${VALID_AUDIENCES.join("|")} のいずれかです`);
     }
 
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // 証明書取得
     const { data: cert } = await admin

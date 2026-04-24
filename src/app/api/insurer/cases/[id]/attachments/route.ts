@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   if (!caller) return apiUnauthorized();
 
   const { id } = await ctx.params;
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
   try {
     // Verify case exists AND belongs to caller's insurer in a single query
@@ -113,7 +113,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       user_agent: ua,
     });
 
-    return NextResponse.json({ attachment }, { status: 201 });
+    return apiJson({ attachment }, { status: 201 });
   } catch (err) {
     return apiInternalError(err, "POST /api/insurer/cases/[id]/attachments");
   }

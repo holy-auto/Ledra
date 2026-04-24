@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { priceIdToPlanTier } from "@/lib/stripe/plan";
 import { insurerPriceIdToPlanTier } from "@/lib/stripe/insurerPlan";
 import { isTemplateOptionEvent } from "@/lib/template-options/stripe";
 import { confirmCampaignSlot } from "@/lib/billing/campaign";
-import { apiValidationError, apiInternalError, apiError } from "@/lib/api/response";
+import { apiJson, apiValidationError, apiInternalError, apiError } from "@/lib/api/response";
 import { logAuditEvent } from "@/lib/audit/certificateLog";
+import { isResendFailure, sendResendEmail } from "@/lib/email/resendSend";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,20 +31,12 @@ function getCurrentPeriodEnd(sub: Stripe.Subscription): number | null {
 }
 
 // ── Payment failure notification email ──
-const RESEND_API = "https://api.resend.com/emails";
-
 async function sendPaymentFailureEmail(
-  supabase: ReturnType<typeof getSupabaseAdmin>,
+  supabase: ReturnType<typeof createServiceRoleAdmin>,
   tenantId: string,
   billingPortalUrl: string,
+  idempotencyKey?: string,
 ) {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM;
-  if (!apiKey || !from) {
-    console.warn("webhook: payment failure email skipped — missing RESEND_API_KEY or RESEND_FROM");
-    return;
-  }
-
   // Resolve owner email from tenant membership (try owner first, then admin)
   const { data: members } = await supabase
     .from("tenant_memberships")
@@ -103,27 +96,25 @@ async function sendPaymentFailureEmail(
 Ledra — 株式会社HOLY AUTO
 `;
 
-  try {
-    const res = await fetch(RESEND_API, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from,
-        to: email,
-        reply_to: "support@ledra.co.jp",
-        subject: "【Ledra】お支払いについてのご連絡",
-        html,
-        text,
-      }),
+  const sent = await sendResendEmail({
+    to: email,
+    reply_to: "support@ledra.co.jp",
+    subject: "【Ledra】お支払いについてのご連絡",
+    html,
+    text,
+    // Stripe re-sends webhooks on failure; use event-derived idempotency
+    // key so Resend returns the same email instead of double-sending.
+    idempotencyKey,
+  });
+  if (isResendFailure(sent)) {
+    console.error("webhook: payment failure email send failed", {
+      tenantId,
+      email,
+      status: sent.status,
+      error: sent.error,
     });
-    const resBody = await res.text();
-    if (!res.ok) {
-      console.error("webhook: Resend API error", { status: res.status, body: resBody, tenantId, email });
-    } else {
-      console.info("webhook: payment failure email sent", { tenantId, email, resendResponse: resBody });
-    }
-  } catch (e) {
-    console.error("webhook: failed to send payment failure email", { tenantId, error: e });
+  } else {
+    console.info("webhook: payment failure email sent", { tenantId, email, resendId: sent.id });
   }
 }
 
@@ -136,7 +127,7 @@ function getStripe(): Stripe {
 type TenantSelector = { by: "id"; value: string } | { by: "slug"; value: string };
 
 async function resolveTenantSelector(params: {
-  supabase: ReturnType<typeof getSupabaseAdmin>;
+  supabase: ReturnType<typeof createServiceRoleAdmin>;
   tenant_id?: string | null;
   tenant_slug?: string | null;
   customerId?: string | null;
@@ -168,7 +159,7 @@ async function resolveTenantSelector(params: {
 }
 
 async function updateTenantBySelector(
-  supabase: ReturnType<typeof getSupabaseAdmin>,
+  supabase: ReturnType<typeof createServiceRoleAdmin>,
   selector: TenantSelector,
   patch: Record<string, unknown>,
 ) {
@@ -179,7 +170,7 @@ async function updateTenantBySelector(
 
 async function syncBySubscription(
   stripe: Stripe,
-  supabase: ReturnType<typeof getSupabaseAdmin>,
+  supabase: ReturnType<typeof createServiceRoleAdmin>,
   sub: Stripe.Subscription,
 ) {
   const subscriptionId = sub.id;
@@ -220,7 +211,7 @@ async function syncBySubscription(
 // ─── Insurer subscription sync ───
 async function syncInsurerSubscription(
   stripe: Stripe,
-  supabase: ReturnType<typeof getSupabaseAdmin>,
+  supabase: ReturnType<typeof createServiceRoleAdmin>,
   sub: Stripe.Subscription,
 ) {
   const insurerId = sub.metadata?.insurer_id;
@@ -253,7 +244,7 @@ async function syncInsurerSubscription(
 }
 
 async function doSyncInsurer(
-  supabase: ReturnType<typeof getSupabaseAdmin>,
+  supabase: ReturnType<typeof createServiceRoleAdmin>,
   insurerId: string,
   sub: Stripe.Subscription,
 ) {
@@ -293,7 +284,7 @@ export async function POST(req: NextRequest) {
     return apiValidationError("Invalid signature");
   }
 
-  const supabase = getSupabaseAdmin();
+  const supabase = createServiceRoleAdmin("stripe webhook — events can belong to any tenant");
 
   // Idempotency: claim this event before processing.
   // INSERT with ON CONFLICT to handle concurrent webhook deliveries.
@@ -307,7 +298,7 @@ export async function POST(req: NextRequest) {
     // unique constraint violation = already claimed by another worker
     if (claimError.code === "23505") {
       console.info("webhook: duplicate event skipped", { id: event.id, type: event.type });
-      return NextResponse.json({ received: true, duplicate: true });
+      return apiJson({ received: true, duplicate: true });
     }
     // 他の DB エラー: claim できていない状態で処理を進めると二重課金・二重
     // サブスク更新を引き起こすため、503 を返して Stripe に再送させる。
@@ -355,7 +346,10 @@ export async function POST(req: NextRequest) {
 
           // NFCタグの自動プロビジョニング
           if (tenantId) {
-            const { data: items } = await supabase.from("shop_order_items").select("*").eq("order_id", shopOrderId);
+            const { data: items } = await supabase
+              .from("shop_order_items")
+              .select("meta, quantity")
+              .eq("order_id", shopOrderId);
 
             for (const item of items ?? []) {
               const meta = (item.meta as Record<string, unknown>) ?? {};
@@ -567,7 +561,12 @@ export async function POST(req: NextRequest) {
 
             if (resolvedTenantId) {
               const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.ledra.co.jp";
-              await sendPaymentFailureEmail(supabase, resolvedTenantId, `${appUrl}/admin/billing`);
+              await sendPaymentFailureEmail(
+                supabase,
+                resolvedTenantId,
+                `${appUrl}/admin/billing`,
+                `payment-failure:${event.id}`,
+              );
             }
           }
         }
@@ -618,5 +617,5 @@ export async function POST(req: NextRequest) {
     return apiInternalError(e, "stripe webhook handler");
   }
 
-  return NextResponse.json({ received: true });
+  return apiJson({ received: true });
 }

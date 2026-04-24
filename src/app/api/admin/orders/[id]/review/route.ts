@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 /**
  * POST /api/admin/orders/[id]/review
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return apiValidationError("rating は 1〜5 の整数で指定してください");
     }
 
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // 注文取得
     const { data: order } = await admin
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .maybeSingle();
 
     if (existing) {
-      return NextResponse.json({ error: "conflict", message: "この取引への評価は既に送信済みです" }, { status: 409 });
+      return apiJson({ error: "conflict", message: "この取引への評価は既に送信済みです" }, { status: 409 });
     }
 
     const { data, error } = await admin
@@ -97,7 +97,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       })
       .then(() => {}, console.error);
 
-    return NextResponse.json({ review: data }, { status: 201 });
+    return apiJson({ review: data }, { status: 201 });
   } catch (e: unknown) {
     return apiInternalError(e, "review POST");
   }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 // GET: List customer interests for a vehicle
 export async function GET(req: NextRequest) {
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
       .order("created_at", { ascending: false });
 
     if (error) throw error;
-    return NextResponse.json({ interests: data ?? [] });
+    return apiJson({ interests: data ?? [] });
   } catch (e) {
     return apiInternalError(e, "vehicle-interests GET");
   }
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) throw error;
-    return NextResponse.json({ ok: true, interest: data });
+    return apiJson({ ok: true, interest: data });
   } catch (e) {
     return apiInternalError(e, "vehicle-interests POST");
   }
@@ -97,7 +97,7 @@ export async function PUT(req: NextRequest) {
       .single();
 
     if (error) throw error;
-    return NextResponse.json({ ok: true, interest: data });
+    return apiJson({ ok: true, interest: data });
   } catch (e) {
     return apiInternalError(e, "vehicle-interests PUT");
   }

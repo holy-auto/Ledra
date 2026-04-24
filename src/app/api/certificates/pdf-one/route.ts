@@ -1,6 +1,7 @@
+import { parseJsonSafe } from "@/lib/api/safeJson";
 import { NextRequest, NextResponse } from "next/server";
 import { enforceBilling } from "@/lib/billing/guard";
-import { apiValidationError, apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiValidationError, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 
@@ -62,10 +63,7 @@ async function proxyToCertificatePdf(req: NextRequest, id: string) {
 
   const status = last?.status ?? 502;
   const text = last ? await last.text().catch(() => "") : "";
-  return NextResponse.json(
-    { error: "Failed to proxy to /api/certificate/pdf", status, detail: text.slice(0, 500) },
-    { status },
-  );
+  return apiJson({ error: "Failed to proxy to /api/certificate/pdf", status, detail: text.slice(0, 500) }, { status });
 }
 
 export async function POST(req: NextRequest) {
@@ -79,9 +77,9 @@ export async function POST(req: NextRequest) {
 
     // free以上 + is_active 必須（certificate_id が来れば guard 側で tenant 逆引き可能）
     const deny = await enforceBilling(req, { minPlan: "free", action: "pdf_one", tenantId: caller.tenantId });
-    if (deny) return deny as any;
+    if (deny) return deny;
 
-    const body = await req.json().catch((): null => null);
+    const body = await parseJsonSafe(req);
     const id = pickId(body);
 
     if (!id) {
@@ -96,5 +94,5 @@ export async function POST(req: NextRequest) {
 
 // A: GETは案内を出さず 405 に統一
 export async function GET() {
-  return NextResponse.json({ error: "Method Not Allowed" }, { status: 405 });
+  return apiJson({ error: "Method Not Allowed" }, { status: 405 });
 }

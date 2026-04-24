@@ -10,7 +10,7 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { normalizePlanTier } from "@/lib/billing/planFeatures";
 import { auditCertificatePhotos, type StandardRule } from "@/lib/ai/photoQualityCheck";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -30,12 +30,12 @@ export async function POST(req: NextRequest) {
 
     if (!category) return apiValidationError("category が必要です");
 
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
-    // Standard ルール取得
+    // Standard ルール取得 (StandardRule interface の最小集合のみ)
     const { data: rule } = await admin
       .from("standard_rules")
-      .select("*")
+      .select("id, category, category_label, required_photos, required_fields, warning_rules, standard_level")
       .eq("category", category)
       .eq("is_active", true)
       .order("version", { ascending: false })

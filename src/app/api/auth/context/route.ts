@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
-import { apiUnauthorized, apiValidationError, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiForbidden, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -39,7 +39,7 @@ export async function GET(_req: NextRequest) {
   const cookieStore = await cookies();
   const activeContext = cookieStore.get(ACTIVE_CONTEXT_COOKIE)?.value ?? null;
 
-  return NextResponse.json({
+  return apiJson({
     has_shop: ctx?.has_shop ?? false,
     has_agent: ctx?.has_agent ?? false,
     active_context: activeContext,
@@ -111,5 +111,5 @@ export async function POST(req: NextRequest) {
 
   const redirectTo = newContext === "agent" ? "/agent" : "/dashboard";
 
-  return NextResponse.json({ ok: true, context: newContext, redirect_to: redirectTo });
+  return apiJson({ ok: true, context: newContext, redirect_to: redirectTo });
 }

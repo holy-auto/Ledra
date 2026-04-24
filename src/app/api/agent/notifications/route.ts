@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
 
     const unreadCount = (notifications ?? []).filter((n) => !n.is_read).length;
 
-    return NextResponse.json({ notifications: notifications ?? [], unread_count: unreadCount });
+    return apiJson({ notifications: notifications ?? [], unread_count: unreadCount });
   } catch (e) {
     return apiInternalError(e, "agent/notifications GET");
   }
@@ -53,7 +53,7 @@ export async function PUT(request: NextRequest) {
     }
 
     await query;
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (e) {
     return apiInternalError(e, "agent/notifications PUT");
   }

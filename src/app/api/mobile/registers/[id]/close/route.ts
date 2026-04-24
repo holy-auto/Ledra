@@ -1,3 +1,4 @@
+import { parseJsonSafe } from "@/lib/api/safeJson";
 import { NextRequest } from "next/server";
 import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { hasPermission } from "@/lib/auth/permissions";
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const { id } = await params;
 
-    const body = await request.json().catch((): null => null);
+    const body = await parseJsonSafe(request);
     if (body?.closing_cash == null || typeof body.closing_cash !== "number") {
       return apiValidationError("closing_cash (number) is required");
     }
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       })
       .eq("id", session.id)
       .eq("tenant_id", caller.tenantId)
-      .select()
+      .select("id, register_id, status, opening_cash, closing_cash, note, opened_by, opened_at, closed_by, closed_at")
       .single();
 
     if (error) return apiInternalError(error, "registers.close");

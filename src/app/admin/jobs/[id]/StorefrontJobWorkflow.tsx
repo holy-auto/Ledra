@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
@@ -136,7 +137,7 @@ export default function StorefrontJobWorkflow({ reservation, customer, vehicle, 
         headers: { "Content-Type": "application/json" },
       });
       if (!res.ok) {
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         throw new Error(j?.error ?? j?.message ?? `HTTP ${res.status}`);
       }
       router.refresh();

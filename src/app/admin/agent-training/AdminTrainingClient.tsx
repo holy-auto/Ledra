@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useCallback, useEffect, useState } from "react";
 import Badge from "@/components/ui/Badge";
@@ -99,7 +100,7 @@ export default function AdminTrainingClient() {
     setErr(null);
     try {
       const res = await fetch("/api/admin/agent-training", { cache: "no-store" });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setCourses(j.courses ?? []);
     } catch (e: unknown) {
@@ -174,7 +175,7 @@ export default function AdminTrainingClient() {
           is_published: form.is_published,
         }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       closeForm();
       setSaveMsg({ text: `コース「${j.course?.title ?? form.title}」を登録しました`, ok: true });
@@ -209,7 +210,7 @@ export default function AdminTrainingClient() {
           is_published: form.is_published,
         }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       closeForm();
       setSaveMsg({ text: "コースを更新しました", ok: true });
@@ -230,7 +231,7 @@ export default function AdminTrainingClient() {
       const res = await fetch(`/api/admin/agent-training/${id}`, {
         method: "DELETE",
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setSaveMsg({ text: "コースを削除しました", ok: true });
       await fetchCourses();

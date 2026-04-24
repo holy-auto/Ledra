@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { apiValidationError, apiInternalError } from "@/lib/api/response";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { escapeHtml } from "@/lib/sanitize";
 
 async function sendPayoutFailedEmail(params: {
@@ -66,7 +66,7 @@ function getStripe(): Stripe {
 
 // ── connected account ID → tenant / agent を逆引き ──
 async function resolveReceiver(
-  supabase: ReturnType<typeof getSupabaseAdmin>,
+  supabase: ReturnType<typeof createServiceRoleAdmin>,
   accountId: string,
 ): Promise<{ tenantId: string | null; agentId: string | null }> {
   const [tenantResult, agentResult] = await Promise.all([
@@ -81,7 +81,9 @@ async function resolveReceiver(
 
 export async function POST(req: NextRequest) {
   const stripe = getStripe();
-  const supabase = getSupabaseAdmin();
+  const supabase = createServiceRoleAdmin(
+    "stripe connect webhook — events route to any tenant/agent by connected account id",
+  );
 
   const sig = req.headers.get("stripe-signature");
   const whsec = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
@@ -111,7 +113,7 @@ export async function POST(req: NextRequest) {
   if (claimError) {
     if (claimError.code === "23505") {
       console.info("connect-webhook: duplicate event skipped", { id: event.id, type: event.type });
-      return NextResponse.json({ received: true, duplicate: true });
+      return apiJson({ received: true, duplicate: true });
     }
     console.warn("connect-webhook: idempotency claim error (proceeding)", { id: event.id, error: claimError.message });
   }
@@ -368,5 +370,5 @@ export async function POST(req: NextRequest) {
     return apiInternalError(e, "connect-webhook handler");
   }
 
-  return NextResponse.json({ received: true });
+  return apiJson({ received: true });
 }

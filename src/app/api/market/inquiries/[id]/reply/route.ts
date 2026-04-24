@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { notifyInquiryReply } from "@/lib/market/email";
-import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -15,8 +15,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!caller) return apiUnauthorized();
 
     const { id: inquiryId } = await params;
-    const admin = createAdminClient();
-    const body = await req.json().catch(() => ({}) as any);
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
 
     const message = (body?.message ?? "").trim();
     const senderType = (body?.sender_type ?? "").trim();
@@ -68,14 +68,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     // Notify buyer via email when seller replies (non-blocking)
     if (senderType === "seller") {
+      type InquiryWithRelations = {
+        buyer_email: string | null;
+        buyer_name: string | null;
+        vehicle_id: string | null;
+        market_vehicles: {
+          maker: string | null;
+          model: string | null;
+          tenants: { name: string | null } | null;
+        } | null;
+      };
       try {
         const { data: fullInquiry } = await admin
           .from("market_inquiries")
           .select("buyer_email, buyer_name, vehicle_id, market_vehicles(maker, model, tenants(name))")
           .eq("id", inquiryId)
-          .single();
-        const buyerEmail = (fullInquiry as any)?.buyer_email;
-        const vehicle = (fullInquiry as any)?.market_vehicles;
+          .single<InquiryWithRelations>();
+        const buyerEmail = fullInquiry?.buyer_email;
+        const vehicle = fullInquiry?.market_vehicles;
         const sellerName = vehicle?.tenants?.name ?? "出品者";
         const vehicleLabel = [vehicle?.maker, vehicle?.model].filter(Boolean).join(" ") || "車両";
         if (buyerEmail) {
@@ -88,7 +98,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
     }
 
-    return NextResponse.json({ ok: true, reply });
+    return apiJson({ ok: true, reply });
   } catch (e: unknown) {
     return apiInternalError(e, "inquiry-reply");
   }
@@ -102,7 +112,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     if (!caller) return apiUnauthorized();
 
     const { id: inquiryId } = await params;
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // Verify the caller owns this inquiry
     const { data: inquiry, error: iqErr } = await admin
@@ -126,7 +136,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       return apiInternalError(error, "inquiry-reply list");
     }
 
-    return NextResponse.json({ messages: messages ?? [] });
+    return apiJson({ messages: messages ?? [] });
   } catch (e: unknown) {
     return apiInternalError(e, "inquiry-reply list");
   }

@@ -20,7 +20,6 @@ function asNumber(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-
 async function getRequestInfo() {
   const h = await headers();
   const proto = h.get("x-forwarded-proto") ?? "http";
@@ -45,7 +44,7 @@ async function fetchSearch(sp: Record<string, string | string[] | undefined>) {
     "customer_name",
     "model",
     "maker",
-    "vin"
+    "vin",
   ] as const;
 
   for (const key of keys) {
@@ -69,11 +68,7 @@ async function fetchSearch(sp: Record<string, string | string[] | undefined>) {
     json = { error: rawText || "invalid_json" };
   }
 
-  const rows = Array.isArray(json?.rows)
-    ? json.rows
-    : Array.isArray(json)
-      ? json
-      : [];
+  const rows = Array.isArray(json?.rows) ? json.rows : Array.isArray(json) ? json : [];
 
   return {
     ok: res.ok,
@@ -86,108 +81,100 @@ async function fetchSearch(sp: Record<string, string | string[] | undefined>) {
 function getRowPublicId(row: any): string {
   return asText(
     row?.latest_active_certificate_public_id ??
-    row?.latest_certificate_public_id ??
-    row?.public_id ??
-    row?.certificate_public_id ??
-    row?.c_public_id ??
-    row?.pid
+      row?.latest_certificate_public_id ??
+      row?.public_id ??
+      row?.certificate_public_id ??
+      row?.c_public_id ??
+      row?.pid,
   );
 }
 
 function getRowVehiclePublicId(row: any): string {
-  return asText(
-    row?.vehicle_public_id ??
-    row?.v_public_id ??
-    row?.vehicle_pid
-  );
+  return asText(row?.vehicle_public_id ?? row?.v_public_id ?? row?.vehicle_pid);
 }
 
 function getRowStatus(row: any): string {
-  return asText(
-    row?.latest_active_certificate_status ??
-    row?.latest_certificate_status ??
-    row?.status ??
-    row?.certificate_status ??
-    row?.c_status
-  ) || "-";
+  return (
+    asText(
+      row?.latest_active_certificate_status ??
+        row?.latest_certificate_status ??
+        row?.status ??
+        row?.certificate_status ??
+        row?.c_status,
+    ) || "-"
+  );
 }
 
 function getRowCustomer(row: any): string {
-  return asText(
-    row?.latest_active_certificate_customer_name ??
-    row?.latest_certificate_customer_name ??
-    row?.customer_name ??
-    row?.certificate_customer_name ??
-    row?.vehicle_customer_name
-  ) || "-";
+  return (
+    asText(
+      row?.latest_active_certificate_customer_name ??
+        row?.latest_certificate_customer_name ??
+        row?.customer_name ??
+        row?.certificate_customer_name ??
+        row?.vehicle_customer_name,
+    ) || "-"
+  );
 }
 
 function getRowModel(row: any): string {
-  return asText(
-    row?.vehicle_model ??
-    row?.model ??
-    row?.latest_certificate_vehicle_model
-  ) || "-";
+  return asText(row?.vehicle_model ?? row?.model ?? row?.latest_certificate_vehicle_model) || "-";
 }
 
 function getRowPlate(row: any): string {
-  return asText(
-    row?.vehicle_plate_display ??
-    row?.vehicle_plate ??
-    row?.plate_display ??
-    row?.plate ??
-    row?.latest_certificate_plate_display
-  ) || "-";
+  return (
+    asText(
+      row?.vehicle_plate_display ??
+        row?.vehicle_plate ??
+        row?.plate_display ??
+        row?.plate ??
+        row?.latest_certificate_plate_display,
+    ) || "-"
+  );
 }
 
 function getRowVin(row: any): string {
-  return asText(
-    row?.vehicle_vin ??
-    row?.vin_code ??
-    row?.vin
-  ) || "-";
+  return asText(row?.vehicle_vin ?? row?.vin_code ?? row?.vin) || "-";
 }
 
 function getRowCreatedAt(row: any): string {
   return asText(
     row?.latest_active_certificate_created_at ??
-    row?.latest_certificate_created_at ??
-    row?.created_at ??
-    row?.certificate_created_at
+      row?.latest_certificate_created_at ??
+      row?.created_at ??
+      row?.certificate_created_at,
   );
 }
 
 function getRowImageCount(row: any): number {
   return asNumber(
     row?.latest_active_image_count ??
-    row?.latest_certificate_image_count ??
-    row?.image_count ??
-    row?.images_count ??
-    row?.attached_image_count
+      row?.latest_certificate_image_count ??
+      row?.image_count ??
+      row?.images_count ??
+      row?.attached_image_count,
   );
 }
 
 function getRowLatestImageUrl(row: any): string {
   return asText(
     row?.latest_active_image_url ??
-    row?.latest_certificate_image_url ??
-    row?.latest_image_url ??
-    row?.image_url ??
-    row?.latest_signed_image_url
+      row?.latest_certificate_image_url ??
+      row?.latest_image_url ??
+      row?.image_url ??
+      row?.latest_signed_image_url,
   );
 }
 
-export default async function Page({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const sp = await searchParams;
   const q = first(sp.q).trim();
   const status = first(sp.status).trim();
 
   const result = await fetchSearch(sp);
-  const rows = result.rows as any[];
+  // fetchSearch は任意の Supabase RPC 結果を透過的に返すので row 型は不確定。
+  // 画面側で必要フィールドだけ narrow する前提で Record<string, unknown>[] として扱う。
+  const rows = result.rows as Array<Record<string, unknown>>;
 
   return (
     <main className="min-h-screen bg-inset p-6">
@@ -198,9 +185,7 @@ export default async function Page({
               証明書検索
             </div>
             <div>
-              <h1 className="text-3xl font-bold tracking-tight text-primary">
-                証明書検索
-              </h1>
+              <h1 className="text-3xl font-bold tracking-tight text-primary">証明書検索</h1>
               <p className="mt-2 text-sm text-secondary">
                 必ず <span className="font-mono">/api/insurer/search</span> を経由して検索結果を表示します。
               </p>
@@ -218,7 +203,11 @@ export default async function Page({
         </header>
 
         <section className="rounded-2xl border border-border-default bg-surface p-5 shadow-sm">
-          <form action="/insurer/search" method="get" className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_120px_auto]">
+          <form
+            action="/insurer/search"
+            method="get"
+            className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_120px_auto]"
+          >
             <input
               name="q"
               defaultValue={q}
@@ -237,10 +226,7 @@ export default async function Page({
               <option value="expired">期限切れ (expired)</option>
             </select>
 
-            <button
-              type="submit"
-              className="btn-primary px-4 py-3"
-            >
+            <button type="submit" className="btn-primary px-4 py-3">
               検索
             </button>
 
@@ -263,7 +249,7 @@ export default async function Page({
             <div className="text-lg font-semibold text-red-700">検索APIエラー</div>
             <div className="mt-2 text-sm text-red-700">HTTP {result.status}</div>
             <pre className="mt-3 overflow-x-auto rounded-xl bg-red-100 p-4 text-xs text-red-900">
-{JSON.stringify(result.raw, null, 2)}
+              {JSON.stringify(result.raw, null, 2)}
             </pre>
           </section>
         ) : null}
@@ -359,17 +345,10 @@ export default async function Page({
                       <td className="p-3">
                         {hasCertificate ? (
                           <div className="flex flex-col gap-2">
-                            <Link
-                              href={`/insurer/c/${encodeURIComponent(publicId)}`}
-                              className="underline"
-                            >
+                            <Link href={`/insurer/c/${encodeURIComponent(publicId)}`} className="underline">
                               詳細
                             </Link>
-                            <Link
-                              href={`/c/${encodeURIComponent(publicId)}`}
-                              target="_blank"
-                              className="underline"
-                            >
+                            <Link href={`/c/${encodeURIComponent(publicId)}`} target="_blank" className="underline">
                               公開ページ
                             </Link>
                             <Link
@@ -380,9 +359,7 @@ export default async function Page({
                             </Link>
                           </div>
                         ) : (
-                          <span className="text-xs text-muted">
-                            車両一致のみ
-                          </span>
+                          <span className="text-xs text-muted">車両一致のみ</span>
                         )}
                       </td>
                     </tr>

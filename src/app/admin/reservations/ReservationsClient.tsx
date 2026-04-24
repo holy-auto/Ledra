@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
@@ -218,20 +219,20 @@ export default function ReservationsClient() {
         fetch("/api/admin/menu-items"),
         fetch("/api/admin/tenants"),
       ]);
-      const tenantJ = await tenantRes.json().catch((): null => null);
+      const tenantJ = await parseJsonSafe(tenantRes);
       if (tenantRes.ok && tenantJ?.tenants) {
         const current = tenantJ.tenants.find((t: any) => t.is_current) ?? tenantJ.tenants[0];
         if (current?.slug) setTenantSlug(current.slug);
       }
-      const custJ = await custRes.json().catch((): null => null);
+      const custJ = await parseJsonSafe(custRes);
       if (custRes.ok && custJ?.customers) setCustomers(custJ.customers.map((c: any) => ({ id: c.id, name: c.name })));
-      const menuJ = await menuRes.json().catch((): null => null);
+      const menuJ = await parseJsonSafe(menuRes);
       if (menuRes.ok && menuJ?.items)
         setMenuItems(menuJ.items.map((m: any) => ({ id: m.id, name: m.name, unit_price: m.unit_price })));
 
       try {
         const gcRes = await fetch("/api/admin/gcal");
-        const gcJ = await gcRes.json().catch((): null => null);
+        const gcJ = await parseJsonSafe(gcRes);
         if (gcRes.ok && gcJ?.connected) {
           setGcalConnected(true);
           if (gcJ?.calendar_id) setGcalCalendarId(gcJ.calendar_id);
@@ -240,7 +241,7 @@ export default function ReservationsClient() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "list-calendars" }),
           });
-          const calJ = await calRes.json().catch((): null => null);
+          const calJ = await parseJsonSafe(calRes);
           if (calJ?.calendars) setGcalCalendars(calJ.calendars);
         }
         if (gcJ?.last_synced_at) setGcalLastSynced(gcJ.last_synced_at);
@@ -256,7 +257,7 @@ export default function ReservationsClient() {
         ? `/api/admin/customers?action=vehicles&customer_id=${encodeURIComponent(customerId)}`
         : "/api/admin/customers?action=vehicles";
       const res = await fetch(url);
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (res.ok && j?.vehicles) setVehicles(j.vehicles);
     } catch {
       setVehicles([]);
@@ -271,8 +272,8 @@ export default function ReservationsClient() {
           fetch(`/api/admin/workflow-templates`),
           fetch(`/api/admin/reservations/${r.id}/step-logs`, { cache: "no-store" }),
         ]);
-        const tplJ = await tplRes.json().catch((): null => null);
-        const logsJ = await logsRes.json().catch((): null => null);
+        const tplJ = await parseJsonSafe(tplRes);
+        const logsJ = await parseJsonSafe(logsRes);
         const templates: WorkflowTemplate[] = tplJ?.templates ?? [];
         const tpl = templates.find((t: WorkflowTemplate) => t.id === r.workflow_template_id);
         if (tpl) setDetailSteps(tpl.steps);
@@ -286,7 +287,7 @@ export default function ReservationsClient() {
       try {
         setDetailTemplateLoading(true);
         const res = await fetch("/api/admin/workflow-templates");
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         setDetailTemplates(j?.templates ?? []);
       } catch {
         /* ignore */
@@ -304,7 +305,7 @@ export default function ReservationsClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ workflow_template_id: workflowTemplateId }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? "Failed");
       // ワークフロー開始直後にドロワーを閉じずに、そのままステッパーを表示させる。
       // 返却された steps を即座に反映して「次へ」ボタンで来店→証明書発行→会計と進行できるようにする。
@@ -324,12 +325,12 @@ export default function ReservationsClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ note }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? "Failed");
       mutate();
       // Refresh step logs
       const logsRes = await fetch(`/api/admin/reservations/${reservationId}/step-logs`);
-      const logsJ = await logsRes.json().catch((): null => null);
+      const logsJ = await parseJsonSafe(logsRes);
       setDetailStepLogs(logsJ?.step_logs ?? []);
     } catch (e: unknown) {
       alert("進行に失敗: " + (e instanceof Error ? e.message : String(e)));
@@ -434,7 +435,7 @@ export default function ReservationsClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setSaveMsg({ text: editingId ? "予約を更新しました" : "予約を作成しました", ok: true });
       setShowForm(false);
@@ -457,7 +458,7 @@ export default function ReservationsClient() {
         body: JSON.stringify({ id, status: newStatus }),
       });
       if (!res.ok) {
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       mutate();
@@ -477,7 +478,7 @@ export default function ReservationsClient() {
         body: JSON.stringify({ id: cancelTarget, cancel_reason: cancelReason }),
       });
       if (!res.ok) {
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       setCancelTarget(null);
@@ -771,7 +772,7 @@ export default function ReservationsClient() {
                             to: to.toISOString().slice(0, 10),
                           }),
                         });
-                        const syncJ = await syncRes.json().catch((): null => null);
+                        const syncJ = await parseJsonSafe(syncRes);
                         if (syncJ?.synced_at) setGcalLastSynced(syncJ.synced_at);
                         mutate();
                       } catch {
@@ -811,7 +812,7 @@ export default function ReservationsClient() {
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ action: "connect" }),
                       });
-                      const j = await res.json().catch((): null => null);
+                      const j = await parseJsonSafe(res);
                       if (j?.auth_url) window.location.href = j.auth_url;
                       else alert("Googleカレンダー連携の設定が必要です。管理者にお問い合わせください。");
                     } catch {

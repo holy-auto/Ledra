@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 import { verifyCronRequest } from "@/lib/cronAuth";
 import { sendCronFailureAlert } from "@/lib/cronAlert";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const supabase = getSupabaseAdmin();
+    const supabase = createServiceRoleAdmin("cron:billing — sweeps overdue invoices across every tenant");
     const today = new Date().toISOString().slice(0, 10);
     let overdueUpdated = 0;
     let remindersSent = 0;
@@ -75,7 +75,9 @@ export async function GET(req: NextRequest) {
       }
     } catch (e) {
       console.error("[cron/billing] overdue detection failed:", e);
-      import("@sentry/nextjs").then((Sentry) => Sentry.captureException(e, { tags: { cron: "billing", phase: "overdue_detection" } })).catch(() => {});
+      import("@sentry/nextjs")
+        .then((Sentry) => Sentry.captureException(e, { tags: { cron: "billing", phase: "overdue_detection" } }))
+        .catch(() => {});
     }
 
     // ─── 2. Send reminders ───
@@ -231,10 +233,12 @@ export async function GET(req: NextRequest) {
       }
     } catch (e) {
       console.error("[cron/billing] reminder sending failed:", e);
-      import("@sentry/nextjs").then((Sentry) => Sentry.captureException(e, { tags: { cron: "billing", phase: "reminder_sending" } })).catch(() => {});
+      import("@sentry/nextjs")
+        .then((Sentry) => Sentry.captureException(e, { tags: { cron: "billing", phase: "reminder_sending" } }))
+        .catch(() => {});
     }
 
-    return NextResponse.json({
+    return apiJson({
       ok: true,
       overdue_updated: overdueUpdated,
       reminders_sent: remindersSent,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -44,7 +44,7 @@ export async function POST(_request: NextRequest, ctx: RouteContext) {
       return apiInternalError(new Error("download_url_failed"), "agent/shared-files/[id]/download signed URL");
     }
 
-    return NextResponse.json({ url: signedData.signedUrl });
+    return apiJson({ url: signedData.signedUrl });
   } catch (e) {
     return apiInternalError(e, "agent/shared-files/[id]/download POST");
   }

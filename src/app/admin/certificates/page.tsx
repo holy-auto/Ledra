@@ -41,6 +41,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
     );
   }
 
+  type CertListRow = { public_id: string; status: string; customer_name: string; created_at: string };
   let certQuery = supabase
     .from("certificates")
     .select("public_id,status,customer_name,created_at")
@@ -55,7 +56,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
 
   const [{ data: t }, { data: rows, error }] = await Promise.all([
     supabase.from("tenants").select("plan_tier,is_active").eq("id", tenantId).single(),
-    certQuery,
+    certQuery.returns<CertListRow[]>(),
   ]);
 
   const planTier = String(t?.plan_tier ?? "pro");
@@ -141,7 +142,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
         </form>
       </section>
 
-      <CertificatesTableClient rows={allRows as any} q={q} />
+      <CertificatesTableClient rows={allRows} q={q} />
     </>
   );
 

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { sendCaseMessageNotification } from "@/lib/insurer/notifications";
 
 export const runtime = "nodejs";
@@ -13,7 +13,11 @@ export const runtime = "nodejs";
  * The insurer_id filter is baked into the query itself (not a post-hoc check)
  * so this function never returns a case that belongs to a different insurer.
  */
-async function verifyCase(admin: ReturnType<typeof createAdminClient>, caseId: string, insurerId: string) {
+async function verifyCase(
+  admin: ReturnType<typeof createInsurerScopedAdmin>["admin"],
+  caseId: string,
+  insurerId: string,
+) {
   const { data, error } = await admin
     .from("insurer_cases")
     .select("id, insurer_id")
@@ -21,7 +25,7 @@ async function verifyCase(admin: ReturnType<typeof createAdminClient>, caseId: s
     .eq("insurer_id", insurerId)
     .maybeSingle();
 
-  if (error) return apiValidationError(error.message);
+  if (error) return apiInternalError(error, "insurer.cases.[id].messages");
   if (!data) return apiNotFound("ケースが見つかりません。");
   return data;
 }
@@ -38,7 +42,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (!caller) return apiUnauthorized();
 
   const { id } = await ctx.params;
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
   try {
     const caseOrErr = await verifyCase(admin, id, caller.insurerId);
@@ -51,7 +55,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       .eq("case_id", id)
       .order("created_at", { ascending: true });
 
-    if (error) return apiValidationError(error.message);
+    if (error) return apiInternalError(error, "insurer.cases.[id].messages");
 
     // Collect unique sender_ids to look up display names from insurer_users
     const senderIds = [...new Set((messages ?? []).map((m) => m.sender_id).filter(Boolean))];
@@ -74,7 +78,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       sender_display_name: senderMap[m.sender_id] ?? null,
     }));
 
-    return NextResponse.json({ messages: enriched });
+    return apiJson({ messages: enriched });
   } catch (err) {
     return apiInternalError(err, "GET /api/insurer/cases/[id]/messages");
   }
@@ -106,7 +110,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     return apiValidationError("content is required.");
   }
 
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
   try {
     const caseOrErr = await verifyCase(admin, id, caller.insurerId);
@@ -123,7 +127,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       .select("id, case_id, sender_id, sender_type, content, created_at")
       .single();
 
-    if (error) return apiValidationError(error.message);
+    if (error) return apiInternalError(error, "insurer.cases.[id].messages");
 
     // Log to insurer_access_logs
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
@@ -229,7 +233,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       }
     })();
 
-    return NextResponse.json({ message }, { status: 201 });
+    return apiJson({ message }, { status: 201 });
   } catch (err) {
     return apiInternalError(err, "POST /api/insurer/cases/[id]/messages");
   }

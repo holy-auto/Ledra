@@ -59,7 +59,21 @@ const mobileTerminalLimiter = () => {
   return new Ratelimit({ redis: r, limiter: Ratelimit.slidingWindow(30, "60 s"), prefix: "rl:mobile-terminal" });
 };
 
-export type RateLimitPreset = "general" | "auth" | "webhook" | "mobile_pos" | "mobile_terminal";
+/**
+ * プリセット: middleware 層の blanket limit (300 req / 60s)。
+ *
+ * proxy.ts から /api/* に対して第一線の IP ベース防御として適用する。
+ * 通常の admin 操作 (連続フェッチで数十 req/min) は十分余裕があり、
+ * 明らかな bulk scraping / bruteforce のみ遮断する設計。個別 route の
+ * tighter preset (auth / mobile_pos など) は後段で重ねて働く。
+ */
+const middlewareDefaultLimiter = () => {
+  const r = getRedis();
+  if (!r) return null;
+  return new Ratelimit({ redis: r, limiter: Ratelimit.slidingWindow(300, "60 s"), prefix: "rl:mw" });
+};
+
+export type RateLimitPreset = "general" | "auth" | "webhook" | "mobile_pos" | "mobile_terminal" | "middleware_default";
 
 const presets: Record<RateLimitPreset, () => Ratelimit | null> = {
   general: generalLimiter,
@@ -67,6 +81,7 @@ const presets: Record<RateLimitPreset, () => Ratelimit | null> = {
   webhook: webhookLimiter,
   mobile_pos: mobilePosLimiter,
   mobile_terminal: mobileTerminalLimiter,
+  middleware_default: middlewareDefaultLimiter,
 };
 
 /**

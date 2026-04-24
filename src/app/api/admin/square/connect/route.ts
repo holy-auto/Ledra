@@ -1,14 +1,8 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { getAdminClient } from "@/lib/api/auth";
-import {
-  apiOk,
-  apiUnauthorized,
-  apiForbidden,
-  apiInternalError,
-  apiError,
-} from "@/lib/api/response";
+import { apiOk, apiUnauthorized, apiForbidden, apiInternalError, apiError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +13,7 @@ export async function GET(_req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data: conn } = await admin
       .from("square_connections")
       .select("id, tenant_id, square_merchant_id, status, connected_at, last_synced_at, square_location_ids")
@@ -56,8 +50,7 @@ export async function POST(_req: NextRequest) {
     if (!clientId) {
       return apiError({
         code: "internal_error",
-        message:
-          "Square連携の環境変数（SQUARE_APP_ID）が未設定です。",
+        message: "Square連携の環境変数（SQUARE_APP_ID）が未設定です。",
         status: 503,
       });
     }
@@ -87,7 +80,7 @@ export async function DELETE(_req: NextRequest) {
     if (!caller) return apiUnauthorized();
     if (!requireMinRole(caller, "admin")) return apiForbidden();
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { error } = await admin
       .from("square_connections")
       .update({ status: "disconnected" })

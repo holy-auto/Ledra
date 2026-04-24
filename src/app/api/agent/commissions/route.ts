@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
+    return apiJson({
       commissions: rows,
       summary: {
         total_earned: totalEarned,

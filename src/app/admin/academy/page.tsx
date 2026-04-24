@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { normalizePlanTier } from "@/lib/billing/planFeatures";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +14,7 @@ export default async function AcademyPage() {
   const { data: mem } = await supabase.from("tenant_memberships").select("tenant_id").limit(1).single();
   if (!mem) return <div className="text-sm text-muted">テナント情報が見つかりません</div>;
 
-  const admin = getSupabaseAdmin();
+  const { admin } = createTenantScopedAdmin(mem.tenant_id);
 
   // 品質スコア統計
   const { data: scoreStats } = await admin

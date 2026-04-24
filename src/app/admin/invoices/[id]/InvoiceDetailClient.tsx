@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useRef, useState } from "react";
 import Badge from "@/components/ui/Badge";
@@ -115,7 +116,7 @@ export default function InvoiceDetailClient({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: invoice.id, status: newStatus }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setInvoice(j.invoice);
       setMsg({ text: `ステータスを「${statusLabel(newStatus)}」に変更しました`, ok: true });

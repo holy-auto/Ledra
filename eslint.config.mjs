@@ -27,22 +27,25 @@ const eslintConfig = defineConfig([
 
       // Guard against bypassing RLS without a scoped admin wrapper.
       // `getSupabaseAdmin` / `createAdminClient` / `supabaseAdmin` all return
-      // a service-role client that sees every tenant. Prefer
-      // `createTenantScopedAdmin(tenantId)` or `createInsurerScopedAdmin(insurerId)`
-      // so a caller is forced to thread a scope identifier through.
+      // a service-role client that sees every tenant. Callers MUST use one of:
+      //   - createTenantScopedAdmin(tenantId)
+      //   - createInsurerScopedAdmin(insurerId)
+      //   - createServiceRoleAdmin(reason)    // explicit escape hatch with breadcrumb
       //
-      // This rule is intentionally `warn` (not `error`) during the migration;
-      // once the legacy callsites are converted, raise to `error`.
+      // The burndown is complete — this rule is now `error` to prevent
+      // regression. The only file allowed to re-export the raw symbols is
+      // `src/lib/supabase/admin.ts` itself (see the override below).
       "no-restricted-imports": [
-        "warn",
+        "error",
         {
           paths: [
             {
               name: "@/lib/supabase/admin",
               importNames: ["getSupabaseAdmin", "createAdminClient", "supabaseAdmin"],
               message:
-                "Prefer createTenantScopedAdmin(tenantId) or createInsurerScopedAdmin(insurerId). " +
-                "Raw admin clients bypass RLS across every tenant.",
+                "Raw admin clients bypass RLS across every tenant. " +
+                "Use createTenantScopedAdmin(tenantId), createInsurerScopedAdmin(insurerId), " +
+                "or createServiceRoleAdmin(reason) for platform-wide cases.",
             },
           ],
         },

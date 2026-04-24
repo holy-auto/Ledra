@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import type { ReferralStatus } from "@/types/agent";
-import { apiUnauthorized, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiForbidden,
+  apiValidationError,
+  apiNotFound,
+  apiInternalError,
+} from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +56,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       return apiNotFound("not_found");
     }
 
-    return NextResponse.json({ referral });
+    return apiJson({ referral });
   } catch (e: unknown) {
     return apiInternalError(e, "agent/referrals/[id] GET");
   }
@@ -149,7 +156,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       return apiInternalError(updateErr, "agent/referrals/[id] update");
     }
 
-    return NextResponse.json({ ok: true, referral: updated });
+    return apiJson({ ok: true, referral: updated });
   } catch (e: unknown) {
     return apiInternalError(e, "agent/referrals/[id] PUT");
   }

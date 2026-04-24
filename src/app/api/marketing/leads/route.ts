@@ -14,7 +14,7 @@
 import { NextResponse } from "next/server";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { marketingLeadSchema, parseBody } from "@/lib/validation/schemas";
-import { apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { saveLead, notifyLeadToSlack } from "@/lib/marketing/leads";
 import { sendLeadAutoReply } from "@/lib/marketing/leadReply";
 
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   const ip = getClientIp(request);
   const rl = await checkRateLimit(`marketing-leads:${ip}`, { limit: 5, windowSec: 900 });
   if (!rl.allowed) {
-    return NextResponse.json(
+    return apiJson(
       {
         error: "rate_limited",
         message: "送信が多すぎます。しばらくしてから再度お試しください。",
@@ -76,5 +76,5 @@ export async function POST(request: Request) {
     console.error("[leads] auto-reply failed:", err);
   }
 
-  return NextResponse.json({ ok: true, id: persist.id });
+  return apiJson({ ok: true, id: persist.id });
 }

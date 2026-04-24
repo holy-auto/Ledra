@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveInsurerCaller, enforceInsurerPlan } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiValidationError } from "@/lib/api/response";
+import { apiInternalError, apiJson, apiUnauthorized, apiValidationError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const runtime = "nodejs";
@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
       p_ip: ip,
       p_user_agent: ua,
     });
-    if (error) return apiValidationError(error.message);
+    if (error) return apiInternalError(error, "insurer.export");
 
     const { error: logErr } = await supabase.rpc("insurer_audit_log", {
       p_action: "insurer.export.csv",
@@ -58,7 +58,18 @@ export async function GET(req: NextRequest) {
     });
     if (logErr) return apiValidationError(logErr.message);
 
-    const rows = (data ?? []) as any[];
+    // RPC insurer_search_certificates の戻り row 型 (明示的に select していないので
+    // 必要なフィールドのみ拾う)。
+    type InsurerExportRow = {
+      public_id: string;
+      status: string | null;
+      customer_name: string | null;
+      vehicle_model?: string | null;
+      vehicle_plate?: string | null;
+      created_at: string | null;
+      tenant_id: string | null;
+    };
+    const rows: InsurerExportRow[] = (data ?? []) as InsurerExportRow[];
     const header = [
       "public_id",
       "status",
@@ -103,6 +114,6 @@ export async function GET(req: NextRequest) {
     });
   } catch (e) {
     console.error("[insurer/export]", e);
-    return NextResponse.json({ error: "internal_error", message: "内部エラーが発生しました" }, { status: 500 });
+    return apiJson({ error: "internal_error", message: "内部エラーが発生しました" }, { status: 500 });
   }
 }

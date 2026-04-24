@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { apiOk, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -7,11 +8,11 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { data: auth } = await supabase.auth.getUser();
-    if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (!auth?.user) return apiUnauthorized();
 
     const { data: agentData } = await supabase.rpc("get_my_agent_status");
     const agent = Array.isArray(agentData) ? agentData[0] : agentData;
-    if (!agent?.agent_id) return NextResponse.json({ error: "agent_not_found" }, { status: 403 });
+    if (!agent?.agent_id) return apiForbidden("代理店情報が見つかりません。");
 
     const url = new URL(request.url);
     const period = url.searchParams.get("period") ?? "month";
@@ -32,8 +33,9 @@ export async function GET(request: NextRequest) {
     // Find own rank
     const selfRank = items.find((r: any) => r.is_self);
 
-    return NextResponse.json({ rankings: items, self_rank: selfRank ?? null });
+    return apiOk({ rankings: items, self_rank: selfRank ?? null });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "internal_error" }, { status: 500 });
+    // apiInternalError sanitizes in production (was leaking e.message directly before)
+    return apiInternalError(e, "agent/rankings GET");
   }
 }

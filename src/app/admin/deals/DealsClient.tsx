@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useCallback, useEffect, useState } from "react";
 import PageHeader from "@/components/ui/PageHeader";
@@ -82,7 +83,7 @@ export default function DealsClient() {
       const params = new URLSearchParams();
       if (status && status !== "all") params.set("status", status);
       const res = await fetch(`/api/market/deals?${params.toString()}`, { cache: "no-store" });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setDeals(j?.deals ?? []);
     } catch (e: unknown) {
@@ -119,7 +120,7 @@ export default function DealsClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       await fetchDeals(statusFilter);
     } catch (e: unknown) {
@@ -143,7 +144,7 @@ export default function DealsClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ agreed_price: price }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setEditingPriceId(null);
       await fetchDeals(statusFilter);
@@ -163,7 +164,7 @@ export default function DealsClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ note: editingNoteValue || null }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setEditingNoteId(null);
       await fetchDeals(statusFilter);

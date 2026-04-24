@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 // POST: Mark announcement as read
 export async function POST(req: NextRequest) {
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
 
     if (error) throw error;
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (e: unknown) {
     return apiInternalError(e, "announcements/read");
   }

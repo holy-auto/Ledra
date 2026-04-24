@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -70,7 +71,7 @@ function PlanSelector({ currentPlan, isActive }: { currentPlan: string | null; i
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ access_token, plan_tier: selectedPlan }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       if (!j?.url) throw new Error("checkout url missing");
       window.location.href = j.url;
@@ -312,7 +313,7 @@ export default function BillingPage() {
         cache: "no-store",
       });
 
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) {
         throw new Error(j?.error ? `${j.error}${j.detail ? " / " + j.detail : ""}` : `HTTP ${res.status}`);
       }
@@ -404,7 +405,7 @@ export default function BillingPage() {
         cache: "no-store",
       });
 
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) {
         throw new Error(j?.error ? `${j.error}${j.detail ? " / " + j.detail : ""}` : `HTTP ${res.status}`);
       }
@@ -437,7 +438,7 @@ export default function BillingPage() {
         cache: "no-store",
       });
 
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) {
         throw new Error(j?.error ? `${j.error}${j.detail ? " / " + j.detail : ""}` : `HTTP ${res.status}`);
       }

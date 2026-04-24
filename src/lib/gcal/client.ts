@@ -1,6 +1,6 @@
 import { calendar_v3, calendar } from "@googleapis/calendar";
 import { OAuth2Client } from "google-auth-library";
-import { getAdminClient } from "@/lib/api/auth";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 /**
  * Google Calendar 連携クライアント
@@ -32,10 +32,7 @@ export function getAuthUrl(state: string): string {
   return oauth2.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
-    scope: [
-      "https://www.googleapis.com/auth/calendar",
-      "https://www.googleapis.com/auth/calendar.events",
-    ],
+    scope: ["https://www.googleapis.com/auth/calendar", "https://www.googleapis.com/auth/calendar.events"],
     state,
   });
 }
@@ -45,7 +42,7 @@ export async function exchangeCodeAndSave(code: string, tenantId: string): Promi
   const oauth2 = getOAuth2Client();
   const { tokens } = await oauth2.getToken(code);
 
-  const admin = getAdminClient();
+  const { admin } = createTenantScopedAdmin(tenantId);
   await admin
     .from("tenants")
     .update({
@@ -60,7 +57,7 @@ async function getCalendarClient(tenantId: string): Promise<{
   calendar: calendar_v3.Calendar;
   calendarId: string;
 } | null> {
-  const admin = getAdminClient();
+  const { admin } = createTenantScopedAdmin(tenantId);
   const { data: tenant } = await admin
     .from("tenants")
     .select("gcal_refresh_token, gcal_calendar_id, gcal_sync_enabled")
@@ -85,7 +82,7 @@ async function logSync(
   status: "success" | "error",
   errorMessage?: string,
 ) {
-  const admin = getAdminClient();
+  const { admin } = createTenantScopedAdmin(tenantId);
   await admin.from("gcal_sync_log").insert({
     tenant_id: tenantId,
     reservation_id: reservationId,
@@ -145,10 +142,7 @@ function buildEvent(r: ReservationData): calendar_v3.Schema$Event {
 }
 
 /** 予約作成時に Google Calendar にイベントを追加 */
-export async function syncCreateEvent(
-  tenantId: string,
-  reservation: ReservationData,
-): Promise<string | null> {
+export async function syncCreateEvent(tenantId: string, reservation: ReservationData): Promise<string | null> {
   try {
     const client = await getCalendarClient(tenantId);
     if (!client) return null;
@@ -162,11 +156,8 @@ export async function syncCreateEvent(
     const eventId = res.data.id ?? null;
 
     if (eventId) {
-      const admin = getAdminClient();
-      await admin
-        .from("reservations")
-        .update({ gcal_event_id: eventId })
-        .eq("id", reservation.id);
+      const { admin } = createTenantScopedAdmin(tenantId);
+      await admin.from("reservations").update({ gcal_event_id: eventId }).eq("id", reservation.id);
     }
 
     await logSync(tenantId, reservation.id, "create", eventId, "success");
@@ -198,13 +189,16 @@ export async function syncUpdateEvent(
     const status = (e as { code?: number })?.code ?? (e as { status?: number })?.status;
     if (status === 404 || status === 410) {
       console.info(`[gcal] update: event ${reservation.gcal_event_id} not found (${status}), clearing gcal_event_id`);
-      const admin = getAdminClient();
-      await admin
-        .from("reservations")
-        .update({ gcal_event_id: null })
-        .eq("id", reservation.id);
-      await logSync(tenantId, reservation.id, "update", reservation.gcal_event_id ?? null, "success",
-        `GCal event gone (HTTP ${status}), cleared gcal_event_id`);
+      const { admin } = createTenantScopedAdmin(tenantId);
+      await admin.from("reservations").update({ gcal_event_id: null }).eq("id", reservation.id);
+      await logSync(
+        tenantId,
+        reservation.id,
+        "update",
+        reservation.gcal_event_id ?? null,
+        "success",
+        `GCal event gone (HTTP ${status}), cleared gcal_event_id`,
+      );
       return;
     }
     await logSync(tenantId, reservation.id, "update", reservation.gcal_event_id ?? null, "error", String(e));
@@ -231,8 +225,14 @@ export async function syncDeleteEvent(
     const status = (e as { code?: number })?.code ?? (e as { status?: number })?.status;
     if (status === 404 || status === 410) {
       console.info(`[gcal] delete: event ${gcalEventId} already deleted (${status}), treating as success`);
-      await logSync(tenantId, reservationId, "delete", gcalEventId, "success",
-        `GCal event already deleted (HTTP ${status})`);
+      await logSync(
+        tenantId,
+        reservationId,
+        "delete",
+        gcalEventId,
+        "success",
+        `GCal event already deleted (HTTP ${status})`,
+      );
       return;
     }
     await logSync(tenantId, reservationId, "delete", gcalEventId, "error", String(e));
@@ -290,16 +290,14 @@ export async function pullEventsFromCalendar(
     const events = res.data.items ?? [];
     console.info(`[gcal] pull: found ${events.length} events in Google Calendar (including deleted)`);
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(tenantId);
     const { data: existing } = await admin
       .from("reservations")
       .select("id, gcal_event_id, title, note, scheduled_date, start_time, end_time, status")
       .eq("tenant_id", tenantId)
       .not("gcal_event_id", "is", null);
 
-    const existingMap = new Map(
-      (existing ?? []).map((r: ReservationRow) => [r.gcal_event_id, r]),
-    );
+    const existingMap = new Map((existing ?? []).map((r: ReservationRow) => [r.gcal_event_id, r]));
 
     if (events.length === 0) return result;
 
@@ -322,8 +320,14 @@ export async function pullEventsFromCalendar(
             console.error(`[gcal] pull: failed to cancel reservation ${existingReservation.id}:`, error.message);
           } else {
             result.cancelled++;
-            await logSync(tenantId, existingReservation.id, "pull_cancel", event.id, "success",
-              "GCal event deleted/cancelled");
+            await logSync(
+              tenantId,
+              existingReservation.id,
+              "pull_cancel",
+              event.id,
+              "success",
+              "GCal event deleted/cancelled",
+            );
           }
         } else {
           result.skipped++;
@@ -333,12 +337,8 @@ export async function pullEventsFromCalendar(
 
       const summary = event.summary || "(無題)";
       const startDate = event.start?.date || event.start?.dateTime?.slice(0, 10);
-      const startTime = event.start?.dateTime
-        ? event.start.dateTime.slice(11, 19)
-        : null;
-      const endTime = event.end?.dateTime
-        ? event.end.dateTime.slice(11, 19)
-        : null;
+      const startTime = event.start?.dateTime ? event.start.dateTime.slice(11, 19) : null;
+      const endTime = event.end?.dateTime ? event.end.dateTime.slice(11, 19) : null;
 
       if (!startDate) {
         console.warn(`[gcal] pull: skipping event ${event.id} — no start date`);
@@ -404,9 +404,17 @@ export async function pullEventsFromCalendar(
       }
     }
 
-    console.info(`[gcal] pull: imported=${result.imported}, updated=${result.updated}, cancelled=${result.cancelled}, skipped=${result.skipped}`);
-    await logSync(tenantId, null, "pull", null, "success",
-      `imported=${result.imported}, updated=${result.updated}, cancelled=${result.cancelled}, skipped=${result.skipped}`);
+    console.info(
+      `[gcal] pull: imported=${result.imported}, updated=${result.updated}, cancelled=${result.cancelled}, skipped=${result.skipped}`,
+    );
+    await logSync(
+      tenantId,
+      null,
+      "pull",
+      null,
+      "success",
+      `imported=${result.imported}, updated=${result.updated}, cancelled=${result.cancelled}, skipped=${result.skipped}`,
+    );
     return result;
   } catch (e) {
     console.error("[gcal] pull: error:", e);
@@ -416,9 +424,7 @@ export async function pullEventsFromCalendar(
 }
 
 /** テナントのGoogleカレンダー一覧を取得 */
-export async function listCalendars(
-  tenantId: string,
-): Promise<{ id: string; summary: string; primary?: boolean }[]> {
+export async function listCalendars(tenantId: string): Promise<{ id: string; summary: string; primary?: boolean }[]> {
   try {
     const client = await getCalendarClient(tenantId);
     if (!client) return [];
@@ -435,16 +441,12 @@ export async function listCalendars(
 /**
  * 既存予約を一括で Google Calendar に push 同期
  */
-export async function pushReservationsToCalendar(
-  tenantId: string,
-  dateFrom: string,
-  dateTo: string,
-): Promise<number> {
+export async function pushReservationsToCalendar(tenantId: string, dateFrom: string, dateTo: string): Promise<number> {
   try {
     const client = await getCalendarClient(tenantId);
     if (!client) return 0;
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(tenantId);
     const { data: reservations } = await admin
       .from("reservations")
       .select("id, title, scheduled_date, start_time, end_time, note, customer_id")
@@ -458,15 +460,12 @@ export async function pushReservationsToCalendar(
 
     if (!reservations || reservations.length === 0) return 0;
 
-    const customerIds = [...new Set(
-      (reservations as PushReservationRow[]).map((r) => r.customer_id).filter(Boolean) as string[]
-    )];
+    const customerIds = [
+      ...new Set((reservations as PushReservationRow[]).map((r) => r.customer_id).filter(Boolean) as string[]),
+    ];
     const customerMap: Record<string, string> = {};
     if (customerIds.length > 0) {
-      const { data: customers } = await admin
-        .from("customers")
-        .select("id, name")
-        .in("id", customerIds);
+      const { data: customers } = await admin.from("customers").select("id, name").in("id", customerIds);
       (customers ?? []).forEach((c: { id: string; name: string }) => {
         customerMap[c.id] = c.name;
       });
@@ -483,7 +482,7 @@ export async function pushReservationsToCalendar(
           start_time: r.start_time,
           end_time: r.end_time,
           note: r.note,
-          customer_name: r.customer_id ? customerMap[r.customer_id] ?? null : null,
+          customer_name: r.customer_id ? (customerMap[r.customer_id] ?? null) : null,
         });
 
         const res = await client.calendar.events.insert({
@@ -493,10 +492,7 @@ export async function pushReservationsToCalendar(
 
         const eventId = res.data.id ?? null;
         if (eventId) {
-          await admin
-            .from("reservations")
-            .update({ gcal_event_id: eventId })
-            .eq("id", r.id);
+          await admin.from("reservations").update({ gcal_event_id: eventId }).eq("id", r.id);
         }
 
         await logSync(tenantId, r.id, "create", eventId, "success");

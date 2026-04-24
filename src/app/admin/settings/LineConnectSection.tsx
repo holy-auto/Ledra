@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useState, useCallback, useEffect } from "react";
 
@@ -26,7 +27,7 @@ export default function LineConnectSection() {
   const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/line");
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (res.ok && j) {
         setStatus(j);
         if (j.channel_id) setChannelId(j.channel_id);
@@ -60,7 +61,7 @@ export default function LineConnectSection() {
           liff_id: liffId || undefined,
         }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setSuccessMsg("LINE連携が完了しました");
       setEditing(false);
@@ -85,7 +86,7 @@ export default function LineConnectSection() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action: "disconnect" }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setStatus({ enabled: false, channel_id: null, liff_id: null, webhook_url: null });
       setChannelId("");

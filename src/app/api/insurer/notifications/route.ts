@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
   try {
     const { data, error } = await admin
@@ -44,14 +44,14 @@ export async function GET(req: NextRequest) {
     if (error) {
       // Table may not exist yet — return empty array gracefully
       if (error.message.includes("does not exist") || error.code === "42P01") {
-        return NextResponse.json({ notifications: [], unread_count: 0 });
+        return apiJson({ notifications: [], unread_count: 0 });
       }
-      return apiValidationError(error.message);
+      return apiInternalError(error, "insurer.notifications");
     }
 
     const unreadCount = (data ?? []).filter((n) => !n.is_read).length;
 
-    return NextResponse.json({
+    return apiJson({
       notifications: data ?? [],
       unread_count: unreadCount,
     });
@@ -85,7 +85,7 @@ export async function PATCH(req: NextRequest) {
     return apiValidationError("ids (string[]) or all (true) is required.");
   }
 
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
   try {
     if (all) {
@@ -99,9 +99,9 @@ export async function PATCH(req: NextRequest) {
 
       if (error) {
         if (error.message.includes("does not exist") || error.code === "42P01") {
-          return NextResponse.json({ ok: true, updated: 0 });
+          return apiJson({ ok: true, updated: 0 });
         }
-        return apiValidationError(error.message);
+        return apiInternalError(error, "insurer.notifications");
       }
     } else {
       // Mark specific notifications as read
@@ -114,13 +114,13 @@ export async function PATCH(req: NextRequest) {
 
       if (error) {
         if (error.message.includes("does not exist") || error.code === "42P01") {
-          return NextResponse.json({ ok: true, updated: 0 });
+          return apiJson({ ok: true, updated: 0 });
         }
-        return apiValidationError(error.message);
+        return apiInternalError(error, "insurer.notifications");
       }
     }
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (err) {
     return apiInternalError(err, "PATCH /api/insurer/notifications");
   }

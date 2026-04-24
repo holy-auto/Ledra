@@ -1,5 +1,5 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminClient } from "@/lib/api/auth";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -31,8 +31,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL("/admin/square?square=error&reason=missing_params", baseUrl));
   }
 
-  // ユーザーが対象テナントのメンバーであるか確認
-  const admin = getAdminClient();
+  // ユーザーが対象テナントのメンバーであるか確認 (state = tenantId は OAuth flow で検証した値)
+  const { admin } = createTenantScopedAdmin(state);
   const { data: membership } = await admin
     .from("tenant_members")
     .select("id")

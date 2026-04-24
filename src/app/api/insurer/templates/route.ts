@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
   try {
     const { data, error } = await admin
@@ -44,10 +44,10 @@ export async function GET(req: NextRequest) {
     if (error) {
       // Table may not exist yet — return empty array gracefully
       console.warn("[templates] GET error (table may not exist):", error.message);
-      return NextResponse.json({ templates: [] });
+      return apiJson({ templates: [] });
     }
 
-    return NextResponse.json({ templates: data ?? [] });
+    return apiJson({ templates: data ?? [] });
   } catch (err) {
     return apiInternalError(err, "GET /api/insurer/templates");
   }
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
   const validPriorities = ["low", "normal", "high", "urgent"];
   const priority = validPriorities.includes(default_priority ?? "") ? default_priority : "normal";
 
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
   try {
     const { data, error } = await admin
@@ -110,10 +110,10 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       console.error("[templates] POST error:", error.message);
-      return apiValidationError(error.message);
+      return apiInternalError(error, "insurer.templates");
     }
 
-    return NextResponse.json({ template: data }, { status: 201 });
+    return apiJson({ template: data }, { status: 201 });
   } catch (err) {
     return apiInternalError(err, "POST /api/insurer/templates");
   }
@@ -134,7 +134,7 @@ export async function DELETE(req: NextRequest) {
   const id = url.searchParams.get("id");
   if (!id) return apiValidationError("id query parameter is required.");
 
-  const admin = createAdminClient();
+  const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
   try {
     const { error } = await admin
@@ -145,10 +145,10 @@ export async function DELETE(req: NextRequest) {
 
     if (error) {
       console.error("[templates] DELETE error:", error.message);
-      return apiValidationError(error.message);
+      return apiInternalError(error, "insurer.templates");
     }
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (err) {
     return apiInternalError(err, "DELETE /api/insurer/templates");
   }

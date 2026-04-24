@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -27,7 +28,7 @@ export default function TenantsPage() {
       try {
         const res = await fetch("/api/insurer/tenants");
         if (!res.ok) {
-          const j = await res.json().catch((): null => null);
+          const j = await parseJsonSafe(res);
           throw new Error(j?.message ?? `HTTP ${res.status}`);
         }
         const j = await res.json();

@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { apiUnauthorized, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiForbidden,
+  apiValidationError,
+  apiNotFound,
+  apiInternalError,
+} from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +53,7 @@ export async function GET() {
       console.error("[agent/settings] membership fetch error:", memberErr.message);
     }
 
-    return NextResponse.json({
+    return apiJson({
       agent: profile,
       current_user: {
         user_id: auth.user.id,
@@ -136,7 +143,7 @@ export async function PUT(request: NextRequest) {
       return apiInternalError(updateErr, "agent/settings update");
     }
 
-    return NextResponse.json({ ok: true, agent: updated });
+    return apiJson({ ok: true, agent: updated });
   } catch (e: unknown) {
     return apiInternalError(e, "agent/settings PUT");
   }

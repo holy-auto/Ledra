@@ -7,14 +7,10 @@ import type { TemplateConfig } from "@/types/templateOption";
 import type { CertRow } from "@/lib/pdfCertificate";
 import { getPanelLabel, getCoverageLabel, getFilmTypeLabel } from "@/lib/ppf/constants";
 
-const NOTO_SANS_JP =
-  "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-400-normal.ttf";
-const NOTO_SANS_JP_BOLD =
-  "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-700-normal.ttf";
-const NOTO_SERIF_JP =
-  "https://cdn.jsdelivr.net/fontsource/fonts/noto-serif-jp@latest/japanese-400-normal.ttf";
-const NOTO_SERIF_JP_BOLD =
-  "https://cdn.jsdelivr.net/fontsource/fonts/noto-serif-jp@latest/japanese-700-normal.ttf";
+const NOTO_SANS_JP = "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-400-normal.ttf";
+const NOTO_SANS_JP_BOLD = "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-700-normal.ttf";
+const NOTO_SERIF_JP = "https://cdn.jsdelivr.net/fontsource/fonts/noto-serif-jp@latest/japanese-400-normal.ttf";
+const NOTO_SERIF_JP_BOLD = "https://cdn.jsdelivr.net/fontsource/fonts/noto-serif-jp@latest/japanese-700-normal.ttf";
 
 Font.register({
   family: "NotoSansJP",
@@ -40,14 +36,21 @@ function buildStyles(config: TemplateConfig) {
   const accent = config.branding.accent_color ?? "#0071e3";
   const fontFamily = config.style?.font_family === "noto-serif-jp" ? "NotoSerifJP" : "NotoSansJP";
 
-  const borderWidth = config.style?.border_style === "none" ? 0
-    : config.style?.border_style === "double" ? 2
-    : config.style?.border_style === "elegant" ? 1.5
-    : 1;
+  const borderWidth =
+    config.style?.border_style === "none"
+      ? 0
+      : config.style?.border_style === "double"
+        ? 2
+        : config.style?.border_style === "elegant"
+          ? 1.5
+          : 1;
 
-  const bgColor = config.style?.background_variant === "cream" ? "#faf8f5"
-    : config.style?.background_variant === "light-gray" ? "#f5f5f7"
-    : "#ffffff";
+  const bgColor =
+    config.style?.background_variant === "cream"
+      ? "#faf8f5"
+      : config.style?.background_variant === "light-gray"
+        ? "#f5f5f7"
+        : "#ffffff";
 
   return StyleSheet.create({
     page: {
@@ -186,14 +189,18 @@ type TemplateSchema = {
 function normValue(v: any): string | null {
   if (v === undefined || v === null) return null;
   if (Array.isArray(v)) {
-    const s = v.map((x) => String(x)).map((s) => s.trim()).filter(Boolean).join(", ");
+    const s = v
+      .map((x) => String(x))
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .join(", ");
     return s || null;
   }
   const s = String(v).trim();
   return s ? s : null;
 }
 
-function buildPresetLines(schema: TemplateSchema | null, values: Record<string, any> | null) {
+function buildPresetLines(schema: TemplateSchema | null, values: Record<string, unknown> | null) {
   if (!schema || !values) return [];
   const lines: Array<{ section: string; label: string; value: string }> = [];
   for (const sec of schema.sections) {
@@ -214,16 +221,14 @@ function buildPresetLines(schema: TemplateSchema | null, values: Record<string, 
 /**
  * ブランドカスタム証明書PDFを生成する
  */
-export async function renderBrandedCertificatePdf(
-  row: CertRow,
-  publicUrl: string,
-  config: TemplateConfig,
-) {
+export async function renderBrandedCertificatePdf(row: CertRow, publicUrl: string, config: TemplateConfig) {
   const s = buildStyles(config);
 
   const preset = row.content_preset_json ?? {};
-  const schema: TemplateSchema | null = (preset.schema_snapshot as any) ?? null;
-  const values: Record<string, any> | null = (preset.values as any) ?? null;
+  // content_preset_json は DB JSON カラムで動的。TemplateSchema と
+  // Record<string, unknown> に narrow する用途のみで cast する。
+  const schema: TemplateSchema | null = (preset.schema_snapshot as unknown as TemplateSchema) ?? null;
+  const values: Record<string, unknown> | null = (preset.values as Record<string, unknown>) ?? null;
   const vehicle = row.vehicle_info_json ?? {};
   const model = String(vehicle.model ?? "").trim();
   const plate = String(vehicle.plate ?? vehicle.plate_display ?? "").trim();
@@ -276,9 +281,7 @@ export async function renderBrandedCertificatePdf(
               <Text style={s.title}>{headerConfig.title ?? "施工証明書"}</Text>
             </View>
             {headerConfig.subtitle && <Text style={s.subtitle}>{headerConfig.subtitle}</Text>}
-            {headerConfig.show_certificate_no !== false && (
-              <Text style={s.meta}>証明書ID: {row.public_id}</Text>
-            )}
+            {headerConfig.show_certificate_no !== false && <Text style={s.meta}>証明書ID: {row.public_id}</Text>}
             {headerConfig.show_issue_date !== false && (
               <Text style={s.meta}>発行日: {new Date(row.created_at).toLocaleDateString("ja-JP")}</Text>
             )}
@@ -341,7 +344,9 @@ export async function renderBrandedCertificatePdf(
               <View key={idx} style={s.itemRow}>
                 <Text style={s.itemLabel}>{cp.location || "-"}</Text>
                 <Text style={s.itemValue}>
-                  {[cp.brand_name, cp.product_name, cp.film_type ? getFilmTypeLabel(cp.film_type) : null].filter(Boolean).join(" / ") || "-"}
+                  {[cp.brand_name, cp.product_name, cp.film_type ? getFilmTypeLabel(cp.film_type) : null]
+                    .filter(Boolean)
+                    .join(" / ") || "-"}
                 </Text>
               </View>
             ))}
@@ -371,9 +376,7 @@ export async function renderBrandedCertificatePdf(
             {row.coating_products_json.map((cp: any, idx: number) => (
               <View key={idx} style={s.itemRow}>
                 <Text style={s.itemLabel}>{cp.location || "-"}</Text>
-                <Text style={s.itemValue}>
-                  {[cp.brand_name, cp.product_name].filter(Boolean).join(" / ") || "-"}
-                </Text>
+                <Text style={s.itemValue}>{[cp.brand_name, cp.product_name].filter(Boolean).join(" / ") || "-"}</Text>
               </View>
             ))}
           </View>
@@ -385,7 +388,9 @@ export async function renderBrandedCertificatePdf(
             <Text style={s.boxTitle}>施工内容</Text>
             {presetLines.map((it, idx) => (
               <View key={idx} style={s.itemRow}>
-                <Text style={s.itemLabel}>[{it.section}] {it.label}</Text>
+                <Text style={s.itemLabel}>
+                  [{it.section}] {it.label}
+                </Text>
                 <Text style={s.itemValue}>{it.value}</Text>
               </View>
             ))}
@@ -403,7 +408,9 @@ export async function renderBrandedCertificatePdf(
         {/* ---- Validity ---- */}
         <View style={s.box}>
           <Text style={s.label}>有効条件</Text>
-          <Text style={s.value}>{row.expiry_type ?? ""}: {row.expiry_value ?? ""}</Text>
+          <Text style={s.value}>
+            {row.expiry_type ?? ""}: {row.expiry_value ?? ""}
+          </Text>
         </View>
 
         {/* ---- Custom sections (B only) ---- */}
@@ -417,13 +424,9 @@ export async function renderBrandedCertificatePdf(
         {/* ---- Warranty / Notice ---- */}
         {(config.footer?.warranty_text || config.footer?.notice_text) && (
           <View style={s.warrantyBox}>
-            {config.footer?.warranty_text && (
-              <Text style={s.warrantyText}>{config.footer.warranty_text}</Text>
-            )}
+            {config.footer?.warranty_text && <Text style={s.warrantyText}>{config.footer.warranty_text}</Text>}
             {config.footer?.notice_text && (
-              <Text style={[s.warrantyText, { marginTop: 4 }]}>
-                {config.footer.notice_text}
-              </Text>
+              <Text style={[s.warrantyText, { marginTop: 4 }]}>{config.footer.notice_text}</Text>
             )}
           </View>
         )}
@@ -434,15 +437,9 @@ export async function renderBrandedCertificatePdf(
             <View style={{ flex: 1 }}>
               {/* Company info */}
               <Text style={s.companyInfo}>{config.branding.company_name}</Text>
-              {config.branding.company_address && (
-                <Text style={s.companyInfo}>{config.branding.company_address}</Text>
-              )}
-              {config.branding.company_phone && (
-                <Text style={s.companyInfo}>TEL: {config.branding.company_phone}</Text>
-              )}
-              {config.branding.company_url && (
-                <Text style={s.companyInfo}>{config.branding.company_url}</Text>
-              )}
+              {config.branding.company_address && <Text style={s.companyInfo}>{config.branding.company_address}</Text>}
+              {config.branding.company_phone && <Text style={s.companyInfo}>TEL: {config.branding.company_phone}</Text>}
+              {config.branding.company_url && <Text style={s.companyInfo}>{config.branding.company_url}</Text>}
 
               {/* Maintenance URL */}
               {config.footer?.maintenance_url && (
@@ -455,9 +452,7 @@ export async function renderBrandedCertificatePdf(
               <Text style={s.footerText}>証明書URL: {publicUrl}</Text>
 
               {/* Ledra badge */}
-              {config.footer?.show_ledra_badge !== false && (
-                <Text style={s.badge}>Powered by Ledra</Text>
-              )}
+              {config.footer?.show_ledra_badge !== false && <Text style={s.badge}>Powered by Ledra</Text>}
             </View>
 
             {/* Maintenance QR */}
@@ -537,9 +532,7 @@ export async function renderBrandedCertificatePdf(
           </View>
 
           <View style={s.footer}>
-            {config.footer?.show_ledra_badge !== false && (
-              <Text style={s.badge}>Powered by Ledra</Text>
-            )}
+            {config.footer?.show_ledra_badge !== false && <Text style={s.badge}>Powered by Ledra</Text>}
           </View>
         </Page>
       )}

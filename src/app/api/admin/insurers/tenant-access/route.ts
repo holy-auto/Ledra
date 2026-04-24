@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createServiceRoleAdmin, createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { getClientIp } from "@/lib/rateLimit";
-import { apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -24,7 +24,7 @@ async function logAdminAction(params: {
   ip?: string;
   userAgent?: string;
 }) {
-  const admin = createAdminClient();
+  const admin = createServiceRoleAdmin("admin audit log — writes platform-wide admin_audit_logs (no tenant scope)");
   await admin
     .from("admin_audit_logs")
     .insert({
@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const insurerId = url.searchParams.get("insurer_id");
 
-  const admin = createAdminClient();
+  const { admin } = createTenantScopedAdmin(caller.tenantId);
 
   let query = admin
     .from("insurer_tenant_access")
@@ -90,7 +90,7 @@ export async function GET(req: NextRequest) {
     tenant_name: tenantMap.get(row.tenant_id) ?? null,
   }));
 
-  return NextResponse.json({ grants: enriched });
+  return apiJson({ grants: enriched });
 }
 
 /**
@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
     return apiValidationError("insurer_id and tenant_id are required");
   }
 
-  const admin = createAdminClient();
+  const { admin } = createTenantScopedAdmin(caller.tenantId);
 
   // Check if grant already exists (including revoked ones — reactivate)
   const { data: existing } = await admin
@@ -132,7 +132,7 @@ export async function POST(req: NextRequest) {
 
   if (existing) {
     if (existing.is_active && !existing.revoked_at) {
-      return NextResponse.json({ error: "conflict", message: "このアクセス許可は既に有効です。" }, { status: 409 });
+      return apiJson({ error: "conflict", message: "このアクセス許可は既に有効です。" }, { status: 409 });
     }
 
     // Reactivate revoked grant
@@ -163,7 +163,7 @@ export async function POST(req: NextRequest) {
       userAgent,
     });
 
-    return NextResponse.json({ ok: true, grant: updated }, { status: 200 });
+    return apiJson({ ok: true, grant: updated }, { status: 200 });
   }
 
   // Create new grant
@@ -194,7 +194,7 @@ export async function POST(req: NextRequest) {
     userAgent,
   });
 
-  return NextResponse.json({ ok: true, grant: newGrant }, { status: 201 });
+  return apiJson({ ok: true, grant: newGrant }, { status: 201 });
 }
 
 /**
@@ -221,7 +221,7 @@ export async function PATCH(req: NextRequest) {
     return apiValidationError("id is required");
   }
 
-  const admin = createAdminClient();
+  const { admin } = createTenantScopedAdmin(caller.tenantId);
   const ip = getClientIp(req);
   const userAgent = req.headers.get("user-agent") ?? "";
 
@@ -262,7 +262,7 @@ export async function PATCH(req: NextRequest) {
       userAgent,
     });
 
-    return NextResponse.json({ ok: true, grant: updated });
+    return apiJson({ ok: true, grant: updated });
   }
 
   // Default: update notes
@@ -295,5 +295,5 @@ export async function PATCH(req: NextRequest) {
     userAgent,
   });
 
-  return NextResponse.json({ ok: true, grant: updated });
+  return apiJson({ ok: true, grant: updated });
 }

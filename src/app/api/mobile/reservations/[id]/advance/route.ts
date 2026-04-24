@@ -73,7 +73,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         .update({ status: nextStatus })
         .eq("id", id)
         .eq("tenant_id", caller.tenantId)
-        .select()
+        .select(
+          "id, status, current_step_key, current_step_order, progress_pct, customer_id, vehicle_id, title, updated_at",
+        )
         .single();
       if (error) return apiInternalError(error, "reservations.advance.legacy");
       return apiOk({ reservation: updated, legacy: true });

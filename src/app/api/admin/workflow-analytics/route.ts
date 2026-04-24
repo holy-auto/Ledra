@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     const since = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString();
 
     // Fetch completed step logs for the period
-    let logsQuery = supabase
+    const logsQuery = supabase
       .from("reservation_step_logs")
       .select("step_key, step_label, step_order, duration_sec, completed_at, reservation_id")
       .eq("tenant_id", caller.tenantId)
@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Fetch completed reservations with workflow templates for service_type filtering
-    let reservationsQuery = supabase
+    const reservationsQuery = supabase
       .from("reservations")
       .select("id, workflow_template_id, status")
       .eq("tenant_id", caller.tenantId)
@@ -143,7 +143,7 @@ export async function GET(req: NextRequest) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, count]) => ({ date, count }));
 
-    return NextResponse.json({
+    return apiJson({
       period,
       service_type: serviceType,
       total_reservations: reservationDurations.size,

@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
@@ -61,7 +62,7 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ public_id: publicId }),
         });
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
         router.refresh();
       } catch (e: any) {

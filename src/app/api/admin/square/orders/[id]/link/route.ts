@@ -1,7 +1,7 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { getAdminClient } from "@/lib/api/auth";
 import {
   apiOk,
   apiUnauthorized,
@@ -14,10 +14,7 @@ import {
 export const dynamic = "force-dynamic";
 
 // ─── PUT: Square オーダーを顧客/車両/証明書にリンク ───
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
@@ -35,7 +32,7 @@ export async function PUT(
       note?: string;
     };
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // オーダーの存在確認（テナントスコープ）
     const { data: existing } = await admin

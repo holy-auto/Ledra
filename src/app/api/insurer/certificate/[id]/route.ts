@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { logInsurerAccess } from "@/lib/insurer/audit";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
-import { apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
+import { apiInternalError, apiJson, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const runtime = "nodejs";
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     .eq("id", id)
     .maybeSingle();
 
-  if (error) return apiValidationError(error.message);
+  if (error) return apiInternalError(error, "insurer.certificate.[id]");
   if (!cert) return apiNotFound("証明書が見つかりません。");
 
   // Verify insurer has an active contract with the certificate's tenant
@@ -57,5 +57,5 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     // 監査ログ失敗は閲覧をブロックしない
   }
 
-  return NextResponse.json({ certificate: cert });
+  return apiJson({ certificate: cert });
 }

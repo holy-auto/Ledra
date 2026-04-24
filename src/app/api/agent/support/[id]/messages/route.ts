@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -17,7 +17,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
       .eq("ticket_id", id)
       .order("created_at", { ascending: true });
 
-    return NextResponse.json({ messages: messages ?? [] });
+    return apiJson({ messages: messages ?? [] });
   } catch (e) {
     return apiInternalError(e, "agent/support/[id]/messages GET");
   }
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest, ctx: RouteContext) {
     // Update ticket status
     await supabase.from("agent_support_tickets").update({ status: "awaiting_reply" }).eq("id", id);
 
-    return NextResponse.json({ message: msg }, { status: 201 });
+    return apiJson({ message: msg }, { status: 201 });
   } catch (e) {
     return apiInternalError(e, "agent/support/[id]/messages POST");
   }

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { contactSchema, parseBody } from "@/lib/validation/schemas";
-import { apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { notifySlack } from "@/lib/slack";
 
 /** 遅延初期化: ビルド時に API キーが無くてもクラッシュしない */
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   const ip = getClientIp(request);
   const rl = await checkRateLimit(`contact:${ip}`, { limit: 5, windowSec: 900 });
   if (!rl.allowed) {
-    return NextResponse.json(
+    return apiJson(
       { error: "rate_limited", message: "送信が多すぎます。しばらくしてから再度お試しください。" },
       { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
     );
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
   if (!process.env.RESEND_API_KEY) {
     if (process.env.NODE_ENV !== "production") {
       console.info("[contact] dev mode — would send:", { name, email, category });
-      return NextResponse.json({ ok: true });
+      return apiJson({ ok: true });
     }
     console.error("[contact] RESEND_API_KEY is not set in production");
     return apiInternalError(new Error("Mail service not configured"), "contact email send");
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
       console.error("[contact] slack notify failed:", err);
     }
 
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch (err) {
     return apiInternalError(err, "contact email send");
   }

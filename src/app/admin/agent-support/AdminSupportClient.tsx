@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useEffect, useState, useCallback } from "react";
 import Badge from "@/components/ui/Badge";
@@ -135,7 +136,7 @@ export default function AdminSupportClient() {
         body: JSON.stringify({ message: replyText }),
       });
       if (!res.ok) {
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       setReplyText("");
@@ -161,7 +162,7 @@ export default function AdminSupportClient() {
         body: JSON.stringify({ status: newStatus }),
       });
       if (!res.ok) {
-        const j = await res.json().catch((): null => null);
+        const j = await parseJsonSafe(res);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       setMsg(`ステータスを「${STATUS_MAP[newStatus]?.label ?? newStatus}」に更新しました`);

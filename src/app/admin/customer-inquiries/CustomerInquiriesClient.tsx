@@ -8,7 +8,6 @@ type InqStatus = "new" | "read" | "replied";
 interface InquiryRow {
   id: string;
   customer_name: string | null;
-  phone_last4_hash: string;
   subject: string;
   message: string;
   status: InqStatus;

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import Stripe from "stripe";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
     const total = subtotal + tax;
 
     // テナント情報取得（Stripe Customer ID用）
-    const admin = getSupabaseAdmin();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data: tenant, error: tErr } = await admin
       .from("tenants")
       .select("id, name, stripe_customer_id")
@@ -169,11 +169,11 @@ export async function POST(req: NextRequest) {
         cancel_url: `${appUrl}/admin/shop?status=cancel&order=${orderNumber}`,
       });
     } catch (stripeErr) {
-      // Stripe 失敗 → 仮レコードをクリーンアップして孤立オーダーを防ぐ
-      await admin
-        .from("shop_orders")
-        .update({ status: "checkout_failed" })
-        .eq("id", order.id);
+      // Stripe 失敗 → 仮レコードをクリーンアップして孤立オーダーを防ぐ。
+      // shop_order_items も合わせて削除しないと、failed order に対する
+      // items が DB に残って在庫集計などが歪む。
+      await admin.from("shop_order_items").delete().eq("order_id", order.id);
+      await admin.from("shop_orders").update({ status: "checkout_failed" }).eq("id", order.id);
       throw stripeErr;
     }
 

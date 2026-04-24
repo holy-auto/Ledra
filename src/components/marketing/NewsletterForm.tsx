@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import Link from "next/link";
 import { useState } from "react";
@@ -45,7 +46,7 @@ export function NewsletterForm() {
         body: JSON.stringify({ source: "newsletter", email, consent }),
       });
       if (!res.ok) {
-        const data = (await res.json().catch((): null => null)) as { message?: string } | null;
+        const data = (await parseJsonSafe(res)) as { message?: string } | null;
         throw new Error(data?.message ?? "登録に失敗しました。");
       }
       track({ name: "lead_submitted", props: { source: "newsletter" } });

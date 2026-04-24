@@ -1,9 +1,22 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { getAdminClient } from "@/lib/api/auth";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiForbidden, apiInternalError, apiValidationError, apiError } from "@/lib/api/response";
-import { getAuthUrl, exchangeCodeAndSave, pullEventsFromCalendar, pushReservationsToCalendar, listCalendars } from "@/lib/gcal/client";
+import {
+  apiOk,
+  apiUnauthorized,
+  apiForbidden,
+  apiInternalError,
+  apiValidationError,
+  apiError,
+} from "@/lib/api/response";
+import {
+  getAuthUrl,
+  exchangeCodeAndSave,
+  pullEventsFromCalendar,
+  pushReservationsToCalendar,
+  listCalendars,
+} from "@/lib/gcal/client";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +58,7 @@ export async function GET(req: NextRequest) {
     if (!caller) return apiUnauthorized();
     if (!requireMinRole(caller, "admin")) return apiForbidden();
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data: tenant } = await admin
       .from("tenants")
       .select("gcal_sync_enabled, gcal_calendar_id, gcal_last_synced_at")
@@ -88,7 +101,11 @@ export async function POST(req: NextRequest) {
     if (action === "connect") {
       // 環境変数チェック
       if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-        return apiError({ code: "internal_error", message: "Googleカレンダー連携の環境変数（GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET）が未設定です。", status: 503 });
+        return apiError({
+          code: "internal_error",
+          message: "Googleカレンダー連携の環境変数（GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET）が未設定です。",
+          status: 503,
+        });
       }
       // OAuth 認可URL を返す
       const url = getAuthUrl(caller.tenantId);
@@ -104,7 +121,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "disconnect") {
-      const admin = getAdminClient();
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
       await admin
         .from("tenants")
         .update({
@@ -123,11 +140,8 @@ export async function POST(req: NextRequest) {
     if (action === "set-calendar") {
       const calendarId = body?.calendar_id;
       if (!calendarId) return apiValidationError("calendar_id が必要です");
-      const admin = getAdminClient();
-      await admin
-        .from("tenants")
-        .update({ gcal_calendar_id: calendarId })
-        .eq("id", caller.tenantId);
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
+      await admin.from("tenants").update({ gcal_calendar_id: calendarId }).eq("id", caller.tenantId);
       return apiOk({ calendar_id: calendarId });
     }
 
@@ -141,11 +155,8 @@ export async function POST(req: NextRequest) {
       const pullResult = await pullEventsFromCalendar(caller.tenantId, from, to);
 
       // 最終同期日時を更新
-      const admin = getAdminClient();
-      await admin
-        .from("tenants")
-        .update({ gcal_last_synced_at: new Date().toISOString() })
-        .eq("id", caller.tenantId);
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
+      await admin.from("tenants").update({ gcal_last_synced_at: new Date().toISOString() }).eq("id", caller.tenantId);
 
       return apiOk({
         pushed,

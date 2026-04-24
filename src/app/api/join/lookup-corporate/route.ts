@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { isValidCorporateNumber, verifyCorporateNumberViaApi } from "@/lib/insurer/corporateNumber";
-import { apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -15,10 +15,7 @@ export async function GET(req: NextRequest) {
     const ip = getClientIp(req);
     const rl = await checkRateLimit(`gbiz-lookup:${ip}`, { limit: 15, windowSec: 60 });
     if (!rl.allowed) {
-      return NextResponse.json(
-        { error: "rate_limited" },
-        { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
-      );
+      return apiJson({ error: "rate_limited" }, { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } });
     }
 
     const number = req.nextUrl.searchParams.get("number")?.trim() ?? "";
@@ -33,7 +30,7 @@ export async function GET(req: NextRequest) {
       return apiNotFound("該当する法人情報が見つかりませんでした");
     }
 
-    return NextResponse.json({
+    return apiJson({
       corporate_number: info.corporateNumber,
       company_name: info.name,
       address: info.location,

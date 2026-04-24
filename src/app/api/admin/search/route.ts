@@ -1,14 +1,8 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { getAdminClient } from "@/lib/api/auth";
-import {
-  apiOk,
-  apiUnauthorized,
-  apiForbidden,
-  apiValidationError,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiOk, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
 
@@ -40,7 +34,7 @@ export async function GET(req: NextRequest) {
 
     const escaped = escapeIlike(q);
     const escapedPgrest = escapePostgrestValue(escaped);
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const tenantId = caller.tenantId;
 
     // Search certificates by public_id or customer_name
@@ -50,9 +44,7 @@ export async function GET(req: NextRequest) {
           .from("certificates")
           .select("public_id, customer_name, status")
           .eq("tenant_id", tenantId)
-          .or(
-            `public_id.ilike.%${escapedPgrest}%,customer_name.ilike.%${escapedPgrest}%`,
-          )
+          .or(`public_id.ilike.%${escapedPgrest}%,customer_name.ilike.%${escapedPgrest}%`)
           .order("created_at", { ascending: false })
           .limit(limit);
         return data ?? [];
@@ -86,9 +78,7 @@ export async function GET(req: NextRequest) {
           .from("vehicles")
           .select("id, maker, model, plate_display")
           .eq("tenant_id", tenantId)
-          .or(
-            `maker.ilike.%${escapedPgrest}%,model.ilike.%${escapedPgrest}%,plate_display.ilike.%${escapedPgrest}%`,
-          )
+          .or(`maker.ilike.%${escapedPgrest}%,model.ilike.%${escapedPgrest}%,plate_display.ilike.%${escapedPgrest}%`)
           .order("created_at", { ascending: false })
           .limit(limit);
         return (data ?? []).map((v) => ({
@@ -117,15 +107,10 @@ export async function GET(req: NextRequest) {
         if (!data || data.length === 0) return [];
 
         // Resolve customer names for invoices
-        const customerIds = [
-          ...new Set(data.filter((d) => d.customer_id).map((d) => d.customer_id as string)),
-        ];
+        const customerIds = [...new Set(data.filter((d) => d.customer_id).map((d) => d.customer_id as string))];
         const customerNames: Record<string, string> = {};
         if (customerIds.length > 0) {
-          const { data: customers } = await admin
-            .from("customers")
-            .select("id, name")
-            .in("id", customerIds);
+          const { data: customers } = await admin.from("customers").select("id, name").in("id", customerIds);
           for (const c of customers ?? []) {
             customerNames[c.id] = c.name;
           }

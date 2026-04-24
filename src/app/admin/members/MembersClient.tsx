@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -59,7 +60,7 @@ export default function MembersClient() {
     setErr(null);
     try {
       const res = await fetch("/api/admin/members", { cache: "no-store" });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setData(j as MembersData);
     } catch (e: any) {
@@ -85,7 +86,7 @@ export default function MembersClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email: email.trim(), display_name: displayName.trim() || undefined, role: addRole }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) {
         throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
@@ -110,7 +111,7 @@ export default function MembersClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ user_id: userId }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       await fetchMembers();
     } catch (e: any) {
@@ -128,7 +129,7 @@ export default function MembersClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ user_id: userId, role: newRole }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       await fetchMembers();
     } catch (e: any) {

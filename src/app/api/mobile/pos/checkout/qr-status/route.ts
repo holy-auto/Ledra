@@ -2,8 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createMobileClient, resolveMobileCaller } from "@/lib/supabase/mobile";
 import { requireMinRole } from "@/lib/auth/checkRole";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { apiUnauthorized, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiForbidden,
+  apiValidationError,
+  apiNotFound,
+  apiInternalError,
+} from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +54,7 @@ export async function GET(req: NextRequest) {
   }
 
   // テナントの Connect アカウントを取得（セッション参照に必要）
-  const admin = createAdminClient();
+  const { admin } = createTenantScopedAdmin(caller.tenantId);
   const { data: tenantRow } = await admin
     .from("tenants")
     .select("stripe_connect_account_id, stripe_connect_onboarded")
@@ -84,7 +91,7 @@ export async function GET(req: NextRequest) {
     status = "pending";
   }
 
-  return NextResponse.json({
+  return apiJson({
     status,
     payment_intent_id:
       typeof session.payment_intent === "string" ? session.payment_intent : (session.payment_intent?.id ?? null),

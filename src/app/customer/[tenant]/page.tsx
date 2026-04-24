@@ -89,7 +89,7 @@ function toText(val: any): string {
 }
 
 function buildVehicleSummary(info: VehicleInfo) {
-  if (!info) return { title: "車両情報なし", lines: [] as string[], raw: null as any };
+  if (!info) return { title: "車両情報なし", lines: [] as string[], raw: null as VehicleInfo };
 
   const make = pick(info, ["maker", "make", "manufacturer", "brand", "メーカー", "メーカ", "車メーカー"]);
   const model = pick(info, ["model", "car_model", "vehicle_model", "name", "車種", "車名", "モデル"]);
@@ -114,7 +114,7 @@ function buildVehicleSummary(info: VehicleInfo) {
 
 export default function CustomerListPage() {
   const router = useRouter();
-  const params = useParams() as any;
+  const params = useParams<{ tenant: string }>();
   const tenant = useMemo(() => (params?.tenant ?? "").toString(), [params]);
 
   const [rows, setRows] = useState<Row[]>([]);
@@ -145,7 +145,7 @@ export default function CustomerListPage() {
       cache: "no-store",
       credentials: "include",
     });
-    const j = await res.json().catch(() => ({}) as any);
+    const j = await res.json().catch(() => ({}) as Record<string, unknown>);
 
     if (!res.ok) {
       const e = j?.error ?? "unauthorized";
@@ -208,7 +208,7 @@ export default function CustomerListPage() {
       credentials: "include",
     });
     if (!res.ok) return;
-    const j = await res.json().catch(() => ({}) as any);
+    const j = await res.json().catch(() => ({}) as Record<string, unknown>);
     setShops(j.shops ?? []);
   }
 
@@ -218,7 +218,7 @@ export default function CustomerListPage() {
       credentials: "include",
     });
     if (!res.ok) return;
-    const j = await res.json().catch(() => ({}) as any);
+    const j = await res.json().catch(() => ({}) as Record<string, unknown>);
     setInquiries(j.inquiries ?? []);
   }
 
@@ -237,7 +237,7 @@ export default function CustomerListPage() {
           message: inquiryMessage.trim(),
         }),
       });
-      const j = await res.json().catch(() => ({}) as any);
+      const j = await res.json().catch(() => ({}) as Record<string, unknown>);
       if (!res.ok) throw new Error(j?.error ?? "送信に失敗しました");
       setInquiryMsg({ ok: true, text: "お問い合わせを送信しました。" });
       setInquirySubject("");

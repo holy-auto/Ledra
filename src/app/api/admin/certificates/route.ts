@@ -3,7 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { parsePagination } from "@/lib/api/pagination";
 import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
-import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
     }
 
     const headers = { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" };
-    return NextResponse.json({ certificates: certificates ?? [] }, { headers });
+    return apiJson({ certificates: certificates ?? [] }, { headers });
   } catch (e: unknown) {
     return apiInternalError(e, "admin/certificates GET");
   }

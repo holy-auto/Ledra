@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerFull } from "@/lib/api/auth";
 import { apiOk, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { hearingSchema } from "@/lib/template-options/configSchema";
@@ -21,7 +21,12 @@ export async function GET(_req: NextRequest) {
 
     const { data: orders, error } = await supabase
       .from("template_orders")
-      .select("*")
+      // Explicit columns only — omits internal Stripe identifiers
+      // (stripe_payment_intent_id / stripe_invoice_id), internal process
+      // fields (hearing_json / assets_json / assigned_to / notes) and
+      // operational counters (revision_count / max_revisions) that the
+      // admin orders list UI never consumes.
+      .select("id, order_type, status, amount, due_date, completed_at, created_at, updated_at")
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
 
@@ -46,7 +51,7 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerFull(supabase);
     if (!caller) return apiUnauthorized();
 
-    const admin = createAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { order_type, hearing, notes } = parsed.data;
 
     // 金額設定
@@ -81,15 +86,13 @@ export async function POST(req: NextRequest) {
     if (error) throw error;
 
     // ログ記録
-    await admin
-      .from("template_order_logs")
-      .insert({
-        order_id: order.id,
-        action: "status_change",
-        to_status: order.status,
-        actor: caller.userId,
-        message: `オーダーを作成しました（${order_type}）`,
-      });
+    await admin.from("template_order_logs").insert({
+      order_id: order.id,
+      action: "status_change",
+      to_status: order.status,
+      actor: caller.userId,
+      message: `オーダーを作成しました（${order_type}）`,
+    });
 
     return apiOk({ order_id: order.id, status: order.status });
   } catch (e) {

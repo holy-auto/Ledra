@@ -1,4 +1,5 @@
 "use client";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -104,7 +105,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   const fetchCustomers = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/customers", { cache: "no-store" });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (res.ok && j?.customers) {
         setCustomers(j.customers.map((c: any) => ({ id: c.id, name: c.name })));
       }
@@ -114,7 +115,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   const fetchMenuItems = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/menu-items?active_only=true", { cache: "no-store" });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (res.ok && j?.items) {
         setMenuItems(
           j.items.map((m: any) => ({
@@ -132,7 +133,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   const fetchTemplates = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/document-templates", { cache: "no-store" });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (res.ok && j?.templates) {
         setTemplates(j.templates.map((t: any) => ({ id: t.id, name: t.name, doc_type: t.doc_type })));
       }
@@ -216,7 +217,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
           show_bank_info: formShowBankInfo,
         }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setShowForm(false);
       resetForm();
@@ -275,7 +276,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id }),
       });
-      const j = await res.json().catch((): null => null);
+      const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       mutate();
     } catch (e: any) {

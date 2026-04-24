@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
-import { apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     const rlKey = `pos-checkout:${caller.userId || getClientIp(req)}`;
     const rl = await checkRateLimit(rlKey, { limit: 10, windowSec: 60 });
     if (!rl.allowed) {
-      return NextResponse.json({ error: "rate_limited", retry_after: rl.retryAfterSec }, { status: 429 });
+      return apiJson({ error: "rate_limited", retry_after: rl.retryAfterSec }, { status: 429 });
     }
 
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
       return apiInternalError(error, "pos/checkout");
     }
 
-    return NextResponse.json({ ok: true, result: data });
+    return apiJson({ ok: true, result: data });
   } catch (e: unknown) {
     return apiInternalError(e, "pos/checkout");
   }

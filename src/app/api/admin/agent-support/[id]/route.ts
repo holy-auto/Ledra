@@ -1,9 +1,9 @@
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getAdminClient } from "@/lib/api/auth";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
-import { apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -15,7 +15,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
     if (!caller) return apiUnauthorized();
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     const { data: ticket, error } = await admin
       .from("agent_support_tickets")
@@ -37,7 +37,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
       return apiInternalError(msgError, "agent-support [id] GET messages");
     }
 
-    return NextResponse.json({ ticket, messages: messages ?? [] });
+    return apiJson({ ticket, messages: messages ?? [] });
   } catch (e) {
     return apiInternalError(e, "agent-support [id] GET");
   }
@@ -52,7 +52,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const body = await request.json();
-    const admin = getAdminClient();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const allowed = ["status", "priority"];
     const updates: Record<string, unknown> = {};
     for (const key of allowed) {
@@ -76,7 +76,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
       return apiInternalError(error, "agent-support [id] PUT");
     }
 
-    return NextResponse.json({ ticket: data });
+    return apiJson({ ticket: data });
   } catch (e) {
     return apiInternalError(e, "agent-support [id] PUT");
   }
