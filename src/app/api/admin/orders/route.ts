@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
       }
 
       const tenantIds = (memberships ?? []).map((m) => m.tenant_id as string);
-      let tenantMap: Record<string, string> = {};
+      const tenantMap: Record<string, string> = {};
 
       if (tenantIds.length > 0) {
         const { data: tenants } = await supabase.from("tenants").select("id, name").in("id", tenantIds);
@@ -115,7 +115,7 @@ export async function GET(req: NextRequest) {
 
       // 発注元テナント名を付与
       const tenantIds = [...new Set((orders ?? []).map((o) => o.from_tenant_id))];
-      let tenantNameMap: Record<string, string> = {};
+      const tenantNameMap: Record<string, string> = {};
       if (tenantIds.length > 0) {
         const { data: tenants } = await admin.from("tenants").select("id, name").in("id", tenantIds);
         for (const t of tenants ?? []) {
@@ -170,12 +170,12 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const deny = await enforceBilling(req as any, {
+    const deny = await enforceBilling(req, {
       minPlan: "free",
       action: "order_create",
       tenantId: caller.tenantId,
     });
-    if (deny) return deny as any;
+    if (deny) return deny;
 
     const tenantId = caller.tenantId;
 
@@ -232,12 +232,12 @@ export async function PUT(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const deny = await enforceBilling(req as any, {
+    const deny = await enforceBilling(req, {
       minPlan: "free",
       action: "order_update",
       tenantId: caller.tenantId,
     });
-    if (deny) return deny as any;
+    if (deny) return deny;
 
     const tenantId = caller.tenantId;
 
@@ -346,12 +346,12 @@ export async function PATCH(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const deny = await enforceBilling(req as any, {
+    const deny = await enforceBilling(req, {
       minPlan: "free",
       action: "order_accept",
       tenantId: caller.tenantId,
     });
-    if (deny) return deny as any;
+    if (deny) return deny;
 
     const tenantId = caller.tenantId;
 

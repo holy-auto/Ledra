@@ -107,11 +107,7 @@ function toNumericUm(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function flattenMeasurements(
-  report: NexPtgReport,
-  tenantId: string,
-  reportId: string,
-): Array<Record<string, unknown>> {
+function flattenMeasurements(report: NexPtgReport, tenantId: string, reportId: string): Array<Record<string, unknown>> {
   const rows: Array<Record<string, unknown>> = [];
 
   const emit = (places: NexPtgPlace[] | undefined, isInside: boolean) => {
@@ -301,12 +297,10 @@ export async function POST(req: NextRequest) {
         measured_at: toTimestamp(item?.date),
       }));
 
-      const { error: hErr } = await admin
-        .from("thickness_history_items")
-        .upsert(rows, {
-          onConflict: "tenant_id,external_group_id,measured_at,raw_value",
-          ignoreDuplicates: true,
-        });
+      const { error: hErr } = await admin.from("thickness_history_items").upsert(rows, {
+        onConflict: "tenant_id,external_group_id,measured_at,raw_value",
+        ignoreDuplicates: true,
+      });
       if (hErr) return apiInternalError(hErr, "nexptg history upsert");
       historyInserted += rows.length;
     }

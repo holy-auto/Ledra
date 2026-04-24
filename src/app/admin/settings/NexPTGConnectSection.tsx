@@ -121,7 +121,9 @@ export default function NexPTGConnectSection() {
       {/* Revealed key (one-time) */}
       {revealedKey && (
         <div className="rounded-xl border border-warning/30 bg-warning-dim px-4 py-3 space-y-2">
-          <div className="text-xs font-semibold text-warning">⚠ このキーは今回のみ表示されます。必ず控えてください。</div>
+          <div className="text-xs font-semibold text-warning">
+            ⚠ このキーは今回のみ表示されます。必ず控えてください。
+          </div>
           <div className="flex items-center gap-2">
             <code className="flex-1 text-xs font-mono bg-[var(--bg-inset)] border border-border-subtle rounded-lg px-3 py-2 text-secondary break-all">
               {revealedKey}
@@ -149,7 +151,10 @@ export default function NexPTGConnectSection() {
           <li>表示されたキーをコピー（再表示不可のため必ず控える）</li>
           <li>NexPTGアプリで「Synchronization」タブを開く</li>
           <li>URL 欄に上記エンドポイントURLを貼り付け</li>
-          <li>ユーザー名/パスワード欄は空欄のまま、APIキーは <code className="font-mono">x-api-key</code> ヘッダで送信される想定</li>
+          <li>
+            ユーザー名/パスワード欄は空欄のまま、APIキーは <code className="font-mono">x-api-key</code>{" "}
+            ヘッダで送信される想定
+          </li>
           <li>Android: レポート保存時に自動同期 / iOS: 手動で同期ボタンを押下</li>
         </ol>
         <p className="mt-2 text-xs">

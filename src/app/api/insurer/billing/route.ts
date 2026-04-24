@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
 
     // If already has active subscription, redirect to portal instead
     if (insurer.stripe_subscription_id) {
-      let customerId = insurer.stripe_customer_id;
+      const customerId = insurer.stripe_customer_id;
       if (!customerId) {
         return apiValidationError("Stripe顧客情報がありません。サポートにお問い合わせください。");
       }

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import PageHeader from "@/components/ui/PageHeader";
-import CertNewFormWrapper from "./CertNewFormWrapper";
+import CertNewFormWrapper, { type Template, type TemplateSchema } from "./CertNewFormWrapper";
 import { normalizePlanTier } from "@/lib/billing/planFeatures";
 import type { PlanTier } from "@/lib/billing/planFeatures";
 
@@ -28,6 +28,19 @@ export default async function Page({
   const tenantId = mem.tenant_id as string;
 
   // tenantId 確定後は全クエリを並列実行
+  // DB の schema_json は任意 JSON なので、TemplateSchema 互換として扱う
+  // ため Template + category の shape にキャストする。
+  type TemplateRow = Template & { category: string | null; created_at: string | null };
+  type VehicleRow = {
+    id: string;
+    maker: string | null;
+    model: string | null;
+    year: number | null;
+    plate_display: string | null;
+    vin_code: string | null;
+    customer_id: string | null;
+    customer: { id: string; name: string } | null;
+  };
   const [{ data: tenantRow }, { data: templates, error: tplErr }, { data: vehiclesRaw }, brandedTemplateResult] =
     await Promise.all([
       supabase
@@ -39,13 +52,15 @@ export default async function Page({
         .from("templates")
         .select("id, name, schema_json, category, created_at")
         .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
-        .order("created_at", { ascending: false }),
+        .order("created_at", { ascending: false })
+        .returns<TemplateRow[]>(),
       supabase
         .from("vehicles")
         .select("id, maker, model, year, plate_display, vin_code, customer_id, customer:customers(id, name)")
         .eq("tenant_id", tenantId)
         .order("created_at", { ascending: false })
-        .limit(300),
+        .limit(300)
+        .returns<VehicleRow[]>(),
       // ブランドテンプレート確認（2クエリを並列）
       Promise.all([
         (async (): Promise<{ data: { status: string } | null }> => {
@@ -114,20 +129,20 @@ export default async function Page({
       )}
 
       <CertNewFormWrapper
-        vehicles={(vehiclesRaw ?? []) as any[]}
+        vehicles={vehiclesRaw ?? []}
         defaultVehicleId={defaultVehicleId}
         defaultCustomerId={defaultCustomerId}
-        templates={list as any[]}
-        selectedTemplate={selected as any}
+        templates={list}
+        selectedTemplate={selected}
         tenantLogoPath={tenantLogoPath}
         planTier={planTier}
         tid={tid}
         serviceType={
-          (selected as any)?.category === "ppf"
+          selected?.category === "ppf"
             ? "ppf"
-            : (selected as any)?.category === "maintenance"
+            : selected?.category === "maintenance"
               ? "maintenance"
-              : (selected as any)?.category === "body_repair"
+              : selected?.category === "body_repair"
                 ? "body_repair"
                 : undefined
         }

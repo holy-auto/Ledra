@@ -43,10 +43,7 @@ export async function GET(req: NextRequest) {
 
     // Return unverified for non-existent IDs without revealing existence
     if (!cert) {
-      return NextResponse.json(
-        { verified: false },
-        { status: 200, headers: { "cache-control": "no-store" } },
-      );
+      return NextResponse.json({ verified: false }, { status: 200, headers: { "cache-control": "no-store" } });
     }
 
     // Fetch shop name
@@ -57,8 +54,8 @@ export async function GET(req: NextRequest) {
         .select("name, slug")
         .eq("id", cert.tenant_id)
         .limit(1)
-        .maybeSingle();
-      shopName = (tenant as any)?.name ?? (tenant as any)?.slug ?? null;
+        .maybeSingle<{ name: string | null; slug: string | null }>();
+      shopName = tenant?.name ?? tenant?.slug ?? null;
     }
 
     const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/c/${cert.public_id}`;

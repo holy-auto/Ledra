@@ -77,24 +77,23 @@ export async function GET(req: NextRequest) {
         .select("maker, model")
         .eq("id", cert.vehicle_id)
         .limit(1)
-        .maybeSingle();
+        .maybeSingle<{ maker: string | null; model: string | null }>();
       if (vehicle) {
-        vehicleLabel = [
-          (vehicle as any).maker,
-          (vehicle as any).model,
-        ].filter(Boolean).join(" ");
+        vehicleLabel = [vehicle.maker, vehicle.model].filter(Boolean).join(" ");
       }
     }
 
-    const serviceLabel =
-      SERVICE_TYPE_LABELS[(cert.service_type as string) ?? ""] ?? "施工証明";
+    const serviceLabel = SERVICE_TYPE_LABELS[(cert.service_type as string) ?? ""] ?? "施工証明";
     const issuedAt = cert.created_at ? cert.created_at.slice(0, 10) : "不明";
 
     const statusLabel =
-      cert.status === "active" ? "有効" :
-      cert.status === "void" ? "無効" :
-      cert.status === "expired" ? "期限切れ" :
-      String(cert.status ?? "不明");
+      cert.status === "active"
+        ? "有効"
+        : cert.status === "void"
+          ? "無効"
+          : cert.status === "expired"
+            ? "期限切れ"
+            : String(cert.status ?? "不明");
 
     const title = `Ledra 証明書 - ${serviceLabel}`;
 

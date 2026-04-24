@@ -13,7 +13,7 @@ export async function PUT(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as any);
+    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const templateId = body?.template_id ?? null;
 
     if (templateId !== null && typeof templateId !== "string") {

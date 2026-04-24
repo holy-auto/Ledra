@@ -11,10 +11,7 @@ export const dynamic = "force-dynamic";
  * Returns all certificates for a specific customer, ordered by created_at desc.
  * Includes vehicle info and image count per certificate.
  */
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id: customerId } = await params;
     const supabase = await createClient();
@@ -38,7 +35,7 @@ export async function GET(
     const rows = certificates ?? [];
 
     // Fetch image counts per certificate
-    let imageCounts: Record<string, number> = {};
+    const imageCounts: Record<string, number> = {};
     if (rows.length > 0) {
       const certIds = rows.map((c) => c.id);
       const { data: images } = await supabase

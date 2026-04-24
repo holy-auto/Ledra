@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { renderCertificatePdf } from "@/lib/pdfCertificate";
+import { renderCertificatePdf, type CertRow } from "@/lib/pdfCertificate";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -43,9 +43,8 @@ async function handler(req: NextRequest) {
       .single();
 
     const alreadyProcessed = currentJob?.processed_count ?? 0;
-    const resultUrls: Array<
-      { public_id: string; pdf_url: string } | { public_id: string; error: string }
-    > = (currentJob?.result_urls as any[]) ?? [];
+    type BatchPdfResult = { public_id: string; pdf_url: string } | { public_id: string; error: string };
+    const resultUrls: BatchPdfResult[] = (currentJob?.result_urls as BatchPdfResult[] | null) ?? [];
 
     // 未処理分のみ対象
     const remainingIds = public_ids.slice(alreadyProcessed);
@@ -114,16 +113,17 @@ async function handler(req: NextRequest) {
           try {
             const publicUrl = `${baseUrl}/c/${cert.public_id}`;
             const anchors = anchorsByCertId.get((cert as { id: string }).id) ?? [];
-            const pdfBuffer = await renderCertificatePdf(cert as any, publicUrl, anchors);
-            const pdfBytes = new Uint8Array(pdfBuffer as any);
+            // `cert` はここで Supabase select 結果。CertRow は nullable の
+            // 組み合わせが微妙に揃わないので、上位 narrowing が済んでいる
+            // 前提で CertRow として扱う。
+            const pdfBuffer = await renderCertificatePdf(cert as unknown as CertRow, publicUrl, anchors);
+            const pdfBytes = new Uint8Array(pdfBuffer);
 
             const storagePath = `batch-pdf/${tenant_id}/${pid}-${Date.now()}.pdf`;
-            const { error: uploadErr } = await admin.storage
-              .from("certificates")
-              .upload(storagePath, pdfBytes, {
-                contentType: "application/pdf",
-                upsert: true,
-              });
+            const { error: uploadErr } = await admin.storage.from("certificates").upload(storagePath, pdfBytes, {
+              contentType: "application/pdf",
+              upsert: true,
+            });
 
             if (uploadErr) {
               return { public_id: pid, error: "PDF アップロードに失敗しました。" };

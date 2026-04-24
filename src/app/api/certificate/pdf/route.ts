@@ -174,8 +174,8 @@ export async function GET(req: Request) {
     );
   }
 
-  const deny = await enforceBilling(req as any, { minPlan: "free", action: "public_pdf" });
-  if (deny) return deny as any;
+  const deny = await enforceBilling(req, { minPlan: "free", action: "public_pdf" });
+  if (deny) return deny;
   const { searchParams } = new URL(req.url);
   const pid = (searchParams.get("pid") ?? "").trim();
 
@@ -250,7 +250,20 @@ export async function GET(req: Request) {
           .maybeSingle();
 
         if (tplConfig?.config_json) {
-          // Fetch additional fields for PPF support
+          // Fetch additional fields for PPF support. `.maybeSingle<T>()`
+          // propagates the column types so downstream reads don't need
+          // per-field `as any` casts.
+          type FullCertRow = Pick<
+            CertRow,
+            | "ppf_coverage_json"
+            | "service_type"
+            | "coating_products_json"
+            | "warranty_period_end"
+            | "warranty_exclusions"
+            | "current_version"
+            | "maintenance_json"
+            | "body_repair_json"
+          >;
           const { data: fullCert } = await adm2
             .from("certificates")
             .select(
@@ -258,7 +271,7 @@ export async function GET(req: Request) {
             )
             .eq("public_id", pid)
             .limit(1)
-            .maybeSingle();
+            .maybeSingle<FullCertRow>();
 
           const brandedRow: CertRow = {
             public_id: cert.public_id,
@@ -266,19 +279,19 @@ export async function GET(req: Request) {
             vehicle_info_json: cert.vehicle_info_json ?? {},
             content_free_text: cert.content_free_text ?? null,
             content_preset_json: cert.content_preset_json ?? {},
-            coating_products_json: (fullCert?.coating_products_json as any[] | null) ?? null,
-            ppf_coverage_json: (fullCert?.ppf_coverage_json as any[] | null) ?? null,
-            maintenance_json: (fullCert?.maintenance_json as any) ?? null,
-            body_repair_json: (fullCert?.body_repair_json as any) ?? null,
-            service_type: (fullCert?.service_type as string | null) ?? null,
+            coating_products_json: fullCert?.coating_products_json ?? null,
+            ppf_coverage_json: fullCert?.ppf_coverage_json ?? null,
+            maintenance_json: fullCert?.maintenance_json ?? null,
+            body_repair_json: fullCert?.body_repair_json ?? null,
+            service_type: fullCert?.service_type ?? null,
             expiry_type: cert.expiry_type ?? null,
             expiry_value: cert.expiry_value ?? null,
-            warranty_period_end: (fullCert?.warranty_period_end as string | null) ?? null,
-            warranty_exclusions: (fullCert?.warranty_exclusions as string | null) ?? null,
+            warranty_period_end: fullCert?.warranty_period_end ?? null,
+            warranty_exclusions: fullCert?.warranty_exclusions ?? null,
             logo_asset_path: cert.logo_asset_path ?? null,
             created_at: cert.created_at ?? new Date().toISOString(),
             tenant_custom_domain: cert.tenant_custom_domain,
-            current_version: (fullCert?.current_version as number | null) ?? null,
+            current_version: fullCert?.current_version ?? null,
           };
 
           const brandedBuf = await renderBrandedCertificatePdf(
@@ -287,14 +300,9 @@ export async function GET(req: Request) {
             tplConfig.config_json as TemplateConfig,
           );
 
-          const ab = (brandedBuf as any).buffer
-            ? (brandedBuf as any).buffer.slice(
-                (brandedBuf as any).byteOffset ?? 0,
-                ((brandedBuf as any).byteOffset ?? 0) + (brandedBuf as any).byteLength,
-              )
-            : brandedBuf;
-
-          return new NextResponse(ab as any, {
+          // Copy out of Node's shared Buffer pool before handing to the
+          // network layer, so later allocations can't overwrite our bytes.
+          return new NextResponse(new Uint8Array(brandedBuf), {
             status: 200,
             headers: {
               "Content-Type": "application/pdf",
@@ -315,11 +323,9 @@ export async function GET(req: Request) {
 
   const buf = await renderToBuffer(PdfDocEl(cert, publicUrl, qrDataUrl));
 
-  const ab = (buf as any).buffer
-    ? (buf as any).buffer.slice((buf as any).byteOffset ?? 0, ((buf as any).byteOffset ?? 0) + (buf as any).byteLength)
-    : buf;
-
-  return new NextResponse(ab as any, {
+  // See branded-template path above: detach from Node's shared Buffer pool
+  // before sending, so the response body bytes are stable.
+  return new NextResponse(new Uint8Array(buf), {
     status: 200,
     headers: {
       "Content-Type": "application/pdf",

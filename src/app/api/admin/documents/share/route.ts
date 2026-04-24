@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as any);
+    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const documentId = (body?.document_id ?? "").trim();
     const channel = (body?.channel ?? "").trim() as Channel;
     const recipient = (body?.recipient ?? "").trim();

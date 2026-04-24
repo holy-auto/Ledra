@@ -6,7 +6,7 @@ import { useRouter, useParams, useSearchParams } from "next/navigation";
 
 export default function CustomerLoginPage() {
   const router = useRouter();
-  const params = useParams() as any;
+  const params = useParams<{ tenant: string }>();
   const tenant = useMemo(() => (params?.tenant ?? "").toString(), [params]);
 
   const [email, setEmail] = useState("");

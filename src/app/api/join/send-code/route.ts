@@ -85,7 +85,7 @@ export async function POST(req: Request) {
     return apiValidationError("invalid JSON");
   }
 
-  const parsed = emailSchema.safeParse((body as any)?.email);
+  const parsed = emailSchema.safeParse((body as { email?: unknown } | null)?.email);
   if (!parsed.success) {
     return apiValidationError("有効なメールアドレスを入力してください");
   }

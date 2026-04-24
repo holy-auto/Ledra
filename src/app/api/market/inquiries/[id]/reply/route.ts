@@ -16,7 +16,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const { id: inquiryId } = await params;
     const admin = createAdminClient();
-    const body = await req.json().catch(() => ({}) as any);
+    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
 
     const message = (body?.message ?? "").trim();
     const senderType = (body?.sender_type ?? "").trim();
@@ -68,14 +68,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     // Notify buyer via email when seller replies (non-blocking)
     if (senderType === "seller") {
+      type InquiryWithRelations = {
+        buyer_email: string | null;
+        buyer_name: string | null;
+        vehicle_id: string | null;
+        market_vehicles: {
+          maker: string | null;
+          model: string | null;
+          tenants: { name: string | null } | null;
+        } | null;
+      };
       try {
         const { data: fullInquiry } = await admin
           .from("market_inquiries")
           .select("buyer_email, buyer_name, vehicle_id, market_vehicles(maker, model, tenants(name))")
           .eq("id", inquiryId)
-          .single();
-        const buyerEmail = (fullInquiry as any)?.buyer_email;
-        const vehicle = (fullInquiry as any)?.market_vehicles;
+          .single<InquiryWithRelations>();
+        const buyerEmail = fullInquiry?.buyer_email;
+        const vehicle = fullInquiry?.market_vehicles;
         const sellerName = vehicle?.tenants?.name ?? "出品者";
         const vehicleLabel = [vehicle?.maker, vehicle?.model].filter(Boolean).join(" ") || "車両";
         if (buyerEmail) {

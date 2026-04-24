@@ -32,7 +32,7 @@ export async function POST(req: Request) {
   }
 
   const deny = await enforceBilling(req, { minPlan: "free", action: "create", tenantId: caller.tenantId });
-  if (deny) return deny as any;
+  if (deny) return deny;
 
   // ── 月間証明書発行上限チェック ──
   try {

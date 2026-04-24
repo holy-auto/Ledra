@@ -3,13 +3,7 @@ import { randomBytes } from "node:crypto";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
-import {
-  apiUnauthorized,
-  apiForbidden,
-  apiValidationError,
-  apiInternalError,
-  apiOk,
-} from "@/lib/api/response";
+import { apiUnauthorized, apiForbidden, apiValidationError, apiInternalError, apiOk } from "@/lib/api/response";
 
 /**
  * テナントの外部APIキー（tenants.external_api_key）管理エンドポイント。
@@ -41,11 +35,7 @@ export async function GET() {
     if (!requirePermission(caller, "settings:view")) return apiForbidden();
 
     const admin = getSupabaseAdmin();
-    const { data, error } = await admin
-      .from("tenants")
-      .select("external_api_key")
-      .eq("id", caller.tenantId)
-      .single();
+    const { data, error } = await admin.from("tenants").select("external_api_key").eq("id", caller.tenantId).single();
 
     if (error) return apiInternalError(error, "external-api-key GET");
 
@@ -73,10 +63,7 @@ export async function POST(req: NextRequest) {
 
     if (action === "issue") {
       const newKey = generateApiKey();
-      const { error } = await admin
-        .from("tenants")
-        .update({ external_api_key: newKey })
-        .eq("id", caller.tenantId);
+      const { error } = await admin.from("tenants").update({ external_api_key: newKey }).eq("id", caller.tenantId);
 
       if (error) return apiInternalError(error, "external-api-key issue");
 
@@ -85,10 +72,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "revoke") {
-      const { error } = await admin
-        .from("tenants")
-        .update({ external_api_key: null })
-        .eq("id", caller.tenantId);
+      const { error } = await admin.from("tenants").update({ external_api_key: null }).eq("id", caller.tenantId);
 
       if (error) return apiInternalError(error, "external-api-key revoke");
       return apiOk({ status: "not_set" });

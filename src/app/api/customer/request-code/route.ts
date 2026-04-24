@@ -53,7 +53,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json().catch(() => ({}) as any);
+    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
 
     const tenant_slug = (body.tenant_slug ?? "").toString().trim();
     const emailRaw = (body.email ?? "").toString();

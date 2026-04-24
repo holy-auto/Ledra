@@ -242,9 +242,7 @@ export default async function ThicknessReportDetailPage({
           {(report.brand || report.model) && (
             <div>
               <dt className="text-xs text-muted">車両</dt>
-              <dd className="text-primary">
-                {[report.brand, report.model, report.year].filter(Boolean).join(" ")}
-              </dd>
+              <dd className="text-primary">{[report.brand, report.model, report.year].filter(Boolean).join(" ")}</dd>
             </div>
           )}
           {report.vin && (
@@ -380,15 +378,7 @@ export default async function ThicknessReportDetailPage({
   );
 }
 
-function MeasurementTable({
-  placeId,
-  groups,
-  unit,
-}: {
-  placeId: string;
-  groups: SectionGroup[];
-  unit: string;
-}) {
+function MeasurementTable({ placeId, groups, unit }: { placeId: string; groups: SectionGroup[]; unit: string }) {
   return (
     <div>
       <div className="mb-2 text-sm font-semibold text-secondary">{PLACE_JA[placeId] ?? placeId}</div>

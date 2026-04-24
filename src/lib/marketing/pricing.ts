@@ -141,11 +141,13 @@ export const TEMPLATE_FAQ = [
   },
   {
     question: "解約した場合、テンプレートはどうなりますか？",
-    answer: "解約後はLedra標準テンプレートに切り替わります。カスタムテンプレートのデータは30日間保持され、再契約時に復元可能です。",
+    answer:
+      "解約後はLedra標準テンプレートに切り替わります。カスタムテンプレートのデータは30日間保持され、再契約時に復元可能です。",
   },
   {
     question: "証明書の必須項目を非表示にできますか？",
-    answer: "いいえ。お客様名・車両情報・施工内容・Ledra認証マーク等の必須項目は、証明書としての信頼性を担保するため非表示にできません。",
+    answer:
+      "いいえ。お客様名・車両情報・施工内容・Ledra認証マーク等の必須項目は、証明書としての信頼性を担保するため非表示にできません。",
   },
   {
     question: "保証文言の内容はチェックしてもらえますか？",
@@ -186,7 +188,13 @@ export const LAUNCH_CAMPAIGN = {
 
 /** プラン別機能比較テーブルデータ */
 export const FEATURE_COMPARISON = [
-  { feature: "証明書発行数", free: PLANS.free.certLimitShort, starter: PLANS.starter.certLimitShort, standard: PLANS.standard.certLimitShort, pro: PLANS.pro.certLimitShort },
+  {
+    feature: "証明書発行数",
+    free: PLANS.free.certLimitShort,
+    starter: PLANS.starter.certLimitShort,
+    standard: PLANS.standard.certLimitShort,
+    pro: PLANS.pro.certLimitShort,
+  },
   { feature: "店舗数", free: "1", starter: "1", standard: "2", pro: "5" },
   { feature: "ユーザー数", free: "1", starter: "3", standard: "7", pro: "15" },
   { feature: "テンプレート", free: "基本", starter: "基本+ロゴ", standard: "カスタム", pro: "フルカスタム" },

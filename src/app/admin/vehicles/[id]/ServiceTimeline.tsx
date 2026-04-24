@@ -23,13 +23,7 @@ export type TimelineEvent = {
   /** イベント種別ラベル (UI バッジ) */
   kindLabel: string;
   /** バッジ色調 */
-  kindVariant:
-    | "certificate"
-    | "reservation"
-    | "void"
-    | "nfc"
-    | "thickness"
-    | "other";
+  kindVariant: "certificate" | "reservation" | "void" | "nfc" | "thickness" | "other";
   /** タイトル (一行要約) */
   title: string;
   /** 補足説明 */
@@ -49,11 +43,7 @@ const kindClass: Record<TimelineEvent["kindVariant"], string> = {
   other: "bg-inset text-secondary border-border-default",
 };
 
-export default function ServiceTimeline({
-  events,
-}: {
-  events: TimelineEvent[];
-}) {
+export default function ServiceTimeline({ events }: { events: TimelineEvent[] }) {
   if (events.length === 0) {
     return (
       <div className="rounded-xl border border-border-default bg-base p-8 text-center text-sm text-muted">
@@ -77,18 +67,10 @@ export default function ServiceTimeline({
               >
                 {ev.kindLabel}
               </span>
-              <span className="text-xs text-muted">
-                {formatDateTime(ev.occurredAt)}
-              </span>
+              <span className="text-xs text-muted">{formatDateTime(ev.occurredAt)}</span>
             </div>
-            <div className="mt-2 text-sm font-medium text-primary">
-              {ev.title}
-            </div>
-            {ev.description && (
-              <div className="mt-1 text-sm text-secondary whitespace-pre-wrap">
-                {ev.description}
-              </div>
-            )}
+            <div className="mt-2 text-sm font-medium text-primary">{ev.title}</div>
+            {ev.description && <div className="mt-1 text-sm text-secondary whitespace-pre-wrap">{ev.description}</div>}
           </div>
         );
 

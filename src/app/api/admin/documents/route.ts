@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as any);
+    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const docType = (body?.doc_type ?? "").trim() as DocType;
     if (!DOC_TYPES[docType]) {
       return apiValidationError("invalid doc_type");
@@ -255,7 +255,7 @@ export async function PUT(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as any);
+    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const id = (body?.id ?? "").trim();
     if (!id) return apiValidationError("id is required");
 
@@ -324,7 +324,7 @@ export async function DELETE(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as any);
+    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const id = (body?.id ?? "").trim();
     if (!id) return apiValidationError("id is required");
 

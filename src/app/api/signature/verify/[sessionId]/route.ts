@@ -100,10 +100,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ sess
     });
 
     // Supabase リレーションクエリは配列で返るため、先頭要素を取得する
-    const certRaw = session.certificates;
+    const certRaw = session.certificates as { public_id?: string | null } | Array<{ public_id?: string | null }> | null;
     const certPublicId: string | null = Array.isArray(certRaw)
       ? (certRaw[0]?.public_id ?? null)
-      : ((certRaw as any)?.public_id ?? null);
+      : (certRaw?.public_id ?? null);
 
     return apiOk({
       is_valid: isValid,

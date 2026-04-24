@@ -24,7 +24,7 @@ export async function POST(_request: NextRequest, ctx: RouteContext) {
     // Fetch material
     const { data: material, error: matErr } = await supabase
       .from("agent_materials")
-      .select("id, storage_path, file_name, is_published")
+      .select("id, storage_path, file_name, is_published, download_count")
       .eq("id", id)
       .eq("is_published", true)
       .single();
@@ -54,7 +54,7 @@ export async function POST(_request: NextRequest, ctx: RouteContext) {
       }),
       admin
         .from("agent_materials")
-        .update({ download_count: (material as any).download_count + 1 })
+        .update({ download_count: (material.download_count ?? 0) + 1 })
         .eq("id", id),
     ]).catch(() => {
       // download tracking is best-effort
