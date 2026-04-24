@@ -314,18 +314,25 @@ export async function PUT(req: NextRequest) {
       updateData.client_approved_at = new Date().toISOString();
     }
 
+    // UPDATE にも tenant 検証フィルタをコピー (TOCTOU 対策 / README セキュリティお約束 #2)。
+    // さらに status 固定で楽観ロック (遷移中に別リクエストが先行していたら no-op)。
     const { data, error } = await admin
       .from("job_orders")
       .update(updateData)
       .eq("id", id)
+      .eq("status", current.status)
+      .or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`)
       .select(
         "id, public_id, from_tenant_id, to_tenant_id, title, description, category, budget, deadline, vehicle_id, status, cancelled_by, cancel_reason, vendor_completed_at, client_approved_at, created_at, updated_at",
       )
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error("[orders] update_failed:", error.message, error.details, error.hint);
       return apiInternalError(error, "orders update");
+    }
+    if (!data) {
+      return apiNotFound("order_not_found_or_conflict");
     }
 
     // 監査ログ記録（fire-and-forget、失敗しても本体処理は成功扱い）
@@ -402,6 +409,8 @@ export async function PATCH(req: NextRequest) {
     }
 
     // 受注: to_tenant_id をセット + ステータスを accepted に
+    // UPDATE 側に「自テナント以外」「pending」「未受注」の条件を全てコピーし TOCTOU を潰す。
+    // 競合する受注リクエストが同時に走っても、DB レベルで先着 1 件だけ成功する。
     const { data, error } = await admin
       .from("job_orders")
       .update({
@@ -410,14 +419,20 @@ export async function PATCH(req: NextRequest) {
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
+      .eq("status", "pending")
+      .is("to_tenant_id", null)
+      .neq("from_tenant_id", tenantId)
       .select(
         "id, public_id, from_tenant_id, to_tenant_id, title, description, category, budget, deadline, vehicle_id, status, created_at, updated_at",
       )
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error("[orders] accept_failed:", error.message);
       return apiInternalError(error, "orders accept");
+    }
+    if (!data) {
+      return NextResponse.json({ error: "この案件は既に受注済みか、受注できません" }, { status: 409 });
     }
 
     // 監査ログ

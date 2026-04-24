@@ -7,15 +7,17 @@ import { verifyCronRequest } from "@/lib/cronAuth";
 export const runtime = "nodejs";
 
 /**
- * POST /api/cron/cleanup-insurer-logs
+ * GET /api/cron/cleanup-insurer-logs
  * Scheduled cleanup of old logs:
  * - insurer_access_logs: 90 days
  * - insurer_email_verifications: 24 hours
  * - admin_audit_logs: 365 days
  *
  * Protected by verifyCronRequest (HMAC-SHA256 or Bearer CRON_SECRET).
+ * Vercel Cron dispatches GET, so this handler must accept GET to be
+ * invoked automatically (see vercel.json crons entry).
  */
-export async function POST(req: NextRequest) {
+export async function GET(req: NextRequest) {
   const { authorized, error: authError } = verifyCronRequest(req);
   if (!authorized) {
     return apiUnauthorized(authError);
