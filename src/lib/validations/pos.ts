@@ -44,11 +44,38 @@ export const posCheckoutSessionSchema = z.object({
   description: z.string().trim().max(500).optional(),
 });
 
-export const posTerminalPaymentIntentSchema = z.object({
-  amount: z.coerce.number().int().min(1).max(999_999_999),
+export const posQrSessionSchema = z.object({
+  amount: z.coerce.number().int().min(1, "invalid_amount").max(999_999_999, "invalid_amount"),
+  reservation_id: z.string().uuid("reservation_id and tenant_id are required"),
+  tenant_id: z.string().uuid("reservation_id and tenant_id are required"),
+  store_id: z
+    .string()
+    .uuid()
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+});
+
+export const posTerminalCaptureSchema = z.object({
+  payment_intent_id: z
+    .string()
+    .trim()
+    .min(1, "invalid_payment_intent_id")
+    .max(200)
+    .refine((v) => v.startsWith("pi_"), { message: "invalid_payment_intent_id" }),
   reservation_id: nullableUuid,
   customer_id: nullableUuid,
+  store_id: nullableUuid,
+  register_session_id: nullableUuid,
+  items_json: z.any().optional(),
+  tax_rate: z.coerce.number().int().min(0).max(100).default(10),
+  note: nullableText(500),
+});
+
+export const posTerminalPaymentIntentSchema = z.object({
+  amount: z.coerce.number().int().min(1, "invalid_amount").max(999_999_999, "invalid_amount"),
+  currency: z.string().trim().min(1).max(10).default("jpy"),
   description: z.string().trim().max(500).optional(),
+  metadata: z.record(z.string(), z.string()).optional(),
 });
 
 export const posTerminalProcessSchema = z.object({

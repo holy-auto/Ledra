@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { notifyDealStatusChanged } from "@/lib/market/email";
 import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { dealStatusUpdateSchema } from "@/lib/validations/market";
 
 export const dynamic = "force-dynamic";
 
@@ -22,12 +23,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const { id: dealId } = await params;
     const { admin } = createTenantScopedAdmin(caller.tenantId);
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-
-    const newStatus = (body?.status ?? "").trim();
-    if (!newStatus) {
-      return apiValidationError("status is required");
+    const parsed = dealStatusUpdateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
+    const newStatus = parsed.data.status;
 
     // Fetch current deal
     const { data: deal, error: fetchErr } = await admin
@@ -52,8 +52,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       status: newStatus,
       updated_at: new Date().toISOString(),
     };
-    if (body.agreed_price !== undefined) updates.agreed_price = body.agreed_price;
-    if (body.note !== undefined) updates.note = body.note;
+    if (parsed.data.agreed_price !== undefined) updates.agreed_price = parsed.data.agreed_price;
+    if (parsed.data.note !== undefined) updates.note = parsed.data.note;
 
     // Scope the UPDATE by seller_tenant_id so no race between the
     // select above and the write can touch another tenant's deal.

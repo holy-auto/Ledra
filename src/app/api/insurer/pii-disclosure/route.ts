@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiInternalError, apiJson, apiUnauthorized, apiValidationError } from "@/lib/api/response";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import { insurerPiiDisclosureSchema } from "@/lib/validations/insurer";
 
 export const runtime = "nodejs";
 
@@ -46,15 +47,11 @@ export async function POST(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("Invalid JSON");
+  const parsed = insurerPiiDisclosureSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
-
-  const { certificate_id, reason } = body as { certificate_id?: string; reason?: string };
-  if (!certificate_id) return apiValidationError("Missing certificate_id");
+  const { certificate_id, reason } = parsed.data;
 
   const { admin } = createInsurerScopedAdmin(caller.insurerId);
 

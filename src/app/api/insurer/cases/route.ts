@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
+import { insurerCaseCreateSchema } from "@/lib/validations/insurer-case";
 
 export const runtime = "nodejs";
 
@@ -118,34 +119,11 @@ export async function POST(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("Invalid JSON body.");
+  const parsed = insurerCaseCreateSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
-
-  const {
-    title,
-    description,
-    certificate_id,
-    vehicle_id,
-    priority,
-    category,
-    tenant_id: bodyTenantId,
-  } = body as {
-    title?: string;
-    description?: string;
-    certificate_id?: string;
-    vehicle_id?: string;
-    priority?: string;
-    category?: string;
-    tenant_id?: string;
-  };
-
-  if (!title || typeof title !== "string" || title.trim().length === 0) {
-    return apiValidationError("title is required.");
-  }
+  const { title, description, certificate_id, vehicle_id, priority, category, tenant_id: bodyTenantId } = parsed.data;
 
   const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
@@ -182,7 +160,7 @@ export async function POST(req: NextRequest) {
 
     const insertData: Record<string, unknown> = {
       insurer_id: caller.insurerId,
-      title: title.trim(),
+      title,
       created_by: caller.userId,
     };
 

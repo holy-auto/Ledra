@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { sendCaseStatusNotification } from "@/lib/insurer/notifications";
+import { insurerCaseUpdateSchema } from "@/lib/validations/insurer-case";
 
 export const runtime = "nodejs";
 
@@ -74,11 +75,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
   const { id } = await ctx.params;
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("Invalid JSON body.");
+  const parsed = insurerCaseUpdateSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
 
   const { admin } = createInsurerScopedAdmin(caller.insurerId);
@@ -96,14 +95,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (fetchErr) return apiValidationError(fetchErr.message);
     if (!existing) return apiNotFound("ケースが見つかりません。");
 
-    // Build update payload with allowed fields only
-    const allowedFields = ["title", "description", "status", "priority", "category", "assigned_to"] as const;
-
     const updateData: Record<string, unknown> = {};
-    for (const field of allowedFields) {
-      if (field in body) {
-        updateData[field] = body[field];
-      }
+    for (const [k, v] of Object.entries(parsed.data)) {
+      if (v !== undefined) updateData[k] = v;
     }
 
     if (Object.keys(updateData).length === 0) {

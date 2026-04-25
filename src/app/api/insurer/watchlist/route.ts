@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
+import { insurerWatchlistCreateSchema } from "@/lib/validations/insurer";
 
 export const runtime = "nodejs";
 
@@ -100,25 +101,11 @@ export async function POST(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("Invalid JSON body.");
+  const parsed = insurerWatchlistCreateSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
-
-  const { type, target_id } = body as {
-    type?: string;
-    target_id?: string;
-  };
-
-  const validTypes = ["certificate", "vehicle"];
-  if (!type || !validTypes.includes(type)) {
-    return apiValidationError("type must be 'certificate' or 'vehicle'.");
-  }
-  if (!target_id) {
-    return apiValidationError("target_id is required.");
-  }
+  const { type, target_id } = parsed.data;
 
   const { admin } = createInsurerScopedAdmin(caller.insurerId);
 

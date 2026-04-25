@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createMobileClient, resolveMobileCaller } from "@/lib/supabase/mobile";
 import { requireMinRole } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { VALID_PAYMENT_METHODS } from "@/types/pos-constants";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { posCheckoutSchema } from "@/lib/validations/pos";
 
 export const dynamic = "force-dynamic";
 
@@ -29,40 +29,25 @@ export async function POST(req: NextRequest) {
     const limited = await checkRateLimit(req, "mobile_pos", caller.userId);
     if (limited) return limited;
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-
-    // amount は必須 + 範囲チェック
-    const amount = parseInt(String(body?.amount ?? 0), 10);
-    if (!amount || amount < 1 || amount > 999_999_999) {
-      return apiValidationError("invalid_amount");
+    const parsed = posCheckoutSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
+    const input = parsed.data;
 
-    // tax_rate バリデーション (0-100)
-    const taxRate = parseInt(String(body?.tax_rate ?? 10), 10);
-    if (isNaN(taxRate) || taxRate < 0 || taxRate > 100) {
-      return apiValidationError("invalid_tax_rate");
-    }
-
-    // payment_method バリデーション
-    const paymentMethod = String(body?.payment_method ?? "cash");
-    if (!VALID_PAYMENT_METHODS.includes(paymentMethod)) {
-      return apiValidationError("invalid_payment_method");
-    }
-
-    // RPC呼び出し
     const { data, error } = await client.rpc("pos_checkout", {
       p_tenant_id: caller.tenantId,
-      p_reservation_id: String(body?.reservation_id ?? "").trim() || null,
-      p_customer_id: String(body?.customer_id ?? "").trim() || null,
-      p_store_id: String(body?.store_id ?? "").trim() || null,
-      p_register_session_id: String(body?.register_session_id ?? "").trim() || null,
-      p_payment_method: paymentMethod,
-      p_amount: amount,
-      p_received_amount: body?.received_amount != null ? parseInt(String(body.received_amount), 10) : null,
-      p_items_json: body?.items_json ?? [],
-      p_tax_rate: taxRate,
-      p_note: String(body?.note ?? "").trim() || null,
-      p_create_receipt: body?.create_receipt !== false,
+      p_reservation_id: input.reservation_id,
+      p_customer_id: input.customer_id,
+      p_store_id: input.store_id,
+      p_register_session_id: input.register_session_id,
+      p_payment_method: input.payment_method,
+      p_amount: input.amount,
+      p_received_amount: input.received_amount ?? null,
+      p_items_json: input.items_json ?? [],
+      p_tax_rate: input.tax_rate,
+      p_note: input.note,
+      p_create_receipt: input.create_receipt !== false,
       p_user_id: caller.userId,
     });
 

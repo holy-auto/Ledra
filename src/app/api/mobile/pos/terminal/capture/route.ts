@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import Stripe from "stripe";
 import { createMobileClient, resolveMobileCaller } from "@/lib/supabase/mobile";
 import { requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { posTerminalCaptureSchema } from "@/lib/validations/pos";
 
 export const dynamic = "force-dynamic";
 
@@ -28,12 +29,12 @@ export async function POST(req: NextRequest) {
       return apiForbidden();
     }
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-
-    const paymentIntentId = String(body?.payment_intent_id ?? "").trim();
-    if (!paymentIntentId || !paymentIntentId.startsWith("pi_")) {
-      return apiValidationError("invalid_payment_intent_id");
+    const parsed = posTerminalCaptureSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
+    const input = parsed.data;
+    const paymentIntentId = input.payment_intent_id;
 
     // テナントのStripe Connectアカウントを取得
     const { admin } = createTenantScopedAdmin(caller.tenantId);
@@ -62,16 +63,16 @@ export async function POST(req: NextRequest) {
     // pos_checkout RPC で支払記録 + 領収書作成
     const { data, error } = await client.rpc("pos_checkout", {
       p_tenant_id: caller.tenantId,
-      p_reservation_id: String(body?.reservation_id ?? "").trim() || null,
-      p_customer_id: String(body?.customer_id ?? "").trim() || null,
-      p_store_id: String(body?.store_id ?? "").trim() || null,
-      p_register_session_id: String(body?.register_session_id ?? "").trim() || null,
+      p_reservation_id: input.reservation_id,
+      p_customer_id: input.customer_id,
+      p_store_id: input.store_id,
+      p_register_session_id: input.register_session_id,
       p_payment_method: "card",
       p_amount: pi.amount,
       p_received_amount: pi.amount,
-      p_items_json: body?.items_json ?? [],
-      p_tax_rate: parseInt(String(body?.tax_rate ?? 10), 10),
-      p_note: String(body?.note ?? "").trim() || null,
+      p_items_json: input.items_json ?? [],
+      p_tax_rate: input.tax_rate,
+      p_note: input.note,
       p_create_receipt: true,
       p_user_id: caller.userId,
     });

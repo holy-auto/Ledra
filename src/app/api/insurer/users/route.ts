@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import {
@@ -9,6 +8,7 @@ import {
   apiValidationError,
   apiNotFound,
 } from "@/lib/api/response";
+import { insurerUserInviteSchema, insurerUserUpdateSchema, insurerUserDeleteSchema } from "@/lib/validations/insurer";
 
 export const runtime = "nodejs";
 
@@ -79,20 +79,11 @@ export async function POST(req: Request) {
     if (!caller) return apiUnauthorized();
     if (caller.role !== "admin") return apiForbidden("管理者のみユーザーを招待できます。");
 
-    let body: Record<string, unknown>;
-    try {
-      body = await req.json();
-    } catch {
-      return apiValidationError("invalid JSON");
+    const parsed = insurerUserInviteSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-
-    const { email, role, display_name } = body as { email?: string; role?: string; display_name?: string };
-    if (!email || typeof email !== "string") {
-      return apiValidationError("メールアドレスは必須です。");
-    }
-    if (!role || !["admin", "viewer", "auditor"].includes(role)) {
-      return apiValidationError("ロールは admin / viewer / auditor のいずれかを指定してください。");
-    }
+    const { email, role, display_name } = parsed.data;
 
     const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
@@ -201,21 +192,11 @@ export async function PATCH(req: Request) {
     if (!caller) return apiUnauthorized();
     if (caller.role !== "admin") return apiForbidden("管理者のみユーザー管理が可能です。");
 
-    let body: Record<string, unknown>;
-    try {
-      body = await req.json();
-    } catch {
-      return apiValidationError("invalid JSON");
+    const parsed = insurerUserUpdateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-
-    const { insurer_user_id, role, is_active } = body as {
-      insurer_user_id?: string;
-      role?: string;
-      is_active?: boolean;
-    };
-    if (!insurer_user_id) {
-      return apiValidationError("insurer_user_id is required");
-    }
+    const { insurer_user_id, role, is_active } = parsed.data;
 
     const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
@@ -242,12 +223,8 @@ export async function PATCH(req: Request) {
     }
 
     const updates: Record<string, unknown> = {};
-    if (role !== undefined && ["admin", "viewer", "auditor"].includes(role)) {
-      updates.role = role;
-    }
-    if (is_active !== undefined && typeof is_active === "boolean") {
-      updates.is_active = is_active;
-    }
+    if (role !== undefined) updates.role = role;
+    if (is_active !== undefined) updates.is_active = is_active;
 
     if (Object.keys(updates).length === 0) {
       return apiValidationError("更新するフィールドがありません。");
@@ -282,17 +259,11 @@ export async function DELETE(req: Request) {
     if (!caller) return apiUnauthorized();
     if (caller.role !== "admin") return apiForbidden("管理者のみユーザー管理が可能です。");
 
-    let body: Record<string, unknown>;
-    try {
-      body = await req.json();
-    } catch {
-      return apiValidationError("invalid JSON");
+    const parsed = insurerUserDeleteSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-
-    const { insurer_user_id } = body as { insurer_user_id?: string };
-    if (!insurer_user_id) {
-      return apiValidationError("insurer_user_id is required");
-    }
+    const { insurer_user_id } = parsed.data;
 
     const { admin } = createInsurerScopedAdmin(caller.insurerId);
 

@@ -14,13 +14,28 @@
  */
 
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiError, apiUnauthorized } from "@/lib/api/response";
+import { apiOk, apiError, apiUnauthorized, apiValidationError } from "@/lib/api/response";
 import { createSignatureSession, getExistingPendingSession } from "@/lib/signature/session";
 import { generateCertificatePdfBytes } from "@/lib/signature/pdfUtils";
 import { escapeHtml } from "@/lib/sanitize";
-import type { SignatureRequestBody } from "@/lib/signature/types";
+
+const signatureRequestSchema = z.object({
+  certificate_id: z.string().uuid("certificate_id は必須です"),
+  signer_name: z.string().trim().max(100).optional(),
+  signer_email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email()
+    .max(254)
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+  signer_phone: z.string().trim().max(40).optional(),
+  notification_method: z.enum(["line", "email", "sms"]).optional(),
+});
 
 async function sendSignatureRequestEmail(params: {
   to: string;
@@ -84,16 +99,11 @@ export async function POST(req: NextRequest) {
   const caller = await resolveCallerWithRole(supabase);
   if (!caller) return apiUnauthorized();
 
-  const body: SignatureRequestBody = await req.json();
-  const { certificate_id, signer_name, signer_email, signer_phone, notification_method } = body;
-
-  if (!certificate_id) {
-    return apiError({
-      code: "validation_error",
-      message: "certificate_id は必須です",
-      status: 400,
-    });
+  const parsed = signatureRequestSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
+  const { certificate_id, signer_name, signer_email, signer_phone, notification_method } = parsed.data;
 
   // 2. 証明書の存在確認・テナント境界チェック
   const { data: cert, error: certError } = await supabase

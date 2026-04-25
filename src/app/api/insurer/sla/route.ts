@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
+import { insurerSlaUpdateSchema } from "@/lib/validations/insurer";
 
 export const runtime = "nodejs";
 
@@ -125,42 +126,17 @@ export async function PATCH(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("Invalid JSON body.");
+  const parsed = insurerSlaUpdateSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
+  const { urgent, high, normal, low } = parsed.data;
 
-  const { urgent, high, normal, low } = body as {
-    urgent?: number;
-    high?: number;
-    normal?: number;
-    low?: number;
-  };
-
-  // Validate: all must be positive numbers
   const updates: Record<string, number> = {};
-  if (urgent !== undefined) {
-    if (typeof urgent !== "number" || urgent <= 0) return apiValidationError("urgent must be a positive number.");
-    updates.urgent_hours = urgent;
-  }
-  if (high !== undefined) {
-    if (typeof high !== "number" || high <= 0) return apiValidationError("high must be a positive number.");
-    updates.high_hours = high;
-  }
-  if (normal !== undefined) {
-    if (typeof normal !== "number" || normal <= 0) return apiValidationError("normal must be a positive number.");
-    updates.normal_hours = normal;
-  }
-  if (low !== undefined) {
-    if (typeof low !== "number" || low <= 0) return apiValidationError("low must be a positive number.");
-    updates.low_hours = low;
-  }
-
-  if (Object.keys(updates).length === 0) {
-    return apiValidationError("At least one SLA value must be provided.");
-  }
+  if (urgent !== undefined) updates.urgent_hours = urgent;
+  if (high !== undefined) updates.high_hours = high;
+  if (normal !== undefined) updates.normal_hours = normal;
+  if (low !== undefined) updates.low_hours = low;
 
   const { admin } = createInsurerScopedAdmin(caller.insurerId);
 

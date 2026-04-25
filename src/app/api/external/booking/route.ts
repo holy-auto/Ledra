@@ -1,10 +1,44 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiInternalError, apiValidationError, apiError } from "@/lib/api/response";
 import { checkOverlap } from "@/lib/reservations/overlap";
 import { syncCreateEvent } from "@/lib/gcal/client";
 import { sendBookingConfirmation } from "@/lib/line/client";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+
+const externalBookingSchema = z.object({
+  tenant_slug: z
+    .string()
+    .trim()
+    .min(1, "tenant_slug, customer_name, title, scheduled_date, start_time, end_time は必須です")
+    .max(100),
+  customer_name: z
+    .string()
+    .trim()
+    .min(1, "tenant_slug, customer_name, title, scheduled_date, start_time, end_time は必須です")
+    .max(100),
+  customer_email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email()
+    .max(254)
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+  customer_phone: z.string().trim().max(40).optional(),
+  line_user_id: z.string().trim().max(200).optional(),
+  title: z
+    .string()
+    .trim()
+    .min(1, "tenant_slug, customer_name, title, scheduled_date, start_time, end_time は必須です")
+    .max(200),
+  scheduled_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "scheduled_date は YYYY-MM-DD 形式です"),
+  start_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "start_time / end_time は HH:MM 形式です"),
+  end_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "start_time / end_time は HH:MM 形式です"),
+  note: z.string().trim().max(2000).optional(),
+  source: z.enum(["google_maps", "line", "web"]).optional(),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -32,33 +66,23 @@ export async function POST(req: NextRequest) {
   if (limited) return limited;
 
   try {
-    const body = await req.json().catch(() => ({}));
-
     // ── API Key 認証 ──
     const apiKey = req.headers.get("x-api-key");
     if (!apiKey) {
       return apiError({ code: "unauthorized", message: "API key required", status: 401 });
     }
 
-    // 必須フィールド検証
-    const tenantSlug = body?.tenant_slug;
-    const customerName = body?.customer_name;
-    const title = body?.title;
-    const scheduledDate = body?.scheduled_date;
-    const startTime = body?.start_time;
-    const endTime = body?.end_time;
-
-    if (!tenantSlug || !customerName || !title || !scheduledDate || !startTime || !endTime) {
-      return apiValidationError("tenant_slug, customer_name, title, scheduled_date, start_time, end_time は必須です");
+    const parsed = externalBookingSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-
-    // 日付フォーマット検証
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)) {
-      return apiValidationError("scheduled_date は YYYY-MM-DD 形式です");
-    }
-    if (!/^\d{2}:\d{2}(:\d{2})?$/.test(startTime) || !/^\d{2}:\d{2}(:\d{2})?$/.test(endTime)) {
-      return apiValidationError("start_time / end_time は HH:MM 形式です");
-    }
+    const body = parsed.data;
+    const tenantSlug = body.tenant_slug;
+    const customerName = body.customer_name;
+    const title = body.title;
+    const scheduledDate = body.scheduled_date;
+    const startTime = body.start_time;
+    const endTime = body.end_time;
 
     const admin = createServiceRoleAdmin("public booking — looks up tenant from slug, no caller context");
 
@@ -287,15 +311,19 @@ export async function GET(req: NextRequest) {
 
   try {
     const url = new URL(req.url);
-    const tenantSlug = url.searchParams.get("tenant_slug");
-    const date = url.searchParams.get("date");
-
-    if (!tenantSlug || !date) {
-      return apiValidationError("tenant_slug と date (YYYY-MM-DD) が必要です");
+    const queryParsed = z
+      .object({
+        tenant_slug: z.string().trim().min(1, "tenant_slug と date (YYYY-MM-DD) が必要です").max(100),
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date は YYYY-MM-DD 形式です"),
+      })
+      .safeParse({
+        tenant_slug: url.searchParams.get("tenant_slug") ?? "",
+        date: url.searchParams.get("date") ?? "",
+      });
+    if (!queryParsed.success) {
+      return apiValidationError(queryParsed.error.issues[0]?.message ?? "invalid query");
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return apiValidationError("date は YYYY-MM-DD 形式です");
-    }
+    const { tenant_slug: tenantSlug, date } = queryParsed.data;
 
     const admin = createServiceRoleAdmin("public booking — looks up tenant from slug, no caller context");
 
