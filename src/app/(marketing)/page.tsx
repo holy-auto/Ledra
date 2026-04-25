@@ -11,6 +11,8 @@ import { FAQList } from "@/components/marketing/FAQList";
 import { FAQItem } from "@/components/marketing/FAQItem";
 import { CTABanner } from "@/components/marketing/CTABanner";
 import { ScrollReveal } from "@/components/marketing/ScrollReveal";
+import { AnimatedStepper } from "@/components/marketing/AnimatedStepper";
+import { RevealCheckmark } from "@/components/marketing/RevealCheckmark";
 import { Container } from "@/components/marketing/Container";
 import { IntegrationLogoWall } from "@/components/marketing/IntegrationLogoWall";
 import { MobileAppSection } from "@/components/marketing/MobileAppSection";
@@ -199,8 +201,8 @@ export default async function HomePage() {
       {/* 証明書発行の流れ */}
       <Section bg="alt">
         <SectionHeading title="証明書発行の流れ" subtitle="施工完了から証明書の共有まで、わずか数分で完了します" />
-        <div className="max-w-3xl mx-auto">
-          {[
+        <AnimatedStepper
+          steps={[
             {
               step: "01",
               title: "施工内容を入力",
@@ -221,20 +223,8 @@ export default async function HomePage() {
               title: "保険会社が照会",
               description: "保険会社は専用ポータルから証明書を検索・確認。電話やFAXでのやり取りが不要になります。",
             },
-          ].map((item, i) => (
-            <ScrollReveal key={item.step} variant="fade-up" delay={i * 100}>
-              <div className="flex gap-6 md:gap-8 items-start py-8 border-b border-white/[0.06] last:border-b-0">
-                <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
-                  <span className="text-lg font-bold text-blue-400">{item.step}</span>
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-white">{item.title}</h3>
-                  <p className="mt-2 text-white/50 leading-relaxed">{item.description}</p>
-                </div>
-              </div>
-            </ScrollReveal>
-          ))}
-        </div>
+          ]}
+        />
       </Section>
 
       {/* Ledraエコシステム */}
@@ -359,16 +349,8 @@ export default async function HomePage() {
                 </div>
                 <div className="h-px bg-white/[0.06]" />
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-white/[0.06] flex items-center justify-center">
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      className="w-4 h-4 text-green-400"
-                    >
-                      <path d="M5 13l4 4L19 7" />
-                    </svg>
+                  <div className="w-8 h-8 rounded-full bg-white/[0.06] flex items-center justify-center text-green-400">
+                    <RevealCheckmark size={18} />
                   </div>
                   <div className="text-sm text-green-400/80">改ざん防止により真正性を担保</div>
                 </div>

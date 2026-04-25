@@ -1,5 +1,9 @@
 import { Container } from "./Container";
 import { CTAButton } from "./CTAButton";
+import { HeroTypewriter } from "./HeroTypewriter";
+
+const TITLE_LINE_1 = ["現場の", "技術を、"];
+const TITLE_LINE_2 = ["業界の", "力へ。"];
 
 export function Hero() {
   return (
@@ -66,22 +70,42 @@ export function Hero() {
         </div>
 
         <h1 className="mt-10">
-          <span className="block text-[2.5rem] md:text-[3.75rem] lg:text-[4.5rem] font-bold leading-[1.1] tracking-tight text-white animate-[hero-fade-up_0.8s_ease-out_0.3s_both]">
-            現場の技術を、
+          <span className="block text-[2.5rem] md:text-[3.75rem] lg:text-[4.5rem] font-bold leading-[1.1] tracking-tight text-white">
+            {TITLE_LINE_1.map((phrase, i) => (
+              <span
+                key={`l1-${i}`}
+                className="inline-block"
+                style={{
+                  animation: `hero-fade-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) ${0.3 + i * 0.14}s both`,
+                }}
+              >
+                {phrase}
+              </span>
+            ))}
           </span>
-          <span className="block mt-2 text-[2.5rem] md:text-[3.75rem] lg:text-[4.5rem] font-bold leading-[1.1] tracking-tight bg-gradient-to-r from-[#60a5fa] via-[#a78bfa] to-[#60a5fa] bg-clip-text text-transparent animate-[hero-fade-up_0.8s_ease-out_0.5s_both] bg-[length:200%_auto]">
-            業界の力へ。
+          <span className="block mt-2 text-[2.5rem] md:text-[3.75rem] lg:text-[4.5rem] font-bold leading-[1.1] tracking-tight">
+            {TITLE_LINE_2.map((phrase, i) => (
+              <span
+                key={`l2-${i}`}
+                className="inline-block bg-gradient-to-r from-[#60a5fa] via-[#a78bfa] to-[#60a5fa] bg-clip-text text-transparent bg-[length:200%_auto]"
+                style={{
+                  animation: `hero-fade-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) ${0.6 + i * 0.14}s both`,
+                }}
+              >
+                {phrase}
+              </span>
+            ))}
           </span>
         </h1>
 
-        <p className="mt-10 text-lg md:text-xl leading-relaxed text-white/50 max-w-2xl mx-auto animate-[hero-fade-up_0.8s_ease-out_0.7s_both]">
+        <p className="mt-10 text-lg md:text-xl leading-relaxed text-white/50 max-w-2xl mx-auto animate-[hero-fade-up_0.8s_ease-out_0.95s_both]">
           Ledraは、施工証明・履歴管理・加盟店連携・技術育成を通じて、
           <br className="hidden md:block" />
           現場の技術を可視化し、業界全体に信頼と価値を届けるプラットフォームです。
         </p>
 
-        <p className="mt-4 text-xs md:text-sm font-medium tracking-wide text-white/35 animate-[hero-fade-up_0.8s_ease-out_0.8s_both]">
-          施工記録を、改ざん不可能なデジタル証明書に。Polygon anchoring × C2PA × 4ポータル設計
+        <p className="mt-4 min-h-[1.6em] text-xs md:text-sm font-medium tracking-wide text-white/40 animate-[hero-fade-in_0.6s_ease-out_1.05s_both]">
+          <HeroTypewriter text="施工記録を、改ざん不可能なデジタル証明書に。" startDelay={1200} speed={48} />
         </p>
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center mt-12 animate-[hero-fade-up_0.8s_ease-out_0.9s_both]">
