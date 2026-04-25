@@ -537,18 +537,12 @@ export async function renderCertificatePdf(row: CertRow, publicUrl: string, anch
         <Text style={styles.heroTitle}>{certTitle}</Text>
         <Text style={styles.heroSub}>Certificate of Construction Record</Text>
 
-        {/* Cert metadata + QR */}
+        {/* Cert metadata */}
         <View style={styles.certMeta}>
           <View>
             <Text style={styles.certNumberLabel}>Certificate No.</Text>
             <Text style={styles.certNumber}>{row.public_id}</Text>
             {(row.current_version ?? 1) > 1 && <Text style={styles.reissue}>再発行版 (第{row.current_version}版)</Text>}
-          </View>
-          <View style={{ alignItems: "center" }}>
-            <View style={styles.qrInner}>
-              <Image src={qrDataUrl} style={{ width: 80, height: 80 }} />
-            </View>
-            <Text style={styles.qrCaption}>Scan to verify</Text>
           </View>
           <View style={{ alignItems: "flex-end" }}>
             <Text style={styles.certDateLabel}>Issued</Text>
