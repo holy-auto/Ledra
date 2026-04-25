@@ -13,7 +13,7 @@ import { CTABanner } from "@/components/marketing/CTABanner";
 import { ScrollReveal } from "@/components/marketing/ScrollReveal";
 import { AnimatedStepper } from "@/components/marketing/AnimatedStepper";
 import { RevealCheckmark } from "@/components/marketing/RevealCheckmark";
-import { ScrollTypewriter } from "@/components/marketing/ScrollTypewriter";
+import { NarrativeTypewriter } from "@/components/marketing/NarrativeTypewriter";
 import { Container } from "@/components/marketing/Container";
 import { IntegrationLogoWall } from "@/components/marketing/IntegrationLogoWall";
 import { MobileAppSection } from "@/components/marketing/MobileAppSection";
@@ -64,75 +64,7 @@ export default async function HomePage() {
           }}
         />
         <Container className="relative py-24 md:py-32">
-          <div className="max-w-3xl mx-auto">
-            {/* 導入 — 現場の課題 */}
-            <div className="space-y-5 text-[1.125rem] md:text-[1.25rem] leading-[1.85] text-white/50">
-              <p>
-                <ScrollTypewriter text="腕のいい職人がいる。丁寧な仕事をしている。" speed={36} />
-              </p>
-              <p>
-                <ScrollTypewriter
-                  text="でも、その技術は施工が終わった瞬間に見えなくなる。"
-                  speed={32}
-                  startDelay={1100}
-                />
-              </p>
-              <p className="text-white/35">
-                <ScrollTypewriter
-                  text="写真は個人のスマホに埋もれ、記録は紙のファイルに閉じられ、品質の証明は、口約束と経験則に頼っている。"
-                  speed={26}
-                  startDelay={2400}
-                />
-              </p>
-            </div>
-
-            {/* 転換 — 問いかけ */}
-            <div className="mt-16 md:mt-20 space-y-4 text-[1.125rem] md:text-[1.25rem] leading-[1.85] text-white/60">
-              <p>
-                <ScrollTypewriter text="もし、一件一件の施工が「証明」として残ったら。" speed={32} />
-              </p>
-              <p>
-                <ScrollTypewriter text="もし、その証明が施工店の信用になったら。" speed={32} startDelay={1200} />
-              </p>
-              <p>
-                <ScrollTypewriter
-                  text="もし、その信用が保険査定や顧客選択の判断材料になったら。"
-                  speed={32}
-                  startDelay={2400}
-                />
-              </p>
-            </div>
-
-            <p className="mt-12 md:mt-16 text-[1.25rem] md:text-[1.5rem] font-bold leading-[1.6] text-white">
-              <ScrollTypewriter
-                text="現場の技術は、もっと正しく評価されるはずだ。"
-                speed={56}
-                caret
-                caretClassName="bg-white/80"
-              />
-            </p>
-
-            {/* チェーン — 記録→証明→信頼→業界基盤 */}
-            <div className="mt-20 md:mt-24 flex flex-col gap-0">
-              {[
-                { text: "一件の施工記録が、証明になる。", delay: 0 },
-                { text: "証明が、信頼になる。", delay: 900 },
-                { text: "信頼が、つながりになる。", delay: 1700 },
-                { text: "つながりが、業界の基盤になる。", delay: 2500 },
-              ].map((line, i) => (
-                <div key={i} className="flex items-center gap-4 py-3">
-                  <div className="w-2 h-2 rounded-full bg-gradient-to-r from-blue-400 to-violet-400 flex-shrink-0" />
-                  <span className="text-[1.125rem] md:text-[1.25rem] font-medium text-white/70">
-                    <ScrollTypewriter text={line.text} speed={36} startDelay={line.delay} />
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            <p className="mt-12 text-[1.375rem] md:text-[1.75rem] font-bold tracking-tight bg-gradient-to-r from-[#60a5fa] via-[#a78bfa] to-[#60a5fa] bg-clip-text text-transparent bg-[length:200%_auto]">
-              <ScrollTypewriter text="記録を、業界の共通言語にする。" speed={64} caret caretClassName="bg-blue-400" />
-            </p>
-          </div>
+          <NarrativeTypewriter />
         </Container>
       </section>
 
