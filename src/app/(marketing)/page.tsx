@@ -11,6 +11,9 @@ import { FAQList } from "@/components/marketing/FAQList";
 import { FAQItem } from "@/components/marketing/FAQItem";
 import { CTABanner } from "@/components/marketing/CTABanner";
 import { ScrollReveal } from "@/components/marketing/ScrollReveal";
+import { AnimatedStepper } from "@/components/marketing/AnimatedStepper";
+import { RevealCheckmark } from "@/components/marketing/RevealCheckmark";
+import { ScrollTypewriter } from "@/components/marketing/ScrollTypewriter";
 import { Container } from "@/components/marketing/Container";
 import { IntegrationLogoWall } from "@/components/marketing/IntegrationLogoWall";
 import { MobileAppSection } from "@/components/marketing/MobileAppSection";
@@ -63,55 +66,72 @@ export default async function HomePage() {
         <Container className="relative py-24 md:py-32">
           <div className="max-w-3xl mx-auto">
             {/* 導入 — 現場の課題 */}
-            <ScrollReveal variant="fade-up">
-              <div className="space-y-5 text-[1.125rem] md:text-[1.25rem] leading-[1.85] text-white/50">
-                <p>腕のいい職人がいる。丁寧な仕事をしている。</p>
-                <p>でも、その技術は施工が終わった瞬間に見えなくなる。</p>
-                <p className="text-white/35">
-                  写真は個人のスマホに埋もれ、記録は紙のファイルに閉じられ、
-                  <br className="hidden md:block" />
-                  品質の証明は、口約束と経験則に頼っている。
-                </p>
-              </div>
-            </ScrollReveal>
+            <div className="space-y-5 text-[1.125rem] md:text-[1.25rem] leading-[1.85] text-white/50">
+              <p>
+                <ScrollTypewriter text="腕のいい職人がいる。丁寧な仕事をしている。" speed={36} />
+              </p>
+              <p>
+                <ScrollTypewriter
+                  text="でも、その技術は施工が終わった瞬間に見えなくなる。"
+                  speed={32}
+                  startDelay={1100}
+                />
+              </p>
+              <p className="text-white/35">
+                <ScrollTypewriter
+                  text="写真は個人のスマホに埋もれ、記録は紙のファイルに閉じられ、品質の証明は、口約束と経験則に頼っている。"
+                  speed={26}
+                  startDelay={2400}
+                />
+              </p>
+            </div>
 
             {/* 転換 — 問いかけ */}
-            <ScrollReveal variant="fade-up" delay={200}>
-              <div className="mt-16 md:mt-20 space-y-4 text-[1.125rem] md:text-[1.25rem] leading-[1.85] text-white/60">
-                <p>もし、一件一件の施工が「証明」として残ったら。</p>
-                <p>もし、その証明が施工店の信用になったら。</p>
-                <p>もし、その信用が保険査定や顧客選択の判断材料になったら。</p>
-              </div>
-            </ScrollReveal>
-
-            <ScrollReveal variant="fade-up" delay={400}>
-              <p className="mt-12 md:mt-16 text-[1.25rem] md:text-[1.5rem] font-bold leading-[1.6] text-white">
-                現場の技術は、もっと正しく評価されるはずだ。
+            <div className="mt-16 md:mt-20 space-y-4 text-[1.125rem] md:text-[1.25rem] leading-[1.85] text-white/60">
+              <p>
+                <ScrollTypewriter text="もし、一件一件の施工が「証明」として残ったら。" speed={32} />
               </p>
-            </ScrollReveal>
+              <p>
+                <ScrollTypewriter text="もし、その証明が施工店の信用になったら。" speed={32} startDelay={1200} />
+              </p>
+              <p>
+                <ScrollTypewriter
+                  text="もし、その信用が保険査定や顧客選択の判断材料になったら。"
+                  speed={32}
+                  startDelay={2400}
+                />
+              </p>
+            </div>
+
+            <p className="mt-12 md:mt-16 text-[1.25rem] md:text-[1.5rem] font-bold leading-[1.6] text-white">
+              <ScrollTypewriter
+                text="現場の技術は、もっと正しく評価されるはずだ。"
+                speed={56}
+                caret
+                caretClassName="bg-white/80"
+              />
+            </p>
 
             {/* チェーン — 記録→証明→信頼→業界基盤 */}
-            <ScrollReveal variant="fade-up" delay={600}>
-              <div className="mt-20 md:mt-24 flex flex-col gap-0">
-                {[
-                  "一件の施工記録が、証明になる。",
-                  "証明が、信頼になる。",
-                  "信頼が、つながりになる。",
-                  "つながりが、業界の基盤になる。",
-                ].map((line, i) => (
-                  <div key={i} className="flex items-center gap-4 py-3">
-                    <div className="w-2 h-2 rounded-full bg-gradient-to-r from-blue-400 to-violet-400 flex-shrink-0" />
-                    <span className="text-[1.125rem] md:text-[1.25rem] font-medium text-white/70">{line}</span>
-                  </div>
-                ))}
-              </div>
-            </ScrollReveal>
+            <div className="mt-20 md:mt-24 flex flex-col gap-0">
+              {[
+                { text: "一件の施工記録が、証明になる。", delay: 0 },
+                { text: "証明が、信頼になる。", delay: 900 },
+                { text: "信頼が、つながりになる。", delay: 1700 },
+                { text: "つながりが、業界の基盤になる。", delay: 2500 },
+              ].map((line, i) => (
+                <div key={i} className="flex items-center gap-4 py-3">
+                  <div className="w-2 h-2 rounded-full bg-gradient-to-r from-blue-400 to-violet-400 flex-shrink-0" />
+                  <span className="text-[1.125rem] md:text-[1.25rem] font-medium text-white/70">
+                    <ScrollTypewriter text={line.text} speed={36} startDelay={line.delay} />
+                  </span>
+                </div>
+              ))}
+            </div>
 
-            <ScrollReveal variant="fade-up" delay={800}>
-              <p className="mt-12 text-[1.375rem] md:text-[1.75rem] font-bold tracking-tight bg-gradient-to-r from-[#60a5fa] via-[#a78bfa] to-[#60a5fa] bg-clip-text text-transparent bg-[length:200%_auto]">
-                記録を、業界の共通言語にする。
-              </p>
-            </ScrollReveal>
+            <p className="mt-12 text-[1.375rem] md:text-[1.75rem] font-bold tracking-tight bg-gradient-to-r from-[#60a5fa] via-[#a78bfa] to-[#60a5fa] bg-clip-text text-transparent bg-[length:200%_auto]">
+              <ScrollTypewriter text="記録を、業界の共通言語にする。" speed={64} caret caretClassName="bg-blue-400" />
+            </p>
           </div>
         </Container>
       </section>
@@ -199,8 +219,8 @@ export default async function HomePage() {
       {/* 証明書発行の流れ */}
       <Section bg="alt">
         <SectionHeading title="証明書発行の流れ" subtitle="施工完了から証明書の共有まで、わずか数分で完了します" />
-        <div className="max-w-3xl mx-auto">
-          {[
+        <AnimatedStepper
+          steps={[
             {
               step: "01",
               title: "施工内容を入力",
@@ -221,20 +241,8 @@ export default async function HomePage() {
               title: "保険会社が照会",
               description: "保険会社は専用ポータルから証明書を検索・確認。電話やFAXでのやり取りが不要になります。",
             },
-          ].map((item, i) => (
-            <ScrollReveal key={item.step} variant="fade-up" delay={i * 100}>
-              <div className="flex gap-6 md:gap-8 items-start py-8 border-b border-white/[0.06] last:border-b-0">
-                <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
-                  <span className="text-lg font-bold text-blue-400">{item.step}</span>
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-white">{item.title}</h3>
-                  <p className="mt-2 text-white/50 leading-relaxed">{item.description}</p>
-                </div>
-              </div>
-            </ScrollReveal>
-          ))}
-        </div>
+          ]}
+        />
       </Section>
 
       {/* Ledraエコシステム */}
@@ -359,16 +367,8 @@ export default async function HomePage() {
                 </div>
                 <div className="h-px bg-white/[0.06]" />
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-white/[0.06] flex items-center justify-center">
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      className="w-4 h-4 text-green-400"
-                    >
-                      <path d="M5 13l4 4L19 7" />
-                    </svg>
+                  <div className="w-8 h-8 rounded-full bg-white/[0.06] flex items-center justify-center text-green-400">
+                    <RevealCheckmark size={18} />
                   </div>
                   <div className="text-sm text-green-400/80">改ざん防止により真正性を担保</div>
                 </div>
