@@ -2,6 +2,12 @@ import Link from "next/link";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatDate, formatDateTime } from "@/lib/format";
 import PageHeader from "@/components/ui/PageHeader";
+import {
+  ExteriorDiagram,
+  InteriorDiagram,
+  VehicleDiagramLegend,
+  type PanelInfo,
+} from "@/components/thickness/VehicleDiagram";
 
 export const dynamic = "force-dynamic";
 
@@ -215,6 +221,34 @@ export default async function StandaloneThicknessReportDetailPage({
   const total = measurements.length;
   const distMax = Math.max(1, ...Object.values(distribution));
 
+  // 車体展開図用の集計（section → PanelInfo）
+  const exteriorPanels: Record<string, PanelInfo> = {};
+  for (const place of placesOutside) {
+    for (const g of place.groups) {
+      exteriorPanels[g.section] = {
+        count: g.count,
+        maxValue: g.maxValue,
+        avgValue: g.avgValue,
+        maxInterpretation: g.maxInterpretation,
+        materials: g.materials,
+      };
+    }
+  }
+  const interiorPanels: Record<string, PanelInfo> = {};
+  for (const place of placesInside) {
+    for (const g of place.groups) {
+      interiorPanels[g.section] = {
+        count: g.count,
+        maxValue: g.maxValue,
+        avgValue: g.avgValue,
+        maxInterpretation: g.maxInterpretation,
+        materials: g.materials,
+      };
+    }
+  }
+  const hasExterior = Object.keys(exteriorPanels).length > 0;
+  const hasInterior = Object.keys(interiorPanels).length > 0;
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -229,13 +263,7 @@ export default async function StandaloneThicknessReportDetailPage({
       />
 
       {/* 車両連携ステータス */}
-<<<<<<< HEAD
-      <section
-        className={`glass-card p-5 ${linkedVehicle ? "" : "border border-warning/30"}`}
-      >
-=======
       <section className={`glass-card p-5 ${linkedVehicle ? "" : "border border-warning/30"}`}>
->>>>>>> origin/main
         <div className="mb-3">
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">車両連携</div>
         </div>
@@ -250,13 +278,7 @@ export default async function StandaloneThicknessReportDetailPage({
                 linkedVehicle.plate_display ||
                 "車両詳細"}
             </Link>
-<<<<<<< HEAD
-            {linkedVehicle.plate_display && (
-              <span className="text-secondary">（{linkedVehicle.plate_display}）</span>
-            )}
-=======
             {linkedVehicle.plate_display && <span className="text-secondary">（{linkedVehicle.plate_display}）</span>}
->>>>>>> origin/main
           </div>
         ) : (
           <div className="space-y-2 text-sm">
@@ -268,13 +290,8 @@ export default async function StandaloneThicknessReportDetailPage({
             </div>
             {report.vin && (
               <div className="text-xs text-muted">
-<<<<<<< HEAD
-                NexPTG側のVIN: <span className="font-mono text-secondary">{report.vin}</span>
-                ｜ Ledra側で同じVIN（vin_code）を持つ車両を登録すると、次回の同期で自動的に紐付けされます。
-=======
                 NexPTG側のVIN: <span className="font-mono text-secondary">{report.vin}</span>｜
                 Ledra側で同じVIN（vin_code）を持つ車両を登録すると、次回の同期で自動的に紐付けされます。
->>>>>>> origin/main
               </div>
             )}
             {!report.vin && (
@@ -330,13 +347,9 @@ export default async function StandaloneThicknessReportDetailPage({
           )}
         </dl>
         {report.comment && (
-<<<<<<< HEAD
-          <div className="mt-4 rounded-lg bg-inset p-3 text-sm text-secondary whitespace-pre-wrap">{report.comment}</div>
-=======
           <div className="mt-4 rounded-lg bg-inset p-3 text-sm text-secondary whitespace-pre-wrap">
             {report.comment}
           </div>
->>>>>>> origin/main
         )}
       </section>
 
@@ -371,6 +384,30 @@ export default async function StandaloneThicknessReportDetailPage({
           })}
         </div>
       </section>
+
+      {/* 車体展開図 */}
+      {(hasExterior || hasInterior) && (
+        <section className="glass-card p-5 space-y-5">
+          <div>
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted">車体展開図</div>
+            <div className="mt-1 text-base font-semibold text-primary">部位別の判定マップ</div>
+            <p className="mt-1 text-xs text-muted">パネルにマウスを乗せると詳細を表示します。色は判定最大値（緑=1-2 / 黄=3-4 / 赤=5）。</p>
+          </div>
+          <VehicleDiagramLegend />
+          {hasExterior && (
+            <div>
+              <div className="mb-2 text-sm font-semibold text-secondary">外装</div>
+              <ExteriorDiagram panels={exteriorPanels} unit={unit} />
+            </div>
+          )}
+          {hasInterior && (
+            <div>
+              <div className="mb-2 text-sm font-semibold text-secondary">内装</div>
+              <InteriorDiagram panels={interiorPanels} unit={unit} />
+            </div>
+          )}
+        </section>
+      )}
 
       {/* 外装測定値 */}
       {placesOutside.length > 0 && (
