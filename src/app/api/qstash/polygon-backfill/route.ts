@@ -118,7 +118,9 @@ async function handler(req: NextRequest) {
           await admin.from("certificate_images").update(updatePayload).eq("id", img.id);
         }
       } catch (err) {
-        console.error(`[polygon-backfill] img ${img.id} failed:`, err);
+        // 生の err は RPC レスポンス・スタック等を含み得るので message のみ。
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.error("[polygon-backfill] img failed", { imageId: img.id, errorMsg });
       }
 
       processedCount++;

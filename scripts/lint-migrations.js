@@ -111,11 +111,18 @@ const RULES = [
     id: "add-check-without-not-valid",
     description: "ADD CONSTRAINT ... CHECK without NOT VALID scans the whole table under ACCESS EXCLUSIVE.",
     check(sql) {
-      const re = /ADD\s+(CONSTRAINT\s+\S+\s+)?CHECK\s*\([^)]*\)/gi;
+      // Capture the full statement up to `;` so the `NOT VALID` clause
+      // (which appears AFTER the CHECK expression's closing paren) is visible
+      // to the filter below.
+      const re = /ADD\s+(CONSTRAINT\s+\S+\s+)?CHECK\s*\([^;]*/gi;
       const matches = sql.match(re) ?? [];
       return matches
         .filter((m) => !/NOT\s+VALID/i.test(m))
-        .map((m) => `${m.trim()} — add NOT VALID, then VALIDATE CONSTRAINT separately.`);
+        .map((m) => {
+          // Trim back to the CHECK (...) header for a tidy error message.
+          const head = m.match(/ADD\s+(CONSTRAINT\s+\S+\s+)?CHECK\s*\([^)]*\)/i);
+          return `${(head ? head[0] : m).trim()} — add NOT VALID, then VALIDATE CONSTRAINT separately.`;
+        });
     },
   },
 ];

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerFull } from "@/lib/api/auth";
 import { apiOk, apiUnauthorized, apiValidationError, apiInternalError, apiError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createTemplateOptionCheckout } from "@/lib/template-options/stripe";
 
 const subscribeSchema = z.object({
@@ -14,6 +15,11 @@ const subscribeSchema = z.object({
 
 /** POST: テンプレートオプション申込（Stripe Checkout作成） */
 export async function POST(req: NextRequest) {
+  // Creates a Stripe Customer + Checkout Session. Auth preset bounds
+  // Stripe API spend if a session leaks.
+  const limited = await checkRateLimit(req, "auth");
+  if (limited) return limited;
+
   try {
     const body = await req.json();
     const parsed = subscribeSchema.safeParse(body);

@@ -50,6 +50,10 @@ preset when **any** of these are true:
 | `/api/admin/polygon/backfill` POST | `auth` | Spends real gas on Polygon |
 | `/api/admin/pos/terminal/connection-token` POST | `mobile_terminal` | Mints Stripe Terminal token |
 | `/api/admin/pos/terminal/capture` POST | `mobile_pos` | Captures Stripe Terminal payment |
+| `/api/admin/shop/checkout` POST | `auth` | Creates Stripe Checkout session for shop orders |
+| `/api/admin/billing-state` POST | `auth` | Retrieves Stripe Subscription on every poll |
+| `/api/template-options/subscribe` POST | `auth` | Creates Stripe Customer + Checkout for option subscription |
+| `/api/mobile/pos/checkout/qr-session` POST | `mobile_pos` | Creates Connect Checkout for QR pay |
 
 ## Routes intentionally left at middleware default
 

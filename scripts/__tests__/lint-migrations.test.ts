@@ -124,6 +124,24 @@ describe("lint-migrations", () => {
     expect(runLint(dir).code).toBe(0);
   });
 
+  it("flags ADD CHECK without NOT VALID", () => {
+    writeFileSync(
+      path.join(dir, "supabase", "migrations", "20990101000000_check.sql"),
+      "ALTER TABLE foo ADD CONSTRAINT chk_x CHECK (x >= 0);",
+    );
+    const r = runLint(dir);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain("add-check-without-not-valid");
+  });
+
+  it("passes ADD CHECK NOT VALID", () => {
+    writeFileSync(
+      path.join(dir, "supabase", "migrations", "20990101000000_check.sql"),
+      "ALTER TABLE foo ADD CONSTRAINT chk_x CHECK (x >= 0) NOT VALID;",
+    );
+    expect(runLint(dir).code).toBe(0);
+  });
+
   it("skips files in the allowlist", () => {
     const filename = "20990101000000_legacy.sql";
     writeFileSync(path.join(dir, "supabase", "migrations", filename), "CREATE INDEX foo_idx ON foo (bar);");

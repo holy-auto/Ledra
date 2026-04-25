@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { resolveInsurerCaller, enforceInsurerPlan } from "@/lib/api/insurerAuth";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { maskEmail } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -100,7 +101,8 @@ async function sendInviteEmail(to: string, companyName: string) {
       }),
     });
   } catch (e) {
-    console.error("[insurer-csv] invite email failed:", to, e);
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[insurer-csv] invite email failed", { toMasked: maskEmail(to), error: msg });
   }
 }
 

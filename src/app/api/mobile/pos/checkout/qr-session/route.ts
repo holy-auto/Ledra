@@ -4,6 +4,7 @@ import { createMobileClient, resolveMobileCaller } from "@/lib/supabase/mobile";
 import { requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { posQrSessionSchema } from "@/lib/validations/pos";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,12 @@ export const dynamic = "force-dynamic";
  *   { url: string, session_id: string }
  */
 export async function POST(req: NextRequest) {
+  // Each call creates a Stripe Checkout Session via the tenant's Connect
+  // account. mobile_pos preset (10/min/IP) matches the rest of the POS
+  // checkout family.
+  const limited = await checkRateLimit(req, "mobile_pos");
+  if (limited) return limited;
+
   try {
     const { client, accessToken } = createMobileClient(req);
     if (!client) {

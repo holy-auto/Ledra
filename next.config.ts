@@ -70,8 +70,19 @@ const nextConfig: NextConfig = {
           // navigator.mediaDevices.getUserMedia({ video }) を呼ぶため camera は
           // 自サイトに限り許可。マイクと位置情報は現状使っていないので禁止のまま。
           { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=()" },
-          // HSTS: enforce HTTPS, 1 year, include subdomains
+          // HSTS: enforce HTTPS, 1 year, include subdomains.
+          // `preload` は意図的に外している — preload list に登録すると数か月
+          // 単位で外せなくなる片道契約のため、追加する場合は product 合意の
+          // 上で個別判断する。
           { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
+          // Spectre / cross-window leak 対策。Stripe Checkout が popup を開く
+          // 可能性があるため `same-origin-allow-popups` で互換性を残す
+          // (`same-origin` だと window.opener が null になり一部 Stripe フロー
+          // が壊れる)。
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
+          // Adobe Flash 用 cross-domain policy ファイルの参照を禁止
+          // (legacy hardening — 害は無いので静かに付ける)。
+          { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
         ],
       },
     ];

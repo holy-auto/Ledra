@@ -44,45 +44,58 @@ export async function GET(req: NextRequest) {
       return apiJson({ items: [] });
     }
 
-    // Enrich items with target details
-    const enriched = await Promise.all(
-      (items ?? []).map(async (item) => {
-        if (item.target_type === "certificate") {
-          const { data: cert } = await admin
-            .from("certificates")
-            .select("id, public_id, status, updated_at")
-            .eq("id", item.target_id)
-            .maybeSingle();
-          return {
-            ...item,
-            target_detail: cert
-              ? {
-                  identifier: cert.public_id,
-                  status: cert.status,
-                  updated_at: cert.updated_at,
-                }
-              : null,
-          };
-        } else if (item.target_type === "vehicle") {
-          const { data: vehicle } = await admin
-            .from("vehicles")
-            .select("id, plate_number, maker, model, updated_at")
-            .eq("id", item.target_id)
-            .maybeSingle();
-          return {
-            ...item,
-            target_detail: vehicle
-              ? {
-                  identifier: [vehicle.maker, vehicle.model, vehicle.plate_number].filter(Boolean).join(" "),
-                  status: null,
-                  updated_at: vehicle.updated_at,
-                }
-              : null,
-          };
-        }
-        return { ...item, target_detail: null };
-      }),
-    );
+    // Batch-fetch target details: one query per target_type, not one per item.
+    // (Was previously O(items) round-trips via Promise.all + maybeSingle.)
+    const certificateIds = new Set<string>();
+    const vehicleIds = new Set<string>();
+    for (const item of items ?? []) {
+      if (item.target_type === "certificate") certificateIds.add(item.target_id);
+      else if (item.target_type === "vehicle") vehicleIds.add(item.target_id);
+    }
+
+    const [certRes, vehicleRes] = await Promise.all([
+      certificateIds.size > 0
+        ? admin.from("certificates").select("id, public_id, status, updated_at").in("id", Array.from(certificateIds))
+        : Promise.resolve({ data: [] as { id: string; public_id: string; status: string; updated_at: string }[] }),
+      vehicleIds.size > 0
+        ? admin.from("vehicles").select("id, plate_number, maker, model, updated_at").in("id", Array.from(vehicleIds))
+        : Promise.resolve({
+            data: [] as {
+              id: string;
+              plate_number: string | null;
+              maker: string | null;
+              model: string | null;
+              updated_at: string;
+            }[],
+          }),
+    ]);
+
+    const certById = new Map((certRes.data ?? []).map((c) => [c.id, c]));
+    const vehicleById = new Map((vehicleRes.data ?? []).map((v) => [v.id, v]));
+
+    const enriched = (items ?? []).map((item) => {
+      if (item.target_type === "certificate") {
+        const cert = certById.get(item.target_id);
+        return {
+          ...item,
+          target_detail: cert ? { identifier: cert.public_id, status: cert.status, updated_at: cert.updated_at } : null,
+        };
+      }
+      if (item.target_type === "vehicle") {
+        const vehicle = vehicleById.get(item.target_id);
+        return {
+          ...item,
+          target_detail: vehicle
+            ? {
+                identifier: [vehicle.maker, vehicle.model, vehicle.plate_number].filter(Boolean).join(" "),
+                status: null,
+                updated_at: vehicle.updated_at,
+              }
+            : null,
+        };
+      }
+      return { ...item, target_detail: null };
+    });
 
     return apiJson({ items: enriched });
   } catch (err) {

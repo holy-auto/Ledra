@@ -5,6 +5,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 const shopCheckoutSchema = z.object({
   items: z
@@ -30,6 +31,11 @@ function getStripe() {
 
 /** POST /api/admin/shop/checkout — Stripe Checkout Session作成 */
 export async function POST(req: NextRequest) {
+  // Each call hits Stripe to create a Checkout session. Auth preset
+  // (10/min/IP) bounds Stripe API spend if a session leaks.
+  const limited = await checkRateLimit(req, "auth");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
