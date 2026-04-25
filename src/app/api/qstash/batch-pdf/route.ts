@@ -1,8 +1,15 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { apiJson } from "@/lib/api/response";
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { renderCertificatePdf, type CertRow } from "@/lib/pdfCertificate";
+
+const batchPdfJobSchema = z.object({
+  job_id: z.string().uuid(),
+  tenant_id: z.string().uuid(),
+  public_ids: z.array(z.string().trim().min(1).max(100)).min(1).max(2000),
+});
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -21,12 +28,11 @@ function getBaseUrl(): string {
 const CONCURRENCY = 5;
 
 async function handler(req: NextRequest) {
-  const body = await req.json();
-  const { job_id, tenant_id, public_ids } = body as {
-    job_id: string;
-    tenant_id: string;
-    public_ids: string[];
-  };
+  const parsed = batchPdfJobSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiJson({ error: "invalid payload" }, { status: 400 });
+  }
+  const { job_id, tenant_id, public_ids } = parsed.data;
 
   const { admin } = createTenantScopedAdmin(tenant_id);
 

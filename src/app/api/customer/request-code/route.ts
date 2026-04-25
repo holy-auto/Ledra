@@ -1,5 +1,6 @@
 ﻿import { randomInt } from "crypto";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { resolveBaseUrl } from "@/lib/url";
 import {
   createLoginCode,
@@ -11,6 +12,21 @@ import {
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { escapeHtml } from "@/lib/sanitize";
 import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+
+const requestCodeSchema = z.object({
+  tenant_slug: z.string().trim().min(1, "missing tenant_slug").max(100),
+  email: z.string().trim().min(1, "missing email").max(254),
+  last4: z
+    .string()
+    .trim()
+    .regex(/^\d{4}$/, "invalid last4")
+    .optional(),
+  phone_last4: z
+    .string()
+    .trim()
+    .regex(/^\d{4}$/, "invalid last4")
+    .optional(),
+});
 
 function genCode6(): string {
   // 000000〜999999（先頭ゼロあり）
@@ -53,18 +69,15 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-
-    const tenant_slug = (body.tenant_slug ?? "").toString().trim();
-    const emailRaw = (body.email ?? "").toString();
-    const last4Raw = (body.last4 ?? body.phone_last4 ?? "").toString().trim();
-
-    if (!tenant_slug) return apiValidationError("missing tenant_slug");
-    if (!emailRaw) return apiValidationError("missing email");
+    const parsed = requestCodeSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const tenant_slug = parsed.data.tenant_slug;
+    const last4Raw = parsed.data.last4 ?? parsed.data.phone_last4 ?? "";
     if (!last4Raw) return apiValidationError("missing last4");
-    if (!/^\d{4}$/.test(last4Raw)) return apiValidationError("invalid last4");
 
-    const email = normalizeEmail(emailRaw);
+    const email = normalizeEmail(parsed.data.email);
 
     const tenantId = await getTenantIdBySlug(tenant_slug);
     if (!tenantId) return apiNotFound("unknown tenant");

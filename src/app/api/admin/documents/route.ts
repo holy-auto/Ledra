@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
@@ -6,6 +6,7 @@ import { DOC_TYPES, type DocType } from "@/types/document";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { parsePagination } from "@/lib/api/pagination";
 import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { documentCreateSchema, documentUpdateSchema, documentDeleteSchema } from "@/lib/validations/document";
 
 export const dynamic = "force-dynamic";
 
@@ -161,37 +162,41 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const docType = (body?.doc_type ?? "").trim() as DocType;
+    const parsed = documentCreateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const input = parsed.data;
+    const docType = input.doc_type as DocType;
     if (!DOC_TYPES[docType]) {
       return apiValidationError("invalid doc_type");
     }
 
-    const docNumber = body?.doc_number?.trim() || (await generateDocNumber(supabase, caller.tenantId, docType));
-    const customerId = body?.customer_id?.trim() || null;
-    const issuedAt = body?.issued_at || new Date().toISOString().slice(0, 10);
-    const dueDate = body?.due_date || null;
-    const note = (body?.note ?? "").trim() || null;
-    const items = body?.items ?? [];
-    const taxRate = parseInt(String(body?.tax_rate ?? 10), 10);
-    const status = body?.status || "draft";
-    const isInvoiceCompliant = !!body?.is_invoice_compliant;
-    const sourceDocumentId = body?.source_document_id || null;
-    const showSeal = !!body?.show_seal;
-    const showLogo = body?.show_logo !== false;
-    const showBankInfo = !!body?.show_bank_info;
-    const recipientName = (body?.recipient_name ?? "").trim() || null;
-    const recipientHonorific = body?.recipient_honorific ?? "御中";
-    const recipientPostalCode = (body?.recipient_postal_code ?? "").trim() || null;
-    const recipientAddress = (body?.recipient_address ?? "").trim() || null;
-    const recipientPhone = (body?.recipient_phone ?? "").trim() || null;
-    const subject = (body?.subject ?? "").trim() || null;
-    const periodStart = body?.period_start || null;
-    const periodEnd = body?.period_end || null;
-    const paymentTerms = (body?.payment_terms ?? "").trim() || null;
-    const deliveryDate = body?.delivery_date || null;
-    const templateId = body?.template_id || null;
-    const metaJson = body?.meta_json ?? {};
+    const docNumber = input.doc_number || (await generateDocNumber(supabase, caller.tenantId, docType));
+    const customerId = input.customer_id || null;
+    const issuedAt = input.issued_at || new Date().toISOString().slice(0, 10);
+    const dueDate = input.due_date || null;
+    const note = input.note;
+    const items = input.items ?? [];
+    const taxRate = input.tax_rate ?? 10;
+    const status = input.status;
+    const isInvoiceCompliant = !!input.is_invoice_compliant;
+    const sourceDocumentId = input.source_document_id || null;
+    const showSeal = !!input.show_seal;
+    const showLogo = input.show_logo !== false;
+    const showBankInfo = !!input.show_bank_info;
+    const recipientName = input.recipient_name;
+    const recipientHonorific = input.recipient_honorific ?? "御中";
+    const recipientPostalCode = input.recipient_postal_code;
+    const recipientAddress = input.recipient_address;
+    const recipientPhone = input.recipient_phone;
+    const subject = input.subject;
+    const periodStart = input.period_start;
+    const periodEnd = input.period_end;
+    const paymentTerms = input.payment_terms;
+    const deliveryDate = input.delivery_date;
+    const templateId = input.template_id;
+    const metaJson = input.meta_json ?? {};
 
     const { itemsJson, subtotal, tax, total } = calcItems(items, taxRate);
 
@@ -255,9 +260,12 @@ export async function PUT(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const id = (body?.id ?? "").trim();
-    if (!id) return apiValidationError("id is required");
+    const parsed = documentUpdateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const body = parsed.data;
+    const id = body.id;
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
@@ -265,28 +273,27 @@ export async function PUT(req: NextRequest) {
     if (body.customer_id !== undefined) updates.customer_id = body.customer_id || null;
     if (body.issued_at !== undefined) updates.issued_at = body.issued_at;
     if (body.due_date !== undefined) updates.due_date = body.due_date;
-    if (body.note !== undefined) updates.note = (body.note ?? "").trim() || null;
+    if (body.note !== undefined) updates.note = body.note;
     if (body.doc_number !== undefined) updates.doc_number = body.doc_number;
     if (body.is_invoice_compliant !== undefined) updates.is_invoice_compliant = !!body.is_invoice_compliant;
     if (body.show_seal !== undefined) updates.show_seal = !!body.show_seal;
     if (body.show_logo !== undefined) updates.show_logo = !!body.show_logo;
     if (body.show_bank_info !== undefined) updates.show_bank_info = !!body.show_bank_info;
-    if (body.recipient_name !== undefined) updates.recipient_name = (body.recipient_name ?? "").trim() || null;
+    if (body.recipient_name !== undefined) updates.recipient_name = body.recipient_name;
     if (body.recipient_honorific !== undefined) updates.recipient_honorific = body.recipient_honorific;
-    if (body.recipient_postal_code !== undefined)
-      updates.recipient_postal_code = (body.recipient_postal_code ?? "").trim() || null;
-    if (body.recipient_address !== undefined) updates.recipient_address = (body.recipient_address ?? "").trim() || null;
-    if (body.recipient_phone !== undefined) updates.recipient_phone = (body.recipient_phone ?? "").trim() || null;
-    if (body.subject !== undefined) updates.subject = (body.subject ?? "").trim() || null;
-    if (body.period_start !== undefined) updates.period_start = body.period_start || null;
-    if (body.period_end !== undefined) updates.period_end = body.period_end || null;
-    if (body.payment_terms !== undefined) updates.payment_terms = (body.payment_terms ?? "").trim() || null;
-    if (body.delivery_date !== undefined) updates.delivery_date = body.delivery_date || null;
+    if (body.recipient_postal_code !== undefined) updates.recipient_postal_code = body.recipient_postal_code;
+    if (body.recipient_address !== undefined) updates.recipient_address = body.recipient_address;
+    if (body.recipient_phone !== undefined) updates.recipient_phone = body.recipient_phone;
+    if (body.subject !== undefined) updates.subject = body.subject;
+    if (body.period_start !== undefined) updates.period_start = body.period_start;
+    if (body.period_end !== undefined) updates.period_end = body.period_end;
+    if (body.payment_terms !== undefined) updates.payment_terms = body.payment_terms;
+    if (body.delivery_date !== undefined) updates.delivery_date = body.delivery_date;
     if (body.template_id !== undefined) updates.template_id = body.template_id || null;
     if (body.meta_json !== undefined) updates.meta_json = body.meta_json;
 
     if (body.items !== undefined) {
-      const taxRate = parseInt(String(body.tax_rate ?? 10), 10);
+      const taxRate = body.tax_rate ?? 10;
       const { itemsJson, subtotal, tax, total } = calcItems(body.items ?? [], taxRate);
       updates.items_json = itemsJson;
       updates.subtotal = subtotal;
@@ -324,9 +331,11 @@ export async function DELETE(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const id = (body?.id ?? "").trim();
-    if (!id) return apiValidationError("id is required");
+    const parsed = documentDeleteSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const id = parsed.data.id;
 
     const { data: doc } = await supabase
       .from("documents")

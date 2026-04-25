@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { sendProgressUpdate } from "@/lib/line/client";
 import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
+
+const advanceSchema = z.object({
+  note: z.string().trim().max(2000).nullable().optional(),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -48,8 +53,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!caller) return apiUnauthorized();
 
     const { id } = await params;
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const note = body.note ? String(body.note) : null;
+    const parsed = advanceSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const note = parsed.data.note ?? null;
 
     // ─── 予約取得 ───
     const { data: reservation } = await supabase

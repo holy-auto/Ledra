@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import {
@@ -11,6 +12,17 @@ import {
 } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
+
+const paymentRefundSchema = z.object({
+  refund_amount: z.coerce.number().int().positive("invalid_refund_amount"),
+  reason: z
+    .string()
+    .trim()
+    .max(500)
+    .nullable()
+    .optional()
+    .transform((v) => v || null),
+});
 
 // ─── POST: 返金処理 ───
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -31,14 +43,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return apiValidationError("missing_payment_id");
     }
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-
-    const refundAmount = parseInt(String(body?.refund_amount ?? 0), 10);
-    if (!refundAmount || refundAmount <= 0) {
-      return apiValidationError("invalid_refund_amount");
+    const parsed = paymentRefundSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-
-    const reason = String(body?.reason ?? "").trim() || null;
+    const { refund_amount: refundAmount, reason } = parsed.data;
 
     // 対象paymentを取得（tenant_id確認）
     const { data: payment, error: fetchErr } = await supabase

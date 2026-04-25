@@ -94,11 +94,20 @@ export const documentCreateSchema = z.object({
   show_bank_info: z.boolean().default(false),
   show_seal: z.boolean().default(false),
   show_logo: z.boolean().default(false),
-  tax_rate: z.number().min(0).max(100).nullable().optional(),
+  tax_rate: z.coerce.number().min(0).max(100).nullable().optional(),
+  doc_number: z
+    .string()
+    .trim()
+    .max(100)
+    .nullable()
+    .optional()
+    .transform((v) => v || null),
+  items: z.array(z.any()).max(500).optional(),
+  meta_json: z.any().nullable().optional(),
 });
 
 export const documentUpdateSchema = documentCreateSchema.partial().extend({
-  id: z.string().uuid("無効なIDです。"),
+  id: z.string().uuid("id is required"),
 });
 
 export const documentDeleteSchema = z.object({

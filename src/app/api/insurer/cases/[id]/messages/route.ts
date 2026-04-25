@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { sendCaseMessageNotification } from "@/lib/insurer/notifications";
+import { insurerCaseMessageSchema } from "@/lib/validations/insurer-case";
 
 export const runtime = "nodejs";
 
@@ -97,18 +98,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   const { id } = await ctx.params;
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("Invalid JSON body.");
+  const parsed = insurerCaseMessageSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
-
-  const { content } = body as { content?: string };
-
-  if (!content || typeof content !== "string" || content.trim().length === 0) {
-    return apiValidationError("content is required.");
-  }
+  const { content } = parsed.data;
 
   const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
@@ -122,7 +116,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         case_id: id,
         sender_id: caller.userId,
         sender_type: "insurer",
-        content: content.trim(),
+        content,
       })
       .select("id, case_id, sender_id, sender_type, content, created_at")
       .single();
@@ -183,7 +177,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
               caseNumber: caseData.case_number ?? id,
               caseTitle: caseData.title ?? "",
               senderName,
-              messagePreview: content.trim(),
+              messagePreview: content,
             });
           }
         }
@@ -192,7 +186,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         const mentionPattern = /@([^\s@]+(?:\s[^\s@]+)?)/g;
         const mentions: string[] = [];
         let match: RegExpExecArray | null;
-        while ((match = mentionPattern.exec(content.trim())) !== null) {
+        while ((match = mentionPattern.exec(content)) !== null) {
           mentions.push(match[1]);
         }
 
@@ -214,7 +208,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
                 user_id: u.user_id,
                 type: "new_message",
                 title: `${senderName}さんからメンションされました`,
-                body: `案件 ${caseNumber}: ${content.trim().slice(0, 100)}`,
+                body: `案件 ${caseNumber}: ${content.slice(0, 100)}`,
                 link: `/insurer/cases/${id}`,
               }));
 

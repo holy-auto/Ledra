@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
+import { insurerRuleCreateSchema, insurerRuleUpdateSchema } from "@/lib/validations/insurer";
 
 export const runtime = "nodejs";
 
@@ -68,37 +69,11 @@ export async function POST(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("Invalid JSON body.");
+  const parsed = insurerRuleCreateSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
-
-  const { name, condition_type, condition_value, assign_to, is_active } = body as {
-    name?: string;
-    condition_type?: string;
-    condition_value?: string;
-    assign_to?: string;
-    is_active?: boolean;
-  };
-
-  if (!name || typeof name !== "string" || name.trim().length === 0) {
-    return apiValidationError("name is required.");
-  }
-
-  const validTypes = ["category", "tenant", "priority"];
-  if (!condition_type || !validTypes.includes(condition_type)) {
-    return apiValidationError("condition_type must be one of: category, tenant, priority.");
-  }
-
-  if (!condition_value || typeof condition_value !== "string" || condition_value.trim().length === 0) {
-    return apiValidationError("condition_value is required.");
-  }
-
-  if (!assign_to) {
-    return apiValidationError("assign_to is required.");
-  }
+  const { name, condition_type, condition_value, assign_to, is_active } = parsed.data;
 
   const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
@@ -107,9 +82,9 @@ export async function POST(req: NextRequest) {
       .from("insurer_assignment_rules")
       .insert({
         insurer_id: caller.insurerId,
-        name: name.trim(),
+        name,
         condition_type,
-        condition_value: condition_value.trim(),
+        condition_value,
         assign_to,
         is_active: is_active !== false,
       })
@@ -138,33 +113,19 @@ export async function PATCH(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("Invalid JSON body.");
+  const parsed = insurerRuleUpdateSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
-
-  const { id, ...updates } = body as {
-    id?: string;
-    name?: string;
-    condition_type?: string;
-    condition_value?: string;
-    assign_to?: string;
-    is_active?: boolean;
-  };
-
-  if (!id) return apiValidationError("id is required.");
+  const { id, ...updates } = parsed.data;
 
   const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
   try {
     const updateData: Record<string, unknown> = {};
-    if (updates.name !== undefined) updateData.name = updates.name;
-    if (updates.condition_type !== undefined) updateData.condition_type = updates.condition_type;
-    if (updates.condition_value !== undefined) updateData.condition_value = updates.condition_value;
-    if (updates.assign_to !== undefined) updateData.assign_to = updates.assign_to;
-    if (updates.is_active !== undefined) updateData.is_active = updates.is_active;
+    for (const [k, v] of Object.entries(updates)) {
+      if (v !== undefined) updateData[k] = v;
+    }
 
     const { data, error } = await admin
       .from("insurer_assignment_rules")

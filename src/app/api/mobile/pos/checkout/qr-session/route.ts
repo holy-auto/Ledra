@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import Stripe from "stripe";
 import { createMobileClient, resolveMobileCaller } from "@/lib/supabase/mobile";
 import { requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { posQrSessionSchema } from "@/lib/validations/pos";
 
 export const dynamic = "force-dynamic";
 
@@ -35,20 +36,12 @@ export async function POST(req: NextRequest) {
       return apiForbidden();
     }
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-
-    const amount = parseInt(String(body?.amount ?? 0), 10);
-    if (!amount || amount < 1 || amount > 999_999_999) {
-      return apiValidationError("invalid_amount");
+    const parsed = posQrSessionSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-
-    const reservationId = String(body?.reservation_id ?? "");
-    const tenantId = String(body?.tenant_id ?? "");
-    const storeId = String(body?.store_id ?? "");
-
-    if (!reservationId || !tenantId) {
-      return apiValidationError("reservation_id and tenant_id are required");
-    }
+    const { amount, reservation_id: reservationId, tenant_id: tenantId } = parsed.data;
+    const storeId = parsed.data.store_id ?? "";
 
     // テナントの Stripe Connect アカウント取得
     // ※ tenants テーブルのカラムは stripe_connect_account_id / stripe_connect_onboarded

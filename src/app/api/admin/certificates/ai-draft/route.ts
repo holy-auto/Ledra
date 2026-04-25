@@ -4,12 +4,24 @@
  * minPlan: standard
  */
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateCertificateDraft } from "@/lib/ai/draftCertificate";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+
+const aiDraftSchema = z
+  .object({
+    vehicle_id: z.string().uuid().optional(),
+    hearing_id: z.string().uuid().optional(),
+    photo_urls: z.array(z.string().url()).max(20).optional(),
+    template_category: z.string().trim().max(100).optional(),
+  })
+  .refine((v) => !!v.vehicle_id || !!v.hearing_id, {
+    message: "vehicle_id または hearing_id が必要です",
+  });
 
 export const dynamic = "force-dynamic";
 
@@ -26,17 +38,11 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const body = await req.json();
-    const { vehicle_id, hearing_id, photo_urls, template_category } = body as {
-      vehicle_id?: string;
-      hearing_id?: string;
-      photo_urls?: string[];
-      template_category?: string;
-    };
-
-    if (!vehicle_id && !hearing_id) {
-      return apiValidationError("vehicle_id または hearing_id が必要です");
+    const parsed = aiDraftSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
+    const { vehicle_id, hearing_id, photo_urls, template_category } = parsed.data;
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 

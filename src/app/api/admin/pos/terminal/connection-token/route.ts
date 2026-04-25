@@ -4,11 +4,18 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const dynamic = "force-dynamic";
 
 // ─── POST: Stripe Terminal 接続トークン発行（Connect対応） ───
-export async function POST(_req: NextRequest) {
+export async function POST(req: NextRequest) {
+  // Each call hits Stripe to mint a Terminal connection token. Tighter
+  // limit (mobile_terminal preset, 30/min/IP) protects the Stripe API
+  // from runaway clients but is generous enough for normal reader pairing.
+  const limited = await checkRateLimit(req, "mobile_terminal");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);

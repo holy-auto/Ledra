@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
@@ -7,6 +8,10 @@ import { apiJson, apiUnauthorized, apiForbidden, apiInternalError, apiValidation
 export const dynamic = "force-dynamic";
 
 const ACTIVE_TENANT_COOKIE = "active_tenant_id";
+
+const tenantSwitchSchema = z.object({
+  tenant_id: z.string().uuid("tenant_id is required"),
+});
 
 /**
  * GET /api/admin/tenants
@@ -58,12 +63,11 @@ export async function PUT(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}));
-    const tenantId = body?.tenant_id;
-
-    if (!tenantId || typeof tenantId !== "string") {
-      return apiValidationError("tenant_id is required");
+    const parsed = tenantSwitchSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
+    const { tenant_id: tenantId } = parsed.data;
 
     // Verify the user is a member of the target tenant
     const { data: mem, error } = await supabase

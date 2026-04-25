@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -9,6 +9,7 @@ import {
   apiNotFound,
   apiInternalError,
 } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,12 @@ function getStripe() {
 }
 
 // ─── POST: Generate Stripe Connect Express Dashboard login link ───
-export async function POST() {
+export async function POST(req: NextRequest) {
+  // Each call mints a Stripe Express Dashboard login URL. Auth preset
+  // bounds abuse if an agent session leaks.
+  const limited = await checkRateLimit(req, "auth");
+  if (limited) return limited;
+
   try {
     const supabase = await createClient();
     const { data: auth } = await supabase.auth.getUser();

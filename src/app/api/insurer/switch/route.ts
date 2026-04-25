@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { apiJson, apiUnauthorized, apiValidationError, apiForbidden } from "@/lib/api/response";
+import { insurerSwitchSchema } from "@/lib/validations/insurer";
 
 export const runtime = "nodejs";
 
@@ -66,17 +67,11 @@ export async function POST(req: NextRequest) {
     return apiUnauthorized();
   }
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("invalid JSON");
+  const parsed = insurerSwitchSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
-
-  const { insurer_id } = body as { insurer_id?: string };
-  if (!insurer_id) {
-    return apiValidationError("insurer_id is required");
-  }
+  const { insurer_id } = parsed.data;
 
   // Verify user belongs to this insurer — pre-resolution, so cannot use insurer-scoped wrapper here
   const admin = createServiceRoleAdmin("insurer switch POST — verifies membership before switching active_insurer_id");

@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
+import { insurerCaseBulkSchema } from "@/lib/validations/insurer-case";
 
 export const runtime = "nodejs";
 
@@ -13,24 +14,11 @@ export async function PATCH(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("Invalid JSON body.");
+  const parsed = insurerCaseBulkSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
-
-  const { case_ids, status } = body as { case_ids?: string[]; status?: string };
-
-  if (!Array.isArray(case_ids) || case_ids.length === 0) {
-    return apiValidationError("case_ids must be a non-empty array.");
-  }
-  if (case_ids.length > 50) {
-    return apiValidationError("Maximum 50 cases per bulk operation.");
-  }
-  if (!status || !["resolved", "closed"].includes(status)) {
-    return apiValidationError("status must be 'resolved' or 'closed'.");
-  }
+  const { case_ids, status } = parsed.data;
 
   const { admin } = createInsurerScopedAdmin(caller.insurerId);
 

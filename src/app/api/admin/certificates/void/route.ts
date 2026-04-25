@@ -9,17 +9,17 @@ import {
   apiNotFound,
   apiForbidden,
 } from "@/lib/api/response";
+import { certificateVoidSchema } from "@/lib/validations/certificate";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-    const publicId = typeof body.public_id === "string" ? body.public_id.trim() : "";
-
-    if (!publicId) {
-      return apiValidationError("public_id は必須です。");
+    const parsed = certificateVoidSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
+    const { public_id: publicId } = parsed.data;
 
     const supabase = await createSupabaseServerClient();
 

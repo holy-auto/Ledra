@@ -15,11 +15,17 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createSign } from "crypto";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { getPrivateKey, getActiveKeyInfo } from "@/lib/signature/crypto";
+
+const agentSignPostSchema = z.object({
+  signer_email: z.string().trim().toLowerCase().email("有効なメールアドレスを入力してください").max(254),
+  agreed: z.literal(true, { message: "内容に同意してください" }),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -113,21 +119,11 @@ export async function POST(req: NextRequest, ctx: RouteCtx) {
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
     const ua = req.headers.get("user-agent") ?? "unknown";
 
-    let body: { signer_email: string; agreed: boolean };
-    try {
-      body = await req.json();
-    } catch {
-      return apiJson({ message: "リクエストが不正です" }, { status: 400 });
+    const parsed = agentSignPostSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiJson({ message: parsed.error.issues[0]?.message ?? "リクエストが不正です" }, { status: 400 });
     }
-
-    const { signer_email, agreed } = body;
-
-    if (!agreed) {
-      return apiJson({ message: "内容に同意してください" }, { status: 400 });
-    }
-    if (!signer_email?.includes("@") || signer_email.length > 254) {
-      return apiJson({ message: "有効なメールアドレスを入力してください" }, { status: 400 });
-    }
+    const { signer_email } = parsed.data;
 
     const admin = createServiceRoleAdmin("agent flow — agent-scoped / token-based, not tenant-scoped");
 
@@ -155,7 +151,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx) {
     }
 
     const signedAt = new Date().toISOString();
-    const normalizedEmail = signer_email.toLowerCase().trim();
+    const normalizedEmail = signer_email; // 既に zod の trim().toLowerCase() 済み
 
     // 署名ペイロードと ECDSA P-256 署名
     const payload = buildAgentContractPayload(record.id, record.template_type, signedAt, normalizedEmail);

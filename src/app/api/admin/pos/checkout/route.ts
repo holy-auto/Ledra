@@ -3,6 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { posCheckoutSchema } from "@/lib/validations/pos";
 
 export const dynamic = "force-dynamic";
 
@@ -23,41 +24,26 @@ export async function POST(req: NextRequest) {
       return apiJson({ error: "rate_limited", retry_after: rl.retryAfterSec }, { status: 429 });
     }
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-
-    // amount は必須 + 範囲チェック
-    const amount = parseInt(String(body?.amount ?? 0), 10);
-    if (!amount || amount < 1 || amount > 999_999_999) {
-      return apiValidationError("invalid_amount");
+    const parsed = posCheckoutSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-
-    // tax_rate バリデーション (0-100)
-    const taxRate = parseInt(String(body?.tax_rate ?? 10), 10);
-    if (isNaN(taxRate) || taxRate < 0 || taxRate > 100) {
-      return apiValidationError("invalid_tax_rate");
-    }
-
-    // payment_method バリデーション
-    const validMethods = ["cash", "card", "qr", "bank_transfer", "other"];
-    const paymentMethod = String(body?.payment_method ?? "cash");
-    if (!validMethods.includes(paymentMethod)) {
-      return apiValidationError("invalid_payment_method");
-    }
+    const data2 = parsed.data;
 
     // RPC呼び出し
     const { data, error } = await supabase.rpc("pos_checkout", {
       p_tenant_id: caller.tenantId,
-      p_reservation_id: String(body?.reservation_id ?? "").trim() || null,
-      p_customer_id: String(body?.customer_id ?? "").trim() || null,
-      p_store_id: String(body?.store_id ?? "").trim() || null,
-      p_register_session_id: String(body?.register_session_id ?? "").trim() || null,
-      p_payment_method: paymentMethod,
-      p_amount: amount,
-      p_received_amount: body?.received_amount != null ? parseInt(String(body.received_amount), 10) : null,
-      p_items_json: body?.items_json ?? [],
-      p_tax_rate: taxRate,
-      p_note: String(body?.note ?? "").trim() || null,
-      p_create_receipt: body?.create_receipt !== false,
+      p_reservation_id: data2.reservation_id,
+      p_customer_id: data2.customer_id,
+      p_store_id: data2.store_id,
+      p_register_session_id: data2.register_session_id,
+      p_payment_method: data2.payment_method,
+      p_amount: data2.amount,
+      p_received_amount: data2.received_amount ?? null,
+      p_items_json: data2.items_json ?? [],
+      p_tax_rate: data2.tax_rate,
+      p_note: data2.note,
+      p_create_receipt: data2.create_receipt !== false,
       p_user_id: caller.userId,
     });
 

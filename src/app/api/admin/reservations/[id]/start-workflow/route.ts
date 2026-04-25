@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
+
+const startWorkflowSchema = z.object({
+  workflow_template_id: z.string().uuid("workflow_template_id_required"),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -24,12 +29,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!caller) return apiUnauthorized();
 
     const { id } = await params;
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-
-    const templateId = String(body.workflow_template_id ?? "").trim();
-    if (!templateId) {
-      return apiValidationError("workflow_template_id_required");
+    const parsed = startWorkflowSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
+    const { workflow_template_id: templateId } = parsed.data;
 
     // 予約確認
     const { data: reservation } = await supabase

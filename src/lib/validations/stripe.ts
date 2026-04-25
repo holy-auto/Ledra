@@ -18,3 +18,8 @@ export const resumeSchema = z.object({
 export const billingStateSchema = z.object({
   access_token: z.string().min(1, "アクセストークンは必須です。"),
 });
+
+export const stripeConnectCreateSchema = z.object({
+  return_url: z.string().trim().max(2000).nullable().optional(),
+  refresh_url: z.string().trim().max(2000).nullable().optional(),
+});

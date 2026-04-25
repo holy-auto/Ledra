@@ -3,6 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { normalizePlanTier, STORE_LIMITS } from "@/lib/billing/planFeatures";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { storeCreateSchema, storeUpdateSchema } from "@/lib/validations/store";
 
 export const dynamic = "force-dynamic";
 
@@ -78,12 +79,11 @@ export async function POST(req: NextRequest) {
       return apiForbidden(`現在のプラン（${planTier}）では店舗は${limit}件までです。`);
     }
 
-    const body = await req.json();
-    const { name, address, phone, email, manager_name, business_hours } = body;
-
-    if (!name?.trim()) {
-      return apiValidationError("店舗名は必須です");
+    const parsed = storeCreateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
+    const { name, address, phone, email, manager_name, business_hours } = parsed.data;
 
     // If first store, make it default
     const isFirst = (count ?? 0) === 0;
@@ -92,12 +92,12 @@ export async function POST(req: NextRequest) {
       .from("stores")
       .insert({
         tenant_id: caller.tenantId,
-        name: name.trim(),
-        address: address?.trim() || null,
-        phone: phone?.trim() || null,
-        email: email?.trim() || null,
-        manager_name: manager_name?.trim() || null,
-        business_hours: business_hours || null,
+        name,
+        address,
+        phone,
+        email,
+        manager_name,
+        business_hours,
         is_default: isFirst,
         sort_order: count ?? 0,
       })
@@ -123,19 +123,15 @@ export async function PUT(req: NextRequest) {
       return apiForbidden();
     }
 
-    const body = await req.json();
-    const { id, name, address, phone, email, manager_name, business_hours, is_active } = body;
-
-    if (!id) return apiValidationError("id is required");
-
+    const parsed = storeUpdateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { id, ...fields } = parsed.data;
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (name !== undefined) updates.name = name.trim();
-    if (address !== undefined) updates.address = address?.trim() || null;
-    if (phone !== undefined) updates.phone = phone?.trim() || null;
-    if (email !== undefined) updates.email = email?.trim() || null;
-    if (manager_name !== undefined) updates.manager_name = manager_name?.trim() || null;
-    if (business_hours !== undefined) updates.business_hours = business_hours;
-    if (is_active !== undefined) updates.is_active = is_active;
+    for (const [k, v] of Object.entries(fields)) {
+      if (v !== undefined) updates[k] = v;
+    }
 
     const { data: store, error } = await supabase
       .from("stores")

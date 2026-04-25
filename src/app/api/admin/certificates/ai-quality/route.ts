@@ -5,12 +5,20 @@
  * Vision AI チェックは standard 以上
  */
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { normalizePlanTier } from "@/lib/billing/planFeatures";
 import { auditCertificatePhotos, type StandardRule } from "@/lib/ai/photoQualityCheck";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+
+const aiQualitySchema = z.object({
+  certificate_id: z.string().uuid().optional(),
+  category: z.string().trim().min(1, "category が必要です").max(100),
+  photo_urls: z.array(z.string().url()).max(50).optional(),
+  field_values: z.record(z.string(), z.string()).optional(),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -20,15 +28,11 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json();
-    const { certificate_id, category, photo_urls, field_values } = body as {
-      certificate_id?: string;
-      category?: string;
-      photo_urls?: string[];
-      field_values?: Record<string, string>;
-    };
-
-    if (!category) return apiValidationError("category が必要です");
+    const parsed = aiQualitySchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { certificate_id, category, photo_urls, field_values } = parsed.data;
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 

@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
+
+const settingsDefaultsSchema = z.object({
+  default_warranty_exclusions: z.string().max(5000).default(""),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -37,8 +42,11 @@ export async function PUT(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json();
-    const value = typeof body.default_warranty_exclusions === "string" ? body.default_warranty_exclusions : "";
+    const parsed = settingsDefaultsSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { default_warranty_exclusions: value } = parsed.data;
 
     const { error } = await supabase
       .from("tenants")

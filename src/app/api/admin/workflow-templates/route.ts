@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { workflowTemplateCreateSchema } from "@/lib/validations/workflow-template";
 
 export const dynamic = "force-dynamic";
 
@@ -51,25 +52,14 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-
-    const name = String(body.name ?? "").trim();
-    if (!name) return apiValidationError("テンプレート名は必須です");
-
-    const serviceType = String(body.service_type ?? "other");
-    const validTypes = ["coating", "ppf", "wrapping", "body_repair", "other"];
-    if (!validTypes.includes(serviceType)) {
-      return apiValidationError("無効なサービスタイプです");
+    const parsed = workflowTemplateCreateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-
-    // steps バリデーション
-    const steps = (body.steps ?? []) as WorkflowStep[];
-    if (!Array.isArray(steps) || steps.length === 0) {
-      return apiValidationError("ステップは1つ以上必要です");
-    }
+    const { name, service_type: serviceType, steps, is_default } = parsed.data;
 
     // is_default を設定する場合、既存のデフォルトを解除
-    if (body.is_default) {
+    if (is_default) {
       await supabase
         .from("workflow_templates")
         .update({ is_default: false })
@@ -84,7 +74,7 @@ export async function POST(req: NextRequest) {
         name,
         service_type: serviceType,
         steps,
-        is_default: !!body.is_default,
+        is_default,
         is_platform: false,
       })
       .select("id, tenant_id, name, service_type, steps, is_default, is_platform, created_at, updated_at")

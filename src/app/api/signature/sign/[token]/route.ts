@@ -16,6 +16,7 @@
  */
 
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
@@ -24,7 +25,16 @@ import { buildSigningPayload } from "@/lib/signature/hash";
 import { signPayload, getPrivateKey, getActiveKeyInfo } from "@/lib/signature/crypto";
 import { regenerateSignedPdf } from "@/lib/signature/pdfUtils";
 import { escapeHtml } from "@/lib/sanitize";
-import type { SignatureSignBody } from "@/lib/signature/types";
+
+const signatureSignSchema = z.object({
+  signer_email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email("有効なメールアドレスを入力してください")
+    .max(254, "有効なメールアドレスを入力してください"),
+  agreed: z.literal(true, { message: "内容に同意してください" }),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -93,23 +103,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
   const ua = req.headers.get("user-agent") ?? "unknown";
 
-  // 1. リクエストボディのバリデーション
-  let body: SignatureSignBody;
-  try {
-    body = await req.json();
-  } catch {
-    return apiError({ code: "validation_error", message: "リクエストが不正です", status: 400 });
+  const parsed = signatureSignSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiError({
+      code: "validation_error",
+      message: parsed.error.issues[0]?.message ?? "invalid payload",
+      status: 400,
+    });
   }
-
-  const { signer_email, agreed } = body;
-
-  if (!agreed) {
-    return apiError({ code: "validation_error", message: "内容に同意してください", status: 400 });
-  }
-
-  if (!signer_email || !signer_email.includes("@") || signer_email.length > 254) {
-    return apiError({ code: "validation_error", message: "有効なメールアドレスを入力してください", status: 400 });
-  }
+  const { signer_email } = parsed.data;
 
   // 2. セッション検証
   const session = await getValidSessionByToken(token);
@@ -119,7 +121,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
 
   const supabase = createServiceRoleAdmin("signature flow — opaque token lookup, customer is unauthenticated");
   const signedAt = new Date().toISOString();
-  const normalizedEmail = signer_email.toLowerCase().trim();
+  const normalizedEmail = signer_email;
 
   // 3. 署名ペイロードの構築
   const signingPayload = buildSigningPayload(

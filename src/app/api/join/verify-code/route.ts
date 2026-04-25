@@ -1,8 +1,13 @@
-import { NextResponse } from "next/server";
+import { z } from "zod";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { sha256Hex } from "@/lib/customerPortalServer";
 import { apiJson, apiValidationError } from "@/lib/api/response";
+
+const joinVerifyCodeSchema = z.object({
+  email: z.string().trim().toLowerCase().email("メールアドレスと確認コードを入力してください").max(254),
+  code: z.string().trim().min(1, "メールアドレスと確認コードを入力してください").max(20),
+});
 
 export const runtime = "nodejs";
 
@@ -21,19 +26,11 @@ export async function POST(req: Request) {
     );
   }
 
-  let body: any;
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("invalid JSON");
+  const parsed = joinVerifyCodeSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
-
-  const email = (body?.email ?? "").trim().toLowerCase();
-  const code = (body?.code ?? "").trim();
-
-  if (!email || !code) {
-    return apiValidationError("メールアドレスと確認コードを入力してください");
-  }
+  const { email, code } = parsed.data;
 
   const supabase = createServiceRoleAdmin("join flow — pre-auth invitation / verification");
 

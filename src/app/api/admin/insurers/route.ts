@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleAdmin, createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
@@ -10,6 +11,22 @@ export const runtime = "nodejs";
 
 const VALID_STATUSES = ["active_pending_review", "active", "suspended"] as const;
 const VALID_PLAN_TIERS = ["basic", "pro", "enterprise"] as const;
+
+const insurerPatchSchema = z.object({
+  insurer_id: z.string().uuid("insurer_id is required"),
+  status: z.enum(VALID_STATUSES).optional(),
+  plan_tier: z
+    .union([z.enum(VALID_PLAN_TIERS), z.literal(""), z.null()])
+    .optional()
+    .transform((v) => (v === "" || v === null || v === undefined ? undefined : v)),
+  rejection_reason: z
+    .string()
+    .trim()
+    .max(2000)
+    .nullable()
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v || null)),
+});
 
 async function requirePlatformAdmin(supabase: Awaited<ReturnType<typeof createClient>>) {
   const caller = await resolveCallerWithRole(supabase);
@@ -207,33 +224,11 @@ export async function PATCH(req: Request) {
     return apiForbidden();
   }
 
-  let body: any;
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("Invalid JSON");
+  const parsed = insurerPatchSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
-
-  const { insurer_id, status, plan_tier, rejection_reason } = body;
-
-  if (!insurer_id) {
-    return apiValidationError("insurer_id is required");
-  }
-
-  // Validate status
-  if (status && !(VALID_STATUSES as readonly string[]).includes(status)) {
-    return apiValidationError(`Invalid status. Must be one of: ${VALID_STATUSES.join(", ")}`);
-  }
-
-  // Validate plan_tier
-  if (
-    plan_tier !== undefined &&
-    plan_tier !== null &&
-    plan_tier !== "" &&
-    !(VALID_PLAN_TIERS as readonly string[]).includes(plan_tier)
-  ) {
-    return apiValidationError(`Invalid plan_tier. Must be one of: ${VALID_PLAN_TIERS.join(", ")}`);
-  }
+  const { insurer_id, status, plan_tier, rejection_reason } = parsed.data;
 
   const { admin } = createTenantScopedAdmin(caller.tenantId);
 
@@ -248,9 +243,9 @@ export async function PATCH(req: Request) {
     return apiNotFound("保険会社が見つかりません。");
   }
 
-  const updates: Record<string, any> = { updated_at: new Date().toISOString() };
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
-  if (status && (VALID_STATUSES as readonly string[]).includes(status)) {
+  if (status) {
     updates.status = status;
     updates.reviewed_at = new Date().toISOString();
     updates.reviewed_by = caller.userId;
@@ -261,11 +256,11 @@ export async function PATCH(req: Request) {
   }
 
   if (plan_tier !== undefined) {
-    updates.plan_tier = plan_tier || "basic";
+    updates.plan_tier = plan_tier;
   }
 
   if (rejection_reason !== undefined) {
-    updates.rejection_reason = rejection_reason || null;
+    updates.rejection_reason = rejection_reason;
   }
 
   const { data, error } = await admin

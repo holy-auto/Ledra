@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
@@ -12,12 +13,20 @@ import {
   apiForbidden,
   apiInternalError,
 } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { enqueueBatchPdf } from "@/lib/qstash/publish";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_BATCH = 100;
+
+const batchPdfSchema = z.object({
+  public_ids: z
+    .array(z.string().trim().min(1).max(128))
+    .min(1, "public_ids は必須です（配列）。")
+    .max(MAX_BATCH, `一度に処理できるのは最大 ${MAX_BATCH} 件です。`),
+});
 
 /**
  * GET /api/admin/certificates/batch-pdf?job_id=xxx
@@ -59,6 +68,12 @@ export async function GET(req: NextRequest) {
  * 進捗は GET エンドポイントをポーリングして確認。
  */
 export async function POST(req: NextRequest) {
+  // Each call enqueues up to 100 PDF renders + Storage uploads via QStash.
+  // The auth preset (10/min/IP) bounds blast radius if a session leaks while
+  // still allowing legitimate batch operations.
+  const limited = await checkRateLimit(req, "auth");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
@@ -74,19 +89,11 @@ export async function POST(req: NextRequest) {
     });
     if (billingDeny) return billingDeny;
 
-    const body = await parseJsonSafe(req);
-    const publicIds: unknown = body?.public_ids;
-
-    if (!Array.isArray(publicIds) || publicIds.length === 0) {
-      return apiValidationError("public_ids は必須です（配列）。");
+    const parsed = batchPdfSchema.safeParse(await parseJsonSafe(req));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-    if (publicIds.length > MAX_BATCH) {
-      return apiValidationError(`一度に処理できるのは最大 ${MAX_BATCH} 件です。`);
-    }
-    const ids = publicIds.filter((v): v is string => typeof v === "string" && v.trim().length > 0);
-    if (ids.length === 0) {
-      return apiValidationError("有効な public_id がありません。");
-    }
+    const ids = parsed.data.public_ids;
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 

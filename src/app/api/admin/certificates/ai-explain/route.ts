@@ -4,6 +4,7 @@
  * minPlan: standard
  */
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
@@ -13,7 +14,14 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
-const VALID_AUDIENCES: Audience[] = ["customer", "insurer", "internal", "sales"];
+const VALID_AUDIENCES = ["customer", "insurer", "internal", "sales"] as const;
+
+const aiExplainSchema = z.object({
+  certificate_id: z.string().uuid("certificate_id が必要です"),
+  audience: z.enum(VALID_AUDIENCES, {
+    message: `audience は ${VALID_AUDIENCES.join("|")} のいずれかです`,
+  }),
+});
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,16 +35,11 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const body = await req.json();
-    const { certificate_id, audience } = body as {
-      certificate_id?: string;
-      audience?: string;
-    };
-
-    if (!certificate_id) return apiValidationError("certificate_id が必要です");
-    if (!audience || !VALID_AUDIENCES.includes(audience as Audience)) {
-      return apiValidationError(`audience は ${VALID_AUDIENCES.join("|")} のいずれかです`);
+    const parsed = aiExplainSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
+    const { certificate_id, audience } = parsed.data;
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
@@ -74,7 +77,7 @@ export async function POST(req: NextRequest) {
     const publicUrl = cert.public_id ? `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/c/${cert.public_id}` : undefined;
 
     const explanation = await generateExplanation({
-      audience: audience as Audience,
+      audience: audience satisfies Audience,
       certificate: {
         public_id: cert.public_id ?? "",
         service_name: cert.service_name ?? "",

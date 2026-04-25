@@ -1,5 +1,6 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiValidationError, apiInternalError, apiNotFound } from "@/lib/api/response";
@@ -10,8 +11,27 @@ import { sendSMS } from "@/lib/sms/client";
 
 export const dynamic = "force-dynamic";
 
-const VALID_CHANNELS = ["email", "line", "sms"] as const;
-type Channel = (typeof VALID_CHANNELS)[number];
+const documentShareSchema = z.object({
+  document_id: z.string().uuid("document_id は必須です。"),
+  channel: z.enum(["email", "line", "sms"], {
+    message: "channel は email, line, sms のいずれかを指定してください。",
+  }),
+  recipient: z.string().trim().min(1, "recipient は必須です。").max(200),
+  message: z
+    .string()
+    .trim()
+    .max(2000)
+    .nullable()
+    .optional()
+    .transform((v) => v || undefined),
+  idempotency_key: z
+    .string()
+    .trim()
+    .max(200)
+    .nullable()
+    .optional()
+    .transform((v) => v || undefined),
+});
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,19 +39,11 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const documentId = (body?.document_id ?? "").trim();
-    const channel = (body?.channel ?? "").trim() as Channel;
-    const recipient = (body?.recipient ?? "").trim();
-    const message = (body?.message ?? "").trim() || undefined;
-    // クライアントがリトライ時に同一キーを送ることで二重送信を防ぐ
-    const idempotencyKey: string | undefined =
-      typeof body?.idempotency_key === "string" ? body.idempotency_key.trim() : undefined;
-
-    if (!documentId) return apiValidationError("document_id は必須です。");
-    if (!VALID_CHANNELS.includes(channel))
-      return apiValidationError("channel は email, line, sms のいずれかを指定してください。");
-    if (!recipient) return apiValidationError("recipient は必須です。");
+    const parsed = documentShareSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { document_id: documentId, channel, recipient, message, idempotency_key: idempotencyKey } = parsed.data;
 
     // Fetch document
     const { data: doc } = await supabase
@@ -107,8 +119,8 @@ export async function POST(req: NextRequest) {
         const smsBody = `【${senderName}】${docLabel} ${doc.doc_number}\n合計: ¥${doc.total.toLocaleString("ja-JP")}${message ? `\n${message}` : ""}`;
         success = await sendSMS(recipient, smsBody);
       }
-    } catch (e: any) {
-      errorMessage = e?.message ?? String(e);
+    } catch (e) {
+      errorMessage = e instanceof Error ? e.message : String(e);
       success = false;
     }
 

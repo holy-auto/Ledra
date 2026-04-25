@@ -30,11 +30,14 @@ jobs:
         run: |
           npm run lint &
           PID_LINT=$!
+          npm run lint:migrations &
+          PID_MIG=$!
           npx tsc --noEmit &
           PID_TSC=$!
           npm run test:coverage &
           PID_TEST=$!
           wait $PID_LINT || exit 1
+          wait $PID_MIG || exit 1
           wait $PID_TSC || exit 1
           wait $PID_TEST || exit 1
 

@@ -1,7 +1,17 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiInternalError, apiValidationError, apiError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+
+const nexptgEnvelopeSchema = z.object({
+  data: z
+    .object({
+      history: z.array(z.unknown()).optional(),
+      reports: z.array(z.unknown()).optional(),
+    })
+    .passthrough(),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -209,10 +219,11 @@ export async function POST(req: NextRequest) {
     }
     const apiKey = extracted.key;
 
-    const body = (await req.json().catch((): null => null)) as NexPtgEnvelope | null;
-    if (!body || typeof body !== "object" || !body.data) {
+    const parsed = nexptgEnvelopeSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) {
       return apiValidationError("Invalid payload: expected { data: { history, reports } }");
     }
+    const body = parsed.data as unknown as NexPtgEnvelope;
 
     const admin = createServiceRoleAdmin(
       "nexptg webhook — tenant resolved from external_api_key then queries continue with same admin",
@@ -246,8 +257,8 @@ export async function POST(req: NextRequest) {
     }
 
     const tenantId = tenant.id as string;
-    const reports = Array.isArray(body.data.reports) ? body.data.reports : [];
-    const history = Array.isArray(body.data.history) ? body.data.history : [];
+    const reports = Array.isArray(body.data?.reports) ? body.data.reports : [];
+    const history = Array.isArray(body.data?.history) ? body.data.history : [];
 
     let reportsUpserted = 0;
     let measurementsInserted = 0;

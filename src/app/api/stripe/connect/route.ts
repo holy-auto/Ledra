@@ -1,9 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import Stripe from "stripe";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { apiJson, apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiNotFound, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { stripeConnectCreateSchema } from "@/lib/validations/stripe";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +24,11 @@ function safeUrl(candidate?: string | null, fallback?: string): string {
 
 // ─── POST: Create Connect account + onboarding link ───
 export async function POST(req: NextRequest) {
+  // Creates Stripe accounts + onboarding links. Bound abuse if a session
+  // cookie leaks; auth preset (10/min/IP) is comfortable for normal flow.
+  const limited = await checkRateLimit(req, "auth");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
@@ -54,9 +61,12 @@ export async function POST(req: NextRequest) {
     }
 
     // Generate onboarding link
-    const body = await req.json().catch((): Record<string, unknown> => ({}));
-    const returnUrl = safeUrl(body?.return_url);
-    const refreshUrl = safeUrl(body?.refresh_url);
+    const parsed = stripeConnectCreateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const returnUrl = safeUrl(parsed.data.return_url);
+    const refreshUrl = safeUrl(parsed.data.refresh_url);
 
     const accountLink = await stripe.accountLinks.create({
       account: accountId,
