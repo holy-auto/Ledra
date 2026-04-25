@@ -17,6 +17,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { enqueuePolygonBackfill } from "@/lib/qstash/publish";
 
 export const runtime = "nodejs";
@@ -61,6 +62,12 @@ export async function GET() {
 
 /** 未アンカー画像のバックフィルを QStash 経由で非同期キューイング */
 export async function POST(req: NextRequest) {
+  // Each call enqueues an on-chain backfill (real gas spend on Polygon).
+  // Auth preset (10/min/IP) protects against repeated submissions if a
+  // session leaks; legitimate operators only run this rarely.
+  const limited = await checkRateLimit(req, "auth");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);

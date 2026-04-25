@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { billingStateSchema } from "@/lib/validations/stripe";
 import { apiJson, apiInternalError, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +15,12 @@ function getStripe() {
 }
 
 export async function POST(req: NextRequest) {
+  // Each call retrieves a Stripe Subscription. Auth preset (10/min/IP)
+  // bounds Stripe API spend if access_token is replayed; the page polls
+  // this rarely so the limit is not user-visible.
+  const limited = await checkRateLimit(req, "auth");
+  if (limited) return limited;
+
   try {
     const body = await req.json().catch((): Record<string, unknown> => ({}));
     const parsed = billingStateSchema.safeParse(body);

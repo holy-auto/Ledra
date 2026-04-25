@@ -9,6 +9,11 @@ import {
   apiNotFound,
   apiInternalError,
 } from "@/lib/api/response";
+import {
+  registerSessionCreateSchema,
+  registerSessionDeleteSchema,
+  registerSessionUpdateSchema,
+} from "@/lib/validations/register-session";
 
 export const dynamic = "force-dynamic";
 
@@ -98,13 +103,11 @@ export async function POST(req: NextRequest) {
       return apiForbidden();
     }
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const registerId = String(body?.register_id ?? "").trim();
-    const openingCash = parseInt(String(body?.opening_cash ?? 0), 10) || 0;
-
-    if (!registerId) {
-      return apiValidationError("register_idは必須です");
+    const parsed = registerSessionCreateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
+    const { register_id: registerId, opening_cash: openingCash, note } = parsed.data;
 
     // レジがテナントに属するか確認
     const { data: register } = await supabase
@@ -140,7 +143,7 @@ export async function POST(req: NextRequest) {
         opened_by: caller.userId,
         opening_cash: openingCash,
         status: "open",
-        note: String(body?.note ?? "").trim() || null,
+        note,
       })
       .select("id, tenant_id, register_id, opened_by, opening_cash, status, note, opened_at, created_at, updated_at")
       .single();
@@ -165,9 +168,11 @@ export async function PUT(req: NextRequest) {
       return apiForbidden();
     }
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const id = String(body?.id ?? "").trim();
-    if (!id) return apiValidationError("idは必須です");
+    const parsed = registerSessionUpdateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { id, note, total_sales, total_transactions, expected_cash, closing_cash } = parsed.data;
 
     // 現在のセッション取得
     const { data: current } = await supabase
@@ -183,27 +188,23 @@ export async function PUT(req: NextRequest) {
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
-    if (body.note !== undefined) updates.note = String(body.note ?? "").trim() || null;
-    if (body.total_sales !== undefined) updates.total_sales = parseInt(String(body.total_sales), 10) || 0;
-    if (body.total_transactions !== undefined)
-      updates.total_transactions = parseInt(String(body.total_transactions), 10) || 0;
-    if (body.expected_cash !== undefined) updates.expected_cash = parseInt(String(body.expected_cash), 10) || 0;
+    if (note !== undefined) updates.note = note;
+    if (total_sales !== undefined) updates.total_sales = total_sales;
+    if (total_transactions !== undefined) updates.total_transactions = total_transactions;
+    if (expected_cash !== undefined) updates.expected_cash = expected_cash;
 
     // closing_cashが設定された場合、セッションを閉鎖
-    if (body.closing_cash !== undefined) {
-      const closingCash = parseInt(String(body.closing_cash), 10) || 0;
-      updates.closing_cash = closingCash;
+    if (closing_cash !== undefined) {
+      updates.closing_cash = closing_cash;
       updates.status = "closed";
       updates.closed_at = new Date().toISOString();
       updates.closed_by = caller.userId;
 
-      // cash_difference計算: 期待値がある場合はそれとの差額、なければopeningとの差額
-      const expectedCash =
-        body.expected_cash !== undefined ? parseInt(String(body.expected_cash), 10) || 0 : current.expected_cash;
-
-      if (expectedCash !== null && expectedCash !== undefined) {
-        updates.cash_difference = closingCash - expectedCash;
-        updates.expected_cash = expectedCash;
+      // cash_difference計算: 期待値がある場合はそれとの差額
+      const effectiveExpected = expected_cash ?? current.expected_cash;
+      if (effectiveExpected !== null && effectiveExpected !== undefined) {
+        updates.cash_difference = closing_cash - effectiveExpected;
+        updates.expected_cash = effectiveExpected;
       }
     }
 
@@ -237,9 +238,11 @@ export async function DELETE(req: NextRequest) {
       return apiForbidden();
     }
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const id = String(body?.id ?? "").trim();
-    if (!id) return apiValidationError("idは必須です");
+    const parsed = registerSessionDeleteSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { id } = parsed.data;
 
     const { error } = await supabase.from("register_sessions").delete().eq("id", id).eq("tenant_id", caller.tenantId);
 

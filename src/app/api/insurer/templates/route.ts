@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
+import { insurerTemplateCreateSchema } from "@/lib/validations/insurer";
 
 export const runtime = "nodejs";
 
@@ -64,30 +65,11 @@ export async function POST(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("Invalid JSON body.");
+  const parsed = insurerTemplateCreateSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
-
-  const { name, title_template, category, default_priority, description_template } = body as {
-    name?: string;
-    title_template?: string;
-    category?: string;
-    default_priority?: string;
-    description_template?: string;
-  };
-
-  if (!name || typeof name !== "string" || name.trim().length === 0) {
-    return apiValidationError("name is required.");
-  }
-  if (!title_template || typeof title_template !== "string" || title_template.trim().length === 0) {
-    return apiValidationError("title_template is required.");
-  }
-
-  const validPriorities = ["low", "normal", "high", "urgent"];
-  const priority = validPriorities.includes(default_priority ?? "") ? default_priority : "normal";
+  const { name, title_template, category, default_priority, description_template } = parsed.data;
 
   const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
@@ -96,11 +78,11 @@ export async function POST(req: NextRequest) {
       .from("insurer_case_templates")
       .insert({
         insurer_id: caller.insurerId,
-        name: name.trim(),
-        title_template: title_template.trim(),
-        category: category?.trim() ?? null,
-        default_priority: priority,
-        description_template: description_template?.trim() ?? null,
+        name,
+        title_template,
+        category,
+        default_priority: default_priority ?? "normal",
+        description_template,
         created_by: caller.userId,
       })
       .select(

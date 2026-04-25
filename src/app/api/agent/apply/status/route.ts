@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+
+const applyStatusSchema = z.object({
+  application_number: z.string().trim().min(1, "申請番号とメールアドレスを入力してください").max(100),
+  email: z.string().trim().toLowerCase().email("申請番号とメールアドレスを入力してください").max(254),
+});
 
 export const runtime = "nodejs";
 
@@ -20,19 +26,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: { application_number?: string; email?: string };
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("invalid JSON");
+  const parsed = applyStatusSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
-
-  const appNumber = (body.application_number ?? "").trim();
-  const email = (body.email ?? "").trim().toLowerCase();
-
-  if (!appNumber || !email) {
-    return apiValidationError("申請番号とメールアドレスを入力してください");
-  }
+  const { application_number: appNumber, email } = parsed.data;
 
   const supabase = createServiceRoleAdmin("agent apply flow — pre-tenant registration");
   const { data, error } = await supabase

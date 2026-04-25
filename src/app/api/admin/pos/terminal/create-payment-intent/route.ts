@@ -12,6 +12,14 @@ import {
   apiNotFound,
   apiInternalError,
 } from "@/lib/api/response";
+import { z } from "zod";
+
+const terminalPiSchema = z.object({
+  amount: z.coerce.number().int().min(1, "invalid_amount").max(999_999_999, "invalid_amount"),
+  currency: z.string().trim().min(1).max(10).default("jpy"),
+  description: z.string().trim().max(500).optional(),
+  metadata: z.record(z.string(), z.string()).optional(),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -30,18 +38,11 @@ export async function POST(req: NextRequest) {
     if (!caller) return apiUnauthorized();
     if (!requireMinRole(caller, "staff")) return apiForbidden();
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-
-    // amount バリデーション
-    const amount = parseInt(String(body?.amount ?? 0), 10);
-    if (!amount || amount < 1 || amount > 999_999_999) {
-      return apiValidationError("invalid_amount");
+    const parsed = terminalPiSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-
-    const currency = String(body?.currency ?? "jpy");
-    const description = body?.description ? String(body.description) : undefined;
-    const extraMetadata =
-      body?.metadata && typeof body.metadata === "object" ? (body.metadata as Record<string, string>) : {};
+    const { amount, currency, description, metadata: extraMetadata = {} } = parsed.data;
 
     // テナントのStripe Connectアカウントを取得
     const { admin } = createTenantScopedAdmin(caller.tenantId);

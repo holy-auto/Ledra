@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiJson, apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
+import { insurerSecurityUpdateSchema } from "@/lib/validations/insurer";
 
 export const runtime = "nodejs";
 
@@ -68,37 +69,11 @@ export async function PATCH(req: NextRequest) {
   if (!caller) return apiUnauthorized();
   if (caller.role !== "admin") return apiForbidden("管理者のみセキュリティ設定を変更できます。");
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("invalid JSON");
+  const parsed = insurerSecurityUpdateSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
-
-  const { ip_whitelist_enabled, ip_whitelist, session_timeout_minutes } = body as {
-    ip_whitelist_enabled?: boolean;
-    ip_whitelist?: string[];
-    session_timeout_minutes?: number;
-  };
-
-  // Validate ip_whitelist entries
-  if (ip_whitelist !== undefined) {
-    if (!Array.isArray(ip_whitelist)) {
-      return apiValidationError("ip_whitelist must be an array");
-    }
-    const ipCidrPattern = /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/;
-    for (const entry of ip_whitelist) {
-      if (typeof entry !== "string" || !ipCidrPattern.test(entry.trim())) {
-        return apiValidationError(`無効なIP/CIDRフォーマット: ${entry}`);
-      }
-    }
-  }
-
-  // Validate session_timeout_minutes
-  const validTimeouts = [15, 30, 60, 120];
-  if (session_timeout_minutes !== undefined && !validTimeouts.includes(session_timeout_minutes)) {
-    return apiValidationError(`セッションタイムアウトは ${validTimeouts.join("/")} 分のいずれかを指定してください。`);
-  }
+  const { ip_whitelist_enabled, ip_whitelist, session_timeout_minutes } = parsed.data;
 
   try {
     const { admin } = createInsurerScopedAdmin(caller.insurerId);
@@ -111,7 +86,7 @@ export async function PATCH(req: NextRequest) {
       updates.ip_whitelist_enabled = !!ip_whitelist_enabled;
     }
     if (ip_whitelist !== undefined) {
-      updates.ip_whitelist = ip_whitelist.map((s: string) => s.trim());
+      updates.ip_whitelist = ip_whitelist;
     }
     if (session_timeout_minutes !== undefined) {
       updates.session_timeout_minutes = session_timeout_minutes;

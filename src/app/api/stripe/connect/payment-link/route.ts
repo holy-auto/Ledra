@@ -12,6 +12,7 @@ import {
   apiValidationError,
   apiForbidden,
 } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +31,12 @@ function getStripe() {
  * - Ledra が決済を仲介し、テナントに売上を入金
  */
 export async function POST(req: NextRequest) {
+  // Each call hits Stripe to create a Checkout Session and is invoked from
+  // the admin invoices view. Auth preset (10/min/IP) protects against an
+  // attacker spamming Stripe API on a leaked admin session.
+  const limited = await checkRateLimit(req, "auth");
+  if (limited) return limited;
+
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);

@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
+import { insurerWatchlistCreateSchema } from "@/lib/validations/insurer";
 
 export const runtime = "nodejs";
 
@@ -43,45 +44,58 @@ export async function GET(req: NextRequest) {
       return apiJson({ items: [] });
     }
 
-    // Enrich items with target details
-    const enriched = await Promise.all(
-      (items ?? []).map(async (item) => {
-        if (item.target_type === "certificate") {
-          const { data: cert } = await admin
-            .from("certificates")
-            .select("id, public_id, status, updated_at")
-            .eq("id", item.target_id)
-            .maybeSingle();
-          return {
-            ...item,
-            target_detail: cert
-              ? {
-                  identifier: cert.public_id,
-                  status: cert.status,
-                  updated_at: cert.updated_at,
-                }
-              : null,
-          };
-        } else if (item.target_type === "vehicle") {
-          const { data: vehicle } = await admin
-            .from("vehicles")
-            .select("id, plate_number, maker, model, updated_at")
-            .eq("id", item.target_id)
-            .maybeSingle();
-          return {
-            ...item,
-            target_detail: vehicle
-              ? {
-                  identifier: [vehicle.maker, vehicle.model, vehicle.plate_number].filter(Boolean).join(" "),
-                  status: null,
-                  updated_at: vehicle.updated_at,
-                }
-              : null,
-          };
-        }
-        return { ...item, target_detail: null };
-      }),
-    );
+    // Batch-fetch target details: one query per target_type, not one per item.
+    // (Was previously O(items) round-trips via Promise.all + maybeSingle.)
+    const certificateIds = new Set<string>();
+    const vehicleIds = new Set<string>();
+    for (const item of items ?? []) {
+      if (item.target_type === "certificate") certificateIds.add(item.target_id);
+      else if (item.target_type === "vehicle") vehicleIds.add(item.target_id);
+    }
+
+    const [certRes, vehicleRes] = await Promise.all([
+      certificateIds.size > 0
+        ? admin.from("certificates").select("id, public_id, status, updated_at").in("id", Array.from(certificateIds))
+        : Promise.resolve({ data: [] as { id: string; public_id: string; status: string; updated_at: string }[] }),
+      vehicleIds.size > 0
+        ? admin.from("vehicles").select("id, plate_number, maker, model, updated_at").in("id", Array.from(vehicleIds))
+        : Promise.resolve({
+            data: [] as {
+              id: string;
+              plate_number: string | null;
+              maker: string | null;
+              model: string | null;
+              updated_at: string;
+            }[],
+          }),
+    ]);
+
+    const certById = new Map((certRes.data ?? []).map((c) => [c.id, c]));
+    const vehicleById = new Map((vehicleRes.data ?? []).map((v) => [v.id, v]));
+
+    const enriched = (items ?? []).map((item) => {
+      if (item.target_type === "certificate") {
+        const cert = certById.get(item.target_id);
+        return {
+          ...item,
+          target_detail: cert ? { identifier: cert.public_id, status: cert.status, updated_at: cert.updated_at } : null,
+        };
+      }
+      if (item.target_type === "vehicle") {
+        const vehicle = vehicleById.get(item.target_id);
+        return {
+          ...item,
+          target_detail: vehicle
+            ? {
+                identifier: [vehicle.maker, vehicle.model, vehicle.plate_number].filter(Boolean).join(" "),
+                status: null,
+                updated_at: vehicle.updated_at,
+              }
+            : null,
+        };
+      }
+      return { ...item, target_detail: null };
+    });
 
     return apiJson({ items: enriched });
   } catch (err) {
@@ -100,25 +114,11 @@ export async function POST(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("Invalid JSON body.");
+  const parsed = insurerWatchlistCreateSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
-
-  const { type, target_id } = body as {
-    type?: string;
-    target_id?: string;
-  };
-
-  const validTypes = ["certificate", "vehicle"];
-  if (!type || !validTypes.includes(type)) {
-    return apiValidationError("type must be 'certificate' or 'vehicle'.");
-  }
-  if (!target_id) {
-    return apiValidationError("target_id is required.");
-  }
+  const { type, target_id } = parsed.data;
 
   const { admin } = createInsurerScopedAdmin(caller.insurerId);
 

@@ -5,6 +5,10 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { getClientIp } from "@/lib/rateLimit";
 import { apiJson, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import {
+  insurerTenantAccessGrantSchema,
+  insurerTenantAccessPatchSchema,
+} from "@/lib/validations/insurer-tenant-access";
 
 export const runtime = "nodejs";
 
@@ -105,17 +109,11 @@ export async function POST(req: NextRequest) {
     return apiForbidden();
   }
 
-  let body: any;
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("Invalid JSON");
+  const parsed = insurerTenantAccessGrantSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
-
-  const { insurer_id, tenant_id, notes } = body;
-  if (!insurer_id || !tenant_id) {
-    return apiValidationError("insurer_id and tenant_id are required");
-  }
+  const { insurer_id, tenant_id, notes } = parsed.data;
 
   const { admin } = createTenantScopedAdmin(caller.tenantId);
 
@@ -209,17 +207,11 @@ export async function PATCH(req: NextRequest) {
     return apiForbidden();
   }
 
-  let body: any;
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("Invalid JSON");
+  const parsed = insurerTenantAccessPatchSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
-
-  const { id, action, notes } = body;
-  if (!id) {
-    return apiValidationError("id is required");
-  }
+  const { id, action, notes } = parsed.data;
 
   const { admin } = createTenantScopedAdmin(caller.tenantId);
   const ip = getClientIp(req);

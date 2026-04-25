@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 import { apiJson, apiUnauthorized, apiValidationError, apiForbidden, apiInternalError } from "@/lib/api/response";
+
+const contextSwitchSchema = z.object({
+  context: z.enum(["shop", "agent"], {
+    message: "context は 'shop' または 'agent' を指定してください",
+  }),
+});
 
 export const runtime = "nodejs";
 
@@ -66,17 +73,11 @@ export async function POST(req: NextRequest) {
     return apiUnauthorized();
   }
 
-  let body: { context?: string };
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("invalid JSON");
+  const parsed = contextSwitchSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
-
-  const newContext = body.context;
-  if (newContext !== "shop" && newContext !== "agent") {
-    return apiValidationError("context は 'shop' または 'agent' を指定してください");
-  }
+  const newContext = parsed.data.context;
 
   // ユーザーがそのコンテキストの権限を持っているか確認
   const { data: ctx } = await supabase.rpc("get_my_user_contexts");

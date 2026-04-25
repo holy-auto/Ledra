@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { registerCreateSchema, registerUpdateSchema } from "@/lib/validations/register";
 
 export const dynamic = "force-dynamic";
 
@@ -83,12 +84,11 @@ export async function POST(req: NextRequest) {
       return apiForbidden();
     }
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const name = String(body?.name ?? "").trim();
-    const storeId = String(body?.store_id ?? "").trim();
-
-    if (!name) return apiValidationError("レジ名は必須です");
-    if (!storeId) return apiValidationError("store_idは必須です");
+    const parsed = registerCreateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { name, store_id: storeId, is_active, sort_order } = parsed.data;
 
     // store_idがテナントに属するか確認
     const { data: store } = await supabase
@@ -108,8 +108,8 @@ export async function POST(req: NextRequest) {
         tenant_id: caller.tenantId,
         store_id: storeId,
         name,
-        is_active: body?.is_active !== false,
-        sort_order: typeof body?.sort_order === "number" ? body.sort_order : 0,
+        is_active,
+        sort_order,
       })
       .select("id, tenant_id, store_id, name, is_active, sort_order, created_at, updated_at")
       .single();
@@ -134,14 +134,15 @@ export async function PUT(req: NextRequest) {
       return apiForbidden();
     }
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const id = String(body?.id ?? "").trim();
-    if (!id) return apiValidationError("idは必須です");
-
+    const parsed = registerUpdateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { id, ...fields } = parsed.data;
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (body.name !== undefined) updates.name = String(body.name).trim();
-    if (body.is_active !== undefined) updates.is_active = body.is_active;
-    if (body.sort_order !== undefined) updates.sort_order = body.sort_order;
+    for (const [k, v] of Object.entries(fields)) {
+      if (v !== undefined) updates[k] = v;
+    }
 
     const { data: register, error } = await supabase
       .from("registers")

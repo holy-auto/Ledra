@@ -1,10 +1,16 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { apiJson } from "@/lib/api/response";
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { anchorToPolygon, verifyAnchor, findAnchorTx } from "@/lib/anchoring/providers";
 import { computeAuthenticityGrade, type AuthenticityGrade, type C2paKind } from "@/lib/anchoring/authenticityGrade";
 import { Client } from "@upstash/qstash";
+
+const polygonBackfillSchema = z.object({
+  job_id: z.string().uuid(),
+  tenant_id: z.string().uuid(),
+});
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -23,8 +29,11 @@ function getBaseUrl(): string {
 const BATCH_SIZE = 50;
 
 async function handler(req: NextRequest) {
-  const body = await req.json();
-  const { job_id, tenant_id } = body as { job_id: string; tenant_id: string };
+  const parsed = polygonBackfillSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiJson({ error: "invalid payload" }, { status: 400 });
+  }
+  const { job_id, tenant_id } = parsed.data;
 
   const { admin } = createTenantScopedAdmin(tenant_id);
 
@@ -109,7 +118,9 @@ async function handler(req: NextRequest) {
           await admin.from("certificate_images").update(updatePayload).eq("id", img.id);
         }
       } catch (err) {
-        console.error(`[polygon-backfill] img ${img.id} failed:`, err);
+        // 生の err は RPC レスポンス・スタック等を含み得るので message のみ。
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.error("[polygon-backfill] img failed", { imageId: img.id, errorMsg });
       }
 
       processedCount++;

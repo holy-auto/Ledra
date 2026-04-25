@@ -168,7 +168,7 @@ export default async function StandaloneThicknessReportDetailPage({
     return <div className="p-6 text-primary">膜厚測定レポートが見つかりません。</div>;
   }
 
-  const linkedVehicle = (report.vehicle as LinkedVehicle | null) ?? null;
+  const linkedVehicle = (report.vehicle as unknown as LinkedVehicle | null) ?? null;
 
   const { data: measurementsRaw } = await supabase
     .from("thickness_measurements")
@@ -229,9 +229,13 @@ export default async function StandaloneThicknessReportDetailPage({
       />
 
       {/* 車両連携ステータス */}
+<<<<<<< HEAD
       <section
         className={`glass-card p-5 ${linkedVehicle ? "" : "border border-warning/30"}`}
       >
+=======
+      <section className={`glass-card p-5 ${linkedVehicle ? "" : "border border-warning/30"}`}>
+>>>>>>> origin/main
         <div className="mb-3">
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">車両連携</div>
         </div>
@@ -246,9 +250,13 @@ export default async function StandaloneThicknessReportDetailPage({
                 linkedVehicle.plate_display ||
                 "車両詳細"}
             </Link>
+<<<<<<< HEAD
             {linkedVehicle.plate_display && (
               <span className="text-secondary">（{linkedVehicle.plate_display}）</span>
             )}
+=======
+            {linkedVehicle.plate_display && <span className="text-secondary">（{linkedVehicle.plate_display}）</span>}
+>>>>>>> origin/main
           </div>
         ) : (
           <div className="space-y-2 text-sm">
@@ -260,8 +268,13 @@ export default async function StandaloneThicknessReportDetailPage({
             </div>
             {report.vin && (
               <div className="text-xs text-muted">
+<<<<<<< HEAD
                 NexPTG側のVIN: <span className="font-mono text-secondary">{report.vin}</span>
                 ｜ Ledra側で同じVIN（vin_code）を持つ車両を登録すると、次回の同期で自動的に紐付けされます。
+=======
+                NexPTG側のVIN: <span className="font-mono text-secondary">{report.vin}</span>｜
+                Ledra側で同じVIN（vin_code）を持つ車両を登録すると、次回の同期で自動的に紐付けされます。
+>>>>>>> origin/main
               </div>
             )}
             {!report.vin && (
@@ -317,7 +330,13 @@ export default async function StandaloneThicknessReportDetailPage({
           )}
         </dl>
         {report.comment && (
+<<<<<<< HEAD
           <div className="mt-4 rounded-lg bg-inset p-3 text-sm text-secondary whitespace-pre-wrap">{report.comment}</div>
+=======
+          <div className="mt-4 rounded-lg bg-inset p-3 text-sm text-secondary whitespace-pre-wrap">
+            {report.comment}
+          </div>
+>>>>>>> origin/main
         )}
       </section>
 

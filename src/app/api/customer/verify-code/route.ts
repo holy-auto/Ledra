@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import {
   createSession,
   getLatestValidCodeRow,
@@ -15,6 +16,19 @@ import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/li
 
 const isSecureCookie = process.env.NODE_ENV === "production";
 
+const verifyCodeSchema = z.object({
+  tenant_slug: z.string().trim().min(1, "missing tenant_slug").max(100),
+  email: z.string().trim().email("invalid email").max(254),
+  phone_last4: z
+    .string()
+    .trim()
+    .regex(/^\d{4}$/, "invalid phone_last4"),
+  code: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, "invalid code"),
+});
+
 export async function POST(req: Request) {
   try {
     // Rate limit: 10 verify attempts per IP per 5 minutes
@@ -27,19 +41,16 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json().catch(() => ({}));
-    const tenant_slug = (body.tenant_slug ?? "").toString().trim();
-    const emailRaw = (body.email ?? "").toString();
-    const last4Raw = (body.phone_last4 ?? "").toString();
-    const code = (body.code ?? "").toString().trim();
-
-    if (!tenant_slug) return apiValidationError("missing tenant_slug");
+    const parsed = verifyCodeSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { tenant_slug, email: emailRaw, phone_last4: last4Raw, code } = parsed.data;
 
     const tenantId = await getTenantIdBySlug(tenant_slug);
     if (!tenantId) return apiNotFound("unknown tenant");
 
     const email = normalizeEmail(emailRaw);
-    if (!email.includes("@")) return apiValidationError("invalid email");
 
     let phoneHash: string;
     try {

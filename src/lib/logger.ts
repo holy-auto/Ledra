@@ -112,6 +112,24 @@ function make(base: LogContext): Logger {
 export const logger: Logger = make({});
 
 /**
+ * メールアドレスをログ用に部分マスクする。
+ * 例: "alice@example.com" → "al***@example.com"
+ *     "x@y.com"           → "***@y.com"
+ *     null / 空文字        → "***"
+ *
+ * メールアドレスは PII。ログ・Sentry 等に流す前に必ずこれを通す。
+ */
+export function maskEmail(email: string | null | undefined): string {
+  if (!email) return "***";
+  const at = email.indexOf("@");
+  if (at <= 0) return "***";
+  const local = email.slice(0, at);
+  const domain = email.slice(at);
+  const visible = Math.min(2, local.length);
+  return local.slice(0, visible) + "***" + domain;
+}
+
+/**
  * Generate or propagate a request id.
  * middleware で呼び、logger.child({ requestId }) として使う。
  */

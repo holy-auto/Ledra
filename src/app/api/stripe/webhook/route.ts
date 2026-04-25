@@ -8,6 +8,7 @@ import { confirmCampaignSlot } from "@/lib/billing/campaign";
 import { apiJson, apiValidationError, apiInternalError, apiError } from "@/lib/api/response";
 import { logAuditEvent } from "@/lib/audit/certificateLog";
 import { isResendFailure, sendResendEmail } from "@/lib/email/resendSend";
+import { maskEmail } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -107,14 +108,23 @@ Ledra — 株式会社HOLY AUTO
     idempotencyKey,
   });
   if (isResendFailure(sent)) {
+    // PII: 顧客メールはマスク。sent.error は Resend SDK の error 構造体 (code/message) のみ。
+    const errCode =
+      sent.error && typeof sent.error === "object" && "code" in sent.error
+        ? String((sent.error as { code: unknown }).code)
+        : "unknown";
     console.error("webhook: payment failure email send failed", {
       tenantId,
-      email,
+      emailMasked: maskEmail(email),
       status: sent.status,
-      error: sent.error,
+      errorCode: errCode,
     });
   } else {
-    console.info("webhook: payment failure email sent", { tenantId, email, resendId: sent.id });
+    console.info("webhook: payment failure email sent", {
+      tenantId,
+      emailMasked: maskEmail(email),
+      resendId: sent.id,
+    });
   }
 }
 

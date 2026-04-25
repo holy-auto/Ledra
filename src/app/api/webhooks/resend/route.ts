@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Webhook } from "svix";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { maskEmail } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -72,29 +73,36 @@ export async function POST(req: NextRequest) {
   }
 
   const { type, data } = event;
+  // PII: 受信者メールはマスクし、件数 + 先頭1件のドメイン部のみで監視可能にする。
+  const recipients = Array.isArray(data.to) ? data.to : [];
+  const toMasked = recipients.map(maskEmail);
+  const recipientCount = recipients.length;
 
   // Log all events for monitoring
   switch (type) {
     case "email.bounced":
-      console.error("[resend-webhook] BOUNCE:", {
+      console.error("[resend-webhook] BOUNCE", {
         email_id: data.email_id,
-        to: data.to,
+        toMasked,
+        recipientCount,
         subject: data.subject,
       });
       break;
 
     case "email.complained":
-      console.error("[resend-webhook] COMPLAINT:", {
+      console.error("[resend-webhook] COMPLAINT", {
         email_id: data.email_id,
-        to: data.to,
+        toMasked,
+        recipientCount,
         subject: data.subject,
       });
       break;
 
     case "email.delivery_delayed":
-      console.warn("[resend-webhook] DELAYED:", {
+      console.warn("[resend-webhook] DELAYED", {
         email_id: data.email_id,
-        to: data.to,
+        toMasked,
+        recipientCount,
       });
       break;
 
@@ -102,9 +110,10 @@ export async function POST(req: NextRequest) {
     case "email.sent":
     case "email.opened":
     case "email.clicked":
-      console.info(`[resend-webhook] ${type}:`, {
+      console.info(`[resend-webhook] ${type}`, {
         email_id: data.email_id,
-        to: data.to,
+        toMasked,
+        recipientCount,
       });
       break;
 

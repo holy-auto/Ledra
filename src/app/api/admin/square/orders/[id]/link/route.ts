@@ -1,4 +1,5 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { z } from "zod";
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
@@ -10,6 +11,33 @@ import {
   apiInternalError,
   apiValidationError,
 } from "@/lib/api/response";
+
+const nullableUuid = z
+  .string()
+  .trim()
+  .nullable()
+  .optional()
+  .transform((v) => (v ? v : null))
+  .refine((v) => v === null || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v), {
+    message: "無効なIDです。",
+  });
+
+const squareOrderLinkSchema = z
+  .object({
+    customer_id: nullableUuid,
+    vehicle_id: nullableUuid,
+    certificate_id: nullableUuid,
+    note: z
+      .string()
+      .trim()
+      .max(2000)
+      .nullable()
+      .optional()
+      .transform((v) => v || null),
+  })
+  .refine((v) => Object.values(v).some((x) => x !== undefined), {
+    message: "更新するフィールドを指定してください。",
+  });
 
 export const dynamic = "force-dynamic";
 
@@ -24,13 +52,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const { id } = await params;
     if (!id) return apiValidationError("オーダーIDが必要です。");
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const { customer_id, vehicle_id, certificate_id, note } = body as {
-      customer_id?: string;
-      vehicle_id?: string;
-      certificate_id?: string;
-      note?: string;
-    };
+    const parsed = squareOrderLinkSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const updates: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(parsed.data)) {
+      if (v !== undefined) updates[k] = v;
+    }
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
@@ -44,17 +73,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     if (!existing) {
       return apiNotFound("指定されたSquareオーダーが見つかりません。");
-    }
-
-    // 更新するフィールドを構築
-    const updates: Record<string, unknown> = {};
-    if (customer_id !== undefined) updates.customer_id = customer_id || null;
-    if (vehicle_id !== undefined) updates.vehicle_id = vehicle_id || null;
-    if (certificate_id !== undefined) updates.certificate_id = certificate_id || null;
-    if (note !== undefined) updates.note = note || null;
-
-    if (Object.keys(updates).length === 0) {
-      return apiValidationError("更新するフィールドを指定してください。");
     }
 
     const { data: updated, error: updateErr } = await admin

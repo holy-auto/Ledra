@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { apiInternalError, apiUnauthorized, apiValidationError } from "@/lib/api/response";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
@@ -9,6 +10,13 @@ export const dynamic = "force-dynamic";
 
 /** 最大 QR テキスト長（電子車検証の仕様でも数百バイト、緩めに制限） */
 const MAX_RAW_LENGTH = 4096;
+
+const parseShakkenQrSchema = z.object({
+  raw: z
+    .string()
+    .min(1, "raw フィールド（QR コード文字列）が必要です。")
+    .max(MAX_RAW_LENGTH, `raw が長すぎます（上限 ${MAX_RAW_LENGTH} 文字）。`),
+});
 
 /**
  * POST /api/vehicles/parse-shakken-qr
@@ -26,33 +34,32 @@ export async function POST(req: Request) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = (await req.json()) as { raw?: unknown };
-    if (typeof body.raw !== "string" || body.raw.length === 0) {
-      return apiValidationError("raw フィールド（QR コード文字列）が必要です。");
+    const parsed = parseShakkenQrSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-    if (body.raw.length > MAX_RAW_LENGTH) {
-      return apiValidationError(`raw が長すぎます（上限 ${MAX_RAW_LENGTH} 文字）。`);
-    }
-
-    const parsed = parseShakenshoCode(body.raw);
-    if (!parsed) {
-      return Response.json({
-        ok: false,
-        message: "車検証の二次元コード形式として認識できませんでした。",
-      }, { status: 422 });
+    const result = parseShakenshoCode(parsed.data.raw);
+    if (!result) {
+      return Response.json(
+        {
+          ok: false,
+          message: "車検証の二次元コード形式として認識できませんでした。",
+        },
+        { status: 422 },
+      );
     }
 
     return Response.json({
       ok: true,
       source: "qr" as const,
       extracted: {
-        maker: parsed.maker ?? null,
-        model: parsed.model ?? null,
-        year: extractFirstRegistrationYear(parsed.first_registration),
-        vin_code: parsed.vin ?? null,
-        plate_display: parsed.plate_display ?? null,
-        expiry_date: parsed.expiry_date ?? null,
-        fuel_type: parsed.fuel_type ?? null,
+        maker: result.maker ?? null,
+        model: result.model ?? null,
+        year: extractFirstRegistrationYear(result.first_registration),
+        vin_code: result.vin ?? null,
+        plate_display: result.plate_display ?? null,
+        expiry_date: result.expiry_date ?? null,
+        fuel_type: result.fuel_type ?? null,
       },
     });
   } catch (e) {

@@ -1,7 +1,17 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiInternalError, apiValidationError, apiError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+
+const nexptgEnvelopeSchema = z.object({
+  data: z
+    .object({
+      history: z.array(z.unknown()).optional(),
+      reports: z.array(z.unknown()).optional(),
+    })
+    .passthrough(),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -209,10 +219,11 @@ export async function POST(req: NextRequest) {
     }
     const apiKey = extracted.key;
 
-    const body = (await req.json().catch((): null => null)) as NexPtgEnvelope | null;
-    if (!body || typeof body !== "object" || !body.data) {
+    const parsed = nexptgEnvelopeSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) {
       return apiValidationError("Invalid payload: expected { data: { history, reports } }");
     }
+    const body = parsed.data as unknown as NexPtgEnvelope;
 
     const admin = createServiceRoleAdmin(
       "nexptg webhook — tenant resolved from external_api_key then queries continue with same admin",
@@ -246,32 +257,40 @@ export async function POST(req: NextRequest) {
     }
 
     const tenantId = tenant.id as string;
-    const reports = Array.isArray(body.data.reports) ? body.data.reports : [];
-    const history = Array.isArray(body.data.history) ? body.data.history : [];
+    const reports = Array.isArray(body.data?.reports) ? body.data.reports : [];
+    const history = Array.isArray(body.data?.history) ? body.data.history : [];
 
     let reportsUpserted = 0;
     let measurementsInserted = 0;
     let tiresInserted = 0;
     let historyInserted = 0;
 
+    // ── 車両 VIN を 1 クエリで一括解決 (N+1 回避) ──
+    // NexPTG は 1 sync で数十〜数百レポートを送ってくるので per-report の
+    // vehicle lookup は round-trip コストが効く。VIN セットを集めて in() で
+    // 引いておき、map から拾う。
+    const vinsToResolve = Array.from(
+      new Set(reports.map((r) => (r?.vin ?? "").trim()).filter((vin): vin is string => vin.length > 0)),
+    );
+    const vehicleIdByVin = new Map<string, string>();
+    if (vinsToResolve.length > 0) {
+      const { data: vehicleRows } = await admin
+        .from("vehicles")
+        .select("id, vin_code")
+        .eq("tenant_id", tenantId)
+        .in("vin_code", vinsToResolve);
+      for (const v of vehicleRows ?? []) {
+        if (v.vin_code) vehicleIdByVin.set(v.vin_code, v.id as string);
+      }
+    }
+
     // ── レポート同期 ──
     for (const r of reports) {
       if (r?.id === undefined || r?.id === null) continue;
       const externalReportId = String(r.id);
 
-      // 車両紐付け（VINを優先）
-      let vehicleId: string | null = null;
       const vin = (r.vin ?? "").trim();
-      if (vin) {
-        const { data: v } = await admin
-          .from("vehicles")
-          .select("id")
-          .eq("tenant_id", tenantId)
-          .eq("vin_code", vin)
-          .limit(1)
-          .maybeSingle();
-        if (v) vehicleId = v.id as string;
-      }
+      const vehicleId: string | null = vin ? (vehicleIdByVin.get(vin) ?? null) : null;
 
       const reportRow = {
         tenant_id: tenantId,

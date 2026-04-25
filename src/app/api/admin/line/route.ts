@@ -1,10 +1,28 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
+
+const lineActionSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("configure"),
+    channel_id: z.string().trim().min(1, "channel_id は必須です").max(100),
+    channel_secret: z.string().trim().min(1, "channel_secret は必須です").max(200),
+    channel_access_token: z.string().trim().min(1, "channel_access_token は必須です").max(500),
+    liff_id: z
+      .string()
+      .trim()
+      .max(100)
+      .nullable()
+      .optional()
+      .transform((v) => v || null),
+  }),
+  z.object({ action: z.literal("disconnect") }),
+]);
 
 /**
  * GET /api/admin/line
@@ -55,27 +73,21 @@ export async function POST(req: NextRequest) {
     if (!caller) return apiUnauthorized();
     if (!requireMinRole(caller, "admin")) return apiForbidden();
 
-    const body = await req.json().catch(() => ({}));
-    const action = body?.action;
-
+    const parsed = lineActionSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const data = parsed.data;
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
-    if (action === "configure") {
-      const channelId = body?.channel_id;
-      const channelSecret = body?.channel_secret;
-      const channelAccessToken = body?.channel_access_token;
-
-      if (!channelId || !channelSecret || !channelAccessToken) {
-        return apiValidationError("channel_id, channel_secret, channel_access_token は必須です");
-      }
-
+    if (data.action === "configure") {
       await admin
         .from("tenants")
         .update({
-          line_channel_id: channelId,
-          line_channel_secret: channelSecret,
-          line_channel_access_token: channelAccessToken,
-          line_liff_id: body?.liff_id || null,
+          line_channel_id: data.channel_id,
+          line_channel_secret: data.channel_secret,
+          line_channel_access_token: data.channel_access_token,
+          line_liff_id: data.liff_id,
           line_enabled: true,
         })
         .eq("id", caller.tenantId);
@@ -86,22 +98,19 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (action === "disconnect") {
-      await admin
-        .from("tenants")
-        .update({
-          line_channel_id: null,
-          line_channel_secret: null,
-          line_channel_access_token: null,
-          line_liff_id: null,
-          line_enabled: false,
-        })
-        .eq("id", caller.tenantId);
+    // data.action === "disconnect"
+    await admin
+      .from("tenants")
+      .update({
+        line_channel_id: null,
+        line_channel_secret: null,
+        line_channel_access_token: null,
+        line_liff_id: null,
+        line_enabled: false,
+      })
+      .eq("id", caller.tenantId);
 
-      return apiOk({ enabled: false });
-    }
-
-    return apiValidationError("action は configure / disconnect のいずれかです");
+    return apiOk({ enabled: false });
   } catch (e) {
     return apiInternalError(e, "line configure");
   }

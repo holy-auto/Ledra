@@ -1,0 +1,12 @@
+{
+  "errors": {
+    "invalid_payload": "Invalid request payload.",
+    "missing_field": "{field} is required.",
+    "invalid_id": "Invalid ID.",
+    "unauthorized": "Authentication required.",
+    "forbidden": "You do not have permission to perform this action.",
+    "not_found": "Not found.",
+    "rate_limited": "Too many requests. Please try again later.",
+    "internal_error": "Internal server error."
+  }
+}

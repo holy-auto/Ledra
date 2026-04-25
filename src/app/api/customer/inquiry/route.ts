@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { cookies } from "next/headers";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
@@ -6,6 +7,12 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { CUSTOMER_COOKIE, getTenantIdBySlug, validateSession, getCustomerProfile } from "@/lib/customerPortalServer";
 import { GLOBAL_PORTAL_COOKIE, resolvePortalTenantAccessByGlobalToken } from "@/lib/customerPortalGlobal";
 import { notifySlack } from "@/lib/slack";
+
+const customerInquirySchema = z.object({
+  tenant_slug: z.string().trim().min(1, "missing tenant_slug").max(100),
+  subject: z.string().trim().max(200).optional(),
+  message: z.string().trim().min(1, "message is required").max(2000, "message too long"),
+});
 
 async function resolveSession(tenantSlug: string) {
   const tenantId = await getTenantIdBySlug(tenantSlug);
@@ -71,14 +78,13 @@ export async function POST(req: NextRequest) {
   if (limited) return limited;
 
   try {
-    const body = await req.json().catch(() => ({}));
-    const tenantSlug = (body?.tenant_slug ?? "").trim();
-    const subject = (body?.subject ?? "お問い合わせ").trim().slice(0, 200);
-    const message = (body?.message ?? "").trim();
-
-    if (!tenantSlug) return apiValidationError("missing tenant_slug");
-    if (!message) return apiValidationError("message is required");
-    if (message.length > 2000) return apiValidationError("message too long");
+    const parsed = customerInquirySchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const tenantSlug = parsed.data.tenant_slug;
+    const subject = parsed.data.subject || "お問い合わせ";
+    const message = parsed.data.message;
 
     const sess = await resolveSession(tenantSlug);
     if (!sess) return apiUnauthorized();

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@/lib/supabase/server";
 import { apiJson, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,11 @@ function safeUrl(candidate?: string | null, fallback?: string): string {
 
 // ─── POST: Create or retrieve Stripe Connect onboarding link ───
 export async function POST(request: NextRequest) {
+  // Creates Stripe accounts + onboarding links. Auth preset (10/min/IP)
+  // bounds abuse if a session leaks; legitimate flow is once per session.
+  const limited = await checkRateLimit(request, "auth");
+  if (limited) return limited;
+
   try {
     const supabase = await createClient();
     const { data: auth } = await supabase.auth.getUser();

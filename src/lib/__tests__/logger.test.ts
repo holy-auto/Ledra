@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { logger, resolveRequestId } from "../logger";
+import { logger, maskEmail, resolveRequestId } from "../logger";
 
 let spy: ReturnType<typeof vi.spyOn>;
 
@@ -63,6 +63,22 @@ describe("logger", () => {
     expect(rec.error.name).toBe("Error");
     expect(rec.error.message).toBe("kaboom");
     expect(typeof rec.error.stack).toBe("string");
+  });
+});
+
+describe("maskEmail", () => {
+  it("keeps first two local chars and the domain", () => {
+    expect(maskEmail("alice@example.com")).toBe("al***@example.com");
+  });
+  it("collapses single-char locals", () => {
+    expect(maskEmail("x@y.com")).toBe("x***@y.com");
+  });
+  it("returns *** for null / empty / malformed", () => {
+    expect(maskEmail(null)).toBe("***");
+    expect(maskEmail(undefined)).toBe("***");
+    expect(maskEmail("")).toBe("***");
+    expect(maskEmail("no-at-sign")).toBe("***");
+    expect(maskEmail("@no-local.com")).toBe("***");
   });
 });
 

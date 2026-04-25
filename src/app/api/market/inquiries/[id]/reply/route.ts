@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { notifyInquiryReply } from "@/lib/market/email";
 import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { inquiryReplySchema } from "@/lib/validations/market";
 
 export const dynamic = "force-dynamic";
 
@@ -16,14 +17,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const { id: inquiryId } = await params;
     const { admin } = createTenantScopedAdmin(caller.tenantId);
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-
-    const message = (body?.message ?? "").trim();
-    const senderType = (body?.sender_type ?? "").trim();
-
-    if (!message || !senderType) {
-      return apiValidationError("message and sender_type are required");
+    const parsed = inquiryReplySchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
+    const { message, sender_type: senderType } = parsed.data;
 
     // Verify the caller owns this inquiry
     const { data: inquiry, error: iqErr } = await admin

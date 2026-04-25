@@ -1,8 +1,16 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { z } from "zod";
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCallerFull } from "@/lib/api/auth";
 import { apiOk, apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
+
+const templateOrderUpdateSchema = z.object({
+  order_id: z.string().uuid("order_id と status は必須です。"),
+  status: z.string().trim().min(1, "order_id と status は必須です。").max(50),
+  notes: z.string().trim().max(2000).optional(),
+  assigned_to: z.string().trim().max(200).optional(),
+});
 
 /** GET: 全テナントのテンプレートオーダー一覧（管理者用） */
 export async function GET(req: NextRequest) {
@@ -54,12 +62,11 @@ export async function GET(req: NextRequest) {
 /** PUT: オーダーステータス更新（管理者用） */
 export async function PUT(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { order_id, status, notes, assigned_to } = body;
-
-    if (!order_id || !status) {
-      return apiValidationError("order_id と status は必須です。");
+    const parsed = templateOrderUpdateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
+    const { order_id, status, notes, assigned_to } = parsed.data;
 
     const supabase = await createClient();
     const caller = await resolveCallerFull(supabase);

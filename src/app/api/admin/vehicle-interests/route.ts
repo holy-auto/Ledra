@@ -1,7 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+
+const optionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .nullable()
+    .optional()
+    .transform((v) => v || null);
+
+const interestCreateSchema = z.object({
+  vehicle_id: z.string().uuid("vehicle_id and customer_name required"),
+  customer_name: z.string().trim().min(1, "vehicle_id and customer_name required").max(100),
+  customer_phone: optionalText(40),
+  customer_email: optionalText(120),
+  interest_level: z.enum(["hot", "warm", "cold"]).default("warm"),
+  note: optionalText(2000),
+  follow_up_date: optionalText(30),
+});
+
+const interestUpdateSchema = z.object({
+  id: z.string().uuid("id is required"),
+  customer_name: z.string().trim().min(1).max(100).optional(),
+  customer_phone: optionalText(40),
+  customer_email: optionalText(120),
+  interest_level: z.enum(["hot", "warm", "cold"]).optional(),
+  note: optionalText(2000),
+  follow_up_date: optionalText(30),
+});
 
 // GET: List customer interests for a vehicle
 export async function GET(req: NextRequest) {
@@ -39,24 +69,16 @@ export async function POST(req: NextRequest) {
       return apiForbidden();
     }
 
-    const body = await req.json();
-    const { vehicle_id, customer_name, customer_phone, customer_email, interest_level, note, follow_up_date } = body;
-
-    if (!vehicle_id || !customer_name) {
-      return apiValidationError("vehicle_id and customer_name required");
+    const parsed = interestCreateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
 
     const { data, error } = await supabase
       .from("vehicle_interests")
       .insert({
-        vehicle_id,
+        ...parsed.data,
         tenant_id: caller.tenantId,
-        customer_name,
-        customer_phone: customer_phone || null,
-        customer_email: customer_email || null,
-        interest_level: interest_level || "warm",
-        note: note || null,
-        follow_up_date: follow_up_date || null,
       })
       .select(
         "id, vehicle_id, tenant_id, customer_name, customer_phone, customer_email, interest_level, note, follow_up_date, created_at, updated_at",
@@ -80,11 +102,15 @@ export async function PUT(req: NextRequest) {
       return apiForbidden();
     }
 
-    const body = await req.json();
-    const { id, ...updates } = body;
-    if (!id) return apiValidationError("id is required");
-
-    updates.updated_at = new Date().toISOString();
+    const parsed = interestUpdateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { id, ...fields } = parsed.data;
+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    for (const [k, v] of Object.entries(fields)) {
+      if (v !== undefined) updates[k] = v;
+    }
 
     const { data, error } = await supabase
       .from("vehicle_interests")

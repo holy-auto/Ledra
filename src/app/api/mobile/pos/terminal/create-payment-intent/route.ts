@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import Stripe from "stripe";
 import { createMobileClient, resolveMobileCaller } from "@/lib/supabase/mobile";
 import { requireMinRole } from "@/lib/auth/checkRole";
@@ -12,6 +12,7 @@ import {
   apiNotFound,
   apiInternalError,
 } from "@/lib/api/response";
+import { posTerminalPaymentIntentSchema } from "@/lib/validations/pos";
 
 export const dynamic = "force-dynamic";
 
@@ -35,18 +36,11 @@ export async function POST(req: NextRequest) {
       return apiForbidden();
     }
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-
-    // amount バリデーシ���ン
-    const amount = parseInt(String(body?.amount ?? 0), 10);
-    if (!amount || amount < 1 || amount > 999_999_999) {
-      return apiValidationError("invalid_amount");
+    const parsed = posTerminalPaymentIntentSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-
-    const currency = String(body?.currency ?? "jpy");
-    const description = body?.description ? String(body.description) : undefined;
-    const extraMetadata =
-      body?.metadata && typeof body.metadata === "object" ? (body.metadata as Record<string, string>) : {};
+    const { amount, currency, description, metadata: extraMetadata = {} } = parsed.data;
 
     // テナントのStripe Connectアカウントを取得
     const { admin } = createTenantScopedAdmin(caller.tenantId);

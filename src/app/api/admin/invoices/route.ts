@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
@@ -12,6 +12,7 @@ import {
   apiNotFound,
   apiInternalError,
 } from "@/lib/api/response";
+import { invoiceCreateSchema, invoiceUpdateSchema, invoiceDeleteSchema } from "@/lib/validations/invoice";
 
 export const dynamic = "force-dynamic";
 
@@ -163,23 +164,27 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
+    const parsed = invoiceCreateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const input = parsed.data;
 
-    const docNumber = body?.invoice_number?.trim() || (await generateInvoiceNumber(supabase, caller.tenantId));
-    const customerId = body?.customer_id?.trim() || null;
-    const issuedAt = body?.issued_at || new Date().toISOString().slice(0, 10);
-    const dueDate = body?.due_date || null;
-    const note = (body?.note ?? "").trim() || null;
-    const items = body?.items ?? [];
-    const status = body?.status || "draft";
-    const isInvoiceCompliant = !!body?.is_invoice_compliant;
-    const showSeal = !!body?.show_seal;
-    const showLogo = body?.show_logo !== false;
-    const showBankInfo = !!body?.show_bank_info;
-    const recipientName = (body?.recipient_name ?? "").trim() || null;
-    const taxRate = parseInt(String(body?.tax_rate ?? 10), 10);
-    const vehicleId = (body?.vehicle_id ?? "").trim() || null;
-    const vehicleInfo = body?.vehicle_info ?? null;
+    const docNumber = input.invoice_number || (await generateInvoiceNumber(supabase, caller.tenantId));
+    const customerId = input.customer_id || null;
+    const issuedAt = input.issued_at || new Date().toISOString().slice(0, 10);
+    const dueDate = input.due_date || null;
+    const note = input.note;
+    const items = input.items ?? [];
+    const status = input.status;
+    const isInvoiceCompliant = !!input.is_invoice_compliant;
+    const showSeal = !!input.show_seal;
+    const showLogo = input.show_logo !== false;
+    const showBankInfo = !!input.show_bank_info;
+    const recipientName = input.recipient_name;
+    const taxRate = input.tax_rate ?? 10;
+    const vehicleId = input.vehicle_id || null;
+    const vehicleInfo = input.vehicle_info ?? null;
 
     // 金額計算
     let subtotal = 0;
@@ -255,9 +260,12 @@ export async function PUT(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const id = (body?.id ?? "").trim();
-    if (!id) return apiValidationError("missing_id");
+    const parsed = invoiceUpdateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "missing_id");
+    }
+    const body = parsed.data;
+    const id = body.id;
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
@@ -266,13 +274,13 @@ export async function PUT(req: NextRequest) {
     if (body.customer_id !== undefined) updates.customer_id = body.customer_id || null;
     if (body.issued_at !== undefined) updates.issued_at = body.issued_at;
     if (body.due_date !== undefined) updates.due_date = body.due_date;
-    if (body.note !== undefined) updates.note = (body.note ?? "").trim() || null;
+    if (body.note !== undefined) updates.note = body.note;
     if (body.invoice_number !== undefined) updates.doc_number = body.invoice_number;
     if (body.is_invoice_compliant !== undefined) updates.is_invoice_compliant = !!body.is_invoice_compliant;
     if (body.show_seal !== undefined) updates.show_seal = !!body.show_seal;
     if (body.show_logo !== undefined) updates.show_logo = !!body.show_logo;
     if (body.show_bank_info !== undefined) updates.show_bank_info = !!body.show_bank_info;
-    if (body.recipient_name !== undefined) updates.recipient_name = (body.recipient_name ?? "").trim() || null;
+    if (body.recipient_name !== undefined) updates.recipient_name = body.recipient_name;
     if (body.payment_date !== undefined) updates.payment_date = body.payment_date || null;
 
     // 明細更新
@@ -295,7 +303,7 @@ export async function PUT(req: NextRequest) {
         if (item.certificate_public_id) mapped.certificate_public_id = item.certificate_public_id;
         return mapped;
       });
-      const taxRate = parseInt(String(body.tax_rate ?? 10), 10);
+      const taxRate = body.tax_rate ?? 10;
       const tax = Math.floor(subtotal * (taxRate / 100));
       updates.items_json = itemsJson;
       updates.subtotal = subtotal;
@@ -338,9 +346,11 @@ export async function DELETE(req: NextRequest) {
     }
     const caller = { userId: callerWithRole.userId, tenantId: callerWithRole.tenantId };
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const id = (body?.id ?? "").trim();
-    if (!id) return apiValidationError("missing_id");
+    const parsed = invoiceDeleteSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "missing_id");
+    }
+    const id = parsed.data.id;
 
     // 下書きか確認
     const { data: inv } = await supabase

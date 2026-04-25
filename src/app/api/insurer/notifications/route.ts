@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
+import { insurerNotificationsMarkReadSchema } from "@/lib/validations/insurer";
 
 export const runtime = "nodejs";
 
@@ -72,14 +73,11 @@ export async function PATCH(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("Invalid JSON body.");
+  const parsed = insurerNotificationsMarkReadSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
-
-  const { ids, all } = body as { ids?: string[]; all?: boolean };
+  const { ids, all } = parsed.data;
 
   if (!all && (!Array.isArray(ids) || ids.length === 0)) {
     return apiValidationError("ids (string[]) or all (true) is required.");

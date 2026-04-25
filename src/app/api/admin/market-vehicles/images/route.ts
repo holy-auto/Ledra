@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+
+const imageDeleteSchema = z.object({
+  id: z.string().uuid("missing id or vehicle_id"),
+  vehicle_id: z.string().uuid("missing id or vehicle_id"),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -146,10 +152,11 @@ export async function DELETE(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const { id, vehicle_id: vehicleId } = body;
-
-    if (!id || !vehicleId) return apiValidationError("missing id or vehicle_id");
+    const parsed = imageDeleteSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { id, vehicle_id: vehicleId } = parsed.data;
 
     // Verify image belongs to caller's tenant
     const { data: image } = await supabase

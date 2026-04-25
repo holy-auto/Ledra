@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { randomBytes } from "node:crypto";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
@@ -24,6 +25,10 @@ import {
  */
 
 const KEY_PREFIX = "nex_";
+
+const externalApiKeyActionSchema = z.object({
+  action: z.enum(["issue", "revoke"], { message: "action must be 'issue' or 'revoke'" }),
+});
 
 function generateApiKey(): string {
   return KEY_PREFIX + randomBytes(24).toString("hex");
@@ -63,8 +68,11 @@ export async function POST(req: NextRequest) {
     if (!caller) return apiUnauthorized();
     if (!requirePermission(caller, "settings:edit")) return apiForbidden();
 
-    const body = (await req.json().catch((): null => null)) as { action?: string } | null;
-    const action = body?.action;
+    const parsed = externalApiKeyActionSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { action } = parsed.data;
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
@@ -78,14 +86,11 @@ export async function POST(req: NextRequest) {
       return apiOk({ key: newKey, masked: maskKey(newKey) });
     }
 
-    if (action === "revoke") {
-      const { error } = await admin.from("tenants").update({ external_api_key: null }).eq("id", caller.tenantId);
+    // action === "revoke"
+    const { error } = await admin.from("tenants").update({ external_api_key: null }).eq("id", caller.tenantId);
 
-      if (error) return apiInternalError(error, "external-api-key revoke");
-      return apiOk({ status: "not_set" });
-    }
-
-    return apiValidationError("action must be 'issue' or 'revoke'");
+    if (error) return apiInternalError(error, "external-api-key revoke");
+    return apiOk({ status: "not_set" });
   } catch (e) {
     return apiInternalError(e, "external-api-key POST");
   }

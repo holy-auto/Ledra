@@ -1,8 +1,15 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { apiJson } from "@/lib/api/response";
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { Client } from "@upstash/qstash";
+
+const squareSyncSchema = z.object({
+  job_id: z.string().uuid(),
+  tenant_id: z.string().uuid(),
+  cursor: z.string().trim().max(1000).optional(),
+});
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -60,16 +67,11 @@ async function refreshSquareToken(
 }
 
 async function handler(req: NextRequest) {
-  const body = await req.json();
-  const {
-    job_id,
-    tenant_id,
-    cursor: resumeCursor,
-  } = body as {
-    job_id: string;
-    tenant_id: string;
-    cursor?: string;
-  };
+  const parsed = squareSyncSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiJson({ error: "invalid payload" }, { status: 400 });
+  }
+  const { job_id, tenant_id, cursor: resumeCursor } = parsed.data;
 
   const { admin } = createTenantScopedAdmin(tenant_id);
 

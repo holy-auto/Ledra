@@ -1,9 +1,16 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiInternalError, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+
+const certificateEditSchema = z
+  .object({
+    public_id: z.string().trim().min(1, "public_id は必須です。").max(100),
+  })
+  .passthrough();
 
 export const runtime = "nodejs";
 
@@ -41,9 +48,12 @@ export async function PUT(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json();
-    const publicId = String(body.public_id ?? "").trim();
-    if (!publicId) return apiValidationError("public_id は必須です。");
+    const parsed = certificateEditSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const body = parsed.data as Record<string, unknown> & { public_id: string };
+    const publicId = body.public_id;
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 

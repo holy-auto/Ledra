@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { insurerSavedSearchCreateSchema } from "@/lib/validations/insurer";
 
 export const dynamic = "force-dynamic";
 
@@ -42,19 +43,14 @@ export async function POST(req: NextRequest) {
     const caller = await resolveInsurerCaller();
     if (!caller) return apiUnauthorized();
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const name = (typeof body?.name === "string" ? body.name : "").trim();
-    if (!name) {
-      return apiValidationError("name is required");
+    const parsed = insurerSavedSearchCreateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
 
     const row = {
       insurer_id: caller.insurerId,
-      name,
-      query: (typeof body?.query === "string" ? body.query : null) || null,
-      status_filter: (typeof body?.status_filter === "string" ? body.status_filter : null) || null,
-      date_from: (typeof body?.date_from === "string" ? body.date_from : null) || null,
-      date_to: (typeof body?.date_to === "string" ? body.date_to : null) || null,
+      ...parsed.data,
     };
 
     const supabase = await createClient();

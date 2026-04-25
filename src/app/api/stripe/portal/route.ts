@@ -10,6 +10,7 @@ import {
   apiNotFound,
   apiError,
 } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,6 +51,13 @@ function safeReturnUrl(req: NextRequest, candidate?: string | null) {
 }
 
 export async function POST(req: NextRequest) {
+  // Tighter limit than middleware (300/min): each call hits the Stripe API
+  // and creates a billing-portal session. 10/min is more than enough for
+  // legitimate UX (clicking "Manage subscription") and bounds spend if a
+  // leaked access_token gets replayed.
+  const limited = await checkRateLimit(req, "auth");
+  if (limited) return limited;
+
   try {
     const stripe = getStripe();
     const admin = createServiceRoleAdmin(

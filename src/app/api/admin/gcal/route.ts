@@ -1,5 +1,6 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import {
@@ -19,6 +20,18 @@ import {
 } from "@/lib/gcal/client";
 
 export const dynamic = "force-dynamic";
+
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "from / to (YYYY-MM-DD) が必要です");
+
+const gcalActionSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("connect") }),
+  z.object({ action: z.literal("callback"), code: z.string().min(1, "認可コードが必要です") }),
+  z.object({ action: z.literal("disconnect") }),
+  z.object({ action: z.literal("list-calendars") }),
+  z.object({ action: z.literal("set-calendar"), calendar_id: z.string().min(1, "calendar_id が必要です") }),
+  z.object({ action: z.literal("sync"), from: isoDate, to: isoDate }),
+  z.object({ action: z.literal("push"), from: isoDate, to: isoDate }),
+]);
 
 /**
  * GET /api/admin/gcal
@@ -95,10 +108,13 @@ export async function POST(req: NextRequest) {
     if (!caller) return apiUnauthorized();
     if (!requireMinRole(caller, "admin")) return apiForbidden();
 
-    const body = await req.json().catch(() => ({}));
-    const action = body?.action;
+    const parsed = gcalActionSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const data = parsed.data;
 
-    if (action === "connect") {
+    if (data.action === "connect") {
       // 環境変数チェック
       if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
         return apiError({
@@ -112,15 +128,12 @@ export async function POST(req: NextRequest) {
       return apiOk({ auth_url: url });
     }
 
-    if (action === "callback") {
-      // OAuth コールバック処理
-      const code = body?.code;
-      if (!code) return apiValidationError("認可コードが必要です");
-      await exchangeCodeAndSave(code, caller.tenantId);
+    if (data.action === "callback") {
+      await exchangeCodeAndSave(data.code, caller.tenantId);
       return apiOk({ connected: true });
     }
 
-    if (action === "disconnect") {
+    if (data.action === "disconnect") {
       const { admin } = createTenantScopedAdmin(caller.tenantId);
       await admin
         .from("tenants")
@@ -132,27 +145,21 @@ export async function POST(req: NextRequest) {
       return apiOk({ connected: false });
     }
 
-    if (action === "list-calendars") {
+    if (data.action === "list-calendars") {
       const calendars = await listCalendars(caller.tenantId);
       return apiOk({ calendars });
     }
 
-    if (action === "set-calendar") {
-      const calendarId = body?.calendar_id;
-      if (!calendarId) return apiValidationError("calendar_id が必要です");
+    if (data.action === "set-calendar") {
       const { admin } = createTenantScopedAdmin(caller.tenantId);
-      await admin.from("tenants").update({ gcal_calendar_id: calendarId }).eq("id", caller.tenantId);
-      return apiOk({ calendar_id: calendarId });
+      await admin.from("tenants").update({ gcal_calendar_id: data.calendar_id }).eq("id", caller.tenantId);
+      return apiOk({ calendar_id: data.calendar_id });
     }
 
-    if (action === "sync") {
+    if (data.action === "sync") {
       // 双方向同期: push（Ledra→GCal）+ pull（GCal→Ledra）
-      const from = body?.from;
-      const to = body?.to;
-      if (!from || !to) return apiValidationError("from / to (YYYY-MM-DD) が必要です");
-
-      const pushed = await pushReservationsToCalendar(caller.tenantId, from, to);
-      const pullResult = await pullEventsFromCalendar(caller.tenantId, from, to);
+      const pushed = await pushReservationsToCalendar(caller.tenantId, data.from, data.to);
+      const pullResult = await pullEventsFromCalendar(caller.tenantId, data.from, data.to);
 
       // 最終同期日時を更新
       const { admin } = createTenantScopedAdmin(caller.tenantId);
@@ -168,16 +175,9 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (action === "push") {
-      // Ledra → Google Calendar に一括 push のみ
-      const from = body?.from;
-      const to = body?.to;
-      if (!from || !to) return apiValidationError("from / to (YYYY-MM-DD) が必要です");
-      const pushed = await pushReservationsToCalendar(caller.tenantId, from, to);
-      return apiOk({ pushed, synced_at: new Date().toISOString() });
-    }
-
-    return apiValidationError("action は connect / callback / disconnect / set-calendar / sync / push のいずれかです");
+    // data.action === "push"
+    const pushed = await pushReservationsToCalendar(caller.tenantId, data.from, data.to);
+    return apiOk({ pushed, synced_at: new Date().toISOString() });
   } catch (e) {
     return apiInternalError(e, "gcal action");
   }

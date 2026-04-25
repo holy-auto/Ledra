@@ -5,6 +5,7 @@ import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { posTerminalProcessSchema } from "@/lib/validations/pos";
 
 export const dynamic = "force-dynamic";
 
@@ -23,17 +24,13 @@ export async function POST(req: NextRequest) {
     if (!caller) return apiUnauthorized();
     if (!requireMinRole(caller, "staff")) return apiForbidden();
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-
-    const paymentIntentId = String(body?.payment_intent_id ?? "");
-    const readerId = String(body?.reader_id ?? "");
-
-    if (!paymentIntentId || !paymentIntentId.startsWith("pi_")) {
-      return apiValidationError("invalid_payment_intent_id");
+    const parsed = posTerminalProcessSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-    if (!readerId || !readerId.startsWith("tmr_")) {
-      return apiValidationError("invalid_reader_id");
-    }
+    const { payment_intent_id: paymentIntentId, reader_id: readerId } = parsed.data;
+    if (!paymentIntentId.startsWith("pi_")) return apiValidationError("invalid_payment_intent_id");
+    if (!readerId.startsWith("tmr_")) return apiValidationError("invalid_reader_id");
 
     // テナントのStripe Connectアカウントを取得
     const { admin } = createTenantScopedAdmin(caller.tenantId);

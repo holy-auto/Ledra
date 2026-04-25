@@ -21,15 +21,21 @@
  *   - レート制限は `general` プリセット (60 req / 60s / IP)
  */
 import type { NextRequest } from "next/server";
+import { z } from "zod";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { verifyAnchor, buildExplorerUrl } from "@/lib/anchoring/providers";
 
+const publicVerifySchema = z.object({
+  sha256: z
+    .string()
+    .trim()
+    .regex(/^(0x)?[a-fA-F0-9]{64}$/, "SHA-256 ハッシュの形式が不正です。64 桁の16進文字列を指定してください。"),
+});
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const SHA256_RE = /^(0x)?[a-fA-F0-9]{64}$/;
 
 type PublicVerifyResponse = {
   sha256: string;
@@ -72,16 +78,11 @@ export async function POST(req: NextRequest) {
     const limited = await checkRateLimit(req, "general");
     if (limited) return limited;
 
-    const body = await req.json().catch(() => ({}));
-    const rawSha = String(body?.sha256 ?? "").trim();
-
-    if (!SHA256_RE.test(rawSha)) {
-      return apiValidationError(
-        "SHA-256 ハッシュの形式が不正です。64 桁の16進文字列を指定してください。",
-      );
+    const parsed = publicVerifySchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-
-    const sha256 = rawSha.replace(/^0x/, "").toLowerCase();
+    const sha256 = parsed.data.sha256.replace(/^0x/, "").toLowerCase();
 
     // DB から最小限のメタデータを取得 (全テナント横断。この sha256 に一致する
     // 画像が 1 件でもあれば、発行元店舗は公開してよい情報として返す)

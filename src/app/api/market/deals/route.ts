@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { dealCreateSchema } from "@/lib/validations/market";
 
 export const dynamic = "force-dynamic";
 
@@ -14,29 +15,26 @@ export async function POST(req: NextRequest) {
     if (!caller) return apiUnauthorized();
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-
-    const inquiryId = (body?.inquiry_id ?? "").trim();
-    const vehicleId = (body?.vehicle_id ?? "").trim();
-    const buyerName = (body?.buyer_name ?? "").trim();
-    const buyerEmail = (body?.buyer_email ?? "").trim();
-
-    if (!inquiryId || !vehicleId || !buyerName || !buyerEmail) {
-      return apiValidationError("inquiry_id, vehicle_id, buyer_name, and buyer_email are required");
+    const parsed = dealCreateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
+    const data = parsed.data;
+    const inquiryId = data.inquiry_id;
+    const vehicleId = data.vehicle_id;
 
     const row: Record<string, unknown> = {
       id: crypto.randomUUID(),
       inquiry_id: inquiryId,
       vehicle_id: vehicleId,
       seller_tenant_id: caller.tenantId,
-      buyer_name: buyerName,
-      buyer_email: buyerEmail,
+      buyer_name: data.buyer_name,
+      buyer_email: data.buyer_email,
       status: "negotiating",
     };
 
-    if (body.buyer_company !== undefined) row.buyer_company = body.buyer_company;
-    if (body.agreed_price !== undefined) row.agreed_price = body.agreed_price;
+    if (data.buyer_company !== undefined) row.buyer_company = data.buyer_company;
+    if (data.agreed_price !== undefined && data.agreed_price !== null) row.agreed_price = data.agreed_price;
 
     const { data: deal, error } = await admin
       .from("market_deals")

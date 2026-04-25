@@ -9,7 +9,7 @@ import {
   apiValidationError,
   apiInternalError,
 } from "@/lib/api/response";
-import type { WorkflowStep } from "../route";
+import { workflowTemplateUpdateSchema } from "@/lib/validations/workflow-template";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +21,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!caller) return apiUnauthorized();
 
     const { id } = await params;
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
+    const parsed = workflowTemplateUpdateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const fields = parsed.data;
 
     // プラットフォームテンプレートは更新不可（テナントはコピーのみ）
     const { data: existing } = await supabase
@@ -39,25 +43,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     const updates: Record<string, unknown> = {};
-    if (body.name !== undefined) updates.name = String(body.name ?? "").trim();
-    if (body.steps !== undefined) {
-      const steps = body.steps as WorkflowStep[];
-      if (!Array.isArray(steps) || steps.length === 0) {
-        return apiValidationError("ステップは1つ以上必要です");
-      }
-      updates.steps = steps;
+    for (const [k, v] of Object.entries(fields)) {
+      if (v !== undefined) updates[k] = v;
     }
-    if (body.is_default !== undefined) {
-      updates.is_default = !!body.is_default;
+    if (fields.is_default === true) {
       // is_default = true にする場合、同一service_typeの他テンプレートを解除
-      if (updates.is_default) {
-        await supabase
-          .from("workflow_templates")
-          .update({ is_default: false })
-          .eq("tenant_id", caller.tenantId)
-          .eq("service_type", existing.service_type)
-          .neq("id", id);
-      }
+      await supabase
+        .from("workflow_templates")
+        .update({ is_default: false })
+        .eq("tenant_id", caller.tenantId)
+        .eq("service_type", existing.service_type)
+        .neq("id", id);
     }
 
     const { data, error } = await supabase

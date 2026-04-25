@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import Stripe from "stripe";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { insurerPlanTierToPriceId } from "@/lib/stripe/insurerPlan";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import type { InsurerPlanTier } from "@/types/insurer";
+import { insurerBillingCreateSchema } from "@/lib/validations/insurer";
 
 export const runtime = "nodejs";
 
@@ -39,12 +39,11 @@ export async function POST(req: NextRequest) {
       return apiForbidden("管理者のみ課金操作が可能です。");
     }
 
-    const body = await req.json().catch(() => ({}));
-    const planTier = (body.plan_tier ?? "pro") as InsurerPlanTier;
-
-    if (!["basic", "pro", "enterprise"].includes(planTier)) {
-      return apiValidationError("無効なプランです。");
+    const parsed = insurerBillingCreateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
+    const planTier = parsed.data.plan_tier ?? "pro";
 
     let priceId: string;
     try {

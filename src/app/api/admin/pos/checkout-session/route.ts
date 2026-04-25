@@ -5,6 +5,7 @@ import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { posCheckoutSessionSchema } from "@/lib/validations/pos";
 
 export const dynamic = "force-dynamic";
 
@@ -23,15 +24,12 @@ export async function POST(req: NextRequest) {
     if (!caller) return apiUnauthorized();
     if (!requireMinRole(caller, "staff")) return apiForbidden();
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-
-    // amount バリデーション
-    const amount = parseInt(String(body?.amount ?? 0), 10);
-    if (!amount || amount < 1 || amount > 999_999_999) {
-      return apiValidationError("invalid_amount");
+    const parsed = posCheckoutSessionSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-
-    const description = body?.description ? String(body.description) : "POS会計";
+    const { amount, description: descriptionRaw, reservation_id, customer_id } = parsed.data;
+    const description = descriptionRaw ?? "POS会計";
 
     // テナントのStripe Connectアカウントを取得
     const { admin } = createTenantScopedAdmin(caller.tenantId);
@@ -77,8 +75,8 @@ export async function POST(req: NextRequest) {
         metadata: {
           tenant_id: caller.tenantId,
           user_id: caller.userId,
-          ...(body?.reservation_id ? { reservation_id: String(body.reservation_id) } : {}),
-          ...(body?.customer_id ? { customer_id: String(body.customer_id) } : {}),
+          ...(reservation_id ? { reservation_id } : {}),
+          ...(customer_id ? { customer_id } : {}),
         },
       },
       stripeOptions,

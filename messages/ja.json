@@ -1,0 +1,12 @@
+{
+  "errors": {
+    "invalid_payload": "リクエスト内容が正しくありません。",
+    "missing_field": "{field}は必須です。",
+    "invalid_id": "無効なIDです。",
+    "unauthorized": "ログインが必要です。",
+    "forbidden": "この操作を行う権限がありません。",
+    "not_found": "対象が見つかりませんでした。",
+    "rate_limited": "リクエストが多すぎます。しばらくしてから再度お試しください。",
+    "internal_error": "サーバーエラーが発生しました。"
+  }
+}

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { resolveRequestId } from "@/lib/logger";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import { buildCspHeader } from "@/lib/security/csp";
 
 /**
  * Generate a cryptographically random nonce for CSP script-src.
@@ -11,39 +12,6 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 function generateCspNonce(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   return btoa(String.fromCharCode(...bytes));
-}
-
-/**
- * Build the Content-Security-Policy header value for a given nonce.
- *
- * 'unsafe-inline' is intentionally dropped from script-src: every inline
- * `<script>` in the tree must now carry this nonce (read via
- * `headers().get('x-nonce')` in server components). External scripts from
- * allowlisted origins (Stripe.js, Vercel Analytics/Speed Insights, Sentry
- * CDN) are still permitted without a nonce.
- *
- * 'unsafe-eval' is only present in development to accommodate the Next.js
- * dev server + HMR.
- */
-function buildCspHeader(nonce: string, isDev: boolean): string {
-  const unsafeEval = isDev ? " 'unsafe-eval'" : "";
-  return [
-    "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}'${unsafeEval} https://js.stripe.com https://vercel.live https://*.vercel-scripts.com https://*.sentry-cdn.com`,
-    // Styles still need 'unsafe-inline' — Tailwind + react-pdf + Next.js
-    // font loader inject inline <style> tags. Nonce propagation to Next.js's
-    // CSS injection is not supported at time of writing.
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in https://api.qrserver.com",
-    "font-src 'self' data: https://cdn.jsdelivr.net",
-    "connect-src 'self' https://*.supabase.co https://*.supabase.in https://api.stripe.com https://*.sentry.io https://*.ingest.sentry.io https://vercel.live https://*.vercel-scripts.com https://*.upstash.io",
-    "frame-src https://js.stripe.com https://hooks.stripe.com https://vercel.live",
-    "media-src 'none'",
-    "object-src 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-    "frame-ancestors 'none'",
-  ].join("; ");
 }
 
 const PUBLIC_PREFIXES = [
@@ -158,7 +126,7 @@ export async function proxy(request: NextRequest) {
   // can retrieve it via `headers().get('x-nonce')` and attach to inline scripts.
   const nonce = generateCspNonce();
   request.headers.set("x-nonce", nonce);
-  const cspHeader = buildCspHeader(nonce, process.env.NODE_ENV === "development");
+  const cspHeader = buildCspHeader({ nonce, isDev: process.env.NODE_ENV === "development" });
 
   // Blanket rate limit for /api/* — defense in depth for the 200+ routes that
   // do not set a per-route limit. 300 req / 60s / IP catches bulk scraping

@@ -1,7 +1,22 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+
+const shopOrderInvoiceSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        product_id: z.string().uuid(),
+        quantity: z.coerce.number().int().min(1).max(9999),
+      }),
+    )
+    .min(1, "商品を1つ以上選択してください。")
+    .max(100),
+  payment_method: z.literal("invoice"),
+  note: z.string().trim().max(2000).optional(),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -28,21 +43,11 @@ export async function POST(req: NextRequest) {
   const caller = await resolveCallerWithRole(supabase);
   if (!caller) return apiUnauthorized();
 
-  let body: {
-    items: Array<{ product_id: string; quantity: number }>;
-    payment_method: "invoice";
-    note?: string;
-  };
-
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("Invalid JSON");
+  const parsed = shopOrderInvoiceSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
-
-  if (!body.items?.length) {
-    return apiValidationError("商品を1つ以上選択してください。");
-  }
+  const body = parsed.data;
 
   // 商品情報を取得
   const productIds = body.items.map((i) => i.product_id);

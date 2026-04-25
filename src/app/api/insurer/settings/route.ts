@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
+import { insurerSettingsUpdateSchema } from "@/lib/validations/insurer";
 
 export const runtime = "nodejs";
 
@@ -82,26 +83,17 @@ export async function PATCH(req: NextRequest) {
   const caller = await resolveInsurerCaller();
   if (!caller) return apiUnauthorized();
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("Invalid JSON body.");
+  const parsed = insurerSettingsUpdateSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
   }
+  const { preferences } = parsed.data;
 
-  const { preferences } = body as {
-    preferences?: Record<string, boolean>;
-  };
-
-  if (!preferences || typeof preferences !== "object") {
-    return apiValidationError("preferences object is required.");
-  }
-
-  // Validate keys — only allow known preference keys
+  // Restrict to known preference keys (defense in depth: zod permits any string keys)
   const allowedKeys = new Set(["case_update", "pii_decision", "new_message", "sla_alert"]);
   const sanitized: Record<string, boolean> = {};
   for (const [key, val] of Object.entries(preferences)) {
-    if (allowedKeys.has(key) && typeof val === "boolean") {
+    if (allowedKeys.has(key)) {
       sanitized[key] = val;
     }
   }

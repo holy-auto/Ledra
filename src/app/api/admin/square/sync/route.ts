@@ -1,4 +1,5 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { z } from "zod";
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
@@ -12,6 +13,12 @@ import {
   apiValidationError,
 } from "@/lib/api/response";
 import { enqueueSquareSync } from "@/lib/qstash/publish";
+
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "from / to は YYYY-MM-DD 形式です");
+const squareSyncSchema = z.object({
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -65,12 +72,15 @@ export async function POST(req: NextRequest) {
     }
 
     // リクエストボディから日付範囲を取得（デフォルト: 過去90日）
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
+    const parsed = squareSyncSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
     const now = new Date();
     const defaultFrom = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const defaultTo = now.toISOString().slice(0, 10);
-    const from = (body?.from as string) || defaultFrom;
-    const to = (body?.to as string) || defaultTo;
+    const from = parsed.data.from || defaultFrom;
+    const to = parsed.data.to || defaultTo;
 
     // sync run レコード作成（Worker が処理開始時に "processing" に更新する）
     const { data: syncRun, error: syncRunErr } = await admin

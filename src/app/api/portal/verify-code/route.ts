@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import {
   GLOBAL_PORTAL_COOKIE,
@@ -11,6 +10,7 @@ import {
 } from "@/lib/customerPortalGlobal";
 import { normalizeEmail, normalizeLast4 } from "@/lib/customerPortalServer";
 import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { portalVerifyCodeSchema } from "@/lib/validations/portal";
 
 const isSecureCookie = process.env.NODE_ENV === "production";
 
@@ -25,16 +25,19 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-    const email = normalizeEmail(String(body.email ?? ""));
+    const parsed = portalVerifyCodeSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const email = normalizeEmail(parsed.data.email);
     let last4: string;
     try {
-      last4 = normalizeLast4(String(body.phone_last4 ?? body.last4 ?? ""));
+      last4 = normalizeLast4(parsed.data.phone_last4 ?? parsed.data.last4 ?? "");
     } catch {
       return apiValidationError("電話番号の下4桁を正しく入力してください。");
     }
-    const code = String(body.code ?? "").trim();
-    const preferredTenantSlug = String(body.preferred_tenant_slug ?? body.tenant ?? "").trim() || null;
+    const code = parsed.data.code;
+    const preferredTenantSlug = parsed.data.preferred_tenant_slug ?? parsed.data.tenant ?? null;
 
     const row = await getLatestGlobalCodeRow(email, last4);
     if (!row) return apiNotFound("no_code");

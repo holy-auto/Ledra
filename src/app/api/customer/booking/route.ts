@@ -1,10 +1,30 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiInternalError, apiValidationError, apiError } from "@/lib/api/response";
 import { checkOverlap } from "@/lib/reservations/overlap";
 import { syncCreateEvent } from "@/lib/gcal/client";
 import { sendBookingConfirmation } from "@/lib/line/client";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+
+const customerBookingSchema = z.object({
+  tenant_slug: z.string().trim().min(1).max(100),
+  customer_name: z.string().trim().min(1).max(100),
+  customer_email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email()
+    .max(254)
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+  customer_phone: z.string().trim().max(40).optional(),
+  title: z.string().trim().max(200).optional(),
+  scheduled_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "scheduled_date は YYYY-MM-DD 形式です"),
+  start_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "start_time / end_time は HH:MM 形式です"),
+  end_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "start_time / end_time は HH:MM 形式です"),
+  note: z.string().trim().max(2000).optional(),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -31,26 +51,17 @@ export async function POST(req: NextRequest) {
   if (limited) return limited;
 
   try {
-    const body = await req.json().catch(() => ({}));
-
-    // 必須フィールド検証
-    const tenantSlug = body?.tenant_slug;
-    const customerName = body?.customer_name;
-    const title = body?.title || "Web予約";
-    const scheduledDate = body?.scheduled_date;
-    const startTime = body?.start_time;
-    const endTime = body?.end_time;
-
-    if (!tenantSlug || !customerName || !scheduledDate || !startTime || !endTime) {
-      return apiValidationError("tenant_slug, customer_name, scheduled_date, start_time, end_time は必須です");
+    const parsed = customerBookingSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)) {
-      return apiValidationError("scheduled_date は YYYY-MM-DD 形式です");
-    }
-    if (!/^\d{2}:\d{2}(:\d{2})?$/.test(startTime) || !/^\d{2}:\d{2}(:\d{2})?$/.test(endTime)) {
-      return apiValidationError("start_time / end_time は HH:MM 形式です");
-    }
+    const body = parsed.data;
+    const tenantSlug = body.tenant_slug;
+    const customerName = body.customer_name;
+    const title = body.title || "Web予約";
+    const scheduledDate = body.scheduled_date;
+    const startTime = body.start_time;
+    const endTime = body.end_time;
 
     // 過去日チェック
     const today = new Date();
