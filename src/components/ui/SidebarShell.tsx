@@ -27,7 +27,7 @@ export default function SidebarShell({ children }: SidebarShellProps) {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="fixed left-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-[var(--radius-lg)] border border-border-default bg-[var(--bg-elevated)] backdrop-blur-[20px] lg:hidden"
+        className="fixed left-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-[var(--radius-lg)] border border-border-default bg-[var(--bg-surface-solid)] lg:hidden"
         aria-label="メニュー"
       >
         {open ? (
@@ -51,7 +51,7 @@ export default function SidebarShell({ children }: SidebarShellProps) {
 
       {/* Sidebar */}
       <aside
-        className={`fixed left-0 top-0 z-40 flex h-screen w-60 flex-col border-r border-border-subtle bg-[var(--bg-elevated)] backdrop-blur-[40px] backdrop-saturate-[180%] transition-transform duration-300 ease-out ${
+        className={`fixed left-0 top-0 z-40 flex h-screen w-60 flex-col border-r border-border-subtle bg-[var(--bg-surface-solid)] transition-transform duration-300 ease-out lg:bg-[var(--bg-elevated)] lg:backdrop-blur-[40px] lg:backdrop-saturate-[180%] ${
           open ? "translate-x-0" : "-translate-x-full"
         } lg:translate-x-0`}
       >

@@ -281,7 +281,7 @@ export default function StorefrontInventory() {
         description="品目をタップすると入庫/出庫を記録できます"
         action={
           <form
-            className="flex items-center gap-2"
+            className="flex w-full items-center gap-2 sm:w-auto"
             onSubmit={(e) => {
               e.preventDefault();
               setActiveSearch(search.trim());
@@ -292,7 +292,7 @@ export default function StorefrontInventory() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="品目・SKU"
-              className="rounded-full border border-border-subtle bg-inset px-3 py-1.5 text-sm text-primary placeholder:text-muted focus:border-accent focus:outline-none"
+              className="min-w-0 flex-1 rounded-full border border-border-subtle bg-inset px-3 py-1.5 text-sm text-primary placeholder:text-muted focus:border-accent focus:outline-none sm:flex-none sm:w-36"
             />
             <button
               type="submit"
