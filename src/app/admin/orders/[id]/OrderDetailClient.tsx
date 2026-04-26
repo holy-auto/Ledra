@@ -384,11 +384,31 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
         </div>
         <div className="glass-card p-4">
           <div className="text-xs text-muted">発注元</div>
-          <div className="mt-1 text-sm font-semibold text-primary">{fromTenant?.company_name ?? "—"}</div>
+          {fromTenant?.slug ? (
+            <Link
+              href={`/customer/${fromTenant.slug}`}
+              target="_blank"
+              className="mt-1 block text-sm font-semibold text-accent hover:underline"
+            >
+              {fromTenant.company_name} ↗
+            </Link>
+          ) : (
+            <div className="mt-1 text-sm font-semibold text-primary">{fromTenant?.company_name ?? "—"}</div>
+          )}
         </div>
         <div className="glass-card p-4">
           <div className="text-xs text-muted">発注先</div>
-          <div className="mt-1 text-sm font-semibold text-primary">{toTenant?.company_name ?? (order.to_tenant_id ? "—" : "未指定")}</div>
+          {toTenant?.slug ? (
+            <Link
+              href={`/customer/${toTenant.slug}`}
+              target="_blank"
+              className="mt-1 block text-sm font-semibold text-accent hover:underline"
+            >
+              {toTenant.company_name} ↗
+            </Link>
+          ) : (
+            <div className="mt-1 text-sm font-semibold text-primary">{toTenant?.company_name ?? (order.to_tenant_id ? "—" : "未指定")}</div>
+          )}
         </div>
         <div className="glass-card p-4">
           <div className="text-xs text-muted">予算 / 合意金額</div>
@@ -532,18 +552,34 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
         <section className="glass-card p-5 space-y-3">
           <h3 className="text-sm font-semibold text-primary">関連帳票</h3>
           <div className="space-y-2">
-            {documents.map((doc) => (
-              <div key={doc.id} className="flex items-center justify-between text-sm">
-                <div>
-                  <span className="font-medium">{DOC_TYPE_LABELS[doc.doc_type] ?? doc.doc_type}</span>
-                  <span className="text-muted ml-2">#{doc.doc_number}</span>
+            {documents.map((doc) => {
+              const isInvoice = doc.doc_type === "invoice" || doc.doc_type === "consolidated_invoice";
+              const inner = (
+                <>
+                  <div>
+                    <span className="font-medium">{DOC_TYPE_LABELS[doc.doc_type] ?? doc.doc_type}</span>
+                    <span className="text-muted ml-2">#{doc.doc_number}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-muted">{formatJpy(doc.total)}</span>
+                    <Badge variant="default">{doc.status}</Badge>
+                  </div>
+                </>
+              );
+              return isInvoice ? (
+                <Link
+                  key={doc.id}
+                  href={`/admin/invoices/${doc.id}`}
+                  className="flex items-center justify-between text-sm rounded-lg px-2 py-1.5 -mx-2 hover:bg-surface-hover transition-colors"
+                >
+                  {inner}
+                </Link>
+              ) : (
+                <div key={doc.id} className="flex items-center justify-between text-sm">
+                  {inner}
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-muted">{formatJpy(doc.total)}</span>
-                  <Badge variant="default">{doc.status}</Badge>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
