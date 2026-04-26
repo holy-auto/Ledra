@@ -11,6 +11,7 @@ import { hashSha256, computePerceptualHash } from "@/lib/anchoring/imageHashing"
 import { stripGpsAndReadExif } from "@/lib/anchoring/imageExif";
 import { computeAuthenticityGrade } from "@/lib/anchoring/authenticityGrade";
 import { invokeAllUploadProviders } from "@/lib/anchoring/providers";
+import { upsertVehiclePassport } from "@/lib/passport/upsertVehiclePassport";
 
 export const runtime = "nodejs";
 // Allow up to 60s for image processing + verification providers.
@@ -255,6 +256,15 @@ export async function POST(req: NextRequest) {
           message: `データベースへの登録に失敗しました: ${insertError.message ?? "unknown"}`,
         };
         continue;
+      }
+
+      // If this image was anchored to Polygon, update (or create) the vehicle
+      // passport for this VIN. Fire-and-forget: a failure here must never
+      // surface as an upload error to the end user.
+      if (providers.polygon.anchored) {
+        upsertVehiclePassport(cert.id).catch((err: unknown) => {
+          console.warn("[passport] upsert failed after anchor", err instanceof Error ? err.message : err);
+        });
       }
 
       uploaded++;

@@ -209,6 +209,8 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
     notice === "pdf_blocked_inactive" ||
     notice === "pdf_blocked_plan";
 
+  const passportVin = (data as { passport_vin?: string | null }).passport_vin ?? null;
+
   return (
     <main className="mx-auto max-w-[980px] p-4">
       {certStatus === "active" && !isVoidCertificate ? (
@@ -220,6 +222,23 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
           polygonTxHash={heroPolygonTxHash}
           polygonNetwork={heroPolygonNetwork}
         />
+      ) : null}
+
+      {passportVin ? (
+        <a
+          href={`/v/${encodeURIComponent(passportVin)}`}
+          className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-blue-500/30 bg-[rgba(59,130,246,0.07)] px-4 py-3 no-underline transition-colors hover:bg-[rgba(59,130,246,0.12)]"
+        >
+          <div>
+            <div className="text-sm font-semibold text-blue-400">この車両の全施工履歴を見る</div>
+            <div className="mt-0.5 text-xs text-muted">
+              複数の施工店の記録がブロックチェーン上で集約されています
+            </div>
+          </div>
+          <svg className="h-5 w-5 shrink-0 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+          </svg>
+        </a>
       ) : null}
       <div className="glass-card mb-4 p-5">
         <div className="text-[28px] font-extrabold tracking-wide text-primary">Ledra</div>

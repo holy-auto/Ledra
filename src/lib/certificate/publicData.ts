@@ -56,6 +56,7 @@ type VehicleRow = {
   customer_name: string | null;
   customer_email: string | null;
   notes: string | null;
+  vin_code_normalized: string | null;
 };
 
 type NfcRow = {
@@ -124,6 +125,8 @@ export type PublicCertificateData = {
     slug: string | null;
     custom_domain: string | null;
   } | null;
+  /** Normalized VIN for the vehicle passport link. Non-null only when a passport record exists. */
+  passport_vin: string | null;
 };
 
 /**
@@ -162,7 +165,7 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
     cert.vehicle_id
       ? supabase
           .from("vehicles")
-          .select("id, maker, model, year, plate_display, customer_name, customer_email, notes")
+          .select("id, maker, model, year, plate_display, customer_name, customer_email, notes, vin_code_normalized")
           .eq("id", cert.vehicle_id)
           .limit(1)
           .maybeSingle<VehicleRow>()
@@ -215,6 +218,19 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
   const histories = histRes.data ?? [];
   const vehicle_certificates = vcRes.data ?? [];
 
+  // Check for an existing vehicle passport (for the "view full history" badge)
+  let passportVin: string | null = null;
+  const vinNormalized = vehicle?.vin_code_normalized ?? null;
+  if (vinNormalized) {
+    const { data: passportRowRaw } = await supabase
+      .from("vehicle_passports")
+      .select("vin_code_normalized")
+      .eq("vin_code_normalized", vinNormalized)
+      .maybeSingle();
+    const passportRow = passportRowRaw as { vin_code_normalized: string } | null;
+    passportVin = passportRow?.vin_code_normalized ?? null;
+  }
+
   const images: (ImageRow & { url: string | null })[] = (!imgRes.error && imgRes.data ? imgRes.data : []).map((img) => {
     let url: string | null = null;
     if (img.storage_path) {
@@ -265,5 +281,6 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
           custom_domain: tenant.custom_domain ?? null,
         }
       : null,
+    passport_vin: passportVin,
   };
 }
