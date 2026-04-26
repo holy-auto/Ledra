@@ -293,18 +293,12 @@ function formatTooltip(section: string, info: PanelInfo | undefined, unit: strin
   return parts.join(" / ");
 }
 
-function PanelShape({
-  panel,
-  info,
-  unit,
-}: {
-  panel: PanelDef;
-  info: PanelInfo | undefined;
-  unit: string;
-}) {
+function PanelShape({ panel, info, unit }: { panel: PanelDef; info: PanelInfo | undefined; unit: string }) {
   const palette = paletteFor(info?.maxInterpretation ?? null);
   const isMeasured = !!info && info.count > 0;
-  const labelText = panel.short ? SHORT_LABEL[panel.section] ?? panel.section : SECTION_JA[panel.section] ?? panel.section;
+  const labelText = panel.short
+    ? (SHORT_LABEL[panel.section] ?? panel.section)
+    : (SECTION_JA[panel.section] ?? panel.section);
 
   const shapeStyle: CSSProperties = {
     fill: palette.fill,

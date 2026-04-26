@@ -124,7 +124,11 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
         companyName: data.company_name,
         applicationNumber: data.application_number,
         rejectionReason: rejection_reason.trim(),
-      }).catch((e) => console.error("[admin/agent-applications] reject email error:", e));
+      }).catch((e) =>
+        console.error("[admin/agent-applications] reject email error", {
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      );
 
       return apiJson({ application: data });
     }
@@ -214,7 +218,11 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
         // 既存ユーザーの場合は仮パスワード不要（既存パスワードでログイン可能）
         temporaryPassword: tempPassword ?? "(既存のパスワードをご使用ください)",
         portalUrl: `${baseUrl}/agent/login`,
-      }).catch((e) => console.error("[admin/agent-applications] approve email error:", e));
+      }).catch((e) =>
+        console.error("[admin/agent-applications] approve email error", {
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      );
 
       return apiJson({
         application: { ...app, status: "approved", agent_id: agentId },

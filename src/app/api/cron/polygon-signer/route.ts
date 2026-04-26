@@ -123,7 +123,8 @@ async function sendAlertEmail(summary: SignerSummary): Promise<void> {
       body: JSON.stringify({ from, to, subject, text: body }),
     });
   } catch (e) {
-    console.error("[cron/polygon-signer] failed to send alert email:", e);
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[cron/polygon-signer] failed to send alert email", { error: msg });
   }
 }
 

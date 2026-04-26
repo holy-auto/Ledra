@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { randomBytes } from "crypto";
 import { signupSchema } from "@/lib/validations/signup";
 import { apiOk, apiError, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
@@ -13,7 +14,9 @@ function generateSlug(name: string): string {
     .trim()
     .replace(/[^\w\u3000-\u9fff\uff00-\uffef]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  const suffix = Math.random().toString(36).slice(2, 8);
+  // Math.random は予測可能 (Mersenne Twister) なので、店舗 slug の suffix
+  // を列挙される。crypto-strong な 4 byte (8 hex chars) で十分な分散を確保。
+  const suffix = randomBytes(4).toString("hex");
   return `${base}-${suffix}`;
 }
 

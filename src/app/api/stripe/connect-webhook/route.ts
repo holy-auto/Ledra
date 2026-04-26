@@ -51,7 +51,8 @@ async function sendPayoutFailedEmail(params: {
       body: JSON.stringify({ from, to: params.to, subject: "[Ledra] 振込処理が失敗しました", html }),
     });
   } catch (err) {
-    console.error("connect-webhook: payout failed email error:", err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("connect-webhook: payout failed email error", { error: msg });
   }
 }
 

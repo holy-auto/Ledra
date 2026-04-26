@@ -3,6 +3,7 @@ import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { resolveInsurerCaller, enforceInsurerPlan } from "@/lib/api/insurerAuth";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { maskEmail } from "@/lib/logger";
+import { escapeHtml } from "@/lib/sanitize";
 
 export const runtime = "nodejs";
 
@@ -62,6 +63,9 @@ async function sendInviteEmail(to: string, companyName: string) {
   if (!apiKey || !from) return;
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.ledra.co.jp";
+  // companyName は CSV インポート行 (= 加盟店オーナーの自由入力) 由来のため、
+  // 受信者側のメールクライアントで HTML 解釈される前にエスケープ。
+  const safeCompany = escapeHtml(companyName ?? "");
 
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 24px;">
@@ -69,7 +73,7 @@ async function sendInviteEmail(to: string, companyName: string) {
         <h2 style="margin: 0; color: #1d1d1f; font-size: 18px;">Ledraへの招待</h2>
       </div>
       <p style="color: #1d1d1f; line-height: 1.6;">
-        ${companyName} より、Ledra加盟店ポータルへ招待されました。<br>
+        ${safeCompany} より、Ledra加盟店ポータルへ招待されました。<br>
         以下のリンクからパスワードを設定し、ご利用を開始してください。
       </p>
       <p style="margin: 24px 0;">
@@ -96,7 +100,8 @@ async function sendInviteEmail(to: string, companyName: string) {
       body: JSON.stringify({
         from,
         to,
-        subject: `【Ledra】${companyName} から招待されました`,
+        // Subject 行への CRLF 注入を避けるため改行を除去 (HTML エスケープは subject では不要)。
+        subject: `【Ledra】${String(companyName).replace(/[\r\n]/g, " ")} から招待されました`,
         html,
       }),
     });

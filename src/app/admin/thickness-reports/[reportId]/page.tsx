@@ -391,7 +391,9 @@ export default async function StandaloneThicknessReportDetailPage({
           <div>
             <div className="text-xs font-semibold tracking-[0.18em] text-muted">車体展開図</div>
             <div className="mt-1 text-base font-semibold text-primary">部位別の判定マップ</div>
-            <p className="mt-1 text-xs text-muted">パネルにマウスを乗せると詳細を表示します。色は判定最大値（緑=1-2 / 黄=3-4 / 赤=5）。</p>
+            <p className="mt-1 text-xs text-muted">
+              パネルにマウスを乗せると詳細を表示します。色は判定最大値（緑=1-2 / 黄=3-4 / 赤=5）。
+            </p>
           </div>
           <VehicleDiagramLegend />
           {hasExterior && (

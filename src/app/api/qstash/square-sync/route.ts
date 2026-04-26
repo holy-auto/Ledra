@@ -249,6 +249,9 @@ async function handler(req: NextRequest) {
         body: { job_id, tenant_id, cursor: nextCursor },
         retries: 2,
         delay: 2,
+        // (job_id, cursor) 単位でユニークになるので、同じカーソルでの再キュー要求は
+        // ネットワーク再試行扱いで deduplication される。
+        deduplicationId: `square-sync:${job_id}:${nextCursor}`,
       });
 
       await admin

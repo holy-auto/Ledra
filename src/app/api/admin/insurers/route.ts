@@ -6,6 +6,7 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { getClientIp } from "@/lib/rateLimit";
 import { apiJson, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { escapeHtml } from "@/lib/sanitize";
 
 export const runtime = "nodejs";
 
@@ -84,6 +85,10 @@ async function sendInsurerNotification(params: {
   }
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.ledra.co.jp";
+  // companyName / reason は審査側の自由入力であり、HTML 文脈に直接埋め込むと
+  // 受信者のメールクライアントで XSS / フィッシング誘導の温床になる。
+  const safeCompany = escapeHtml(params.companyName ?? "");
+  const safeReason = escapeHtml(params.reason ?? "");
 
   let subject: string;
   let body: string;
@@ -97,7 +102,7 @@ async function sendInsurerNotification(params: {
             <h2 style="margin: 0; color: #1d1d1f; font-size: 18px;">加盟店登録が承認されました</h2>
           </div>
           <p style="color: #1d1d1f; line-height: 1.6;">
-            ${params.companyName} 様<br><br>
+            ${safeCompany} 様<br><br>
             Ledraへの加盟店登録が承認されました。<br>
             以下のリンクからログインし、ご利用を開始いただけます。
           </p>
@@ -119,10 +124,10 @@ async function sendInsurerNotification(params: {
             <h2 style="margin: 0; color: #1d1d1f; font-size: 18px;">加盟店登録について</h2>
           </div>
           <p style="color: #1d1d1f; line-height: 1.6;">
-            ${params.companyName} 様<br><br>
+            ${safeCompany} 様<br><br>
             Ledraへの加盟店登録を審査いたしましたが、今回は承認に至りませんでした。
           </p>
-          ${params.reason ? `<p style="color: #1d1d1f; line-height: 1.6; background: #f5f5f7; border-radius: 8px; padding: 12px;"><strong>理由:</strong> ${params.reason}</p>` : ""}
+          ${params.reason ? `<p style="color: #1d1d1f; line-height: 1.6; background: #f5f5f7; border-radius: 8px; padding: 12px;"><strong>理由:</strong> ${safeReason}</p>` : ""}
           <p style="color: #86868b; font-size: 13px;">
             ご不明な点がございましたら、サポートまでお問い合わせください。
           </p>
@@ -139,10 +144,10 @@ async function sendInsurerNotification(params: {
             <h2 style="margin: 0; color: #1d1d1f; font-size: 18px;">アカウント停止のご連絡</h2>
           </div>
           <p style="color: #1d1d1f; line-height: 1.6;">
-            ${params.companyName} 様<br><br>
+            ${safeCompany} 様<br><br>
             Ledraのアカウントが停止されました。
           </p>
-          ${params.reason ? `<p style="color: #1d1d1f; line-height: 1.6; background: #f5f5f7; border-radius: 8px; padding: 12px;"><strong>理由:</strong> ${params.reason}</p>` : ""}
+          ${params.reason ? `<p style="color: #1d1d1f; line-height: 1.6; background: #f5f5f7; border-radius: 8px; padding: 12px;"><strong>理由:</strong> ${safeReason}</p>` : ""}
           <p style="color: #86868b; font-size: 13px;">
             ご不明な点がございましたら、サポートまでお問い合わせください。
           </p>
@@ -170,11 +175,13 @@ async function sendInsurerNotification(params: {
     });
 
     if (!res.ok) {
-      const resBody = await res.text().catch(() => "");
-      console.error("[admin/insurers] notification email error:", res.status, resBody);
+      // resBody は Resend のエラーレスポンスで、稀に request の email 等を
+      // 含み得るため status のみログ。
+      console.error("[admin/insurers] notification email error", { status: res.status });
     }
   } catch (e) {
-    console.error("[admin/insurers] notification email failed:", e);
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[admin/insurers] notification email failed", { error: msg });
   }
 }
 

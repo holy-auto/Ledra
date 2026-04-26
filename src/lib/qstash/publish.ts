@@ -20,9 +20,7 @@ function getBaseUrl() {
   const baseUrl = candidates[0];
 
   if (!baseUrl) {
-    throw new Error(
-      "Base URL is not set. Set NEXT_PUBLIC_APP_URL or APP_URL in Vercel."
-    );
+    throw new Error("Base URL is not set. Set NEXT_PUBLIC_APP_URL or APP_URL in Vercel.");
   }
 
   return baseUrl.startsWith("http") ? baseUrl : `https://${baseUrl}`;
@@ -31,7 +29,7 @@ function getBaseUrl() {
 async function publish(
   path: string,
   payload: Record<string, unknown>,
-  options?: { retries?: number },
+  options?: { retries?: number; deduplicationId?: string },
 ) {
   const client = getClient();
   if (!client) return null;
@@ -43,39 +41,48 @@ async function publish(
     url: targetUrl,
     body: payload,
     ...(options?.retries !== undefined && { retries: options.retries }),
+    ...(options?.deduplicationId !== undefined && {
+      deduplicationId: options.deduplicationId,
+    }),
   });
 
   return result;
 }
 
 /** Enqueue certificate creation event for async processing */
-export async function enqueueInsuranceCaseCreated(
-  payload: Record<string, unknown>
-) {
-  return publish("/api/qstash/insurance-case-created", payload);
+export async function enqueueInsuranceCaseCreated(payload: {
+  certificate_id?: string | null;
+  public_id?: string;
+  [k: string]: unknown;
+}) {
+  // public_id (or certificate_id) ごとに 1 通しかディスパッチしない。
+  // ネットワーク再試行で多重 enqueue されても QStash 側で deduplication。
+  const key = payload.public_id ?? payload.certificate_id ?? undefined;
+  return publish("/api/qstash/insurance-case-created", payload, {
+    ...(typeof key === "string" && key && { deduplicationId: `case-created:${key}` }),
+  });
 }
 
 /** Enqueue polygon backfill job for async processing */
-export async function enqueuePolygonBackfill(payload: {
-  job_id: string;
-  tenant_id: string;
-}) {
-  return publish("/api/qstash/polygon-backfill", payload, { retries: 2 });
+export async function enqueuePolygonBackfill(payload: { job_id: string; tenant_id: string }) {
+  return publish("/api/qstash/polygon-backfill", payload, {
+    retries: 2,
+    deduplicationId: `polygon-backfill:init:${payload.job_id}`,
+  });
 }
 
 /** Enqueue batch PDF generation job for async processing */
-export async function enqueueBatchPdf(payload: {
-  job_id: string;
-  tenant_id: string;
-  public_ids: string[];
-}) {
-  return publish("/api/qstash/batch-pdf", payload, { retries: 2 });
+export async function enqueueBatchPdf(payload: { job_id: string; tenant_id: string; public_ids: string[] }) {
+  return publish("/api/qstash/batch-pdf", payload, {
+    retries: 2,
+    deduplicationId: `batch-pdf:${payload.job_id}`,
+  });
 }
 
 /** Enqueue Square order sync job for async processing */
-export async function enqueueSquareSync(payload: {
-  job_id: string;
-  tenant_id: string;
-}) {
-  return publish("/api/qstash/square-sync", payload, { retries: 2 });
+export async function enqueueSquareSync(payload: { job_id: string; tenant_id: string }) {
+  return publish("/api/qstash/square-sync", payload, {
+    retries: 2,
+    deduplicationId: `square-sync:init:${payload.job_id}`,
+  });
 }

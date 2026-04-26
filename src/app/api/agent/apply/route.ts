@@ -151,7 +151,11 @@ export async function POST(req: NextRequest) {
         await notifyApplicationReceived(data.email, {
           companyName: data.company_name,
           applicationNumber: retryNumber,
-        }).catch((e) => console.error("[agent/apply] email error:", e));
+        }).catch((e) =>
+          console.error("[agent/apply] email error", {
+            error: e instanceof Error ? e.message : String(e),
+          }),
+        );
         return apiJson(
           {
             ok: true,
@@ -170,7 +174,11 @@ export async function POST(req: NextRequest) {
   await notifyApplicationReceived(data.email, {
     companyName: data.company_name,
     applicationNumber: applicationNumber,
-  }).catch((e) => console.error("[agent/apply] email error:", e));
+  }).catch((e) =>
+    console.error("[agent/apply] email error", {
+      error: e instanceof Error ? e.message : String(e),
+    }),
+  );
 
   return apiJson(
     {

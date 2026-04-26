@@ -100,7 +100,9 @@ export async function POST(req: NextRequest) {
       return apiUnauthorized();
     }
   } catch (err) {
-    console.error("[square-webhook] Signature verification error:", err);
+    console.error("[square-webhook] Signature verification error", {
+      error: err instanceof Error ? err.message : String(err),
+    });
     return apiUnauthorized();
   }
 
@@ -119,11 +121,18 @@ export async function POST(req: NextRequest) {
     return apiValidationError("Invalid event: missing type or merchant_id");
   }
 
-  // Process events asynchronously — return 200 quickly to avoid Square retries
-  // We use a fire-and-forget pattern here; errors are logged but not propagated
-  processEvent(type, merchantId, data).catch((err) => {
-    console.error("[square-webhook] Event processing error:", err);
-  });
+  // 同期的に処理する。fire-and-forget だと処理失敗時も Square には 200 を
+  // 返してしまい、Square 側の retry が走らない (= データが永久に欠落する)。
+  // upsertOrder は order_id 単位で idempotent なので、同じイベントが
+  // 再配信されても安全。
+  try {
+    await processEvent(type, merchantId, data);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[square-webhook] Event processing error", { type, merchantId, error: msg });
+    // Square の再配信を促すため 5xx を返す。
+    return apiInternalError(new Error("event processing failed"), "square-webhook");
+  }
 
   return apiJson({ received: true }, { status: 200 });
 }
@@ -256,7 +265,10 @@ async function fetchSquareOrder(accessToken: string, orderId: string): Promise<S
     const body = (await res.json()) as { order?: SquareOrderApi | null };
     return body.order ?? null;
   } catch (err) {
-    console.error(`[square-webhook] Fetch order ${orderId} error:`, err);
+    console.error("[square-webhook] Fetch order error", {
+      orderId,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }
