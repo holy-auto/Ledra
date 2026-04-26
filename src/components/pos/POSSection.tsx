@@ -23,7 +23,7 @@ type Props = {
 export default function POSSection({ title, description, action, children, compact = false }: Props) {
   return (
     <section className={compact ? "space-y-2" : "space-y-3"}>
-      <div className="flex items-end justify-between gap-3">
+      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
         <div>
           <h2 className="text-base font-bold tracking-tight text-primary">{title}</h2>
           {description && <p className="mt-0.5 text-[12px] text-secondary">{description}</p>}
