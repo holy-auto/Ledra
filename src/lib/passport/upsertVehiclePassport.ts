@@ -15,38 +15,38 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 export async function upsertVehiclePassport(certId: string): Promise<void> {
   const admin = createServiceRoleAdmin("passport upsert — triggered by polygon anchor success");
 
-  const { data: cert } = await admin
+  const { data: certRaw } = await admin
     .from("certificates")
     .select("vehicle_id")
     .eq("id", certId)
-    .returns<{ vehicle_id: string | null }>()
     .maybeSingle();
+  const cert = certRaw as { vehicle_id: string | null } | null;
   if (!cert?.vehicle_id) return;
 
-  const { data: vehicle } = await admin
+  const { data: vehicleRaw } = await admin
     .from("vehicles")
     .select("vin_code_normalized, maker, model, year, passport_opt_out")
     .eq("id", cert.vehicle_id)
-    .returns<{
-      vin_code_normalized: string | null;
-      maker: string | null;
-      model: string | null;
-      year: number | null;
-      passport_opt_out: boolean;
-    }>()
     .maybeSingle();
+  const vehicle = vehicleRaw as {
+    vin_code_normalized: string | null;
+    maker: string | null;
+    model: string | null;
+    year: number | null;
+    passport_opt_out: boolean;
+  } | null;
   if (!vehicle?.vin_code_normalized || vehicle.passport_opt_out) return;
 
   const vin = vehicle.vin_code_normalized;
 
   // All opt-in vehicles sharing this VIN (cross-tenant)
-  const { data: vinVehicles } = await admin
+  const { data: vinVehiclesRaw } = await admin
     .from("vehicles")
     .select("id, tenant_id")
     .eq("vin_code_normalized", vin)
-    .eq("passport_opt_out", false)
-    .returns<{ id: string; tenant_id: string }[]>();
-  if (!vinVehicles?.length) return;
+    .eq("passport_opt_out", false);
+  const vinVehicles = (vinVehiclesRaw ?? []) as { id: string; tenant_id: string }[];
+  if (!vinVehicles.length) return;
 
   const vehicleIds = vinVehicles.map((v) => v.id);
 

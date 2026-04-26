@@ -39,25 +39,25 @@ export async function getPassportData(vinRaw: string): Promise<PassportData | nu
   const vin = vinRaw.trim().toUpperCase();
   const admin = createServiceRoleAdmin("passport public page — /v/[vin], anonymous caller");
 
-  const { data: passport } = await admin
+  const { data: passportRaw } = await admin
     .from("vehicle_passports")
     .select(
       "vin_code_normalized, display_maker, display_model, display_year, " +
         "anchored_cert_count, tenant_count, first_seen_at, last_activity_at",
     )
     .eq("vin_code_normalized", vin)
-    .returns<PassportRow>()
     .maybeSingle();
+  const passport = passportRaw as PassportRow | null;
   if (!passport) return null;
 
   // All opt-in vehicles sharing this VIN
-  const { data: vinVehicles } = await admin
+  const { data: vinVehiclesRaw } = await admin
     .from("vehicles")
     .select("id, tenant_id")
     .eq("vin_code_normalized", vin)
-    .eq("passport_opt_out", false)
-    .returns<{ id: string; tenant_id: string }[]>();
-  if (!vinVehicles?.length) return null;
+    .eq("passport_opt_out", false);
+  const vinVehicles = (vinVehiclesRaw ?? []) as { id: string; tenant_id: string }[];
+  if (!vinVehicles.length) return null;
 
   const vehicleIds = vinVehicles.map((v) => v.id);
   const tenantIds = [...new Set(vinVehicles.map((v) => v.tenant_id))];
