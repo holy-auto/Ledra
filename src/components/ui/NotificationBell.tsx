@@ -94,7 +94,7 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-80 rounded-xl border border-border-subtle bg-[var(--bg-elevated)] shadow-xl overflow-hidden z-50 animate-[hero-fade-in_0.15s_ease-out]">
+        <div className="absolute right-0 top-full mt-2 w-72 max-w-[calc(100vw-1rem)] rounded-xl border border-border-subtle bg-[var(--bg-surface-solid)] shadow-xl overflow-hidden z-50 animate-[hero-fade-in_0.15s_ease-out]">
           <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
             <span className="text-sm font-semibold text-primary">通知</span>
             {unreadCount > 0 && (

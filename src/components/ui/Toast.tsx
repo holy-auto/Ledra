@@ -110,13 +110,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext value={{ toast }}>
       {children}
       {/* Toast container */}
-      <div className="fixed bottom-6 right-6 z-50 space-y-2" aria-live="polite">
+      <div className="fixed bottom-6 left-4 right-4 z-50 space-y-2 sm:left-auto sm:right-6" aria-live="polite">
         {toasts.map((t) => (
           <div
             key={t.id}
             role="alert"
             aria-live="assertive"
-            className={`glass-card flex max-w-sm items-center gap-3 px-4 py-3 shadow-lg ${VARIANT_BORDER[t.variant]}`}
+            className={`flex w-full items-center gap-3 rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface-solid)] px-4 py-3 shadow-lg sm:max-w-sm ${VARIANT_BORDER[t.variant]}`}
             style={{ animation: "toast-in 200ms var(--ease-spring)" }}
           >
             {VARIANT_ICON[t.variant]}
