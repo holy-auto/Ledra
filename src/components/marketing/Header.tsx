@@ -8,6 +8,7 @@ import { MobileMenu } from "./MobileMenu";
 
 const navItems: { label: string; href: string }[] = [
   { label: "機能", href: "/features" },
+  { label: "BtoB発注", href: "/for-btob" },
   { label: "料金", href: "/pricing" },
   { label: "セキュリティ", href: "/security" },
   { label: "サポート", href: "/support" },

@@ -402,6 +402,19 @@ export default function OrdersClient() {
         }
       />
 
+      {/* Zero-fee banner */}
+      <div className="flex items-center gap-3 rounded-xl border border-green-500/20 bg-green-500/[0.04] px-4 py-3 text-sm">
+        <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 shrink-0 text-green-400">
+          <path
+            fillRule="evenodd"
+            d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z"
+            clipRule="evenodd"
+          />
+        </svg>
+        <span className="text-green-300 font-medium">取引手数料0円</span>
+        <span className="text-secondary">— 合意金額の100%が受注した施工店に届きます。中間マージンは発生しません。</span>
+      </div>
+
       {/* Stats */}
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="glass-card p-5">
