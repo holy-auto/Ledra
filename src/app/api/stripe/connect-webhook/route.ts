@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { escapeHtml } from "@/lib/sanitize";
+import { executeOrderPayout } from "@/lib/orders/orderPayout";
 
 async function sendPayoutFailedEmail(params: {
   to: string;
@@ -341,6 +342,27 @@ export async function POST(req: NextRequest) {
         if (tenant && tenant.stripe_connect_onboarded !== onboarded) {
           await supabase.from("tenants").update({ stripe_connect_onboarded: onboarded }).eq("id", tenant.id);
           console.info("connect-webhook: tenant connect synced", { accountId: account.id, onboarded });
+
+          // オンボーディング完了 → pending_onboarding の案件を自動送金
+          if (onboarded && tenant.id) {
+            const { data: pendingOrders } = await supabase
+              .from("job_orders")
+              .select("id")
+              .eq("to_tenant_id", tenant.id)
+              .eq("payout_stripe_transfer_id", "pending_onboarding");
+
+            if (pendingOrders?.length) {
+              console.info("connect-webhook: retrying pending payouts", {
+                accountId: account.id,
+                count: pendingOrders.length,
+              });
+              for (const order of pendingOrders) {
+                executeOrderPayout(order.id as string).catch((e: unknown) =>
+                  console.error("connect-webhook: retry payout failed", { orderId: order.id, error: e }),
+                );
+              }
+            }
+          }
         }
 
         // agent

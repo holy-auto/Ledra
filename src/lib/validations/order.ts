@@ -34,6 +34,21 @@ export const orderCreateSchema = z.object({
     .nullable()
     .optional()
     .transform((v) => v || null),
+  requester_email: z
+    .string()
+    .trim()
+    .email("メールアドレスの形式が不正です。")
+    .max(200)
+    .nullable()
+    .optional()
+    .transform((v) => v || null),
+  requester_company: z
+    .string()
+    .trim()
+    .max(200)
+    .nullable()
+    .optional()
+    .transform((v) => v || null),
 });
 
 export const ORDER_STATUSES = [

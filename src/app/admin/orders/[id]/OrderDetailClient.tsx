@@ -6,6 +6,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import { formatJpy, formatDate } from "@/lib/format";
+import InspectionSignaturePad from "@/components/ui/InspectionSignaturePad";
 
 // ─── Types ───
 
@@ -225,6 +226,9 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
   const [confirmingPayment, setConfirmingPayment] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("bank_transfer");
 
+  // Inspection signature
+  const [showSignaturePad, setShowSignaturePad] = useState(false);
+
   const fetchDetail = useCallback(async () => {
     try {
       const res = await fetch(`/api/admin/orders/${orderId}`, { cache: "no-store" });
@@ -309,6 +313,19 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
     } finally {
       setSubmittingReview(false);
     }
+  };
+
+  // ─── Inspection sign ───
+  const handleInspectionSign = async (dataUrl: string, signerName: string) => {
+    const res = await fetch(`/api/admin/orders/${orderId}/inspection-sign`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ signature_data_url: dataUrl, signer_name: signerName || undefined }),
+    });
+    const j = await res.json();
+    if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+    setShowSignaturePad(false);
+    await fetchDetail();
   };
 
   // ─── Payment confirm ───
@@ -462,7 +479,9 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
               <Button
                 key={t.next}
                 onClick={() => {
-                  if (t.next === "cancelled") {
+                  if (t.next === "payment_pending" && t.side === "from") {
+                    setShowSignaturePad(true);
+                  } else if (t.next === "cancelled") {
                     const reason = prompt("取消理由を入力してください");
                     if (reason !== null) handleStatusUpdate(t.next, reason);
                   } else {
@@ -640,6 +659,15 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
             ))}
           </div>
         </section>
+      )}
+
+      {/* ─── Inspection Signature Pad ─── */}
+      {showSignaturePad && (
+        <InspectionSignaturePad
+          orderTitle={order.title}
+          onSign={handleInspectionSign}
+          onCancel={() => setShowSignaturePad(false)}
+        />
       )}
     </div>
   );

@@ -7,6 +7,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import { formatJpy, formatDate } from "@/lib/format";
+import OrderCsvImport from "@/components/ui/OrderCsvImport";
 
 type OrderStatus =
   | "pending"
@@ -198,8 +199,8 @@ export default function OrdersClient() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [showForm, setShowForm] = useState(false);
 
-  // タブ: "my" = 自社案件, "browse" = 公開案件を検索
-  const [activeTab, setActiveTab] = useState<"my" | "browse">("my");
+  // タブ: "my" = 自社案件, "browse" = 公開案件を検索, "csv" = CSVインポート
+  const [activeTab, setActiveTab] = useState<"my" | "browse" | "csv">("my");
 
   // 公開案件検索
   const [browseOrders, setBrowseOrders] = useState<OrderRow[]>([]);
@@ -228,6 +229,8 @@ export default function OrdersClient() {
     category: "",
     budget: "",
     deadline: "",
+    requester_email: "",
+    requester_company: "",
   });
   const [submitting, setSubmitting] = useState(false);
 
@@ -344,12 +347,14 @@ export default function OrdersClient() {
           to_tenant_id: selectedTenant?.tenant_id || null,
           budget: formData.budget ? Number(formData.budget) : null,
           deadline: formData.deadline || null,
+          requester_email: formData.requester_email || null,
+          requester_company: formData.requester_company || null,
         }),
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setShowForm(false);
-      setFormData({ title: "", description: "", category: "", budget: "", deadline: "" });
+      setFormData({ title: "", description: "", category: "", budget: "", deadline: "", requester_email: "", requester_company: "" });
       setSelectedTenant(null);
       setTenantQuery("");
       await fetchOrders(typeFilter, statusFilter);
@@ -401,6 +406,21 @@ export default function OrdersClient() {
           </button>
         }
       />
+
+      {/* Platform fee banner */}
+      <div className="flex items-start gap-3 rounded-xl border border-blue-500/20 bg-blue-500/[0.04] px-4 py-3 text-sm">
+        <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 shrink-0 text-blue-400 mt-0.5">
+          <path
+            fillRule="evenodd"
+            d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.253a.25.25 0 0 1 .244.304l-.459 2.066A1.75 1.75 0 0 0 10.747 15H11a.75.75 0 0 0 0-1.5h-.253a.25.25 0 0 1-.244-.304l.459-2.066A1.75 1.75 0 0 0 9.253 9H9Z"
+            clipRule="evenodd"
+          />
+        </svg>
+        <div>
+          <span className="text-blue-300 font-medium">プラットフォーム手数料 10%</span>
+          <span className="text-secondary ml-2">— 決済自動化・証明書発行・進捗管理が全て込みです。受注金額の90%が施工店に自動送金されます。</span>
+        </div>
+      </div>
 
       {/* Stats */}
       <div className="grid gap-4 sm:grid-cols-3">
@@ -631,6 +651,34 @@ export default function OrdersClient() {
                 />
               </div>
             </div>
+
+            {/* 請求書送付先 */}
+            <div className="rounded-lg border border-border bg-surface-hover p-4 space-y-3">
+              <p className="text-xs font-semibold text-secondary">請求書の自動送付先（任意）</p>
+              <p className="text-[11px] text-muted">入力すると検収承認時に請求書PDFをメールで自動送付します。プラットフォーム手数料10%を差し引いた金額が施工店に自動送金されます。</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <label className="text-xs text-muted">請求書送付先メール</label>
+                  <input
+                    type="email"
+                    className="input-field"
+                    value={formData.requester_email}
+                    onChange={(e) => setFormData({ ...formData, requester_email: e.target.value })}
+                    placeholder="例: billing@company.co.jp"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted">請求先会社名</label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    value={formData.requester_company}
+                    onChange={(e) => setFormData({ ...formData, requester_company: e.target.value })}
+                    placeholder="例: 株式会社〇〇"
+                  />
+                </div>
+              </div>
+            </div>
             <div className="flex gap-2">
               <Button type="submit" loading={submitting} disabled={submitting}>
                 発注する
@@ -669,6 +717,17 @@ export default function OrdersClient() {
               onClick={() => setActiveTab("browse")}
             >
               公開案件を探す
+            </button>
+            <button
+              type="button"
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "csv"
+                  ? "border-accent text-accent"
+                  : "border-transparent text-muted hover:text-primary"
+              }`}
+              onClick={() => setActiveTab("csv")}
+            >
+              CSVインポート
             </button>
           </div>
 
@@ -869,6 +928,11 @@ export default function OrdersClient() {
                 ))}
               </div>
             </section>
+          )}
+
+          {/* ─── CSV import tab ─── */}
+          {activeTab === "csv" && (
+            <OrderCsvImport onImported={() => { fetchOrders(typeFilter, statusFilter); setActiveTab("my"); }} />
           )}
         </>
       )}

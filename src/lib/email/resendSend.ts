@@ -2,6 +2,12 @@ import { logger } from "@/lib/logger";
 
 const RESEND_API = "https://api.resend.com/emails";
 
+export type ResendAttachment = {
+  filename: string;
+  /** base64-encoded file content */
+  content: string;
+};
+
 export type ResendMessage = {
   from?: string;
   to: string | string[];
@@ -9,6 +15,7 @@ export type ResendMessage = {
   html?: string;
   text?: string;
   reply_to?: string | string[];
+  attachments?: ResendAttachment[];
   /**
    * Resend Idempotency-Key header value. Same key within ~24h returns the
    * cached result instead of re-sending. Required for safe retries from
@@ -69,6 +76,7 @@ export async function sendResendEmail(msg: ResendMessage, opts: SendOptions = {}
   if (msg.html != null) payload.html = msg.html;
   if (msg.text != null) payload.text = msg.text;
   if (msg.reply_to != null) payload.reply_to = msg.reply_to;
+  if (msg.attachments != null) payload.attachments = msg.attachments;
 
   let lastErr: { status: number | null; error: string } = { status: null, error: "unknown" };
 

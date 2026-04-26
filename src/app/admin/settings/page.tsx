@@ -8,6 +8,7 @@ import SquareConnectSection from "./SquareConnectSection";
 import LineConnectSection from "./LineConnectSection";
 import NexPTGConnectSection from "./NexPTGConnectSection";
 import RestartTourButton from "./RestartTourButton";
+import BillingTimingSection from "./BillingTimingSection";
 import PageHeader from "@/components/ui/PageHeader";
 import { formatDate } from "@/lib/format";
 
@@ -217,6 +218,11 @@ export default async function AdminSettingsPage() {
               : null
           }
         />
+      </section>
+
+      {/* 請求タイミング */}
+      <section className="glass-card p-5">
+        <BillingTimingSection />
       </section>
 
       {/* Square連携 */}

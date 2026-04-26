@@ -46,6 +46,7 @@ export const footerNavGroups = [
     links: [
       { label: "機能一覧", href: "/features" },
       { label: "施工店の方へ", href: "/for-shops" },
+      { label: "BtoB発注をしたい企業の方へ", href: "/for-btob" },
       { label: "代理店の方へ", href: "/for-agents" },
       { label: "保険会社の方へ", href: "/for-insurers" },
       { label: "料金", href: "/pricing" },

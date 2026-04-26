@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { executeOrderPayout } from "@/lib/orders/orderPayout";
 
 const confirmPaymentSchema = z.object({
   payment_method: z.string().trim().max(50).optional(),
@@ -12,7 +13,7 @@ const confirmPaymentSchema = z.object({
 
 /**
  * POST /api/admin/orders/[id]/confirm-payment
- * 支払確認（双方が確認 → both_confirmed → completed）
+ * 支払確認（双方が確認 → both_confirmed → completed → Stripe Connect 自動送金）
  * Body: { payment_method?: string, amount?: number }
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -79,14 +80,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (clientConfirmed && vendorConfirmed) {
       updateData.payment_status = "both_confirmed";
       updateData.status = "completed";
+      // Stripe Connect 自動送金（fire-and-forget）
+      executeOrderPayout(id).catch((e: unknown) =>
+        console.error("[confirm-payment] payout failed:", e),
+      );
     } else if (isFrom) {
       updateData.payment_status = "confirmed_by_client";
     } else if (isTo) {
       updateData.payment_status = "confirmed_by_vendor";
     }
 
-    // UPDATE にも tenant 検証フィルタをコピー (TOCTOU 対策)。
-    // 別テナントの注文を誤って更新しないよう id + or(...) で二重にスコープ。
     const { data, error } = await admin
       .from("job_orders")
       .update(updateData)

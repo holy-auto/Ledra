@@ -13,6 +13,7 @@ import {
   apiInternalError,
 } from "@/lib/api/response";
 import { orderAcceptSchema, orderCreateSchema, orderUpdateSchema } from "@/lib/validations/order";
+import { sendOrderInvoiceEmail } from "@/lib/orders/orderInvoice";
 
 // ─── ステータス遷移ルール ───
 // key: 現在のステータス, value: { next: 次ステータス, side: "from" | "to" | "both" }[]
@@ -191,10 +192,18 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-    const { to_tenant_id, title, description, category, budget, deadline, vehicle_id } = parsed.data;
+    const { to_tenant_id, title, description, category, budget, deadline, vehicle_id, requester_email, requester_company } = parsed.data;
 
     // Use admin client to bypass RLS (API already validated auth above)
     const { admin } = createTenantScopedAdmin(caller.tenantId);
+
+    // 発注元の請求タイミング設定を引き継ぐ
+    const { data: billingSettings } = await admin
+      .from("tenant_billing_settings")
+      .select("billing_timing")
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    const billingTiming = billingSettings?.billing_timing ?? "on_inspection";
 
     // Build insert payload — only include non-null fields to avoid
     // hitting unexpected NOT NULL constraints on columns with defaults
@@ -203,6 +212,7 @@ export async function POST(req: NextRequest) {
       from_tenant_id: tenantId,
       title,
       status: "pending",
+      billing_timing: billingTiming,
     };
     if (to_tenant_id) insertPayload.to_tenant_id = to_tenant_id;
     if (description) insertPayload.description = description;
@@ -210,6 +220,8 @@ export async function POST(req: NextRequest) {
     if (budget != null && budget !== "") insertPayload.budget = Number(budget);
     if (deadline) insertPayload.deadline = deadline;
     if (vehicle_id) insertPayload.vehicle_id = vehicle_id;
+    if (requester_email) insertPayload.requester_email = requester_email;
+    if (requester_company) insertPayload.requester_company = requester_company;
 
     const { data, error } = await admin
       .from("job_orders")
@@ -340,6 +352,13 @@ export async function PUT(req: NextRequest) {
         () => {},
         (e: unknown) => console.error("[orders] audit log failed:", e),
       );
+
+    // 検収承認 → payment_pending 遷移時に請求書を自動送付（fire-and-forget）
+    if (status === "payment_pending") {
+      sendOrderInvoiceEmail(id).catch((e: unknown) =>
+        console.error("[orders] invoice email failed:", e),
+      );
+    }
 
     return apiJson({ ok: true, order: data });
   } catch (e: unknown) {
