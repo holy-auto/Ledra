@@ -3,20 +3,17 @@ import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { FeatureGrid } from "@/components/marketing/FeatureGrid";
 import { FeatureCard } from "@/components/marketing/FeatureCard";
-import { StatsRow } from "@/components/marketing/StatsRow";
-import { StatCard } from "@/components/marketing/StatCard";
 import { PricingCards } from "@/components/marketing/PricingCards";
 import { PricingCard } from "@/components/marketing/PricingCard";
 import { FAQList } from "@/components/marketing/FAQList";
 import { FAQItem } from "@/components/marketing/FAQItem";
 import { CTABanner } from "@/components/marketing/CTABanner";
 import { ScrollReveal } from "@/components/marketing/ScrollReveal";
-import { getMarketingStats } from "@/lib/marketing/stats";
+import { GrowthJourney } from "@/components/marketing/GrowthJourney";
 import { PLANS } from "@/lib/marketing/pricing";
 import Link from "next/link";
 
 export default async function HomePage() {
-  const stats = await getMarketingStats();
   return (
     <>
       {/* Hero */}
@@ -345,24 +342,8 @@ export default async function HomePage() {
         </FeatureGrid>
       </Section>
 
-      {/* 信頼要素 — DB統計が取得できた場合のみ表示 */}
-      {(stats.shopCount !== "—" || stats.certificateCount !== "—") && (
-        <Section>
-          <SectionHeading title="ご利用状況" />
-          <StatsRow>
-            {stats.shopCount !== "—" && (
-              <ScrollReveal variant="scale-up" delay={0}>
-                <StatCard value={stats.shopCount} label="導入企業数" />
-              </ScrollReveal>
-            )}
-            {stats.certificateCount !== "—" && (
-              <ScrollReveal variant="scale-up" delay={150}>
-                <StatCard value={stats.certificateCount} label="証明書発行数" />
-              </ScrollReveal>
-            )}
-          </StatsRow>
-        </Section>
-      )}
+      {/* 成長の透明性 — ゼロからの今をそのまま見せる */}
+      <GrowthJourney />
 
       {/* 料金概要 */}
       <Section bg="alt">

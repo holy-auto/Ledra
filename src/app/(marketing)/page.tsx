@@ -3,8 +3,6 @@ import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { FeatureGrid } from "@/components/marketing/FeatureGrid";
 import { FeatureCard } from "@/components/marketing/FeatureCard";
-import { StatsRow } from "@/components/marketing/StatsRow";
-import { StatCard } from "@/components/marketing/StatCard";
 import { PricingCards } from "@/components/marketing/PricingCards";
 import { PricingCard } from "@/components/marketing/PricingCard";
 import { FAQList } from "@/components/marketing/FAQList";
@@ -18,32 +16,19 @@ import { Container } from "@/components/marketing/Container";
 import { IntegrationLogoWall } from "@/components/marketing/IntegrationLogoWall";
 import { MobileAppSection } from "@/components/marketing/MobileAppSection";
 import { NewsTeaser } from "@/components/marketing/NewsTeaser";
-import { getMarketingStats } from "@/lib/marketing/stats";
+import { GrowthJourney } from "@/components/marketing/GrowthJourney";
+import { TrustSecuritySection } from "@/components/marketing/TrustSecuritySection";
+import { CustomerCasesSection } from "@/components/marketing/CustomerCasesSection";
+import { CustomerSuccessSection } from "@/components/marketing/CustomerSuccessSection";
+import { DashboardMockSection } from "@/components/marketing/DashboardMockSection";
+import { MediaAwardsRow } from "@/components/marketing/MediaAwardsRow";
+import { FeatureCatalogSection } from "@/components/marketing/FeatureCatalogSection";
+import { IndustryEntries } from "@/components/marketing/IndustryEntries";
+import { CommunityEducationSection } from "@/components/marketing/CommunityEducationSection";
+import { QuickStartReliabilityBar } from "@/components/marketing/QuickStartReliabilityBar";
 import { PLANS } from "@/lib/marketing/pricing";
 import Link from "next/link";
 import { Suspense } from "react";
-
-async function MarketingStatsSection() {
-  const stats = await getMarketingStats();
-  if (stats.shopCount === "—" && stats.certificateCount === "—") return null;
-  return (
-    <Section>
-      <SectionHeading title="ご利用状況" />
-      <StatsRow>
-        {stats.shopCount !== "—" && (
-          <ScrollReveal variant="scale-up" delay={0}>
-            <StatCard value={stats.shopCount} label="導入企業数" />
-          </ScrollReveal>
-        )}
-        {stats.certificateCount !== "—" && (
-          <ScrollReveal variant="scale-up" delay={150}>
-            <StatCard value={stats.certificateCount} label="証明書発行数" />
-          </ScrollReveal>
-        )}
-      </StatsRow>
-    </Section>
-  );
-}
 
 export default async function HomePage() {
   return (
@@ -414,11 +399,20 @@ export default async function HomePage() {
         </ScrollReveal>
       </Section>
 
+      {/* 機能カタログ — 「全機能の網羅性」を圧縮して見せる */}
+      <FeatureCatalogSection />
+
+      {/* 管理画面ダッシュボード — 現場のデータを経営の言葉に */}
+      <DashboardMockSection />
+
       {/* 連携パートナー — 既存の道具と無理なくつながる */}
       <IntegrationLogoWall />
 
       {/* モバイル訴求 — 現場の速度で */}
       <MobileAppSection />
+
+      {/* セキュリティ・改ざん防止の根拠を、技術として開示 */}
+      <TrustSecuritySection />
 
       {/* ユースケース */}
       <Section bg="alt" id="compare">
@@ -460,10 +454,30 @@ export default async function HomePage() {
         </FeatureGrid>
       </Section>
 
-      {/* 信頼要素 */}
+      {/* 業態別 LP 導線 */}
+      <IndustryEntries />
+
+      {/* 顧客事例 (実名 × 数値効果 / 0件時は最初の1社募集) */}
       <Suspense>
-        <MarketingStatsSection />
+        <CustomerCasesSection />
       </Suspense>
+
+      {/* メディア掲載・受賞 (Coming soon 枠) */}
+      <MediaAwardsRow />
+
+      {/* 成長の透明性 — ゼロからの今をそのまま見せる */}
+      <Suspense>
+        <GrowthJourney />
+      </Suspense>
+
+      {/* カスタマーサクセス・伴走 */}
+      <CustomerSuccessSection />
+
+      {/* コミュニティ・教育・イベント */}
+      <CommunityEducationSection />
+
+      {/* Quick Start + Reliability */}
+      <QuickStartReliabilityBar />
 
       {/* 料金概要 */}
       <Section bg="alt" id="pricing">
