@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { logger, maskEmail, resolveRequestId } from "../logger";
+import { logger, maskEmail, maskPhone, resolveRequestId } from "../logger";
 
 let spy: ReturnType<typeof vi.spyOn>;
 
@@ -79,6 +79,20 @@ describe("maskEmail", () => {
     expect(maskEmail("")).toBe("***");
     expect(maskEmail("no-at-sign")).toBe("***");
     expect(maskEmail("@no-local.com")).toBe("***");
+  });
+});
+
+describe("maskPhone", () => {
+  it("keeps only the last four digits", () => {
+    expect(maskPhone("090-1234-5678")).toBe("***5678");
+    expect(maskPhone("+81 90 1234 5678")).toBe("***5678");
+    expect(maskPhone("09012345678")).toBe("***5678");
+  });
+  it("returns *** for null / empty / too short", () => {
+    expect(maskPhone(null)).toBe("***");
+    expect(maskPhone(undefined)).toBe("***");
+    expect(maskPhone("")).toBe("***");
+    expect(maskPhone("12")).toBe("***");
   });
 });
 

@@ -130,6 +130,23 @@ export function maskEmail(email: string | null | undefined): string {
 }
 
 /**
+ * 電話番号をログ用に部分マスクする。下4桁のみ残す。
+ * 例: "090-1234-5678" → "***5678"
+ *     "+81 90 1234 5678" → "***5678"
+ *     null / 空文字 → "***"
+ *
+ * 電話番号は PII。ログ・Sentry 等に流す前に必ずこれを通す。
+ * SECRET_KEY_RE は `phone` を含めていない（form 設計など正当な使用箇所も
+ * あるため）ので、呼び出し側で明示的にマスクする責務を持つ。
+ */
+export function maskPhone(phone: string | null | undefined): string {
+  if (!phone) return "***";
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 4) return "***";
+  return "***" + digits.slice(-4);
+}
+
+/**
  * Generate or propagate a request id.
  * middleware で呼び、logger.child({ requestId }) として使う。
  */

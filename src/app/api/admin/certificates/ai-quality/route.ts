@@ -9,6 +9,7 @@ import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { normalizePlanTier } from "@/lib/billing/planFeatures";
 import { auditCertificatePhotos, type StandardRule } from "@/lib/ai/photoQualityCheck";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
@@ -27,6 +28,11 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+
+    // Vision AI (Anthropic) を最大 50 枚分呼び出すため、テナント単位で
+    // レートリミットを掛けて課金爆発を防ぐ。
+    const limited = await checkRateLimit(req, "auth", `ai-quality:${caller.tenantId}`);
+    if (limited) return limited;
 
     const parsed = aiQualitySchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

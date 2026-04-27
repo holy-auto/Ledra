@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiValidationError, apiInternalError, apiError } from "@/lib/api/response";
 import { escapeHtml } from "@/lib/sanitize";
 import { executeOrderPayout } from "@/lib/orders/orderPayout";
 
@@ -117,7 +117,19 @@ export async function POST(req: NextRequest) {
       console.info("connect-webhook: duplicate event skipped", { id: event.id, type: event.type });
       return apiJson({ received: true, duplicate: true });
     }
-    console.warn("connect-webhook: idempotency claim error (proceeding)", { id: event.id, error: claimError.message });
+    // claim できていない状態で処理を進めると二重振込・コミッション二重計上を
+    // 引き起こすため、503 を返して Stripe に再送させる。
+    console.error("connect-webhook: idempotency claim failed — requesting Stripe retry", {
+      id: event.id,
+      type: event.type,
+      code: claimError.code,
+      message: claimError.message,
+    });
+    return apiError({
+      code: "internal_error",
+      message: "Idempotency claim failed; please retry.",
+      status: 503,
+    });
   }
 
   try {
