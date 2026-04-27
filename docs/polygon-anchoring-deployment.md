@@ -2,6 +2,8 @@
 
 Phase 3e のブロックチェーンアンカリング機能を本番 / テストネット環境で稼働させるための手順書。
 
+> **注**: 当ドキュメントは Phase 3e（画像ハッシュの直接 anchor）に関する手順書。証明書 canonical JSON / Merkle batch anchoring の段階的拡張については `docs/anchoring-roadmap.md` を参照。新規コントラクト `LedraCertAnchor.sol` / `LedraBatchAnchor.sol` のデプロイは同 roadmap 実装ステップ S11 で扱う。
+
 ## 前提
 
 - **Mainnet（本番）**: 実際のPOLトークンが必要（1件あたり約0.001 POL ≈ 0.1円以下）
