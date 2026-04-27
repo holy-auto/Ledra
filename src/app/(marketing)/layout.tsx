@@ -36,8 +36,7 @@ export const metadata = {
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
   return (
     <MarketingThemeWrapper
-      data-theme="marketing"
-      className={`${notoSansJP.variable} font-[family-name:var(--font-noto)] bg-[var(--mk-bg-base)]`}
+      className={`${notoSansJP.variable} font-[family-name:var(--font-noto)] min-h-screen bg-base`}
     >
       <WebSiteJsonLd />
       <OrganizationJsonLd />

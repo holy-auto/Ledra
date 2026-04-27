@@ -28,7 +28,7 @@ export async function NewsTeaser() {
               href={`/news/${e.frontmatter.slug}`}
               className="group block py-6 first:pt-0 hover:bg-white/[0.02] rounded-xl -mx-4 px-4 transition-colors"
             >
-              <div className="flex flex-wrap items-center gap-3 text-xs text-white/40">
+              <div className="flex flex-wrap items-center gap-3 text-xs text-white/75">
                 {e.frontmatter.publishedAt && (
                   <time dateTime={e.frontmatter.publishedAt}>
                     {formatDate(e.frontmatter.publishedAt)}
@@ -37,7 +37,7 @@ export async function NewsTeaser() {
                 {e.frontmatter.tags?.slice(0, 1).map((t) => (
                   <span
                     key={t}
-                    className="inline-flex items-center rounded-full border border-white/[0.08] px-2.5 py-0.5 text-[0.688rem] font-medium text-white/60"
+                    className="inline-flex items-center rounded-full border border-white/[0.08] px-2.5 py-0.5 text-[0.688rem] font-medium text-white/80"
                   >
                     {t}
                   </span>
@@ -47,7 +47,7 @@ export async function NewsTeaser() {
                 {e.frontmatter.title}
               </h3>
               {e.frontmatter.excerpt && (
-                <p className="mt-2 text-sm leading-relaxed text-white/55 line-clamp-2">
+                <p className="mt-2 text-sm leading-relaxed text-white/80 line-clamp-2">
                   {e.frontmatter.excerpt}
                 </p>
               )}

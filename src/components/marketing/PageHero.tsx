@@ -53,7 +53,7 @@ export function PageHero({
         </h1>
 
         {subtitle && (
-          <p className="mt-6 text-base md:text-lg leading-relaxed text-white/50 max-w-2xl mx-auto animate-[hero-fade-up_0.7s_ease-out_0.4s_both]">
+          <p className="mt-6 text-base md:text-lg leading-relaxed text-white/80 max-w-2xl mx-auto animate-[hero-fade-up_0.7s_ease-out_0.4s_both]">
             {subtitle}
           </p>
         )}

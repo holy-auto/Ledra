@@ -36,7 +36,7 @@ export default async function CasesPage() {
               <h2 className="mt-6 text-2xl md:text-3xl font-bold text-white leading-tight">
                 この場所には、あなたの事例が入る。
               </h2>
-              <p className="mt-5 text-[0.938rem] md:text-base leading-[1.9] text-white/60 max-w-xl mx-auto">
+              <p className="mt-5 text-[0.938rem] md:text-base leading-[1.9] text-white/80 max-w-xl mx-auto">
                 Ledra は正式サービスを開始したばかりです。いま、先行導入に参加いただける施工店・代理店・保険会社様を募集しています。
                 <br />
                 <br />
@@ -52,7 +52,7 @@ export default async function CasesPage() {
               </div>
             </div>
 
-            <p className="mt-10 text-center text-xs text-white/40 leading-relaxed">
+            <p className="mt-10 text-center text-xs text-white/75 leading-relaxed">
               事例の取材・記事化は、Ledra 側で伴走してまとめます。
               <br />
               ご負担なくご参加いただけます。
@@ -67,11 +67,11 @@ export default async function CasesPage() {
                   className="group block h-full rounded-2xl border border-white/[0.08] bg-white/[0.03] p-7 md:p-8 hover:bg-white/[0.06] hover:border-white/[0.14] hover:shadow-[0_0_28px_rgba(59,130,246,0.1)] hover:-translate-y-1 transition-all duration-400"
                 >
                   {(e.frontmatter.company || e.frontmatter.industry) && (
-                    <div className="flex flex-wrap items-center gap-2 text-[0.688rem] font-medium text-white/50">
+                    <div className="flex flex-wrap items-center gap-2 text-[0.688rem] font-medium text-white/80">
                       {e.frontmatter.industry && <span>{String(e.frontmatter.industry)}</span>}
                       {e.frontmatter.company && (
                         <>
-                          <span className="text-white/20">•</span>
+                          <span className="text-white/70">•</span>
                           <span>{String(e.frontmatter.company)}</span>
                         </>
                       )}
@@ -81,7 +81,7 @@ export default async function CasesPage() {
                     {e.frontmatter.title}
                   </h2>
                   {e.frontmatter.excerpt && (
-                    <p className="mt-4 text-[0.938rem] leading-[1.75] text-white/55">
+                    <p className="mt-4 text-[0.938rem] leading-[1.75] text-white/80">
                       {e.frontmatter.excerpt}
                     </p>
                   )}

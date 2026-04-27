@@ -98,13 +98,13 @@ export function Hero() {
           </span>
         </h1>
 
-        <p className="mt-10 text-lg md:text-xl leading-relaxed text-white/50 max-w-2xl mx-auto animate-[hero-fade-up_0.8s_ease-out_0.95s_both]">
+        <p className="mt-10 text-lg md:text-xl leading-relaxed text-white/80 max-w-2xl mx-auto animate-[hero-fade-up_0.8s_ease-out_0.95s_both]">
           Ledraは、施工証明・履歴管理・加盟店連携・技術育成を通じて、
           <br className="hidden md:block" />
           現場の技術を可視化し、業界全体に信頼と価値を届けるプラットフォームです。
         </p>
 
-        <p className="mt-4 min-h-[1.6em] text-xs md:text-sm font-medium tracking-wide text-white/40 animate-[hero-fade-in_0.6s_ease-out_1.05s_both]">
+        <p className="mt-4 min-h-[1.6em] text-xs md:text-sm font-medium tracking-wide text-white/75 animate-[hero-fade-in_0.6s_ease-out_1.05s_both]">
           <HeroTypewriter text="施工記録を、改ざん不可能なデジタル証明書に。" startDelay={1200} speed={48} />
         </p>
 
@@ -125,21 +125,21 @@ export function Hero() {
             <div className="text-2xl md:text-3xl font-bold text-white">
               無料<span className="text-blue-400">で開始</span>
             </div>
-            <div className="text-xs text-white/40 mt-1">クレジットカード不要</div>
+            <div className="text-xs text-white/75 mt-1">クレジットカード不要</div>
           </div>
           <div className="hidden sm:block w-px h-8 bg-white/10" />
           <div className="text-center">
             <div className="text-2xl md:text-3xl font-bold text-white">
               5<span className="text-blue-400">分</span>
             </div>
-            <div className="text-xs text-white/40 mt-1">かんたん初期設定</div>
+            <div className="text-xs text-white/75 mt-1">かんたん初期設定</div>
           </div>
           <div className="hidden sm:block w-px h-8 bg-white/10" />
           <div className="text-center">
             <div className="text-2xl md:text-3xl font-bold text-white">
               URL<span className="text-blue-400">共有</span>
             </div>
-            <div className="text-xs text-white/40 mt-1">証明書をすぐに共有</div>
+            <div className="text-xs text-white/75 mt-1">証明書をすぐに共有</div>
           </div>
         </div>
       </Container>

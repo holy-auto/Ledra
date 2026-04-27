@@ -30,7 +30,7 @@ function Digit({ value, label }: { value: number; label: string }) {
           {String(value).padStart(2, "0")}
         </span>
       </div>
-      <span className="mt-3 text-xs sm:text-sm text-white/40 font-medium tracking-widest uppercase">
+      <span className="mt-3 text-xs sm:text-sm text-white/75 font-medium tracking-widest uppercase">
         {label}
       </span>
     </div>
@@ -70,11 +70,11 @@ export function CountdownTimer() {
   return (
     <div className="flex items-center justify-center gap-2 sm:gap-5 md:gap-6">
       <Digit value={timeLeft.days} label="Days" />
-      <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-white/20 self-start mt-5 sm:mt-8 md:mt-10">:</div>
+      <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-white/70 self-start mt-5 sm:mt-8 md:mt-10">:</div>
       <Digit value={timeLeft.hours} label="Hours" />
-      <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-white/20 self-start mt-5 sm:mt-8 md:mt-10">:</div>
+      <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-white/70 self-start mt-5 sm:mt-8 md:mt-10">:</div>
       <Digit value={timeLeft.minutes} label="Min" />
-      <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-white/20 self-start mt-5 sm:mt-8 md:mt-10">:</div>
+      <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-white/70 self-start mt-5 sm:mt-8 md:mt-10">:</div>
       <Digit value={timeLeft.seconds} label="Sec" />
     </div>
   );

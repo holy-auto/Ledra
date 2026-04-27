@@ -32,7 +32,7 @@ export default function ContactPage() {
                   </div>
                   <div>
                     <div className="text-sm font-medium text-white">メール</div>
-                    <div className="mt-1 text-sm text-white/50">info@ledra.co.jp</div>
+                    <div className="mt-1 text-sm text-white/80">info@ledra.co.jp</div>
                   </div>
                 </div>
                 <div className="flex gap-4 items-start">
@@ -43,7 +43,7 @@ export default function ContactPage() {
                   </div>
                   <div>
                     <div className="text-sm font-medium text-white">対応時間</div>
-                    <div className="mt-1 text-sm text-white/50">通常1営業日以内にご返信いたします</div>
+                    <div className="mt-1 text-sm text-white/80">通常1営業日以内にご返信いたします</div>
                   </div>
                 </div>
               </div>

@@ -99,13 +99,13 @@ export default async function BlogDetailPage({ params }: Props) {
               <ArticleHero seed={article.slug} tag={article.tags?.[0]} className="aspect-[5/2]" />
             )}
           </div>
-          <div className="mt-6 flex flex-wrap items-center gap-3 text-xs text-white/40">
+          <div className="mt-6 flex flex-wrap items-center gap-3 text-xs text-white/75">
             {article.publishedAt && <time dateTime={article.publishedAt}>{formatDate(article.publishedAt)}</time>}
             {article.author && <span>by {article.author}</span>}
             {article.tags?.map((t) => (
               <span
                 key={t}
-                className="inline-flex items-center rounded-full border border-white/[0.08] px-2.5 py-0.5 text-[0.688rem] font-medium text-white/60"
+                className="inline-flex items-center rounded-full border border-white/[0.08] px-2.5 py-0.5 text-[0.688rem] font-medium text-white/80"
               >
                 {t}
               </span>
@@ -114,7 +114,7 @@ export default async function BlogDetailPage({ params }: Props) {
           <h1 className="mt-5 text-2xl md:text-3xl lg:text-4xl font-bold text-white leading-tight tracking-tight">
             {article.title}
           </h1>
-          {article.excerpt && <p className="mt-6 text-base leading-relaxed text-white/60">{article.excerpt}</p>}
+          {article.excerpt && <p className="mt-6 text-base leading-relaxed text-white/80">{article.excerpt}</p>}
           <div className="mt-10">
             <MarkdownBody content={article.body} />
           </div>

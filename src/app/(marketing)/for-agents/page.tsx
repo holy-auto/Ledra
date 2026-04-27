@@ -130,7 +130,7 @@ export default function ForAgentsPage() {
             <div className="rounded-2xl border border-blue-500/20 bg-blue-500/[0.06] p-6 text-center">
               <p className="text-xs uppercase tracking-wider text-blue-300">初期成約報酬</p>
               <p className="mt-3 text-3xl font-bold text-white tracking-tight">¥30,000〜</p>
-              <p className="mt-3 text-xs leading-relaxed text-white/55">
+              <p className="mt-3 text-xs leading-relaxed text-white/80">
                 紹介先がプランを契約し、初月利用料を支払った時点で確定。
               </p>
             </div>
@@ -140,7 +140,7 @@ export default function ForAgentsPage() {
               <span className="absolute top-3 right-3 text-[0.6rem] uppercase tracking-wider text-blue-200">MAIN</span>
               <p className="text-xs uppercase tracking-wider text-blue-300">継続報酬</p>
               <p className="mt-3 text-3xl font-bold text-white tracking-tight">月額の 10%</p>
-              <p className="mt-3 text-xs leading-relaxed text-white/55">
+              <p className="mt-3 text-xs leading-relaxed text-white/80">
                 紹介先が利用を続ける限り、毎月のサブスクリプション料金の 10% が継続的に発生します。
               </p>
             </div>
@@ -149,13 +149,13 @@ export default function ForAgentsPage() {
             <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-6 text-center">
               <p className="text-xs uppercase tracking-wider text-blue-300">特別報酬</p>
               <p className="mt-3 text-3xl font-bold text-white tracking-tight">+α</p>
-              <p className="mt-3 text-xs leading-relaxed text-white/55">
+              <p className="mt-3 text-xs leading-relaxed text-white/80">
                 ランキング上位・大型成約・キャンペーン期間等で個別の特別報酬を支給。
               </p>
             </div>
           </ScrollReveal>
         </div>
-        <p className="mt-8 text-center text-xs text-white/40">
+        <p className="mt-8 text-center text-xs text-white/75">
           ※ 金額はプランにより異なります。詳細は契約時にご案内いたします。
         </p>
       </Section>
@@ -185,7 +185,7 @@ export default function ForAgentsPage() {
                 </div>
                 <div>
                   <h3 className="text-[1.063rem] font-bold text-white leading-snug">{s.title}</h3>
-                  <p className="mt-2 text-[0.938rem] leading-[1.85] text-white/60">{s.desc}</p>
+                  <p className="mt-2 text-[0.938rem] leading-[1.85] text-white/80">{s.desc}</p>
                 </div>
               </div>
             </ScrollReveal>
@@ -202,7 +202,7 @@ export default function ForAgentsPage() {
           <h2 className="mt-6 text-2xl md:text-3xl font-bold text-white leading-tight">
             創業期パートナーを募集しています
           </h2>
-          <p className="mt-4 text-[0.938rem] md:text-base leading-[1.9] text-white/60 max-w-xl mx-auto">
+          <p className="mt-4 text-[0.938rem] md:text-base leading-[1.9] text-white/80 max-w-xl mx-auto">
             最初期の代理店パートナー様には、優遇コミッション、独占エリア設定、共同マーケティング機会をご提供します。
             <br />
             代理店として、業界の新しい標準を一緒に立ち上げてみませんか。

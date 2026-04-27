@@ -171,8 +171,8 @@ export default function ForInsurersPage() {
             <ScrollReveal key={o.before} variant="fade-up" delay={i * 50}>
               <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] items-center gap-5 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-5 md:p-6">
                 <div>
-                  <p className="text-[0.688rem] uppercase tracking-wider text-white/35">Before</p>
-                  <p className="mt-1.5 text-[0.938rem] text-white/55 leading-relaxed">{o.before}</p>
+                  <p className="text-[0.688rem] uppercase tracking-wider text-white/75">Before</p>
+                  <p className="mt-1.5 text-[0.938rem] text-white/80 leading-relaxed">{o.before}</p>
                 </div>
                 <svg
                   viewBox="0 0 24 24"
@@ -251,7 +251,7 @@ export default function ForInsurersPage() {
                 </div>
                 <div>
                   <h3 className="text-[1.063rem] font-bold text-white leading-snug">{s.title}</h3>
-                  <p className="mt-2 text-[0.938rem] leading-[1.85] text-white/60">{s.desc}</p>
+                  <p className="mt-2 text-[0.938rem] leading-[1.85] text-white/80">{s.desc}</p>
                 </div>
               </div>
             </ScrollReveal>
@@ -268,7 +268,7 @@ export default function ForInsurersPage() {
           <h2 className="mt-6 text-2xl md:text-3xl font-bold text-white leading-tight">
             保険会社パイロットの参加企業を募集中
           </h2>
-          <p className="mt-4 text-[0.938rem] md:text-base leading-[1.9] text-white/60 max-w-xl mx-auto">
+          <p className="mt-4 text-[0.938rem] md:text-base leading-[1.9] text-white/80 max-w-xl mx-auto">
             先行導入企業様には、API・基幹連携の無償実装支援、優先サポート、共同プレスリリース発信機会をご提供します。
             <br />
             業界共通の検証インフラを、一緒に立ち上げてみませんか。

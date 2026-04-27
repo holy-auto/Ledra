@@ -173,20 +173,20 @@ export function NarrativeTypewriter() {
   return (
     <div ref={containerRef} className="max-w-3xl mx-auto">
       {/* 導入 — 現場の課題 */}
-      <div className="space-y-5 text-[1.125rem] md:text-[1.25rem] leading-[1.85] text-white/50">
+      <div className="space-y-5 text-[1.125rem] md:text-[1.25rem] leading-[1.85] text-white/80">
         <p>
           <TypeLine {...lineProps(0)} />
         </p>
         <p>
           <TypeLine {...lineProps(1)} />
         </p>
-        <p className="text-white/35">
+        <p className="text-white/75">
           <TypeLine {...lineProps(2)} />
         </p>
       </div>
 
       {/* 転換 — 問いかけ */}
-      <div className="mt-16 md:mt-20 space-y-4 text-[1.125rem] md:text-[1.25rem] leading-[1.85] text-white/60">
+      <div className="mt-16 md:mt-20 space-y-4 text-[1.125rem] md:text-[1.25rem] leading-[1.85] text-white/80">
         <p>
           <TypeLine {...lineProps(3)} />
         </p>

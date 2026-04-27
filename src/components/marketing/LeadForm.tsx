@@ -106,7 +106,7 @@ export function LeadForm({
           </svg>
         </div>
         <h3 className="mt-6 text-xl font-bold text-white">{success?.title ?? "送信を受け付けました"}</h3>
-        <p className="mt-3 text-white/50 leading-relaxed whitespace-pre-line">
+        <p className="mt-3 text-white/80 leading-relaxed whitespace-pre-line">
           {success?.body ?? "ご登録いただいたメールアドレスに追ってご連絡いたします。\n通常1営業日以内にお届けします。"}
         </p>
       </div>
@@ -330,7 +330,7 @@ export function LeadForm({
           required
           className="mt-1 h-4 w-4 rounded border-white/20 bg-white/[0.05] text-blue-500 focus:ring-blue-500/40"
         />
-        <label htmlFor="lf-consent" className="text-xs text-white/60 leading-relaxed">
+        <label htmlFor="lf-consent" className="text-xs text-white/80 leading-relaxed">
           <Link href="/privacy" className="underline text-white/80 hover:text-white">
             プライバシーポリシー
           </Link>

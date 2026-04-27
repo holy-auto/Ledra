@@ -128,7 +128,7 @@ export default function SupportPage() {
                   <h3 className="text-[1.063rem] font-bold text-white leading-snug">
                     {s.title}
                   </h3>
-                  <p className="mt-2 text-[0.938rem] leading-[1.85] text-white/60">
+                  <p className="mt-2 text-[0.938rem] leading-[1.85] text-white/80">
                     {s.desc}
                   </p>
                 </div>
@@ -166,16 +166,16 @@ export default function SupportPage() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-white/[0.08] bg-white/[0.02]">
               <tr>
-                <th className="px-4 py-4 text-xs font-medium text-white/50 uppercase tracking-widest">
+                <th className="px-4 py-4 text-xs font-medium text-white/80 uppercase tracking-widest">
                   プラン
                 </th>
-                <th className="px-4 py-4 text-xs font-medium text-white/50 uppercase tracking-widest">
+                <th className="px-4 py-4 text-xs font-medium text-white/80 uppercase tracking-widest">
                   初回応答
                 </th>
-                <th className="px-4 py-4 text-xs font-medium text-white/50 uppercase tracking-widest">
+                <th className="px-4 py-4 text-xs font-medium text-white/80 uppercase tracking-widest">
                   対応時間
                 </th>
-                <th className="px-4 py-4 text-xs font-medium text-white/50 uppercase tracking-widest">
+                <th className="px-4 py-4 text-xs font-medium text-white/80 uppercase tracking-widest">
                   チャネル
                 </th>
               </tr>
@@ -195,7 +195,7 @@ export default function SupportPage() {
             </tbody>
           </table>
         </div>
-        <p className="mt-6 text-center text-xs text-white/40">
+        <p className="mt-6 text-center text-xs text-white/75">
           緊急度（Critical / High / Normal）の定義は、別紙サポート規約にてご確認ください。
         </p>
       </Section>
@@ -209,7 +209,7 @@ export default function SupportPage() {
           <h2 className="mt-6 text-2xl md:text-3xl font-bold text-white leading-tight">
             パイロット参加企業を募集しています
           </h2>
-          <p className="mt-4 text-white/60 leading-relaxed">
+          <p className="mt-4 text-white/80 leading-relaxed">
             先行導入いただく施工店・保険会社・代理店には、導入支援の手厚い優遇、
             <br className="hidden md:block" />
             機能リクエストの優先反映、ロゴ掲載や事例化を通じた露出機会をご用意しています。

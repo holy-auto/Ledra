@@ -3,7 +3,7 @@ export function LogoCloud() {
 
   return (
     <div className="mt-20 pt-16 border-t border-white/[0.05]">
-      <p className="text-center text-xs text-white/35 font-medium uppercase tracking-widest mb-10">
+      <p className="text-center text-xs text-white/75 font-medium uppercase tracking-widest mb-10">
         導入企業
       </p>
       <div className="grid grid-cols-3 md:grid-cols-6 gap-x-12 gap-y-8 items-center max-w-3xl mx-auto">

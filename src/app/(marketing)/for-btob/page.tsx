@@ -174,7 +174,7 @@ export default function ForBtoBPage() {
               <h2 className="text-2xl md:text-3xl font-bold text-white leading-tight">
                 手数料<span className="text-blue-400"> 10%</span> で、決済を丸ごと自動化
               </h2>
-              <p className="mt-4 text-[0.938rem] leading-[1.9] text-white/60 max-w-xl mx-auto">
+              <p className="mt-4 text-[0.938rem] leading-[1.9] text-white/80 max-w-xl mx-auto">
                 合意金額の10%をプラットフォーム手数料としていただきます。
                 その代わり、決済処理・施工店への自動送金・施工証明書の発行・進捗通知まで、
                 支払い周りの作業が全て自動化されます。
@@ -191,7 +191,7 @@ export default function ForBtoBPage() {
                     className="rounded-xl border border-blue-500/20 bg-blue-500/[0.04] p-4 text-center"
                   >
                     <div className="text-xl font-bold text-blue-400">{item.value}</div>
-                    <div className="mt-1 text-xs text-white/40">{item.label}</div>
+                    <div className="mt-1 text-xs text-white/75">{item.label}</div>
                   </div>
                 ))}
               </div>
@@ -208,7 +208,7 @@ export default function ForBtoBPage() {
             <ScrollReveal key={u.title} variant="fade-up" delay={i * 60}>
               <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-6 h-full">
                 <h3 className="text-[1.063rem] font-bold text-white leading-snug">{u.title}</h3>
-                <p className="mt-3 text-sm leading-relaxed text-white/55">{u.desc}</p>
+                <p className="mt-3 text-sm leading-relaxed text-white/80">{u.desc}</p>
               </div>
             </ScrollReveal>
           ))}
@@ -230,7 +230,7 @@ export default function ForBtoBPage() {
                 </div>
                 <div>
                   <h3 className="text-[1.063rem] font-bold text-white leading-snug">{s.title}</h3>
-                  <p className="mt-2 text-[0.938rem] leading-[1.85] text-white/60">{s.desc}</p>
+                  <p className="mt-2 text-[0.938rem] leading-[1.85] text-white/80">{s.desc}</p>
                 </div>
               </div>
             </ScrollReveal>

@@ -27,8 +27,8 @@
 
   /* Text */
   --text-primary: #1d1d1f;
-  --text-secondary: #6e6e73;
-  --text-muted: #aeaeb2;
+  --text-secondary: #424247;
+  --text-muted: #6e6e73;
   --text-inverse: #ffffff;
 
   /* Accent — Blue (Primary) */
@@ -100,8 +100,8 @@
   --border-focus: #4d9fff;
 
   --text-primary: #ffffff;
-  --text-secondary: rgba(255, 255, 255, 0.5);
-  --text-muted: rgba(255, 255, 255, 0.3);
+  --text-secondary: rgba(255, 255, 255, 0.78);
+  --text-muted: rgba(255, 255, 255, 0.6);
   --text-inverse: #1d1d1f;
 
   /* Accent adjustments for dark bg */
@@ -190,6 +190,10 @@
 /* ══════════════════════════════════════════════════
    Base Styles
    ══════════════════════════════════════════════════ */
+
+html {
+  background: var(--bg-base);
+}
 
 body {
   background: var(--bg-base);

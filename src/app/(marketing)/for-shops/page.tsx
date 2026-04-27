@@ -144,8 +144,8 @@ export default function ForShopsPage() {
             <ScrollReveal key={o.before} variant="fade-up" delay={i * 50}>
               <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] items-center gap-5 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-5 md:p-6">
                 <div>
-                  <p className="text-[0.688rem] uppercase tracking-wider text-white/35">Before</p>
-                  <p className="mt-1.5 text-[0.938rem] text-white/55 leading-relaxed">{o.before}</p>
+                  <p className="text-[0.688rem] uppercase tracking-wider text-white/75">Before</p>
+                  <p className="mt-1.5 text-[0.938rem] text-white/80 leading-relaxed">{o.before}</p>
                 </div>
                 <svg
                   viewBox="0 0 24 24"
@@ -196,7 +196,7 @@ export default function ForShopsPage() {
                 </div>
                 <div>
                   <h3 className="text-[1.063rem] font-bold text-white leading-snug">{s.title}</h3>
-                  <p className="mt-2 text-[0.938rem] leading-[1.85] text-white/60">{s.desc}</p>
+                  <p className="mt-2 text-[0.938rem] leading-[1.85] text-white/80">{s.desc}</p>
                 </div>
               </div>
             </ScrollReveal>
@@ -213,7 +213,7 @@ export default function ForShopsPage() {
           <h2 className="mt-6 text-2xl md:text-3xl font-bold text-white leading-tight">
             施工店パイロット参加店舗を募集しています
           </h2>
-          <p className="mt-4 text-[0.938rem] md:text-base leading-[1.9] text-white/60 max-w-xl mx-auto">
+          <p className="mt-4 text-[0.938rem] md:text-base leading-[1.9] text-white/80 max-w-xl mx-auto">
             先行導入いただく施工店様には、導入支援の無償優遇、事例化とロゴ掲載、機能リクエストの優先反映をご用意しています。
             <br />
             「はじめての1店」として、業界の記録文化を一緒に作り直しませんか。
@@ -267,7 +267,7 @@ export default function ForShopsPage() {
               className="group block rounded-2xl border border-white/[0.08] bg-white/[0.03] p-6 md:p-7 hover:bg-white/[0.06] hover:border-white/[0.14] transition-colors"
             >
               <h3 className="text-[1.063rem] font-bold text-white leading-snug">{item.title}</h3>
-              <p className="mt-3 text-sm leading-relaxed text-white/55">{item.desc}</p>
+              <p className="mt-3 text-sm leading-relaxed text-white/80">{item.desc}</p>
               <p className="mt-5 text-xs font-medium text-blue-300 group-hover:text-blue-200 transition-colors">
                 {item.cta}
               </p>

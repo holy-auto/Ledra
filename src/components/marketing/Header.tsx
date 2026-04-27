@@ -83,7 +83,7 @@ export function Header() {
               key={item.href}
               href={item.href}
               onClick={(e) => handleAnchorClick(e, item.href)}
-              className="text-sm text-white/60 hover:text-white px-3 py-2 rounded-lg hover:bg-white/[0.06] transition-colors"
+              className="text-sm text-white/80 hover:text-white px-3 py-2 rounded-lg hover:bg-white/[0.06] transition-colors"
             >
               {item.label}
             </Link>
@@ -96,7 +96,7 @@ export function Header() {
           <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setPortalOpen(!portalOpen)}
-              className="text-sm text-white/60 hover:text-white px-3 py-2 rounded-lg hover:bg-white/[0.06] transition-colors inline-flex items-center gap-1.5"
+              className="text-sm text-white/80 hover:text-white px-3 py-2 rounded-lg hover:bg-white/[0.06] transition-colors inline-flex items-center gap-1.5"
             >
               ログイン
               <svg
@@ -121,7 +121,7 @@ export function Header() {
                       onClick={() => setPortalOpen(false)}
                     >
                       <span className="text-sm font-medium text-white">{item.label}</span>
-                      <span className="text-xs text-white/40">{item.description}</span>
+                      <span className="text-xs text-white/75">{item.description}</span>
                     </Link>
                   ))}
                 </div>

@@ -34,7 +34,7 @@ export default function TermsPage() {
   return (
     <Article>
       <h1 className="mb-2 text-3xl font-bold text-white">利用規約</h1>
-      <p className="mb-10 text-sm text-white/40">最終更新日：{updated}</p>
+      <p className="mb-10 text-sm text-white/75">最終更新日：{updated}</p>
 
       <P>
         本利用規約（以下「本規約」）は、{siteConfig.siteName}（以下「当社」）が提供する

@@ -40,12 +40,12 @@ export function MarkdownBody({ content }: { content: string }) {
           </a>
         ),
         ul: ({ children }) => (
-          <ul className="my-5 list-disc pl-6 space-y-2 text-[0.938rem] leading-[1.9] text-white/75 marker:text-white/30">
+          <ul className="my-5 list-disc pl-6 space-y-2 text-[0.938rem] leading-[1.9] text-white/75 marker:text-white/70">
             {children}
           </ul>
         ),
         ol: ({ children }) => (
-          <ol className="my-5 list-decimal pl-6 space-y-2 text-[0.938rem] leading-[1.9] text-white/75 marker:text-white/40">
+          <ol className="my-5 list-decimal pl-6 space-y-2 text-[0.938rem] leading-[1.9] text-white/75 marker:text-white/75">
             {children}
           </ol>
         ),

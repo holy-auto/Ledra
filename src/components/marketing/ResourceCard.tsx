@@ -81,8 +81,8 @@ export function ResourceCard({ resource, delay = 0 }: { resource: Resource; dela
           </span>
         )}
         <h3 className="text-[1.125rem] md:text-[1.25rem] font-bold text-white leading-[1.4]">{resource.title}</h3>
-        <p className="mt-3 text-[0.938rem] leading-[1.75] text-white/55 flex-1">{resource.description}</p>
-        {resource.pageCount && <p className="mt-4 text-xs text-white/35">PDF · 約{resource.pageCount}ページ</p>}
+        <p className="mt-3 text-[0.938rem] leading-[1.75] text-white/80 flex-1">{resource.description}</p>
+        {resource.pageCount && <p className="mt-4 text-xs text-white/75">PDF · 約{resource.pageCount}ページ</p>}
         <button
           type="button"
           onClick={openForm}
@@ -110,7 +110,7 @@ export function ResourceCard({ resource, delay = 0 }: { resource: Resource; dela
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
-                  className="rounded-lg p-2 text-white/40 hover:bg-white/[0.06] hover:text-white"
+                  className="rounded-lg p-2 text-white/75 hover:bg-white/[0.06] hover:text-white"
                   aria-label="閉じる"
                 >
                   <svg

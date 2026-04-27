@@ -94,7 +94,7 @@ export function AnimatedStepper({ steps, intervalMs = 1100 }: Props) {
                     />
                   </svg>
                 ) : (
-                  <span className={`text-lg font-bold ${state === "current" ? "text-blue-300" : "text-white/40"}`}>
+                  <span className={`text-lg font-bold ${state === "current" ? "text-blue-300" : "text-white/75"}`}>
                     {item.step}
                   </span>
                 )}
@@ -110,14 +110,14 @@ export function AnimatedStepper({ steps, intervalMs = 1100 }: Props) {
               <div className="flex-1 pt-1">
                 <h3
                   className={`text-lg font-bold transition-colors duration-500 ${
-                    state === "todo" ? "text-white/55" : "text-white"
+                    state === "todo" ? "text-white/80" : "text-white"
                   }`}
                 >
                   {item.title}
                 </h3>
                 <p
                   className={`mt-2 leading-relaxed transition-colors duration-500 ${
-                    state === "todo" ? "text-white/30" : "text-white/55"
+                    state === "todo" ? "text-white/70" : "text-white/80"
                   }`}
                 >
                   {item.description}

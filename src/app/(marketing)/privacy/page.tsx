@@ -36,7 +36,7 @@ export default function PrivacyPage() {
       <h1 className="mb-2 text-3xl font-bold text-white">
         プライバシーポリシー
       </h1>
-      <p className="mb-10 text-sm text-white/40">最終更新日：{updated}</p>
+      <p className="mb-10 text-sm text-white/75">最終更新日：{updated}</p>
 
       <P>
         {siteConfig.siteName}（以下「当社」）は、お客様の個人情報の保護を重要な責務と認識し、

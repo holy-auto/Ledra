@@ -38,12 +38,12 @@ export function PricingCard({
 
       <div className="mb-8">
         <h3 className="text-lg font-bold text-white">{name}</h3>
-        <p className="mt-1.5 text-sm text-white/50">{description}</p>
+        <p className="mt-1.5 text-sm text-white/80">{description}</p>
       </div>
 
       <div className="mb-8 min-h-[3.5rem] flex items-baseline">
         <span className="text-[2.5rem] font-bold tracking-tight text-white">{price}</span>
-        {unit && <span className="text-sm ml-1.5 text-white/40">{unit.startsWith("/") ? unit : `/${unit}`}</span>}
+        {unit && <span className="text-sm ml-1.5 text-white/75">{unit.startsWith("/") ? unit : `/${unit}`}</span>}
       </div>
 
       <ul className="space-y-3 mb-10 flex-1">

@@ -20,7 +20,7 @@ export function ComingSoon({
         <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight">
           {title}
         </h1>
-        <p className="mt-5 text-base text-white/50 max-w-md mx-auto leading-relaxed">
+        <p className="mt-5 text-base text-white/80 max-w-md mx-auto leading-relaxed">
           {message}
         </p>
         <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">

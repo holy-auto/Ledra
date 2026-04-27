@@ -27,7 +27,7 @@ export default function LawPage() {
   return (
     <Article>
       <h1 className="mb-2 text-3xl font-bold text-white">特定商取引法に基づく表記</h1>
-      <p className="mb-10 text-sm text-white/40">特定商取引に関する法律第11条に基づき、以下のとおり表記します。</p>
+      <p className="mb-10 text-sm text-white/75">特定商取引に関する法律第11条に基づき、以下のとおり表記します。</p>
 
       <dl className="rounded-2xl border border-white/[0.08] bg-white/[0.04] px-6">
         <Row label="販売事業者名" value="株式会社HOLY" />

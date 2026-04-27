@@ -18,7 +18,7 @@ export function StatCard({ value, label }: { value: string; label: string }) {
       <div className="text-[2.75rem] md:text-[3.5rem] font-bold text-white leading-tight tracking-tight">
         {numericValue !== null ? <AnimatedCounter target={numericValue} suffix={suffix} /> : value}
       </div>
-      <div className="mt-3 text-sm text-white/45 font-medium">{label}</div>
+      <div className="mt-3 text-sm text-white/80 font-medium">{label}</div>
     </div>
   );
 }

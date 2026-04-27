@@ -79,7 +79,7 @@ export function ROICalculator() {
       {/* Inputs */}
       <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-7 md:p-8">
         <h3 className="text-[1.125rem] font-bold text-white">現状の数値を入力</h3>
-        <p className="mt-2 text-xs text-white/50">
+        <p className="mt-2 text-xs text-white/80">
           おおよその値で問題ありません。推定値を自動で計算します。
         </p>
 
@@ -120,7 +120,7 @@ export function ROICalculator() {
       {/* Results */}
       <div className="rounded-2xl border border-blue-500/20 bg-gradient-to-br from-blue-500/[0.06] to-white/[0.02] p-7 md:p-8">
         <h3 className="text-[1.125rem] font-bold text-white">Ledra 導入時の推定削減効果</h3>
-        <p className="mt-2 text-xs text-white/50">
+        <p className="mt-2 text-xs text-white/80">
           Ledra 導入後の1件あたり事務時間を {AFTER_MIN_PER_CERT} 分と仮定して計算しています。
         </p>
 
@@ -147,7 +147,7 @@ export function ROICalculator() {
         >
           詳細レポートを受け取る（無料）
         </button>
-        <p className="mt-3 text-center text-[0.688rem] text-white/40">
+        <p className="mt-3 text-center text-[0.688rem] text-white/75">
           貴社データに基づく個別試算・現場ヒアリングも無料で承ります。
         </p>
       </div>
@@ -175,7 +175,7 @@ export function ROICalculator() {
               <button
                 type="button"
                 onClick={() => setFormOpen(false)}
-                className="rounded-lg p-2 text-white/40 hover:bg-white/[0.06] hover:text-white"
+                className="rounded-lg p-2 text-white/75 hover:bg-white/[0.06] hover:text-white"
                 aria-label="閉じる"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -224,7 +224,7 @@ function NumberField({
   return (
     <div>
       <label className="block text-sm font-medium text-white/80">{label}</label>
-      {hint && <p className="mt-1 text-[0.688rem] text-white/40 leading-relaxed">{hint}</p>}
+      {hint && <p className="mt-1 text-[0.688rem] text-white/75 leading-relaxed">{hint}</p>}
       <input
         type="number"
         value={value}
@@ -241,8 +241,8 @@ function StatRow({ label, value, sub }: { label: string; value: string; sub?: st
   return (
     <div className="flex items-baseline justify-between gap-4">
       <div>
-        <p className="text-xs text-white/50">{label}</p>
-        {sub && <p className="mt-0.5 text-[0.688rem] text-white/30">{sub}</p>}
+        <p className="text-xs text-white/80">{label}</p>
+        {sub && <p className="mt-0.5 text-[0.688rem] text-white/70">{sub}</p>}
       </div>
       <p className="text-base font-semibold text-white">{value}</p>
     </div>

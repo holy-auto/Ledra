@@ -47,7 +47,7 @@ export default async function CaseDetailPage({ params }: Props) {
               className="aspect-[5/2]"
             />
           </div>
-          <div className="mt-6 flex flex-wrap items-center gap-3 text-xs text-white/50">
+          <div className="mt-6 flex flex-wrap items-center gap-3 text-xs text-white/80">
             {entry.frontmatter.industry && (
               <span className="inline-flex items-center rounded-full border border-white/[0.08] px-2.5 py-0.5 font-medium">
                 {String(entry.frontmatter.industry)}
@@ -59,7 +59,7 @@ export default async function CaseDetailPage({ params }: Props) {
             {entry.frontmatter.title}
           </h1>
           {entry.frontmatter.excerpt && (
-            <p className="mt-6 text-base leading-relaxed text-white/60">
+            <p className="mt-6 text-base leading-relaxed text-white/80">
               {entry.frontmatter.excerpt}
             </p>
           )}

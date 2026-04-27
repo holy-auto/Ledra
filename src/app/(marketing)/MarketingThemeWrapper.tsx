@@ -17,7 +17,7 @@ export default function MarketingThemeWrapper({
   [key: string]: unknown;
 }) {
   return (
-    <div data-theme="marketing" className={className} {...rest}>
+    <div data-theme="dark" className={className} {...rest}>
       {children}
     </div>
   );

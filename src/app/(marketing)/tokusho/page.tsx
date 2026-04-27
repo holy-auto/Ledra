@@ -31,7 +31,7 @@ export default function TokushoPage() {
       <h1 className="mb-2 text-3xl font-bold text-white">
         特定商取引法に基づく表記
       </h1>
-      <p className="mb-10 text-sm text-white/40">
+      <p className="mb-10 text-sm text-white/75">
         特定商取引に関する法律第11条に基づき、以下のとおり表記します。
       </p>
 

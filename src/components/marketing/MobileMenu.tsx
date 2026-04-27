@@ -35,7 +35,7 @@ export function MobileMenu({
 
   return (
     <div className="md:hidden">
-      <button onClick={() => setOpen(true)} className="p-2 text-white/60" aria-label="メニューを開く">
+      <button onClick={() => setOpen(true)} className="p-2 text-white/80" aria-label="メニューを開く">
         <svg
           width="24"
           height="24"
@@ -58,7 +58,7 @@ export function MobileMenu({
               <Link href="/" className="text-xl font-bold tracking-tight text-white" onClick={() => setOpen(false)}>
                 Ledra
               </Link>
-              <button onClick={() => setOpen(false)} className="p-2 text-white/60" aria-label="メニューを閉じる">
+              <button onClick={() => setOpen(false)} className="p-2 text-white/80" aria-label="メニューを閉じる">
                 <svg
                   width="24"
                   height="24"
@@ -94,7 +94,7 @@ export function MobileMenu({
 
               {/* Portal login section */}
               <div className="mt-4 pt-4 border-t border-white/[0.08]">
-                <p className="px-3 text-xs font-medium text-white/30 uppercase tracking-wider mb-2">ポータルログイン</p>
+                <p className="px-3 text-xs font-medium text-white/70 uppercase tracking-wider mb-2">ポータルログイン</p>
                 {portalItems.map((item) => (
                   <Link
                     key={item.href}
@@ -104,14 +104,14 @@ export function MobileMenu({
                   >
                     <div>
                       <span className="text-base font-medium text-white/80">{item.label}</span>
-                      <span className="block text-xs text-white/35 mt-0.5">{item.description}</span>
+                      <span className="block text-xs text-white/75 mt-0.5">{item.description}</span>
                     </div>
                     <svg
                       viewBox="0 0 24 24"
                       fill="none"
                       stroke="currentColor"
                       strokeWidth="2"
-                      className="w-4 h-4 text-white/30"
+                      className="w-4 h-4 text-white/70"
                     >
                       <path d="M9 5l7 7-7 7" />
                     </svg>

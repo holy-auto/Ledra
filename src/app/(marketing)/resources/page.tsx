@@ -83,9 +83,9 @@ export default function ResourcesPage() {
             <ResourceCard key={r.key} resource={r} delay={i * 60} />
           ))}
         </div>
-        <p className="mt-12 text-center text-xs text-white/40">
+        <p className="mt-12 text-center text-xs text-white/75">
           ご入力いただいた情報は、資料送付およびご案内のみに使用いたします。 詳しくは{" "}
-          <a href="/privacy" className="underline hover:text-white/60">
+          <a href="/privacy" className="underline hover:text-white/80">
             プライバシーポリシー
           </a>
           をご覧ください。

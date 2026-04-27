@@ -149,7 +149,7 @@ export default function SignatureClient({ token }: { token: string }) {
           <span className="text-blue-400 font-bold text-xl tracking-wide">Ledra</span>
         </div>
         <h1 className="text-white text-2xl font-bold">電子署名</h1>
-        <p className="text-gray-400 text-sm mt-1">施工証明書の内容を確認し、署名してください</p>
+        <p className="text-gray-200 text-sm mt-1">施工証明書の内容を確認し、署名してください</p>
       </div>
 
       {/* 証明書情報カード */}
@@ -186,7 +186,7 @@ export default function SignatureClient({ token }: { token: string }) {
 
         {/* メールアドレス入力 */}
         <label className="block mb-4">
-          <span className="text-gray-400 text-sm mb-1 block">
+          <span className="text-gray-200 text-sm mb-1 block">
             メールアドレス
             <span className="text-red-400 ml-1">*</span>
           </span>
@@ -200,7 +200,7 @@ export default function SignatureClient({ token }: { token: string }) {
                        focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500
                        placeholder-gray-600 text-base"
           />
-          <p className="text-gray-500 text-xs mt-1">署名の証跡として記録されます</p>
+          <p className="text-gray-300 text-xs mt-1">署名の証跡として記録されます</p>
         </label>
 
         {/* 同意チェックボックス */}
@@ -230,7 +230,7 @@ export default function SignatureClient({ token }: { token: string }) {
           disabled={!agreed || !signerEmail.includes("@") || phase === "submitting"}
           className="w-full py-4 rounded-xl font-bold text-base transition-all
                      bg-blue-600 hover:bg-blue-500 text-white
-                     disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed
+                     disabled:bg-gray-700 disabled:text-gray-300 disabled:cursor-not-allowed
                      focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
                      focus:ring-offset-gray-900"
         >
@@ -245,7 +245,7 @@ export default function SignatureClient({ token }: { token: string }) {
         </button>
 
         {/* 残り時間 */}
-        {timeLeft && <p className="text-center text-gray-500 text-xs mt-3">{timeLeft}</p>}
+        {timeLeft && <p className="text-center text-gray-300 text-xs mt-3">{timeLeft}</p>}
       </div>
 
       {/* 法的注記 */}
@@ -267,7 +267,7 @@ function LoadingScreen() {
     <div className="min-h-screen bg-gray-950 flex items-center justify-center">
       <div className="text-center">
         <div className="w-10 h-10 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-        <p className="text-gray-400">読み込み中...</p>
+        <p className="text-gray-200">読み込み中...</p>
       </div>
     </div>
   );
@@ -279,7 +279,7 @@ function StatusScreen({ icon, title, message }: { icon: string; title: string; m
       <div className="w-full max-w-md text-center">
         <div className="text-5xl mb-4">{icon}</div>
         <h1 className="text-white text-2xl font-bold mb-3">{title}</h1>
-        <p className="text-gray-400 text-base leading-relaxed">{message}</p>
+        <p className="text-gray-200 text-base leading-relaxed">{message}</p>
         <div className="mt-8 text-gray-600 text-sm">
           <span className="text-blue-400 font-semibold">Ledra</span> 電子署名システム
         </div>
@@ -304,7 +304,7 @@ function CompleteScreen({ data }: { data: CompleteData }) {
         <div className="text-center mb-6">
           <div className="text-5xl mb-3">✅</div>
           <h1 className="text-white text-2xl font-bold mb-2">署名が完了しました</h1>
-          <p className="text-gray-400 text-sm">電子署名法に基づく電子署名が正常に記録されました</p>
+          <p className="text-gray-200 text-sm">電子署名法に基づく電子署名が正常に記録されました</p>
         </div>
 
         {/* 署名情報カード */}
@@ -319,7 +319,7 @@ function CompleteScreen({ data }: { data: CompleteData }) {
         {/* 検証URL */}
         <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 mb-4">
           <h2 className="text-gray-300 text-sm font-medium mb-3">署名の検証</h2>
-          <p className="text-gray-500 text-xs mb-3">以下のURLから第三者がいつでも署名の有効性を確認できます</p>
+          <p className="text-gray-300 text-xs mb-3">以下のURLから第三者がいつでも署名の有効性を確認できます</p>
           <div className="bg-gray-800 rounded-lg p-3 mb-3">
             <p className="text-blue-300 text-xs break-all font-mono">{data.verify_url}</p>
           </div>
@@ -346,7 +346,7 @@ function CompleteScreen({ data }: { data: CompleteData }) {
 function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex justify-between items-start gap-3">
-      <dt className="text-gray-500 text-sm shrink-0">{label}</dt>
+      <dt className="text-gray-300 text-sm shrink-0">{label}</dt>
       <dd className={`text-gray-200 text-sm text-right ${mono ? "font-mono text-xs" : ""}`}>{value}</dd>
     </div>
   );

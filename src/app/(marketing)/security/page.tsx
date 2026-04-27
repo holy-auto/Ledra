@@ -213,7 +213,7 @@ export default function SecurityPage() {
                   <h3 className="text-[1.063rem] font-bold text-white leading-snug">
                     {item.title}
                   </h3>
-                  <p className="mt-2 text-[0.938rem] leading-[1.85] text-white/60">
+                  <p className="mt-2 text-[0.938rem] leading-[1.85] text-white/80">
                     {item.desc}
                   </p>
                 </div>
@@ -248,7 +248,7 @@ export default function SecurityPage() {
             >
               <div>
                 <p className="text-sm font-bold text-white">{c.label}</p>
-                <p className="mt-1 text-xs text-white/50">{c.note}</p>
+                <p className="mt-1 text-xs text-white/80">{c.note}</p>
               </div>
               <span
                 className={`shrink-0 inline-flex items-center rounded-full px-3 py-1 text-[0.688rem] font-medium ${
@@ -256,7 +256,7 @@ export default function SecurityPage() {
                     ? "bg-emerald-500/[0.12] text-emerald-300 border border-emerald-500/20"
                     : c.status === "in-progress"
                       ? "bg-amber-500/[0.12] text-amber-300 border border-amber-500/20"
-                      : "bg-white/[0.06] text-white/60 border border-white/[0.1]"
+                      : "bg-white/[0.06] text-white/80 border border-white/[0.1]"
                 }`}
               >
                 {c.status === "obtained"
@@ -267,7 +267,7 @@ export default function SecurityPage() {
               </span>
             </div>
           ))}
-          <p className="pt-4 text-xs text-white/40 text-center leading-relaxed">
+          <p className="pt-4 text-xs text-white/75 text-center leading-relaxed">
             認証取得の進捗は、本ページにて随時更新してまいります。
             <br />
             詳細な技術仕様はセキュリティホワイトペーパーをご請求ください。
