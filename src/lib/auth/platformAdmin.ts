@@ -7,9 +7,7 @@ import type { CallerInfo } from "./checkRole";
 export function assertPlatformTenantId(): void {
   const ptid = process.env.PLATFORM_TENANT_ID;
   if (!ptid) {
-    console.warn(
-      "[security] PLATFORM_TENANT_ID is not set. Platform admin features will be disabled.",
-    );
+    console.warn("[security] PLATFORM_TENANT_ID is not set. Platform admin features will be disabled.");
   }
 }
 
@@ -26,11 +24,15 @@ export function isPlatformTenantId(tenantId: string): boolean {
 }
 
 /**
- * CallerInfo がプラットフォーム管理者（Ledra運営の owner/admin）かどうか判定。
+ * CallerInfo がプラットフォーム管理者かどうか判定。
+ *
+ * 対象:
+ *  - role が `super_admin` (= ラベル「プラットフォーム管理者」) のメンバー
+ *    → どのテナントに紐付いていても platform admin 扱い
+ *  - PLATFORM_TENANT_ID に紐付く owner / admin
+ *    → 運営テナントの中の通常 admin にも運営権限を付与
  */
 export function isPlatformAdmin(caller: CallerInfo): boolean {
-  return (
-    isPlatformTenantId(caller.tenantId) &&
-    (caller.role === "owner" || caller.role === "admin")
-  );
+  if (caller.role === "super_admin") return true;
+  return isPlatformTenantId(caller.tenantId) && (caller.role === "owner" || caller.role === "admin");
 }
