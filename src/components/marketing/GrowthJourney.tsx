@@ -86,16 +86,15 @@ function MilestoneTrack({
           return (
             <li
               key={m.label}
-              className={`text-center rounded-lg border px-2 py-2 text-[0.65rem] font-medium tracking-wide
-                ${
-                  reached
-                    ? "border-blue-500/40 bg-blue-500/[0.12] text-blue-200"
-                    : isNext
-                      ? "border-violet-400/40 bg-violet-500/[0.08] text-violet-200"
-                      : "border-white/[0.08] bg-white/[0.02] text-white/70"
-                }`}
+              className={`text-center rounded-lg border px-2 py-2 text-[0.65rem] font-medium tracking-wide ${
+                reached
+                  ? "border-blue-500/40 bg-blue-500/[0.12] text-blue-200"
+                  : isNext
+                    ? "border-violet-400/40 bg-violet-500/[0.08] text-violet-200"
+                    : "border-white/[0.08] bg-white/[0.02] text-white/85"
+              }`}
             >
-              <div className="flex items-center justify-center gap-1">
+              <div className="flex items-center justify-center gap-1 text-inherit">
                 {reached && (
                   <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M2 6l3 3 5-6" strokeLinecap="round" strokeLinejoin="round" />
@@ -140,13 +139,13 @@ export async function GrowthJourney() {
             </span>
           </div>
           <span className="hidden sm:inline-block w-px h-4 bg-white/10" />
-          <div className="text-xs text-white/70 leading-relaxed">
+          <div className="text-xs text-white/85 leading-relaxed">
             直近30日: 新規{stats.shopsLast30Days.toLocaleString()}社 / 新規
             {stats.certificatesLast30Days.toLocaleString()}件
             {fetchedDate && (
               <>
-                <span className="mx-2 text-white/30">·</span>
-                <span>{fetchedDate} 時点</span>
+                <span className="mx-2 text-white/40">·</span>
+                <span className="text-white/85">{fetchedDate} 時点</span>
               </>
             )}
           </div>

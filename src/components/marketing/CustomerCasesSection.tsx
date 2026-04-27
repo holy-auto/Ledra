@@ -38,12 +38,12 @@ export async function CustomerCasesSection() {
                 className="group block h-full rounded-2xl border border-white/[0.08] bg-white/[0.03] p-7 hover:bg-white/[0.06] hover:border-white/[0.14] hover:-translate-y-0.5 transition-all"
               >
                 {(e.frontmatter.company || e.frontmatter.industry) && (
-                  <div className="flex flex-wrap items-center gap-2 text-[0.688rem] font-medium text-white/80">
-                    {e.frontmatter.industry && <span>{String(e.frontmatter.industry)}</span>}
+                  <div className="flex flex-wrap items-center gap-2 text-[0.688rem] font-medium text-white/85">
+                    {e.frontmatter.industry && <span className="text-white/85">{String(e.frontmatter.industry)}</span>}
                     {e.frontmatter.company && (
                       <>
-                        <span className="text-white/70">•</span>
-                        <span>{String(e.frontmatter.company)}</span>
+                        <span className="text-white/60">•</span>
+                        <span className="text-white/85">{String(e.frontmatter.company)}</span>
                       </>
                     )}
                   </div>

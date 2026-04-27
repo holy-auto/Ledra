@@ -30,8 +30,8 @@ export function DashboardMockSection() {
           <div className="grid grid-cols-12 gap-0">
             {/* sidebar */}
             <aside className="col-span-3 hidden md:block border-r border-white/[0.06] bg-white/[0.02] py-5 px-4">
-              <div className="text-[0.65rem] font-medium uppercase tracking-widest text-white/70">Ledra Admin</div>
-              <ul className="mt-5 space-y-1.5 text-xs">
+              <div className="text-[0.65rem] font-medium uppercase tracking-widest text-white/80">Ledra Admin</div>
+              <ul className="mt-5 space-y-1.5 text-xs text-white/80">
                 {[
                   ["ダッシュボード", true],
                   ["証明書", false],
@@ -45,7 +45,7 @@ export function DashboardMockSection() {
                   <li
                     key={label as string}
                     className={`rounded-md px-3 py-2 ${
-                      active ? "bg-blue-500/15 text-blue-200" : "text-white/70 hover:text-white"
+                      active ? "bg-blue-500/15 text-blue-200" : "text-white/80 hover:text-white"
                     }`}
                   >
                     {label}
@@ -65,7 +65,7 @@ export function DashboardMockSection() {
                   { label: "顧客満足度", value: "4.8", delta: "/ 5.0" },
                 ].map((k) => (
                   <div key={k.label} className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
-                    <div className="text-[0.625rem] uppercase tracking-wider text-white/70">{k.label}</div>
+                    <div className="text-[0.625rem] uppercase tracking-wider text-white/80">{k.label}</div>
                     <div className="mt-1.5 flex items-baseline gap-1.5">
                       <span className="text-lg font-bold text-white">{k.value}</span>
                       <span className="text-[0.65rem] text-emerald-300">{k.delta}</span>
@@ -136,9 +136,9 @@ export function DashboardMockSection() {
                       <li key={`${r.car}-${r.time}`} className="flex items-center justify-between text-[0.7rem]">
                         <div>
                           <p className="text-white font-medium">{r.car}</p>
-                          <p className="text-white/70">{r.menu}</p>
+                          <p className="text-white/80">{r.menu}</p>
                         </div>
-                        <span className="text-white/70">{r.time}</span>
+                        <span className="text-white/80">{r.time}</span>
                       </li>
                     ))}
                   </ul>
@@ -146,15 +146,18 @@ export function DashboardMockSection() {
               </div>
 
               {/* stripes legend */}
-              <div className="mt-5 flex flex-wrap items-center gap-4 text-[0.6rem] text-white/70">
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="block w-2 h-2 rounded-sm bg-blue-400" /> Cert 発行
+              <div className="mt-5 flex flex-wrap items-center gap-4 text-[0.6rem]">
+                <span className="inline-flex items-center gap-1.5 text-white/85">
+                  <span className="block w-2 h-2 rounded-sm bg-blue-400" />
+                  <span>Cert 発行</span>
                 </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="block w-2 h-2 rounded-sm bg-violet-400" /> 保険照会
+                <span className="inline-flex items-center gap-1.5 text-white/85">
+                  <span className="block w-2 h-2 rounded-sm bg-violet-400" />
+                  <span>保険照会</span>
                 </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="block w-2 h-2 rounded-sm bg-emerald-400" /> 顧客 NPS
+                <span className="inline-flex items-center gap-1.5 text-white/85">
+                  <span className="block w-2 h-2 rounded-sm bg-emerald-400" />
+                  <span>顧客 NPS</span>
                 </span>
               </div>
             </main>
