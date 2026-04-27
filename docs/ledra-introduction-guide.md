@@ -344,4 +344,4 @@ Ledra は統一されたデザインシステムを採用しています。
 | **POS** | Point of Sale（店頭決済） |
 | **NFC** | Near Field Communication。車両に貼付するタグ |
 | **C2PA** | Coalition for Content Provenance and Authenticity。写真の真正性保証 |
-| **Polygon アンカリング** | ブロックチェーンへの証明書ハッシュ記録（改ざん防止） |
+| **Polygon アンカリング** | ブロックチェーンへの施工写真 SHA-256 ハッシュ記録（改ざん防止） |

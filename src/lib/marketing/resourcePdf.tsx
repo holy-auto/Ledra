@@ -319,7 +319,7 @@ function Page3Features() {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>改ざん防止（Polygon anchoring / C2PA）</Text>
             <Text style={styles.cardDesc}>
-              証明書ハッシュを Polygon に刻印。施工写真には C2PA 署名を付与。第三者が独立に検証可能。
+              施工写真の SHA-256 ハッシュを Polygon に刻印。写真には C2PA 署名も付与。第三者が独立に検証可能。
             </Text>
           </View>
           <View style={styles.card}>
@@ -945,7 +945,7 @@ const SECURITY_BLOCKS: SecurityBlock[] = [
       },
       {
         title: "Polygon anchoring",
-        desc: "証明書のハッシュを Polygon ブロックチェーンに刻印。仮に DB 側のデータが改変されても、チェーン上のアンカーと突き合わせて不整合を即検知できます。",
+        desc: "施工写真の SHA-256 ハッシュを Polygon ブロックチェーンに刻印。仮に DB 側の写真が差し替えられても、チェーン上のアンカーと突き合わせて不整合を即検知できます。",
       },
     ],
   },

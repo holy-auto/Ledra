@@ -30,7 +30,7 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
       {
         title: "Polygon anchoring",
         description:
-          "証明書ハッシュをPolygonブロックチェーンに刻印。監査時に『その時点で存在した』ことを独立に検証できます。",
+          "施工写真のSHA-256ハッシュをPolygonブロックチェーンに刻印。監査時に『その時点で存在した』ことを独立に検証できます。",
       },
       {
         title: "バッチPDF出力",
