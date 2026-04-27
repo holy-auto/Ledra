@@ -69,8 +69,15 @@ export function Hero() {
           </div>
         </div>
 
-        <h1 className="mt-10">
-          <span className="block text-[2.5rem] md:text-[3.75rem] lg:text-[4.5rem] font-bold leading-[1.1] tracking-tight text-white">
+        <p
+          className="mt-10 text-[0.6875rem] md:text-xs font-semibold tracking-[0.32em] uppercase text-blue-300/80"
+          style={{ animation: "hero-fade-in 0.7s ease-out 0.25s both" }}
+        >
+          The Standard of Trust in Detailing
+        </p>
+
+        <h1 className="mt-5">
+          <span className="block text-[2.75rem] md:text-[4.25rem] lg:text-[5rem] font-bold leading-[1.08] tracking-tight text-white">
             {TITLE_LINE_1.map((phrase, i) => (
               <span
                 key={`l1-${i}`}
@@ -83,7 +90,7 @@ export function Hero() {
               </span>
             ))}
           </span>
-          <span className="block mt-2 text-[2.5rem] md:text-[3.75rem] lg:text-[4.5rem] font-bold leading-[1.1] tracking-tight">
+          <span className="block mt-3 text-[2.75rem] md:text-[4.25rem] lg:text-[5rem] font-bold leading-[1.08] tracking-tight">
             {TITLE_LINE_2.map((phrase, i) => (
               <span
                 key={`l2-${i}`}
@@ -98,7 +105,14 @@ export function Hero() {
           </span>
         </h1>
 
-        <p className="mt-10 text-lg md:text-xl leading-relaxed text-white/80 max-w-2xl mx-auto animate-[hero-fade-up_0.8s_ease-out_0.95s_both]">
+        <p
+          className="mt-8 mx-auto text-base md:text-lg font-[var(--font-serif)] tracking-[0.05em] text-white/70 animate-[hero-fade-up_0.8s_ease-out_0.85s_both]"
+          style={{ fontFamily: "var(--font-serif)" }}
+        >
+          —— 記録は、信頼の起点になる。
+        </p>
+
+        <p className="mt-8 text-lg md:text-xl leading-relaxed text-white/80 max-w-2xl mx-auto animate-[hero-fade-up_0.8s_ease-out_0.95s_both]">
           Ledraは、施工証明・履歴管理・加盟店連携・技術育成を通じて、
           <br className="hidden md:block" />
           現場の技術を可視化し、業界全体に信頼と価値を届けるプラットフォームです。
@@ -120,26 +134,50 @@ export function Hero() {
           </CTAButton>
         </div>
 
-        <div className="mt-20 flex flex-col sm:flex-row items-center justify-center gap-8 sm:gap-16 animate-[hero-fade-in_0.8s_ease-out_1.2s_both]">
-          <div className="text-center">
-            <div className="text-2xl md:text-3xl font-bold text-white">
-              無料<span className="text-blue-400">で開始</span>
-            </div>
-            <div className="text-xs text-white/75 mt-1">クレジットカード不要</div>
+        <div className="mt-20 mx-auto max-w-3xl rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-sm px-6 py-7 md:px-10 md:py-8 animate-[hero-fade-in_0.8s_ease-out_1.2s_both]">
+          <div className="text-[0.625rem] md:text-[0.6875rem] font-semibold tracking-[0.24em] uppercase text-white/50 text-center">
+            Trust by the numbers
           </div>
-          <div className="hidden sm:block w-px h-8 bg-white/10" />
-          <div className="text-center">
-            <div className="text-2xl md:text-3xl font-bold text-white">
-              5<span className="text-blue-400">分</span>
+          <div className="mt-5 grid grid-cols-3 gap-4 md:gap-10 items-end">
+            <div className="text-center">
+              <div
+                className="text-3xl md:text-5xl font-semibold leading-none text-white tracking-tight"
+                style={{ fontFamily: "var(--font-serif)" }}
+              >
+                無料
+              </div>
+              <div className="text-[0.6875rem] md:text-xs text-white/65 mt-3 leading-relaxed">
+                クレジット
+                <br className="md:hidden" />
+                カード不要
+              </div>
             </div>
-            <div className="text-xs text-white/75 mt-1">かんたん初期設定</div>
-          </div>
-          <div className="hidden sm:block w-px h-8 bg-white/10" />
-          <div className="text-center">
-            <div className="text-2xl md:text-3xl font-bold text-white">
-              URL<span className="text-blue-400">共有</span>
+            <div className="text-center border-x border-white/[0.06]">
+              <div
+                className="text-3xl md:text-5xl font-semibold leading-none text-white tracking-tight"
+                style={{ fontFamily: "var(--font-serif)" }}
+              >
+                5<span className="text-blue-400 ml-1 text-2xl md:text-3xl align-baseline">分</span>
+              </div>
+              <div className="text-[0.6875rem] md:text-xs text-white/65 mt-3 leading-relaxed">
+                かんたん
+                <br className="md:hidden" />
+                初期設定
+              </div>
             </div>
-            <div className="text-xs text-white/75 mt-1">証明書をすぐに共有</div>
+            <div className="text-center">
+              <div
+                className="text-3xl md:text-5xl font-semibold leading-none text-white tracking-tight"
+                style={{ fontFamily: "var(--font-serif)" }}
+              >
+                URL<span className="text-blue-400 ml-1 text-2xl md:text-3xl align-baseline">共有</span>
+              </div>
+              <div className="text-[0.6875rem] md:text-xs text-white/65 mt-3 leading-relaxed">
+                証明書を
+                <br className="md:hidden" />
+                すぐに共有
+              </div>
+            </div>
           </div>
         </div>
       </Container>

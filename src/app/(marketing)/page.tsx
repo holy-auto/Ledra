@@ -18,6 +18,10 @@ import { Container } from "@/components/marketing/Container";
 import { IntegrationLogoWall } from "@/components/marketing/IntegrationLogoWall";
 import { MobileAppSection } from "@/components/marketing/MobileAppSection";
 import { NewsTeaser } from "@/components/marketing/NewsTeaser";
+import { SelectedReasons } from "@/components/marketing/SelectedReasons";
+import { Testimonials } from "@/components/marketing/Testimonials";
+import { SecurityTrust } from "@/components/marketing/SecurityTrust";
+import { MediaCoverage } from "@/components/marketing/MediaCoverage";
 import { getMarketingStats } from "@/lib/marketing/stats";
 import { PLANS } from "@/lib/marketing/pricing";
 import Link from "next/link";
@@ -27,8 +31,13 @@ async function MarketingStatsSection() {
   const stats = await getMarketingStats();
   if (stats.shopCount === "—" && stats.certificateCount === "—") return null;
   return (
-    <Section>
-      <SectionHeading title="ご利用状況" />
+    <Section bg="alt">
+      <SectionHeading
+        eyebrow="By the Numbers"
+        title="ご利用状況"
+        subtitle="Ledraは着実に、現場の信頼基盤として広がっています。"
+        serif
+      />
       <StatsRow>
         {stats.shopCount !== "—" && (
           <ScrollReveal variant="scale-up" delay={0}>
@@ -71,8 +80,10 @@ export default async function HomePage() {
       {/* 課題提起 */}
       <Section bg="alt">
         <SectionHeading
+          eyebrow="Pain Points"
           title="こんな課題、ありませんか？"
           subtitle="施工証明の管理には、多くの非効率が残されています"
+          serif
         />
         <FeatureGrid>
           <FeatureCard
@@ -113,7 +124,12 @@ export default async function HomePage() {
 
       {/* Ledraの解決方法 */}
       <Section id="features">
-        <SectionHeading title="Ledraが解決します" subtitle="デジタル施工証明書で、施工店と保険会社の業務を変えます" />
+        <SectionHeading
+          eyebrow="Our Solution"
+          title="Ledraが解決します"
+          subtitle="デジタル施工証明書で、施工店と保険会社の業務を変えます"
+          serif
+        />
         <FeatureGrid>
           <FeatureCard
             delay={0}
@@ -148,9 +164,26 @@ export default async function HomePage() {
         </FeatureGrid>
       </Section>
 
+      {/* 選ばれる理由 — 重厚な3つの柱 */}
+      <Section>
+        <SectionHeading
+          eyebrow="Why Ledra"
+          title="選ばれる、3つの理由。"
+          subtitle="記録を、業界の共通言語にする。Ledraがその起点となれる理由を、構造でお示しします。"
+          serif
+          size="lg"
+        />
+        <SelectedReasons />
+      </Section>
+
       {/* 証明書発行の流れ */}
       <Section bg="alt">
-        <SectionHeading title="証明書発行の流れ" subtitle="施工完了から証明書の共有まで、わずか数分で完了します" />
+        <SectionHeading
+          eyebrow="How It Works"
+          title="証明書発行の流れ"
+          subtitle="施工完了から証明書の共有まで、わずか数分で完了します"
+          serif
+        />
         <AnimatedStepper
           steps={[
             {
@@ -179,7 +212,12 @@ export default async function HomePage() {
 
       {/* Ledraエコシステム */}
       <Section id="ecosystem">
-        <SectionHeading title="Ledraのエコシステム" subtitle="記録から始まり、業界全体へ広がるプラットフォーム" />
+        <SectionHeading
+          eyebrow="Ecosystem"
+          title="Ledraのエコシステム"
+          subtitle="記録から始まり、業界全体へ広がるプラットフォーム"
+          serif
+        />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
           {[
             {
@@ -254,8 +292,10 @@ export default async function HomePage() {
       {/* 証明書プレビュー */}
       <Section bg="alt">
         <SectionHeading
+          eyebrow="Certificate Preview"
           title="発行される証明書のイメージ"
           subtitle="施工店のブランドを反映した、プロフェッショナルなデジタル証明書"
+          serif
         />
         <ScrollReveal variant="fade-up" delay={100}>
           <div className="max-w-2xl mx-auto">
@@ -316,8 +356,10 @@ export default async function HomePage() {
       {/* ターゲット別導線 */}
       <Section id="usecases">
         <SectionHeading
+          eyebrow="For You"
           title="あなたの立場に合わせた活用方法"
           subtitle="それぞれに最適な機能と導線をご用意しています"
+          serif
         />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-10 max-w-4xl mx-auto">
           <ScrollReveal variant="fade-up" delay={0}>
@@ -422,7 +464,12 @@ export default async function HomePage() {
 
       {/* ユースケース */}
       <Section bg="alt" id="compare">
-        <SectionHeading title="ご利用シーン" subtitle="さまざまな場面でLedraをご活用いただけます" />
+        <SectionHeading
+          eyebrow="Use Cases"
+          title="ご利用シーン"
+          subtitle="さまざまな場面でLedraをご活用いただけます"
+          serif
+        />
         <FeatureGrid>
           <FeatureCard
             variant="bordered"
@@ -460,14 +507,53 @@ export default async function HomePage() {
         </FeatureGrid>
       </Section>
 
-      {/* 信頼要素 */}
+      {/* お客様の声 — 重厚なテスティモニアル */}
+      <Section>
+        <SectionHeading
+          eyebrow="Customer Voice"
+          title="お客様に、選ばれています。"
+          subtitle="施工店・保険会社・自動車流通の現場から、Ledraを支持する声が集まっています。"
+          serif
+          size="lg"
+        />
+        <Testimonials />
+      </Section>
+
+      {/* 信頼要素 — 数字で示す事業実績 */}
       <Suspense>
         <MarketingStatsSection />
       </Suspense>
 
+      {/* セキュリティと信頼性 — エンタープライズ説得 */}
+      <Section>
+        <SectionHeading
+          eyebrow="Security & Trust"
+          title="情報を守る、4つの設計原則。"
+          subtitle="施工証明という、後戻りできないデータを扱うために。Ledraは設計段階から信頼性を組み込んでいます。"
+          serif
+        />
+        <SecurityTrust />
+      </Section>
+
+      {/* メディア掲載 */}
+      <Section bg="alt">
+        <SectionHeading
+          eyebrow="In the Media"
+          title="メディア掲載"
+          subtitle="Ledraの取り組みは、業界各メディアにご紹介いただいています。"
+          serif
+        />
+        <MediaCoverage />
+      </Section>
+
       {/* 料金概要 */}
       <Section bg="alt" id="pricing">
-        <SectionHeading title="料金プラン" subtitle="シンプルな料金体系で、すぐに始められます" />
+        <SectionHeading
+          eyebrow="Pricing"
+          title="料金プラン"
+          subtitle="シンプルな料金体系で、すぐに始められます"
+          serif
+        />
         <PricingCards>
           <PricingCard
             name={PLANS.free.name}
@@ -522,7 +608,7 @@ export default async function HomePage() {
 
       {/* FAQ抜粋 */}
       <Section id="faq">
-        <SectionHeading title="よくあるご質問" />
+        <SectionHeading eyebrow="FAQ" title="よくあるご質問" serif />
         <FAQList>
           <FAQItem
             question="無料プランでも証明書の発行はできますか？"

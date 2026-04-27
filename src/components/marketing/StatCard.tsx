@@ -15,8 +15,14 @@ export function StatCard({ value, label }: { value: string; label: string }) {
 
   return (
     <div className="text-center px-8">
-      <div className="text-[2.75rem] md:text-[3.5rem] font-bold text-white leading-tight tracking-tight">
+      <div
+        className="text-[3.25rem] md:text-[4.5rem] font-semibold text-white leading-none tracking-tight"
+        style={{ fontFamily: "var(--font-serif)" }}
+      >
         {numericValue !== null ? <AnimatedCounter target={numericValue} suffix={suffix} /> : value}
+      </div>
+      <div className="mt-5 text-[0.6875rem] md:text-xs font-semibold tracking-[0.22em] uppercase text-blue-400/80">
+        ——
       </div>
       <div className="mt-3 text-sm text-white/80 font-medium">{label}</div>
     </div>
