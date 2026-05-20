@@ -13,6 +13,7 @@ import {
   apiForbidden,
 } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import { createInvoicePaymentLink } from "@/lib/stripe/invoicePaymentLink";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -84,49 +85,28 @@ export async function POST(req: NextRequest) {
       return apiValidationError("請求金額が0円以下のため決済リンクを作成できません。");
     }
 
-    // Stripe Checkout Session をConnect経由で作成
-    const stripe = getStripe();
-    const baseUrl = resolveBaseUrl({ req });
-    const platformFeeRate = 0.01; // 1% プラットフォーム手数料
-    const applicationFee = Math.round(totalYen * platformFeeRate);
+    try {
+      const result = await createInvoicePaymentLink({
+        stripe: getStripe(),
+        tenantId: caller.tenantId,
+        tenantName: (tenant.name as string | null) ?? null,
+        stripeConnectAccountId: tenant.stripe_connect_account_id as string,
+        invoiceId: invoice.id as string,
+        invoiceDocNumber: (invoice.doc_number as string | null) ?? null,
+        totalYen,
+        baseUrl: resolveBaseUrl({ req }),
+      });
 
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      line_items: [
-        {
-          price_data: {
-            currency: "jpy",
-            product_data: {
-              name: (invoice.doc_number as string) || `請求書 #${(invoice.id as string).slice(0, 8)}`,
-              description: tenant.name ? `${tenant.name}からの請求` : undefined,
-            },
-            unit_amount: totalYen,
-          },
-          quantity: 1,
-        },
-      ],
-      payment_intent_data: {
-        application_fee_amount: applicationFee,
-        transfer_data: {
-          destination: tenant.stripe_connect_account_id as string,
-        },
-      },
-      success_url: `${baseUrl}/payment/success?invoice=${invoice_id}`,
-      cancel_url: `${baseUrl}/payment/cancel?invoice=${invoice_id}`,
-      metadata: {
-        tenant_id: caller.tenantId,
+      return apiOk({
+        checkout_url: result.checkoutUrl,
+        session_id: result.sessionId,
         invoice_id,
-        source: "ledra_connect",
-      },
-    });
-
-    return apiOk({
-      checkout_url: session.url,
-      session_id: session.id,
-      invoice_id,
-      amount: totalYen,
-      platform_fee: applicationFee,
-    });
+        amount: result.totalYen,
+        platform_fee: result.applicationFee,
+      });
+    } catch (e) {
+      return apiInternalError(e, "stripe connect payment-link: session");
+    }
   } catch (e) {
     return apiInternalError(e, "stripe connect payment-link");
   }

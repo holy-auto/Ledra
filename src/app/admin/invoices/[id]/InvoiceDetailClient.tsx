@@ -97,15 +97,56 @@ export default function InvoiceDetailClient({
   invoice: initial,
   customerName,
   tenant,
+  canSendLinePayment = false,
+  customerHasLine = false,
 }: {
   invoice: Invoice;
   customerName: string | null;
   tenant: TenantInfo;
+  canSendLinePayment?: boolean;
+  customerHasLine?: boolean;
 }) {
   const [invoice, setInvoice] = useState(initial);
   const [updating, setUpdating] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [linePayBusy, setLinePayBusy] = useState(false);
+  const [linePayUrl, setLinePayUrl] = useState<string | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
+
+  const handleSendLinePaymentLink = async () => {
+    if (!canSendLinePayment) return;
+    if (
+      !confirm(
+        `LINE で決済リンクを送信します。\n金額: ¥${invoice.total.toLocaleString("ja-JP")}\n${customerName ?? invoice.recipient_name ?? "お客様"} 様に送ってよろしいですか？`,
+      )
+    ) {
+      return;
+    }
+    setLinePayBusy(true);
+    setMsg(null);
+    setLinePayUrl(null);
+    try {
+      const res = await fetch(`/api/admin/invoices/${invoice.id}/send-line-payment-link`, {
+        method: "POST",
+      });
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      const url = j?.checkout_url as string | undefined;
+      if (url) setLinePayUrl(url);
+      if (j?.delivered === false) {
+        setMsg({
+          text: "決済リンクを生成しましたが、LINE 配信に失敗しました。下に表示された URL をコピーして他の手段で送付してください。",
+          ok: false,
+        });
+      } else {
+        setMsg({ text: "LINE に決済リンクを送信しました。顧客の入金をお待ちください。", ok: true });
+      }
+    } catch (e) {
+      setMsg({ text: e instanceof Error ? e.message : String(e), ok: false });
+    } finally {
+      setLinePayBusy(false);
+    }
+  };
 
   const handleStatusChange = async (newStatus: string) => {
     setUpdating(true);
@@ -184,8 +225,45 @@ export default function InvoiceDetailClient({
             <button type="button" className="btn-secondary text-xs" disabled={downloading} onClick={handlePdfDownload}>
               {downloading ? "生成中…" : "PDFダウンロード"}
             </button>
+            {invoice.status !== "paid" && invoice.status !== "cancelled" && (
+              <button
+                type="button"
+                className="btn-primary text-xs"
+                disabled={!canSendLinePayment || linePayBusy}
+                onClick={handleSendLinePaymentLink}
+                title={
+                  canSendLinePayment
+                    ? "LINE で決済リンクを送信"
+                    : customerHasLine
+                      ? "Stripe Connect オンボーディング / LINE 連携を確認してください"
+                      : "顧客に LINE ユーザが紐付いていません"
+                }
+              >
+                {linePayBusy ? "送信中…" : "💚 LINE で決済リンクを送る"}
+              </button>
+            )}
           </div>
         </div>
+        {linePayUrl && (
+          <div className="mt-3 rounded-md border border-border-default bg-inset p-3 text-xs">
+            <div className="text-muted mb-1">決済リンク (24 時間有効):</div>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 break-all font-mono text-[11px] text-primary">{linePayUrl}</code>
+              <button
+                type="button"
+                className="btn-ghost text-[11px]"
+                onClick={() => {
+                  navigator.clipboard.writeText(linePayUrl).then(
+                    () => setMsg({ text: "リンクをコピーしました", ok: true }),
+                    () => setMsg({ text: "コピーに失敗しました", ok: false }),
+                  );
+                }}
+              >
+                📋 コピー
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Invoice Detail (print-friendly) */}
