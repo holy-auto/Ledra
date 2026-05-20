@@ -1,9 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { parsePagination } from "@/lib/api/pagination";
 import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
-import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiOk, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { withIdempotency } from "@/lib/api/idempotency";
+import { createCertAction } from "@/app/admin/certificates/new/actions";
+import { certCreateJsonSchema, jsonToCertFormData } from "@/lib/certificates/createCertificateApi";
 
 export const dynamic = "force-dynamic";
 
@@ -56,4 +59,39 @@ export async function GET(req: NextRequest) {
   } catch (e: unknown) {
     return apiInternalError(e, "admin/certificates GET");
   }
+}
+
+/**
+ * POST: JSON で証明書を発行する。
+ *
+ * 既存 Server Action `createCertAction` (FormData 入力) を再利用するための
+ * thin adapter。Outbox 経由のオフライン同期と外部連携の入口を兼ねる。
+ * `Idempotency-Key` ヘッダ付き再送はサーバ側でリプレイ (Redis ベース、24h TTL)。
+ *
+ * 認証 / 副作用 (vehicle/customer 自動作成・QStash・フォローアップ等) は
+ * createCertAction に集約されている。本ハンドラは JSON ↔ FormData の
+ * 変換と idempotency 制御だけを担当する。
+ */
+export async function POST(req: NextRequest): Promise<Response> {
+  return withIdempotency(req, "admin:cert:create", async () => {
+    try {
+      const json = await req.json().catch(() => ({}));
+      const parsed = certCreateJsonSchema.safeParse(json);
+      if (!parsed.success) {
+        return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      }
+
+      // Server Action は認証を内部で行う (auth.getUser + tenant_memberships)。
+      // 401 相当は createCertAction が返す "unauthorized" / "no_tenant" で表現される。
+      const formData = jsonToCertFormData(parsed.data);
+      const result = await createCertAction(formData);
+      if (!result.ok) {
+        if (result.error === "unauthorized") return apiUnauthorized();
+        return apiValidationError(result.error);
+      }
+      return apiOk({ public_id: result.public_id });
+    } catch (e: unknown) {
+      return apiInternalError(e, "admin/certificates POST");
+    }
+  }) as Promise<Response>;
 }
