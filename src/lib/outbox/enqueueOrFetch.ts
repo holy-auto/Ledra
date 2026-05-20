@@ -32,19 +32,39 @@ interface Options {
   headers?: Record<string, string>;
   label: string;
   kind: OutboxKind;
+  /**
+   * Stripe 風 idempotency-key。online/offline 両経路で `Idempotency-Key`
+   * ヘッダに乗せて送る。重複送信 (再試行) でも 1 回だけ実行されることを
+   * サーバ側 (`withIdempotency`) が保証する。
+   */
+  idempotencyKey?: string;
   /** デフォルト navigator.onLine */
   isOnline?: () => boolean;
+}
+
+/** Options から効果的なヘッダを作る (idempotency-key + Content-Type)。 */
+function effectiveHeaders(opts: Options, withContentType: boolean): Record<string, string> {
+  return {
+    ...(withContentType ? { "Content-Type": "application/json" } : {}),
+    ...(opts.idempotencyKey ? { "Idempotency-Key": opts.idempotencyKey } : {}),
+    ...(opts.headers ?? {}),
+  };
 }
 
 export async function enqueueOrFetch(opts: Options): Promise<OfflineCapableResult> {
   const isOnline = opts.isOnline ?? (() => (typeof navigator === "undefined" ? true : navigator.onLine !== false));
   const bodyJson = opts.body == null ? null : JSON.stringify(opts.body);
 
+  // outbox に保存する headers にも idempotency-key を含める (drainOutbox で再送時に効く)
+  const persistedHeaders = opts.idempotencyKey
+    ? { ...(opts.headers ?? {}), "Idempotency-Key": opts.idempotencyKey }
+    : opts.headers;
+
   if (isOnline()) {
     try {
       const res = await fetch(opts.url, {
         method: opts.method,
-        headers: { ...(bodyJson ? { "Content-Type": "application/json" } : {}), ...(opts.headers ?? {}) },
+        headers: effectiveHeaders(opts, bodyJson != null),
         body: bodyJson ?? undefined,
         credentials: "include",
       });
@@ -56,7 +76,7 @@ export async function enqueueOrFetch(opts: Options): Promise<OfflineCapableResul
         url: opts.url,
         method: opts.method,
         bodyJson,
-        headers: opts.headers,
+        headers: persistedHeaders,
         label: opts.label,
         kind: opts.kind,
       });
@@ -76,7 +96,7 @@ export async function enqueueOrFetch(opts: Options): Promise<OfflineCapableResul
     url: opts.url,
     method: opts.method,
     bodyJson,
-    headers: opts.headers,
+    headers: persistedHeaders,
     label: opts.label,
     kind: opts.kind,
   });

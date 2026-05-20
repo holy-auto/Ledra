@@ -107,6 +107,45 @@ describe("enqueueOrFetch", () => {
     fetchSpy.mockRestore();
   });
 
+  it("forwards Idempotency-Key header when online", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(mkResponse(200, true));
+
+    await enqueueOrFetch({
+      url: "/api/admin/certificates",
+      method: "POST",
+      body: { customer_name: "x" },
+      label: "cert create",
+      kind: "certificate_create",
+      idempotencyKey: "abc-12345678",
+      isOnline: () => true,
+    });
+    const init = fetchSpy.mock.calls[0][1] as RequestInit;
+    expect((init.headers as Record<string, string>)["Idempotency-Key"]).toBe("abc-12345678");
+
+    fetchSpy.mockRestore();
+  });
+
+  it("persists Idempotency-Key in outbox headers when offline", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    mocks.enqueueOutbox.mockResolvedValueOnce({ id: "out-x" });
+
+    await enqueueOrFetch({
+      url: "/api/admin/certificates",
+      method: "POST",
+      body: { customer_name: "x" },
+      label: "cert create",
+      kind: "certificate_create",
+      idempotencyKey: "abc-12345678",
+      isOnline: () => false,
+    });
+
+    const enqueued = mocks.enqueueOutbox.mock.calls[0][0];
+    expect(enqueued.headers).toMatchObject({ "Idempotency-Key": "abc-12345678" });
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    fetchSpy.mockRestore();
+  });
+
   it("omits Content-Type when body is null", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(mkResponse(204, true));
 

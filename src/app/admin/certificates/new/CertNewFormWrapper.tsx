@@ -1,10 +1,12 @@
 "use client";
 
-import { useRef, useState, useTransition, useCallback } from "react";
+import { useMemo, useRef, useState, useTransition, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createCertAction } from "./actions";
+import { enqueueOrFetch } from "@/lib/outbox/enqueueOrFetch";
+import { certCreateJsonSchema, formDataToCertJson } from "@/lib/certificates/createCertificateApi";
 import CertPackagePicker from "./CertPackagePicker";
 import VehiclePickerSection from "./VehiclePickerSection";
 import FilmThicknessSection from "./FilmThicknessSection";
@@ -132,6 +134,16 @@ export default function CertNewFormWrapper({
   const schema = selectedTemplate?.schema_json ?? null;
   const canAiDraft = canUseFeature(planTier, "ai_draft");
   const canAiQuality = canUseFeature(planTier, "ai_quality");
+
+  // フォームマウント時に 1 度だけ idempotency-key を発行する。
+  // 同じフォームを誤って 2 回 submit しても、サーバ側で 2 回目はリプレイになる。
+  // Outbox 経由で送信される時も同じ key が使われ、二重発行を防ぐ。
+  const idempotencyKey = useMemo(() => {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+    return `cert-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  }, []);
 
   // AI下書き適用時にフォームフィールドを自動入力する
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | undefined>(defaultVehicleId);
@@ -290,6 +302,39 @@ export default function CertNewFormWrapper({
     }
 
     const files = photoRef.current?.getFiles() ?? [];
+
+    // オフライン経路: 文字情報だけ outbox に enqueue する。写真は
+    // 復帰後に当該証明書詳細ページから手動でアップロードする運用 (Phase 2)。
+    // 完全な写真自動同期 (Phase 3) は image upload エンドポイントを
+    // idempotency-key 受入対応する必要があるためここでは扱わない。
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      const jsonPayload = formDataToCertJson(formData);
+      const parsed = certCreateJsonSchema.safeParse(jsonPayload);
+      if (!parsed.success) {
+        setError(parsed.error.issues[0]?.message ?? "入力内容に不備があります");
+        return;
+      }
+      try {
+        await enqueueOrFetch({
+          url: "/api/admin/certificates",
+          method: "POST",
+          body: parsed.data,
+          label: `証明書発行 (オフライン): ${parsed.data.customer_name}`,
+          kind: "certificate_create",
+          idempotencyKey,
+        });
+        setError(null);
+        const note =
+          files.length > 0
+            ? "📡 オフラインのため文字情報のみ保存しました。通信復帰後に自動発行され、その後 [証明書詳細] から写真を追加してください。"
+            : "📡 オフラインで保存しました。通信復帰後に自動的に発行されます。";
+        setUploadProgress(note);
+        return;
+      } catch (e) {
+        setError(`オフライン保存に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+        return;
+      }
+    }
 
     startTransition(async () => {
       const result = await createCertAction(formData);

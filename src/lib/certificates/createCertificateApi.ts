@@ -153,3 +153,85 @@ export function jsonToCertFormData(input: CertCreateJsonInput): FormData {
 
   return fd;
 }
+
+/**
+ * フォームの FormData から `certCreateJsonSchema` に流せる JSON を作る。
+ * `jsonToCertFormData` の逆変換。クライアントで Server Action 用に組み立てた
+ * FormData をそのまま JSON API へ送りたいときに使う (オフラインキュー用)。
+ *
+ * `f__<key>` プレフィックスは `template_fields` に集約する。
+ * 配列フィールド (`getAll`) も拾う。
+ * 値が無いキーは含めない (Zod の任意フィールドが優先される)。
+ */
+export function formDataToCertJson(fd: FormData): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const templateFields: Record<string, unknown> = {};
+
+  // 1. template_fields (f__) を最初に集約
+  for (const key of new Set(Array.from(fd.keys()))) {
+    if (!key.startsWith("f__")) continue;
+    const fkey = key.slice(3);
+    const values = fd.getAll(key);
+    if (values.length === 0) continue;
+    if (values.length === 1) {
+      const v = values[0];
+      // "on" は checkbox の boolean true 相当 (Server Action の挙動と整合)
+      templateFields[fkey] = v === "on" ? true : String(v);
+    } else {
+      templateFields[fkey] = values.map((v) => String(v));
+    }
+  }
+  if (Object.keys(templateFields).length > 0) {
+    out.template_fields = templateFields;
+  }
+
+  // 2. 通常フィールドを拾う (f__ プレフィックスはスキップ)
+  const jsonFields = new Set([
+    "film_thickness_json",
+    "coating_products_json",
+    "ppf_coverage_json",
+    "maintenance_json",
+    "body_repair_json",
+    "package_snapshot_json",
+  ]);
+  const stringFields = [
+    "customer_id",
+    "customer_name",
+    "vehicle_id",
+    "vehicle_maker",
+    "model",
+    "plate",
+    "vin_code",
+    "size_class",
+    "template_id",
+    "template_name",
+    "manufacturer_template_id",
+    "service_type",
+    "content_free_text",
+    "expiry_value",
+    "expiry_date",
+    "warranty_period_end",
+    "maintenance_date",
+    "warranty_exclusions",
+    "remarks",
+    "package_id",
+    "status",
+  ] as const;
+
+  for (const k of stringFields) {
+    const v = fd.get(k);
+    if (v != null && v !== "") out[k] = String(v);
+  }
+
+  for (const k of jsonFields) {
+    const v = fd.get(k);
+    if (v == null || v === "") continue;
+    try {
+      out[k] = JSON.parse(String(v));
+    } catch {
+      // パース不能なら無視 (Zod 側で型チェック)
+    }
+  }
+
+  return out;
+}
