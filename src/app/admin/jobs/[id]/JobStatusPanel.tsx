@@ -10,6 +10,7 @@ import Badge from "@/components/ui/Badge";
 import { useViewMode } from "@/lib/view-mode/ViewModeContext";
 import { fetcher } from "@/lib/swr";
 import { computeWorkDurationText } from "@/lib/admin/work-duration";
+import { enqueueOrFetch } from "@/lib/outbox/enqueueOrFetch";
 import { STATUS_FLOW, STATUS_LABEL, STATUS_HINT, type JobReservation } from "./types";
 
 type MemberRow = {
@@ -76,14 +77,20 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
     setBusy(true);
     setErr(null);
     try {
-      const res = await fetch("/api/admin/reservations", {
+      const r = await enqueueOrFetch({
+        url: "/api/admin/reservations",
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: reservation.id, status: target }),
+        body: { id: reservation.id, status: target },
+        label: `案件ステータス → ${STATUS_LABEL[target] ?? target}`,
+        kind: "reservation_update",
       });
-      if (!res.ok) {
-        const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (r.queued) {
+        setErr(`📡 オフラインです。ステータス変更を保留し、ネット復帰後に自動同期します。`);
+        return;
+      }
+      if (!r.ok && r.response) {
+        const j = await parseJsonSafe(r.response);
+        throw new Error(j?.error ?? `HTTP ${r.status}`);
       }
       router.refresh();
     } catch (e: unknown) {
@@ -97,14 +104,20 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
     setAssigneeBusy(true);
     setErr(null);
     try {
-      const res = await fetch("/api/admin/reservations", {
+      const r = await enqueueOrFetch({
+        url: "/api/admin/reservations",
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: reservation.id, assigned_user_id: newUserId }),
+        body: { id: reservation.id, assigned_user_id: newUserId },
+        label: `担当者変更 (${reservation.title ?? "案件"})`,
+        kind: "reservation_update",
       });
-      if (!res.ok) {
-        const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (r.queued) {
+        setErr(`📡 オフラインです。担当者変更を保留し、ネット復帰後に自動同期します。`);
+        return;
+      }
+      if (!r.ok && r.response) {
+        const j = await parseJsonSafe(r.response);
+        throw new Error(j?.error ?? `HTTP ${r.status}`);
       }
       router.refresh();
     } catch (e: unknown) {
