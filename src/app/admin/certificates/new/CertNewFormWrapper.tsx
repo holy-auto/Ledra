@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createCertAction } from "./actions";
 import { enqueueOrFetch } from "@/lib/outbox/enqueueOrFetch";
+import { enqueueOrFetchMultipart } from "@/lib/outbox/enqueueOrFetchMultipart";
 import { certCreateJsonSchema, formDataToCertJson } from "@/lib/certificates/createCertificateApi";
 import CertPackagePicker from "./CertPackagePicker";
 import VehiclePickerSection from "./VehiclePickerSection";
@@ -303,10 +304,10 @@ export default function CertNewFormWrapper({
 
     const files = photoRef.current?.getFiles() ?? [];
 
-    // オフライン経路: 文字情報だけ outbox に enqueue する。写真は
-    // 復帰後に当該証明書詳細ページから手動でアップロードする運用 (Phase 2)。
-    // 完全な写真自動同期 (Phase 3) は image upload エンドポイントを
-    // idempotency-key 受入対応する必要があるためここでは扱わない。
+    // オフライン経路: 文字情報 + 写真の両方を outbox に enqueue する。
+    // 写真は cert_idempotency_key を multipart field に乗せて、復帰後に
+    // 同 key で cert の public_id を逆引きしてアップロードされる
+    // (lookupCertByIdempotencyKey via /api/certificates/images/upload)。
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       const jsonPayload = formDataToCertJson(formData);
       const parsed = certCreateJsonSchema.safeParse(jsonPayload);
@@ -315,6 +316,7 @@ export default function CertNewFormWrapper({
         return;
       }
       try {
+        // 1) 証明書本体 (cert_idempotency_key と同一の idempotency-key で重複防止)
         await enqueueOrFetch({
           url: "/api/admin/certificates",
           method: "POST",
@@ -323,10 +325,20 @@ export default function CertNewFormWrapper({
           kind: "certificate_create",
           idempotencyKey,
         });
+        // 2) 写真群 (1 枚 1 enqueue。drainOutbox が順次送信)
+        for (const file of files) {
+          await enqueueOrFetchMultipart({
+            url: "/api/certificates/images/upload",
+            fields: { cert_idempotency_key: idempotencyKey },
+            files: [{ fieldName: "photos", file }],
+            label: `証明書写真 (オフライン): ${file.name}`,
+            kind: "certificate_image_upload",
+          });
+        }
         setError(null);
         const note =
           files.length > 0
-            ? "📡 オフラインのため文字情報のみ保存しました。通信復帰後に自動発行され、その後 [証明書詳細] から写真を追加してください。"
+            ? `📡 オフラインのため証明書 + 写真 ${files.length} 枚をキューに保存しました。通信復帰後に自動発行 → 写真アップロードまで実行されます。`
             : "📡 オフラインで保存しました。通信復帰後に自動的に発行されます。";
         setUploadProgress(note);
         return;

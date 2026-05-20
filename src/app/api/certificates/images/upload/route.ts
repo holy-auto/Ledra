@@ -84,9 +84,30 @@ export async function POST(req: NextRequest) {
 
     // ── Parse multipart form ──────────────────────────────────────
     const form = await req.formData();
-    const publicId = String(form.get("public_id") ?? "").trim();
+    let publicId = String(form.get("public_id") ?? "").trim();
+    const certIdemKey = String(form.get("cert_idempotency_key") ?? "").trim();
+
+    // public_id が無く cert_idempotency_key だけある場合 (オフライン同期時の
+    // 写真 upload) は永続マッピング表から逆引きする。これで cert 作成と
+    // 画像 upload の連鎖実行が IP/network 変化後も成立する。
+    if (!publicId && certIdemKey) {
+      const { lookupCertByIdempotencyKey } = await import("@/lib/certificates/idempotencyMap");
+      const mapped = await lookupCertByIdempotencyKey(certIdemKey, caller.tenantId);
+      if (!mapped) {
+        // cert 作成が先に成功している必要がある。drainOutbox 順序を保つには
+        // 425 Too Early を返して再試行を待たせる。
+        return apiError({
+          code: "validation_error",
+          message:
+            "cert_idempotency_key に対応する証明書がまだ存在しません。先に証明書作成リクエストの同期を完了してください。",
+          status: 425,
+        });
+      }
+      publicId = mapped.public_id;
+    }
+
     if (!publicId) {
-      return apiValidationError("public_id は必須です。");
+      return apiValidationError("public_id または cert_idempotency_key のいずれかが必須です。");
     }
 
     const files = form.getAll("photos") as File[];
