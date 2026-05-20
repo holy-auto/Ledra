@@ -411,12 +411,14 @@ async function PlatformStats() {
   );
 }
 
-export default async function AdminHome() {
+export default async function AdminHome({ searchParams }: { searchParams?: Promise<{ tasks?: string }> }) {
   const supabase = await createSupabaseServerClient();
   const caller = await resolveCallerWithRole(supabase);
   if (!caller) redirect("/login?next=/admin");
 
   const tenantId = caller.tenantId;
+  const sp = (await searchParams) ?? {};
+  const tasksScope: "tenant" | "mine" = sp.tasks === "mine" ? "mine" : "tenant";
 
   const adminContent = (
     <>
@@ -602,7 +604,7 @@ export default async function AdminHome() {
       {/* Today's Tasks (タスク指向ウィジェット) */}
       {tenantId && (
         <Suspense fallback={<TodayTasksWidgetSkeleton />}>
-          <TodayTasksWidget tenantId={tenantId} />
+          <TodayTasksWidget tenantId={tenantId} scope={tasksScope} currentUserId={caller.userId} />
         </Suspense>
       )}
 
