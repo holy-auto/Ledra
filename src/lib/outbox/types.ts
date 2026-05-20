@@ -12,13 +12,40 @@ export type OutboxMethod = "POST" | "PUT" | "PATCH" | "DELETE";
 /** UI に表示するためのカテゴリ。アイコン分岐に使う。 */
 export type OutboxKind = "certificate_create" | "certificate_image_upload" | "reservation_update" | "other";
 
+/**
+ * multipart アタッチメントの定義。実際の Blob は別 store (outbox_blobs) に保存し、
+ * blobRef でリンクする (キュー全体の JSON シリアライズを単純に保つため)。
+ */
+export interface OutboxMultipartField {
+  /** form field 名 */
+  name: string;
+  /** 文字列値 */
+  value: string;
+}
+
+export interface OutboxMultipartFile {
+  /** form field 名 (例: "photos") */
+  name: string;
+  /** outbox_blobs.id への参照 */
+  blobRef: string;
+  fileName: string;
+  mimeType: string;
+}
+
+export interface OutboxMultipart {
+  fields: OutboxMultipartField[];
+  files: OutboxMultipartFile[];
+}
+
 export interface OutboxItem {
   /** client-side uuid v4 (crypto.randomUUID()) */
   id: string;
   url: string;
   method: OutboxMethod;
-  /** JSON serialized request body (null = empty body) */
+  /** JSON serialized request body (null = empty body)。multipart のときは null */
   bodyJson: string | null;
+  /** multipart/form-data リクエスト用ペイロード。bodyJson と排他 */
+  multipart?: OutboxMultipart;
   /** 追加ヘッダ (Authorization は cookie で済むので通常は不要) */
   headers?: Record<string, string>;
   /** UI 表示用ラベル (例: "証明書発行: 田中さん プリウス") */
@@ -35,4 +62,4 @@ export interface OutboxItem {
 }
 
 export type EnqueueInput = Pick<OutboxItem, "url" | "method" | "label" | "kind"> &
-  Partial<Pick<OutboxItem, "bodyJson" | "headers">>;
+  Partial<Pick<OutboxItem, "bodyJson" | "headers" | "multipart">>;

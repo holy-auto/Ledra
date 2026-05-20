@@ -13,26 +13,94 @@
 import type { EnqueueInput, OutboxItem } from "./types";
 
 const DB_NAME = "ledra-outbox";
-const DB_VERSION = 1;
+/** v1: items only / v2: + blobs store (multipart 添付ファイル用) */
+const DB_VERSION = 2;
 const STORE = "items";
+const BLOB_STORE = "blobs";
 
 function isAvailable(): boolean {
   return typeof globalThis !== "undefined" && typeof globalThis.indexedDB !== "undefined";
+}
+
+interface OutboxBlobRow {
+  id: string;
+  blob: Blob;
+  fileName: string;
+  mimeType: string;
+  createdAt: number;
 }
 
 async function openDb(): Promise<IDBDatabase | null> {
   if (!isAvailable()) return null;
   return new Promise((resolve, reject) => {
     const req = globalThis.indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (event) => {
       const db = req.result;
+      const oldVersion = event.oldVersion;
       if (!db.objectStoreNames.contains(STORE)) {
         const store = db.createObjectStore(STORE, { keyPath: "id" });
         store.createIndex("byCreatedAt", "createdAt");
       }
+      // v2: blobs ストアを追加 (v1 → v2 マイグレーション)
+      if (oldVersion < 2 && !db.objectStoreNames.contains(BLOB_STORE)) {
+        db.createObjectStore(BLOB_STORE, { keyPath: "id" });
+      }
     };
     req.onerror = () => reject(req.error ?? new Error("indexedDB open failed"));
     req.onsuccess = () => resolve(req.result);
+  });
+}
+
+/** Blob を outbox_blobs に保存し、ref ID を返す。 */
+export async function putOutboxBlob(blob: Blob, fileName: string, mimeType: string): Promise<string | null> {
+  const db = await openDb();
+  if (!db) return null;
+  const id = generateId();
+  const row: OutboxBlobRow = { id, blob, fileName, mimeType, createdAt: Date.now() };
+  return new Promise<string | null>((resolve, reject) => {
+    const tx = db.transaction(BLOB_STORE, "readwrite");
+    tx.objectStore(BLOB_STORE).add(row);
+    tx.oncomplete = () => {
+      db.close();
+      resolve(id);
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error ?? new Error("blob put failed"));
+    };
+  });
+}
+
+/** ref ID から Blob を取り出す。 */
+async function getOutboxBlob(refId: string): Promise<OutboxBlobRow | null> {
+  const db = await openDb();
+  if (!db) return null;
+  return new Promise<OutboxBlobRow | null>((resolve) => {
+    const tx = db.transaction(BLOB_STORE, "readonly");
+    const req = tx.objectStore(BLOB_STORE).get(refId);
+    req.onsuccess = () => resolve((req.result as OutboxBlobRow | undefined) ?? null);
+    req.onerror = () => resolve(null);
+    tx.oncomplete = () => db.close();
+  });
+}
+
+/** 1 件削除 (item と紐付く blob refs も一緒に GC)。 */
+async function removeOutboxBlobs(refIds: string[]): Promise<void> {
+  if (refIds.length === 0) return;
+  const db = await openDb();
+  if (!db) return;
+  await new Promise<void>((resolve) => {
+    const tx = db.transaction(BLOB_STORE, "readwrite");
+    const store = tx.objectStore(BLOB_STORE);
+    for (const ref of refIds) store.delete(ref);
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      resolve();
+    };
   });
 }
 
@@ -91,6 +159,7 @@ export async function enqueueOutbox(input: EnqueueInput): Promise<OutboxItem | n
     url: input.url,
     method: input.method,
     bodyJson: input.bodyJson ?? null,
+    multipart: input.multipart,
     headers: input.headers ?? undefined,
     label: input.label,
     kind: input.kind,
@@ -126,8 +195,31 @@ export async function listOutbox(): Promise<OutboxItem[]> {
   });
 }
 
-/** 1 件削除 (フラッシュ成功時 or 手動キャンセル時)。 */
+/** 1 件削除 (フラッシュ成功時 or 手動キャンセル時)。multipart の blob refs も併せて GC する。 */
 export async function removeOutboxItem(id: string): Promise<void> {
+  // item 取得 → blob refs 列挙 → blob 削除 → item 削除 の順 (GC 漏れ防止)
+  const db = await openDb();
+  if (!db) return;
+  let blobRefs: string[] = [];
+  await new Promise<void>((resolve) => {
+    const tx = db.transaction(STORE, "readonly");
+    const req = tx.objectStore(STORE).get(id);
+    req.onsuccess = () => {
+      const cur = req.result as OutboxItem | undefined;
+      if (cur?.multipart) {
+        blobRefs = cur.multipart.files.map((f) => f.blobRef);
+      }
+    };
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      resolve();
+    };
+  });
+  await removeOutboxBlobs(blobRefs);
   await withStore("readwrite", (store) => store.delete(id));
 }
 
@@ -174,6 +266,27 @@ export interface DrainDeps {
   markAttempt: (id: string, error: string | null) => Promise<void>;
   /** 現在の online 状態を返す。false で中断 */
   isOnline: () => boolean;
+  /** multipart item の Blob ref を解決する。テスト時はモック注入 */
+  resolveBlob?: (refId: string) => Promise<{ blob: Blob; fileName: string; mimeType: string } | null>;
+}
+
+/**
+ * multipart item を再構築して fetch に渡せる FormData にする。
+ * blob ref が見つからない (= IDB から消えていた) 場合は呼び出し側でエラー扱い。
+ */
+async function buildFormData(item: OutboxItem, resolveBlob: NonNullable<DrainDeps["resolveBlob"]>): Promise<FormData> {
+  const form = new FormData();
+  const mp = item.multipart;
+  if (!mp) return form;
+  for (const f of mp.fields) {
+    form.append(f.name, f.value);
+  }
+  for (const file of mp.files) {
+    const blob = await resolveBlob(file.blobRef);
+    if (!blob) throw new Error(`multipart blob missing: ${file.blobRef}`);
+    form.append(file.name, new File([blob.blob], file.fileName, { type: file.mimeType }));
+  }
+  return form;
 }
 
 /**
@@ -190,10 +303,24 @@ export async function drainItems(items: OutboxItem[], deps: DrainDeps): Promise<
     if (!deps.isOnline()) break;
     result.attempted += 1;
     try {
+      let body: BodyInit | undefined;
+      let headers: Record<string, string>;
+      if (item.multipart && deps.resolveBlob) {
+        body = await buildFormData(item, deps.resolveBlob);
+        // multipart の Content-Type は fetch がブラウザで自動付与 (boundary 含む)
+        headers = { ...(item.headers ?? {}) };
+      } else if (item.bodyJson) {
+        body = item.bodyJson;
+        headers = { "Content-Type": "application/json", ...(item.headers ?? {}) };
+      } else {
+        body = undefined;
+        headers = { ...(item.headers ?? {}) };
+      }
+
       const res = await deps.doFetch(item.url, {
         method: item.method,
-        headers: { ...(item.bodyJson ? { "Content-Type": "application/json" } : {}), ...(item.headers ?? {}) },
-        body: item.bodyJson ?? undefined,
+        headers,
+        body,
         credentials: "include",
       });
       if (res.ok || res.status === 409) {
@@ -232,5 +359,10 @@ export async function drainOutbox(opts?: { abortOnOffline?: boolean }): Promise<
     remove: removeOutboxItem,
     markAttempt: markOutboxAttempt,
     isOnline: () => (abortOnOffline ? (typeof navigator === "undefined" ? true : navigator.onLine !== false) : true),
+    resolveBlob: async (ref) => {
+      const row = await getOutboxBlob(ref);
+      if (!row) return null;
+      return { blob: row.blob, fileName: row.fileName, mimeType: row.mimeType };
+    },
   });
 }

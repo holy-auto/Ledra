@@ -121,6 +121,71 @@ describe("drainItems", () => {
     expect(doFetch).toHaveBeenCalledTimes(2);
   });
 
+  it("rebuilds FormData for multipart items using resolveBlob", async () => {
+    const remove = vi.fn(async () => {});
+    const doFetch = vi.fn(async (_url: unknown, _init?: unknown) => mkResponse({ ok: true, status: 201 }));
+    const resolveBlob = vi.fn(async (refId: string) => ({
+      blob: new Blob(["x"], { type: "image/jpeg" }),
+      fileName: refId + ".jpg",
+      mimeType: "image/jpeg",
+    }));
+
+    const multipartItem = item({
+      id: "mp-1",
+      url: "/api/upload",
+      method: "POST",
+      bodyJson: null,
+      multipart: {
+        fields: [{ name: "public_id", value: "abc" }],
+        files: [{ name: "photos", blobRef: "ref-1", fileName: "a.jpg", mimeType: "image/jpeg" }],
+      },
+    });
+
+    const result = await drainItems([multipartItem], {
+      doFetch: doFetch as unknown as typeof fetch,
+      remove,
+      markAttempt: vi.fn(async () => {}),
+      isOnline: () => true,
+      resolveBlob,
+    });
+
+    expect(result.succeeded).toBe(1);
+    expect(remove).toHaveBeenCalledWith("mp-1");
+    const init = doFetch.mock.calls[0][1] as RequestInit;
+    expect(init.body).toBeInstanceOf(FormData);
+    // multipart リクエストでは Content-Type を手動セットしてはいけない (boundary が壊れる)
+    expect((init.headers as Record<string, string>)["Content-Type"]).toBeUndefined();
+    expect(resolveBlob).toHaveBeenCalledWith("ref-1");
+  });
+
+  it("marks attempt when multipart blob is missing", async () => {
+    const markAttempt = vi.fn(async () => {});
+    const doFetch = vi.fn();
+    const resolveBlob = vi.fn(async () => null);
+
+    const multipartItem = item({
+      id: "mp-bad",
+      url: "/api/upload",
+      method: "POST",
+      bodyJson: null,
+      multipart: {
+        fields: [],
+        files: [{ name: "photos", blobRef: "ref-missing", fileName: "x.jpg", mimeType: "image/jpeg" }],
+      },
+    });
+
+    const result = await drainItems([multipartItem], {
+      doFetch: doFetch as unknown as typeof fetch,
+      remove: vi.fn(async () => {}),
+      markAttempt,
+      isOnline: () => true,
+      resolveBlob,
+    });
+    expect(result.failed).toBe(1);
+    expect(doFetch).not.toHaveBeenCalled();
+    expect(markAttempt).toHaveBeenCalledWith("mp-bad", expect.stringContaining("blob missing"));
+  });
+
   it("sends Content-Type header only when body is present", async () => {
     const doFetch = vi.fn(async (_url: unknown, _init?: unknown) => mkResponse({ ok: true, status: 200 }));
     const items = [item({ id: "a", bodyJson: null, method: "DELETE" })];

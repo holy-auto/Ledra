@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { enqueueOrFetchMultipart } from "@/lib/outbox/enqueueOrFetchMultipart";
 
 type Props = {
   publicId: string;
@@ -29,28 +30,42 @@ async function compressToJpeg(file: File): Promise<File | null> {
       try {
         let w = img.naturalWidth;
         let h = img.naturalHeight;
-        if (!w || !h) { resolve(null); return; }
+        if (!w || !h) {
+          resolve(null);
+          return;
+        }
 
         if (w > MAX_DIMENSION || h > MAX_DIMENSION) {
-          if (w >= h) { h = Math.round((h * MAX_DIMENSION) / w); w = MAX_DIMENSION; }
-          else { w = Math.round((w * MAX_DIMENSION) / h); h = MAX_DIMENSION; }
+          if (w >= h) {
+            h = Math.round((h * MAX_DIMENSION) / w);
+            w = MAX_DIMENSION;
+          } else {
+            w = Math.round((w * MAX_DIMENSION) / h);
+            h = MAX_DIMENSION;
+          }
         }
 
         const canvas = document.createElement("canvas");
         canvas.width = w;
         canvas.height = h;
         const ctx = canvas.getContext("2d");
-        if (!ctx) { resolve(null); return; }
+        if (!ctx) {
+          resolve(null);
+          return;
+        }
         ctx.drawImage(img, 0, 0, w, h);
 
         const newName = file.name.replace(/\.[^.]+$/, ".jpg") || "photo.jpg";
-        const qualities = [0.85, 0.70, 0.55];
+        const qualities = [0.85, 0.7, 0.55];
         let qi = 0;
 
         const tryNext = () => {
           canvas.toBlob(
             (blob) => {
-              if (!blob) { resolve(null); return; }
+              if (!blob) {
+                resolve(null);
+                return;
+              }
               if (blob.size <= TARGET_BYTES || qi >= qualities.length - 1) {
                 resolve(new File([blob], newName, { type: "image/jpeg" }));
               } else {
@@ -69,7 +84,10 @@ async function compressToJpeg(file: File): Promise<File | null> {
       }
     };
 
-    img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve(null); };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(null);
+    };
     img.src = objectUrl;
   });
 }
@@ -128,28 +146,32 @@ export default function CertImageUpload({ publicId, remaining, maxPhotos }: Prop
             return;
           }
 
-          const form = new FormData();
-          form.append("public_id", publicId);
-          form.append("photos", toSend);
+          // オンライン: 通常 fetch / オフライン: outbox にキューして復帰後に自動アップロード
+          const r = await enqueueOrFetchMultipart({
+            url: "/api/certificates/images/upload",
+            fields: { public_id: publicId },
+            files: [{ fieldName: "photos", file: toSend }],
+            label: `証明書写真: ${file.name}`,
+            kind: "certificate_image_upload",
+          });
 
-          // Fetch may throw (network error, connection drop on mobile).
-          // Catch it separately so we can show a meaningful message.
-          let res: Response;
-          try {
-            res = await fetch("/api/certificates/images/upload", {
-              method: "POST",
-              body: form,
-            });
-          } catch (fetchErr) {
+          if (r.queued) {
             setMessage(null);
-            const detail = fetchErr instanceof Error ? `（${fetchErr.message}）` : "";
-            setError(`ネットワークエラーが発生しました。通信状態を確認してから再試行してください。${detail}`);
+            setError("📡 オフラインのため写真をキューに保存しました。通信復帰後に自動でアップロードされます。");
+            // queued=true でループは継続せず終了 (残りの写真もオフラインのはず)
             return;
           }
 
+          const res = r.response;
+          if (!res) {
+            setError("アップロードに失敗しました (応答なし)。");
+            return;
+          }
           // Vercel returns HTML on 413; parse JSON safely.
           let json: Record<string, unknown> = {};
-          try { json = await res.json(); } catch {}
+          try {
+            json = await res.json();
+          } catch {}
 
           if (!res.ok) {
             setMessage(null);
