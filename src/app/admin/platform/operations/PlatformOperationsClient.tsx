@@ -97,14 +97,23 @@ type OperationsData = {
 };
 
 // ── Tab definitions ──
-type TabKey = "overview" | "tenants" | "security" | "actions";
+type TabKey = "overview" | "tenants" | "addons" | "security" | "actions";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "overview", label: "システム概要" },
   { key: "tenants", label: "テナント管理" },
+  { key: "addons", label: "アドオン" },
   { key: "security", label: "セキュリティ監査" },
   { key: "actions", label: "遠隔操作" },
 ];
+
+type AddonStatus = {
+  key: string;
+  label: string;
+  description: string;
+  primaryRoute: string;
+  enabled: boolean;
+};
 
 // ── Plan label ──
 const PLAN_LABELS: Record<string, string> = {
@@ -274,8 +283,160 @@ export default function PlatformOperationsClient() {
       {/* Tab content */}
       {activeTab === "overview" && <OverviewTab data={data} />}
       {activeTab === "tenants" && <TenantsTab />}
+      {activeTab === "addons" && <AddonsTab />}
       {activeTab === "security" && <SecurityTab />}
       {activeTab === "actions" && <ActionsTab />}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// Addons Tab — per-tenant addon enable/disable
+// ════════════════════════════════════════════════════════════════
+function AddonsTab() {
+  const [tenantId, setTenantId] = useState("");
+  const [tenantName, setTenantName] = useState<string | null>(null);
+  const [addons, setAddons] = useState<AddonStatus[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [acting, setActing] = useState<string | null>(null);
+  const [notes, setNotes] = useState("");
+
+  async function loadAddons() {
+    const id = tenantId.trim();
+    if (!id) {
+      setError("テナントIDを入力してください");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setAddons([]);
+    setTenantName(null);
+    try {
+      const res = await fetch(`/api/admin/platform/tenant-addons?tenantId=${encodeURIComponent(id)}`);
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        setError(json.message ?? json.error ?? `読み込みに失敗しました (HTTP ${res.status})`);
+        return;
+      }
+      setTenantName(json.tenant?.name ?? null);
+      setAddons(json.addons ?? []);
+    } catch {
+      setError("通信エラーが発生しました");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function toggleAddon(addonKey: string, enable: boolean) {
+    if (!tenantId.trim()) return;
+    const action = enable ? "enable_addon" : "disable_addon";
+    const label = addons.find((a) => a.key === addonKey)?.label ?? addonKey;
+    if (!confirm(`${tenantName ?? "このテナント"} の「${label}」を${enable ? "有効化" : "無効化"}しますか？`)) return;
+    setActing(addonKey);
+    try {
+      const res = await fetch("/api/admin/platform/tenant-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId: tenantId.trim(),
+          action,
+          params: { addon_key: addonKey, notes: notes.trim() || undefined },
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        alert(json.message ?? json.error ?? "操作に失敗しました");
+        return;
+      }
+      setAddons((prev) => prev.map((a) => (a.key === addonKey ? { ...a, enabled: enable } : a)));
+    } catch {
+      alert("通信エラーが発生しました");
+    } finally {
+      setActing(null);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="glass-card p-5 border-l-4 border-accent">
+        <div className="text-sm font-semibold text-primary">アドオン管理</div>
+        <div className="text-xs text-muted mt-1">
+          テナントごとに opt-in アドオンを有効化 / 無効化します。操作は監査ログに記録されます。 既存テナントは migration
+          により利用実績があるアドオンが自動付与済みです。
+        </div>
+      </div>
+
+      <div className="glass-card p-5 space-y-4">
+        <div className="space-y-1">
+          <label className="text-xs text-muted">テナントID (UUID)</label>
+          <input
+            type="text"
+            value={tenantId}
+            onChange={(e) => setTenantId(e.target.value)}
+            placeholder="例: 00000000-0000-0000-0000-000000000000"
+            className="input-field font-mono"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs text-muted">運用メモ (任意・監査ログに残ります)</label>
+          <input
+            type="text"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="例: support ticket #142 / 営業契約 2026-05-21"
+            className="input-field"
+            maxLength={500}
+          />
+        </div>
+
+        <div>
+          <button onClick={loadAddons} disabled={loading} className="btn-primary">
+            {loading ? "読み込み中..." : "アドオン状態を取得"}
+          </button>
+        </div>
+
+        {error && <div className="p-3 rounded-lg text-sm bg-danger/10 text-danger">{error}</div>}
+      </div>
+
+      {tenantName && addons.length > 0 && (
+        <div className="glass-card p-5 space-y-4">
+          <div>
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted">対象テナント</div>
+            <div className="mt-1 text-base font-semibold text-primary">{tenantName}</div>
+            <div className="text-xs text-muted font-mono mt-0.5">{tenantId.slice(0, 24)}...</div>
+          </div>
+
+          <div className="divide-y divide-border-subtle">
+            {addons.map((a) => (
+              <div key={a.key} className="py-4 flex items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-primary">{a.label}</span>
+                    <Badge variant={a.enabled ? "success" : "default"}>{a.enabled ? "有効" : "無効"}</Badge>
+                  </div>
+                  <div className="text-xs text-muted mt-1">{a.description}</div>
+                  <div className="text-[11px] text-muted font-mono mt-1">
+                    key: {a.key} / route: {a.primaryRoute}
+                  </div>
+                </div>
+                <button
+                  onClick={() => toggleAddon(a.key, !a.enabled)}
+                  disabled={acting === a.key}
+                  className={`shrink-0 text-xs px-3 py-1.5 rounded transition-colors ${
+                    a.enabled
+                      ? "bg-danger/10 text-danger hover:bg-danger/20"
+                      : "bg-success/10 text-success hover:bg-success/20"
+                  }`}
+                >
+                  {acting === a.key ? "..." : a.enabled ? "無効化" : "有効化"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

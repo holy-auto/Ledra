@@ -174,9 +174,12 @@ export default async function AdminSettingsPage() {
             <div className="mt-1 font-mono text-[11px] text-muted break-all">{tenantId.slice(0, 16)}…</div>
           </div>
         </div>
-        <div className="mt-4 flex gap-3">
+        <div className="mt-4 flex flex-wrap gap-3">
           <Link href="/admin/billing" className="btn-secondary">
             プラン・請求管理
+          </Link>
+          <Link href="/admin/settings/addons" className="btn-secondary">
+            ご契約アドオン
           </Link>
           <Link href="/admin/logo" className="btn-secondary">
             ロゴを設定
