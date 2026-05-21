@@ -92,13 +92,27 @@ Server Action で、以下の依存を持つため単純な Outbox 化が出来�
   `registerOutboxBackgroundSync()` を発火
 - `OfflineBanner` がマウント時に登録し、SW からの drain 完了通知で UI 更新
 
-### 2.4 オフライン読み取り (写真キャッシュ)
+### 2.4 オフライン読み取り ✅ 完了 (別ブランチ `claude/pwa-offline-read-r2y3Z`)
 
-- 直近の certs / reservations を IDB にキャッシュし、オフライン中も閲覧可能に
-- 既存 SW は静的アセットのみ。HTML/JSON の network-first → cache-fallback を
-  選択的に追加 (Workbox 不使用、手動実装)
+直近の admin ページ HTML と選択された API GET レスポンスを SW で
+stale-while-revalidate キャッシュし、オフライン中も閲覧可能に。
 
-工数見積: 3〜5 日。
+実装:
+- `public/sw.js`: 新しいキャッシュ層 (`ledra-html-v1` / `ledra-api-v1`) を追加
+  - 同一オリジン + GET + `admin` 配下の HTML を SWR で保存
+  - 選択 API (`/api/admin/certificates`, `/reservations`, `/customers`,
+    `/jobs/[id]/photos`, `/service-packages`) を SWR で保存
+  - キャッシュ Response に `X-From-Cache: 1` + `X-Cache-Age-Ms` ヘッダを付与
+- `src/lib/offline-cache/client.ts`:
+  - `clearOfflineReadCache()` — ログアウト / テナント切替時に呼ぶ。SW に
+    postMessage で全消去を依頼
+  - `readCacheInfo(response)` — レスポンスが SW キャッシュ由来か判定
+  - `formatCacheAge(ms)` — 「N 分前 / N 時間前 / N 日前」
+
+注意点 (Trust Boundary):
+- 同一ブラウザでユーザ切替する運用は想定外
+- ログアウト時に `clearOfflineReadCache()` を必ず呼ぶこと (要配線)
+- 異なるテナントへ tenant cookie 切替時も同じ
 
 ---
 
