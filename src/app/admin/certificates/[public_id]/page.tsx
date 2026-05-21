@@ -9,6 +9,7 @@ import AiExplainPanel from "@/components/certificates/AiExplainPanel";
 import SignatureRequestPanel from "./SignatureRequestPanel";
 import CertEditForm from "./CertEditForm";
 import CertEditHistory from "./CertEditHistory";
+import CertMaintenanceLogs, { type MaintenanceLog } from "./CertMaintenanceLogs";
 import CertImageUpload from "./CertImageUpload";
 import CertImageDeleteButton from "./CertImageDeleteButton";
 import MediaUploadSection from "./MediaUploadSection";
@@ -176,19 +177,40 @@ export default async function Page({ params }: PageProps) {
   const remainingPhotos = Math.max(maxPhotos - images.length, 0);
 
   // Fetch edit history
-  const { data: editHistoryRaw } = await admin
+  const { data: editHistoryRaw, error: editHistoryError } = await admin
     .from("certificate_edit_histories")
     .select("id, version, changes, edited_by, created_at")
     .eq("certificate_id", row.id)
     .order("created_at", { ascending: false })
     .limit(50);
 
-  // Resolve editor emails
-  const editorIds = [...new Set((editHistoryRaw ?? []).map((h: any) => h.edited_by).filter(Boolean))];
-  const editorMap: Record<string, string> = {};
-  for (const uid of editorIds) {
+  if (editHistoryError) {
+    console.error("certificate_edit_histories fetch error", editHistoryError);
+  }
+
+  // Fetch maintenance logs
+  const { data: maintenanceLogsRaw, error: maintenanceLogsError } = await admin
+    .from("certificate_maintenance_logs")
+    .select("id, performed_at, content, performed_by, created_at")
+    .eq("certificate_id", row.id)
+    .order("performed_at", { ascending: false })
+    .limit(200);
+
+  if (maintenanceLogsError) {
+    console.error("certificate_maintenance_logs fetch error", maintenanceLogsError);
+  }
+
+  // Resolve editor / performer emails together
+  const userIds = [
+    ...new Set([
+      ...(editHistoryRaw ?? []).map((h: any) => h.edited_by).filter(Boolean),
+      ...(maintenanceLogsRaw ?? []).map((m: any) => m.performed_by).filter(Boolean),
+    ]),
+  ];
+  const userEmailMap: Record<string, string> = {};
+  for (const uid of userIds) {
     const { data: userData } = await admin.auth.admin.getUserById(uid as string);
-    if (userData?.user?.email) editorMap[uid as string] = userData.user.email;
+    if (userData?.user?.email) userEmailMap[uid as string] = userData.user.email;
   }
 
   const editHistory = (editHistoryRaw ?? []).map((h: any) => ({
@@ -196,8 +218,16 @@ export default async function Page({ params }: PageProps) {
     version: h.version as number,
     changes: h.changes as Array<{ field: string; label: string; old: unknown; new: unknown }>,
     edited_by: h.edited_by as string | null,
-    editor_email: h.edited_by ? (editorMap[h.edited_by as string] ?? null) : null,
+    editor_email: h.edited_by ? (userEmailMap[h.edited_by as string] ?? null) : null,
     created_at: h.created_at as string,
+  }));
+
+  const maintenanceLogs: MaintenanceLog[] = (maintenanceLogsRaw ?? []).map((m: any) => ({
+    id: m.id as string,
+    performed_at: m.performed_at as string,
+    content: m.content as string,
+    performer_email: m.performed_by ? (userEmailMap[m.performed_by as string] ?? null) : null,
+    created_at: m.created_at as string,
   }));
 
   // Prepare cert data for edit form
@@ -541,6 +571,16 @@ export default async function Page({ params }: PageProps) {
               <SignatureRequestPanel certificateId={row.id as string} />
             </section>
           )}
+
+          {/* メンテナンス履歴 */}
+          <section className="glass-card p-5 space-y-4">
+            <div>
+              <div className="text-xs font-semibold tracking-[0.18em] text-muted">MAINTENANCE</div>
+              <div className="mt-1 text-lg font-semibold text-primary">メンテナンス履歴</div>
+              <p className="mt-1 text-xs text-muted">実施日時とメンテナンス内容を記録できます。</p>
+            </div>
+            <CertMaintenanceLogs publicId={row.public_id as string} logs={maintenanceLogs} readOnly={isVoid} />
+          </section>
 
           {/* 編集履歴 */}
           <section className="glass-card p-5 space-y-4">

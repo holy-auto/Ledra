@@ -140,13 +140,17 @@ export async function PUT(req: NextRequest) {
     }
 
     // Record edit history
-    await admin.from("certificate_edit_histories").insert({
+    const { error: historyError } = await admin.from("certificate_edit_histories").insert({
       certificate_id: cert.id,
       tenant_id: caller.tenantId,
       edited_by: caller.userId,
       version: nextVersion,
       changes,
     });
+
+    if (historyError) {
+      console.error("certificate edit history insert error", historyError);
+    }
 
     // Also log to audit_logs for general audit trail
     await admin.from("audit_logs").insert({

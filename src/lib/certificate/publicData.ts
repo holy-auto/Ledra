@@ -115,6 +115,18 @@ type ReservationRow = {
   created_at: string | null;
 };
 
+type MaintenanceLogRow = {
+  id: string;
+  performed_at: string;
+  content: string;
+};
+
+export type PublicMaintenanceLog = {
+  id: string;
+  performed_at: string;
+  content: string;
+};
+
 /** 公開向けに簡素化した予約レコード (customer 情報や担当者は含まない)。 */
 export type PublicReservation = {
   id: string;
@@ -163,6 +175,7 @@ export type PublicCertificateData = {
   images: (ImageRow & { url: string | null; rendered_url: string | null })[];
   media: ResolvedCertificateMedia[];
   reservations: PublicReservation[];
+  maintenance_logs: PublicMaintenanceLog[];
   vehicle_certificates: (Omit<VehicleCertRow, "content_free_text"> & {
     content_free_text?: undefined;
     customer_name: string | null;
@@ -211,84 +224,93 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
   const cert = certRes.data;
   if (!cert?.tenant_id) return null;
 
-  const [tenantRes, vehicleRes, nfcRes, histRes, imgRes, vcRes, mediaRes, reservationsRes] = await Promise.all([
-    supabase
-      .from("tenants")
-      .select("name, slug, custom_domain")
-      .eq("id", cert.tenant_id)
-      .limit(1)
-      .maybeSingle<TenantRow>(),
+  const [tenantRes, vehicleRes, nfcRes, histRes, imgRes, vcRes, mediaRes, reservationsRes, maintLogsRes] =
+    await Promise.all([
+      supabase
+        .from("tenants")
+        .select("name, slug, custom_domain")
+        .eq("id", cert.tenant_id)
+        .limit(1)
+        .maybeSingle<TenantRow>(),
 
-    cert.vehicle_id
-      ? supabase
-          .from("vehicles")
-          .select("id, maker, model, year, plate_display, customer_name, customer_email, notes, vin_code_normalized")
-          .eq("id", cert.vehicle_id)
-          .limit(1)
-          .maybeSingle<VehicleRow>()
-      : Promise.resolve({ data: null as VehicleRow | null, error: null }),
+      cert.vehicle_id
+        ? supabase
+            .from("vehicles")
+            .select("id, maker, model, year, plate_display, customer_name, customer_email, notes, vin_code_normalized")
+            .eq("id", cert.vehicle_id)
+            .limit(1)
+            .maybeSingle<VehicleRow>()
+        : Promise.resolve({ data: null as VehicleRow | null, error: null }),
 
-    supabase
-      .from("nfc_tags")
-      .select("id, tag_code, status, written_at, attached_at")
-      .eq("certificate_id", cert.id)
-      .limit(1)
-      .maybeSingle<NfcRow>(),
+      supabase
+        .from("nfc_tags")
+        .select("id, tag_code, status, written_at, attached_at")
+        .eq("certificate_id", cert.id)
+        .limit(1)
+        .maybeSingle<NfcRow>(),
 
-    cert.vehicle_id
-      ? supabase
-          .from("vehicle_histories")
-          .select("id, type, title, description, performed_at, created_at")
-          .eq("vehicle_id", cert.vehicle_id)
-          .order("performed_at", { ascending: false })
-          .limit(50)
-          .returns<HistoryRow[]>()
-      : Promise.resolve({ data: [] as HistoryRow[], error: null }),
+      cert.vehicle_id
+        ? supabase
+            .from("vehicle_histories")
+            .select("id, type, title, description, performed_at, created_at")
+            .eq("vehicle_id", cert.vehicle_id)
+            .order("performed_at", { ascending: false })
+            .limit(50)
+            .returns<HistoryRow[]>()
+        : Promise.resolve({ data: [] as HistoryRow[], error: null }),
 
-    supabase
-      .from("certificate_images")
-      .select(
-        "id, file_name, content_type, file_size, sort_order, created_at, storage_path, authenticity_grade, sha256, polygon_tx_hash, polygon_network, annotations, rendered_storage_path",
-      )
-      .eq("certificate_id", cert.id)
-      .order("sort_order", { ascending: true })
-      .limit(20)
-      .returns<ImageRow[]>(),
+      supabase
+        .from("certificate_images")
+        .select(
+          "id, file_name, content_type, file_size, sort_order, created_at, storage_path, authenticity_grade, sha256, polygon_tx_hash, polygon_network, annotations, rendered_storage_path",
+        )
+        .eq("certificate_id", cert.id)
+        .order("sort_order", { ascending: true })
+        .limit(20)
+        .returns<ImageRow[]>(),
 
-    cert.vehicle_id
-      ? supabase
-          .from("certificates")
-          .select(
-            "id, public_id, status, customer_name, created_at, vehicle_info_json, content_free_text, expiry_value",
-          )
-          .eq("vehicle_id", cert.vehicle_id)
-          .neq("public_id", pid)
-          .order("created_at", { ascending: false })
-          .limit(20)
-          .returns<VehicleCertRow[]>()
-      : Promise.resolve({ data: [] as VehicleCertRow[], error: null }),
+      cert.vehicle_id
+        ? supabase
+            .from("certificates")
+            .select(
+              "id, public_id, status, customer_name, created_at, vehicle_info_json, content_free_text, expiry_value",
+            )
+            .eq("vehicle_id", cert.vehicle_id)
+            .neq("public_id", pid)
+            .order("created_at", { ascending: false })
+            .limit(20)
+            .returns<VehicleCertRow[]>()
+        : Promise.resolve({ data: [] as VehicleCertRow[], error: null }),
 
-    supabase
-      .from("certificate_media")
-      .select(
-        "id, media_type, storage_path, before_path, poster_path, duration_ms, width, height, caption, sort_order, content_type, file_size, created_at",
-      )
-      .eq("certificate_id", cert.id)
-      .order("sort_order", { ascending: true })
-      .limit(50)
-      .returns<CertificateMediaRow[]>(),
+      supabase
+        .from("certificate_media")
+        .select(
+          "id, media_type, storage_path, before_path, poster_path, duration_ms, width, height, caption, sort_order, content_type, file_size, created_at",
+        )
+        .eq("certificate_id", cert.id)
+        .order("sort_order", { ascending: true })
+        .limit(50)
+        .returns<CertificateMediaRow[]>(),
 
-    cert.vehicle_id
-      ? supabase
-          .from("reservations")
-          .select("id, title, status, scheduled_date, start_time, created_at")
-          .eq("vehicle_id", cert.vehicle_id)
-          .in("status", ["arrived", "in_progress", "completed"])
-          .order("scheduled_date", { ascending: false })
-          .limit(20)
-          .returns<ReservationRow[]>()
-      : Promise.resolve({ data: [] as ReservationRow[], error: null }),
-  ]);
+      cert.vehicle_id
+        ? supabase
+            .from("reservations")
+            .select("id, title, status, scheduled_date, start_time, created_at")
+            .eq("vehicle_id", cert.vehicle_id)
+            .in("status", ["arrived", "in_progress", "completed"])
+            .order("scheduled_date", { ascending: false })
+            .limit(20)
+            .returns<ReservationRow[]>()
+        : Promise.resolve({ data: [] as ReservationRow[], error: null }),
+
+      supabase
+        .from("certificate_maintenance_logs")
+        .select("id, performed_at, content")
+        .eq("certificate_id", cert.id)
+        .order("performed_at", { ascending: false })
+        .limit(100)
+        .returns<MaintenanceLogRow[]>(),
+    ]);
 
   const tenant = tenantRes.data ?? null;
   const vehicle = vehicleRes.data ?? null;
@@ -358,6 +380,14 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
     scheduled_at: combineScheduledAt(r.scheduled_date, r.start_time, r.created_at),
   }));
 
+  const maintenance_logs: PublicMaintenanceLog[] = (
+    !maintLogsRes.error && maintLogsRes.data && !isVoid ? maintLogsRes.data : []
+  ).map((m) => ({
+    id: m.id,
+    performed_at: m.performed_at,
+    content: m.content,
+  }));
+
   const vehicleServiceHistoryCount = vehicle_certificates.length;
   const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/c/${cert.public_id}`;
 
@@ -385,6 +415,7 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
     images,
     media,
     reservations,
+    maintenance_logs,
     vehicle_certificates: vehicle_certificates.map((vc) => ({
       ...vc,
       content_free_text: undefined as undefined,

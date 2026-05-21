@@ -94,6 +94,11 @@ type PublicStatusResponse = {
   }>;
   media?: ResolvedCertificateMedia[];
   reservations?: ReservationItem[];
+  maintenance_logs?: Array<{
+    id: string;
+    performed_at: string;
+    content: string;
+  }>;
   shop?: {
     name?: string | null;
     slug?: string | null;
@@ -636,6 +641,20 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
           }))}
           reservations={!isVoidCertificate ? (data.reservations ?? []) : []}
         />
+
+        {!isVoidCertificate && (data.maintenance_logs?.length ?? 0) > 0 && (
+          <section className="glass-card p-4">
+            <div className="mb-3 font-bold text-primary">メンテナンス履歴</div>
+            <ul className="space-y-3">
+              {(data.maintenance_logs ?? []).map((log) => (
+                <li key={log.id} className="rounded-lg bg-base p-3">
+                  <div className="text-xs text-muted">{formatDateTime(log.performed_at)}</div>
+                  <div className="mt-1 whitespace-pre-wrap text-sm text-primary">{log.content}</div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
 
       {!isVoidCertificate ? (
