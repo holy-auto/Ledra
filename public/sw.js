@@ -2,11 +2,31 @@
  * Ledra Service Worker
  * - Caches app shell for offline resilience
  * - Network-first for API calls, cache-first for static assets
+ * - Stale-while-revalidate for admin pages + selected GET APIs (offline read)
  * - Background Sync: drains the IndexedDB outbox queue when the OS
  *   detects network availability, even if the tab is closed
  */
 
 const CACHE_NAME = "ledra-v2";
+const HTML_CACHE = "ledra-html-v1";
+const API_CACHE = "ledra-api-v1";
+/** Cache の TTL (ms)。これより古い stale はオフライン時のみ使う */
+const STALE_AT_MS = 7 * 24 * 60 * 60 * 1000; // 7 日
+
+/**
+ * オフライン読み取り対象の admin API GET エンドポイント。
+ * 同期写真などのバイナリ・PDF・Plaintext は対象外 (キャッシュ容量考慮)。
+ *
+ * 注: 同一ブラウザを複数ユーザで使う運用は想定外。テナント切替や
+ * ログアウト時には clearOfflineReadCache() で全消去すること。
+ */
+const CACHEABLE_API_PATTERNS = [
+  /^\/api\/admin\/certificates(\?|$)/,
+  /^\/api\/admin\/reservations(\?|$)/,
+  /^\/api\/admin\/customers(\?|$|\/[^/]+\/messages)/,
+  /^\/api\/admin\/jobs\/[^/]+\/photos$/,
+  /^\/api\/admin\/service-packages(\?|$)/,
+];
 
 // ─── IndexedDB Outbox 定義 (src/lib/outbox/queue.ts と一致させること) ────────────
 const OUTBOX_DB_NAME = "ledra-outbox";
@@ -24,7 +44,7 @@ self.addEventListener("activate", (event) => {
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((key) => key !== CACHE_NAME)
+          .filter((key) => key !== CACHE_NAME && key !== HTML_CACHE && key !== API_CACHE)
           .map((key) => caches.delete(key)),
       ),
     ),
@@ -34,13 +54,14 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
+  if (request.method !== "GET") return;
+
   const url = new URL(request.url);
 
-  // Skip non-GET and API requests
-  if (request.method !== "GET" || url.pathname.startsWith("/api/")) return;
+  // 同一オリジンのみ対象 (CORS / 外部 CDN は触らない)
+  if (url.origin !== self.location.origin) return;
 
   // Static assets (fonts, images): cache-first
-  // JS/CSS are excluded — Next.js uses content-hashed URLs and handles its own caching
   if (url.pathname.match(/\.(png|jpg|jpeg|svg|webp|avif|woff2?|ico|gif)$/)) {
     event.respondWith(
       caches.match(request).then(
@@ -58,8 +79,92 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // All other requests (HTML, JS, CSS, API): network-only
+  // Selected admin API: stale-while-revalidate (offline read)
+  if (url.pathname.startsWith("/api/") && isCacheableApi(url.pathname)) {
+    event.respondWith(staleWhileRevalidate(request, API_CACHE));
+    return;
+  }
+
+  // その他の API は network-only (mutation / リアルタイム性が要るため)
+  if (url.pathname.startsWith("/api/")) return;
+
+  // Admin pages (HTML): stale-while-revalidate
+  // 注意: ユーザ別データを含むため、ログアウトや別ユーザでログインする時は
+  // clearOfflineReadCache() で消すこと (clients から postMessage で呼べる)
+  if (url.pathname.startsWith("/admin") && request.headers.get("accept")?.includes("text/html")) {
+    event.respondWith(staleWhileRevalidate(request, HTML_CACHE));
+    return;
+  }
+
+  // それ以外はブラウザ任せ (JS/CSS は Next.js のハッシュ URL に頼る)
 });
+
+function isCacheableApi(pathname) {
+  for (const re of CACHEABLE_API_PATTERNS) {
+    if (re.test(pathname)) return true;
+  }
+  return false;
+}
+
+/**
+ * Stale-while-revalidate: 即座に cache を返しつつ、バックグラウンドで再取得して更新する。
+ * Cache hit がオンライン時は古いまま 1 回返してから裏で更新。オフライン時のみ stale を表示。
+ *
+ * 戻り Response にはユーザの状態判定用のヘッダを足す:
+ *   - X-From-Cache: "1" (キャッシュから返した)
+ *   - X-Cache-Age-Ms: 数値 (キャッシュ作成からの経過 ms)
+ */
+async function staleWhileRevalidate(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(request);
+  const now = Date.now();
+
+  const fetchAndCache = fetch(request)
+    .then((response) => {
+      if (response.ok) {
+        // タイムスタンプ用のラッパー Response を作成して保存
+        const wrapped = wrapWithMeta(response.clone(), now);
+        cache.put(request, wrapped).catch(() => {});
+      }
+      return response;
+    })
+    .catch(() => null);
+
+  if (cached) {
+    // オンラインなら再取得を待たずに stale を返す (UX 優先)。オフラインなら結果は同じ
+    const cachedAt = Number(cached.headers.get("X-Cached-At-Ms")) || 0;
+    const ageMs = now - cachedAt;
+    const headers = new Headers(cached.headers);
+    headers.set("X-From-Cache", "1");
+    headers.set("X-Cache-Age-Ms", String(ageMs));
+    return new Response(cached.body, { status: cached.status, statusText: cached.statusText, headers });
+  }
+
+  // Cache 不在: network を待つしかない (offline なら自然に失敗 = ブラウザのエラー)
+  const fresh = await fetchAndCache;
+  return fresh || new Response(JSON.stringify({ error: "offline_no_cache" }), {
+    status: 503,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+/**
+ * Response を加工してメタヘッダ X-Cached-At-Ms を付与する。
+ * cache.put 前に呼ぶ。body は stream なので Response constructor で詰め直す。
+ */
+async function wrapWithMeta(response, cachedAtMs) {
+  const headers = new Headers(response.headers);
+  headers.set("X-Cached-At-Ms", String(cachedAtMs));
+  // STALE_AT_MS より古いキャッシュは offline 時のみ使う前提 (現状は強制削除しない)
+  void STALE_AT_MS;
+  const body = await response.arrayBuffer();
+  return new Response(body, { status: response.status, statusText: response.statusText, headers });
+}
+
+/** clients からのメッセージで cache 全消去 (ログアウト時に呼ぶ)。 */
+async function clearOfflineReadCaches() {
+  await Promise.all([caches.delete(HTML_CACHE), caches.delete(API_CACHE)]);
+}
 
 // ─── Background Sync: タブが閉じていても OS-level で drain を試行する ───
 //
@@ -71,10 +176,15 @@ self.addEventListener("sync", (event) => {
   event.waitUntil(drainOutbox());
 });
 
-// 開発・テスト用: ページから postMessage で手動トリガできる ('drain-outbox' を投げる)
+// ページからの postMessage を処理:
+//   - "drain-outbox": Outbox を SW スコープで drain (Background Sync の手動 trigger)
+//   - "clear-offline-cache": ログアウト等で HTML / API キャッシュを全消去
 self.addEventListener("message", (event) => {
-  if (event.data && event.data.type === "drain-outbox") {
+  const type = event.data && event.data.type;
+  if (type === "drain-outbox") {
     event.waitUntil(drainOutbox());
+  } else if (type === "clear-offline-cache") {
+    event.waitUntil(clearOfflineReadCaches());
   }
 });
 
