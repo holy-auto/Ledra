@@ -10,6 +10,7 @@
  */
 
 import { enqueueOutbox, putOutboxBlob } from "./queue";
+import { registerOutboxBackgroundSync } from "./backgroundSync";
 import type { OfflineCapableResult } from "./enqueueOrFetch";
 import type { OutboxKind, OutboxMultipartFile } from "./types";
 
@@ -56,6 +57,7 @@ export async function enqueueOrFetchMultipart(opts: Options): Promise<OfflineCap
 
   // オフライン直 enqueue
   const queued = await enqueueMultipart(opts, method);
+  void registerOutboxBackgroundSync();
   return { ok: true, status: 202, queued: true, outboxId: queued?.id };
 }
 

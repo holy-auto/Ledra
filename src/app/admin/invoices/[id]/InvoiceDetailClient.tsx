@@ -4,6 +4,7 @@ import { parseJsonSafe } from "@/lib/api/safeJson";
 import { useRef, useState } from "react";
 import Badge from "@/components/ui/Badge";
 import { formatDate, formatDateTime, formatJpy } from "@/lib/format";
+import { enqueueOrFetch } from "@/lib/outbox/enqueueOrFetch";
 
 type InvoiceItem = {
   description: string;
@@ -152,13 +153,24 @@ export default function InvoiceDetailClient({
     setUpdating(true);
     setMsg(null);
     try {
-      const res = await fetch("/api/admin/invoices", {
+      const r = await enqueueOrFetch({
+        url: "/api/admin/invoices",
         method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: invoice.id, status: newStatus }),
+        body: { id: invoice.id, status: newStatus },
+        label: `請求書ステータス → ${statusLabel(newStatus)}`,
+        kind: "other",
       });
-      const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      if (r.queued) {
+        setMsg({
+          text: `📡 オフラインです。ステータス変更を保留し、ネット復帰後に自動同期します。`,
+          ok: true,
+        });
+        // 楽観的に UI を更新
+        setInvoice({ ...invoice, status: newStatus });
+        return;
+      }
+      const j = r.response ? await parseJsonSafe(r.response) : null;
+      if (!r.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${r.status}`);
       setInvoice(j.invoice);
       setMsg({ text: `ステータスを「${statusLabel(newStatus)}」に変更しました`, ok: true });
     } catch (e: any) {

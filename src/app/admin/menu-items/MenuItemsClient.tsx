@@ -9,6 +9,7 @@ import EmptyStateGuide from "@/components/ui/EmptyStateGuide";
 import FirstUseInlineGuide from "@/components/ui/FirstUseInlineGuide";
 import { formatJpy } from "@/lib/format";
 import { fetcher } from "@/lib/swr";
+import { enqueueOrFetch } from "@/lib/outbox/enqueueOrFetch";
 import MenuItemPackagesPanel from "./MenuItemPackagesPanel";
 
 /* ---------- Types ---------- */
@@ -133,19 +134,27 @@ export default function MenuItemsClient() {
     if (!editingId || !editName.trim()) return;
     setEditSaving(true);
     try {
-      const res = await fetch("/api/admin/menu-items", {
+      const r = await enqueueOrFetch({
+        url: "/api/admin/menu-items",
         method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+        body: {
           id: editingId,
           name: editName.trim(),
           description: editDescription.trim() || null,
           unit_price: editUnitPrice ? parseInt(editUnitPrice, 10) : null,
           tax_category: parseInt(editTaxCategory, 10),
-        }),
+        },
+        label: `品目編集: ${editName.trim()}`,
+        kind: "other",
       });
-      const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      if (r.queued) {
+        setEditingId(null);
+        setSaveMsg({ text: "📡 オフラインで保留しました。復帰後に同期されます。", ok: true });
+        mutate();
+        return;
+      }
+      const j = r.response ? await parseJsonSafe(r.response) : null;
+      if (!r.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${r.status}`);
       setEditingId(null);
       setSaveMsg({ text: "品目を更新しました", ok: true });
       mutate();

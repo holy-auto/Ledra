@@ -75,24 +75,44 @@ Server Action で、以下の依存を持つため単純な Outbox 化が出来�
 
 それぞれ呼び出し箇所で `enqueueOrFetch` に差し替えるだけ。
 
-### 2.3 Background Sync API (将来)
+### 2.3 Background Sync API ✅ 完了 (別ブランチ `claude/pwa-background-sync-r2y3Z`)
 
-ブラウザに `serviceWorker.sync.register("drain-outbox")` を登録すれば、
-タブが閉じていても OS レベルで再接続を検知して drain できる。今は同期は
-タブ Foreground でしか走らないため、店舗端末を閉じてしまうと滞留する。
+ブラウザに `serviceWorker.sync.register("drain-outbox")` を登録し、タブが
+閉じていても OS レベルで再接続を検知して drain する仕組み。Chromium 系で
+動作 (Firefox/Safari は未対応だが、既存の online イベント経路にフォールバック)。
 
-実装メモ:
-- SW 内で `sync` イベントハンドラを追加
-- `IndexedDB` への同じアクセスを SW スコープから可能にする
-  (`src/lib/outbox/queue.ts` を SW でも import 可能にする)
+実装:
+- `public/sw.js` に `sync` / `message` イベントハンドラ + 最小 IDB 実装
+  (queue.ts のスキーマと一致。multipart Blob も再構築)
+- `src/lib/outbox/backgroundSync.ts`:
+  - `registerOutboxBackgroundSync()` — enqueue 後に呼ぶ
+  - `triggerSwDrainOutbox()` — postMessage で SW に即同期トリガ
+  - `subscribeOutboxDrainedFromSw()` — SW からの "outbox-drained" 通知を購読
+- `enqueueOrFetch` / `enqueueOrFetchMultipart` で enqueue 完了後に
+  `registerOutboxBackgroundSync()` を発火
+- `OfflineBanner` がマウント時に登録し、SW からの drain 完了通知で UI 更新
 
-### 2.4 オフライン読み取り (写真キャッシュ)
+### 2.4 オフライン読み取り ✅ 完了 (別ブランチ `claude/pwa-offline-read-r2y3Z`)
 
-- 直近の certs / reservations を IDB にキャッシュし、オフライン中も閲覧可能に
-- 既存 SW は静的アセットのみ。HTML/JSON の network-first → cache-fallback を
-  選択的に追加 (Workbox 不使用、手動実装)
+直近の admin ページ HTML と選択された API GET レスポンスを SW で
+stale-while-revalidate キャッシュし、オフライン中も閲覧可能に。
 
-工数見積: 3〜5 日。
+実装:
+- `public/sw.js`: 新しいキャッシュ層 (`ledra-html-v1` / `ledra-api-v1`) を追加
+  - 同一オリジン + GET + `admin` 配下の HTML を SWR で保存
+  - 選択 API (`/api/admin/certificates`, `/reservations`, `/customers`,
+    `/jobs/[id]/photos`, `/service-packages`) を SWR で保存
+  - キャッシュ Response に `X-From-Cache: 1` + `X-Cache-Age-Ms` ヘッダを付与
+- `src/lib/offline-cache/client.ts`:
+  - `clearOfflineReadCache()` — ログアウト / テナント切替時に呼ぶ。SW に
+    postMessage で全消去を依頼
+  - `readCacheInfo(response)` — レスポンスが SW キャッシュ由来か判定
+  - `formatCacheAge(ms)` — 「N 分前 / N 時間前 / N 日前」
+
+注意点 (Trust Boundary):
+- 同一ブラウザでユーザ切替する運用は想定外
+- ログアウト時に `clearOfflineReadCache()` を必ず呼ぶこと (要配線)
+- 異なるテナントへ tenant cookie 切替時も同じ
 
 ---
 

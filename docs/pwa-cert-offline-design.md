@@ -209,11 +209,21 @@ Phase 1 では Unit のみ。E2E は Phase 2 で。
 
 ## 7. 実装フェーズ
 
-| Phase | 内容 | コミット |
+| Phase | 内容 | ステータス |
 |---|---|---|
-| **1 (今回)** | 設計確定 / POST API / Idempotency 連携 / Unit テスト | feat(certs): cert create JSON API + idempotency (1 commit) |
-| 2 | クライアントフォーム配線 / 写真 idempotency_key 拡張 / Optimistic UI | 2-3 commits |
-| 3 | 「保留中の証明書」一覧 UI / 手動キャンセル / e2e | 2 commits |
+| **1** | 設計確定 / POST API / Idempotency 連携 / Unit テスト | ✅ 完了 (`9ca2395`) |
+| **2** | クライアントフォーム配線 / オフライン時の文字情報 enqueue | ✅ 完了 (`bc4191a`) |
+| **3-mini** | 「保留中の証明書」一覧 UI / 手動キャンセル | ✅ 完了 (`b913275`) |
+| **3-full** | cert_idempotency_keys 永続マッピング + 画像 upload で逆引き + 写真自動 enqueue | ✅ 完了 (本ブランチ) |
+| 4 (将来) | E2E (Playwright route.abort) / 接続不安定下の再試行 stress test | 未着手 |
+
+### Phase 3-full の実装詳細
+
+1. **migration `cert_idempotency_keys`**: `(idempotency_key PK, tenant_id, certificate_id, public_id, expires_at)`。RLS は SELECT のみテナント開放、INSERT は service-role 経由
+2. **`src/lib/certificates/idempotencyMap.ts`**: `recordCertIdempotency` / `lookupCertByIdempotencyKey` ヘルパ
+3. **`POST /api/admin/certificates`**: cert 作成成功 + idempotency-key ヘッダ有り → mapping を INSERT
+4. **`POST /api/certificates/images/upload`**: `cert_idempotency_key` form field を受け入れ、永続マッピングから public_id を逆引き。見つからない場合は **425 Too Early** で drainOutbox に再試行を任せる
+5. **`CertNewFormWrapper`**: offline 経路で写真も `enqueueOrFetchMultipart` で enqueue (`cert_idempotency_key` field 付き)。drainOutbox が cert → 写真の順で送信
 
 ---
 

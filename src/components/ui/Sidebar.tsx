@@ -1106,6 +1106,14 @@ export default function Sidebar() {
               } catch {
                 /* ignore */
               }
+              // 同一ブラウザでユーザ切替する運用に備え、SW のオフライン読み取り
+              // キャッシュ (HTML / API) を破棄する。失敗してもログアウト自体は続行。
+              try {
+                const { clearOfflineReadCache } = await import("@/lib/offline-cache/client");
+                await clearOfflineReadCache();
+              } catch {
+                /* ignore */
+              }
             } catch {
               /* ignore */
             }

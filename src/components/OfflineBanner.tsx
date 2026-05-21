@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { countOutbox, drainOutbox } from "@/lib/outbox/queue";
+import { registerOutboxBackgroundSync, subscribeOutboxDrainedFromSw } from "@/lib/outbox/backgroundSync";
 
 /**
  * グローバルなオフライン状態 / 同期待ちアイテム表示バナー。
@@ -50,11 +51,22 @@ export default function OfflineBanner() {
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
 
+    // Background Sync 登録 (タブ閉時の OS-level 同期。対応ブラウザのみ動く)
+    void registerOutboxBackgroundSync();
+
+    // SW から "outbox-drained" 通知 (SW がバックグラウンドで drain した直後) を購読し、
+    // queueCount を即時 refresh する
+    const unsubscribe = subscribeOutboxDrainedFromSw(() => {
+      refreshCount();
+      setLastResult("バックグラウンドで同期しました");
+    });
+
     // 周期的にカウント refresh (キュー追加は他 Tab/SW から起きうるため)
     const interval = setInterval(refreshCount, 15_000);
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
+      unsubscribe();
       clearInterval(interval);
     };
   }, [refreshCount]);

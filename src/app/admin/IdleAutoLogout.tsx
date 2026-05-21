@@ -36,12 +36,19 @@ export default function IdleAutoLogout({ logoutUrl = "/login" }: IdleAutoLogoutP
       } catch {
         /* ignore */
       }
+      // SW のオフライン読み取りキャッシュ (HTML / API) も破棄
+      try {
+        const { clearOfflineReadCache } = await import("@/lib/offline-cache/client");
+        await clearOfflineReadCache();
+      } catch {
+        /* ignore */
+      }
     } catch {
       /* ignore */
     }
     // replaceでbfcacheに管理画面を残さない
     window.location.replace(`${logoutUrl}?reason=idle`);
-  }, []);
+  }, [logoutUrl]);
 
   const dismissWarning = useCallback(() => {
     warningDialogRef.current?.close();
