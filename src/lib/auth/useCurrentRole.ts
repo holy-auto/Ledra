@@ -12,6 +12,7 @@ type MeData = {
   tenant_name: string | null;
   plan_tier: string;
   role: Role;
+  is_platform_admin: boolean;
 };
 
 let cachedData: MeData | null = null;
@@ -22,7 +23,7 @@ async function fetchMe(): Promise<MeData | null> {
     const res = await fetch("/api/admin/me", { cache: "no-store" });
     if (!res.ok) return null;
     const j = await res.json();
-    return { ...j, role: normalizeRole(j.role) };
+    return { ...j, role: normalizeRole(j.role), is_platform_admin: j.is_platform_admin === true };
   } catch {
     return null;
   }
@@ -63,6 +64,7 @@ export function useCurrentRole() {
     data,
     loading,
     role: data?.role ?? null,
+    isPlatformAdmin: data?.is_platform_admin === true,
     can,
     refresh,
   };
