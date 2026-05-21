@@ -75,16 +75,22 @@ Server Action で、以下の依存を持つため単純な Outbox 化が出来�
 
 それぞれ呼び出し箇所で `enqueueOrFetch` に差し替えるだけ。
 
-### 2.3 Background Sync API (将来)
+### 2.3 Background Sync API ✅ 完了 (別ブランチ `claude/pwa-background-sync-r2y3Z`)
 
-ブラウザに `serviceWorker.sync.register("drain-outbox")` を登録すれば、
-タブが閉じていても OS レベルで再接続を検知して drain できる。今は同期は
-タブ Foreground でしか走らないため、店舗端末を閉じてしまうと滞留する。
+ブラウザに `serviceWorker.sync.register("drain-outbox")` を登録し、タブが
+閉じていても OS レベルで再接続を検知して drain する仕組み。Chromium 系で
+動作 (Firefox/Safari は未対応だが、既存の online イベント経路にフォールバック)。
 
-実装メモ:
-- SW 内で `sync` イベントハンドラを追加
-- `IndexedDB` への同じアクセスを SW スコープから可能にする
-  (`src/lib/outbox/queue.ts` を SW でも import 可能にする)
+実装:
+- `public/sw.js` に `sync` / `message` イベントハンドラ + 最小 IDB 実装
+  (queue.ts のスキーマと一致。multipart Blob も再構築)
+- `src/lib/outbox/backgroundSync.ts`:
+  - `registerOutboxBackgroundSync()` — enqueue 後に呼ぶ
+  - `triggerSwDrainOutbox()` — postMessage で SW に即同期トリガ
+  - `subscribeOutboxDrainedFromSw()` — SW からの "outbox-drained" 通知を購読
+- `enqueueOrFetch` / `enqueueOrFetchMultipart` で enqueue 完了後に
+  `registerOutboxBackgroundSync()` を発火
+- `OfflineBanner` がマウント時に登録し、SW からの drain 完了通知で UI 更新
 
 ### 2.4 オフライン読み取り (写真キャッシュ)
 

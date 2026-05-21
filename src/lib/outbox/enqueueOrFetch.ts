@@ -11,6 +11,7 @@
  */
 
 import { enqueueOutbox } from "./queue";
+import { registerOutboxBackgroundSync } from "./backgroundSync";
 import type { OutboxMethod, OutboxKind } from "./types";
 
 export interface OfflineCapableResult {
@@ -100,5 +101,7 @@ export async function enqueueOrFetch(opts: Options): Promise<OfflineCapableResul
     label: opts.label,
     kind: opts.kind,
   });
+  // Background Sync を登録 (対応ブラウザのみ。失敗しても呼び出し元は気にしない)
+  void registerOutboxBackgroundSync();
   return { ok: true, status: 202, queued: true, outboxId: item?.id };
 }
