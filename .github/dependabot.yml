@@ -14,6 +14,13 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # @zxing/browser@0.2.0 (npm latest) の peerDependencies が
+      # @zxing/library@^0.22.0 で固定されているため、library 単独で
+      # 0.23+ にバンプされると ERESOLVE で npm install が失敗し
+      # Vercel デプロイが落ちる。@zxing/browser に新版が出るまで
+      # library 側のバンプを無効化する (a47f1ec → 57f014b で 2 度
+      # 同じリグレッションが発生したため恒久対策)。
+      - dependency-name: "@zxing/library"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
