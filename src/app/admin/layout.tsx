@@ -8,14 +8,12 @@ import IdleAutoLogout from "./IdleAutoLogout";
 import HelpFab from "./HelpFab";
 import CommandPalette from "@/components/ui/CommandPalette";
 import NavigationProgress from "@/components/ui/NavigationProgress";
+import OfflineBanner from "@/components/OfflineBannerClient";
 import { ViewModeProvider } from "@/lib/view-mode/ViewModeContext";
 
 const Sidebar = dynamic(() => import("@/components/ui/Sidebar"), {
   loading: () => <div className="hidden lg:block lg:w-60 lg:shrink-0" />,
 });
-
-// Service Worker / IndexedDB に依存するためクライアントのみで描画 (SSR 不要)
-const OfflineBanner = dynamic(() => import("@/components/OfflineBanner"), { ssr: false });
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (

@@ -12,9 +12,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import EmptyStateGuide from "@/components/ui/EmptyStateGuide";
 import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
 import CertificatesModeSwitch from "./CertificatesModeSwitch";
-
-// IndexedDB を読むためクライアントのみで描画 (SSR では何も表示しない)
-const PendingOfflineCerts = dynamic(() => import("./PendingOfflineCerts"), { ssr: false });
+import PendingOfflineCerts from "./PendingOfflineCertsClient";
 
 type SearchParams = { q?: string };
 
