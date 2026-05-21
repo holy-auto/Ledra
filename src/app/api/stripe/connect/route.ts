@@ -13,12 +13,23 @@ function getStripe() {
   return new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion });
 }
 
-/** オープンリダイレクト対策: 許可済みオリジンのURLのみ通す */
-function safeUrl(candidate?: string | null, fallback?: string): string {
-  const base = process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/+$/, "") ?? "";
-  const safe = fallback ?? `${base}/admin/settings`;
+/**
+ * オープンリダイレクト対策: 許可済みオリジンのURLのみ通す。
+ *
+ * 許可するオリジン:
+ *   1. リクエスト自身の origin (req.nextUrl.origin) — 実際に呼び出されたドメイン
+ *   2. NEXT_PUBLIC_BASE_URL (設定されている場合) — 明示的な許可リスト
+ *
+ * いずれの env も無くても落ちないように、必ずリクエストの origin を基準にする。
+ */
+function safeUrl(req: NextRequest, candidate?: string | null, fallback?: string): string {
+  const reqOrigin = req.nextUrl.origin.replace(/\/+$/, "");
+  const envBase = process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/+$/, "") ?? "";
+  const allowedBases = envBase && envBase !== reqOrigin ? [reqOrigin, envBase] : [reqOrigin];
+
+  const safe = fallback ?? `${reqOrigin}/admin/settings`;
   if (!candidate) return safe;
-  if (base && candidate.startsWith(base)) return candidate;
+  if (allowedBases.some((b) => candidate.startsWith(b))) return candidate;
   return safe;
 }
 
@@ -65,8 +76,8 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-    const returnUrl = safeUrl(parsed.data.return_url);
-    const refreshUrl = safeUrl(parsed.data.refresh_url);
+    const returnUrl = safeUrl(req, parsed.data.return_url);
+    const refreshUrl = safeUrl(req, parsed.data.refresh_url);
 
     const accountLink = await stripe.accountLinks.create({
       account: accountId,
@@ -82,6 +93,28 @@ export async function POST(req: NextRequest) {
     });
   } catch (e) {
     return apiInternalError(e, "stripe connect create");
+  }
+}
+
+// ─── DELETE: Disconnect Stripe Connect (clears tenant-side account ID) ───
+export async function DELETE() {
+  // Stripe アカウント自体は削除せず、テナント側の紐付けのみ解除する。
+  // 解除後に「Stripe アカウントを接続」を押すと新しい account_id が発番される。
+  try {
+    const supabase = await createSupabaseServerClient();
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) return apiUnauthorized();
+
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const { error } = await admin
+      .from("tenants")
+      .update({ stripe_connect_account_id: null, stripe_connect_onboarded: false })
+      .eq("id", caller.tenantId);
+
+    if (error) return apiInternalError(error, "stripe connect disconnect");
+    return apiJson({ ok: true, connected: false, onboarded: false, account_id: null });
+  } catch (e) {
+    return apiInternalError(e, "stripe connect disconnect");
   }
 }
 
