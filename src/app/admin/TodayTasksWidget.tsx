@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { deriveTodayTasks, type TaskTile } from "@/lib/admin/todayTasks";
+import TodayTasksScopeToggle from "./TodayTasksScopeToggle";
 
 /**
  * 「今日のタスク」ウィジェット (server component)。
@@ -8,6 +9,10 @@ import { deriveTodayTasks, type TaskTile } from "@/lib/admin/todayTasks";
  * テナント全体の reservations / invoices / certificates から「今やるべきこと」
  * をカード化して並べる。LLM は使わず、deterministic な signals 抽出だけで動く
  * (deriveTodayTasks)。Suspense fallback として軽量スケルトンを別 export。
+ *
+ * scope="mine" の場合、reservation 関連タイル (作業中 / 本日来店) は現在ユーザに
+ * 担当アサインされた件数だけに絞られる。請求・証明書の期限系タイルは個人に
+ * 紐付かないためテナント全体のままとする (店全体の優先タスクなので)。
  */
 
 const TONE_STYLE: Record<TaskTile["tone"], { ring: string; badge: string; iconBg: string; iconColor: string }> = {
@@ -64,7 +69,15 @@ export function TodayTasksWidgetSkeleton() {
   );
 }
 
-export default async function TodayTasksWidget({ tenantId }: { tenantId: string }) {
+export default async function TodayTasksWidget({
+  tenantId,
+  scope = "tenant",
+  currentUserId = null,
+}: {
+  tenantId: string;
+  scope?: "tenant" | "mine";
+  currentUserId?: string | null;
+}) {
   const { admin } = createTenantScopedAdmin(tenantId);
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
@@ -72,15 +85,21 @@ export default async function TodayTasksWidget({ tenantId }: { tenantId: string 
   // 180 日前の日付文字列
   const dormantCutoff = new Date(today.getTime() - 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
+  const effectiveScope = scope === "mine" && currentUserId ? "mine" : "tenant";
+
   // 並列取得。各クエリは LIMIT を強く効かせて、ダッシュボード描画コストを抑える。
+  let reservationsQ = admin
+    .from("reservations")
+    .select("id, status, scheduled_date, title")
+    .eq("tenant_id", tenantId)
+    .or(`status.eq.in_progress,scheduled_date.eq.${todayStr}`)
+    .neq("status", "cancelled")
+    .limit(200);
+  if (effectiveScope === "mine" && currentUserId) {
+    reservationsQ = reservationsQ.eq("assigned_user_id", currentUserId);
+  }
   const [reservationsRes, invoicesRes, certsRes, churnRes] = await Promise.all([
-    admin
-      .from("reservations")
-      .select("id, status, scheduled_date, title")
-      .eq("tenant_id", tenantId)
-      .or(`status.eq.in_progress,scheduled_date.eq.${todayStr}`)
-      .neq("status", "cancelled")
-      .limit(200),
+    reservationsQ,
     admin
       .from("documents")
       .select("id, status, total, due_date")
@@ -121,13 +140,26 @@ export default async function TodayTasksWidget({ tenantId }: { tenantId: string 
     now: today,
   });
 
+  const showToggle = currentUserId != null;
+  const headerRow = (
+    <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+      <h2 className="text-sm font-semibold tracking-[0.18em] text-muted">
+        今日のタスク
+        {effectiveScope === "mine" && <span className="ml-2 text-[11px] text-accent">(あなた担当のみ)</span>}
+      </h2>
+      {showToggle && <TodayTasksScopeToggle scope={effectiveScope} />}
+    </div>
+  );
+
   // タスク 0 件のときも空のセクションは出さず、ポジティブな 1 行だけ表示
   if (tiles.length === 0) {
     return (
       <div>
-        <h2 className="text-sm font-semibold tracking-[0.18em] text-muted mb-3">今日のタスク</h2>
+        {headerRow}
         <div className="glass-card p-5 text-sm text-muted">
-          ✅ 急ぎのタスクはありません。クイックアクションから次の作業に進んでください。
+          {effectiveScope === "mine"
+            ? "✅ あなた担当の急ぎタスクはありません。"
+            : "✅ 急ぎのタスクはありません。クイックアクションから次の作業に進んでください。"}
         </div>
       </div>
     );
@@ -135,7 +167,7 @@ export default async function TodayTasksWidget({ tenantId }: { tenantId: string 
 
   return (
     <div>
-      <h2 className="text-sm font-semibold tracking-[0.18em] text-muted mb-3">今日のタスク</h2>
+      {headerRow}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {tiles.map((tile) => {
           const style = TONE_STYLE[tile.tone];

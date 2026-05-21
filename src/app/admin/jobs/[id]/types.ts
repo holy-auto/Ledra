@@ -19,6 +19,9 @@ export type JobReservation = {
   menu_items_json: MenuItem[] | null;
   cancelled_at: string | null;
   cancel_reason: string | null;
+  assigned_user_id: string | null;
+  work_started_at: string | null;
+  work_completed_at: string | null;
   created_at: string;
 };
 
@@ -57,12 +60,7 @@ export type JobDocument = {
   due_date: string | null;
 };
 
-export const STATUS_FLOW = [
-  "confirmed",
-  "arrived",
-  "in_progress",
-  "completed",
-] as const;
+export const STATUS_FLOW = ["confirmed", "arrived", "in_progress", "completed"] as const;
 
 export const STATUS_LABEL: Record<string, string> = {
   confirmed: "予約確定",

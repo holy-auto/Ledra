@@ -15,6 +15,13 @@ import {
   type ServicePackageCategory,
 } from "@/lib/validations/service-package";
 
+type SeedResponse = {
+  ok: boolean;
+  created_packages: number;
+  skipped_packages: number;
+  created_menu_items: number;
+};
+
 type PackageRow = {
   id: string;
   name: string;
@@ -40,12 +47,43 @@ const PRICE_STRATEGY_LABEL: Record<PackageRow["price_strategy"], string> = {
 
 export default function ServicePackagesClient() {
   const [includeArchived, setIncludeArchived] = useState(false);
+  const [seedBusy, setSeedBusy] = useState(false);
+  const [seedMsg, setSeedMsg] = useState<string | null>(null);
 
   const swrKey = `/api/admin/service-packages${includeArchived ? "?include_archived=true" : ""}`;
   const { data, isLoading, error, mutate } = useSWR<ListResponse>(swrKey, fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 2000,
   });
+
+  const handleSeed = async () => {
+    if (
+      !confirm(
+        "標準施工テンプレートを一括投入します。\nガラスコーティング (Lv1/2/3)・PPF・ヘッドライト磨きなど 10+ パッケージと、紐づくメニュー品目を作成します。\n既に同名のパッケージがある場合はスキップします。実行しますか？",
+      )
+    )
+      return;
+    setSeedBusy(true);
+    setSeedMsg(null);
+    try {
+      const res = await fetch("/api/admin/service-packages/seed", { method: "POST" });
+      const json = (await parseJsonSafe(res)) as SeedResponse | { message?: string } | null;
+      if (!res.ok) throw new Error((json as { message?: string } | null)?.message ?? `HTTP ${res.status}`);
+      const r = json as SeedResponse;
+      if (r.created_packages === 0) {
+        setSeedMsg("既に標準テンプレートが入っているため、新規追加はありませんでした。");
+      } else {
+        setSeedMsg(
+          `標準テンプレートを ${r.created_packages} 件作成しました (品目 ${r.created_menu_items} 件追加)。${r.skipped_packages > 0 ? ` ${r.skipped_packages} 件は既存のためスキップ。` : ""}`,
+        );
+      }
+      await mutate();
+    } catch (e) {
+      setSeedMsg("投入に失敗しました: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setSeedBusy(false);
+    }
+  };
 
   const grouped = useMemo(() => {
     const out = new Map<ServicePackageCategory, PackageRow[]>();
@@ -94,11 +132,24 @@ export default function ServicePackagesClient() {
         title="施工パッケージ"
         description="セラミックコーティング Lv2 標準・PPF フルボディ標準などの施工バンドル。案件・見積・証明書フォームに 1 クリックで展開できます。"
         actions={
-          <Link href="/admin/service-packages/new" className="btn-primary">
-            + 新規パッケージ
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSeed}
+              disabled={seedBusy}
+              className="btn-secondary text-sm"
+              title="ガラスコーティング・PPF・ディテーリングなどの標準テンプレートを一括投入します"
+            >
+              {seedBusy ? "投入中…" : "🎁 標準テンプレートを一括投入"}
+            </button>
+            <Link href="/admin/service-packages/new" className="btn-primary">
+              + 新規パッケージ
+            </Link>
+          </div>
         }
       />
+
+      {seedMsg && <div className="glass-card border-l-4 border-accent p-3 text-xs text-secondary">{seedMsg}</div>}
 
       <div className="flex items-center gap-4">
         <label className="flex items-center gap-2 text-xs text-secondary">
@@ -123,13 +174,16 @@ export default function ServicePackagesClient() {
       {data && (data.packages?.length ?? 0) === 0 && (
         <EmptyStateGuide
           icon="📦"
-          title="最初の施工パッケージを作りましょう"
-          description="よく使う施工メニューの組み合わせ (例: ガラスコーティング + 撥水コート + ヘッドライト磨き) をパッケージ化すると、案件・見積・証明書フォームへ 1 クリックで展開できます。"
+          title="施工パッケージで作業を 1 クリック化"
+          description="ガラスコーティング・PPF・ヘッドライト磨きなど、業界でよく使う標準テンプレートを 10+ 件まとめて投入できます。後から自由に編集・削除可能です。"
           steps={[
-            { title: "「+ 新規パッケージ」をクリック", description: "右上のボタンから登録ページを開きます。" },
             {
-              title: "メニュー品目を組み合わせる",
-              description: "既存の品目マスタから検索して数量を指定。価格戦略は明細合計 / 固定価格 / 手動から選びます。",
+              title: "標準テンプレートを一括投入",
+              description: "コーティング 3 段階 / PPF 2 種 / ディテーリング 3 種 など 10+ 件を 1 クリックで投入。",
+            },
+            {
+              title: "自店の単価に編集",
+              description: "投入後、各パッケージから明細と単価を編集できます。地域や設備に合わせて調整。",
             },
             {
               title: "案件・証明書発行で再利用",
@@ -137,7 +191,11 @@ export default function ServicePackagesClient() {
             },
           ]}
           primaryAction={{
-            label: "+ 最初のパッケージを作成",
+            label: seedBusy ? "投入中…" : "🎁 標準テンプレートを一括投入",
+            onClick: handleSeed,
+          }}
+          secondaryAction={{
+            label: "+ ゼロから作成",
             href: "/admin/service-packages/new",
           }}
         />

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import type { SignaturePageData } from "@/lib/signature/types";
+import ReviewPrompt from "./ReviewPrompt";
 
 // ============================================================
 // 型定義
@@ -136,7 +137,7 @@ export default function SignatureClient({ token }: { token: string }) {
     return <StatusScreen icon="✅" title="署名済み" message="この証明書はすでに署名されています。" />;
   if (phase === "cancelled")
     return <StatusScreen icon="🚫" title="無効なリンク" message="このリンクはキャンセルされています。" />;
-  if (phase === "complete" && completeData) return <CompleteScreen data={completeData} />;
+  if (phase === "complete" && completeData) return <CompleteScreen data={completeData} token={token} />;
 
   // 署名フォーム
   const cert = sessionData?.certificate;
@@ -288,7 +289,7 @@ function StatusScreen({ icon, title, message }: { icon: string; title: string; m
   );
 }
 
-function CompleteScreen({ data }: { data: CompleteData }) {
+function CompleteScreen({ data, token }: { data: CompleteData; token: string }) {
   const [copied, setCopied] = useState(false);
 
   const copyVerifyUrl = async () => {
@@ -338,6 +339,9 @@ function CompleteScreen({ data }: { data: CompleteData }) {
           <br />
           署名証跡は Ledra のサーバーに安全に保管されます。
         </p>
+
+        {/* 顧客レビュー (任意) */}
+        <ReviewPrompt token={token} />
       </div>
     </div>
   );

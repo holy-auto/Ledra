@@ -214,13 +214,46 @@ export async function PUT(req: NextRequest) {
       updates.cancel_reason = cancel_reason ?? null;
     }
 
+    // 作業タイマー: status 遷移で work_started_at / work_completed_at を自動セット。
+    // 既に値が入っている場合は上書きしない (再進行で時刻が壊れるのを防ぐ)。
+    // 列が無い環境では update が落ちるので、別取得で現在値を見て条件付きで含める。
+    if (rest.status === "in_progress" || rest.status === "completed") {
+      try {
+        const { data: cur } = await supabase
+          .from("reservations")
+          .select("work_started_at, work_completed_at")
+          .eq("id", id)
+          .eq("tenant_id", caller.tenantId)
+          .maybeSingle();
+        const nowIso = new Date().toISOString();
+        if (
+          rest.status === "in_progress" &&
+          cur &&
+          (cur as { work_started_at: string | null }).work_started_at == null
+        ) {
+          updates.work_started_at = nowIso;
+        }
+        if (rest.status === "completed") {
+          if (cur && (cur as { work_started_at: string | null }).work_started_at == null) {
+            // 万一 in_progress を経ずに completed へ飛ぶケースは現時点を開始時刻として記録
+            updates.work_started_at = nowIso;
+          }
+          if (cur && (cur as { work_completed_at: string | null }).work_completed_at == null) {
+            updates.work_completed_at = nowIso;
+          }
+        }
+      } catch {
+        // 列が存在しない環境 (古いマイグレーション未適用) では timer を諦めて先に進む
+      }
+    }
+
     const { data, error } = await supabase
       .from("reservations")
       .update(updates)
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .select(
-        "id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, status, estimated_amount, gcal_event_id, cancelled_at, cancel_reason, created_at, updated_at",
+        "id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, status, estimated_amount, gcal_event_id, cancelled_at, cancel_reason, work_started_at, work_completed_at, created_at, updated_at",
       )
       .single();
 

@@ -1,5 +1,6 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { readSecret } from "@/lib/crypto/tenantSecrets";
+import { recordInboundLineMessage, recordOutboundLineMessage } from "./messageStore";
 
 /**
  * LINE Messaging API クライアント
@@ -216,15 +217,19 @@ export async function sendBookingCancellation(
 
 /**
  * LINE Webhook イベント処理
- * テナント用 Bot が受信したメッセージ/フォローイベントを処理
+ * テナント用 Bot が受信したメッセージ/フォローイベントを処理。
+ *
+ * 顧客発のテキストメッセージは customer_messages に inbound として記録する
+ * (auto-reply の有無に関わらず常に記録)。失敗してもメイン処理は止めない。
  */
 export async function handleWebhookEvents(
   tenantId: string,
   events: Array<{
     type: string;
     replyToken?: string;
+    timestamp?: number;
     source?: { userId?: string; type?: string };
-    message?: { type: string; text?: string };
+    message?: { type: string; id?: string; text?: string };
   }>,
 ): Promise<void> {
   const config = await getLineConfig(tenantId);
@@ -244,8 +249,19 @@ export async function handleWebhookEvents(
     }
 
     if (event.type === "message" && event.message?.type === "text" && event.source?.userId) {
-      const text = event.message.text?.trim().toLowerCase() ?? "";
+      const rawText = event.message.text ?? "";
 
+      // 顧客発のテキストはすべて inbound として保存 (auto-reply 有無に関わらず)
+      await recordInboundLineMessage({
+        tenantId,
+        lineUserId: event.source.userId,
+        body: rawText,
+        rawEvent: event,
+        lineMessageId: event.message.id ?? null,
+        lineTimestampMs: event.timestamp ?? null,
+      });
+
+      const text = rawText.trim().toLowerCase();
       if (text === "予約" || text === "booking") {
         // LIFF URL で予約画面へ誘導
         const liffUrl = config.liffId ? `https://liff.line.me/${config.liffId}` : null;
@@ -260,6 +276,63 @@ export async function handleWebhookEvents(
         }
       }
     }
+  }
+}
+
+/**
+ * 管理画面から顧客へ任意テキストを LINE Push 送信し、customer_messages に
+ * outbound として記録する。テナント側で line_enabled かつ access token が
+ * 設定されている前提。
+ *
+ * @returns 成功時 true、設定欠如や API エラーで false。どちらの場合も
+ *          履歴は customer_messages に残る (失敗時は failed_at + reason)。
+ */
+export async function sendCustomerLineText(params: {
+  tenantId: string;
+  customerId?: string | null;
+  lineUserId: string;
+  body: string;
+  sentByUserId?: string | null;
+}): Promise<boolean> {
+  const trimmed = params.body.trim();
+  if (!trimmed) return false;
+
+  const config = await getLineConfig(params.tenantId);
+  if (!config) {
+    await recordOutboundLineMessage({
+      tenantId: params.tenantId,
+      customerId: params.customerId ?? null,
+      lineUserId: params.lineUserId,
+      body: trimmed,
+      sentByUserId: params.sentByUserId ?? null,
+      delivered: false,
+      failureReason: "LINE integration not configured for this tenant",
+    });
+    return false;
+  }
+
+  try {
+    await sendMessage(config.channelAccessToken, params.lineUserId, [{ type: "text", text: trimmed }]);
+    await recordOutboundLineMessage({
+      tenantId: params.tenantId,
+      customerId: params.customerId ?? null,
+      lineUserId: params.lineUserId,
+      body: trimmed,
+      sentByUserId: params.sentByUserId ?? null,
+      delivered: true,
+    });
+    return true;
+  } catch (err) {
+    await recordOutboundLineMessage({
+      tenantId: params.tenantId,
+      customerId: params.customerId ?? null,
+      lineUserId: params.lineUserId,
+      body: trimmed,
+      sentByUserId: params.sentByUserId ?? null,
+      delivered: false,
+      failureReason: err instanceof Error ? err.message : String(err),
+    });
+    return false;
   }
 }
 

@@ -14,6 +14,9 @@ const Sidebar = dynamic(() => import("@/components/ui/Sidebar"), {
   loading: () => <div className="hidden lg:block lg:w-60 lg:shrink-0" />,
 });
 
+// Service Worker / IndexedDB に依存するためクライアントのみで描画 (SSR 不要)
+const OfflineBanner = dynamic(() => import("@/components/OfflineBanner"), { ssr: false });
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <ViewModeProvider>
@@ -32,6 +35,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <IdleAutoLogout />
       <CommandPalette />
       <HelpFab />
+      <OfflineBanner />
       <div className="flex min-h-screen">
         <Sidebar />
         <main id="main-content" className="flex-1 p-4 sm:p-6 pt-16 lg:ml-60 lg:pt-6">

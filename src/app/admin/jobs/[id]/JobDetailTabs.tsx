@@ -6,6 +6,7 @@ import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import { formatDate, formatJpy } from "@/lib/format";
 import JobPackageApply from "./JobPackageApply";
+import JobPhotosTab from "./JobPhotosTab";
 import type { MenuItem, JobReservation, JobCustomer, JobVehicle, JobCertificate, JobDocument } from "./types";
 
 /**
@@ -64,7 +65,7 @@ const certStatusVariant = (s: string) => {
   }
 };
 
-type TabKey = "summary" | "parties" | "certificates" | "billing";
+type TabKey = "summary" | "parties" | "certificates" | "photos" | "billing";
 
 interface Props {
   reservation: JobReservation;
@@ -103,12 +104,13 @@ export default function JobDetailTabs({ reservation, customer, vehicle, certific
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-1 border-b border-border-subtle">
+      <div className="flex items-center gap-1 border-b border-border-subtle overflow-x-auto">
         {(
           [
             { k: "summary", label: "サマリ" },
             { k: "parties", label: "顧客・車両" },
             { k: "certificates", label: `証明書 (${certificates.length})` },
+            { k: "photos", label: "📸 写真" },
             {
               k: "billing",
               label: `請求・見積 (${invoices.length + estimates.length})`,
@@ -118,7 +120,7 @@ export default function JobDetailTabs({ reservation, customer, vehicle, certific
           <button
             key={t.k}
             onClick={() => setTab(t.k)}
-            className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
               tab === t.k ? "border-accent text-primary" : "border-transparent text-secondary hover:text-primary"
             }`}
           >
@@ -126,6 +128,8 @@ export default function JobDetailTabs({ reservation, customer, vehicle, certific
           </button>
         ))}
       </div>
+
+      {tab === "photos" && <JobPhotosTab reservationId={reservation.id} certificateNewUrl={certificateNewUrl} />}
 
       {tab === "summary" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
