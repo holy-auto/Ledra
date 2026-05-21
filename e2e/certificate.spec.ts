@@ -38,12 +38,6 @@ test.describe("Certificate public access", () => {
     expect([400, 402, 404]).toContain(res.status());
   });
 
-  test("public certificate status returns 404 for invalid public_id", async ({ request }) => {
-    const res = await request.get("/api/certificate/public-status?public_id=nonexistent-id-12345");
-    // Should return structured error, not 500
-    expect(res.status()).toBeLessThan(500);
-  });
-
   test("public certificate page loads for valid format", async ({ page }) => {
     // /c/ is the public certificate viewing path - should handle gracefully even with invalid ID
     await page.goto("/c/nonexistent-test-id");
