@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { parsePagination } from "@/lib/api/pagination";
 import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
@@ -7,6 +8,8 @@ import { apiJson, apiOk, apiUnauthorized, apiValidationError, apiInternalError }
 import { withIdempotency } from "@/lib/api/idempotency";
 import { createCertAction } from "@/app/admin/certificates/new/actions";
 import { certCreateJsonSchema, jsonToCertFormData } from "@/lib/certificates/createCertificateApi";
+import { recordCertIdempotency } from "@/lib/certificates/idempotencyMap";
+import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +76,10 @@ export async function GET(req: NextRequest) {
  * 変換と idempotency 制御だけを担当する。
  */
 export async function POST(req: NextRequest): Promise<Response> {
+  // idempotency-key を withIdempotency より前に取得 (handler 内でも参照するため)。
+  // 形式チェックは withIdempotency 側でも行う。ここでは生値だけ拾う。
+  const rawIdemKey = req.headers.get("idempotency-key") ?? req.headers.get("Idempotency-Key");
+
   return withIdempotency(req, "admin:cert:create", async () => {
     try {
       const json = await req.json().catch(() => ({}));
@@ -89,6 +96,39 @@ export async function POST(req: NextRequest): Promise<Response> {
         if (result.error === "unauthorized") return apiUnauthorized();
         return apiValidationError(result.error);
       }
+
+      // 作成成功時、idempotency-key が指定されていれば永続マッピングを記録する。
+      // これでオフライン写真アップロードが (IP/network 変化後でも) public_id を逆引きできる。
+      if (rawIdemKey && rawIdemKey.length >= 8) {
+        try {
+          const supabase = await createSupabaseServerClient();
+          const caller = await resolveCallerWithRole(supabase);
+          if (caller) {
+            const { admin } = createTenantScopedAdmin(caller.tenantId);
+            const { data: cert } = await admin
+              .from("certificates")
+              .select("id, tenant_id")
+              .eq("public_id", result.public_id)
+              .eq("tenant_id", caller.tenantId)
+              .maybeSingle();
+            if (cert) {
+              await recordCertIdempotency({
+                idempotency_key: rawIdemKey,
+                tenant_id: cert.tenant_id as string,
+                certificate_id: cert.id as string,
+                public_id: result.public_id,
+              });
+            }
+          }
+        } catch (e) {
+          // マッピング記録失敗は本処理を止めない (cert は既に作成済み)。次回再送時の
+          // idempotency-key リプレイは Redis 側で機能するので冪等性自体は保たれる。
+          logger.warn("admin/certificates POST: idempotency map record failed", {
+            err: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
+
       return apiOk({ public_id: result.public_id });
     } catch (e: unknown) {
       return apiInternalError(e, "admin/certificates POST");
