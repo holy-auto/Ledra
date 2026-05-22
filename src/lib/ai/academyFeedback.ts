@@ -4,7 +4,61 @@
  * 証明書の内容・写真品質を総合評価し、
  * 学習フィードバックとLedra Standard達成状況を返す。
  */
-import { getAnthropicClient, AI_MODEL, AI_MODEL_FAST, parseJsonResponse } from "@/lib/ai/client";
+import { z } from "zod";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { withRetry } from "@/lib/http/withRetry";
+import { getAnthropicClient, AI_MODEL, AI_MODEL_FAST } from "@/lib/ai/client";
+
+const FeedbackStrengthSchema = z.object({
+  area: z.string(),
+  comment: z.string(),
+});
+
+const FeedbackImprovementSchema = z.object({
+  area: z.string(),
+  issue: z.string(),
+  suggestion: z.string(),
+  example: z.string().optional(),
+  priority: z.enum(["high", "medium", "low"]),
+});
+
+const StandardStatusSchema = z.object({
+  basic: z.boolean(),
+  standard: z.boolean(),
+  pro: z.boolean(),
+  nextStep: z.string(),
+});
+
+const CertificateFeedbackSchema = z.object({
+  overallGrade: z.enum(["S", "A", "B", "C", "D"]),
+  score: z.number(),
+  strengths: z.array(FeedbackStrengthSchema),
+  improvements: z.array(FeedbackImprovementSchema),
+  standardStatus: StandardStatusSchema,
+  encouragement: z.string(),
+});
+
+const AcademyCaseSummarySchema = z.object({
+  aiSummary: z.string(),
+  goodPoints: z.array(z.string()),
+  cautionPoints: z.array(z.string()),
+  tags: z.array(z.string()),
+  difficulty: z.number(),
+});
+
+const EMPTY_FEEDBACK: Omit<CertificateFeedbackResult, "similarGoodCases"> = {
+  overallGrade: "C",
+  score: 50,
+  strengths: [],
+  improvements: [],
+  standardStatus: {
+    basic: false,
+    standard: false,
+    pro: false,
+    nextStep: "AI フィードバック生成に失敗しました。再試行してください。",
+  },
+  encouragement: "AI フィードバック生成に失敗しました。",
+};
 
 // ─────────────────────────────────────────────
 // 型定義
@@ -118,33 +172,31 @@ export async function generateCertificateFeedback(input: CertificateFeedbackInpu
 【不足項目】${input.missingFields?.join(", ") || "なし"}
 【警告事項】${input.warningMessages?.join(", ") || "なし"}`;
 
-  const msg = await client.messages.create({
-    model: AI_MODEL,
-    max_tokens: 1024,
-    system: systemPrompt,
-    messages: [{ role: "user", content: userMessage }],
-  });
-
-  const text = msg.content[0].type === "text" ? msg.content[0].text : "{}";
-
   try {
-    const result = parseJsonResponse<Omit<CertificateFeedbackResult, "similarGoodCases">>(text);
+    const msg = await withRetry("anthropic", () =>
+      client.messages.parse({
+        model: AI_MODEL,
+        max_tokens: 1024,
+        system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
+        messages: [{ role: "user", content: userMessage }],
+        output_config: { format: zodOutputFormat(CertificateFeedbackSchema) },
+      }),
+    );
+
+    const result = msg.parsed_output;
+    if (!result) return { ...EMPTY_FEEDBACK, similarGoodCases: input.similarGoodCases ?? [] };
     return {
-      overallGrade: result.overallGrade ?? "C",
-      score: result.score ?? 50,
-      strengths: result.strengths ?? [],
-      improvements: result.improvements ?? [],
+      overallGrade: result.overallGrade,
+      score: result.score,
+      strengths: result.strengths,
+      improvements: result.improvements,
       similarGoodCases: input.similarGoodCases ?? [],
-      standardStatus: result.standardStatus ?? {
-        basic: false,
-        standard: false,
-        pro: false,
-        nextStep: "施工写真を2枚以上追加してください",
-      },
-      encouragement: result.encouragement ?? "一歩一歩積み上げていきましょう！",
+      standardStatus: result.standardStatus,
+      encouragement: result.encouragement,
     };
-  } catch {
-    throw new Error(`Academyフィードバック解析に失敗しました: ${text.slice(0, 200)}`);
+  } catch (err) {
+    console.error("[academyFeedback] generation failed:", err);
+    return { ...EMPTY_FEEDBACK, similarGoodCases: input.similarGoodCases ?? [] };
   }
 }
 
@@ -191,25 +243,29 @@ export async function generateAcademyCaseSummary(params: {
 品質スコア: ${params.qualityScore}
 写真枚数: ${params.photoCount}枚`;
 
-  const msg = await client.messages.create({
-    model: AI_MODEL_FAST,
-    max_tokens: 512,
-    system: systemPrompt,
-    messages: [{ role: "user", content: userMessage }],
-  });
-
-  const text = msg.content[0].type === "text" ? msg.content[0].text : "{}";
+  const fallback: AcademyCaseSummary = {
+    aiSummary: `${params.category}カテゴリの施工事例（品質スコア: ${params.qualityScore}）`,
+    goodPoints: [],
+    cautionPoints: [],
+    tags: [params.category],
+    difficulty: 3,
+  };
 
   try {
-    return parseJsonResponse<AcademyCaseSummary>(text);
-  } catch {
-    return {
-      aiSummary: `${params.category}カテゴリの施工事例（品質スコア: ${params.qualityScore}）`,
-      goodPoints: [],
-      cautionPoints: [],
-      tags: [params.category],
-      difficulty: 3,
-    };
+    const msg = await withRetry("anthropic", () =>
+      client.messages.parse({
+        model: AI_MODEL_FAST,
+        max_tokens: 512,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userMessage }],
+        output_config: { format: zodOutputFormat(AcademyCaseSummarySchema) },
+      }),
+    );
+
+    return msg.parsed_output ?? fallback;
+  } catch (err) {
+    console.error("[academyFeedback] case summary failed:", err);
+    return fallback;
   }
 }
 

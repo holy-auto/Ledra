@@ -1,20 +1,14 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const mockCreate = vi.fn();
+const mockParse = vi.fn();
 
 vi.mock("@/lib/ai/client", () => ({
   AI_MODEL_VISION: "claude-test-vision",
-  getAnthropicClient: () => ({ messages: { create: mockCreate } }),
-  parseJsonResponse: <T>(text: string): T => {
-    const cleaned = text
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/\s*```\s*$/i, "")
-      .trim();
-    return JSON.parse(cleaned) as T;
-  },
+  getAnthropicClient: () => ({ messages: { parse: mockParse } }),
 }));
 
 import { generateBeforeAfterDiff, normalizeImageMimeType } from "@/lib/ai/beforeAfterDiff";
+import { __resetBreakersForTest } from "@/lib/http/withRetry";
 
 describe("normalizeImageMimeType", () => {
   it("normalizes jpeg variants", () => {
@@ -36,12 +30,14 @@ describe("normalizeImageMimeType", () => {
 
 describe("generateBeforeAfterDiff", () => {
   beforeEach(() => {
-    mockCreate.mockReset();
+    mockParse.mockReset();
+    __resetBreakersForTest();
   });
 
-  function mockResponse(payload: object) {
-    mockCreate.mockResolvedValueOnce({
+  function mockResponse(payload: { compare_possible: boolean; summary: string; highlights: string[] }) {
+    mockParse.mockResolvedValueOnce({
       content: [{ type: "text", text: JSON.stringify(payload) }],
+      parsed_output: payload,
     });
   }
 
@@ -108,8 +104,8 @@ describe("generateBeforeAfterDiff", () => {
     ).rejects.toThrow(/no summary/);
   });
 
-  it("throws when the response is not JSON", async () => {
-    mockCreate.mockResolvedValueOnce({ content: [{ type: "text", text: "not json" }] });
+  it("throws when the SDK parse step fails", async () => {
+    mockParse.mockRejectedValueOnce(new Error("zod validation failed"));
     await expect(
       generateBeforeAfterDiff({
         beforeBase64: "x",
@@ -117,7 +113,7 @@ describe("generateBeforeAfterDiff", () => {
         afterBase64: "y",
         afterMediaType: "image/jpeg",
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/zod validation failed/);
   });
 
   it("strips control characters from summary", async () => {

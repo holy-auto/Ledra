@@ -4,7 +4,20 @@
  * 同一の証明書データを、相手（顧客・保険会社・社内・営業）に
  * 合わせた表現に自動変換する。
  */
-import { getAnthropicClient, AI_MODEL, parseJsonResponse } from "@/lib/ai/client";
+import { z } from "zod";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { withRetry } from "@/lib/http/withRetry";
+import { getAnthropicClient, AI_MODEL } from "@/lib/ai/client";
+
+const ExplanationSchema = z.object({
+  subject: z.string(),
+  headline: z.string(),
+  body: z.string(),
+  keyPoints: z.array(z.string()),
+  callToAction: z.string().nullable(),
+  warningFlags: z.array(z.string()).nullable(),
+  internalMemo: z.string().nullable(),
+});
 
 // ─────────────────────────────────────────────
 // 型定義
@@ -145,29 +158,43 @@ ${input.shop.name}${input.shop.phone ? ` / TEL: ${input.shop.phone}` : ""}
 【顧客名】
 ${input.customer?.name ?? "非公開"}`;
 
-  const msg = await client.messages.create({
-    model: AI_MODEL,
-    max_tokens: 1024,
-    system: systemPrompt,
-    messages: [{ role: "user", content: userMessage }],
-  });
-
-  const text = msg.content[0].type === "text" ? msg.content[0].text : "{}";
-
   try {
-    const result = parseJsonResponse<Omit<ExplanationResult, "audience" | "shareableUrl">>(text);
+    const msg = await withRetry("anthropic", () =>
+      client.messages.parse({
+        model: AI_MODEL,
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userMessage }],
+        output_config: { format: zodOutputFormat(ExplanationSchema) },
+      }),
+    );
+
+    const result = msg.parsed_output;
+    if (!result) return emptyExplanation(input);
     return {
       audience: input.audience,
-      subject: result.subject ?? "",
-      headline: result.headline ?? "",
-      body: result.body ?? "",
-      keyPoints: result.keyPoints ?? [],
+      subject: result.subject,
+      headline: result.headline,
+      body: result.body,
+      keyPoints: result.keyPoints,
       callToAction: result.callToAction ?? undefined,
       warningFlags: result.warningFlags ?? undefined,
       internalMemo: result.internalMemo ?? undefined,
       shareableUrl: input.certificate.public_url,
     };
-  } catch {
-    throw new Error(`AI説明変換の解析に失敗しました: ${text.slice(0, 200)}`);
+  } catch (err) {
+    console.error("[explainCertificate] generation failed:", err);
+    return emptyExplanation(input);
   }
+}
+
+function emptyExplanation(input: ExplainCertificateInput): ExplanationResult {
+  return {
+    audience: input.audience,
+    subject: `[${input.shop.name}] ${input.certificate.service_name}`,
+    headline: "AI による説明文生成に失敗しました",
+    body: "AI による説明文生成に失敗しました。証明書の URL を直接ご参照ください。",
+    keyPoints: [],
+    shareableUrl: input.certificate.public_url,
+  };
 }

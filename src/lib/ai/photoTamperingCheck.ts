@@ -18,7 +18,15 @@
 
 import exifr from "exifr";
 import { createHash } from "crypto";
-import { getAnthropicClient, AI_MODEL_VISION, parseJsonResponse } from "@/lib/ai/client";
+import { z } from "zod";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { withRetry } from "@/lib/http/withRetry";
+import { getAnthropicClient, AI_MODEL_VISION } from "@/lib/ai/client";
+
+const TamperingVisionSchema = z.object({
+  suspicious: z.boolean(),
+  reason: z.string(),
+});
 
 // ─────────────────────────────────────────────
 // 型
@@ -174,36 +182,38 @@ async function visionTamperingCheck(
     const client = getAnthropicClient();
     const flagHints = flags.map((f) => `・${f}`).join("\n");
 
-    const msg = await client.messages.create({
-      model: AI_MODEL_VISION,
-      max_tokens: 256,
-      system: `あなたは写真の真正性を審査する専門家です。
+    const msg = await withRetry("anthropic", () =>
+      client.messages.parse({
+        model: AI_MODEL_VISION,
+        max_tokens: 256,
+        system: `あなたは写真の真正性を審査する専門家です。
 EXIF 解析で以下のフラグが検出されました:
 ${flagHints}
 
 この写真が改ざんされていないかを視覚的に確認し、JSONで回答してください:
 {"suspicious": true/false, "reason": "根拠を1文で（改ざんなしなら空文字）"}`,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
-                data: base64,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+                  data: base64,
+                },
               },
-            },
-            { type: "text", text: "この写真は改ざんされていますか？JSONで回答してください。" },
-          ],
-        },
-      ],
-    });
+              { type: "text", text: "この写真は改ざんされていますか？JSONで回答してください。" },
+            ],
+          },
+        ],
+        output_config: { format: zodOutputFormat(TamperingVisionSchema) },
+      }),
+    );
 
-    const text = msg.content[0].type === "text" ? msg.content[0].text : "{}";
-    const parsed = parseJsonResponse<{ suspicious: boolean; reason: string }>(text);
-    return { suspicious: parsed.suspicious ?? false, reason: parsed.reason ?? "" };
+    const parsed = msg.parsed_output;
+    return { suspicious: parsed?.suspicious ?? false, reason: parsed?.reason ?? "" };
   } catch {
     return { suspicious: false, reason: "" };
   }

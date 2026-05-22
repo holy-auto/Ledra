@@ -4,7 +4,10 @@
  * Claude Vision を使って画像から構造化データを直接抽出する。
  * OCR → 正規表現 の二段ではなく、Vision モデルに JSON を返させる一段構成。
  */
-import { getAnthropicClient, AI_MODEL_VISION, parseJsonResponse } from "@/lib/ai/client";
+import { z } from "zod";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { withRetry } from "@/lib/http/withRetry";
+import { getAnthropicClient, AI_MODEL_VISION } from "@/lib/ai/client";
 
 export interface ShakenshoData {
   /** 車名 (例: トヨタ) */
@@ -153,28 +156,29 @@ const SYSTEM_PROMPT = `あなたは日本の自動車車検証（自動車検査
 - 車検証以外の画像や、読み取り不能な場合は全項目 null で返す
 - confidence: maker/model/vin/expiry_date のうち3つ以上読めたら high、1〜2つなら medium、0なら low`;
 
-interface RawResponse {
-  maker: string | null;
-  model: string | null;
-  model_code: string | null;
-  first_registration: string | null;
-  expiry_date: string | null;
-  vin: string | null;
-  length_mm: number | null;
-  width_mm: number | null;
-  height_mm: number | null;
-  weight_kg: number | null;
-  displacement_cc: number | null;
-  fuel_type: string | null;
-  plate_display: string | null;
-  vehicle_type: string | null;
-  usage_type: string | null;
-  owner_name: string | null;
-  user_name: string | null;
-  color: string | null;
-  max_payload_kg: number | null;
-  confidence: string | null;
-}
+const ShakenshoRawSchema = z.object({
+  maker: z.string().nullable(),
+  model: z.string().nullable(),
+  model_code: z.string().nullable(),
+  first_registration: z.string().nullable(),
+  expiry_date: z.string().nullable(),
+  vin: z.string().nullable(),
+  length_mm: z.number().nullable(),
+  width_mm: z.number().nullable(),
+  height_mm: z.number().nullable(),
+  weight_kg: z.number().nullable(),
+  displacement_cc: z.number().nullable(),
+  fuel_type: z.string().nullable(),
+  plate_display: z.string().nullable(),
+  vehicle_type: z.string().nullable(),
+  usage_type: z.string().nullable(),
+  owner_name: z.string().nullable(),
+  user_name: z.string().nullable(),
+  color: z.string().nullable(),
+  max_payload_kg: z.number().nullable(),
+  confidence: z.enum(["high", "medium", "low"]).nullable(),
+});
+type ShakenshoRaw = z.infer<typeof ShakenshoRawSchema>;
 
 /**
  * 抽出結果の整合性チェック (純関数)。
@@ -349,55 +353,54 @@ export async function parseShakensho(imageBuffer: Buffer): Promise<ShakenshoData
   const mediaType = detectMediaType(imageBuffer);
   const base64 = imageBuffer.toString("base64");
 
-  const msg = await client.messages.create({
-    model: AI_MODEL_VISION,
-    max_tokens: 1024,
-    system: SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: [
+  let raw: ShakenshoRaw | null = null;
+  try {
+    const msg = await withRetry("anthropic", () =>
+      client.messages.parse({
+        model: AI_MODEL_VISION,
+        max_tokens: 1024,
+        system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+        messages: [
           {
-            type: "image",
-            source: { type: "base64", media_type: mediaType, data: base64 },
-          },
-          {
-            type: "text",
-            text: "この車検証画像から指定項目をJSONで抽出してください。",
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
+              { type: "text", text: "この車検証画像から指定項目をJSONで抽出してください。" },
+            ],
           },
         ],
-      },
-    ],
-  });
-
-  const text = msg.content[0]?.type === "text" ? msg.content[0].text : "{}";
-  const raw = parseJsonResponse<Partial<RawResponse>>(text);
+        output_config: { format: zodOutputFormat(ShakenshoRawSchema) },
+      }),
+    );
+    raw = msg.parsed_output ?? null;
+  } catch (err) {
+    console.error("[shakensho] parse failed:", err);
+  }
 
   const data: ShakenshoData = {};
-  if (raw.maker) data.maker = raw.maker;
-  if (raw.model) data.model = raw.model;
-  if (raw.model_code) data.model_code = raw.model_code;
-  if (raw.first_registration) data.first_registration = raw.first_registration;
-  if (raw.expiry_date) data.expiry_date = raw.expiry_date;
-  if (raw.vin) data.vin = raw.vin;
-  if (typeof raw.length_mm === "number" && raw.length_mm > 0) data.length_mm = raw.length_mm;
-  if (typeof raw.width_mm === "number" && raw.width_mm > 0) data.width_mm = raw.width_mm;
-  if (typeof raw.height_mm === "number" && raw.height_mm > 0) data.height_mm = raw.height_mm;
-  if (typeof raw.weight_kg === "number" && raw.weight_kg > 0) data.weight_kg = raw.weight_kg;
-  if (typeof raw.displacement_cc === "number" && raw.displacement_cc > 0) {
+  if (raw?.maker) data.maker = raw.maker;
+  if (raw?.model) data.model = raw.model;
+  if (raw?.model_code) data.model_code = raw.model_code;
+  if (raw?.first_registration) data.first_registration = raw.first_registration;
+  if (raw?.expiry_date) data.expiry_date = raw.expiry_date;
+  if (raw?.vin) data.vin = raw.vin;
+  if (typeof raw?.length_mm === "number" && raw.length_mm > 0) data.length_mm = raw.length_mm;
+  if (typeof raw?.width_mm === "number" && raw.width_mm > 0) data.width_mm = raw.width_mm;
+  if (typeof raw?.height_mm === "number" && raw.height_mm > 0) data.height_mm = raw.height_mm;
+  if (typeof raw?.weight_kg === "number" && raw.weight_kg > 0) data.weight_kg = raw.weight_kg;
+  if (typeof raw?.displacement_cc === "number" && raw.displacement_cc > 0) {
     data.displacement_cc = raw.displacement_cc;
   }
-  if (raw.fuel_type) data.fuel_type = raw.fuel_type;
-  if (raw.plate_display) data.plate_display = raw.plate_display;
-  if (raw.vehicle_type) data.vehicle_type = raw.vehicle_type;
-  if (raw.usage_type) data.usage_type = raw.usage_type;
-  if (raw.owner_name) data.owner_name = raw.owner_name;
-  if (raw.user_name) data.user_name = raw.user_name;
-  if (raw.color) data.color = raw.color;
-  if (typeof raw.max_payload_kg === "number" && raw.max_payload_kg > 0) data.max_payload_kg = raw.max_payload_kg;
+  if (raw?.fuel_type) data.fuel_type = raw.fuel_type;
+  if (raw?.plate_display) data.plate_display = raw.plate_display;
+  if (raw?.vehicle_type) data.vehicle_type = raw.vehicle_type;
+  if (raw?.usage_type) data.usage_type = raw.usage_type;
+  if (raw?.owner_name) data.owner_name = raw.owner_name;
+  if (raw?.user_name) data.user_name = raw.user_name;
+  if (raw?.color) data.color = raw.color;
+  if (typeof raw?.max_payload_kg === "number" && raw.max_payload_kg > 0) data.max_payload_kg = raw.max_payload_kg;
 
-  const conf = raw.confidence as string | null | undefined;
-  data.extraction_confidence = conf === "high" || conf === "medium" || conf === "low" ? conf : "low";
+  data.extraction_confidence = raw?.confidence ?? "low";
   data.validation_warnings = validateShakenshoData(data);
 
   return data;

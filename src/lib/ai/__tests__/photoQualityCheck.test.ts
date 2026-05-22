@@ -11,7 +11,6 @@ vi.mock("@/lib/ai/client", () => ({
     throw new Error("AI client should not be invoked in precheck mode");
   },
   AI_MODEL_VISION: "stub",
-  parseJsonResponse: (s: string) => JSON.parse(s),
 }));
 
 const baseAudit = (partial: Partial<CertificatePhotoAudit> = {}): CertificatePhotoAudit => ({

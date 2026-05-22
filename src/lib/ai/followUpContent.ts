@@ -10,7 +10,16 @@
  *
  * LINE / メール 両対応。Standard/Pro プランで AI パーソナライズ。
  */
-import { getAnthropicClient, AI_MODEL_FAST, parseJsonResponse } from "@/lib/ai/client";
+import { z } from "zod";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { withRetry } from "@/lib/http/withRetry";
+import { getAnthropicClient, AI_MODEL_FAST } from "@/lib/ai/client";
+
+const FollowUpContentSchema = z.object({
+  emailSubject: z.string(),
+  emailBody: z.string(),
+  lineMessage: z.string(),
+});
 
 // ─────────────────────────────────────────────
 // 型定義
@@ -124,20 +133,23 @@ ${contextDesc ? `補足: ${contextDesc}` : ""}
 トーン: 親しみやすく、押しつけがましくなく、次のアクションを自然に促す`;
 
   try {
-    const msg = await client.messages.create({
-      model: AI_MODEL_FAST,
-      max_tokens: 512,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userMessage }],
-    });
+    const msg = await withRetry("anthropic", () =>
+      client.messages.parse({
+        model: AI_MODEL_FAST,
+        max_tokens: 512,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userMessage }],
+        output_config: { format: zodOutputFormat(FollowUpContentSchema) },
+      }),
+    );
 
-    const text = msg.content[0].type === "text" ? msg.content[0].text : "{}";
-    const result = parseJsonResponse<FollowUpContent>(text);
-
+    const result = msg.parsed_output;
+    if (!result) return buildFallbackContent(ctx);
+    const fallback = buildFallbackContent(ctx);
     return {
-      emailSubject: result.emailSubject ?? `[${ctx.shop.name}] ${triggerLabel}`,
-      emailBody: result.emailBody ?? buildFallbackContent(ctx).emailBody,
-      lineMessage: result.lineMessage ?? buildFallbackContent(ctx).lineMessage,
+      emailSubject: result.emailSubject || `[${ctx.shop.name}] ${triggerLabel}`,
+      emailBody: result.emailBody || fallback.emailBody,
+      lineMessage: result.lineMessage || fallback.lineMessage,
     };
   } catch (err) {
     console.error("[followUpContent] AI error, using fallback:", err);
