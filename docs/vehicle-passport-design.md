@@ -280,3 +280,114 @@ v1 リリース後 90日で以下を観測：
 - `docs/research-blockchain-automotive-japan-2026.md` — 市場調査
 - `src/lib/certificate/publicData.ts` — 公開ページのPII マスク方針
 - `src/app/admin/vehicles/[id]/ServiceTimeline.tsx` — 単店舗タイムライン実装
+
+---
+
+## 6. 所有権移転フロー (2026-05-22 追加)
+
+車両売却時に、パスポートの「現在のオーナー」を旧オーナーから新オーナーへ移すための、施工店経由のトークン化フロー。
+
+### 6.1 データモデル
+
+`vehicle_passports` に以下のカラムを追加：
+
+- `current_owner_email` (text) — 現オーナーの小文字メール
+- `current_owner_name` (text) — 表示名（任意）
+- `ownership_set_at` (timestamptz) — 現所有者が設定された時刻
+- `pii_masked_at` (timestamptz) — 移転受諾時刻
+
+新規テーブル `passport_ownership_transfers`：
+
+| カラム | 説明 |
+|---|---|
+| `vin_code_normalized` | 自然キー (VIN正規化済み) |
+| `initiating_tenant_id` | 移転依頼を出した施工店 |
+| `initiating_vehicle_id` | 依頼時の per-tenant vehicle 行 |
+| `from_owner_email/name` | 移転時点の旧オーナースナップショット |
+| `to_owner_email/name` | 移転先 |
+| `transfer_token_hash` | SHA-256(token + pepper)。生トークンはメール内のみ |
+| `status` | `pending` / `accepted` / `rejected` / `cancelled` / `expired` |
+| `expires_at` | 既定14日 (最大30日) |
+
+**ユニーク制約**: 同一VINに対して `status='pending'` は最大1つ (partial unique index)。
+
+### 6.2 ステートマシン
+
+```
+                  ┌──── (admin/owner) ──── cancel ──→ cancelled
+                  │
+initiated ──→ pending ──── (recipient) ── accept ──→ accepted (→ passport 更新)
+                  │
+                  ├── (recipient) ── reject ──→ rejected
+                  │
+                  └── (cron daily, expires_at < now) ──→ expired
+```
+
+### 6.3 セキュリティ
+
+- **トークン**: `lpt_` + 32B base64url、SHA-256 + 専用 namespace (`passporttransfer|v1|`)
+- **権限**: 開始/キャンセル = `admin` 以上の tenant member。受諾/辞退 = トークン保持者
+- **レート制限**: 開始/受諾/辞退 = sensitive (5/300s)
+- **監査**: `vehicle_histories` に initiated/accepted/rejected/cancelled を記録
+
+### 6.4 関連ルート
+
+| メソッド・パス | 用途 |
+|---|---|
+| `POST /api/passport/transfers/initiate` | 施工店が依頼を作成 (admin auth) |
+| `GET /api/passport/transfers/[token]` | 新オーナーが詳細表示 (token auth) |
+| `POST /api/passport/transfers/[token]/accept` | 受諾 (token auth) |
+| `POST /api/passport/transfers/[token]/reject` | 辞退 (token auth) |
+| `POST /api/passport/transfers/cancel` | 施工店がキャンセル (admin auth) |
+| `GET /api/cron/passport-transfers-expire` | 日次：期限切れ転送を expired へ |
+| `/passport/transfer/[token]` | 受諾/辞退用 SSR ページ (noindex) |
+| `/admin/vehicles/[id]/passport-transfer` | 施工店向け開始フォーム |
+
+---
+
+## 7. 検証API公開 (2026-05-22 追加)
+
+中古車店・買取業者・保険査定業者など、施工店ではない第三者にAPI経由でパスポート照会を提供する。
+
+### 7.1 データモデル
+
+`passport_api_consumers` — 独立した法人エンティティ (テナントではない)：
+
+| カラム | 説明 |
+|---|---|
+| `name` | 会社名 |
+| `contact_email` | 連絡先 |
+| `status` | `active` / `suspended` / `closed` |
+| `monthly_quota` | ソフト月次クォータ (既定 1000 calls) |
+| `rate_limit_per_minute` | 既定 60 |
+
+`passport_api_keys` — 同一フォーマット (`lpk_live_xxx`) でハッシュ保管。tenant_api_keysと別空間：
+
+- prefix `lpk_live_` (vs tenant key `lk_live_`)
+- ハッシュ namespace: `passportapikey|v1|`
+- スコープ: 既定 `passport:verify`、ワイルドカード `*` 対応
+
+`passport_api_call_logs` — 課金照合・乱用調査用の per-call ログ。IPは SHA-256 短縮ハッシュ。
+
+### 7.2 エンドポイント
+
+`GET /api/v1/passport/verify?vin=XXX`
+
+- **認証**: `Authorization: Bearer lpk_live_xxxx`
+- **スコープ**: `passport:verify`
+- **レート**: IP × consumer 二段、いずれも `general` (60/60s)
+- **キャッシュ**: 成功時 `public, max-age=60`
+- **レスポンス**: PII を含まない `PassportVerifyResponse`
+  - VIN正規化値、パスポートID (末尾6)、メーカー/モデル/年式、アンカー証明書数、関与施工店数、各証明書の施工種別/日付/施工店名/PolygonTxハッシュ
+  - **含まれないもの**: 顧客名・連絡先・テナントID・車両ID
+
+### 7.3 課金・ガバナンス
+
+v1 ではログ集計のみ。請求は手動 reconcile (`passport_api_call_logs` 月次集計)。
+将来: Stripe metered billing + Stripe Connect で施工店配分。
+
+### 7.4 既知の TODO
+
+- consumer / API key 管理用の admin UI (現状は SQL 直接操作)
+- per-consumer 月次クォータ enforcement (現状は記録のみ、ハード遮断は未実装)
+- Stripe metered billing 連携
