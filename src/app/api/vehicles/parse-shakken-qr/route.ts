@@ -6,6 +6,7 @@ import { extractFirstRegistrationYear } from "@/lib/ocr/shakensho";
 import { parseShakenshoCode } from "@/lib/ocr/shakensho-qr";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 /** 最大 QR テキスト長（電子車検証の仕様でも数百バイト、緩めに制限） */

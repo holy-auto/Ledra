@@ -23,6 +23,8 @@ const aiDraftSchema = z
     message: "vehicle_id または hearing_id が必要です",
   });
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {

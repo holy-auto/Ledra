@@ -7,6 +7,7 @@ import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { checkFraudPatterns } from "@/lib/ai/fraudPatternDetect";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const schema = z.object({
   case_id: z.string().uuid(),

@@ -7,6 +7,7 @@ import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { matchBtobTenants, type TenantCandidate } from "@/lib/ai/btobMatchEngine";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const schema = z.object({
   categories: z.array(z.string().trim().min(1)).max(10).default([]),

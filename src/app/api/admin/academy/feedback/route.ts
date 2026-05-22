@@ -16,6 +16,8 @@ const academyFeedbackSchema = z.object({
   certificate_id: z.string().uuid("certificate_id が必要です"),
 });
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {

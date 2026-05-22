@@ -7,6 +7,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { auditPhotoTampering } from "@/lib/ai/photoTamperingCheck";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 /**
  * POST /api/admin/certificates/photo-tampering

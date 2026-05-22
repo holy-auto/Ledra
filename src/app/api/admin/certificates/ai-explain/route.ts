@@ -12,6 +12,8 @@ import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateExplanation, type Audience } from "@/lib/ai/explainCertificate";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 const VALID_AUDIENCES = ["customer", "insurer", "internal", "sales"] as const;

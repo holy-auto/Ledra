@@ -1,15 +1,12 @@
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import {
-  apiOk,
-  apiUnauthorized,
-  apiInternalError,
-  apiValidationError,
-} from "@/lib/api/response";
+import { apiOk, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { parseShakenshoAuto, calcSizeClass } from "@/lib/ocr/shakensho";
 import { escapeIlike } from "@/lib/sanitize";
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 /** Maximum image size: 10 MB */
@@ -56,10 +53,7 @@ export async function POST(req: NextRequest) {
 
     if (parsed.length_mm && parsed.width_mm && parsed.height_mm) {
       size_class = calcSizeClass(parsed.length_mm, parsed.width_mm, parsed.height_mm);
-      volume_m3 =
-        Math.round(
-          (parsed.length_mm * parsed.width_mm * parsed.height_mm) / 1e9 * 100,
-        ) / 100;
+      volume_m3 = Math.round(((parsed.length_mm * parsed.width_mm * parsed.height_mm) / 1e9) * 100) / 100;
     }
 
     // --- Also try maker/model lookup from master for comparison ---
@@ -96,13 +90,14 @@ export async function POST(req: NextRequest) {
       source,
       size_class,
       volume_m3,
-      dimensions: parsed.length_mm && parsed.width_mm && parsed.height_mm
-        ? {
-            length_mm: parsed.length_mm,
-            width_mm: parsed.width_mm,
-            height_mm: parsed.height_mm,
-          }
-        : null,
+      dimensions:
+        parsed.length_mm && parsed.width_mm && parsed.height_mm
+          ? {
+              length_mm: parsed.length_mm,
+              width_mm: parsed.width_mm,
+              height_mm: parsed.height_mm,
+            }
+          : null,
       parsed: {
         maker: parsed.maker ?? null,
         model: parsed.model ?? null,
