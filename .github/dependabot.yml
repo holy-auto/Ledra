@@ -14,6 +14,14 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # @zxing/browser@0.2.0 has a strict peer @zxing/library@^0.22.0.
+      # Bumping library to 0.23.x breaks Vercel `npm install` (ERESOLVE).
+      # No newer @zxing/browser exists, so pin library at 0.22.x.
+      - dependency-name: "@zxing/library"
+      # react-konva 18.2.15+ added a malformed package.json:exports
+      # (missing "types" condition) that breaks moduleResolution=bundler
+      # type discovery → TS7016. Stay on 18.2.10 until upstream fixes it.
+      - dependency-name: "react-konva"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
