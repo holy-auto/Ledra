@@ -54,6 +54,7 @@ export async function POST(req: Request) {
       notes: b.notes ?? null,
       customer_id: b.customer_id ?? null,
       size_class: sizeClass,
+      inspection_expiry_date: b.inspection_expiry_date ?? null,
     };
 
     const { data: vehicle, error } = await supabase.from("vehicles").insert(insertRow).select("id").single();

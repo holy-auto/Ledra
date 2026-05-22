@@ -16,6 +16,7 @@ import {
   processSeasonalProposals,
   processMaintenanceReminders,
 } from "@/lib/cron/followUp";
+import { processInspectionReminders } from "@/lib/cron/inspectionReminders";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -40,6 +41,7 @@ export async function GET(req: NextRequest) {
       let followUpsSent = 0;
       let seasonalSent = 0;
       let maintenanceSent = 0;
+      let inspectionSent = 0;
       try {
         const { data: rawSettings } = await supabase
           .from("follow_up_settings")
@@ -71,12 +73,13 @@ export async function GET(req: NextRequest) {
             followUpsSent += await processWarrantyEndFollowUps(supabase, setting, tenant, shopName, planTier);
             seasonalSent += await processSeasonalProposals(supabase, setting, shopName, today);
             maintenanceSent += await processMaintenanceReminders(supabase, setting, tenant, shopName, planTier, today);
+            inspectionSent += await processInspectionReminders(supabase, setting, shopName, today);
           }
         }
       } catch (e) {
         console.error("[cron/follow-up] failed:", e);
       }
-      return { remindersSent, followUpsSent, seasonalSent, maintenanceSent };
+      return { remindersSent, followUpsSent, seasonalSent, maintenanceSent, inspectionSent };
     });
 
     if (!lock.acquired) {
@@ -89,6 +92,7 @@ export async function GET(req: NextRequest) {
       follow_ups_sent: lock.value.followUpsSent,
       seasonal_sent: lock.value.seasonalSent,
       maintenance_sent: lock.value.maintenanceSent,
+      inspection_sent: lock.value.inspectionSent,
       date: todayStr,
     });
   } catch (e) {
