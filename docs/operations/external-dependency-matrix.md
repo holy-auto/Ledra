@@ -1,0 +1,378 @@
+# 外部依存マトリクス
+
+> 目的: Ledra から呼び出す外部サービスについて、**criticality / fail-mode /
+> retry / idempotency / timeout / 監視 / runbook 参照** を 1 枚に集約する。
+> 関連: `docs/slo.md` (SLI/SLO)、`docs/internal/operations-runbook.md` (障害対応)、
+> `docs/disaster-recovery.md` (Supabase DR)、`docs/operations/rate-limits.md`。
+>
+> 更新ポリシー: 新規外部サービスを足すとき / 既存サービスの fail-mode を
+> 変えるときは **このファイルを必ず更新**する (PR テンプレに項目あり予定)。
+
+---
+
+## 1. 全体方針
+
+### 1.1 Criticality 定義
+
+`docs/internal/operations-runbook.md` §1 の障害レベルと整合する。
+
+| Lv | 定義 | 例 | デフォルト fail-mode |
+|----|------|----|----|
+| **P0** | サービス全停止 / データ漏洩 / 整合性喪失 | Supabase 完全停止、Stripe webhook 完全配信不能 | **closed** (即座にユーザーへ提示) |
+| **P1** | 主要機能停止 (証明書発行・決済確定) | Stripe Checkout 起動失敗、Polygon 本番 anchor 連続失敗 | **closed** |
+| **P2** | 重要機能の degrade (PDF 出力遅延、通知遅延) | Resend 遅延、QStash 配信遅延、batch-pdf 失敗 | **open** (キューに退避、後追いリトライ) |
+| **P3** | 補助機能の停止 (LINE 通知、Slack 通知、分析) | LINE push 失敗、PostHog 落ち、Slack lead 通知欠落 | **open** (握りつぶし + 監視ログ) |
+
+### 1.2 Fail-mode 原則
+
+**3 つのルールで判定する**:
+
+1. **「ユーザーが今この瞬間に対価を支払う/支払った」処理は fail-closed**。
+   ・例: Stripe Checkout 起動、Terminal capture、Tap to Pay → 失敗時はユーザーに即時エラーを返す。リトライは UI レベル。
+2. **「事後でも整合性が取れる」処理は fail-open + 後追い**。
+   ・例: 会計仕訳投入、Polygon anchoring、batch-pdf → outbox / QStash dedup で吸収。
+3. **「失敗しても顧客の業務が止まらない」処理は fail-open + 監視ログ**。
+   ・例: LINE 通知、Slack lead 通知、PostHog 分析 → fire-and-forget。ただし `Sentry.captureSecurityEvent` / `logger.warn` で必ず痕跡を残す。
+
+**重要な反例**:
+- 通知系でも **OTP メール (Resend) は fail-closed**。届かないとログインできないため。
+- 決済系でも **Stripe webhook 受信は fail-open**。Stripe 側のリトライで結果整合。
+
+### 1.3 Retry / Backoff 共通則
+
+`src/lib/http/withRetry.ts:83` の `withRetry(key, thunk, opts)` を **下記対象は必ず経由**する:
+
+- 対象: Stripe SDK / Resend REST / Polygon RPC / QStash publish / Square API / Cloudflare Stream API / Anthropic SDK / freee / MF / Twilio
+- 既定: 4 attempts、initial 250ms、multiplier 2、max 8s、±20% jitter
+- 自動リトライ対象: 408/425/429/5xx、`ECONNRESET`/`ETIMEDOUT`/`ENOTFOUND`/`EAI_AGAIN`、`fetch failed`
+- Circuit breaker: 5 連続失敗で 30 秒 open (`CircuitOpenError` を throw)
+
+**現状ギャップ**: `withRetry` の呼び出し箇所が `src/lib/outbound-webhooks.ts` のみ。
+`src/lib/email/resendSend.ts` は独自 backoff、Stripe/Square/Anthropic/Twilio は素のまま。
+→ §4 で改修対象として明示。
+
+**対象外** (理由付き):
+- Supabase Postgrest クライアント: pooler + クライアント側 retry を内蔵。`withRetry` で二重リトライにならないよう wrap **しない**。
+
+### 1.4 Idempotency 必須範囲
+
+| 種別 | 仕組み | 場所 |
+|------|--------|------|
+| Stripe webhook | `stripe_processed_events` で event_id claim → 重複は 200 (no-op) | `src/app/api/stripe/webhook/route.ts:462-515` |
+| 証明書発行 (POST) | `cert_idempotency_keys` テーブル | `src/lib/certificates/*` |
+| QStash publish | `deduplicationId` 必須 (`square-sync:init:{job_id}` 等) | `src/lib/qstash/publish.ts:29-50` |
+| Resend send | `Idempotency-Key` header | `src/lib/email/resendSend.ts` |
+| Outbox | `outbox_events.event_id` UNIQUE 制約 | `src/lib/outbound-webhooks.ts` |
+
+**現状ギャップ**: Square webhook / LINE webhook / Resend webhook / CloudSign webhook
+が dedup 用のテーブルを持っているか個別に未整理 → §4。
+
+### 1.5 Timeout 方針
+
+- **明示 timeout 未設定が大半**。Stripe/Resend/Anthropic はそれぞれ SDK のデフォルト (Stripe: 80s, Anthropic: 600s)。
+- SLO L2 (API p99 < 1500ms) を守るため、エンドユーザーが待つ系のパスで Anthropic SDK のデフォルト 600s は **明確に危険**。
+- → §4 でサービス別 timeout の明示化をアクション化。
+
+---
+
+## 2. サービス一覧 (overview)
+
+| Service | Lv | Default fail-mode | Retry | Idempotency | Timeout | SLO | Runbook |
+|---|---|---|---|---|---|---|---|
+| **Supabase** (Auth/DB/Storage) | P0 | closed | pooler 内蔵 | RLS + DB UNIQUE | — | A2 | `disaster-recovery.md`, `operations-runbook.md` §2.1 |
+| **Stripe** (Checkout/Connect/Terminal/Webhook) | P1 | closed (起動) / open (webhook) | **未経由** (SDK デフォルト) | `stripe_processed_events` | SDK 80s | A2, B1 | `operations-runbook.md` §2.2, §2.4 |
+| **Resend** (Email) | P2 (OTP は P1) | open (transactional) / closed (OTP) | 独自 backoff (3回) | `Idempotency-Key` | — | C1 | `operations-runbook.md` §2.3 |
+| **QStash** (async queue) | P2 | open (キュー退避) | retries: 2 + dedup | `deduplicationId` 必須 | — | B3 | — |
+| **Upstash Redis** (rate-limit/cache) | P3 | open (`RATE_LIMIT_FAIL_CLOSED=0`) / closed (=1) | — | — | — | — | `operations/rate-limits.md` |
+| **Polygon RPC** (anchoring) | P2 | open (skip & retry next cron) | **未経由** | tx hash 重複検知 | — | — | — |
+| **Square** (POS sync) | P3 | open (部分同期継続) | API 429/401 を error 値で記録 | — | — | — | — |
+| **LINE Messaging API** | P3 | **open (握りつぶし)** | **なし** | `recordOutboundLineMessage` で `delivered=false` 記録 | — | — | — |
+| **Twilio** (SMS) | P3 | open (fire-and-forget) | **なし** | — | — | — | — |
+| **Anthropic** (OCR/AI) | P3 (UX 影響あり) | closed (caller throw) | **なし** | — | **SDK 600s (要短縮)** | — | — |
+| **freee / マネーフォワード** (会計) | P3 | open (cron next round) | — | OAuth token refresh | — | — | — |
+| **Google Calendar** | P3 | open | — | OAuth | — | — | — |
+| **CloudSign** (電子署名 webhook) | P3 | open (webhook idempotent) | — | event id dedup (要確認) | — | — | — |
+| **Sentry** | P3 (観測のみ) | open (silent .catch) | — | — | — | — | — |
+| **Slack Incoming Webhook** | P3 | open | — | — | — | — | — |
+| **PostHog** | P3 | open (client-side) | SDK 内蔵 | — | — | — | — |
+| **gBizINFO** | P3 | open | **なし** | — | — | — | — |
+| **Pinata** (IPFS) | P3 | open (skip pin) | — | content addressing で自然冪等 | — | — | — |
+| **Hive** (Deepfake) | P3 (任意) | open (provider disabled) | — | — | — | — | — |
+| **Cloudflare Stream / Mux** | P2 | closed (動画提出系) | **未経由** | — | — | — | — |
+
+凡例: **未経由** = `withRetry` を経由していない。**なし** = リトライロジック自体が存在しない。
+
+---
+
+## 3. 機能 × 依存マトリクス
+
+「機能」= FEATURES.md と `src/app/` の route ベース。失敗時の振る舞いは **観察された現状** を記述する (理想ではなく)。
+
+### 3.1 決済 / 課金系
+
+#### サブスクリプション課金 (テナント / 保険会社)
+- **依存**: Stripe (Checkout, Subscription, Customer Portal), Supabase, Resend
+- **起動経路**: `POST /api/stripe/checkout`, `POST /api/stripe/portal`, `POST /api/stripe/resume`, `POST /api/template-options/subscribe`
+- **Webhook 経路**: `POST /api/stripe/webhook` (`checkout.session.completed`, `customer.subscription.*`, `invoice.*`)
+- **失敗時の現状**:
+  - Stripe API が落ちて Checkout 起動失敗 → 500 をユーザーに返す。**ユーザー視点ではエラーページのみ、リトライ動線なし** → GAP
+  - Webhook 受信失敗 → 503 を返却して Stripe にリトライ要求 (`webhook/route.ts:503-515`)
+  - DB 書込み失敗 → `apiInternalError` + Sentry。Stripe 側は完了済のため `/api/cron/monitor` の課金不整合チェックで翌朝検知
+- **ユーザー可視 degrade**: Checkout 起動エラーは即時可視。Webhook 遅延は管理画面上「プラン状態が反映されない」として現れる
+- **既知ギャップ**:
+  - Checkout 起動失敗時のユーザー向けエラー文言 / リトライ動線
+  - `withRetry("stripe", ...)` 未経由 → 一過性 5xx に脆い
+
+#### Stripe Connect 決済 (施工店宛て送金)
+- **依存**: Stripe Connect, Supabase
+- **起動経路**: `POST /api/stripe/connect`, `POST /api/stripe/connect/payment-link`, `POST /api/agent/stripe-connect`
+- **Webhook**: `POST /api/stripe/webhook` (Connect events; `STRIPE_CONNECT_WEBHOOK_SECRET` 別)
+- **失敗時の現状**: Checkout と同じ。Transfer/Payout のイベントは現状ログのみで管理画面表示なし
+- **ギャップ**: Payout 失敗の運営側可視化が薄い
+
+#### Stripe Terminal (実店舗 POS)
+- **依存**: Stripe Terminal API
+- **起動経路**: `POST /api/admin/pos/terminal/connection-token`, `/capture`, `/api/mobile/pos/terminal/*`
+- **Fail-mode**: **closed**。レジ前の顧客を待たせる性質上、ユーザー (店員) に即時エラーが必須
+- **既知ギャップ**: connection-token の失敗時、モバイルアプリ側でのリトライ UI 整備状況が文書化されていない (`docs/tap-to-pay-distribution-checklist.md` 参照)
+
+#### Apple Tap to Pay
+- **依存**: Stripe Terminal (Tap to Pay), Apple Attestation
+- **起動経路**: `POST /api/mobile/pos/tap-to-pay/*`
+- **Fail-mode**: **closed**
+- **特記**: `DEVICE_ATTESTATION_ENABLED=true` 時のみ attestation 検証が走る
+
+#### Stripe Webhook (idempotency)
+- **依存**: Stripe → Supabase (`stripe_processed_events`)
+- **idempotency**: `INSERT ... ON CONFLICT` で event_id claim、重複は 200 即返却 (`webhook/route.ts:500`)
+- **monitor**: `/api/cron/stripe-event-monitor` で 24h 内の処理件数を記録、`operations-runbook.md` §1.1 の補完監視
+- **Fail-mode**: open (Stripe のリトライで吸収)
+- **GAP**: Connect 別 secret (`STRIPE_CONNECT_WEBHOOK_SECRET`) の events が monitor に集計されているか要確認
+
+### 3.2 通知系
+
+#### OTP メール (顧客ログイン)
+- **依存**: Resend
+- **起動経路**: `POST /api/customer/request-code`
+- **Fail-mode**: **closed** (届かないとログイン不能のため、Resend retry で 3 回まで → 失敗時はユーザーに「再送」表示)
+- **SLO**: C1 (request → 受信ログ < 60s)
+- **GAP**: Resend が落ちた場合のフォールバック (SMS, 別 ESP) は **無い**。30 分以上の全断は致命的
+
+#### トランザクションメール (決済失敗通知 / trial-will-end / 解約)
+- **依存**: Resend, Stripe webhook (trigger)
+- **起動経路**: Stripe webhook ハンドラ内から `sendEmail()`
+- **Fail-mode**: open (リトライで吸収しきれなければログ。経営判断で再送は手動)
+- **GAP**: 配信失敗の dead-letter キューがない (Outbox に乗っているか要確認)
+
+#### Resend Webhook (bounce / complaint)
+- **依存**: Resend → Supabase
+- **起動経路**: `POST /api/webhooks/resend`
+- **Fail-mode**: open
+- **GAP**: idempotency key 未整理
+
+#### LINE Push (予約確認 / リマインダー / 進捗 / 帳票リンク)
+- **依存**: LINE Messaging API (tenant 別 channel)
+- **起動経路**: `src/lib/line/client.ts` の `sendBookingConfirmation/Reminder/ProgressUpdate/...`
+- **Fail-mode**: **open (全て握りつぶし)**。`recordOutboundLineMessage(delivered=false, failureReason)` のみ
+- **特記**: tenant 単位で LINE config が暗号化 DB 列、未設定なら `return false`
+- **既知ギャップ** (議論対象):
+  - 「重要な通知 (作業完了など) も握りつぶしで良いか」が機能別に決まっていない
+  - 失敗の集計ダッシュボード / 閾値アラートが未整備
+  - `withRetry` 未経由 → 一過性 5xx で恒久失敗扱いになる
+
+#### LINE Webhook (顧客 → 店舗の inbound)
+- **依存**: LINE → Supabase
+- **起動経路**: `POST /api/line/webhook`
+- **署名検証**: timing-safe HMAC (`src/lib/line/client.ts:108-121`)
+- **Fail-mode**: open (LINE 側 retry あり)
+
+#### SMS (Twilio)
+- **依存**: Twilio
+- **起動経路**: `src/lib/sms/client.ts:5-34`
+- **Fail-mode**: open (boolean return, fire-and-forget)
+- **GAP**: retry なし、idempotency なし、配信ログ未整備。**現状の用途と criticality を要確認**
+
+#### Slack 通知 (lead / signup / inquiry)
+- **依存**: 4 種類の Slack Incoming Webhook
+- **起動経路**: 各フォーム / signup ハンドラから直接 fetch
+- **Fail-mode**: open (未設定なら skip)
+- **GAP**: lead 通知の欠落は売上機会損失だが、retry/監視なし
+
+### 3.3 証明書ライフサイクル系
+
+#### 証明書発行
+- **依存**: Supabase, (任意) Pinata IPFS, (任意) Polygon RPC, Anthropic (品質チェック時)
+- **起動経路**: `POST /api/admin/certificates` ほか
+- **idempotency**: `cert_idempotency_keys` テーブル
+- **Fail-mode**: DB は closed、IPFS / Polygon は open (cron で後追い)
+- **monitor**: `/api/cron/monitor` で 24h 発行数の異常を検知
+
+#### 証明書 PDF 出力 (単発)
+- **依存**: Supabase Storage, Remotion
+- **SLO**: C2 (issue → PDF available < 5s)
+- **Fail-mode**: closed (ユーザーがダウンロード待ち)
+
+#### バッチ PDF 出力
+- **依存**: QStash, Supabase Storage
+- **起動経路**: `POST /api/admin/certificates/batch-pdf` (rate-limit: auth)
+- **キュー**: `enqueueBatchPdf` (retries: 2, dedup: `batch-pdf:{job_id}`)
+- **Fail-mode**: open + キュー (ユーザーに「処理中」表示)
+
+#### ブロックチェーンアンカリング
+- **依存**: Polygon RPC, Supabase
+- **起動経路**: `/api/cron/polygon-signer` (定期), `/api/admin/polygon/backfill` (手動)
+- **Fail-mode**:
+  - `POLYGON_ANCHOR_ENABLED !== "true"` → no-op (DISABLED_RESULT)
+  - RPC エラー → skip、次回 cron で再試行
+  - **本番 mainnet で連続失敗時の警告経路が薄い** → GAP
+- **Wallet 監視**: `polygon-signer` cron が POL 残高を `POLYGON_WALLET_WARN_BALANCE_POL` / `_ALERT_` で監視、Resend メール通知
+
+#### NFC タグ書込み / 読込
+- **依存**: モバイル端末 NFC、Supabase
+- **Fail-mode**: closed (端末画面に即時エラー)
+
+### 3.4 AI / OCR 系
+
+#### 車検証 OCR
+- **依存**: Anthropic Claude (`claude-opus-4-5` default), Supabase
+- **起動経路**: `POST /api/vehicles/parse-shakken-qr`
+- **Fail-mode**: closed (caller throw → エラーページ)
+- **GAP**: SDK timeout が 600s デフォルト → SLO L2 に違反するリスク。**短縮必須** (推奨 30s)
+- **GAP**: `withRetry` 未経由
+
+#### 写真品質チェック AI
+- **依存**: Anthropic Claude (haiku 系)
+- **起動経路**: `POST /api/admin/certificates/ai-quality`
+- **Fail-mode**: open (チェック結果欠落でも証明書発行は続行)
+
+#### 音声メモ整形 / フォローアップ生成 / Q&A
+- **依存**: Anthropic
+- **Fail-mode**: open
+
+### 3.5 外部データ取り込み / 連携系
+
+#### Square POS 売上同期
+- **依存**: Square OAuth, Square Orders API
+- **起動経路**: `/api/cron/square-sync` (定期), `/api/qstash/square-sync` (async dispatch)
+- **Fail-mode**:
+  - Token refresh 失敗 → null return + cron log
+  - 429 → `rate_limited` 値で記録、**部分同期継続**
+  - 401 → `unauthorized` 値で記録 (再認可促す)
+- **GAP**: 401 発生時のテナントへの通知 (再認可リンク) が未整備
+
+#### 会計仕訳 (freee / MF)
+- **依存**: freee OAuth, MF OAuth, Supabase (encrypted token)
+- **起動経路**: `/api/cron/accounting-sync` (日次 3 回)
+- **Fail-mode**: open (次回 cron で再試行)
+- **GAP**: 連続失敗時の通知
+
+#### Google Calendar 予約連携
+- **依存**: Google OAuth
+- **Fail-mode**: open
+- **GAP**: token 期限切れ時の再認可フロー
+
+#### CloudSign 電子署名 Webhook
+- **依存**: CloudSign → Supabase
+- **起動経路**: webhook 受信
+- **Fail-mode**: open
+- **GAP**: idempotency key の整理状況を要確認
+
+#### gBizINFO (法人番号検証)
+- **依存**: gBizINFO API
+- **起動経路**: テナント / 顧客の法人検証時
+- **Fail-mode**: open (検証 skip して入力値を採用)
+- **GAP**: API 上限 / retry なし
+
+#### 動画生成 (Remotion + Cloudflare Stream / Mux)
+- **依存**: Cloudflare Stream API (現状), 将来 Mux
+- **Fail-mode**: closed (アップロード提出系)
+- **GAP**: provider 抽象化レイヤがあるが `withRetry` 未経由
+
+### 3.6 監視 / インフラ系
+
+#### Sentry エラー監視
+- **依存**: Sentry
+- **起動経路**: dynamic import (`src/lib/observability/sentry.ts:27-39`)
+- **Fail-mode**: silent (load 失敗は .catch で握りつぶし)
+- **特記**: SLO 違反検知のソースなので Sentry 自身が落ちると盲点。`/api/cron/monitor` での補完監視と二重化 (`operations-runbook.md` §1.1)
+
+#### `/api/cron/monitor` (Sentry 補完監視)
+- **依存**: Supabase, Resend, Stripe
+- **起動経路**: 毎日 08:00 JST
+- **Fail-mode**: open (失敗自体は次の日のログで気付く)
+- **GAP**: monitor 自身の連続失敗を検知する別系統がない (二重盲点)
+
+#### Rate Limit (Upstash Redis)
+- **依存**: Upstash Redis REST
+- **Fail-mode**: env `RATE_LIMIT_FAIL_CLOSED` で切替 (default `0` = open + Sentry / `1` = closed 503)
+- **詳細**: `docs/operations/rate-limits.md`
+
+#### Outbox / Outbound Webhooks
+- **依存**: Supabase (`outbox_events`), QStash (drain)
+- **起動経路**: `/api/cron/outbox-flush`
+- **Fail-mode**: open (24h 以内 99% 配送を SLO B3 で担保)
+- **特記**: ここのみ `withRetry` 経由
+
+---
+
+## 4. ギャップサマリー (アクション候補)
+
+優先度は P0/P1 機能への影響度 × 実装コストで主観評価。
+
+### 4.1 高優先 (P0/P1 機能のリスク)
+
+| # | 課題 | 提案 | 規模 |
+|---|------|------|------|
+| G1 | Stripe SDK 呼び出しが `withRetry` 未経由 | `withRetry("stripe", ...)` でラップ。`maxAttempts=3`, `maxDelayMs=4000` (ユーザー待ち) | 中 |
+| G2 | Anthropic SDK timeout 600s デフォルト | OCR / 写真品質チェックで明示 30s。`withRetry("anthropic", ...)` でラップ | 小 |
+| G3 | Checkout 起動失敗のユーザー向けエラー / リトライ動線が薄い | 共通 ErrorBoundary + リトライボタン、Sentry breadcrumb 充実 | 中 |
+| G4 | OTP メール (Resend) 全断時のフォールバックなし | Twilio SMS 経由のセカンダリ OTP 経路を準備 (=Twilio 用途の正式化) | 大 |
+
+### 4.2 中優先 (P2 機能の信頼性)
+
+| # | 課題 | 提案 |
+|---|------|------|
+| G5 | Polygon 本番連続失敗時の警告が薄い | `polygon-signer` cron に N 回連続失敗で Resend 通知を追加 |
+| G6 | Square 401 (token 失効) のテナントへの通知 | 401 検知時に管理画面バナー + メール送付 |
+| G7 | freee / MF 連続失敗の通知 | accounting-sync cron に同じパターンを追加 |
+| G8 | Cloudflare Stream / Mux が `withRetry` 未経由 | `withRetry("cf-stream", ...)` 追加 |
+
+### 4.3 P3 だが意思決定が必要
+
+| # | 課題 | 必要な判断 |
+|---|------|------|
+| G9 | LINE 通知の握りつぶし方針 | 「重要通知 (作業完了等) は retry すべきか」を機能別に決める |
+| G10 | Twilio SMS の用途と criticality | 現状 fire-and-forget。OTP セカンダリにするなら closed 化 |
+| G11 | gBizINFO の retry / timeout | 用途次第。fail-open のままで良いか合意取り |
+| G12 | Slack lead 通知の retry | 売上機会損失 vs 実装コスト |
+
+### 4.4 横断的 (運用面)
+
+| # | 課題 | 提案 |
+|---|------|------|
+| G13 | webhook idempotency 一覧 (Square / LINE / Resend / CloudSign) | 各 webhook ハンドラに dedup テーブル + INSERT ON CONFLICT を統一導入 |
+| G14 | `withRetry` 採用範囲の半自動チェック | `scripts/audit-withRetry.ts` で外部 SDK 呼び出し箇所を grep し未ラップを検出 |
+| G15 | `/api/cron/monitor` 自身の死活 | 別 cron からの heartbeat 検証 (Better Uptime 等) |
+| G16 | サービス別 timeout の明示 | この表の Timeout 列を埋める PR を発行 |
+
+---
+
+## 5. メンテナンスポリシー
+
+- **新規サービス追加時**: §2 の表に 1 行、§3 の該当機能に 1 ブロック、§4 にギャップがあれば追記。
+- **fail-mode 変更時**: PR description に「fail-mode を X から Y に変更」と明記。`docs/operations/external-dependency-matrix.md` の更新を含めること。
+- **四半期レビュー**: `docs/internal/operations-runbook.md` §3 月次タスクに「外部依存マトリクスの timeout / criticality 見直し」を追加。
+
+---
+
+## 付録 A: 検証用コマンド
+
+```bash
+# withRetry を経由していない外部 SDK 呼び出し候補を炙り出す
+rg "stripe\.|new Stripe\(|resend\.|anthropic\.|twilio\.|squareClient\." \
+  src/ --type ts -l | xargs -I {} sh -c \
+  'grep -L "withRetry" {} || true'
+
+# /api/cron/monitor が拾うべき外部サービスの env が揃っているか
+grep -E "STRIPE_|RESEND_|ANTHROPIC_|QSTASH_|UPSTASH_|POLYGON_" .env.example | wc -l
+```
