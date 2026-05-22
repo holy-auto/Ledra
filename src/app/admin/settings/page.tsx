@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import type { SquareConnection } from "@/types/square";
 import SettingsForm from "./SettingsForm";
 import SettingsProgressCard from "./SettingsProgressCard";
 import FollowUpSettings from "./FollowUpSettings";
@@ -122,6 +123,24 @@ export default async function AdminSettingsPage() {
   const { admin } = createTenantScopedAdmin(tenantId);
   const { error: detectErr } = await admin.from("tenants").select("contact_email").eq("id", tenantId).limit(1).single();
   const columnsExist = !detectErr || !detectErr.message.includes("does not exist");
+
+  // Square連携: 接続済みなら初期表示にすぐ反映させる (クライアント再フェッチを待たずに済む)
+  const { data: squareRow } = await admin
+    .from("square_connections")
+    .select("id, tenant_id, square_merchant_id, status, connected_at, last_synced_at, square_location_ids")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  const initialSquareConnection: SquareConnection | null = squareRow
+    ? {
+        id: squareRow.id as string,
+        tenant_id: squareRow.tenant_id as string,
+        square_merchant_id: (squareRow.square_merchant_id as string | null) ?? "",
+        status: (squareRow.status as SquareConnection["status"]) ?? "disconnected",
+        connected_at: (squareRow.connected_at as string | null) ?? null,
+        last_synced_at: (squareRow.last_synced_at as string | null) ?? null,
+        square_location_ids: (squareRow.square_location_ids as string[] | null) ?? [],
+      }
+    : null;
 
   const hasContact = columnsExist && !!(ext.contact_email || ext.contact_phone);
   const hasAddress = columnsExist && !!ext.address;
@@ -256,7 +275,7 @@ export default async function AdminSettingsPage() {
           </div>
           <p className="mt-1 text-xs text-muted">SquareのPOS売上データをLedraに取り込みます。</p>
         </div>
-        <SquareConnectSection />
+        <SquareConnectSection initialConnection={initialSquareConnection} />
       </section>
 
       {/* LINE連携 */}

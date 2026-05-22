@@ -12,7 +12,10 @@ export async function GET(req: NextRequest) {
   const state = url.searchParams.get("state"); // tenantId
   const error = url.searchParams.get("error");
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin;
+  // POST /api/admin/square/connect と同じロジックで baseUrl を組み立てる。
+  // Square は token 交換時に authorize と完全一致する redirect_uri を要求するので、
+  // 両端でトレーリング slash の有無や env 解決順が一致していること。
+  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin).replace(/\/+$/, "");
 
   // ── 認証チェック: ユーザーがログイン済みかつテナントメンバーであることを確認 ──
   const supabase = await createClient();
@@ -35,8 +38,8 @@ export async function GET(req: NextRequest) {
   // ユーザーが対象テナントのメンバーであるか確認 (state = tenantId は OAuth flow で検証した値)
   const { admin } = createTenantScopedAdmin(state);
   const { data: membership } = await admin
-    .from("tenant_members")
-    .select("id")
+    .from("tenant_memberships")
+    .select("user_id")
     .eq("user_id", user.id)
     .eq("tenant_id", state)
     .limit(1)
