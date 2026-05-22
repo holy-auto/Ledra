@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Badge from "@/components/ui/Badge";
 import OnboardingFunnelSection from "./OnboardingFunnelSection";
+import OnboardingTenantsSection from "./OnboardingTenantsSection";
 
 // ── Types ──
 type SystemHealth = {
@@ -395,6 +396,9 @@ function OverviewTab({ data }: { data: OperationsData }) {
 
       {/* Onboarding funnel */}
       <OnboardingFunnelSection />
+
+      {/* Per-tenant onboarding status */}
+      <OnboardingTenantsSection />
 
       {/* Recent activity */}
       <div className="glass-card">
