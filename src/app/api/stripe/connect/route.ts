@@ -57,7 +57,25 @@ export async function POST(req: NextRequest) {
     const stripe = getStripe();
     let accountId = tenant.stripe_connect_account_id as string | null;
 
-    // Create account if not exists
+    // 保存済み account_id があっても、Stripe 側で削除済み・mode 不一致
+    // (test ⇄ live) などで参照できないことがある。その場合は accountLinks.create
+    // が "No such account" で落ちて 500 になるので、先に存在確認して
+    // ダメなら作り直すことで「接続を再開」フローを自己治癒させる。
+    if (accountId) {
+      try {
+        await stripe.accounts.retrieve(accountId);
+      } catch (retrieveErr) {
+        const msg = retrieveErr instanceof Error ? retrieveErr.message : String(retrieveErr);
+        console.warn(`[stripe connect] stale account_id ${accountId}, recreating: ${msg}`);
+        await admin
+          .from("tenants")
+          .update({ stripe_connect_account_id: null, stripe_connect_onboarded: false })
+          .eq("id", caller.tenantId);
+        accountId = null;
+      }
+    }
+
+    // Create account if not exists (or was just cleared above)
     if (!accountId) {
       const account = await stripe.accounts.create({
         type: "standard",
@@ -143,9 +161,27 @@ export async function GET() {
       });
     }
 
-    // Check actual status from Stripe
+    // Check actual status from Stripe. account_id が Stripe 側で存在しない
+    // (削除済み・mode 不一致 等) ケースは "stale" として扱い、500 ではなく
+    // 「未接続」相当を返してフロントで再接続フローを促す。
     const stripe = getStripe();
-    const account = await stripe.accounts.retrieve(accountId);
+    let account: Stripe.Account;
+    try {
+      account = await stripe.accounts.retrieve(accountId);
+    } catch (retrieveErr) {
+      const msg = retrieveErr instanceof Error ? retrieveErr.message : String(retrieveErr);
+      console.warn(`[stripe connect] retrieve failed for ${accountId}: ${msg}`);
+      await admin
+        .from("tenants")
+        .update({ stripe_connect_account_id: null, stripe_connect_onboarded: false })
+        .eq("id", caller.tenantId);
+      return apiJson({
+        connected: false,
+        onboarded: false,
+        account_id: null,
+        stale: true,
+      });
+    }
 
     const onboarded = account.charges_enabled && account.payouts_enabled;
 
