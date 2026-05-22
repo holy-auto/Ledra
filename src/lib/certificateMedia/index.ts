@@ -96,6 +96,10 @@ export type CertificateMediaRow = {
   content_type: string | null;
   file_size: number | null;
   created_at: string | null;
+  /** AI 生成のビフォーアフター差分サマリ (before_after のみ)。 */
+  diff_summary: string | null;
+  /** diff_summary の生成時刻 (admin 経由で再生成すると更新)。 */
+  diff_summary_generated_at: string | null;
 };
 
 /** 公開向けに storage_path を URL に解決した形 (page.tsx で扱いやすくするため)。 */

@@ -38,8 +38,8 @@ export async function GET(req: NextRequest) {
   // ユーザーが対象テナントのメンバーであるか確認
   const { admin } = createTenantScopedAdmin(state);
   const { data: membership } = await admin
-    .from("tenant_members")
-    .select("id")
+    .from("tenant_memberships")
+    .select("user_id")
     .eq("user_id", user.id)
     .eq("tenant_id", state)
     .limit(1)

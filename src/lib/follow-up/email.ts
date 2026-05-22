@@ -197,3 +197,53 @@ export async function sendMaintenanceReminder(params: {
   );
   return send(params.customerEmail, `[${shop}] ${milestone}メンテナンスのご案内`, html);
 }
+
+/**
+ * 車検前メンテナンスリマインダー
+ *
+ * 車検証 OCR で抽出した inspection_expiry_date の N 日前に
+ * 「車検の前にコーティング/PPF のメンテナンスはいかがですか」と
+ * 提案するメール。follow_up_settings.inspection_pre_days で
+ * テナント毎の発送タイミングを制御する (既定 60 日)。
+ */
+export async function sendInspectionReminder(params: {
+  shopName: string;
+  customerEmail: string;
+  customerName: string;
+  vehicleLabel: string;
+  expiryDate: string; // YYYY-MM-DD
+  daysUntil: number;
+}): Promise<boolean> {
+  const shop = escapeHtml(params.shopName);
+  const customer = escapeHtml(params.customerName);
+  const vehicle = escapeHtml(params.vehicleLabel);
+  const expiry = escapeHtml(params.expiryDate);
+  const urgency =
+    params.daysUntil <= 7
+      ? "間もなく"
+      : params.daysUntil <= 30
+        ? `${params.daysUntil} 日後`
+        : `約${Math.round(params.daysUntil / 30)} ヶ月後`;
+  const html = wrap(
+    "車検前メンテナンスのご案内",
+    `
+      <p style="color: #1d1d1f; font-size: 14px;">
+        ${customer} 様<br><br>
+        ${shop}です。<br>
+        お車 (<strong>${vehicle}</strong>) の車検満了日が <strong>${urgency}</strong> (${expiry}) に近づいております。
+      </p>
+      <p style="color: #1d1d1f; font-size: 14px;">
+        車検前に以下のメンテナンスをご検討いただくと、車検後もより長く綺麗にお乗りいただけます:
+      </p>
+      <ul style="color: #1d1d1f; font-size: 14px; padding-left: 20px; margin: 12px 0;">
+        <li>コーティングの撥水性能チェック・再施工</li>
+        <li>PPF (プロテクションフィルム) の点検・部分張り替え</li>
+        <li>内装クリーニング・除菌</li>
+      </ul>
+      <p style="font-size: 13px; color: #86868b;">
+        ご予約・ご相談は ${shop} までお気軽にお問い合わせください。
+      </p>
+    `,
+  );
+  return send(params.customerEmail, `[${shop}] 車検前メンテナンスのご案内`, html);
+}

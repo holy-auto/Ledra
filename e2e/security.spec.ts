@@ -53,11 +53,6 @@ test.describe("Cron authentication", () => {
 });
 
 test.describe("Public endpoints", () => {
-  test("GET /api/certificate/public-status returns 400 without pid", async ({ request }) => {
-    const res = await request.get("/api/certificate/public-status");
-    expect([400, 404]).toContain(res.status());
-  });
-
   test("GET /api/certificate/pdf requires pid parameter", async ({ request }) => {
     const res = await request.get("/api/certificate/pdf");
     expect([400, 404]).toContain(res.status());

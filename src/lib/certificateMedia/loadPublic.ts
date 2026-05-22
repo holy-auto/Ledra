@@ -23,7 +23,7 @@ export async function loadPublicCertificateMedia(publicId: string): Promise<Reso
   const mediaRes = await supabase
     .from("certificate_media")
     .select(
-      "id, media_type, storage_path, before_path, poster_path, duration_ms, width, height, caption, sort_order, content_type, file_size, created_at",
+      "id, media_type, storage_path, before_path, poster_path, duration_ms, width, height, caption, sort_order, content_type, file_size, created_at, diff_summary, diff_summary_generated_at",
     )
     .eq("certificate_id", certRes.data.id)
     .order("sort_order", { ascending: true })

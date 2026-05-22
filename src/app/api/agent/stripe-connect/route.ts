@@ -12,12 +12,20 @@ function getStripe() {
   });
 }
 
-/** Prevent open redirect: only allow URLs under our own origin */
-function safeUrl(candidate?: string | null, fallback?: string): string {
-  const base = process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/+$/, "") ?? "";
-  const safe = fallback ?? `${base}/agent/settings`;
+/**
+ * Prevent open redirect: only allow URLs under our own origin.
+ *
+ * Falls back to req.nextUrl.origin so the route works even if
+ * NEXT_PUBLIC_BASE_URL is missing or points at a stale domain.
+ */
+function safeUrl(req: NextRequest, candidate?: string | null, fallback?: string): string {
+  const reqOrigin = req.nextUrl.origin.replace(/\/+$/, "");
+  const envBase = process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/+$/, "") ?? "";
+  const allowedBases = envBase && envBase !== reqOrigin ? [reqOrigin, envBase] : [reqOrigin];
+
+  const safe = fallback ?? `${reqOrigin}/agent/settings`;
   if (!candidate) return safe;
-  if (base && candidate.startsWith(base)) return candidate;
+  if (allowedBases.some((b) => candidate.startsWith(b))) return candidate;
   return safe;
 }
 
@@ -92,9 +100,17 @@ export async function POST(request: NextRequest) {
 
     // Generate onboarding link
     const body = await request.json().catch(() => ({}) as Record<string, unknown>);
-    const base = process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/+$/, "") ?? "";
-    const returnUrl = safeUrl(body?.return_url as string | undefined, `${base}/agent/settings?stripe=success`);
-    const refreshUrl = safeUrl(body?.refresh_url as string | undefined, `${base}/agent/settings?stripe=refresh`);
+    const origin = request.nextUrl.origin.replace(/\/+$/, "");
+    const returnUrl = safeUrl(
+      request,
+      body?.return_url as string | undefined,
+      `${origin}/agent/settings?stripe=success`,
+    );
+    const refreshUrl = safeUrl(
+      request,
+      body?.refresh_url as string | undefined,
+      `${origin}/agent/settings?stripe=refresh`,
+    );
 
     const accountLink = await stripe.accountLinks.create({
       account: accountId,

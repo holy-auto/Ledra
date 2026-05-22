@@ -36,6 +36,8 @@ function makeMedia(over: {
     content_type: null,
     file_size: 0,
     created_at: null,
+    diff_summary: null,
+    diff_summary_generated_at: null,
     url: over.url === undefined ? `https://signed/main/${over.id}` : over.url,
     before_url:
       over.before_url === undefined

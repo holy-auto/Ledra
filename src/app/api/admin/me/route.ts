@@ -1,6 +1,6 @@
-import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +25,7 @@ export async function GET() {
       tenant_name: tenant?.name ?? null,
       plan_tier: tenant?.plan_tier ?? "free",
       role: caller.role ?? "admin",
+      is_platform_admin: isPlatformAdmin(caller),
     });
   } catch (e: unknown) {
     return apiInternalError(e, "me");

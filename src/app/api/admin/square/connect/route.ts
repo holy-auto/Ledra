@@ -39,7 +39,7 @@ export async function GET(_req: NextRequest) {
 }
 
 // ─── POST: Square OAuth フロー開始 ───
-export async function POST(_req: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
@@ -55,13 +55,16 @@ export async function POST(_req: NextRequest) {
       });
     }
 
-    const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/admin/square/callback`;
+    // redirect_uri は callback と完全一致しないと Square が拒否する。env が
+    // 設定されていない (or 空) 場合は実リクエストの origin を fallback として使う。
+    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin).replace(/\/+$/, "");
+    const redirectUri = `${baseUrl}/api/admin/square/callback`;
     const scopes = "ORDERS_READ+PAYMENTS_READ+MERCHANT_PROFILE_READ";
     const state = caller.tenantId;
 
     const authUrl =
       `https://connect.squareup.com/oauth2/authorize` +
-      `?client_id=${clientId}` +
+      `?client_id=${encodeURIComponent(clientId)}` +
       `&scope=${scopes}` +
       `&state=${encodeURIComponent(state)}` +
       `&redirect_uri=${encodeURIComponent(redirectUri)}`;
