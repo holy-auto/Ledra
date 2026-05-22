@@ -86,6 +86,10 @@
     {
       "path": "/api/cron/manufacturer-monthly-summary",
       "schedule": "0 0 1 * *"
+    },
+    {
+      "path": "/api/cron/passport-transfers-expire",
+      "schedule": "15 3 * * *"
     }
   ]
 }

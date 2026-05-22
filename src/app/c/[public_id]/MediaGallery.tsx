@@ -140,6 +140,17 @@ function MediaTile({ media }: { media: ResolvedCertificateMedia }) {
             width={media.width}
             height={media.height}
           />
+          {media.diff_summary ? (
+            <div
+              className="mt-3 rounded-lg bg-surface-hover p-3 text-xs leading-relaxed text-muted"
+              aria-label="AI生成の差分サマリ"
+            >
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted">
+                AI による施工差分
+              </div>
+              <p className="text-primary">{media.diff_summary}</p>
+            </div>
+          ) : null}
         </div>
       );
     case "panorama360":
