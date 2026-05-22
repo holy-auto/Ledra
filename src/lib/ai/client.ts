@@ -21,13 +21,13 @@ export function getAnthropicClient(): Anthropic {
 }
 
 /** テキスト生成タスク用デフォルトモデル */
-export const AI_MODEL = "claude-opus-4-5" as const;
+export const AI_MODEL = "claude-sonnet-4-6" as const;
 
 /** 高速・軽量タスク用モデル (写真チェック・スコアリング等) */
 export const AI_MODEL_FAST = "claude-haiku-4-5" as const;
 
 /** Vision対応モデル */
-export const AI_MODEL_VISION = "claude-opus-4-5" as const;
+export const AI_MODEL_VISION = "claude-sonnet-4-6" as const;
 
 /**
  * JSON出力を安全にパース（コードフェンスを除去）
