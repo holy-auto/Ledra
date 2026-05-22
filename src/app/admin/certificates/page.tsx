@@ -12,9 +12,10 @@ import PageHeader from "@/components/ui/PageHeader";
 import EmptyStateGuide from "@/components/ui/EmptyStateGuide";
 import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
 import CertificatesModeSwitch from "./CertificatesModeSwitch";
-
 // IndexedDB を読むためクライアントのみで描画 (SSR では何も表示しない)
-const PendingOfflineCerts = dynamic(() => import("./PendingOfflineCerts"), { ssr: false });
+// Next.js 16 では Server Component から直接 dynamic({ssr:false}) は禁止のため
+// Client wrapper 経由で読み込む。
+import PendingOfflineCerts from "./PendingOfflineCertsClient";
 
 type SearchParams = { q?: string };
 

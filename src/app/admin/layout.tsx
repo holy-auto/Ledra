@@ -15,7 +15,9 @@ const Sidebar = dynamic(() => import("@/components/ui/Sidebar"), {
 });
 
 // Service Worker / IndexedDB に依存するためクライアントのみで描画 (SSR 不要)
-const OfflineBanner = dynamic(() => import("@/components/OfflineBanner"), { ssr: false });
+// Next.js 16 では Server Component から直接 dynamic({ssr:false}) は禁止のため
+// Client wrapper 経由で読み込む。
+import OfflineBanner from "@/components/OfflineBannerClient";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
