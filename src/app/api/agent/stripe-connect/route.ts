@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
+import { getStripeClient } from "@/lib/stripe/client";
 import { createClient } from "@/lib/supabase/server";
 import { apiJson, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
@@ -7,9 +8,7 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 export const dynamic = "force-dynamic";
 
 function getStripe() {
-  return new Stripe(process.env.STRIPE_SECRET_KEY!, {
-    apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion,
-  });
+  return getStripeClient();
 }
 
 /** Prevent open redirect: only allow URLs under our own origin */

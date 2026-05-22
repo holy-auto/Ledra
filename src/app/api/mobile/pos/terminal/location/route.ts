@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import Stripe from "stripe";
+import { getStripeClient } from "@/lib/stripe/client";
 import { apiForbidden, apiInternalError, apiJson, apiUnauthorized } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { requireMinRole } from "@/lib/auth/checkRole";
@@ -51,9 +52,7 @@ export async function GET(req: NextRequest) {
     if (!stripeSecretKey) {
       return apiInternalError(new Error("stripe not configured"), "mobile/pos/terminal/location");
     }
-    const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion,
-    });
+    const stripe = getStripeClient();
 
     // 1) 既存ロケーションを検索
     const list = await stripe.terminal.locations.list({ limit: 1 }, stripeOptions);

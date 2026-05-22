@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
+import { getStripeClient } from "@/lib/stripe/client";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiValidationError, apiInternalError, apiError } from "@/lib/api/response";
 import { captureSecurityEvent } from "@/lib/observability/sentry";
@@ -166,9 +167,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function getStripe(): Stripe {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key) throw new Error("Missing STRIPE_SECRET_KEY");
-  return new Stripe(key, { apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion });
+  return getStripeClient();
 }
 
 // ── connected account ID → tenant / agent を逆引き ──

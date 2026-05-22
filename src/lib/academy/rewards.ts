@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { getStripeClient } from "@/lib/stripe/client";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 
@@ -8,9 +9,7 @@ const QUALIFY_AVG = 4.0;
 const QUALIFY_COUNT = 5;
 
 function getStripe() {
-  return new Stripe(process.env.STRIPE_SECRET_KEY!, {
-    apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion,
-  });
+  return getStripeClient();
 }
 
 export interface RewardRecord {
@@ -36,9 +35,7 @@ interface QualifyingLesson {
   rating_count: number;
 }
 
-type CalculateResult =
-  | { ok: true; inserted: number; skipped_existing: number }
-  | { ok: false; reason: string };
+type CalculateResult = { ok: true; inserted: number; skipped_existing: number } | { ok: false; reason: string };
 
 type ApplyResult =
   | { ok: true; stripe_credit_id: string }
@@ -75,7 +72,11 @@ export async function calculateMonthlyRewards(periodMonth: string): Promise<Calc
   for (const l of lessons) {
     const key = `${l.tenant_id ?? "null"}::${l.author_user_id}`;
     if (!grouped.has(key)) {
-      grouped.set(key, { tenant_id: l.tenant_id as string | null, author_user_id: l.author_user_id as string, lessons: [] });
+      grouped.set(key, {
+        tenant_id: l.tenant_id as string | null,
+        author_user_id: l.author_user_id as string,
+        lessons: [],
+      });
     }
     grouped.get(key)!.lessons.push({
       id: l.id as string,
@@ -193,6 +194,7 @@ export async function applyStripeCredit(rewardId: string): Promise<ApplyResult> 
           period_month: reward.period_month as string,
         },
       },
+      { idempotencyKey: `academy-reward:${rewardId}` },
     );
 
     await supabase
@@ -210,10 +212,7 @@ export async function applyStripeCredit(rewardId: string): Promise<ApplyResult> 
     const detail = e instanceof Error ? e.message : String(e);
     logger.error("[rewards] stripe createBalanceTransaction failed", { rewardId, detail });
 
-    await supabase
-      .from("academy_creator_rewards")
-      .update({ status: "failed", notes: detail })
-      .eq("id", rewardId);
+    await supabase.from("academy_creator_rewards").update({ status: "failed", notes: detail }).eq("id", rewardId);
 
     return { ok: false, reason: "error", detail };
   }

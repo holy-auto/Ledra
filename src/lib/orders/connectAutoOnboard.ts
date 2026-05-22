@@ -1,12 +1,11 @@
 import Stripe from "stripe";
+import { getStripeClient } from "@/lib/stripe/client";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { sendResendEmail } from "@/lib/email/resendSend";
 import { logger } from "@/lib/logger";
 
 function getStripe() {
-  return new Stripe(process.env.STRIPE_SECRET_KEY!, {
-    apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion,
-  });
+  return getStripeClient();
 }
 
 function buildOnboardingEmailHtml(params: {

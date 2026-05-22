@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
+import { getStripeClient } from "@/lib/stripe/client";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
@@ -42,9 +43,7 @@ export async function POST(req: NextRequest) {
     const connectAccountId = tenant?.stripe_connect_account_id as string | null;
     const isOnboarded = tenant?.stripe_connect_onboarded as boolean | null;
 
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion,
-    });
+    const stripe = getStripeClient();
 
     // Connectアカウントがある場合はそちらでセッション作成
     const stripeOptions = connectAccountId && isOnboarded ? { stripeAccount: connectAccountId } : undefined;
@@ -115,9 +114,7 @@ export async function GET(req: NextRequest) {
     const connectAccountId = tenant?.stripe_connect_account_id as string | null;
     const isOnboarded = tenant?.stripe_connect_onboarded as boolean | null;
 
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion,
-    });
+    const stripe = getStripeClient();
 
     const stripeOptions = connectAccountId && isOnboarded ? { stripeAccount: connectAccountId } : undefined;
 
