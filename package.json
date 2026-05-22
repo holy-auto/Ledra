@@ -43,7 +43,7 @@
     ]
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.97.0",
+    "@anthropic-ai/sdk": "^0.98.0",
     "@contentauth/c2pa-node": "^0.5.5",
     "@googleapis/calendar": "^14.2.0",
     "@peculiar/webcrypto": "^1.7.1",
