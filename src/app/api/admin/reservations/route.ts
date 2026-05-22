@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { syncCreateEvent, syncUpdateEvent, syncDeleteEvent } from "@/lib/gcal/client";
 import { enforceBilling } from "@/lib/billing/guard";
 import { parsePagination } from "@/lib/api/pagination";
 import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { logger } from "@/lib/logger";
 import {
   reservationCreateSchema,
   reservationDeleteSchema,
@@ -170,7 +171,13 @@ export async function POST(req: NextRequest) {
       note: reservation.note,
       customer_name: null,
       vehicle_label: null,
-    }).catch((e) => console.error("[reservations] gcal sync create failed:", e));
+    }).catch((error) =>
+      logger.warn("reservations gcal sync create failed (non-blocking)", {
+        error,
+        tenantId: caller.tenantId,
+        reservationId: reservation.id,
+      }),
+    );
 
     return apiJson({ ok: true, reservation });
   } catch (e: unknown) {
@@ -264,8 +271,12 @@ export async function PUT(req: NextRequest) {
     // ── Google Calendar 同期（非ブロッキング） ──
     if (data.status === "cancelled" && data.gcal_event_id) {
       // キャンセル時は GCal イベントを削除
-      syncDeleteEvent(caller.tenantId, data.id, data.gcal_event_id).catch((e) =>
-        console.error("[reservations] gcal sync delete failed:", e),
+      syncDeleteEvent(caller.tenantId, data.id, data.gcal_event_id).catch((error) =>
+        logger.warn("reservations gcal sync delete failed (non-blocking)", {
+          error,
+          tenantId: caller.tenantId,
+          reservationId: data.id,
+        }),
       );
     } else if (data.gcal_event_id) {
       // 既存イベントの更新
@@ -277,7 +288,13 @@ export async function PUT(req: NextRequest) {
         end_time: data.end_time,
         note: data.note,
         gcal_event_id: data.gcal_event_id,
-      }).catch((e) => console.error("[reservations] gcal sync update failed:", e));
+      }).catch((error) =>
+        logger.warn("reservations gcal sync update failed (non-blocking)", {
+          error,
+          tenantId: caller.tenantId,
+          reservationId: data.id,
+        }),
+      );
     } else {
       // gcal_event_id がまだない場合は新規作成
       syncCreateEvent(caller.tenantId, {
@@ -287,7 +304,13 @@ export async function PUT(req: NextRequest) {
         start_time: data.start_time,
         end_time: data.end_time,
         note: data.note,
-      }).catch((e) => console.error("[reservations] gcal sync create failed:", e));
+      }).catch((error) =>
+        logger.warn("reservations gcal sync create failed (non-blocking)", {
+          error,
+          tenantId: caller.tenantId,
+          reservationId: data.id,
+        }),
+      );
     }
 
     return apiJson({ ok: true, reservation: data });
@@ -333,14 +356,22 @@ export async function DELETE(req: NextRequest) {
         return apiValidationError("active_reservation_cannot_delete");
       }
 
-      const { error: delErr } = await supabase
+      // status フィルタを DELETE 側にもコピー (TOCTOU 防御)。
+      // SELECT 〜 DELETE の間に他リクエストが status を active に戻した場合、
+      // ここで in() に外れて 0 行削除になり、誤って稼働中の予約を消すのを防ぐ。
+      const { data: deleted, error: delErr } = await supabase
         .from("reservations")
         .delete()
         .eq("id", id)
-        .eq("tenant_id", caller.tenantId);
+        .eq("tenant_id", caller.tenantId)
+        .in("status", ["cancelled", "completed"])
+        .select("id");
 
       if (delErr) {
         return apiInternalError(delErr, "reservations hard_delete");
+      }
+      if (!deleted || deleted.length === 0) {
+        return apiValidationError("active_reservation_cannot_delete");
       }
       return apiJson({ ok: true, deleted: true });
     }
@@ -377,8 +408,12 @@ export async function DELETE(req: NextRequest) {
 
     // ── Google Calendar 同期: イベント削除（非ブロッキング） ──
     if (existing?.gcal_event_id) {
-      syncDeleteEvent(caller.tenantId, id, existing.gcal_event_id).catch((e) =>
-        console.error("[reservations] gcal sync delete failed:", e),
+      syncDeleteEvent(caller.tenantId, id, existing.gcal_event_id).catch((error) =>
+        logger.warn("reservations gcal sync delete failed (non-blocking)", {
+          error,
+          tenantId: caller.tenantId,
+          reservationId: id,
+        }),
       );
     }
 

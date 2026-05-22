@@ -1125,6 +1125,16 @@ export default function Sidebar() {
               } catch {
                 /* ignore */
               }
+              // 未送信の Outbox (IndexedDB) もログアウト時に必ず破棄する。
+              // 残しておくと A → ログアウト → B が同一ブラウザに入り直したとき
+              // A の queued ジョブが B のセッション cookie で flush され、
+              // 別テナントに書き込みが入る (クロステナント情報リーク) 危険がある。
+              try {
+                const { clearOutbox } = await import("@/lib/outbox/queue");
+                await clearOutbox();
+              } catch {
+                /* ignore */
+              }
             } catch {
               /* ignore */
             }
