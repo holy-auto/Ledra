@@ -16,6 +16,8 @@ const academyCaseActionSchema = z.object({
   action: z.enum(["publish", "unpublish"], { message: "action は publish または unpublish です" }),
 });
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 /** 公開済みAcademy事例一覧 */

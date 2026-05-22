@@ -16,6 +16,8 @@ const qaSchema = z.object({
   category: z.string().trim().max(100).optional(),
 });
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {

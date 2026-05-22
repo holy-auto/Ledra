@@ -4,6 +4,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { parseShakenshoAuto, extractFirstRegistrationYear, calcSizeClass } from "@/lib/ocr/shakensho";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
@@ -35,8 +36,7 @@ export async function POST(req: Request) {
     const length_mm = parsed.length_mm ?? null;
     const width_mm = parsed.width_mm ?? null;
     const height_mm = parsed.height_mm ?? null;
-    const size_class =
-      length_mm && width_mm && height_mm ? calcSizeClass(length_mm, width_mm, height_mm) : null;
+    const size_class = length_mm && width_mm && height_mm ? calcSizeClass(length_mm, width_mm, height_mm) : null;
 
     return Response.json({
       ok: true,

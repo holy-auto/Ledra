@@ -15,6 +15,8 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { reformatVoiceMemo } from "@/lib/ai/voiceMemoReformat";
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 const schema = z.object({
