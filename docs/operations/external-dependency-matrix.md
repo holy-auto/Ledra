@@ -89,19 +89,20 @@
 | **Anthropic** (OCR/AI) | P3 (UX 影響あり) | open (graceful fallback) / closed (Vision) | **withRetry ✓** (全 14 モジュール) | structured outputs で構造的排除 | **60s** | — | — |
 | **Polygon RPC** (anchoring) | P2 | open (skip & retry next cron) | **withRetry ✓** (read/receipt) / 除外 (writeContract: nonce) | tx hash 重複検知 | viem 既定 | — | — |
 | **Cloudflare Stream / Mux** | P2 | closed (動画提出系) | **withRetry ✓** (5xx/429 retry, 4xx 透過) | — | — | — | — |
-| **Resend** (Email) | P2 (OTP は P1) | open (transactional) / closed (OTP) | 独自 backoff (3回) | `Idempotency-Key` | — | C1 | `operations-runbook.md` §2.3 |
+| **Resend** (Email) | P2 (OTP は P1) | open (transactional) / closed (OTP) | 独自 backoff (3回) + **SendGrid フォールバック ✓** (`sendEmail` 統一 adapter) | `Idempotency-Key` | — | C1 | `operations-runbook.md` §2.3 |
+| **SendGrid** (Email fallback) | P2 | open (Resend が落ちた時のみ呼ばれる) | **withRetry ✓** | (Resend と同経路) | 15s | — | — |
 | **QStash** (async queue) | P2 | open (キュー退避) | retries: 2 + dedup | `deduplicationId` 必須 | — | B3 | — |
 | **Upstash Redis** (rate-limit/cache) | P3 | open (`RATE_LIMIT_FAIL_CLOSED=0`) / closed (=1) | — | — | — | — | `operations/rate-limits.md` |
 | **Square** (POS sync) | P3 | open (部分同期継続) | API 429/401 を error 値で記録 | — | — | — | — |
-| **LINE Messaging API** | P3 | **open (握りつぶし)** | **なし** | `recordOutboundLineMessage` で `delivered=false` 記録 | — | — | — |
-| **Twilio** (SMS) | P3 | open (fire-and-forget) | **なし** | — | — | — | — |
+| **LINE Messaging API** | P3 (重要通知は P2) | open (時効性通知) / **closed-ish** (重要通知は SMS フォールバック) | **withRetry ✓** (`clientWithRetry.ts` 重要通知のみ) | `recordOutboundLineMessage` で記録 + UI バッジ | — | — | — |
+| **Twilio** (SMS) | P2 (OTP セカンダリ / LINE 代替) | open (fire-and-forget) / closed (OTP) | **withRetry ✓** | typed result | 10s | — | — |
 | **freee / マネーフォワード** (会計) | P3 | open (cron next round) | — | OAuth token refresh | — | — | — |
 | **Google Calendar** | P3 | open | — | OAuth | — | — | — |
 | **CloudSign** (電子署名 webhook) | P3 | open (webhook idempotent) | — | event id dedup (要確認) | — | — | — |
 | **Sentry** | P3 (観測のみ) | open (silent .catch) | — | — | — | — | — |
-| **Slack Incoming Webhook** | P3 | open | — | — | — | — | — |
+| **Slack Incoming Webhook** | P3 (lead は P2) | open | **withRetry ✓** | — | 5s | — | — |
 | **PostHog** | P3 | open (client-side) | SDK 内蔵 | — | — | — | — |
-| **gBizINFO** | P3 | open | **なし** | — | — | — | — |
+| **gBizINFO** | P3 | open | **withRetry ✓** | — | 5s | — | — |
 | **Pinata** (IPFS) | P3 | open (skip pin) | — | content addressing で自然冪等 | — | — | — |
 | **Hive** (Deepfake) | P3 (任意) | open (provider disabled) | — | — | — | — | — |
 
@@ -351,7 +352,7 @@
 | ~~G1~~ | ~~Stripe SDK 呼び出しが `withRetry` 未経由~~ | ✅ **解消** (commit `e58f5bf`): 共有 `getStripeClient()` + Proxy で全 SDK call を自動ラップ。重要 mutation 4 件に `idempotencyKey` 追加 | — |
 | ~~G2~~ | ~~Anthropic SDK timeout 600s デフォルト~~ | ✅ **解消** (commit `86fb7fc`, `8567da6`): SDK timeout 60s、Vercel `maxDuration` 60s、`withRetry("anthropic", ...)` 全 14 モジュール経由 | — |
 | G3 | Checkout 起動失敗のユーザー向けエラー / リトライ動線が薄い | 共通 ErrorBoundary + リトライボタン、Sentry breadcrumb 充実 | 中 |
-| G4 | OTP メール (Resend) 全断時のフォールバックなし | Twilio SMS 経由のセカンダリ OTP 経路を準備 (=Twilio 用途の正式化) | 大 |
+| ~~G4~~ | ~~OTP メール (Resend) 全断時のフォールバックなし~~ | ✅ **解消** (commit `313640a`): `src/lib/email/sendEmail.ts` 統一 adapter で Resend → SendGrid → (G9 連動) Twilio SMS の 3 重化 | — |
 
 ### 4.2 中優先 (P2 機能の信頼性)
 
@@ -366,10 +367,10 @@
 
 | # | 課題 | 必要な判断 |
 |---|------|------|
-| G9 | LINE 通知の握りつぶし方針 | 「重要通知 (作業完了等) は retry すべきか」を機能別に決める |
-| G10 | Twilio SMS の用途と criticality | 現状 fire-and-forget。OTP セカンダリにするなら closed 化 |
-| G11 | gBizINFO の retry / timeout | 用途次第。fail-open のままで良いか合意取り |
-| G12 | Slack lead 通知の retry | 売上機会損失 vs 実装コスト |
+| ~~G9~~ | ~~LINE 通知の握りつぶし方針~~ | ✅ **解消** (commit `be4b2e8`): `src/lib/line/clientWithRetry.ts` で重要通知 (作業完了 / 帳票 / 予約確認) を `withRetry` + 配信記録 + Twilio SMS フォールバック。案件詳細ページに「未配信」バッジ表示。時効性通知は fire-and-forget 維持 |
+| ~~G10~~ | ~~Twilio SMS の用途と criticality~~ | ✅ **解消** (commit `313640a`): `sendOtpSms` / `sendNotificationSms` / `sendManualSms` の 3 用途で正式化。`withRetry("twilio", ...)` 経由、typed result |
+| ~~G11~~ | ~~gBizINFO の retry / timeout~~ | ✅ **解消** (commit `089b03d`): `withRetry("gbizinfo", ...)` + 5s timeout |
+| ~~G12~~ | ~~Slack lead 通知の retry~~ | ✅ **解消** (commit `089b03d`): 汎用 `notifySlack` を `withRetry("slack", ...)` 経由化、全 Slack 通知が一律恩恵 |
 
 ### 4.4 横断的 (運用面)
 
