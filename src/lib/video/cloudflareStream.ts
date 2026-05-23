@@ -14,6 +14,7 @@
  */
 
 import crypto from "crypto";
+import { withRetry } from "@/lib/http/withRetry";
 import type {
   DirectUploadHandle,
   NormalizedWebhookEvent,
@@ -86,13 +87,26 @@ function toVideoAsset(v: CfsVideoResponse): VideoAsset {
   };
 }
 
+/**
+ * CFS API への fetch を withRetry で包む。
+ * 5xx / 429 は throw して withRetry の retry/circuit breaker を発火させる
+ * (4xx は permanent error なので retry しない / Response として返す)。
+ */
 async function cfsFetch(path: string, init: RequestInit, cfg: CfsConfig): Promise<Response> {
-  return fetch(`${API_BASE}/accounts/${cfg.accountId}${path}`, {
-    ...init,
-    headers: {
-      ...(init.headers ?? {}),
-      Authorization: `Bearer ${cfg.apiToken}`,
-    },
+  return withRetry("cf-stream", async () => {
+    const res = await fetch(`${API_BASE}/accounts/${cfg.accountId}${path}`, {
+      ...init,
+      headers: {
+        ...(init.headers ?? {}),
+        Authorization: `Bearer ${cfg.apiToken}`,
+      },
+    });
+    if (res.status >= 500 || res.status === 429) {
+      const err = new Error(`cf-stream:${res.status}`) as Error & { status: number };
+      err.status = res.status;
+      throw err;
+    }
+    return res;
   });
 }
 

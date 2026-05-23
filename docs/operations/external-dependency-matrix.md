@@ -42,17 +42,21 @@
 
 `src/lib/http/withRetry.ts:83` の `withRetry(key, thunk, opts)` を **下記対象は必ず経由**する:
 
-- 対象: Stripe SDK / Resend REST / Polygon RPC / QStash publish / Square API / Cloudflare Stream API / Anthropic SDK / freee / MF / Twilio
+- 対象: Stripe SDK / Anthropic SDK / Polygon RPC / Cloudflare Stream / Resend REST / QStash publish / Square API / freee / MF / Twilio
 - 既定: 4 attempts、initial 250ms、multiplier 2、max 8s、±20% jitter
 - 自動リトライ対象: 408/425/429/5xx、`ECONNRESET`/`ETIMEDOUT`/`ENOTFOUND`/`EAI_AGAIN`、`fetch failed`
 - Circuit breaker: 5 連続失敗で 30 秒 open (`CircuitOpenError` を throw)
 
-**現状ギャップ**: `withRetry` の呼び出し箇所が `src/lib/outbound-webhooks.ts` のみ。
-`src/lib/email/resendSend.ts` は独自 backoff、Stripe/Square/Anthropic/Twilio は素のまま。
-→ §4 で改修対象として明示。
+**採用パターン (Proxy / 関数ラップ)**:
+- **Stripe SDK** (`src/lib/stripe/client.ts`): `getStripeClient()` が返す Stripe インスタンスを **Proxy で包み、`RETRYABLE_METHODS` (create/retrieve/update/list/...) に該当する関数呼び出しを自動的に `withRetry("stripe", ...)` で経由**。call site の変更は不要。SDK 側 `maxNetworkRetries: 0` で二重リトライ無効化。
+- **Anthropic SDK** (`src/lib/ai/client.ts`): 全 14 モジュールで `withRetry("anthropic", () => client.messages.parse(...))` を明示。SDK 側 `maxRetries: 0`。
+- **Polygon RPC** (`src/lib/anchoring/providers/polygon.ts`): viem の `readContract` / `getLogs` / `waitForTransactionReceipt` を `withRetry("polygon-rpc", ...)` でラップ。**`writeContract` は除外** (nonce が進む = 別 tx 生成で duplicate anchor リスク)。
+- **Cloudflare Stream** (`src/lib/video/cloudflareStream.ts`): `cfsFetch` 内で 5xx/429 を throw、`withRetry("cf-stream", ...)` でラップ。4xx は permanent として Response 透過。
 
 **対象外** (理由付き):
 - Supabase Postgrest クライアント: pooler + クライアント側 retry を内蔵。`withRetry` で二重リトライにならないよう wrap **しない**。
+- Stripe `webhooks.constructEvent`: 署名検証は permanent エラー (retry しても結果同じ) なので Proxy の `RETRYABLE_METHODS` から除外。
+- Polygon `walletClient.writeContract`: nonce 問題で retry 不可。失敗時は cron 次回実行で `findAnchorTx` により重複検知。
 
 ### 1.4 Idempotency 必須範囲
 
@@ -69,9 +73,10 @@
 
 ### 1.5 Timeout 方針
 
-- **明示 timeout 未設定が大半**。Stripe/Resend/Anthropic はそれぞれ SDK のデフォルト (Stripe: 80s, Anthropic: 600s)。
-- SLO L2 (API p99 < 1500ms) を守るため、エンドユーザーが待つ系のパスで Anthropic SDK のデフォルト 600s は **明確に危険**。
-- → §4 でサービス別 timeout の明示化をアクション化。
+- **明示済**: Stripe (30s, `src/lib/stripe/client.ts`)、Anthropic (60s, `src/lib/ai/client.ts`)、AI route の Vercel `maxDuration` (60s)。
+- **未明示**: Resend / Square / QStash / Polygon RPC (viem 既定) / freee / MF / Twilio / gBizINFO。
+- SLO L2 (API p99 < 1500ms) を守るため、エンドユーザーが待つ系のパスで未明示は要対応。
+- → §4 で残りの timeout 明示をアクション化。
 
 ---
 
@@ -80,15 +85,16 @@
 | Service | Lv | Default fail-mode | Retry | Idempotency | Timeout | SLO | Runbook |
 |---|---|---|---|---|---|---|---|
 | **Supabase** (Auth/DB/Storage) | P0 | closed | pooler 内蔵 | RLS + DB UNIQUE | — | A2 | `disaster-recovery.md`, `operations-runbook.md` §2.1 |
-| **Stripe** (Checkout/Connect/Terminal/Webhook) | P1 | closed (起動) / open (webhook) | **未経由** (SDK デフォルト) | `stripe_processed_events` | SDK 80s | A2, B1 | `operations-runbook.md` §2.2, §2.4 |
+| **Stripe** (Checkout/Connect/Terminal/Webhook) | P1 | closed (起動) / open (webhook) | **withRetry ✓** (Proxy 自動ラップ) | `stripe_processed_events` + key 4 mutation | **30s** | A2, B1 | `operations-runbook.md` §2.2, §2.4 |
+| **Anthropic** (OCR/AI) | P3 (UX 影響あり) | open (graceful fallback) / closed (Vision) | **withRetry ✓** (全 14 モジュール) | structured outputs で構造的排除 | **60s** | — | — |
+| **Polygon RPC** (anchoring) | P2 | open (skip & retry next cron) | **withRetry ✓** (read/receipt) / 除外 (writeContract: nonce) | tx hash 重複検知 | viem 既定 | — | — |
+| **Cloudflare Stream / Mux** | P2 | closed (動画提出系) | **withRetry ✓** (5xx/429 retry, 4xx 透過) | — | — | — | — |
 | **Resend** (Email) | P2 (OTP は P1) | open (transactional) / closed (OTP) | 独自 backoff (3回) | `Idempotency-Key` | — | C1 | `operations-runbook.md` §2.3 |
 | **QStash** (async queue) | P2 | open (キュー退避) | retries: 2 + dedup | `deduplicationId` 必須 | — | B3 | — |
 | **Upstash Redis** (rate-limit/cache) | P3 | open (`RATE_LIMIT_FAIL_CLOSED=0`) / closed (=1) | — | — | — | — | `operations/rate-limits.md` |
-| **Polygon RPC** (anchoring) | P2 | open (skip & retry next cron) | **未経由** | tx hash 重複検知 | — | — | — |
 | **Square** (POS sync) | P3 | open (部分同期継続) | API 429/401 を error 値で記録 | — | — | — | — |
 | **LINE Messaging API** | P3 | **open (握りつぶし)** | **なし** | `recordOutboundLineMessage` で `delivered=false` 記録 | — | — | — |
 | **Twilio** (SMS) | P3 | open (fire-and-forget) | **なし** | — | — | — | — |
-| **Anthropic** (OCR/AI) | P3 (UX 影響あり) | closed (caller throw) | **なし** | — | **SDK 600s (要短縮)** | — | — |
 | **freee / マネーフォワード** (会計) | P3 | open (cron next round) | — | OAuth token refresh | — | — | — |
 | **Google Calendar** | P3 | open | — | OAuth | — | — | — |
 | **CloudSign** (電子署名 webhook) | P3 | open (webhook idempotent) | — | event id dedup (要確認) | — | — | — |
@@ -98,9 +104,8 @@
 | **gBizINFO** | P3 | open | **なし** | — | — | — | — |
 | **Pinata** (IPFS) | P3 | open (skip pin) | — | content addressing で自然冪等 | — | — | — |
 | **Hive** (Deepfake) | P3 (任意) | open (provider disabled) | — | — | — | — | — |
-| **Cloudflare Stream / Mux** | P2 | closed (動画提出系) | **未経由** | — | — | — | — |
 
-凡例: **未経由** = `withRetry` を経由していない。**なし** = リトライロジック自体が存在しない。
+凡例: **withRetry ✓** = `withRetry` を経由している。**なし** = リトライロジック自体が存在しない。
 
 ---
 
@@ -219,12 +224,17 @@
 - **Fail-mode**: open + キュー (ユーザーに「処理中」表示)
 
 #### ブロックチェーンアンカリング
-- **依存**: Polygon RPC, Supabase
+- **依存**: Polygon RPC (viem), Supabase
 - **起動経路**: `/api/cron/polygon-signer` (定期), `/api/admin/polygon/backfill` (手動)
 - **Fail-mode**:
   - `POLYGON_ANCHOR_ENABLED !== "true"` → no-op (DISABLED_RESULT)
   - RPC エラー → skip、次回 cron で再試行
-  - **本番 mainnet で連続失敗時の警告経路が薄い** → GAP
+  - **本番 mainnet で連続失敗時の警告経路が薄い** → GAP G5
+- **Retry** (commit `<this PR>`):
+  - `verifyAnchor` (readContract): `withRetry("polygon-rpc", ...)` 経由
+  - `findAnchorTx` (getLogs): `withRetry("polygon-rpc", ...)` 経由
+  - `waitForTransactionReceipt`: `withRetry("polygon-rpc", ...)` 経由 (既知 tx hash の poll = idempotent)
+  - **`writeContract` は対象外**: nonce が進む = 別 tx 生成で duplicate anchor リスク。失敗時は cron 次回で `findAnchorTx` により重複検知して回避。
 - **Wallet 監視**: `polygon-signer` cron が POL 残高を `POLYGON_WALLET_WARN_BALANCE_POL` / `_ALERT_` で監視、Resend メール通知
 
 #### NFC タグ書込み / 読込
@@ -233,21 +243,34 @@
 
 ### 3.4 AI / OCR 系
 
-#### 車検証 OCR
-- **依存**: Anthropic Claude (`claude-opus-4-5` default), Supabase
-- **起動経路**: `POST /api/vehicles/parse-shakken-qr`
-- **Fail-mode**: closed (caller throw → エラーページ)
-- **GAP**: SDK timeout が 600s デフォルト → SLO L2 に違反するリスク。**短縮必須** (推奨 30s)
-- **GAP**: `withRetry` 未経由
+**共通基盤** (commit `8567da6`, `fd6b740`, `86fb7fc`):
+- 全 14 モジュールが `messages.parse({ output_config: { format: zodOutputFormat(...) } })` 経由で zod schema 強制 → パース失敗を構造的に排除
+- 全 SDK 呼び出しが `withRetry("anthropic", () => ...)` 経由 (SDK 内蔵 retry は `maxRetries: 0` で無効化、二重化防止)
+- SDK timeout: **60s**、AI route の Vercel `maxDuration`: **60s** に統一明示
+- throw → graceful fallback に統一 (draftCertificate / explainCertificate / academyFeedback)
 
-#### 写真品質チェック AI
-- **依存**: Anthropic Claude (haiku 系)
-- **起動経路**: `POST /api/admin/certificates/ai-quality`
-- **Fail-mode**: open (チェック結果欠落でも証明書発行は続行)
+**モデル選定マトリクス**:
 
-#### 音声メモ整形 / フォローアップ生成 / Q&A
-- **依存**: Anthropic
-- **Fail-mode**: open
+| 機能 | モデル | 理由 |
+|---|---|---|
+| 車検証 OCR (`shakensho.ts`) | Sonnet 4.6 (要 Opus 4.7 検討) | Vision、印字密度高。Opus 4.7 の高解像度 Vision (2576px) で精度改善余地あり |
+| 写真品質チェック (`photoQualityCheck.ts`) | Sonnet 4.6 | Vision、品質判定 |
+| 写真改ざん検知 (`photoTamperingCheck.ts`) | Sonnet 4.6 | Vision、誤判定リスク中。EXIF ファーストパスで保険業務影響を軽減 |
+| ビフォーアフター差分 (`beforeAfterDiff.ts`) | Sonnet 4.6 | Vision、公開ページ表示 |
+| 証明書下書き / 説明変換 / 添削 (`draftCertificate.ts` / `explainCertificate.ts` / `academyFeedback.ts`) | Sonnet 4.6 | 長文生成、品質重要 |
+| QA アシスタント (`qaAssistant.ts`) | Sonnet 4.6 | RAG、品質中 |
+| 音声メモ整形 / 顧客サマリ / フォローアップ / 不正評価 / BtoB 推薦 | Haiku 4.5 | 短文・コスト優先 |
+
+**Prompt caching の対象** (`cache_control: { type: "ephemeral" }`):
+- `shakensho.ts` system prompt (~3600 tokens 推定) ✓
+- `academyFeedback.ts` (main) system prompt (~1900 tokens、ボーダー) ✓
+- 他は最小キャッシュ閾値 (Sonnet 4.6: 2048 / Haiku 4.5: 4096) 未達のため見送り
+
+#### 各機能の fail-mode
+- **車検証 OCR**: closed → **open (graceful)** に変更。raw=null 時 confidence=low で empty を返す
+- **写真品質チェック / 写真改ざん検知 / フォローアップ / 音声メモ / 顧客サマリ / 不正評価 / BtoB**: open (fallback)
+- **ビフォーアフター差分**: closed (admin 手動トリガで明示エラーが必要)
+- **証明書下書き / 説明変換 / 添削**: open (EMPTY_DRAFT / emptyExplanation / EMPTY_FEEDBACK を返却)
 
 ### 3.5 外部データ取り込み / 連携系
 
@@ -285,8 +308,10 @@
 
 #### 動画生成 (Remotion + Cloudflare Stream / Mux)
 - **依存**: Cloudflare Stream API (現状), 将来 Mux
+- **起動経路**: `POST /api/admin/academy/lessons/[id]/video/upload-url` (createDirectUpload), `POST /api/webhooks/video/[provider]` (parseWebhook)
 - **Fail-mode**: closed (アップロード提出系)
-- **GAP**: provider 抽象化レイヤがあるが `withRetry` 未経由
+- **Retry**: `cfsFetch` 内で 5xx/429 throw → `withRetry("cf-stream", ...)` 経由 (commit `<this PR>`)。4xx は permanent として Response 透過。
+- **特記**: `parseWebhook` は HMAC 検証のみで API call なし、retry 対象外
 
 ### 3.6 監視 / インフラ系
 
@@ -323,8 +348,8 @@
 
 | # | 課題 | 提案 | 規模 |
 |---|------|------|------|
-| G1 | Stripe SDK 呼び出しが `withRetry` 未経由 | `withRetry("stripe", ...)` でラップ。`maxAttempts=3`, `maxDelayMs=4000` (ユーザー待ち) | 中 |
-| G2 | Anthropic SDK timeout 600s デフォルト | OCR / 写真品質チェックで明示 30s。`withRetry("anthropic", ...)` でラップ | 小 |
+| ~~G1~~ | ~~Stripe SDK 呼び出しが `withRetry` 未経由~~ | ✅ **解消** (commit `e58f5bf`): 共有 `getStripeClient()` + Proxy で全 SDK call を自動ラップ。重要 mutation 4 件に `idempotencyKey` 追加 | — |
+| ~~G2~~ | ~~Anthropic SDK timeout 600s デフォルト~~ | ✅ **解消** (commit `86fb7fc`, `8567da6`): SDK timeout 60s、Vercel `maxDuration` 60s、`withRetry("anthropic", ...)` 全 14 モジュール経由 | — |
 | G3 | Checkout 起動失敗のユーザー向けエラー / リトライ動線が薄い | 共通 ErrorBoundary + リトライボタン、Sentry breadcrumb 充実 | 中 |
 | G4 | OTP メール (Resend) 全断時のフォールバックなし | Twilio SMS 経由のセカンダリ OTP 経路を準備 (=Twilio 用途の正式化) | 大 |
 
@@ -332,10 +357,10 @@
 
 | # | 課題 | 提案 |
 |---|------|------|
-| G5 | Polygon 本番連続失敗時の警告が薄い | `polygon-signer` cron に N 回連続失敗で Resend 通知を追加 |
+| G5 | Polygon 本番連続失敗時の警告が薄い | `polygon-signer` cron に N 回連続失敗で Resend 通知を追加 (RPC retry は ✅ 解消済 commit `<this PR>`) |
 | G6 | Square 401 (token 失効) のテナントへの通知 | 401 検知時に管理画面バナー + メール送付 |
 | G7 | freee / MF 連続失敗の通知 | accounting-sync cron に同じパターンを追加 |
-| G8 | Cloudflare Stream / Mux が `withRetry` 未経由 | `withRetry("cf-stream", ...)` 追加 |
+| ~~G8~~ | ~~Cloudflare Stream / Mux が `withRetry` 未経由~~ | ✅ **解消** (commit `<this PR>`): `cfsFetch` 内で 5xx/429 throw → `withRetry("cf-stream", ...)` 経由。4xx は permanent として Response 透過 |
 
 ### 4.3 P3 だが意思決定が必要
 
@@ -351,9 +376,9 @@
 | # | 課題 | 提案 |
 |---|------|------|
 | G13 | webhook idempotency 一覧 (Square / LINE / Resend / CloudSign) | 各 webhook ハンドラに dedup テーブル + INSERT ON CONFLICT を統一導入 |
-| G14 | `withRetry` 採用範囲の半自動チェック | `scripts/audit-withRetry.ts` で外部 SDK 呼び出し箇所を grep し未ラップを検出 |
+| G14 | `withRetry` 採用範囲の半自動チェック | `scripts/audit-withRetry.ts` で外部 SDK 呼び出し箇所を grep し未ラップを検出。**Stripe は Proxy で自動ラップなので grep 対象外** |
 | G15 | `/api/cron/monitor` 自身の死活 | 別 cron からの heartbeat 検証 (Better Uptime 等) |
-| G16 | サービス別 timeout の明示 | この表の Timeout 列を埋める PR を発行 |
+| G16 | サービス別 timeout の明示 | Stripe / Anthropic / Vercel AI route は ✅ 明示済。残: Resend / Square / QStash / Polygon (viem) / freee / MF / Twilio / gBizINFO |
 
 ---
 
@@ -368,8 +393,12 @@
 ## 付録 A: 検証用コマンド
 
 ```bash
-# withRetry を経由していない外部 SDK 呼び出し候補を炙り出す
-rg "stripe\.|new Stripe\(|resend\.|anthropic\.|twilio\.|squareClient\." \
+# Stripe SDK の直接 new Stripe(...) を検出 (共有 client 経由に統一されているはず)
+rg "new Stripe\(" src/ --type ts | rg -v "src/lib/stripe/client.ts"
+# → 0 件であること。1 件以上あれば getStripeClient() 経由に修正
+
+# withRetry を経由していない外部 SDK 呼び出し候補 (Stripe は Proxy 経由で除外)
+rg "resend\.|anthropic\.|twilio\.|squareClient\." \
   src/ --type ts -l | xargs -I {} sh -c \
   'grep -L "withRetry" {} || true'
 
