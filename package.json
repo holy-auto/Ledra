@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "lint:migrations": "node scripts/lint-migrations.js",
+    "audit:retry": "tsx scripts/audit-withRetry.ts",
+    "audit:retry:strict": "tsx scripts/audit-withRetry.ts --strict",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",

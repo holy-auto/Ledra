@@ -377,9 +377,9 @@
 | # | 課題 | 提案 |
 |---|------|------|
 | G13 | webhook idempotency 一覧 (Square / LINE / Resend / CloudSign) | 各 webhook ハンドラに dedup テーブル + INSERT ON CONFLICT を統一導入 |
-| G14 | `withRetry` 採用範囲の半自動チェック | `scripts/audit-withRetry.ts` で外部 SDK 呼び出し箇所を grep し未ラップを検出。**Stripe は Proxy で自動ラップなので grep 対象外** |
+| ~~G14~~ | ~~`withRetry` 採用範囲の半自動チェック~~ | ✅ **解消** (commit `<this PR>`): `scripts/audit-withRetry.ts` で外部 SDK 呼び出し箇所を検査。`npm run audit:retry` (警告) / `audit:retry:strict` (CI 用 exit 1)。Stripe は Proxy で自動ラップなので対象外。**既知 baseline 25 件** (Resend 直接 fetch 等) は順次別 PR で `sendEmail` 経由に移行 |
 | G15 | `/api/cron/monitor` 自身の死活 | 別 cron からの heartbeat 検証 (Better Uptime 等) |
-| G16 | サービス別 timeout の明示 | Stripe / Anthropic / Vercel AI route は ✅ 明示済。残: Resend / Square / QStash / Polygon (viem) / freee / MF / Twilio / gBizINFO |
+| G16 | サービス別 timeout の明示 | Stripe / Anthropic / Vercel AI route / Twilio (10s) / SendGrid (15s) / Slack (5s) / gBizINFO (5s) は ✅ 明示済。残: Square / QStash / Polygon (viem 既定) / freee / MF |
 
 ---
 
