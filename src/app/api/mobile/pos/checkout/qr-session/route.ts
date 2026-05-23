@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import Stripe from "stripe";
+import { getStripeClient } from "@/lib/stripe/client";
 import { createMobileClient, resolveMobileCaller } from "@/lib/supabase/mobile";
 import { requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
@@ -69,9 +70,7 @@ export async function POST(req: NextRequest) {
       return apiInternalError(new Error("stripe not configured"), "mobile/pos/qr-session");
     }
 
-    const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion,
-    });
+    const stripe = getStripeClient();
 
     // Checkout Session 作成（お客様が自分のスマホで決済）
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://ledra.co.jp";

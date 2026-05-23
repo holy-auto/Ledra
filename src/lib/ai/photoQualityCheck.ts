@@ -4,7 +4,23 @@
  * 写真の内容をClaude Visionで解析し、Ledra Standard基準に照らして
  * 不足・品質問題を検出する。証明書作成画面でリアルタイムに動作する。
  */
-import { getAnthropicClient, AI_MODEL_VISION, parseJsonResponse } from "@/lib/ai/client";
+import { z } from "zod";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { withRetry } from "@/lib/http/withRetry";
+import { getAnthropicClient, AI_MODEL_VISION } from "@/lib/ai/client";
+
+const PhotoIssueSchema = z.object({
+  type: z.enum(["quality", "angle", "unclear", "wrong_subject", "too_dark", "too_blurry"]),
+  message: z.string(),
+  suggestion: z.string(),
+});
+
+const PhotoCheckSchema = z.object({
+  isValid: z.boolean(),
+  detectedContent: z.string(),
+  issues: z.array(PhotoIssueSchema),
+  confidence: z.number(),
+});
 
 // ─────────────────────────────────────────────
 // 型定義
@@ -109,46 +125,43 @@ export async function checkPhotoContent(input: PhotoCheckInput): Promise<PhotoCh
     const base64 = Buffer.from(buffer).toString("base64");
     const contentType = response.headers.get("content-type") || "image/jpeg";
 
-    const msg = await client.messages.create({
-      model: AI_MODEL_VISION,
-      max_tokens: 512,
-      system: systemPrompt,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: contentType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
-                data: base64,
+    const msg = await withRetry("anthropic", () =>
+      client.messages.parse({
+        model: AI_MODEL_VISION,
+        max_tokens: 512,
+        system: systemPrompt,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: contentType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+                  data: base64,
+                },
               },
-            },
-            {
-              type: "text",
-              text: `この写真は「${input.expectedType}」として適切ですか？JSON形式で回答してください。`,
-            },
-          ],
-        },
-      ],
-    });
+              {
+                type: "text",
+                text: `この写真は「${input.expectedType}」として適切ですか？JSON形式で回答してください。`,
+              },
+            ],
+          },
+        ],
+        output_config: { format: zodOutputFormat(PhotoCheckSchema) },
+      }),
+    );
 
-    const text = msg.content[0].type === "text" ? msg.content[0].text : "{}";
-    const result = parseJsonResponse<{
-      isValid: boolean;
-      detectedContent: string;
-      issues: PhotoIssue[];
-      confidence: number;
-    }>(text);
+    const result = msg.parsed_output;
 
     return {
       photoUrl: input.photoUrl,
       expectedType: input.expectedType,
-      isValid: result.isValid ?? true,
-      detectedContent: result.detectedContent ?? "不明",
-      issues: result.issues ?? [],
-      confidence: result.confidence ?? 0.8,
+      isValid: result?.isValid ?? true,
+      detectedContent: result?.detectedContent ?? "不明",
+      issues: result?.issues ?? [],
+      confidence: result?.confidence ?? 0.8,
     };
   } catch (err) {
     console.error("[photoQualityCheck] vision error:", err);

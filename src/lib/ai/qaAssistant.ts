@@ -6,7 +6,15 @@
  *
  * Note: pgvector が利用できない場合は全文検索フォールバック。
  */
-import { getAnthropicClient, AI_MODEL, parseJsonResponse } from "@/lib/ai/client";
+import { z } from "zod";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { withRetry } from "@/lib/http/withRetry";
+import { getAnthropicClient, AI_MODEL } from "@/lib/ai/client";
+
+const QAAnswerSchema = z.object({
+  answer: z.string(),
+  followUpQuestions: z.array(z.string()),
+});
 import { createServiceRoleAdmin, createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { escapeIlike } from "@/lib/sanitize";
 
@@ -154,15 +162,17 @@ ${input.category ? `【カテゴリ】${input.category}` : ""}
 ${context}`;
 
   try {
-    const msg = await client.messages.create({
-      model: AI_MODEL,
-      max_tokens: 768,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userMessage }],
-    });
+    const msg = await withRetry("anthropic", () =>
+      client.messages.parse({
+        model: AI_MODEL,
+        max_tokens: 768,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userMessage }],
+        output_config: { format: zodOutputFormat(QAAnswerSchema) },
+      }),
+    );
 
-    const text = msg.content[0].type === "text" ? msg.content[0].text : "{}";
-    const result = parseJsonResponse<{ answer: string; followUpQuestions: string[] }>(text);
+    const result = msg.parsed_output;
 
     const sources: QASource[] = chunks.map((c, i) => ({
       type: c.source_type as QASource["type"],
@@ -172,10 +182,10 @@ ${context}`;
     }));
 
     return {
-      answer: result.answer ?? "回答を生成できませんでした。",
+      answer: result?.answer ?? "回答を生成できませんでした。",
       sources,
       relatedCaseIds: cases.map((c) => c.id),
-      followUpQuestions: result.followUpQuestions ?? [],
+      followUpQuestions: result?.followUpQuestions ?? [],
     };
   } catch (err) {
     console.error("[qaAssistant] error:", err);

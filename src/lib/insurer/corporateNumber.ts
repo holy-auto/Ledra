@@ -9,6 +9,8 @@
  * https://info.gbiz.go.jp/api/v1/
  */
 
+import { withRetry } from "@/lib/http/withRetry";
+
 /**
  * Validate the format and check digit of a Japanese corporate number.
  * Returns true if valid, false if invalid.
@@ -27,7 +29,7 @@ export function isValidCorporateNumber(corpNumber: string): boolean {
   // Weights: odd positions (from right) get 1, even positions get 2
   let sum = 0;
   for (let i = 0; i < 12; i++) {
-    const weight = (i % 2 === 0) ? 2 : 1;
+    const weight = i % 2 === 0 ? 2 : 1;
     sum += body[11 - i] * weight;
   }
 
@@ -61,9 +63,7 @@ export type GBizCompanyInfo = {
  * Requires env var GBIZ_API_KEY.
  * Returns null if the API key is not configured or the number is not found.
  */
-export async function verifyCorporateNumberViaApi(
-  corpNumber: string,
-): Promise<GBizCompanyInfo | null> {
+export async function verifyCorporateNumberViaApi(corpNumber: string): Promise<GBizCompanyInfo | null> {
   const apiKey = process.env.GBIZ_API_KEY;
   if (!apiKey) return null;
 
@@ -71,16 +71,23 @@ export async function verifyCorporateNumberViaApi(
   if (!/^\d{13}$/.test(cleaned)) return null;
 
   try {
-    const res = await fetch(
-      `https://info.gbiz.go.jp/hojin/v1/hojin/${cleaned}`,
-      {
+    const res = await withRetry("gbizinfo", async () => {
+      const r = await fetch(`https://info.gbiz.go.jp/hojin/v1/hojin/${cleaned}`, {
         headers: {
           "X-hojinInfo-api-token": apiKey,
           Accept: "application/json",
         },
         signal: AbortSignal.timeout(5000),
-      },
-    );
+      });
+      // 5xx / 429 を throw して withRetry の自動 retry を発火
+      // 4xx は permanent (number 不存在等) として Response 透過
+      if (r.status >= 500 || r.status === 429) {
+        const err = new Error(`gbizinfo:${r.status}`) as Error & { status: number };
+        err.status = r.status;
+        throw err;
+      }
+      return r;
+    });
 
     if (!res.ok) return null;
 

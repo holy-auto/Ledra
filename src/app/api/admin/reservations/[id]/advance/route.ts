@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { sendProgressUpdate } from "@/lib/line/client";
+import { sendProgressCompletionReliable } from "@/lib/line/clientWithRetry";
 import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { logger } from "@/lib/logger";
 
@@ -216,36 +217,61 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (reservation.customer_id) {
         const { data: customer } = await supabase
           .from("customers")
-          .select("name, line_user_id")
+          .select("id, name, line_user_id, phone")
           .eq("id", reservation.customer_id)
           .single();
 
         if (customer?.line_user_id) {
           const { data: tenant } = await supabase.from("tenants").select("name").eq("id", caller.tenantId).single();
 
-          const estimatedCompletion = nextStep ? calcEstimatedCompletion(steps, nextOrder) : undefined;
-
           const portalUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/customer/${caller.tenantId}`;
 
-          // fire-and-forget（LINE通知失敗してもメイン処理は継続）
-          sendProgressUpdate({
-            tenantId: caller.tenantId,
-            lineUserId: customer.line_user_id,
-            customerName: customer.name,
-            tenantName: tenant?.name ?? "施工店",
-            stepLabel: isLastStep ? "施工完了" : currentStepForHistory.label,
-            progressPct,
-            currentStep: isLastStep ? totalSteps : nextOrder,
-            totalSteps,
-            estimatedCompletionTime: estimatedCompletion,
-            portalUrl,
-          }).catch((error) => {
-            logger.warn("LINE progress notification failed (non-blocking)", {
-              error,
-              tenantId: caller.tenantId,
-              customerId: reservation.customer_id,
+          if (isLastStep) {
+            // 作業完了は重要通知 → withRetry + 配信記録 + SMS フォールバック
+            sendProgressCompletionReliable(
+              {
+                tenantId: caller.tenantId,
+                lineUserId: customer.line_user_id,
+                customerId: customer.id as string,
+                customerPhone: (customer.phone as string | null) ?? null,
+                bodyForRecord: "(set internally)",
+                sentByUserId: caller.userId,
+              },
+              {
+                customerName: customer.name as string,
+                tenantName: tenant?.name ?? "施工店",
+                stepLabel: currentStepForHistory.label,
+                portalUrl,
+              },
+            ).catch((error) => {
+              logger.warn("LINE completion notification failed (non-blocking)", {
+                error,
+                tenantId: caller.tenantId,
+                customerId: reservation.customer_id,
+              });
             });
-          });
+          } else {
+            // 進捗中の通知は時効性が高いので従来通り fire-and-forget
+            const estimatedCompletion = nextStep ? calcEstimatedCompletion(steps, nextOrder) : undefined;
+            sendProgressUpdate({
+              tenantId: caller.tenantId,
+              lineUserId: customer.line_user_id,
+              customerName: customer.name as string,
+              tenantName: tenant?.name ?? "施工店",
+              stepLabel: currentStepForHistory.label,
+              progressPct,
+              currentStep: nextOrder,
+              totalSteps,
+              estimatedCompletionTime: estimatedCompletion,
+              portalUrl,
+            }).catch((error) => {
+              logger.warn("LINE progress notification failed (non-blocking)", {
+                error,
+                tenantId: caller.tenantId,
+                customerId: reservation.customer_id,
+              });
+            });
+          }
         }
       }
     }

@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import Stripe from "stripe";
+import { getStripeClient } from "@/lib/stripe/client";
 import { createMobileClient, resolveMobileCaller } from "@/lib/supabase/mobile";
 import { requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
@@ -53,9 +54,7 @@ export async function POST(req: NextRequest) {
     const connectAccountId = tenant?.stripe_connect_account_id as string | null;
     const isOnboarded = tenant?.stripe_connect_onboarded as boolean | null;
 
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion,
-    });
+    const stripe = getStripeClient();
 
     const stripeOptions = connectAccountId && isOnboarded ? { stripeAccount: connectAccountId } : undefined;
 
@@ -73,7 +72,7 @@ export async function POST(req: NextRequest) {
           ...extraMetadata,
         },
       },
-      stripeOptions,
+      { ...stripeOptions, idempotencyKey: crypto.randomUUID() },
     );
 
     return apiJson({
@@ -118,9 +117,7 @@ export async function GET(req: NextRequest) {
     const connectAccountId = tenant?.stripe_connect_account_id as string | null;
     const isOnboarded = tenant?.stripe_connect_onboarded as boolean | null;
 
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion,
-    });
+    const stripe = getStripeClient();
 
     const stripeOptions = connectAccountId && isOnboarded ? { stripeAccount: connectAccountId } : undefined;
 

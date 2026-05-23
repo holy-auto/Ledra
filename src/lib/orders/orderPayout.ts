@@ -1,11 +1,10 @@
 import Stripe from "stripe";
+import { getStripeClient } from "@/lib/stripe/client";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 
 function getStripe() {
-  return new Stripe(process.env.STRIPE_SECRET_KEY!, {
-    apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion,
-  });
+  return getStripeClient();
 }
 
 type PayoutResult =
@@ -51,15 +50,18 @@ export async function executeOrderPayout(orderId: string): Promise<PayoutResult>
 
   try {
     const stripe = getStripe();
-    const transfer = await stripe.transfers.create({
-      amount: Math.round(order.payout_amount as number),
-      currency: "jpy",
-      destination: shop.stripe_connect_account_id as string,
-      metadata: {
-        order_id: orderId,
-        invoice_number: (order.invoice_number as string | null) ?? "",
+    const transfer = await stripe.transfers.create(
+      {
+        amount: Math.round(order.payout_amount as number),
+        currency: "jpy",
+        destination: shop.stripe_connect_account_id as string,
+        metadata: {
+          order_id: orderId,
+          invoice_number: (order.invoice_number as string | null) ?? "",
+        },
       },
-    });
+      { idempotencyKey: `order-payout:${orderId}` },
+    );
 
     await supabase
       .from("job_orders")

@@ -24,6 +24,8 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { apiJson, apiUnauthorized } from "@/lib/api/response";
 import { verifyCronRequest } from "@/lib/cronAuth";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { recordCronSuccess, recordCronFailure } from "@/lib/cron/failureTracker";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -206,10 +208,20 @@ export async function GET(req: NextRequest) {
     }
 
     console.info(`[cron/polygon-signer] ${status} network=${config.network} balance=${summary.balance_pol} POL`);
+
+    // RPC が機能している = streak リセット (G5: 残高警告とは独立した「RPC 連続失敗」検知)
+    const trackerSupabase = createServiceRoleAdmin("polygon-signer cron success tracker");
+    await recordCronSuccess(trackerSupabase, "polygon-signer");
+
     return apiJson(summary);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[cron/polygon-signer] balance check failed:", msg);
+
+    // RPC 連続失敗を tracker に記録 (3 回以上で運営にメール通知)
+    const trackerSupabase = createServiceRoleAdmin("polygon-signer cron failure tracker");
+    await recordCronFailure(trackerSupabase, "polygon-signer", e, { threshold: 3 });
+
     const summary: SignerSummary = {
       timestamp: now.toISOString(),
       status: "error",

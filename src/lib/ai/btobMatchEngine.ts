@@ -15,7 +15,14 @@
  * - rating            : 平均レーティング (0〜5) → × 4 で最大 20 点
  */
 
-import { getAnthropicClient, AI_MODEL_FAST, parseJsonResponse } from "@/lib/ai/client";
+import { z } from "zod";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { withRetry } from "@/lib/http/withRetry";
+import { getAnthropicClient, AI_MODEL_FAST } from "@/lib/ai/client";
+
+const BtobRecommendationSchema = z.object({
+  text: z.string(),
+});
 
 // ─────────────────────────────────────────────
 // 型
@@ -119,20 +126,21 @@ export function rankCandidates(candidates: TenantCandidate[], req: MatchRequirem
 async function generateRecommendationText(match: MatchResult, req: MatchRequirements): Promise<string> {
   try {
     const client = getAnthropicClient();
-    const msg = await client.messages.create({
-      model: AI_MODEL_FAST,
-      max_tokens: 128,
-      system: `あなたは自動車施工業界の BtoB マッチング担当者です。
+    const msg = await withRetry("anthropic", () =>
+      client.messages.parse({
+        model: AI_MODEL_FAST,
+        max_tokens: 128,
+        system: `あなたは自動車施工業界の BtoB マッチング担当者です。
 以下の施工店を保険会社に推薦する文章を1〜2文（80文字以内）で生成してください。
 会社名は「${match.name}」、スコアは ${match.score} 点です。
 要求カテゴリ: ${req.categories.join(", ") || "指定なし"}
 エリア: ${req.prefecture ?? "指定なし"}
 JSONで回答してください: {"text": "推薦文"}`,
-      messages: [{ role: "user", content: "推薦文を生成してください。" }],
-    });
-    const text = msg.content[0].type === "text" ? msg.content[0].text : "{}";
-    const parsed = parseJsonResponse<{ text: string }>(text);
-    return parsed.text ?? "";
+        messages: [{ role: "user", content: "推薦文を生成してください。" }],
+        output_config: { format: zodOutputFormat(BtobRecommendationSchema) },
+      }),
+    );
+    return msg.parsed_output?.text ?? "";
   } catch {
     return "";
   }

@@ -4,7 +4,39 @@
  * 車両情報・ヒアリングデータ・過去類似証明書・写真から
  * 証明書の各項目を自動入力する。
  */
-import { getAnthropicClient, AI_MODEL, parseJsonResponse } from "@/lib/ai/client";
+import { z } from "zod";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { withRetry } from "@/lib/http/withRetry";
+import { getAnthropicClient, AI_MODEL } from "@/lib/ai/client";
+
+const DraftMaterialSchema = z.object({
+  name: z.string(),
+  maker: z.string().optional(),
+  spec: z.string().optional(),
+  note: z.string().optional(),
+});
+
+const DraftCertificateSchema = z.object({
+  title: z.string(),
+  description: z.string(),
+  materials: z.array(DraftMaterialSchema),
+  warrantyCandidates: z.array(z.string()),
+  workAreas: z.array(z.string()),
+  cautions: z.string(),
+  confidence: z.number(),
+  missingInfo: z.array(z.string()),
+});
+
+const EMPTY_DRAFT: DraftCertificateResult = {
+  title: "",
+  description: "",
+  materials: [],
+  warrantyCandidates: ["1年", "3年"],
+  workAreas: [],
+  cautions: "",
+  confidence: 0,
+  missingInfo: ["AI 下書き生成に失敗しました。手動で入力してください。"],
+};
 
 // ─────────────────────────────────────────────
 // 型定義
@@ -121,28 +153,31 @@ ${input.photoDescriptions?.join("\n") || "なし"}
 【施工カテゴリ】
 ${input.templateCategory || "未指定"}`;
 
-  const msg = await client.messages.create({
-    model: AI_MODEL,
-    max_tokens: 1024,
-    system: systemPrompt,
-    messages: [{ role: "user", content: userMessage }],
-  });
-
-  const text = msg.content[0].type === "text" ? msg.content[0].text : "{}";
-
   try {
-    const result = parseJsonResponse<DraftCertificateResult>(text);
+    const msg = await withRetry("anthropic", () =>
+      client.messages.parse({
+        model: AI_MODEL,
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userMessage }],
+        output_config: { format: zodOutputFormat(DraftCertificateSchema) },
+      }),
+    );
+
+    const result = msg.parsed_output;
+    if (!result) return EMPTY_DRAFT;
     return {
-      title: result.title ?? "",
-      description: result.description ?? "",
-      materials: result.materials ?? [],
-      warrantyCandidates: result.warrantyCandidates ?? ["1年", "3年"],
-      workAreas: result.workAreas ?? [],
-      cautions: result.cautions ?? "",
-      confidence: result.confidence ?? 0.7,
-      missingInfo: result.missingInfo ?? [],
+      title: result.title,
+      description: result.description,
+      materials: result.materials,
+      warrantyCandidates: result.warrantyCandidates.length > 0 ? result.warrantyCandidates : ["1年", "3年"],
+      workAreas: result.workAreas,
+      cautions: result.cautions,
+      confidence: result.confidence,
+      missingInfo: result.missingInfo,
     };
-  } catch {
-    throw new Error(`AI下書き生成の解析に失敗しました: ${text.slice(0, 200)}`);
+  } catch (err) {
+    console.error("[draftCertificate] generation failed:", err);
+    return EMPTY_DRAFT;
   }
 }

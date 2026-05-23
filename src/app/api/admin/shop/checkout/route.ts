@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import Stripe from "stripe";
+import { getStripeClient } from "@/lib/stripe/client";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
@@ -24,9 +25,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function getStripe() {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key) throw new Error("Missing STRIPE_SECRET_KEY");
-  return new Stripe(key, { apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion });
+  return getStripeClient();
 }
 
 /** POST /api/admin/shop/checkout — Stripe Checkout Session作成 */

@@ -8,6 +8,7 @@
  * 失敗時 (ANTHROPIC_API_KEY 未設定 / レスポンス壊れ / タイムアウト) は null を
  * 返してフェイルオープン。UI は signals だけで動くので機能的には影響なし。
  */
+import { withRetry } from "@/lib/http/withRetry";
 import { getAnthropicClient, AI_MODEL_FAST } from "@/lib/ai/client";
 import type { CustomerSignals } from "@/lib/customers/signals";
 
@@ -36,12 +37,14 @@ export async function generateCustomerSummary(input: SummaryInput): Promise<stri
   const userMessage = buildUserMessage(input);
 
   try {
-    const msg = await client.messages.create({
-      model: AI_MODEL_FAST,
-      max_tokens: 256,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: userMessage }],
-    });
+    const msg = await withRetry("anthropic", () =>
+      client.messages.create({
+        model: AI_MODEL_FAST,
+        max_tokens: 256,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: "user", content: userMessage }],
+      }),
+    );
     const text = msg.content[0]?.type === "text" ? msg.content[0].text.trim() : "";
     if (!text) return null;
     return clipToSentence(text, 200);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
+import { getStripeClient } from "@/lib/stripe/client";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { priceIdToPlanTier } from "@/lib/stripe/plan";
 import { insurerPriceIdToPlanTier } from "@/lib/stripe/insurerPlan";
@@ -309,9 +310,7 @@ Ledra — 株式会社HOLY AUTO
 }
 
 function getStripe(): Stripe {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key) throw new Error("Missing STRIPE_SECRET_KEY");
-  return new Stripe(key, { apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion });
+  return getStripeClient();
 }
 
 type TenantSelector = { by: "id"; value: string } | { by: "slug"; value: string };

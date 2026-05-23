@@ -4,6 +4,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { readSecret } from "@/lib/crypto/tenantSecrets";
 import { captureSecurityEvent } from "@/lib/observability/sentry";
+import { claimWebhookEvent } from "@/lib/webhooks/idempotency";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -121,11 +122,27 @@ export async function POST(req: NextRequest) {
     return apiValidationError("Invalid JSON");
   }
 
-  const { type, merchant_id: merchantId, data } = event;
+  const { type, merchant_id: merchantId, data, event_id: eventId } = event;
 
   if (!type || !merchantId) {
     console.warn("[square-webhook] Missing type or merchant_id");
     return apiValidationError("Invalid event: missing type or merchant_id");
+  }
+
+  // G13: event 単位の冪等性 — Square は 10min/3h/24h で retry するので
+  // event_id がある場合は webhook_processed_events で claim し、重複は no-op で
+  // 200 を返す。event_id が無い (旧 Square API) 場合は order_id ベースの
+  // upsertOrder で代替的に idempotent。
+  if (eventId) {
+    const idemSupabase = createServiceRoleAdmin("square-webhook idempotency claim");
+    const claim = await claimWebhookEvent(idemSupabase, "square", eventId, type);
+    if (claim === "duplicate") {
+      return apiJson({ ok: true, duplicate: true });
+    }
+    if (claim === "error") {
+      // claim 自体が失敗 → Square に retry させる
+      return apiInternalError(new Error("idempotency claim failed"), "square-webhook");
+    }
   }
 
   // 同期的に処理する。fire-and-forget だと処理失敗時も Square には 200 を
@@ -281,6 +298,7 @@ async function fetchSquareOrder(accessToken: string, orderId: string): Promise<S
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!res.ok) {

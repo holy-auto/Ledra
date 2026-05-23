@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import Stripe from "stripe";
+import { getStripeClient } from "@/lib/stripe/client";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { insurerPlanTierToPriceId } from "@/lib/stripe/insurerPlan";
@@ -10,9 +11,7 @@ import { insurerBillingCreateSchema } from "@/lib/validations/insurer";
 export const runtime = "nodejs";
 
 function getStripe() {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key) throw new Error("Missing STRIPE_SECRET_KEY");
-  return new Stripe(key, { apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion });
+  return getStripeClient();
 }
 
 function resolveBaseUrl(): string {

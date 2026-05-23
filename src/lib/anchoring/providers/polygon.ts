@@ -29,6 +29,7 @@
  */
 
 import type { PolygonAnchorResult, PolygonNetwork } from "./types";
+import { withRetry } from "@/lib/http/withRetry";
 
 const DISABLED_RESULT: PolygonAnchorResult = {
   txHash: null,
@@ -146,7 +147,10 @@ export async function anchorToPolygon(sha256: string): Promise<PolygonAnchorResu
       transport: http(config.rpcUrl),
     });
 
-    // Submit the hash to the LedraAnchor contract
+    // Submit the hash to the LedraAnchor contract.
+    // NOTE: writeContract は retry しない (nonce が進む = 別 tx が submit されて
+    // duplicate anchor を起こすリスク)。失敗時は cron が次回 findAnchorTx で
+    // 既存 anchor の有無を確認する形で重複防止する。
     const txHash = await walletClient.writeContract({
       address: config.contractAddress as `0x${string}`,
       abi: LEDRA_ANCHOR_ABI,
@@ -156,11 +160,14 @@ export async function anchorToPolygon(sha256: string): Promise<PolygonAnchorResu
       account,
     });
 
-    // Wait for the transaction to be included in a block
-    const receipt = await publicClient.waitForTransactionReceipt({
-      hash: txHash,
-      confirmations: 1,
-    });
+    // Wait for the transaction to be included in a block.
+    // 既知の tx hash に対する receipt poll は idempotent なので retry 安全。
+    const receipt = await withRetry("polygon-rpc", () =>
+      publicClient.waitForTransactionReceipt({
+        hash: txHash,
+        confirmations: 1,
+      }),
+    );
 
     if (receipt.status === "success") {
       console.info(`[polygon:${config.network}] anchored hash=${sha256.slice(0, 12)}… tx=${txHash}`);
@@ -187,10 +194,7 @@ export async function anchorToPolygon(sha256: string): Promise<PolygonAnchorResu
  *                   checked against Amoy even after the runtime moved to
  *                   mainnet.
  */
-export async function verifyAnchor(
-  sha256: string,
-  network?: PolygonNetwork | null,
-): Promise<boolean> {
+export async function verifyAnchor(sha256: string, network?: PolygonNetwork | null): Promise<boolean> {
   const config = getReadConfig(network);
   if (!config) return false;
 
@@ -209,13 +213,15 @@ export async function verifyAnchor(
       transport: http(config.rpcUrl),
     });
 
-    const isAnchored = await client.readContract({
-      address: config.contractAddress as `0x${string}`,
-      abi: LEDRA_ANCHOR_ABI,
-      functionName: "isAnchored",
-      args: [hashBytes32],
-      authorizationList: undefined,
-    });
+    const isAnchored = await withRetry("polygon-rpc", () =>
+      client.readContract({
+        address: config.contractAddress as `0x${string}`,
+        abi: LEDRA_ANCHOR_ABI,
+        functionName: "isAnchored",
+        args: [hashBytes32],
+        authorizationList: undefined,
+      }),
+    );
 
     return isAnchored as boolean;
   } catch (error) {
@@ -228,7 +234,10 @@ export async function verifyAnchor(
  * Build a Polygonscan explorer URL for a given transaction hash.
  * Returns null if inputs are missing.
  */
-export function buildExplorerUrl(txHash: string | null | undefined, network: PolygonNetwork | null | undefined): string | null {
+export function buildExplorerUrl(
+  txHash: string | null | undefined,
+  network: PolygonNetwork | null | undefined,
+): string | null {
   if (!txHash || !network) return null;
   const base = network === "amoy" ? "https://amoy.polygonscan.com" : "https://polygonscan.com";
   return `${base}/tx/${txHash}`;
@@ -265,19 +274,19 @@ export async function findAnchorTx(
     const chain = config.network === "amoy" ? polygonAmoy : polygon;
     const client = createPublicClient({ chain, transport: http(config.rpcUrl) });
 
-    const logs = await client.getLogs({
-      address: config.contractAddress as `0x${string}`,
-      event: parseAbiItem("event Anchored(bytes32 indexed hash, address indexed sender, uint256 timestamp)"),
-      args: { hash: hashBytes32 },
-      fromBlock: "earliest",
-      toBlock: "latest",
-    });
+    const logs = await withRetry("polygon-rpc", () =>
+      client.getLogs({
+        address: config.contractAddress as `0x${string}`,
+        event: parseAbiItem("event Anchored(bytes32 indexed hash, address indexed sender, uint256 timestamp)"),
+        args: { hash: hashBytes32 },
+        fromBlock: "earliest",
+        toBlock: "latest",
+      }),
+    );
 
     if (logs.length === 0) return null;
     // Take the earliest event (first anchor)
-    const first = logs.reduce((acc, cur) =>
-      BigInt(cur.blockNumber ?? 0) < BigInt(acc.blockNumber ?? 0) ? cur : acc,
-    );
+    const first = logs.reduce((acc, cur) => (BigInt(cur.blockNumber ?? 0) < BigInt(acc.blockNumber ?? 0) ? cur : acc));
 
     return { txHash: first.transactionHash as `0x${string}`, network: config.network };
   } catch (error) {

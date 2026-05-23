@@ -51,6 +51,15 @@ vi.mock("@/lib/logger", () => ({
 
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
 
+vi.mock("@/lib/cron/failureTracker", () => ({
+  recordCronSuccess: vi.fn(),
+  recordCronFailure: vi.fn(),
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({
+  createServiceRoleAdmin: () => ({}),
+}));
+
 import { GET } from "@/app/api/cron/polygon-signer/route";
 import { NextRequest } from "next/server";
 

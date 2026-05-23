@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
+import { getStripeClient } from "@/lib/stripe/client";
 import { createMobileClient, resolveMobileCaller } from "@/lib/supabase/mobile";
 import { requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
@@ -65,9 +66,7 @@ export async function GET(req: NextRequest) {
     ? (tenantRow.stripe_connect_account_id as string | null)
     : null;
 
-  const stripe = new Stripe(stripeSecretKey, {
-    apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion,
-  });
+  const stripe = getStripeClient();
 
   const stripeOptions = connectAccountId ? { stripeAccount: connectAccountId } : undefined;
 

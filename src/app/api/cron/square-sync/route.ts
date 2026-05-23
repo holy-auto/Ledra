@@ -3,6 +3,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiUnauthorized, apiInternalError, apiError } from "@/lib/api/response";
 import { verifyCronRequest } from "@/lib/cronAuth";
 import { sendCronFailureAlert } from "@/lib/cronAlert";
+import { recordCronSuccess, recordCronFailure } from "@/lib/cron/failureTracker";
 import { buildSecretWrite, readSecret } from "@/lib/crypto/tenantSecrets";
 import type { SquareApiOrder, SquareSearchOrdersResponse } from "@/types/square";
 
@@ -28,6 +29,7 @@ async function refreshSquareToken(
         grant_type: "refresh_token",
         refresh_token: refreshToken,
       }),
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!res.ok) {
@@ -95,6 +97,7 @@ async function fetchAllOrders(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15_000),
     });
 
     if (res.status === 429) {
@@ -366,6 +369,11 @@ export async function GET(req: NextRequest) {
       `[square cron] finished in ${elapsed}ms: processed=${results.length} synced=${synced} errors=${errors}`,
     );
 
+    // G6: cron 全体は完走したので streak リセット (個別 tenant の token 失効は
+    // errors にカウントされるが、全体としての構造的失敗ではない)
+    const trackerSupabase = createServiceRoleAdmin("square-sync cron success tracker");
+    await recordCronSuccess(trackerSupabase, "square-sync");
+
     return apiOk({
       processed: results.length,
       synced,
@@ -375,6 +383,8 @@ export async function GET(req: NextRequest) {
     });
   } catch (e) {
     await sendCronFailureAlert("square-sync", e);
+    const trackerSupabase = createServiceRoleAdmin("square-sync cron failure tracker");
+    await recordCronFailure(trackerSupabase, "square-sync", e, { threshold: 3 });
     return apiInternalError(e, "square cron GET");
   }
 }

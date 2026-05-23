@@ -97,6 +97,22 @@ export default async function JobWorkflowPage({ params }: { params: Promise<{ id
   const customer = customerRes.data as JobCustomer;
   const vehicle = vehicleRes.data as JobVehicle;
 
+  // この顧客向け LINE outbound の未配信件数 (過去 30 日、clientWithRetry が記録するもの)
+  let failedLineCount = 0;
+  if (customer?.id) {
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const { count } = await supabase
+      .from("customer_messages")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .eq("customer_id", customer.id)
+      .eq("channel", "line")
+      .eq("direction", "outbound")
+      .not("failed_at", "is", null)
+      .gte("created_at", since);
+    failedLineCount = count ?? 0;
+  }
+
   return (
     <main className="space-y-6">
       <PageHeader
@@ -109,6 +125,18 @@ export default async function JobWorkflowPage({ params }: { params: Promise<{ id
           </Link>
         }
       />
+
+      {failedLineCount > 0 && customer?.id && (
+        <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <span className="mr-1">⚠</span>
+          この顧客への LINE 通知が <strong>{failedLineCount}</strong> 件未配信です (過去 30 日)。 重要通知
+          (作業完了・帳票・予約確認) は SMS フォールバックを自動試行しています。 詳細は{" "}
+          <Link href={`/admin/customers/${customer.id}/messages`} className="font-medium underline">
+            顧客メッセージ履歴
+          </Link>{" "}
+          で確認してください。
+        </div>
+      )}
 
       <FirstUseInlineGuide
         storageKey="jobs_detail"

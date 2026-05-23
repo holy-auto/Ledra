@@ -1,5 +1,6 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import Stripe from "stripe";
+import { getStripeClient } from "@/lib/stripe/client";
 import { type PlanTier, PLAN_RANK as RANK } from "@/types/billing";
 import { isPlatformTenantId } from "@/lib/auth/platformAdmin";
 import { withCache, invalidateCache } from "@/lib/cache";
@@ -36,9 +37,7 @@ function getBillingLookupAdmin() {
 }
 
 function getStripe() {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key) throw new Error("Missing STRIPE_SECRET_KEY");
-  return new Stripe(key, { apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion });
+  return getStripeClient();
 }
 
 function json(status: number, body: Record<string, unknown>, extraHeaders?: Record<string, string>) {

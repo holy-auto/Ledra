@@ -9,7 +9,10 @@
  * 失敗時 (ANTHROPIC_API_KEY 未設定 / レスポンス壊れ / タイムアウト) は null を
  * 返してフェイルオープン。UI は「下書きを生成できませんでした」を表示するだけ。
  */
-import { getAnthropicClient, AI_MODEL_FAST, parseJsonResponse } from "@/lib/ai/client";
+import { z } from "zod";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { withRetry } from "@/lib/http/withRetry";
+import { getAnthropicClient, AI_MODEL_FAST } from "@/lib/ai/client";
 
 export interface VoiceMemoReformatInput {
   /** Web Speech API などで書き起こされた生テキスト (改行・整形なし) */
@@ -29,6 +32,12 @@ export interface VoiceMemoDraft {
   /** 注意事項 / 保証除外などの補足。空でも OK */
   cautions: string;
 }
+
+const VoiceMemoSchema = z.object({
+  title: z.string(),
+  description: z.string(),
+  cautions: z.string(),
+});
 
 const SYSTEM_PROMPT = `あなたは自動車施工の証明書作成を補助するアシスタントです。
 施工士が口頭で残した音声メモ (書き起こし済) を、証明書に貼れる構造化された
@@ -69,19 +78,22 @@ export async function reformatVoiceMemo(input: VoiceMemoReformatInput): Promise<
     .join("\n\n");
 
   try {
-    const msg = await client.messages.create({
-      model: AI_MODEL_FAST,
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: userMessage }],
-    });
-    const text = msg.content[0]?.type === "text" ? msg.content[0].text : "";
-    const parsed = parseJsonResponse<Partial<VoiceMemoDraft>>(text);
+    const msg = await withRetry("anthropic", () =>
+      client.messages.parse({
+        model: AI_MODEL_FAST,
+        max_tokens: 1024,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: "user", content: userMessage }],
+        output_config: { format: zodOutputFormat(VoiceMemoSchema) },
+      }),
+    );
+    const parsed = msg.parsed_output;
+    if (!parsed) return null;
 
     return {
-      title: typeof parsed.title === "string" ? parsed.title.trim().slice(0, 60) : "",
-      description: typeof parsed.description === "string" ? parsed.description.trim() : "",
-      cautions: typeof parsed.cautions === "string" ? parsed.cautions.trim() : "",
+      title: parsed.title.trim().slice(0, 60),
+      description: parsed.description.trim(),
+      cautions: parsed.cautions.trim(),
     };
   } catch (err) {
     console.error("[voiceMemoReformat] generation failed:", err);

@@ -18,7 +18,15 @@
  * - high_claim_amount   : 単一案件で閾値以上の高額請求 (default: 500,000 円)
  */
 
-import { getAnthropicClient, AI_MODEL_FAST, parseJsonResponse } from "@/lib/ai/client";
+import { z } from "zod";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { withRetry } from "@/lib/http/withRetry";
+import { getAnthropicClient, AI_MODEL_FAST } from "@/lib/ai/client";
+
+const FraudLlmSchema = z.object({
+  riskLevel: z.enum(["high", "medium", "low", "clear"]),
+  reason: z.string(),
+});
 
 // ─────────────────────────────────────────────
 // 型
@@ -128,10 +136,11 @@ async function llmFraudEvaluation(
     const client = getAnthropicClient();
     const flagList = flags.map((f) => `・${f}`).join("\n");
 
-    const msg = await client.messages.create({
-      model: AI_MODEL_FAST,
-      max_tokens: 256,
-      system: `あなたは自動車施工業界の保険請求不正検出の専門家です。
+    const msg = await withRetry("anthropic", () =>
+      client.messages.parse({
+        model: AI_MODEL_FAST,
+        max_tokens: 256,
+        system: `あなたは自動車施工業界の保険請求不正検出の専門家です。
 以下のルールベースフラグが検出されました:
 ${flagList}
 
@@ -145,15 +154,13 @@ ${flagList}
 これらのフラグを踏まえて、総合的な不正リスクを評価してください。
 JSONで回答してください:
 {"riskLevel": "high|medium|low|clear", "reason": "根拠を1文で（50文字以内）"}`,
-      messages: [{ role: "user", content: "この案件の不正リスクを評価してください。" }],
-    });
+        messages: [{ role: "user", content: "この案件の不正リスクを評価してください。" }],
+        output_config: { format: zodOutputFormat(FraudLlmSchema) },
+      }),
+    );
 
-    const text = msg.content[0].type === "text" ? msg.content[0].text : "{}";
-    const parsed = parseJsonResponse<{ riskLevel: string; reason: string }>(text);
-    const riskLevel = (
-      ["high", "medium", "low", "clear"].includes(parsed.riskLevel ?? "") ? parsed.riskLevel : "medium"
-    ) as FraudRisk;
-    return { riskLevel, reason: parsed.reason ?? "" };
+    const parsed = msg.parsed_output;
+    return { riskLevel: parsed?.riskLevel ?? deriveRiskLevel(flags), reason: parsed?.reason ?? "" };
   } catch {
     // LLM 失敗 → ルールベース判定を維持
     return { riskLevel: deriveRiskLevel(flags), reason: "" };

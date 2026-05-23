@@ -16,6 +16,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 import { verifyCronRequest } from "@/lib/cronAuth";
 import { sendCronFailureAlert } from "@/lib/cronAlert";
+import { recordCronSuccess, recordCronFailure } from "@/lib/cron/failureTracker";
 import { syncTenantToProvider } from "@/lib/accounting/sync";
 import type { AccountingProvider } from "@/lib/accounting/types";
 import { logger } from "@/lib/logger";
@@ -106,6 +107,10 @@ export async function GET(req: NextRequest) {
     const elapsed = Date.now() - startedAt;
     log.info(`done in ${elapsed}ms: integrations=${results.length} synced=${totalSynced} failed=${totalFailed}`);
 
+    // G7: cron 全体は完走 → streak リセット
+    const trackerSupabase = createServiceRoleAdmin("accounting-sync cron success tracker");
+    await recordCronSuccess(trackerSupabase, "accounting-sync");
+
     return apiOk({
       processed: results.length,
       synced: totalSynced,
@@ -115,6 +120,8 @@ export async function GET(req: NextRequest) {
     });
   } catch (e) {
     await sendCronFailureAlert("accounting-sync", e);
+    const trackerSupabase = createServiceRoleAdmin("accounting-sync cron failure tracker");
+    await recordCronFailure(trackerSupabase, "accounting-sync", e, { threshold: 3 });
     return apiInternalError(e, "accounting cron GET");
   }
 }
