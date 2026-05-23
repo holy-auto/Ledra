@@ -8,6 +8,10 @@ export type SquareConnection = {
   connected_at: string | null;
   last_synced_at: string | null;
   square_location_ids: string[];
+  /** 直近のエラー原因 (status="error" 時のみ意味あり)。例: "token_expired" "rate_limited" */
+  last_error_reason?: string | null;
+  /** 直近のエラー検出時刻 */
+  last_error_at?: string | null;
 };
 
 export type SquareOrder = {
