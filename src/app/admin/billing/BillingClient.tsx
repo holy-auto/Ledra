@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import PageHeader from "@/components/ui/PageHeader";
 import FirstUseInlineGuide from "@/components/ui/FirstUseInlineGuide";
+import { useStripeAction } from "@/hooks/useStripeAction";
+import { CheckoutErrorPanel } from "@/components/billing/CheckoutErrorPanel";
 
 const PLANS = [
   {
@@ -47,48 +49,66 @@ const PLANS = [
 function PlanSelector({ currentPlan, isActive }: { currentPlan: string | null; isActive: boolean }) {
   const supabase = useMemo(() => createClient(), []);
   const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const checkout = useStripeAction<{ url: string }>("billing:checkout");
 
-  const handleSelectPlan = useCallback((tier: string) => {
-    setSelectedPlan(tier);
-    setError(null);
-  }, []);
+  const handleSelectPlan = useCallback(
+    (tier: string) => {
+      setSelectedPlan(tier);
+      checkout.reset();
+    },
+    [checkout],
+  );
 
   const handleConfirmCheckout = useCallback(async () => {
     if (!selectedPlan) return;
     setBusy(selectedPlan);
-    setError(null);
-    try {
-      const sessionRes = await supabase.auth.getSession();
-      const access_token = sessionRes.data?.session?.access_token;
-      if (!access_token) {
-        window.location.href = "/login";
-        return;
-      }
+    const sessionRes = await supabase.auth.getSession();
+    const access_token = sessionRes.data?.session?.access_token;
+    if (!access_token) {
+      window.location.href = "/login";
+      setBusy(null);
+      return;
+    }
 
+    const result = await checkout.execute(async () => {
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ access_token, plan_tier: selectedPlan }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) {
+        const err = new Error(j?.error ?? `HTTP ${res.status}`) as Error & { status: number };
+        err.status = res.status;
+        throw err;
+      }
       if (!j?.url) throw new Error("checkout url missing");
-      window.location.href = j.url;
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
-    } finally {
+      return { url: j.url as string };
+    });
+
+    if (result.ok) {
+      window.location.href = result.data.url;
+    } else {
       setBusy(null);
     }
-  }, [supabase, selectedPlan]);
+  }, [supabase, selectedPlan, checkout]);
 
   const selectedPlanData = PLANS.find((p) => p.tier === selectedPlan);
 
   return (
     <section className="space-y-4">
       <div className="text-xs font-semibold tracking-[0.18em] text-muted">プラン選択</div>
-      {error && <div className="text-sm text-red-500">{error}</div>}
+      {checkout.error && (
+        <CheckoutErrorPanel
+          error={checkout.error}
+          errorCode={checkout.errorCode}
+          attempt={checkout.attempt}
+          isPending={checkout.isPending}
+          onRetry={handleConfirmCheckout}
+          supportHref="/admin/support"
+        />
+      )}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {PLANS.map((plan) => {
           const isCurrent = currentPlan === plan.tier;
