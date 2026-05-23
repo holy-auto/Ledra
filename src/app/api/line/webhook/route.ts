@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiInternalError, apiError } from "@/lib/api/response";
 import { verifySignature, handleWebhookEvents } from "@/lib/line/client";
+import { claimWebhookEvent } from "@/lib/webhooks/idempotency";
 import { readSecret } from "@/lib/crypto/tenantSecrets";
 
 export const dynamic = "force-dynamic";
@@ -47,11 +48,32 @@ export async function POST(req: NextRequest) {
     }
 
     const body = JSON.parse(bodyText);
-    const events = body.events ?? [];
+    const events: unknown[] = body.events ?? [];
 
+    // G13: event 単位の冪等性 — LINE は失敗時に再配信するため
+    // (webhookEventId は LINE spec で一意保証)。
+    // duplicate は handleWebhookEvents 渡しから除外、claim 失敗は安全側で透過。
+    const eventsToProcess: unknown[] = [];
     if (events.length > 0) {
+      const idemSupabase = createServiceRoleAdmin("line-webhook idempotency claim");
+      for (const ev of events) {
+        const evRecord = ev as { webhookEventId?: string; type?: string };
+        if (!evRecord.webhookEventId) {
+          eventsToProcess.push(ev);
+          continue;
+        }
+        const claim = await claimWebhookEvent(idemSupabase, "line", evRecord.webhookEventId, evRecord.type ?? null);
+        if (claim === "claimed" || claim === "error") {
+          // error は claim 自体の失敗 (DB 障害等)。LINE 側 retry を待たず処理を試みる
+          eventsToProcess.push(ev);
+        }
+        // duplicate は skip
+      }
+    }
+
+    if (eventsToProcess.length > 0) {
       // 非同期で処理（LINE は 200 を即返す必要がある）
-      handleWebhookEvents(tenantId, events).catch((e) => {
+      handleWebhookEvents(tenantId, eventsToProcess as Parameters<typeof handleWebhookEvents>[1]).catch((e) => {
         console.error("[LINE webhook] event handling error:", e);
       });
     }
