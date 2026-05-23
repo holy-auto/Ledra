@@ -3,8 +3,7 @@
  */
 
 import { escapeHtml } from "@/lib/sanitize";
-
-const RESEND_API = "https://api.resend.com/emails";
+import { sendEmail } from "@/lib/email/sendEmail";
 
 function wrap(title: string, body: string) {
   return `
@@ -25,11 +24,7 @@ async function send(to: string, subject: string, html: string): Promise<boolean>
   const from = process.env.RESEND_FROM;
   if (!apiKey || !from) return false;
   try {
-    const res = await fetch(RESEND_API, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to, subject, html }),
-    });
+    const res = await sendEmail({ from, to, subject, html });
     return res.ok;
   } catch {
     return false;
@@ -91,9 +86,5 @@ export async function sendDocumentEmail(params: {
     `,
   );
 
-  return send(
-    params.to,
-    `[${sender}] ${docType} ${docNumber} のご送付`,
-    html,
-  );
+  return send(params.to, `[${sender}] ${docType} ${docNumber} のご送付`, html);
 }

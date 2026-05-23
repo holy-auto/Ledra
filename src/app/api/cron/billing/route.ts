@@ -5,21 +5,16 @@ import { sendCronFailureAlert } from "@/lib/cronAlert";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { withCronLock } from "@/lib/cron/lock";
 import { escapeHtml } from "@/lib/sanitize";
+import { sendEmail } from "@/lib/email/sendEmail";
 
 export const dynamic = "force-dynamic";
-
-const RESEND_API = "https://api.resend.com/emails";
 
 async function sendReminderEmail(to: string, subject: string, html: string) {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM;
   if (!apiKey || !from) return false;
   try {
-    const res = await fetch(RESEND_API, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to, subject, html }),
-    });
+    const res = await sendEmail({ from, to, subject, html });
     return res.ok;
   } catch {
     return false;

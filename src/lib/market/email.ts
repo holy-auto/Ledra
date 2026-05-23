@@ -1,35 +1,14 @@
 /**
- * Market notification emails via Resend API
- * Gracefully degrades if RESEND_API_KEY is not set.
+ * Market notification emails via sendEmail (Resend → SendGrid フォールバック)。
  */
 
 import { escapeHtml } from "@/lib/sanitize";
+import { sendEmail } from "@/lib/email/sendEmail";
 
-const RESEND_API = "https://api.resend.com/emails";
-
-async function sendEmail(to: string, subject: string, html: string) {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM;
-  if (!apiKey || !from) {
-    console.warn("[market/email] RESEND_API_KEY or RESEND_FROM not set, skipping email:", subject);
-    return;
-  }
-
-  try {
-    const res = await fetch(RESEND_API, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ from, to, subject, html }),
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      console.error("[market/email] send failed:", res.status, text);
-    }
-  } catch (e) {
-    console.error("[market/email] send error:", e);
+async function sendMarketEmail(to: string, subject: string, html: string) {
+  const res = await sendEmail({ to, subject, html });
+  if (!res.ok) {
+    console.error("[market/email] send failed:", res.status, res.error);
   }
 }
 
@@ -69,7 +48,7 @@ export async function notifyNewInquiry(
       <p style="font-size: 13px; color: #86868b;">管理画面の「問い合わせ管理」から返信してください。</p>
     `,
   );
-  await sendEmail(sellerEmail, `[HolyMarket] 新規問い合わせ: ${vehicle}`, html);
+  await sendMarketEmail(sellerEmail, `[HolyMarket] 新規問い合わせ: ${vehicle}`, html);
 }
 
 /** Notify buyer when seller replies to inquiry */
@@ -92,7 +71,7 @@ export async function notifyInquiryReply(
       </div>
     `,
   );
-  await sendEmail(buyerEmail, `[HolyMarket] 返信: ${vehicle}`, html);
+  await sendMarketEmail(buyerEmail, `[HolyMarket] 返信: ${vehicle}`, html);
 }
 
 /** Notify buyer when a deal is started */
@@ -113,7 +92,7 @@ export async function notifyDealStarted(
       <p style="color: #1d1d1f; font-size: 14px;">提示価格: <strong>${priceStr}</strong></p>
     `,
   );
-  await sendEmail(buyerEmail, `[HolyMarket] 商談開始: ${vehicle}`, html);
+  await sendMarketEmail(buyerEmail, `[HolyMarket] 商談開始: ${vehicle}`, html);
 }
 
 /** Notify both parties when deal status changes */
@@ -139,7 +118,7 @@ export async function notifyDealStatusChanged(
       <p style="color: #86868b; font-size: 13px;">相手方: ${otherParty}</p>
     `,
   );
-  await sendEmail(email, `[HolyMarket] 商談${label}: ${vehicle}`, html);
+  await sendMarketEmail(email, `[HolyMarket] 商談${label}: ${vehicle}`, html);
 }
 
 /** Notify dealer that their account was approved */
@@ -154,7 +133,7 @@ export async function notifyDealerApproved(email: string, companyName: string) {
       </p>
     `,
   );
-  await sendEmail(email, "[HolyMarket] アカウント承認完了", html);
+  await sendMarketEmail(email, "[HolyMarket] アカウント承認完了", html);
 }
 
 /** Notify dealer that their account was suspended */
@@ -170,7 +149,7 @@ export async function notifyDealerSuspended(email: string, companyName: string, 
       <p style="color: #86868b; font-size: 13px;">詳細はサポートまでお問い合わせください。</p>
     `,
   );
-  await sendEmail(email, "[HolyMarket] アカウント停止のお知らせ", html);
+  await sendMarketEmail(email, "[HolyMarket] アカウント停止のお知らせ", html);
 }
 
 /** Notify about new vehicle listing (for future use) */
@@ -195,6 +174,6 @@ export async function notifyNewListing(
     `,
   );
   for (const email of emails) {
-    await sendEmail(email, `[HolyMarket] 新規出品: ${vehicle}`, html);
+    await sendMarketEmail(email, `[HolyMarket] 新規出品: ${vehicle}`, html);
   }
 }

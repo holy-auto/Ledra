@@ -25,6 +25,7 @@ import { buildSigningPayload } from "@/lib/signature/hash";
 import { signPayload, getPrivateKey, getActiveKeyInfo } from "@/lib/signature/crypto";
 import { regenerateSignedPdf } from "@/lib/signature/pdfUtils";
 import { escapeHtml } from "@/lib/sanitize";
+import { sendEmail } from "@/lib/email/sendEmail";
 
 const signatureSignSchema = z.object({
   signer_email: z
@@ -84,11 +85,7 @@ async function notifyShopSignatureComplete(params: {
   `;
 
   try {
-    await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to: params.shopEmail, subject: `[Ledra] 電子署名完了 - ${signer}`, html }),
-    });
+    await sendEmail({ from, to: params.shopEmail, subject: `[Ledra] 電子署名完了 - ${signer}`, html });
   } catch (err) {
     console.error("[signature/sign] Shop notification failed:", err);
   }
