@@ -4,6 +4,7 @@ import { parseJsonSafe } from "@/lib/api/safeJson";
 import { useTransition, useState, useCallback } from "react";
 import HelpTooltip from "@/components/ui/HelpTooltip";
 import { updateTenantSettingsAction } from "./actions";
+import { CheckoutErrorPanel } from "@/components/billing/CheckoutErrorPanel";
 
 type BankInfo = {
   bank_name?: string;
@@ -339,7 +340,16 @@ function StripeConnectSection({ connectStatus }: { connectStatus: ConnectStatus 
         </div>
       )}
 
-      {connectErr && <div className="text-sm text-red-500">{connectErr}</div>}
+      {connectErr && (
+        <CheckoutErrorPanel
+          error={connectErr}
+          errorCode={null}
+          attempt={1}
+          isPending={busy}
+          onRetry={handleConnect}
+          supportHref="/admin/support"
+        />
+      )}
 
       <div className="flex gap-3 flex-wrap">
         {!isOnboarded && (

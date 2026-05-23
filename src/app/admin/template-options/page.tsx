@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import PageHeader from "@/components/ui/PageHeader";
+import { useStripeAction } from "@/hooks/useStripeAction";
+import { CheckoutErrorPanel } from "@/components/billing/CheckoutErrorPanel";
 import {
   OPTION_TYPE_LABELS,
   SUBSCRIPTION_STATUS_LABELS,
@@ -83,7 +85,9 @@ export default function TemplateOptionsPage() {
     }
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const activeSub = subs.find((s) => s.status === "active" || s.status === "past_due");
   const activeConfig = configs.find((c) => c.is_active);
@@ -108,9 +112,7 @@ export default function TemplateOptionsPage() {
         </div>
       )}
       {status === "cancel" && (
-        <div className="glass-card p-4 text-sm text-warning glow-amber">
-          お申し込みがキャンセルされました。
-        </div>
+        <div className="glass-card p-4 text-sm text-warning glow-amber">お申し込みがキャンセルされました。</div>
       )}
 
       {loading && <div className="text-sm text-muted">読み込み中...</div>}
@@ -123,14 +125,23 @@ export default function TemplateOptionsPage() {
           {activeSub ? (
             <div className="space-y-2">
               <div className="text-sm text-secondary">
-                プラン: <b className="text-primary">{OPTION_TYPE_LABELS[activeSub.option_type as keyof typeof OPTION_TYPE_LABELS] ?? activeSub.option_type}</b>
+                プラン:{" "}
+                <b className="text-primary">
+                  {OPTION_TYPE_LABELS[activeSub.option_type as keyof typeof OPTION_TYPE_LABELS] ??
+                    activeSub.option_type}
+                </b>
               </div>
               <div className="text-sm text-secondary">
-                ステータス: <b className="text-primary">{SUBSCRIPTION_STATUS_LABELS[activeSub.status as keyof typeof SUBSCRIPTION_STATUS_LABELS] ?? activeSub.status}</b>
+                ステータス:{" "}
+                <b className="text-primary">
+                  {SUBSCRIPTION_STATUS_LABELS[activeSub.status as keyof typeof SUBSCRIPTION_STATUS_LABELS] ??
+                    activeSub.status}
+                </b>
               </div>
               {activeSub.current_period_end && (
                 <div className="text-sm text-secondary">
-                  次回請求日: <b className="text-primary">{new Date(activeSub.current_period_end).toLocaleDateString("ja-JP")}</b>
+                  次回請求日:{" "}
+                  <b className="text-primary">{new Date(activeSub.current_period_end).toLocaleDateString("ja-JP")}</b>
                 </div>
               )}
             </div>
@@ -153,20 +164,14 @@ export default function TemplateOptionsPage() {
             <div className="space-y-2">
               <div className="text-sm text-primary font-semibold">{activeConfig.name}</div>
               <div className="text-xs text-muted">
-                種別: {activeConfig.option_type === "preset" ? "既製テンプレート" : "オリジナル"} /
-                公開: {activeConfig.is_active ? "公開中" : "非公開"}
+                種別: {activeConfig.option_type === "preset" ? "既製テンプレート" : "オリジナル"} / 公開:{" "}
+                {activeConfig.is_active ? "公開中" : "非公開"}
               </div>
               <div className="flex gap-3 pt-2">
-                <Link
-                  className="btn-primary text-xs"
-                  href={`/admin/template-options/configure?id=${activeConfig.id}`}
-                >
+                <Link className="btn-primary text-xs" href={`/admin/template-options/configure?id=${activeConfig.id}`}>
                   設定を編集
                 </Link>
-                <Link
-                  className="btn-secondary text-xs"
-                  href="/admin/template-options/maintenance-url"
-                >
+                <Link className="btn-secondary text-xs" href="/admin/template-options/maintenance-url">
                   メンテナンスURL設定
                 </Link>
               </div>
@@ -191,15 +196,24 @@ export default function TemplateOptionsPage() {
       {/* クイックリンク */}
       {!loading && activeSub && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Link href="/admin/template-options/gallery" className="glass-card p-4 hover:bg-surface-hover transition-colors">
+          <Link
+            href="/admin/template-options/gallery"
+            className="glass-card p-4 hover:bg-surface-hover transition-colors"
+          >
             <div className="text-sm font-semibold text-primary">テンプレートギャラリー</div>
             <div className="text-xs text-muted mt-1">既製テンプレートを閲覧・選択</div>
           </Link>
-          <Link href="/admin/template-options/order" className="glass-card p-4 hover:bg-surface-hover transition-colors">
+          <Link
+            href="/admin/template-options/order"
+            className="glass-card p-4 hover:bg-surface-hover transition-colors"
+          >
             <div className="text-sm font-semibold text-primary">制作依頼・修正依頼</div>
             <div className="text-xs text-muted mt-1">オーダーの作成・進捗確認</div>
           </Link>
-          <Link href="/admin/template-options/maintenance-url" className="glass-card p-4 hover:bg-surface-hover transition-colors">
+          <Link
+            href="/admin/template-options/maintenance-url"
+            className="glass-card p-4 hover:bg-surface-hover transition-colors"
+          >
             <div className="text-sm font-semibold text-primary">メンテナンスURL</div>
             <div className="text-xs text-muted mt-1">URL・QRコード設定</div>
           </Link>
@@ -225,7 +239,8 @@ export default function TemplateOptionsPage() {
                 )}
                 <div className="text-lg font-bold text-primary">{plan.name}</div>
                 <div className="text-2xl font-bold text-primary">
-                  {plan.price.split("/")[0]}<span className="text-sm font-normal text-muted">/{plan.price.split("/")[1]}</span>
+                  {plan.price.split("/")[0]}
+                  <span className="text-sm font-normal text-muted">/{plan.price.split("/")[1]}</span>
                 </div>
                 <div className="text-xs text-muted">{plan.setupFee}</div>
                 <ul className="space-y-1.5 text-sm text-secondary">
@@ -239,7 +254,10 @@ export default function TemplateOptionsPage() {
                 <button
                   type="button"
                   className={`w-full ${plan.recommended ? "btn-primary" : "btn-secondary"}`}
-                  onClick={() => { setSelectedOption(plan.optionType); setError(null); }}
+                  onClick={() => {
+                    setSelectedOption(plan.optionType);
+                    setError(null);
+                  }}
                 >
                   {isSelected ? "選択中" : `${plan.name.includes("ライト") ? "ライト" : "プレミアム"}を選択`}
                 </button>
@@ -267,27 +285,32 @@ function SubscribeConfirmation({
   onCancel,
 }: {
   optionType: "preset" | "custom";
-  plan: typeof OPTION_PLANS[number];
+  plan: (typeof OPTION_PLANS)[number];
   onCancel: () => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const subscribe = useStripeAction<{ url: string }>("template-options:subscribe");
 
   async function handleConfirm() {
     setBusy(true);
-    setError(null);
-    try {
+    const result = await subscribe.execute(async () => {
       const res = await fetch("/api/template-options/subscribe", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ option_type: optionType }),
       });
       const j = await res.json();
-      if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
-      if (j?.url) window.location.href = j.url;
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
-    } finally {
+      if (!res.ok) {
+        const err = new Error(j?.message ?? `HTTP ${res.status}`) as Error & { status: number };
+        err.status = res.status;
+        throw err;
+      }
+      if (!j?.url) throw new Error("subscribe url missing");
+      return { url: j.url as string };
+    });
+    if (result.ok) {
+      window.location.href = result.data.url;
+    } else {
       setBusy(false);
     }
   }
@@ -312,21 +335,21 @@ function SubscribeConfirmation({
       <div className="border-t border-[var(--border-default)] pt-3 text-xs text-muted">
         「申込に進む」を押すとStripe決済画面に移動します。決済完了後、テンプレートオプションが即時有効になります。
       </div>
-      {error && <div className="text-sm text-danger">{error}</div>}
+      {subscribe.error && (
+        <CheckoutErrorPanel
+          error={subscribe.error}
+          errorCode={subscribe.errorCode}
+          attempt={subscribe.attempt}
+          isPending={subscribe.isPending}
+          onRetry={handleConfirm}
+          supportHref="/admin/support"
+        />
+      )}
       <div className="flex gap-3">
-        <button
-          type="button"
-          className="btn-primary text-sm"
-          disabled={busy}
-          onClick={handleConfirm}
-        >
+        <button type="button" className="btn-primary text-sm" disabled={busy} onClick={handleConfirm}>
           {busy ? "処理中..." : "申込に進む"}
         </button>
-        <button
-          type="button"
-          className="btn-ghost text-sm"
-          onClick={onCancel}
-        >
+        <button type="button" className="btn-ghost text-sm" onClick={onCancel}>
           キャンセル
         </button>
       </div>

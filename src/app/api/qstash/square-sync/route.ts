@@ -182,6 +182,15 @@ async function handler(req: NextRequest) {
           finished_at: new Date().toISOString(),
         })
         .eq("id", job_id);
+      // G6: 401 検出 → connection を error 状態にして管理画面で再認可を促す
+      await admin
+        .from("square_connections")
+        .update({
+          status: "error",
+          last_error_reason: "token_expired",
+          last_error_at: new Date().toISOString(),
+        })
+        .eq("tenant_id", tenant_id);
       return apiJson({ error: "Unauthorized" }, { status: 401 });
     }
 
