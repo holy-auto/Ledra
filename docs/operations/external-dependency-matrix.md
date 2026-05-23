@@ -358,9 +358,9 @@
 
 | # | 課題 | 提案 |
 |---|------|------|
-| G5 | Polygon 本番連続失敗時の警告が薄い | `polygon-signer` cron に N 回連続失敗で Resend 通知を追加 (RPC retry は ✅ 解消済 commit `<this PR>`) |
-| G6 | Square 401 (token 失効) のテナントへの通知 | 401 検知時に管理画面バナー + メール送付 |
-| G7 | freee / MF 連続失敗の通知 | accounting-sync cron に同じパターンを追加 |
+| ~~G5~~ | ~~Polygon 本番連続失敗時の警告が薄い~~ | ✅ **解消** (commit `<this PR>`): `failureTracker` で 3 連続失敗 + 6h cooldown でメール通知。RPC retry は別途 ✅ 済 |
+| G6 | ~~Square 401 (token 失効) のテナントへの通知~~ (cron 連続失敗通知は ✅ 解消 commit `<this PR>`) | テナントへの個別通知 (再認可リンク) は別途 UI 改修必要 |
+| ~~G7~~ | ~~freee / MF 連続失敗の通知~~ | ✅ **解消** (commit `<this PR>`): accounting-sync に `failureTracker` 統合 |
 | ~~G8~~ | ~~Cloudflare Stream / Mux が `withRetry` 未経由~~ | ✅ **解消** (commit `<this PR>`): `cfsFetch` 内で 5xx/429 throw → `withRetry("cf-stream", ...)` 経由。4xx は permanent として Response 透過 |
 
 ### 4.3 P3 だが意思決定が必要
