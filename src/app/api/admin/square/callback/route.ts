@@ -70,6 +70,7 @@ export async function GET(req: NextRequest) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(tokenBody),
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!tokenRes.ok) {
@@ -88,6 +89,7 @@ export async function GET(req: NextRequest) {
     try {
       const locRes = await fetch("https://connect.squareup.com/v2/locations", {
         headers: { Authorization: `Bearer ${access_token}` },
+        signal: AbortSignal.timeout(10_000),
       });
       if (locRes.ok) {
         const locData = await locRes.json();

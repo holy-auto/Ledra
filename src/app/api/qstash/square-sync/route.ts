@@ -44,6 +44,7 @@ async function refreshSquareToken(
         grant_type: "refresh_token",
         refresh_token: refreshToken,
       }),
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!res.ok) {
@@ -169,6 +170,7 @@ async function handler(req: NextRequest) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(searchBody),
+      signal: AbortSignal.timeout(15_000),
     });
 
     if (res.status === 401) {

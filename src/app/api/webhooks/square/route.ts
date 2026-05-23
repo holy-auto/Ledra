@@ -298,6 +298,7 @@ async function fetchSquareOrder(accessToken: string, orderId: string): Promise<S
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!res.ok) {
