@@ -45,8 +45,15 @@ async function getLineConfig(tenantId: string): Promise<LineConfig | null> {
   };
 }
 
-/** LINE Messaging API でメッセージを送信 */
-async function sendMessage(
+/**
+ * LINE Messaging API でメッセージを送信。
+ *
+ * 5xx / 4xx 失敗時は `throw` する。clientWithRetry の retry 機構から再利用するため
+ * named export している。通常の呼び出し元 (sendBookingConfirmation 等) は throw を
+ * そのまま顧客向け fail-soft で扱う (try/catch で握りつぶし)。retry + SMS fallback
+ * が必要な重要通知は `clientWithRetry.ts` 経由で呼ぶこと。
+ */
+export async function sendMessage(
   accessToken: string,
   to: string,
   messages: Array<{ type: string; text?: string; [key: string]: unknown }>,
