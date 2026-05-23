@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useStripeAction } from "@/hooks/useStripeAction";
+import { CheckoutErrorPanel } from "@/components/billing/CheckoutErrorPanel";
 
 type Props = {
   vin: string;
@@ -12,14 +14,13 @@ type Props = {
 
 export default function PurchaseReportCard({ vin, priceJpy, enabled, notice, sourcePublicId }: Props) {
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const checkout = useStripeAction<{ url: string }>("vehicle-report:checkout");
 
   const priceLabel = `¥${priceJpy.toLocaleString("ja-JP")}`;
 
   async function startCheckout() {
     setBusy(true);
-    setErr(null);
-    try {
+    const result = await checkout.execute(async () => {
       const res = await fetch("/api/public/vehicle-report/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -27,11 +28,15 @@ export default function PurchaseReportCard({ vin, priceJpy, enabled, notice, sou
       });
       const j = await res.json().catch(() => null);
       if (!res.ok || !j?.url) {
-        throw new Error(j?.message ?? j?.error ?? "checkout_failed");
+        const err = new Error(j?.message ?? j?.error ?? "決済の開始に失敗しました") as Error & { status: number };
+        err.status = res.status;
+        throw err;
       }
-      window.location.href = j.url as string;
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "決済の開始に失敗しました。時間をおいて再度お試しください。");
+      return { url: j.url as string };
+    });
+    if (result.ok) {
+      window.location.href = result.data.url;
+    } else {
       setBusy(false);
     }
   }
@@ -74,7 +79,17 @@ export default function PurchaseReportCard({ vin, priceJpy, enabled, notice, sou
         </div>
       </div>
 
-      {err ? <div className="mt-4 text-sm text-red-500">{err}</div> : null}
+      {checkout.error ? (
+        <div className="mt-4">
+          <CheckoutErrorPanel
+            error={checkout.error}
+            errorCode={checkout.errorCode}
+            attempt={checkout.attempt}
+            isPending={checkout.isPending}
+            onRetry={startCheckout}
+          />
+        </div>
+      ) : null}
 
       <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-sm text-secondary">

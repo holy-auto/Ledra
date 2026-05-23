@@ -351,7 +351,7 @@
 |---|------|------|------|
 | ~~G1~~ | ~~Stripe SDK 呼び出しが `withRetry` 未経由~~ | ✅ **解消** (commit `e58f5bf`): 共有 `getStripeClient()` + Proxy で全 SDK call を自動ラップ。重要 mutation 4 件に `idempotencyKey` 追加 | — |
 | ~~G2~~ | ~~Anthropic SDK timeout 600s デフォルト~~ | ✅ **解消** (commit `86fb7fc`, `8567da6`): SDK timeout 60s、Vercel `maxDuration` 60s、`withRetry("anthropic", ...)` 全 14 モジュール経由 | — |
-| ~~G3~~ | ~~Checkout 起動失敗のユーザー向けエラー / リトライ動線が薄い~~ | ✅ **部分解消** (commit `<this PR>`): 共通 `useStripeAction` hook + `CheckoutErrorPanel` でエラー分類 (network / timeout / rate_limited / 5xx / 4xx) + リトライボタン + Sentry breadcrumb 自動連携。`/admin/billing` の checkout 起動に適用。残 6+ 箇所 (portal / resume / connect / shop / template-options / agent / vehicle-report) は同パターンで漸進的に波及 | — |
+| ~~G3~~ | ~~Checkout 起動失敗のユーザー向けエラー / リトライ動線が薄い~~ | ✅ **解消** (commit `145093a` + `<this PR>`): 共通 `useStripeAction` hook + `CheckoutErrorPanel` でエラー分類 (network / timeout / rate_limited / 5xx / 4xx) + リトライボタン + Sentry breadcrumb 自動連携。適用箇所: `/admin/billing` (checkout / portal / resume), `/admin/template-options` (subscribe), `/v/[vin]` (vehicle-report checkout), `/admin/shop` (CheckoutErrorPanel 表示のみ), `/admin/settings` (Stripe Connect)。残: `/agent/settings` は共通 error state で複数 fetch 混在のため別 PR で対応 (onRetry optional 化が必要) | — |
 | ~~G4~~ | ~~OTP メール (Resend) 全断時のフォールバックなし~~ | ✅ **解消** (commit `313640a`): `src/lib/email/sendEmail.ts` 統一 adapter で Resend → SendGrid → (G9 連動) Twilio SMS の 3 重化 | — |
 
 ### 4.2 中優先 (P2 機能の信頼性)

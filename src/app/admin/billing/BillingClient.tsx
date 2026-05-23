@@ -290,6 +290,9 @@ export default function BillingPage() {
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  // portal / resume は useStripeAction で個別管理 (リトライ動線 + Sentry 自動連携)
+  const portal = useStripeAction<{ url: string }>("billing:portal");
+  const resume = useStripeAction<{ url: string }>("billing:resume");
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [sub, setSub] = useState<SubInfo>(null);
 
@@ -405,70 +408,76 @@ export default function BillingPage() {
 
   async function openPortal() {
     setPortalBusy(true);
-    setErr(null);
+    const sessionRes = await supabase.auth.getSession();
+    const access_token = sessionRes.data?.session?.access_token;
+    if (!access_token) {
+      window.location.href = "/login";
+      setPortalBusy(false);
+      return;
+    }
 
-    try {
-      const sessionRes = await supabase.auth.getSession();
-      const access_token = sessionRes.data?.session?.access_token;
-      if (!access_token) {
-        window.location.href = "/login";
-        return;
-      }
+    const u = new URL(window.location.href);
+    u.searchParams.set("from", "portal");
+    u.searchParams.set("r", String(Date.now()));
 
-      const u = new URL(window.location.href);
-      u.searchParams.set("from", "portal");
-      u.searchParams.set("r", String(Date.now()));
-
+    const result = await portal.execute(async () => {
       const res = await fetch("/api/stripe/portal", {
         method: "POST",
         headers: { "content-type": "application/json; charset=utf-8" },
         body: JSON.stringify({ return_url: u.toString(), access_token }),
         cache: "no-store",
       });
-
       const j = await parseJsonSafe(res);
       if (!res.ok) {
-        throw new Error(j?.error ? `${j.error}${j.detail ? " / " + j.detail : ""}` : `HTTP ${res.status}`);
+        const err = new Error(
+          j?.error ? `${j.error}${j.detail ? " / " + j.detail : ""}` : `HTTP ${res.status}`,
+        ) as Error & { status: number };
+        err.status = res.status;
+        throw err;
       }
       if (!j?.url) throw new Error("portal url missing");
+      return { url: j.url as string };
+    });
 
-      window.location.href = j.url;
-    } catch (e: any) {
-      setErr(e?.message ?? String(e));
-    } finally {
+    if (result.ok) {
+      window.location.href = result.data.url;
+    } else {
       setPortalBusy(false);
     }
   }
 
   async function resumeCheckout() {
     setResumeBusy(true);
-    setErr(null);
+    const sessionRes = await supabase.auth.getSession();
+    const access_token = sessionRes.data?.session?.access_token;
+    if (!access_token) {
+      window.location.href = "/login";
+      setResumeBusy(false);
+      return;
+    }
 
-    try {
-      const sessionRes = await supabase.auth.getSession();
-      const access_token = sessionRes.data?.session?.access_token;
-      if (!access_token) {
-        window.location.href = "/login";
-        return;
-      }
-
+    const result = await resume.execute(async () => {
       const res = await fetch("/api/stripe/resume", {
         method: "POST",
         headers: { "content-type": "application/json; charset=utf-8" },
         body: JSON.stringify({ access_token }),
         cache: "no-store",
       });
-
       const j = await parseJsonSafe(res);
       if (!res.ok) {
-        throw new Error(j?.error ? `${j.error}${j.detail ? " / " + j.detail : ""}` : `HTTP ${res.status}`);
+        const err = new Error(
+          j?.error ? `${j.error}${j.detail ? " / " + j.detail : ""}` : `HTTP ${res.status}`,
+        ) as Error & { status: number };
+        err.status = res.status;
+        throw err;
       }
       if (!j?.url) throw new Error("resume url missing");
+      return { url: j.url as string };
+    });
 
-      window.location.href = j.url;
-    } catch (e: any) {
-      setErr(e?.message ?? String(e));
-    } finally {
+    if (result.ok) {
+      window.location.href = result.data.url;
+    } else {
       setResumeBusy(false);
     }
   }
@@ -538,6 +547,27 @@ export default function BillingPage() {
       )}
 
       {loading && <div className="text-sm text-muted">読み込み中…</div>}
+
+      {portal.error && (
+        <CheckoutErrorPanel
+          error={portal.error}
+          errorCode={portal.errorCode}
+          attempt={portal.attempt}
+          isPending={portal.isPending}
+          onRetry={openPortal}
+          supportHref="/admin/support"
+        />
+      )}
+      {resume.error && (
+        <CheckoutErrorPanel
+          error={resume.error}
+          errorCode={resume.errorCode}
+          attempt={resume.attempt}
+          isPending={resume.isPending}
+          onRetry={resumeCheckout}
+          supportHref="/admin/support"
+        />
+      )}
 
       {err && (
         <div className="glass-card p-4 text-sm">

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import PageHeader from "@/components/ui/PageHeader";
+import { useStripeAction } from "@/hooks/useStripeAction";
+import { CheckoutErrorPanel } from "@/components/billing/CheckoutErrorPanel";
 import {
   type ShopProductRow,
   type ShopProductCategory,
@@ -17,8 +19,7 @@ import {
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-const fmt = (n: number) =>
-  `¥${n.toLocaleString("ja-JP")}`;
+const fmt = (n: number) => `¥${n.toLocaleString("ja-JP")}`;
 
 const CATEGORY_ICONS: Record<ShopProductCategory, string> = {
   nfc_tag: "📡",
@@ -118,10 +119,7 @@ export default function ShopPage() {
 
   const cartItems = useMemo(() => Array.from(cart.values()), [cart]);
   const cartTotals = useMemo(() => calcCartTotals(cartItems), [cartItems]);
-  const cartCount = useMemo(
-    () => cartItems.reduce((sum, i) => sum + i.quantity, 0),
-    [cartItems]
-  );
+  const cartCount = useMemo(() => cartItems.reduce((sum, i) => sum + i.quantity, 0), [cartItems]);
 
   /* ── Filtered products ── */
   const filteredProducts = useMemo(() => {
@@ -187,10 +185,7 @@ export default function ShopPage() {
         description="NFCタグ・ブランド証明書・グッズの購入"
         actions={
           <div className="flex items-center gap-3">
-            <Link
-              href="/admin/shop/orders"
-              className="text-sm text-link hover:underline"
-            >
+            <Link href="/admin/shop/orders" className="text-sm text-link hover:underline">
               注文履歴
             </Link>
             <button
@@ -198,7 +193,11 @@ export default function ShopPage() {
               className="relative inline-flex items-center gap-1.5 rounded-lg border border-primary/20 bg-surface px-3 py-1.5 text-sm font-medium text-primary hover:bg-muted transition-colors"
             >
               <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"
+                />
               </svg>
               カート
               {cartCount > 0 && (
@@ -224,7 +223,8 @@ export default function ShopPage() {
       )}
       {status === "invoice_sent" && (
         <div className="rounded-lg border border-accent/30 bg-accent-dim p-4 text-sm text-accent-text">
-          ご注文を受け付けました{orderNumber ? `（注文番号: ${orderNumber}）` : ""}。請求書を送付いたしますのでお支払いをお待ちください。
+          ご注文を受け付けました{orderNumber ? `（注文番号: ${orderNumber}）` : ""}
+          。請求書を送付いたしますのでお支払いをお待ちください。
         </div>
       )}
 
@@ -239,9 +239,7 @@ export default function ShopPage() {
         <button
           onClick={() => setActiveCategory("all")}
           className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${
-            activeCategory === "all"
-              ? "bg-primary text-on-primary"
-              : "bg-muted text-secondary hover:bg-muted/80"
+            activeCategory === "all" ? "bg-primary text-on-primary" : "bg-muted text-secondary hover:bg-muted/80"
           }`}
         >
           すべて
@@ -251,9 +249,7 @@ export default function ShopPage() {
             key={cat}
             onClick={() => setActiveCategory(cat)}
             className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${
-              activeCategory === cat
-                ? "bg-primary text-on-primary"
-                : "bg-muted text-secondary hover:bg-muted/80"
+              activeCategory === cat ? "bg-primary text-on-primary" : "bg-muted text-secondary hover:bg-muted/80"
             }`}
           >
             {SHOP_CATEGORY_LABELS[cat]}
@@ -298,18 +294,13 @@ export default function ShopPage() {
             <div className="sticky top-4 rounded-xl border border-primary/10 bg-surface p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-primary">カート</h3>
-                <button
-                  onClick={() => setShowCart(false)}
-                  className="text-secondary hover:text-primary text-sm"
-                >
+                <button onClick={() => setShowCart(false)} className="text-secondary hover:text-primary text-sm">
                   閉じる
                 </button>
               </div>
 
               {cartItems.length === 0 ? (
-                <p className="text-sm text-secondary py-4 text-center">
-                  カートは空です
-                </p>
+                <p className="text-sm text-secondary py-4 text-center">カートは空です</p>
               ) : (
                 <>
                   <div className="space-y-3 max-h-[40vh] overflow-y-auto">
@@ -317,7 +308,9 @@ export default function ShopPage() {
                       <div key={item.product.id} className="flex items-start gap-3 text-sm">
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-primary truncate">{item.product.name}</p>
-                          <p className="text-secondary">{fmt(item.product.price)} / {item.product.unit}</p>
+                          <p className="text-secondary">
+                            {fmt(item.product.price)} / {item.product.unit}
+                          </p>
                         </div>
                         <div className="flex items-center gap-1">
                           <button
@@ -387,7 +380,14 @@ export default function ShopPage() {
                   </div>
 
                   {checkoutError && (
-                    <p className="text-xs text-red-500">{checkoutError}</p>
+                    <CheckoutErrorPanel
+                      error={checkoutError}
+                      errorCode={null}
+                      attempt={1}
+                      isPending={checkoutBusy}
+                      onRetry={handleCheckout}
+                      supportHref="/admin/support"
+                    />
                   )}
 
                   <button
@@ -434,15 +434,7 @@ export default function ShopPage() {
 /*  Product Card                                                       */
 /* ------------------------------------------------------------------ */
 
-function ProductCard({
-  product,
-  inCart,
-  onAdd,
-}: {
-  product: ShopProductRow;
-  inCart: boolean;
-  onAdd: () => void;
-}) {
+function ProductCard({ product, inCart, onAdd }: { product: ShopProductRow; inCart: boolean; onAdd: () => void }) {
   const meta = product.meta as Record<string, unknown>;
   const isSubscription = (meta?.billing as string) === "monthly";
   const setupFee = meta?.setup_fee as number | undefined;
@@ -459,24 +451,16 @@ function ProductCard({
       {/* Name & description */}
       <h3 className="text-base font-semibold text-primary mb-1">{product.name}</h3>
       {product.description && (
-        <p className="text-xs text-secondary leading-relaxed mb-3 line-clamp-2">
-          {product.description}
-        </p>
+        <p className="text-xs text-secondary leading-relaxed mb-3 line-clamp-2">{product.description}</p>
       )}
 
       <div className="mt-auto pt-3 space-y-3">
         {/* Price */}
         <div>
-          <span className="text-lg font-bold text-primary">
-            {`¥${product.price.toLocaleString("ja-JP")}`}
-          </span>
-          <span className="text-xs text-secondary ml-1">
-            /{product.unit}（税抜）
-          </span>
+          <span className="text-lg font-bold text-primary">{`¥${product.price.toLocaleString("ja-JP")}`}</span>
+          <span className="text-xs text-secondary ml-1">/{product.unit}（税抜）</span>
           {isSubscription && setupFee && (
-            <p className="text-xs text-secondary mt-0.5">
-              + 初期費用 ¥{setupFee.toLocaleString("ja-JP")}
-            </p>
+            <p className="text-xs text-secondary mt-0.5">+ 初期費用 ¥{setupFee.toLocaleString("ja-JP")}</p>
           )}
         </div>
 
