@@ -32,8 +32,13 @@ export interface CheckoutErrorPanelProps {
   errorCode: StripeErrorCode | null;
   attempt: number;
   isPending?: boolean;
-  /** ユーザーが「もう一度試す」を押した時のコールバック */
-  onRetry: () => void;
+  /**
+   * ユーザーが「もう一度試す」を押した時のコールバック。
+   * 省略時はリトライボタンを表示しない (dismiss だけの表示モード)。
+   * 共通 error state で複数 operation を扱うページ (例: agent/settings) で
+   * どの操作を再試行すべきか曖昧な場合に onRetry なしで使う。
+   */
+  onRetry?: () => void;
   /** 任意: サポート連絡先 (mailto: / 問い合わせフォーム URL) */
   supportHref?: string;
 }
@@ -57,24 +62,28 @@ export function CheckoutErrorPanel({
       <div className="font-semibold">決済画面の起動に失敗しました</div>
       <div className="mt-1 break-words text-red-800 dark:text-red-200">{error}</div>
       {suggestion && <div className="mt-2 text-red-700 dark:text-red-300">{suggestion}</div>}
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={onRetry}
-          disabled={isPending}
-          className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
-        >
-          {isPending ? "再試行中…" : `もう一度試す (${attempt} 回目)`}
-        </button>
-        {showSupport && supportHref && (
-          <a
-            href={supportHref}
-            className="rounded-md border border-red-400 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-600 dark:text-red-200 dark:hover:bg-red-900/40"
-          >
-            サポートに連絡
-          </a>
-        )}
-      </div>
+      {(onRetry || (showSupport && supportHref)) && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              disabled={isPending}
+              className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            >
+              {isPending ? "再試行中…" : `もう一度試す (${attempt} 回目)`}
+            </button>
+          )}
+          {showSupport && supportHref && (
+            <a
+              href={supportHref}
+              className="rounded-md border border-red-400 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-600 dark:text-red-200 dark:hover:bg-red-900/40"
+            >
+              サポートに連絡
+            </a>
+          )}
+        </div>
+      )}
     </div>
   );
 }
