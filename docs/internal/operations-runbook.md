@@ -35,7 +35,42 @@
 
 ### アラート通知先
 - `CONTACT_EMAIL_TO` 環境変数に設定されたメールアドレス
-- Resend API 経由で送信（RESEND_API_KEY が未設定の場合はスキップ）
+- `sendEmail` (Resend → SendGrid フォールバック) 経由で送信
+
+### Monitor 自身の死活監視 (G15: 二重盲点解消)
+
+`/api/cron/monitor` が長期間停止する (= Vercel 全断 / cron 未発火 / 環境変数欠落)
+ケースを別経路で検知する 2 段構成。**外部 SaaS Free 枠で月額 0 円**で運用可能:
+
+**第 1 段: Healthchecks.io (cron heartbeat)**
+- `/api/cron/monitor` が成功するたびに ping URL を叩く (`HEALTHCHECKS_MONITOR_PING_URL`)
+- Healthchecks 側で「最後の ping から 26 時間以上経過したら通知」を設定 (24h cron + 2h grace)
+- Free 枠 20 checks まで、メール / Slack / webhook 通知対応
+
+セットアップ手順:
+1. https://healthchecks.io にアカウント作成
+2. "Add Check" → Name = "Ledra monitor", Schedule (Cron) = `0 8 * * *`, Grace Time = 2 hours
+3. Ping URL をコピー (例: `https://hc-ping.com/<uuid>`)
+4. Vercel env vars に `HEALTHCHECKS_MONITOR_PING_URL` として登録
+5. Healthchecks → Integrations で通知先 (Email / Slack) を登録
+
+**第 2 段: UptimeRobot (HTTP probe / Vercel 全断検出)**
+- `/api/health` を 5 分間隔で probe
+- Vercel 全断 (= cron も含めて全停止) を即時 (最大 5 分) で検出
+- Free 枠 50 monitors / 5min 間隔 / メール通知
+
+セットアップ手順:
+1. https://uptimerobot.com にアカウント作成
+2. "Add New Monitor" → Type = HTTP(s), URL = `https://app.ledra.co.jp/api/health`
+3. Interval = 5 minutes
+4. アラート連絡先にメールアドレスを登録
+
+**運用フェーズ別の SaaS 構成**:
+| フェーズ | 構成 | コスト |
+|---|---|---|
+| PoC / Lighthouse 接続前 | UptimeRobot Free + Healthchecks Free | ¥0/月 |
+| Lighthouse 接続後 1〜数社 | UptimeRobot Pro ($7/月) で 1 分間隔 + SMS | 約 ¥900/月 |
+| 本格運用 (10社+) | Better Uptime Starter ($25/月) + Status Page | 約 ¥3,800/月 |
 
 ## 2. よくある障害と対応
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { apiJson, apiUnauthorized } from "@/lib/api/response";
 import { verifyCronRequest } from "@/lib/cronAuth";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { sendHeartbeat } from "@/lib/observability/healthchecks";
 
 export const dynamic = "force-dynamic";
 
@@ -133,5 +134,12 @@ export async function GET(req: NextRequest) {
   }
 
   console.info("[cron/monitor] daily check complete", summary);
+
+  // G15: Healthchecks.io への heartbeat ping
+  // — monitor 自身が長期間動かなくなった場合、Healthchecks 側の grace 経過で
+  //   別経路 (SaaS のメール / Slack) からアラート発火
+  // — Vercel 全断 (= monitor cron が発火しない) も検知可能
+  await sendHeartbeat(process.env.HEALTHCHECKS_MONITOR_PING_URL);
+
   return apiJson(summary);
 }
