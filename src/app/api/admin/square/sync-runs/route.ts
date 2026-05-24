@@ -16,7 +16,7 @@ export async function GET() {
     const { data: runs, error } = await admin
       .from("square_sync_runs")
       .select(
-        "id, tenant_id, started_at, finished_at, status, trigger_type, triggered_by, orders_fetched, orders_imported, orders_skipped, errors_json",
+        "id, tenant_id, started_at, finished_at, status, trigger_type, triggered_by, orders_fetched, orders_imported, orders_skipped, errors_json, error_message",
       )
       .eq("tenant_id", caller.tenantId)
       .order("started_at", { ascending: false })

@@ -45,13 +45,14 @@ export type SquareSyncRun = {
   tenant_id: string;
   started_at: string;
   finished_at: string | null;
-  status: "running" | "completed" | "failed" | "partial";
+  status: "queued" | "processing" | "running" | "completed" | "failed" | "partial";
   trigger_type: "manual" | "scheduled" | "webhook";
   triggered_by: string | null;
   orders_fetched: number;
   orders_imported: number;
   orders_skipped: number;
   errors_json: any[];
+  error_message: string | null;
 };
 
 /**
