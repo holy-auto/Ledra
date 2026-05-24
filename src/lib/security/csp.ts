@@ -102,9 +102,10 @@ export function buildCsp(options: CspOptions): Record<CspDirective, string[]> {
     "base-uri": ["'self'"],
     "form-action": ["'self'"],
     "frame-ancestors": ["'none'"],
-    // Service worker (public/sw.js). Without this the SW falls back to
-    // script-src 'self' which works, but explicit is better for audit.
-    "worker-src": ["'self'"],
+    // Service worker (public/sw.js) は same-origin、加えて
+    // `@zxing/browser` (車検証 QR スキャナ) が内部で `new Worker(blob:URL)`
+    // を生成するため blob: を許可。data: は現状未使用なので付けない。
+    "worker-src": ["'self'", "blob:"],
     // PWA manifest at /manifest.json (same-origin). Without this it falls
     // back to default-src 'self' which is also fine; included for clarity.
     "manifest-src": ["'self'"],
