@@ -30,6 +30,7 @@ import { verifyCronRequest } from "@/lib/cronAuth";
 import { sendCronFailureAlert } from "@/lib/cronAlert";
 import { withCronLock } from "@/lib/cron/lock";
 import { logger } from "@/lib/logger";
+import { sendEmail } from "@/lib/email/sendEmail";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -38,8 +39,6 @@ export const maxDuration = 60;
 const STUCK_THRESHOLD_MIN = 5;
 /** Cap the alert payload — avoids massive emails when something is wrong. */
 const MAX_ROWS_PER_ALERT = 20;
-
-const RESEND_API = "https://api.resend.com/emails";
 
 interface StuckRow {
   event_id: string;
@@ -85,11 +84,7 @@ async function sendStuckEventsAlert(rows: StuckRow[]): Promise<void> {
   ];
 
   try {
-    await fetch(RESEND_API, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to, subject, text: lines.join("\n") }),
-    });
+    await sendEmail({ from, to, subject, text: lines.join("\n") });
   } catch (e) {
     logger.error("stripe-event-monitor: failed to send alert email", {
       error: e instanceof Error ? e.message : String(e),

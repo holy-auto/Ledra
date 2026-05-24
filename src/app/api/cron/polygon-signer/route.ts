@@ -26,11 +26,10 @@ import { apiJson, apiUnauthorized } from "@/lib/api/response";
 import { verifyCronRequest } from "@/lib/cronAuth";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { recordCronSuccess, recordCronFailure } from "@/lib/cron/failureTracker";
+import { sendEmail } from "@/lib/email/sendEmail";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const RESEND_API = "https://api.resend.com/emails";
 
 const DEFAULT_RPC: Record<"polygon" | "amoy", string> = {
   polygon: "https://polygon-rpc.com",
@@ -116,14 +115,7 @@ async function sendAlertEmail(summary: SignerSummary): Promise<void> {
   ].join("\n");
 
   try {
-    await fetch(RESEND_API, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ from, to, subject, text: body }),
-    });
+    await sendEmail({ from, to, subject, text: body });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[cron/polygon-signer] failed to send alert email", { error: msg });

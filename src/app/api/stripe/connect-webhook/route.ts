@@ -6,6 +6,7 @@ import { apiJson, apiValidationError, apiInternalError, apiError } from "@/lib/a
 import { captureSecurityEvent } from "@/lib/observability/sentry";
 import { escapeHtml } from "@/lib/sanitize";
 import { executeOrderPayout } from "@/lib/orders/orderPayout";
+import { sendEmail } from "@/lib/email/sendEmail";
 
 async function sendPayoutFailedEmail(params: {
   to: string;
@@ -48,11 +49,7 @@ async function sendPayoutFailedEmail(params: {
   `;
 
   try {
-    await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to: params.to, subject: "[Ledra] 振込処理が失敗しました", html }),
-    });
+    await sendEmail({ from, to: params.to, subject: "[Ledra] 振込処理が失敗しました", html });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("connect-webhook: payout failed email error", { error: msg });
@@ -105,15 +102,7 @@ async function sendTransferPaidEmail(params: {
   `;
 
   try {
-    await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "Idempotency-Key": params.idempotencyKey,
-      },
-      body: JSON.stringify({ from, to: params.to, subject: `[Ledra] ${subjectLabel}`, html }),
-    });
+    await sendEmail({ from, to: params.to, subject: `[Ledra] ${subjectLabel}`, html });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("connect-webhook: transfer paid email error", { error: msg });
@@ -148,15 +137,7 @@ async function sendConnectOnboardedEmail(params: {
   `;
 
   try {
-    await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "Idempotency-Key": params.idempotencyKey,
-      },
-      body: JSON.stringify({ from, to: params.to, subject: "[Ledra] 決済受付が利用可能になりました", html }),
-    });
+    await sendEmail({ from, to: params.to, subject: "[Ledra] 決済受付が利用可能になりました", html });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("connect-webhook: onboarded email error", { error: msg });
