@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import Badge from "@/components/ui/Badge";
 import type { BadgeVariant } from "@/lib/statusMaps";
+import { CheckoutErrorPanel } from "@/components/billing/CheckoutErrorPanel";
 
 interface AgentSettings {
   name: string;
@@ -234,11 +235,7 @@ export default function AgentSettingsPage() {
       ) : (
         <>
           {/* Error / Success messages */}
-          {error && (
-            <div className="glass-card p-4">
-              <p className="text-sm text-danger">{error}</p>
-            </div>
-          )}
+          {error && <CheckoutErrorPanel error={error} errorCode={null} attempt={1} supportHref="/admin/support" />}
           {saveSuccess && (
             <div className="glass-card p-4 border-success/30 bg-success-dim">
               <p className="text-sm text-success-text">設定を保存しました。</p>

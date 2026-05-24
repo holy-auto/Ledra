@@ -22,6 +22,7 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createSignatureSession, getExistingPendingSession } from "@/lib/signature/session";
 import { generateCertificatePdfBytes } from "@/lib/signature/pdfUtils";
 import { escapeHtml } from "@/lib/sanitize";
+import { sendEmail } from "@/lib/email/sendEmail";
 
 const signatureRequestSchema = z.object({
   certificate_id: z.string().uuid("certificate_id は必須です"),
@@ -80,11 +81,7 @@ async function sendSignatureRequestEmail(params: {
   `;
 
   try {
-    await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to: params.to, subject: `[${shop}] 施工証明書への電子署名のお願い`, html }),
-    });
+    await sendEmail({ from, to: params.to, subject: `[${shop}] 施工証明書への電子署名のお願い`, html });
   } catch (err) {
     console.error("[signature/request] Email send failed:", err);
   }

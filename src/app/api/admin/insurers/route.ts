@@ -7,6 +7,7 @@ import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { getClientIp } from "@/lib/rateLimit";
 import { apiJson, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { escapeHtml } from "@/lib/sanitize";
+import { sendEmail } from "@/lib/email/sendEmail";
 
 export const runtime = "nodejs";
 
@@ -159,19 +160,12 @@ async function sendInsurerNotification(params: {
   }
 
   try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from,
-        to: params.email,
-        reply_to: "support@ledra.co.jp",
-        subject,
-        html: body,
-      }),
+    const res = await sendEmail({
+      from,
+      to: params.email,
+      reply_to: "support@ledra.co.jp",
+      subject,
+      html: body,
     });
 
     if (!res.ok) {

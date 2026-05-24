@@ -1,8 +1,9 @@
-import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { z } from "zod";
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCallerFull } from "@/lib/api/auth";
+import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { apiOk, apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
 
 const templateOrderUpdateSchema = z.object({
@@ -12,17 +13,17 @@ const templateOrderUpdateSchema = z.object({
   assigned_to: z.string().trim().max(200).optional(),
 });
 
-/** GET: 全テナントのテンプレートオーダー一覧（管理者用） */
+/** GET: 全テナントのテンプレートオーダー一覧（運営専用） */
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createClient();
     const caller = await resolveCallerFull(supabase);
     if (!caller) return apiUnauthorized();
-    if (caller.role !== "owner" && caller.role !== "admin") {
-      return apiForbidden("管理者権限が必要です。");
+    if (!isPlatformAdmin(caller)) {
+      return apiForbidden("運営権限が必要です。");
     }
 
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const admin = createPlatformScopedAdmin("admin/template-orders — cross-tenant template order management");
 
     // 個別オーダーのログ取得
     const url = new URL(req.url);
@@ -59,7 +60,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/** PUT: オーダーステータス更新（管理者用） */
+/** PUT: オーダーステータス更新（運営専用） */
 export async function PUT(req: NextRequest) {
   try {
     const parsed = templateOrderUpdateSchema.safeParse(await req.json().catch(() => ({})));
@@ -71,11 +72,11 @@ export async function PUT(req: NextRequest) {
     const supabase = await createClient();
     const caller = await resolveCallerFull(supabase);
     if (!caller) return apiUnauthorized();
-    if (caller.role !== "owner" && caller.role !== "admin") {
-      return apiForbidden("管理者権限が必要です。");
+    if (!isPlatformAdmin(caller)) {
+      return apiForbidden("運営権限が必要です。");
     }
 
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const admin = createPlatformScopedAdmin("admin/template-orders PUT — cross-tenant order status update");
 
     // 現在のステータスを取得
     const { data: current } = await admin.from("template_orders").select("status").eq("id", order_id).single();

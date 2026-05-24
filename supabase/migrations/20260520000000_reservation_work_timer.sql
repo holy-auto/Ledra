@@ -21,6 +21,6 @@ COMMENT ON COLUMN reservations.work_started_at IS
 COMMENT ON COLUMN reservations.work_completed_at IS
   'status が completed に遷移したタイミングを自動記録 (PUT /api/admin/reservations)';
 
-CREATE INDEX IF NOT EXISTS idx_reservations_work_started_at
-  ON reservations (tenant_id, work_started_at DESC)
-  WHERE work_started_at IS NOT NULL;
+-- index は別マイグレーション (20260520000003_reservation_work_timer_index.sql) に
+-- 切り出し済み。CONCURRENTLY は transaction 内で実行できず、
+-- カラム追加と同一ファイルにできないため。

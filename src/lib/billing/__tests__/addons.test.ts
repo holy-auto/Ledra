@@ -6,6 +6,7 @@ import {
   disableAddon,
   isKnownAddonKey,
   ADDON_KEYS,
+  ADDON_CATALOG,
 } from "@/lib/billing/addons";
 
 vi.mock("@/lib/logger", () => ({
@@ -86,6 +87,22 @@ describe("isKnownAddonKey", () => {
   it("returns false for unknown keys", () => {
     expect(isKnownAddonKey("not_a_real_addon")).toBe(false);
     expect(isKnownAddonKey("")).toBe(false);
+  });
+});
+
+describe("ADDON_CATALOG", () => {
+  it("has an entry for every canonical addon key", () => {
+    const catalogKeys = ADDON_CATALOG.map((e) => e.key).sort();
+    const expectedKeys = Object.values(ADDON_KEYS).sort();
+    expect(catalogKeys).toEqual(expectedKeys);
+  });
+
+  it("provides non-empty label / description / primaryRoute for each entry", () => {
+    for (const entry of ADDON_CATALOG) {
+      expect(entry.label.length).toBeGreaterThan(0);
+      expect(entry.description.length).toBeGreaterThan(0);
+      expect(entry.primaryRoute.startsWith("/")).toBe(true);
+    }
   });
 });
 

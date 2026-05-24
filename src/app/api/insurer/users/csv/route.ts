@@ -4,6 +4,7 @@ import { resolveInsurerCaller, enforceInsurerPlan } from "@/lib/api/insurerAuth"
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { maskEmail } from "@/lib/logger";
 import { escapeHtml } from "@/lib/sanitize";
+import { sendEmail } from "@/lib/email/sendEmail";
 
 export const runtime = "nodejs";
 
@@ -91,19 +92,12 @@ async function sendInviteEmail(to: string, companyName: string) {
   `;
 
   try {
-    await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from,
-        to,
-        // Subject 行への CRLF 注入を避けるため改行を除去 (HTML エスケープは subject では不要)。
-        subject: `【Ledra】${String(companyName).replace(/[\r\n]/g, " ")} から招待されました`,
-        html,
-      }),
+    await sendEmail({
+      from,
+      to,
+      // Subject 行への CRLF 注入を避けるため改行を除去 (HTML エスケープは subject では不要)。
+      subject: `【Ledra】${String(companyName).replace(/[\r\n]/g, " ")} から招待されました`,
+      html,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

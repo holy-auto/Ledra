@@ -4,6 +4,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { ADDON_KEYS, enableAddon, disableAddon, type AddonKey } from "@/lib/billing/addons";
 import {
   apiJson,
   apiUnauthorized,
@@ -15,16 +16,21 @@ import {
 
 export const dynamic = "force-dynamic";
 
+const ADDON_KEY_VALUES = Object.values(ADDON_KEYS) as [AddonKey, ...AddonKey[]];
+
 const tenantActionSchema = z
   .object({
     tenantId: z.string().uuid("tenantId は必須です"),
-    action: z.enum(["activate", "deactivate", "change_plan", "reset_billing", "send_notification"], {
-      message: "不明なアクションです",
-    }),
+    action: z.enum(
+      ["activate", "deactivate", "change_plan", "reset_billing", "send_notification", "enable_addon", "disable_addon"],
+      { message: "不明なアクションです" },
+    ),
     params: z
       .object({
         plan_tier: z.enum(["free", "starter", "pro", "enterprise"]).optional(),
         message: z.string().trim().max(2000).optional(),
+        addon_key: z.enum(ADDON_KEY_VALUES).optional(),
+        notes: z.string().trim().max(500).optional(),
       })
       .partial()
       .optional(),
@@ -36,6 +42,10 @@ const tenantActionSchema = z
   .refine((v) => v.action !== "send_notification" || !!v.params?.message, {
     message: "message が必要です",
     path: ["params", "message"],
+  })
+  .refine((v) => (v.action !== "enable_addon" && v.action !== "disable_addon") || !!v.params?.addon_key, {
+    message: "addon_key が必要です",
+    path: ["params", "addon_key"],
   });
 
 /**
@@ -118,6 +128,28 @@ export async function POST(req: NextRequest) {
           await admin.from("notifications").insert(notifications);
         }
         result = { message: `${tenant.name} の ${userIds.length}名に通知を送信しました` };
+        break;
+      }
+      case "enable_addon": {
+        const addonKey = params!.addon_key!;
+        const res = await enableAddon(admin, tenantId, addonKey, params?.notes);
+        if (!res.ok) throw new Error(res.error);
+        result = {
+          message: `${tenant.name} のアドオン「${addonKey}」を有効化しました`,
+          addon_key: addonKey,
+          enabled: true,
+        };
+        break;
+      }
+      case "disable_addon": {
+        const addonKey = params!.addon_key!;
+        const res = await disableAddon(admin, tenantId, addonKey, params?.notes);
+        if (!res.ok) throw new Error(res.error);
+        result = {
+          message: `${tenant.name} のアドオン「${addonKey}」を無効化しました`,
+          addon_key: addonKey,
+          enabled: false,
+        };
         break;
       }
     }

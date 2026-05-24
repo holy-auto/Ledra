@@ -3,10 +3,9 @@ import { apiJson, apiUnauthorized } from "@/lib/api/response";
 import { verifyCronRequest } from "@/lib/cronAuth";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { sendHeartbeat } from "@/lib/observability/healthchecks";
+import { sendEmail } from "@/lib/email/sendEmail";
 
 export const dynamic = "force-dynamic";
-
-const RESEND_API = "https://api.resend.com/emails";
 
 /**
  * Daily Monitoring Cron Job (08:00 JST)
@@ -112,20 +111,13 @@ export async function GET(req: NextRequest) {
     const alertEmail = process.env.CONTACT_TO_EMAIL;
     if (apiKey && alertEmail) {
       try {
-        await fetch(RESEND_API, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            from: process.env.RESEND_FROM ?? "noreply@ledra.co.jp",
-            to: alertEmail,
-            subject: `[Ledra Monitor] ${alerts.length} alert(s) detected`,
-            text: ["Monitoring Report", "", ...alerts, "", "Metrics:", JSON.stringify(summary.metrics, null, 2)].join(
-              "\n",
-            ),
-          }),
+        await sendEmail({
+          from: process.env.RESEND_FROM ?? "noreply@ledra.co.jp",
+          to: alertEmail,
+          subject: `[Ledra Monitor] ${alerts.length} alert(s) detected`,
+          text: ["Monitoring Report", "", ...alerts, "", "Metrics:", JSON.stringify(summary.metrics, null, 2)].join(
+            "\n",
+          ),
         });
       } catch {
         console.error("[cron/monitor] failed to send alert email");

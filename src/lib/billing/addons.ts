@@ -40,6 +40,40 @@ export function isKnownAddonKey(value: string): value is AddonKey {
 }
 
 /**
+ * Display catalog for the UI. Keep label/description in sync with the
+ * docs (docs/ledra-goals-strategy-2026-05.md §6) so support / sales /
+ * settings screens speak the same language.
+ */
+export type AddonCatalogEntry = {
+  key: AddonKey;
+  label: string;
+  description: string;
+  /** Primary route the addon unlocks — used to show a "ここを開放" hint. */
+  primaryRoute: string;
+};
+
+export const ADDON_CATALOG: readonly AddonCatalogEntry[] = [
+  {
+    key: ADDON_KEYS.market_vehicles,
+    label: "中古車マーケット",
+    description: "中古車の出品・閲覧・取引機能。販売店・買取店向けのアドオンです。",
+    primaryRoute: "/market",
+  },
+  {
+    key: ADDON_KEYS.btob,
+    label: "B2B 案件 (施工店間受発注)",
+    description: "他施工店との案件受発注・マッチングハブ。協業ネットワーク参加店舗向け。",
+    primaryRoute: "/admin/btob",
+  },
+  {
+    key: ADDON_KEYS.deals,
+    label: "商談管理 (Deals)",
+    description: "商談パイプライン・営業活動の追跡。BtoB 営業を行うテナント向け。",
+    primaryRoute: "/admin/deals",
+  },
+];
+
+/**
  * Check whether an add-on is currently enabled for a tenant.
  *
  * Returns `false` when:

@@ -17,7 +17,10 @@ const syncStatusVariant = (s: string): BadgeVariant => {
     case "completed":
       return "success";
     case "running":
+    case "processing":
       return "info";
+    case "queued":
+      return "default";
     case "failed":
       return "danger";
     case "partial":
@@ -32,7 +35,10 @@ const syncStatusLabel = (s: string): string => {
     case "completed":
       return "完了";
     case "running":
+    case "processing":
       return "実行中";
+    case "queued":
+      return "キュー待ち";
     case "failed":
       return "失敗";
     case "partial":
@@ -58,11 +64,10 @@ const triggerLabel = (t: string): string => {
 export default function SyncHistoryPanel() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const { data, isLoading } = useSWR<SyncHistoryData>(
-    "/api/admin/square/sync-runs",
-    fetcher,
-    { revalidateOnFocus: false, dedupingInterval: 5000 },
-  );
+  const { data, isLoading } = useSWR<SyncHistoryData>("/api/admin/square/sync-runs", fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 5000,
+  });
 
   if (isLoading) {
     return (
@@ -89,29 +94,17 @@ export default function SyncHistoryPanel() {
               <button
                 type="button"
                 className="w-full text-left px-5 py-3.5 flex items-center gap-4"
-                onClick={() =>
-                  setExpandedId(expandedId === run.id ? null : run.id)
-                }
+                onClick={() => setExpandedId(expandedId === run.id ? null : run.id)}
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 text-sm">
-                    <Badge variant={syncStatusVariant(run.status)}>
-                      {syncStatusLabel(run.status)}
-                    </Badge>
-                    <span className="text-xs text-muted">
-                      {triggerLabel(run.trigger_type)}
-                    </span>
-                    {run.triggered_by && (
-                      <span className="text-xs text-muted truncate">
-                        by {run.triggered_by}
-                      </span>
-                    )}
+                    <Badge variant={syncStatusVariant(run.status)}>{syncStatusLabel(run.status)}</Badge>
+                    <span className="text-xs text-muted">{triggerLabel(run.trigger_type)}</span>
+                    {run.triggered_by && <span className="text-xs text-muted truncate">by {run.triggered_by}</span>}
                   </div>
                   <div className="mt-1 text-xs text-muted">
                     {formatDateTime(run.started_at)}
-                    {run.finished_at && (
-                      <span> → {formatDateTime(run.finished_at)}</span>
-                    )}
+                    {run.finished_at && <span> → {formatDateTime(run.finished_at)}</span>}
                   </div>
                 </div>
                 <div className="flex items-center gap-3 text-xs text-secondary shrink-0">
@@ -126,37 +119,30 @@ export default function SyncHistoryPanel() {
                   </span>
                   {run.errors_json.length > 0 && (
                     <span>
-                      エラー:{" "}
-                      <b className="text-red-400">{run.errors_json.length}</b>
+                      エラー: <b className="text-red-400">{run.errors_json.length}</b>
                     </span>
                   )}
-                  <span className="text-muted">
-                    {expandedId === run.id ? "▲" : "▼"}
-                  </span>
+                  <span className="text-muted">{expandedId === run.id ? "▲" : "▼"}</span>
                 </div>
               </button>
 
               {/* Expanded error details */}
-              {expandedId === run.id && run.errors_json.length > 0 && (
+              {expandedId === run.id && (run.errors_json.length > 0 || run.error_message) && (
                 <div className="px-5 pb-4">
                   <div className="rounded-lg bg-red-400/5 border border-red-400/20 p-3 space-y-2">
-                    <div className="text-xs font-semibold text-red-400">
-                      エラー詳細
-                    </div>
+                    <div className="text-xs font-semibold text-red-400">エラー詳細</div>
+                    {run.error_message && (
+                      <div className="text-xs text-red-300 font-mono break-all">{run.error_message}</div>
+                    )}
                     {run.errors_json.map((error: any, idx: number) => (
-                      <div
-                        key={idx}
-                        className="text-xs text-red-300 font-mono break-all"
-                      >
-                        {typeof error === "string"
-                          ? error
-                          : JSON.stringify(error, null, 2)}
+                      <div key={idx} className="text-xs text-red-300 font-mono break-all">
+                        {typeof error === "string" ? error : JSON.stringify(error, null, 2)}
                       </div>
                     ))}
                   </div>
                 </div>
               )}
-              {expandedId === run.id && run.errors_json.length === 0 && (
+              {expandedId === run.id && run.errors_json.length === 0 && !run.error_message && (
                 <div className="px-5 pb-4">
                   <div className="text-xs text-muted">エラーなし</div>
                 </div>

@@ -179,6 +179,38 @@ export async function countOutbox(): Promise<number> {
   return r ?? 0;
 }
 
+/**
+ * Outbox 全件 + 添付 Blob を削除する。
+ *
+ * 主な用途はログアウト / ユーザ切替時のクロステナント情報リーク防止。
+ * 同一ブラウザで A → ログアウト → B が入り直したとき、A の未送信ジョブが
+ * B のセッション資格情報で flush され他テナントへ漏れるのを防ぐ。
+ *
+ * 例外は飲み込み、SSR / IndexedDB 不可環境では何もしない (UI は壊さない)。
+ */
+export async function clearOutbox(): Promise<void> {
+  const db = await openDb();
+  if (!db) return;
+  await new Promise<void>((resolve) => {
+    const stores: string[] = [STORE];
+    if (db.objectStoreNames.contains(BLOB_STORE)) stores.push(BLOB_STORE);
+    const tx = db.transaction(stores, "readwrite");
+    for (const name of stores) tx.objectStore(name).clear();
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      resolve();
+    };
+    tx.onabort = () => {
+      db.close();
+      resolve();
+    };
+  });
+}
+
 /** キュー全件を作成順に返す。 */
 export async function listOutbox(): Promise<OutboxItem[]> {
   const db = await openDb();
@@ -343,6 +375,17 @@ export async function drainItems(items: OutboxItem[], deps: DrainDeps): Promise<
 }
 
 /**
+ * 並行 drainOutbox を直列化するための in-flight ロック。
+ *
+ * 同一タブ内で OfflineBanner / PendingOfflineCerts / online イベントハンドラが
+ * 同時に drainOutbox() を呼んだ場合、各々が同じ item に POST してしまうと
+ * 冪等性キーがあっても "新規 → 重複 → 重複" の追加 round-trip と
+ * markAttempt の race (attempts カウンタが片方に上書きされる) が起きうる。
+ * 既に実行中なら同じ Promise を返す方が呼び出し側にとっても結果が一致する。
+ */
+let inFlightDrain: Promise<DrainResult> | null = null;
+
+/**
  * キュー内のすべてのアイテムを順に試行する (実 IDB + fetch 版)。
  *
  * - 成功 (2xx): item を削除
@@ -350,19 +393,29 @@ export async function drainItems(items: OutboxItem[], deps: DrainDeps): Promise<
  * - 409 Conflict は冪等性違反 → 既に処理済とみなして削除 (二重登録防止)
  *
  * ループ中に navigator.onLine が false になった場合は中断して残りは次回に回す。
+ * 既に他の呼び出しが進行中であれば、その Promise を共有して二重 drain を避ける。
  */
 export async function drainOutbox(opts?: { abortOnOffline?: boolean }): Promise<DrainResult> {
+  if (inFlightDrain) return inFlightDrain;
   const abortOnOffline = opts?.abortOnOffline ?? true;
-  const items = await listOutbox();
-  return drainItems(items, {
-    doFetch: fetch.bind(globalThis),
-    remove: removeOutboxItem,
-    markAttempt: markOutboxAttempt,
-    isOnline: () => (abortOnOffline ? (typeof navigator === "undefined" ? true : navigator.onLine !== false) : true),
-    resolveBlob: async (ref) => {
-      const row = await getOutboxBlob(ref);
-      if (!row) return null;
-      return { blob: row.blob, fileName: row.fileName, mimeType: row.mimeType };
-    },
-  });
+  inFlightDrain = (async () => {
+    try {
+      const items = await listOutbox();
+      return await drainItems(items, {
+        doFetch: fetch.bind(globalThis),
+        remove: removeOutboxItem,
+        markAttempt: markOutboxAttempt,
+        isOnline: () =>
+          abortOnOffline ? (typeof navigator === "undefined" ? true : navigator.onLine !== false) : true,
+        resolveBlob: async (ref) => {
+          const row = await getOutboxBlob(ref);
+          if (!row) return null;
+          return { blob: row.blob, fileName: row.fileName, mimeType: row.mimeType };
+        },
+      });
+    } finally {
+      inFlightDrain = null;
+    }
+  })();
+  return inFlightDrain;
 }

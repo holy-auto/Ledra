@@ -37,25 +37,13 @@ function genCode6(): string {
 }
 
 async function sendEmailResend(to: string, subject: string, html: string) {
-  const apiKey = (process.env.RESEND_API_KEY ?? "").trim();
-  const from = (process.env.RESEND_FROM ?? "").trim();
-
-  if (!apiKey) throw new Error("missing RESEND_API_KEY");
-  if (!from) throw new Error("missing RESEND_FROM");
-
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ from, to, subject, html }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    console.error("[request-code] Resend failed", res.status, body);
-    throw new Error(`resend_failed:${res.status}`);
+  // OTP メール = P1 (顧客ログイン全断のリスク)。
+  // sendEmail (Resend → SendGrid フォールバック) 経由で信頼性確保。
+  const { sendEmail } = await import("@/lib/email/sendEmail");
+  const result = await sendEmail({ to, subject, html });
+  if (!result.ok) {
+    console.error("[request-code] Email send failed", result.status, result.error);
+    throw new Error(`email_failed:${result.status ?? "unknown"}`);
   }
 }
 

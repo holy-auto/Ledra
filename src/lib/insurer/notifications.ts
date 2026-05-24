@@ -3,8 +3,7 @@
  */
 
 import { escapeHtml } from "@/lib/sanitize";
-
-const RESEND_API = "https://api.resend.com/emails";
+import { sendEmail } from "@/lib/email/sendEmail";
 
 function wrap(title: string, body: string) {
   return `
@@ -28,14 +27,9 @@ async function send(to: string, subject: string, html: string): Promise<boolean>
     return false;
   }
   try {
-    const res = await fetch(RESEND_API, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to, reply_to: "support@ledra.co.jp", subject, html }),
-    });
+    const res = await sendEmail({ from, to, reply_to: "support@ledra.co.jp", subject, html });
     if (!res.ok) {
-      const resBody = await res.text().catch(() => "");
-      console.error("[insurer-notification] email error:", res.status, resBody);
+      console.error("[insurer-notification] email error:", res.status, res.error);
     }
     return res.ok;
   } catch (e) {
@@ -80,11 +74,7 @@ export async function sendCaseStatusNotification(params: {
     `,
   );
 
-  return send(
-    params.recipientEmail,
-    `【Ledra】案件 ${params.caseNumber} のステータスが更新されました`,
-    html,
-  );
+  return send(params.recipientEmail, `【Ledra】案件 ${params.caseNumber} のステータスが更新されました`, html);
 }
 
 /** 案件新規メッセージ通知 — 保険会社 / テナント宛て */
@@ -101,9 +91,7 @@ export async function sendCaseMessageNotification(params: {
   const num = escapeHtml(params.caseNumber);
   const sender = escapeHtml(params.senderName);
   const preview = escapeHtml(
-    params.messagePreview.length > 200
-      ? params.messagePreview.slice(0, 200) + "..."
-      : params.messagePreview,
+    params.messagePreview.length > 200 ? params.messagePreview.slice(0, 200) + "..." : params.messagePreview,
   );
 
   const html = wrap(
@@ -127,11 +115,7 @@ export async function sendCaseMessageNotification(params: {
     `,
   );
 
-  return send(
-    params.recipientEmail,
-    `【Ledra】案件 ${params.caseNumber} に新しいメッセージ`,
-    html,
-  );
+  return send(params.recipientEmail, `【Ledra】案件 ${params.caseNumber} に新しいメッセージ`, html);
 }
 
 /** 案件作成通知 — テナント宛て */
@@ -167,11 +151,7 @@ export async function sendCaseCreatedNotification(params: {
     `,
   );
 
-  return send(
-    params.recipientEmail,
-    `【Ledra】${insurer} から新規案件: ${params.caseNumber}`,
-    html,
-  );
+  return send(params.recipientEmail, `【Ledra】${insurer} から新規案件: ${params.caseNumber}`, html);
 }
 
 /* ── label helpers ── */

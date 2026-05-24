@@ -2,8 +2,8 @@ import Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripe/client";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
+import { sendEmail } from "@/lib/email/sendEmail";
 
-const RESEND_API = "https://api.resend.com/emails";
 const REWARD_PER_LESSON = 500; // JPY per qualifying lesson
 const QUALIFY_AVG = 4.0;
 const QUALIFY_COUNT = 5;
@@ -260,12 +260,5 @@ async function sendRewardNotificationEmail(
     "Ledra",
   ].join("\n");
 
-  await fetch(RESEND_API, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ from, to: email, subject, text }),
-  });
+  await sendEmail({ from, to: email, subject, text });
 }

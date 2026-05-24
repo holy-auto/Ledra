@@ -29,6 +29,8 @@ const baseRow: CertificateMediaRow = {
   content_type: "image/jpeg",
   file_size: 1024,
   created_at: "2026-05-09T00:00:00.000Z",
+  diff_summary: null,
+  diff_summary_generated_at: null,
 };
 
 describe("resolveCertificateMedia", () => {

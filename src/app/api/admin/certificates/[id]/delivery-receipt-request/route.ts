@@ -30,6 +30,7 @@ import { computeDocumentHash } from "@/lib/signature/hash";
 import { generateCertificatePdfBytes } from "@/lib/signature/pdfUtils";
 import { CONSENT_VERSION, computeConsentTextHash, type ReceiptPayloadSnapshot } from "@/lib/signature/deliveryReceipt";
 import { escapeHtml } from "@/lib/sanitize";
+import { sendEmail } from "@/lib/email/sendEmail";
 
 export const dynamic = "force-dynamic";
 
@@ -92,11 +93,7 @@ async function sendDeliveryReceiptEmail(params: {
   `;
 
   try {
-    await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to: params.to, subject: `[${shop}] 作業完了 — 受領サインのお願い`, html }),
-    });
+    await sendEmail({ from, to: params.to, subject: `[${shop}] 作業完了 — 受領サインのお願い`, html });
   } catch (err) {
     console.error("[delivery-receipt/request] Email send failed:", err);
   }

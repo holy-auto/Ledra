@@ -51,6 +51,11 @@ describe("buildCsp", () => {
     expect(csp["worker-src"]).toContain("'self'");
   });
 
+  it("allows blob: in worker-src for @zxing/browser QR scanner workers", () => {
+    const csp = buildCsp({ nonce: NONCE, isDev: false });
+    expect(csp["worker-src"]).toContain("blob:");
+  });
+
   it("allows PostHog telemetry endpoints in connect-src", () => {
     const csp = buildCsp({ nonce: NONCE, isDev: false });
     expect(csp["connect-src"]).toContain("https://*.posthog.com");

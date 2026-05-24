@@ -94,6 +94,13 @@ type NavItem = {
   hidden?: boolean;
   /** Badge key used to look up dynamic badge counts */
   badgeKey?: string;
+  /**
+   * Platform-admin-only item. Strictly hidden unless the caller is a platform
+   * admin (super_admin, or owner/admin of PLATFORM_TENANT_ID). Unlike
+   * requiredPermission, this is NOT optimistic — items remain hidden while
+   * the role loads so contractors never see a flash of the link.
+   */
+  platformOnly?: boolean;
 };
 
 type NavGroup = {
@@ -775,7 +782,7 @@ const NAV_GROUPS: NavGroup[] = [
       {
         href: "/admin/platform/template-orders",
         label: "テンプレ管理(運営)",
-        requiredPermission: "template_options:manage",
+        platformOnly: true,
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path
@@ -789,7 +796,7 @@ const NAV_GROUPS: NavGroup[] = [
       {
         href: "/admin/platform/operations",
         label: "運営ダッシュボード",
-        requiredPermission: "platform:operations",
+        platformOnly: true,
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path
@@ -803,7 +810,7 @@ const NAV_GROUPS: NavGroup[] = [
       {
         href: "/admin/platform/vehicle-report",
         label: "履歴レポート価格(運営)",
-        requiredPermission: "platform:operations",
+        platformOnly: true,
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path
@@ -905,7 +912,7 @@ function CollapsibleGroup({
 /* ------------------------------------------------------------------ */
 export default function Sidebar() {
   const pathname = usePathname();
-  const { role, can, loading } = useCurrentRole();
+  const { role, can, loading, isPlatformAdmin } = useCurrentRole();
   const { tenantDisabled, userVisible, loading: prefsLoading } = useFeaturePrefs();
   const tenantDisabledSet = useMemo(() => new Set(tenantDisabled), [tenantDisabled]);
   const userVisibleSet = useMemo(() => new Set(userVisible), [userVisible]);
@@ -955,6 +962,10 @@ export default function Sidebar() {
       items.filter((item) => {
         if (item.hidden) return false;
 
+        // Strict platform-only gate: hide unless verified as platform admin.
+        // No optimistic display — contractors must never see these links.
+        if (item.platformOnly && !isPlatformAdmin) return false;
+
         // Existing role/permission gate (optimistic while the role loads).
         if (item.requiredPermission && !loading && role && !can(item.requiredPermission)) {
           return false;
@@ -972,7 +983,7 @@ export default function Sidebar() {
 
         return true;
       }),
-    [loading, role, can, prefsLoading, tenantDisabledSet, userVisibleSet],
+    [loading, role, can, isPlatformAdmin, prefsLoading, tenantDisabledSet, userVisibleSet],
   );
 
   const renderItem = (item: NavItem) => {
@@ -1111,6 +1122,16 @@ export default function Sidebar() {
               try {
                 const { clearOfflineReadCache } = await import("@/lib/offline-cache/client");
                 await clearOfflineReadCache();
+              } catch {
+                /* ignore */
+              }
+              // 未送信の Outbox (IndexedDB) もログアウト時に必ず破棄する。
+              // 残しておくと A → ログアウト → B が同一ブラウザに入り直したとき
+              // A の queued ジョブが B のセッション cookie で flush され、
+              // 別テナントに書き込みが入る (クロステナント情報リーク) 危険がある。
+              try {
+                const { clearOutbox } = await import("@/lib/outbox/queue");
+                await clearOutbox();
               } catch {
                 /* ignore */
               }

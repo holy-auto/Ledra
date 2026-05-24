@@ -13,8 +13,8 @@ import EmptyStateGuide from "@/components/ui/EmptyStateGuide";
 import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
 import CertificatesModeSwitch from "./CertificatesModeSwitch";
 // IndexedDB を読むためクライアントのみで描画 (SSR では何も表示しない)
-// Next.js 16 では Server Component から直接 dynamic({ssr:false}) は禁止のため
-// Client wrapper 経由で読み込む。
+// Next 16 では Server Component から `dynamic({ ssr: false })` を直接
+// 呼べないため、ssr: false 指定をクライアントラッパーに閉じ込めている。
 import PendingOfflineCerts from "./PendingOfflineCertsClient";
 
 type SearchParams = { q?: string };

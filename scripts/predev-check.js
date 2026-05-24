@@ -2,7 +2,9 @@ const fs = require("fs");
 
 const required = [
   "src/app/layout.tsx",
-  "src/app/page.tsx",
+  // ルート (`/`) はマーケティング route group に入っているため
+  // `(marketing)/page.tsx` を確認する。route group `(...)` は URL を生成しない。
+  "src/app/(marketing)/page.tsx",
   "src/app/c/[public_id]/page.tsx",
   "src/app/admin/certificates/page.tsx",
   "src/app/login/page.tsx",

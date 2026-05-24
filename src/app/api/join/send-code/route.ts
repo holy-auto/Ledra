@@ -14,10 +14,6 @@ function genCode6(): string {
 }
 
 async function sendEmailResend(to: string, code: string) {
-  const apiKey = (process.env.RESEND_API_KEY ?? "").trim();
-  const from = (process.env.RESEND_FROM ?? "").trim();
-  if (!apiKey || !from) throw new Error("missing email config");
-
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
       <div style="border-bottom: 2px solid #0071e3; padding-bottom: 12px; margin-bottom: 20px;">
@@ -40,23 +36,14 @@ async function sendEmailResend(to: string, code: string) {
     </div>
   `;
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      to,
-      subject: "【Ledra】メール確認コード",
-      html,
-    }),
+  const { sendEmail } = await import("@/lib/email/sendEmail");
+  const result = await sendEmail({
+    to,
+    subject: "【Ledra】メール確認コード",
+    html,
   });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    console.error("[join/send-code] Resend failed", res.status, body);
+  if (!result.ok) {
+    console.error("[join/send-code] Email send failed", result.status, result.error);
     throw new Error("email_send_failed");
   }
 }

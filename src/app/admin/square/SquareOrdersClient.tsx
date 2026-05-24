@@ -192,8 +192,36 @@ export default function SquareOrdersClient() {
       {loading && <div className="text-sm text-muted">読み込み中…</div>}
       {err && <div className="glass-card p-4 text-sm text-danger">{err}</div>}
 
+      {/* G6: 401 token 失効バナー (再認可促し) */}
+      {data?.connection?.status === "error" && data.connection.last_error_reason === "token_expired" && (
+        <section
+          role="alert"
+          className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100"
+        >
+          <div className="font-semibold">Square 連携の再認可が必要です</div>
+          <div className="mt-1">
+            アクセストークンが失効したため、注文の自動同期が停止しています。
+            {data.connection.last_error_at && (
+              <span className="ml-1 text-amber-800 dark:text-amber-300">
+                (検出: {formatDateTime(data.connection.last_error_at)})
+              </span>
+            )}
+          </div>
+          <div className="mt-3">
+            <button
+              type="button"
+              className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+              disabled={connecting}
+              onClick={handleConnect}
+            >
+              {connecting ? "再接続中…" : "Square を再認可する"}
+            </button>
+          </div>
+        </section>
+      )}
+
       {/* Not connected state */}
-      {data && !isConnected && (
+      {data && !isConnected && data.connection?.status !== "error" && (
         <section className="glass-card p-8 text-center space-y-4">
           <div className="text-muted text-sm">Squareアカウントが接続されていません。</div>
           <button type="button" className="btn-primary" disabled={connecting} onClick={handleConnect}>
