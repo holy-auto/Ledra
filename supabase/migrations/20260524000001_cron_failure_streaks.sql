@@ -33,6 +33,7 @@ COMMENT ON TABLE public.cron_failure_streaks IS
 -- RLS: service_role のみアクセス (cron は service-role 経由のみ)
 ALTER TABLE public.cron_failure_streaks ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS cron_failure_streaks_service_role_all ON public.cron_failure_streaks;
 CREATE POLICY cron_failure_streaks_service_role_all ON public.cron_failure_streaks
   FOR ALL TO service_role
   USING (true) WITH CHECK (true);
