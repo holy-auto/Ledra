@@ -562,7 +562,7 @@ const S10 = (
           {[
             { k: "TAM", v: "19.1 兆円", sub: "3 市場合計" },
             { k: "SAM", v: "約 2,800 億円", sub: "施工後付け市場（コーティング・PPF・板金・整備の DX 対象部分）" },
-            { k: "SOM (5年)", v: "約 60 億円", sub: "施工店 1 万社 × ARPU 月 5 万円（控えめ見積）" },
+            { k: "SOM (5年)", v: "約 29 億円", sub: "施工店 1 万社 × ARPU 月 2.4 万円 × 12 ヶ月" },
           ].map((m) => (
             <div key={m.k}>
               <div className="text-xs uppercase tracking-widest text-amber-400">{m.k}</div>
@@ -619,7 +619,7 @@ const S11 = (
             {
               tag: "①サブスク",
               title: "店舗業務 SaaS 月額",
-              body: "施工店の業務を1画面に統合する基盤レイヤー。ARPU ¥25,000 想定。",
+              body: "施工店の業務を1画面に統合する基盤レイヤー。ARPU ¥24,000 想定。",
             },
             {
               tag: "②アドオン",
@@ -835,21 +835,21 @@ const S14 = (
 // ─── 15. Ask ─────────────────────────────────────────────────
 const S15 = (
   <S n={15}>
-    <div className="flex flex-col flex-1 px-10 pt-8 pb-2 gap-5">
+    <div className="flex flex-col flex-1 px-10 pt-6 pb-2 gap-3">
       <div>
         <SectionLabel>調達希望</SectionLabel>
         <H2>シード ¥3,000 万円 / Pre-money ¥2 億円</H2>
-        <p className="text-sm text-white mt-1">
+        <p className="text-xs text-white mt-1">
           JAFCO 様にリードをお願いし、12 ヶ月で MRR ¥241 万 / 加盟 100 社 / 損保 1 社接続 を達成する。
         </p>
       </div>
-      <div className="grid grid-cols-2 gap-5 flex-1">
-        <div className="rounded-xl border border-amber-500/25 bg-amber-500/[0.05] p-5 flex flex-col gap-3">
-          <div className="text-xs font-semibold uppercase tracking-widest text-amber-400">資金使途</div>
-          <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-4 flex-1 min-h-0">
+        <div className="rounded-xl border border-amber-500/25 bg-amber-500/[0.05] p-4 flex flex-col gap-2">
+          <div className="text-[11px] font-semibold uppercase tracking-widest text-amber-400">資金使途</div>
+          <div className="space-y-1.5">
             {[
               { k: "エンジニア採用", v: "25%", body: "CTO 候補 + フルスタック 1 名" },
-              { k: "プロダクト開発", v: "20%", body: "損保連携 API / Vehicle Passport / Academy 拡張" },
+              { k: "プロダクト開発", v: "20%", body: "損保 API / Vehicle Passport / Academy" },
               { k: "セールス / CS 採用", v: "20%", body: "代理店 / 直販 / オンボーディング" },
               { k: "損保・中古車提携", v: "20%", body: "BD 専任 + パイロット費用" },
               { k: "マーケティング", v: "10%", body: "業界イベント・コンテンツ・SEO" },
@@ -857,10 +857,10 @@ const S15 = (
             ].map((row) => (
               <div
                 key={row.k}
-                className="flex items-center justify-between gap-3 border-b border-white/[0.05] pb-1.5 last:border-0"
+                className="flex items-center justify-between gap-3 border-b border-white/[0.05] pb-1 last:border-0"
               >
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs text-white">{row.k}</div>
+                  <div className="text-[11px] text-white">{row.k}</div>
                   <div className="text-[10px] text-white">{row.body}</div>
                 </div>
                 <span className="text-sm font-bold text-amber-300 shrink-0">{row.v}</span>
@@ -868,37 +868,39 @@ const S15 = (
             ))}
           </div>
         </div>
-        <div className="flex flex-col gap-3">
-          <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-5">
-            <div className="text-xs font-semibold uppercase tracking-widest text-amber-400 mb-3">12 ヶ月後 KPI</div>
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { k: "加盟施工店", v: "100 社" },
-                { k: "MRR", v: "¥241 万" },
-                { k: "ARR", v: "¥1,716 万" },
-                { k: "損保接続", v: "1 社" },
-                { k: "中古車事業者", v: "40 社" },
-                { k: "月間証明書", v: "1,500 件" },
-                { k: "チーム", v: "4 名" },
-                { k: "次ラウンド", v: "シリーズ A 準備" },
-              ].map((row) => (
-                <div key={row.k} className="border-b border-white/[0.05] pb-2">
-                  <div className="text-[10px] text-white">{row.k}</div>
-                  <div className="text-base font-bold text-amber-300">{row.v}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-5 flex-1 flex flex-col justify-center gap-2">
-            <div className="text-xs font-semibold uppercase tracking-widest text-amber-400">Contact</div>
-            <div className="text-sm font-bold text-white">堀越 友輔 / 株式会社 HOLY</div>
-            <div className="text-xs text-white">本社: 東京都港区北青山 1-3-1 アールキューブ青山 3F</div>
-            <div className="text-xs text-white">設立: 2024 年 11 月 / 資本金: ¥100,000</div>
-            <div className="text-xs text-white mt-1">ledra.co.jp · ledra.co.jp/verify</div>
+        <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-4 flex flex-col gap-2">
+          <div className="text-[11px] font-semibold uppercase tracking-widest text-amber-400">12 ヶ月後 KPI</div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 flex-1">
+            {[
+              { k: "加盟施工店", v: "100 社" },
+              { k: "MRR", v: "¥241 万" },
+              { k: "ARR", v: "¥1,716 万" },
+              { k: "損保接続", v: "1 社" },
+              { k: "中古車事業者", v: "40 社" },
+              { k: "月間証明書", v: "1,500 件" },
+              { k: "チーム", v: "4 名" },
+              { k: "次ラウンド", v: "シリーズ A 準備" },
+            ].map((row) => (
+              <div key={row.k} className="border-b border-white/[0.05] pb-1">
+                <div className="text-[10px] text-white">{row.k}</div>
+                <div className="text-sm font-bold text-amber-300">{row.v}</div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
-      <p className="text-center text-base font-bold text-amber-300 -mt-1">職人の技術を、次へつなぐ。</p>
+      <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-5 py-2 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 text-[11px] text-white">
+          <span className="font-bold text-white">堀越 友輔</span>
+          <span>·</span>
+          <span>株式会社 HOLY</span>
+          <span>·</span>
+          <span>東京都港区北青山 1-3-1 アールキューブ青山 3F</span>
+          <span>·</span>
+          <span>ledra.co.jp</span>
+        </div>
+        <span className="text-sm font-bold text-amber-300 shrink-0">職人の技術を、次へつなぐ。</span>
+      </div>
     </div>
   </S>
 );
