@@ -277,7 +277,7 @@ async function handler(req: NextRequest) {
         delay: 2,
         // (job_id, cursor) 単位でユニークになるので、同じカーソルでの再キュー要求は
         // ネットワーク再試行扱いで deduplication される。
-        deduplicationId: `square-sync:${job_id}:${nextCursor}`,
+        deduplicationId: `square-sync-${job_id}-${nextCursor}`,
       });
 
       await admin

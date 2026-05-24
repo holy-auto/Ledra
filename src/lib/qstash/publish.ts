@@ -57,9 +57,10 @@ export async function enqueueInsuranceCaseCreated(payload: {
 }) {
   // public_id (or certificate_id) ごとに 1 通しかディスパッチしない。
   // ネットワーク再試行で多重 enqueue されても QStash 側で deduplication。
+  // QStash の deduplicationId に ':' は使えないので '-' で連結する。
   const key = payload.public_id ?? payload.certificate_id ?? undefined;
   return publish("/api/qstash/insurance-case-created", payload, {
-    ...(typeof key === "string" && key && { deduplicationId: `case-created:${key}` }),
+    ...(typeof key === "string" && key && { deduplicationId: `case-created-${key}` }),
   });
 }
 
@@ -67,7 +68,7 @@ export async function enqueueInsuranceCaseCreated(payload: {
 export async function enqueuePolygonBackfill(payload: { job_id: string; tenant_id: string }) {
   return publish("/api/qstash/polygon-backfill", payload, {
     retries: 2,
-    deduplicationId: `polygon-backfill:init:${payload.job_id}`,
+    deduplicationId: `polygon-backfill-init-${payload.job_id}`,
   });
 }
 
@@ -75,7 +76,7 @@ export async function enqueuePolygonBackfill(payload: { job_id: string; tenant_i
 export async function enqueueBatchPdf(payload: { job_id: string; tenant_id: string; public_ids: string[] }) {
   return publish("/api/qstash/batch-pdf", payload, {
     retries: 2,
-    deduplicationId: `batch-pdf:${payload.job_id}`,
+    deduplicationId: `batch-pdf-${payload.job_id}`,
   });
 }
 
@@ -83,6 +84,6 @@ export async function enqueueBatchPdf(payload: { job_id: string; tenant_id: stri
 export async function enqueueSquareSync(payload: { job_id: string; tenant_id: string }) {
   return publish("/api/qstash/square-sync", payload, {
     retries: 2,
-    deduplicationId: `square-sync:init:${payload.job_id}`,
+    deduplicationId: `square-sync-init-${payload.job_id}`,
   });
 }
