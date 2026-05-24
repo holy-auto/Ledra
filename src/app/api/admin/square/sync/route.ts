@@ -100,10 +100,31 @@ export async function POST(req: NextRequest) {
       return apiInternalError(syncRunErr, "square sync run create");
     }
 
-    await enqueueSquareSync({
-      job_id: syncRun.id,
-      tenant_id: caller.tenantId,
-    });
+    // enqueue 失敗時は queued 行を failed に落とし、原因をユーザーへ返す。
+    // ここで throw すると行が "queued" のまま滞留し UI / 履歴で原因が見えない。
+    try {
+      await enqueueSquareSync({
+        job_id: syncRun.id,
+        tenant_id: caller.tenantId,
+      });
+    } catch (enqueueErr) {
+      const message = enqueueErr instanceof Error ? enqueueErr.message : String(enqueueErr);
+      console.error(`[square:sync] enqueue failed tenant=${caller.tenantId} job=${syncRun.id}:`, message);
+      await admin
+        .from("square_sync_runs")
+        .update({
+          status: "failed",
+          finished_at: new Date().toISOString(),
+          error_message: `QStash enqueue failed: ${message}`.slice(0, 500),
+        })
+        .eq("id", syncRun.id);
+      return apiError({
+        code: "internal_error",
+        message: "同期キューへの登録に失敗しました。時間を置いて再試行してください。",
+        status: 502,
+        data: { sync_run_id: syncRun.id as string },
+      });
+    }
 
     console.info(`[square:sync] tenant=${caller.tenantId} queued job=${syncRun.id}`);
 
