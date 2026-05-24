@@ -378,7 +378,7 @@
 |---|------|------|
 | ~~G13~~ | ~~webhook idempotency 一覧 (Square / LINE / Resend / CloudSign)~~ | ✅ **解消** (commit `<this PR>`): Square / LINE webhook に `claimWebhookEvent` 統合 (既存 Stripe / Resend と同じ `webhook_processed_events` テーブル経由)。Video は asset_id ベース update で実質 idempotent、CloudSign は未実装のため対象外 |
 | ~~G14~~ | ~~`withRetry` 採用範囲の半自動チェック~~ | ✅ **解消** (commit `<this PR>`): `scripts/audit-withRetry.ts` で外部 SDK 呼び出し箇所を検査。`npm run audit:retry` (警告) / `audit:retry:strict` (CI 用 exit 1)。Stripe は Proxy で自動ラップなので対象外。**既知 baseline 25 件** (Resend 直接 fetch 等) は順次別 PR で `sendEmail` 経由に移行 |
-| G15 | `/api/cron/monitor` 自身の死活 | 別 cron からの heartbeat 検証 (Better Uptime 等) |
+| ~~G15~~ | ~~`/api/cron/monitor` 自身の死活~~ | ✅ **解消** (commit `<this PR>`): 2 段構成で Vercel 全断含む盲点ゼロ化。Healthchecks.io Free (cron heartbeat) + UptimeRobot Free (HTTP probe) を併用、コード側は `/api/cron/monitor` 成功時に `sendHeartbeat(HEALTHCHECKS_MONITOR_PING_URL)` を ping するのみ。月額 ¥0 で構築可能、本格運用時に有料プラン (UptimeRobot Pro $7 → Better Uptime $25) に段階的アップグレード。SaaS setup 手順は `operations-runbook.md` §1.1 参照 |
 | ~~G16~~ | ~~サービス別 timeout の明示~~ | ✅ **解消** (commit `<this PR>`): Stripe (30s) / Anthropic (60s) / Vercel AI route (60s) / Twilio (10s) / SendGrid (15s) / Slack (5s) / gBizINFO (5s) / Square (10-15s) は明示済。freee / MF は既存 `AbortController` で timeout 制御済 (`DEFAULT_TIMEOUT_MS`)。残: QStash publish (SDK 経由、明示なし、低優先) / Polygon viem (RPC 仕様で実質 30-60s) |
 
 ---
