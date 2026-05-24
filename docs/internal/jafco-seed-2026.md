@@ -191,7 +191,7 @@ npm run dev
 | 7 | Differentiation | 現場知見 × 技術 × ネットワーク 3 層障壁 |
 | 8 | Founder-Market Fit | 経歴タイムライン（2014→2024） |
 | 9 | Traction | SaaS 数値 + 自社運営 4 年 2,800 台 |
-| 10 | Market | TAM 19.1 兆円 / SAM 2,800 億 / SOM 60 億 |
+| 10 | Market | TAM 19.1 兆円 / SAM 2,800 億 / SOM 5年 約 2.9 億（1,000店×ARPU¥24,000×12ヶ月） |
 | 11 | Business Model | プラン表 + 3 階建て収益 |
 | 12 | Competition | 業務 SaaS × ネットワーク 2 軸マップ |
 | 13 | Roadmap | 6 / 12 / 24 ヶ月マイルストーン |

@@ -78,12 +78,12 @@ async function main() {
     const html = `<!doctype html>
 <html><head><meta charset="utf-8"><style>
   @page { size: 297mm 210mm; margin: 0; }
-  html, body { margin: 0; padding: 0; background: #060a12; }
+  html, body { margin: 0; padding: 0; background: #ffffff; }
   .slide {
     width: 297mm; height: 210mm;
     display: flex; align-items: center; justify-content: center;
     page-break-after: always; break-after: page;
-    background: #060a12;
+    background: #ffffff;
   }
   .slide:last-child { page-break-after: auto; break-after: auto; }
   .slide img { width: 100%; height: 100%; object-fit: contain; display: block; }
