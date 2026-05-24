@@ -78,7 +78,7 @@ const S1 = (
         <span>·</span>
         <span>ledra.co.jp</span>
         <span>·</span>
-        <span>調達希望 ¥3,000万円</span>
+        <span>株式会社HOLY</span>
       </div>
     </div>
   </S>
@@ -835,10 +835,11 @@ const S15 = (
   <S n={15}>
     <div className="flex flex-col flex-1 px-10 pt-6 pb-2 gap-3">
       <div>
-        <SectionLabel>調達希望</SectionLabel>
-        <H2>シード ¥3,000 万円 / Pre-money ¥2 億円</H2>
+        <SectionLabel>調達と 12 ヶ月の到達点</SectionLabel>
+        <H2>シードラウンドで「流通拡大フェーズ」へ</H2>
         <p className="text-xs text-slate-600 mt-1">
-          JAFCO 様にリードをお願いし、12 ヶ月で MRR ¥241 万 / 加盟 100 社 / 損保 1 社接続 を達成する。
+          JAFCO 様にリードをお願いし、12 ヶ月で MRR ¥241 万 / 加盟 100 社 / 損保 1 社接続 を達成する。 ※
+          調達金額・バリュエーションは別途面談にて。
         </p>
       </div>
       <div className="grid grid-cols-2 gap-4 flex-1 min-h-0">
