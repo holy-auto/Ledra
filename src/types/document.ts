@@ -63,12 +63,26 @@ export const STATUS_TRANSITIONS: Record<string, string[]> = {
   cancelled: [],
 };
 
+/**
+ * 明細行のタイプ。
+ * - "item"（既定）: 通常の品目行（数量×単価＝金額）
+ * - "heading": セクション見出し行（金額計算には含めない）
+ * - "subtotal": 小計行。直前の小計行（または先頭）から累積した item の合計を表示し、
+ *               文書合計には含めない（重複計上を避けるため）。
+ */
+export type DocumentItemType = "item" | "heading" | "subtotal";
+
 export type DocumentItem = {
+  item_type?: DocumentItemType;
   description: string;
   quantity: number;
   unit?: string;
   unit_price: number;
   amount: number;
+  /** 原価（円）。利益率と組み合わせて unit_price を自動算出する基準値。 */
+  cost_price?: number;
+  /** 利益率（％、マークアップ率）。unit_price = round(cost_price × (1 + margin_rate/100)) */
+  margin_rate?: number | null;
   tax_category?: number; // 10 or 8 (軽減税率)
   certificate_id?: string | null;
   certificate_public_id?: string | null;

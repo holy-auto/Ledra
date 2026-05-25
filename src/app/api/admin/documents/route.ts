@@ -44,18 +44,53 @@ async function generateDocNumber(
 
 function calcItems(items: any[], taxRate: number) {
   let subtotal = 0;
+  let runningSubtotal = 0; // 直前の小計行からの累積（小計行の金額自動算出に使用）
   const itemsJson = items.map((item: any) => {
+    const itemType = item.item_type === "heading" || item.item_type === "subtotal" ? item.item_type : "item";
+
+    if (itemType === "heading") {
+      return {
+        item_type: "heading",
+        description: (item.description ?? "").trim(),
+        quantity: 0,
+        unit_price: 0,
+        amount: 0,
+      } as Record<string, unknown>;
+    }
+
+    if (itemType === "subtotal") {
+      const subtotalAmount = runningSubtotal;
+      runningSubtotal = 0;
+      return {
+        item_type: "subtotal",
+        description: (item.description ?? "").trim() || "小計",
+        quantity: 0,
+        unit_price: 0,
+        amount: subtotalAmount,
+      } as Record<string, unknown>;
+    }
+
     const qty = parseInt(String(item.quantity || 0), 10);
     const unitPrice = parseInt(String(item.unit_price || 0), 10);
     const amount = qty * unitPrice;
     subtotal += amount;
+    runningSubtotal += amount;
     const mapped: Record<string, unknown> = {
+      item_type: "item",
       description: (item.description ?? "").trim(),
       quantity: qty,
       unit_price: unitPrice,
       amount,
     };
     if (item.tax_category != null) mapped.tax_category = item.tax_category;
+    if (item.cost_price != null && item.cost_price !== "") {
+      const cp = parseInt(String(item.cost_price), 10);
+      if (!isNaN(cp) && cp >= 0) mapped.cost_price = cp;
+    }
+    if (item.margin_rate != null && item.margin_rate !== "") {
+      const mr = parseFloat(String(item.margin_rate));
+      if (!isNaN(mr)) mapped.margin_rate = mr;
+    }
     if (item.certificate_id) mapped.certificate_id = item.certificate_id;
     if (item.certificate_public_id) mapped.certificate_public_id = item.certificate_public_id;
     return mapped;
