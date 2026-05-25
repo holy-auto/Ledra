@@ -43,22 +43,6 @@ const emptyItem = (): DocumentItem => ({
   amount: 0,
 });
 
-const emptyHeading = (): DocumentItem => ({
-  item_type: "heading",
-  description: "",
-  quantity: 0,
-  unit_price: 0,
-  amount: 0,
-});
-
-const emptySubtotal = (): DocumentItem => ({
-  item_type: "subtotal",
-  description: "小計",
-  quantity: 0,
-  unit_price: 0,
-  amount: 0,
-});
-
 /** items 配列を走査し、小計行の amount を直前の小計行（または先頭）からの item 累積で算出する */
 const recalcSubtotals = (items: DocumentItem[]): DocumentItem[] => {
   let running = 0;
@@ -251,11 +235,31 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   };
 
   const addItem = () => setFormItems(recalcSubtotals([...formItems, emptyItem()]));
-  const addHeading = () => setFormItems(recalcSubtotals([...formItems, emptyHeading()]));
-  const addSubtotal = () => setFormItems(recalcSubtotals([...formItems, emptySubtotal()]));
   const removeItem = (index: number) => {
     if (formItems.length <= 1) return;
     setFormItems(recalcSubtotals(formItems.filter((_, i) => i !== index)));
+  };
+
+  /** 行タイプを切り替える（既存の description は保持） */
+  const changeItemType = (index: number, newType: "item" | "heading" | "subtotal") => {
+    const newItems = [...formItems];
+    const item = { ...newItems[index] };
+    item.item_type = newType;
+    if (newType === "heading") {
+      item.quantity = 0;
+      item.unit_price = 0;
+      item.amount = 0;
+    } else if (newType === "subtotal") {
+      item.quantity = 0;
+      item.unit_price = 0;
+      item.amount = 0;
+      if (!item.description) item.description = "小計";
+    } else {
+      if (!item.quantity) item.quantity = 1;
+      item.amount = item.quantity * item.unit_price;
+    }
+    newItems[index] = item;
+    setFormItems(recalcSubtotals(newItems));
   };
 
   const subtotal = formItems.filter((i) => (i.item_type ?? "item") === "item").reduce((s, i) => s + i.amount, 0);
@@ -698,161 +702,150 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
               {/* Line Items */}
               <div className="space-y-2">
                 <div className="text-xs font-semibold text-muted tracking-[0.18em]">明細項目</div>
+                {/* Header labels */}
+                <div className="hidden sm:grid grid-cols-[110px_minmax(0,1fr)_88px_120px_120px_88px] gap-2 px-1">
+                  <label className="text-xs text-muted">行タイプ</label>
+                  <label className="text-xs text-muted">内容</label>
+                  <label className="text-xs text-muted">数量</label>
+                  <label className="text-xs text-muted">単価</label>
+                  <label className="text-xs text-muted">金額</label>
+                  <span />
+                </div>
                 {formItems.map((item, idx) => {
                   const type = item.item_type ?? "item";
-                  if (type === "heading") {
-                    return (
-                      <div key={idx} className="grid grid-cols-12 gap-2 items-end">
-                        <div className="col-span-11 space-y-1">
-                          {idx === 0 && <label className="text-xs text-muted">見出し</label>}
-                          <input
-                            type="text"
-                            className="input-field font-semibold"
-                            placeholder="例：部品代、作業費 など"
-                            value={item.description}
-                            onChange={(e) => updateItem(idx, "description", e.target.value)}
-                          />
-                        </div>
-                        <div className="col-span-1">
-                          <button
-                            type="button"
-                            className="btn-ghost px-2 py-1 text-xs text-danger"
-                            onClick={() => removeItem(idx)}
-                            disabled={formItems.length <= 1}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  }
-                  if (type === "subtotal") {
-                    return (
-                      <div key={idx} className="grid grid-cols-12 gap-2 items-end">
-                        <div className="col-span-9 space-y-1">
-                          {idx === 0 && <label className="text-xs text-muted">小計ラベル</label>}
-                          <input
-                            type="text"
-                            className="input-field"
-                            placeholder="小計"
-                            value={item.description}
-                            onChange={(e) => updateItem(idx, "description", e.target.value)}
-                          />
-                        </div>
-                        <div className="col-span-2 space-y-1">
-                          {idx === 0 && <label className="text-xs text-muted">金額（自動）</label>}
-                          <div className="input-field bg-transparent text-secondary cursor-default text-right font-semibold">
-                            {item.amount.toLocaleString("ja-JP")}
-                          </div>
-                        </div>
-                        <div className="col-span-1">
-                          <button
-                            type="button"
-                            className="btn-ghost px-2 py-1 text-xs text-danger"
-                            onClick={() => removeItem(idx)}
-                            disabled={formItems.length <= 1}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  }
                   const marginOpen = marginEditorOpen.has(idx);
                   const hasMarginData = (item.cost_price ?? 0) > 0 || item.margin_rate != null;
                   return (
                     <div key={idx} className="space-y-1">
-                      <div className="grid grid-cols-12 gap-2 items-end">
-                        <div className="col-span-5 space-y-1">
-                          {idx === 0 && <label className="text-xs text-muted">内容</label>}
-                          {menuItems.length > 0 && (
-                            <select
-                              className="select-field py-1 text-xs mb-1"
-                              value=""
-                              onChange={(e) => {
-                                if (e.target.value) handleMenuItemSelect(e.target.value, idx);
-                              }}
-                            >
-                              <option value="">品目マスタから選択...</option>
-                              {menuItems.map((mi) => (
-                                <option key={mi.id} value={mi.id}>
-                                  {mi.name} ({formatJpy(mi.unit_price)})
-                                </option>
-                              ))}
-                            </select>
-                          )}
+                      <div className="grid grid-cols-[110px_minmax(0,1fr)_88px_120px_120px_88px] gap-2 items-center">
+                        {/* 行タイプセレクター */}
+                        <select
+                          className="select-field py-1.5 text-xs"
+                          value={type}
+                          onChange={(e) => changeItemType(idx, e.target.value as "item" | "heading" | "subtotal")}
+                          aria-label="行タイプ"
+                        >
+                          <option value="item">通常</option>
+                          <option value="heading">見出し行</option>
+                          <option value="subtotal">小計行</option>
+                        </select>
+
+                        {/* 内容 */}
+                        {type === "heading" ? (
                           <input
                             type="text"
-                            className="input-field"
-                            list={`doc-menu-list-${idx}`}
-                            placeholder="品目・内容を入力 or 選択"
+                            className="input-field font-semibold sm:col-span-4"
+                            placeholder="例：部品代、作業費 など"
                             value={item.description}
-                            onChange={(e) => {
-                              updateItem(idx, "description", e.target.value);
-                              const matched = menuItems.find((m) => m.name === e.target.value);
-                              if (matched) {
-                                updateItem(idx, "unit_price", String(matched.unit_price ?? 0));
-                              }
-                            }}
+                            onChange={(e) => updateItem(idx, "description", e.target.value)}
                           />
-                          <datalist id={`doc-menu-list-${idx}`}>
-                            {menuItems.map((m) => (
-                              <option key={m.id} value={m.name}>
-                                {m.name} — ¥{(m.unit_price ?? 0).toLocaleString()}
-                              </option>
-                            ))}
-                          </datalist>
-                        </div>
-                        <div className="col-span-2 space-y-1">
-                          {idx === 0 && <label className="text-xs text-muted">数量</label>}
+                        ) : type === "subtotal" ? (
                           <input
-                            type="number"
-                            className="input-field"
-                            min="0"
-                            placeholder="1"
-                            value={item.quantity || ""}
-                            onChange={(e) => updateItem(idx, "quantity", e.target.value)}
+                            type="text"
+                            className="input-field sm:col-span-3"
+                            placeholder="小計"
+                            value={item.description}
+                            onChange={(e) => updateItem(idx, "description", e.target.value)}
                           />
-                        </div>
-                        <div className="col-span-2 space-y-1">
-                          {idx === 0 && <label className="text-xs text-muted">単価</label>}
-                          <input
-                            type="number"
-                            className="input-field"
-                            min="0"
-                            placeholder="0"
-                            value={item.unit_price || ""}
-                            onChange={(e) => updateItem(idx, "unit_price", e.target.value)}
-                          />
-                        </div>
-                        <div className="col-span-2 space-y-1">
-                          {idx === 0 && <label className="text-xs text-muted">金額</label>}
-                          <div className="input-field bg-transparent text-secondary cursor-default">
+                        ) : (
+                          <div className="min-w-0">
+                            {menuItems.length > 0 && (
+                              <select
+                                className="select-field py-1 text-xs mb-1 w-full"
+                                value=""
+                                onChange={(e) => {
+                                  if (e.target.value) handleMenuItemSelect(e.target.value, idx);
+                                }}
+                              >
+                                <option value="">品目マスタから選択...</option>
+                                {menuItems.map((mi) => (
+                                  <option key={mi.id} value={mi.id}>
+                                    {mi.name} ({formatJpy(mi.unit_price)})
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                            <input
+                              type="text"
+                              className="input-field"
+                              list={`doc-menu-list-${idx}`}
+                              placeholder="品目・内容を入力 or 選択"
+                              value={item.description}
+                              onChange={(e) => {
+                                updateItem(idx, "description", e.target.value);
+                                const matched = menuItems.find((m) => m.name === e.target.value);
+                                if (matched) {
+                                  updateItem(idx, "unit_price", String(matched.unit_price ?? 0));
+                                }
+                              }}
+                            />
+                            <datalist id={`doc-menu-list-${idx}`}>
+                              {menuItems.map((m) => (
+                                <option key={m.id} value={m.name}>
+                                  {m.name} — ¥{(m.unit_price ?? 0).toLocaleString()}
+                                </option>
+                              ))}
+                            </datalist>
+                          </div>
+                        )}
+
+                        {/* 数量・単価・金額：通常行のみ */}
+                        {type === "item" ? (
+                          <>
+                            <input
+                              type="number"
+                              className="input-field"
+                              min="0"
+                              placeholder="1"
+                              value={item.quantity || ""}
+                              onChange={(e) => updateItem(idx, "quantity", e.target.value)}
+                            />
+                            <input
+                              type="number"
+                              className="input-field"
+                              min="0"
+                              placeholder="0"
+                              value={item.unit_price || ""}
+                              onChange={(e) => updateItem(idx, "unit_price", e.target.value)}
+                            />
+                            <div className="input-field bg-transparent text-secondary cursor-default text-right">
+                              {item.amount.toLocaleString("ja-JP")}
+                            </div>
+                          </>
+                        ) : type === "subtotal" ? (
+                          <div className="input-field bg-transparent text-secondary cursor-default text-right font-semibold">
                             {item.amount.toLocaleString("ja-JP")}
                           </div>
-                        </div>
-                        <div className="col-span-1 flex flex-col gap-1">
-                          <button
-                            type="button"
-                            className={`btn-ghost px-1 py-1 text-[10px] ${hasMarginData ? "text-accent" : ""}`}
-                            onClick={() => toggleMarginEditor(idx)}
-                            title="原価・利益率から提供価格を計算"
-                            aria-expanded={marginOpen}
-                          >
-                            {marginOpen ? "▾" : "💰"}
-                          </button>
+                        ) : null}
+
+                        {/* 操作ボタン群 */}
+                        <div className="flex gap-1 justify-end">
+                          {type === "item" && (
+                            <button
+                              type="button"
+                              className={`btn-ghost px-2 py-1 text-xs ${hasMarginData ? "text-accent" : ""}`}
+                              onClick={() => toggleMarginEditor(idx)}
+                              title="原価・利益率から提供価格を計算"
+                              aria-expanded={marginOpen}
+                            >
+                              {marginOpen ? "▾" : "💰"}
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="btn-ghost px-2 py-1 text-xs text-danger"
                             onClick={() => removeItem(idx)}
                             disabled={formItems.length <= 1}
+                            title="この行を削除"
                           >
                             ×
                           </button>
                         </div>
                       </div>
-                      {marginOpen && (
-                        <div className="ml-4 pl-3 border-l-2 border-border-subtle grid grid-cols-12 gap-2 items-end pb-2">
+
+                      {/* 原価・利益率の展開エリア（通常行のみ） */}
+                      {type === "item" && marginOpen && (
+                        <div className="ml-[118px] pl-3 border-l-2 border-border-subtle grid grid-cols-12 gap-2 items-end pb-2">
                           <div className="col-span-3 space-y-1">
                             <label className="text-[10px] text-muted">原価</label>
                             <input
@@ -887,17 +880,9 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                     </div>
                   );
                 })}
-                <div className="flex gap-2 flex-wrap">
-                  <button type="button" className="btn-ghost text-xs" onClick={addItem}>
-                    + 明細を追加
-                  </button>
-                  <button type="button" className="btn-ghost text-xs" onClick={addHeading}>
-                    + 見出しを追加
-                  </button>
-                  <button type="button" className="btn-ghost text-xs" onClick={addSubtotal}>
-                    + 小計を追加
-                  </button>
-                </div>
+                <button type="button" className="btn-ghost text-xs" onClick={addItem}>
+                  + 行追加
+                </button>
               </div>
 
               {/* Totals */}
