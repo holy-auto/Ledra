@@ -95,6 +95,8 @@ export const documentCreateSchema = z.object({
   show_seal: z.boolean().default(false),
   show_logo: z.boolean().default(false),
   tax_rate: z.coerce.number().min(0).max(100).nullable().optional(),
+  /** 明細の単価が税込か否か。true なら unit_price はそれぞれ税込で入力された値として扱う */
+  is_tax_inclusive: z.boolean().default(false),
   doc_number: z
     .string()
     .trim()
