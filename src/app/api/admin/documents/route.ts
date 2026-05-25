@@ -42,8 +42,8 @@ async function generateDocNumber(
   return `${prefix}${String(seq).padStart(3, "0")}`;
 }
 
-function calcItems(items: any[], taxRate: number) {
-  let subtotal = 0;
+function calcItems(items: any[], taxRate: number, isTaxInclusive = false) {
+  let itemsSum = 0; // 通常行 amount の合計（税込モードでは税込合計、税抜モードでは税抜合計）
   let runningSubtotal = 0; // 直前の小計行からの累積（小計行の金額自動算出に使用）
   const itemsJson = items.map((item: any) => {
     const itemType = item.item_type === "heading" || item.item_type === "subtotal" ? item.item_type : "item";
@@ -53,6 +53,7 @@ function calcItems(items: any[], taxRate: number) {
         item_type: "heading",
         description: (item.description ?? "").trim(),
         quantity: 0,
+        unit: (item.unit ?? "").trim() || null,
         unit_price: 0,
         amount: 0,
       } as Record<string, unknown>;
@@ -65,6 +66,7 @@ function calcItems(items: any[], taxRate: number) {
         item_type: "subtotal",
         description: (item.description ?? "").trim() || "小計",
         quantity: 0,
+        unit: null,
         unit_price: 0,
         amount: subtotalAmount,
       } as Record<string, unknown>;
@@ -73,12 +75,13 @@ function calcItems(items: any[], taxRate: number) {
     const qty = parseInt(String(item.quantity || 0), 10);
     const unitPrice = parseInt(String(item.unit_price || 0), 10);
     const amount = qty * unitPrice;
-    subtotal += amount;
+    itemsSum += amount;
     runningSubtotal += amount;
     const mapped: Record<string, unknown> = {
       item_type: "item",
       description: (item.description ?? "").trim(),
       quantity: qty,
+      unit: (item.unit ?? "").trim() || null,
       unit_price: unitPrice,
       amount,
     };
@@ -96,8 +99,21 @@ function calcItems(items: any[], taxRate: number) {
     return mapped;
   });
 
-  const tax = Math.floor(subtotal * (taxRate / 100));
-  return { itemsJson, subtotal, tax, total: subtotal + tax };
+  let subtotal: number;
+  let tax: number;
+  let total: number;
+  if (isTaxInclusive) {
+    // 税込入力モード：amount は税込金額。税抜の subtotal を逆算する
+    total = itemsSum;
+    subtotal = Math.round(itemsSum / (1 + taxRate / 100));
+    tax = total - subtotal;
+  } else {
+    // 税抜入力モード（既定）
+    subtotal = itemsSum;
+    tax = Math.floor(subtotal * (taxRate / 100));
+    total = subtotal + tax;
+  }
+  return { itemsJson, subtotal, tax, total };
 }
 
 // ─── GET: 帳票一覧 ───
@@ -231,9 +247,13 @@ export async function POST(req: NextRequest) {
     const paymentTerms = input.payment_terms;
     const deliveryDate = input.delivery_date;
     const templateId = input.template_id;
-    const metaJson = input.meta_json ?? {};
+    const isTaxInclusive = !!input.is_tax_inclusive;
+    const metaJson = {
+      ...(input.meta_json ?? {}),
+      is_tax_inclusive: isTaxInclusive,
+    };
 
-    const { itemsJson, subtotal, tax, total } = calcItems(items, taxRate);
+    const { itemsJson, subtotal, tax, total } = calcItems(items, taxRate, isTaxInclusive);
 
     const row = {
       id: crypto.randomUUID(),
@@ -329,12 +349,16 @@ export async function PUT(req: NextRequest) {
 
     if (body.items !== undefined) {
       const taxRate = body.tax_rate ?? 10;
-      const { itemsJson, subtotal, tax, total } = calcItems(body.items ?? [], taxRate);
+      const isTaxInclusive = !!body.is_tax_inclusive;
+      const { itemsJson, subtotal, tax, total } = calcItems(body.items ?? [], taxRate, isTaxInclusive);
       updates.items_json = itemsJson;
       updates.subtotal = subtotal;
       updates.tax = tax;
       updates.total = total;
       updates.tax_rate = taxRate;
+      // meta_json は他の更新と共存させるため、明示的に渡された meta_json があればマージ
+      const baseMeta = (body.meta_json as Record<string, unknown> | undefined) ?? {};
+      updates.meta_json = { ...baseMeta, is_tax_inclusive: isTaxInclusive };
     }
 
     // RLS をバイパスしてサービスロールで UPDATE（tenant_id で必ずスコープ限定）

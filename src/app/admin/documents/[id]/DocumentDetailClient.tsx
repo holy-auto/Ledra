@@ -233,6 +233,7 @@ export default function DocumentDetailClient({
                 <tr className="border-b-2 border-border-default print:border-gray-400">
                   <th className="text-left py-2 px-3 text-xs font-semibold text-muted print:text-gray-600">内容</th>
                   <th className="text-right py-2 px-3 text-xs font-semibold text-muted print:text-gray-600">数量</th>
+                  <th className="text-left py-2 px-3 text-xs font-semibold text-muted print:text-gray-600">単位</th>
                   <th className="text-right py-2 px-3 text-xs font-semibold text-muted print:text-gray-600">単価</th>
                   <th className="text-right py-2 px-3 text-xs font-semibold text-muted print:text-gray-600">金額</th>
                 </tr>
@@ -244,7 +245,7 @@ export default function DocumentDetailClient({
                     return (
                       <tr key={idx} className="border-b border-border-subtle print:border-gray-200 bg-surface-hover/60">
                         <td
-                          colSpan={4}
+                          colSpan={5}
                           className="py-2.5 px-3 font-semibold text-primary print:text-black print:bg-gray-100"
                         >
                           {item.description || "-"}
@@ -256,7 +257,7 @@ export default function DocumentDetailClient({
                     return (
                       <tr key={idx} className="border-b border-border-subtle print:border-gray-200">
                         <td
-                          colSpan={3}
+                          colSpan={4}
                           className="py-2.5 px-3 text-right font-semibold text-secondary print:text-gray-700"
                         >
                           {item.description || "小計"}
@@ -274,6 +275,7 @@ export default function DocumentDetailClient({
                         {item.tax_category === 8 && <span className="ml-1 text-[10px] text-muted">※軽減</span>}
                       </td>
                       <td className="py-3 px-3 text-right text-secondary print:text-gray-700">{item.quantity}</td>
+                      <td className="py-3 px-3 text-left text-secondary print:text-gray-700">{item.unit ?? ""}</td>
                       <td className="py-3 px-3 text-right text-secondary print:text-gray-700">
                         {formatJpy(item.unit_price)}
                       </td>
@@ -285,7 +287,7 @@ export default function DocumentDetailClient({
                 })}
                 {items.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="py-6 text-center text-muted">
+                    <td colSpan={5} className="py-6 text-center text-muted">
                       明細がありません
                     </td>
                   </tr>
