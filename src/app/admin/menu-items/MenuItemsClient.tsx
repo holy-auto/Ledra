@@ -129,9 +129,10 @@ export default function MenuItemsClient() {
 
   // 原価・利益率の変更に応じて提供価格を自動算出（手動で単価を変えたら自動上書きしないよう、
   // ユーザーが提供価格欄を直接編集したことは追跡しない＝シンプルに常に再計算）
+  // 原価・利益率の片方が空のときは単価を自動算出しない（0 が勝手に入って入力しにくくなるのを防ぐ）
   const handleFormCostChange = (v: string) => {
     setFormCostPrice(v);
-    if (formMarginRate !== "") {
+    if (v !== "" && formMarginRate !== "") {
       const cost = parseInt(v, 10) || 0;
       const margin = parseFloat(formMarginRate);
       setFormUnitPrice(String(calcSellingPrice(cost, margin)));
@@ -147,7 +148,7 @@ export default function MenuItemsClient() {
   };
   const handleEditCostChange = (v: string) => {
     setEditCostPrice(v);
-    if (editMarginRate !== "") {
+    if (v !== "" && editMarginRate !== "") {
       const cost = parseInt(v, 10) || 0;
       const margin = parseFloat(editMarginRate);
       setEditUnitPrice(String(calcSellingPrice(cost, margin)));

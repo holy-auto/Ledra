@@ -808,8 +808,9 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                           <input
                             type="number"
                             className="input-field"
-                            min="1"
-                            value={item.quantity}
+                            min="0"
+                            placeholder="1"
+                            value={item.quantity || ""}
                             onChange={(e) => updateItem(idx, "quantity", e.target.value)}
                           />
                         </div>
@@ -819,7 +820,8 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                             type="number"
                             className="input-field"
                             min="0"
-                            value={item.unit_price}
+                            placeholder="0"
+                            value={item.unit_price || ""}
                             onChange={(e) => updateItem(idx, "unit_price", e.target.value)}
                           />
                         </div>
@@ -858,7 +860,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                               className="input-field py-1 text-sm"
                               min="0"
                               placeholder="0"
-                              value={item.cost_price ?? ""}
+                              value={item.cost_price || ""}
                               onChange={(e) => updateItem(idx, "cost_price", e.target.value)}
                             />
                           </div>
