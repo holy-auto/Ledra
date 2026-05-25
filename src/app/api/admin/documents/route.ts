@@ -83,6 +83,14 @@ function calcItems(items: any[], taxRate: number) {
       amount,
     };
     if (item.tax_category != null) mapped.tax_category = item.tax_category;
+    if (item.cost_price != null && item.cost_price !== "") {
+      const cp = parseInt(String(item.cost_price), 10);
+      if (!isNaN(cp) && cp >= 0) mapped.cost_price = cp;
+    }
+    if (item.margin_rate != null && item.margin_rate !== "") {
+      const mr = parseFloat(String(item.margin_rate));
+      if (!isNaN(mr)) mapped.margin_rate = mr;
+    }
     if (item.certificate_id) mapped.certificate_id = item.certificate_id;
     if (item.certificate_public_id) mapped.certificate_public_id = item.certificate_public_id;
     return mapped;

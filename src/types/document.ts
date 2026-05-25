@@ -79,6 +79,10 @@ export type DocumentItem = {
   unit?: string;
   unit_price: number;
   amount: number;
+  /** 原価（円）。利益率と組み合わせて unit_price を自動算出する基準値。 */
+  cost_price?: number;
+  /** 利益率（％、マークアップ率）。unit_price = round(cost_price × (1 + margin_rate/100)) */
+  margin_rate?: number | null;
   tax_category?: number; // 10 or 8 (軽減税率)
   certificate_id?: string | null;
   certificate_public_id?: string | null;

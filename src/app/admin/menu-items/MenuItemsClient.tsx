@@ -10,6 +10,7 @@ import FirstUseInlineGuide from "@/components/ui/FirstUseInlineGuide";
 import { formatJpy } from "@/lib/format";
 import { fetcher } from "@/lib/swr";
 import { enqueueOrFetch } from "@/lib/outbox/enqueueOrFetch";
+import { calcSellingPrice } from "@/lib/pricing/margin";
 import MenuItemPackagesPanel from "./MenuItemPackagesPanel";
 
 /* ---------- Types ---------- */
@@ -19,6 +20,8 @@ type MenuItem = {
   name: string;
   description: string | null;
   unit_price: number | null;
+  cost_price: number | null;
+  margin_rate: number | null;
   tax_category: number | null;
   is_active: boolean;
   created_at: string;
@@ -51,6 +54,8 @@ export default function MenuItemsClient() {
   const [formName, setFormName] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [formUnitPrice, setFormUnitPrice] = useState("");
+  const [formCostPrice, setFormCostPrice] = useState("");
+  const [formMarginRate, setFormMarginRate] = useState("");
   const [formTaxCategory, setFormTaxCategory] = useState("10");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -60,6 +65,8 @@ export default function MenuItemsClient() {
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editUnitPrice, setEditUnitPrice] = useState("");
+  const [editCostPrice, setEditCostPrice] = useState("");
+  const [editMarginRate, setEditMarginRate] = useState("");
   const [editTaxCategory, setEditTaxCategory] = useState("10");
   const [editSaving, setEditSaving] = useState(false);
 
@@ -96,7 +103,9 @@ export default function MenuItemsClient() {
         body: JSON.stringify({
           name: formName.trim(),
           description: formDescription.trim() || null,
-          unit_price: formUnitPrice ? parseInt(formUnitPrice, 10) : null,
+          unit_price: formUnitPrice ? parseInt(formUnitPrice, 10) : 0,
+          cost_price: formCostPrice ? parseInt(formCostPrice, 10) : 0,
+          margin_rate: formMarginRate === "" ? null : parseFloat(formMarginRate),
           tax_category: parseInt(formTaxCategory, 10),
         }),
       });
@@ -106,6 +115,8 @@ export default function MenuItemsClient() {
       setFormName("");
       setFormDescription("");
       setFormUnitPrice("");
+      setFormCostPrice("");
+      setFormMarginRate("");
       setFormTaxCategory("10");
       setSaveMsg({ text: `品目「${j.item?.name ?? formName}」を登録しました`, ok: true });
       mutate();
@@ -116,6 +127,41 @@ export default function MenuItemsClient() {
     }
   };
 
+  // 原価・利益率の変更に応じて提供価格を自動算出（手動で単価を変えたら自動上書きしないよう、
+  // ユーザーが提供価格欄を直接編集したことは追跡しない＝シンプルに常に再計算）
+  const handleFormCostChange = (v: string) => {
+    setFormCostPrice(v);
+    if (formMarginRate !== "") {
+      const cost = parseInt(v, 10) || 0;
+      const margin = parseFloat(formMarginRate);
+      setFormUnitPrice(String(calcSellingPrice(cost, margin)));
+    }
+  };
+  const handleFormMarginChange = (v: string) => {
+    setFormMarginRate(v);
+    if (formCostPrice !== "" && v !== "") {
+      const cost = parseInt(formCostPrice, 10) || 0;
+      const margin = parseFloat(v);
+      setFormUnitPrice(String(calcSellingPrice(cost, margin)));
+    }
+  };
+  const handleEditCostChange = (v: string) => {
+    setEditCostPrice(v);
+    if (editMarginRate !== "") {
+      const cost = parseInt(v, 10) || 0;
+      const margin = parseFloat(editMarginRate);
+      setEditUnitPrice(String(calcSellingPrice(cost, margin)));
+    }
+  };
+  const handleEditMarginChange = (v: string) => {
+    setEditMarginRate(v);
+    if (editCostPrice !== "" && v !== "") {
+      const cost = parseInt(editCostPrice, 10) || 0;
+      const margin = parseFloat(v);
+      setEditUnitPrice(String(calcSellingPrice(cost, margin)));
+    }
+  };
+
   /* ---------- Edit ---------- */
 
   const startEdit = (item: MenuItem) => {
@@ -123,6 +169,8 @@ export default function MenuItemsClient() {
     setEditName(item.name);
     setEditDescription(item.description ?? "");
     setEditUnitPrice(item.unit_price != null ? String(item.unit_price) : "");
+    setEditCostPrice(item.cost_price != null ? String(item.cost_price) : "");
+    setEditMarginRate(item.margin_rate != null ? String(item.margin_rate) : "");
     setEditTaxCategory(item.tax_category != null ? String(item.tax_category) : "10");
   };
 
@@ -141,7 +189,9 @@ export default function MenuItemsClient() {
           id: editingId,
           name: editName.trim(),
           description: editDescription.trim() || null,
-          unit_price: editUnitPrice ? parseInt(editUnitPrice, 10) : null,
+          unit_price: editUnitPrice ? parseInt(editUnitPrice, 10) : 0,
+          cost_price: editCostPrice ? parseInt(editCostPrice, 10) : 0,
+          margin_rate: editMarginRate === "" ? null : parseFloat(editMarginRate),
           tax_category: parseInt(editTaxCategory, 10),
         },
         label: `品目編集: ${editName.trim()}`,
@@ -434,7 +484,34 @@ export default function MenuItemsClient() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs text-muted">単価</label>
+                  <label className="text-xs text-muted">原価</label>
+                  <input
+                    type="number"
+                    className="input-field"
+                    min="0"
+                    placeholder="0"
+                    value={formCostPrice}
+                    onChange={(e) => handleFormCostChange(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted">利益率（%）</label>
+                  <input
+                    type="number"
+                    className="input-field"
+                    step="0.01"
+                    placeholder="例: 30"
+                    value={formMarginRate}
+                    onChange={(e) => handleFormMarginChange(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted">
+                    提供価格（単価）
+                    {formCostPrice && formMarginRate !== "" && (
+                      <span className="ml-2 text-[10px] text-success">＝原価×(1+利益率%) 自動算出</span>
+                    )}
+                  </label>
                   <input
                     type="number"
                     className="input-field"
@@ -490,10 +567,16 @@ export default function MenuItemsClient() {
                 <thead className="bg-surface-hover">
                   <tr>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">品目名</th>
-                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                    <th className="hidden md:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
                       説明
                     </th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">単価</th>
+                    <th className="hidden md:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      原価
+                    </th>
+                    <th className="hidden md:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      利益率
+                    </th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">提供価格</th>
                     <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
                       税率
                     </th>
@@ -518,12 +601,32 @@ export default function MenuItemsClient() {
                                 onChange={(e) => setEditName(e.target.value)}
                               />
                             </td>
-                            <td className="hidden sm:table-cell px-5 py-3">
+                            <td className="hidden md:table-cell px-5 py-3">
                               <input
                                 type="text"
                                 className="input-field py-1 text-sm"
                                 value={editDescription}
                                 onChange={(e) => setEditDescription(e.target.value)}
+                              />
+                            </td>
+                            <td className="hidden md:table-cell px-5 py-3">
+                              <input
+                                type="number"
+                                className="input-field py-1 text-sm"
+                                min="0"
+                                placeholder="0"
+                                value={editCostPrice}
+                                onChange={(e) => handleEditCostChange(e.target.value)}
+                              />
+                            </td>
+                            <td className="hidden md:table-cell px-5 py-3">
+                              <input
+                                type="number"
+                                className="input-field py-1 text-sm"
+                                step="0.01"
+                                placeholder="%"
+                                value={editMarginRate}
+                                onChange={(e) => handleEditMarginChange(e.target.value)}
                               />
                             </td>
                             <td className="px-5 py-3">
@@ -570,8 +673,14 @@ export default function MenuItemsClient() {
                           /* Display Row */
                           <>
                             <td className="px-5 py-3.5 font-medium text-primary">{item.name}</td>
-                            <td className="hidden sm:table-cell px-5 py-3.5 text-secondary">
+                            <td className="hidden md:table-cell px-5 py-3.5 text-secondary">
                               {item.description ?? "-"}
+                            </td>
+                            <td className="hidden md:table-cell px-5 py-3.5 text-secondary whitespace-nowrap">
+                              {item.cost_price ? formatJpy(item.cost_price) : "-"}
+                            </td>
+                            <td className="hidden md:table-cell px-5 py-3.5 text-secondary whitespace-nowrap">
+                              {item.margin_rate != null ? `${item.margin_rate}%` : "-"}
                             </td>
                             <td className="px-5 py-3.5 font-medium text-primary whitespace-nowrap">
                               {item.unit_price != null ? formatJpy(item.unit_price) : "-"}
@@ -619,7 +728,7 @@ export default function MenuItemsClient() {
                       </tr>
                       {packagesOpen.has(item.id) && (
                         <tr className="bg-inset">
-                          <td colSpan={6} className="px-5 py-3">
+                          <td colSpan={8} className="px-5 py-3">
                             <div className="text-[10px] font-semibold tracking-[0.18em] text-muted">
                               この品目を使うパッケージ
                             </div>
@@ -633,7 +742,7 @@ export default function MenuItemsClient() {
                   ))}
                   {(data.items ?? []).length === 0 && (
                     <tr>
-                      <td colSpan={6} className="px-5 py-8 text-center text-muted">
+                      <td colSpan={8} className="px-5 py-8 text-center text-muted">
                         品目が登録されていません
                       </td>
                     </tr>
