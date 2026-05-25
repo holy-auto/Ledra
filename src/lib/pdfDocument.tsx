@@ -60,6 +60,8 @@ const ISSUED_LABEL: Record<string, string> = {
 };
 
 type DocumentItem = {
+  /** "item"（既定）/ "heading"（見出し行）/ "subtotal"（小計行） */
+  item_type?: "item" | "heading" | "subtotal";
   description: string;
   quantity: number;
   unit?: string;
@@ -244,6 +246,23 @@ function buildStyles(layout: LayoutConfig) {
       borderBottomColor: "#ddd",
       paddingVertical: 5,
     },
+    headingRow: {
+      flexDirection: "row",
+      borderBottomWidth: 0.5,
+      borderBottomColor: "#ddd",
+      paddingTop: 8,
+      paddingBottom: 4,
+      backgroundColor: "#f5f5f5",
+    },
+    headingText: { fontSize: 9, fontWeight: 700, color: "#222", paddingHorizontal: 4 },
+    subtotalRow: {
+      flexDirection: "row",
+      borderBottomWidth: 0.5,
+      borderBottomColor: "#ccc",
+      paddingVertical: 5,
+    },
+    subtotalLabel: { flex: 1, fontWeight: 700, color: "#333", textAlign: "right", paddingRight: 8 },
+    subtotalValue: { width: 80, textAlign: "right", fontWeight: 700, color: "#333" },
     colDesc: { flex: 3, paddingRight: 4 },
     colQty: { width: 40, textAlign: "right" },
     colUnit: { width: 32, textAlign: "center" },
@@ -331,11 +350,12 @@ export async function renderDocumentPdf(
   const bank = tenant.bank_info;
   const period = fmtPeriod(doc.period_start, doc.period_end);
 
+  const productItems = items.filter((it) => (it.item_type ?? "item") === "item");
   const breakdown =
     doc.tax_breakdown && doc.tax_breakdown.length > 0
       ? doc.tax_breakdown
       : buildTaxBreakdown(
-          items.map((it) => ({
+          productItems.map((it) => ({
             amount: it.amount,
             quantity: it.quantity,
             unit_price: it.unit_price,
@@ -345,7 +365,7 @@ export async function renderDocumentPdf(
           doc.tax_rate ?? 10,
         );
   const showMultiRate = hasMultipleRates(breakdown);
-  const hasReducedItem = items.some((it) => it.is_reduced_rate || it.tax_category === 8 || it.tax_rate === 8);
+  const hasReducedItem = productItems.some((it) => it.is_reduced_rate || it.tax_category === 8 || it.tax_rate === 8);
   const isQualifiedInvoice = !!doc.is_invoice_compliant && isValidRegistrationNumber(tenant.registration_number);
 
   const issuerBlock = (
@@ -471,18 +491,36 @@ export async function renderDocumentPdf(
           <Text style={{ ...s.thText, ...s.colPrice }}>単価</Text>
           <Text style={{ ...s.thText, ...s.colAmount }}>金額</Text>
         </View>
-        {items.map((item, idx) => (
-          <View key={idx} style={s.tableRow}>
-            <Text style={s.colDesc}>
-              {item.description || "-"}
-              {layout.items.showTaxLabel && item.tax_category === 8 ? " ※軽減" : ""}
-            </Text>
-            <Text style={s.colQty}>{item.quantity}</Text>
-            {layout.items.showUnit && <Text style={s.colUnit}>{item.unit ?? ""}</Text>}
-            <Text style={s.colPrice}>{fmtJpy(item.unit_price)}</Text>
-            <Text style={s.colAmount}>{fmtJpy(item.amount)}</Text>
-          </View>
-        ))}
+        {items.map((item, idx) => {
+          const type = item.item_type ?? "item";
+          if (type === "heading") {
+            return (
+              <View key={idx} style={s.headingRow}>
+                <Text style={s.headingText}>{item.description || "-"}</Text>
+              </View>
+            );
+          }
+          if (type === "subtotal") {
+            return (
+              <View key={idx} style={s.subtotalRow}>
+                <Text style={s.subtotalLabel}>{item.description || "小計"}</Text>
+                <Text style={s.subtotalValue}>{fmtJpy(item.amount)}</Text>
+              </View>
+            );
+          }
+          return (
+            <View key={idx} style={s.tableRow}>
+              <Text style={s.colDesc}>
+                {item.description || "-"}
+                {layout.items.showTaxLabel && item.tax_category === 8 ? " ※軽減" : ""}
+              </Text>
+              <Text style={s.colQty}>{item.quantity}</Text>
+              {layout.items.showUnit && <Text style={s.colUnit}>{item.unit ?? ""}</Text>}
+              <Text style={s.colPrice}>{fmtJpy(item.unit_price)}</Text>
+              <Text style={s.colAmount}>{fmtJpy(item.amount)}</Text>
+            </View>
+          );
+        })}
 
         {hasReducedItem && <Text style={{ fontSize: 8, color: "#666", marginTop: 4 }}>※ は軽減税率 (8%) 対象品目</Text>}
 

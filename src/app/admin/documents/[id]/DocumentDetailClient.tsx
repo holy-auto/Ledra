@@ -238,21 +238,51 @@ export default function DocumentDetailClient({
                 </tr>
               </thead>
               <tbody>
-                {items.map((item, idx) => (
-                  <tr key={idx} className="border-b border-border-subtle print:border-gray-200">
-                    <td className="py-3 px-3 text-primary print:text-black">
-                      {item.description || "-"}
-                      {item.tax_category === 8 && <span className="ml-1 text-[10px] text-muted">※軽減</span>}
-                    </td>
-                    <td className="py-3 px-3 text-right text-secondary print:text-gray-700">{item.quantity}</td>
-                    <td className="py-3 px-3 text-right text-secondary print:text-gray-700">
-                      {formatJpy(item.unit_price)}
-                    </td>
-                    <td className="py-3 px-3 text-right font-medium text-primary print:text-black">
-                      {formatJpy(item.amount)}
-                    </td>
-                  </tr>
-                ))}
+                {items.map((item, idx) => {
+                  const type = item.item_type ?? "item";
+                  if (type === "heading") {
+                    return (
+                      <tr key={idx} className="border-b border-border-subtle print:border-gray-200 bg-surface-hover/60">
+                        <td
+                          colSpan={4}
+                          className="py-2.5 px-3 font-semibold text-primary print:text-black print:bg-gray-100"
+                        >
+                          {item.description || "-"}
+                        </td>
+                      </tr>
+                    );
+                  }
+                  if (type === "subtotal") {
+                    return (
+                      <tr key={idx} className="border-b border-border-subtle print:border-gray-200">
+                        <td
+                          colSpan={3}
+                          className="py-2.5 px-3 text-right font-semibold text-secondary print:text-gray-700"
+                        >
+                          {item.description || "小計"}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-semibold text-primary print:text-black">
+                          {formatJpy(item.amount)}
+                        </td>
+                      </tr>
+                    );
+                  }
+                  return (
+                    <tr key={idx} className="border-b border-border-subtle print:border-gray-200">
+                      <td className="py-3 px-3 text-primary print:text-black">
+                        {item.description || "-"}
+                        {item.tax_category === 8 && <span className="ml-1 text-[10px] text-muted">※軽減</span>}
+                      </td>
+                      <td className="py-3 px-3 text-right text-secondary print:text-gray-700">{item.quantity}</td>
+                      <td className="py-3 px-3 text-right text-secondary print:text-gray-700">
+                        {formatJpy(item.unit_price)}
+                      </td>
+                      <td className="py-3 px-3 text-right font-medium text-primary print:text-black">
+                        {formatJpy(item.amount)}
+                      </td>
+                    </tr>
+                  );
+                })}
                 {items.length === 0 && (
                   <tr>
                     <td colSpan={4} className="py-6 text-center text-muted">

@@ -63,7 +63,17 @@ export const STATUS_TRANSITIONS: Record<string, string[]> = {
   cancelled: [],
 };
 
+/**
+ * 明細行のタイプ。
+ * - "item"（既定）: 通常の品目行（数量×単価＝金額）
+ * - "heading": セクション見出し行（金額計算には含めない）
+ * - "subtotal": 小計行。直前の小計行（または先頭）から累積した item の合計を表示し、
+ *               文書合計には含めない（重複計上を避けるため）。
+ */
+export type DocumentItemType = "item" | "heading" | "subtotal";
+
 export type DocumentItem = {
+  item_type?: DocumentItemType;
   description: string;
   quantity: number;
   unit?: string;
