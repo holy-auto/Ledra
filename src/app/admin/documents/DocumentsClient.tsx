@@ -131,6 +131,51 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   // Delete
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Drag & Drop（行の並び替え）
+  const [dragHandleHeld, setDragHandleHeld] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const dragSrcIdx = useRef<number | null>(null);
+
+  const handleRowDragStart = (idx: number) => (e: React.DragEvent) => {
+    dragSrcIdx.current = idx;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", String(idx));
+  };
+  const handleRowDragOver = (idx: number) => (e: React.DragEvent) => {
+    if (dragSrcIdx.current == null) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (dragOverIdx !== idx) setDragOverIdx(idx);
+  };
+  const handleRowDragLeave = (idx: number) => () => {
+    if (dragOverIdx === idx) setDragOverIdx(null);
+  };
+  const handleRowDrop = (targetIdx: number) => (e: React.DragEvent) => {
+    e.preventDefault();
+    const src = dragSrcIdx.current;
+    if (src == null || src === targetIdx) {
+      setDragOverIdx(null);
+      setDragHandleHeld(null);
+      dragSrcIdx.current = null;
+      return;
+    }
+    setFormItems((items) => {
+      const next = [...items];
+      const [moved] = next.splice(src, 1);
+      const adjusted = targetIdx > src ? targetIdx - 1 : targetIdx;
+      next.splice(adjusted, 0, moved);
+      return recalcSubtotals(next);
+    });
+    setDragOverIdx(null);
+    setDragHandleHeld(null);
+    dragSrcIdx.current = null;
+  };
+  const handleRowDragEnd = () => {
+    setDragOverIdx(null);
+    setDragHandleHeld(null);
+    dragSrcIdx.current = null;
+  };
+
   // Reference data: customers + menuItems (one-time fetch)
   const fetchCustomers = useCallback(async () => {
     try {
@@ -721,9 +766,10 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                   </div>
                 </div>
                 <div className="overflow-x-auto">
-                  <div className="min-w-[920px] space-y-1">
+                  <div className="min-w-[960px] space-y-1">
                     {/* Header labels */}
-                    <div className="grid grid-cols-[96px_minmax(0,1fr)_64px_60px_88px_72px_96px_104px_56px] gap-2 px-1">
+                    <div className="grid grid-cols-[28px_96px_minmax(0,1fr)_64px_60px_88px_72px_96px_104px_56px] gap-2 px-1">
+                      <span />
                       <label className="text-xs text-muted">行タイプ</label>
                       <label className="text-xs text-muted">内容</label>
                       <label className="text-xs text-muted">数量</label>
@@ -736,11 +782,37 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                     </div>
                     {formItems.map((item, idx) => {
                       const type = item.item_type ?? "item";
+                      const isDragOver = dragOverIdx === idx;
+                      const isDragging = dragSrcIdx.current === idx;
                       return (
                         <div
                           key={idx}
-                          className="grid grid-cols-[96px_minmax(0,1fr)_64px_60px_88px_72px_96px_104px_56px] gap-2 items-start"
+                          draggable={dragHandleHeld === idx}
+                          onDragStart={handleRowDragStart(idx)}
+                          onDragOver={handleRowDragOver(idx)}
+                          onDragLeave={handleRowDragLeave(idx)}
+                          onDrop={handleRowDrop(idx)}
+                          onDragEnd={handleRowDragEnd}
+                          className={`grid grid-cols-[28px_96px_minmax(0,1fr)_64px_60px_88px_72px_96px_104px_56px] gap-2 items-start rounded transition-colors ${
+                            isDragOver ? "ring-2 ring-accent bg-accent/5" : ""
+                          } ${isDragging ? "opacity-40" : ""}`}
                         >
+                          {/* ドラッグハンドル */}
+                          <button
+                            type="button"
+                            onMouseDown={() => setDragHandleHeld(idx)}
+                            onMouseUp={() => setDragHandleHeld(null)}
+                            onMouseLeave={() => {
+                              if (dragSrcIdx.current == null) setDragHandleHeld(null);
+                            }}
+                            onTouchStart={() => setDragHandleHeld(idx)}
+                            onTouchEnd={() => setDragHandleHeld(null)}
+                            className="self-center text-muted hover:text-primary cursor-grab active:cursor-grabbing select-none text-base leading-none"
+                            title="ドラッグして並び替え"
+                            aria-label="ドラッグして並び替え"
+                          >
+                            ≡
+                          </button>
                           {/* 行タイプセレクター */}
                           <select
                             className="select-field py-1.5 text-xs"
