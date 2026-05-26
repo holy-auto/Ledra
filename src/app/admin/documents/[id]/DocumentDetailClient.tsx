@@ -8,12 +8,14 @@ import { formatDate, formatDateTime, formatJpy } from "@/lib/format";
 import {
   DOC_TYPES,
   STATUS_TRANSITIONS,
+  isDocumentEditable,
   statusLabel,
   statusVariant,
   type DocType,
   type DocumentItem,
   type DocumentRow,
 } from "@/types/document";
+import DocumentForm from "../DocumentForm";
 
 type BankInfo = {
   bank_name?: string | null;
@@ -52,6 +54,7 @@ export default function DocumentDetailClient({
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [converting, setConverting] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const handleStatusChange = async (newStatus: string) => {
     setUpdating(true);
@@ -129,6 +132,7 @@ export default function DocumentDetailClient({
   const nextStatuses = STATUS_TRANSITIONS[doc.status] ?? [];
   const docLabel = DOC_TYPES[doc.doc_type as DocType]?.label ?? doc.doc_type;
   const canConvert = doc.doc_type === "estimate" || doc.doc_type === "delivery";
+  const canEdit = isDocumentEditable(doc.doc_type, doc.status);
 
   return (
     <div className="space-y-6">
@@ -143,6 +147,11 @@ export default function DocumentDetailClient({
             {doc.is_invoice_compliant && <Badge variant="info">インボイス対応</Badge>}
           </div>
           <div className="flex gap-2 flex-wrap">
+            {canEdit && !editing && (
+              <button type="button" className="btn-primary text-xs" onClick={() => setEditing(true)}>
+                編集
+              </button>
+            )}
             {nextStatuses.map((ns) => (
               <button
                 key={ns}
@@ -177,202 +186,221 @@ export default function DocumentDetailClient({
         </div>
       </section>
 
+      {/* Edit Form (canEdit && editing 時のみ) */}
+      {canEdit && editing && (
+        <DocumentForm
+          mode="edit"
+          initial={doc}
+          onSaved={(updated) => {
+            setDoc(updated);
+            setEditing(false);
+            setMsg({ text: "保存しました", ok: true });
+          }}
+          onCancel={() => setEditing(false)}
+        />
+      )}
+
       {/* Document Detail (print-friendly) */}
-      <div className="print-area">
-        <section className="glass-card p-6 space-y-6 print:border-none print:shadow-none print:bg-white print:text-black">
-          {/* Header */}
-          <div className="flex justify-between items-start flex-wrap gap-4">
-            <div>
-              <h2 className="text-xl font-bold text-primary print:text-black">{docLabel}</h2>
-              <div className="text-sm text-muted print:text-gray-600 mt-1 font-mono">{doc.doc_number}</div>
-              {doc.is_invoice_compliant && tenant?.registration_number && (
-                <div className="text-xs text-secondary print:text-gray-600 mt-1">
-                  登録番号: {tenant.registration_number}
+      {!editing && (
+        <div className="print-area">
+          <section className="glass-card p-6 space-y-6 print:border-none print:shadow-none print:bg-white print:text-black">
+            {/* Header */}
+            <div className="flex justify-between items-start flex-wrap gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-primary print:text-black">{docLabel}</h2>
+                <div className="text-sm text-muted print:text-gray-600 mt-1 font-mono">{doc.doc_number}</div>
+                {doc.is_invoice_compliant && tenant?.registration_number && (
+                  <div className="text-xs text-secondary print:text-gray-600 mt-1">
+                    登録番号: {tenant.registration_number}
+                  </div>
+                )}
+              </div>
+              <div className="text-right text-sm text-secondary print:text-gray-700 space-y-1">
+                <div>発行日: {formatDate(doc.issued_at)}</div>
+                {doc.due_date && <div>支払期限: {formatDate(doc.due_date)}</div>}
+              </div>
+            </div>
+
+            {/* Issuer / Customer */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              {/* Customer (宛先) */}
+              {(customerName || doc.recipient_name) && (
+                <div className="border-b border-border-subtle pb-4 print:border-gray-300">
+                  <div className="text-xs text-muted print:text-gray-500">宛先</div>
+                  <div className="text-lg font-semibold text-primary print:text-black mt-1">
+                    {doc.recipient_name || customerName} 様
+                  </div>
+                </div>
+              )}
+              {/* Issuer (差出人) */}
+              {tenant && (
+                <div className="border-b border-border-subtle pb-4 print:border-gray-300">
+                  <div className="text-xs text-muted print:text-gray-500">差出人</div>
+                  <div className="text-sm text-primary print:text-black mt-1 space-y-0.5">
+                    <div className="font-semibold">{tenant.name}</div>
+                    {tenant.address && <div className="text-secondary print:text-gray-600">{tenant.address}</div>}
+                    {tenant.contact_phone && (
+                      <div className="text-secondary print:text-gray-600">TEL: {tenant.contact_phone}</div>
+                    )}
+                    {tenant.contact_email && (
+                      <div className="text-secondary print:text-gray-600">{tenant.contact_email}</div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
-            <div className="text-right text-sm text-secondary print:text-gray-700 space-y-1">
-              <div>発行日: {formatDate(doc.issued_at)}</div>
-              {doc.due_date && <div>支払期限: {formatDate(doc.due_date)}</div>}
-            </div>
-          </div>
 
-          {/* Issuer / Customer */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            {/* Customer (宛先) */}
-            {(customerName || doc.recipient_name) && (
-              <div className="border-b border-border-subtle pb-4 print:border-gray-300">
-                <div className="text-xs text-muted print:text-gray-500">宛先</div>
-                <div className="text-lg font-semibold text-primary print:text-black mt-1">
-                  {doc.recipient_name || customerName} 様
-                </div>
-              </div>
-            )}
-            {/* Issuer (差出人) */}
-            {tenant && (
-              <div className="border-b border-border-subtle pb-4 print:border-gray-300">
-                <div className="text-xs text-muted print:text-gray-500">差出人</div>
-                <div className="text-sm text-primary print:text-black mt-1 space-y-0.5">
-                  <div className="font-semibold">{tenant.name}</div>
-                  {tenant.address && <div className="text-secondary print:text-gray-600">{tenant.address}</div>}
-                  {tenant.contact_phone && (
-                    <div className="text-secondary print:text-gray-600">TEL: {tenant.contact_phone}</div>
-                  )}
-                  {tenant.contact_email && (
-                    <div className="text-secondary print:text-gray-600">{tenant.contact_email}</div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Items Table */}
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b-2 border-border-default print:border-gray-400">
-                  <th className="text-left py-2 px-3 text-xs font-semibold text-muted print:text-gray-600">内容</th>
-                  <th className="text-right py-2 px-3 text-xs font-semibold text-muted print:text-gray-600">数量</th>
-                  <th className="text-left py-2 px-3 text-xs font-semibold text-muted print:text-gray-600">単位</th>
-                  <th className="text-right py-2 px-3 text-xs font-semibold text-muted print:text-gray-600">単価</th>
-                  <th className="text-right py-2 px-3 text-xs font-semibold text-muted print:text-gray-600">金額</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item, idx) => {
-                  const type = item.item_type ?? "item";
-                  if (type === "heading") {
-                    return (
-                      <tr key={idx} className="border-b border-border-subtle print:border-gray-200 bg-surface-hover/60">
-                        <td
-                          colSpan={5}
-                          className="py-2.5 px-3 font-semibold text-primary print:text-black print:bg-gray-100"
+            {/* Items Table */}
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b-2 border-border-default print:border-gray-400">
+                    <th className="text-left py-2 px-3 text-xs font-semibold text-muted print:text-gray-600">内容</th>
+                    <th className="text-right py-2 px-3 text-xs font-semibold text-muted print:text-gray-600">数量</th>
+                    <th className="text-left py-2 px-3 text-xs font-semibold text-muted print:text-gray-600">単位</th>
+                    <th className="text-right py-2 px-3 text-xs font-semibold text-muted print:text-gray-600">単価</th>
+                    <th className="text-right py-2 px-3 text-xs font-semibold text-muted print:text-gray-600">金額</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item, idx) => {
+                    const type = item.item_type ?? "item";
+                    if (type === "heading") {
+                      return (
+                        <tr
+                          key={idx}
+                          className="border-b border-border-subtle print:border-gray-200 bg-surface-hover/60"
                         >
-                          {item.description || "-"}
-                        </td>
-                      </tr>
-                    );
-                  }
-                  if (type === "subtotal") {
+                          <td
+                            colSpan={5}
+                            className="py-2.5 px-3 font-semibold text-primary print:text-black print:bg-gray-100"
+                          >
+                            {item.description || "-"}
+                          </td>
+                        </tr>
+                      );
+                    }
+                    if (type === "subtotal") {
+                      return (
+                        <tr key={idx} className="border-b border-border-subtle print:border-gray-200">
+                          <td
+                            colSpan={4}
+                            className="py-2.5 px-3 text-right font-semibold text-secondary print:text-gray-700"
+                          >
+                            {item.description || "小計"}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-semibold text-primary print:text-black">
+                            {formatJpy(item.amount)}
+                          </td>
+                        </tr>
+                      );
+                    }
                     return (
                       <tr key={idx} className="border-b border-border-subtle print:border-gray-200">
-                        <td
-                          colSpan={4}
-                          className="py-2.5 px-3 text-right font-semibold text-secondary print:text-gray-700"
-                        >
-                          {item.description || "小計"}
+                        <td className="py-3 px-3 text-primary print:text-black">
+                          {item.description || "-"}
+                          {item.tax_category === 8 && <span className="ml-1 text-[10px] text-muted">※軽減</span>}
                         </td>
-                        <td className="py-2.5 px-3 text-right font-semibold text-primary print:text-black">
+                        <td className="py-3 px-3 text-right text-secondary print:text-gray-700">{item.quantity}</td>
+                        <td className="py-3 px-3 text-left text-secondary print:text-gray-700">{item.unit ?? ""}</td>
+                        <td className="py-3 px-3 text-right text-secondary print:text-gray-700">
+                          {formatJpy(item.unit_price)}
+                        </td>
+                        <td className="py-3 px-3 text-right font-medium text-primary print:text-black">
                           {formatJpy(item.amount)}
                         </td>
                       </tr>
                     );
-                  }
-                  return (
-                    <tr key={idx} className="border-b border-border-subtle print:border-gray-200">
-                      <td className="py-3 px-3 text-primary print:text-black">
-                        {item.description || "-"}
-                        {item.tax_category === 8 && <span className="ml-1 text-[10px] text-muted">※軽減</span>}
-                      </td>
-                      <td className="py-3 px-3 text-right text-secondary print:text-gray-700">{item.quantity}</td>
-                      <td className="py-3 px-3 text-left text-secondary print:text-gray-700">{item.unit ?? ""}</td>
-                      <td className="py-3 px-3 text-right text-secondary print:text-gray-700">
-                        {formatJpy(item.unit_price)}
-                      </td>
-                      <td className="py-3 px-3 text-right font-medium text-primary print:text-black">
-                        {formatJpy(item.amount)}
+                  })}
+                  {items.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="py-6 text-center text-muted">
+                        明細がありません
                       </td>
                     </tr>
-                  );
-                })}
-                {items.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="py-6 text-center text-muted">
-                      明細がありません
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Totals */}
-          <div className="flex justify-end">
-            <div className="w-64 space-y-2">
-              <div className="flex justify-between text-sm border-b border-border-subtle pb-2 print:border-gray-200">
-                <span className="text-muted print:text-gray-500">小計</span>
-                <span className="text-primary print:text-black">{formatJpy(doc.subtotal)}</span>
-              </div>
-              <div className="flex justify-between text-sm border-b border-border-subtle pb-2 print:border-gray-200">
-                <span className="text-muted print:text-gray-500">消費税（{doc.tax_rate}%）</span>
-                <span className="text-primary print:text-black">{formatJpy(doc.tax)}</span>
-              </div>
-              <div className="flex justify-between text-lg font-bold pt-1">
-                <span className="text-primary print:text-black">合計</span>
-                <span className="text-primary print:text-black">{formatJpy(doc.total)}</span>
-              </div>
+                  )}
+                </tbody>
+              </table>
             </div>
-          </div>
 
-          {/* Seal & Logo area */}
-          {(doc.show_seal || doc.show_logo) && (
-            <div className="flex justify-end gap-6 pt-4">
-              {doc.show_logo && (
-                <div className="text-xs text-muted print:text-gray-500 text-center">
-                  {/* Logo placeholder — rendered from tenant.logo_asset_path when available */}
-                  <div className="w-16 h-16 border border-border-subtle rounded-lg flex items-center justify-center text-muted print:border-gray-300">
-                    LOGO
-                  </div>
+            {/* Totals */}
+            <div className="flex justify-end">
+              <div className="w-64 space-y-2">
+                <div className="flex justify-between text-sm border-b border-border-subtle pb-2 print:border-gray-200">
+                  <span className="text-muted print:text-gray-500">小計</span>
+                  <span className="text-primary print:text-black">{formatJpy(doc.subtotal)}</span>
                 </div>
-              )}
-              {doc.show_seal && (
-                <div className="text-xs text-muted print:text-gray-500 text-center">
-                  {/* Seal placeholder — rendered from tenant.company_seal_path when available */}
-                  <div className="w-16 h-16 border border-dashed border-red-300 rounded-full flex items-center justify-center text-red-400 print:border-red-400">
-                    印
-                  </div>
+                <div className="flex justify-between text-sm border-b border-border-subtle pb-2 print:border-gray-200">
+                  <span className="text-muted print:text-gray-500">消費税（{doc.tax_rate}%）</span>
+                  <span className="text-primary print:text-black">{formatJpy(doc.tax)}</span>
                 </div>
-              )}
-            </div>
-          )}
-
-          {/* Bank Info */}
-          {doc.show_bank_info && tenant?.bank_info && (
-            <div className="border-t border-border-subtle pt-4 print:border-gray-300">
-              <div className="text-xs font-semibold text-muted print:text-gray-500 mb-2">振込先口座情報</div>
-              <div className="text-sm text-secondary print:text-gray-700 space-y-0.5">
-                {tenant.bank_info.bank_name && (
-                  <div>
-                    {tenant.bank_info.bank_name}
-                    {tenant.bank_info.branch_name ? ` ${tenant.bank_info.branch_name}` : ""}
-                  </div>
-                )}
-                {tenant.bank_info.account_type && (
-                  <div>
-                    {tenant.bank_info.account_type} {tenant.bank_info.account_number ?? ""}
-                  </div>
-                )}
-                {tenant.bank_info.account_holder && <div>口座名義: {tenant.bank_info.account_holder}</div>}
+                <div className="flex justify-between text-lg font-bold pt-1">
+                  <span className="text-primary print:text-black">合計</span>
+                  <span className="text-primary print:text-black">{formatJpy(doc.total)}</span>
+                </div>
               </div>
             </div>
-          )}
 
-          {/* Note */}
-          {doc.note && (
-            <div className="border-t border-border-subtle pt-4 print:border-gray-300">
-              <div className="text-xs text-muted print:text-gray-500">備考</div>
-              <div className="text-sm text-secondary print:text-gray-700 mt-1 whitespace-pre-wrap">{doc.note}</div>
-            </div>
-          )}
+            {/* Seal & Logo area */}
+            {(doc.show_seal || doc.show_logo) && (
+              <div className="flex justify-end gap-6 pt-4">
+                {doc.show_logo && (
+                  <div className="text-xs text-muted print:text-gray-500 text-center">
+                    {/* Logo placeholder — rendered from tenant.logo_asset_path when available */}
+                    <div className="w-16 h-16 border border-border-subtle rounded-lg flex items-center justify-center text-muted print:border-gray-300">
+                      LOGO
+                    </div>
+                  </div>
+                )}
+                {doc.show_seal && (
+                  <div className="text-xs text-muted print:text-gray-500 text-center">
+                    {/* Seal placeholder — rendered from tenant.company_seal_path when available */}
+                    <div className="w-16 h-16 border border-dashed border-red-300 rounded-full flex items-center justify-center text-red-400 print:border-red-400">
+                      印
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
-          {/* Invoice compliance notice */}
-          {doc.is_invoice_compliant && (
-            <div className="border-t border-border-subtle pt-4 print:border-gray-300 text-xs text-muted print:text-gray-500">
-              ※ この書類は適格請求書等保存方式（インボイス制度）に対応しています。
-            </div>
-          )}
-        </section>
-      </div>
+            {/* Bank Info */}
+            {doc.show_bank_info && tenant?.bank_info && (
+              <div className="border-t border-border-subtle pt-4 print:border-gray-300">
+                <div className="text-xs font-semibold text-muted print:text-gray-500 mb-2">振込先口座情報</div>
+                <div className="text-sm text-secondary print:text-gray-700 space-y-0.5">
+                  {tenant.bank_info.bank_name && (
+                    <div>
+                      {tenant.bank_info.bank_name}
+                      {tenant.bank_info.branch_name ? ` ${tenant.bank_info.branch_name}` : ""}
+                    </div>
+                  )}
+                  {tenant.bank_info.account_type && (
+                    <div>
+                      {tenant.bank_info.account_type} {tenant.bank_info.account_number ?? ""}
+                    </div>
+                  )}
+                  {tenant.bank_info.account_holder && <div>口座名義: {tenant.bank_info.account_holder}</div>}
+                </div>
+              </div>
+            )}
+
+            {/* Note */}
+            {doc.note && (
+              <div className="border-t border-border-subtle pt-4 print:border-gray-300">
+                <div className="text-xs text-muted print:text-gray-500">備考</div>
+                <div className="text-sm text-secondary print:text-gray-700 mt-1 whitespace-pre-wrap">{doc.note}</div>
+              </div>
+            )}
+
+            {/* Invoice compliance notice */}
+            {doc.is_invoice_compliant && (
+              <div className="border-t border-border-subtle pt-4 print:border-gray-300 text-xs text-muted print:text-gray-500">
+                ※ この書類は適格請求書等保存方式（インボイス制度）に対応しています。
+              </div>
+            )}
+          </section>
+        </div>
+      )}
 
       {/* Source document link */}
       {doc.source_document_id && (

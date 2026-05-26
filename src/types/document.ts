@@ -64,6 +64,18 @@ export const STATUS_TRANSITIONS: Record<string, string[]> = {
 };
 
 /**
+ * 帳票が編集可能か判定する。
+ * - 請求書（invoice / consolidated_invoice）は送付後（draft 以外）は編集不可
+ * - その他の帳票は基本的に常に編集可能
+ */
+export function isDocumentEditable(docType: string, status: string): boolean {
+  if ((docType === "invoice" || docType === "consolidated_invoice") && status !== "draft") {
+    return false;
+  }
+  return true;
+}
+
+/**
  * 明細行のタイプ。
  * - "item"（既定）: 通常の品目行（数量×単価＝金額）
  * - "heading": セクション見出し行（金額計算には含めない）
