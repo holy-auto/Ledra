@@ -269,3 +269,161 @@ describe("runPassportBilling", () => {
     expect(r.skipped_count).toBe(1); // c3 (suspended)
   });
 });
+
+// --- End-to-end idempotency with a stateful fake Stripe --------------------
+
+/**
+ * The real-world property we care about: re-running the cron for the same
+ * month must not bill the customer twice. action="set" gives us this via
+ * the Stripe API itself (the latest set wins on the period). Here we
+ * simulate it with a stateful fake to prove our integration call matches
+ * that contract: two runs → one effective usage record id, second usage
+ * quantity equals the latest count.
+ */
+describe("runPassportBilling — idempotent re-run", () => {
+  function makeStatefulStripe() {
+    const usageBySubItem = new Map<string, { quantity: number; record_id: string }>();
+    let recordCounter = 0;
+    return {
+      subscriptionItems: {
+        createUsageRecord: vi.fn(
+          async (siId: string, body: { quantity: number; action: "set" | "increment"; timestamp: number }) => {
+            if (body.action === "set") {
+              const recordId = `mbur_${++recordCounter}`;
+              usageBySubItem.set(siId, { quantity: body.quantity, record_id: recordId });
+              return { id: recordId };
+            }
+            const existing = usageBySubItem.get(siId);
+            const nextQty = (existing?.quantity ?? 0) + body.quantity;
+            const recordId = `mbur_${++recordCounter}`;
+            usageBySubItem.set(siId, { quantity: nextQty, record_id: recordId });
+            return { id: recordId };
+          },
+        ),
+      },
+      _state: usageBySubItem,
+    };
+  }
+
+  function makeStatefulAdmin(callCounts: Record<string, number>) {
+    // Per-consumer billing-period storage to simulate ON CONFLICT upserts.
+    const periodsByKey = new Map<string, FakeRow>();
+    return {
+      from: (table: string) => {
+        if (table === "passport_api_consumers") {
+          return {
+            select: () =>
+              Promise.resolve({
+                data: [{ id: "c1", name: "A", status: "active", stripe_subscription_item_id: "si_1" }],
+                error: null,
+              }),
+          };
+        }
+        if (table === "passport_api_call_logs") {
+          return {
+            select: () => ({
+              eq: (_col: string, consumerId: string) => ({
+                gte: () => ({
+                  lt: () => Promise.resolve({ count: callCounts[consumerId] ?? 0, error: null }),
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === "passport_api_billing_periods") {
+          return {
+            upsert: (doc: FakeRow) => {
+              const key = `${doc.consumer_id}|${doc.period_start}`;
+              const existing = periodsByKey.get(key) ?? { id: `period-${periodsByKey.size + 1}` };
+              const merged = { ...existing, ...doc };
+              periodsByKey.set(key, merged);
+              return {
+                select: () => ({ single: () => Promise.resolve({ data: merged, error: null }) }),
+              };
+            },
+            update: (doc: FakeRow) => ({
+              eq: () => {
+                // Merge update into all existing periods (test doesn't
+                // care about exact id matching — there's only one).
+                for (const [k, v] of periodsByKey.entries()) {
+                  periodsByKey.set(k, { ...v, ...doc });
+                }
+                return Promise.resolve({ data: null, error: null });
+              },
+            }),
+          };
+        }
+        throw new Error(`unexpected table ${table}`);
+      },
+      _periods: periodsByKey,
+    };
+  }
+
+  it("second cron run with the same period does NOT double-bill (action=set semantics)", async () => {
+    const stripe = makeStatefulStripe();
+    const admin = makeStatefulAdmin({ c1: 100 });
+
+    // First run for April
+    const r1 = await runPassportBilling({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      admin: admin as any,
+      ...PERIOD,
+      stripe: stripe as never,
+    });
+    expect(r1.reported_count).toBe(1);
+
+    // Snapshot Stripe state after first run
+    expect(stripe._state.get("si_1")?.quantity).toBe(100);
+
+    // Second (accidental / re-trigger) run — same period
+    const r2 = await runPassportBilling({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      admin: admin as any,
+      ...PERIOD,
+      stripe: stripe as never,
+    });
+    expect(r2.reported_count).toBe(1);
+
+    // Stripe still reports 100 (latest set), not 200 — the whole point
+    expect(stripe._state.get("si_1")?.quantity).toBe(100);
+    expect(stripe.subscriptionItems.createUsageRecord).toHaveBeenCalledTimes(2);
+    expect(stripe.subscriptionItems.createUsageRecord).toHaveBeenNthCalledWith(
+      1,
+      "si_1",
+      expect.objectContaining({ action: "set", quantity: 100 }),
+    );
+    expect(stripe.subscriptionItems.createUsageRecord).toHaveBeenNthCalledWith(
+      2,
+      "si_1",
+      expect.objectContaining({ action: "set", quantity: 100 }),
+    );
+
+    // DB period row updated, not duplicated
+    expect(admin._periods.size).toBe(1);
+  });
+
+  it("re-run reflects new call counts (catch-up after late-arriving logs)", async () => {
+    const stripe = makeStatefulStripe();
+    const admin = makeStatefulAdmin({ c1: 100 });
+
+    await runPassportBilling({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      admin: admin as any,
+      ...PERIOD,
+      stripe: stripe as never,
+    });
+    expect(stripe._state.get("si_1")?.quantity).toBe(100);
+
+    // New logs land — second run sees 150
+    admin._periods.clear(); // reset for clarity; counters are independent
+    const admin2 = makeStatefulAdmin({ c1: 150 });
+    await runPassportBilling({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      admin: admin2 as any,
+      ...PERIOD,
+      stripe: stripe as never,
+    });
+
+    expect(stripe._state.get("si_1")?.quantity).toBe(150);
+  });
+});
