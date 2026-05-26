@@ -26,7 +26,13 @@ import {
 } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import { extractBearer, hasPassportScope, logPassportApiCall, resolvePassportApiKey } from "@/lib/passport/api/keys";
+import {
+  checkPassportMonthlyQuota,
+  extractBearer,
+  hasPassportScope,
+  logPassportApiCall,
+  resolvePassportApiKey,
+} from "@/lib/passport/api/keys";
 import { buildPassportVerifyResponse } from "@/lib/passport/api/verify";
 import { isPassportPublicEnabled } from "@/lib/passport/featureGate";
 import { normalizeVin } from "@/lib/passport/normalizeVin";
@@ -70,6 +76,29 @@ export async function GET(req: NextRequest) {
   // consumer limiter is for billing-side abuse.
   const consumerLimited = await checkRateLimit(req, "general", `passport-consumer:${auth.ctx.consumerId}`);
   if (consumerLimited) return consumerLimited;
+
+  // Monthly quota: 429 once we've passed monthly_quota for the current
+  // UTC month. Quota of 0 = unlimited (operator opt-out per consumer).
+  const quota = await checkPassportMonthlyQuota(admin, auth.ctx.consumerId, auth.ctx.monthlyQuota);
+  if (!quota.allowed) {
+    void logPassportApiCall({
+      admin,
+      apiKeyId: auth.ctx.keyId,
+      consumerId: auth.ctx.consumerId,
+      endpoint: ENDPOINT,
+      vinQueried: null,
+      responseStatus: 429,
+      responseTimeMs: Date.now() - startedAt,
+      ip: getClientIp(req),
+      userAgent: req.headers.get("user-agent"),
+    });
+    return apiError({
+      code: "plan_limit",
+      message: "今月のリクエスト上限に達しました。来月までお待ちいただくか、上限の引き上げをご相談ください。",
+      status: 429,
+      data: { used: quota.used, limit: quota.limit },
+    });
+  }
 
   const url = new URL(req.url);
   const vinRaw = (url.searchParams.get("vin") ?? "").trim();

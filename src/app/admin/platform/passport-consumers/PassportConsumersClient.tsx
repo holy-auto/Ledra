@@ -150,7 +150,7 @@ export default function PassportConsumersClient() {
                 onChange={(e) => setQuota(e.target.value)}
                 className="input-field mt-2 w-40"
               />
-              <p className="mt-1 text-xs text-muted">現状は記録のみ (ハード遮断は未実装)。</p>
+              <p className="mt-1 text-xs text-muted">超過時は 429 plan_limit を返してハード遮断します。0 = 無制限。</p>
             </div>
             <div>
               <label className="text-sm font-semibold text-primary">秒間レート上限 (req/min)</label>
