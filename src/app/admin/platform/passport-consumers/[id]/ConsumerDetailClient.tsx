@@ -9,8 +9,21 @@ type Consumer = {
   status: "active" | "suspended" | "closed" | string;
   monthly_quota: number;
   rate_limit_per_minute: number;
+  stripe_customer_id: string | null;
+  stripe_subscription_item_id: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type BillingPeriod = {
+  id: string;
+  period_start: string;
+  period_end: string;
+  call_count: number;
+  reported_to_stripe_at: string | null;
+  stripe_usage_record_id: string | null;
+  last_attempt_at: string | null;
+  last_error: string | null;
 };
 
 type KeyItem = {
@@ -61,6 +74,7 @@ export default function ConsumerDetailClient({ consumerId }: { consumerId: strin
   const [consumer, setConsumer] = useState<Consumer | null>(null);
   const [keys, setKeys] = useState<KeyItem[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [billingPeriods, setBillingPeriods] = useState<BillingPeriod[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
@@ -69,6 +83,8 @@ export default function ConsumerDetailClient({ consumerId }: { consumerId: strin
   const [editStatus, setEditStatus] = useState<string>("active");
   const [editQuota, setEditQuota] = useState("");
   const [editRate, setEditRate] = useState("");
+  const [editStripeCustomer, setEditStripeCustomer] = useState("");
+  const [editStripeSubItem, setEditStripeSubItem] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
   const [editSaved, setEditSaved] = useState(false);
 
@@ -90,11 +106,14 @@ export default function ConsumerDetailClient({ consumerId }: { consumerId: strin
       setConsumer(c);
       setKeys((j.keys ?? []) as KeyItem[]);
       setStats((j.stats ?? null) as Stats | null);
+      setBillingPeriods((j.billing_periods ?? []) as BillingPeriod[]);
       setEditName(c.name);
       setEditEmail(c.contact_email);
       setEditStatus(c.status);
       setEditQuota(String(c.monthly_quota));
       setEditRate(String(c.rate_limit_per_minute));
+      setEditStripeCustomer(c.stripe_customer_id ?? "");
+      setEditStripeSubItem(c.stripe_subscription_item_id ?? "");
     } catch {
       setErr("詳細の取得に失敗しました。");
     } finally {
@@ -119,6 +138,17 @@ export default function ConsumerDetailClient({ consumerId }: { consumerId: strin
       if (consumer && Number.isInteger(q) && q !== consumer.monthly_quota) payload.monthly_quota = q;
       const r = Number(editRate);
       if (consumer && Number.isInteger(r) && r !== consumer.rate_limit_per_minute) payload.rate_limit_per_minute = r;
+
+      if (consumer) {
+        const nextCustomer = editStripeCustomer.trim() || null;
+        const nextSubItem = editStripeSubItem.trim() || null;
+        if (nextCustomer !== (consumer.stripe_customer_id ?? null)) {
+          payload.stripe_customer_id = nextCustomer;
+        }
+        if (nextSubItem !== (consumer.stripe_subscription_item_id ?? null)) {
+          payload.stripe_subscription_item_id = nextSubItem;
+        }
+      }
 
       if (Object.keys(payload).length === 0) {
         setEditSaved(true);
@@ -269,6 +299,40 @@ export default function ConsumerDetailClient({ consumerId }: { consumerId: strin
                 value={editRate}
                 onChange={(e) => setEditRate(e.target.value)}
                 className="input-field mt-2 w-full"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-3 border-t border-zinc-100 pt-4">
+          <div className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+            Stripe metered billing 連携
+          </div>
+          <p className="text-xs text-muted">
+            両方を空にすると Stripe には報告せず内部集計のみになります (手動請求用)。両方を設定すると毎月 1 日の cron
+            で前月分の usage record を <code>action=set</code> で送信します。
+          </p>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="text-sm font-semibold text-primary">Stripe Customer ID</label>
+              <input
+                type="text"
+                value={editStripeCustomer}
+                onChange={(e) => setEditStripeCustomer(e.target.value)}
+                className="input-field mt-2 w-full font-mono"
+                placeholder="cus_..."
+                maxLength={120}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-primary">Subscription Item ID (metered price)</label>
+              <input
+                type="text"
+                value={editStripeSubItem}
+                onChange={(e) => setEditStripeSubItem(e.target.value)}
+                className="input-field mt-2 w-full font-mono"
+                placeholder="si_..."
+                maxLength={120}
               />
             </div>
           </div>
@@ -488,6 +552,59 @@ export default function ConsumerDetailClient({ consumerId }: { consumerId: strin
                         </button>
                       ) : null}
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* Billing periods (Stripe metered billing audit trail) */}
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-500">請求期間 (直近 12 ヶ月)</h2>
+        {billingPeriods.length === 0 ? (
+          <div className="glass-card p-4 text-sm text-muted">
+            まだ集計済みの月はありません。毎月 1 日 17:00 UTC の cron で前月分が集計されます。
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+            <table className="w-full text-sm">
+              <thead className="bg-zinc-50 text-xs uppercase tracking-wider text-zinc-500">
+                <tr>
+                  <th className="px-4 py-3 text-left">期間</th>
+                  <th className="px-4 py-3 text-right">コール数</th>
+                  <th className="px-4 py-3 text-left">Stripe 報告</th>
+                  <th className="px-4 py-3 text-left">usage_record_id</th>
+                  <th className="px-4 py-3 text-left">最終試行</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {billingPeriods.map((p) => (
+                  <tr key={p.id} className="hover:bg-zinc-50">
+                    <td className="px-4 py-3">
+                      {p.period_start} 〜 {p.period_end}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums">{p.call_count.toLocaleString("ja-JP")}</td>
+                    <td className="px-4 py-3 text-xs">
+                      {p.reported_to_stripe_at ? (
+                        <span className="text-emerald-600">{fmtDateTime(p.reported_to_stripe_at)}</span>
+                      ) : p.last_error ? (
+                        <span className="text-rose-600" title={p.last_error}>
+                          失敗
+                        </span>
+                      ) : (
+                        <span className="text-zinc-500">未報告 (Stripe未連携)</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {p.stripe_usage_record_id ? (
+                        <code className="font-mono text-[10px] text-zinc-600">{p.stripe_usage_record_id}</code>
+                      ) : (
+                        <span className="text-xs text-zinc-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-zinc-500">{fmtDateTime(p.last_attempt_at)}</td>
                   </tr>
                 ))}
               </tbody>

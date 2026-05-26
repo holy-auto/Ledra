@@ -32,6 +32,7 @@ type ConsumerRow = {
   status: string;
   monthly_quota: number;
   rate_limit_per_minute: number;
+  stripe_subscription_item_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -47,11 +48,14 @@ export async function GET() {
 
     const { data: consumersRaw, error } = await admin
       .from("passport_api_consumers")
-      .select("id, name, contact_email, status, monthly_quota, rate_limit_per_minute, created_at, updated_at")
+      .select(
+        "id, name, contact_email, status, monthly_quota, rate_limit_per_minute, " +
+          "stripe_subscription_item_id, created_at, updated_at",
+      )
       .order("created_at", { ascending: false });
     if (error) return apiInternalError(error, "passport-consumers GET");
 
-    const consumers = (consumersRaw ?? []) as ConsumerRow[];
+    const consumers = (consumersRaw ?? []) as unknown as ConsumerRow[];
     if (consumers.length === 0) {
       return apiJson({ consumers: [] });
     }

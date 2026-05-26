@@ -30,6 +30,10 @@ const patchSchema = z.object({
   status: z.enum(["active", "suspended", "closed"]).optional(),
   monthly_quota: z.coerce.number().int().min(0).max(10_000_000).optional(),
   rate_limit_per_minute: z.coerce.number().int().min(1).max(10_000).optional(),
+  // Stripe metered billing wiring. Either both set or both empty.
+  // Empty strings are normalized to null so the operator can disconnect.
+  stripe_customer_id: z.string().trim().max(120).nullable().optional(),
+  stripe_subscription_item_id: z.string().trim().max(120).nullable().optional(),
 });
 
 type KeyRow = {
@@ -72,7 +76,10 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 
     const { data: consumer, error: cErr } = await admin
       .from("passport_api_consumers")
-      .select("id, name, contact_email, status, monthly_quota, rate_limit_per_minute, created_at, updated_at")
+      .select(
+        "id, name, contact_email, status, monthly_quota, rate_limit_per_minute, " +
+          "stripe_customer_id, stripe_subscription_item_id, created_at, updated_at",
+      )
       .eq("id", id)
       .maybeSingle();
     if (cErr) return apiInternalError(cErr, "passport-consumer GET");
@@ -105,6 +112,17 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       .map(([endpoint, count]) => ({ endpoint, count }))
       .sort((a, b) => b.count - a.count);
 
+    // 直近 12 ヶ月分の請求期間 (Stripe metered billing 履歴)
+    const { data: periodsRaw } = await admin
+      .from("passport_api_billing_periods")
+      .select(
+        "id, period_start, period_end, call_count, reported_to_stripe_at, " +
+          "stripe_usage_record_id, last_attempt_at, last_error",
+      )
+      .eq("consumer_id", id)
+      .order("period_start", { ascending: false })
+      .limit(12);
+
     return apiJson({
       consumer,
       keys: ((keysRaw ?? []) as KeyRow[]).map(shapeKey),
@@ -114,6 +132,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
         endpoint_breakdown: endpointBreakdown,
         last_call_at: logs[0]?.called_at ?? null,
       },
+      billing_periods: periodsRaw ?? [],
     });
   } catch (e) {
     return apiInternalError(e, "passport-consumer GET");
@@ -142,7 +161,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       .from("passport_api_consumers")
       .update(parsed.data)
       .eq("id", id)
-      .select("id, name, contact_email, status, monthly_quota, rate_limit_per_minute, created_at, updated_at")
+      .select(
+        "id, name, contact_email, status, monthly_quota, rate_limit_per_minute, " +
+          "stripe_customer_id, stripe_subscription_item_id, created_at, updated_at",
+      )
       .maybeSingle();
     if (error) return apiInternalError(error, "passport-consumer PATCH");
     if (!data) return apiNotFound("consumer_not_found");
