@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { DOC_TYPES, type DocType } from "@/types/document";
+import { DOC_TYPES, isDocumentEditable, type DocType } from "@/types/document";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { parsePagination } from "@/lib/api/pagination";
 import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
@@ -321,6 +321,38 @@ export async function PUT(req: NextRequest) {
     }
     const body = parsed.data;
     const id = body.id;
+
+    // 既存帳票の状態を確認し、内容編集の可否をチェック（ステータス変更は別途許可）
+    const isContentEdit =
+      body.items !== undefined ||
+      body.recipient_name !== undefined ||
+      body.recipient_postal_code !== undefined ||
+      body.recipient_address !== undefined ||
+      body.recipient_phone !== undefined ||
+      body.subject !== undefined ||
+      body.period_start !== undefined ||
+      body.period_end !== undefined ||
+      body.payment_terms !== undefined ||
+      body.delivery_date !== undefined ||
+      body.note !== undefined ||
+      body.is_invoice_compliant !== undefined ||
+      body.show_seal !== undefined ||
+      body.show_logo !== undefined ||
+      body.show_bank_info !== undefined ||
+      body.tax_rate !== undefined ||
+      body.is_tax_inclusive !== undefined;
+
+    if (isContentEdit) {
+      const { data: existing } = await supabase
+        .from("documents")
+        .select("doc_type, status")
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .single();
+      if (existing && !isDocumentEditable(existing.doc_type, existing.status)) {
+        return apiValidationError("送付済みの請求書は内容を編集できません。");
+      }
+    }
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
