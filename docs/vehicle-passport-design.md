@@ -238,7 +238,7 @@ opt_out 切替トグルも同ページに配置。
 | **PR-4** | `/c/[public_id]` へのパスポートバッジ追加 + 管理画面からの導線 + **施工店単位の opt-out トグル** | S |
 | **PR-5** | NFC書き込み先切替 + 既存タグの「パスポートURLに更新」UI | S |
 | **PR-6** | 既存証明書のパスポート集約のバッチ backfill | S |
-| **PR-7 (v2)** | **パスポートメタアンカー**：VIN + 全画像txHashのmerkle root を Polygon にアンカー | M |
+| **PR-7 (v2)** | **パスポートメタアンカー**：VIN + 全画像txHashのmerkle root を Polygon にアンカー (2026-05-26 実装) | M |
 
 **v1 完了条件**：PR-1〜4 まで入れば、対外的に「パスポート機能」を名乗れる。PR-5, 6 は後追いで可。
 **v2**: PR-7 でパスポート全体を1つの証拠に集約し、「この車両の全履歴が改ざんされていない」ことを単一 Tx で検証可能にする。
@@ -435,3 +435,54 @@ v1 ではログ集計のみ。請求は手動 reconcile (`passport_api_call_logs
 2. staging で end-to-end 検証
 3. 本番の Vercel 環境変数に `PASSPORT_PUBLIC_ENABLED=true` を追加
 4. NFC タグ書き込み先切替 (PR-5 残作業) と同時にアナウンス
+
+---
+
+## 9. パスポートメタアンカー (PR-7、2026-05-26 実装)
+
+VIN 単位で「この車両の全履歴は改ざんされていない」ことを単一 Tx で
+証明する集約アンカー。`vehicle_passports` に列を増やし、画像単位の
+Polygon アンカー成功後に再計算 + 再アンカーする。
+
+### 9.1 ハッシュ仕様
+
+```
+sha256(  VIN_normalized
+       || "\n"
+       || tx1 || "\n" || tx2 || "\n" || ... || txN  )
+```
+
+- `tx*` は `certificate_images.polygon_tx_hash` (lowercase, 重複除去)
+- 昇順ソートして連結 → 順序非依存
+- 平 SHA-256。Merkle root ではないが「集合全体の完全性」検証には十分。
+  per-cert 包含証明 (inclusion proof) が必要になったら Merkle に差し替え。
+
+実装: `src/lib/passport/metaAnchor.ts#computeMetaAnchorHash`
+(同期的に外部からも再計算可能 / DB 非依存)。
+
+### 9.2 列追加 (vehicle_passports)
+
+| カラム | 用途 |
+|---|---|
+| `meta_anchor_hash` | 上記 sha256 (lowercase hex) |
+| `meta_anchor_tx_hash` | Polygon 上のアンカー tx |
+| `meta_anchor_network` | `polygon` / `amoy` (履歴 verify 用) |
+| `meta_anchor_anchored_at` | アンカー確定時刻 |
+| `meta_anchor_image_count` | 計算時に含めた画像数 |
+| `meta_anchor_cert_count` | 計算時に含めた証明書数 |
+
+### 9.3 再アンカー方針
+
+`upsertVehiclePassport` の末尾で `recomputeAndMaybeAnchor` を呼ぶ。
+
+- 既存 `meta_anchor_hash` と一致 → no-op (Tx を消費しない)
+- 異なる / null → Polygon に anchor、結果を更新
+- Polygon 側エラー時はハッシュだけ保存し tx 列は空のまま (cron で再試行可能)
+
+### 9.4 公開サーフェス
+
+- `/v/[vin]`: ヒーローカード下に「履歴の集約証明」バッジ + Polygonscan リンク
+- `/api/v1/passport/verify`: `meta_anchor` フィールドで `hash` / `tx_hash` /
+  `network` / `image_count` / `cert_count` / `explorer_url` を返却。
+  partner は API 経由で取れる `certificates[].polygon_tx_hash` を
+  ソート連結して `meta_anchor.hash` を再計算 → 一致確認で改ざん検知。
