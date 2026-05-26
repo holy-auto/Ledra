@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getTransferByToken } from "@/lib/passport/transfers/respond";
 import { isTransferTokenFormat } from "@/lib/passport/transfers/tokens";
+import { isPassportPublicEnabled } from "@/lib/passport/featureGate";
 import TransferActions from "./TransferActions";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +36,7 @@ const STATUS_TONE: Record<string, string> = {
 };
 
 export default async function PassportTransferPage({ params }: PageProps) {
+  if (!isPassportPublicEnabled()) notFound();
   const { token } = await params;
   if (!isTransferTokenFormat(token)) notFound();
 

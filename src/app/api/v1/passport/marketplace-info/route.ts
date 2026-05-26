@@ -20,11 +20,13 @@ import {
   apiOk,
   apiError,
   apiInternalError,
+  apiNotFound,
 } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { extractBearer, hasPassportScope, logPassportApiCall, resolvePassportApiKey } from "@/lib/passport/api/keys";
 import { buildPassportVerifyResponse } from "@/lib/passport/api/verify";
+import { isPassportPublicEnabled } from "@/lib/passport/featureGate";
 import { normalizeVin } from "@/lib/passport/normalizeVin";
 import { getClientIp } from "@/lib/rateLimit";
 import { createOrReuseLead } from "@/lib/marketplace/leads";
@@ -35,6 +37,9 @@ export const runtime = "nodejs";
 const ENDPOINT = "GET /api/v1/passport/marketplace-info";
 
 export async function GET(req: NextRequest) {
+  if (!isPassportPublicEnabled()) {
+    return apiNotFound("Not Found");
+  }
   const startedAt = Date.now();
 
   const limited = await checkRateLimit(req, "general");

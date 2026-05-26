@@ -90,6 +90,7 @@ const CRITICAL_ENV_VARS: EnvVarCheck[] = [
   { name: "DEEPFAKE_PROVIDER", required: false, warnOnly: true },
   { name: "DEEPFAKE_API_KEY", required: false, warnOnly: true },
   { name: "DEVICE_ATTESTATION_ENABLED", required: false, warnOnly: true },
+  { name: "PASSPORT_PUBLIC_ENABLED", required: false, warnOnly: true },
   { name: "POLYGON_ANCHOR_ENABLED", required: false, warnOnly: true },
   { name: "POLYGON_NETWORK", required: false, warnOnly: true },
   { name: "POLYGON_RPC_URL", required: false, warnOnly: true },

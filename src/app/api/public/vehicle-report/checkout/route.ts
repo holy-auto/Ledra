@@ -22,6 +22,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiValidationError, apiNotFound, apiForbidden, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { normalizeVin } from "@/lib/passport/normalizeVin";
+import { isPassportPublicEnabled } from "@/lib/passport/featureGate";
 import { getVehicleReportSettings, generateReportAccessToken } from "@/lib/vehicleReport/access";
 
 const schema = z.object({
@@ -37,6 +38,9 @@ function getStripe() {
 }
 
 export async function POST(req: NextRequest) {
+  if (!isPassportPublicEnabled()) {
+    return apiNotFound("Not Found");
+  }
   // Each call hits Stripe to create a Checkout session. Auth preset
   // (10/min/IP) bounds Stripe API spend if the endpoint is abused.
   const limited = await checkRateLimit(req, "auth");

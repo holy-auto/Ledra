@@ -37,6 +37,7 @@ import {
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { extractBearer, hasPassportScope, resolvePassportApiKey } from "@/lib/passport/api/keys";
+import { isPassportPublicEnabled } from "@/lib/passport/featureGate";
 import { claimLead, isLeadTokenFormat } from "@/lib/marketplace/leads";
 
 export const dynamic = "force-dynamic";
@@ -49,6 +50,9 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  if (!isPassportPublicEnabled()) {
+    return apiNotFound("Not Found");
+  }
   const limited = await checkRateLimit(req, "general");
   if (limited) return limited;
 

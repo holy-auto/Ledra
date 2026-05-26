@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getPassportData, getServiceTypeLabel } from "@/lib/passport/getPassportData";
+import { isPassportPublicEnabled } from "@/lib/passport/featureGate";
 import { formatDate } from "@/lib/format";
 import { findValidReportAccess, getVehicleReportSettings, reportCookieName } from "@/lib/vehicleReport/access";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
@@ -15,6 +16,9 @@ type PageProps = {
 };
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  if (!isPassportPublicEnabled()) {
+    return { title: "Not Found", robots: { index: false, follow: false } };
+  }
   const { vin } = await params;
   const data = await getPassportData(vin);
   if (!data) {
@@ -37,6 +41,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 export default async function VehiclePassportPage({ params, searchParams }: PageProps) {
+  if (!isPassportPublicEnabled()) notFound();
   const { vin } = await params;
   const data = await getPassportData(vin);
   if (!data) notFound();

@@ -391,3 +391,45 @@ v1 ではログ集計のみ。請求は手動 reconcile (`passport_api_call_logs
 - consumer / API key 管理用の admin UI (現状は SQL 直接操作)
 - per-consumer 月次クォータ enforcement (現状は記録のみ、ハード遮断は未実装)
 - Stripe metered billing 連携
+
+---
+
+## 8. 公開フィーチャーゲート (2026-05-26 追加)
+
+本番ロンチ前に内部実装を継続するため、anonymous-reachable な公開ルートは
+`PASSPORT_PUBLIC_ENABLED` 環境変数で一括ゲートする。
+
+- `=true`: すべての公開ルートが活きる
+- 未設定 / `=true` 以外 (本番のデフォルト): 下記ルートはすべて 404
+
+判定ヘルパ: `src/lib/passport/featureGate.ts#isPassportPublicEnabled()`
+
+### 8.1 ゲート対象
+
+| ルート | 形態 |
+|---|---|
+| `/v/[vin]` | 公開ページ → `notFound()` |
+| `/api/v1/passport/verify` | API → `apiNotFound` |
+| `/api/v1/passport/marketplace-info` | API → `apiNotFound` |
+| `/api/v1/passport/referrals/claim` | API → `apiNotFound` |
+| `/passport/transfer/[token]` | 受諾ページ → `notFound()` |
+| `/api/passport/transfers/[token]` (GET) | API → `apiNotFound` |
+| `/api/passport/transfers/[token]/accept` | API → `apiNotFound` |
+| `/api/passport/transfers/[token]/reject` | API → `apiNotFound` |
+| `/api/public/vehicle-report/checkout` | API → `apiNotFound` |
+| `/api/public/vehicle-report/unlock` | API → 404 plain |
+| `/c/[public_id]` の「全履歴を見る」バッジ | 非表示 |
+
+### 8.2 ゲート対象外 (内部開発を継続)
+
+- `/admin/vehicles/[id]/passport-transfer` — admin 限定 (gate off 時は警告バナーを表示)
+- `/api/passport/transfers/initiate`, `/api/passport/transfers/cancel` — admin 限定
+- `/api/cron/passport-transfers-expire` — cron 内部
+- `vehicle_passports` upsert (アンカー成功フック) — 内部書き込みは継続
+
+### 8.3 ローンチ手順
+
+1. consumer / API key 管理 UI など TODO を片付ける
+2. staging で end-to-end 検証
+3. 本番の Vercel 環境変数に `PASSPORT_PUBLIC_ENABLED=true` を追加
+4. NFC タグ書き込み先切替 (PR-5 残作業) と同時にアナウンス
