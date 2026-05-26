@@ -391,8 +391,19 @@ v1 ではログ集計のみ。請求は手動 reconcile (`passport_api_call_logs
 - ~~consumer / API key 管理用の admin UI~~ → `/admin/platform/passport-consumers`
   (2026-05-26 実装。一覧 + 詳細で発行/失効/ステータス/クォータ調整。
   raw key は発行直後一度きり表示する Stripe 方式)
-- per-consumer 月次クォータ enforcement (現状は記録のみ、ハード遮断は未実装)
-- Stripe metered billing 連携
+- ~~per-consumer 月次クォータ enforcement~~ → 2026-05-26 実装。
+  `checkPassportMonthlyQuota` を /api/v1/passport/* の入口で
+  COUNT(*) → 429 plan_limit。0=無制限、DB 障害時は fail-open。
+- ~~Stripe metered billing 連携~~ → 2026-05-26 実装。
+  毎月 1 日 17:00 UTC の cron で前月分を `action=set` 報告。
+  passport_api_billing_periods に集計行を残し、Stripe 未連携
+  consumer も内部集計を保持して手動請求に使える。
+- ~~PR-7 メタアンカー失敗の自動 retry~~ → 2026-05-26 実装。
+  毎時 30 分の cron が `meta_anchor_tx_hash IS NULL AND
+  meta_anchor_hash IS NOT NULL` を最大 50 件 ずつ掃き出す。
+- ~~consumer 詳細に直近 100 件の生コールログ~~ → 2026-05-26 実装。
+  on-demand 取得ボタンで passport_api_call_logs を表示
+  (起動時自動取得はせず、画面負荷を回避)。
 
 ---
 

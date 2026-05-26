@@ -45,6 +45,18 @@ type Stats = {
   last_call_at: string | null;
 };
 
+type CallLog = {
+  id: number | string;
+  api_key_id: string | null;
+  endpoint: string;
+  vin_queried_normalized: string | null;
+  response_status: number;
+  response_time_ms: number | null;
+  ip_hash: string | null;
+  user_agent: string | null;
+  called_at: string;
+};
+
 const KNOWN_SCOPES = ["passport:verify", "passport:marketplace", "*"] as const;
 
 const STATUS_LABEL: Record<string, string> = {
@@ -75,6 +87,9 @@ export default function ConsumerDetailClient({ consumerId }: { consumerId: strin
   const [keys, setKeys] = useState<KeyItem[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [billingPeriods, setBillingPeriods] = useState<BillingPeriod[]>([]);
+  const [callLogs, setCallLogs] = useState<CallLog[]>([]);
+  const [loadingCalls, setLoadingCalls] = useState(false);
+  const [callsLoadedOnce, setCallsLoadedOnce] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
@@ -124,6 +139,24 @@ export default function ConsumerDetailClient({ consumerId }: { consumerId: strin
   useEffect(() => {
     void load();
   }, [load]);
+
+  const loadCalls = useCallback(async () => {
+    setLoadingCalls(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/admin/platform/passport-consumers/${consumerId}/calls?limit=100`, {
+        cache: "no-store",
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j?.message ?? "load_failed");
+      setCallLogs((j.calls ?? []) as CallLog[]);
+      setCallsLoadedOnce(true);
+    } catch {
+      setErr("コール履歴の取得に失敗しました。");
+    } finally {
+      setLoadingCalls(false);
+    }
+  }, [consumerId]);
 
   async function saveEdit() {
     setSavingEdit(true);
@@ -551,6 +584,79 @@ export default function ConsumerDetailClient({ consumerId }: { consumerId: strin
                           失効
                         </button>
                       ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* Raw call logs (on-demand fetch — heavy column, hide by default) */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-500">直近のコール (最大 100 件)</h2>
+          <button
+            type="button"
+            onClick={loadCalls}
+            disabled={loadingCalls}
+            className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50 disabled:opacity-60"
+          >
+            {loadingCalls ? "読み込み中..." : callsLoadedOnce ? "再読込" : "読み込む"}
+          </button>
+        </div>
+        {!callsLoadedOnce ? (
+          <div className="glass-card p-4 text-sm text-muted">
+            「読み込む」を押すと直近 100 件の生コールログを表示します (起動時には自動取得しません)。
+          </div>
+        ) : callLogs.length === 0 ? (
+          <div className="glass-card p-4 text-sm text-muted">該当するコール履歴がありません。</div>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+            <table className="w-full text-sm">
+              <thead className="bg-zinc-50 text-xs uppercase tracking-wider text-zinc-500">
+                <tr>
+                  <th className="px-3 py-2 text-left">時刻</th>
+                  <th className="px-3 py-2 text-left">エンドポイント</th>
+                  <th className="px-3 py-2 text-left">VIN</th>
+                  <th className="px-3 py-2 text-right">Status</th>
+                  <th className="px-3 py-2 text-right">ms</th>
+                  <th className="px-3 py-2 text-left">UA</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {callLogs.map((c) => (
+                  <tr key={String(c.id)} className="hover:bg-zinc-50">
+                    <td className="px-3 py-2 text-xs text-zinc-500">{fmtDateTime(c.called_at)}</td>
+                    <td className="px-3 py-2">
+                      <code className="font-mono text-[11px]">{c.endpoint}</code>
+                    </td>
+                    <td className="px-3 py-2">
+                      {c.vin_queried_normalized ? (
+                        <code className="font-mono text-[11px]">…{c.vin_queried_normalized.slice(-6)}</code>
+                      ) : (
+                        <span className="text-xs text-zinc-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      <span
+                        className={
+                          c.response_status >= 500
+                            ? "text-rose-600 font-semibold"
+                            : c.response_status >= 400
+                              ? "text-amber-700"
+                              : "text-emerald-700"
+                        }
+                      >
+                        {c.response_status}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right text-xs tabular-nums text-zinc-500">
+                      {c.response_time_ms ?? "—"}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-zinc-500" title={c.user_agent ?? ""}>
+                      {c.user_agent ? (c.user_agent.length > 40 ? `${c.user_agent.slice(0, 40)}…` : c.user_agent) : "—"}
                     </td>
                   </tr>
                 ))}
