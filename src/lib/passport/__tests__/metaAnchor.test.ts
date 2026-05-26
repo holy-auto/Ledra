@@ -10,7 +10,7 @@ vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({}) },
 }));
 
-import { computeMetaAnchorHash, recomputeAndMaybeAnchor } from "../metaAnchor";
+import { computeMetaAnchorHash, recomputeAndMaybeAnchor, retryAnchorForPendingPassport } from "../metaAnchor";
 
 describe("computeMetaAnchorHash", () => {
   it("is order-independent across the tx hash list", () => {
@@ -127,12 +127,12 @@ beforeEach(() => {
 
 describe("recomputeAndMaybeAnchor", () => {
   it("noop when no anchored images exist", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const admin = fakeAdmin({
       vehicles: [{ id: "v1" }],
       certificates: [{ id: "c1" }],
       images: [],
       passport: null,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     }) as any;
     const res = await recomputeAndMaybeAnchor(admin, "vin1");
     expect(res.status).toBe("noop");
@@ -218,5 +218,92 @@ describe("recomputeAndMaybeAnchor", () => {
       meta_anchor_cert_count: 1,
     });
     expect((updated as unknown as FakeRow).meta_anchor_tx_hash).toBeUndefined();
+  });
+});
+
+// --- retryAnchorForPendingPassport -----------------------------------------
+
+function fakeRetryAdmin({
+  row,
+  onUpdate,
+}: {
+  row: { meta_anchor_hash: string | null; meta_anchor_tx_hash: string | null } | null;
+  onUpdate?: (doc: FakeRow) => void;
+}) {
+  return {
+    from: (table: string) => {
+      if (table !== "vehicle_passports") throw new Error(`unexpected ${table}`);
+      return {
+        select: () => ({
+          eq: () => ({ maybeSingle: () => Promise.resolve({ data: row, error: null }) }),
+        }),
+        update: (doc: FakeRow) => {
+          onUpdate?.(doc);
+          return { eq: () => Promise.resolve({ data: null, error: null }) };
+        },
+      };
+    },
+  };
+}
+
+describe("retryAnchorForPendingPassport", () => {
+  it("noop when no meta_anchor_hash is set (nothing to retry)", async () => {
+    const admin = fakeRetryAdmin({
+      row: { meta_anchor_hash: null, meta_anchor_tx_hash: null },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    }) as any;
+    const res = await retryAnchorForPendingPassport(admin, "vin");
+    expect(res.status).toBe("noop");
+    if (res.status === "noop") expect(res.reason).toBe("no_pending_hash");
+    expect(mocks.anchorToPolygon).not.toHaveBeenCalled();
+  });
+
+  it("noop when tx is already populated (race with inline path)", async () => {
+    const admin = fakeRetryAdmin({
+      row: { meta_anchor_hash: "abc", meta_anchor_tx_hash: "0xexists" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    }) as any;
+    const res = await retryAnchorForPendingPassport(admin, "vin");
+    expect(res.status).toBe("noop");
+    if (res.status === "noop") expect(res.reason).toBe("already_anchored");
+    expect(mocks.anchorToPolygon).not.toHaveBeenCalled();
+  });
+
+  it("anchors the existing stored hash and persists the tx", async () => {
+    mocks.anchorToPolygon.mockResolvedValueOnce({
+      anchored: true,
+      txHash: "0xnew",
+      network: "amoy",
+    });
+    let updated: FakeRow | null = null;
+    const admin = fakeRetryAdmin({
+      row: { meta_anchor_hash: "abc", meta_anchor_tx_hash: null },
+      onUpdate: (doc) => (updated = doc),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    }) as any;
+    const res = await retryAnchorForPendingPassport(admin, "vin");
+    expect(res.status).toBe("anchored");
+    if (res.status === "anchored") {
+      expect(res.txHash).toBe("0xnew");
+      expect(res.network).toBe("amoy");
+    }
+    expect(mocks.anchorToPolygon).toHaveBeenCalledExactlyOnceWith("abc");
+    expect(updated).toMatchObject({
+      meta_anchor_tx_hash: "0xnew",
+      meta_anchor_network: "amoy",
+    });
+  });
+
+  it("returns anchor_failed and does NOT clobber the hash on continued failure", async () => {
+    mocks.anchorToPolygon.mockResolvedValueOnce({ anchored: false, txHash: null, network: null });
+    let updated: FakeRow | null = null;
+    const admin = fakeRetryAdmin({
+      row: { meta_anchor_hash: "abc", meta_anchor_tx_hash: null },
+      onUpdate: (doc) => (updated = doc),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    }) as any;
+    const res = await retryAnchorForPendingPassport(admin, "vin");
+    expect(res.status).toBe("anchor_failed");
+    expect(updated).toBeNull();
   });
 });

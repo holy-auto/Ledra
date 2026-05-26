@@ -191,3 +191,59 @@ export async function recomputeAndMaybeAnchor(
     certCount,
   };
 }
+
+export type RetryPendingResult =
+  | { status: "noop"; reason: "no_pending_hash" | "already_anchored" }
+  | { status: "anchored"; metaHash: string; txHash: string; network: string }
+  | { status: "anchor_failed"; metaHash: string };
+
+/**
+ * Retry the Polygon anchor for a passport row whose `meta_anchor_hash` was
+ * computed but `meta_anchor_tx_hash` is null (Polygon write failed at the
+ * time). Unlike `recomputeAndMaybeAnchor`, this does NOT short-circuit on
+ * hash equality — the whole point is to fix the missing tx.
+ *
+ * Used by the hourly retry cron. Safe to invoke at any time: it no-ops
+ * cleanly when the row is already anchored or no pending hash exists.
+ */
+export async function retryAnchorForPendingPassport(
+  admin: AdminDb,
+  vinNormalized: string,
+): Promise<RetryPendingResult> {
+  const vin = vinNormalized.trim().toUpperCase();
+
+  const { data: rowRaw } = await admin
+    .from("vehicle_passports")
+    .select("meta_anchor_hash, meta_anchor_tx_hash")
+    .eq("vin_code_normalized", vin)
+    .maybeSingle();
+  const row = rowRaw as { meta_anchor_hash: string | null; meta_anchor_tx_hash: string | null } | null;
+
+  if (!row?.meta_anchor_hash) return { status: "noop", reason: "no_pending_hash" };
+  if (row.meta_anchor_tx_hash) return { status: "noop", reason: "already_anchored" };
+
+  const anchorResult = await anchorToPolygon(row.meta_anchor_hash);
+  if (!anchorResult.anchored || !anchorResult.txHash) {
+    logger.warn("[meta-anchor-retry] polygon still failing", {
+      vin: vin.slice(-6),
+      metaHash: row.meta_anchor_hash.slice(0, 12),
+    });
+    return { status: "anchor_failed", metaHash: row.meta_anchor_hash };
+  }
+
+  await admin
+    .from("vehicle_passports")
+    .update({
+      meta_anchor_tx_hash: anchorResult.txHash,
+      meta_anchor_network: anchorResult.network,
+      meta_anchor_anchored_at: new Date().toISOString(),
+    })
+    .eq("vin_code_normalized", vin);
+
+  return {
+    status: "anchored",
+    metaHash: row.meta_anchor_hash,
+    txHash: anchorResult.txHash,
+    network: anchorResult.network ?? "polygon",
+  };
+}
