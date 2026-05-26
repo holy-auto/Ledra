@@ -388,7 +388,9 @@ v1 ではログ集計のみ。請求は手動 reconcile (`passport_api_call_logs
 
 ### 7.4 既知の TODO
 
-- consumer / API key 管理用の admin UI (現状は SQL 直接操作)
+- ~~consumer / API key 管理用の admin UI~~ → `/admin/platform/passport-consumers`
+  (2026-05-26 実装。一覧 + 詳細で発行/失効/ステータス/クォータ調整。
+  raw key は発行直後一度きり表示する Stripe 方式)
 - per-consumer 月次クォータ enforcement (現状は記録のみ、ハード遮断は未実装)
 - Stripe metered billing 連携
 
