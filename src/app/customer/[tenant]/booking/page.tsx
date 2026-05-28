@@ -128,7 +128,12 @@ export default function BookingPage() {
   const [formNote, setFormNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
-  const [doneReservation, setDoneReservation] = useState<{ date: string; start: string; end: string } | null>(null);
+  const [doneReservation, setDoneReservation] = useState<{
+    date: string;
+    start: string;
+    end: string;
+    intake?: { url: string; short_id: string; expires_at: string } | null;
+  } | null>(null);
 
   // ── tenant info ──
   const [tenantName, setTenantName] = useState<string>("");
@@ -257,6 +262,8 @@ export default function BookingPage() {
           start_time: selectedSlot.start_time.slice(0, 5),
           end_time: selectedSlot.end_time.slice(0, 5),
           note: formNote || undefined,
+          // 来店前の事前カルテ用 intake invitation を併発してもらう
+          request_intake: true,
         }),
       });
       const j = await res.json().catch(() => ({}));
@@ -267,6 +274,7 @@ export default function BookingPage() {
         date: selectedDate,
         start: selectedSlot.start_time.slice(0, 5),
         end: selectedSlot.end_time.slice(0, 5),
+        intake: j?.intake ?? null,
       });
       // キャッシュ削除（空き状況を再取得させる）
       setSlotsCache((prev) => {
@@ -342,6 +350,25 @@ export default function BookingPage() {
               <span className="font-semibold text-primary">{formName} 様</span>
             </div>
           </div>
+
+          {doneReservation.intake && (
+            <div className="rounded-xl border border-accent/30 bg-accent-dim p-4 mb-4 text-left">
+              <div className="text-sm font-semibold text-primary mb-2">📝 事前カルテのご入力 (任意)</div>
+              <p className="text-xs text-secondary mb-3 leading-relaxed">
+                来店前に住所・生年月日などの基本情報をご入力いただけます。
+                身分証の写真撮影で自動入力も可能です。記入は任意です。
+              </p>
+              <a
+                href={doneReservation.intake.url}
+                target="_blank"
+                rel="noreferrer"
+                className="block w-full py-2.5 rounded-lg bg-accent text-white text-center text-sm font-medium hover:bg-blue-700"
+              >
+                事前カルテを記入する
+              </a>
+            </div>
+          )}
+
           <button
             onClick={() => {
               setStep("calendar");

@@ -56,7 +56,8 @@ export interface CreateIntakeInput {
   contactEmail?: string | null;
   contactPhone?: string | null;
   expiryDays?: number;
-  createdBy: string;
+  /** auth.users.id. 公開予約フローなど認証ユーザがいない経路では null を渡す. */
+  createdBy: string | null;
   baseUrl: string;
 }
 
@@ -85,7 +86,7 @@ export async function createIntakeInvitation(input: CreateIntakeInput): Promise<
         label: input.label ?? null,
         contact_email: input.contactEmail ?? null,
         contact_phone: input.contactPhone ?? null,
-        created_by: input.createdBy,
+        created_by: input.createdBy ?? null,
         expires_at: expiresAt.toISOString(),
       })
       .select("id, short_id, expires_at")

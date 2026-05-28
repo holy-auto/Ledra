@@ -1,5 +1,6 @@
-import { View, ScrollView, StyleSheet } from "react-native";
-import { Text, Card, Button, Divider, ActivityIndicator, Chip } from "react-native-paper";
+import { useState } from "react";
+import { View, ScrollView, StyleSheet, Share } from "react-native";
+import { Text, Card, Button, Divider, ActivityIndicator, Chip, Dialog, Portal, Snackbar } from "react-native-paper";
 import { useLocalSearchParams, router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
@@ -28,6 +29,10 @@ interface Vehicle {
 export default function CustomerDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuthStore();
+
+  const [intakeBusy, setIntakeBusy] = useState(false);
+  const [intake, setIntake] = useState<{ url: string; expires_at: string } | null>(null);
+  const [snackbar, setSnackbar] = useState<string | null>(null);
 
   const { data: customer, isLoading } = useQuery({
     queryKey: ["customer", id],
@@ -130,6 +135,48 @@ export default function CustomerDetailScreen() {
       </View>
 
       <Button
+        mode="outlined"
+        icon="qrcode"
+        style={styles.intakeButton}
+        loading={intakeBusy}
+        disabled={intakeBusy}
+        onPress={async () => {
+          setIntakeBusy(true);
+          try {
+            const { data: sessionData } = await supabase.auth.getSession();
+            const token = sessionData?.session?.access_token;
+            if (!token) {
+              setSnackbar("認証セッションがありません");
+              return;
+            }
+            const apiBase = process.env.EXPO_PUBLIC_API_URL!;
+            const baseRoot = apiBase.replace(/\/api\/mobile\/?$/, "");
+            const res = await fetch(`${baseRoot}/api/mobile/customer-intakes`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+              body: JSON.stringify({
+                label: `${customer.name} 様 事前カルテ`,
+                contact_email: customer.email,
+                contact_phone: customer.phone,
+              }),
+            });
+            const j = await res.json().catch(() => null);
+            if (!res.ok || !j?.ok) {
+              setSnackbar(j?.error?.message ?? "発行に失敗しました");
+              return;
+            }
+            setIntake({ url: j.url, expires_at: j.expires_at });
+          } catch (e) {
+            setSnackbar(e instanceof Error ? e.message : "通信エラー");
+          } finally {
+            setIntakeBusy(false);
+          }
+        }}
+      >
+        事前カルテURL発行
+      </Button>
+
+      <Button
         mode="contained"
         style={styles.editButton}
         buttonColor="#1a1a2e"
@@ -137,6 +184,48 @@ export default function CustomerDetailScreen() {
       >
         編集
       </Button>
+
+      <Portal>
+        <Dialog visible={!!intake} onDismiss={() => setIntake(null)}>
+          <Dialog.Icon icon="link-variant" />
+          <Dialog.Title style={{ textAlign: "center" }}>事前カルテURLを発行しました</Dialog.Title>
+          <Dialog.Content>
+            <Text variant="bodySmall" style={{ color: "#666", marginBottom: 8 }}>
+              このURLを顧客に共有してください。期限: {intake?.expires_at?.slice(0, 10)}
+            </Text>
+            <Text selectable variant="bodySmall" style={{ backgroundColor: "#f4f4f5", padding: 8, borderRadius: 6 }}>
+              {intake?.url}
+            </Text>
+            <Text variant="bodySmall" style={{ color: "#a02525", marginTop: 8 }}>
+              ※ このURLは今だけ表示されます。閉じると再表示できません。
+            </Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setIntake(null)}>閉じる</Button>
+            <Button
+              mode="contained"
+              buttonColor="#1a1a2e"
+              onPress={async () => {
+                if (!intake) return;
+                try {
+                  await Share.share({
+                    message: `事前カルテのご入力をお願いします:\n${intake.url}`,
+                    url: intake.url,
+                  });
+                } catch {
+                  // share キャンセルは無視
+                }
+              }}
+            >
+              共有
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
+
+      <Snackbar visible={!!snackbar} onDismiss={() => setSnackbar(null)} duration={3000}>
+        {snackbar ?? ""}
+      </Snackbar>
     </ScrollView>
   );
 }
@@ -170,5 +259,6 @@ const styles = StyleSheet.create({
   vehicleTitle: { fontWeight: "600", color: "#1a1a2e" },
   sub: { color: "#71717a", marginTop: 2 },
   empty: { color: "#71717a", textAlign: "center", marginTop: 16 },
+  intakeButton: { marginHorizontal: 12, marginTop: 4 },
   editButton: { margin: 12, marginBottom: 32 },
 });
