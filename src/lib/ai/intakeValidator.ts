@@ -3,14 +3,18 @@
  *
  * パイプライン:
  *   1. ルール検証 (postal/birth_date/email/phone/address) — 純関数、即時
- *   2. AI 検証 (Haiku 4.5) — 本物の顧客情報か / 異常パターン検知
+ *   2. AI 検証 (Sonnet 4.6) — 本物の顧客情報か / 異常パターン検知
  *
  * いずれかでフラグが立ったら手動レビューへ. 両方 pass なら自動承認可.
+ *
+ * Sonnet 4.6 を採用する理由: Haiku 4.5 は明確なテスト/ダミー検出は得意だが、
+ * 住所と郵便番号の地域整合性 / 微妙な偽情報 / 多言語名の判断で精度が落ちる.
+ * 1 件あたり ~$0.005 (約 0.75 円) のコスト増で誤検知/見逃しを大きく削減できる.
  */
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { withRetry } from "@/lib/http/withRetry";
-import { getAnthropicClient, AI_MODEL_FAST } from "@/lib/ai/client";
+import { getAnthropicClient, AI_MODEL } from "@/lib/ai/client";
 import { containsMyNumber } from "@/lib/identity/ocrFilter";
 
 // ─────────────────────────────────────────────
@@ -180,20 +184,27 @@ const AI_SYSTEM_PROMPT = `あなたは日本の自動車整備店の顧客カル
 受け取ったフォーム内容が「本物の顧客が本気で記入したもの」か「テスト/いたずら/明らかな入力ミス」かを判定します。
 
 【判断基準】
-- 氏名・住所・電話・メール・生年月日が現実的な値か
-- 住所と郵便番号の地域整合性 (例: 東京都の住所に北海道の郵便番号は不整合)
-- 明らかなキー入力テスト (asdf, aaaa, 123 等) や悪意のあるテキスト
-- 不審な命名 (例: "テスト 太郎"、"ああああ"、企業名のみ等)
+- 氏名: 実在しそうな日本人名 / 自然な漢字・カナ表記か。"テスト 太郎"・"ああああ"・"asdf"・企業名のみは怪しい。
+- 氏名カナ: 漢字氏名と整合するか (例: 名前=山田太郎、カナ=ヤマダタロウ は整合)
+- 住所: 日本の住所体系として自然か。"〇〇県〇〇市..." の形式が崩れていないか。
+- 郵便番号⇄住所の地域整合性: 番号上位 3 桁から推定される地域 (例: 060=北海道札幌、150=東京都渋谷、530=大阪市北区) が住所の都道府県・市区と矛盾していないか。微妙な隣接市町村レベルの差異は warning、明確に違う都道府県なら error。
+- 電話番号: 日本の市外局番として有効か (03/06/045/092 等、または 070/080/090 携帯)。
+- メールアドレス: フリーメールでもよいが、文字列として明らかに人為的な悪意 (例: a@a.aa) でないか。
+- 生年月日: 現実的な範囲か (1900-2010 程度)。未来日や 200 歳超は error。
+- 備考: 業務無関係な暴言・スパム・他人を装う記述がないか。
 
 【絶対しないこと】
 - 個人番号 (マイナンバー 12 桁) を出力に含めない
 - 個別の顧客を識別する追加情報の推測 (検索や生成)
+- 不確実なフィールドを error にしない (warning に留める)
 
 【出力形式】
-- is_likely_real_customer: 本物っぽい場合 true
-- confidence: 0.0〜1.0 (自信度)
-- reasoning: 判断根拠を 1 文 (50 文字以内)
-- flags: 個別のフィールドで気になる点 (空配列でも可)`;
+- is_likely_real_customer: 全体として「本物」と判断すれば true
+- confidence: 0.0〜1.0 (判定への自信度)
+- reasoning: 判断根拠を 1〜2 文 (100 文字以内)
+- flags: 個別フィールドの問題リスト (空配列でも可)
+  - severity="error": 明確に矛盾・偽情報・無効。手動レビュー必須。
+  - severity="warning": 怪しいが断定できない。`;
 
 async function aiValidate(fields: IntakeFields): Promise<{
   ok: boolean;
@@ -218,8 +229,8 @@ async function aiValidate(fields: IntakeFields): Promise<{
 
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
-        max_tokens: 512,
+        model: AI_MODEL,
+        max_tokens: 768,
         system: AI_SYSTEM_PROMPT,
         messages: [
           {
