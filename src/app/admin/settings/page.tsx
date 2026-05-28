@@ -346,6 +346,25 @@ export default async function AdminSettingsPage() {
         <FollowUpSettings />
       </section>
 
+      {/* AI 自動入力 */}
+      <section className="glass-card p-5">
+        <div className="mb-4">
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">AI AUTOMATION</div>
+          <div className="mt-1 text-base font-semibold text-primary inline-flex items-center gap-1.5">
+            AI 自動入力の設定
+            <HelpTooltip>
+              施工証明書・車両登録・顧客 intake・案件ワークフローの各フィールドを「AI 自動入力 / AI 提案 / 手動」のどれにするか、テナント単位で設定します。情報ソース (写真 / ヒアリング / 過去事例 等) の参照可否も切替可能。
+            </HelpTooltip>
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            ワークフロー全体の入力工数を AI で削減しつつ、フィールド単位で「人が見てから反映」「AI には触らせない」を細かく指定できます。
+          </p>
+        </div>
+        <Link href="/admin/settings/ai-automation" className="btn-secondary">
+          ✨ AI 自動入力の設定を開く →
+        </Link>
+      </section>
+
       {/* Security */}
       <section className="glass-card p-5">
         <div className="mb-4">
