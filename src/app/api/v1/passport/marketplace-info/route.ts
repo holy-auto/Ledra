@@ -20,11 +20,19 @@ import {
   apiOk,
   apiError,
   apiInternalError,
+  apiNotFound,
 } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import { extractBearer, hasPassportScope, logPassportApiCall, resolvePassportApiKey } from "@/lib/passport/api/keys";
+import {
+  checkPassportMonthlyQuota,
+  extractBearer,
+  hasPassportScope,
+  logPassportApiCall,
+  resolvePassportApiKey,
+} from "@/lib/passport/api/keys";
 import { buildPassportVerifyResponse } from "@/lib/passport/api/verify";
+import { isPassportPublicEnabled } from "@/lib/passport/featureGate";
 import { normalizeVin } from "@/lib/passport/normalizeVin";
 import { getClientIp } from "@/lib/rateLimit";
 import { createOrReuseLead } from "@/lib/marketplace/leads";
@@ -35,6 +43,9 @@ export const runtime = "nodejs";
 const ENDPOINT = "GET /api/v1/passport/marketplace-info";
 
 export async function GET(req: NextRequest) {
+  if (!isPassportPublicEnabled()) {
+    return apiNotFound("Not Found");
+  }
   const startedAt = Date.now();
 
   const limited = await checkRateLimit(req, "general");
@@ -53,6 +64,27 @@ export async function GET(req: NextRequest) {
 
   const consumerLimited = await checkRateLimit(req, "general", `passport-consumer:${auth.ctx.consumerId}`);
   if (consumerLimited) return consumerLimited;
+
+  const quota = await checkPassportMonthlyQuota(admin, auth.ctx.consumerId, auth.ctx.monthlyQuota);
+  if (!quota.allowed) {
+    void logPassportApiCall({
+      admin,
+      apiKeyId: auth.ctx.keyId,
+      consumerId: auth.ctx.consumerId,
+      endpoint: ENDPOINT,
+      vinQueried: null,
+      responseStatus: 429,
+      responseTimeMs: Date.now() - startedAt,
+      ip: getClientIp(req),
+      userAgent: req.headers.get("user-agent"),
+    });
+    return apiError({
+      code: "plan_limit",
+      message: "今月のリクエスト上限に達しました。",
+      status: 429,
+      data: { used: quota.used, limit: quota.limit },
+    });
+  }
 
   const url = new URL(req.url);
   const vinRaw = (url.searchParams.get("vin") ?? "").trim();

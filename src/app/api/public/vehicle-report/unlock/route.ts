@@ -15,6 +15,7 @@ import Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripe/client";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import { isPassportPublicEnabled } from "@/lib/passport/featureGate";
 import { reportCookieName, REPORT_ACCESS_VALIDITY_DAYS } from "@/lib/vehicleReport/access";
 
 export const runtime = "nodejs";
@@ -33,6 +34,9 @@ function appBaseUrl(): string {
 }
 
 export async function GET(req: NextRequest) {
+  if (!isPassportPublicEnabled()) {
+    return new NextResponse("Not Found", { status: 404 });
+  }
   const limited = await checkRateLimit(req, "auth");
   if (limited) return limited;
 

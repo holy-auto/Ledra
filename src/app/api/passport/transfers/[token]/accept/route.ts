@@ -11,6 +11,7 @@ import { apiOk, apiValidationError, apiNotFound, apiError, apiInternalError } fr
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { acceptTransferByToken } from "@/lib/passport/transfers/respond";
 import { isTransferTokenFormat } from "@/lib/passport/transfers/tokens";
+import { isPassportPublicEnabled } from "@/lib/passport/featureGate";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,8 @@ const schema = z.object({
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ token: string }> }) {
   try {
+    if (!isPassportPublicEnabled()) return apiNotFound("リンクが無効です。");
+
     // Sensitive: tighter limiter to slow down token-bruteforce
     // attempts and to bound retries from a hostile recipient.
     const limited = await checkRateLimit(req, "sensitive");

@@ -36,7 +36,13 @@ import {
 } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import { extractBearer, hasPassportScope, resolvePassportApiKey } from "@/lib/passport/api/keys";
+import {
+  checkPassportMonthlyQuota,
+  extractBearer,
+  hasPassportScope,
+  resolvePassportApiKey,
+} from "@/lib/passport/api/keys";
+import { isPassportPublicEnabled } from "@/lib/passport/featureGate";
 import { claimLead, isLeadTokenFormat } from "@/lib/marketplace/leads";
 
 export const dynamic = "force-dynamic";
@@ -49,6 +55,9 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  if (!isPassportPublicEnabled()) {
+    return apiNotFound("Not Found");
+  }
   const limited = await checkRateLimit(req, "general");
   if (limited) return limited;
 
@@ -64,6 +73,16 @@ export async function POST(req: NextRequest) {
 
   const consumerLimited = await checkRateLimit(req, "general", `passport-consumer:${auth.ctx.consumerId}`);
   if (consumerLimited) return consumerLimited;
+
+  const quota = await checkPassportMonthlyQuota(admin, auth.ctx.consumerId, auth.ctx.monthlyQuota);
+  if (!quota.allowed) {
+    return apiError({
+      code: "plan_limit",
+      message: "今月のリクエスト上限に達しました。",
+      status: 429,
+      data: { used: quota.used, limit: quota.limit },
+    });
+  }
 
   let payload: z.infer<typeof bodySchema>;
   try {

@@ -1,4 +1,6 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { recomputeAndMaybeAnchor } from "@/lib/passport/metaAnchor";
+import { logger } from "@/lib/logger";
 
 /**
  * Called after a Polygon anchor succeeds for a certificate image.
@@ -15,11 +17,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 export async function upsertVehiclePassport(certId: string): Promise<void> {
   const admin = createServiceRoleAdmin("passport upsert — triggered by polygon anchor success");
 
-  const { data: certRaw } = await admin
-    .from("certificates")
-    .select("vehicle_id")
-    .eq("id", certId)
-    .maybeSingle();
+  const { data: certRaw } = await admin.from("certificates").select("vehicle_id").eq("id", certId).maybeSingle();
   const cert = certRaw as { vehicle_id: string | null } | null;
   if (!cert?.vehicle_id) return;
 
@@ -51,10 +49,7 @@ export async function upsertVehiclePassport(certId: string): Promise<void> {
   const vehicleIds = vinVehicles.map((v) => v.id);
 
   // Certificates linked to those vehicles
-  const { data: allCerts } = await admin
-    .from("certificates")
-    .select("id, tenant_id")
-    .in("vehicle_id", vehicleIds);
+  const { data: allCerts } = await admin.from("certificates").select("id, tenant_id").in("vehicle_id", vehicleIds);
   if (!allCerts?.length) return;
 
   const certIds = allCerts.map((c: { id: string }) => c.id);
@@ -66,9 +61,7 @@ export async function upsertVehiclePassport(certId: string): Promise<void> {
     .in("certificate_id", certIds)
     .not("polygon_tx_hash", "is", null);
 
-  const anchoredCertIdSet = new Set(
-    (anchoredImgRows ?? []).map((r: { certificate_id: string }) => r.certificate_id),
-  );
+  const anchoredCertIdSet = new Set((anchoredImgRows ?? []).map((r: { certificate_id: string }) => r.certificate_id));
   const anchoredCerts = allCerts.filter((c: { id: string }) => anchoredCertIdSet.has(c.id));
 
   const anchoredCertCount = anchoredCerts.length;
@@ -88,4 +81,17 @@ export async function upsertVehiclePassport(certId: string): Promise<void> {
     },
     { onConflict: "vin_code_normalized" },
   );
+
+  // PR-7: refresh the VIN-level meta-anchor. No-op when the hash hasn't
+  // changed since last upsert (the common case), so we don't burn Polygon
+  // gas on counter-only updates.
+  try {
+    await recomputeAndMaybeAnchor(admin, vin);
+  } catch (e) {
+    // Never let meta-anchor failure block the per-image anchor flow.
+    logger.warn("[meta-anchor] recomputeAndMaybeAnchor threw", {
+      vin: vin.slice(-6),
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
 }

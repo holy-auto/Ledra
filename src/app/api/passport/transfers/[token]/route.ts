@@ -15,11 +15,14 @@ import { apiOk, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { getTransferByToken } from "@/lib/passport/transfers/respond";
 import { isTransferTokenFormat } from "@/lib/passport/transfers/tokens";
+import { isPassportPublicEnabled } from "@/lib/passport/featureGate";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ token: string }> }) {
   try {
+    if (!isPassportPublicEnabled()) return apiNotFound("リンクが無効です。");
+
     const limited = await checkRateLimit(req, "general");
     if (limited) return limited;
 

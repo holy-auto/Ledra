@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  checkPassportMonthlyQuota,
   extractBearer,
   generatePassportApiKey,
   hasPassportScope,
@@ -127,7 +128,7 @@ describe("resolvePassportApiKey", () => {
           revoked_at: null,
           expires_at: null,
         },
-        consumerRow: { status: "suspended", rate_limit_per_minute: 60 },
+        consumerRow: { status: "suspended", rate_limit_per_minute: 60, monthly_quota: 1000 },
       }),
       "lpk_live_xxxxxxxx",
     );
@@ -145,7 +146,7 @@ describe("resolvePassportApiKey", () => {
           revoked_at: null,
           expires_at: null,
         },
-        consumerRow: { status: "active", rate_limit_per_minute: 60 },
+        consumerRow: { status: "active", rate_limit_per_minute: 60, monthly_quota: 1000 },
       }),
       "lpk_live_xxxxxxxx",
     );
@@ -154,20 +155,24 @@ describe("resolvePassportApiKey", () => {
       expect(r.ctx.consumerId).toBe("c1");
       expect(r.ctx.scopes).toEqual(["passport:verify"]);
       expect(r.ctx.rateLimitPerMinute).toBe(60);
+      expect(r.ctx.monthlyQuota).toBe(1000);
     }
   });
 });
 
 describe("hasPassportScope", () => {
   it("returns true with wildcard", () => {
-    expect(hasPassportScope({ consumerId: "c", keyId: "k", scopes: ["*"], rateLimitPerMinute: 60 }, "anything")).toBe(
-      true,
-    );
+    expect(
+      hasPassportScope(
+        { consumerId: "c", keyId: "k", scopes: ["*"], rateLimitPerMinute: 60, monthlyQuota: 1000 },
+        "anything",
+      ),
+    ).toBe(true);
   });
   it("returns true when scope is present", () => {
     expect(
       hasPassportScope(
-        { consumerId: "c", keyId: "k", scopes: ["passport:verify"], rateLimitPerMinute: 60 },
+        { consumerId: "c", keyId: "k", scopes: ["passport:verify"], rateLimitPerMinute: 60, monthlyQuota: 1000 },
         "passport:verify",
       ),
     ).toBe(true);
@@ -175,9 +180,51 @@ describe("hasPassportScope", () => {
   it("returns false otherwise", () => {
     expect(
       hasPassportScope(
-        { consumerId: "c", keyId: "k", scopes: ["passport:read"], rateLimitPerMinute: 60 },
+        { consumerId: "c", keyId: "k", scopes: ["passport:read"], rateLimitPerMinute: 60, monthlyQuota: 1000 },
         "passport:verify",
       ),
     ).toBe(false);
+  });
+});
+
+describe("checkPassportMonthlyQuota", () => {
+  function fakeQuotaAdmin(count: number | null, error?: { message: string }) {
+    return {
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            gte: () => Promise.resolve({ count, error: error ?? null }),
+          }),
+        }),
+      }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+  }
+
+  it("treats quota=0 as unlimited (allowed regardless of count)", async () => {
+    const r = await checkPassportMonthlyQuota(fakeQuotaAdmin(999999), "c1", 0);
+    expect(r.allowed).toBe(true);
+  });
+
+  it("allows when used < quota", async () => {
+    const r = await checkPassportMonthlyQuota(fakeQuotaAdmin(50), "c1", 100);
+    expect(r.allowed).toBe(true);
+    expect(r.used).toBe(50);
+    expect(r.limit).toBe(100);
+  });
+
+  it("blocks when used == quota (over-limit on the next call)", async () => {
+    const r = await checkPassportMonthlyQuota(fakeQuotaAdmin(100), "c1", 100);
+    expect(r.allowed).toBe(false);
+  });
+
+  it("blocks when used > quota", async () => {
+    const r = await checkPassportMonthlyQuota(fakeQuotaAdmin(150), "c1", 100);
+    expect(r.allowed).toBe(false);
+  });
+
+  it("fails open on DB error (better to over-serve than lock out)", async () => {
+    const r = await checkPassportMonthlyQuota(fakeQuotaAdmin(null, { message: "rpc down" }), "c1", 100);
+    expect(r.allowed).toBe(true);
   });
 });

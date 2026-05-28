@@ -5,6 +5,7 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { hasMinRole } from "@/lib/auth/roles";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { formatDateTime } from "@/lib/format";
+import { isPassportPublicEnabled } from "@/lib/passport/featureGate";
 import TransferInitiateForm from "./TransferInitiateForm";
 
 export const dynamic = "force-dynamic";
@@ -105,6 +106,7 @@ export default async function PassportTransferAdminPage({ params }: PageProps) {
 
   const vehicleLabel = [vehicle.maker, vehicle.model, vehicle.year].filter(Boolean).join(" ") || "車両";
   const canInitiate = !!vehicle.vin_code_normalized && !vehicle.passport_opt_out && !pendingExists;
+  const publicEnabled = isPassportPublicEnabled();
 
   return (
     <main className="mx-auto max-w-2xl space-y-6 px-4 py-8 text-zinc-900">
@@ -120,6 +122,16 @@ export default async function PassportTransferAdminPage({ params }: PageProps) {
           {vehicleLabel} / VIN末尾 {vehicle.vin_code_normalized?.slice(-6) ?? "—"}
         </p>
       </header>
+
+      {!publicEnabled ? (
+        <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-semibold">公開機能は現在無効です (PASSPORT_PUBLIC_ENABLED ≠ true)</p>
+          <p className="mt-1 text-xs">
+            移転依頼メールに含まれる受諾リンク (/passport/transfer/&lt;token&gt;) は受信者側で 404
+            になります。社内検証以外の用途では送信しないでください。
+          </p>
+        </section>
+      ) : null}
 
       <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-500">現在の所有者</h2>

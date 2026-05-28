@@ -238,7 +238,7 @@ opt_out 切替トグルも同ページに配置。
 | **PR-4** | `/c/[public_id]` へのパスポートバッジ追加 + 管理画面からの導線 + **施工店単位の opt-out トグル** | S |
 | **PR-5** | NFC書き込み先切替 + 既存タグの「パスポートURLに更新」UI | S |
 | **PR-6** | 既存証明書のパスポート集約のバッチ backfill | S |
-| **PR-7 (v2)** | **パスポートメタアンカー**：VIN + 全画像txHashのmerkle root を Polygon にアンカー | M |
+| **PR-7 (v2)** | **パスポートメタアンカー**：VIN + 全画像txHashのmerkle root を Polygon にアンカー (2026-05-26 実装) | M |
 
 **v1 完了条件**：PR-1〜4 まで入れば、対外的に「パスポート機能」を名乗れる。PR-5, 6 は後追いで可。
 **v2**: PR-7 でパスポート全体を1つの証拠に集約し、「この車両の全履歴が改ざんされていない」ことを単一 Tx で検証可能にする。
@@ -388,6 +388,112 @@ v1 ではログ集計のみ。請求は手動 reconcile (`passport_api_call_logs
 
 ### 7.4 既知の TODO
 
-- consumer / API key 管理用の admin UI (現状は SQL 直接操作)
-- per-consumer 月次クォータ enforcement (現状は記録のみ、ハード遮断は未実装)
-- Stripe metered billing 連携
+- ~~consumer / API key 管理用の admin UI~~ → `/admin/platform/passport-consumers`
+  (2026-05-26 実装。一覧 + 詳細で発行/失効/ステータス/クォータ調整。
+  raw key は発行直後一度きり表示する Stripe 方式)
+- ~~per-consumer 月次クォータ enforcement~~ → 2026-05-26 実装。
+  `checkPassportMonthlyQuota` を /api/v1/passport/* の入口で
+  COUNT(*) → 429 plan_limit。0=無制限、DB 障害時は fail-open。
+- ~~Stripe metered billing 連携~~ → 2026-05-26 実装。
+  毎月 1 日 17:00 UTC の cron で前月分を `action=set` 報告。
+  passport_api_billing_periods に集計行を残し、Stripe 未連携
+  consumer も内部集計を保持して手動請求に使える。
+- ~~PR-7 メタアンカー失敗の自動 retry~~ → 2026-05-26 実装。
+  毎時 30 分の cron が `meta_anchor_tx_hash IS NULL AND
+  meta_anchor_hash IS NOT NULL` を最大 50 件 ずつ掃き出す。
+- ~~consumer 詳細に直近 100 件の生コールログ~~ → 2026-05-26 実装。
+  on-demand 取得ボタンで passport_api_call_logs を表示
+  (起動時自動取得はせず、画面負荷を回避)。
+
+---
+
+## 8. 公開フィーチャーゲート (2026-05-26 追加)
+
+本番ロンチ前に内部実装を継続するため、anonymous-reachable な公開ルートは
+`PASSPORT_PUBLIC_ENABLED` 環境変数で一括ゲートする。
+
+- `=true`: すべての公開ルートが活きる
+- 未設定 / `=true` 以外 (本番のデフォルト): 下記ルートはすべて 404
+
+判定ヘルパ: `src/lib/passport/featureGate.ts#isPassportPublicEnabled()`
+
+### 8.1 ゲート対象
+
+| ルート | 形態 |
+|---|---|
+| `/v/[vin]` | 公開ページ → `notFound()` |
+| `/api/v1/passport/verify` | API → `apiNotFound` |
+| `/api/v1/passport/marketplace-info` | API → `apiNotFound` |
+| `/api/v1/passport/referrals/claim` | API → `apiNotFound` |
+| `/passport/transfer/[token]` | 受諾ページ → `notFound()` |
+| `/api/passport/transfers/[token]` (GET) | API → `apiNotFound` |
+| `/api/passport/transfers/[token]/accept` | API → `apiNotFound` |
+| `/api/passport/transfers/[token]/reject` | API → `apiNotFound` |
+| `/api/public/vehicle-report/checkout` | API → `apiNotFound` |
+| `/api/public/vehicle-report/unlock` | API → 404 plain |
+| `/c/[public_id]` の「全履歴を見る」バッジ | 非表示 |
+
+### 8.2 ゲート対象外 (内部開発を継続)
+
+- `/admin/vehicles/[id]/passport-transfer` — admin 限定 (gate off 時は警告バナーを表示)
+- `/api/passport/transfers/initiate`, `/api/passport/transfers/cancel` — admin 限定
+- `/api/cron/passport-transfers-expire` — cron 内部
+- `vehicle_passports` upsert (アンカー成功フック) — 内部書き込みは継続
+
+### 8.3 ローンチ手順
+
+1. consumer / API key 管理 UI など TODO を片付ける
+2. staging で end-to-end 検証
+3. 本番の Vercel 環境変数に `PASSPORT_PUBLIC_ENABLED=true` を追加
+4. NFC タグ書き込み先切替 (PR-5 残作業) と同時にアナウンス
+
+---
+
+## 9. パスポートメタアンカー (PR-7、2026-05-26 実装)
+
+VIN 単位で「この車両の全履歴は改ざんされていない」ことを単一 Tx で
+証明する集約アンカー。`vehicle_passports` に列を増やし、画像単位の
+Polygon アンカー成功後に再計算 + 再アンカーする。
+
+### 9.1 ハッシュ仕様
+
+```
+sha256(  VIN_normalized
+       || "\n"
+       || tx1 || "\n" || tx2 || "\n" || ... || txN  )
+```
+
+- `tx*` は `certificate_images.polygon_tx_hash` (lowercase, 重複除去)
+- 昇順ソートして連結 → 順序非依存
+- 平 SHA-256。Merkle root ではないが「集合全体の完全性」検証には十分。
+  per-cert 包含証明 (inclusion proof) が必要になったら Merkle に差し替え。
+
+実装: `src/lib/passport/metaAnchor.ts#computeMetaAnchorHash`
+(同期的に外部からも再計算可能 / DB 非依存)。
+
+### 9.2 列追加 (vehicle_passports)
+
+| カラム | 用途 |
+|---|---|
+| `meta_anchor_hash` | 上記 sha256 (lowercase hex) |
+| `meta_anchor_tx_hash` | Polygon 上のアンカー tx |
+| `meta_anchor_network` | `polygon` / `amoy` (履歴 verify 用) |
+| `meta_anchor_anchored_at` | アンカー確定時刻 |
+| `meta_anchor_image_count` | 計算時に含めた画像数 |
+| `meta_anchor_cert_count` | 計算時に含めた証明書数 |
+
+### 9.3 再アンカー方針
+
+`upsertVehiclePassport` の末尾で `recomputeAndMaybeAnchor` を呼ぶ。
+
+- 既存 `meta_anchor_hash` と一致 → no-op (Tx を消費しない)
+- 異なる / null → Polygon に anchor、結果を更新
+- Polygon 側エラー時はハッシュだけ保存し tx 列は空のまま (cron で再試行可能)
+
+### 9.4 公開サーフェス
+
+- `/v/[vin]`: ヒーローカード下に「履歴の集約証明」バッジ + Polygonscan リンク
+- `/api/v1/passport/verify`: `meta_anchor` フィールドで `hash` / `tx_hash` /
+  `network` / `image_count` / `cert_count` / `explorer_url` を返却。
+  partner は API 経由で取れる `certificates[].polygon_tx_hash` を
+  ソート連結して `meta_anchor.hash` を再計算 → 一致確認で改ざん検知。

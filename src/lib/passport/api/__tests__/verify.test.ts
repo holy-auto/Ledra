@@ -35,6 +35,7 @@ describe("buildPassportVerifyResponse", () => {
       tenant_count: 2,
       first_seen_at: "2025-01-01T00:00:00Z",
       last_activity_at: "2026-05-01T00:00:00Z",
+      meta_anchor: null,
       certificates: [
         {
           public_id: "C-ABC123",
@@ -85,6 +86,7 @@ describe("buildPassportVerifyResponse", () => {
       tenant_count: 1,
       first_seen_at: "2025-01-01T00:00:00Z",
       last_activity_at: "2025-01-01T00:00:00Z",
+      meta_anchor: null,
       certificates: [],
     });
     const r = await buildPassportVerifyResponse("JT3HP10V0W7058362");

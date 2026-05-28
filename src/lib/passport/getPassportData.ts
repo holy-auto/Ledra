@@ -12,6 +12,16 @@ export type PassportCertCard = {
   primary_explorer_url: string | null;
 };
 
+export type PassportMetaAnchor = {
+  hash: string;
+  tx_hash: string;
+  network: "polygon" | "amoy";
+  anchored_at: string;
+  image_count: number | null;
+  cert_count: number | null;
+  explorer_url: string | null;
+};
+
 export type PassportData = {
   vin_code_normalized: string;
   display_maker: string | null;
@@ -22,6 +32,7 @@ export type PassportData = {
   first_seen_at: string;
   last_activity_at: string;
   certificates: PassportCertCard[];
+  meta_anchor: PassportMetaAnchor | null;
 };
 
 type PassportRow = {
@@ -33,6 +44,12 @@ type PassportRow = {
   tenant_count: number;
   first_seen_at: string;
   last_activity_at: string;
+  meta_anchor_hash: string | null;
+  meta_anchor_tx_hash: string | null;
+  meta_anchor_network: string | null;
+  meta_anchor_anchored_at: string | null;
+  meta_anchor_image_count: number | null;
+  meta_anchor_cert_count: number | null;
 };
 
 export async function getPassportData(vinRaw: string): Promise<PassportData | null> {
@@ -47,7 +64,9 @@ export async function getPassportData(vinRaw: string): Promise<PassportData | nu
     .from("vehicle_passports")
     .select(
       "vin_code_normalized, display_maker, display_model, display_year, " +
-        "anchored_cert_count, tenant_count, first_seen_at, last_activity_at",
+        "anchored_cert_count, tenant_count, first_seen_at, last_activity_at, " +
+        "meta_anchor_hash, meta_anchor_tx_hash, meta_anchor_network, " +
+        "meta_anchor_anchored_at, meta_anchor_image_count, meta_anchor_cert_count",
     )
     .eq("vin_code_normalized", vin)
     .maybeSingle();
@@ -127,6 +146,24 @@ export async function getPassportData(vinRaw: string): Promise<PassportData | nu
 
   if (!cards.length) return null;
 
+  const metaNetwork =
+    passport.meta_anchor_network === "amoy" || passport.meta_anchor_network === "polygon"
+      ? (passport.meta_anchor_network as "polygon" | "amoy")
+      : null;
+
+  const metaAnchor: PassportMetaAnchor | null =
+    passport.meta_anchor_hash && passport.meta_anchor_tx_hash && metaNetwork && passport.meta_anchor_anchored_at
+      ? {
+          hash: passport.meta_anchor_hash,
+          tx_hash: passport.meta_anchor_tx_hash,
+          network: metaNetwork,
+          anchored_at: passport.meta_anchor_anchored_at,
+          image_count: passport.meta_anchor_image_count,
+          cert_count: passport.meta_anchor_cert_count,
+          explorer_url: buildExplorerUrl(passport.meta_anchor_tx_hash, metaNetwork),
+        }
+      : null;
+
   return {
     vin_code_normalized: passport.vin_code_normalized,
     display_maker: passport.display_maker,
@@ -137,6 +174,7 @@ export async function getPassportData(vinRaw: string): Promise<PassportData | nu
     first_seen_at: passport.first_seen_at,
     last_activity_at: passport.last_activity_at,
     certificates: cards,
+    meta_anchor: metaAnchor,
   };
 }
 

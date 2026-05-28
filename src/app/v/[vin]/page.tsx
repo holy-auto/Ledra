@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getPassportData, getServiceTypeLabel } from "@/lib/passport/getPassportData";
+import { isPassportPublicEnabled } from "@/lib/passport/featureGate";
 import { formatDate } from "@/lib/format";
 import { findValidReportAccess, getVehicleReportSettings, reportCookieName } from "@/lib/vehicleReport/access";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
@@ -15,6 +16,9 @@ type PageProps = {
 };
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  if (!isPassportPublicEnabled()) {
+    return { title: "Not Found", robots: { index: false, follow: false } };
+  }
   const { vin } = await params;
   const data = await getPassportData(vin);
   if (!data) {
@@ -37,6 +41,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 export default async function VehiclePassportPage({ params, searchParams }: PageProps) {
+  if (!isPassportPublicEnabled()) notFound();
   const { vin } = await params;
   const data = await getPassportData(vin);
   if (!data) notFound();
@@ -127,6 +132,51 @@ export default async function VehiclePassportPage({ params, searchParams }: Page
             </span>
           ) : null}
         </div>
+
+        {/* Meta-anchor: one tx that summarizes the entire history of this VIN. */}
+        {data.meta_anchor ? (
+          <div className="mt-4 rounded-xl border border-violet-500/30 bg-[rgba(139,92,246,0.07)] p-3 text-sm">
+            <div className="flex items-start gap-2">
+              <svg
+                className="mt-0.5 h-4 w-4 shrink-0 text-violet-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-semibold text-violet-400">
+                  履歴の集約証明 — 全 {data.meta_anchor.cert_count ?? data.anchored_cert_count} 件の施工記録を 1 Tx
+                  に集約
+                </div>
+                <div className="mt-1 break-all font-mono text-[10px] text-muted">{data.meta_anchor.hash}</div>
+                {data.meta_anchor.explorer_url ? (
+                  <a
+                    href={data.meta_anchor.explorer_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 inline-flex items-center gap-1 text-[11px] text-violet-300 hover:underline"
+                  >
+                    Polygonscan で集約Txを見る ({data.meta_anchor.network})
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
+                      />
+                    </svg>
+                  </a>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {/* Certificate timeline — gated behind the paid report */}

@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getPublicCertificateData } from "@/lib/certificate/publicData";
+import { isPassportPublicEnabled } from "@/lib/passport/featureGate";
 import CustomerActions from "./CustomerActions";
 import MediaGallery from "./MediaGallery";
 import UnifiedTimeline, { type CertEvent, type ReservationItem } from "./UnifiedTimeline";
@@ -238,7 +239,7 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
         />
       ) : null}
 
-      {passportVin ? (
+      {passportVin && isPassportPublicEnabled() ? (
         <a
           href={`/v/${encodeURIComponent(passportVin)}?src=${encodeURIComponent(data.certificate.public_id)}`}
           className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-blue-500/30 bg-[rgba(59,130,246,0.07)] px-4 py-3 no-underline transition-colors hover:bg-[rgba(59,130,246,0.12)]"

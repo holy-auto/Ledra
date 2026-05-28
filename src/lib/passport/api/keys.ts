@@ -20,6 +20,7 @@ export interface PassportApiKeyContext {
   keyId: string;
   scopes: string[];
   rateLimitPerMinute: number;
+  monthlyQuota: number;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -84,10 +85,14 @@ export async function resolvePassportApiKey(
   // Resolve the consumer status + rate-limit config.
   const { data: consumerRaw } = await admin
     .from("passport_api_consumers")
-    .select("status, rate_limit_per_minute")
+    .select("status, rate_limit_per_minute, monthly_quota")
     .eq("id", keyRow.consumer_id)
     .maybeSingle();
-  const consumer = consumerRaw as { status: string; rate_limit_per_minute: number } | null;
+  const consumer = consumerRaw as {
+    status: string;
+    rate_limit_per_minute: number;
+    monthly_quota: number;
+  } | null;
   if (!consumer) return { ok: false, error: "consumer_missing" };
   if (consumer.status !== "active") return { ok: false, error: "consumer_inactive" };
 
@@ -107,6 +112,7 @@ export async function resolvePassportApiKey(
       keyId: keyRow.id,
       scopes: keyRow.scopes ?? [],
       rateLimitPerMinute: consumer.rate_limit_per_minute,
+      monthlyQuota: consumer.monthly_quota,
     },
   };
 }
@@ -148,4 +154,50 @@ export async function logPassportApiCall(args: {
   } catch (e) {
     logger.warn("logPassportApiCall failed", { error: e instanceof Error ? e.message : String(e) });
   }
+}
+
+export type MonthlyQuotaCheck = { allowed: boolean; used: number; limit: number };
+
+/**
+ * Hard-enforce the consumer's monthly_quota.
+ *
+ * Counts `passport_api_call_logs` rows with called_at >= start-of-current-
+ * UTC-month for the consumer. A quota of 0 means "unlimited" (operators
+ * can disable enforcement per-consumer without churning code).
+ *
+ * Called at the top of each `/api/v1/passport/*` endpoint, after auth +
+ * scope checks but before any expensive work. If the call would put the
+ * consumer over the limit, the endpoint returns 429 plan_limit.
+ *
+ * Cost: one COUNT(*) per request, served by the index
+ *   passport_api_call_logs (consumer_id, called_at DESC)
+ * which is well-bounded since we only ever scan the current month.
+ */
+export async function checkPassportMonthlyQuota(
+  admin: AdminDb,
+  consumerId: string,
+  monthlyQuota: number,
+): Promise<MonthlyQuotaCheck> {
+  if (!Number.isFinite(monthlyQuota) || monthlyQuota <= 0) {
+    return { allowed: true, used: 0, limit: monthlyQuota };
+  }
+
+  const now = new Date();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+
+  const { count, error } = await admin
+    .from("passport_api_call_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("consumer_id", consumerId)
+    .gte("called_at", monthStart.toISOString());
+
+  if (error) {
+    // Fail open on counter-DB error: better to serve a few extra calls
+    // than to lock out a paying consumer because Postgres hiccuped.
+    logger.warn("passport quota lookup failed", { consumerId, error: error.message });
+    return { allowed: true, used: 0, limit: monthlyQuota };
+  }
+
+  const used = count ?? 0;
+  return { allowed: used < monthlyQuota, used, limit: monthlyQuota };
 }
