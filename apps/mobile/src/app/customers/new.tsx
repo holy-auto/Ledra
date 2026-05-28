@@ -6,6 +6,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
+import IdentityScanButton from "@/components/IdentityScanButton";
 
 export default function CustomerNewScreen() {
   const { user, selectedStore } = useAuthStore();
@@ -68,6 +69,18 @@ export default function CustomerNewScreen() {
   return (
     <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
       <View style={styles.form}>
+        <IdentityScanButton
+          onComplete={(f) =>
+            setForm((prev) => ({
+              ...prev,
+              name: f.name ?? prev.name,
+              name_kana: f.name_kana ?? prev.name_kana,
+              postal_code: f.postal_code ?? prev.postal_code,
+              address: f.address ?? prev.address,
+            }))
+          }
+        />
+
         <TextInput
           label="名前 *"
           value={form.name}

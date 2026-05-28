@@ -86,6 +86,19 @@ const uploadLimiter = () => {
 };
 
 /**
+ * プリセット: 身分証 OCR (10 req / 600s).
+ *
+ * 顧客フォーム自動入力のための AI Vision OCR (`/api/identity/ocr`) 専用.
+ * 1 リクエストあたり Sonnet Vision 1 コールが走るため、`ai` (20/60s) より厳しく.
+ * テナント単位 + IP 単位の二重制限を route 側で重ねる前提。
+ */
+const identityOcrLimiter = () => {
+  const r = getRedis();
+  if (!r) return null;
+  return new Ratelimit({ redis: r, limiter: Ratelimit.slidingWindow(10, "600 s"), prefix: "rl:identity-ocr" });
+};
+
+/**
  * プリセット: 機微フロー (5 req / 300s)。
  *
  * OTP / パスワードリセット / メール送信を伴うフローのブルートフォース対策。
@@ -135,7 +148,8 @@ export type RateLimitPreset =
   | "admin_write"
   | "ai"
   | "upload"
-  | "sensitive";
+  | "sensitive"
+  | "identity_ocr";
 
 const presets: Record<RateLimitPreset, () => Ratelimit | null> = {
   general: generalLimiter,
@@ -148,6 +162,7 @@ const presets: Record<RateLimitPreset, () => Ratelimit | null> = {
   ai: aiLimiter,
   upload: uploadLimiter,
   sensitive: sensitiveLimiter,
+  identity_ocr: identityOcrLimiter,
 };
 
 /**

@@ -7,6 +7,7 @@ import { syncCreateEvent } from "@/lib/gcal/client";
 import { sendBookingConfirmation } from "@/lib/line/client";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { logger } from "@/lib/logger";
+import { createIntakeInvitation } from "@/lib/identity/intakeServer";
 
 const customerBookingSchema = z.object({
   tenant_slug: z.string().trim().min(1).max(100),
@@ -25,6 +26,12 @@ const customerBookingSchema = z.object({
   start_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "start_time / end_time は HH:MM 形式です"),
   end_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "start_time / end_time は HH:MM 形式です"),
   note: z.string().trim().max(2000).optional(),
+  /**
+   * true なら予約と同時に事前カルテ用 intake invitation を発行し、
+   * URL / short_id をレスポンスに含める。Booking page で「事前カルテも記入する」
+   * UI を表示するために使う。
+   */
+  request_intake: z.boolean().optional(),
 });
 
 export const dynamic = "force-dynamic";
@@ -252,6 +259,32 @@ export async function POST(req: NextRequest) {
       });
     });
 
+    // 事前カルテ (intake invitation) を併発する
+    let intake: { url: string; short_id: string; expires_at: string } | null = null;
+    if (body.request_intake) {
+      try {
+        const baseUrl =
+          process.env.NEXT_PUBLIC_APP_URL ?? process.env.APP_URL ?? `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+        const created = await createIntakeInvitation({
+          tenantId: tenant.id,
+          storeId: null,
+          label: `${customerName} 様 事前カルテ (予約 ${scheduledDate})`,
+          contactEmail: body.customer_email ?? null,
+          contactPhone: body.customer_phone ?? null,
+          createdBy: null, // 公開フローには auth.users 側の caller がいないため null
+          baseUrl,
+        });
+        intake = { url: created.url, short_id: created.shortId, expires_at: created.expiresAt };
+      } catch (intakeErr) {
+        // intake 発行失敗は予約成立を阻まない (best-effort)
+        logger.warn("intake_invite_after_booking_failed", {
+          error: intakeErr instanceof Error ? intakeErr.message : String(intakeErr),
+          tenantId: tenant.id,
+          reservationId: reservation.id,
+        });
+      }
+    }
+
     return apiOk({
       reservation_id: reservation.id,
       tenant_name: tenant.name,
@@ -259,6 +292,7 @@ export async function POST(req: NextRequest) {
       start_time: reservation.start_time,
       end_time: reservation.end_time,
       status: "confirmed",
+      intake,
     });
   } catch (e) {
     return apiInternalError(e, "customer booking");
