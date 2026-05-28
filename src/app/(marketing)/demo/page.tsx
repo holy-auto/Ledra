@@ -55,24 +55,34 @@ export default function DemoPage() {
       <PageHero
         badge="DEMO"
         title="デモ環境で実際の画面を操作"
-        subtitle="下記のメールアドレスとパスワードで /login からログインしてください。実際の管理画面とサンプルデータをそのままお試しいただけます。"
+        subtitle="ボタンを押すだけで自動ログインし、実際の管理画面とサンプルデータをそのままご覧いただけます。"
       />
 
       <Section>
         <div className="mx-auto max-w-3xl">
           <ScrollReveal variant="fade-up">
-            <DemoCredentialsCard email={DEMO_EMAIL} password={DEMO_PASSWORD} />
-          </ScrollReveal>
-
-          <ScrollReveal variant="fade-up" delay={150}>
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
-              <CTAButton variant="primary" href="/login" trackLocation="demo-page" trackLabel="demo-login">
-                ログインページへ進む
+            <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+              <CTAButton variant="primary" href="/demo/enter" trackLocation="demo-page" trackLabel="demo-enter">
+                ワンクリックでデモを見る
               </CTAButton>
               <CTAButton variant="white-outline" href="/signup" trackLocation="demo-page" trackLabel="demo-signup">
                 自分のアカウントを作る
               </CTAButton>
             </div>
+          </ScrollReveal>
+
+          <ScrollReveal variant="fade-up" delay={100}>
+            <DemoCredentialsCard email={DEMO_EMAIL} password={DEMO_PASSWORD} />
+          </ScrollReveal>
+
+          <ScrollReveal variant="fade-up" delay={150}>
+            <p className="mt-4 text-center text-xs text-white/60">
+              手動でログインしたい場合は{" "}
+              <Link href="/login" className="underline underline-offset-2 hover:text-white">
+                /login
+              </Link>{" "}
+              から上記の認証情報をご利用ください。
+            </p>
           </ScrollReveal>
 
           <ScrollReveal variant="fade-up" delay={250}>
