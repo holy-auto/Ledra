@@ -9,6 +9,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
 import Pagination from "@/components/ui/Pagination";
 import EmptyStateGuide from "@/components/ui/EmptyStateGuide";
+import IdentityScanButton, { type IdentityScanFields } from "@/components/admin/customers/IdentityScanButton";
 import { formatDate } from "@/lib/format";
 import { fetcher } from "@/lib/swr";
 
@@ -302,9 +303,22 @@ export default function CustomersClient() {
               {/* Add Form */}
               {showForm && (
                 <section className="glass-card p-5 space-y-4">
-                  <div>
-                    <div className="text-xs font-semibold tracking-[0.18em] text-muted">新規登録</div>
-                    <div className="mt-1 text-base font-semibold text-primary">新規顧客登録</div>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-semibold tracking-[0.18em] text-muted">新規登録</div>
+                      <div className="mt-1 text-base font-semibold text-primary">新規顧客登録</div>
+                    </div>
+                    <IdentityScanButton
+                      onComplete={(f: IdentityScanFields) => {
+                        setForm((prev) => ({
+                          ...prev,
+                          name: f.name ?? prev.name,
+                          name_kana: f.name_kana ?? prev.name_kana,
+                          postal_code: f.postal_code ?? prev.postal_code,
+                          address: f.address ?? prev.address,
+                        }));
+                      }}
+                    />
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1">
