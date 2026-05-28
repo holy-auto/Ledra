@@ -12,12 +12,16 @@
 
 ## 0. TL;DR
 
-- **Phase 1 (即着手・推奨)**: 既存の Anthropic Sonnet 4.6 Vision を使って
+- **Phase 1 (実装中)**: 既存の Anthropic Sonnet 4.6 Vision を使って
   **免許証 / マイナンバーカード顔写真面 / 在留カード / パスポート** を OCR し、
   AI が顧客フォームを自動入力する。**追加コスト 1件あたり約3円・初年度 約50万円**。
-- **Phase 2 (6〜12ヶ月で並行)**: JPKI（公的個人認証）路線の意思決定。
-  オプションは TRUSTDOCK 等の eKYC SaaS / J-LIS プラットフォーム事業者認定の自社取得 /
-  マイナポータル API 連携の 3 つ。
+  バックエンド (`src/lib/identity/`, `src/lib/ai/identityOcr.ts`,
+  `src/app/api/identity/ocr/route.ts`) 実装済み.
+- **Phase 2 (並行着手・採用方針: 自社運用 JPKI)**: TRUSTDOCK 等の eKYC SaaS
+  ではなく、**J-LIS から民間事業者認定を取得して自社で JPKI 検証する** 方針。
+  詳細は **`docs/jpki-self-operated-roadmap.md`** を参照. 初期コストは
+  高いが、月 500 件超で TRUSTDOCK より有利になり、2 年目以降は年間 240 万円
+  以上の差が出る試算.
 - **Phase 3**: Phase 1 (簡易自動入力) と Phase 2 (本人確認) を共存運用。
   通常案件は OCR、保険会社案件など高証拠力が必要なケースのみ JPKI。
 - **マイナンバー本体は触らない**設計を全フェーズで貫く（番号利用法）。
@@ -265,7 +269,10 @@ export const OcrResultSchema = z.object({
 
 ---
 
-## 5. Phase 2: JPKI 路線（並行調査・トリガー発生で起動）
+## 5. Phase 2: JPKI 路線（**採用: 自社運用** / 並行着手中）
+
+> **詳細ロードマップは `docs/jpki-self-operated-roadmap.md` を参照.**
+> 本セクションは比較サマリのみ.
 
 ### 5.1 3 方式の比較
 
@@ -395,10 +402,11 @@ ALTER TABLE customers
 2. **実装着手**: 上記スケジュール 4 週間
 3. **本番投入**: 1 テナント PoC → 全テナント roll out
 
-### Phase 2 (並行調査・トリガー待ち)
-1. **TRUSTDOCK / xID / Pocket Sign 3 社の RFP**: 月間件数別単価・JPKI フロー UX サンプル
-2. **損保 / 中古車マーケットの本人確認要件ヒアリング**
-3. **競合（Slim Hub・GO・Drivvic 等）の本人確認方式の継続ウォッチ**
+### Phase 2 (並行着手中)
+1. **`docs/jpki-self-operated-roadmap.md` の Phase 0 着手**
+2. **J-LIS への一次相談アポ取り**
+3. **プライバシーマーク / ISMS 取得状況の確認** (`docs/iso27001-soc2-prep.md`)
+4. **プラットフォーム事業者 2 社と NDA** (NTT データ / 富士通 等)
 
 ---
 
