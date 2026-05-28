@@ -1,7 +1,8 @@
-# マイナンバー（個人番号カード）連携 個人情報入力 調査ドキュメント
+# 個人情報入力の自動化 設計 / 調査ドキュメント
 
-> 作成: 2026-05-27
-> ステータス: 調査 (実装着手前)
+> 作成: 2026-05-27 (v1: JPKI eKYC 案)
+> 更新: 2026-05-27 (v2: **OCR + AI 自動入力を Phase 1 推奨に変更**)
+> ステータス: Phase 1 設計 / Phase 2 調査
 > 対象画面:
 > - 電子署名フロー `src/app/sign/[token]/` / `src/app/agent-sign/[token]/`
 > - 顧客ポータル登録 `src/app/customer/[tenant]/`, `src/app/c/[public_id]/`, `src/app/my/`
@@ -11,194 +12,288 @@
 
 ## 0. TL;DR
 
-- **「マイナンバー（個人番号）そのもの」を Ledra が取得・保存することは法律上できない**。
-  番号利用法（マイナンバー法）第9条で利用範囲が **税・社会保障・災害対策** に限定されており、
-  自動車整備 SaaS の顧客管理用途は対象外。
-- ただし **マイナンバーカードに搭載された JPKI（公的個人認証サービス）** を使えば、
-  **個人番号本体は読まずに「基本4情報（氏名・住所・生年月日・性別）」と「本人確認済みの電子署名」を取得できる**。
-  これは Ledra のユースケースで合法に使える。
-- 実装方式は 3 つ。本ドキュメントでは **eKYC SaaS 経由（TRUSTDOCK / xID / Pocket Sign）** を推奨。
-  Web は SDK 埋め込み、モバイルは既に入っている `react-native-nfc-manager` を活用するか
-  SaaS の React Native SDK を入れる。
-- 概算コスト: **初期 0〜30万円 / 月額 3〜10万円 + 本人確認 1件あたり 200〜500円**。
-- Ledra 側のコード変更箇所は **5ファイル + 1マイグレーション** 程度の小規模で着地できる。
+- **Phase 1 (即着手・推奨)**: 既存の Anthropic Sonnet 4.6 Vision を使って
+  **免許証 / マイナンバーカード顔写真面 / 在留カード / パスポート** を OCR し、
+  AI が顧客フォームを自動入力する。**追加コスト 1件あたり約3円・初年度 約50万円**。
+- **Phase 2 (6〜12ヶ月で並行)**: JPKI（公的個人認証）路線の意思決定。
+  オプションは TRUSTDOCK 等の eKYC SaaS / J-LIS プラットフォーム事業者認定の自社取得 /
+  マイナポータル API 連携の 3 つ。
+- **Phase 3**: Phase 1 (簡易自動入力) と Phase 2 (本人確認) を共存運用。
+  通常案件は OCR、保険会社案件など高証拠力が必要なケースのみ JPKI。
+- **マイナンバー本体は触らない**設計を全フェーズで貫く（番号利用法）。
 
 ---
 
-## 1. 背景: 何を区別すべきか
+## 1. なぜ OCR + AI から始めるのか
 
-「マイナンバーを使う」という言葉は実は 3 つの別物を指しており、法的扱いがまったく違う。
+### 1.1 既存 Ledra スタックでほぼ追加投資ゼロ
+
+| 既存資産 | 使い道 |
+|---|---|
+| `src/lib/ai/client.ts` (Anthropic Sonnet 4.6 Vision) | 身分証画像の OCR |
+| `src/lib/ai/photoQualityCheck.ts` のパターン | zod structured output + withRetry のテンプレ |
+| `src/lib/http/withRetry.ts` | Anthropic API の retry + circuit breaker |
+| モバイルの `expo-camera` / `expo-image-picker` | 身分証撮影 UI |
+| Web の画像アップロードフロー | 同上 (Web 版) |
+| `src/lib/logger.ts` の secret マスク | OCR 結果 PII のログマスク拡張 |
+
+→ **新規 SDK 契約 / DPA / mTLS 設定が一切不要**。1〜2 日でモックレベルが動く。
+
+### 1.2 コスト比較
+
+| 方式 | 1件単価 | 月額固定 | 初期 | 初年度合計 (月1,000件想定) |
+|---|---|---|---|---|
+| **OCR + AI (Phase 1)** | **約 3円** | **0円** | **0円** | **約 50 万円** (開発工数のみ) |
+| TRUSTDOCK eKYC | 280円 | 120,000円 | 750,000円 | 約 755 万円 |
+| 自社 JPKI 直接実装 | 0円 | サーバ運用 | 認定取得 6〜12ヶ月 | 数千万円 (J-LIS 認定) |
+
+→ **約 1/15** のコストで顧客入力の手間を大幅削減できる。
+
+### 1.3 UX 連続性
+
+Phase 1 → Phase 3 でフロー骨格が変わらない:
+- 「写真撮る → 自動入力 → ユーザー確認 → 登録」が共通の体験
+- JPKI が乗っても「撮る」が「カードをかざす」に置き換わるだけ
+- 既存の手動入力フォームは常にフォールバックとして残す
+
+---
+
+## 2. 用語整理（v1 と同じだが重要なので再掲）
+
+「マイナンバーを使う」は実は 3 つの別物。法的扱いがまったく違う。
 
 | 用語 | 中身 | Ledra が保存可能か | 用途 |
 |---|---|---|---|
-| **個人番号（マイナンバー）** | 12 桁の数字。 | **不可**（番号利用法 §9 で用途限定） | 税・社保・災害のみ |
-| **マイナンバーカード** | 個人番号が印字された IC カード。 | カード券面の撮影画像は eKYC で限定的に可（番号面のマスキング必須） | 本人確認の物理証憑 |
-| **JPKI（公的個人認証サービス）** | カード内 IC チップの電子証明書。署名用 + 利用者証明用の 2 種。 | **可**（基本4情報の取得は問題なし） | 電子署名 / 本人確認 |
+| **個人番号（マイナンバー）** | 12 桁の数字 | **不可**（番号利用法 §9） | 税・社保・災害のみ |
+| **マイナンバーカード** | 個人番号が印字された IC カード | 顔写真面の撮影は可、**個人番号面は不可** | 物理身分証 |
+| **JPKI** | カード IC チップ内の電子証明書 | **可** | 電子署名・本人確認 |
 
-**Ledra が使うのは 3 つ目の JPKI のみ**。マイナンバー本体は触らない設計にする。
-
-### 1.1 JPKI で取れる情報
-
-| 情報 | 取得元 | 取得方法 |
-|---|---|---|
-| 氏名 | 署名用電子証明書のサブジェクト | NFC 読取り + PIN(英数字 6-16 桁) |
-| 住所 | 同上 | 同上 |
-| 生年月日 | 同上 | 同上 |
-| 性別 | 同上 | 同上 |
-| 電子署名（PKCS#7 / CAdES） | 署名用秘密鍵 | NFC 読取り + 署名用 PIN |
-| 本人確認のみ（基本4情報なし） | 利用者証明用電子証明書 | NFC 読取り + 利用者証明用 PIN(数字 4 桁) |
-
-→ Ledra の **顧客登録** は「氏名/住所/生年月日」が取れれば既存フォームを置換できる。
-→ Ledra の **電子署名フロー** は JPKI 署名そのものを使えば「実印相当」の証拠力になる。
+**Ledra の全フェーズで個人番号本体は触らない。**
 
 ---
 
-## 2. 現状の Ledra 実装
+## 3. Phase 1: OCR + AI 自動入力（即着手）
 
-### 2.1 顧客テーブル
+### 3.1 対応身分証
 
-`supabase/migrations/20260313000000_add_service_price_and_customers.sql:6`
+| 書類 | 取れる情報 | 取らない情報（破棄必須） |
+|---|---|---|
+| 運転免許証 | 氏名 / 生年月日 / 住所 / 有効期限 / 免許種別 | **本籍** / 免許証番号下4桁以外 / 顔写真 |
+| マイナンバーカード（顔写真面） | 氏名 / 生年月日 / 住所 / 性別 / 有効期限 | **個人番号面は撮影禁止** |
+| 在留カード | 氏名 / 生年月日 / 住所 / 在留資格 / 在留期限 | 顔写真 |
+| パスポート | 氏名 / 生年月日 / 国籍 / パスポート番号下4桁 | 顔写真 / 完全な番号 |
+| 健康保険証 | 氏名 / 生年月日 / 住所 | **保険者番号 / 記号番号 / 枝番**（個人特定子情報） |
+
+### 3.2 アーキテクチャ
+
+```
+[ユーザー]
+    │
+    ├─ 1) 「写真で自動入力」ボタン押下
+    ▼
+[フロント (Next / Expo)]
+    │
+    ├─ 2) カメラ/ファイル選択で身分証画像取得
+    ├─ 3) クライアント側で画像リサイズ (1600px 長辺) + JPEG 80%
+    │     → Sonnet 4.6 Vision の context 削減 (1枚 ~$0.02)
+    ├─ 4) POST /api/identity/ocr (multipart)
+    ▼
+[Next route handler]
+    │
+    ├─ 5) tenant 認証 (admin) or 顧客セッション (customer)
+    ├─ 6) rate limit (mobile_strict プリセット相当を新設)
+    ├─ 7) AI 呼び出し (src/lib/ai/identityOcr.ts)
+    │     - 画像 + 想定書類タイプ
+    │     - zod structured output: name, birth_date, address, postal_code, …
+    │     - "個人番号 / 本籍 / 保険者番号は絶対に出力するな" を system に明示
+    ├─ 8) PII フィルタ (12桁数字 / 本籍ラベル等を post-validate で reject)
+    ├─ 9) 結果を返す (DB 保存はしない、ステートレス)
+    ▼
+[フロント]
+    │
+    ├─ 10) 取得結果をフォームに自動充填、すべて編集可能で表示
+    ├─ 11) ユーザーが確認・修正して [登録] 押下
+    └─ 12) 既存の customers 登録 API へ POST (フロー無変更)
+```
+
+**重要**: OCR レスポンスは **DB に保存しない**（ステートレス）。
+画像も Storage に **永続化しない**。一時 URL のみ。
+
+### 3.3 新規実装ファイル
+
+| パス | 内容 |
+|---|---|
+| `src/lib/ai/identityOcr.ts` | Anthropic Vision 呼び出し本体。`photoQualityCheck.ts` をテンプレに |
+| `src/lib/identity/ocrSchema.ts` | zod スキーマ。各書類タイプごとに分岐 |
+| `src/lib/identity/ocrFilter.ts` | PII フィルタ（マイナンバー検知・本籍除去） |
+| `src/app/api/identity/ocr/route.ts` | エンドポイント |
+| `src/components/admin/customers/IdentityScanButton.tsx` | Web 撮影 UI |
+| `apps/mobile/src/components/IdentityScanButton.tsx` | RN 撮影 UI |
+| `src/lib/ai/__tests__/identityOcr.test.ts` | サンプル画像で snapshot テスト |
+
+### 3.4 既存ファイルの変更
+
+| パス | 変更 |
+|---|---|
+| `apps/mobile/src/app/customers/new.tsx:68-69` | フォーム冒頭に `<IdentityScanButton onComplete={(d) => setForm({...form, ...d})} />` |
+| `src/app/customer/[tenant]/login/page.tsx` | 「写真で入力」を追加 |
+| `src/app/sign/[token]/SignatureClient.tsx` | 同意前ステップとして「身分証で氏名自動入力」を追加（任意） |
+| `src/app/agent-sign/[token]/AgentSignClient.tsx` | 同上 |
+| `src/lib/api/rateLimit.ts` | `identity_ocr` プリセット追加（30 req / 1 hour / tenant） |
+| `package.json` | （Anthropic SDK 既にあるので変更不要） |
+
+### 3.5 zod スキーマ例
+
+```ts
+// src/lib/identity/ocrSchema.ts
+import { z } from "zod";
+
+export const DocTypeSchema = z.enum([
+  "driver_license",
+  "mynumber_card_front",  // 顔写真面のみ
+  "residence_card",
+  "passport",
+  "health_insurance_card",
+]);
+
+export const OcrResultSchema = z.object({
+  doc_type: DocTypeSchema,
+  confidence: z.number().min(0).max(1),
+  fields: z.object({
+    name: z.string().optional(),
+    name_kana: z.string().optional(),
+    birth_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    postal_code: z.string().regex(/^\d{3}-?\d{4}$/).optional(),
+    address: z.string().optional(),
+    gender: z.enum(["male", "female", "other"]).optional(),
+    expiration_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  }),
+  rejected_reasons: z.array(z.string()),  // "個人番号が映っていたため処理を中断" 等
+  warnings: z.array(z.string()),          // "住所の一部がぼやけています" 等
+});
+```
+
+### 3.6 System プロンプト要点
+
+```
+あなたは日本の身分証から「自動入力補助」のために必要な情報だけを抽出する OCR アシスタントです。
+
+以下は絶対に出力してはいけません:
+- マイナンバー（12桁の個人番号）
+- 本籍（運転免許証の「本籍」欄）
+- 健康保険証の保険者番号 / 記号 / 番号 / 枝番
+- パスポート番号の完全な値
+- 顔写真の情報
+
+これらが画像に映っている場合、その項目を出力せず、rejected_reasons に理由を記録してください。
+マイナンバー裏面（個人番号が大きく印字された面）が送られてきた場合は、
+全フィールドを空にして "マイナンバー裏面は処理対象外" を rejected_reasons に入れて返してください。
+
+これは本人確認ではありません。あくまでフォーム入力の自動化です。
+読み取れない箇所は空欄のままにし、ユーザーが手で修正します。
+```
+
+### 3.7 セキュリティ要件
+
+1. **画像の非永続化**: アップロードされた画像は OCR 完了後に即破棄。
+   ステージング/本番ともに Supabase Storage には保存しない（メモリ上のみ）
+2. **PII の最小化**: OCR レスポンスを Sentry / `logger` に送る際は `secret マスク` を拡張し、
+   `birth_date` / `address` を [REDACTED] に置換
+3. **個人番号検出 trip wire**:
+   - サーバ側の post-validate で OCR レスポンス全文を `/\b\d{12}\b/` でスキャン
+   - ヒットしたら **400 を返してリクエスト全体を破棄**
+   - `logger.error({ event: "mynumber_detected" })` を発火（PII 本体は記録せず件数のみ）
+4. **rate limit**: tenant あたり 1 時間 30 件、IP あたり 1 時間 100 件
+5. **同意取得**: 撮影前に必ず「自動入力のために画像を送信します。保存はしません」を表示
+6. **CSP**: 既存の nonce-based CSP は維持。新規 API は同 origin
+
+### 3.8 コスト試算（月1,000件想定）
+
+| 項目 | 金額 |
+|---|---|
+| Sonnet 4.6 Vision 入力 (1600px JPEG, 約1500 tokens) | $0.0045 |
+| Sonnet 4.6 出力 (約300 tokens) | $0.0045 |
+| **1件あたり** | **約 $0.01 ≒ 1.5円** ※ 余裕を見て 3円で計上 |
+| 月1,000件 | **約 3,000円/月** |
+| 年12,000件 | **約 36,000円/年** |
+| 開発工数 (1.0 人月相当) | 約 100 万円 |
+| **初年度合計** | **約 100 万円**（開発主体、API 費はほぼ誤差） |
+
+※ 開発工数は v1 と同じ前提（エンジニア人月 ~100万円）
+※ 翌年度以降は **約 4 万円/年**（API 費のみ）
+
+### 3.9 Phase 1 スケジュール
+
+| Week | 内容 |
+|---|---|
+| 1 | `identityOcr.ts` + zod schema 実装 + Snapshot テスト |
+| 1 | PII フィルタ + 個人番号 trip wire |
+| 2 | Web 側 `IdentityScanButton` + 顧客ポータルに統合 |
+| 2 | モバイル側 `IdentityScanButton` + `customers/new.tsx` に統合 |
+| 3 | 電子署名フローへの組込み (任意) |
+| 3 | rate limit / logger マスク / 同意 UI |
+| 4 | 本物の身分証サンプルで QA (社内・最低 4 種類 × 各 10 枚) |
+
+→ **約 4 週間で本番投入可能**。
+
+---
+
+## 4. Phase 1 の限界と Phase 2 への接続
+
+### 4.1 OCR + AI でできないこと
+
+| 観点 | OCR + AI | JPKI/eKYC |
+|---|---|---|
+| 本人確認の法的効力 | ✗（あくまで自動入力） | ◎（犯収法・電子署名法対応） |
+| 偽造身分証の検知 | △（AI で違和感は分かるが信頼性低） | ◎（J-LIS の CRL チェック） |
+| 「本人確認済み」バッジ表示 | ✗ | ◎ |
+| 保険会社からの本人確認エビデンス要求 | ✗ | ◎ |
+| 電子署名の証拠力（実印相当） | ✗（手書き署名のまま） | ◎（CAdES-T） |
+| ランニングコスト | ほぼゼロ | 1件 200〜500円 |
+
+**結論**: OCR + AI は **顧客体験の向上ツール**であり、**本人確認の代替ではない**。
+法的本人確認が必要な局面が出てきた段階で Phase 2 を発動する。
+
+### 4.2 Phase 2 を発動すべきトリガー
+
+- 損保会社との連携で「取引時確認済みの顧客」要件が契約条件になった
+- 中古車マーケットで一定額以上の取引が発生し、犯収法対応が必要になった
+- 電子署名の証拠力で訴訟対応が必要になり、手書き署名では足りないケースが出た
+- 競合（Slim Hub・GO 等）が JPKI 対応を打ち出し、差別化要素として必要になった
+
+→ 上記いずれかが発生したら Phase 2 (TRUSTDOCK or 他 eKYC SaaS or J-LIS 認定) を起動。
+
+---
+
+## 5. Phase 2: JPKI 路線（並行調査・トリガー発生で起動）
+
+### 5.1 3 方式の比較
+
+| 方式 | 1件単価 | 月額固定 | 初期 | 認定/契約期間 | RN SDK |
+|---|---|---|---|---|---|
+| **TRUSTDOCK** | 280円 | 120,000円 | 750,000円（正式見積） | 1〜2ヶ月 | ◯ |
+| xID | 100〜300円 | 50,000円〜 | 〜30万円 | 1〜2ヶ月 | ◯ |
+| Pocket Sign | 300〜500円/署名 | 要見積 | 要見積 | 1〜2ヶ月 | ◯（β） |
+| 自社 JPKI 直接 | 0円 | サーバ運用 | 数千万円 + J-LIS 認定 | **6〜12ヶ月** | 自前実装 |
+| マイナポータル連携 | 0円 | – | デジタル庁申請 | **数ヶ月〜** | 制約あり |
+
+### 5.2 月間件数別 TRUSTDOCK 初年度コスト試算
+
+| 月間件数 | 年間 | 初年度合計 |
+|---|---|---|
+| 100 件 | 1,200 件 | 約 453 万円 |
+| 500 件 | 6,000 件 | 約 587 万円 |
+| 1,000 件 | 12,000 件 | 約 755 万円 |
+| 3,000 件 | 36,000 件 | 約 1,427 万円 |
+
+**損益分岐**: 月額固定 12万円 ÷ 280円 = **約 428 件/月**
+- これ以下なら xID や Pocket Sign の従量プランの方が安い可能性
+- これ以上なら TRUSTDOCK の単価優位性が活きる
+
+### 5.3 Phase 2 で追加される DB スキーマ
 
 ```sql
-CREATE TABLE customers (
-  id, tenant_id, name, name_kana, email, phone,
-  postal_code, address, note, created_at, updated_at
-);
-```
-
-生年月日・性別カラムは現状なし。
-
-### 2.2 入力フォーム
-
-| 画面 | ファイル | 現在の入力項目 |
-|---|---|---|
-| モバイル顧客新規登録 | `apps/mobile/src/app/customers/new.tsx:14-22` | name, name_kana, email, phone, postal_code, address, note |
-| 顧客ポータルログイン | `src/app/customer/[tenant]/login/page.tsx:12-15` | email + 電話下4桁 + OTP コード |
-| 電子署名 (Web) | `src/app/sign/[token]/SignatureClient.tsx:28` | signerEmail + 同意チェック → Canvas で手書き署名 |
-| 代理店電子署名 | `src/app/agent-sign/[token]/AgentSignClient.tsx` | 同上 |
-
-→ 現状はすべて **自己申告ベース**。JPKI 連携で「本人確認済み」フラグを足せる。
-
----
-
-## 3. 実装方式の比較
-
-### 3.1 方式A: eKYC SaaS 経由（**推奨**）
-
-**代表的なサービス**:
-
-| サービス | 特徴 | 価格 | RN SDK |
-|---|---|---|---|
-| **TRUSTDOCK** | 業界シェア最大、JPKI + 撮影型 eKYC 両対応 | **初期 750,000円 / 月額 120,000円 / 1件 280円**（正式見積） | ◯ |
-| xID | JPKI 特化、デジタルID（xID）の再利用で 2回目以降は数秒 | 初期 〜30万 / 月額 5万〜 / 1件 100〜300円（公開情報） | ◯ |
-| Pocket Sign | JPKI 署名 + eKYC を一体提供。署名フローと相性◎ | 要見積 / 1署名 300〜500円 | ◯（β） |
-| ELEMENTS Hubble | 顔認証 + JPKI ハイブリッド | 要見積 / 大規模向け | ◯ |
-| LiquidPay (Liquid eKYC) | 銀行向け実績多 | 要見積 | ◯ |
-
-**メリット**:
-- プラットフォーム事業者認可（J-LIS 経由）を SaaS 側が肩代わり
-- Web/モバイル両対応の SDK 完備
-- 行政書類アップデート（住基ネット仕様変更等）の追随を任せられる
-- 監査ログ・本人確認記録の長期保存（犯収法 7年）も SaaS 側で保持
-
-**デメリット**:
-- ランニングコスト（1件 200〜500円）。年間 1 万件なら 200〜500 万円
-- 自社で電子証明書の検証ロジックを持たないので、ベンダーロックイン
-- 顧客の基本4情報を一旦 SaaS 側経由で受け取る → DPA 必要
-
-**契約面**:
-- 業務委託契約 + 個人情報の取扱いに関する覚書（DPA）が必須
-- `docs/dpa-template.md` を流用可能
-
-### 3.2 方式B: JPKI 直接実装（自社で公的個人認証）
-
-**実装内容**:
-- J-LIS に「プラットフォーム事業者」または「民間事業者」として認定申請
-- 失効リスト (CRL) を J-LIS から取得し、署名用電子証明書を検証
-- モバイル: `react-native-nfc-manager` で APDU を直接叩く（ISO/IEC 7816）
-- Web: WebUSB / WebNFC は実用未満 → スマホアプリ + QR で Web セッションと連携
-
-**メリット**:
-- 1件あたりコストが原則ゼロ
-- 個人情報を一切外部に流さない
-
-**デメリット**:
-- **認定取得に 6〜12 ヶ月、書類審査・現地監査あり**
-- CRL 取得・OCSP・タイムスタンプ署名 (RFC3161) を自前で運用
-- iOS は CoreNFC で APDU を叩けるが、Android は機種により JPKI 互換性差あり
-- Web 単独ではユーザー体験を作れない → スマホアプリ前提
-
-→ Ledra の規模（マルチテナント SaaS）では **過剰投資**。将来の月間処理件数が
-  10 万件を超えた段階で再検討するレベル。
-
-### 3.3 方式C: マイナポータル API 連携
-
-**実装内容**:
-- マイナポータルの「自己情報取得 API」「e-私書箱」を OAuth 様のフローで叩く
-- ユーザーがマイナポータル側で同意 → コールバックで属性情報取得
-
-**取れる情報**:
-- 基本4情報のほか、住民票記載事項、税情報、所得情報、医療費通知など（用途次第）
-
-**メリット**:
-- 住所変更などが自動同期される（住基ネット直結）
-- 「マイナンバーで本人確認しました」のブランディング訴求が強い
-
-**デメリット**:
-- デジタル庁への連携申請（数ヶ月）必要
-- 連携先システムとしての要件適合（情報セキュリティ監査）が重い
-- 顧客側で「マイナポータル」アプリインストール済が前提
-
-→ Ledra のフェーズ的には早すぎる。次フェーズ（保険会社・損保連携が本格化したら検討）。
-
----
-
-## 4. 推奨アーキテクチャ（方式A 採用）
-
-### 4.1 全体フロー
-
-```
-[ユーザー（顧客）]
-    │
-    ├─ 1) Ledra で「マイナンバーカードで登録」ボタン押下
-    │
-    ▼
-[Ledra フロント (Next / Expo)]
-    │
-    ├─ 2) eKYC SaaS の SDK で本人確認セッション開始
-    │     POST {eKYC}/sessions → returns session_token
-    │
-    ▼
-[eKYC SaaS フロント (WebView / RN SDK)]
-    │
-    ├─ 3) ユーザーがカードを NFC かざす + PIN 入力
-    │   署名用電子証明書 + 基本4情報を取得 → eKYC SaaS へ送信
-    │
-    ▼
-[eKYC SaaS バックエンド]
-    │
-    ├─ 4) J-LIS の CRL に問い合わせ → 証明書失効チェック
-    ├─ 5) 基本4情報を eKYC SaaS が一時保管 (7年 / 犯収法)
-    └─ 6) Ledra Webhook を呼ぶ
-            POST /api/identity/webhook
-            { session_id, status: "verified",
-              name, name_kana, birth_date, gender,
-              postal_code, address,
-              verification_id, verified_at }
-    │
-    ▼
-[Ledra Bff (Next route handler)]
-    │
-    ├─ 7) HMAC で webhook 署名検証 (`withRetry` 不要、同期処理)
-    ├─ 8) customers / customer_identity_verifications を upsert
-    └─ 9) ユーザーをセッションに昇格 (customerPortalServer.ts と統合)
-```
-
-### 4.2 DB 変更（マイグレーション 1 本）
-
-新規テーブル `customer_identity_verifications`:
-
-```sql
+-- supabase/migrations/20260801000000_identity_verifications.sql
 CREATE TABLE customer_identity_verifications (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -206,21 +301,18 @@ CREATE TABLE customer_identity_verifications (
   provider text NOT NULL,           -- 'trustdock' | 'xid' | 'pocket_sign'
   provider_verification_id text NOT NULL,
   method text NOT NULL,             -- 'jpki' | 'jpki_signed' | 'document_photo'
-  status text NOT NULL,             -- 'pending' | 'verified' | 'failed' | 'expired'
+  status text NOT NULL,
   verified_at timestamptz,
-  -- 基本4情報のスナップショット（後の本人申告との照合用）
   verified_name text,
   verified_birth_date date,
   verified_postal_code text,
   verified_address text,
   verified_gender text,
-  -- JPKI 署名フロー用
-  signature_payload_hash text,      -- 何に署名したかのハッシュ（PDF 等）
-  signed_certificate_serial text,   -- 電子証明書シリアル
-  -- 監査
-  raw_provider_payload jsonb,       -- 障害解析用（90日でローテーション）
+  signature_payload_hash text,
+  signed_certificate_serial text,
+  raw_provider_payload jsonb,       -- 90日でローテーション
   created_at timestamptz DEFAULT now(),
-  expires_at timestamptz,           -- 確認結果の有効期限（再確認要否）
+  expires_at timestamptz,
   UNIQUE (provider, provider_verification_id)
 );
 
@@ -230,157 +322,92 @@ ALTER TABLE customers
   ADD COLUMN IF NOT EXISTS identity_verification_id uuid
     REFERENCES customer_identity_verifications(id) ON DELETE SET NULL;
 
-CREATE INDEX idx_civ_tenant_customer
-  ON customer_identity_verifications (tenant_id, customer_id);
-```
-
-**重要**: `customers.my_number` のような **個人番号本体カラムは絶対に作らない**。
-誤って入ってきた場合のために CHECK 制約も入れる:
-
-```sql
+-- 誤って個人番号が混入しないための trip wire
 ALTER TABLE customers
   ADD CONSTRAINT customers_no_mynumber CHECK (
     note IS NULL OR note !~ '^\d{12}$'
   );
 ```
 
-### 4.3 Ledra 側コード変更箇所
+---
 
-| 区分 | パス | 変更内容 |
-|---|---|---|
-| 新規 | `src/lib/identity/provider.ts` | eKYC SaaS クライアントラッパー（withRetry 通す） |
-| 新規 | `src/lib/identity/webhook.ts` | HMAC 検証 + customers upsert |
-| 新規 | `src/app/api/identity/session/route.ts` | フロントから本人確認セッション開始 |
-| 新規 | `src/app/api/identity/webhook/route.ts` | SaaS からのコールバック |
-| 修正 | `src/app/customer/[tenant]/login/page.tsx` | 「マイナンバーカードで登録/ログイン」ボタン追加 |
-| 修正 | `src/app/sign/[token]/SignatureClient.tsx` | 手書き署名の代替として JPKI 署名選択 |
-| 修正 | `src/app/agent-sign/[token]/AgentSignClient.tsx` | 同上 |
-| 修正 | `apps/mobile/src/app/customers/new.tsx` | 「マイナンバーカード読取り」ボタン → NFC SDK 呼び出し |
-| 新規 | `apps/mobile/src/lib/identity.ts` | RN SDK ラッパー |
-| 新規 | `supabase/migrations/20260601000000_identity_verifications.sql` | 上記 DDL |
+## 6. Phase 3: OCR + JPKI 共存運用
 
-### 4.4 セキュリティ要件
+### 6.1 ユーザー視点のフロー
 
-1. **TLS 1.3 / mTLS**: eKYC SaaS との通信は mTLS 必須。クライアント証明書を Vercel 環境変数で管理
-2. **HMAC Webhook 検証**: `X-Signature` ヘッダを `crypto.timingSafeEqual` で検証
-3. **PII の最小化**:
-   - `verified_address` は **市区町村まで** で保存し、番地以下は本人申告フィールドへ
-   - Sentry に payload を絶対に送らない（既存の `secret マスク` を拡張）
-4. **保存期間**: `customer_identity_verifications.raw_provider_payload` は 90 日で NULL 化
-5. **削除リクエスト対応**: GDPR/個人情報保護法 33条 の本人削除要請で確実に消える設計
-6. **ログ**: `logger.child({ verificationId })` で全 step を相関ID付き JSON ログ化
-
-### 4.5 UX 設計
-
-**Web (顧客ポータル)**:
 ```
-[既存] メール + 電話下4桁 + OTP
-    +
-[追加] 「マイナンバーカードで登録」ボタン
-   → スマホで QR を読む → スマホ側で NFC かざす
-   → Web 側はポーリングで完了検知
+[顧客新規登録画面]
+   │
+   ├─ [写真で自動入力] ボタン   ← Phase 1 (常時提供・無料・本人確認なし)
+   │
+   └─ [マイナンバーカードで本人確認] ボタン  ← Phase 2 (オプション or 必須案件のみ)
+        ├ 本人確認済みバッジ付与
+        └ 保険会社向けエビデンス保存
 ```
 
-**モバイル (顧客新規登録)**:
-```
-[既存] 全項目手入力
-    or
-[追加] 「カード読取りで自動入力」
-   → NFC かざす → PIN 入力 → 氏名/住所/生年月日が自動充填
-   → ユーザーは確認して登録
-```
+### 6.2 customers テーブルの状態遷移
 
-**電子署名**:
-```
-[既存] 手書き署名 (Canvas)
-    or
-[追加] 「マイナンバーカードで電子署名」
-   → JPKI 署名 → PDF に CAdES-T 埋め込み
-   → 既存 Polygon アンカリングと併用で「実印 + ブロックチェーン」の二重証拠
-```
+| ステータス | identity_verified_at | 取得方法 | 用途 |
+|---|---|---|---|
+| 自動入力のみ | NULL | OCR (Phase 1) | 通常案件 |
+| 本人確認済み | timestamptz | JPKI (Phase 2) | 保険連携・高額取引 |
+
+→ 同一顧客が Phase 1 → Phase 3 で「ランクアップ」する経路を持つ。
+   既存データの再 OCR や移行作業は不要（OCR は DB 保存しないため）。
 
 ---
 
-## 5. 概算スケジュール・コスト
+## 7. 法令チェックリスト（全フェーズ共通）
 
-### 5.1 スケジュール（方式A）
-
-| Phase | 内容 | 期間 |
-|---|---|---|
-| 0 | eKYC SaaS 3社見積取得・選定 | 2 週 |
-| 1 | DPA / 業務委託契約締結 | 2 週（並行可） |
-| 2 | DB マイグレーション + Webhook ハンドラ | 1 週 |
-| 3 | Web フロー（顧客ポータル + 電子署名） | 2 週 |
-| 4 | モバイルフロー | 2 週 |
-| 5 | E2E + 監査ログ確認 + ベンダー本番審査 | 2 週 |
-| 合計 | | **約 2 ヶ月** |
-
-### 5.2 コスト（方式A: TRUSTDOCK 採用、初年度試算）
-
-**TRUSTDOCK 正式見積**: 初期 750,000円 / 月額 120,000円 / 1件 280円
-
-| 件数シナリオ | 初期 | 月額固定 (年) | 従量 | 開発工数 | **初年度合計** |
-|---|---|---|---|---|---|
-| **少量**: 月 100 件（年 1,200 件） | 750,000 | 1,440,000 | 336,000 | 2,000,000 | **約 453 万円** |
-| **中量**: 月 500 件（年 6,000 件） | 750,000 | 1,440,000 | 1,680,000 | 2,000,000 | **約 587 万円** |
-| **多量**: 月 1,000 件（年 12,000 件） | 750,000 | 1,440,000 | 3,360,000 | 2,000,000 | **約 755 万円** |
-| **大量**: 月 3,000 件（年 36,000 件） | 750,000 | 1,440,000 | 10,080,000 | 2,000,000 | **約 1,427 万円** |
-
-※ 開発工数はエンジニア 1.0 人月 × 2ヶ月 × 100万円 で概算
-※ 翌年度以降は初期費用 750,000 + 開発工数が落ちるため、月1,000件で **約 480 万円/年** に低減
-
-**損益分岐の目安**:
-- 月額固定 120,000円 を 1件 280円 で割ると **約 428 件/月** が固定費分の元を取る件数
-- 月 100 件以下だと 1件あたりの実質コストが 1,500 円超になり割高 → **xID や Pocket Sign の従量プランも比較推奨**
-- 月 500 件超なら TRUSTDOCK の単価優位性が活きる
-
-**事業上の負担方法**（顧客あたり 280 円 + 固定費按分）:
-- 保険会社案件のみ必須化 → コストは案件原価に上乗せ（損保側の本人確認要求が強い案件で訴求しやすい）
-- 全顧客必須化 → Enterprise プランの差別化要素として料金に転嫁
-- オプション化 → 必要な顧客のみ。「本人確認済みバッジ」として中古車マーケットで価値化
+- [ ] **番号利用法**: 個人番号本体を取得・保存しない設計 (Phase 1 で trip wire、Phase 2 で CHECK 制約)
+- [ ] **個人情報保護法**: 取得目的（自動入力 / 本人確認）の明示・本人同意の取得
+- [ ] **要配慮個人情報**: 本籍・保険者番号を取得しない（OCR フィルタで除外）
+- [ ] **画像の保存**: Phase 1 では永続化しない（メモリ上のみ）
+- [ ] **犯収法**: Phase 1 は対象外。Phase 2 で eKYC SaaS に依拠
+- [ ] **電子署名法**: Phase 1 は手書き署名のまま。Phase 2 で JPKI 署名 (§3 認定)
+- [ ] **プライバシーポリシー**: 取得項目・処理委託先（Anthropic / TRUSTDOCK）を記載
+- [ ] **PIA**: 生年月日・住所を新規取得するため Phase 1 着手前に実施推奨
 
 ---
 
-## 6. 法令チェックリスト
+## 8. オープン課題
 
-- [ ] **番号利用法**: 個人番号本体を取得・保存しない設計になっているか（CHECK 制約 + コードレビュー）
-- [ ] **個人情報保護法**: 利用目的の明示・本人同意の取得フローがあるか
-- [ ] **犯収法**（取引時確認）: Ledra 自身は対象事業者ではないが、損保連携時に必要になる可能性
-- [ ] **電子署名法**: JPKI 署名は §3 の「電子署名」として認定済（電子署名法施行規則第2条第3項）
-- [ ] **e-文書法**: PDF への JPKI 署名埋め込みで原本性確保
-- [ ] **DPA**: eKYC SaaS と締結
-- [ ] **PIA (個人情報影響評価)**: 顧客の生年月日・住所を新規取得するため実施推奨
-- [ ] **プライバシーポリシー更新**: 取得項目・保管期間・第三者提供の有無
-
----
-
-## 7. オープン課題
-
-1. **対象テナントの絞り込み**: 全テナント一律で出すか、特定プラン（Enterprise 等）のみか
-2. **PIN 失念時の運用**: マイナンバーカード PIN をユーザーが忘れた場合は市役所窓口リセット必須
-   → 「手書き署名にフォールバック」を必ず残す
-3. **代理店 (agent) 経由の本人確認**: 代理店が顧客に代わって読取りするフローは
-   eKYC SaaS 側が認めないことが多い → 顧客本人のスマホ前提にする必要あり
-4. **モバイルアプリの NFC 権限**: iOS は Entitlement 申請が必要。
-   `apps/mobile/eas.json` への追加設定要
-5. **オフライン対応**: `docs/pwa-cert-offline-design.md` で進めている PWA オフライン路線と
-   本人確認フローは衝突する（本人確認はオンライン必須） → UX 設計で明示する
+1. **モバイル版で身分証画像をどう送るか**:
+   現状 Ledra モバイルは Supabase 直接 INSERT が多い（`apps/mobile/src/app/customers/new.tsx:27-28`）。
+   OCR 用のサーバエンドポイントは別途必要 → Bff 経由のデザインに統一する
+2. **オフライン対応**: `docs/pwa-cert-offline-design.md` で進めている PWA オフライン路線では
+   OCR API が叩けない → 手動入力フォールバックを必ず残す
+3. **Anthropic API のレート制限**: tier によっては大量同時 OCR でスロットルされる
+   → tier アップ or キューイング (QStash) で吸収
+4. **多言語身分証**: パスポートが英語表記の場合に氏名カナをどう生成するか
+   → 別途プロンプトで「カナ推定」を追加するか、カナは手入力に倒す
+5. **AI の誤認識リスク開示**: 「自動入力結果は必ず確認してください」を UI で明示
+6. **個人番号面 (裏面) を間違えて送ってきたユーザー対応**: 検出 → 自動破棄 →
+   「マイナンバー面は撮影しないでください」を明確に表示
+7. **PIN 失念時のフォールバック** (Phase 2): 手書き署名・OCR 自動入力に縮退
 
 ---
 
-## 8. 次のアクション
+## 9. 次のアクション
 
-1. **意思決定**: 上記方式 A〜C のどれで進めるかを経営判断 (1 週間以内)
-2. **ベンダー選定**: 方式 A 採用なら TRUSTDOCK / xID / Pocket Sign の 3 社に RFP 送付
-3. **PoC 設計**: 1 テナントで顧客新規登録フローのみを先行実装し、UX・コスト・運用負荷を実測
-4. **正式実装計画**: PoC 結果をもとに本ドキュメントを v2 へ更新
+### Phase 1 (即着手)
+1. **意思決定**: Phase 1 着手の Go/NoGo (1 営業日)
+2. **実装着手**: 上記スケジュール 4 週間
+3. **本番投入**: 1 テナント PoC → 全テナント roll out
+
+### Phase 2 (並行調査・トリガー待ち)
+1. **TRUSTDOCK / xID / Pocket Sign 3 社の RFP**: 月間件数別単価・JPKI フロー UX サンプル
+2. **損保 / 中古車マーケットの本人確認要件ヒアリング**
+3. **競合（Slim Hub・GO・Drivvic 等）の本人確認方式の継続ウォッチ**
 
 ---
 
-## 9. 参考リンク
+## 10. 参考リンク
 
 - 番号利用法（行政手続における特定の個人を識別するための番号の利用等に関する法律）
-- 公的個人認証サービス（JPKI）: J-LIS 公式ページ
+- 個人情報保護法・要配慮個人情報の取扱い
+- 公的個人認証サービス（JPKI）: J-LIS 公式
 - デジタル庁: マイナポータル API 連携ガイドライン
 - 電子署名法施行規則 第2条第3項
 - 個人情報保護委員会: 個人番号の取扱いに関するガイドライン
+- Anthropic Vision API ドキュメント
