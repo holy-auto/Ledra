@@ -14,6 +14,21 @@ import Badge from "@/components/ui/Badge";
 import { formatDate } from "@/lib/format";
 import { fetcher } from "@/lib/swr";
 
+interface ValidationIssue {
+  field: string;
+  severity: "error" | "warning";
+  message: string;
+  source: "rule" | "ai";
+}
+
+interface ValidationPayload {
+  issues: ValidationIssue[];
+  ai_confidence: number;
+  ai_assessment: string;
+  ai_available: boolean;
+  checked_at: string;
+}
+
 interface Invitation {
   id: string;
   short_id: string;
@@ -26,6 +41,7 @@ interface Invitation {
   expires_at: string;
   completed_at: string | null;
   completed_customer_id: string | null;
+  approved_by: string | null;
   ocr_attempts: number;
   submitted_at: string | null;
   submitted_name: string | null;
@@ -36,6 +52,7 @@ interface Invitation {
   submitted_address: string | null;
   submitted_birth_date: string | null;
   submitted_note: string | null;
+  validation_issues: ValidationPayload | null;
 }
 
 interface DuplicateCandidate {
@@ -118,10 +135,14 @@ export default function CustomerIntakesClient() {
     void navigator.clipboard.writeText(created.url);
   }
 
-  function statusBadge(s: Invitation["status"]) {
+  function statusBadge(inv: Invitation) {
+    const s = inv.status;
     if (s === "pending") return <Badge variant="info">未送信</Badge>;
-    if (s === "submitted") return <Badge variant="violet">確認待ち</Badge>;
-    if (s === "completed") return <Badge variant="success">登録済</Badge>;
+    if (s === "submitted") return <Badge variant="violet">要確認</Badge>;
+    if (s === "completed") {
+      // approved_by IS NULL = 自動承認
+      return inv.approved_by ? <Badge variant="success">登録済</Badge> : <Badge variant="success">自動登録</Badge>;
+    }
     if (s === "expired") return <Badge variant="warning">期限切れ</Badge>;
     return <Badge variant="default">取消済</Badge>;
   }
@@ -353,7 +374,7 @@ export default function CustomerIntakesClient() {
                     (inv.label ?? <span className="text-muted">-</span>)
                   )}
                 </td>
-                <td className="px-4 py-3">{statusBadge(inv.status)}</td>
+                <td className="px-4 py-3">{statusBadge(inv)}</td>
                 <td className="px-4 py-3 text-muted">{formatDate(inv.created_at)}</td>
                 <td className="px-4 py-3 text-muted">{formatDate(inv.expires_at)}</td>
                 <td className="px-4 py-3 text-muted">{inv.ocr_attempts}/10</td>
@@ -396,9 +417,33 @@ export default function CustomerIntakesClient() {
                 顧客提出内容の確認 ({reviewing.label ?? "ラベルなし"})
               </h2>
               <p className="mt-1 text-xs text-muted">
-                内容を確認・必要に応じて編集してから「承認して登録」を押すと顧客情報として登録されます。
+                自動検証で問題が検出されたため、確認をお願いします。内容を確認・編集してから「承認して登録」を押してください。
               </p>
             </div>
+
+            {reviewing.validation_issues && reviewing.validation_issues.issues.length > 0 && (
+              <div className="mb-4 rounded-xl border border-warning bg-warning-bg px-3 py-2 text-sm">
+                <div className="font-semibold text-warning-text">自動検証で検出された問題</div>
+                {reviewing.validation_issues.ai_assessment && (
+                  <p className="mt-1 text-xs text-warning-text">
+                    AI 判定: {reviewing.validation_issues.ai_assessment}
+                    {reviewing.validation_issues.ai_available && (
+                      <span className="ml-1 text-muted">
+                        (信頼度 {Math.round(reviewing.validation_issues.ai_confidence * 100)}%)
+                      </span>
+                    )}
+                  </p>
+                )}
+                <ul className="mt-2 list-inside list-disc text-xs text-warning-text">
+                  {reviewing.validation_issues.issues.map((iss, i) => (
+                    <li key={i}>
+                      <span className="font-semibold">[{iss.severity}]</span> {iss.field}: {iss.message}{" "}
+                      <span className="text-muted">({iss.source})</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {candidates.length > 0 && (
               <div className="mb-4 rounded-xl border border-warning bg-warning-bg px-3 py-2 text-sm">

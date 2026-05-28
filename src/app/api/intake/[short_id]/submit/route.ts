@@ -9,7 +9,7 @@ import { z } from "zod";
 import { apiOk, apiError, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { logger } from "@/lib/logger";
-import { validateIntakeToken, submitIntake } from "@/lib/identity/intakeServer";
+import { validateIntakeToken, submitAndProcessIntake } from "@/lib/identity/intakeServer";
 import { containsMyNumber } from "@/lib/identity/ocrFilter";
 
 export const runtime = "nodejs";
@@ -78,8 +78,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ short_id: 
   }
 
   try {
-    await submitIntake({
+    const result = await submitAndProcessIntake({
       intakeId: intake.id,
+      tenantId: intake.tenantId,
       name: safe.name,
       nameKana: safe.name_kana ?? null,
       email: safe.email && safe.email.length > 0 ? safe.email : null,
@@ -93,10 +94,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ short_id: 
     logger.info("intake_submit_complete", {
       intakeId: intake.id,
       tenantId: intake.tenantId,
+      auto_status: result.status,
+      merged: result.merged ?? false,
+      issue_count: result.issues?.length ?? 0,
     });
 
-    // customers はまだ作らない. 店舗が approve したら作成される.
-    return apiOk({ status: "submitted" as const });
+    // 自動承認された場合は customers 作成済み. needs_review なら店舗で確認待ち.
+    return apiOk({ status: result.status });
   } catch (err) {
     return apiInternalError(err, "POST /api/intake/:short_id/submit");
   }

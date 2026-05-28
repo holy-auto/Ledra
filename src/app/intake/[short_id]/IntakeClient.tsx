@@ -72,7 +72,7 @@ export default function IntakeClient({ shortId }: { shortId: string }) {
   const [form, setForm] = useState({ ...emptyForm });
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
+  const [done, setDone] = useState<null | "auto_completed" | "needs_review">(null);
 
   // OCR state
   const [ocrOpen, setOcrOpen] = useState(false);
@@ -172,12 +172,19 @@ export default function IntakeClient({ shortId }: { shortId: string }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       });
-      const j = await res.json().catch(() => null);
+      const j = (await res.json().catch(() => null)) as
+        | { ok: true; status: "auto_completed" | "needs_review" }
+        | { ok: false; error?: { message?: string }; message?: string }
+        | null;
       if (!res.ok || !j?.ok) {
-        setSubmitErr(j?.error?.message ?? j?.message ?? `送信に失敗しました (HTTP ${res.status})`);
+        const errMsg =
+          (j && "error" in j && j.error?.message) ||
+          (j && "message" in j && j.message) ||
+          `送信に失敗しました (HTTP ${res.status})`;
+        setSubmitErr(errMsg);
         return;
       }
-      setDone(true);
+      setDone(j.status);
     } catch (e) {
       setSubmitErr(e instanceof Error ? e.message : "通信エラー");
     } finally {
@@ -199,12 +206,30 @@ export default function IntakeClient({ shortId }: { shortId: string }) {
     );
   }
 
-  if (done || statusState.data.status === "completed" || statusState.data.status === "submitted") {
+  // 自動登録された場合 (auto_completed) と店舗確認待ち (needs_review) でメッセージを変える
+  const effectiveDone =
+    done ??
+    (statusState.data.status === "completed"
+      ? "auto_completed"
+      : statusState.data.status === "submitted"
+        ? "needs_review"
+        : null);
+
+  if (effectiveDone === "auto_completed") {
+    return (
+      <main className="mx-auto max-w-md p-6">
+        <h1 className="text-lg font-bold text-primary">ご登録ありがとうございます</h1>
+        <p className="mt-2 text-sm text-secondary">お客様情報の登録が完了しました。ご来店をお待ちしております。</p>
+      </main>
+    );
+  }
+
+  if (effectiveDone === "needs_review") {
     return (
       <main className="mx-auto max-w-md p-6">
         <h1 className="text-lg font-bold text-primary">送信完了</h1>
         <p className="mt-2 text-sm text-secondary">
-          情報を受け取りました。店舗で内容を確認後、ご登録となります。ご来店をお待ちしております。
+          情報を受け取りました。内容を確認のうえご登録となりますので、しばらくお待ちください。
         </p>
       </main>
     );

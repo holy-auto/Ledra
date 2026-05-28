@@ -398,6 +398,225 @@ export async function approveIntake(input: ApproveIntakeInput): Promise<{ custom
   return { customerId, merged };
 }
 
+// ─────────────────────────────────────────────
+// 自動承認パイプライン
+// ─────────────────────────────────────────────
+
+/**
+ * 顧客が送信した内容を「自動承認」可能か判定し、
+ *   - 通過 + 重複なし → customers を新規作成、status=completed
+ *   - 通過 + email AND phone が完全一致する既存顧客あり → 既存にマージ、status=completed
+ *   - 通過 + 部分一致 (どちらか片方だけ一致) → 安全側で手動レビュー
+ *   - 不通過 → status=submitted のまま、validation_issues に検証結果を保存
+ *
+ * 戻り値の status: "auto_completed" | "needs_review"
+ *
+ * 自動承認の場合 approved_by は NULL (= 自動).
+ */
+export interface SubmitAndProcessInput {
+  intakeId: string;
+  tenantId: string;
+  name: string;
+  nameKana?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  postalCode?: string | null;
+  address?: string | null;
+  birthDate?: string | null;
+  note?: string | null;
+}
+
+export interface SubmitAndProcessResult {
+  status: "auto_completed" | "needs_review";
+  customerId?: string;
+  merged?: boolean;
+  /** 手動レビューの場合、検証で見つかった問題. */
+  issues?: Array<{ field: string; severity: "error" | "warning"; message: string; source: "rule" | "ai" }>;
+}
+
+export async function submitAndProcessIntake(input: SubmitAndProcessInput): Promise<SubmitAndProcessResult> {
+  const { validateIntakeSubmission } = await import("@/lib/ai/intakeValidator");
+  const { admin } = createTenantScopedAdmin(input.tenantId);
+
+  // 1) 提出データを保存 (常に行う. AI 検証の前に行うことで監査ログが残る)
+  const { error: subErr } = await admin
+    .from("customer_intake_invitations")
+    .update({
+      status: "submitted",
+      submitted_at: new Date().toISOString(),
+      submitted_name: input.name,
+      submitted_name_kana: input.nameKana ?? null,
+      submitted_email: input.email ?? null,
+      submitted_phone: input.phone ?? null,
+      submitted_postal_code: input.postalCode ?? null,
+      submitted_address: input.address ?? null,
+      submitted_birth_date: input.birthDate ?? null,
+      submitted_note: input.note ?? null,
+      validation_issues: null,
+    })
+    .eq("id", input.intakeId)
+    .eq("tenant_id", input.tenantId)
+    .eq("status", "pending");
+  if (subErr) throw subErr;
+
+  // 2) 自動検証
+  const validation = await validateIntakeSubmission({
+    name: input.name,
+    name_kana: input.nameKana ?? null,
+    email: input.email ?? null,
+    phone: input.phone ?? null,
+    postal_code: input.postalCode ?? null,
+    address: input.address ?? null,
+    birth_date: input.birthDate ?? null,
+    note: input.note ?? null,
+  });
+
+  if (!validation.ok) {
+    // 手動レビュー行きで validation_issues を保存
+    await admin
+      .from("customer_intake_invitations")
+      .update({
+        validation_issues: {
+          issues: validation.issues,
+          ai_confidence: validation.ai.confidence,
+          ai_assessment: validation.ai.assessment,
+          ai_available: validation.ai.available,
+          checked_at: new Date().toISOString(),
+        },
+      })
+      .eq("id", input.intakeId)
+      .eq("tenant_id", input.tenantId);
+    return { status: "needs_review", issues: validation.issues };
+  }
+
+  // 3) 重複検出
+  const candidates = await findDuplicateCustomerCandidates(input.tenantId, {
+    email: input.email ?? null,
+    phone: input.phone ?? null,
+  });
+
+  // email AND phone が両方一致する候補 = 強いマッチ → 自動マージ
+  const strongMatch = candidates.find(
+    (c) =>
+      input.email != null &&
+      input.phone != null &&
+      c.email != null &&
+      c.phone != null &&
+      c.email.trim().toLowerCase() === input.email.trim().toLowerCase() &&
+      c.phone.trim() === input.phone.trim(),
+  );
+
+  // 部分一致 (email だけ / phone だけ) → 別人かもしれないので手動レビューへ
+  if (!strongMatch && candidates.length > 0) {
+    await admin
+      .from("customer_intake_invitations")
+      .update({
+        validation_issues: {
+          issues: [
+            {
+              field: candidates[0].email ? "email" : "phone",
+              severity: "warning" as const,
+              message: "同じ連絡先の既存顧客が見つかったため、確認が必要です",
+              source: "rule" as const,
+            },
+          ],
+          ai_confidence: validation.ai.confidence,
+          ai_assessment: validation.ai.assessment,
+          ai_available: validation.ai.available,
+          checked_at: new Date().toISOString(),
+        },
+      })
+      .eq("id", input.intakeId)
+      .eq("tenant_id", input.tenantId);
+    return {
+      status: "needs_review",
+      issues: [
+        {
+          field: candidates[0].email ? "email" : "phone",
+          severity: "warning",
+          message: "同じ連絡先の既存顧客が見つかったため、確認が必要です",
+          source: "rule",
+        },
+      ],
+    };
+  }
+
+  // 4) 自動承認 = approveIntake と同じ処理 (approved_by は NULL のまま)
+  if (strongMatch) {
+    // 既存顧客にマージ
+    const { data: existing } = await admin
+      .from("customers")
+      .select("id, name_kana, email, phone, postal_code, address, birth_date, note")
+      .eq("id", strongMatch.id)
+      .eq("tenant_id", input.tenantId)
+      .maybeSingle();
+    if (!existing) throw new Error("strong-match customer disappeared");
+    const mergePatch = {
+      name_kana: existing.name_kana ?? input.nameKana ?? null,
+      email: existing.email ?? input.email ?? null,
+      phone: existing.phone ?? input.phone ?? null,
+      postal_code: existing.postal_code ?? input.postalCode ?? null,
+      address: existing.address ?? input.address ?? null,
+      birth_date: existing.birth_date ?? input.birthDate ?? null,
+      note: existing.note ?? input.note ?? null,
+    };
+    const { error: upErr } = await admin
+      .from("customers")
+      .update(mergePatch)
+      .eq("id", strongMatch.id)
+      .eq("tenant_id", input.tenantId);
+    if (upErr) throw upErr;
+
+    await admin
+      .from("customer_intake_invitations")
+      .update({
+        status: "completed",
+        completed_at: new Date().toISOString(),
+        completed_customer_id: strongMatch.id,
+        approved_at: new Date().toISOString(),
+        approved_by: null, // 自動承認
+      })
+      .eq("id", input.intakeId)
+      .eq("tenant_id", input.tenantId)
+      .eq("status", "submitted");
+
+    return { status: "auto_completed", customerId: strongMatch.id, merged: true };
+  }
+
+  // 新規顧客を作成
+  const { data: created, error: cErr } = await admin
+    .from("customers")
+    .insert({
+      tenant_id: input.tenantId,
+      name: input.name.trim(),
+      name_kana: input.nameKana ?? null,
+      email: input.email ?? null,
+      phone: input.phone ?? null,
+      postal_code: input.postalCode ?? null,
+      address: input.address ?? null,
+      birth_date: input.birthDate ?? null,
+      note: input.note ?? null,
+    })
+    .select("id")
+    .single();
+  if (cErr || !created) throw cErr ?? new Error("failed to create customer");
+
+  await admin
+    .from("customer_intake_invitations")
+    .update({
+      status: "completed",
+      completed_at: new Date().toISOString(),
+      completed_customer_id: created.id,
+      approved_at: new Date().toISOString(),
+      approved_by: null,
+    })
+    .eq("id", input.intakeId)
+    .eq("tenant_id", input.tenantId)
+    .eq("status", "submitted");
+
+  return { status: "auto_completed", customerId: created.id, merged: false };
+}
+
 /** 提出された intake と email/phone が完全一致する既存顧客を最大 5 件返す. */
 export async function findDuplicateCustomerCandidates(
   tenantId: string,
