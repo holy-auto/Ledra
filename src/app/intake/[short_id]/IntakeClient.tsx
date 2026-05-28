@@ -16,7 +16,7 @@ import { useSearchParams } from "next/navigation";
 interface StatusResponse {
   ok: true;
   label: string | null;
-  status: "pending" | "completed" | "revoked" | "expired";
+  status: "pending" | "submitted" | "completed" | "revoked" | "expired";
   expires_at: string;
   can_ocr: boolean;
   ocr_attempts_remaining: number;
@@ -199,11 +199,13 @@ export default function IntakeClient({ shortId }: { shortId: string }) {
     );
   }
 
-  if (done || statusState.data.status === "completed") {
+  if (done || statusState.data.status === "completed" || statusState.data.status === "submitted") {
     return (
       <main className="mx-auto max-w-md p-6">
         <h1 className="text-lg font-bold text-primary">送信完了</h1>
-        <p className="mt-2 text-sm text-secondary">情報を受け取りました。ご来店をお待ちしております。</p>
+        <p className="mt-2 text-sm text-secondary">
+          情報を受け取りました。店舗で内容を確認後、ご登録となります。ご来店をお待ちしております。
+        </p>
       </main>
     );
   }

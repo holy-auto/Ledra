@@ -116,7 +116,7 @@ export interface ValidatedIntake {
   tenantId: string;
   storeId: string | null;
   label: string | null;
-  status: "pending" | "completed" | "revoked" | "expired";
+  status: "pending" | "submitted" | "completed" | "revoked" | "expired";
   expiresAt: string;
   ocrAttempts: number;
 }
@@ -205,8 +205,6 @@ export async function incrementOcrAttempts(intakeId: string): Promise<boolean> {
 
 export interface IntakeSubmitInput {
   intakeId: string;
-  tenantId: string;
-  storeId: string | null;
   name: string;
   nameKana?: string | null;
   email?: string | null;
@@ -217,39 +215,217 @@ export interface IntakeSubmitInput {
   note?: string | null;
 }
 
-export async function submitIntake(input: IntakeSubmitInput): Promise<{ customerId: string }> {
+/**
+ * 公開フローから顧客が送信した内容を invitation 行に保存し、status=submitted にする.
+ * **この時点では customers は作らない**. 店舗が approveIntake() で承認したときに作成.
+ */
+export async function submitIntake(input: IntakeSubmitInput): Promise<{ status: "submitted" }> {
   const { createServiceRoleAdmin } = await import("@/lib/supabase/admin");
   const sb = createServiceRoleAdmin("public intake flow: token-gated tenant write");
 
-  // customers を作成
-  const { data: customer, error: cErr } = await sb
-    .from("customers")
-    .insert({
-      tenant_id: input.tenantId,
-      name: input.name,
-      name_kana: input.nameKana ?? null,
-      email: input.email ?? null,
-      phone: input.phone ?? null,
-      postal_code: input.postalCode ?? null,
-      address: input.address ?? null,
-      birth_date: input.birthDate ?? null,
-      note: input.note ?? null,
+  const { error } = await sb
+    .from("customer_intake_invitations")
+    .update({
+      status: "submitted",
+      submitted_at: new Date().toISOString(),
+      submitted_name: input.name,
+      submitted_name_kana: input.nameKana ?? null,
+      submitted_email: input.email ?? null,
+      submitted_phone: input.phone ?? null,
+      submitted_postal_code: input.postalCode ?? null,
+      submitted_address: input.address ?? null,
+      submitted_birth_date: input.birthDate ?? null,
+      submitted_note: input.note ?? null,
     })
-    .select("id")
-    .single();
-  if (cErr || !customer) throw cErr ?? new Error("Failed to create customer");
+    .eq("id", input.intakeId)
+    .eq("status", "pending");
+  if (error) throw error;
 
-  // intake を completed にする
-  const { error: uErr } = await sb
+  return { status: "submitted" };
+}
+
+export interface SubmittedIntake {
+  id: string;
+  tenantId: string;
+  storeId: string | null;
+  submittedAt: string | null;
+  fields: {
+    name: string | null;
+    name_kana: string | null;
+    email: string | null;
+    phone: string | null;
+    postal_code: string | null;
+    address: string | null;
+    birth_date: string | null;
+    note: string | null;
+  };
+}
+
+/** 指定された intake の提出内容を取得 (status=submitted のみ). */
+export async function getSubmittedIntake(tenantId: string, intakeId: string): Promise<SubmittedIntake | null> {
+  const { admin } = createTenantScopedAdmin(tenantId);
+  const { data } = await admin
+    .from("customer_intake_invitations")
+    .select(
+      "id, tenant_id, store_id, status, submitted_at, submitted_name, submitted_name_kana, submitted_email, submitted_phone, submitted_postal_code, submitted_address, submitted_birth_date, submitted_note",
+    )
+    .eq("id", intakeId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (!data || data.status !== "submitted") return null;
+  return {
+    id: data.id,
+    tenantId: data.tenant_id,
+    storeId: data.store_id,
+    submittedAt: data.submitted_at,
+    fields: {
+      name: data.submitted_name,
+      name_kana: data.submitted_name_kana,
+      email: data.submitted_email,
+      phone: data.submitted_phone,
+      postal_code: data.submitted_postal_code,
+      address: data.submitted_address,
+      birth_date: data.submitted_birth_date,
+      note: data.submitted_note,
+    },
+  };
+}
+
+export interface ApproveIntakeInput {
+  intakeId: string;
+  tenantId: string;
+  approvedBy: string;
+  /** 承認時の編集値 (未指定なら submitted_* をそのまま使う). */
+  overrides?: Partial<{
+    name: string;
+    name_kana: string | null;
+    email: string | null;
+    phone: string | null;
+    postal_code: string | null;
+    address: string | null;
+    birth_date: string | null;
+    note: string | null;
+  }>;
+  /** 既存顧客にマージする場合の customers.id. 指定時は新規 INSERT せず UPDATE. */
+  mergeIntoCustomerId?: string;
+}
+
+/**
+ * 提出済み intake を承認して customers レコードを作成 (or 既存顧客にマージ) する.
+ * status=submitted の行だけが対象.
+ */
+export async function approveIntake(input: ApproveIntakeInput): Promise<{ customerId: string; merged: boolean }> {
+  const { admin } = createTenantScopedAdmin(input.tenantId);
+
+  const { data: intake, error: fetchErr } = await admin
+    .from("customer_intake_invitations")
+    .select(
+      "id, tenant_id, status, submitted_name, submitted_name_kana, submitted_email, submitted_phone, submitted_postal_code, submitted_address, submitted_birth_date, submitted_note",
+    )
+    .eq("id", input.intakeId)
+    .eq("tenant_id", input.tenantId)
+    .maybeSingle();
+  if (fetchErr) throw fetchErr;
+  if (!intake) throw new Error("intake not found");
+  if (intake.status !== "submitted") throw new Error(`intake status must be 'submitted' (got '${intake.status}')`);
+
+  const o = input.overrides ?? {};
+  const finalName = o.name ?? intake.submitted_name;
+  if (!finalName || !String(finalName).trim()) throw new Error("name is required");
+
+  const payload = {
+    tenant_id: input.tenantId,
+    name: String(finalName).trim(),
+    name_kana: o.name_kana ?? intake.submitted_name_kana ?? null,
+    email: o.email ?? intake.submitted_email ?? null,
+    phone: o.phone ?? intake.submitted_phone ?? null,
+    postal_code: o.postal_code ?? intake.submitted_postal_code ?? null,
+    address: o.address ?? intake.submitted_address ?? null,
+    birth_date: o.birth_date ?? intake.submitted_birth_date ?? null,
+    note: o.note ?? intake.submitted_note ?? null,
+  };
+
+  let customerId: string;
+  let merged = false;
+
+  if (input.mergeIntoCustomerId) {
+    // 既存顧客にマージ (空欄のみ埋める)
+    const { data: existing, error: exErr } = await admin
+      .from("customers")
+      .select("id, name_kana, email, phone, postal_code, address, birth_date, note")
+      .eq("id", input.mergeIntoCustomerId)
+      .eq("tenant_id", input.tenantId)
+      .maybeSingle();
+    if (exErr || !existing) throw exErr ?? new Error("merge target customer not found");
+
+    const mergePatch = {
+      name_kana: existing.name_kana ?? payload.name_kana,
+      email: existing.email ?? payload.email,
+      phone: existing.phone ?? payload.phone,
+      postal_code: existing.postal_code ?? payload.postal_code,
+      address: existing.address ?? payload.address,
+      birth_date: existing.birth_date ?? payload.birth_date,
+      note: existing.note ?? payload.note,
+    };
+    const { error: upErr } = await admin
+      .from("customers")
+      .update(mergePatch)
+      .eq("id", input.mergeIntoCustomerId)
+      .eq("tenant_id", input.tenantId);
+    if (upErr) throw upErr;
+    customerId = input.mergeIntoCustomerId;
+    merged = true;
+  } else {
+    const { data: created, error: cErr } = await admin.from("customers").insert(payload).select("id").single();
+    if (cErr || !created) throw cErr ?? new Error("failed to create customer");
+    customerId = created.id;
+  }
+
+  const { error: uErr } = await admin
     .from("customer_intake_invitations")
     .update({
       status: "completed",
       completed_at: new Date().toISOString(),
-      completed_customer_id: customer.id,
+      completed_customer_id: customerId,
+      approved_at: new Date().toISOString(),
+      approved_by: input.approvedBy,
     })
     .eq("id", input.intakeId)
-    .eq("status", "pending");
+    .eq("tenant_id", input.tenantId)
+    .eq("status", "submitted");
   if (uErr) throw uErr;
 
-  return { customerId: customer.id };
+  return { customerId, merged };
+}
+
+/** 提出された intake と email/phone が完全一致する既存顧客を最大 5 件返す. */
+export async function findDuplicateCustomerCandidates(
+  tenantId: string,
+  hints: { email?: string | null; phone?: string | null },
+): Promise<Array<{ id: string; name: string; email: string | null; phone: string | null }>> {
+  const { admin } = createTenantScopedAdmin(tenantId);
+  const candidates = new Map<string, { id: string; name: string; email: string | null; phone: string | null }>();
+
+  if (hints.email && hints.email.trim()) {
+    const { data } = await admin
+      .from("customers")
+      .select("id, name, email, phone")
+      .eq("tenant_id", tenantId)
+      .eq("email", hints.email.trim().toLowerCase())
+      .limit(5);
+    (data ?? []).forEach((c) => candidates.set(c.id, c));
+  }
+  if (hints.phone && hints.phone.trim()) {
+    const normalized = hints.phone.replace(/\D/g, "");
+    if (normalized.length >= 7) {
+      const { data } = await admin
+        .from("customers")
+        .select("id, name, email, phone")
+        .eq("tenant_id", tenantId)
+        .eq("phone", hints.phone.trim())
+        .limit(5);
+      (data ?? []).forEach((c) => candidates.set(c.id, c));
+    }
+  }
+  return Array.from(candidates.values());
 }

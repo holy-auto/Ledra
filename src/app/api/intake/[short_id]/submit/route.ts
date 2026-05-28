@@ -78,10 +78,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ short_id: 
   }
 
   try {
-    const { customerId } = await submitIntake({
+    await submitIntake({
       intakeId: intake.id,
-      tenantId: intake.tenantId,
-      storeId: intake.storeId,
       name: safe.name,
       nameKana: safe.name_kana ?? null,
       email: safe.email && safe.email.length > 0 ? safe.email : null,
@@ -95,10 +93,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ short_id: 
     logger.info("intake_submit_complete", {
       intakeId: intake.id,
       tenantId: intake.tenantId,
-      customerId,
     });
 
-    return apiOk({ customer_id: customerId });
+    // customers はまだ作らない. 店舗が approve したら作成される.
+    return apiOk({ status: "submitted" as const });
   } catch (err) {
     return apiInternalError(err, "POST /api/intake/:short_id/submit");
   }

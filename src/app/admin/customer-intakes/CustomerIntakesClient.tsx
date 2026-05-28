@@ -19,7 +19,7 @@ interface Invitation {
   short_id: string;
   store_id: string | null;
   label: string | null;
-  status: "pending" | "completed" | "revoked" | "expired";
+  status: "pending" | "submitted" | "completed" | "revoked" | "expired";
   contact_email: string | null;
   contact_phone: string | null;
   created_at: string;
@@ -27,6 +27,22 @@ interface Invitation {
   completed_at: string | null;
   completed_customer_id: string | null;
   ocr_attempts: number;
+  submitted_at: string | null;
+  submitted_name: string | null;
+  submitted_name_kana: string | null;
+  submitted_email: string | null;
+  submitted_phone: string | null;
+  submitted_postal_code: string | null;
+  submitted_address: string | null;
+  submitted_birth_date: string | null;
+  submitted_note: string | null;
+}
+
+interface DuplicateCandidate {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
 }
 
 interface ListResp {
@@ -104,9 +120,110 @@ export default function CustomerIntakesClient() {
 
   function statusBadge(s: Invitation["status"]) {
     if (s === "pending") return <Badge variant="info">未送信</Badge>;
-    if (s === "completed") return <Badge variant="success">完了</Badge>;
+    if (s === "submitted") return <Badge variant="violet">確認待ち</Badge>;
+    if (s === "completed") return <Badge variant="success">登録済</Badge>;
     if (s === "expired") return <Badge variant="warning">期限切れ</Badge>;
     return <Badge variant="default">取消済</Badge>;
+  }
+
+  // ── 承認モーダル状態 ─────────────────────────────────
+  const [reviewing, setReviewing] = useState<Invitation | null>(null);
+  const [overrides, setOverrides] = useState<{
+    name: string;
+    name_kana: string;
+    email: string;
+    phone: string;
+    postal_code: string;
+    address: string;
+    birth_date: string;
+    note: string;
+  }>({
+    name: "",
+    name_kana: "",
+    email: "",
+    phone: "",
+    postal_code: "",
+    address: "",
+    birth_date: "",
+    note: "",
+  });
+  const [candidates, setCandidates] = useState<DuplicateCandidate[]>([]);
+  const [mergeInto, setMergeInto] = useState<string | null>(null);
+  const [approving, setApproving] = useState(false);
+  const [approveErr, setApproveErr] = useState<string | null>(null);
+
+  async function openReview(inv: Invitation) {
+    setReviewing(inv);
+    setOverrides({
+      name: inv.submitted_name ?? "",
+      name_kana: inv.submitted_name_kana ?? "",
+      email: inv.submitted_email ?? "",
+      phone: inv.submitted_phone ?? "",
+      postal_code: inv.submitted_postal_code ?? "",
+      address: inv.submitted_address ?? "",
+      birth_date: inv.submitted_birth_date ?? "",
+      note: inv.submitted_note ?? "",
+    });
+    setMergeInto(null);
+    setApproveErr(null);
+    setCandidates([]);
+    try {
+      const res = await fetch(`/api/admin/customer-intakes/${inv.id}/duplicates`);
+      const j = await res.json().catch(() => null);
+      if (res.ok && j?.candidates) setCandidates(j.candidates as DuplicateCandidate[]);
+    } catch {
+      // ignore
+    }
+  }
+
+  function closeReview() {
+    setReviewing(null);
+    setApproving(false);
+    setApproveErr(null);
+    setCandidates([]);
+    setMergeInto(null);
+  }
+
+  async function handleApprove() {
+    if (!reviewing) return;
+    if (!overrides.name.trim()) {
+      setApproveErr("お名前は必須です");
+      return;
+    }
+    setApproving(true);
+    setApproveErr(null);
+    try {
+      const body: Record<string, unknown> = {
+        overrides: {
+          name: overrides.name.trim(),
+          name_kana: overrides.name_kana.trim() || null,
+          email: overrides.email.trim() || null,
+          phone: overrides.phone.trim() || null,
+          postal_code: overrides.postal_code.trim() || null,
+          address: overrides.address.trim() || null,
+          birth_date: overrides.birth_date.trim() || null,
+          note: overrides.note.trim() || null,
+        },
+      };
+      if (mergeInto) body.merge_into_customer_id = mergeInto;
+
+      const res = await fetch(`/api/admin/customer-intakes/${reviewing.id}/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j?.ok) {
+        setApproveErr(j?.error?.message ?? j?.message ?? "承認に失敗しました");
+        return;
+      }
+      closeReview();
+      mutate();
+    } catch (e) {
+      setApproveErr(e instanceof Error ? e.message : "通信エラー");
+    } finally {
+      setApproving(false);
+    }
   }
 
   return (
@@ -215,7 +332,7 @@ export default function CustomerIntakesClient() {
         <table className="w-full text-sm">
           <thead className="bg-surface-hover text-xs uppercase text-muted">
             <tr>
-              <th className="px-4 py-3 text-left">ラベル</th>
+              <th className="px-4 py-3 text-left">ラベル / 提出者</th>
               <th className="px-4 py-3 text-left">状態</th>
               <th className="px-4 py-3 text-left">作成日</th>
               <th className="px-4 py-3 text-left">期限</th>
@@ -226,12 +343,26 @@ export default function CustomerIntakesClient() {
           <tbody>
             {(data?.invitations ?? []).map((inv) => (
               <tr key={inv.id} className="border-t border-border-default/50">
-                <td className="px-4 py-3 text-primary">{inv.label ?? <span className="text-muted">-</span>}</td>
+                <td className="px-4 py-3 text-primary">
+                  {inv.status === "submitted" && inv.submitted_name ? (
+                    <div>
+                      <div className="font-semibold">{inv.submitted_name} 様</div>
+                      <div className="text-xs text-muted">{inv.label ?? "(ラベルなし)"}</div>
+                    </div>
+                  ) : (
+                    (inv.label ?? <span className="text-muted">-</span>)
+                  )}
+                </td>
                 <td className="px-4 py-3">{statusBadge(inv.status)}</td>
                 <td className="px-4 py-3 text-muted">{formatDate(inv.created_at)}</td>
                 <td className="px-4 py-3 text-muted">{formatDate(inv.expires_at)}</td>
                 <td className="px-4 py-3 text-muted">{inv.ocr_attempts}/10</td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-right space-x-3">
+                  {inv.status === "submitted" && (
+                    <button type="button" className="text-xs text-accent font-semibold" onClick={() => openReview(inv)}>
+                      確認・承認
+                    </button>
+                  )}
                   {inv.status === "pending" && (
                     <button type="button" className="text-xs text-danger" onClick={() => handleRevoke(inv.id)}>
                       取り消す
@@ -250,6 +381,140 @@ export default function CustomerIntakesClient() {
           </tbody>
         </table>
       </section>
+
+      {reviewing && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeReview();
+          }}
+        >
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-surface p-6 shadow-xl">
+            <div className="mb-4">
+              <div className="text-xs font-semibold tracking-[0.18em] text-muted">確認・承認</div>
+              <h2 className="mt-1 text-base font-semibold text-primary">
+                顧客提出内容の確認 ({reviewing.label ?? "ラベルなし"})
+              </h2>
+              <p className="mt-1 text-xs text-muted">
+                内容を確認・必要に応じて編集してから「承認して登録」を押すと顧客情報として登録されます。
+              </p>
+            </div>
+
+            {candidates.length > 0 && (
+              <div className="mb-4 rounded-xl border border-warning bg-warning-bg px-3 py-2 text-sm">
+                <div className="font-semibold text-warning-text">同じ連絡先の既存顧客が見つかりました</div>
+                <p className="mt-1 text-xs text-warning-text">
+                  既存顧客にマージすると、空欄項目だけが今回の提出値で埋められます。
+                </p>
+                <div className="mt-2 space-y-1">
+                  <label className="flex items-center gap-2 text-xs">
+                    <input type="radio" name="merge" checked={mergeInto === null} onChange={() => setMergeInto(null)} />
+                    新規顧客として登録
+                  </label>
+                  {candidates.map((c) => (
+                    <label key={c.id} className="flex items-center gap-2 text-xs">
+                      <input
+                        type="radio"
+                        name="merge"
+                        checked={mergeInto === c.id}
+                        onChange={() => setMergeInto(c.id)}
+                      />
+                      <span>
+                        {c.name} <span className="text-muted">({c.email ?? c.phone ?? "連絡先なし"})</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field
+                label="お名前 *"
+                value={overrides.name}
+                onChange={(v) => setOverrides((p) => ({ ...p, name: v }))}
+              />
+              <Field
+                label="フリガナ"
+                value={overrides.name_kana}
+                onChange={(v) => setOverrides((p) => ({ ...p, name_kana: v }))}
+              />
+              <Field
+                label="メール"
+                value={overrides.email}
+                onChange={(v) => setOverrides((p) => ({ ...p, email: v }))}
+              />
+              <Field label="電話" value={overrides.phone} onChange={(v) => setOverrides((p) => ({ ...p, phone: v }))} />
+              <Field
+                label="郵便番号"
+                value={overrides.postal_code}
+                onChange={(v) => setOverrides((p) => ({ ...p, postal_code: v }))}
+              />
+              <Field
+                label="生年月日"
+                value={overrides.birth_date}
+                onChange={(v) => setOverrides((p) => ({ ...p, birth_date: v }))}
+                placeholder="YYYY-MM-DD"
+              />
+              <div className="sm:col-span-2">
+                <Field
+                  label="住所"
+                  value={overrides.address}
+                  onChange={(v) => setOverrides((p) => ({ ...p, address: v }))}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-xs text-muted">備考</label>
+                <textarea
+                  value={overrides.note}
+                  onChange={(e) => setOverrides((p) => ({ ...p, note: e.target.value }))}
+                  className="input-field"
+                  rows={2}
+                />
+              </div>
+            </div>
+
+            {approveErr && (
+              <div className="mt-3 rounded-xl border border-danger-border bg-danger-bg px-3 py-2 text-sm text-danger-text">
+                {approveErr}
+              </div>
+            )}
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" className="btn-secondary" onClick={closeReview} disabled={approving}>
+                閉じる
+              </button>
+              <button type="button" className="btn-primary" onClick={handleApprove} disabled={approving}>
+                {approving ? "登録中…" : mergeInto ? "既存顧客に追記" : "承認して登録"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <label className="text-xs text-muted">{label}</label>
+      <input
+        className="input-field"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
     </div>
   );
 }
