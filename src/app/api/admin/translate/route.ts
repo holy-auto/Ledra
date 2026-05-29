@@ -15,6 +15,7 @@ import { parseJsonBody } from "@/lib/api/parseBody";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { translateText, translationCacheKey } from "@/lib/ai/translateContent";
+import { getCachedTranslation, putCachedTranslation } from "@/lib/ai/translationCache";
 import { loadAiAutomationSettings, resolveFieldPolicy } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
@@ -71,6 +72,30 @@ export async function POST(req: NextRequest) {
       return apiOk({ ai_disabled: false, translated: parsed.data.text, skipped: "policy is manual" });
     }
 
+    const cacheKey = translationCacheKey(parsed.data.text, parsed.data.target_lang, parsed.data.tone);
+    // glossary が渡されたら都度翻訳 (固有用語の置換結果はキャッシュしない)
+    const useCache = !parsed.data.glossary;
+    if (useCache) {
+      const cached = await getCachedTranslation(cacheKey);
+      if (cached) {
+        usage.record({
+          tenantId: caller.tenantId,
+          userId: caller.userId,
+          outcome: "ok",
+          confidence: cached.confidence,
+          meta: { ai: false, cached: true, target_lang: parsed.data.target_lang, hit_count: cached.hit_count },
+        });
+        return apiOk({
+          ai_disabled: false,
+          translated: cached.translated_text,
+          confidence: cached.confidence,
+          ai: false,
+          cache_key: cacheKey,
+          cached: true,
+        });
+      }
+    }
+
     const result = await translateText({
       text: parsed.data.text,
       targetLang: parsed.data.target_lang,
@@ -78,12 +103,25 @@ export async function POST(req: NextRequest) {
       glossary: parsed.data.glossary,
     });
 
+    // AI が正常に翻訳した (= result.ai = true) ものだけキャッシュ。
+    // フォールバック (= 元テキストをそのまま返した) は cache に入れない。
+    if (useCache && result.ai && result.translated && result.translated !== parsed.data.text) {
+      void putCachedTranslation({
+        cacheKey,
+        sourceText: parsed.data.text,
+        targetLang: parsed.data.target_lang,
+        tone: parsed.data.tone ?? "formal",
+        translatedText: result.translated,
+        confidence: result.confidence,
+      });
+    }
+
     usage.record({
       tenantId: caller.tenantId,
       userId: caller.userId,
       outcome: "ok",
       confidence: result.confidence,
-      meta: { ai: result.ai, target_lang: parsed.data.target_lang, kind: parsed.data.kind ?? "general" },
+      meta: { ai: result.ai, cached: false, target_lang: parsed.data.target_lang, kind: parsed.data.kind ?? "general" },
     });
 
     return apiOk({
@@ -91,7 +129,8 @@ export async function POST(req: NextRequest) {
       translated: result.translated,
       confidence: result.confidence,
       ai: result.ai,
-      cache_key: translationCacheKey(parsed.data.text, parsed.data.target_lang, parsed.data.tone),
+      cache_key: cacheKey,
+      cached: false,
     });
   } catch (e: unknown) {
     usage.record({ outcome: "error" });

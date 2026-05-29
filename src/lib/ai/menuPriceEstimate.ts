@@ -15,6 +15,7 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { withRetry } from "@/lib/http/withRetry";
 import { getAnthropicClient, AI_MODEL_FAST } from "@/lib/ai/client";
+import { sizeMultiplier } from "@/lib/ai/utils";
 
 export interface MenuPriceInput {
   menuName: string;
@@ -116,21 +117,3 @@ const SYSTEM_PROMPT = `あなたは自動車施工店の価格設定を支援す
 - 業界中央値とのギャップが大きい場合は理由文に明記
 - rationale は 100 字以内、1 文`.trim();
 
-function sizeMultiplier(size: string | null | undefined): number {
-  switch ((size ?? "").toUpperCase()) {
-    case "SS":
-      return 1;
-    case "S":
-      return 1.05;
-    case "M":
-      return 1.1;
-    case "L":
-      return 1.15;
-    case "LL":
-      return 1.2;
-    case "XL":
-      return 1.25;
-    default:
-      return 1;
-  }
-}

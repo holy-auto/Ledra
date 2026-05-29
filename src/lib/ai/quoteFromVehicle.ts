@@ -10,6 +10,7 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { withRetry } from "@/lib/http/withRetry";
 import { getAnthropicClient, AI_MODEL_FAST } from "@/lib/ai/client";
+import { sizeMultiplier } from "@/lib/ai/utils";
 
 export interface PastInvoiceLine {
   description: string;
@@ -180,21 +181,3 @@ function avgTotal(invoices: QuoteFromVehicleInput["pastInvoices"]): number {
   return Math.round(invoices.reduce((s, i) => s + i.total, 0) / invoices.length);
 }
 
-function sizeMultiplier(size: string | null | undefined): number {
-  switch ((size ?? "").toUpperCase()) {
-    case "SS":
-      return 1;
-    case "S":
-      return 1.05;
-    case "M":
-      return 1.1;
-    case "L":
-      return 1.15;
-    case "LL":
-      return 1.2;
-    case "XL":
-      return 1.25;
-    default:
-      return 1;
-  }
-}

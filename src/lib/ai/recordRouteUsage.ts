@@ -10,6 +10,7 @@
  * `record` は fire-and-forget (void Promise を返さない) ので await 不要。
  */
 import { recordAiUsage, type AiUsageLog, type AiUsageOutcome } from "./usageLog";
+import { recordAiBreadcrumb } from "./sentryAiBreadcrumb";
 
 export interface RouteUsageHandle {
   startedAt: number;
@@ -33,6 +34,7 @@ export function startAiRouteUsage(endpoint: string): RouteUsageHandle {
     startedAt,
     endpoint,
     record(args) {
+      const latencyMs = Date.now() - startedAt;
       const log: AiUsageLog = {
         tenantId: args.tenantId,
         insurerId: args.insurerId,
@@ -43,10 +45,27 @@ export function startAiRouteUsage(endpoint: string): RouteUsageHandle {
         inputTokens: args.inputTokens,
         outputTokens: args.outputTokens,
         confidence: args.confidence,
-        latencyMs: Date.now() - startedAt,
+        latencyMs,
         meta: args.meta,
       };
       void recordAiUsage(log);
+      // Sentry breadcrumb: outcome を sentry の語彙にマップ
+      const sentryOutcome =
+        args.outcome === "ok"
+          ? "ok"
+          : args.outcome === "error"
+            ? "error"
+            : args.outcome === "ai_disabled"
+              ? "ai_disabled"
+              : "fallback";
+      recordAiBreadcrumb({
+        endpoint,
+        model: args.model,
+        outcome: sentryOutcome,
+        confidence: args.confidence,
+        latencyMs,
+        meta: args.meta ?? undefined,
+      });
     },
   };
 }
