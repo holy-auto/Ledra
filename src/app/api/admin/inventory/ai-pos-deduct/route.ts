@@ -19,6 +19,7 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { suggestPosDeductions } from "@/lib/ai/posInventoryDeduction";
 import { loadAiAutomationSettings, resolveFieldPolicy } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -39,22 +40,31 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const usage = startAiRouteUsage("/api/admin/inventory/ai-pos-deduct");
   try {
     const limited = await checkRateLimit(req, "ai");
-    if (limited) return limited;
+    if (limited) {
+      usage.record({ outcome: "rate_limit" });
+      return limited;
+    }
 
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
     if (!canUseFeature(caller.planTier, "ai_pos_deduction")) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "plan_limit" });
       return apiPlanLimit("AI 在庫引落推定は Standard プラン以上でご利用いただけます。");
     }
 
     const parsed = await parseJsonBody(req, schema);
-    if (!parsed.ok) return parsed.response;
+    if (!parsed.ok) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "schema_error" });
+      return parsed.response;
+    }
 
     const settings = await loadAiAutomationSettings(caller.tenantId);
     if (!settings.enabled || resolveFieldPolicy(settings, "inventory.pos_deduction") === "manual") {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
       return apiOk({ ai_disabled: true, suggestions: [] });
     }
 
@@ -83,6 +93,7 @@ export async function POST(req: NextRequest) {
     const historyMissing = isMissingTableError(historyRes.error);
 
     if (skusMissing) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ok", meta: { warning: "schema_missing" } });
       return apiOk({
         ai_disabled: false,
         suggestions: [],
@@ -107,8 +118,16 @@ export async function POST(req: NextRequest) {
       }>,
     });
 
+    usage.record({
+      tenantId: caller.tenantId,
+      userId: caller.userId,
+      outcome: "ok",
+      meta: { ai: result.ai, suggestion_count: result.suggestions.length },
+    });
+
     return apiOk({ ai_disabled: false, suggestions: result.suggestions, ai: result.ai });
   } catch (e: unknown) {
+    usage.record({ outcome: "error" });
     return apiInternalError(e, "inventory ai-pos-deduct");
   }
 }

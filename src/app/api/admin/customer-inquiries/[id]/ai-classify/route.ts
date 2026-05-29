@@ -16,15 +16,20 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { classifyInquiry } from "@/lib/ai/inquiryClassify";
 import { loadAiAutomationSettings, resolveFieldPolicy, isSourceAllowed } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const usage = startAiRouteUsage("/api/admin/customer-inquiries/[id]/ai-classify");
   try {
     const limited = await checkRateLimit(req, "ai");
-    if (limited) return limited;
+    if (limited) {
+      usage.record({ outcome: "rate_limit" });
+      return limited;
+    }
 
     const { id } = await ctx.params;
     if (!id) return apiNotFound("inquiry id is required");
@@ -33,11 +38,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
     if (!canUseFeature(caller.planTier, "ai_inquiry_classify")) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "plan_limit" });
       return apiPlanLimit("AI 問い合わせ分類は Standard プラン以上でご利用いただけます。");
     }
 
     const settings = await loadAiAutomationSettings(caller.tenantId);
-    if (!settings.enabled) return apiOk({ ai_disabled: true, classification: null });
+    if (!settings.enabled) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
+      return apiOk({ ai_disabled: true, classification: null });
+    }
 
     const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
     const { data: inquiry, error } = await admin
@@ -87,6 +96,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const priorityPolicy = resolveFieldPolicy(settings, "inquiry.priority", result.confidence);
     const replyPolicy = resolveFieldPolicy(settings, "inquiry.draft_reply", result.confidence);
 
+    usage.record({
+      tenantId: caller.tenantId,
+      userId: caller.userId,
+      outcome: "ok",
+      confidence: result.confidence,
+      meta: { ai: result.ai, category: result.category, priority: result.priority },
+    });
+
     return apiOk({
       ai_disabled: false,
       classification: {
@@ -104,6 +121,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       },
     });
   } catch (e: unknown) {
+    usage.record({ outcome: "error" });
     return apiInternalError(e, "inquiry ai-classify");
   }
 }

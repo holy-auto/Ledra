@@ -21,15 +21,20 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { extractInboundReservation } from "@/lib/ai/inboundReservationExtract";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const usage = startAiRouteUsage("/api/admin/customer-messages/[id]/ai-extract");
   try {
     const limited = await checkRateLimit(req, "ai");
-    if (limited) return limited;
+    if (limited) {
+      usage.record({ outcome: "rate_limit" });
+      return limited;
+    }
 
     const { id } = await ctx.params;
     if (!id) return apiNotFound("message id is required");
@@ -38,11 +43,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
     if (!canUseFeature(caller.planTier, "ai_inbound_extract")) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "plan_limit" });
       return apiPlanLimit("AI 受信メッセージ抽出は Standard プラン以上でご利用いただけます。");
     }
 
     const settings = await loadAiAutomationSettings(caller.tenantId);
-    if (!settings.enabled) return apiOk({ ai_disabled: true, extracted: null });
+    if (!settings.enabled) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
+      return apiOk({ ai_disabled: true, extracted: null });
+    }
 
     const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
     const { data: message, error: mErr } = await admin
@@ -82,6 +91,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
     const persisted = !isMissingColumnError(upErr);
 
+    usage.record({
+      tenantId: caller.tenantId,
+      userId: caller.userId,
+      outcome: "ok",
+      confidence: typeof result.confidence === "number" ? result.confidence : null,
+      meta: { ai: result.ai, intent: result.intent, channel },
+    });
+
     return apiOk({
       ai_disabled: false,
       extracted: snapshot,
@@ -91,6 +108,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         : "customer_messages.ai_extracted カラムが未作成のためレスポンスのみ返しています。",
     });
   } catch (e: unknown) {
+    usage.record({ outcome: "error" });
     return apiInternalError(e, "customer-messages ai-extract");
   }
 }

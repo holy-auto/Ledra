@@ -15,6 +15,7 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { analyzeReviewSentiment } from "@/lib/ai/reviewSentiment";
 import { loadAiAutomationSettings, resolveFieldPolicy } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -27,22 +28,33 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const usage = startAiRouteUsage("/api/admin/reviews/ai-sentiment");
   try {
     const limited = await checkRateLimit(req, "ai");
-    if (limited) return limited;
+    if (limited) {
+      usage.record({ outcome: "rate_limit" });
+      return limited;
+    }
 
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
     if (!canUseFeature(caller.planTier, "ai_review_sentiment")) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "plan_limit" });
       return apiPlanLimit("AI レビュー解析は Standard プラン以上でご利用いただけます。");
     }
 
     const parsed = await parseJsonBody(req, schema);
-    if (!parsed.ok) return parsed.response;
+    if (!parsed.ok) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "schema_error" });
+      return parsed.response;
+    }
 
     const settings = await loadAiAutomationSettings(caller.tenantId);
-    if (!settings.enabled) return apiOk({ ai_disabled: true, sentiment: null });
+    if (!settings.enabled) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
+      return apiOk({ ai_disabled: true, sentiment: null });
+    }
 
     const result = await analyzeReviewSentiment({
       text: parsed.data.text,
@@ -53,6 +65,14 @@ export async function POST(req: NextRequest) {
     const sentimentPolicy = resolveFieldPolicy(settings, "review.sentiment", result.confidence);
     const summaryPolicy = resolveFieldPolicy(settings, "review.summary", result.confidence);
     const topicsPolicy = resolveFieldPolicy(settings, "review.topics", result.confidence);
+
+    usage.record({
+      tenantId: caller.tenantId,
+      userId: caller.userId,
+      outcome: "ok",
+      confidence: result.confidence,
+      meta: { ai: result.ai, sentiment: result.sentiment, actionable: result.actionable },
+    });
 
     return apiOk({
       ai_disabled: false,
@@ -66,6 +86,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (e: unknown) {
+    usage.record({ outcome: "error" });
     return apiInternalError(e, "review ai-sentiment");
   }
 }

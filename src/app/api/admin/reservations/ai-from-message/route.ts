@@ -17,6 +17,7 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { extractInboundReservation } from "@/lib/ai/inboundReservationExtract";
 import { loadAiAutomationSettings, resolveFieldPolicy } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -32,22 +33,33 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const usage = startAiRouteUsage("/api/admin/reservations/ai-from-message");
   try {
     const limited = await checkRateLimit(req, "ai");
-    if (limited) return limited;
+    if (limited) {
+      usage.record({ outcome: "rate_limit" });
+      return limited;
+    }
 
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
     if (!canUseFeature(caller.planTier, "ai_inbound_extract")) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "plan_limit" });
       return apiPlanLimit("AI 受信メッセージ抽出は Standard プラン以上でご利用いただけます。");
     }
 
     const parsed = await parseJsonBody(req, schema);
-    if (!parsed.ok) return parsed.response;
+    if (!parsed.ok) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "schema_error" });
+      return parsed.response;
+    }
 
     const settings = await loadAiAutomationSettings(caller.tenantId);
-    if (!settings.enabled) return apiOk({ ai_disabled: true, extracted: null });
+    if (!settings.enabled) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
+      return apiOk({ ai_disabled: true, extracted: null });
+    }
 
     const result = await extractInboundReservation({
       text: parsed.data.text,
@@ -60,6 +72,14 @@ export async function POST(req: NextRequest) {
       const policy = resolveFieldPolicy(settings, key, result.confidence);
       return policy === "manual" ? undefined : value;
     };
+
+    usage.record({
+      tenantId: caller.tenantId,
+      userId: caller.userId,
+      outcome: "ok",
+      confidence: result.confidence,
+      meta: { ai: result.ai, intent: result.intent, channel: parsed.data.channel ?? null },
+    });
 
     return apiOk({
       ai_disabled: false,
@@ -78,6 +98,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (e: unknown) {
+    usage.record({ outcome: "error" });
     return apiInternalError(e, "reservation ai-from-message");
   }
 }

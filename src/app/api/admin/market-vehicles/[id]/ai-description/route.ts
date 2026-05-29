@@ -16,6 +16,7 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateMarketVehicleDescription } from "@/lib/ai/marketVehicleDescription";
 import { loadAiAutomationSettings, resolveFieldPolicy, isSourceAllowed } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -27,10 +28,14 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const usage = startAiRouteUsage("/api/admin/market-vehicles/[id]/ai-description");
   try {
     // Vision を呼ぶため、admin/translate (text-only) より厳しめの ai プリセット
     const limited = await checkRateLimit(req, "ai");
-    if (limited) return limited;
+    if (limited) {
+      usage.record({ outcome: "rate_limit" });
+      return limited;
+    }
 
     const { id } = await ctx.params;
     if (!id) return apiNotFound("market_vehicle id required");
@@ -39,6 +44,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
     if (!canUseFeature(caller.planTier, "ai_market_description")) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "plan_limit" });
       return apiPlanLimit("AI 物件説明文生成は Standard プラン以上でご利用いただけます。");
     }
 
@@ -46,11 +52,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     if (!parsed.ok) return parsed.response;
 
     const settings = await loadAiAutomationSettings(caller.tenantId);
-    if (!settings.enabled) return apiOk({ ai_disabled: true, description: null });
+    if (!settings.enabled) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
+      return apiOk({ ai_disabled: true, description: null });
+    }
 
     const descPolicy = resolveFieldPolicy(settings, "market_vehicle.description");
     const featuresPolicy = resolveFieldPolicy(settings, "market_vehicle.features");
     if (descPolicy === "manual" && featuresPolicy === "manual") {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled", meta: { reason: "policy_manual" } });
       return apiOk({ ai_disabled: false, description: null, skipped: "policy is manual" });
     }
 
@@ -79,6 +89,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       sellerNotes: parsed.data.seller_notes ?? null,
     });
 
+    usage.record({
+      tenantId: caller.tenantId,
+      userId: caller.userId,
+      outcome: "ok",
+      confidence: result.confidence,
+      meta: { ai: result.ai, with_photos: photoUrls.length > 0 },
+    });
+
     return apiOk({
       ai_disabled: false,
       description: descPolicy === "manual" ? null : result.description,
@@ -87,6 +105,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       ai: result.ai,
     });
   } catch (e: unknown) {
+    usage.record({ outcome: "error" });
     return apiInternalError(e, "market-vehicles ai-description");
   }
 }

@@ -13,6 +13,7 @@ import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
+import { logAiAuditEvent } from "@/lib/audit/aiAuditLog";
 import {
   isFieldPolicy,
   isKnownFieldKey,
@@ -107,6 +108,19 @@ export async function PUT(req: NextRequest) {
       return apiInternalError(error, "ai-automation PUT upsert");
     }
 
+    // 監査ログ: 変更があった項目だけ detail に残す (fire-and-forget)
+    void logAiAuditEvent({
+      tenantId,
+      userId: caller.userId,
+      action: "ai_settings_changed",
+      detail: diffSettings(current, {
+        enabled: nextEnabled,
+        fieldPolicies: cleanedFieldPolicies,
+        confidenceThreshold: nextThreshold,
+        sourcePolicies: cleanedSourcePolicies,
+      }),
+    });
+
     return apiOk({
       settings: {
         enabled: nextEnabled,
@@ -119,6 +133,45 @@ export async function PUT(req: NextRequest) {
   } catch (e: unknown) {
     return apiInternalError(e, "ai-automation PUT");
   }
+}
+
+function diffSettings(
+  before: {
+    enabled: boolean;
+    fieldPolicies: Record<string, string>;
+    confidenceThreshold: number;
+    sourcePolicies: Record<string, boolean>;
+  },
+  after: {
+    enabled: boolean;
+    fieldPolicies: Record<string, string>;
+    confidenceThreshold: number;
+    sourcePolicies: Record<string, boolean>;
+  },
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (before.enabled !== after.enabled) out.enabled = { from: before.enabled, to: after.enabled };
+  if (before.confidenceThreshold !== after.confidenceThreshold) {
+    out.confidenceThreshold = { from: before.confidenceThreshold, to: after.confidenceThreshold };
+  }
+  const fieldChanges: Record<string, { from: string | null; to: string }> = {};
+  const allFieldKeys = new Set([...Object.keys(before.fieldPolicies), ...Object.keys(after.fieldPolicies)]);
+  for (const k of allFieldKeys) {
+    const b = before.fieldPolicies[k] ?? null;
+    const a = after.fieldPolicies[k];
+    if (a && b !== a) fieldChanges[k] = { from: b, to: a };
+    else if (!a && b) fieldChanges[k] = { from: b, to: "(unset)" };
+  }
+  if (Object.keys(fieldChanges).length > 0) out.fieldPolicies = fieldChanges;
+  const sourceChanges: Record<string, { from: boolean | null; to: boolean }> = {};
+  const allSourceKeys = new Set([...Object.keys(before.sourcePolicies), ...Object.keys(after.sourcePolicies)]);
+  for (const k of allSourceKeys) {
+    const b = before.sourcePolicies[k] ?? null;
+    const a = after.sourcePolicies[k];
+    if (a !== undefined && b !== a) sourceChanges[k] = { from: b, to: a };
+  }
+  if (Object.keys(sourceChanges).length > 0) out.sourcePolicies = sourceChanges;
+  return out;
 }
 
 function sanitizePersistedFieldPolicies(input: Record<string, unknown> | undefined) {
