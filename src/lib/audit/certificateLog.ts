@@ -22,6 +22,10 @@ export type AuditEventType =
   | "reservation_cancelled"
   | "invoice_created"
   | "invoice_paid"
+  | "ai_settings_changed"
+  | "ai_suggestion_generated"
+  | "ai_suggestion_applied"
+  | "ai_suggestion_rejected"
   | "note";
 
 const TITLE_MAP: Record<string, string> = {
@@ -43,6 +47,10 @@ const TITLE_MAP: Record<string, string> = {
   reservation_cancelled: "予約をキャンセル",
   invoice_created: "請求書を作成",
   invoice_paid: "入金を記録",
+  ai_settings_changed: "AI 自動入力の設定を変更",
+  ai_suggestion_generated: "AI 提案を生成",
+  ai_suggestion_applied: "AI 提案を反映",
+  ai_suggestion_rejected: "AI 提案を却下",
   note: "メモ",
 };
 

@@ -17,6 +17,7 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { estimateMenuPrice } from "@/lib/ai/menuPriceEstimate";
 import { loadAiAutomationSettings, resolveFieldPolicy } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -27,9 +28,13 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const usage = startAiRouteUsage("/api/admin/menu-items/[id]/ai-price");
   try {
     const limited = await checkRateLimit(req, "ai");
-    if (limited) return limited;
+    if (limited) {
+      usage.record({ outcome: "rate_limit" });
+      return limited;
+    }
 
     const { id } = await ctx.params;
     if (!id) return apiNotFound("menu_item id required");
@@ -38,6 +43,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
     if (!canUseFeature(caller.planTier, "ai_menu_price")) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "plan_limit" });
       return apiPlanLimit("AI 推奨価格は Standard プラン以上でご利用いただけます。");
     }
 
@@ -46,6 +52,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
     const settings = await loadAiAutomationSettings(caller.tenantId);
     if (!settings.enabled || resolveFieldPolicy(settings, "menu.recommended_price") === "manual") {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
       return apiOk({ ai_disabled: true, recommendation: null });
     }
 
@@ -87,8 +94,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       marketMedian,
     });
 
+    usage.record({
+      tenantId: caller.tenantId,
+      userId: caller.userId,
+      outcome: "ok",
+      confidence: recommendation.confidence,
+      meta: { ai: recommendation.ai, samples: ownSales.length },
+    });
     return apiOk({ ai_disabled: false, recommendation });
   } catch (e: unknown) {
+    usage.record({ outcome: "error" });
     return apiInternalError(e, "menu ai-price");
   }
 }

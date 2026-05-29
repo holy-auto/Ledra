@@ -16,15 +16,20 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { fuzzyMatchCustomer } from "@/lib/ai/customerFuzzyMatch";
 import { loadAiAutomationSettings, resolveFieldPolicy, isSourceAllowed } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const usage = startAiRouteUsage("/api/admin/square/orders/[id]/ai-link");
   try {
     const limited = await checkRateLimit(req, "ai");
-    if (limited) return limited;
+    if (limited) {
+      usage.record({ outcome: "rate_limit" });
+      return limited;
+    }
 
     const { id } = await ctx.params;
     if (!id) return apiNotFound("order id is required");
@@ -33,16 +38,24 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
     if (!canUseFeature(caller.planTier, "ai_master_normalize")) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "plan_limit" });
       return apiPlanLimit("Square 顧客ファジーマッチは Starter プラン以上でご利用いただけます。");
     }
 
     const settings = await loadAiAutomationSettings(caller.tenantId);
-    if (!settings.enabled) return apiOk({ ai_disabled: true, match: null });
+    if (!settings.enabled) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
+      return apiOk({ ai_disabled: true, match: null });
+    }
     if (!isSourceAllowed(settings, "customer_history")) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled", meta: { reason: "source_disabled" } });
       return apiOk({ ai_disabled: false, match: null, skipped: "customer_history source disabled" });
     }
     const policy = resolveFieldPolicy(settings, "master_data.customer_fuzzy_match");
-    if (policy === "manual") return apiOk({ ai_disabled: false, match: null, skipped: "policy is manual" });
+    if (policy === "manual") {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled", meta: { reason: "policy_manual" } });
+      return apiOk({ ai_disabled: false, match: null, skipped: "policy is manual" });
+    }
 
     const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
 
@@ -79,6 +92,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       }>,
     });
 
+    usage.record({
+      tenantId: caller.tenantId,
+      userId: caller.userId,
+      outcome: "ok",
+      confidence: result.confidence,
+      meta: { ai: result.ai, method: result.method, has_best: !!result.best },
+    });
+
     return apiOk({
       ai_disabled: false,
       match: {
@@ -102,6 +123,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       },
     });
   } catch (e: unknown) {
+    usage.record({ outcome: "error" });
     return apiInternalError(e, "square ai-link");
   }
 }

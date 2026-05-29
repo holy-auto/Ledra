@@ -19,6 +19,7 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateQuoteFromVehicle } from "@/lib/ai/quoteFromVehicle";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -35,22 +36,31 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const usage = startAiRouteUsage("/api/admin/quotes/ai-from-vehicle");
   try {
     const limited = await checkRateLimit(req, "ai");
-    if (limited) return limited;
+    if (limited) {
+      usage.record({ outcome: "rate_limit" });
+      return limited;
+    }
 
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
     if (!canUseFeature(caller.planTier, "ai_invoice_quote")) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "plan_limit" });
       return apiPlanLimit("AI 見積書起票は Standard プラン以上でご利用いただけます。");
     }
 
     const parsed = await parseJsonBody(req, schema);
-    if (!parsed.ok) return parsed.response;
+    if (!parsed.ok) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "schema_error" });
+      return parsed.response;
+    }
 
     const settings = await loadAiAutomationSettings(caller.tenantId);
     if (!settings.enabled) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
       return apiOk({ ai_disabled: true, draft: null });
     }
 
@@ -90,6 +100,14 @@ export async function POST(req: NextRequest) {
       baseMenu: parsed.data.base_menu,
     });
 
+    usage.record({
+      tenantId: caller.tenantId,
+      userId: caller.userId,
+      outcome: "ok",
+      confidence: draft.confidence,
+      meta: { ai: draft.ai, items_count: draft.items.length, total: draft.total },
+    });
+
     return apiOk({
       ai_disabled: false,
       draft: {
@@ -105,6 +123,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (e: unknown) {
+    usage.record({ outcome: "error" });
     return apiInternalError(e, "quote ai-from-vehicle");
   }
 }

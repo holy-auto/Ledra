@@ -16,6 +16,7 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { translateText, translationCacheKey } from "@/lib/ai/translateContent";
 import { loadAiAutomationSettings, resolveFieldPolicy } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -30,22 +31,33 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const usage = startAiRouteUsage("/api/admin/translate");
   try {
     const limited = await checkRateLimit(req, "ai");
-    if (limited) return limited;
+    if (limited) {
+      usage.record({ outcome: "rate_limit" });
+      return limited;
+    }
 
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
     if (!canUseFeature(caller.planTier, "ai_translation")) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "plan_limit" });
       return apiPlanLimit("AI 多言語翻訳は Standard プラン以上でご利用いただけます。");
     }
 
     const parsed = await parseJsonBody(req, schema);
-    if (!parsed.ok) return parsed.response;
+    if (!parsed.ok) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "schema_error" });
+      return parsed.response;
+    }
 
     const settings = await loadAiAutomationSettings(caller.tenantId);
-    if (!settings.enabled) return apiOk({ ai_disabled: true, translated: parsed.data.text });
+    if (!settings.enabled) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
+      return apiOk({ ai_disabled: true, translated: parsed.data.text });
+    }
 
     const policyKey =
       parsed.data.kind === "announcement"
@@ -55,6 +67,7 @@ export async function POST(req: NextRequest) {
           : "translation.announcement"; // general も announcement と同じ閾値で扱う
 
     if (resolveFieldPolicy(settings, policyKey) === "manual") {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled", meta: { reason: "policy_manual" } });
       return apiOk({ ai_disabled: false, translated: parsed.data.text, skipped: "policy is manual" });
     }
 
@@ -65,6 +78,14 @@ export async function POST(req: NextRequest) {
       glossary: parsed.data.glossary,
     });
 
+    usage.record({
+      tenantId: caller.tenantId,
+      userId: caller.userId,
+      outcome: "ok",
+      confidence: result.confidence,
+      meta: { ai: result.ai, target_lang: parsed.data.target_lang, kind: parsed.data.kind ?? "general" },
+    });
+
     return apiOk({
       ai_disabled: false,
       translated: result.translated,
@@ -73,6 +94,7 @@ export async function POST(req: NextRequest) {
       cache_key: translationCacheKey(parsed.data.text, parsed.data.target_lang, parsed.data.tone),
     });
   } catch (e: unknown) {
+    usage.record({ outcome: "error" });
     return apiInternalError(e, "translate");
   }
 }

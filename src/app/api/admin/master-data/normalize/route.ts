@@ -22,6 +22,7 @@ import {
   normalizeCustomerName,
 } from "@/lib/ai/textNormalize";
 import { loadAiAutomationSettings, resolveFieldPolicy } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,27 +36,45 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const usage = startAiRouteUsage("/api/admin/master-data/normalize");
   try {
     // master-data 正規化は辞書ベース中心で軽量だが、CSV import で大量に
     // ループ呼びされる想定なので general (60/min) で抑える。
     const limited = await checkRateLimit(req, "general");
-    if (limited) return limited;
+    if (limited) {
+      usage.record({ outcome: "rate_limit" });
+      return limited;
+    }
 
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
     if (!canUseFeature(caller.planTier, "ai_master_normalize")) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "plan_limit" });
       return apiPlanLimit("マスタ正規化は Starter プラン以上でご利用いただけます。");
     }
 
     const parsed = await parseJsonBody(req, schema);
-    if (!parsed.ok) return parsed.response;
+    if (!parsed.ok) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "schema_error" });
+      return parsed.response;
+    }
 
     const settings = await loadAiAutomationSettings(caller.tenantId);
-    if (!settings.enabled) return apiOk({ ai_disabled: true, normalized: parsed.data });
+    if (!settings.enabled) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
+      return apiOk({ ai_disabled: true, normalized: parsed.data });
+    }
 
     const makerPolicy = resolveFieldPolicy(settings, "master_data.maker_model");
     const addressPolicy = resolveFieldPolicy(settings, "master_data.address");
+
+    usage.record({
+      tenantId: caller.tenantId,
+      userId: caller.userId,
+      outcome: "ok",
+      meta: { kind: "deterministic" },
+    });
 
     return apiOk({
       ai_disabled: false,
@@ -69,6 +88,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (e: unknown) {
+    usage.record({ outcome: "error" });
     return apiInternalError(e, "master-data normalize");
   }
 }

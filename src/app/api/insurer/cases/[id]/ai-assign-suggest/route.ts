@@ -17,15 +17,20 @@ import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { suggestCaseAssignees, type CasePriority } from "@/lib/ai/caseAssignSuggest";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const usage = startAiRouteUsage("/api/insurer/cases/[id]/ai-assign-suggest");
   try {
     const limited = await checkRateLimit(req, "ai");
-    if (limited) return limited;
+    if (limited) {
+      usage.record({ outcome: "rate_limit" });
+      return limited;
+    }
 
     const { id } = await ctx.params;
     if (!id) return apiNotFound("case id is required");
@@ -86,11 +91,23 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       rules,
     });
 
+    usage.record({
+      insurerId: caller.insurerId,
+      userId: caller.userId,
+      outcome: "ok",
+      meta: {
+        ai: result.ai,
+        candidates: result.candidates.length,
+        method: result.candidates[0]?.method ?? null,
+      },
+    });
+
     return apiOk({
       candidates: result.candidates,
       ai: result.ai,
     });
   } catch (e: unknown) {
+    usage.record({ outcome: "error" });
     return apiInternalError(e, "case ai-assign-suggest");
   }
 }

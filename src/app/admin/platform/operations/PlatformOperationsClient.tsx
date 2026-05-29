@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Badge from "@/components/ui/Badge";
 import OnboardingFunnelSection from "./OnboardingFunnelSection";
 import OnboardingTenantsSection from "./OnboardingTenantsSection";
+import AiUsageDashboard from "./AiUsageDashboard";
 
 // ── Types ──
 type SystemHealth = {
@@ -557,6 +558,9 @@ function OverviewTab({ data }: { data: OperationsData }) {
 
       {/* Onboarding funnel */}
       <OnboardingFunnelSection />
+
+      {/* AI 利用ダッシュボード */}
+      <AiUsageDashboard />
 
       {/* Per-tenant onboarding status */}
       <OnboardingTenantsSection />

@@ -17,6 +17,7 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { detectThicknessAnomaly } from "@/lib/ai/thicknessAnomaly";
 import { loadAiAutomationSettings, resolveFieldPolicy } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -30,9 +31,13 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ reportId: string }> }) {
+  const usage = startAiRouteUsage("/api/admin/thickness-reports/[reportId]/ai-anomaly");
   try {
     const limited = await checkRateLimit(req, "ai");
-    if (limited) return limited;
+    if (limited) {
+      usage.record({ outcome: "rate_limit" });
+      return limited;
+    }
 
     const { reportId } = await ctx.params;
     if (!reportId) return apiNotFound("reportId required");
@@ -41,6 +46,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ reportId: 
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
     if (!canUseFeature(caller.planTier, "ai_thickness_anomaly")) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "plan_limit" });
       return apiPlanLimit("AI 塗膜厚異常検知は Standard プラン以上でご利用いただけます。");
     }
 
@@ -49,6 +55,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ reportId: 
 
     const settings = await loadAiAutomationSettings(caller.tenantId);
     if (!settings.enabled || resolveFieldPolicy(settings, "inventory.thickness_anomaly") === "manual") {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
       return apiOk({ ai_disabled: true, anomaly: null });
     }
 
@@ -100,8 +107,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ reportId: 
       expectedRange: parsed.data.expected_range,
       serviceName,
     });
+    usage.record({
+      tenantId: caller.tenantId,
+      userId: caller.userId,
+      outcome: "ok",
+      meta: { severity: anomaly.severity, measurements: measurements.length, ai: anomaly.ai },
+    });
     return apiOk({ ai_disabled: false, anomaly });
   } catch (e: unknown) {
+    usage.record({ outcome: "error" });
     return apiInternalError(e, "thickness ai-anomaly");
   }
 }

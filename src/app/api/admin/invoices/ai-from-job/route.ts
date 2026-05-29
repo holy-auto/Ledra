@@ -19,6 +19,7 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateInvoiceFromJob } from "@/lib/ai/invoiceFromJob";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -29,14 +30,19 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const usage = startAiRouteUsage("/api/admin/invoices/ai-from-job");
   try {
     const limited = await checkRateLimit(req, "ai");
-    if (limited) return limited;
+    if (limited) {
+      usage.record({ outcome: "rate_limit" });
+      return limited;
+    }
 
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
     if (!canUseFeature(caller.planTier, "ai_invoice_quote")) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "plan_limit" });
       return apiPlanLimit("AI 請求書起票は Standard プラン以上でご利用いただけます。");
     }
 
@@ -45,6 +51,7 @@ export async function POST(req: NextRequest) {
 
     const settings = await loadAiAutomationSettings(caller.tenantId);
     if (!settings.enabled) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
       return apiOk({ ai_disabled: true, draft: null });
     }
 
@@ -87,6 +94,14 @@ export async function POST(req: NextRequest) {
       serviceCategory: reservation.title,
     });
 
+    usage.record({
+      tenantId: caller.tenantId,
+      userId: caller.userId,
+      outcome: "ok",
+      confidence: draft.confidence,
+      meta: { ai: draft.ai, items_count: draft.items.length },
+    });
+
     return apiOk({
       ai_disabled: false,
       draft: {
@@ -101,6 +116,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (e: unknown) {
+    usage.record({ outcome: "error" });
     return apiInternalError(e, "invoice ai-from-job");
   }
 }

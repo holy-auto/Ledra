@@ -22,6 +22,7 @@ import { apiOk, apiUnauthorized, apiNotFound, apiInternalError, apiPlanLimit } f
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { loadAiAutomationSettings, resolveFieldPolicy } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { generateJobAutoTitle, clipTitle } from "@/lib/ai/jobAutoTitle";
 import { generateJobNextAction, type JobStatus } from "@/lib/ai/jobNextAction";
 import { generateTimerAlert } from "@/lib/ai/jobTimerAlert";
@@ -38,9 +39,13 @@ function normalizeStatus(s: unknown): JobStatus {
 }
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const usage = startAiRouteUsage("/api/admin/jobs/[id]/ai-suggest");
   try {
     const limited = await checkRateLimit(req, "ai");
-    if (limited) return limited;
+    if (limited) {
+      usage.record({ outcome: "rate_limit" });
+      return limited;
+    }
 
     const { id: reservationId } = await ctx.params;
     if (!reservationId) return apiNotFound("reservation id is required");
@@ -49,11 +54,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
     if (!canUseFeature(caller.planTier, "ai_job_assist")) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "plan_limit" });
       return apiPlanLimit("AI 案件アシストは Standard プラン以上でご利用いただけます。");
     }
 
     const settings = await loadAiAutomationSettings(caller.tenantId);
     if (!settings.enabled) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
       return apiOk({ ai_disabled: true, suggestions: {} });
     }
 
@@ -176,6 +183,18 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       });
     }
 
+    usage.record({
+      tenantId: caller.tenantId,
+      userId: caller.userId,
+      outcome: "ok",
+      confidence: titleSuggestion?.confidence ?? null,
+      meta: {
+        title_applied: titlePolicy === "auto",
+        next_action_policy: nextActionPolicy,
+        timer_severity: timerAlert?.severity ?? null,
+      },
+    });
+
     return apiOk({
       ai_disabled: false,
       suggestions: {
@@ -192,6 +211,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       },
     });
   } catch (e: unknown) {
+    usage.record({ outcome: "error" });
     return apiInternalError(e, "job ai-suggest");
   }
 }
