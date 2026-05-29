@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/swr";
+import MessageAiExtractButton from "./MessageAiExtractButton";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 
 /**
@@ -160,6 +161,7 @@ export default function CustomerMessagesTab({ customerId }: { customerId: string
                     </span>
                   )}
                 </div>
+                {!isOutbound && <MessageAiExtractButton messageId={m.id} />}
               </div>
             </div>
           );

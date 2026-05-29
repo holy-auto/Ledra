@@ -3,6 +3,7 @@ import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useState, useEffect, useCallback } from "react";
 import Modal from "@/components/ui/Modal";
+import SquareAiLinkButton from "./SquareAiLinkButton";
 import { formatDateTime, formatJpy } from "@/lib/format";
 import type { SquareOrder } from "@/types/square";
 
@@ -222,6 +223,9 @@ export default function SquareLinkModal({ order, onClose, onSave }: Props) {
             </option>
           ))}
         </select>
+        <div className="mt-2">
+          <SquareAiLinkButton orderId={order.id} onPick={(id) => handleCustomerChange(id)} />
+        </div>
       </div>
 
       {/* Vehicle */}

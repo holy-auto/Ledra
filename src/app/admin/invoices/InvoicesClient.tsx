@@ -142,6 +142,7 @@ export default function InvoicesClient() {
   const searchParams = useSearchParams();
   const prefillCustomerId = searchParams.get("customer_id") ?? "";
   const prefillVehicleId = searchParams.get("vehicle_id") ?? "";
+  const prefillReservationId = searchParams.get("reservation_id") ?? "";
   const autoOpenForm = searchParams.get("create") === "1";
 
   const [statusFilter, setStatusFilter] = useState("all");
@@ -280,6 +281,61 @@ export default function InvoicesClient() {
     prefillAppliedRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customers, vehicles, prefillCustomerId, prefillVehicleId]);
+
+  // reservation_id がクエリに付いていれば、ai-from-job で明細・宛名・備考を
+  // 起票してフォームに流す。失敗したら空のまま (UI は既存の通り編集可能)。
+  const aiPrefillAppliedRef = useRef(false);
+  const [aiPrefillBusy, setAiPrefillBusy] = useState(false);
+  const [aiPrefillNote, setAiPrefillNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (aiPrefillAppliedRef.current) return;
+    if (!prefillReservationId) return;
+    aiPrefillAppliedRef.current = true;
+    (async () => {
+      setAiPrefillBusy(true);
+      try {
+        const res = await fetch("/api/admin/invoices/ai-from-job", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reservation_id: prefillReservationId }),
+        });
+        if (res.status === 403 || res.status === 429) {
+          const j = await res.json().catch(() => ({}));
+          setAiPrefillNote(j?.message ?? "AI 起票は利用できません。");
+          return;
+        }
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok || !j?.ok || j.ai_disabled || !j.draft) {
+          setAiPrefillNote("AI 起票に失敗しました。手動で入力してください。");
+          return;
+        }
+        const draft = j.draft as {
+          items?: Array<{ description: string; quantity: number; unit: string; unit_price: number }>;
+          note?: string;
+          tax_rate?: number;
+        };
+        if (draft.items && draft.items.length > 0) {
+          setFormItems(
+            draft.items.map((it) => ({
+              description: it.description,
+              quantity: it.quantity,
+              unit: it.unit,
+              unit_price: it.unit_price,
+              amount: it.quantity * it.unit_price,
+              is_reduced_rate: false,
+            })),
+          );
+        }
+        if (draft.note) setFormNote(draft.note);
+        setAiPrefillNote("✨ AI で明細・備考を起票しました。内容を確認して保存してください。");
+      } catch {
+        setAiPrefillNote("AI 起票で通信エラーが発生しました。");
+      } finally {
+        setAiPrefillBusy(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillReservationId]);
 
   // 顧客が変わったら証明書を取得
   const fetchCertificatesForCustomer = useCallback(async (customerId: string) => {
@@ -616,6 +672,12 @@ export default function InvoicesClient() {
                 <div className="text-xs font-semibold tracking-[0.18em] text-muted">新規作成</div>
                 <div className="mt-1 text-base font-semibold text-primary">新規請求書</div>
               </div>
+
+              {(aiPrefillBusy || aiPrefillNote) && (
+                <div className="rounded-xl border border-accent/30 bg-accent/5 px-3 py-2 text-xs text-accent">
+                  {aiPrefillBusy ? "AI で起票中..." : aiPrefillNote}
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">

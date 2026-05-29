@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatDate, formatDateTime } from "@/lib/format";
 import PageHeader from "@/components/ui/PageHeader";
+import ThicknessAiAnomalyPanel from "./ThicknessAiAnomalyPanel";
 import {
   ExteriorDiagram,
   InteriorDiagram,
@@ -261,6 +262,8 @@ export default async function StandaloneThicknessReportDetailPage({
           </Link>
         }
       />
+
+      <ThicknessAiAnomalyPanel reportId={reportId} />
 
       {/* 車両連携ステータス */}
       <section className={`glass-card p-5 ${linkedVehicle ? "" : "border border-warning/30"}`}>

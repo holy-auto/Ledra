@@ -4,6 +4,7 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { extractFirstRegistrationYear } from "@/lib/ocr/shakensho";
 import { parseShakenshoCode } from "@/lib/ocr/shakensho-qr";
+import { loadAiAutomationSettings, filterVehicleOcrByPolicy, isSourceAllowed } from "@/lib/ai/automation/policy";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -39,6 +40,26 @@ export async function POST(req: Request) {
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
+
+    const automation = await loadAiAutomationSettings(caller.tenantId);
+    if (!isSourceAllowed(automation, "identity_documents")) {
+      return Response.json({
+        ok: true,
+        source: "disabled" as const,
+        extracted: {
+          maker: null,
+          model: null,
+          year: null,
+          vin_code: null,
+          plate_display: null,
+          expiry_date: null,
+          fuel_type: null,
+        },
+        policies: {},
+        ai_disabled: true,
+      });
+    }
+
     const result = parseShakenshoCode(parsed.data.raw);
     if (!result) {
       return Response.json(
@@ -50,18 +71,34 @@ export async function POST(req: Request) {
       );
     }
 
+    const raw = {
+      maker: result.maker ?? null,
+      model: result.model ?? null,
+      year: extractFirstRegistrationYear(result.first_registration),
+      vin_code: result.vin ?? null,
+      plate_display: result.plate_display ?? null,
+      expiry_date: result.expiry_date ?? null,
+      fuel_type: result.fuel_type ?? null,
+      length_mm: null,
+      width_mm: null,
+      height_mm: null,
+      size_class: null,
+    };
+    const filtered = filterVehicleOcrByPolicy(raw, automation);
+
     return Response.json({
       ok: true,
       source: "qr" as const,
       extracted: {
-        maker: result.maker ?? null,
-        model: result.model ?? null,
-        year: extractFirstRegistrationYear(result.first_registration),
-        vin_code: result.vin ?? null,
-        plate_display: result.plate_display ?? null,
-        expiry_date: result.expiry_date ?? null,
-        fuel_type: result.fuel_type ?? null,
+        maker: filtered.extracted.maker,
+        model: filtered.extracted.model,
+        year: filtered.extracted.year,
+        vin_code: filtered.extracted.vin_code,
+        plate_display: filtered.extracted.plate_display,
+        expiry_date: filtered.extracted.expiry_date,
+        fuel_type: filtered.extracted.fuel_type,
       },
+      policies: filtered.policies,
     });
   } catch (e) {
     return apiInternalError(e, "parse-shakken-qr");

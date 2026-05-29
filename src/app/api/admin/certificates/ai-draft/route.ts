@@ -11,6 +11,7 @@ import { apiOk, apiUnauthorized, apiInternalError, apiValidationError } from "@/
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateCertificateDraft } from "@/lib/ai/draftCertificate";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { loadAiAutomationSettings, filterDraftByPolicy, isSourceAllowed } from "@/lib/ai/automation/policy";
 
 const aiDraftSchema = z
   .object({
@@ -48,6 +49,27 @@ export async function POST(req: NextRequest) {
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
+    // テナントの AI 自動入力ポリシーをロード。グローバル OFF の場合は
+    // モデル呼び出しすら走らせない (コスト・レイテンシ削減)。
+    const automation = await loadAiAutomationSettings(caller.tenantId);
+    if (!automation.enabled) {
+      return apiOk({
+        draft: {
+          title: "",
+          description: "",
+          materials: [],
+          warrantyCandidates: [],
+          workAreas: [],
+          cautions: "",
+          confidence: 0,
+          missingInfo: ["テナント設定で AI 自動入力が OFF になっています。"],
+        },
+        policies: {},
+        source_data: { similar_certs_used: 0, photos_analyzed: 0, hearing_used: false },
+        ai_disabled: true,
+      });
+    }
+
     // 車両情報取得
     let vehicle: Record<string, unknown> = {};
     if (vehicle_id) {
@@ -59,9 +81,9 @@ export async function POST(req: NextRequest) {
       vehicle = data ?? {};
     }
 
-    // ヒアリング情報取得
+    // ヒアリング情報取得 (ソースが許可されている場合のみ)
     let hearing: Record<string, unknown> | undefined;
-    if (hearing_id) {
+    if (hearing_id && isSourceAllowed(automation, "hearings")) {
       const { data } = await admin
         .from("hearings")
         .select(
@@ -82,14 +104,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 同テナントの類似施工事例（最新5件）
-    const { data: similar } = await admin
-      .from("certificates")
-      .select("service_name, description, material_info, warranty_period")
-      .eq("tenant_id", caller.tenantId)
-      .not("service_name", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(5);
+    // 同テナントの類似施工事例 (ソースが許可されている場合のみ取得)
+    const allowSimilar = isSourceAllowed(automation, "similar_certificates");
+    const { data: similar } = allowSimilar
+      ? await admin
+          .from("certificates")
+          .select("service_name, description, material_info, warranty_period")
+          .eq("tenant_id", caller.tenantId)
+          .not("service_name", "is", null)
+          .order("created_at", { ascending: false })
+          .limit(5)
+      : { data: [] as Array<{ service_name: string | null; description: string | null; material_info: string | null; warranty_period: string | null }> };
 
     const draft = await generateCertificateDraft({
       vehicle: {
@@ -117,12 +142,15 @@ export async function POST(req: NextRequest) {
       templateCategory: template_category,
     });
 
+    const filtered = filterDraftByPolicy(draft, automation);
+
     return apiOk({
-      draft,
+      draft: filtered.draft,
+      policies: filtered.policies,
       source_data: {
         similar_certs_used: similar?.length ?? 0,
-        photos_analyzed: photo_urls?.length ?? 0,
-        hearing_used: !!hearing_id,
+        photos_analyzed: isSourceAllowed(automation, "photos") ? photo_urls?.length ?? 0 : 0,
+        hearing_used: !!hearing,
       },
     });
   } catch (e: unknown) {

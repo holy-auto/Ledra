@@ -8,6 +8,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
 import EquipmentPicker from "@/components/EquipmentPicker";
 import { formatJpy, formatDate } from "@/lib/format";
+import MarketVehicleAiDescButton from "./MarketVehicleAiDescButton";
 
 type VehicleImage = { id: string; storage_path: string; file_name: string | null; sort_order: number };
 
@@ -520,6 +521,22 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
                 onChange={(val) => setField("features", val)}
               />
             </div>
+            <MarketVehicleAiDescButton
+              vehicleId={vehicleId}
+              photoUrls={[]}
+              onApply={(desc, features) => {
+                setField("description", desc);
+                setField(
+                  "features",
+                  Array.from(
+                    new Set([
+                      ...(Array.isArray(editData.features) ? (editData.features as string[]) : []),
+                      ...features,
+                    ]),
+                  ),
+                );
+              }}
+            />
           </section>
           <div className="flex gap-3">
             <button type="button" className="btn-primary" disabled={updating} onClick={handleSave}>
