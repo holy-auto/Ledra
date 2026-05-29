@@ -12,12 +12,14 @@ import {
   type AutomationWorkflowKey,
   type FieldPolicy,
 } from "@/lib/ai/automation/fieldCatalog";
+import { AUTOMATION_ACTIONS } from "@/lib/ai/automation/actionCatalog";
 
 interface InitialSettings {
   enabled: boolean;
   fieldPolicies: Record<string, FieldPolicy>;
   confidenceThreshold: number;
   sourcePolicies: Partial<Record<AutomationSourceKey, boolean>>;
+  autoActions: Record<string, boolean>;
 }
 
 interface Props {
@@ -55,6 +57,7 @@ export default function AiAutomationSettingsClient({ role, initialSettings, load
   const [sourcePolicies, setSourcePolicies] = useState<Partial<Record<AutomationSourceKey, boolean>>>(
     initialSettings.sourcePolicies,
   );
+  const [autoActions, setAutoActions] = useState<Record<string, boolean>>(initialSettings.autoActions ?? {});
 
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -95,6 +98,15 @@ export default function AiAutomationSettingsClient({ role, initialSettings, load
     });
   }
 
+  function toggleAutoAction(key: string) {
+    setAutoActions((prev) => {
+      const out = { ...prev };
+      if (out[key]) delete out[key];
+      else out[key] = true;
+      return out;
+    });
+  }
+
   function effectiveSource(key: AutomationSourceKey, defaultEnabled: boolean): boolean {
     const v = sourcePolicies[key];
     if (typeof v === "boolean") return v;
@@ -124,6 +136,7 @@ export default function AiAutomationSettingsClient({ role, initialSettings, load
           fieldPolicies,
           confidenceThreshold: threshold,
           sourcePolicies,
+          autoActions,
         }),
       });
       const j = await res.json().catch(() => null);
@@ -147,8 +160,8 @@ export default function AiAutomationSettingsClient({ role, initialSettings, load
     <div className="space-y-6">
       {!loadedFromDb && (
         <div className="rounded-xl border border-warning/30 bg-warning-dim px-4 py-3 text-xs text-warning">
-          ⚠ AI 自動入力設定テーブルがまだ未作成です。デフォルト値で表示しています。
-          マイグレーション (<code>20260528000003_ai_automation_settings.sql</code>) を適用すると保存できるようになります。
+          ⚠ AI 自動入力設定テーブルがまだ未作成です。デフォルト値で表示しています。 マイグレーション (
+          <code>20260528000003_ai_automation_settings.sql</code>) を適用すると保存できるようになります。
         </div>
       )}
 
@@ -165,7 +178,8 @@ export default function AiAutomationSettingsClient({ role, initialSettings, load
             <div className="text-xs font-semibold tracking-[0.18em] text-muted">MASTER SWITCH</div>
             <div className="mt-1 text-base font-semibold text-primary">AI 自動入力の総合 ON/OFF</div>
             <p className="mt-1 text-xs text-muted">
-              OFF にすると、フィールド単位の設定にかかわらず、すべての AI 自動入力 (証明書 / 車両 OCR / 顧客 intake / 案件) を停止します。
+              OFF にすると、フィールド単位の設定にかかわらず、すべての AI 自動入力 (証明書 / 車両 OCR / 顧客 intake /
+              案件) を停止します。
             </p>
           </div>
           <label className="inline-flex items-center gap-2 cursor-pointer select-none">
@@ -189,7 +203,8 @@ export default function AiAutomationSettingsClient({ role, initialSettings, load
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">CONFIDENCE</div>
           <div className="mt-1 text-base font-semibold text-primary">信頼度しきい値</div>
           <p className="mt-1 text-xs text-muted">
-            AI の自己評価値 (0.0〜1.0) がこの値を下回ったフィールドは、自動入力 (auto) に設定されていても「提案」に降格されます。
+            AI の自己評価値 (0.0〜1.0) がこの値を下回ったフィールドは、自動入力 (auto)
+            に設定されていても「提案」に降格されます。
           </p>
         </div>
         <div className="flex items-center gap-4">
@@ -203,12 +218,11 @@ export default function AiAutomationSettingsClient({ role, initialSettings, load
             onChange={(e) => setThreshold(Number(e.target.value))}
             className="flex-1 accent-[var(--accent)]"
           />
-          <span className="font-mono text-sm text-primary w-16 text-right">
-            {Math.round(threshold * 100)}%
-          </span>
+          <span className="font-mono text-sm text-primary w-16 text-right">{Math.round(threshold * 100)}%</span>
         </div>
         <div className="text-[11px] text-muted">
-          推奨: 0.50 (デフォルト)。0.80 以上にすると確実な抽出のみ採用、0.30 以下にすると AI 出力を積極的に流し込みます。
+          推奨: 0.50 (デフォルト)。0.80 以上にすると確実な抽出のみ採用、0.30 以下にすると AI
+          出力を積極的に流し込みます。
         </div>
       </section>
 
@@ -218,7 +232,8 @@ export default function AiAutomationSettingsClient({ role, initialSettings, load
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">SOURCES</div>
           <div className="mt-1 text-base font-semibold text-primary">参照を許可する情報ソース</div>
           <p className="mt-1 text-xs text-muted">
-            AI が下書き生成のために読みに行く情報源です。プライバシー / コンプライアンス上の理由で参照させたくないソースを OFF にできます。
+            AI が下書き生成のために読みに行く情報源です。プライバシー /
+            コンプライアンス上の理由で参照させたくないソースを OFF にできます。
           </p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
@@ -228,9 +243,7 @@ export default function AiAutomationSettingsClient({ role, initialSettings, load
               <label
                 key={s.key}
                 className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 ${
-                  on
-                    ? "border-accent/30 bg-accent/5"
-                    : "border-border-subtle bg-surface"
+                  on ? "border-accent/30 bg-accent/5" : "border-border-subtle bg-surface"
                 }`}
               >
                 <input
@@ -243,6 +256,50 @@ export default function AiAutomationSettingsClient({ role, initialSettings, load
                 <div className="space-y-0.5">
                   <div className="text-sm font-medium text-primary">{s.label}</div>
                   <div className="text-[11px] text-muted">{s.description}</div>
+                </div>
+              </label>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ── 自動実行 (auto-actions) ─────────────────────── */}
+      <section className="glass-card p-5 space-y-4">
+        <div>
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">AUTO-ACTIONS</div>
+          <div className="mt-1 text-base font-semibold text-primary">人の操作なしで自動実行する処理</div>
+          <p className="mt-1 text-xs text-muted">
+            「フォームを開いてボタンを押す」を待たずに、受信や状態遷移をきっかけに AI を自動実行します。 すべて既定 OFF
+            (opt-in)。Standard プラン以上で有効化できます。
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-warning/30 bg-warning-dim px-3 py-2 text-[11px] text-warning">
+          🔒 壁3: <b>証明書の発行・請求/見積の送付・課金・新規顧客(本人)の自動作成</b>は、設定に関わらず
+          自動化されません。必ず人の確認を挟みます。
+        </div>
+
+        <div className="grid gap-2">
+          {AUTOMATION_ACTIONS.map((a) => {
+            const on = autoActions[a.key] === true;
+            return (
+              <label
+                key={a.key}
+                className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 ${
+                  on && enabled ? "border-success/30 bg-success-dim" : "border-border-subtle bg-surface"
+                } ${!enabled ? "opacity-50" : ""}`}
+              >
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+                  checked={on}
+                  disabled={!canEdit || saving || !enabled}
+                  onChange={() => toggleAutoAction(a.key)}
+                />
+                <div className="space-y-0.5">
+                  <div className="text-sm font-medium text-primary">{a.label}</div>
+                  <div className="text-[11px] text-muted">{a.description}</div>
+                  {a.guard && <div className="text-[10px] text-muted opacity-70 mt-0.5">条件: {a.guard}</div>}
                 </div>
               </label>
             );
@@ -279,10 +336,7 @@ export default function AiAutomationSettingsClient({ role, initialSettings, load
             {w.fields.map((f) => {
               const policy = effectivePolicy(f);
               return (
-                <div
-                  key={f.key}
-                  className="rounded-xl border border-border-subtle bg-surface px-4 py-3"
-                >
+                <div key={f.key} className="rounded-xl border border-border-subtle bg-surface px-4 py-3">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-[200px] flex-1">
                       <div className="text-sm font-medium text-primary">{f.label}</div>
@@ -301,9 +355,7 @@ export default function AiAutomationSettingsClient({ role, initialSettings, load
                               disabled={!canEdit || saving || !enabled}
                               onClick={() => setPolicy(f.key, p, f.defaultPolicy)}
                               className={`px-3 py-1.5 text-xs font-medium border-r border-border-default last:border-r-0 transition-colors ${
-                                selected
-                                  ? POLICY_LABELS[p].tone
-                                  : "bg-surface text-muted hover:bg-surface-hover"
+                                selected ? POLICY_LABELS[p].tone : "bg-surface text-muted hover:bg-surface-hover"
                               } ${!enabled ? "opacity-40 cursor-not-allowed" : ""}`}
                             >
                               {POLICY_LABELS[p].label}
@@ -340,12 +392,7 @@ export default function AiAutomationSettingsClient({ role, initialSettings, load
       )}
 
       <div className="flex gap-3">
-        <button
-          type="button"
-          className="btn-primary text-sm"
-          disabled={!canEdit || saving}
-          onClick={save}
-        >
+        <button type="button" className="btn-primary text-sm" disabled={!canEdit || saving} onClick={save}>
           {saving ? "保存中..." : "AI 自動入力の設定を保存"}
         </button>
       </div>

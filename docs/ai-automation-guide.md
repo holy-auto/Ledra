@@ -10,7 +10,7 @@ Ledra のワークフロー (証明書 / 案件 / 請求 / 顧客 / 保険 case 
 切り替えられる仕組み。
 
 - **目的**: 入力工数の削減 + コスト管理 + コンプライアンス
-- **規模**: 17 API ルート、30+ フィールド、4+ ワークフロー
+- **規模**: 18 API ルート、30+ フィールド、16 ワークフロー、5 auto-actions (+ 壁3 で 6 アクションは自動化禁止)
 - **設定 UI**: `/admin/settings/ai-automation` (admin 以上が編集)
 - **運営ダッシュボード**: `/admin/platform/operations` の「AI 利用状況」セクション
 
@@ -90,6 +90,73 @@ Anthropic API
    ↓ manual の field を空に戻す
 クライアント
 ```
+
+## 4.5 イベント駆動の自動実行 (auto-actions)
+
+field_policies が「フィールドを AI が埋めるか」を制御するのに対し、**auto-actions** は
+「人がフォームを開かなくてもワークフローを前に進めるか」(= 受信 / 状態遷移をきっかけに
+AI を自動実行するか) を制御する。これが「利用者の入力頻度を限りなく 0 に」の本丸。
+
+- 定義: `src/lib/ai/automation/actionCatalog.ts`
+- 解決: `resolveAutoAction(settings, key)` (`policy.ts`)
+- 永続化: `tenant_ai_automation_settings.auto_actions` jsonb (migration 20260531000001)
+- 設定 UI: `/admin/settings/ai-automation` の「AUTO-ACTIONS」セクション
+- **すべて既定 OFF (opt-in)**。Standard プラン以上で有効化可能。
+
+| アクションキー | 内容 | 既定 |
+|---|---|---|
+| `inbound_message.auto_extract` | LINE 等の受信時に予約候補を自動抽出し受信箱に下書き化 (コミットなし) | OFF |
+| `inbound_message.auto_create_reservation` | 高確信 + 既知顧客 + 有効日 + new_reservation のとき予約を自動起票 | OFF |
+| `certificate.auto_draft` | 写真 + 音声メモが揃ったら証明書ドラフトを自動生成 (発行なし) | OFF |
+| `review.auto_analyze` | レビュー受信時に感情分析を自動付与 | OFF |
+| `translation.auto_translate` | お知らせ保存時に多言語へ自動翻訳 | OFF |
+
+### 4.5.1 LINE 受信 → 自動処理パイプライン
+
+`POST /api/line/webhook` → `handleWebhookEvents` (200 即返し後の非同期) →
+`maybeAutoProcessInboundMessage` (`inboundAuto.ts`, fail-soft):
+
+1. `loadAiAutomationSettings` → `shouldAutoExtractInbound` (opt-in 判定)
+2. プラン (Standard+) / `is_active` 確認
+3. `extractInboundReservation` → `customer_messages.ai_extracted` に保存 (受信箱に下書き)
+4. `decideInboundCommit` が許せば予約を自動起票 (壁3 遵守)
+
+## 4.6 壁3 — 必ず人の確認を挟む領域
+
+「金額確定 / 本人確認 / 法的責任」は、設定で auto / true にしても **絶対に自動化しない**。
+アプリ層 (`resolveFieldPolicy` / `resolveAutoAction`) と sanitizer の二重で強制する。
+
+- **フィールド (NEVER_AUTO_FIELDS, `fieldCatalog.ts`)**: `auto` を指定しても必ず `suggest` に
+  クランプ (確認必須)。対象 = 金額確定 (`invoice.items` / `invoice.tax_rate` /
+  `job.estimated_price` / `quote.items` / `menu.recommended_price` / `accounting.category` /
+  `inventory.pos_deduction`) + 本人確認 (`customer.{name,name_kana,birth_date,phone,email,address}` /
+  `vehicle.vin`)。
+- **アクション (NEVER_AUTO_ACTIONS, `actionCatalog.ts`)**: `resolveAutoAction` が常に false。
+  対象 = `certificate.auto_issue` (発行) / `invoice.auto_send` / `invoice.auto_finalize` /
+  `payment.auto_charge` / `quote.auto_send` / `customer.auto_create` (新規顧客=本人の自動作成)。
+- **低確信**: confidence_threshold 未満は auto でも `suggest` にデモート (既存挙動)。
+
+→ 自動起票される予約は「既知顧客のみ・金額 0・タイトルに【要確認】」で、本人確認と金額確定は
+人に残る。証明書も「ドラフトまで自動・発行は人」。
+
+## 4.7 フィールド別 confidence
+
+`generateCertificateDraft` は draft 全体の `confidence` に加え、項目別の
+`fieldConfidence` (title / description / materials / warranty / workAreas / cautions) を返す。
+`filterDraftByPolicy` は項目別値があればそれで、無ければ draft 全体値でデモート判定する。
+「説明文は自信があるが材料は曖昧」のとき、材料だけ `suggest` に落とし、説明文は `auto` を維持できる。
+
+## 4.8 自動化レベルのフィードバックループ
+
+`ai_usage_logs` の実績 (件数・平均確信度) から「auto 化してよいか」を推薦する。
+
+- ロジック: `recommendAutoActions(rows, settings)` (`feedbackLoop.ts`, 純関数)
+- API: `GET /api/admin/settings/ai-automation/recommendations?days=30`
+- 判定: サンプル ≥ 20 かつ平均確信度 ≥ 0.8 → `enable_auto` (opt-in 推奨) /
+  閾値未満 → `needs_attention` / 既に有効 → `already_auto` / それ以外 → `keep` / `insufficient_data`
+- **壁3 は推薦対象外** (ENDPOINT_META に含めない)。
+
+これで「実データで安全側を確認 → opt-in」を繰り返し、入力ゼロの天井を徐々に押し上げられる。
 
 ## 5. 監視
 
@@ -203,6 +270,9 @@ UI は「しばらくお待ちください」を表示し、リトライ可能�
 ## 11. 関連ファイル
 
 - 設定基盤: `src/lib/ai/automation/{fieldCatalog,policy}.ts`
+- 自動実行: `src/lib/ai/automation/{actionCatalog,orchestrator,inboundAuto}.ts`
+- フィードバックループ: `src/lib/ai/automation/feedbackLoop.ts` + `recommendations/route.ts`
+- LINE 受信配線: `src/lib/line/client.ts` (`handleWebhookEvents`)
 - AI ヘルパ: `src/lib/ai/*.ts` (17 モジュール)
 - 共通 util: `src/lib/ai/utils.ts` (clipText / clipZenkaku / sizeMultiplier)
 - Sentry: `src/lib/ai/sentryAiBreadcrumb.ts`
@@ -217,3 +287,5 @@ UI は「しばらくお待ちください」を表示し、リトライ可能�
 - **PR #448**: 自動入力基盤 + フィールドカタログ + 17 API ルート + UI 統合
 - **PR #449**: 統合テスト + 監査ログ + 利用集計 + GDPR エクスポート拡張
 - **PR (P3)**: 共通 util 抽出 + Sentry breadcrumb + 翻訳キャッシュ + 本ガイド
+- **PR (P4)**: イベント駆動 auto-actions + 壁3 ガードレール (field/action) + per-field confidence
+  + LINE 受信→自動抽出/自動起票 + 自動化レベル推薦 (feedbackLoop)

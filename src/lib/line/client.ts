@@ -1,6 +1,7 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { readSecret } from "@/lib/crypto/tenantSecrets";
 import { recordInboundLineMessage, recordOutboundLineMessage } from "./messageStore";
+import { maybeAutoProcessInboundMessage } from "@/lib/ai/automation/inboundAuto";
 
 /**
  * LINE Messaging API クライアント
@@ -259,7 +260,7 @@ export async function handleWebhookEvents(
       const rawText = event.message.text ?? "";
 
       // 顧客発のテキストはすべて inbound として保存 (auto-reply 有無に関わらず)
-      await recordInboundLineMessage({
+      const stored = await recordInboundLineMessage({
         tenantId,
         lineUserId: event.source.userId,
         body: rawText,
@@ -282,6 +283,17 @@ export async function handleWebhookEvents(
           ]);
         }
       }
+
+      // AI 自動処理 (auto_extract が opt-in のテナントのみ実体が動く / 既定 OFF)。
+      // 顧客向け返信を遅らせないよう最後に実行。内部で fail-soft (throw しない)。
+      await maybeAutoProcessInboundMessage({
+        tenantId,
+        messageId: stored.id ?? null,
+        customerId: stored.customerId ?? null,
+        text: rawText,
+        channel: "line",
+        receivedDate: event.timestamp ? new Date(event.timestamp).toISOString().slice(0, 10) : undefined,
+      });
     }
   }
 }
