@@ -45,24 +45,28 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ reportId: 
     }
 
     const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
+    // thickness_reports は `service_name` ではなく `name` / `brand` / `model`
+    // を持つ。AI 文章化用にはどちらでも良いので結合した形を渡す。
     const { data: report, error: rErr } = await admin
       .from("thickness_reports")
-      .select("id, service_name")
+      .select("id, name, brand, model")
       .eq("id", reportId)
       .eq("tenant_id", tenantId)
       .maybeSingle();
     if (rErr) return apiInternalError(rErr, "thickness ai-anomaly: report");
     if (!report) return apiNotFound("thickness report not found");
 
+    // thickness_measurements は `location` ではなく place_id + section の 2 段。
+    // AI 説明文の文脈には "<place_id>/<section>" を投げる。
     const { data: rows } = await admin
       .from("thickness_measurements")
-      .select("value_um, location")
+      .select("value_um, place_id, section")
       .eq("report_id", reportId);
 
-    const measurements = ((rows ?? []) as Array<{ value_um: number | null; location: string | null }>)
+    const measurements = ((rows ?? []) as Array<{ value_um: number | null; place_id: string | null; section: string | null }>)
       .map((r) => ({
         value: typeof r.value_um === "number" ? r.value_um : NaN,
-        location: r.location ?? undefined,
+        location: [r.place_id, r.section].filter(Boolean).join("/") || undefined,
       }))
       .filter((m) => Number.isFinite(m.value));
 
@@ -78,10 +82,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ reportId: 
       });
     }
 
+    const serviceName =
+      [report.name as string | null, report.brand as string | null, report.model as string | null]
+        .filter(Boolean)
+        .join(" ") || null;
+
     const anomaly = await detectThicknessAnomaly({
       measurements,
       expectedRange: parsed.data.expected_range,
-      serviceName: (report.service_name as string | null) ?? null,
+      serviceName,
     });
     return apiOk({ ai_disabled: false, anomaly });
   } catch (e: unknown) {

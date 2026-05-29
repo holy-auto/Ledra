@@ -68,16 +68,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       }
     }
 
-    // price_stats: テナント横断のカテゴリ中央値
-    let marketMedian: number | null = null;
-    if (menuItem.category) {
-      const { data: stat } = await admin
-        .from("price_stats")
-        .select("median_price")
-        .eq("category", menuItem.category)
-        .maybeSingle();
-      if (stat && typeof stat.median_price === "number") marketMedian = stat.median_price;
-    }
+    // price_stats テーブルは未実装。将来 cron で集計テーブルを作るまでは null。
+    // 自店過去販売価格 (ownSales) だけで baseline を出す。
+    const marketMedian: number | null = null;
 
     const recommendation = await estimateMenuPrice({
       menuName: menuItem.name as string,

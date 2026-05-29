@@ -46,9 +46,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     }
 
     const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
+    // market_vehicles の走行距離カラムは `mileage` (km 単位、integer)
     const { data: vehicle, error: vErr } = await admin
       .from("market_vehicles")
-      .select("id, maker, model, year, color, mileage_km, features")
+      .select("id, maker, model, year, color, mileage, features")
       .eq("id", id)
       .eq("tenant_id", tenantId)
       .maybeSingle();
@@ -63,7 +64,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       model: vehicle.model as string | null,
       year: vehicle.year as number | null,
       color: vehicle.color as string | null,
-      mileage_km: vehicle.mileage_km as number | null,
+      mileage_km: vehicle.mileage as number | null,
       features: Array.isArray(vehicle.features) ? (vehicle.features as string[]) : undefined,
       photo_urls: photoUrls,
       sellerNotes: parsed.data.seller_notes ?? null,

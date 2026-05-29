@@ -37,16 +37,23 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
     if (policy === "manual") return apiOk({ ai_disabled: false, match: null, skipped: "policy is manual" });
 
     const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
+
+    // square_orders は customer name/phone/email を持たない。
+    // 既に紐付け済みなら customer_id 経由でマスタを引いて query にする。
+    // 未紐付けなら raw_json (Square API レスポンス全体) から fulfillments の
+    // customer 情報を救い上げる。
     const { data: order, error: oErr } = await admin
       .from("square_orders")
-      .select("id, customer_name, customer_phone, customer_email")
+      .select("id, customer_id, square_customer_id, raw_json")
       .eq("id", id)
       .eq("tenant_id", tenantId)
       .maybeSingle();
     if (oErr) return apiInternalError(oErr, "square ai-link: order");
     if (!order) return apiNotFound("square order not found");
 
-    // 自テナント顧客マスタを 200 件まで取得 (大規模テナントは段階改善)
+    const query = extractQueryFromRawJson(order.raw_json);
+
+    // 自テナント顧客マスタ
     const { data: candidates } = await admin
       .from("customers")
       .select("id, name, name_kana, phone, email")
@@ -54,11 +61,7 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
       .limit(500);
 
     const result = await fuzzyMatchCustomer({
-      query: {
-        name: order.customer_name as string | null,
-        phone: order.customer_phone as string | null,
-        email: order.customer_email as string | null,
-      },
+      query,
       candidates: (candidates ?? []) as Array<{
         id: string;
         name: string;
@@ -93,4 +96,32 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
   } catch (e: unknown) {
     return apiInternalError(e, "square ai-link");
   }
+}
+
+/**
+ * Square Orders API のレスポンス本体 (raw_json) から、顧客名・電話・メールを
+ * 救い上げる。Square のスキーマは可変なので best-effort で複数パスを試す。
+ */
+function extractQueryFromRawJson(raw: unknown): { name: string | null; phone: string | null; email: string | null } {
+  if (!raw || typeof raw !== "object") return { name: null, phone: null, email: null };
+  const r = raw as Record<string, unknown>;
+  let name: string | null = null;
+  let phone: string | null = null;
+  let email: string | null = null;
+
+  const fulfillments = Array.isArray(r.fulfillments) ? (r.fulfillments as Array<Record<string, unknown>>) : [];
+  for (const f of fulfillments) {
+    const fr = (f as Record<string, unknown>).pickup_details ?? (f as Record<string, unknown>).delivery_details;
+    if (fr && typeof fr === "object") {
+      const recipient = (fr as Record<string, unknown>).recipient as Record<string, unknown> | undefined;
+      if (recipient) {
+        if (!name && typeof recipient.display_name === "string") name = recipient.display_name as string;
+        if (!phone && typeof recipient.phone_number === "string") phone = recipient.phone_number as string;
+        if (!email && typeof recipient.email_address === "string") email = recipient.email_address as string;
+      }
+    }
+  }
+  if (!email && typeof r.buyer_email_address === "string") email = r.buyer_email_address as string;
+
+  return { name, phone, email };
 }

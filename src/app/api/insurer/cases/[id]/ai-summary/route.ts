@@ -42,7 +42,7 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
         : Promise.resolve({ data: null }),
       admin
         .from("insurer_case_messages")
-        .select("author_kind, body, created_at")
+        .select("sender_type, content, created_at")
         .eq("case_id", id)
         .order("created_at", { ascending: false })
         .limit(3),
@@ -55,9 +55,9 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
       priority: (caseRow.priority as string) ?? "normal",
       vehicle: vehicleRes.data as { maker?: string; model?: string } | null,
       certificate: certRes.data as { service_name?: string; issued_at?: string } | null,
-      recentMessages: ((msgRes.data ?? []) as Array<{ author_kind: string; body: string; created_at: string }>).map((m) => ({
-        author: m.author_kind,
-        body: m.body,
+      recentMessages: ((msgRes.data ?? []) as Array<{ sender_type: string; content: string; created_at: string }>).map((m) => ({
+        author: m.sender_type,
+        body: m.content,
         created_at: m.created_at,
       })),
     };

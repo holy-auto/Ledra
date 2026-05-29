@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
 
     const [customerRes, vehicleRes] = await Promise.all([
       reservation.customer_id
-        ? admin.from("customers").select("name, kind").eq("id", reservation.customer_id).maybeSingle()
+        ? admin.from("customers").select("name").eq("id", reservation.customer_id).maybeSingle()
         : Promise.resolve({ data: null, error: null }),
       reservation.vehicle_id
         ? admin
@@ -63,12 +63,16 @@ export async function POST(req: NextRequest) {
         : Promise.resolve({ data: null, error: null }),
     ]);
 
-    const customer = customerRes.data as { name?: string; kind?: string } | null;
+    const customer = customerRes.data as { name?: string } | null;
+
+    // customers テーブルに kind (個人 / 法人) カラムはまだ無いので、
+    // 顧客名末尾の「株式会社」「合同会社」「有限会社」「Inc」等で簡易推定する。
+    const customerType = guessCustomerType(customer?.name ?? null);
 
     const menuItems = extractMenuItems(reservation.menu_items_json);
     const draft = await generateInvoiceFromJob({
       customerName: customer?.name ?? null,
-      customerType: customer?.kind === "corporate" ? "corporate" : "individual",
+      customerType,
       vehicle: vehicleRes.data as { maker?: string; model?: string; plate_display?: string } | null,
       menuItems,
       estimatedAmount: reservation.estimated_amount,
@@ -91,6 +95,14 @@ export async function POST(req: NextRequest) {
   } catch (e: unknown) {
     return apiInternalError(e, "invoice ai-from-job");
   }
+}
+
+function guessCustomerType(name: string | null): "individual" | "corporate" {
+  if (!name) return "individual";
+  if (/(株式会社|合同会社|有限会社|合名会社|合資会社|社団法人|財団法人|Inc\.?|Co\.,?\s?Ltd|Corp\.?|LLC)/i.test(name)) {
+    return "corporate";
+  }
+  return "individual";
 }
 
 function extractMenuItems(raw: unknown): Array<{ name: string; unit_price?: number | null; quantity?: number | null }> {

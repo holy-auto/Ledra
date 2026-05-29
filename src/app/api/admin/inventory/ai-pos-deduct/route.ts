@@ -51,18 +51,37 @@ export async function POST(req: NextRequest) {
     }
 
     const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
+
+    // 在庫 / 紐付け / 消費統計テーブルは別 migration で追加予定。
+    // 未マイグレーション環境では graceful degrade して空 suggestion を返す。
     const [skusRes, linksRes, historyRes] = await Promise.all([
       admin.from("inventory_skus").select("id, name, category, unit").eq("tenant_id", tenantId),
       admin
         .from("menu_item_inventory_links")
         .select("menu_item_id, sku_id, quantity")
         .eq("tenant_id", tenantId)
-        .in("menu_item_id", parsed.data.sales.map((s) => s.menu_item_id)),
+        .in(
+          "menu_item_id",
+          parsed.data.sales.map((s) => s.menu_item_id),
+        ),
       admin
         .from("inventory_consumption_stats")
         .select("service_category, sku_id, avg_quantity")
         .eq("tenant_id", tenantId),
     ]);
+
+    const skusMissing = isMissingTableError(skusRes.error);
+    const linksMissing = isMissingTableError(linksRes.error);
+    const historyMissing = isMissingTableError(historyRes.error);
+
+    if (skusMissing) {
+      return apiOk({
+        ai_disabled: false,
+        suggestions: [],
+        ai: false,
+        warning: "在庫マスター (inventory_skus) が未作成のため、引落候補を計算できません。",
+      });
+    }
 
     const result = await suggestPosDeductions({
       sales: parsed.data.sales.map((s) => ({
@@ -72,8 +91,8 @@ export async function POST(req: NextRequest) {
         sold_quantity: s.sold_quantity,
       })),
       skus: (skusRes.data ?? []) as Array<{ id: string; name: string; category: string | null; unit: string | null }>,
-      links: (linksRes.data ?? []) as Array<{ menu_item_id: string; sku_id: string; quantity: number }>,
-      history: (historyRes.data ?? []) as Array<{
+      links: (linksMissing ? [] : linksRes.data ?? []) as Array<{ menu_item_id: string; sku_id: string; quantity: number }>,
+      history: (historyMissing ? [] : historyRes.data ?? []) as Array<{
         service_category: string | null;
         sku_id: string;
         avg_quantity: number;
@@ -84,4 +103,11 @@ export async function POST(req: NextRequest) {
   } catch (e: unknown) {
     return apiInternalError(e, "inventory ai-pos-deduct");
   }
+}
+
+function isMissingTableError(error: { message?: string; code?: string } | null | undefined): boolean {
+  if (!error) return false;
+  if (error.code === "42P01" || error.code === "PGRST205") return true;
+  const msg = (error.message ?? "").toLowerCase();
+  return msg.includes("does not exist") || msg.includes("schema cache");
 }
