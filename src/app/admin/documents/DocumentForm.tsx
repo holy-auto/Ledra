@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { formatJpy } from "@/lib/format";
 import { calcSellingPrice } from "@/lib/pricing/margin";
 import { DOC_TYPES, DOC_TYPE_LIST, type DocType, type DocumentItem, type DocumentRow } from "@/types/document";
+import QuoteAiDraftPanel from "./QuoteAiDraftPanel";
 
 type Customer = { id: string; name: string };
 type MenuItem = {
@@ -344,6 +345,27 @@ export default function DocumentForm({
 
   return (
     <section className="glass-card p-5 space-y-4">
+      {!isEdit && formDocType === "estimate" && (
+        <QuoteAiDraftPanel
+          customerId={formCustomerId || undefined}
+          onApply={(items, terms) => {
+            const next = items.map((it) => ({
+              description: it.description,
+              quantity: it.quantity,
+              unit: "式",
+              unit_price: it.unit_price,
+              amount: it.quantity * it.unit_price,
+              is_reduced_rate: false,
+              tax_rate: null,
+              certificate_id: null,
+              certificate_public_id: null,
+            }));
+            setFormItems(recalcSubtotals(next as unknown as DocumentItem[]));
+            if (terms) setFormNote(terms);
+          }}
+        />
+      )}
+
       <div>
         <div className="text-xs font-semibold tracking-[0.18em] text-muted">{isEdit ? "編集" : "新規作成"}</div>
         <div className="mt-1 text-base font-semibold text-primary">

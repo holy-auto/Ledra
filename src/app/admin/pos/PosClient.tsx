@@ -10,6 +10,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import StatCard from "@/components/ui/StatCard";
 import FirstUseInlineGuide from "@/components/ui/FirstUseInlineGuide";
 import { InventoryWarningsBanner } from "@/components/pos/InventoryWarningsBanner";
+import PosInventoryDeductPanel from "./PosInventoryDeductPanel";
 
 /* ────────────────────────────────────────────── */
 /*  Types                                         */
@@ -892,6 +893,21 @@ export default function PosClient() {
                     </div>
                   )}
                 </div>
+
+                {/* 在庫引落候補 (menu_item_id が拾えた行のみ) */}
+                <PosInventoryDeductPanel
+                  sales={
+                    mode === "reservation" && selected?.menu_items_json
+                      ? selected.menu_items_json
+                          .filter((mi) => !!mi.menu_item_id)
+                          .map((mi) => ({
+                            menu_item_id: mi.menu_item_id as string,
+                            menu_item_name: mi.name,
+                            sold_quantity: mi.quantity ?? 1,
+                          }))
+                      : []
+                  }
+                />
 
                 <button
                   type="button"

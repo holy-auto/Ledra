@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Card from "@/components/ui/Card";
+import MessageExtractPanel from "./MessageExtractPanel";
 
 /**
  * WalkinJobClient
@@ -152,6 +153,15 @@ export default function WalkinJobClient() {
           顧客・車両は後からでも紐付けできるので、空のままでも OK です。
         </p>
       </Card>
+
+      <MessageExtractPanel
+        onApply={({ title: extractedTitle, note: extractedNote }) => {
+          if (extractedTitle) setTitle(extractedTitle);
+          if (extractedNote) {
+            setNote((prev) => (prev ? `${prev}\n${extractedNote}` : extractedNote));
+          }
+        }}
+      />
 
       <Card padding="default">
         <div className="space-y-4">

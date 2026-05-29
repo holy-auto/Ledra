@@ -5,6 +5,7 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
 import PageHeader from "@/components/ui/PageHeader";
 import AiAutomationSettingsClient from "./AiAutomationSettingsClient";
+import AiSandboxPanels from "./AiSandboxPanels";
 
 /**
  * `/admin/settings/ai-automation`
@@ -49,6 +50,8 @@ export default async function AiAutomationSettingsPage() {
         }}
         loadedFromDb={settings.loadedFromDb}
       />
+
+      <AiSandboxPanels />
     </div>
   );
 }

@@ -7,6 +7,7 @@ import Textarea from "@/components/ui/Textarea";
 import Select from "@/components/ui/Select";
 import FormField from "@/components/ui/FormField";
 import Button from "@/components/ui/Button";
+import TranslatePanel from "@/components/ai/TranslatePanel";
 import {
   SITE_CONTENT_TYPES,
   SITE_CONTENT_STATUSES,
@@ -198,6 +199,8 @@ export default function SiteContentForm({ initial }: { initial: SiteContentFormI
           className="font-mono text-sm"
         />
       </FormField>
+
+      <TranslatePanel getText={() => body} kind="announcement" onReplace={(t) => setBody(t)} />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <FormField label="ヒーロー画像URL" error={errors.hero_image_url}>

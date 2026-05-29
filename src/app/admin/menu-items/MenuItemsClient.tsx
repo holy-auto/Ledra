@@ -8,6 +8,7 @@ import Badge from "@/components/ui/Badge";
 import EmptyStateGuide from "@/components/ui/EmptyStateGuide";
 import FirstUseInlineGuide from "@/components/ui/FirstUseInlineGuide";
 import { formatJpy } from "@/lib/format";
+import AiPriceHint from "./AiPriceHint";
 import { fetcher } from "@/lib/swr";
 import { enqueueOrFetch } from "@/lib/outbox/enqueueOrFetch";
 import { calcSellingPrice } from "@/lib/pricing/margin";
@@ -638,6 +639,12 @@ export default function MenuItemsClient() {
                                 value={editUnitPrice}
                                 onChange={(e) => setEditUnitPrice(e.target.value)}
                               />
+                              <div className="mt-1">
+                                <AiPriceHint
+                                  menuItemId={item.id}
+                                  onApply={(price) => setEditUnitPrice(String(price))}
+                                />
+                              </div>
                             </td>
                             <td className="hidden sm:table-cell px-5 py-3">
                               <select
