@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import PageHeader from "@/components/ui/PageHeader";
+import InquiryAiBanner from "./InquiryAiBanner";
 
 type InqStatus = "new" | "read" | "replied";
 
@@ -194,6 +195,14 @@ export default function CustomerInquiriesClient() {
                       )}
                     </div>
                   )}
+
+                  {/* AI 分類バナー (このフィードに対する 1 回限り、結果を本コンポーネント内に保持) */}
+                  <InquiryAiBanner
+                    inquiryId={inq.id}
+                    onUseDraft={(draft) => {
+                      if (draft) setReplyText(draft);
+                    }}
+                  />
 
                   {/* 返信フォーム */}
                   <div>

@@ -5,6 +5,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import PageHeader from "@/components/ui/PageHeader";
 import FirstUseInlineGuide from "@/components/ui/FirstUseInlineGuide";
 import JobStatusPanel from "./JobStatusPanel";
+import JobAiSuggestPanel from "./JobAiSuggestPanel";
 import JobTabsLoader from "./JobTabsLoader";
 import type { JobCustomer, JobReservation, JobVehicle } from "./types";
 
@@ -164,6 +165,14 @@ export default async function JobWorkflowPage({ params }: { params: Promise<{ id
         reservation={reservation as JobReservation}
         customerId={reservation.customer_id}
         vehicleId={reservation.vehicle_id}
+      />
+
+      {/* AI 提案: マウント後に POST、結果が無ければ静かに非表示 */}
+      <JobAiSuggestPanel
+        reservationId={reservation.id as string}
+        currentTitle={(reservation.title as string | null) ?? null}
+        customerId={(reservation.customer_id as string | null) ?? null}
+        vehicleId={(reservation.vehicle_id as string | null) ?? null}
       />
 
       {/* 証明書 / 請求 / 見積書: ストリーミング配信 (モードに応じて UI 切替) */}

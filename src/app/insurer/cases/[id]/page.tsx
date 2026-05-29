@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateTime } from "@/lib/format";
+import CaseAiBanner from "./CaseAiBanner";
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
   open: { label: "対応待ち", color: "blue" },
@@ -244,6 +245,8 @@ export default function InsurerCaseDetailPage() {
           &larr; 案件一覧へ
         </Link>
       </div>
+
+      <CaseAiBanner caseId={caseData.id} />
 
       <header className="space-y-3">
         <div className="inline-flex rounded-full border border-border-default bg-surface px-3 py-1 text-[11px] font-semibold tracking-[0.18em] text-secondary">

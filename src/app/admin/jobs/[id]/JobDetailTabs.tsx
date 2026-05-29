@@ -98,9 +98,13 @@ export default function JobDetailTabs({ reservation, customer, vehicle, certific
     return `/admin/certificates/new${qs ? `?${qs}` : ""}`;
   })();
 
-  const invoiceNewUrl = reservation.customer_id
-    ? `/admin/invoices/new?customer_id=${reservation.customer_id}`
-    : `/admin/invoices/new`;
+  // reservation_id を含めると InvoicesClient が ai-from-job で明細・備考を起票する
+  const invoiceNewUrl = (() => {
+    const params = new URLSearchParams();
+    params.set("reservation_id", reservation.id);
+    if (reservation.customer_id) params.set("customer_id", reservation.customer_id);
+    return `/admin/invoices/new?${params.toString()}`;
+  })();
 
   return (
     <div className="space-y-6">

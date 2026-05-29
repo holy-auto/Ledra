@@ -135,7 +135,14 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
     return `/admin/certificates/new${qs ? `?${qs}` : ""}`;
   })();
 
-  const invoiceNewUrl = customerId ? `/admin/invoices/new?customer_id=${customerId}` : `/admin/invoices/new`;
+  // 案件 (reservation) ID を含めて遷移すると InvoicesClient が
+  // ai-from-job を叩いて明細・備考を AI 起票する。
+  const invoiceNewUrl = (() => {
+    const params = new URLSearchParams();
+    params.set("reservation_id", reservation.id);
+    if (customerId) params.set("customer_id", customerId);
+    return `/admin/invoices/new?${params.toString()}`;
+  })();
 
   // tick を依存させて再計算をトリガする (in_progress 時のライブ更新)
   void tick;
