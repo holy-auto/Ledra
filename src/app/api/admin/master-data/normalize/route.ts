@@ -12,6 +12,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError, apiPlanLimit } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import {
   normalizeMaker,
@@ -35,6 +36,11 @@ const schema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    // master-data 正規化は辞書ベース中心で軽量だが、CSV import で大量に
+    // ループ呼びされる想定なので general (60/min) で抑える。
+    const limited = await checkRateLimit(req, "general");
+    if (limited) return limited;
+
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();

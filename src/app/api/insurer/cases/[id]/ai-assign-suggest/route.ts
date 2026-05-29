@@ -15,14 +15,18 @@ import { NextRequest } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { suggestCaseAssignees, type CasePriority } from "@/lib/ai/caseAssignSuggest";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 export const dynamic = "force-dynamic";
 
-export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
+    const limited = await checkRateLimit(req, "ai");
+    if (limited) return limited;
+
     const { id } = await ctx.params;
     if (!id) return apiNotFound("case id is required");
 

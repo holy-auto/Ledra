@@ -19,6 +19,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiNotFound, apiInternalError, apiPlanLimit } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { loadAiAutomationSettings, resolveFieldPolicy } from "@/lib/ai/automation/policy";
 import { generateJobAutoTitle, clipTitle } from "@/lib/ai/jobAutoTitle";
@@ -36,8 +37,11 @@ function normalizeStatus(s: unknown): JobStatus {
   return "confirmed";
 }
 
-export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
+    const limited = await checkRateLimit(req, "ai");
+    if (limited) return limited;
+
     const { id: reservationId } = await ctx.params;
     if (!reservationId) return apiNotFound("reservation id is required");
 

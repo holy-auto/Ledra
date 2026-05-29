@@ -13,6 +13,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiNotFound, apiInternalError, apiPlanLimit } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { detectThicknessAnomaly } from "@/lib/ai/thicknessAnomaly";
 import { loadAiAutomationSettings, resolveFieldPolicy } from "@/lib/ai/automation/policy";
@@ -30,6 +31,9 @@ const schema = z.object({
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ reportId: string }> }) {
   try {
+    const limited = await checkRateLimit(req, "ai");
+    if (limited) return limited;
+
     const { reportId } = await ctx.params;
     if (!reportId) return apiNotFound("reportId required");
 

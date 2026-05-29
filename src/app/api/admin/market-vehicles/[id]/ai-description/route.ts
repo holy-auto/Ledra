@@ -12,6 +12,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiNotFound, apiInternalError, apiPlanLimit } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateMarketVehicleDescription } from "@/lib/ai/marketVehicleDescription";
 import { loadAiAutomationSettings, resolveFieldPolicy, isSourceAllowed } from "@/lib/ai/automation/policy";
@@ -27,6 +28,10 @@ const schema = z.object({
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
+    // Vision を呼ぶため、admin/translate (text-only) より厳しめの ai プリセット
+    const limited = await checkRateLimit(req, "ai");
+    if (limited) return limited;
+
     const { id } = await ctx.params;
     if (!id) return apiNotFound("market_vehicle id required");
 
