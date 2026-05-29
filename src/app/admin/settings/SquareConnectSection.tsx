@@ -30,6 +30,20 @@ export default function SquareConnectSection({ initialConnection }: Props) {
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "completed" | "error">("idle");
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  // fetchStatus は useEffect から参照されるので先に定義する
+  // (React Compiler は temporal-dead-zone を error 扱いするため)
+  const fetchStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/square/connect");
+      const j = await parseJsonSafe(res);
+      if (res.ok && j) {
+        setConnection(j);
+      }
+    } catch {
+      // silently ignore
+    }
+  }, []);
+
   // Check for ?square=connected query param on mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -42,19 +56,7 @@ export default function SquareConnectSection({ initialConnection }: Props) {
       // Refresh connection status
       fetchStatus();
     }
-  }, []);
-
-  const fetchStatus = useCallback(async () => {
-    try {
-      const res = await fetch("/api/admin/square/connect");
-      const j = await parseJsonSafe(res);
-      if (res.ok && j) {
-        setConnection(j);
-      }
-    } catch {
-      // silently ignore
-    }
-  }, []);
+  }, [fetchStatus]);
 
   const handleConnect = async () => {
     setBusy(true);
