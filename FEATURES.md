@@ -929,13 +929,31 @@ KPI 中心の Admin ダッシュボードに加え、現場スタッフ向けの
 
 優先度: ◎ 短期 / ○ 中期 / △ 長期
 
-#### AI・自動化 (差別化コア)
-| 優先 | 機能 | 効果 |
+#### AI・自動化 (差別化コア) ★ PR #448 / #449 で大規模実装済
+ワークフロー全体を AI で代行する**フィールド単位ポリシー制御**の自動入力基盤を実装。
+詳細は [`docs/ai-automation-guide.md`](docs/ai-automation-guide.md) を参照。
+
+| 優先 | 機能 | 状態 |
 |---|---|---|
-| ◎ | 施工写真 AI 品質チェック (Vision API) | 証明書品質の均質化、保険会社の信頼性向上 |
-| ◎ | 証明書テキスト自動生成 (LLM) | 入力工数 ▲50%以上 |
+| ✓ | 施工写真 AI 品質チェック (Vision API) | 実装済 (`/api/admin/certificates/ai-quality`) |
+| ✓ | 証明書テキスト自動生成 (LLM) | 実装済 (`/api/admin/certificates/ai-draft`) |
+| ✓ | 案件タイトル / 次アクション / タイマー乖離 AI | 実装済 (`/api/admin/jobs/[id]/ai-suggest`) |
+| ✓ | 案件 → 請求書 / 車両 → 見積書 AI 起票 | 実装済 (`/api/admin/invoices/ai-from-job`, `/api/admin/quotes/ai-from-vehicle`) |
+| ✓ | 仕訳科目 AI 推定 (freee / マネーフォワード) | 実装済 (`/api/admin/accounting/ai-categorize`) |
+| ✓ | 問い合わせ自動分類 + 返信下書き | 実装済 (`/api/admin/customer-inquiries/[id]/ai-classify`) |
+| ✓ | LINE / メール本文 → 予約フォーム AI 抽出 | 実装済 (`/api/admin/reservations/ai-from-message`) |
+| ✓ | レビュー / NPS センチメント解析 | 実装済 (`/api/admin/reviews/ai-sentiment`) |
+| ✓ | 保険会社 case 自動振り分け + 3 行サマリ | 実装済 (`/api/insurer/cases/[id]/ai-assign-suggest`, `/ai-summary`) |
+| ✓ | マスタ正規化 (メーカー / 住所 / 顧客名) | 実装済 (`/api/admin/master-data/normalize`) |
+| ✓ | Square 注文 → 顧客ファジーマッチ | 実装済 (`/api/admin/square/orders/[id]/ai-link`) |
+| ✓ | 塗膜厚レポート異常検知 | 実装済 (`/api/admin/thickness-reports/[reportId]/ai-anomaly`) |
+| ✓ | POS チェックアウト → 在庫引落推定 | 実装済 (`/api/admin/inventory/ai-pos-deduct`) |
+| ✓ | メニュー AI 推奨価格 | 実装済 (`/api/admin/menu-items/[id]/ai-price`) |
+| ✓ | マーケット車両 AI 説明文生成 | 実装済 (`/api/admin/market-vehicles/[id]/ai-description`) |
+| ✓ | 多言語化 (en / zh / vi / ko / pt-BR) | 実装済 (`/api/admin/translate`) + キャッシュテーブル `ai_translation_cache` |
+| ✓ | フィールド単位ポリシー (auto / suggest / manual) | `/admin/settings/ai-automation` で 30+ フィールドを切替可能 |
+| ✓ | AI 利用集計ダッシュボード | `/admin/platform/operations` (信頼度ヒストグラム / outcome 別 / トークン消費) |
 | ○ | 写真改ざん検出 (メタデータ/ハッシュ/EXIF) | 保険会社向けの強力な訴求 |
-| ○ | AI 価格見積もり (`price_stats` 拡張) | 商談スピードUP |
 | △ | 不正パターン検出 (代理店・BtoB・保険請求) | 運営コスト削減 |
 
 #### 顧客接点強化

@@ -9,6 +9,7 @@
  */
 import { withRetry } from "@/lib/http/withRetry";
 import { getAnthropicClient, AI_MODEL_FAST } from "@/lib/ai/client";
+import { clipText } from "@/lib/ai/utils";
 
 export type TimerSeverity = "ok" | "warn_over" | "alert_over" | "warn_short";
 
@@ -84,18 +85,9 @@ export async function generateTimerAlert(input: TimerAlertInput): Promise<TimerA
     );
     const text = msg.content[0]?.type === "text" ? msg.content[0].text.trim() : "";
     if (!text) return { severity, message: fallback, deviationRatio, ai: false };
-    return { severity, message: clip(text, 60), deviationRatio, ai: true };
+    return { severity, message: clipText(text, 60), deviationRatio, ai: true };
   } catch (err) {
     console.error("[jobTimerAlert] generation failed:", err);
     return { severity, message: fallback, deviationRatio, ai: false };
   }
-}
-
-function clip(text: string, maxLen: number): string {
-  const t = text.replace(/\s+/g, "").replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "");
-  if (t.length <= maxLen) return t;
-  const slice = t.slice(0, maxLen);
-  const lastDot = Math.max(slice.lastIndexOf("。"), slice.lastIndexOf("."));
-  if (lastDot > maxLen * 0.5) return slice.slice(0, lastDot + 1);
-  return slice;
 }
