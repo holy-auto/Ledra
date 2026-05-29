@@ -11,8 +11,9 @@ import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiOk, apiUnauthorized, apiNotFound, apiInternalError, apiPlanLimit } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
+import { canUseFeature } from "@/lib/billing/planFeatures";
 import { detectThicknessAnomaly } from "@/lib/ai/thicknessAnomaly";
 import { loadAiAutomationSettings, resolveFieldPolicy } from "@/lib/ai/automation/policy";
 
@@ -35,6 +36,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ reportId: 
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!canUseFeature(caller.planTier, "ai_thickness_anomaly")) {
+      return apiPlanLimit("AI 塗膜厚異常検知は Standard プラン以上でご利用いただけます。");
+    }
 
     const parsed = await parseJsonBody(req, schema);
     if (!parsed.ok) return parsed.response;

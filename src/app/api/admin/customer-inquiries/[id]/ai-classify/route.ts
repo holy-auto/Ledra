@@ -11,7 +11,8 @@ import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiOk, apiUnauthorized, apiNotFound, apiInternalError, apiPlanLimit } from "@/lib/api/response";
+import { canUseFeature } from "@/lib/billing/planFeatures";
 import { classifyInquiry } from "@/lib/ai/inquiryClassify";
 import { loadAiAutomationSettings, resolveFieldPolicy, isSourceAllowed } from "@/lib/ai/automation/policy";
 
@@ -27,6 +28,9 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!canUseFeature(caller.planTier, "ai_inquiry_classify")) {
+      return apiPlanLimit("AI 問い合わせ分類は Standard プラン以上でご利用いただけます。");
+    }
 
     const settings = await loadAiAutomationSettings(caller.tenantId);
     if (!settings.enabled) return apiOk({ ai_disabled: true, classification: null });

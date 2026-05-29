@@ -10,8 +10,9 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiOk, apiUnauthorized, apiInternalError, apiPlanLimit } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
+import { canUseFeature } from "@/lib/billing/planFeatures";
 import {
   normalizeMaker,
   normalizeModel,
@@ -37,6 +38,9 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!canUseFeature(caller.planTier, "ai_master_normalize")) {
+      return apiPlanLimit("マスタ正規化は Starter プラン以上でご利用いただけます。");
+    }
 
     const parsed = await parseJsonBody(req, schema);
     if (!parsed.ok) return parsed.response;

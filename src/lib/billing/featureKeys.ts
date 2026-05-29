@@ -19,6 +19,19 @@ export const FEATURES = {
   academy_know_how: "academy_know_how", // C-1: 公開事例のノウハウ詳細閲覧 (要約・良点・注意点)
   ai_proposal: "ai_proposal", // ヒアリング提案（既存）
   ai_follow_up_email: "ai_follow_up_email", // フォローメール（既存）
+  // ── PR #448: ワークフロー全体の AI 入力代行 ──
+  ai_job_assist: "ai_job_assist", // 案件タイトル / 次アクション / タイマー乖離
+  ai_invoice_quote: "ai_invoice_quote", // 案件→請求書 / 車両→見積書 起票
+  ai_accounting: "ai_accounting", // 仕訳科目推定 (freee / マネーフォワード)
+  ai_inquiry_classify: "ai_inquiry_classify", // 問い合わせ分類 + 返信下書き
+  ai_inbound_extract: "ai_inbound_extract", // 受信メッセージ → 予約フォーム抽出
+  ai_review_sentiment: "ai_review_sentiment", // レビュー / NPS センチメント
+  ai_master_normalize: "ai_master_normalize", // 表記揺れ正規化 / 顧客ファジーマッチ
+  ai_thickness_anomaly: "ai_thickness_anomaly", // 塗膜厚レポート異常検知
+  ai_pos_deduction: "ai_pos_deduction", // POS チェックアウト → 在庫引落推定
+  ai_menu_price: "ai_menu_price", // メニュー推奨価格
+  ai_market_description: "ai_market_description", // マーケット車両説明文 (Vision)
+  ai_translation: "ai_translation", // 多言語翻訳 (en/zh/vi/ko/pt-BR)
   // ── Pro 限定機能（料金プラン詳細資料 p.3 の比較表ベース）──
   audit_log: "audit_log", // 管理者向け監査ログ閲覧
   api_integration: "api_integration", // 外部 API キー発行 / Webhook 連携

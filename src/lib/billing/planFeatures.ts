@@ -30,6 +30,19 @@ const MATRIX: Record<PlanTier, Record<FeatureKey, boolean>> = {
     academy_know_how: false,
     ai_proposal: false,
     ai_follow_up_email: false,
+    // ── PR #448 拡張 AI: Free は全て不可 ──
+    ai_job_assist: false,
+    ai_invoice_quote: false,
+    ai_accounting: false,
+    ai_inquiry_classify: false,
+    ai_inbound_extract: false,
+    ai_review_sentiment: false,
+    ai_master_normalize: false,
+    ai_thickness_anomaly: false,
+    ai_pos_deduction: false,
+    ai_menu_price: false,
+    ai_market_description: false,
+    ai_translation: false,
     audit_log: false,
     api_integration: false,
     detailed_reports: false,
@@ -55,6 +68,19 @@ const MATRIX: Record<PlanTier, Record<FeatureKey, boolean>> = {
     academy_know_how: true,
     ai_proposal: false,
     ai_follow_up_email: false,
+    // ── PR #448 拡張 AI: Starter は軽量な決定論ベースのみ ──
+    ai_job_assist: false,
+    ai_invoice_quote: false,
+    ai_accounting: false,
+    ai_inquiry_classify: false,
+    ai_inbound_extract: false,
+    ai_review_sentiment: false,
+    ai_master_normalize: true, // 辞書ベースが主体で AI コール最小限
+    ai_thickness_anomaly: false,
+    ai_pos_deduction: false,
+    ai_menu_price: false,
+    ai_market_description: false,
+    ai_translation: false,
     audit_log: false,
     api_integration: false,
     detailed_reports: false,
@@ -80,6 +106,19 @@ const MATRIX: Record<PlanTier, Record<FeatureKey, boolean>> = {
     academy_know_how: true,
     ai_proposal: true,
     ai_follow_up_email: true,
+    // ── PR #448 拡張 AI: Standard で全解禁 ──
+    ai_job_assist: true,
+    ai_invoice_quote: true,
+    ai_accounting: true,
+    ai_inquiry_classify: true,
+    ai_inbound_extract: true,
+    ai_review_sentiment: true,
+    ai_master_normalize: true,
+    ai_thickness_anomaly: true,
+    ai_pos_deduction: true,
+    ai_menu_price: true,
+    ai_market_description: true,
+    ai_translation: true,
     audit_log: false,
     api_integration: false,
     detailed_reports: false,
@@ -105,6 +144,19 @@ const MATRIX: Record<PlanTier, Record<FeatureKey, boolean>> = {
     academy_know_how: true,
     ai_proposal: true,
     ai_follow_up_email: true,
+    // ── PR #448 拡張 AI: Pro も全解禁 ──
+    ai_job_assist: true,
+    ai_invoice_quote: true,
+    ai_accounting: true,
+    ai_inquiry_classify: true,
+    ai_inbound_extract: true,
+    ai_review_sentiment: true,
+    ai_master_normalize: true,
+    ai_thickness_anomaly: true,
+    ai_pos_deduction: true,
+    ai_menu_price: true,
+    ai_market_description: true,
+    ai_translation: true,
     audit_log: true,
     api_integration: true,
     detailed_reports: true,
@@ -165,6 +217,30 @@ export function featureLabel(feature: FeatureKey): string {
       return "AIヒアリング提案";
     case "ai_follow_up_email":
       return "AIフォローメール";
+    case "ai_job_assist":
+      return "AI案件アシスト";
+    case "ai_invoice_quote":
+      return "AI請求書 / 見積書 起票";
+    case "ai_accounting":
+      return "AI仕訳科目推定";
+    case "ai_inquiry_classify":
+      return "AI問い合わせ分類";
+    case "ai_inbound_extract":
+      return "AIメッセージ → 予約抽出";
+    case "ai_review_sentiment":
+      return "AIレビュー解析";
+    case "ai_master_normalize":
+      return "マスタ正規化";
+    case "ai_thickness_anomaly":
+      return "AI塗膜厚異常検知";
+    case "ai_pos_deduction":
+      return "AI在庫引落推定";
+    case "ai_menu_price":
+      return "AI推奨価格";
+    case "ai_market_description":
+      return "AI物件説明文生成";
+    case "ai_translation":
+      return "AI多言語翻訳";
     case "audit_log":
       return "監査ログ";
     case "api_integration":
