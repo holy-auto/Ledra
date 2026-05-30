@@ -100,17 +100,25 @@ export function decideInboundCommit(
 // ─────────────────────────────────────────────
 
 export interface CertificateAutoDraftContext {
-  hasPhotos: boolean;
-  hasVoiceMemo: boolean;
+  /** 案件 (予約) が完了済みか。 */
+  isCompleted: boolean;
+  /** 下書きの素になる車両情報が紐づいているか。 */
+  hasVehicle: boolean;
+  /** 既にドラフト生成済みか (二重生成 / スタッフ編集の上書き防止)。 */
+  alreadyDrafted?: boolean;
 }
 
 /**
- * 案件の素材が揃った時点で証明書ドラフトを自動生成してよいか。
- * ドラフト生成のみ (発行はしない) なので安全。
+ * 案件完了時に証明書ドラフトを自動生成してよいか。
+ *
+ * ドラフト生成のみ (発行はしない) なので安全。draftCertificate は車両 + 過去事例
+ * から生成するため、トリガーは「完了 + 車両あり + 未生成」。写真は生成に使わない
+ * (現状 generateCertificateDraft は photoDescriptions 未使用)。
  */
 export function shouldAutoDraftCertificate(settings: AiAutomationSettings, ctx: CertificateAutoDraftContext): boolean {
   if (!resolveAutoAction(settings, "certificate.auto_draft")) return false;
-  return ctx.hasPhotos && ctx.hasVoiceMemo;
+  if (ctx.alreadyDrafted) return false;
+  return ctx.isCompleted && ctx.hasVehicle;
 }
 
 /**

@@ -201,10 +201,17 @@ describe("certificate auto-draft / auto-issue", () => {
     autoActions: { "certificate.auto_draft": true },
   };
 
-  it("auto-drafts only when photos AND voice memo are present", () => {
-    expect(shouldAutoDraftCertificate(draftOn, { hasPhotos: true, hasVoiceMemo: true })).toBe(true);
-    expect(shouldAutoDraftCertificate(draftOn, { hasPhotos: true, hasVoiceMemo: false })).toBe(false);
-    expect(shouldAutoDraftCertificate(DEFAULT_AI_AUTOMATION_SETTINGS, { hasPhotos: true, hasVoiceMemo: true })).toBe(
+  it("auto-drafts only when completed + has vehicle + not already drafted", () => {
+    expect(shouldAutoDraftCertificate(draftOn, { isCompleted: true, hasVehicle: true })).toBe(true);
+    // 未完了 / 車両なし → false
+    expect(shouldAutoDraftCertificate(draftOn, { isCompleted: false, hasVehicle: true })).toBe(false);
+    expect(shouldAutoDraftCertificate(draftOn, { isCompleted: true, hasVehicle: false })).toBe(false);
+    // 既に下書き済みなら上書きしない
+    expect(shouldAutoDraftCertificate(draftOn, { isCompleted: true, hasVehicle: true, alreadyDrafted: true })).toBe(
+      false,
+    );
+    // opt-in していなければ false
+    expect(shouldAutoDraftCertificate(DEFAULT_AI_AUTOMATION_SETTINGS, { isCompleted: true, hasVehicle: true })).toBe(
       false,
     );
   });

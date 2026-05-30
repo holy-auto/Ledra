@@ -18,11 +18,11 @@ Ledra のワークフロー (証明書 / 案件 / 請求 / 顧客 / 保険 case 
 
 ### 2.1 フィールド単位 (3-way)
 
-| ポリシー | 挙動 |
-|---|---|
-| **auto** | AI 出力をそのままフォームに反映 (確認なし) |
+| ポリシー    | 挙動                                              |
+| ----------- | ------------------------------------------------- |
+| **auto**    | AI 出力をそのままフォームに反映 (確認なし)        |
 | **suggest** | AI が下書きを生成し、ユーザが「適用」を押すと反映 |
-| **manual** | AI を呼ばない (該当フィールドは空のまま) |
+| **manual**  | AI を呼ばない (該当フィールドは空のまま)          |
 
 ### 2.2 グローバル設定
 
@@ -103,13 +103,30 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 - 設定 UI: `/admin/settings/ai-automation` の「AUTO-ACTIONS」セクション
 - **すべて既定 OFF (opt-in)**。Standard プラン以上で有効化可能。
 
-| アクションキー | 内容 | 既定 |
-|---|---|---|
-| `inbound_message.auto_extract` | LINE 等の受信時に予約候補を自動抽出し受信箱に下書き化 (コミットなし) | OFF |
-| `inbound_message.auto_create_reservation` | 高確信 + 既知顧客 + 有効日 + new_reservation のとき予約を自動起票 | OFF |
-| `certificate.auto_draft` | 写真 + 音声メモが揃ったら証明書ドラフトを自動生成 (発行なし) | OFF |
-| `review.auto_analyze` | レビュー受信時に感情分析を自動付与 | OFF |
-| `translation.auto_translate` | お知らせ保存時に多言語へ自動翻訳 | OFF |
+| アクションキー                            | 内容                                                                 | 既定 | 配線状況                       |
+| ----------------------------------------- | -------------------------------------------------------------------- | ---- | ------------------------------ |
+| `inbound_message.auto_extract`            | LINE 等の受信時に予約候補を自動抽出し受信箱に下書き化 (コミットなし) | OFF  | ✅ LINE webhook                |
+| `inbound_message.auto_create_reservation` | 高確信 + 既知顧客 + 有効日 + new_reservation のとき予約を自動起票    | OFF  | ✅ LINE webhook                |
+| `certificate.auto_draft`                  | 案件完了 + 車両ありで証明書ドラフトを自動生成 (発行なし)             | OFF  | ✅ 予約完了 (PUT reservations) |
+| `review.auto_analyze`                     | レビュー受信時に感情分析を自動付与                                   | OFF  | ✅ 受領サインレビュー POST     |
+| `translation.auto_translate`              | お知らせ保存時に多言語へ自動翻訳                                     | OFF  | ⏳ 未配線 (下記)               |
+
+> **certificate.auto_draft の配線**: 予約 (案件) が `completed` になった時点で
+> `maybeAutoDraftCertificateForReservation` (fire-and-forget) が走り、車両 + 過去事例から
+> 下書きを生成して `reservations.ai_certificate_draft` に保存する。証明書の行は作らず、
+> 既に下書きがある予約は上書きしない。発行は必ず人 (壁3)。写真は生成に使わない
+> (`generateCertificateDraft` が photoDescriptions 未使用のため、トリガーは「完了 + 車両」)。
+>
+> **review.auto_analyze の配線**: `POST /api/signature/review/[token]` でコメント付き
+> レビューを受信した時点で `maybeAutoAnalyzeReview` が走り、`signature_reviews` の
+> AI 列 (sentiment/summary/topics/actionable/confidence) に保存する。
+>
+> **translation.auto_translate が未配線の理由**: アプリ内に「テナント店舗お知らせ」の
+> データモデルと作成・更新ルートが存在しないため。`announcements` は tenant_id を持たない
+> プラットフォーム共通お知らせでアプリからの書き込み経路が無く、`agent_announcements` は
+> 対象読者が異なり翻訳列も無い。配線には先に店舗お知らせ機能 (テナント別テーブル・作成更新
+> ルート・顧客向け表示) が要る。実装後は translations 列追加と保存時の translateText 呼び出し
+> だけで済む。アクション定義・トグル・推薦・キャッシュ基盤は実装済み。
 
 ### 4.5.1 LINE 受信 → 自動処理パイプライン
 
@@ -196,20 +213,20 @@ endpoint / outcome / latency / confidence 付きで確認できる。
 
 ## 6. プラン制限
 
-| 機能キー | Free | Starter | Standard | Pro |
-|---|---|---|---|---|
-| `ai_master_normalize` (辞書ベース、AI 最小) | ✗ | ✓ | ✓ | ✓ |
-| `ai_job_assist` | ✗ | ✗ | ✓ | ✓ |
-| `ai_invoice_quote` | ✗ | ✗ | ✓ | ✓ |
-| `ai_accounting` | ✗ | ✗ | ✓ | ✓ |
-| `ai_inquiry_classify` | ✗ | ✗ | ✓ | ✓ |
-| `ai_inbound_extract` | ✗ | ✗ | ✓ | ✓ |
-| `ai_review_sentiment` | ✗ | ✗ | ✓ | ✓ |
-| `ai_thickness_anomaly` | ✗ | ✗ | ✓ | ✓ |
-| `ai_pos_deduction` | ✗ | ✗ | ✓ | ✓ |
-| `ai_menu_price` | ✗ | ✗ | ✓ | ✓ |
-| `ai_market_description` | ✗ | ✗ | ✓ | ✓ |
-| `ai_translation` | ✗ | ✗ | ✓ | ✓ |
+| 機能キー                                    | Free | Starter | Standard | Pro |
+| ------------------------------------------- | ---- | ------- | -------- | --- |
+| `ai_master_normalize` (辞書ベース、AI 最小) | ✗    | ✓       | ✓        | ✓   |
+| `ai_job_assist`                             | ✗    | ✗       | ✓        | ✓   |
+| `ai_invoice_quote`                          | ✗    | ✗       | ✓        | ✓   |
+| `ai_accounting`                             | ✗    | ✗       | ✓        | ✓   |
+| `ai_inquiry_classify`                       | ✗    | ✗       | ✓        | ✓   |
+| `ai_inbound_extract`                        | ✗    | ✗       | ✓        | ✓   |
+| `ai_review_sentiment`                       | ✗    | ✗       | ✓        | ✓   |
+| `ai_thickness_anomaly`                      | ✗    | ✗       | ✓        | ✓   |
+| `ai_pos_deduction`                          | ✗    | ✗       | ✓        | ✓   |
+| `ai_menu_price`                             | ✗    | ✗       | ✓        | ✓   |
+| `ai_market_description`                     | ✗    | ✗       | ✓        | ✓   |
+| `ai_translation`                            | ✗    | ✗       | ✓        | ✓   |
 
 プラン不足は `apiPlanLimit()` で 403 `error: "plan_limit"` を返す。
 クライアントは「Standard プラン以上で利用可」のヒントを表示する。
@@ -242,6 +259,7 @@ UI は「しばらくお待ちください」を表示し、リトライ可能�
 ### 9.2 「請求書の宛名は AI に任せたいが、金額は人が見る」
 
 設定ページで:
+
 - `invoice.recipient_name` → **auto**
 - `invoice.items` → **suggest** (デフォルト)
 - `invoice.tax_rate` → **suggest** (デフォルト)
@@ -259,18 +277,18 @@ UI は「しばらくお待ちください」を表示し、リトライ可能�
 
 ## 10. トラブルシューティング
 
-| 症状 | 原因 / 対処 |
-|---|---|
-| 設定変更しても反映されない | テーブル `tenant_ai_automation_settings` のマイグレーション未適用 → migration 20260528000003 を実行 |
-| ダッシュボードが「未作成」と表示 | `ai_usage_logs` migration (20260529000002) 未適用 |
-| AI 提案が一切表示されない | (1) プラン不足 (2) master switch OFF (3) 全フィールド manual に設定されている |
-| 「429 rate_limited」が頻発 | テナント単位 20 req/min を超過 — UI 側でデバウンス必要 |
-| 翻訳が遅い | cache 未ヒット → 同じ原文 × 言語 × トーンを 2 回目以降叩くとキャッシュヒット |
+| 症状                             | 原因 / 対処                                                                                         |
+| -------------------------------- | --------------------------------------------------------------------------------------------------- |
+| 設定変更しても反映されない       | テーブル `tenant_ai_automation_settings` のマイグレーション未適用 → migration 20260528000003 を実行 |
+| ダッシュボードが「未作成」と表示 | `ai_usage_logs` migration (20260529000002) 未適用                                                   |
+| AI 提案が一切表示されない        | (1) プラン不足 (2) master switch OFF (3) 全フィールド manual に設定されている                       |
+| 「429 rate_limited」が頻発       | テナント単位 20 req/min を超過 — UI 側でデバウンス必要                                              |
+| 翻訳が遅い                       | cache 未ヒット → 同じ原文 × 言語 × トーンを 2 回目以降叩くとキャッシュヒット                        |
 
 ## 11. 関連ファイル
 
 - 設定基盤: `src/lib/ai/automation/{fieldCatalog,policy}.ts`
-- 自動実行: `src/lib/ai/automation/{actionCatalog,orchestrator,inboundAuto}.ts`
+- 自動実行: `src/lib/ai/automation/{actionCatalog,orchestrator,inboundAuto,reviewAuto,certificateAuto}.ts`
 - フィードバックループ: `src/lib/ai/automation/feedbackLoop.ts` + `recommendations/route.ts`
 - LINE 受信配線: `src/lib/line/client.ts` (`handleWebhookEvents`)
 - AI ヘルパ: `src/lib/ai/*.ts` (17 モジュール)
@@ -288,4 +306,7 @@ UI は「しばらくお待ちください」を表示し、リトライ可能�
 - **PR #449**: 統合テスト + 監査ログ + 利用集計 + GDPR エクスポート拡張
 - **PR (P3)**: 共通 util 抽出 + Sentry breadcrumb + 翻訳キャッシュ + 本ガイド
 - **PR (P4)**: イベント駆動 auto-actions + 壁3 ガードレール (field/action) + per-field confidence
-  + LINE 受信→自動抽出/自動起票 + 自動化レベル推薦 (feedbackLoop)
+  - LINE 受信→自動抽出/自動起票 + 自動化レベル推薦 (feedbackLoop)
+  - review.auto_analyze (受領サインレビューの自動感情解析) 配線
+  - certificate.auto_draft (案件完了時の証明書ドラフト自動生成、発行は人=壁3) 配線
+  - translation.auto_translate は店舗お知らせ機能の不在によりスキャフォールドのまま
