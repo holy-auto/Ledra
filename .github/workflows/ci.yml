@@ -63,10 +63,21 @@ jobs:
           NEXT_TELEMETRY_DISABLED: "1"
         run: npm run build
       - name: Check client bundle size
-        # Default threshold 850 KB raw bytes. Override with repo variable
-        # CLIENT_BUNDLE_MAX_KB if a deliberate growth needs to land first.
+        # Default threshold 1000 KB raw bytes (2026-05-30 引き上げ)。
+        #
+        # 元は 850 KB だったが、PR #399〜#452 で marketing ランディング
+        # (Hero / GrowthJourney / TransparencyChart / IntegrationLogoWall 等
+        # 25+ コンポーネント) と AI 自動入力基盤の段階導入により root bundle が
+        # 自然成長し、複数 PR が連続でこの check を超過する形で merge された。
+        # tripwire の本来の目的「stripe SDK が丸ごと入る」級の事故を引き続き
+        # 拾えるよう 1000 KB に再設定。
+        # さらに絞りたい場合は `npm run build:analyze` で .next/analyze/client.html
+        # を確認し、個別 PR で dynamic import を増やすこと。
+        #
+        # 重みのある成長を許す PR は引き続き repo variable CLIENT_BUNDLE_MAX_KB
+        # で個別 override 可能。
         env:
-          CLIENT_BUNDLE_MAX_KB: ${{ vars.CLIENT_BUNDLE_MAX_KB || '850' }}
+          CLIENT_BUNDLE_MAX_KB: ${{ vars.CLIENT_BUNDLE_MAX_KB || '1000' }}
         run: npm run check:bundle-size
 
   # NOTE: E2E ジョブは一旦削除。多くの spec が実 backend (Supabase / Upstash
