@@ -23,6 +23,7 @@ import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { DOC_TYPES, type DocType } from "@/types/document";
 import { resolveBaseUrl } from "@/lib/url";
 import { sendDocumentEmail } from "@/lib/documents/share-email";
+import { renderDocumentSignedPdfUrl } from "@/lib/documents/documentPdf";
 import { sendDocumentLink } from "@/lib/line/client";
 import { getStripeClient } from "@/lib/stripe/client";
 import { createInvoicePaymentLink } from "@/lib/stripe/invoicePaymentLink";
@@ -163,16 +164,27 @@ export async function maybeAutoSendDocumentOnConfirm(params: MaybeAutoSendDocume
       }
     }
 
-    const paymentEmailMessage = paymentUrl
-      ? `以下のリンクからクレジットカードでお支払いいただけます:\n${paymentUrl}`
-      : undefined;
+    // 実際の書類 (PDF) を生成して期限付き署名 URL を取得し、メール / LINE に同梱する。
+    // best-effort: 失敗 (null) なら PDF なしで概要 + 決済リンクだけ送る。
+    const pdfUrl = await renderDocumentSignedPdfUrl(tenantId, documentId);
 
-    // LINE は書類概要 + 決済リンクを 1 通にまとめる (sendDocumentLink が doc 種別/番号/
-    // 金額を付与し、message に決済リンクを載せる)。送信が 1 回なので「書類は届いたが
-    // 決済リンクだけ失敗」という分裂状態が起きず、結果 (delivered) も 1 つで判定できる。
+    const emailMessage =
+      [
+        pdfUrl ? `書類 (PDF) はこちら:\n${pdfUrl}` : null,
+        paymentUrl ? `以下のリンクからクレジットカードでお支払いいただけます:\n${paymentUrl}` : null,
+      ]
+        .filter((l): l is string => l !== null)
+        .join("\n\n") || undefined;
+
+    // LINE は書類概要 + 書類 PDF + 決済リンクを 1 通にまとめる (sendDocumentLink が doc
+    // 種別/番号/金額を付与し、message に PDF / 決済リンクを載せる)。送信が 1 回なので
+    // 「書類は届いたが決済リンクだけ失敗」という分裂状態が起きず、結果 (delivered) も 1 つ。
     const lineMessage = [
       `${recipientName} 様`,
       `${docLabel}をお送りいたします。`,
+      pdfUrl ? `` : null,
+      pdfUrl ? `書類 (PDF) はこちら:` : null,
+      pdfUrl ? pdfUrl : null,
       paymentUrl ? `` : null,
       paymentUrl ? `お支払いは以下のリンクからどうぞ:` : null,
       paymentUrl ? paymentUrl : null,
@@ -207,7 +219,8 @@ export async function maybeAutoSendDocumentOnConfirm(params: MaybeAutoSendDocume
         totalAmount: totalYen,
         recipientName,
         senderName,
-        message: paymentEmailMessage,
+        message: emailMessage,
+        pdfUrl: pdfUrl ?? undefined,
       });
     }
 
