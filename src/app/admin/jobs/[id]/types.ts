@@ -5,6 +5,23 @@
 
 export type MenuItem = { menu_item_id?: string; name: string; price: number };
 
+/** certificate.auto_draft が reservations.ai_certificate_draft に保存するスナップショット。 */
+export type AiCertificateDraft = {
+  draft: {
+    title: string;
+    description: string;
+    materials: Array<{ name: string; maker?: string; spec?: string; note?: string }>;
+    warrantyCandidates: string[];
+    workAreas: string[];
+    cautions: string;
+    confidence: number;
+    missingInfo?: string[];
+  };
+  policies?: Record<string, "auto" | "suggest" | "manual">;
+  auto?: boolean;
+  generated_at?: string;
+};
+
 export type JobReservation = {
   id: string;
   title: string | null;
@@ -23,6 +40,7 @@ export type JobReservation = {
   work_started_at: string | null;
   work_completed_at: string | null;
   created_at: string;
+  ai_certificate_draft?: AiCertificateDraft | null;
 };
 
 export type JobCustomer = {

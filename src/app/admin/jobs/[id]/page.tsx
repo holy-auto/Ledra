@@ -6,8 +6,9 @@ import PageHeader from "@/components/ui/PageHeader";
 import FirstUseInlineGuide from "@/components/ui/FirstUseInlineGuide";
 import JobStatusPanel from "./JobStatusPanel";
 import JobAiSuggestPanel from "./JobAiSuggestPanel";
+import JobCertificateDraftPanel from "./JobCertificateDraftPanel";
 import JobTabsLoader from "./JobTabsLoader";
-import type { JobCustomer, JobReservation, JobVehicle } from "./types";
+import type { AiCertificateDraft, JobCustomer, JobReservation, JobVehicle } from "./types";
 
 /**
  * 案件ワークフロー (Job Workflow) 画面
@@ -174,6 +175,15 @@ export default async function JobWorkflowPage({ params }: { params: Promise<{ id
         customerId={(reservation.customer_id as string | null) ?? null}
         vehicleId={(reservation.vehicle_id as string | null) ?? null}
       />
+
+      {/* certificate.auto_draft が生成した証明書ドラフト (あれば表示。発行は人=壁3) */}
+      {(reservation as { ai_certificate_draft?: AiCertificateDraft | null }).ai_certificate_draft?.draft?.title && (
+        <JobCertificateDraftPanel
+          draft={(reservation as { ai_certificate_draft: AiCertificateDraft }).ai_certificate_draft}
+          vehicleId={(reservation.vehicle_id as string | null) ?? null}
+          customerId={(reservation.customer_id as string | null) ?? null}
+        />
+      )}
 
       {/* 証明書 / 請求 / 見積書: ストリーミング配信 (モードに応じて UI 切替) */}
       <Suspense fallback={<TabsSkeleton />}>
