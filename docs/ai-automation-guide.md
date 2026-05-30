@@ -10,7 +10,7 @@ Ledra のワークフロー (証明書 / 案件 / 請求 / 顧客 / 保険 case 
 切り替えられる仕組み。
 
 - **目的**: 入力工数の削減 + コスト管理 + コンプライアンス
-- **規模**: 20+ API ルート、30+ フィールド、16 ワークフロー、5 auto-actions (全 5 ライブ配線済み / 壁3 で 6 アクションは自動化禁止)
+- **規模**: 20+ API ルート、30+ フィールド、16 ワークフロー、7 auto-actions (全 7 ライブ配線済み / 壁3 で 6 アクションは自動化禁止)
 - **設定 UI**: `/admin/settings/ai-automation` (admin 以上が編集)
 - **運営ダッシュボード**: `/admin/platform/operations` の「AI 利用状況」セクション
 
@@ -110,6 +110,8 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 | `certificate.auto_draft`                  | 案件完了 + 車両ありで証明書ドラフトを自動生成 (発行なし)             | OFF  | ✅ 予約完了 (PUT reservations) |
 | `review.auto_analyze`                     | レビュー受信時に感情分析を自動付与                                   | OFF  | ✅ 受領サインレビュー POST     |
 | `translation.auto_translate`              | 店舗お知らせ保存時に多言語へ自動翻訳                                 | OFF  | ✅ 店舗お知らせ保存 (POST/PUT) |
+| `invoice.auto_send_on_confirm`            | 請求書を人が確定 (draft→sent) した時点で顧客へ自動送付 (決済リンク+書類) | OFF  | ✅ documents PUT (draft→sent)  |
+| `quote.auto_send_on_confirm`              | 見積書を人が確定 (draft→sent) した時点で顧客へ自動送付 (書類リンク)   | OFF  | ✅ documents PUT (draft→sent)  |
 
 > **certificate.auto_draft の配線**: 予約 (案件) が `completed` になった時点で
 > `maybeAutoDraftCertificateForReservation` (fire-and-forget) が走り、車両 + 過去事例から
@@ -128,6 +130,16 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 > 英・中・越へ翻訳して `shop_announcements.translations` に保存する (translationCache 活用)。
 > 顧客は `/customer/[tenant]` の「お知らせ」タブで言語を切り替えて閲覧でき、公開 API は
 > `GET /api/announcements/shop?tenant=<slug>&lang=<ja|en|zh|vi>`。原文 (日本語) が常に正。
+>
+> **invoice.auto_send_on_confirm / quote.auto_send_on_confirm の配線**: 帳票は
+> `documents` テーブル (status: draft→sent→…) で管理され、`PUT /api/admin/documents` で
+> 人がステータスを **draft→sent (= 確定/送付済み)** に変更した瞬間に
+> `maybeAutoSendDocumentOnConfirm` (`documentAuto.ts`, fire-and-forget) が走る。
+> 顧客のチャネルを自動選択 (LINE 連携あり→LINE / 無ければメール) し、請求書は
+> **Stripe Connect 決済リンク + 書類**、見積書は **書類リンク** を送付して
+> `document_share_log` に記録する (`idempotency_key=auto-confirm:<id>` で二重送付防止)。
+> **金額/内容の「確定」そのものは必ず人 (draft→sent は人の操作) = 壁3 を維持**。
+> 自動課金 (payment.auto_charge) は行わず、決済はあくまで顧客の操作。
 
 ### 4.5.1 LINE 受信 → 自動処理パイプライン
 
@@ -151,8 +163,19 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
   `vehicle.vin`)。
 - **アクション (NEVER_AUTO_ACTIONS, `actionCatalog.ts`)**: `resolveAutoAction` が常に false。
   対象 = `certificate.auto_issue` (発行) / `invoice.auto_send` / `invoice.auto_finalize` /
-  `payment.auto_charge` / `quote.auto_send` / `customer.auto_create` (新規顧客=本人の自動作成)。
+  `payment.auto_charge` / `quote.auto_send` / `customer.auto_create` (スタッフ操作だけでの本人レコード自動作成)。
 - **低確信**: confidence_threshold 未満は auto でも `suggest` にデモート (既存挙動)。
+
+> **「確定後の送付」と「無ゲート送付」の区別**: `invoice.auto_send` / `quote.auto_send`
+> (= 人の確認を一切挟まない送付) は壁3 のまま禁止。一方、`invoice.auto_send_on_confirm` /
+> `quote.auto_send_on_confirm` は **人が draft→sent に確定した後だけ** 送るため壁3 ではなく
+> opt-in 可。金額/内容の確定は常に人が握る。
+>
+> **顧客作成の本人確認**: スタッフ操作だけの `customer.auto_create` は壁3 で禁止のまま。
+> ただし公開 intake フロー (`/intake/[short_id]`) は **顧客本人が** OCR (`/api/identity/ocr`)
+> で読み取った内容を確認画面で確定するため、本人確認が成立する別ルート。送信時に
+> `submitAndProcessIntake` が検証 (`intakeValidator`) を通せば自動で `customers` を作成
+> (`approved_by=NULL`)、連絡先の部分一致・検証 NG はスタッフレビュー (needs_review) に回す。
 
 → 自動起票される予約は「既知顧客のみ・金額 0・タイトルに【要確認】」で、本人確認と金額確定は
 人に残る。証明書も「ドラフトまで自動・発行は人」。
@@ -289,7 +312,9 @@ UI は「しばらくお待ちください」を表示し、リトライ可能�
 ## 11. 関連ファイル
 
 - 設定基盤: `src/lib/ai/automation/{fieldCatalog,policy}.ts`
-- 自動実行: `src/lib/ai/automation/{actionCatalog,orchestrator,inboundAuto,reviewAuto,certificateAuto,announcementAuto}.ts`
+- 自動実行: `src/lib/ai/automation/{actionCatalog,orchestrator,inboundAuto,reviewAuto,certificateAuto,announcementAuto,documentAuto}.ts`
+- 帳票 確定→自動送付: `documentAuto.ts` + `app/api/admin/documents` PUT (draft→sent 検出) + `lib/documents/share-email.ts` / `lib/line/client.ts` / `lib/stripe/invoicePaymentLink.ts`
+- 顧客セルフ確認 intake: `app/intake/[short_id]/IntakeClient.tsx` (確認ステップ) + `app/api/intake/[short_id]/submit` + `lib/identity/intakeServer.ts` (`submitAndProcessIntake`)
 - 店舗お知らせ: `shop_announcements` テーブル / `app/api/admin/shop-announcements` / `app/admin/shop-announcements` / `app/api/announcements/shop` (公開) / 顧客ポータル「お知らせ」タブ
 - フィードバックループ: `src/lib/ai/automation/feedbackLoop.ts` + `recommendations/route.ts`
 - LINE 受信配線: `src/lib/line/client.ts` (`handleWebhookEvents`)

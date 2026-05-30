@@ -7,6 +7,8 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { parsePagination } from "@/lib/api/pagination";
 import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { documentCreateSchema, documentUpdateSchema, documentDeleteSchema } from "@/lib/validations/document";
+import { resolveBaseUrl } from "@/lib/url";
+import { maybeAutoSendDocumentOnConfirm } from "@/lib/ai/automation/documentAuto";
 
 export const dynamic = "force-dynamic";
 
@@ -354,6 +356,18 @@ export async function PUT(req: NextRequest) {
       }
     }
 
+    // 「確定 (draft→sent)」を検出するため、ステータス更新時は変更前の状態を控える。
+    let priorStatus: string | null = null;
+    if (body.status === "sent") {
+      const { data: prior } = await supabase
+        .from("documents")
+        .select("status")
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
+      priorStatus = (prior?.status as string | null) ?? null;
+    }
+
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
     if (body.status !== undefined) updates.status = body.status;
@@ -407,6 +421,18 @@ export async function PUT(req: NextRequest) {
 
     if (error) {
       return apiInternalError(error, "documents PUT");
+    }
+
+    // 確定 (draft→sent) の瞬間に、opt-in 済みテナントでは顧客へ自動送付する。
+    // fire-and-forget: レスポンスを遅らせない / 失敗してもステータス更新は成功扱い。
+    if (priorStatus === "draft" && data?.status === "sent") {
+      const baseUrl = resolveBaseUrl({ req });
+      void maybeAutoSendDocumentOnConfirm({
+        tenantId: caller.tenantId,
+        documentId: id,
+        actorUserId: caller.userId,
+        baseUrl,
+      }).catch(() => {});
     }
 
     return apiJson({ ok: true, document: data });

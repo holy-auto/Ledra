@@ -29,7 +29,9 @@ export type AutomationActionKey =
   | "inbound_message.auto_create_reservation"
   | "certificate.auto_draft"
   | "review.auto_analyze"
-  | "translation.auto_translate";
+  | "translation.auto_translate"
+  | "invoice.auto_send_on_confirm"
+  | "quote.auto_send_on_confirm";
 
 export interface AutomationActionDef {
   key: AutomationActionKey;
@@ -87,6 +89,24 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     description: "店舗お知らせを保存した時点で英・中・越へ自動翻訳する (翻訳キャッシュ利用)。",
     defaultEnabled: false,
   },
+  {
+    key: "invoice.auto_send_on_confirm",
+    workflow: "invoice",
+    label: "請求書を確定したら自動送付",
+    description:
+      "下書きの請求書を人が「確定 (送付済みに変更)」した時点で、顧客に自動送付する。LINE 連携があれば LINE、無ければメールを自動選択し、決済リンク (Stripe Connect) と書類の両方を届ける。金額の確定そのものは必ず人が行う (壁3)。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Standard プラン以上 + 人が draft→sent に確定 + 顧客に LINE もしくはメールあり",
+  },
+  {
+    key: "quote.auto_send_on_confirm",
+    workflow: "quote",
+    label: "見積書を確定したら自動送付",
+    description:
+      "下書きの見積書を人が「確定 (送付済みに変更)」した時点で、顧客に自動送付する。LINE 連携があれば LINE、無ければメールを自動選択して書類リンクを届ける。内容の確定そのものは必ず人が行う (壁3)。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Standard プラン以上 + 人が draft→sent に確定 + 顧客に LINE もしくはメールあり",
+  },
 ];
 
 /**
@@ -96,11 +116,14 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
  */
 export const NEVER_AUTO_ACTIONS: ReadonlySet<string> = new Set<string>([
   "certificate.auto_issue", // 証明書の発行 (法的責任)
-  "invoice.auto_send", // 請求書の外向き送付 (金額)
-  "invoice.auto_finalize", // 請求の確定 (金額)
+  "invoice.auto_send", // 人の確認を一切挟まない請求書の外向き送付 (= 無ゲート送付)。禁止。
+  // → 「人が draft→sent に確定した後」だけ送る `invoice.auto_send_on_confirm` は opt-in 可 (壁3 ではない)。
+  "invoice.auto_finalize", // 請求の確定 (金額) — 確定そのものは必ず人。
   "payment.auto_charge", // 自動課金 (金額)
-  "quote.auto_send", // 見積の外向き送付 (金額)
-  "customer.auto_create", // 顧客 (本人) レコードの自動作成 (本人確認)
+  "quote.auto_send", // 人の確認を一切挟まない見積の外向き送付。禁止。
+  // → 「人が確定した後」だけ送る `quote.auto_send_on_confirm` は opt-in 可。
+  "customer.auto_create", // スタッフ操作だけでの顧客 (本人) レコード自動作成 (本人確認)。
+  // → 顧客本人が OCR 内容を確認して確定する公開 intake フロー (submitAndProcessIntake) は本人確認が成立するため別扱い。
 ]);
 
 export const AUTOMATION_ACTION_BY_KEY: ReadonlyMap<string, AutomationActionDef> = new Map(
