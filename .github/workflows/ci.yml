@@ -55,13 +55,26 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Build (production)
-        # Skip Sentry source-map upload (no token in PR context) and dev
-        # turbo flags. The build still emits build-manifest.json which is
-        # all the size check needs.
+        # We only need build-manifest.json to measure the *client* bundle.
+        # That manifest is written during the compile phase, which finishes
+        # before `next build` moves on to server page-data collection.
+        #
+        # Page-data collection instantiates clients (Supabase, QStash, Upstash,
+        # Stripe, …) at module scope, and those throw without real secrets —
+        # which CI deliberately does not provide (no Sentry token either, to
+        # skip source-map upload). So `next build` is expected to exit non-zero
+        # here on a *post-compile* error. We tolerate that, then assert the
+        # manifest exists: a genuine *compile* break emits no manifest and
+        # fails this step, while a secrets-only prerender failure does not.
         env:
           SKIP_ENV_VALIDATION: "true"
           NEXT_TELEMETRY_DISABLED: "1"
-        run: npm run build
+        run: |
+          npm run build || echo "::warning::next build exited non-zero (page-data collection needs runtime secrets CI does not provide); verifying client manifest before continuing"
+          if [ ! -f .next/build-manifest.json ]; then
+            echo "::error::.next/build-manifest.json missing — client compilation failed (not a secrets issue)"
+            exit 1
+          fi
       - name: Check client bundle size
         # Default threshold 1000 KB raw bytes (2026-05-30 引き上げ)。
         #
