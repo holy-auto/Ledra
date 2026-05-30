@@ -261,6 +261,60 @@ export default function InvoicesClient() {
   // URL クエリ (customer_id / vehicle_id) からの自動入力
   // 顧客詳細やワークフローの「請求書を作成」から遷移した際に、
   // 下部フォームの顧客/車両フィールドにも反映される。
+  //
+  // ※ fetchCertificatesForCustomer / handleVehicleSelect は後段で定義されていたが
+  // React Compiler の temporal-dead-zone エラー回避のため、上に移動した。
+  const fetchCertificatesForCustomer = useCallback(async (customerId: string) => {
+    if (!customerId) {
+      setCertificates([]);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/admin/invoices?action=certificates&customer_id=${encodeURIComponent(customerId)}`, {
+        cache: "no-store",
+      });
+      const j = await parseJsonSafe(res);
+      if (res.ok && j?.certificates) {
+        setCertificates(j.certificates);
+      } else {
+        setCertificates([]);
+      }
+    } catch {
+      setCertificates([]);
+    }
+  }, []);
+
+  const handleVehicleSelect = useCallback(
+    (vehicleId: string) => {
+      setFormVehicleId(vehicleId);
+      if (!vehicleId) {
+        setFormVehicleModel("");
+        setFormVehiclePlate("");
+        setFormVehicleVin("");
+        return;
+      }
+      const v = vehicles.find((veh) => veh.id === vehicleId);
+      if (v) {
+        const sizeTag = v.size_class ? ` [${v.size_class}]` : "";
+        const modelStr = [v.maker, v.model, v.year ? String(v.year) : null].filter(Boolean).join(" ") + sizeTag;
+        setFormVehicleModel(modelStr);
+        setFormVehiclePlate(v.plate_display ?? "");
+        setFormVehicleVin(v.vin_code ?? "");
+        // 車両に紐付き顧客がいて、顧客未選択なら自動選択
+        if (v.customer_id && !formCustomerId) {
+          setFormCustomerId(v.customer_id);
+          fetchCertificatesForCustomer(v.customer_id);
+        }
+      }
+    },
+    [vehicles, formCustomerId, fetchCertificatesForCustomer],
+  );
+
+  const handleCustomerChange = (val: string) => {
+    setFormCustomerId(val);
+    fetchCertificatesForCustomer(val);
+  };
+
   const prefillAppliedRef = useRef(false);
   useEffect(() => {
     if (prefillAppliedRef.current) return;
@@ -336,55 +390,6 @@ export default function InvoicesClient() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillReservationId]);
-
-  // 顧客が変わったら証明書を取得
-  const fetchCertificatesForCustomer = useCallback(async (customerId: string) => {
-    if (!customerId) {
-      setCertificates([]);
-      return;
-    }
-    try {
-      const res = await fetch(`/api/admin/invoices?action=certificates&customer_id=${encodeURIComponent(customerId)}`, {
-        cache: "no-store",
-      });
-      const j = await parseJsonSafe(res);
-      if (res.ok && j?.certificates) {
-        setCertificates(j.certificates);
-      } else {
-        setCertificates([]);
-      }
-    } catch {
-      setCertificates([]);
-    }
-  }, []);
-
-  const handleCustomerChange = (val: string) => {
-    setFormCustomerId(val);
-    fetchCertificatesForCustomer(val);
-  };
-
-  const handleVehicleSelect = (vehicleId: string) => {
-    setFormVehicleId(vehicleId);
-    if (!vehicleId) {
-      setFormVehicleModel("");
-      setFormVehiclePlate("");
-      setFormVehicleVin("");
-      return;
-    }
-    const v = vehicles.find((veh) => veh.id === vehicleId);
-    if (v) {
-      const sizeTag = v.size_class ? ` [${v.size_class}]` : "";
-      const modelStr = [v.maker, v.model, v.year ? String(v.year) : null].filter(Boolean).join(" ") + sizeTag;
-      setFormVehicleModel(modelStr);
-      setFormVehiclePlate(v.plate_display ?? "");
-      setFormVehicleVin(v.vin_code ?? "");
-      // 車両に紐付き顧客がいて、顧客未選択なら自動選択
-      if (v.customer_id && !formCustomerId) {
-        setFormCustomerId(v.customer_id);
-        fetchCertificatesForCustomer(v.customer_id);
-      }
-    }
-  };
 
   const handleFilterChange = (val: string) => {
     setStatusFilter(val);

@@ -95,6 +95,15 @@ export default function WalkInCheckoutScreen() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [receivedAmount, setReceivedAmount] = useState("");
   const [processing, setProcessing] = useState(false);
+
+  // total / received / change を上に移動 (React Compiler の temporal-dead-zone
+  // エラー回避: onQrPaid useCallback が total を参照するため)
+  const total = useMemo(
+    () => cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0),
+    [cart],
+  );
+  const received = parseInt(receivedAmount, 10) || 0;
+  const change = paymentMethod === "cash" ? Math.max(0, received - total) : 0;
   const [snackbar, setSnackbar] = useState("");
 
   // QR決済用
@@ -176,13 +185,6 @@ export default function WalkInCheckoutScreen() {
     },
     enabled: !!user?.tenantId,
   });
-
-  const total = useMemo(
-    () => cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0),
-    [cart],
-  );
-  const received = parseInt(receivedAmount, 10) || 0;
-  const change = paymentMethod === "cash" ? Math.max(0, received - total) : 0;
 
   function addMenuItem(item: MenuItem) {
     setCart((prev) => {
