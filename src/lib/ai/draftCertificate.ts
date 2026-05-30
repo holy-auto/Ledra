@@ -16,6 +16,17 @@ const DraftMaterialSchema = z.object({
   note: z.string().optional(),
 });
 
+const FieldConfidenceSchema = z
+  .object({
+    title: z.number().optional(),
+    description: z.number().optional(),
+    materials: z.number().optional(),
+    warranty: z.number().optional(),
+    workAreas: z.number().optional(),
+    cautions: z.number().optional(),
+  })
+  .optional();
+
 const DraftCertificateSchema = z.object({
   title: z.string(),
   description: z.string(),
@@ -24,6 +35,8 @@ const DraftCertificateSchema = z.object({
   workAreas: z.array(z.string()),
   cautions: z.string(),
   confidence: z.number(),
+  /** フィールド別の自己評価 (0.0〜1.0)。policy 層が "auto" 判定の精度を上げるのに使う。 */
+  fieldConfidence: FieldConfidenceSchema,
   missingInfo: z.array(z.string()),
 });
 
@@ -81,7 +94,16 @@ export interface DraftCertificateResult {
   warrantyCandidates: string[]; // 保証期間候補 ["3年", "5年"]
   workAreas: string[]; // 施工箇所リスト
   cautions: string; // 注意事項
-  confidence: number; // 0.0〜1.0
+  confidence: number; // 0.0〜1.0 (draft 全体の自己評価)
+  /** フィールド別の自己評価 (任意)。policy 層が per-field でデモート判定する。 */
+  fieldConfidence?: {
+    title?: number;
+    description?: number;
+    materials?: number;
+    warranty?: number;
+    workAreas?: number;
+    cautions?: number;
+  };
   missingInfo: string[]; // 不足情報リスト
 }
 
@@ -133,8 +155,11 @@ export async function generateCertificateDraft(input: DraftCertificateInput): Pr
   "workAreas": ["ボンネット", "ルーフ", "フード"],
   "cautions": "注意事項（車種・施工固有のもの、なければ空文字）",
   "confidence": 0.85,
+  "fieldConfidence": {"title": 0.9, "description": 0.85, "materials": 0.6, "warranty": 0.7, "workAreas": 0.8, "cautions": 0.5},
   "missingInfo": ["不足している情報のリスト（あれば）"]
-}`;
+}
+
+fieldConfidence は各項目ごとの自信度 (0.0〜1.0) です。情報が不足している項目は低い値にしてください。`;
 
   const userMessage = `以下の情報から施工証明書の下書きを作成してください。
 
@@ -174,6 +199,7 @@ ${input.templateCategory || "未指定"}`;
       workAreas: result.workAreas,
       cautions: result.cautions,
       confidence: result.confidence,
+      fieldConfidence: result.fieldConfidence ?? undefined,
       missingInfo: result.missingInfo,
     };
   } catch (err) {

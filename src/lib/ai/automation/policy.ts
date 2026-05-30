@@ -30,9 +30,11 @@ import {
   DEFAULT_FIELD_POLICY,
   isKnownFieldKey,
   isKnownSourceKey,
+  isNeverAutoField,
   type AutomationSourceKey,
   type FieldPolicy,
 } from "./fieldCatalog";
+import { isKnownActionKey, isNeverAutoAction, sanitizeAutoActions } from "./actionCatalog";
 import type { DraftCertificateResult } from "@/lib/ai/draftCertificate";
 
 export const DEFAULT_CONFIDENCE_THRESHOLD = 0.5;
@@ -44,6 +46,11 @@ export interface AiAutomationSettings {
   confidenceThreshold: number;
   /** ソース key -> 許可 / 不許可。未設定キーはカタログの defaultEnabled に従う。 */
   sourcePolicies: Partial<Record<AutomationSourceKey, boolean>>;
+  /**
+   * イベント駆動の自動実行アクション key -> 有効/無効。
+   * 未設定キーは既定 OFF。壁3 アクションはここに入っていても無視される。
+   */
+  autoActions: Record<string, boolean>;
   /** DB から読み込めた / 既定にフォールバックしたかを呼び出し側に伝えるフラグ。 */
   loadedFromDb: boolean;
 }
@@ -53,6 +60,7 @@ export const DEFAULT_AI_AUTOMATION_SETTINGS: AiAutomationSettings = {
   fieldPolicies: {},
   confidenceThreshold: DEFAULT_CONFIDENCE_THRESHOLD,
   sourcePolicies: {},
+  autoActions: {},
   loadedFromDb: false,
 };
 
@@ -61,6 +69,12 @@ function isMissingTableError(err: { message?: string; code?: string } | null | u
   if (err.code === "42P01" || err.code === "PGRST205") return true;
   const msg = (err.message ?? "").toLowerCase();
   return msg.includes("does not exist") || msg.includes("schema cache");
+}
+
+/** auto_actions 列だけが無い (部分マイグレーション) 状態を検出する。 */
+function isMissingColumnError(err: { message?: string; code?: string } | null | undefined): boolean {
+  if (!err) return false;
+  return err.code === "42703" || err.code === "PGRST204";
 }
 
 /**
@@ -72,12 +86,23 @@ function isMissingTableError(err: { message?: string; code?: string } | null | u
  */
 export async function loadAiAutomationSettings(tenantId: string): Promise<AiAutomationSettings> {
   const { admin } = createTenantScopedAdmin(tenantId);
+  const baseCols = "enabled, field_policies, confidence_threshold, source_policies";
   try {
-    const { data, error } = await admin
+    let { data, error } = await admin
       .from("tenant_ai_automation_settings")
-      .select("enabled, field_policies, confidence_threshold, source_policies")
+      .select(`${baseCols}, auto_actions`)
       .eq("tenant_id", tenantId)
       .maybeSingle();
+
+    // auto_actions 列だけ未作成 (部分マイグレーション) の場合は列を外して再取得し、
+    // 既存の field_policies 等を失わないようにする。
+    if (error && isMissingColumnError(error)) {
+      ({ data, error } = await admin
+        .from("tenant_ai_automation_settings")
+        .select(baseCols)
+        .eq("tenant_id", tenantId)
+        .maybeSingle());
+    }
 
     if (error && isMissingTableError(error)) {
       return { ...DEFAULT_AI_AUTOMATION_SETTINGS };
@@ -91,6 +116,7 @@ export async function loadAiAutomationSettings(tenantId: string): Promise<AiAuto
       fieldPolicies: sanitizeFieldPoliciesPersisted(data.field_policies),
       confidenceThreshold: sanitizeConfidenceThreshold(data.confidence_threshold),
       sourcePolicies: sanitizeSourcePoliciesPersisted(data.source_policies),
+      autoActions: sanitizeAutoActions((data as { auto_actions?: unknown }).auto_actions),
       loadedFromDb: true,
     };
   } catch {
@@ -136,21 +162,42 @@ function sanitizeConfidenceThreshold(input: unknown): number {
  * confidence を渡すと閾値未満で "auto" → "suggest" にデモートされる
  * ("manual" はデモートしない: そもそも AI を呼ばないため)。
  */
-export function resolveFieldPolicy(
-  settings: AiAutomationSettings,
-  fieldKey: string,
-  confidence?: number,
-): FieldPolicy {
+export function resolveFieldPolicy(settings: AiAutomationSettings, fieldKey: string, confidence?: number): FieldPolicy {
   if (!settings.enabled) return "manual";
 
   const userPolicy = settings.fieldPolicies[fieldKey];
   const def = AUTOMATION_FIELD_BY_KEY.get(fieldKey);
-  const policy: FieldPolicy = userPolicy ?? def?.defaultPolicy ?? DEFAULT_FIELD_POLICY;
+  let policy: FieldPolicy = userPolicy ?? def?.defaultPolicy ?? DEFAULT_FIELD_POLICY;
+
+  // 壁3: 金額確定 / 本人確認のフィールドは "auto" を許さない。
+  // テナント設定や catalog 既定が "auto" でも必ず "suggest" にクランプする
+  // (= 人の確認を必ず挟む)。"manual" はそのまま。
+  if (policy === "auto" && isNeverAutoField(fieldKey)) {
+    policy = "suggest";
+  }
 
   if (policy === "auto" && typeof confidence === "number" && confidence < settings.confidenceThreshold) {
     return "suggest";
   }
   return policy;
+}
+
+/**
+ * イベント駆動の auto-action を「人の操作なしで自動実行してよいか」判定する。
+ *
+ * 次をすべて満たすときだけ true:
+ *   1. settings.enabled (グローバル ON)
+ *   2. 壁3 (NEVER_AUTO_ACTIONS) でない — 証明書発行 / 課金 / 外向き送付などは常に false
+ *   3. カタログに存在する既知アクション
+ *   4. settings.autoActions[key] === true (テナントが明示的に opt-in)
+ *
+ * 未設定は false。opt-in しない限り何も自動実行しない (既存挙動を勝手に変えない)。
+ */
+export function resolveAutoAction(settings: AiAutomationSettings, actionKey: string): boolean {
+  if (!settings.enabled) return false;
+  if (isNeverAutoAction(actionKey)) return false;
+  if (!isKnownActionKey(actionKey)) return false;
+  return settings.autoActions?.[actionKey] === true;
 }
 
 export function isSourceAllowed(settings: AiAutomationSettings, source: AutomationSourceKey): boolean {
@@ -168,20 +215,25 @@ export function isSourceAllowed(settings: AiAutomationSettings, source: Automati
  * 該当欄に値を流し込まない。"auto" / "suggest" は出力に残す
  * (suggest/auto の区別はクライアントの UX 演出のみで、サーバ側では値そのものに違いはない)。
  *
- * confidence は draft 全体のスコアなので、低い場合はすべての "auto" を
- * "suggest" にデモートし、UI が常に確認ステップを挟むようにする。
+ * confidence はフィールド別 (`draft.fieldConfidence`) があればそれを優先し、
+ * 無ければ draft 全体スコア (`draft.confidence`) にフォールバックする。これにより
+ * 「説明文は自信があるが材料は曖昧」のようなケースで、曖昧なフィールドだけを
+ * "suggest" にデモートし、自信のあるフィールドは "auto" を維持できる。
  */
 export function filterDraftByPolicy(
   draft: DraftCertificateResult,
   settings: AiAutomationSettings,
 ): { draft: DraftCertificateResult; policies: Record<string, FieldPolicy> } {
+  const fc: Record<string, number | undefined> = draft.fieldConfidence ?? {};
+  const conf = (k: string): number => (typeof fc[k] === "number" ? (fc[k] as number) : draft.confidence);
+
   const policies: Record<string, FieldPolicy> = {
-    "certificate.title": resolveFieldPolicy(settings, "certificate.title", draft.confidence),
-    "certificate.description": resolveFieldPolicy(settings, "certificate.description", draft.confidence),
-    "certificate.materials": resolveFieldPolicy(settings, "certificate.materials", draft.confidence),
-    "certificate.warranty": resolveFieldPolicy(settings, "certificate.warranty", draft.confidence),
-    "certificate.work_areas": resolveFieldPolicy(settings, "certificate.work_areas", draft.confidence),
-    "certificate.cautions": resolveFieldPolicy(settings, "certificate.cautions", draft.confidence),
+    "certificate.title": resolveFieldPolicy(settings, "certificate.title", conf("title")),
+    "certificate.description": resolveFieldPolicy(settings, "certificate.description", conf("description")),
+    "certificate.materials": resolveFieldPolicy(settings, "certificate.materials", conf("materials")),
+    "certificate.warranty": resolveFieldPolicy(settings, "certificate.warranty", conf("warranty")),
+    "certificate.work_areas": resolveFieldPolicy(settings, "certificate.work_areas", conf("workAreas")),
+    "certificate.cautions": resolveFieldPolicy(settings, "certificate.cautions", conf("cautions")),
   };
 
   return {
@@ -237,10 +289,7 @@ export function filterVehicleOcrByPolicy(
   const policies: Record<string, FieldPolicy> = {};
   const out: VehicleOcrExtracted = { ...extracted };
 
-  for (const [k, fieldKey] of Object.entries(VEHICLE_FIELD_MAP) as [
-    keyof VehicleOcrExtracted,
-    string | null,
-  ][]) {
+  for (const [k, fieldKey] of Object.entries(VEHICLE_FIELD_MAP) as [keyof VehicleOcrExtracted, string | null][]) {
     if (!fieldKey) continue;
     const policy = resolveFieldPolicy(settings, fieldKey);
     policies[fieldKey] = policy;

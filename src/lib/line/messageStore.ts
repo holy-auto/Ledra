@@ -60,7 +60,9 @@ async function resolveCustomerIdByLineUser(tenantId: string, lineUserId: string)
  *
  * 失敗時は呼び出し元 (webhook) を止めない (LINE は 200 を即返す必要がある)。
  */
-export async function recordInboundLineMessage(input: InboundLineMessage): Promise<{ ok: boolean; id?: string }> {
+export async function recordInboundLineMessage(
+  input: InboundLineMessage,
+): Promise<{ ok: boolean; id?: string; customerId?: string | null }> {
   try {
     const customerId = await resolveCustomerIdByLineUser(input.tenantId, input.lineUserId);
 
@@ -88,9 +90,9 @@ export async function recordInboundLineMessage(input: InboundLineMessage): Promi
       .single();
     if (error) {
       logger.warn("[messageStore] inbound insert failed", { tenantId: input.tenantId, err: error.message });
-      return { ok: false };
+      return { ok: false, customerId };
     }
-    return { ok: true, id: data?.id as string | undefined };
+    return { ok: true, id: data?.id as string | undefined, customerId };
   } catch (e) {
     logger.warn("[messageStore] recordInboundLineMessage threw", {
       tenantId: input.tenantId,

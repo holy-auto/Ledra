@@ -47,6 +47,7 @@ export default async function AiAutomationSettingsPage() {
           fieldPolicies: settings.fieldPolicies,
           confidenceThreshold: settings.confidenceThreshold,
           sourcePolicies: settings.sourcePolicies,
+          autoActions: settings.autoActions,
         }}
         loadedFromDb={settings.loadedFromDb}
       />

@@ -124,7 +124,13 @@ export default function CustomerListPage() {
   const [shops, setShops] = useState<ShopMembership[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [tab, setTab] = useState<"certs" | "history" | "reservations" | "inquiry">("certs");
+  const [tab, setTab] = useState<"certs" | "history" | "reservations" | "inquiry" | "announcements">("certs");
+
+  // Shop announcements (multilingual)
+  const [announcements, setAnnouncements] = useState<
+    { id: string; title: string; body: string; published_at: string | null; available_langs: string[] }[]
+  >([]);
+  const [annLang, setAnnLang] = useState<"ja" | "en" | "zh" | "vi">("ja");
 
   // Inquiry state
   const [inquiries, setInquiries] = useState<
@@ -222,6 +228,16 @@ export default function CustomerListPage() {
     setInquiries(j.inquiries ?? []);
   }
 
+  async function loadAnnouncements(lang: "ja" | "en" | "zh" | "vi" = annLang) {
+    const res = await fetch(
+      `/api/announcements/shop?tenant=${encodeURIComponent(tenant)}&lang=${encodeURIComponent(lang)}`,
+      { cache: "no-store" },
+    );
+    if (!res.ok) return;
+    const j = await res.json().catch(() => ({}) as Record<string, unknown>);
+    setAnnouncements(j.announcements ?? []);
+  }
+
   async function submitInquiry() {
     if (!inquiryMessage.trim()) return;
     setInquirySending(true);
@@ -263,6 +279,7 @@ export default function CustomerListPage() {
     load();
     loadShops().catch((): void => undefined);
     loadInquiries().catch((): void => undefined);
+    loadAnnouncements().catch((): void => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenant]);
 
@@ -362,6 +379,7 @@ export default function CustomerListPage() {
           { key: "history" as const, label: "施工履歴", count: history.length },
           { key: "reservations" as const, label: "予約", count: reservations.length },
           { key: "inquiry" as const, label: "お問い合わせ", count: inquiries.length },
+          { key: "announcements" as const, label: "お知らせ", count: announcements.length },
         ].map((t) => (
           <button
             key={t.key}
@@ -382,6 +400,44 @@ export default function CustomerListPage() {
           <a href={`/my?tenant=${encodeURIComponent(tenant)}`} className="ml-2 underline">
             マイページへ
           </a>
+        </div>
+      ) : null}
+
+      {tab === "announcements" ? (
+        <div className="mt-3 space-y-3">
+          {/* 言語切替: 翻訳がある言語のみ価値があるが、常時 4 言語を出して切替可能にする */}
+          <div className="flex gap-1">
+            {(["ja", "en", "zh", "vi"] as const).map((l) => (
+              <button
+                key={l}
+                onClick={() => {
+                  setAnnLang(l);
+                  loadAnnouncements(l).catch((): void => undefined);
+                }}
+                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  annLang === l
+                    ? "border-accent bg-accent/10 text-accent"
+                    : "border-border-default text-muted hover:text-secondary"
+                }`}
+              >
+                {l === "ja" ? "日本語" : l === "en" ? "English" : l === "zh" ? "中文" : "Tiếng Việt"}
+              </button>
+            ))}
+          </div>
+
+          {announcements.length === 0 ? (
+            <div className="text-sm text-muted">お知らせはありません。</div>
+          ) : (
+            announcements.map((a) => (
+              <div key={a.id} className="rounded-2xl border border-border-default bg-surface p-4 shadow-sm">
+                <div className="flex items-baseline justify-between gap-2">
+                  <div className="text-sm font-semibold text-primary">{a.title}</div>
+                  {a.published_at ? <div className="text-xs text-muted">{formatDateTime(a.published_at)}</div> : null}
+                </div>
+                <div className="mt-1 whitespace-pre-wrap text-sm text-secondary">{a.body}</div>
+              </div>
+            ))
+          )}
         </div>
       ) : null}
 

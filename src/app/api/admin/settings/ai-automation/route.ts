@@ -10,15 +10,13 @@ import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { apiOk, apiUnauthorized, apiForbidden, apiInternalError, apiPlanLimit } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
+import { canUseFeature } from "@/lib/billing/planFeatures";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
 import { logAiAuditEvent } from "@/lib/audit/aiAuditLog";
-import {
-  isFieldPolicy,
-  isKnownFieldKey,
-  isKnownSourceKey,
-} from "@/lib/ai/automation/fieldCatalog";
+import { isFieldPolicy, isKnownFieldKey, isKnownSourceKey } from "@/lib/ai/automation/fieldCatalog";
+import { sanitizeAutoActions } from "@/lib/ai/automation/actionCatalog";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -36,6 +34,7 @@ export async function GET() {
         fieldPolicies: settings.fieldPolicies,
         confidenceThreshold: settings.confidenceThreshold,
         sourcePolicies: settings.sourcePolicies,
+        autoActions: settings.autoActions,
       },
       loadedFromDb: settings.loadedFromDb,
       role: caller.role,
@@ -52,7 +51,14 @@ const updateSchema = z.object({
   fieldPolicies: z.record(z.string(), fieldPolicyValue).optional(),
   confidenceThreshold: z.number().min(0).max(1).optional(),
   sourcePolicies: z.record(z.string(), z.boolean()).optional(),
+  autoActions: z.record(z.string(), z.boolean()).optional(),
 });
+
+/** auto_actions 列だけ未作成 (部分マイグレーション) の検出。 */
+function isMissingColumnError(err: { message?: string; code?: string } | null | undefined): boolean {
+  if (!err) return false;
+  return err.code === "42703" || err.code === "PGRST204";
+}
 
 export async function PUT(req: NextRequest) {
   try {
@@ -73,22 +79,45 @@ export async function PUT(req: NextRequest) {
     // never lock anyone out of the settings page.
     const cleanedFieldPolicies = sanitizePersistedFieldPolicies(parsed.data.fieldPolicies ?? current.fieldPolicies);
     const cleanedSourcePolicies = sanitizePersistedSourcePolicies(parsed.data.sourcePolicies ?? current.sourcePolicies);
+    // 壁3 アクションは sanitizeAutoActions が常に弾く (true でも永続化されない)。
+    const cleanedAutoActions =
+      parsed.data.autoActions !== undefined
+        ? sanitizeAutoActions(parsed.data.autoActions)
+        : sanitizeAutoActions(current.autoActions);
 
     const nextEnabled = parsed.data.enabled ?? current.enabled;
     const nextThreshold = parsed.data.confidenceThreshold ?? current.confidenceThreshold;
 
-    const { error } = await admin.from("tenant_ai_automation_settings").upsert(
-      {
-        tenant_id: tenantId,
-        enabled: nextEnabled,
-        field_policies: cleanedFieldPolicies,
-        confidence_threshold: nextThreshold,
-        source_policies: cleanedSourcePolicies,
-        updated_by: caller.userId,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "tenant_id" },
-    );
+    // この PUT で新たに auto-action を有効化する場合のみ、プランを判定する
+    // (他設定だけの編集はプランで縛らない)。
+    if (parsed.data.autoActions !== undefined && Object.keys(cleanedAutoActions).length > 0) {
+      if (!canUseFeature(caller.planTier, "ai_inbound_extract")) {
+        return apiPlanLimit("AI 自動アクションは Standard プラン以上でご利用いただけます。");
+      }
+    }
+
+    const baseRow = {
+      tenant_id: tenantId,
+      enabled: nextEnabled,
+      field_policies: cleanedFieldPolicies,
+      confidence_threshold: nextThreshold,
+      source_policies: cleanedSourcePolicies,
+      updated_by: caller.userId,
+      updated_at: new Date().toISOString(),
+    };
+
+    let autoActionsPersisted = true;
+    let { error } = await admin
+      .from("tenant_ai_automation_settings")
+      .upsert({ ...baseRow, auto_actions: cleanedAutoActions }, { onConflict: "tenant_id" });
+
+    // auto_actions 列だけ未作成 (部分マイグレーション) なら、その列を外して
+    // 他設定だけは保存する (field_policies 等の編集を失わせない)。
+    if (error && isMissingColumnError(error)) {
+      autoActionsPersisted = false;
+      ({ error } = await admin.from("tenant_ai_automation_settings").upsert(baseRow, { onConflict: "tenant_id" }));
+    }
+
     if (error) {
       // Soft-fail if the migration has not yet been applied — return the
       // posted state as if it were saved so the UI does not block.
@@ -100,6 +129,7 @@ export async function PUT(req: NextRequest) {
             fieldPolicies: cleanedFieldPolicies,
             confidenceThreshold: nextThreshold,
             sourcePolicies: cleanedSourcePolicies,
+            autoActions: cleanedAutoActions,
           },
           persisted: false,
           warning: "AI 自動入力設定テーブルがまだ未作成です。マイグレーションを適用すると保存されるようになります。",
@@ -118,6 +148,7 @@ export async function PUT(req: NextRequest) {
         fieldPolicies: cleanedFieldPolicies,
         confidenceThreshold: nextThreshold,
         sourcePolicies: cleanedSourcePolicies,
+        autoActions: cleanedAutoActions,
       }),
     });
 
@@ -127,8 +158,15 @@ export async function PUT(req: NextRequest) {
         fieldPolicies: cleanedFieldPolicies,
         confidenceThreshold: nextThreshold,
         sourcePolicies: cleanedSourcePolicies,
+        autoActions: cleanedAutoActions,
       },
       persisted: true,
+      ...(autoActionsPersisted
+        ? {}
+        : {
+            autoActionsWarning:
+              "auto_actions 列が未作成のため自動アクション設定は保存されていません (マイグレーション適用後に有効化されます)。",
+          }),
     });
   } catch (e: unknown) {
     return apiInternalError(e, "ai-automation PUT");
@@ -141,12 +179,14 @@ function diffSettings(
     fieldPolicies: Record<string, string>;
     confidenceThreshold: number;
     sourcePolicies: Record<string, boolean>;
+    autoActions?: Record<string, boolean>;
   },
   after: {
     enabled: boolean;
     fieldPolicies: Record<string, string>;
     confidenceThreshold: number;
     sourcePolicies: Record<string, boolean>;
+    autoActions?: Record<string, boolean>;
   },
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -171,6 +211,16 @@ function diffSettings(
     if (a !== undefined && b !== a) sourceChanges[k] = { from: b, to: a };
   }
   if (Object.keys(sourceChanges).length > 0) out.sourcePolicies = sourceChanges;
+  const beforeActions = before.autoActions ?? {};
+  const afterActions = after.autoActions ?? {};
+  const actionChanges: Record<string, { from: boolean; to: boolean }> = {};
+  const allActionKeys = new Set([...Object.keys(beforeActions), ...Object.keys(afterActions)]);
+  for (const k of allActionKeys) {
+    const b = beforeActions[k] === true;
+    const a = afterActions[k] === true;
+    if (b !== a) actionChanges[k] = { from: b, to: a };
+  }
+  if (Object.keys(actionChanges).length > 0) out.autoActions = actionChanges;
   return out;
 }
 

@@ -10,7 +10,7 @@ Ledra のワークフロー (証明書 / 案件 / 請求 / 顧客 / 保険 case 
 切り替えられる仕組み。
 
 - **目的**: 入力工数の削減 + コスト管理 + コンプライアンス
-- **規模**: 17 API ルート、30+ フィールド、4+ ワークフロー
+- **規模**: 20+ API ルート、30+ フィールド、16 ワークフロー、5 auto-actions (全 5 ライブ配線済み / 壁3 で 6 アクションは自動化禁止)
 - **設定 UI**: `/admin/settings/ai-automation` (admin 以上が編集)
 - **運営ダッシュボード**: `/admin/platform/operations` の「AI 利用状況」セクション
 
@@ -18,11 +18,11 @@ Ledra のワークフロー (証明書 / 案件 / 請求 / 顧客 / 保険 case 
 
 ### 2.1 フィールド単位 (3-way)
 
-| ポリシー | 挙動 |
-|---|---|
-| **auto** | AI 出力をそのままフォームに反映 (確認なし) |
+| ポリシー    | 挙動                                              |
+| ----------- | ------------------------------------------------- |
+| **auto**    | AI 出力をそのままフォームに反映 (確認なし)        |
 | **suggest** | AI が下書きを生成し、ユーザが「適用」を押すと反映 |
-| **manual** | AI を呼ばない (該当フィールドは空のまま) |
+| **manual**  | AI を呼ばない (該当フィールドは空のまま)          |
 
 ### 2.2 グローバル設定
 
@@ -91,6 +91,91 @@ Anthropic API
 クライアント
 ```
 
+## 4.5 イベント駆動の自動実行 (auto-actions)
+
+field_policies が「フィールドを AI が埋めるか」を制御するのに対し、**auto-actions** は
+「人がフォームを開かなくてもワークフローを前に進めるか」(= 受信 / 状態遷移をきっかけに
+AI を自動実行するか) を制御する。これが「利用者の入力頻度を限りなく 0 に」の本丸。
+
+- 定義: `src/lib/ai/automation/actionCatalog.ts`
+- 解決: `resolveAutoAction(settings, key)` (`policy.ts`)
+- 永続化: `tenant_ai_automation_settings.auto_actions` jsonb (migration 20260531000001)
+- 設定 UI: `/admin/settings/ai-automation` の「AUTO-ACTIONS」セクション
+- **すべて既定 OFF (opt-in)**。Standard プラン以上で有効化可能。
+
+| アクションキー                            | 内容                                                                 | 既定 | 配線状況                       |
+| ----------------------------------------- | -------------------------------------------------------------------- | ---- | ------------------------------ |
+| `inbound_message.auto_extract`            | LINE 等の受信時に予約候補を自動抽出し受信箱に下書き化 (コミットなし) | OFF  | ✅ LINE webhook                |
+| `inbound_message.auto_create_reservation` | 高確信 + 既知顧客 + 有効日 + new_reservation のとき予約を自動起票    | OFF  | ✅ LINE webhook                |
+| `certificate.auto_draft`                  | 案件完了 + 車両ありで証明書ドラフトを自動生成 (発行なし)             | OFF  | ✅ 予約完了 (PUT reservations) |
+| `review.auto_analyze`                     | レビュー受信時に感情分析を自動付与                                   | OFF  | ✅ 受領サインレビュー POST     |
+| `translation.auto_translate`              | 店舗お知らせ保存時に多言語へ自動翻訳                                 | OFF  | ✅ 店舗お知らせ保存 (POST/PUT) |
+
+> **certificate.auto_draft の配線**: 予約 (案件) が `completed` になった時点で
+> `maybeAutoDraftCertificateForReservation` (fire-and-forget) が走り、車両 + 過去事例から
+> 下書きを生成して `reservations.ai_certificate_draft` に保存する。証明書の行は作らず、
+> 既に下書きがある予約は上書きしない。発行は必ず人 (壁3)。写真は生成に使わない
+> (`generateCertificateDraft` が photoDescriptions 未使用のため、トリガーは「完了 + 車両」)。
+>
+> **review.auto_analyze の配線**: `POST /api/signature/review/[token]` でコメント付き
+> レビューを受信した時点で `maybeAutoAnalyzeReview` が走り、`signature_reviews` の
+> AI 列 (sentiment/summary/topics/actionable/confidence) に保存する。
+>
+> **translation.auto_translate の配線**: 新設の「店舗お知らせ」機能
+> (`shop_announcements` テーブル + `/api/admin/shop-announcements` CRUD + 管理 UI
+> `/admin/shop-announcements`) で、お知らせの作成 / 更新時に
+> `maybeAutoTranslateShopAnnouncement` (fire-and-forget) が走り、title/body を
+> 英・中・越へ翻訳して `shop_announcements.translations` に保存する (translationCache 活用)。
+> 顧客は `/customer/[tenant]` の「お知らせ」タブで言語を切り替えて閲覧でき、公開 API は
+> `GET /api/announcements/shop?tenant=<slug>&lang=<ja|en|zh|vi>`。原文 (日本語) が常に正。
+
+### 4.5.1 LINE 受信 → 自動処理パイプライン
+
+`POST /api/line/webhook` → `handleWebhookEvents` (200 即返し後の非同期) →
+`maybeAutoProcessInboundMessage` (`inboundAuto.ts`, fail-soft):
+
+1. `loadAiAutomationSettings` → `shouldAutoExtractInbound` (opt-in 判定)
+2. プラン (Standard+) / `is_active` 確認
+3. `extractInboundReservation` → `customer_messages.ai_extracted` に保存 (受信箱に下書き)
+4. `decideInboundCommit` が許せば予約を自動起票 (壁3 遵守)
+
+## 4.6 壁3 — 必ず人の確認を挟む領域
+
+「金額確定 / 本人確認 / 法的責任」は、設定で auto / true にしても **絶対に自動化しない**。
+アプリ層 (`resolveFieldPolicy` / `resolveAutoAction`) と sanitizer の二重で強制する。
+
+- **フィールド (NEVER_AUTO_FIELDS, `fieldCatalog.ts`)**: `auto` を指定しても必ず `suggest` に
+  クランプ (確認必須)。対象 = 金額確定 (`invoice.items` / `invoice.tax_rate` /
+  `job.estimated_price` / `quote.items` / `menu.recommended_price` / `accounting.category` /
+  `inventory.pos_deduction`) + 本人確認 (`customer.{name,name_kana,birth_date,phone,email,address}` /
+  `vehicle.vin`)。
+- **アクション (NEVER_AUTO_ACTIONS, `actionCatalog.ts`)**: `resolveAutoAction` が常に false。
+  対象 = `certificate.auto_issue` (発行) / `invoice.auto_send` / `invoice.auto_finalize` /
+  `payment.auto_charge` / `quote.auto_send` / `customer.auto_create` (新規顧客=本人の自動作成)。
+- **低確信**: confidence_threshold 未満は auto でも `suggest` にデモート (既存挙動)。
+
+→ 自動起票される予約は「既知顧客のみ・金額 0・タイトルに【要確認】」で、本人確認と金額確定は
+人に残る。証明書も「ドラフトまで自動・発行は人」。
+
+## 4.7 フィールド別 confidence
+
+`generateCertificateDraft` は draft 全体の `confidence` に加え、項目別の
+`fieldConfidence` (title / description / materials / warranty / workAreas / cautions) を返す。
+`filterDraftByPolicy` は項目別値があればそれで、無ければ draft 全体値でデモート判定する。
+「説明文は自信があるが材料は曖昧」のとき、材料だけ `suggest` に落とし、説明文は `auto` を維持できる。
+
+## 4.8 自動化レベルのフィードバックループ
+
+`ai_usage_logs` の実績 (件数・平均確信度) から「auto 化してよいか」を推薦する。
+
+- ロジック: `recommendAutoActions(rows, settings)` (`feedbackLoop.ts`, 純関数)
+- API: `GET /api/admin/settings/ai-automation/recommendations?days=30`
+- 判定: サンプル ≥ 20 かつ平均確信度 ≥ 0.8 → `enable_auto` (opt-in 推奨) /
+  閾値未満 → `needs_attention` / 既に有効 → `already_auto` / それ以外 → `keep` / `insufficient_data`
+- **壁3 は推薦対象外** (ENDPOINT_META に含めない)。
+
+これで「実データで安全側を確認 → opt-in」を繰り返し、入力ゼロの天井を徐々に押し上げられる。
+
 ## 5. 監視
 
 ### 5.1 AI 利用ダッシュボード
@@ -129,20 +214,20 @@ endpoint / outcome / latency / confidence 付きで確認できる。
 
 ## 6. プラン制限
 
-| 機能キー | Free | Starter | Standard | Pro |
-|---|---|---|---|---|
-| `ai_master_normalize` (辞書ベース、AI 最小) | ✗ | ✓ | ✓ | ✓ |
-| `ai_job_assist` | ✗ | ✗ | ✓ | ✓ |
-| `ai_invoice_quote` | ✗ | ✗ | ✓ | ✓ |
-| `ai_accounting` | ✗ | ✗ | ✓ | ✓ |
-| `ai_inquiry_classify` | ✗ | ✗ | ✓ | ✓ |
-| `ai_inbound_extract` | ✗ | ✗ | ✓ | ✓ |
-| `ai_review_sentiment` | ✗ | ✗ | ✓ | ✓ |
-| `ai_thickness_anomaly` | ✗ | ✗ | ✓ | ✓ |
-| `ai_pos_deduction` | ✗ | ✗ | ✓ | ✓ |
-| `ai_menu_price` | ✗ | ✗ | ✓ | ✓ |
-| `ai_market_description` | ✗ | ✗ | ✓ | ✓ |
-| `ai_translation` | ✗ | ✗ | ✓ | ✓ |
+| 機能キー                                    | Free | Starter | Standard | Pro |
+| ------------------------------------------- | ---- | ------- | -------- | --- |
+| `ai_master_normalize` (辞書ベース、AI 最小) | ✗    | ✓       | ✓        | ✓   |
+| `ai_job_assist`                             | ✗    | ✗       | ✓        | ✓   |
+| `ai_invoice_quote`                          | ✗    | ✗       | ✓        | ✓   |
+| `ai_accounting`                             | ✗    | ✗       | ✓        | ✓   |
+| `ai_inquiry_classify`                       | ✗    | ✗       | ✓        | ✓   |
+| `ai_inbound_extract`                        | ✗    | ✗       | ✓        | ✓   |
+| `ai_review_sentiment`                       | ✗    | ✗       | ✓        | ✓   |
+| `ai_thickness_anomaly`                      | ✗    | ✗       | ✓        | ✓   |
+| `ai_pos_deduction`                          | ✗    | ✗       | ✓        | ✓   |
+| `ai_menu_price`                             | ✗    | ✗       | ✓        | ✓   |
+| `ai_market_description`                     | ✗    | ✗       | ✓        | ✓   |
+| `ai_translation`                            | ✗    | ✗       | ✓        | ✓   |
 
 プラン不足は `apiPlanLimit()` で 403 `error: "plan_limit"` を返す。
 クライアントは「Standard プラン以上で利用可」のヒントを表示する。
@@ -175,6 +260,7 @@ UI は「しばらくお待ちください」を表示し、リトライ可能�
 ### 9.2 「請求書の宛名は AI に任せたいが、金額は人が見る」
 
 設定ページで:
+
 - `invoice.recipient_name` → **auto**
 - `invoice.items` → **suggest** (デフォルト)
 - `invoice.tax_rate` → **suggest** (デフォルト)
@@ -192,17 +278,21 @@ UI は「しばらくお待ちください」を表示し、リトライ可能�
 
 ## 10. トラブルシューティング
 
-| 症状 | 原因 / 対処 |
-|---|---|
-| 設定変更しても反映されない | テーブル `tenant_ai_automation_settings` のマイグレーション未適用 → migration 20260528000003 を実行 |
-| ダッシュボードが「未作成」と表示 | `ai_usage_logs` migration (20260529000002) 未適用 |
-| AI 提案が一切表示されない | (1) プラン不足 (2) master switch OFF (3) 全フィールド manual に設定されている |
-| 「429 rate_limited」が頻発 | テナント単位 20 req/min を超過 — UI 側でデバウンス必要 |
-| 翻訳が遅い | cache 未ヒット → 同じ原文 × 言語 × トーンを 2 回目以降叩くとキャッシュヒット |
+| 症状                             | 原因 / 対処                                                                                         |
+| -------------------------------- | --------------------------------------------------------------------------------------------------- |
+| 設定変更しても反映されない       | テーブル `tenant_ai_automation_settings` のマイグレーション未適用 → migration 20260528000003 を実行 |
+| ダッシュボードが「未作成」と表示 | `ai_usage_logs` migration (20260529000002) 未適用                                                   |
+| AI 提案が一切表示されない        | (1) プラン不足 (2) master switch OFF (3) 全フィールド manual に設定されている                       |
+| 「429 rate_limited」が頻発       | テナント単位 20 req/min を超過 — UI 側でデバウンス必要                                              |
+| 翻訳が遅い                       | cache 未ヒット → 同じ原文 × 言語 × トーンを 2 回目以降叩くとキャッシュヒット                        |
 
 ## 11. 関連ファイル
 
 - 設定基盤: `src/lib/ai/automation/{fieldCatalog,policy}.ts`
+- 自動実行: `src/lib/ai/automation/{actionCatalog,orchestrator,inboundAuto,reviewAuto,certificateAuto,announcementAuto}.ts`
+- 店舗お知らせ: `shop_announcements` テーブル / `app/api/admin/shop-announcements` / `app/admin/shop-announcements` / `app/api/announcements/shop` (公開) / 顧客ポータル「お知らせ」タブ
+- フィードバックループ: `src/lib/ai/automation/feedbackLoop.ts` + `recommendations/route.ts`
+- LINE 受信配線: `src/lib/line/client.ts` (`handleWebhookEvents`)
 - AI ヘルパ: `src/lib/ai/*.ts` (17 モジュール)
 - 共通 util: `src/lib/ai/utils.ts` (clipText / clipZenkaku / sizeMultiplier)
 - Sentry: `src/lib/ai/sentryAiBreadcrumb.ts`
@@ -217,3 +307,9 @@ UI は「しばらくお待ちください」を表示し、リトライ可能�
 - **PR #448**: 自動入力基盤 + フィールドカタログ + 17 API ルート + UI 統合
 - **PR #449**: 統合テスト + 監査ログ + 利用集計 + GDPR エクスポート拡張
 - **PR (P3)**: 共通 util 抽出 + Sentry breadcrumb + 翻訳キャッシュ + 本ガイド
+- **PR (P4)**: イベント駆動 auto-actions + 壁3 ガードレール (field/action) + per-field confidence
+  - LINE 受信→自動抽出/自動起票 + 自動化レベル推薦 (feedbackLoop)
+  - review.auto_analyze (受領サインレビューの自動感情解析) 配線 + レビュー一覧 UI (/admin/reviews)
+  - certificate.auto_draft (案件完了時の証明書ドラフト自動生成、発行は人=壁3) 配線 + 案件画面表示
+  - 店舗お知らせ機能 (shop_announcements + CRUD + 管理 UI + 顧客ポータル多言語表示) と
+    translation.auto_translate 配線 → auto-actions 5/5 ライブ化

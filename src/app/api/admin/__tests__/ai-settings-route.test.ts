@@ -29,8 +29,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 vi.mock("@/lib/auth/checkRole", () => ({
   resolveCallerWithRole: mocks.resolveCaller,
-  requireMinRole: (caller: any, min: string) =>
-    min === "admin" ? ["admin", "owner"].includes(caller?.role) : true,
+  requireMinRole: (caller: any, min: string) => (min === "admin" ? ["admin", "owner"].includes(caller?.role) : true),
 }));
 vi.mock("@/lib/ai/automation/policy", async (orig) => {
   const real = (await orig()) as Record<string, unknown>;
@@ -65,6 +64,7 @@ beforeEach(() => {
     fieldPolicies: {},
     confidenceThreshold: 0.5,
     sourcePolicies: {},
+    autoActions: {},
     loadedFromDb: true,
   });
 });
@@ -181,7 +181,7 @@ describe("PUT /api/admin/settings/ai-automation", () => {
       planTier: "standard",
     });
     mocks.upsert.mockResolvedValue({
-      error: { code: "42P01", message: "relation \"tenant_ai_automation_settings\" does not exist" },
+      error: { code: "42P01", message: 'relation "tenant_ai_automation_settings" does not exist' },
     });
     const res = await PUT(req({ enabled: true, confidenceThreshold: 0.5 }));
     expect(res.status).toBe(200);
@@ -203,5 +203,52 @@ describe("PUT /api/admin/settings/ai-automation", () => {
     expect(body.persisted).toBe(true);
     expect(body.settings.enabled).toBe(false);
     expect(body.settings.confidenceThreshold).toBe(0.3);
+  });
+
+  it("persists sanitized auto-actions, dropping 壁3 / unknown / false", async () => {
+    mocks.resolveCaller.mockResolvedValue({
+      userId: "u1",
+      tenantId: "tenant-1",
+      role: "admin",
+      planTier: "standard",
+    });
+    const res = await PUT(
+      req({
+        autoActions: {
+          "inbound_message.auto_extract": true,
+          "certificate.auto_issue": true, // 壁3 -> dropped
+          "ghost.action": true, // unknown -> dropped
+          "review.auto_analyze": false, // false -> dropped
+        },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.settings.autoActions).toEqual({ "inbound_message.auto_extract": true });
+    expect(mocks.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks enabling auto-actions on plans below Standard (403, no write)", async () => {
+    mocks.resolveCaller.mockResolvedValue({
+      userId: "u1",
+      tenantId: "tenant-1",
+      role: "admin",
+      planTier: "starter",
+    });
+    const res = await PUT(req({ autoActions: { "inbound_message.auto_extract": true } }));
+    expect(res.status).toBe(403);
+    expect(mocks.upsert).not.toHaveBeenCalled();
+  });
+
+  it("does not plan-gate edits that touch only non-auto-action settings", async () => {
+    mocks.resolveCaller.mockResolvedValue({
+      userId: "u1",
+      tenantId: "tenant-1",
+      role: "admin",
+      planTier: "starter",
+    });
+    const res = await PUT(req({ confidenceThreshold: 0.6 }));
+    expect(res.status).toBe(200);
+    expect(mocks.upsert).toHaveBeenCalledTimes(1);
   });
 });

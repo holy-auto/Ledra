@@ -11,6 +11,7 @@ import {
   reservationDeleteSchema,
   reservationUpdateSchema,
 } from "@/lib/validations/reservation";
+import { maybeAutoDraftCertificateForReservation } from "@/lib/ai/automation/certificateAuto";
 
 export const dynamic = "force-dynamic";
 
@@ -311,6 +312,12 @@ export async function PUT(req: NextRequest) {
           reservationId: data.id,
         }),
       );
+    }
+
+    // 案件完了時: 証明書ドラフトを自動生成 (certificate.auto_draft が opt-in のテナントのみ)。
+    // 発行は必ず人が行う (壁3)。レスポンスを遅らせないよう fire-and-forget。
+    if (data.status === "completed") {
+      void maybeAutoDraftCertificateForReservation({ tenantId: caller.tenantId, reservationId: data.id });
     }
 
     return apiJson({ ok: true, reservation: data });

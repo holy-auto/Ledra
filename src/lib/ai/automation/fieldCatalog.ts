@@ -295,14 +295,16 @@ export const AUTOMATION_FIELDS: readonly AutomationFieldDef[] = [
     key: "vehicle.expiry_date",
     workflow: "vehicle",
     label: "車検満了日",
-    defaultPolicy: "suggest",
+    hint: "車検証 OCR の日付。金額・本人確認に関わらないため既定 auto",
+    defaultPolicy: "auto",
     sources: ["identity_documents"],
   },
   {
     key: "vehicle.fuel_type",
     workflow: "vehicle",
     label: "燃料種別",
-    defaultPolicy: "suggest",
+    hint: "車検証 OCR の派生値。既定 auto",
+    defaultPolicy: "auto",
     sources: ["identity_documents"],
   },
 
@@ -395,7 +397,8 @@ export const AUTOMATION_FIELDS: readonly AutomationFieldDef[] = [
     key: "job.estimated_duration",
     workflow: "job",
     label: "想定作業時間",
-    defaultPolicy: "suggest",
+    hint: "過去事例からの所要時間目安。金額ではないため既定 auto",
+    defaultPolicy: "auto",
     sources: ["similar_certificates"],
   },
   {
@@ -552,7 +555,8 @@ export const AUTOMATION_FIELDS: readonly AutomationFieldDef[] = [
     key: "review.topics",
     workflow: "review",
     label: "話題タグ",
-    defaultPolicy: "suggest",
+    hint: "レビュー本文からの自動タグ付け。注釈用途のため既定 auto",
+    defaultPolicy: "auto",
     sources: [],
   },
 
@@ -654,6 +658,43 @@ export const AUTOMATION_FIELD_BY_KEY: ReadonlyMap<string, AutomationFieldDef> = 
 );
 
 export const AUTOMATION_FIELD_KEYS: ReadonlySet<string> = new Set(AUTOMATION_FIELDS.map((f) => f.key));
+
+/**
+ * 壁3 (必ず人の確認を挟む) フィールド。
+ *
+ * 「金額確定」と「本人確認」に該当するフィールドは、テナントが設定で "auto" に
+ * しても自動反映してはいけない (誤った請求・誤った本人情報は実損 / コンプラ
+ * リスクに直結する)。`resolveFieldPolicy` がここに含まれるキーを必ず
+ * "auto" → "suggest" にクランプする (manual はそのまま)。つまりこれらの
+ * フィールドで AI が到達できる最大の自動化レベルは「提案 (要確認)」になる。
+ *
+ * - 低確信は confidenceThreshold によるデモートで別途担保される
+ * - 法的責任を伴う「証明書の発行」自体はフィールドではなくアクションなので
+ *   NEVER_AUTO_ACTIONS (actionCatalog.ts) 側で担保する
+ */
+export const NEVER_AUTO_FIELDS: ReadonlySet<string> = new Set<string>([
+  // ── 金額確定 (money-final) ──
+  "job.estimated_price",
+  "invoice.items",
+  "invoice.tax_rate",
+  "quote.items",
+  "menu.recommended_price",
+  "accounting.category",
+  "inventory.pos_deduction",
+  // ── 本人確認 (identity) ──
+  "customer.name",
+  "customer.name_kana",
+  "customer.birth_date",
+  "customer.phone",
+  "customer.email",
+  "customer.address",
+  "vehicle.vin",
+]);
+
+/** 壁3 フィールドか (金額確定 / 本人確認 — 必ず確認必須)。 */
+export function isNeverAutoField(key: unknown): boolean {
+  return typeof key === "string" && NEVER_AUTO_FIELDS.has(key);
+}
 
 export const AUTOMATION_SOURCE_BY_KEY: ReadonlyMap<AutomationSourceKey, AutomationSourceDef> = new Map(
   AUTOMATION_SOURCES.map((s) => [s.key, s]),

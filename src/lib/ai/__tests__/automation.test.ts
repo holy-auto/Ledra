@@ -4,9 +4,11 @@ import {
   AUTOMATION_FIELD_BY_KEY,
   AUTOMATION_FIELD_KEYS,
   AUTOMATION_SOURCES,
+  NEVER_AUTO_FIELDS,
   isFieldPolicy,
   isKnownFieldKey,
   isKnownSourceKey,
+  isNeverAutoField,
   sanitizeFieldPolicies,
   sanitizeSourcePolicies,
 } from "../automation/fieldCatalog";
@@ -157,9 +159,7 @@ describe("isSourceAllowed", () => {
   });
 
   it("returns false when AI is globally disabled", () => {
-    expect(
-      isSourceAllowed({ ...DEFAULT_AI_AUTOMATION_SETTINGS, enabled: false }, "photos"),
-    ).toBe(false);
+    expect(isSourceAllowed({ ...DEFAULT_AI_AUTOMATION_SETTINGS, enabled: false }, "photos")).toBe(false);
   });
 });
 
@@ -255,5 +255,87 @@ describe("filterVehicleOcrByPolicy", () => {
     expect(out.extracted.size_class).toBeNull();
     // dimensions have no field mapping, they pass through as quality data
     expect(out.extracted.length_mm).toBe(4575);
+  });
+});
+
+describe("壁3 (NEVER_AUTO_FIELDS) clamp", () => {
+  it("flags money / identity fields as never-auto", () => {
+    expect(isNeverAutoField("invoice.items")).toBe(true);
+    expect(isNeverAutoField("job.estimated_price")).toBe(true);
+    expect(isNeverAutoField("customer.phone")).toBe(true);
+    expect(isNeverAutoField("vehicle.vin")).toBe(true);
+    // 非壁3
+    expect(isNeverAutoField("vehicle.maker")).toBe(false);
+    expect(isNeverAutoField("certificate.title")).toBe(false);
+    expect(isNeverAutoField("nope")).toBe(false);
+  });
+
+  it("clamps an explicit auto on a 壁3 field down to suggest", () => {
+    for (const key of NEVER_AUTO_FIELDS) {
+      const settings = {
+        ...DEFAULT_AI_AUTOMATION_SETTINGS,
+        fieldPolicies: { [key]: "auto" as const },
+      };
+      // confidence を高くしても auto にはならない (必ず確認必須)
+      expect(resolveFieldPolicy(settings, key, 0.99)).toBe("suggest");
+    }
+  });
+
+  it("still allows manual on a 壁3 field (most restrictive wins)", () => {
+    const settings = {
+      ...DEFAULT_AI_AUTOMATION_SETTINGS,
+      fieldPolicies: { "invoice.items": "manual" as const },
+    };
+    expect(resolveFieldPolicy(settings, "invoice.items")).toBe("manual");
+  });
+
+  it("does not touch non-壁3 auto fields", () => {
+    // vehicle.maker は auto 既定のまま (壁3 ではない)
+    expect(resolveFieldPolicy(DEFAULT_AI_AUTOMATION_SETTINGS, "vehicle.maker", 0.99)).toBe("auto");
+  });
+});
+
+describe("filterDraftByPolicy — per-field confidence", () => {
+  const base: DraftCertificateResult = {
+    title: "コーティング施工",
+    description: "下地処理 → コーティング",
+    materials: [{ name: "9H" }],
+    warrantyCandidates: ["3年"],
+    workAreas: ["ルーフ"],
+    cautions: "",
+    confidence: 0.95,
+    missingInfo: [],
+  };
+
+  it("demotes only the low-confidence field, keeping confident ones auto", () => {
+    const settings = {
+      ...DEFAULT_AI_AUTOMATION_SETTINGS,
+      // title/description を auto に、閾値 0.7
+      fieldPolicies: {
+        "certificate.title": "auto" as const,
+        "certificate.description": "auto" as const,
+      },
+      confidenceThreshold: 0.7,
+    };
+    const draft: DraftCertificateResult = {
+      ...base,
+      confidence: 0.95,
+      fieldConfidence: { title: 0.9, description: 0.4 }, // description だけ低い
+    };
+    const out = filterDraftByPolicy(draft, settings);
+    expect(out.policies["certificate.title"]).toBe("auto"); // 高確信 → auto 維持
+    expect(out.policies["certificate.description"]).toBe("suggest"); // 低確信 → デモート
+  });
+
+  it("falls back to draft-level confidence when fieldConfidence is absent", () => {
+    const settings = {
+      ...DEFAULT_AI_AUTOMATION_SETTINGS,
+      fieldPolicies: { "certificate.title": "auto" as const },
+      confidenceThreshold: 0.7,
+    };
+    const low = filterDraftByPolicy({ ...base, confidence: 0.5 }, settings);
+    expect(low.policies["certificate.title"]).toBe("suggest");
+    const high = filterDraftByPolicy({ ...base, confidence: 0.95 }, settings);
+    expect(high.policies["certificate.title"]).toBe("auto");
   });
 });
