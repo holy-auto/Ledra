@@ -90,11 +90,15 @@ export function useTerminal() {
 
   // Tap to Pay 用: discoverReaders 完了 → onUpdateDiscoveredReaders で
   // 受け取った最初のリーダーを Promise で同期化するための ref
-  const tapToPayDiscoveryRef = useRef<{
+  //
+  // 型を明示する: setTimeout 戻り型を React Native / Node で揃え、
+  // current = null 代入の繰り返しで TS が never に narrow するのを防ぐ。
+  type DiscoveryRefShape = {
     resolve: (reader: Reader.Type) => void;
     reject: (err: Error) => void;
     timeoutId: ReturnType<typeof setTimeout> | null;
-  } | null>(null);
+  };
+  const tapToPayDiscoveryRef = useRef<DiscoveryRefShape | null>(null);
 
   const {
     initialize,
@@ -118,8 +122,11 @@ export function useTerminal() {
     },
     // Apple Tap to Pay 要件 3.9.1: 設定進捗インジケータ
     // PaymentCardReader.Event.updateProgress 相当
+    // SDK は progress を string で渡してくるが store は number | null。
+    // 0.00〜1.00 の文字列を float にパースして渡し、NaN は null 扱いにする。
     onDidReportReaderSoftwareUpdateProgress: (progress) => {
-      store.setConfigurationProgress(progress);
+      const n = typeof progress === "string" ? parseFloat(progress) : Number(progress);
+      store.setConfigurationProgress(Number.isFinite(n) ? n : null);
     },
   });
 
@@ -240,7 +247,7 @@ export function useTerminal() {
 
       if (discoverError) {
         // discoverReaders が同期的にエラーを返した → ref / timeout を片付ける
-        const ref = tapToPayDiscoveryRef.current;
+        const ref = tapToPayDiscoveryRef.current as DiscoveryRefShape | null;
         if (ref?.timeoutId) clearTimeout(ref.timeoutId);
         tapToPayDiscoveryRef.current = null;
         store.setReaderStatus("disconnected");
@@ -276,7 +283,7 @@ export function useTerminal() {
       return true;
     } catch (e) {
       // タイムアウト / その他例外
-      const ref = tapToPayDiscoveryRef.current;
+      const ref = tapToPayDiscoveryRef.current as DiscoveryRefShape | null;
       if (ref?.timeoutId) clearTimeout(ref.timeoutId);
       tapToPayDiscoveryRef.current = null;
       store.setReaderStatus("disconnected");
@@ -346,7 +353,8 @@ export function useTerminal() {
     }: {
       amountJpy: number;
       description: string;
-      reservationId: string;
+      /** 予約と紐付けない walk-in 決済では undefined を許可 */
+      reservationId?: string;
       storeId: string;
       tenantId: string;
     }) => {
