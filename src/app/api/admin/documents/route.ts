@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
@@ -424,15 +424,24 @@ export async function PUT(req: NextRequest) {
     }
 
     // 確定 (draft→sent) の瞬間に、opt-in 済みテナントでは顧客へ自動送付する。
-    // fire-and-forget: レスポンスを遅らせない / 失敗してもステータス更新は成功扱い。
+    // after(): レスポンス送出後も serverless 実行を保証して送付を完走させる。
+    // 素の fire-and-forget だと Vercel 等でインスタンスが凍結/終了し、claim 作成 /
+    // Stripe セッション / 外部送信の途中で送付が欠落しうる。ステータス更新自体は
+    // 既にコミット済みなのでレスポンスは成功扱いのまま。
     if (priorStatus === "draft" && data?.status === "sent") {
       const baseUrl = resolveBaseUrl({ req });
-      void maybeAutoSendDocumentOnConfirm({
-        tenantId: caller.tenantId,
-        documentId: id,
-        actorUserId: caller.userId,
-        baseUrl,
-      }).catch(() => {});
+      after(async () => {
+        try {
+          await maybeAutoSendDocumentOnConfirm({
+            tenantId: caller.tenantId,
+            documentId: id,
+            actorUserId: caller.userId,
+            baseUrl,
+          });
+        } catch {
+          // maybeAutoSendDocumentOnConfirm は内部で握り潰すが、二重で保護する。
+        }
+      });
     }
 
     return apiJson({ ok: true, document: data });

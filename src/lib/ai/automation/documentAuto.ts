@@ -23,7 +23,7 @@ import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { DOC_TYPES, type DocType } from "@/types/document";
 import { resolveBaseUrl } from "@/lib/url";
 import { sendDocumentEmail } from "@/lib/documents/share-email";
-import { sendDocumentLink, sendCustomerLineText } from "@/lib/line/client";
+import { sendDocumentLink } from "@/lib/line/client";
 import { getStripeClient } from "@/lib/stripe/client";
 import { createInvoicePaymentLink } from "@/lib/stripe/invoicePaymentLink";
 import { logger } from "@/lib/logger";
@@ -166,74 +166,52 @@ export async function maybeAutoSendDocumentOnConfirm(params: MaybeAutoSendDocume
     const paymentEmailMessage = paymentUrl
       ? `以下のリンクからクレジットカードでお支払いいただけます:\n${paymentUrl}`
       : undefined;
-    const paymentLineBody = paymentUrl
-      ? [
-          `お支払いのご案内です。`,
-          `金額: ¥${totalYen.toLocaleString("ja-JP")}`,
-          ``,
-          `以下のリンクからクレジットカードでお支払いいただけます:`,
-          paymentUrl,
-          ``,
-          `※リンクは 24 時間有効です。`,
-        ].join("\n")
-      : null;
 
-    // docDelivered: 書類が届いたか。
-    // paymentDelivered: null=決済リンク対象外 / boolean=決済リンク送信結果。
+    // LINE は書類概要 + 決済リンクを 1 通にまとめる (sendDocumentLink が doc 種別/番号/
+    // 金額を付与し、message に決済リンクを載せる)。送信が 1 回なので「書類は届いたが
+    // 決済リンクだけ失敗」という分裂状態が起きず、結果 (delivered) も 1 つで判定できる。
+    const lineMessage = [
+      `${recipientName} 様`,
+      `${docLabel}をお送りいたします。`,
+      paymentUrl ? `` : null,
+      paymentUrl ? `お支払いは以下のリンクからどうぞ:` : null,
+      paymentUrl ? paymentUrl : null,
+      paymentUrl ? `※リンクは 24 時間有効です。` : null,
+    ]
+      .filter((l): l is string => l !== null)
+      .join("\n");
+
     let usedChannel: Channel = lineUserId ? "line" : "email";
     let usedRecipient = lineUserId ?? (email as string);
-    let docDelivered = false;
-    let paymentDelivered: boolean | null = paymentUrl ? false : null;
-
-    const deliverByEmail = async (): Promise<void> => {
-      usedChannel = "email";
-      usedRecipient = email as string;
-      docDelivered = await sendDocumentEmail({
-        to: email as string,
-        docType: docLabel,
-        docNumber,
-        totalAmount: totalYen,
-        recipientName,
-        senderName,
-        // メール本文に決済リンクを同梱するため、書類が届けば決済リンクも届く。
-        message: paymentEmailMessage,
-      });
-      paymentDelivered = paymentUrl ? docDelivered : null;
-    };
+    let delivered = false;
 
     if (lineUserId) {
-      docDelivered = await sendDocumentLink({
+      delivered = await sendDocumentLink({
         tenantId,
         lineUserId,
         docType: docLabel,
         docNumber,
         totalAmount: totalYen,
-        message: `${recipientName} 様\n${docLabel}をお送りいたします。`,
+        message: lineMessage,
       });
-      // 決済リンク (請求書のみ)。送信結果を必ず反映する。
-      if (docDelivered && paymentLineBody) {
-        paymentDelivered = await sendCustomerLineText({
-          tenantId,
-          customerId: customer.id as string,
-          lineUserId,
-          sentByUserId: params.actorUserId ?? null,
-          body: paymentLineBody,
-        });
-      }
-      // LINE の書類送信が失敗したら、メールアドレスがあればメールにフォールバック。
-      if (!docDelivered && email) {
-        await deliverByEmail();
-      }
-    } else if (email) {
-      await deliverByEmail();
+    }
+    // LINE 未連携、または LINE 送信失敗時はメールにフォールバック (メールアドレスがあれば)。
+    // メール本文にも決済リンクを同梱するため、1 通で書類 + 決済が届く。
+    if (!delivered && email) {
+      usedChannel = "email";
+      usedRecipient = email;
+      delivered = await sendDocumentEmail({
+        to: email,
+        docType: docLabel,
+        docNumber,
+        totalAmount: totalYen,
+        recipientName,
+        senderName,
+        message: paymentEmailMessage,
+      });
     }
 
-    const delivered = docDelivered && (paymentDelivered === null ? true : paymentDelivered);
-    const errorMessage = delivered
-      ? null
-      : !docDelivered
-        ? "書類の自動送付に失敗しました"
-        : "決済リンクの送付に失敗しました";
+    const errorMessage = delivered ? null : "自動送付に失敗しました";
 
     // 予約行を確定 (sent) / 失敗時は claim を解放して再確定でのリトライを許す。
     try {
@@ -289,9 +267,7 @@ export async function maybeAutoSendDocumentOnConfirm(params: MaybeAutoSendDocume
       docType,
       channel: usedChannel,
       delivered,
-      doc_delivered: docDelivered,
       payment_link: Boolean(paymentUrl),
-      payment_delivered: paymentDelivered,
     });
   } catch (e) {
     logger.warn("auto_send_document_failed", {
