@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
@@ -7,6 +7,8 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { parsePagination } from "@/lib/api/pagination";
 import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { documentCreateSchema, documentUpdateSchema, documentDeleteSchema } from "@/lib/validations/document";
+import { resolveBaseUrl } from "@/lib/url";
+import { maybeAutoSendDocumentOnConfirm } from "@/lib/ai/automation/documentAuto";
 
 export const dynamic = "force-dynamic";
 
@@ -354,6 +356,18 @@ export async function PUT(req: NextRequest) {
       }
     }
 
+    // 「確定 (draft→sent)」を検出するため、ステータス更新時は変更前の状態を控える。
+    let priorStatus: string | null = null;
+    if (body.status === "sent") {
+      const { data: prior } = await supabase
+        .from("documents")
+        .select("status")
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
+      priorStatus = (prior?.status as string | null) ?? null;
+    }
+
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
     if (body.status !== undefined) updates.status = body.status;
@@ -407,6 +421,27 @@ export async function PUT(req: NextRequest) {
 
     if (error) {
       return apiInternalError(error, "documents PUT");
+    }
+
+    // 確定 (draft→sent) の瞬間に、opt-in 済みテナントでは顧客へ自動送付する。
+    // after(): レスポンス送出後も serverless 実行を保証して送付を完走させる。
+    // 素の fire-and-forget だと Vercel 等でインスタンスが凍結/終了し、claim 作成 /
+    // Stripe セッション / 外部送信の途中で送付が欠落しうる。ステータス更新自体は
+    // 既にコミット済みなのでレスポンスは成功扱いのまま。
+    if (priorStatus === "draft" && data?.status === "sent") {
+      const baseUrl = resolveBaseUrl({ req });
+      after(async () => {
+        try {
+          await maybeAutoSendDocumentOnConfirm({
+            tenantId: caller.tenantId,
+            documentId: id,
+            actorUserId: caller.userId,
+            baseUrl,
+          });
+        } catch {
+          // maybeAutoSendDocumentOnConfirm は内部で握り潰すが、二重で保護する。
+        }
+      });
     }
 
     return apiJson({ ok: true, document: data });

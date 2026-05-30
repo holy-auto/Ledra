@@ -13,6 +13,7 @@ import {
   shouldAutoAnalyzeReview,
   shouldAutoDraftCertificate,
   shouldAutoExtractInbound,
+  shouldAutoSendDocument,
 } from "../automation/orchestrator";
 
 describe("actionCatalog", () => {
@@ -224,5 +225,51 @@ describe("certificate auto-draft / auto-issue", () => {
         autoActions: { "certificate.auto_issue": true },
       }),
     ).toBe(false);
+  });
+});
+
+describe("shouldAutoSendDocument (確定→自動送付)", () => {
+  const invoiceOn = {
+    ...DEFAULT_AI_AUTOMATION_SETTINGS,
+    autoActions: { "invoice.auto_send_on_confirm": true },
+  };
+  const quoteOn = {
+    ...DEFAULT_AI_AUTOMATION_SETTINGS,
+    autoActions: { "quote.auto_send_on_confirm": true },
+  };
+
+  it("auto-sends invoices (incl. consolidated) only when opted in", () => {
+    expect(shouldAutoSendDocument(invoiceOn, "invoice")).toBe(true);
+    expect(shouldAutoSendDocument(invoiceOn, "consolidated_invoice")).toBe(true);
+    // 見積の opt-in は請求書には効かない
+    expect(shouldAutoSendDocument(invoiceOn, "estimate")).toBe(false);
+    // opt-in 無しは false
+    expect(shouldAutoSendDocument(DEFAULT_AI_AUTOMATION_SETTINGS, "invoice")).toBe(false);
+  });
+
+  it("auto-sends quotes only when opted in", () => {
+    expect(shouldAutoSendDocument(quoteOn, "estimate")).toBe(true);
+    expect(shouldAutoSendDocument(quoteOn, "invoice")).toBe(false);
+    expect(shouldAutoSendDocument(DEFAULT_AI_AUTOMATION_SETTINGS, "estimate")).toBe(false);
+  });
+
+  it("returns false for unrelated doc types", () => {
+    expect(shouldAutoSendDocument(invoiceOn, "receipt")).toBe(false);
+    expect(shouldAutoSendDocument(quoteOn, "delivery_note")).toBe(false);
+  });
+
+  it("is gated by the global master switch", () => {
+    expect(
+      shouldAutoSendDocument({ ...invoiceOn, enabled: false }, "invoice"),
+    ).toBe(false);
+  });
+
+  it("壁3: ungated auto_send keys are still never auto", () => {
+    const sneaky = {
+      ...DEFAULT_AI_AUTOMATION_SETTINGS,
+      autoActions: { "invoice.auto_send": true, "quote.auto_send": true },
+    };
+    expect(resolveAutoAction(sneaky, "invoice.auto_send")).toBe(false);
+    expect(resolveAutoAction(sneaky, "quote.auto_send")).toBe(false);
   });
 });

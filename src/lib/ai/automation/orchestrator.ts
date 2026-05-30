@@ -142,3 +142,29 @@ export function canAutoIssueCertificate(settings: AiAutomationSettings): boolean
 export function shouldAutoAnalyzeReview(settings: AiAutomationSettings): boolean {
   return resolveAutoAction(settings, "review.auto_analyze");
 }
+
+// ─────────────────────────────────────────────
+// 帳票 (請求書 / 見積書) の確定 → 自動送付
+// ─────────────────────────────────────────────
+
+/**
+ * 「確定 (人が draft→sent に変更)」した帳票を顧客へ自動送付してよいか。
+ *
+ * 壁3 との整合:
+ *   - 金額/内容の **確定そのもの** は人が行う (draft→sent は人の操作)。
+ *     ここで自動化するのは「確定後の送付」のみ。
+ *   - 人の確認を一切挟まない無ゲート送付 (`invoice.auto_send` / `quote.auto_send`) は
+ *     NEVER_AUTO_ACTIONS のままで、常に false。
+ *
+ * doc_type に応じて opt-in アクションキーを引き当てて判定する。
+ * 送付対象でない doc_type (見積/請求以外) は常に false。
+ */
+export function shouldAutoSendDocument(settings: AiAutomationSettings, docType: string): boolean {
+  if (docType === "invoice" || docType === "consolidated_invoice") {
+    return resolveAutoAction(settings, "invoice.auto_send_on_confirm");
+  }
+  if (docType === "estimate") {
+    return resolveAutoAction(settings, "quote.auto_send_on_confirm");
+  }
+  return false;
+}

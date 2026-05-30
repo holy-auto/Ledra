@@ -73,6 +73,8 @@ export default function IntakeClient({ shortId }: { shortId: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
   const [done, setDone] = useState<null | "auto_completed" | "needs_review">(null);
+  // 送信前に「お客様自身が内容を確認して確定」するステップ。
+  const [reviewing, setReviewing] = useState(false);
 
   // OCR state
   const [ocrOpen, setOcrOpen] = useState(false);
@@ -146,6 +148,16 @@ export default function IntakeClient({ shortId }: { shortId: string }) {
     setOcrOpen(false);
     setOcrFile(null);
     setOcrResult(null);
+  }
+
+  // 「確認画面へ」: 必須チェックのみ行い、確認ステップに進む (まだ送信しない)。
+  function proceedToReview() {
+    if (!form.name.trim()) {
+      setSubmitErr("お名前は必須です");
+      return;
+    }
+    setSubmitErr(null);
+    setReviewing(true);
   }
 
   async function submit() {
@@ -249,6 +261,59 @@ export default function IntakeClient({ shortId }: { shortId: string }) {
 
   const inputCls =
     "w-full rounded-xl border border-border-default bg-surface px-3 py-2.5 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-accent/30";
+
+  // 確認ステップ: 入力 (OCR 含む) した内容をお客様自身に確認してもらい、確定で送信する。
+  if (reviewing) {
+    return (
+      <main className="mx-auto max-w-lg p-6 font-sans space-y-4">
+        <div>
+          <h1 className="text-xl font-bold text-primary">入力内容のご確認</h1>
+          <p className="mt-2 text-xs text-muted">
+            以下の内容で登録します。お間違いがないかご確認のうえ、「この内容で登録する」を押してください。
+          </p>
+        </div>
+
+        <section className="rounded-2xl border border-border-default bg-surface px-4 py-3 text-sm">
+          <Row label="お名前" v={form.name || undefined} />
+          <Row label="フリガナ" v={form.name_kana || undefined} />
+          <Row label="生年月日" v={form.birth_date || undefined} />
+          <Row label="郵便番号" v={form.postal_code || undefined} />
+          <Row label="住所" v={form.address || undefined} />
+          <Row label="電話番号" v={form.phone || undefined} />
+          <Row label="メール" v={form.email || undefined} />
+          <Row label="ご要望・備考" v={form.note || undefined} />
+        </section>
+
+        {submitErr && (
+          <div className="rounded-xl border border-danger-border bg-danger-bg px-3 py-2 text-sm text-danger-text">
+            {submitErr}
+          </div>
+        )}
+
+        <div className="flex gap-3">
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => {
+              setSubmitErr(null);
+              setReviewing(false);
+            }}
+            className="flex-1 rounded-xl border border-border-default bg-surface px-3 py-3 text-sm font-semibold text-primary disabled:opacity-50"
+          >
+            修正する
+          </button>
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={submit}
+            className="flex-[2] rounded-xl bg-primary px-3 py-3 text-sm font-semibold text-on-primary disabled:opacity-50"
+          >
+            {submitting ? "登録中…" : "この内容で登録する"}
+          </button>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto max-w-lg p-6 font-sans space-y-4">
@@ -427,10 +492,10 @@ export default function IntakeClient({ shortId }: { shortId: string }) {
       <button
         type="button"
         disabled={submitting || !form.name.trim()}
-        onClick={submit}
+        onClick={proceedToReview}
         className="w-full rounded-xl bg-primary px-3 py-3 text-sm font-semibold text-on-primary disabled:opacity-50"
       >
-        {submitting ? "送信中…" : "送信する"}
+        内容を確認する
       </button>
 
       <p className="text-xs text-muted">
