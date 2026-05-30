@@ -10,6 +10,7 @@ import {
   canAutoIssueCertificate,
   decideInboundCommit,
   isValidYmd,
+  shouldAutoAnalyzeReview,
   shouldAutoDraftCertificate,
   shouldAutoExtractInbound,
 } from "../automation/orchestrator";
@@ -109,6 +110,28 @@ describe("shouldAutoExtractInbound", () => {
         autoActions: { "inbound_message.auto_extract": true },
       }),
     ).toBe(true);
+  });
+});
+
+describe("shouldAutoAnalyzeReview", () => {
+  it("follows the opt-in flag", () => {
+    expect(shouldAutoAnalyzeReview(DEFAULT_AI_AUTOMATION_SETTINGS)).toBe(false);
+    expect(
+      shouldAutoAnalyzeReview({
+        ...DEFAULT_AI_AUTOMATION_SETTINGS,
+        autoActions: { "review.auto_analyze": true },
+      }),
+    ).toBe(true);
+  });
+
+  it("is gated by the global master switch", () => {
+    expect(
+      shouldAutoAnalyzeReview({
+        ...DEFAULT_AI_AUTOMATION_SETTINGS,
+        enabled: false,
+        autoActions: { "review.auto_analyze": true },
+      }),
+    ).toBe(false);
   });
 });
 

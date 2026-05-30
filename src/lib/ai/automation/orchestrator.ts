@@ -121,3 +121,16 @@ export function shouldAutoDraftCertificate(settings: AiAutomationSettings, ctx: 
 export function canAutoIssueCertificate(settings: AiAutomationSettings): boolean {
   return resolveAutoAction(settings, "certificate.auto_issue");
 }
+
+// ─────────────────────────────────────────────
+// レビュー (受領サイン後の顧客レビュー)
+// ─────────────────────────────────────────────
+
+/**
+ * レビュー受信時に感情分析を自動実行してよいか。
+ * 解析結果は注釈 (sentiment / summary / topics) としてのみ保存され、
+ * 金額・本人確認・法的確定には関与しない (非壁3)。
+ */
+export function shouldAutoAnalyzeReview(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "review.auto_analyze");
+}

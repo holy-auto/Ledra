@@ -18,6 +18,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiError, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { logger } from "@/lib/logger";
+import { maybeAutoAnalyzeReview } from "@/lib/ai/automation/reviewAuto";
 
 export const dynamic = "force-dynamic";
 
@@ -155,6 +156,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       }
       logger.warn("[sign/review] insert failed", { token: token.slice(0, 8), err: insertErr.message });
       return apiInternalError(insertErr, "sign review POST: insert");
+    }
+
+    // AI 自動解析 (review.auto_analyze が opt-in のテナントのみ実体が動く / 既定 OFF)。
+    // 顧客向けレスポンスを遅らせないよう fire-and-forget。内部で fail-soft (throw しない)。
+    if (parsed.data.comment) {
+      void maybeAutoAnalyzeReview({
+        tenantId: session.tenant_id,
+        reviewId: (inserted?.id as string | undefined) ?? null,
+        comment: parsed.data.comment,
+      });
     }
 
     // 高評価で Google review URL がある場合は返す (4-5 星)
