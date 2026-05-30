@@ -10,7 +10,7 @@ Ledra のワークフロー (証明書 / 案件 / 請求 / 顧客 / 保険 case 
 切り替えられる仕組み。
 
 - **目的**: 入力工数の削減 + コスト管理 + コンプライアンス
-- **規模**: 18 API ルート、30+ フィールド、16 ワークフロー、5 auto-actions (+ 壁3 で 6 アクションは自動化禁止)
+- **規模**: 20+ API ルート、30+ フィールド、16 ワークフロー、5 auto-actions (全 5 ライブ配線済み / 壁3 で 6 アクションは自動化禁止)
 - **設定 UI**: `/admin/settings/ai-automation` (admin 以上が編集)
 - **運営ダッシュボード**: `/admin/platform/operations` の「AI 利用状況」セクション
 
@@ -109,7 +109,7 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 | `inbound_message.auto_create_reservation` | 高確信 + 既知顧客 + 有効日 + new_reservation のとき予約を自動起票    | OFF  | ✅ LINE webhook                |
 | `certificate.auto_draft`                  | 案件完了 + 車両ありで証明書ドラフトを自動生成 (発行なし)             | OFF  | ✅ 予約完了 (PUT reservations) |
 | `review.auto_analyze`                     | レビュー受信時に感情分析を自動付与                                   | OFF  | ✅ 受領サインレビュー POST     |
-| `translation.auto_translate`              | お知らせ保存時に多言語へ自動翻訳                                     | OFF  | ⏳ 未配線 (下記)               |
+| `translation.auto_translate`              | 店舗お知らせ保存時に多言語へ自動翻訳                                 | OFF  | ✅ 店舗お知らせ保存 (POST/PUT) |
 
 > **certificate.auto_draft の配線**: 予約 (案件) が `completed` になった時点で
 > `maybeAutoDraftCertificateForReservation` (fire-and-forget) が走り、車両 + 過去事例から
@@ -121,12 +121,13 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 > レビューを受信した時点で `maybeAutoAnalyzeReview` が走り、`signature_reviews` の
 > AI 列 (sentiment/summary/topics/actionable/confidence) に保存する。
 >
-> **translation.auto_translate が未配線の理由**: アプリ内に「テナント店舗お知らせ」の
-> データモデルと作成・更新ルートが存在しないため。`announcements` は tenant_id を持たない
-> プラットフォーム共通お知らせでアプリからの書き込み経路が無く、`agent_announcements` は
-> 対象読者が異なり翻訳列も無い。配線には先に店舗お知らせ機能 (テナント別テーブル・作成更新
-> ルート・顧客向け表示) が要る。実装後は translations 列追加と保存時の translateText 呼び出し
-> だけで済む。アクション定義・トグル・推薦・キャッシュ基盤は実装済み。
+> **translation.auto_translate の配線**: 新設の「店舗お知らせ」機能
+> (`shop_announcements` テーブル + `/api/admin/shop-announcements` CRUD + 管理 UI
+> `/admin/shop-announcements`) で、お知らせの作成 / 更新時に
+> `maybeAutoTranslateShopAnnouncement` (fire-and-forget) が走り、title/body を
+> 英・中・越へ翻訳して `shop_announcements.translations` に保存する (translationCache 活用)。
+> 顧客は `/customer/[tenant]` の「お知らせ」タブで言語を切り替えて閲覧でき、公開 API は
+> `GET /api/announcements/shop?tenant=<slug>&lang=<ja|en|zh|vi>`。原文 (日本語) が常に正。
 
 ### 4.5.1 LINE 受信 → 自動処理パイプライン
 
@@ -288,7 +289,8 @@ UI は「しばらくお待ちください」を表示し、リトライ可能�
 ## 11. 関連ファイル
 
 - 設定基盤: `src/lib/ai/automation/{fieldCatalog,policy}.ts`
-- 自動実行: `src/lib/ai/automation/{actionCatalog,orchestrator,inboundAuto,reviewAuto,certificateAuto}.ts`
+- 自動実行: `src/lib/ai/automation/{actionCatalog,orchestrator,inboundAuto,reviewAuto,certificateAuto,announcementAuto}.ts`
+- 店舗お知らせ: `shop_announcements` テーブル / `app/api/admin/shop-announcements` / `app/admin/shop-announcements` / `app/api/announcements/shop` (公開) / 顧客ポータル「お知らせ」タブ
 - フィードバックループ: `src/lib/ai/automation/feedbackLoop.ts` + `recommendations/route.ts`
 - LINE 受信配線: `src/lib/line/client.ts` (`handleWebhookEvents`)
 - AI ヘルパ: `src/lib/ai/*.ts` (17 モジュール)
@@ -307,6 +309,7 @@ UI は「しばらくお待ちください」を表示し、リトライ可能�
 - **PR (P3)**: 共通 util 抽出 + Sentry breadcrumb + 翻訳キャッシュ + 本ガイド
 - **PR (P4)**: イベント駆動 auto-actions + 壁3 ガードレール (field/action) + per-field confidence
   - LINE 受信→自動抽出/自動起票 + 自動化レベル推薦 (feedbackLoop)
-  - review.auto_analyze (受領サインレビューの自動感情解析) 配線
-  - certificate.auto_draft (案件完了時の証明書ドラフト自動生成、発行は人=壁3) 配線
-  - translation.auto_translate は店舗お知らせ機能の不在によりスキャフォールドのまま
+  - review.auto_analyze (受領サインレビューの自動感情解析) 配線 + レビュー一覧 UI (/admin/reviews)
+  - certificate.auto_draft (案件完了時の証明書ドラフト自動生成、発行は人=壁3) 配線 + 案件画面表示
+  - 店舗お知らせ機能 (shop_announcements + CRUD + 管理 UI + 顧客ポータル多言語表示) と
+    translation.auto_translate 配線 → auto-actions 5/5 ライブ化
