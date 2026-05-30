@@ -157,3 +157,18 @@
 # トランザクションで包むため CONCURRENTLY を使うには別ファイル分割が必要だが、
 # 既存行への影響が無視できる本ケースでは分割の運用負荷が見合わない。
 20260503000000_academy_video_provider.sql
+
+# ── 2026-05 バックフィル (PR #452 フォローアップ) ──────────────────────────
+# 以下 4 件はゼロダウンタイム方針の確立後に追加されたが、PR #448〜#450 で本番へ
+# 既に適用済みのため再実行が不可能。原文 SQL を書き換えても再適用されず desync
+# リスクを生むだけなので、ファイル先頭ポリシーの「再実行不能ゆえ exempt」と同じ
+# 扱いで allowlist に登録する (lint-migrations.js が案内する不可避ケースの例外)。
+# 新規マイグレーションは引き続き scripts/lint-migrations.js に準拠すること。
+#   - square_sync_runs: ADD CONSTRAINT ... CHECK without NOT VALID ×2
+#   - vehicle_passports_meta_anchor: CREATE INDEX (非 CONCURRENTLY) + CHECK
+#   - customer_intake_two_stage: CREATE INDEX (非 CONCURRENTLY) + CHECK ×2
+#   - intake_validation_issues: CREATE INDEX (非 CONCURRENTLY)
+20260522000000_square_sync_runs_align_with_code.sql
+20260526000001_vehicle_passports_meta_anchor.sql
+20260527000002_customer_intake_two_stage.sql
+20260527000003_intake_validation_issues.sql
