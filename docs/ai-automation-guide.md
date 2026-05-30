@@ -135,9 +135,12 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 > `documents` テーブル (status: draft→sent→…) で管理され、`PUT /api/admin/documents` で
 > 人がステータスを **draft→sent (= 確定/送付済み)** に変更した瞬間に
 > `maybeAutoSendDocumentOnConfirm` (`documentAuto.ts`, fire-and-forget) が走る。
-> 顧客のチャネルを自動選択 (LINE 連携あり→LINE / 無ければメール) し、請求書は
-> **Stripe Connect 決済リンク + 書類**、見積書は **書類リンク** を送付して
-> `document_share_log` に記録する (`idempotency_key=auto-confirm:<id>` で二重送付防止)。
+> 顧客のチャネルを自動選択 (LINE 連携あり→LINE / 無ければメール、**LINE 送信失敗時は
+> メールにフォールバック**) し、請求書は **Stripe Connect 決済リンク + 書類**、見積書は
+> **書類リンク** を送付して `document_share_log` に記録する。送付前に
+> `idempotency_key=auto-confirm:<id>` で **'pending' 行をアトミックに予約**
+> (部分 UNIQUE インデックス `uq_doc_share_log_auto_confirm`) し、draft→sent の
+> レース (ダブルクリック等) でも二重送付しない。失敗時は予約を解放してリトライ可能。
 > **金額/内容の「確定」そのものは必ず人 (draft→sent は人の操作) = 壁3 を維持**。
 > 自動課金 (payment.auto_charge) は行わず、決済はあくまで顧客の操作。
 

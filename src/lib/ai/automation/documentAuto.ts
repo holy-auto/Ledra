@@ -90,28 +90,45 @@ export async function maybeAutoSendDocumentOnConfirm(params: MaybeAutoSendDocume
       .maybeSingle();
     if (!customer) return;
 
-    const channel: Channel | null = customer.line_user_id
-      ? "line"
-      : customer.email && String(customer.email).includes("@")
-        ? "email"
-        : null;
-    if (!channel) {
+    const lineUserId = (customer.line_user_id as string | null) ?? null;
+    const email =
+      customer.email && String(customer.email).includes("@") ? (customer.email as string) : null;
+    if (!lineUserId && !email) {
       logger.info("auto_send_document_skipped_no_channel", { tenantId, documentId, docType });
       return;
     }
 
-    // 二重送付防止 (idempotency)。同じ帳票の確定送付は 1 回限り。
+    // 二重送付防止をアトミックに行う: 送付前に 'pending' 行を予約する。
+    // idempotency_key (auto-confirm:<id>) の部分 UNIQUE インデックスにより、
+    // draft→sent がレース (ダブルクリック等) しても 1 つの worker しか claim できない。
     const idempotencyKey = `auto-confirm:${documentId}`;
-    try {
-      const { data: already } = await admin
+    let reservationId: string | null = null;
+    {
+      const { data: claim, error: claimErr } = await admin
         .from("document_share_log")
+        .insert({
+          document_id: documentId,
+          tenant_id: tenantId,
+          channel: lineUserId ? "line" : "email",
+          recipient: lineUserId ?? email ?? "",
+          status: "pending",
+          sent_by: params.actorUserId ?? null,
+          idempotency_key: idempotencyKey,
+        })
         .select("id")
-        .eq("idempotency_key", idempotencyKey)
-        .eq("status", "sent")
-        .maybeSingle();
-      if (already) return;
-    } catch {
-      // ログテーブルが無い環境では idempotency を諦めて送付を継続。
+        .single();
+      if (claimErr) {
+        // 23505 = unique_violation → 既に別 worker が claim 済み (or 送付済み)。送らない。
+        if (claimErr.code === "23505") return;
+        // テーブル/インデックス未整備等は degraded mode (非アトミック) で続行。
+        logger.warn("auto_send_document_reserve_failed", {
+          tenantId,
+          documentId,
+          error: claimErr.message,
+        });
+      } else {
+        reservationId = (claim?.id as string | null) ?? null;
+      }
     }
 
     const docLabel = DOC_TYPES[docType]?.label ?? doc.doc_type;
@@ -119,15 +136,11 @@ export async function maybeAutoSendDocumentOnConfirm(params: MaybeAutoSendDocume
     const senderName = (tenant.name as string | null) ?? "Ledra";
     const totalYen = Math.round((doc.total as number) ?? 0);
     const isInvoice = INVOICE_TYPES.has(docType);
+    const docNumber = (doc.doc_number as string | null) ?? `#${(doc.id as string).slice(0, 8)}`;
 
     // 請求書のみ: 決済リンク (Stripe Connect) を生成して同送する。
     let paymentUrl: string | null = null;
-    if (
-      isInvoice &&
-      totalYen > 0 &&
-      tenant.stripe_connect_account_id &&
-      tenant.stripe_connect_onboarded
-    ) {
+    if (isInvoice && totalYen > 0 && tenant.stripe_connect_account_id && tenant.stripe_connect_onboarded) {
       try {
         const link = await createInvoicePaymentLink({
           stripe: getStripeClient(),
@@ -150,62 +163,118 @@ export async function maybeAutoSendDocumentOnConfirm(params: MaybeAutoSendDocume
       }
     }
 
-    let delivered = false;
-    const recipient = channel === "line" ? (customer.line_user_id as string) : (customer.email as string);
+    const paymentEmailMessage = paymentUrl
+      ? `以下のリンクからクレジットカードでお支払いいただけます:\n${paymentUrl}`
+      : undefined;
+    const paymentLineBody = paymentUrl
+      ? [
+          `お支払いのご案内です。`,
+          `金額: ¥${totalYen.toLocaleString("ja-JP")}`,
+          ``,
+          `以下のリンクからクレジットカードでお支払いいただけます:`,
+          paymentUrl,
+          ``,
+          `※リンクは 24 時間有効です。`,
+        ].join("\n")
+      : null;
 
-    if (channel === "line") {
-      // 書類リンク
-      delivered = await sendDocumentLink({
-        tenantId,
-        lineUserId: customer.line_user_id as string,
+    // docDelivered: 書類が届いたか。
+    // paymentDelivered: null=決済リンク対象外 / boolean=決済リンク送信結果。
+    let usedChannel: Channel = lineUserId ? "line" : "email";
+    let usedRecipient = lineUserId ?? (email as string);
+    let docDelivered = false;
+    let paymentDelivered: boolean | null = paymentUrl ? false : null;
+
+    const deliverByEmail = async (): Promise<void> => {
+      usedChannel = "email";
+      usedRecipient = email as string;
+      docDelivered = await sendDocumentEmail({
+        to: email as string,
         docType: docLabel,
-        docNumber: (doc.doc_number as string | null) ?? `#${(doc.id as string).slice(0, 8)}`,
-        totalAmount: totalYen,
-        message: `${recipientName} 様\n${docLabel}をお送りいたします。`,
-      });
-      // 決済リンク (請求書のみ)
-      if (paymentUrl) {
-        await sendCustomerLineText({
-          tenantId,
-          customerId: customer.id as string,
-          lineUserId: customer.line_user_id as string,
-          sentByUserId: params.actorUserId ?? null,
-          body: [
-            `お支払いのご案内です。`,
-            `金額: ¥${totalYen.toLocaleString("ja-JP")}`,
-            ``,
-            `以下のリンクからクレジットカードでお支払いいただけます:`,
-            paymentUrl,
-            ``,
-            `※リンクは 24 時間有効です。`,
-          ].join("\n"),
-        });
-      }
-    } else {
-      // email: 書類概要メール。請求書は決済リンクを本文に同梱。
-      delivered = await sendDocumentEmail({
-        to: customer.email as string,
-        docType: docLabel,
-        docNumber: (doc.doc_number as string | null) ?? `#${(doc.id as string).slice(0, 8)}`,
+        docNumber,
         totalAmount: totalYen,
         recipientName,
         senderName,
-        message: paymentUrl ? `以下のリンクからクレジットカードでお支払いいただけます:\n${paymentUrl}` : undefined,
+        // メール本文に決済リンクを同梱するため、書類が届けば決済リンクも届く。
+        message: paymentEmailMessage,
       });
+      paymentDelivered = paymentUrl ? docDelivered : null;
+    };
+
+    if (lineUserId) {
+      docDelivered = await sendDocumentLink({
+        tenantId,
+        lineUserId,
+        docType: docLabel,
+        docNumber,
+        totalAmount: totalYen,
+        message: `${recipientName} 様\n${docLabel}をお送りいたします。`,
+      });
+      // 決済リンク (請求書のみ)。送信結果を必ず反映する。
+      if (docDelivered && paymentLineBody) {
+        paymentDelivered = await sendCustomerLineText({
+          tenantId,
+          customerId: customer.id as string,
+          lineUserId,
+          sentByUserId: params.actorUserId ?? null,
+          body: paymentLineBody,
+        });
+      }
+      // LINE の書類送信が失敗したら、メールアドレスがあればメールにフォールバック。
+      if (!docDelivered && email) {
+        await deliverByEmail();
+      }
+    } else if (email) {
+      await deliverByEmail();
     }
 
-    // 送付ログ (履歴 + idempotency)。失敗は非致命的。
+    const delivered = docDelivered && (paymentDelivered === null ? true : paymentDelivered);
+    const errorMessage = delivered
+      ? null
+      : !docDelivered
+        ? "書類の自動送付に失敗しました"
+        : "決済リンクの送付に失敗しました";
+
+    // 予約行を確定 (sent) / 失敗時は claim を解放して再確定でのリトライを許す。
     try {
-      await admin.from("document_share_log").insert({
-        document_id: documentId,
-        tenant_id: tenantId,
-        channel,
-        recipient,
-        status: delivered ? "sent" : "failed",
-        error_message: delivered ? null : "自動送付に失敗しました",
-        sent_by: params.actorUserId ?? null,
-        idempotency_key: idempotencyKey,
-      });
+      if (reservationId) {
+        if (delivered) {
+          await admin
+            .from("document_share_log")
+            .update({
+              channel: usedChannel,
+              recipient: usedRecipient,
+              status: "sent",
+              error_message: null,
+              sent_at: new Date().toISOString(),
+            })
+            .eq("id", reservationId);
+        } else {
+          // claim を解放 (UNIQUE を空ける) し、失敗は idempotency_key なしの別行に残す。
+          await admin.from("document_share_log").delete().eq("id", reservationId);
+          await admin.from("document_share_log").insert({
+            document_id: documentId,
+            tenant_id: tenantId,
+            channel: usedChannel,
+            recipient: usedRecipient,
+            status: "failed",
+            error_message: errorMessage,
+            sent_by: params.actorUserId ?? null,
+          });
+        }
+      } else {
+        // degraded mode (予約できなかった): 成功時のみ idempotency_key を付けて記録。
+        await admin.from("document_share_log").insert({
+          document_id: documentId,
+          tenant_id: tenantId,
+          channel: usedChannel,
+          recipient: usedRecipient,
+          status: delivered ? "sent" : "failed",
+          error_message: errorMessage,
+          sent_by: params.actorUserId ?? null,
+          idempotency_key: delivered ? idempotencyKey : null,
+        });
+      }
     } catch (logErr) {
       logger.warn("auto_send_document_log_failed", {
         tenantId,
@@ -218,9 +287,11 @@ export async function maybeAutoSendDocumentOnConfirm(params: MaybeAutoSendDocume
       tenantId,
       documentId,
       docType,
-      channel,
+      channel: usedChannel,
       delivered,
+      doc_delivered: docDelivered,
       payment_link: Boolean(paymentUrl),
+      payment_delivered: paymentDelivered,
     });
   } catch (e) {
     logger.warn("auto_send_document_failed", {
