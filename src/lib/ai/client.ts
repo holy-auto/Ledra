@@ -30,3 +30,20 @@ export const AI_MODEL_FAST = "claude-haiku-4-5" as const;
 
 /** Vision対応モデル */
 export const AI_MODEL_VISION = "claude-sonnet-4-6" as const;
+
+/**
+ * 静的な system プロンプトを prompt caching 対象 (ephemeral / 既定 5 分 TTL) として
+ * ラップする。同じ指示文を毎回フルで送り直す代わりに Anthropic 側でキャッシュさせ、
+ * 短時間に繰り返し呼ばれるエンドポイント (証明書下書き・身分証 OCR 等) の
+ * 入力トークンコストを削減する (キャッシュ読込は通常の入力単価の約 1/10)。
+ *
+ * 注意:
+ * - キャッシュは「cache_control までの累計トークン」が最小長
+ *   (Sonnet/Opus = 1024, Haiku = 2048 tokens) を超えた場合のみ有効。
+ *   下回る場合は API 側で黙って無視され、追加課金も発生しない (no-op)。
+ * - 必ず「静的な」指示文に対してのみ使うこと。per-request の動的値を
+ *   埋め込むと毎回キャッシュミスになり意味がない (動的値は user メッセージへ)。
+ */
+export function cacheableSystem(text: string) {
+  return [{ type: "text" as const, text, cache_control: { type: "ephemeral" as const } }];
+}

@@ -15,7 +15,7 @@
  */
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { withRetry } from "@/lib/http/withRetry";
-import { getAnthropicClient, AI_MODEL_VISION } from "@/lib/ai/client";
+import { getAnthropicClient, AI_MODEL_VISION, cacheableSystem } from "@/lib/ai/client";
 import { OcrResultSchema, type OcrResult } from "@/lib/identity/ocrSchema";
 import { sanitizeOcrResult } from "@/lib/identity/ocrFilter";
 
@@ -81,7 +81,7 @@ export async function runIdentityOcr(input: IdentityOcrInput): Promise<IdentityO
     client.messages.parse({
       model: AI_MODEL_VISION,
       max_tokens: 1024,
-      system: SYSTEM_PROMPT,
+      system: cacheableSystem(SYSTEM_PROMPT),
       messages: [
         {
           role: "user",

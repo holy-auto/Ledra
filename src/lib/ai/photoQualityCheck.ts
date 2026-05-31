@@ -7,7 +7,7 @@
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { withRetry } from "@/lib/http/withRetry";
-import { getAnthropicClient, AI_MODEL_VISION } from "@/lib/ai/client";
+import { getAnthropicClient, AI_MODEL_VISION, cacheableSystem } from "@/lib/ai/client";
 
 const PhotoIssueSchema = z.object({
   type: z.enum(["quality", "angle", "unclear", "wrong_subject", "too_dark", "too_blurry"]),
@@ -100,8 +100,9 @@ export interface CertificatePhotoAudit {
 export async function checkPhotoContent(input: PhotoCheckInput): Promise<PhotoCheckResult> {
   const client = getAnthropicClient();
 
+  // system は静的に保ち prompt caching を効かせる。写真種別・カテゴリは user 側へ。
   const systemPrompt = `あなたは自動車施工記録の写真品質を審査する専門家です。
-提供された写真が施工証明書の「${input.expectedType}」（施工カテゴリ: ${input.category}）として
+提供された写真が、指定された施工証明書の写真種別・施工カテゴリとして
 適切かどうかをJSONで回答してください。
 
 回答形式（JSONのみ）:
@@ -129,7 +130,7 @@ export async function checkPhotoContent(input: PhotoCheckInput): Promise<PhotoCh
       client.messages.parse({
         model: AI_MODEL_VISION,
         max_tokens: 512,
-        system: systemPrompt,
+        system: cacheableSystem(systemPrompt),
         messages: [
           {
             role: "user",
@@ -144,7 +145,7 @@ export async function checkPhotoContent(input: PhotoCheckInput): Promise<PhotoCh
               },
               {
                 type: "text",
-                text: `この写真は「${input.expectedType}」として適切ですか？JSON形式で回答してください。`,
+                text: `写真種別: ${input.expectedType}\n施工カテゴリ: ${input.category}\n\nこの写真は上記の種別・カテゴリの写真として適切ですか？JSON形式で回答してください。`,
               },
             ],
           },

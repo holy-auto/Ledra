@@ -7,7 +7,7 @@
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { withRetry } from "@/lib/http/withRetry";
-import { getAnthropicClient, AI_MODEL } from "@/lib/ai/client";
+import { getAnthropicClient, AI_MODEL, cacheableSystem } from "@/lib/ai/client";
 
 const DraftMaterialSchema = z.object({
   name: z.string(),
@@ -183,7 +183,7 @@ ${input.templateCategory || "未指定"}`;
       client.messages.parse({
         model: AI_MODEL,
         max_tokens: 1024,
-        system: systemPrompt,
+        system: cacheableSystem(systemPrompt),
         messages: [{ role: "user", content: userMessage }],
         output_config: { format: zodOutputFormat(DraftCertificateSchema) },
       }),
