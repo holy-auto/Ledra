@@ -102,6 +102,7 @@ export default function MessagesInboxClient() {
   const [draft, setDraft] = useState("");
   const [sendBusy, setSendBusy] = useState(false);
   const [sendMsg, setSendMsg] = useState<string | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const messages = useMemo(() => detail?.messages ?? [], [detail]);
@@ -153,6 +154,29 @@ export default function MessagesInboxClient() {
       setSendBusy(false);
     }
   }, [activeKey, canSend, draft, sendBusy, mutateDetail, mutateList]);
+
+  // AI 返信ドラフト: 生成結果を入力欄に流し込む (送信はしない / 人が編集して送る)。
+  const handleAiDraft = useCallback(async () => {
+    if (!activeKey || aiBusy) return;
+    setAiBusy(true);
+    setSendMsg(null);
+    try {
+      const res = await fetch(`/api/admin/messages/${encodeURIComponent(activeKey)}/ai-reply`, { method: "POST" });
+      const j = (await parseJsonSafe(res)) as { ai_disabled?: boolean; draft?: string | null; message?: string } | null;
+      if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
+      if (j?.ai_disabled) {
+        setSendMsg("AI 自動入力が無効です (設定 → AI 自動入力 で有効化できます)。");
+      } else if (j?.draft) {
+        setDraft(j.draft);
+      } else {
+        setSendMsg("返信ドラフトを生成できませんでした (直近の受信メッセージが必要です)。");
+      }
+    } catch (e) {
+      setSendMsg("AI ドラフト生成に失敗しました: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setAiBusy(false);
+    }
+  }, [activeKey, aiBusy]);
 
   return (
     <div className="space-y-4">
@@ -237,7 +261,7 @@ export default function MessagesInboxClient() {
             </div>
           ) : (
             <>
-              <div className="border-b border-border-subtle px-5 py-3 flex items-center justify-between">
+              <div className="relative border-b border-border-subtle px-5 py-3 flex items-center justify-between">
                 <div className="min-w-0">
                   <div className="truncate text-base font-semibold text-primary">
                     {detail?.thread.name ?? (detail?.thread.customer_id ? "(名前未設定の顧客)" : "LINEユーザー")}
@@ -246,13 +270,23 @@ export default function MessagesInboxClient() {
                     <div className="truncate text-[10px] text-muted">LINE: {detail.thread.line_user_id}</div>
                   )}
                 </div>
-                {detail?.thread.customer_id && (
+                {detail?.thread.customer_id ? (
                   <Link
                     href={`/admin/customers/${detail.thread.customer_id}`}
                     className="btn-secondary text-xs shrink-0"
                   >
                     顧客ページ →
                   </Link>
+                ) : (
+                  detail?.thread.line_user_id && (
+                    <LinkCustomerControl
+                      threadKey={activeKey}
+                      onLinked={async (newKey) => {
+                        await Promise.all([mutateDetail(), mutateList()]);
+                        setActiveKey(newKey);
+                      }}
+                    />
+                  )
                 )}
               </div>
 
@@ -325,14 +359,25 @@ export default function MessagesInboxClient() {
                       }
                     }}
                   />
-                  <button
-                    type="button"
-                    onClick={() => void handleSend()}
-                    disabled={!canSend || sendBusy || !draft.trim()}
-                    className="btn-primary self-end px-4 py-2 text-sm disabled:opacity-50"
-                  >
-                    {sendBusy ? "送信中…" : "📤 送信"}
-                  </button>
+                  <div className="flex flex-col gap-2 self-end">
+                    <button
+                      type="button"
+                      onClick={() => void handleSend()}
+                      disabled={!canSend || sendBusy || !draft.trim()}
+                      className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
+                    >
+                      {sendBusy ? "送信中…" : "📤 送信"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleAiDraft()}
+                      disabled={aiBusy || messages.length === 0}
+                      className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
+                      title="直近のやり取りから返信文を AI が下書きします (送信は手動)"
+                    >
+                      {aiBusy ? "生成中…" : "✨ AI下書き"}
+                    </button>
+                  </div>
                 </div>
                 {sendMsg && <p className="mt-2 text-xs text-warning">{sendMsg}</p>}
                 {canSend && <p className="mt-1 text-[10px] text-muted">Cmd/Ctrl + Enter で送信</p>}
@@ -341,6 +386,160 @@ export default function MessagesInboxClient() {
           )}
         </section>
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* 未紐付け LINE スレッドを顧客に紐付けるコントロール                   */
+/* ------------------------------------------------------------------ */
+
+type CustomerHit = { id: string; name: string; phone: string | null };
+
+function LinkCustomerControl({
+  threadKey,
+  onLinked,
+}: {
+  threadKey: string;
+  onLinked: (newThreadKey: string) => void | Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"new" | "existing">("new");
+  const [newName, setNewName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [search, setSearch] = useState("");
+  const [hits, setHits] = useState<CustomerHit[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const runSearch = useCallback(async (q: string) => {
+    if (!q.trim()) {
+      setHits([]);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/admin/customers?q=${encodeURIComponent(q)}`);
+      const j = (await parseJsonSafe(res)) as { customers?: CustomerHit[] } | null;
+      setHits((j?.customers ?? []).slice(0, 8));
+    } catch {
+      setHits([]);
+    }
+  }, []);
+
+  const doLink = useCallback(
+    async (payload: Record<string, unknown>) => {
+      setBusy(true);
+      setMsg(null);
+      try {
+        const res = await fetch(`/api/admin/messages/${encodeURIComponent(threadKey)}/link`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const j = (await parseJsonSafe(res)) as { ok?: boolean; thread_key?: string; message?: string } | null;
+        if (!res.ok || !j?.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
+        setOpen(false);
+        setNewName("");
+        setNewPhone("");
+        setSearch("");
+        setHits([]);
+        await onLinked(j.thread_key ?? threadKey);
+      } catch (e) {
+        setMsg("紐付けに失敗しました: " + (e instanceof Error ? e.message : String(e)));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [threadKey, onLinked],
+  );
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className="btn-secondary text-xs shrink-0">
+        🔗 顧客に紐付け
+      </button>
+    );
+  }
+
+  return (
+    <div className="absolute right-4 top-14 z-10 w-72 rounded-lg border border-border-default bg-surface p-3 shadow-lg">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs font-semibold text-primary">顧客に紐付け</span>
+        <button type="button" onClick={() => setOpen(false)} className="text-xs text-muted hover:text-primary">
+          ✕
+        </button>
+      </div>
+      <div className="mb-2 flex gap-1 text-[11px]">
+        <button
+          type="button"
+          onClick={() => setMode("new")}
+          className={`flex-1 rounded px-2 py-1 ${mode === "new" ? "bg-accent text-white" : "bg-surface-hover text-secondary"}`}
+        >
+          新規作成
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("existing")}
+          className={`flex-1 rounded px-2 py-1 ${mode === "existing" ? "bg-accent text-white" : "bg-surface-hover text-secondary"}`}
+        >
+          既存から選ぶ
+        </button>
+      </div>
+
+      {mode === "new" ? (
+        <div className="space-y-2">
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="顧客名 (必須)"
+            className="w-full rounded border border-border-default bg-surface px-2 py-1.5 text-xs"
+          />
+          <input
+            value={newPhone}
+            onChange={(e) => setNewPhone(e.target.value)}
+            placeholder="電話番号 (任意)"
+            className="w-full rounded border border-border-default bg-surface px-2 py-1.5 text-xs"
+          />
+          <button
+            type="button"
+            disabled={busy || !newName.trim()}
+            onClick={() => void doLink({ mode: "new", name: newName.trim(), phone: newPhone.trim() || null })}
+            className="btn-primary w-full px-2 py-1.5 text-xs disabled:opacity-50"
+          >
+            {busy ? "作成中…" : "作成して紐付け"}
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <input
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              void runSearch(e.target.value);
+            }}
+            placeholder="名前 / 電話 / メールで検索"
+            className="w-full rounded border border-border-default bg-surface px-2 py-1.5 text-xs"
+          />
+          <div className="max-h-40 overflow-y-auto divide-y divide-border-subtle">
+            {hits.map((h) => (
+              <button
+                key={h.id}
+                type="button"
+                disabled={busy}
+                onClick={() => void doLink({ mode: "existing", customer_id: h.id })}
+                className="block w-full px-1 py-1.5 text-left text-xs hover:bg-surface-hover/60 disabled:opacity-50"
+              >
+                <span className="font-medium text-primary">{h.name}</span>
+                {h.phone && <span className="ml-2 text-muted">{h.phone}</span>}
+              </button>
+            ))}
+            {search.trim() && hits.length === 0 && (
+              <div className="px-1 py-2 text-[11px] text-muted">該当する顧客が見つかりません。</div>
+            )}
+          </div>
+        </div>
+      )}
+      {msg && <p className="mt-2 text-[11px] text-danger">{msg}</p>}
     </div>
   );
 }
