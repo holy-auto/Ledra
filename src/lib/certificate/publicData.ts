@@ -145,7 +145,13 @@ export type PublicCertificateData = {
     // 所有者名は公開(外部)表示では返さない (個人情報保護)。
     customer_name?: undefined;
   };
-  vehicle: (Omit<VehicleRow, "customer_email" | "notes"> & { customer_email?: undefined; notes?: undefined }) | null;
+  vehicle:
+    | (Omit<VehicleRow, "customer_name" | "customer_email" | "notes"> & {
+        customer_name?: undefined;
+        customer_email?: undefined;
+        notes?: undefined;
+      })
+    | null;
   nfc: NfcRow | null;
   histories: HistoryRow[];
   images: (ImageRow & { url: string | null; rendered_url: string | null })[];
@@ -368,7 +374,14 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
       // 所有者名は公開(外部)表示では出力しない。認証付きの管理画面・PDF発行でのみ実名を扱う。
       customer_name: undefined as undefined,
     },
-    vehicle: vehicle ? { ...vehicle, customer_email: undefined as undefined, notes: undefined as undefined } : null,
+    vehicle: vehicle
+      ? {
+          ...vehicle,
+          customer_name: undefined as undefined,
+          customer_email: undefined as undefined,
+          notes: undefined as undefined,
+        }
+      : null,
     nfc,
     histories,
     images,
