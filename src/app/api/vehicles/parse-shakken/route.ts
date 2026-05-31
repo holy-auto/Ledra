@@ -3,12 +3,28 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { parseShakenshoAuto, extractFirstRegistrationYear, calcSizeClass } from "@/lib/ocr/shakensho";
 import { loadAiAutomationSettings, filterVehicleOcrByPolicy, isSourceAllowed } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
+const EMPTY_VEHICLE_OCR = {
+  maker: null,
+  model: null,
+  year: null,
+  vin_code: null,
+  plate_display: null,
+  expiry_date: null,
+  fuel_type: null,
+  length_mm: null,
+  width_mm: null,
+  height_mm: null,
+  size_class: null,
+};
+
 export async function POST(req: Request) {
+  const usage = startAiRouteUsage("/api/vehicles/parse-shakken");
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
@@ -27,24 +43,15 @@ export async function POST(req: Request) {
 
     // テナントの AI 自動入力ポリシーを読む。identity_documents ソースが OFF の
     // 場合は OCR 自体を呼ばずに空の抽出結果を返す (画像は破棄)。
+    // AI マスタースイッチ OFF / 月次コストキャップ超過時は enabled=false に倒るので
+    // OCR (課金) を呼ばず空の抽出結果を返す。identity_documents ソース OFF も同様。
     const automation = await loadAiAutomationSettings(caller.tenantId);
-    if (!isSourceAllowed(automation, "identity_documents")) {
+    if (!automation.enabled || !isSourceAllowed(automation, "identity_documents")) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
       return Response.json({
         ok: true,
         source: "disabled",
-        extracted: {
-          maker: null,
-          model: null,
-          year: null,
-          vin_code: null,
-          plate_display: null,
-          expiry_date: null,
-          fuel_type: null,
-          length_mm: null,
-          width_mm: null,
-          height_mm: null,
-          size_class: null,
-        },
+        extracted: EMPTY_VEHICLE_OCR,
         policies: {},
         ai_disabled: true,
       });
@@ -80,6 +87,10 @@ export async function POST(req: Request) {
 
     const filtered = filterVehicleOcrByPolicy(raw, automation);
 
+    // 実際に Vision を呼んだ場合のトークンを usageContext が捕捉済み。ok 記録で
+    // recordRouteUsage が実コストを月次キャップに計上する (QR のみ等トークン0なら課金0)。
+    usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ok", meta: { source } });
+
     return Response.json({
       ok: true,
       source,
@@ -87,6 +98,7 @@ export async function POST(req: Request) {
       policies: filtered.policies,
     });
   } catch (e) {
+    usage.record({ outcome: "error" });
     return apiInternalError(e, "parse-shakken");
   }
 }
