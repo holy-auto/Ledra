@@ -32,6 +32,24 @@ export const AI_MODEL_FAST = "claude-haiku-4-5" as const;
 export const AI_MODEL_VISION = "claude-sonnet-4-6" as const;
 
 /**
+ * 信頼性・法的に重要で「低頻度」なパス専用の最高精度モデル (既定 Opus)。
+ *
+ * 用途: 写真改ざんの最終判定、身分証 OCR の低信頼ケースの昇格 (escalation) など。
+ * これらは 1 証明書あたりの呼び出しが少ないため、Opus でも店舗あたりの
+ * 総額影響は小さい = 「効くところにだけ最大火力」。
+ *
+ * コスト/レイテンシを抑えたい場合は env `AI_CRITICAL_MODEL` で Sonnet 等に
+ * 差し替え可能 (例: AI_CRITICAL_MODEL=claude-sonnet-4-6)。
+ */
+export const AI_MODEL_CRITICAL: string = process.env.AI_CRITICAL_MODEL?.trim() || "claude-opus-4-8";
+
+/** 低信頼時に AI_MODEL_CRITICAL へ昇格する既定しきい値 (env で調整可)。 */
+export const AI_ESCALATE_THRESHOLD: number = (() => {
+  const n = Number(process.env.AI_ESCALATE_THRESHOLD);
+  return Number.isFinite(n) && n >= 0 && n <= 1 ? n : 0.7;
+})();
+
+/**
  * 静的な system プロンプトを prompt caching 対象 (ephemeral / 既定 5 分 TTL) として
  * ラップする。同じ指示文を毎回フルで送り直す代わりに Anthropic 側でキャッシュさせ、
  * 短時間に繰り返し呼ばれるエンドポイント (証明書下書き・身分証 OCR 等) の

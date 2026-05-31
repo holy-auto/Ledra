@@ -21,7 +21,7 @@ import { createHash } from "crypto";
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { withRetry } from "@/lib/http/withRetry";
-import { getAnthropicClient, AI_MODEL_VISION } from "@/lib/ai/client";
+import { getAnthropicClient, AI_MODEL_CRITICAL } from "@/lib/ai/client";
 
 const TamperingVisionSchema = z.object({
   suspicious: z.boolean(),
@@ -184,7 +184,10 @@ async function visionTamperingCheck(
 
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_VISION,
+        // 改ざん判定は低頻度・高ステークス (証明書の信頼性 / ブロックチェーン anchoring の
+        // 根拠) なので最大火力モデルを使う。EXIF で疑わしいと絞り込んだ写真のみ到達するため
+        // 総コスト影響は小さい。
+        model: AI_MODEL_CRITICAL,
         max_tokens: 256,
         system: `あなたは写真の真正性を審査する専門家です。
 EXIF 解析で以下のフラグが検出されました:
