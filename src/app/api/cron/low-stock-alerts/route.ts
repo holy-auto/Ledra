@@ -5,6 +5,7 @@ import { sendCronFailureAlert } from "@/lib/cronAlert";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { withCronLock } from "@/lib/cron/lock";
 import { sendLowStockAlert } from "@/lib/follow-up/email";
+import { maybeAutoDraftReordersForTenant } from "@/lib/ai/automation/reorderAuto";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -34,6 +35,7 @@ export async function GET(req: NextRequest) {
     const lock = await withCronLock(supabase, "low-stock-alerts", 600, async () => {
       let notified = 0;
       let flagged = 0;
+      let reordersDrafted = 0;
 
       const { data: items } = await supabase
         .from("inventory_items")
@@ -71,6 +73,11 @@ export async function GET(req: NextRequest) {
       const tenantMap = new Map((tenants ?? []).map((t) => [t.id as string, t]));
 
       for (const [tenantId, lowItems] of byTenant.entries()) {
+        // 発注書ドラフトの自動起票 (inventory.auto_draft_reorder が opt-in のテナントのみ)。
+        // メール未設定でも実行する (発注はメールに依存しない)。承認・送信は必ず人 (壁3)。
+        const reorder = await maybeAutoDraftReordersForTenant(tenantId);
+        reordersDrafted += reorder.created;
+
         const tenant = tenantMap.get(tenantId);
         const email = (tenant?.contact_email as string | null) ?? null;
         if (!tenant || !email) continue;
@@ -109,7 +116,7 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      return { notified, flagged };
+      return { notified, flagged, reordersDrafted };
     });
 
     if (!lock.acquired) {
@@ -119,6 +126,7 @@ export async function GET(req: NextRequest) {
     return apiOk({
       tenants_notified: lock.value.notified,
       items_flagged: lock.value.flagged,
+      reorders_drafted: lock.value.reordersDrafted,
       date: todayStr,
     });
   } catch (e) {

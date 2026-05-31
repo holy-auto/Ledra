@@ -17,6 +17,8 @@ import {
   shouldAutoDetectThickness,
   shouldAutoCategorizeAccountingOnIntake,
   shouldAutoCreateDraftCertificate,
+  shouldAutoProposeWorkflowOnIntake,
+  shouldAutoDraftReorder,
 } from "../automation/orchestrator";
 
 describe("actionCatalog", () => {
@@ -262,9 +264,7 @@ describe("shouldAutoSendDocument (確定→自動送付)", () => {
   });
 
   it("is gated by the global master switch", () => {
-    expect(
-      shouldAutoSendDocument({ ...invoiceOn, enabled: false }, "invoice"),
-    ).toBe(false);
+    expect(shouldAutoSendDocument({ ...invoiceOn, enabled: false }, "invoice")).toBe(false);
   });
 
   it("壁3: ungated auto_send keys are still never auto", () => {
@@ -277,9 +277,8 @@ describe("shouldAutoSendDocument (確定→自動送付)", () => {
   });
 });
 
-
 describe("phase-1 auto-actions (thickness / accounting / certificate draft-record)", () => {
-  const on = (key) => ({ ...DEFAULT_AI_AUTOMATION_SETTINGS, autoActions: { [key]: true } });
+  const on = (key: string) => ({ ...DEFAULT_AI_AUTOMATION_SETTINGS, autoActions: { [key]: true } });
 
   it("every shipped action is still default OFF (incl. new ones)", () => {
     for (const a of AUTOMATION_ACTIONS) expect(a.defaultEnabled).toBe(false);
@@ -310,11 +309,64 @@ describe("phase-1 auto-actions (thickness / accounting / certificate draft-recor
   it("shouldAutoCreateDraftCertificate: opt-in + completed + vehicle, idempotent, never issues", () => {
     const s = on("certificate.auto_create_draft_record");
     expect(shouldAutoCreateDraftCertificate(s, { isCompleted: true, hasVehicle: true })).toBe(true);
-    expect(shouldAutoCreateDraftCertificate(DEFAULT_AI_AUTOMATION_SETTINGS, { isCompleted: true, hasVehicle: true })).toBe(false);
+    expect(
+      shouldAutoCreateDraftCertificate(DEFAULT_AI_AUTOMATION_SETTINGS, { isCompleted: true, hasVehicle: true }),
+    ).toBe(false);
     expect(shouldAutoCreateDraftCertificate(s, { isCompleted: true, hasVehicle: false })).toBe(false);
     expect(shouldAutoCreateDraftCertificate(s, { isCompleted: false, hasVehicle: true })).toBe(false);
-    expect(shouldAutoCreateDraftCertificate(s, { isCompleted: true, hasVehicle: true, alreadyHasCertificate: true })).toBe(false);
+    expect(
+      shouldAutoCreateDraftCertificate(s, { isCompleted: true, hasVehicle: true, alreadyHasCertificate: true }),
+    ).toBe(false);
     // 壁3: issuance stays forbidden regardless of this opt-in
     expect(isNeverAutoAction("certificate.auto_issue")).toBe(true);
+  });
+});
+
+describe("phase-2 auto-action (workflow proposal on intake)", () => {
+  const on = (key: string) => ({ ...DEFAULT_AI_AUTOMATION_SETTINGS, autoActions: { [key]: true } });
+
+  it("workflow.auto_propose_on_intake is known, NOT wall-3, default OFF", () => {
+    expect(isKnownActionKey("workflow.auto_propose_on_intake")).toBe(true);
+    expect(isNeverAutoAction("workflow.auto_propose_on_intake")).toBe(false);
+    const def = AUTOMATION_ACTIONS.find((a) => a.key === "workflow.auto_propose_on_intake");
+    expect(def?.defaultEnabled).toBe(false);
+  });
+
+  it("shouldAutoProposeWorkflowOnIntake follows opt-in + master switch", () => {
+    expect(shouldAutoProposeWorkflowOnIntake(DEFAULT_AI_AUTOMATION_SETTINGS)).toBe(false);
+    expect(shouldAutoProposeWorkflowOnIntake(on("workflow.auto_propose_on_intake"))).toBe(true);
+    expect(shouldAutoProposeWorkflowOnIntake({ ...on("workflow.auto_propose_on_intake"), enabled: false })).toBe(false);
+  });
+});
+
+describe("phase-3 auto-action (auto-draft reorder)", () => {
+  const on = (key: string) => ({ ...DEFAULT_AI_AUTOMATION_SETTINGS, autoActions: { [key]: true } });
+
+  it("inventory.auto_draft_reorder is known, NOT wall-3, default OFF", () => {
+    expect(isKnownActionKey("inventory.auto_draft_reorder")).toBe(true);
+    expect(isNeverAutoAction("inventory.auto_draft_reorder")).toBe(false);
+    const def = AUTOMATION_ACTIONS.find((a) => a.key === "inventory.auto_draft_reorder");
+    expect(def?.defaultEnabled).toBe(false);
+  });
+
+  it("shouldAutoDraftReorder follows opt-in + master switch", () => {
+    expect(shouldAutoDraftReorder(DEFAULT_AI_AUTOMATION_SETTINGS)).toBe(false);
+    expect(shouldAutoDraftReorder(on("inventory.auto_draft_reorder"))).toBe(true);
+    expect(shouldAutoDraftReorder({ ...on("inventory.auto_draft_reorder"), enabled: false })).toBe(false);
+  });
+
+  it("all shipped actions remain default OFF (full catalog)", () => {
+    for (const a of AUTOMATION_ACTIONS) expect(a.defaultEnabled).toBe(false);
+    // sanity: catalog grew to include all phase 1-3 keys
+    const keys = AUTOMATION_ACTIONS.map((a) => a.key);
+    for (const k of [
+      "thickness.auto_detect",
+      "accounting.auto_categorize_on_intake",
+      "certificate.auto_create_draft_record",
+      "workflow.auto_propose_on_intake",
+      "inventory.auto_draft_reorder",
+    ]) {
+      expect(keys).toContain(k);
+    }
   });
 });

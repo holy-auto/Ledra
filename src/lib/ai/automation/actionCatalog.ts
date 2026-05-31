@@ -34,7 +34,9 @@ export type AutomationActionKey =
   | "invoice.auto_send_on_confirm"
   | "quote.auto_send_on_confirm"
   | "accounting.auto_categorize_on_intake"
-  | "thickness.auto_detect";
+  | "thickness.auto_detect"
+  | "workflow.auto_propose_on_intake"
+  | "inventory.auto_draft_reorder";
 
 export interface AutomationActionDef {
   key: AutomationActionKey;
@@ -136,6 +138,24 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
       "NexPTG 等から塗膜厚レポートを受信した時点で統計的な異常検知 (外れ値 / 値域逸脱) を自動実行し、結果を注釈として保存する。金額・本人確認・法的確定に関与しないため安全。",
     defaultEnabled: false,
     guard: "AI 有効 + Standard プラン以上",
+  },
+  {
+    key: "workflow.auto_propose_on_intake",
+    workflow: "job",
+    label: "案件登録時に最適なワークフローをAI提案",
+    description:
+      "案件 (予約) が登録された時点で、メニュー内容と顧客の過去施工履歴から最適なワークフローテンプレートを AI が提案する。提案を保存するだけで自動適用はしない — スタッフが承認 (または別テンプレートに変更) してから進行する (人が判断)。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Standard プラン以上 + ワークフローテンプレート登録済み",
+  },
+  {
+    key: "inventory.auto_draft_reorder",
+    workflow: "inventory",
+    label: "在庫が下限を切ったら発注書ドラフトを自動作成",
+    description:
+      "日次の在庫チェックで現在庫が下限 (min_stock) を下回った品目について、仕入先ごとに発注書を status=draft で自動起票する。発注の承認・送信 (仕入先への金額コミット) は必ず人が行う — 自動で発注を確定・送信することはしない。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Standard プラン以上 + 品目に仕入先 (supplier_id) が設定済み",
   },
 ];
 

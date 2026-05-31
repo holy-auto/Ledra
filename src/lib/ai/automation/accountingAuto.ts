@@ -50,6 +50,11 @@ interface MenuItem {
   quantity?: unknown;
 }
 
+interface ReservationLite {
+  menu_items_json?: unknown;
+  ai_accounting_suggestion?: unknown;
+}
+
 export interface MaybeAutoCategorizeReservationParams {
   tenantId: string;
   reservationId: string;
@@ -79,7 +84,7 @@ export async function maybeAutoCategorizeReservationOnIntake(
     if (!canUseFeature(normalizePlanTier(tenant.plan_tier), "ai_accounting")) return;
 
     // 予約 + 既存提案を確認 (列未作成なら ai_accounting_suggestion を外して再取得)。
-    let reservation: { menu_items_json?: unknown; ai_accounting_suggestion?: unknown } | null = null;
+    let reservation: ReservationLite | null = null;
     {
       const sel = await admin
         .from("reservations")
@@ -94,9 +99,9 @@ export async function maybeAutoCategorizeReservationOnIntake(
           .eq("id", reservationId)
           .eq("tenant_id", tenantId)
           .maybeSingle();
-        reservation = (retry.data as typeof reservation) ?? null;
+        reservation = (retry.data as ReservationLite | null) ?? null;
       } else {
-        reservation = (sel.data as typeof reservation) ?? null;
+        reservation = (sel.data as ReservationLite | null) ?? null;
       }
     }
     if (!reservation) return;

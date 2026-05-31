@@ -115,6 +115,8 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 | `quote.auto_send_on_confirm`              | 見積書を人が確定 (draft→sent) した時点で顧客へ自動送付 (書類リンク)   | OFF  | ✅ documents PUT (draft→sent)  |
 | `accounting.auto_categorize_on_intake`    | 案件登録時にメニュー明細から勘定科目を推定し「提案」を保存 (計上=確定は人 / 壁3) | OFF | ✅ 予約作成 (POST reservations) |
 | `thickness.auto_detect`                   | 塗膜厚レポート受信時に統計的な異常検知を自動付与 (注釈)              | OFF  | ✅ NexPTG 同期 (POST external/nexptg/sync) |
+| `workflow.auto_propose_on_intake`         | 案件登録時にメニュー+過去履歴から最適ワークフローを「提案」(適用=進行開始は人) | OFF | ✅ 予約作成 (POST reservations) |
+| `inventory.auto_draft_reorder`            | 在庫下限割れ時に仕入先ごとの発注書を draft で自動起票 (承認・送信は人 / 壁3) | OFF | ✅ 低在庫 cron (low-stock-alerts) |
 
 > **certificate.auto_draft の配線**: 予約 (案件) が `completed` になった時点で
 > `maybeAutoDraftCertificateForReservation` (fire-and-forget) が走り、車両 + 過去事例から
@@ -166,6 +168,25 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 > `maybeAutoDetectThicknessForReports` (`thicknessAuto.ts`) が走り、測定値を統計解析して
 > `thickness_reports.ai_anomaly_result` に保存する (1 sync あたり最大 50 レポート)。
 > sentiment 同様、注釈用途で金額・本人確認・法的確定には一切関与しない (壁3 対象外)。
+>
+> **workflow.auto_propose_on_intake の配線**: 予約 POST で案件が登録されると
+> `maybeAutoProposeWorkflowForReservation` (`workflowAuto.ts`, fire-and-forget) が走り、
+> メニュー内容 (`workflowProposal.ts` のキーワード判定) と顧客/車両の過去案件で使われた
+> service_type から最適なワークフローテンプレートを 1 つ提案し、
+> `reservations.ai_workflow_proposal` に保存する。これは **提案** であって自動適用ではない。
+> スタッフが承認 (既存の `start-workflow`) または別テンプレートに変更してから進行する
+> (= 人が判断)。既に進行中 (`workflow_template_id` あり) の案件には提案しない。
+>
+> **inventory.auto_draft_reorder の配線**: 日次 cron `/api/cron/low-stock-alerts` の
+> テナントごとループから `maybeAutoDraftReordersForTenant` (`reorderAuto.ts`) が走り、
+> 現在庫が下限 (`min_stock`) を下回り **かつ仕入先 (`supplier_id`) が設定済み** の品目を
+> 仕入先ごとにまとめて **発注書 (`purchase_orders`, status=draft / source=auto)** を起票する。
+> 数量は `inventory_items.reorder_qty` (既定ロット) があればそれ、無ければ下限までの不足分
+> (`reorder.ts`, 純関数)。冪等性は部分 UNIQUE インデックス `uq_po_auto_open_per_supplier`
+> (1 仕入先につき同時に開いている auto 下書きは 1 つ) で担保。
+> **発注の承認 (approve) / 送信 (sent = 仕入先へメール) / 入荷 (received = 在庫 in 計上) は
+> すべて人の操作** (`PUT /api/admin/purchase-orders`)。自動で発注を確定・外部送信することは
+> しない (壁3: 仕入先への金額コミットは必ず人)。仕入先マスタは `/api/admin/suppliers`。
 
 ### 4.5.1 LINE 受信 → 自動処理パイプライン
 

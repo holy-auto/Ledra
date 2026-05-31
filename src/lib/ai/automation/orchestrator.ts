@@ -224,3 +224,31 @@ export function shouldAutoCategorizeAccountingOnIntake(settings: AiAutomationSet
 export function shouldAutoDetectThickness(settings: AiAutomationSettings): boolean {
   return resolveAutoAction(settings, "thickness.auto_detect");
 }
+
+// ─────────────────────────────────────────────
+// 案件 (予約) 登録時 → ワークフロー提案
+// ─────────────────────────────────────────────
+
+/**
+ * 案件登録時にワークフローテンプレートを AI 提案してよいか。
+ * 提案は保存されるだけで自動適用しない (テンプレートの適用 = 進行開始は人が判断)。
+ * 金額・本人確認・法的確定に関与しないため非壁3。
+ */
+export function shouldAutoProposeWorkflowOnIntake(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "workflow.auto_propose_on_intake");
+}
+
+// ─────────────────────────────────────────────
+// 在庫下限割れ → 発注書ドラフト自動作成
+// ─────────────────────────────────────────────
+
+/**
+ * 在庫が下限を切ったとき発注書を draft として自動起票してよいか。
+ *
+ * 壁3 との整合:
+ *   - 作るのは **下書き (draft) のみ**。発注の承認・送信 (仕入先への金額コミット) は
+ *     必ず人が行う。自動で発注を確定・外部送信することはしない。
+ */
+export function shouldAutoDraftReorder(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "inventory.auto_draft_reorder");
+}
