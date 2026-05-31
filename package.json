@@ -33,7 +33,8 @@
     "db:typegen": "supabase gen types typescript --project-id $SUPABASE_PROJECT_ID --schema public > src/types/db.generated.ts"
   },
   "overrides": {
-    "picomatch": "^4.0.4"
+    "picomatch": "^4.0.4",
+    "ox": "0.14.26"
   },
   "lint-staged": {
     "src/**/*.{ts,tsx}": [
