@@ -84,7 +84,12 @@ export default function MessagesInboxClient() {
   } = useSWR<ThreadListResponse>(listKey, fetcher, { refreshInterval: 30_000, revalidateOnFocus: true });
 
   const threads = useMemo(() => listData?.threads ?? [], [listData]);
-  const [activeKey, setActiveKey] = useState<string | null>(null);
+  // 通知ベルなどから ?thread=c:<id> / l:<lineUserId> で特定スレッドを開ける。
+  const initialThread = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("thread");
+  }, []);
+  const [activeKey, setActiveKey] = useState<string | null>(initialThread);
 
   // 初回ロード時、未選択なら先頭スレッドを自動選択。
   useEffect(() => {
