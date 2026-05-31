@@ -24,17 +24,25 @@ function wrapForUsageCapture(client: Anthropic): Anthropic {
   const origCreate = messages.create.bind(messages);
 
   messages.create = (...args: unknown[]) => {
-    // stream: true は Stream を返すので await/集計せずそのまま通す。
-    const first = args[0] as { stream?: boolean } | undefined;
-    if (first?.stream) return origCreate(...args);
-    return Promise.resolve(origCreate(...args)).then((res) => {
-      try {
-        addUsageFromMessage(res as Parameters<typeof addUsageFromMessage>[0]);
-      } catch {
-        /* usage 集計は best-effort */
-      }
-      return res;
-    });
+    const p = origCreate(...args);
+    // 返り値 (SDK の APIPromise) はそのまま返す。Promise.resolve().then() で包み直すと
+    // parse が依存する APIPromise のメソッドが失われ得るため、結果は detached な
+    // .then 観測でのみ usage を積む (返り値は変えない)。stream は then を持たないので skip。
+    if (p && typeof (p as { then?: unknown }).then === "function") {
+      (p as PromiseLike<unknown>).then(
+        (res) => {
+          try {
+            addUsageFromMessage(res as Parameters<typeof addUsageFromMessage>[0]);
+          } catch {
+            /* usage 集計は best-effort */
+          }
+        },
+        () => {
+          /* エラーは呼び出し側で処理。未処理 rejection 回避のため no-op */
+        },
+      );
+    }
+    return p;
   };
 
   return client;
