@@ -108,14 +108,32 @@ export async function GET() {
       }
     })();
 
-    const [reservationsRes, squareRes, expiringCerts, draftCerts, overdueInvoices, pendingOrders] = await Promise.all([
-      reservationsPromise,
-      squareUnlinkedPromise,
-      expiringCertsPromise,
-      draftCertsPromise,
-      overdueInvoicesPromise,
-      pendingOrdersPromise,
-    ]);
+    // Count unread inbound customer messages (LINE inbox)
+    const unreadMessagesPromise = (async () => {
+      try {
+        const { count } = await admin
+          .from("customer_messages")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", caller.tenantId)
+          .eq("direction", "inbound")
+          .is("read_at", null);
+        return count ?? 0;
+      } catch {
+        // read_at 列が無い環境ではバッジを出さない
+        return 0;
+      }
+    })();
+
+    const [reservationsRes, squareRes, expiringCerts, draftCerts, overdueInvoices, pendingOrders, unreadMessages] =
+      await Promise.all([
+        reservationsPromise,
+        squareUnlinkedPromise,
+        expiringCertsPromise,
+        draftCertsPromise,
+        overdueInvoicesPromise,
+        pendingOrdersPromise,
+        unreadMessagesPromise,
+      ]);
 
     return apiJson(
       {
@@ -126,6 +144,7 @@ export async function GET() {
         draft_certs: draftCerts,
         overdue_invoices: overdueInvoices,
         pending_orders: pendingOrders,
+        messages_unread: unreadMessages,
       },
       {
         headers: {

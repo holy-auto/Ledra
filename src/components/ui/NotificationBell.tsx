@@ -8,7 +8,17 @@ interface Notification {
   body: string;
   created_at: string;
   read: boolean;
+  link_path: string | null;
 }
+
+type NotificationApiRow = {
+  id: string;
+  title: string;
+  body: string | null;
+  created_at: string;
+  read_at: string | null;
+  link_path: string | null;
+};
 
 export default function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -23,7 +33,18 @@ export default function NotificationBell() {
       const res = await fetch("/api/admin/notifications?limit=10");
       if (!res.ok) return;
       const json = await res.json();
-      if (json.rows) setNotifications(json.rows);
+      // API は { notifications: [...] } を返す (read_at / link_path)。
+      const rows: NotificationApiRow[] = json.notifications ?? json.rows ?? [];
+      setNotifications(
+        rows.map((r) => ({
+          id: r.id,
+          title: r.title,
+          body: r.body ?? "",
+          created_at: r.created_at,
+          read: r.read_at != null,
+          link_path: r.link_path ?? null,
+        })),
+      );
     } catch {
       // silently ignore - API may not exist yet
     }
@@ -107,21 +128,35 @@ export default function NotificationBell() {
             {notifications.length === 0 ? (
               <div className="px-4 py-8 text-center text-sm text-muted">通知はありません</div>
             ) : (
-              notifications.map((n) => (
-                <div
-                  key={n.id}
-                  className={`px-4 py-3 border-b border-border-subtle last:border-b-0 transition-colors ${
-                    n.read ? "" : "bg-accent-dim/30"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="text-sm font-medium text-primary line-clamp-1">{n.title}</div>
-                    {!n.read && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-accent" />}
+              notifications.map((n) => {
+                const inner = (
+                  <>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="text-sm font-medium text-primary line-clamp-1">{n.title}</div>
+                      {!n.read && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-accent" />}
+                    </div>
+                    {n.body && <p className="mt-0.5 text-xs text-muted line-clamp-2">{n.body}</p>}
+                    <p className="mt-1 text-[11px] text-muted">{formatTime(n.created_at)}</p>
+                  </>
+                );
+                const cls = `block px-4 py-3 border-b border-border-subtle last:border-b-0 transition-colors ${
+                  n.read ? "" : "bg-accent-dim/30"
+                }`;
+                return n.link_path ? (
+                  <a
+                    key={n.id}
+                    href={n.link_path}
+                    onClick={() => setOpen(false)}
+                    className={`${cls} hover:bg-surface-hover`}
+                  >
+                    {inner}
+                  </a>
+                ) : (
+                  <div key={n.id} className={cls}>
+                    {inner}
                   </div>
-                  {n.body && <p className="mt-0.5 text-xs text-muted line-clamp-2">{n.body}</p>}
-                  <p className="mt-1 text-[11px] text-muted">{formatTime(n.created_at)}</p>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

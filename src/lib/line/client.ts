@@ -2,6 +2,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { readSecret } from "@/lib/crypto/tenantSecrets";
 import { recordInboundLineMessage, recordOutboundLineMessage } from "./messageStore";
 import { maybeAutoProcessInboundMessage } from "@/lib/ai/automation/inboundAuto";
+import { maybeNotifyInboundMessage } from "./inboundNotify";
 
 /**
  * LINE Messaging API クライアント
@@ -283,6 +284,13 @@ export async function handleWebhookEvents(
           ]);
         }
       }
+
+      // スタッフ向け in-app 通知 (クールダウン付き / fail-soft)。受信箱で気付けるように。
+      await maybeNotifyInboundMessage({
+        tenantId,
+        lineUserId: event.source.userId,
+        customerId: stored.customerId ?? null,
+      });
 
       // AI 自動処理 (auto_extract が opt-in のテナントのみ実体が動く / 既定 OFF)。
       // 顧客向け返信を遅らせないよう最後に実行。内部で fail-soft (throw しない)。
