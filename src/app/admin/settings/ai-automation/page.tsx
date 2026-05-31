@@ -25,7 +25,9 @@ export default async function AiAutomationSettingsPage() {
   const caller = await resolveCallerWithRole(supabase);
   if (!caller) redirect("/login?next=/admin/settings/ai-automation");
 
-  const settings = await loadAiAutomationSettings(caller.tenantId);
+  // 設定画面は「設定値そのもの」を編集するため、コストキャップ超過で enabled を
+  // 倒さない (applyCostCap:false)。現況は settings.costCap で表示する。
+  const settings = await loadAiAutomationSettings(caller.tenantId, { applyCostCap: false });
 
   return (
     <div className="space-y-6">
@@ -48,7 +50,9 @@ export default async function AiAutomationSettingsPage() {
           confidenceThreshold: settings.confidenceThreshold,
           sourcePolicies: settings.sourcePolicies,
           autoActions: settings.autoActions,
+          monthlyCostCapJpy: settings.monthlyCostCapJpy,
         }}
+        costCap={settings.costCap ?? null}
         loadedFromDb={settings.loadedFromDb}
       />
 
