@@ -208,7 +208,8 @@ export async function GET(req: Request) {
     // ログイン発行など認証付きルート (admin/*, certificates/pdf-one 等) では実名を渡す。
     customer_name: "",
     vehicle_info_json: cert.vehicle_info_json ?? {},
-    content_free_text: cert.content_free_text ?? null,
+    // 自由記述メモも公開(匿名)PDF では出力しない。Web 公開ページ (publicData) と同様に redact。
+    content_free_text: null,
     content_preset_json: cert.content_preset_json ?? {},
     coating_products_json: fullCert?.coating_products_json ?? null,
     ppf_coverage_json: fullCert?.ppf_coverage_json ?? null,
