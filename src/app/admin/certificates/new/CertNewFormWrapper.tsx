@@ -280,6 +280,22 @@ export default function CertNewFormWrapper({
       return;
     }
 
+    const attachedFiles = photoRef.current?.getFiles() ?? [];
+
+    // 写真添付必須ルール (全テナント一律): 発行には施工写真が 1 枚以上必要。
+    // 写真ゼロのときは発行をブロックし、写真追加か「下書き保存」へ誘導する。
+    if (submitStatus === "active" && attachedFiles.length === 0) {
+      setGateBlock({
+        reason: "施工写真が添付されていません",
+        details: ["発行には施工写真が1枚以上必要です。写真を追加するか、「下書き保存」で保存してください。"],
+      });
+      form.querySelector<HTMLElement>("[data-ai-quality-panel]")?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+      return;
+    }
+
     // 発行前ゲート (下書き保存はスキップ)
     if (submitStatus === "active") {
       const gate = await runPrecheckGate(formData);
@@ -302,7 +318,7 @@ export default function CertNewFormWrapper({
       }
     }
 
-    const files = photoRef.current?.getFiles() ?? [];
+    const files = attachedFiles;
 
     // オフライン経路: 文字情報 + 写真の両方を outbox に enqueue する。
     // 写真は cert_idempotency_key を multipart field に乗せて、復帰後に
@@ -335,11 +351,24 @@ export default function CertNewFormWrapper({
             kind: "certificate_image_upload",
           });
         }
+        // 3) 発行 (active 化) は写真アップロード後に行う必要があるため、最後に
+        //    activate-by-key を enqueue する。outbox は順次送信するので、
+        //    写真アップロード完了後に走り、サーバ側で写真有無を再検証する。
+        //    「下書き保存」のときは active 化しない。
+        if (submitStatus === "active") {
+          await enqueueOrFetch({
+            url: "/api/certificates/activate-by-key",
+            method: "POST",
+            body: { cert_idempotency_key: idempotencyKey },
+            label: `証明書を発行 (オフライン): ${parsed.data.customer_name}`,
+            kind: "certificate_activate",
+          });
+        }
         setError(null);
         const note =
-          files.length > 0
-            ? `📡 オフラインのため証明書 + 写真 ${files.length} 枚をキューに保存しました。通信復帰後に自動発行 → 写真アップロードまで実行されます。`
-            : "📡 オフラインで保存しました。通信復帰後に自動的に発行されます。";
+          submitStatus === "active"
+            ? `📡 オフラインのため証明書 + 写真 ${files.length} 枚をキューに保存しました。通信復帰後に「写真アップロード → 発行」まで自動実行されます。`
+            : `📡 オフラインで下書き保存しました（写真 ${files.length} 枚）。通信復帰後に自動同期されます。`;
         setUploadProgress(note);
         return;
       } catch (e) {
@@ -418,6 +447,33 @@ export default function CertNewFormWrapper({
           }
         } catch (e) {
           console.warn("photo upload error", e);
+        }
+      }
+
+      // 発行 (active 化): 証明書は draft で作成済み。写真アップロード後に
+      // status ルートで active 化する。サーバ側で写真有無を再検証するため、
+      // 写真アップロードが失敗していればここでブロックされる (下書きのまま)。
+      if (submitStatus === "active") {
+        setUploadProgress("証明書を発行中…");
+        try {
+          const actRes = await fetch("/api/admin/certificates/status", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ public_id, status: "active" }),
+          });
+          if (!actRes.ok) {
+            const actJson = await actRes.json().catch(() => ({}));
+            setError(
+              (actJson as { error?: string }).error ??
+                "発行に失敗しました。写真が正しくアップロードされているか確認してください（下書きとして保存されています）。",
+            );
+            setUploadProgress(null);
+            return;
+          }
+        } catch (e) {
+          setError(`発行に失敗しました（下書きとして保存されています）: ${e instanceof Error ? e.message : String(e)}`);
+          setUploadProgress(null);
+          return;
         }
       }
 
@@ -623,7 +679,7 @@ export default function CertNewFormWrapper({
           <div className="flex items-center gap-1.5 -mb-2">
             <span className="text-xs font-semibold tracking-[0.18em] text-muted">PHOTOS</span>
             <HelpTooltip>
-              施工前後の写真をアップロードします。証明書の信頼性が大きく上がるため、最低でも施工後1枚を推奨。プランごとに枚数上限が異なります。
+              施工前後の写真をアップロードします。証明書の信頼性確保のため、発行には施工写真が1枚以上必須です（写真がない場合は下書き保存のみ可能）。プランごとに枚数上限が異なります。
             </HelpTooltip>
           </div>
           <PhotoUploadSection

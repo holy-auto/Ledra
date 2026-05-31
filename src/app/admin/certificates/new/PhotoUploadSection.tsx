@@ -111,7 +111,8 @@ const PhotoUploadSection = forwardRef<PhotoUploadHandle, Props>(function PhotoUp
         <div className="mt-0.5 flex items-baseline gap-2">
           <span className="text-base font-semibold text-primary">施工写真</span>
           <span className="text-xs text-muted">
-            任意 · 最大 {maxPhotos} 枚（{planLabel} プラン）
+            <span className="font-semibold text-danger">必須</span>（発行には1枚以上）· 最大 {maxPhotos} 枚（
+            {planLabel} プラン）
           </span>
         </div>
       </div>

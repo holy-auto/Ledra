@@ -105,9 +105,12 @@ export async function POST(req: Request) {
       manufacturerTemplateId = resolved.template.id;
     }
 
+    // 写真添付必須ルール: 新規作成時点では写真が 0 枚のため active で作れない。
+    // active を要求されても draft で作成し、写真アップロード後に
+    // PUT /api/admin/certificates/status で発行 (active 化) させる。
     const insertRow = {
       tenant_id: caller.tenantId,
-      status: b.status ?? "active",
+      status: "draft" as const,
       customer_name: b.customer_name,
 
       // 新規からはここを正しく保存
