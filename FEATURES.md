@@ -1,7 +1,7 @@
 # Ledra — 全機能一覧 & ワークフロー
 
 > WEB施工証明書SaaS プラットフォーム
-> 最終更新: 2026-05-09
+> 最終更新: 2026-05-31
 
 ---
 
@@ -251,6 +251,8 @@ Ledraは自動車施工（コーティング・フィルム・ラッピング等
 
 ### 2.22 情報管理
 - **お知らせ** `/admin/announcements`: 店舗スタッフ向けお知らせ配信
+- **店舗お知らせ (顧客向け)** `/admin/shop-announcements` ★新規: 顧客マイページに掲出する店舗からのお知らせを作成・公開。保存時に `translation.auto_translate` auto-action が走り、title/body を英・中・越へ自動翻訳して `shop_announcements.translations` に保存 (原文=日本語が常に正)。公開 API は `GET /api/announcements/shop?tenant=<slug>&lang=<ja|en|zh|vi>`
+- **レビュー** `/admin/reviews` ★新規: 受領サイン後に投稿された顧客レビュー / NPS の一覧。`review.auto_analyze` auto-action による自動感情解析 (positive / neutral / negative) の結果を一覧表示
 - **業界ニュース** `/admin/news`: 自動取得ニュース配信
 - **問い合わせ** `/admin/inquiries`: 外部からの問い合わせ管理
 - **顧客問い合わせ** `/admin/customer-inquiries`: 自店顧客からのサポート問い合わせを 3 段階ステータス (新規→確認済→返信済) で管理。インライン返信 + 返信日時の自動記録
@@ -407,6 +409,7 @@ Ledraは自動車施工（コーティング・フィルム・ラッピング等
 - テナント別の顧客ログイン
 - メール認証（ワンタイムコード）
 - 自分の証明書一覧
+- **お知らせタブ** ★新規: 店舗が `/admin/shop-announcements` で公開したお知らせを閲覧。言語切替 (日 / 英 / 中 / 越) に対応し、`translation.auto_translate` で生成された翻訳を表示
 
 ### 5.3 受領サイン (電子署名フロー) `/sign/[token]` ★実装済み
 作業完了後、**顧客 (受領者)** がスマホ上で施工証明書の内容を確認し電子署名するトークンベースの公開ページ。OAuth 不要、メール/SMS 共有リンク方式。
@@ -895,6 +898,17 @@ KPI 中心の Admin ダッシュボードに加え、現場スタッフ向けの
 - **`/admin/inventory`**: SKU 単位の在庫管理 + 入出庫履歴 + 低在庫フィルタ + POS 連動 (近日)
 - **`/admin/thickness-reports`**: PosiTector 系塗膜厚計のデータを車両・施工に紐付け、保険会社向け膜厚エビデンスとして活用
 
+#### イベント駆動 AI auto-actions ★実装済み (PR #450 / #452)
+
+フィールド単位の自動入力 (12.3) に続き、**業務イベントをトリガに AI を自動実行**する仕組みを実装。7 アクションすべてをライブ配線し、設定 UI (`/admin/settings/ai-automation` の AUTO-ACTIONS セクション) で個別に ON/OFF できます (既定はすべて OFF)。
+
+- **`certificate.auto_draft`**: 予約 (案件) が `completed` になると証明書ドラフトを自動生成 (既存下書きは上書きしない / 写真は使わない / 発行は必ず人=壁3)。案件画面でプリフィル表示
+- **`review.auto_analyze`**: 受領サイン後のレビュー投稿時に感情解析を自動付与。`/admin/reviews` に一覧表示
+- **`translation.auto_translate`**: 店舗お知らせ保存時に title/body を英・中・越へ自動翻訳 (`shop_announcements.translations`)
+- **LINE 受信 → 予約候補抽出 / 自動起票**: `decideInboundCommit` のガードを満たした場合のみ予約を自動起票 (壁3 遵守)
+- **壁3 ガードレール**: 証明書発行・請求/見積の送付確定・顧客の本人確認作成など 6 アクションは `NEVER_AUTO_ACTIONS` として常に人の確認を要求
+- **フィードバックループ**: 実績ログから `recommendAutoActions` が auto/suggest/manual の最適化を推薦 (壁3 は対象外)
+
 ### 12.2 次フェーズ (中期)
 
 #### 顧客 360° ビュー の追加ソース
@@ -929,9 +943,10 @@ KPI 中心の Admin ダッシュボードに加え、現場スタッフ向けの
 
 優先度: ◎ 短期 / ○ 中期 / △ 長期
 
-#### AI・自動化 (差別化コア) ★ PR #448 / #449 で大規模実装済
-ワークフロー全体を AI で代行する**フィールド単位ポリシー制御**の自動入力基盤を実装。
-詳細は [`docs/ai-automation-guide.md`](docs/ai-automation-guide.md) を参照。
+#### AI・自動化 (差別化コア) ★ PR #448–#452 で大規模実装済
+ワークフロー全体を AI で代行する**フィールド単位ポリシー制御**の自動入力基盤に加え、
+**イベント駆動の自動実行 (auto-actions)** を実装。詳細は
+[`docs/ai-automation-guide.md`](docs/ai-automation-guide.md) を参照。
 
 | 優先 | 機能 | 状態 |
 |---|---|---|
@@ -952,6 +967,9 @@ KPI 中心の Admin ダッシュボードに加え、現場スタッフ向けの
 | ✓ | マーケット車両 AI 説明文生成 | 実装済 (`/api/admin/market-vehicles/[id]/ai-description`) |
 | ✓ | 多言語化 (en / zh / vi / ko / pt-BR) | 実装済 (`/api/admin/translate`) + キャッシュテーブル `ai_translation_cache` |
 | ✓ | フィールド単位ポリシー (auto / suggest / manual) | `/admin/settings/ai-automation` で 30+ フィールドを切替可能 |
+| ✓ | イベント駆動 auto-actions (5/5 ライブ配線) | 案件完了→証明書ドラフト自動生成 (`certificate.auto_draft`) / 受領サインレビュー→自動感情解析 (`review.auto_analyze`) / 店舗お知らせ保存→多言語自動翻訳 (`translation.auto_translate`) / LINE 受信→予約候補抽出 / 案件→請求書起票。発行・送付・確定など 6 アクションは「壁3」で自動化禁止 (必ず人が確認) |
+| ✓ | 自動化レベルのフィードバックループ | 実績ログから `recommendAutoActions` が auto/suggest/manual の最適化を推薦 (`feedbackLoop.ts` + `recommendations` API)。壁3 は推薦対象外 |
+| ✓ | per-field confidence による降格 | 信頼度が `confidence_threshold` 未満のフィールドは `auto` でも `suggest` に自動降格 |
 | ✓ | AI 利用集計ダッシュボード | `/admin/platform/operations` (信頼度ヒストグラム / outcome 別 / トークン消費) |
 | ○ | 写真改ざん検出 (メタデータ/ハッシュ/EXIF) | 保険会社向けの強力な訴求 |
 | △ | 不正パターン検出 (代理店・BtoB・保険請求) | 運営コスト削減 |
