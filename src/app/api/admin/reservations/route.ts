@@ -12,6 +12,8 @@ import {
   reservationUpdateSchema,
 } from "@/lib/validations/reservation";
 import { maybeAutoDraftCertificateForReservation } from "@/lib/ai/automation/certificateAuto";
+import { maybeAutoCreateDraftCertificateForReservation } from "@/lib/ai/automation/certificateRecordAuto";
+import { maybeAutoCategorizeReservationOnIntake } from "@/lib/ai/automation/accountingAuto";
 
 export const dynamic = "force-dynamic";
 
@@ -180,6 +182,10 @@ export async function POST(req: NextRequest) {
       }),
     );
 
+    // 案件登録時: 勘定科目を自動推定して提案保存 (accounting.auto_categorize_on_intake が opt-in のテナントのみ).
+    // 帳簿への計上 (確定) はしない — 科目の確定は必ず人 (壁3). レスポンスを遅らせないよう fire-and-forget.
+    void maybeAutoCategorizeReservationOnIntake({ tenantId: caller.tenantId, reservationId: reservation.id as string });
+
     return apiJson({ ok: true, reservation });
   } catch (e: unknown) {
     return apiInternalError(e, "reservations create");
@@ -317,7 +323,12 @@ export async function PUT(req: NextRequest) {
     // 案件完了時: 証明書ドラフトを自動生成 (certificate.auto_draft が opt-in のテナントのみ)。
     // 発行は必ず人が行う (壁3)。レスポンスを遅らせないよう fire-and-forget。
     if (data.status === "completed") {
-      void maybeAutoDraftCertificateForReservation({ tenantId: caller.tenantId, reservationId: data.id });
+      void (async () => {
+        // certificate.auto_draft: AI 下書きを reservations.ai_certificate_draft に保存。
+        await maybeAutoDraftCertificateForReservation({ tenantId: caller.tenantId, reservationId: data.id });
+        // certificate.auto_create_draft_record: 証明書を status=draft の行として起票 (発行は必ず人 = 壁3)。
+        await maybeAutoCreateDraftCertificateForReservation({ tenantId: caller.tenantId, reservationId: data.id });
+      })();
     }
 
     return apiJson({ ok: true, reservation: data });

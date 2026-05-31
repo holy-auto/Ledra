@@ -28,10 +28,13 @@ export type AutomationActionKey =
   | "inbound_message.auto_extract"
   | "inbound_message.auto_create_reservation"
   | "certificate.auto_draft"
+  | "certificate.auto_create_draft_record"
   | "review.auto_analyze"
   | "translation.auto_translate"
   | "invoice.auto_send_on_confirm"
-  | "quote.auto_send_on_confirm";
+  | "quote.auto_send_on_confirm"
+  | "accounting.auto_categorize_on_intake"
+  | "thickness.auto_detect";
 
 export interface AutomationActionDef {
   key: AutomationActionKey;
@@ -76,6 +79,15 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     guard: "写真あり + 音声メモあり + confidence≥閾値",
   },
   {
+    key: "certificate.auto_create_draft_record",
+    workflow: "certificate",
+    label: "案件完了で証明書を下書き(draft)として自動作成",
+    description:
+      "案件完了 + 車両ありの時点で、AI 下書きを基に証明書レコードを status=draft で自動作成し発行直前まで用意する。発行 (draft→active = 法的確定) は必ず人が 1 タップで行う (壁3)。既に証明書がある案件は作らない。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Standard プラン以上 + 案件完了 + 車両あり + 既存証明書なし",
+  },
+  {
     key: "review.auto_analyze",
     workflow: "review",
     label: "レビュー受信時に感情分析を自動実行",
@@ -106,6 +118,24 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
       "下書きの見積書を人が「確定 (送付済みに変更)」した時点で、顧客に自動送付する。LINE 連携があれば LINE、無ければメールを自動選択して書類リンクを届ける。内容の確定そのものは必ず人が行う (壁3)。",
     defaultEnabled: false,
     guard: "AI 有効 + Standard プラン以上 + 人が draft→sent に確定 + 顧客に LINE もしくはメールあり",
+  },
+  {
+    key: "accounting.auto_categorize_on_intake",
+    workflow: "accounting",
+    label: "案件登録時に勘定科目を自動推定(提案)",
+    description:
+      "案件 (予約) が登録された時点で、メニュー明細から freee / マネーフォワード の勘定科目を自動推定し、提案として保存する。確定 (帳簿への計上) は行わない — 金額・科目の確定は必ず人が行う (壁3)。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Standard プラン以上 + 会計連携設定済み + メニュー明細あり",
+  },
+  {
+    key: "thickness.auto_detect",
+    workflow: "inventory",
+    label: "塗膜厚レポート受信時に異常検知を自動実行",
+    description:
+      "NexPTG 等から塗膜厚レポートを受信した時点で統計的な異常検知 (外れ値 / 値域逸脱) を自動実行し、結果を注釈として保存する。金額・本人確認・法的確定に関与しないため安全。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Standard プラン以上",
   },
 ];
 

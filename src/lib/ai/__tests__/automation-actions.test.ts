@@ -14,6 +14,9 @@ import {
   shouldAutoDraftCertificate,
   shouldAutoExtractInbound,
   shouldAutoSendDocument,
+  shouldAutoDetectThickness,
+  shouldAutoCategorizeAccountingOnIntake,
+  shouldAutoCreateDraftCertificate,
 } from "../automation/orchestrator";
 
 describe("actionCatalog", () => {
@@ -271,5 +274,47 @@ describe("shouldAutoSendDocument (確定→自動送付)", () => {
     };
     expect(resolveAutoAction(sneaky, "invoice.auto_send")).toBe(false);
     expect(resolveAutoAction(sneaky, "quote.auto_send")).toBe(false);
+  });
+});
+
+
+describe("phase-1 auto-actions (thickness / accounting / certificate draft-record)", () => {
+  const on = (key) => ({ ...DEFAULT_AI_AUTOMATION_SETTINGS, autoActions: { [key]: true } });
+
+  it("every shipped action is still default OFF (incl. new ones)", () => {
+    for (const a of AUTOMATION_ACTIONS) expect(a.defaultEnabled).toBe(false);
+  });
+
+  it("new action keys are known and NOT wall-3", () => {
+    for (const k of [
+      "thickness.auto_detect",
+      "accounting.auto_categorize_on_intake",
+      "certificate.auto_create_draft_record",
+    ]) {
+      expect(isKnownActionKey(k)).toBe(true);
+      expect(isNeverAutoAction(k)).toBe(false);
+    }
+  });
+
+  it("shouldAutoDetectThickness follows opt-in + master switch", () => {
+    expect(shouldAutoDetectThickness(DEFAULT_AI_AUTOMATION_SETTINGS)).toBe(false);
+    expect(shouldAutoDetectThickness(on("thickness.auto_detect"))).toBe(true);
+    expect(shouldAutoDetectThickness({ ...on("thickness.auto_detect"), enabled: false })).toBe(false);
+  });
+
+  it("shouldAutoCategorizeAccountingOnIntake follows opt-in", () => {
+    expect(shouldAutoCategorizeAccountingOnIntake(DEFAULT_AI_AUTOMATION_SETTINGS)).toBe(false);
+    expect(shouldAutoCategorizeAccountingOnIntake(on("accounting.auto_categorize_on_intake"))).toBe(true);
+  });
+
+  it("shouldAutoCreateDraftCertificate: opt-in + completed + vehicle, idempotent, never issues", () => {
+    const s = on("certificate.auto_create_draft_record");
+    expect(shouldAutoCreateDraftCertificate(s, { isCompleted: true, hasVehicle: true })).toBe(true);
+    expect(shouldAutoCreateDraftCertificate(DEFAULT_AI_AUTOMATION_SETTINGS, { isCompleted: true, hasVehicle: true })).toBe(false);
+    expect(shouldAutoCreateDraftCertificate(s, { isCompleted: true, hasVehicle: false })).toBe(false);
+    expect(shouldAutoCreateDraftCertificate(s, { isCompleted: false, hasVehicle: true })).toBe(false);
+    expect(shouldAutoCreateDraftCertificate(s, { isCompleted: true, hasVehicle: true, alreadyHasCertificate: true })).toBe(false);
+    // 壁3: issuance stays forbidden regardless of this opt-in
+    expect(isNeverAutoAction("certificate.auto_issue")).toBe(true);
   });
 });

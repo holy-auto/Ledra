@@ -108,10 +108,13 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 | `inbound_message.auto_extract`            | LINE 等の受信時に予約候補を自動抽出し受信箱に下書き化 (コミットなし) | OFF  | ✅ LINE webhook                |
 | `inbound_message.auto_create_reservation` | 高確信 + 既知顧客 + 有効日 + new_reservation のとき予約を自動起票    | OFF  | ✅ LINE webhook                |
 | `certificate.auto_draft`                  | 案件完了 + 車両ありで証明書ドラフトを自動生成 (発行なし)             | OFF  | ✅ 予約完了 (PUT reservations) |
+| `certificate.auto_create_draft_record`    | 案件完了 + 車両 + 顧客名ありで証明書を status=draft の行として自動起票 (発行=draft→active は人 / 壁3) | OFF | ✅ 予約完了 (PUT reservations) |
 | `review.auto_analyze`                     | レビュー受信時に感情分析を自動付与                                   | OFF  | ✅ 受領サインレビュー POST     |
 | `translation.auto_translate`              | 店舗お知らせ保存時に多言語へ自動翻訳                                 | OFF  | ✅ 店舗お知らせ保存 (POST/PUT) |
 | `invoice.auto_send_on_confirm`            | 請求書を人が確定 (draft→sent) した時点で顧客へ自動送付 (決済リンク+書類) | OFF  | ✅ documents PUT (draft→sent)  |
 | `quote.auto_send_on_confirm`              | 見積書を人が確定 (draft→sent) した時点で顧客へ自動送付 (書類リンク)   | OFF  | ✅ documents PUT (draft→sent)  |
+| `accounting.auto_categorize_on_intake`    | 案件登録時にメニュー明細から勘定科目を推定し「提案」を保存 (計上=確定は人 / 壁3) | OFF | ✅ 予約作成 (POST reservations) |
+| `thickness.auto_detect`                   | 塗膜厚レポート受信時に統計的な異常検知を自動付与 (注釈)              | OFF  | ✅ NexPTG 同期 (POST external/nexptg/sync) |
 
 > **certificate.auto_draft の配線**: 予約 (案件) が `completed` になった時点で
 > `maybeAutoDraftCertificateForReservation` (fire-and-forget) が走り、車両 + 過去事例から
@@ -143,6 +146,26 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 > レース (ダブルクリック等) でも二重送付しない。失敗時は予約を解放してリトライ可能。
 > **金額/内容の「確定」そのものは必ず人 (draft→sent は人の操作) = 壁3 を維持**。
 > 自動課金 (payment.auto_charge) は行わず、決済はあくまで顧客の操作。
+
+> **certificate.auto_create_draft_record の配線**: `certificate.auto_draft` (下書き JSON 生成)
+> の一歩先。予約 PUT で `status="completed"` になると、まず下書き JSON を生成し、続いて
+> `maybeAutoCreateDraftCertificateForReservation` (`certificateRecordAuto.ts`) が **証明書を
+> status=draft の行として起票**する (`reservations.ai_certificate_id` で冪等化 / 二重起票防止)。
+> 顧客名が取れない案件 (本人確認不能) や車両なしの案件では作らない。**発行 (draft→active =
+> 法的確定) は必ず人**が行う (`certificate.auto_issue` は NEVER_AUTO のまま)。
+>
+> **accounting.auto_categorize_on_intake の配線**: 予約 POST で案件が登録された時点で
+> `maybeAutoCategorizeReservationOnIntake` (`accountingAuto.ts`, fire-and-forget) が走り、
+> `menu_items_json` の明細を既定チャート (売上高/部品売上/立替金/雑収入) に rule→AI の
+> 二段で当て、`reservations.ai_accounting_suggestion` に **「提案」として保存**する。
+> `accounting.category` は NEVER_AUTO_FIELD のため、これは提案であって帳簿への計上 (確定)
+> ではない。**金額・科目の確定は必ず人**が行う (壁3)。
+>
+> **thickness.auto_detect の配線**: NexPTG 膜厚計同期 (`POST /api/external/nexptg/sync`) で
+> レポートを受信すると、レスポンス送出後に `after()` 経由で
+> `maybeAutoDetectThicknessForReports` (`thicknessAuto.ts`) が走り、測定値を統計解析して
+> `thickness_reports.ai_anomaly_result` に保存する (1 sync あたり最大 50 レポート)。
+> sentiment 同様、注釈用途で金額・本人確認・法的確定には一切関与しない (壁3 対象外)。
 
 ### 4.5.1 LINE 受信 → 自動処理パイプライン
 
