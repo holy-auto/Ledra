@@ -21,6 +21,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 import { estimateCostJpy, usdJpyRate } from "@/lib/ai/pricing";
+import { estimateCallCostJpy } from "@/lib/ai/costCap";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -140,9 +141,15 @@ function aggregate(rows: UsageRow[], days: number): EmptyStats {
     if (r.outcome === "ok") okCount++;
     else if (r.outcome === "error") errorCount++;
 
-    // 行ごとに使用モデルの単価でコストを概算 (escalation で同一 endpoint でも
-    // モデルが混在しうるため、endpoint 集約ではなく行単位で算出する)。
-    const rowCostJpy = estimateCostJpy(r.model, { inputTokens: r.input_tokens, outputTokens: r.output_tokens }, rate);
+    // 行ごとにコストを概算。実トークンがあればモデル別単価で精算し、
+    // 無い ok 行 (旧データ / 捕捉漏れ) は endpoint 代表単価でフォールバックする
+    // (¥0 過少計上を避ける)。AI 未呼び出しの非 ok 行はコスト 0。
+    const hasTokens = (r.input_tokens ?? 0) > 0 || (r.output_tokens ?? 0) > 0;
+    const rowCostJpy = hasTokens
+      ? estimateCostJpy(r.model, { inputTokens: r.input_tokens, outputTokens: r.output_tokens }, rate)
+      : r.outcome === "ok" && r.endpoint
+        ? estimateCallCostJpy(r.endpoint)
+        : 0;
     totalCostJpy += rowCostJpy;
 
     if (r.endpoint) {

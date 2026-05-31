@@ -116,14 +116,23 @@ export async function loadAiAutomationSettings(
       .eq("tenant_id", tenantId)
       .maybeSingle();
 
-    // auto_actions / monthly_cost_cap_jpy 列が未作成 (部分マイグレーション) の場合は
-    // 拡張列を外して再取得し、既存の field_policies 等を失わないようにする。
+    // monthly_cost_cap_jpy 列が未作成 (部分マイグレーション) の場合は、まず
+    // auto_actions を残したまま cost-cap 列だけ外して再取得する。auto_actions も
+    // 無い更に古い環境のときだけ基本列のみに落とす (既存の opt-in を失わせない)。
     if (error && isMissingColumnError(error)) {
       ({ data, error } = await admin
         .from("tenant_ai_automation_settings")
-        .select(baseCols)
+        .select(`${baseCols}, auto_actions`)
         .eq("tenant_id", tenantId)
         .maybeSingle());
+
+      if (error && isMissingColumnError(error)) {
+        ({ data, error } = await admin
+          .from("tenant_ai_automation_settings")
+          .select(baseCols)
+          .eq("tenant_id", tenantId)
+          .maybeSingle());
+      }
     }
 
     if (error && isMissingTableError(error)) {

@@ -113,6 +113,12 @@ export async function extractExifMeta(buffer: ArrayBuffer): Promise<PhotoExifMet
 
 const EDIT_SOFTWARE_PATTERNS = /photoshop|lightroom|gimp|affinity|snapseed|facetune|meitu/i;
 
+/**
+ * これらの flag を持つ写真は Vision の結果に関わらず verdict=suspicious が確定するため、
+ * 高価な Vision (Opus) 呼び出しをスキップしてよい (最終 verdict 判定と整合)。
+ */
+const DECISIVE_TAMPERING_FLAGS = new Set<TamperingFlag>(["software_edited", "duplicate_hash", "timestamp_mismatch"]);
+
 export function detectExifFlags(
   meta: PhotoExifMeta,
   now: Date,
@@ -267,10 +273,16 @@ export async function auditPhotoTampering(
     return { idx, meta, hash, flags, contentType: p.contentType, base64 };
   });
 
-  // 4. Vision は flags が 1 件以上 (ただし exif_stripped のみは skip — 古いスキャナ等で頻出)
-  const visionTargets = partialResults.filter(
-    (r) => r.flags.length > 0 && !(r.flags.length === 1 && r.flags[0] === "exif_stripped"),
-  );
+  // 4. Vision に回すのは「曖昧な (inconclusive 止まりの) flag」を持つ写真のみ。
+  //    - exif_stripped のみ → skip (古いスキャナ等で頻出)
+  //    - 決定的 flag (software_edited / duplicate_hash / timestamp_mismatch) を持つ写真は
+  //      Vision の結果に関わらず verdict=suspicious 確定なので、高価な Opus 呼び出しを省く。
+  const visionTargets = partialResults.filter((r) => {
+    if (r.flags.length === 0) return false;
+    if (r.flags.length === 1 && r.flags[0] === "exif_stripped") return false;
+    if (r.flags.some((f) => DECISIVE_TAMPERING_FLAGS.has(f))) return false;
+    return true;
+  });
 
   const visionResults = await Promise.all(
     visionTargets.map((r) => visionTamperingCheck(r.base64, r.contentType, r.flags)),

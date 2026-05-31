@@ -124,10 +124,16 @@ export async function runIdentityOcr(input: IdentityOcrInput): Promise<IdentityO
   let parsed = await runOcrPass(input, AI_MODEL_VISION);
 
   if (parsed && AI_MODEL_CRITICAL !== AI_MODEL_VISION && parsed.confidence < AI_ESCALATE_THRESHOLD) {
-    const escalated = await runOcrPass(input, AI_MODEL_CRITICAL);
-    // 昇格結果が同等以上の自己評価なら採用 (劣化したら元の結果を維持)。
-    if (escalated && escalated.confidence >= parsed.confidence) {
-      parsed = escalated;
+    // 昇格はベストエフォート。Opus 側が失敗 (timeout/rate limit/誤設定) しても
+    // 一次結果 (parsed) を破棄せず維持する。
+    try {
+      const escalated = await runOcrPass(input, AI_MODEL_CRITICAL);
+      // 昇格結果が同等以上の自己評価なら採用 (劣化したら元の結果を維持)。
+      if (escalated && escalated.confidence >= parsed.confidence) {
+        parsed = escalated;
+      }
+    } catch (e) {
+      console.error("[identityOcr] escalation failed, keeping first pass:", e);
     }
   }
 

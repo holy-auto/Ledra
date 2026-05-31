@@ -11,7 +11,7 @@
  */
 import { recordAiUsage, type AiUsageLog, type AiUsageOutcome } from "./usageLog";
 import { recordAiBreadcrumb } from "./sentryAiBreadcrumb";
-import { addMonthlyCostJpy, estimateCallCostJpy } from "./costCap";
+import { addMonthlyCostJpy } from "./costCap";
 import { beginAiUsageCapture, getCapturedUsage } from "./usageContext";
 import { estimateCostJpy } from "./pricing";
 
@@ -61,18 +61,20 @@ export function startAiRouteUsage(endpoint: string): RouteUsageHandle {
         meta: args.meta,
       };
       void recordAiUsage(log);
-      // 月次コストキャップ用カウンタを加算 (実際に AI を呼んだ ok のみ、best-effort)。
-      // 実トークンが取れていればモデル別単価で精算、無ければ endpoint 代表単価で概算。
-      if (args.outcome === "ok" && args.tenantId) {
-        const costJpy = captured
-          ? estimateCostJpy(model, {
-              inputTokens: captured.inputTokens,
-              outputTokens: captured.outputTokens,
-              cacheReadTokens: captured.cacheReadTokens,
-              cacheWriteTokens: captured.cacheWriteTokens,
-            })
-          : estimateCallCostJpy(endpoint);
-        void addMonthlyCostJpy(args.tenantId, costJpy);
+      // 月次コストキャップ用カウンタを加算する。
+      // 実際に Anthropic を呼んだ (captured.calls>0) ときだけ課金する: 翻訳キャッシュ
+      // ヒットや schema-missing フォールバックなど "ok だが AI 未呼び出し" の経路を
+      // 誤って予算消費させない。実トークンが捕捉できているのでモデル別単価で精算する。
+      if (args.outcome === "ok" && args.tenantId && captured) {
+        void addMonthlyCostJpy(
+          args.tenantId,
+          estimateCostJpy(model, {
+            inputTokens: captured.inputTokens,
+            outputTokens: captured.outputTokens,
+            cacheReadTokens: captured.cacheReadTokens,
+            cacheWriteTokens: captured.cacheWriteTokens,
+          }),
+        );
       }
       // Sentry breadcrumb: outcome を sentry の語彙にマップ
       const sentryOutcome =
