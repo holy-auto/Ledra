@@ -22,7 +22,31 @@
  *   - /admin/vehicles/[id]/passport-transfer  admin 限定
  *   - /api/passport/transfers/{initiate,cancel} admin 限定
  *   - /api/cron/passport-transfers-expire     cron 内部
+ *
+ * ⚠️ 特許出願ロック (PASSPORT_PATENT_HOLD)
+ *   パスポートの中核であるメタアンカー機構は特許出願を検討中で、出願戦略が
+ *   固まるまで公開ルートを開けてはいけない (docs/patents/04・05 §F)。検証 API は
+ *   メタアンカーの集約値・構成 tx を返すため、公開すると機構が外部から読み取れる。
+ *   PASSPORT_PATENT_HOLD が立っている間は、PASSPORT_PUBLIC_ENABLED の値に
+ *   関わらず公開ルートを 404 のままにする「ハードロック」。本番 (production) では
+ *   出願 GO/NO-GO が決まるまで PASSPORT_PATENT_HOLD=1 を設定しておくこと。
+ *   誤って PASSPORT_PUBLIC_ENABLED=true を入れても公開されない。
+ *   ロックを外すのは出願戦略の確定後、必ず弁理士確認を通してから。
  */
+
+/**
+ * 特許出願ロックが有効か。安全側 (公開しない側) に倒すため、ENABLED の厳密
+ * "true" 判定と違って truthy 判定はゆるめにする ("1" / "true" / "yes" / "on")。
+ * 未設定 (default) はロックなし → ローカル/staging の公開ルート開発を妨げない。
+ */
+function isPatentHoldActive(): boolean {
+  const v = (process.env.PASSPORT_PATENT_HOLD ?? "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
 export function isPassportPublicEnabled(): boolean {
+  // 特許出願ロックが最優先。立っていれば PASSPORT_PUBLIC_ENABLED を無視して
+  // 公開しない (docs/patents/05 §F)。
+  if (isPatentHoldActive()) return false;
   return process.env.PASSPORT_PUBLIC_ENABLED === "true";
 }

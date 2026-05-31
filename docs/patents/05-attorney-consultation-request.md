@@ -140,6 +140,9 @@ NDA 締結後は、必要に応じて該当ソースの参照箇所（各ドキ�
   非対称failure — ブログ・登壇・PoC追補・SNS・採用記事等で語らない。
 - **`PASSPORT_PUBLIC_ENABLED=true` 化を保留**：発明1の `/v/`・検証API の本番公開は、
   出願戦略の確定後に。公開すると検証APIから機構が読み取れる。
+  - 🔒 **実装済みのハードロック**：本番(production)の環境変数に **`PASSPORT_PATENT_HOLD=1`** を設定すること。
+    これが立っている間は `PASSPORT_PUBLIC_ENABLED=true` を誤って入れても公開ルートは 404 のまま
+    （`src/lib/passport/featureGate.ts`）。ロックを外すのは出願 GO/NO-GO 確定後、弁理士確認を通してから。
 - **`/poc`・`/features/timeline` の追記凍結**：これ以上 VIN集約／メタアンカーに踏み込む記述を
   足さない（既存開示の範囲を広げない）。
 - 公開面に手を入れる前に必ず [04 棚卸し](./04-disclosure-inventory.md) を更新し、弁理士確認を通す。
