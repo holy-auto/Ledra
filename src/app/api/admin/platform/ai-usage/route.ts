@@ -32,6 +32,7 @@ interface UsageRow {
   confidence: number | null;
   input_tokens: number | null;
   output_tokens: number | null;
+  cost_jpy: number | null;
   latency_ms: number | null;
   created_at: string | null;
 }
@@ -94,13 +95,23 @@ export async function GET(req: NextRequest) {
     const cutoff = new Date(Date.now() - days * 86400000).toISOString();
 
     const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
-    const { data, error } = await admin
-      .from("ai_usage_logs")
-      .select("endpoint, outcome, model, confidence, input_tokens, output_tokens, latency_ms, created_at")
-      .eq("tenant_id", tenantId)
-      .gte("created_at", cutoff)
-      .order("created_at", { ascending: false })
-      .limit(10000);
+    const baseCols = "endpoint, outcome, model, confidence, input_tokens, output_tokens, latency_ms, created_at";
+    const run = (cols: string) =>
+      admin
+        .from("ai_usage_logs")
+        .select(cols)
+        .eq("tenant_id", tenantId)
+        .gte("created_at", cutoff)
+        .order("created_at", { ascending: false })
+        .limit(10000);
+
+    let res = await run(`${baseCols}, cost_jpy`);
+    // cost_jpy 列が未作成 (部分マイグレーション) のときは列を外して再取得 (cost_jpy は
+    // null 扱いとなり、行ごとにトークンでフォールバック計上する)。
+    if (res.error && (res.error.code === "42703" || res.error.code === "PGRST204")) {
+      res = await run(baseCols);
+    }
+    const { data, error } = res;
 
     if (error) {
       if (isMissingTableError(error)) {
@@ -113,7 +124,7 @@ export async function GET(req: NextRequest) {
       return apiInternalError(error, "ai-usage GET");
     }
 
-    const stats = aggregate((data ?? []) as UsageRow[], days);
+    const stats = aggregate((data ?? []) as unknown as UsageRow[], days);
     return apiOk({ stats, days });
   } catch (e: unknown) {
     return apiInternalError(e, "ai-usage GET");
@@ -140,11 +151,14 @@ function aggregate(rows: UsageRow[], days: number): EmptyStats {
     if (r.outcome === "ok") okCount++;
     else if (r.outcome === "error") errorCount++;
 
-    // 行ごとにコストを概算。実トークン (usageContext が捕捉) があるときだけ
-    // モデル別単価で精算する。トークンの無い行は AI 未呼び出し (翻訳キャッシュ
-    // ヒット / schema-missing フォールバック) か旧データなので 0 とする
-    // (コストキャップ側と一致: 実際に Anthropic を呼んだ分だけ計上)。
-    const rowCostJpy = estimateCostJpy(r.model, { inputTokens: r.input_tokens, outputTokens: r.output_tokens }, rate);
+    // コストは保存済みの実コスト (cost_jpy: cache 込み・モデル別、コストキャップ計上値と
+    // 一致) を最優先。旧データ (cost_jpy=null) のみ実トークンからモデル別単価で概算する
+    // (cache トークンは含まれないが旧データなので許容)。トークンも無い行は 0
+    // (AI 未呼び出し: 翻訳キャッシュヒット / schema-missing フォールバック)。
+    const rowCostJpy =
+      r.cost_jpy != null
+        ? r.cost_jpy
+        : estimateCostJpy(r.model, { inputTokens: r.input_tokens, outputTokens: r.output_tokens }, rate);
     totalCostJpy += rowCostJpy;
 
     if (r.endpoint) {

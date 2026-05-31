@@ -19,13 +19,7 @@
  */
 import { createTenantScopedAdmin, createInsurerScopedAdmin } from "@/lib/supabase/admin";
 
-export type AiUsageOutcome =
-  | "ok"
-  | "ai_disabled"
-  | "plan_limit"
-  | "rate_limit"
-  | "schema_error"
-  | "error";
+export type AiUsageOutcome = "ok" | "ai_disabled" | "plan_limit" | "rate_limit" | "schema_error" | "error";
 
 export interface AiUsageLog {
   tenantId?: string | null;
@@ -36,9 +30,15 @@ export interface AiUsageLog {
   outcome: AiUsageOutcome;
   inputTokens?: number | null;
   outputTokens?: number | null;
+  /** 呼び出しの概算コスト (円, cache 込み・モデル別)。usageContext が算出。 */
+  costJpy?: number | null;
   confidence?: number | null;
   latencyMs?: number | null;
   meta?: Record<string, unknown> | null;
+}
+
+function isMissingColumnError(err: { code?: string } | null | undefined): boolean {
+  return err?.code === "42703" || err?.code === "PGRST204";
 }
 
 export async function recordAiUsage(log: AiUsageLog): Promise<void> {
@@ -47,7 +47,7 @@ export async function recordAiUsage(log: AiUsageLog): Promise<void> {
     const admin = log.tenantId
       ? createTenantScopedAdmin(log.tenantId).admin
       : createInsurerScopedAdmin(log.insurerId!).admin;
-    await admin.from("ai_usage_logs").insert({
+    const row = {
       tenant_id: log.tenantId ?? null,
       insurer_id: log.insurerId ?? null,
       user_id: log.userId ?? null,
@@ -56,10 +56,19 @@ export async function recordAiUsage(log: AiUsageLog): Promise<void> {
       outcome: log.outcome,
       input_tokens: log.inputTokens ?? null,
       output_tokens: log.outputTokens ?? null,
+      cost_jpy: log.costJpy ?? null,
       confidence: log.confidence ?? null,
       latency_ms: log.latencyMs ?? null,
       meta: log.meta ?? null,
-    });
+    };
+    const { error } = await admin.from("ai_usage_logs").insert(row);
+    // cost_jpy 列が未作成 (部分マイグレーション) の場合は列を外して再挿入し、
+    // 移行ウィンドウ中もログ自体は失わないようにする。
+    if (error && isMissingColumnError(error)) {
+      const { cost_jpy: _omit, ...rest } = row;
+      void _omit;
+      await admin.from("ai_usage_logs").insert(rest);
+    }
   } catch (e) {
     // テーブル未マイグレーション (42P01) や RLS 拒否 (PGRST301) はサイレント
     console.error("[ai-usage] insert failed:", e);
