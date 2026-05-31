@@ -241,6 +241,7 @@ ${flagHints}
 export async function auditPhotoTampering(
   photoBuffers: Array<{ buffer: ArrayBuffer; contentType: string }>,
   now = new Date(),
+  opts: { useVision?: boolean } = {},
 ): Promise<TamperingAuditResult> {
   if (photoBuffers.length === 0) {
     return { results: [], anyFlagged: false, summary: "写真なし" };
@@ -274,15 +275,19 @@ export async function auditPhotoTampering(
   });
 
   // 4. Vision に回すのは「曖昧な (inconclusive 止まりの) flag」を持つ写真のみ。
+  //    - useVision=false (コストキャップ超過等) → Vision を一切呼ばず EXIF だけで判定
   //    - exif_stripped のみ → skip (古いスキャナ等で頻出)
   //    - 決定的 flag (software_edited / duplicate_hash / timestamp_mismatch) を持つ写真は
   //      Vision の結果に関わらず verdict=suspicious 確定なので、高価な Opus 呼び出しを省く。
-  const visionTargets = partialResults.filter((r) => {
-    if (r.flags.length === 0) return false;
-    if (r.flags.length === 1 && r.flags[0] === "exif_stripped") return false;
-    if (r.flags.some((f) => DECISIVE_TAMPERING_FLAGS.has(f))) return false;
-    return true;
-  });
+  const useVision = opts.useVision !== false;
+  const visionTargets = useVision
+    ? partialResults.filter((r) => {
+        if (r.flags.length === 0) return false;
+        if (r.flags.length === 1 && r.flags[0] === "exif_stripped") return false;
+        if (r.flags.some((f) => DECISIVE_TAMPERING_FLAGS.has(f))) return false;
+        return true;
+      })
+    : [];
 
   const visionResults = await Promise.all(
     visionTargets.map((r) => visionTamperingCheck(r.base64, r.contentType, r.flags)),

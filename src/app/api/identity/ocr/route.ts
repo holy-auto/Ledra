@@ -26,6 +26,8 @@ import { apiOk, apiUnauthorized, apiValidationError, apiInternalError } from "@/
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { logger } from "@/lib/logger";
 import { runIdentityOcr } from "@/lib/ai/identityOcr";
+import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -101,7 +103,23 @@ export async function POST(req: NextRequest) {
     sizeBytes: file.size,
   });
 
-  // 5) Vision 呼び出し
+  // 5) AI マスタースイッチ OFF / 月次コストキャップ超過時は OCR をスキップして
+  //    手動入力にフォールバックさせる (管理者向けルートは停止する方針)。
+  const usage = startAiRouteUsage("/api/identity/ocr");
+  const aiSettings = await loadAiAutomationSettings(caller.tenantId);
+  if (!aiSettings.enabled) {
+    usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
+    return apiOk({
+      status: "skipped" as const,
+      ocr_disabled: true,
+      fields: {},
+      rejected_reasons: [],
+      warnings: [],
+      notice: "AI 自動入力が停止中のため OCR を実行しませんでした。手動で入力してください。",
+    });
+  }
+
+  // 6) Vision 呼び出し
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
     const base64 = buffer.toString("base64");
@@ -116,6 +134,15 @@ export async function POST(req: NextRequest) {
         | "passport"
         | "health_insurance_card"
         | undefined,
+    });
+
+    // OCR が実行された (= Anthropic 呼び出し済み)。捕捉トークンで月次キャップに課金。
+    usage.record({
+      tenantId: caller.tenantId,
+      userId: caller.userId,
+      outcome: "ok",
+      confidence: result.confidence,
+      meta: { ocr_status: status },
     });
 
     // ★ PII 本体はログに出さない。件数 / 判定のみ ★
@@ -154,6 +181,7 @@ export async function POST(req: NextRequest) {
       warnings: result.warnings,
     });
   } catch (err) {
+    usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "error" });
     return apiInternalError(err, "POST /api/identity/ocr");
   }
 }
