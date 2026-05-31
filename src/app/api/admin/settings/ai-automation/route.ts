@@ -127,11 +127,18 @@ export async function PUT(req: NextRequest) {
         { onConflict: "tenant_id" },
       );
 
-    // auto_actions / monthly_cost_cap_jpy 列が未作成 (部分マイグレーション) なら、
-    // その拡張列を外して他設定だけは保存する (field_policies 等の編集を失わせない)。
+    // 部分マイグレーション対応。monthly_cost_cap_jpy 列だけ無い環境では、まず
+    // auto_actions を残したまま cost-cap 列だけ外して保存する (auto-action トグルの
+    // 編集を失わせない)。auto_actions も無い更に古い環境のときだけ基本列のみに落とす。
     if (error && isMissingColumnError(error)) {
-      autoActionsPersisted = false;
-      ({ error } = await admin.from("tenant_ai_automation_settings").upsert(baseRow, { onConflict: "tenant_id" }));
+      ({ error } = await admin
+        .from("tenant_ai_automation_settings")
+        .upsert({ ...baseRow, auto_actions: cleanedAutoActions }, { onConflict: "tenant_id" }));
+
+      if (error && isMissingColumnError(error)) {
+        autoActionsPersisted = false;
+        ({ error } = await admin.from("tenant_ai_automation_settings").upsert(baseRow, { onConflict: "tenant_id" }));
+      }
     }
 
     if (error) {

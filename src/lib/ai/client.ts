@@ -11,24 +11,17 @@ import { addUsageFromMessage } from "@/lib/ai/usageContext";
 let _client: Anthropic | null = null;
 
 /**
- * messages.parse / create をラップし、各呼び出しの usage を
+ * messages.create をラップし、各呼び出しの usage を
  * リクエスト単位のキャプチャ (usageContext) に積む。ヘルパ側は変更不要。
+ *
+ * SDK の `messages.parse` は内部で `this.create` を呼ぶ (create→parseMessage) ため、
+ * create だけをラップすれば parse 経由の呼び出しも漏れなく 1 回だけ計上される
+ * (parse も同時にラップすると同一レスポンスを二重計上してしまう)。
  * キャプチャ未開始 (ALS ストア無し) のときは no-op。集計失敗は握りつぶす。
  */
 function wrapForUsageCapture(client: Anthropic): Anthropic {
   const messages = client.messages as unknown as Record<string, (...args: unknown[]) => unknown>;
-  const origParse = messages.parse.bind(messages);
   const origCreate = messages.create.bind(messages);
-
-  messages.parse = (...args: unknown[]) =>
-    Promise.resolve(origParse(...args)).then((res) => {
-      try {
-        addUsageFromMessage(res as Parameters<typeof addUsageFromMessage>[0]);
-      } catch {
-        /* usage 集計は best-effort */
-      }
-      return res;
-    });
 
   messages.create = (...args: unknown[]) => {
     // stream: true は Stream を返すので await/集計せずそのまま通す。

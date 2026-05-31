@@ -21,7 +21,6 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 import { estimateCostJpy, usdJpyRate } from "@/lib/ai/pricing";
-import { estimateCallCostJpy } from "@/lib/ai/costCap";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -141,15 +140,11 @@ function aggregate(rows: UsageRow[], days: number): EmptyStats {
     if (r.outcome === "ok") okCount++;
     else if (r.outcome === "error") errorCount++;
 
-    // 行ごとにコストを概算。実トークンがあればモデル別単価で精算し、
-    // 無い ok 行 (旧データ / 捕捉漏れ) は endpoint 代表単価でフォールバックする
-    // (¥0 過少計上を避ける)。AI 未呼び出しの非 ok 行はコスト 0。
-    const hasTokens = (r.input_tokens ?? 0) > 0 || (r.output_tokens ?? 0) > 0;
-    const rowCostJpy = hasTokens
-      ? estimateCostJpy(r.model, { inputTokens: r.input_tokens, outputTokens: r.output_tokens }, rate)
-      : r.outcome === "ok" && r.endpoint
-        ? estimateCallCostJpy(r.endpoint)
-        : 0;
+    // 行ごとにコストを概算。実トークン (usageContext が捕捉) があるときだけ
+    // モデル別単価で精算する。トークンの無い行は AI 未呼び出し (翻訳キャッシュ
+    // ヒット / schema-missing フォールバック) か旧データなので 0 とする
+    // (コストキャップ側と一致: 実際に Anthropic を呼んだ分だけ計上)。
+    const rowCostJpy = estimateCostJpy(r.model, { inputTokens: r.input_tokens, outputTokens: r.output_tokens }, rate);
     totalCostJpy += rowCostJpy;
 
     if (r.endpoint) {
