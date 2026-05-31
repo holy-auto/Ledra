@@ -23,6 +23,7 @@ interface ByEndpoint {
   avgConfidence: number | null;
   totalInputTokens: number;
   totalOutputTokens: number;
+  estimatedCostJpy?: number;
 }
 
 interface Stats {
@@ -35,6 +36,8 @@ interface Stats {
   errorCount: number;
   latencyP50: number | null;
   latencyP95: number | null;
+  estimatedCostJpy?: number;
+  usdJpyRate?: number;
 }
 
 const OUTCOME_LABEL: Record<string, string> = {
@@ -100,7 +103,8 @@ export default function AiUsageDashboard() {
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">AI USAGE</div>
           <div className="mt-1 text-base font-semibold text-primary">AI 利用状況</div>
           <p className="mt-1 text-xs text-muted">
-            16 ルートのコール数 / 成功率 / 信頼度 / トークン消費を集計。
+            16 ルートのコール数 / 成功率 / 信頼度 / トークン消費 / 概算コストを集計。
+            {stats?.usdJpyRate != null && <>（コストは概算・@¥{stats.usdJpyRate}/$）</>}
           </p>
         </div>
         <div className="flex gap-1.5">
@@ -109,9 +113,7 @@ export default function AiUsageDashboard() {
               key={d}
               type="button"
               className={`text-xs px-2.5 py-1 rounded-full border ${
-                days === d
-                  ? "border-accent bg-accent/10 text-accent"
-                  : "border-border-default bg-surface text-muted"
+                days === d ? "border-accent bg-accent/10 text-accent" : "border-border-default bg-surface text-muted"
               }`}
               onClick={() => setDays(d)}
             >
@@ -126,9 +128,7 @@ export default function AiUsageDashboard() {
           ⚠ {warning}
         </div>
       )}
-      {err && (
-        <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">{err}</div>
-      )}
+      {err && <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">{err}</div>}
 
       {loading && !stats && (
         <div className="rounded-lg border border-border-default bg-surface px-3 py-3 text-xs text-muted">
@@ -139,7 +139,8 @@ export default function AiUsageDashboard() {
       {stats && (
         <>
           {/* KPI */}
-          <div className="grid gap-2 sm:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            <Kpi label="概算コスト" value={`¥${Math.round(stats.estimatedCostJpy ?? 0).toLocaleString("ja-JP")}`} />
             <Kpi label="総コール" value={stats.totalCount.toLocaleString("ja-JP")} />
             <Kpi label="成功率" value={successRate != null ? `${successRate}%` : "—"} />
             <Kpi
@@ -190,15 +191,14 @@ export default function AiUsageDashboard() {
                       <th className="text-right px-3 py-2 font-semibold">平均信頼度</th>
                       <th className="text-right px-3 py-2 font-semibold">入力 tok</th>
                       <th className="text-right px-3 py-2 font-semibold">出力 tok</th>
+                      <th className="text-right px-3 py-2 font-semibold">概算 ¥</th>
                     </tr>
                   </thead>
                   <tbody>
                     {stats.byEndpoint.map((e) => (
                       <tr key={e.endpoint} className="border-t border-border-subtle">
                         <td className="px-3 py-2 font-mono text-[10px] text-primary">{e.endpoint}</td>
-                        <td className="text-right px-3 py-2 text-secondary">
-                          {e.count.toLocaleString("ja-JP")}
-                        </td>
+                        <td className="text-right px-3 py-2 text-secondary">{e.count.toLocaleString("ja-JP")}</td>
                         <td className="text-right px-3 py-2 text-secondary">
                           {e.avgConfidence != null ? Math.round(e.avgConfidence * 100) + "%" : "—"}
                         </td>
@@ -207,6 +207,9 @@ export default function AiUsageDashboard() {
                         </td>
                         <td className="text-right px-3 py-2 text-secondary">
                           {e.totalOutputTokens.toLocaleString("ja-JP")}
+                        </td>
+                        <td className="text-right px-3 py-2 text-secondary">
+                          ¥{Math.round(e.estimatedCostJpy ?? 0).toLocaleString("ja-JP")}
                         </td>
                       </tr>
                     ))}
@@ -254,10 +257,7 @@ function DailyBars({ series }: { series: Array<{ date: string; count: number }> 
         const h = Math.round((s.count / max) * 100);
         return (
           <div key={s.date} title={`${s.date}: ${s.count}`} className="flex-1 min-w-[6px]">
-            <div
-              className="bg-accent/70 rounded-t"
-              style={{ height: `${h}%`, minHeight: s.count > 0 ? 2 : 0 }}
-            />
+            <div className="bg-accent/70 rounded-t" style={{ height: `${h}%`, minHeight: s.count > 0 ? 2 : 0 }} />
           </div>
         );
       })}
@@ -275,10 +275,7 @@ function ConfidenceHist({ hist }: { hist: number[] }) {
         return (
           <div key={i} className="flex-1 flex flex-col items-center gap-1" title={`${label}: ${n}`}>
             <div className="flex-1 w-full flex items-end">
-              <div
-                className="w-full bg-accent/70 rounded-t"
-                style={{ height: `${h}%`, minHeight: n > 0 ? 2 : 0 }}
-              />
+              <div className="w-full bg-accent/70 rounded-t" style={{ height: `${h}%`, minHeight: n > 0 ? 2 : 0 }} />
             </div>
             <div className="text-[9px] text-muted">{label}</div>
           </div>
