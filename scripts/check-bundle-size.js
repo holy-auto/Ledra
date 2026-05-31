@@ -4,7 +4,7 @@
  *
  * Reads `.next/build-manifest.json` after `next build` and computes the
  * total size of every chunk listed under `rootMainFiles` + `pages["/"]`.
- * If the sum exceeds CLIENT_BUNDLE_MAX_KB (default 1000 KB gzipped-ish via
+ * If the sum exceeds CLIENT_BUNDLE_MAX_KB (default 1200 KB gzipped-ish via
  * raw byte proxy), exits 1 to fail the CI job.
  *
  * This is intentionally simple — no per-route detail, no comparison with
@@ -23,10 +23,10 @@ const path = require("path");
 
 const NEXT_DIR = path.join(process.cwd(), ".next");
 const MANIFEST_PATH = path.join(NEXT_DIR, "build-manifest.json");
-// 2026-05-30: 850 → 1000 KB に引き上げ。
+// 2026-05-30: 850 → 1000 → 1200 KB に二段階引き上げ (PR #456 / follow-up)。
 // 理由は .github/workflows/ci.yml の同名 env コメント参照。
 // 局所的に厳しくしたい場合は CLIENT_BUNDLE_MAX_KB env で override。
-const DEFAULT_MAX_KB = 1000;
+const DEFAULT_MAX_KB = 1200;
 
 function fail(msg) {
   console.error(`\n❌ check:bundle-size — ${msg}\n`);
