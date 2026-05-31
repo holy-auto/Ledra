@@ -6,18 +6,58 @@
  *   (一過性 5xx / 429 の自動回復 + circuit breaker)
  */
 import Anthropic from "@anthropic-ai/sdk";
+import { addUsageFromMessage } from "@/lib/ai/usageContext";
 
 let _client: Anthropic | null = null;
+
+/**
+ * messages.parse / create をラップし、各呼び出しの usage を
+ * リクエスト単位のキャプチャ (usageContext) に積む。ヘルパ側は変更不要。
+ * キャプチャ未開始 (ALS ストア無し) のときは no-op。集計失敗は握りつぶす。
+ */
+function wrapForUsageCapture(client: Anthropic): Anthropic {
+  const messages = client.messages as unknown as Record<string, (...args: unknown[]) => unknown>;
+  const origParse = messages.parse.bind(messages);
+  const origCreate = messages.create.bind(messages);
+
+  messages.parse = (...args: unknown[]) =>
+    Promise.resolve(origParse(...args)).then((res) => {
+      try {
+        addUsageFromMessage(res as Parameters<typeof addUsageFromMessage>[0]);
+      } catch {
+        /* usage 集計は best-effort */
+      }
+      return res;
+    });
+
+  messages.create = (...args: unknown[]) => {
+    // stream: true は Stream を返すので await/集計せずそのまま通す。
+    const first = args[0] as { stream?: boolean } | undefined;
+    if (first?.stream) return origCreate(...args);
+    return Promise.resolve(origCreate(...args)).then((res) => {
+      try {
+        addUsageFromMessage(res as Parameters<typeof addUsageFromMessage>[0]);
+      } catch {
+        /* usage 集計は best-effort */
+      }
+      return res;
+    });
+  };
+
+  return client;
+}
 
 export function getAnthropicClient(): Anthropic {
   if (!_client) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set");
-    _client = new Anthropic({
-      apiKey,
-      timeout: 60_000,
-      maxRetries: 0,
-    });
+    _client = wrapForUsageCapture(
+      new Anthropic({
+        apiKey,
+        timeout: 60_000,
+        maxRetries: 0,
+      }),
+    );
   }
   return _client;
 }

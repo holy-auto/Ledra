@@ -12,6 +12,8 @@
 import { recordAiUsage, type AiUsageLog, type AiUsageOutcome } from "./usageLog";
 import { recordAiBreadcrumb } from "./sentryAiBreadcrumb";
 import { addMonthlyCostJpy, estimateCallCostJpy } from "./costCap";
+import { beginAiUsageCapture, getCapturedUsage } from "./usageContext";
+import { estimateCostJpy } from "./pricing";
 
 export interface RouteUsageHandle {
   startedAt: number;
@@ -31,28 +33,46 @@ export interface RouteUsageHandle {
 
 export function startAiRouteUsage(endpoint: string): RouteUsageHandle {
   const startedAt = Date.now();
+  // このリクエストの Anthropic 呼び出しの usage をこの非同期コンテキストに集計し始める。
+  beginAiUsageCapture();
   return {
     startedAt,
     endpoint,
     record(args) {
       const latencyMs = Date.now() - startedAt;
+      // 明示指定が無ければキャプチャした実トークン/モデルを使う。
+      const cap = getCapturedUsage();
+      const captured = cap && cap.calls > 0 ? cap : null;
+      const inputTokens = args.inputTokens ?? captured?.inputTokens ?? null;
+      const outputTokens = args.outputTokens ?? captured?.outputTokens ?? null;
+      const model = args.model ?? captured?.model ?? null;
+
       const log: AiUsageLog = {
         tenantId: args.tenantId,
         insurerId: args.insurerId,
         userId: args.userId,
         endpoint,
-        model: args.model,
+        model,
         outcome: args.outcome,
-        inputTokens: args.inputTokens,
-        outputTokens: args.outputTokens,
+        inputTokens,
+        outputTokens,
         confidence: args.confidence,
         latencyMs,
         meta: args.meta,
       };
       void recordAiUsage(log);
       // 月次コストキャップ用カウンタを加算 (実際に AI を呼んだ ok のみ、best-effort)。
+      // 実トークンが取れていればモデル別単価で精算、無ければ endpoint 代表単価で概算。
       if (args.outcome === "ok" && args.tenantId) {
-        void addMonthlyCostJpy(args.tenantId, estimateCallCostJpy(endpoint));
+        const costJpy = captured
+          ? estimateCostJpy(model, {
+              inputTokens: captured.inputTokens,
+              outputTokens: captured.outputTokens,
+              cacheReadTokens: captured.cacheReadTokens,
+              cacheWriteTokens: captured.cacheWriteTokens,
+            })
+          : estimateCallCostJpy(endpoint);
+        void addMonthlyCostJpy(args.tenantId, costJpy);
       }
       // Sentry breadcrumb: outcome を sentry の語彙にマップ
       const sentryOutcome =
@@ -65,7 +85,7 @@ export function startAiRouteUsage(endpoint: string): RouteUsageHandle {
               : "fallback";
       recordAiBreadcrumb({
         endpoint,
-        model: args.model,
+        model,
         outcome: sentryOutcome,
         confidence: args.confidence,
         latencyMs,
