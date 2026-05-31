@@ -33,21 +33,18 @@ const certs: CertEvent[] = [
     id: "self",
     publicId: "PID-SELF",
     status: "active",
-    customerName: "山田太郎",
     createdAt: "2026-04-01T09:00:00.000Z",
   },
   {
     id: "other",
     publicId: "PID-OTHER",
     status: "active",
-    customerName: "山田太郎",
     createdAt: "2026-02-01T08:00:00.000Z",
   },
   {
     id: "voided",
     publicId: "PID-VOID",
     status: "void",
-    customerName: "鈴木一郎",
     createdAt: "2026-01-01T07:00:00.000Z",
   },
 ];
@@ -89,7 +86,7 @@ describe("UnifiedTimeline.mergeUnifiedEvents", () => {
     expect(voided?.badge).toContain("無効");
   });
 
-  it("masks the customer name in cert event descriptions for public display", () => {
+  it("does not expose any customer name in cert event descriptions for public display", () => {
     const events = mergeUnifiedEvents({
       histories: [],
       certs: [
@@ -97,7 +94,6 @@ describe("UnifiedTimeline.mergeUnifiedEvents", () => {
           id: "x",
           publicId: "PID-X",
           status: "active",
-          customerName: "山田太郎",
           createdAt: "2026-02-01T00:00:00.000Z",
         },
       ],
@@ -105,8 +101,7 @@ describe("UnifiedTimeline.mergeUnifiedEvents", () => {
       selfPublicId: "PID-SELF",
     });
     const ev = events[0];
-    expect(ev.description).not.toContain("太郎");
-    expect(ev.description).toMatch(/山田/);
+    expect(ev.description).toBeNull();
   });
 
   it("includes only reservations with scheduled_at and uses friendly status badges", () => {

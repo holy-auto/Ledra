@@ -20,19 +20,6 @@ export function combineScheduledAt(date: string | null, time: string | null, fal
   return parsed.toISOString();
 }
 
-/** Mask customer name for public display: 山田太郎 → 山田●● */
-export function maskName(name: string | null): string | null {
-  if (!name) return null;
-  const trimmed = name.trim();
-  if (trimmed.length <= 1) return trimmed;
-  const parts = trimmed.split(/\s+/);
-  if (parts.length >= 2) {
-    return parts[0] + " " + "●".repeat(Math.min(parts.slice(1).join("").length, 4));
-  }
-  if (trimmed.length <= 2) return trimmed[0] + "●";
-  return trimmed.slice(0, Math.ceil(trimmed.length / 2)) + "●".repeat(Math.floor(trimmed.length / 2));
-}
-
 type Json = Record<string, unknown> | unknown[] | string | number | boolean | null;
 
 type CertRow = {
@@ -152,10 +139,11 @@ type VehicleCertRow = {
 
 export type PublicCertificateData = {
   ok: true;
-  certificate: Omit<CertRow, "tenant_id" | "content_free_text"> & {
+  certificate: Omit<CertRow, "tenant_id" | "content_free_text" | "customer_name"> & {
     tenant_id?: undefined;
     content_free_text?: undefined;
-    customer_name: string | null;
+    // 所有者名は公開(外部)表示では返さない (個人情報保護)。
+    customer_name?: undefined;
   };
   vehicle: (Omit<VehicleRow, "customer_email" | "notes"> & { customer_email?: undefined; notes?: undefined }) | null;
   nfc: NfcRow | null;
@@ -163,9 +151,9 @@ export type PublicCertificateData = {
   images: (ImageRow & { url: string | null; rendered_url: string | null })[];
   media: ResolvedCertificateMedia[];
   reservations: PublicReservation[];
-  vehicle_certificates: (Omit<VehicleCertRow, "content_free_text"> & {
+  vehicle_certificates: (Omit<VehicleCertRow, "content_free_text" | "customer_name"> & {
     content_free_text?: undefined;
-    customer_name: string | null;
+    customer_name?: undefined;
   })[];
   vehicle_service_history_count: number;
   verification_url: string;
@@ -377,7 +365,8 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
       ...cert,
       tenant_id: undefined as undefined,
       content_free_text: undefined as undefined,
-      customer_name: maskName(cert.customer_name),
+      // 所有者名は公開(外部)表示では出力しない。認証付きの管理画面・PDF発行でのみ実名を扱う。
+      customer_name: undefined as undefined,
     },
     vehicle: vehicle ? { ...vehicle, customer_email: undefined as undefined, notes: undefined as undefined } : null,
     nfc,
@@ -388,7 +377,7 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
     vehicle_certificates: vehicle_certificates.map((vc) => ({
       ...vc,
       content_free_text: undefined as undefined,
-      customer_name: maskName(vc.customer_name),
+      customer_name: undefined as undefined,
     })),
     vehicle_service_history_count: vehicleServiceHistoryCount,
     verification_url: verificationUrl,

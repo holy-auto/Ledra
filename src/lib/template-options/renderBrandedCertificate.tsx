@@ -305,11 +305,13 @@ export async function renderBrandedCertificatePdf(row: CertRow, publicUrl: strin
           </View>
         )}
 
-        {/* ---- Customer ---- */}
-        <View style={s.box}>
-          <Text style={s.label}>お客様名</Text>
-          <Text style={s.value}>{row.customer_name}</Text>
-        </View>
+        {/* ---- Customer (公開PDF では空のため非表示 / 認証発行では表示) ---- */}
+        {row.customer_name ? (
+          <View style={s.box}>
+            <Text style={s.label}>お客様名</Text>
+            <Text style={s.value}>{row.customer_name}</Text>
+          </View>
+        ) : null}
 
         {/* ---- Vehicle ---- */}
         {(model || plate) && (

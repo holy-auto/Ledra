@@ -1,5 +1,4 @@
 import { formatDateTime } from "@/lib/format";
-import { maskName } from "@/lib/certificate/publicData";
 
 export type HistoryItem = {
   id: string;
@@ -14,7 +13,6 @@ export type CertEvent = {
   id: string;
   publicId: string;
   status: string | null;
-  customerName: string | null;
   createdAt: string | null;
 };
 
@@ -54,7 +52,7 @@ const reservationStatusLabel: Record<string, string> = {
  *
  * - vehicle_histories + 同じ車両の他の証明書発行イベント + 完了 / 来店
  *   ステータスの reservations を 1 本のタイムラインに合成。
- * - 公開向けに maskName を適用 (担当者・お客様名は伏字 / 省略)。
+ * - 公開向けに顧客名・担当者名は表示しない (個人情報保護のため)。
  * - 既存の admin/vehicles ServiceTimeline は内部向けで詳細リンクや顧客
  *   情報を含むため、公開ページではこの簡素版を使う。
  */
@@ -134,7 +132,7 @@ export function mergeUnifiedEvents({
       variant: isVoid ? "void" : "certificate",
       badge: isVoid ? "証明書 (無効)" : "証明書",
       title: isVoid ? `他の施工証明書 (${c.publicId}) — 無効化` : `他の施工証明書 (${c.publicId})`,
-      description: c.customerName ? `顧客: ${maskName(c.customerName) ?? "-"}` : null,
+      description: null,
     });
   }
 

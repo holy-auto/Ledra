@@ -204,7 +204,9 @@ export async function GET(req: Request) {
 
   const certRow: CertRow = {
     public_id: cert.public_id,
-    customer_name: cert.customer_name ?? "",
+    // 公開PDF は認証なしで誰でも取得できるため所有者名は出力しない (個人情報保護)。
+    // ログイン発行など認証付きルート (admin/*, certificates/pdf-one 等) では実名を渡す。
+    customer_name: "",
     vehicle_info_json: cert.vehicle_info_json ?? {},
     content_free_text: cert.content_free_text ?? null,
     content_preset_json: cert.content_preset_json ?? {},
