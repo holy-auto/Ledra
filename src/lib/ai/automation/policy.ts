@@ -36,6 +36,7 @@ import {
 } from "./fieldCatalog";
 import { isKnownActionKey, isNeverAutoAction, sanitizeAutoActions } from "./actionCatalog";
 import type { DraftCertificateResult } from "@/lib/ai/draftCertificate";
+import { getCostCapStatus, type CostCapStatus } from "@/lib/ai/costCap";
 
 export const DEFAULT_CONFIDENCE_THRESHOLD = 0.5;
 
@@ -51,6 +52,13 @@ export interface AiAutomationSettings {
    * 未設定キーは既定 OFF。壁3 アクションはここに入っていても無視される。
    */
   autoActions: Record<string, boolean>;
+  /** テナント別 AI 月次コスト上限 (円)。null = env 既定に従う。 */
+  monthlyCostCapJpy: number | null;
+  /**
+   * コストキャップの現況 (capJpy / spentJpy / exceeded)。
+   * キャップ未設定のときは undefined。UI 表示・監視用。
+   */
+  costCap?: CostCapStatus;
   /** DB から読み込めた / 既定にフォールバックしたかを呼び出し側に伝えるフラグ。 */
   loadedFromDb: boolean;
 }
@@ -61,8 +69,18 @@ export const DEFAULT_AI_AUTOMATION_SETTINGS: AiAutomationSettings = {
   confidenceThreshold: DEFAULT_CONFIDENCE_THRESHOLD,
   sourcePolicies: {},
   autoActions: {},
+  monthlyCostCapJpy: null,
   loadedFromDb: false,
 };
+
+export interface LoadAiSettingsOptions {
+  /**
+   * コストキャップ超過時に enabled=false に倒すか (既定 true)。
+   * 設定画面の GET/PUT など「設定値そのもの」を見たいときは false にして、
+   * 実行時のキャップ判定で表示が歪まないようにする。
+   */
+  applyCostCap?: boolean;
+}
 
 function isMissingTableError(err: { message?: string; code?: string } | null | undefined): boolean {
   if (!err) return false;
@@ -84,18 +102,22 @@ function isMissingColumnError(err: { message?: string; code?: string } | null | 
  * - テーブル未作成 (preview deploy 等) はデフォルトに完全フォールバック (loadedFromDb=false)。
  * - サニタイズは catalog 経由なので、永続化されたゴミデータは API 層でも UI 層でも見えない。
  */
-export async function loadAiAutomationSettings(tenantId: string): Promise<AiAutomationSettings> {
+export async function loadAiAutomationSettings(
+  tenantId: string,
+  opts: LoadAiSettingsOptions = {},
+): Promise<AiAutomationSettings> {
+  const applyCostCap = opts.applyCostCap !== false;
   const { admin } = createTenantScopedAdmin(tenantId);
   const baseCols = "enabled, field_policies, confidence_threshold, source_policies";
   try {
     let { data, error } = await admin
       .from("tenant_ai_automation_settings")
-      .select(`${baseCols}, auto_actions`)
+      .select(`${baseCols}, auto_actions, monthly_cost_cap_jpy`)
       .eq("tenant_id", tenantId)
       .maybeSingle();
 
-    // auto_actions 列だけ未作成 (部分マイグレーション) の場合は列を外して再取得し、
-    // 既存の field_policies 等を失わないようにする。
+    // auto_actions / monthly_cost_cap_jpy 列が未作成 (部分マイグレーション) の場合は
+    // 拡張列を外して再取得し、既存の field_policies 等を失わないようにする。
     if (error && isMissingColumnError(error)) {
       ({ data, error } = await admin
         .from("tenant_ai_automation_settings")
@@ -108,20 +130,54 @@ export async function loadAiAutomationSettings(tenantId: string): Promise<AiAuto
       return { ...DEFAULT_AI_AUTOMATION_SETTINGS };
     }
     if (error || !data) {
-      return { ...DEFAULT_AI_AUTOMATION_SETTINGS, loadedFromDb: !error };
+      const settings = { ...DEFAULT_AI_AUTOMATION_SETTINGS, loadedFromDb: !error };
+      return applyCostCap ? await withCostCap(tenantId, settings) : settings;
     }
 
-    return {
+    const settings: AiAutomationSettings = {
       enabled: data.enabled !== false,
       fieldPolicies: sanitizeFieldPoliciesPersisted(data.field_policies),
       confidenceThreshold: sanitizeConfidenceThreshold(data.confidence_threshold),
       sourcePolicies: sanitizeSourcePoliciesPersisted(data.source_policies),
       autoActions: sanitizeAutoActions((data as { auto_actions?: unknown }).auto_actions),
+      monthlyCostCapJpy: sanitizeCostCapJpy((data as { monthly_cost_cap_jpy?: unknown }).monthly_cost_cap_jpy),
       loadedFromDb: true,
     };
+    // costCap 状態は常に算出して付与する (表示・監視用)。
+    // applyCostCap=true のときだけ超過で enabled=false に倒す。
+    return await withCostCap(tenantId, settings, applyCostCap);
   } catch {
     return { ...DEFAULT_AI_AUTOMATION_SETTINGS };
   }
+}
+
+/**
+ * settings にコストキャップ状態を付与する。
+ * - capJpy<=0 (未設定) なら何もしない。
+ * - 超過かつ enforce=true のとき enabled=false に倒す (= 一時停止)。
+ * - Redis 不在 / 失敗時は spent=0 扱いで fail-open (停止しない)。
+ */
+async function withCostCap(
+  tenantId: string,
+  settings: AiAutomationSettings,
+  enforce = true,
+): Promise<AiAutomationSettings> {
+  try {
+    const status = await getCostCapStatus(tenantId, settings.monthlyCostCapJpy);
+    if (!status) return settings;
+    settings.costCap = status;
+    if (enforce && status.exceeded) settings.enabled = false;
+  } catch {
+    /* fail-open: キャップ判定不能なら従来どおり */
+  }
+  return settings;
+}
+
+function sanitizeCostCapJpy(input: unknown): number | null {
+  if (input == null) return null;
+  const n = typeof input === "number" ? input : Number(input);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.round(n);
 }
 
 function sanitizeFieldPoliciesPersisted(input: unknown): Record<string, FieldPolicy> {

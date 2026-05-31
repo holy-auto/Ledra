@@ -27,7 +27,9 @@ export async function GET() {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const settings = await loadAiAutomationSettings(caller.tenantId);
+    // 設定画面は「設定値そのもの」を見せるため、コストキャップ超過で enabled を
+    // 倒さない (applyCostCap:false)。現況は costCap で別途返す。
+    const settings = await loadAiAutomationSettings(caller.tenantId, { applyCostCap: false });
     return apiOk({
       settings: {
         enabled: settings.enabled,
@@ -35,7 +37,9 @@ export async function GET() {
         confidenceThreshold: settings.confidenceThreshold,
         sourcePolicies: settings.sourcePolicies,
         autoActions: settings.autoActions,
+        monthlyCostCapJpy: settings.monthlyCostCapJpy,
       },
+      costCap: settings.costCap ?? null,
       loadedFromDb: settings.loadedFromDb,
       role: caller.role,
     });
@@ -52,6 +56,8 @@ const updateSchema = z.object({
   confidenceThreshold: z.number().min(0).max(1).optional(),
   sourcePolicies: z.record(z.string(), z.boolean()).optional(),
   autoActions: z.record(z.string(), z.boolean()).optional(),
+  /** AI 月次コスト上限 (円)。0 / null = テナント個別上限なし (env 既定に従う)。 */
+  monthlyCostCapJpy: z.number().int().min(0).max(100_000_000).nullable().optional(),
 });
 
 /** auto_actions 列だけ未作成 (部分マイグレーション) の検出。 */
@@ -73,7 +79,7 @@ export async function PUT(req: NextRequest) {
     if (!parsed.ok) return parsed.response;
 
     const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
-    const current = await loadAiAutomationSettings(tenantId);
+    const current = await loadAiAutomationSettings(tenantId, { applyCostCap: false });
 
     // Sanitize: unknown keys are silently dropped so future catalog removals
     // never lock anyone out of the settings page.
@@ -87,6 +93,13 @@ export async function PUT(req: NextRequest) {
 
     const nextEnabled = parsed.data.enabled ?? current.enabled;
     const nextThreshold = parsed.data.confidenceThreshold ?? current.confidenceThreshold;
+    // 0 / null は「個別上限なし」として null 永続化する。
+    const nextCostCap =
+      parsed.data.monthlyCostCapJpy === undefined
+        ? current.monthlyCostCapJpy
+        : parsed.data.monthlyCostCapJpy && parsed.data.monthlyCostCapJpy > 0
+          ? parsed.data.monthlyCostCapJpy
+          : null;
 
     // この PUT で新たに auto-action を有効化する場合のみ、プランを判定する
     // (他設定だけの編集はプランで縛らない)。
@@ -109,10 +122,13 @@ export async function PUT(req: NextRequest) {
     let autoActionsPersisted = true;
     let { error } = await admin
       .from("tenant_ai_automation_settings")
-      .upsert({ ...baseRow, auto_actions: cleanedAutoActions }, { onConflict: "tenant_id" });
+      .upsert(
+        { ...baseRow, auto_actions: cleanedAutoActions, monthly_cost_cap_jpy: nextCostCap },
+        { onConflict: "tenant_id" },
+      );
 
-    // auto_actions 列だけ未作成 (部分マイグレーション) なら、その列を外して
-    // 他設定だけは保存する (field_policies 等の編集を失わせない)。
+    // auto_actions / monthly_cost_cap_jpy 列が未作成 (部分マイグレーション) なら、
+    // その拡張列を外して他設定だけは保存する (field_policies 等の編集を失わせない)。
     if (error && isMissingColumnError(error)) {
       autoActionsPersisted = false;
       ({ error } = await admin.from("tenant_ai_automation_settings").upsert(baseRow, { onConflict: "tenant_id" }));
@@ -130,6 +146,7 @@ export async function PUT(req: NextRequest) {
             confidenceThreshold: nextThreshold,
             sourcePolicies: cleanedSourcePolicies,
             autoActions: cleanedAutoActions,
+            monthlyCostCapJpy: nextCostCap,
           },
           persisted: false,
           warning: "AI 自動入力設定テーブルがまだ未作成です。マイグレーションを適用すると保存されるようになります。",
@@ -159,6 +176,7 @@ export async function PUT(req: NextRequest) {
         confidenceThreshold: nextThreshold,
         sourcePolicies: cleanedSourcePolicies,
         autoActions: cleanedAutoActions,
+        monthlyCostCapJpy: nextCostCap,
       },
       persisted: true,
       ...(autoActionsPersisted

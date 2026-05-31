@@ -11,6 +11,7 @@
  */
 import { recordAiUsage, type AiUsageLog, type AiUsageOutcome } from "./usageLog";
 import { recordAiBreadcrumb } from "./sentryAiBreadcrumb";
+import { addMonthlyCostJpy, estimateCallCostJpy } from "./costCap";
 
 export interface RouteUsageHandle {
   startedAt: number;
@@ -49,6 +50,10 @@ export function startAiRouteUsage(endpoint: string): RouteUsageHandle {
         meta: args.meta,
       };
       void recordAiUsage(log);
+      // 月次コストキャップ用カウンタを加算 (実際に AI を呼んだ ok のみ、best-effort)。
+      if (args.outcome === "ok" && args.tenantId) {
+        void addMonthlyCostJpy(args.tenantId, estimateCallCostJpy(endpoint));
+      }
       // Sentry breadcrumb: outcome を sentry の語彙にマップ
       const sentryOutcome =
         args.outcome === "ok"

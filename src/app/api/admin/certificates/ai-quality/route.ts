@@ -13,6 +13,8 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { normalizePlanTier } from "@/lib/billing/planFeatures";
 import { auditCertificatePhotos, decideGate, type StandardRule } from "@/lib/ai/photoQualityCheck";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
+import { addMonthlyCostJpy, VISION_CALL_COST_JPY } from "@/lib/ai/costCap";
 
 const aiQualitySchema = z.object({
   certificate_id: z.string().uuid().optional(),
@@ -84,7 +86,10 @@ export async function POST(req: NextRequest) {
     // precheck モードのときは枚数のみ・Vision なしでルールベース監査
     // (発行ボタン直前のブロック判定用)。
     const tier = normalizePlanTier(caller.planTier);
-    const useVision = !precheck && (tier === "standard" || tier === "pro");
+    // AI マスタースイッチ OFF / 月次コストキャップ超過時は settings.enabled=false に
+    // 倒るので、Vision (課金) を呼ばずルールベース監査だけにフォールバックする。
+    const aiSettings = precheck ? null : await loadAiAutomationSettings(caller.tenantId);
+    const useVision = !precheck && (tier === "standard" || tier === "pro") && aiSettings?.enabled === true;
 
     // precheck では photo_count を photo_urls.length 相当として扱う
     const effectivePhotoUrls =
@@ -100,6 +105,11 @@ export async function POST(req: NextRequest) {
       standardRule: rule as StandardRule,
       checkPhotosWithAI: useVision,
     });
+
+    // 実際に呼んだ Vision 枚数ぶんの概算コストを月次キャップ用カウンタに加算 (best-effort)。
+    if (useVision && audit.photoResults.length > 0) {
+      void addMonthlyCostJpy(caller.tenantId, audit.photoResults.length * VISION_CALL_COST_JPY);
+    }
 
     // 結果をDBにキャッシュ (precheck では DB を汚さない)
     if (!precheck && certificate_id) {
