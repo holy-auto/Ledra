@@ -197,7 +197,6 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
   const model = pickVehicleField(data.vehicle, info, ["model", "car_model", "vehicle_model"]);
   const year = pickVehicleField(data.vehicle, info, ["year", "model_year"]);
   const plate = pickVehicleField(data.vehicle, info, ["plate_display", "plate", "plate_no", "number"]);
-  const customerName = asText(data.certificate.customer_name);
   const freeText = asText(data.certificate.content_free_text);
   const images = !isVoidCertificate ? (data.images ?? []).filter((img) => !!img?.url) : [];
   const media = !isVoidCertificate ? (data.media ?? []) : [];
@@ -370,9 +369,6 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
             </div>
             <div className="rounded-lg bg-base px-3 py-2 text-secondary">
               ナンバー: <span className="text-primary">{plate || "-"}</span>
-            </div>
-            <div className="rounded-lg bg-base px-3 py-2 text-secondary">
-              顧客名: <span className="text-primary">{customerName || "-"}</span>
             </div>
             <div className="rounded-lg bg-base px-3 py-2 text-secondary">
               記録作成日: <span className="text-primary">{formatDate(data.certificate.created_at)}</span>
@@ -632,7 +628,6 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
             id: String(vc.id ?? vc.public_id ?? ""),
             publicId: String(vc.public_id ?? ""),
             status: vc.status ?? null,
-            customerName: vc.customer_name ?? null,
             createdAt: vc.created_at ?? null,
           }))}
           reservations={!isVoidCertificate ? (data.reservations ?? []) : []}

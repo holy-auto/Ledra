@@ -763,28 +763,21 @@ export async function renderCertificatePdf(
           <Text style={styles.cardEyebrow}>Customer · Vehicle</Text>
           <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 16 }}>
             <View style={{ flex: 1 }}>
-              <View style={[styles.row, styles.rowFirst]}>
-                <Text style={styles.rowLabel}>お客様名</Text>
-                <Text style={styles.rowValue}>{row.customer_name}</Text>
-              </View>
-              {model ? (
-                <View style={styles.row}>
-                  <Text style={styles.rowLabel}>車種</Text>
-                  <Text style={styles.rowValue}>{model}</Text>
+              {(
+                [
+                  // customer_name は公開PDF (匿名) では空文字で渡され、その場合は行ごと省略する。
+                  // ログイン発行など認証フローでは実名が入り従来どおり表示される。
+                  ...(row.customer_name ? [{ label: "お客様名", value: row.customer_name }] : []),
+                  ...(model ? [{ label: "車種", value: model }] : []),
+                  ...(plate ? [{ label: "ナンバー", value: plate }] : []),
+                  ...(color ? [{ label: "ボディカラー", value: color }] : []),
+                ] as { label: string; value: string }[]
+              ).map((f, idx) => (
+                <View key={f.label} style={[styles.row, idx === 0 ? styles.rowFirst : {}]}>
+                  <Text style={styles.rowLabel}>{f.label}</Text>
+                  <Text style={styles.rowValue}>{f.value}</Text>
                 </View>
-              ) : null}
-              {plate ? (
-                <View style={styles.row}>
-                  <Text style={styles.rowLabel}>ナンバー</Text>
-                  <Text style={styles.rowValue}>{plate}</Text>
-                </View>
-              ) : null}
-              {color ? (
-                <View style={styles.row}>
-                  <Text style={styles.rowLabel}>ボディカラー</Text>
-                  <Text style={styles.rowValue}>{color}</Text>
-                </View>
-              ) : null}
+              ))}
             </View>
             <View style={{ alignItems: "center", paddingTop: 4 }}>
               <View style={styles.qrInner}>
