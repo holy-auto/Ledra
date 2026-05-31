@@ -120,6 +120,7 @@ export async function PUT(req: NextRequest) {
     };
 
     let autoActionsPersisted = true;
+    let costCapPersisted = true;
     let { error } = await admin
       .from("tenant_ai_automation_settings")
       .upsert(
@@ -131,6 +132,7 @@ export async function PUT(req: NextRequest) {
     // auto_actions を残したまま cost-cap 列だけ外して保存する (auto-action トグルの
     // 編集を失わせない)。auto_actions も無い更に古い環境のときだけ基本列のみに落とす。
     if (error && isMissingColumnError(error)) {
+      costCapPersisted = false; // cost-cap 列が無いので今回の上限値は保存されない
       ({ error } = await admin
         .from("tenant_ai_automation_settings")
         .upsert({ ...baseRow, auto_actions: cleanedAutoActions }, { onConflict: "tenant_id" }));
@@ -192,6 +194,14 @@ export async function PUT(req: NextRequest) {
             autoActionsWarning:
               "auto_actions 列が未作成のため自動アクション設定は保存されていません (マイグレーション適用後に有効化されます)。",
           }),
+      // cost-cap 列が未作成 かつ 上限を設定しようとした場合は保存できていない旨を明示
+      // (persisted:true でも上限はリロードで消えるため誤認を防ぐ)。
+      ...(!costCapPersisted && nextCostCap != null
+        ? {
+            costCapWarning:
+              "monthly_cost_cap_jpy 列が未作成のため月次コスト上限は保存されていません (マイグレーション適用後に設定してください)。",
+          }
+        : {}),
     });
   } catch (e: unknown) {
     return apiInternalError(e, "ai-automation PUT");

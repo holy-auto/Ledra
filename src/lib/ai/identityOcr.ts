@@ -123,7 +123,14 @@ async function runOcrPass(input: IdentityOcrInput, model: string): Promise<OcrRe
 export async function runIdentityOcr(input: IdentityOcrInput): Promise<IdentityOcrOutput> {
   let parsed = await runOcrPass(input, AI_MODEL_VISION);
 
-  if (parsed && AI_MODEL_CRITICAL !== AI_MODEL_VISION && parsed.confidence < AI_ESCALATE_THRESHOLD) {
+  // rejected_reasons がある = 一次パスで禁止/機微書類 (マイナンバー裏面等) を検出済み。
+  // この検出は confidence が低くても優先して保持し、昇格で上書き (取りこぼし) させない。
+  if (
+    parsed &&
+    AI_MODEL_CRITICAL !== AI_MODEL_VISION &&
+    parsed.confidence < AI_ESCALATE_THRESHOLD &&
+    parsed.rejected_reasons.length === 0
+  ) {
     // 昇格はベストエフォート。Opus 側が失敗 (timeout/rate limit/誤設定) しても
     // 一次結果 (parsed) を破棄せず維持する。
     try {

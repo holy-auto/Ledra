@@ -155,7 +155,10 @@ export default function AiAutomationSettingsClient({ role, initialSettings, cost
         setMsg({ ok: false, text: j?.message ?? "保存に失敗しました。" });
         return;
       }
-      if (j?.persisted === false) {
+      if (j?.costCapWarning) {
+        // 他の設定は保存できたが、コスト上限だけ保存できなかった (部分マイグレーション)。
+        setMsg({ ok: false, text: `設定は保存しましたが、コスト上限は保存できませんでした: ${j.costCapWarning}` });
+      } else if (j?.persisted === false) {
         setMsg({ ok: true, text: j.warning ?? "保存しました (一時保存)" });
       } else {
         setMsg({ ok: true, text: "保存しました。" });

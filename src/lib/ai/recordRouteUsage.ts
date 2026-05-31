@@ -13,7 +13,6 @@ import { recordAiUsage, type AiUsageLog, type AiUsageOutcome } from "./usageLog"
 import { recordAiBreadcrumb } from "./sentryAiBreadcrumb";
 import { addMonthlyCostJpy } from "./costCap";
 import { beginAiUsageCapture, getCapturedUsage } from "./usageContext";
-import { estimateCostJpy } from "./pricing";
 
 export interface RouteUsageHandle {
   startedAt: number;
@@ -62,19 +61,14 @@ export function startAiRouteUsage(endpoint: string): RouteUsageHandle {
       };
       void recordAiUsage(log);
       // 月次コストキャップ用カウンタを加算する。
-      // 実際に Anthropic を呼んだ (captured.calls>0) ときだけ課金する: 翻訳キャッシュ
-      // ヒットや schema-missing フォールバックなど "ok だが AI 未呼び出し" の経路を
-      // 誤って予算消費させない。実トークンが捕捉できているのでモデル別単価で精算する。
-      if (args.outcome === "ok" && args.tenantId && captured) {
-        void addMonthlyCostJpy(
-          args.tenantId,
-          estimateCostJpy(model, {
-            inputTokens: captured.inputTokens,
-            outputTokens: captured.outputTokens,
-            cacheReadTokens: captured.cacheReadTokens,
-            cacheWriteTokens: captured.cacheWriteTokens,
-          }),
-        );
+      // 「実際に Anthropic を呼んだ (captured.calls>0)」ことを課金条件にする (outcome 非依存)。
+      // - 翻訳キャッシュヒットや schema-missing フォールバック等 "AI 未呼び出し" は calls=0 で
+      //   captured=null → 課金しない。
+      // - 逆に応答は返ったが schema_error / error で終わった場合でも、プロバイダ課金は
+      //   発生しているので captured.costJpy で計上する (over-cap 検知の取りこぼしを防ぐ)。
+      // コストは呼び出しごとのモデル単価で積んだ実コスト (captured.costJpy) を用いる。
+      if (args.tenantId && captured) {
+        void addMonthlyCostJpy(args.tenantId, captured.costJpy);
       }
       // Sentry breadcrumb: outcome を sentry の語彙にマップ
       const sentryOutcome =

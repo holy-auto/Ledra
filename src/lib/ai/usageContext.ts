@@ -16,12 +16,20 @@
  * runtime = "nodejs" のルート専用 (Edge には async_hooks が無い)。
  */
 import { AsyncLocalStorage } from "async_hooks";
+import { estimateCostJpy } from "./pricing";
 
 export interface AiUsageCapture {
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  /**
+   * 呼び出しごとに「その呼び出しのモデル単価」で算出したコスト (円) の累計。
+   * 1 リクエストで複数モデル (例: OCR の Sonnet→Opus 昇格) を呼んでも、
+   * 各パスを正しい単価で積むため model 上書きによる過大計上を避けられる。
+   */
+  costJpy: number;
+  /** 最後に観測したモデル (ログ表示用の参考値)。コスト計算には使わない。 */
   model: string | null;
   calls: number;
 }
@@ -35,6 +43,7 @@ export function beginAiUsageCapture(): void {
     outputTokens: 0,
     cacheReadTokens: 0,
     cacheWriteTokens: 0,
+    costJpy: 0,
     model: null,
     calls: 0,
   });
@@ -60,10 +69,21 @@ export function addUsageFromMessage(msg: AnthropicMessageLike | null | undefined
   const store = als.getStore();
   if (!store || !msg?.usage) return;
   const u = msg.usage;
-  store.inputTokens += u.input_tokens ?? 0;
-  store.outputTokens += u.output_tokens ?? 0;
-  store.cacheReadTokens += u.cache_read_input_tokens ?? 0;
-  store.cacheWriteTokens += u.cache_creation_input_tokens ?? 0;
+  const inputTokens = u.input_tokens ?? 0;
+  const outputTokens = u.output_tokens ?? 0;
+  const cacheReadTokens = u.cache_read_input_tokens ?? 0;
+  const cacheWriteTokens = u.cache_creation_input_tokens ?? 0;
+  store.inputTokens += inputTokens;
+  store.outputTokens += outputTokens;
+  store.cacheReadTokens += cacheReadTokens;
+  store.cacheWriteTokens += cacheWriteTokens;
+  // この呼び出しのモデル単価でコストを積む (モデル混在でも正しく合算)。
+  store.costJpy += estimateCostJpy(msg.model ?? null, {
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
+  });
   if (msg.model) store.model = msg.model;
   store.calls += 1;
 }
