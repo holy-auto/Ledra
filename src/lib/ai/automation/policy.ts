@@ -140,7 +140,10 @@ export async function loadAiAutomationSettings(
     }
     if (error || !data) {
       const settings = { ...DEFAULT_AI_AUTOMATION_SETTINGS, loadedFromDb: !error };
-      return applyCostCap ? await withCostCap(tenantId, settings) : settings;
+      // 設定行が無いテナントでも、グローバル env キャップが設定されていれば
+      // costCap 状態を付けて返す (applyCostCap=false でも状態は表示用に算出し、
+      // enabled=false への enforce のみ skip する)。
+      return await withCostCap(tenantId, settings, applyCostCap);
     }
 
     const settings: AiAutomationSettings = {
