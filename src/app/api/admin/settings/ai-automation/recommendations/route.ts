@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     const cutoff = new Date(Date.now() - days * 86400000).toISOString();
 
     const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
-    const settings = await loadAiAutomationSettings(tenantId);
+    const settings = await loadAiAutomationSettings(tenantId, { applyCostCap: false });
 
     const { data, error } = await admin
       .from("ai_usage_logs")

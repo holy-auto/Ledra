@@ -19,6 +19,7 @@ import { apiOk, apiValidationError, apiInternalError, apiError, apiNotFound } fr
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { logger } from "@/lib/logger";
 import { runIdentityOcr } from "@/lib/ai/identityOcr";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { validateIntakeToken, incrementOcrAttempts } from "@/lib/identity/intakeServer";
 
 export const runtime = "nodejs";
@@ -108,6 +109,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ short_id: 
     sizeBytes: file.size,
   });
 
+  // 顧客向け (intake) は停止しない方針: コストキャップへの計上のみ行う。
+  const usage = startAiRouteUsage("/api/intake/ocr");
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
     const base64 = buffer.toString("base64");
@@ -122,6 +125,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ short_id: 
         | "passport"
         | "health_insurance_card"
         | undefined,
+    });
+
+    // OCR 実行ぶんをテナント (店舗) の月次キャップに計上 (顧客向けでも課金は店舗側)。
+    usage.record({
+      tenantId: intake.tenantId,
+      outcome: "ok",
+      confidence: result.confidence,
+      meta: { ocr_status: status, source: "intake" },
     });
 
     log.info("intake_ocr_complete", {
@@ -155,6 +166,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ short_id: 
       warnings: result.warnings,
     });
   } catch (err) {
+    usage.record({ tenantId: intake.tenantId, outcome: "error" });
     return apiInternalError(err, "POST /api/intake/:short_id/ocr");
   }
 }

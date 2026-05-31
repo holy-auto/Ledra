@@ -13,6 +13,8 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { normalizePlanTier } from "@/lib/billing/planFeatures";
 import { auditCertificatePhotos, decideGate, type StandardRule } from "@/lib/ai/photoQualityCheck";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 const aiQualitySchema = z.object({
   certificate_id: z.string().uuid().optional(),
@@ -37,6 +39,7 @@ export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  const usage = startAiRouteUsage("/api/admin/certificates/ai-quality");
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
@@ -84,7 +87,10 @@ export async function POST(req: NextRequest) {
     // precheck モードのときは枚数のみ・Vision なしでルールベース監査
     // (発行ボタン直前のブロック判定用)。
     const tier = normalizePlanTier(caller.planTier);
-    const useVision = !precheck && (tier === "standard" || tier === "pro");
+    // AI マスタースイッチ OFF / 月次コストキャップ超過時は settings.enabled=false に
+    // 倒るので、Vision (課金) を呼ばずルールベース監査だけにフォールバックする。
+    const aiSettings = precheck ? null : await loadAiAutomationSettings(caller.tenantId);
+    const useVision = !precheck && (tier === "standard" || tier === "pro") && aiSettings?.enabled === true;
 
     // precheck では photo_count を photo_urls.length 相当として扱う
     const effectivePhotoUrls =
@@ -99,6 +105,15 @@ export async function POST(req: NextRequest) {
       fieldValues: field_values ?? {},
       standardRule: rule as StandardRule,
       checkPhotosWithAI: useVision,
+    });
+
+    // 実際に呼んだ (キャッシュミスの) Vision のトークンを usageContext が捕捉済み。
+    // ok で記録すると recordRouteUsage がモデル別単価で実コストを月次キャップに加算する。
+    usage.record({
+      tenantId: caller.tenantId,
+      userId: caller.userId,
+      outcome: useVision ? "ok" : "ai_disabled",
+      meta: { photos: audit.photoResults.length, status: audit.overallStatus, vision: useVision },
     });
 
     // 結果をDBにキャッシュ (precheck では DB を汚さない)
@@ -138,6 +153,7 @@ export async function POST(req: NextRequest) {
 
     return apiOk({ audit, gate: decideGate(audit) });
   } catch (e: unknown) {
+    usage.record({ outcome: "error" });
     return apiInternalError(e);
   }
 }

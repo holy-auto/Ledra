@@ -9,7 +9,7 @@
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { withRetry } from "@/lib/http/withRetry";
-import { getAnthropicClient, AI_MODEL_FAST, AI_MODEL_VISION } from "@/lib/ai/client";
+import { getAnthropicClient, AI_MODEL_FAST, AI_MODEL_VISION, cacheableSystem } from "@/lib/ai/client";
 
 export interface MarketVehicleInput {
   maker?: string | null;
@@ -58,7 +58,9 @@ const SYSTEM_PROMPT_VISION = `${SYSTEM_PROMPT_TEXT}
 写真から確証できない情報を入力欄に基づき作文するのは OK、写真の存在しない要素を
 「写真から〜が見える」と書くのは禁止。`.trim();
 
-export async function generateMarketVehicleDescription(input: MarketVehicleInput): Promise<MarketVehicleDescriptionResult> {
+export async function generateMarketVehicleDescription(
+  input: MarketVehicleInput,
+): Promise<MarketVehicleDescriptionResult> {
   const fallback: MarketVehicleDescriptionResult = {
     description: buildFallbackDescription(input),
     features: input.features?.slice(0, 8) ?? [],
@@ -85,8 +87,7 @@ export async function generateMarketVehicleDescription(input: MarketVehicleInput
   try {
     if (hasPhotos) {
       const imageContents: Array<
-        | { type: "image"; source: { type: "url"; url: string } }
-        | { type: "text"; text: string }
+        { type: "image"; source: { type: "url"; url: string } } | { type: "text"; text: string }
       > = input.photo_urls!.slice(0, 3).map((url) => ({
         type: "image" as const,
         source: { type: "url" as const, url },
@@ -97,7 +98,7 @@ export async function generateMarketVehicleDescription(input: MarketVehicleInput
         client.messages.parse({
           model: AI_MODEL_VISION,
           max_tokens: 768,
-          system: SYSTEM_PROMPT_VISION,
+          system: cacheableSystem(SYSTEM_PROMPT_VISION),
           messages: [{ role: "user", content: imageContents }],
           output_config: { format: zodOutputFormat(ResultSchema) },
         }),
@@ -116,7 +117,7 @@ export async function generateMarketVehicleDescription(input: MarketVehicleInput
       client.messages.parse({
         model: AI_MODEL_FAST,
         max_tokens: 768,
-        system: SYSTEM_PROMPT_TEXT,
+        system: cacheableSystem(SYSTEM_PROMPT_TEXT),
         messages: [{ role: "user", content: facts }],
         output_config: { format: zodOutputFormat(ResultSchema) },
       }),

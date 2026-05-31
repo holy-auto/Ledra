@@ -5,6 +5,8 @@ import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { auditPhotoTampering } from "@/lib/ai/photoTamperingCheck";
+import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -61,7 +63,13 @@ export async function POST(req: NextRequest) {
     return apiValidationError("一度にチェックできる写真は最大 20 枚です");
   }
 
+  const usage = startAiRouteUsage("/api/admin/certificates/photo-tampering");
   try {
+    // AI マスタースイッチ OFF / 月次コストキャップ超過時は Vision (Opus) を呼ばず
+    // EXIF 解析だけで判定する (無料の改ざんシグナルは維持しつつ AI 課金を止める)。
+    const aiSettings = await loadAiAutomationSettings(caller.tenantId);
+    const useVision = aiSettings.enabled;
+
     // 写真を並列ダウンロード → ArrayBuffer に変換
     const downloads = await Promise.allSettled(
       photoUrls.map(async (url) => {
@@ -77,7 +85,15 @@ export async function POST(req: NextRequest) {
       .map((r) => (r.status === "fulfilled" ? r.value : null))
       .filter((v): v is { buffer: ArrayBuffer; contentType: string } => v !== null);
 
-    const audit = await auditPhotoTampering(photoBuffers);
+    const audit = await auditPhotoTampering(photoBuffers, new Date(), { useVision });
+
+    // 実際に Vision を呼んだ (= トークン捕捉あり) 場合だけ月次キャップに課金される。
+    usage.record({
+      tenantId: caller.tenantId,
+      userId: caller.userId,
+      outcome: useVision ? "ok" : "ai_disabled",
+      meta: { photos: photoBuffers.length, flagged: audit.anyFlagged, vision: useVision },
+    });
 
     // 監査結果を certificates テーブルの meta に保存 (非同期、失敗しても続ける)
     if (certificateId) {
@@ -114,6 +130,7 @@ export async function POST(req: NextRequest) {
       })),
     });
   } catch (err) {
+    usage.record({ outcome: "error" });
     return apiInternalError(err, "POST /api/admin/certificates/photo-tampering");
   }
 }

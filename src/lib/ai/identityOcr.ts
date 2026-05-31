@@ -15,7 +15,13 @@
  */
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { withRetry } from "@/lib/http/withRetry";
-import { getAnthropicClient, AI_MODEL_VISION } from "@/lib/ai/client";
+import {
+  getAnthropicClient,
+  AI_MODEL_VISION,
+  AI_MODEL_CRITICAL,
+  AI_ESCALATE_THRESHOLD,
+  cacheableSystem,
+} from "@/lib/ai/client";
 import { OcrResultSchema, type OcrResult } from "@/lib/identity/ocrSchema";
 import { sanitizeOcrResult } from "@/lib/identity/ocrFilter";
 
@@ -65,13 +71,8 @@ export interface IdentityOcrOutput {
   status: "ok" | "rejected";
 }
 
-/**
- * Vision OCR を実行し、PII フィルタを通した結果を返す.
- *
- * 失敗時 (Vision 例外 / スキーマ不一致) は throw する.
- * 呼び出し側 route で `apiInternalError` 等に変換すること.
- */
-export async function runIdentityOcr(input: IdentityOcrInput): Promise<IdentityOcrOutput> {
+/** 指定モデルで 1 回 OCR を実行する。スキーマ不一致時は null。 */
+async function runOcrPass(input: IdentityOcrInput, model: string): Promise<OcrResult | null> {
   const client = getAnthropicClient();
   const userHint = input.expected
     ? `想定書類タイプ: ${input.expected} (確証がない場合は doc_type を変更してください)`
@@ -79,9 +80,9 @@ export async function runIdentityOcr(input: IdentityOcrInput): Promise<IdentityO
 
   const msg = await withRetry("anthropic", () =>
     client.messages.parse({
-      model: AI_MODEL_VISION,
+      model,
       max_tokens: 1024,
-      system: SYSTEM_PROMPT,
+      system: cacheableSystem(SYSTEM_PROMPT),
       messages: [
         {
           role: "user",
@@ -105,7 +106,44 @@ export async function runIdentityOcr(input: IdentityOcrInput): Promise<IdentityO
     }),
   );
 
-  const parsed = msg.parsed_output;
+  return msg.parsed_output ?? null;
+}
+
+/**
+ * Vision OCR を実行し、PII フィルタを通した結果を返す.
+ *
+ * 精度方針: まず Sonnet で抽出し、自己評価 (confidence) がしきい値を下回った
+ * 「読み取りにくい」ケースだけ最大火力モデル (Opus) へ昇格して精度を底上げする。
+ * 大半の鮮明な画像は Sonnet 1 回で完結するので、平均コストは抑えたまま
+ * 難ケースの精度だけを引き上げられる (= 効くところにだけ最大火力)。
+ *
+ * 失敗時 (Vision 例外 / スキーマ不一致) は throw する.
+ * 呼び出し側 route で `apiInternalError` 等に変換すること.
+ */
+export async function runIdentityOcr(input: IdentityOcrInput): Promise<IdentityOcrOutput> {
+  let parsed = await runOcrPass(input, AI_MODEL_VISION);
+
+  // rejected_reasons がある = 一次パスで禁止/機微書類 (マイナンバー裏面等) を検出済み。
+  // この検出は confidence が低くても優先して保持し、昇格で上書き (取りこぼし) させない。
+  if (
+    parsed &&
+    AI_MODEL_CRITICAL !== AI_MODEL_VISION &&
+    parsed.confidence < AI_ESCALATE_THRESHOLD &&
+    parsed.rejected_reasons.length === 0
+  ) {
+    // 昇格はベストエフォート。Opus 側が失敗 (timeout/rate limit/誤設定) しても
+    // 一次結果 (parsed) を破棄せず維持する。
+    try {
+      const escalated = await runOcrPass(input, AI_MODEL_CRITICAL);
+      // 昇格結果が同等以上の自己評価なら採用 (劣化したら元の結果を維持)。
+      if (escalated && escalated.confidence >= parsed.confidence) {
+        parsed = escalated;
+      }
+    } catch (e) {
+      console.error("[identityOcr] escalation failed, keeping first pass:", e);
+    }
+  }
+
   if (!parsed) {
     throw new Error("identityOcr: Vision response did not match OcrResultSchema");
   }

@@ -14,7 +14,7 @@
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { withRetry } from "@/lib/http/withRetry";
-import { getAnthropicClient, AI_MODEL } from "@/lib/ai/client";
+import { getAnthropicClient, AI_MODEL, cacheableSystem } from "@/lib/ai/client";
 import { containsMyNumber } from "@/lib/identity/ocrFilter";
 
 // ─────────────────────────────────────────────
@@ -231,7 +231,7 @@ async function aiValidate(fields: IntakeFields): Promise<{
       client.messages.parse({
         model: AI_MODEL,
         max_tokens: 768,
-        system: AI_SYSTEM_PROMPT,
+        system: cacheableSystem(AI_SYSTEM_PROMPT),
         messages: [
           {
             role: "user",

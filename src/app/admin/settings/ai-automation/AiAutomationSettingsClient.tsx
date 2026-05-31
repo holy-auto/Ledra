@@ -20,11 +20,19 @@ interface InitialSettings {
   confidenceThreshold: number;
   sourcePolicies: Partial<Record<AutomationSourceKey, boolean>>;
   autoActions: Record<string, boolean>;
+  monthlyCostCapJpy: number | null;
+}
+
+interface CostCapStatus {
+  capJpy: number;
+  spentJpy: number;
+  exceeded: boolean;
 }
 
 interface Props {
   role: Role;
   initialSettings: InitialSettings;
+  costCap: CostCapStatus | null;
   loadedFromDb: boolean;
 }
 
@@ -48,12 +56,14 @@ const POLICY_LABELS: Record<FieldPolicy, { label: string; hint: string; tone: st
 
 const POLICY_OPTIONS: FieldPolicy[] = ["auto", "suggest", "manual"];
 
-export default function AiAutomationSettingsClient({ role, initialSettings, loadedFromDb }: Props) {
+export default function AiAutomationSettingsClient({ role, initialSettings, costCap, loadedFromDb }: Props) {
   const canEdit = hasMinRole(role, "admin");
 
   const [enabled, setEnabled] = useState(initialSettings.enabled);
   const [fieldPolicies, setFieldPolicies] = useState<Record<string, FieldPolicy>>(initialSettings.fieldPolicies);
   const [threshold, setThreshold] = useState(initialSettings.confidenceThreshold);
+  // 月次コスト上限 (円)。0 / 空 = テナント個別上限なし (全社既定 env に従う)。
+  const [costCapJpy, setCostCapJpy] = useState<number>(initialSettings.monthlyCostCapJpy ?? 0);
   const [sourcePolicies, setSourcePolicies] = useState<Partial<Record<AutomationSourceKey, boolean>>>(
     initialSettings.sourcePolicies,
   );
@@ -137,6 +147,7 @@ export default function AiAutomationSettingsClient({ role, initialSettings, load
           confidenceThreshold: threshold,
           sourcePolicies,
           autoActions,
+          monthlyCostCapJpy: costCapJpy > 0 ? Math.round(costCapJpy) : null,
         }),
       });
       const j = await res.json().catch(() => null);
@@ -144,7 +155,10 @@ export default function AiAutomationSettingsClient({ role, initialSettings, load
         setMsg({ ok: false, text: j?.message ?? "保存に失敗しました。" });
         return;
       }
-      if (j?.persisted === false) {
+      if (j?.costCapWarning) {
+        // 他の設定は保存できたが、コスト上限だけ保存できなかった (部分マイグレーション)。
+        setMsg({ ok: false, text: `設定は保存しましたが、コスト上限は保存できませんでした: ${j.costCapWarning}` });
+      } else if (j?.persisted === false) {
         setMsg({ ok: true, text: j.warning ?? "保存しました (一時保存)" });
       } else {
         setMsg({ ok: true, text: "保存しました。" });
@@ -223,6 +237,80 @@ export default function AiAutomationSettingsClient({ role, initialSettings, load
         <div className="text-[11px] text-muted">
           推奨: 0.50 (デフォルト)。0.80 以上にすると確実な抽出のみ採用、0.30 以下にすると AI
           出力を積極的に流し込みます。
+        </div>
+      </section>
+
+      {/* ── 月次コスト上限 (コストキャップ) ───────────────── */}
+      <section className="glass-card p-5 space-y-4">
+        <div>
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">COST CAP</div>
+          <div className="mt-1 text-base font-semibold text-primary">AI 月次コスト上限</div>
+          <p className="mt-1 text-xs text-muted">
+            当月の AI 概算コストがこの上限を超えると、AI 自動入力を自動的に一時停止します (翌月リセット)。
+            暴走課金の安全ブレーキです。0 (空) にするとテナント個別上限なし (全社の既定値に従います)。
+          </p>
+        </div>
+
+        {/* 現況: 今月の概算 / 適用中の上限 */}
+        {costCap ? (
+          <div
+            className={`rounded-lg border px-3 py-2.5 text-xs ${
+              costCap.exceeded
+                ? "border-danger/30 bg-danger-dim text-danger-text"
+                : "border-border-subtle bg-surface text-secondary"
+            }`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span>
+                今月の概算コスト: <b>¥{Math.round(costCap.spentJpy).toLocaleString("ja-JP")}</b> / 適用中の上限{" "}
+                <b>¥{Math.round(costCap.capJpy).toLocaleString("ja-JP")}</b>
+              </span>
+              {costCap.exceeded ? (
+                <span className="rounded-full bg-danger/15 px-2 py-0.5 text-[11px] font-medium">
+                  上限超過 — AI 一時停止中
+                </span>
+              ) : (
+                <span className="text-muted">
+                  使用率 {Math.min(999, Math.round((costCap.spentJpy / Math.max(1, costCap.capJpy)) * 100))}%
+                </span>
+              )}
+            </div>
+            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-border-subtle">
+              <div
+                className={costCap.exceeded ? "h-full bg-danger" : "h-full bg-accent"}
+                style={{
+                  width: `${Math.min(100, Math.round((costCap.spentJpy / Math.max(1, costCap.capJpy)) * 100))}%`,
+                }}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-border-subtle bg-surface px-3 py-2 text-[11px] text-muted">
+            現在コスト上限は未設定です (上限なし)。下の欄で月次上限を設定すると安全ブレーキが有効になります。
+          </div>
+        )}
+
+        <div className="flex items-center gap-3">
+          <label className="text-xs text-secondary whitespace-nowrap">月次コスト上限</label>
+          <div className="inline-flex items-center gap-1">
+            <span className="text-sm text-muted">¥</span>
+            <input
+              type="number"
+              min={0}
+              step={1000}
+              inputMode="numeric"
+              value={costCapJpy || ""}
+              placeholder="0 (上限なし)"
+              disabled={!canEdit || saving}
+              onChange={(e) => setCostCapJpy(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+              className="w-40 rounded-lg border border-border-default bg-surface px-3 py-1.5 text-sm text-primary"
+            />
+            <span className="text-xs text-muted">/ 月</span>
+          </div>
+        </div>
+        <div className="text-[11px] text-muted">
+          目安: 標準的なアクティブ店は月 ¥2,000〜3,000。例えば ¥10,000 に設定すると、想定外の急増時に
+          自動で止まります。コストは概算 (トークン実績ベース) で、超過後は人手運用にフォールバックします。
         </div>
       </section>
 

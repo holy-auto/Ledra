@@ -5,9 +5,11 @@
  * 不足・品質問題を検出する。証明書作成画面でリアルタイムに動作する。
  */
 import { z } from "zod";
+import { createHash } from "crypto";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { withRetry } from "@/lib/http/withRetry";
-import { getAnthropicClient, AI_MODEL_VISION } from "@/lib/ai/client";
+import { getAnthropicClient, AI_MODEL_VISION, cacheableSystem } from "@/lib/ai/client";
+import { withCache } from "@/lib/cache";
 
 const PhotoIssueSchema = z.object({
   type: z.enum(["quality", "angle", "unclear", "wrong_subject", "too_dark", "too_blurry"]),
@@ -97,11 +99,9 @@ export interface CertificatePhotoAudit {
 // 写真1枚の内容チェック（Claude Vision）
 // ─────────────────────────────────────────────
 
-export async function checkPhotoContent(input: PhotoCheckInput): Promise<PhotoCheckResult> {
-  const client = getAnthropicClient();
-
-  const systemPrompt = `あなたは自動車施工記録の写真品質を審査する専門家です。
-提供された写真が施工証明書の「${input.expectedType}」（施工カテゴリ: ${input.category}）として
+// system は静的に保ち prompt caching を効かせる。写真種別・カテゴリは user 側へ。
+const PHOTO_CHECK_SYSTEM_PROMPT = `あなたは自動車施工記録の写真品質を審査する専門家です。
+提供された写真が、指定された施工証明書の写真種別・施工カテゴリとして
 適切かどうかをJSONで回答してください。
 
 回答形式（JSONのみ）:
@@ -118,51 +118,27 @@ export async function checkPhotoContent(input: PhotoCheckInput): Promise<PhotoCh
   "confidence": 0.0〜1.0
 }`;
 
+/** Vision 結果キャッシュの TTL。キーは画像内容ハッシュなので長めで安全 (7 日)。 */
+const PHOTO_CHECK_CACHE_TTL_SEC = 7 * 24 * 60 * 60;
+
+export async function checkPhotoContent(input: PhotoCheckInput): Promise<PhotoCheckResult> {
   try {
-    // URLからBase64に変換
+    // fetch 自体は安価。高コストなのは Vision 呼び出しなので、画像内容のハッシュで
+    // 結果をキャッシュし、同一写真の再チェック (再保存・再表示・再実行) では
+    // Anthropic を再課金しない。
     const response = await fetch(input.photoUrl);
     const buffer = await response.arrayBuffer();
-    const base64 = Buffer.from(buffer).toString("base64");
     const contentType = response.headers.get("content-type") || "image/jpeg";
 
-    const msg = await withRetry("anthropic", () =>
-      client.messages.parse({
-        model: AI_MODEL_VISION,
-        max_tokens: 512,
-        system: systemPrompt,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "image",
-                source: {
-                  type: "base64",
-                  media_type: contentType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
-                  data: base64,
-                },
-              },
-              {
-                type: "text",
-                text: `この写真は「${input.expectedType}」として適切ですか？JSON形式で回答してください。`,
-              },
-            ],
-          },
-        ],
-        output_config: { format: zodOutputFormat(PhotoCheckSchema) },
-      }),
+    const sha = createHash("sha256").update(Buffer.from(buffer)).digest("hex");
+    const cacheKey = `aiqc:v1:${sha}:${input.expectedType}:${input.category}`;
+
+    // Redis 未設定 (dev/CI) では withCache は fn() に素通しするので挙動は不変。
+    // runPhotoVision は失敗時に throw するため、permissive な失敗結果はキャッシュされない。
+    const verdict = await withCache(cacheKey, PHOTO_CHECK_CACHE_TTL_SEC, () =>
+      runPhotoVision(buffer, contentType, input),
     );
-
-    const result = msg.parsed_output;
-
-    return {
-      photoUrl: input.photoUrl,
-      expectedType: input.expectedType,
-      isValid: result?.isValid ?? true,
-      detectedContent: result?.detectedContent ?? "不明",
-      issues: result?.issues ?? [],
-      confidence: result?.confidence ?? 0.8,
-    };
+    return { photoUrl: input.photoUrl, expectedType: input.expectedType, ...verdict };
   } catch (err) {
     console.error("[photoQualityCheck] vision error:", err);
     // エラー時はデフォルトで通過させる（UIをブロックしない）
@@ -175,6 +151,57 @@ export async function checkPhotoContent(input: PhotoCheckInput): Promise<PhotoCh
       confidence: 0.5,
     };
   }
+}
+
+/**
+ * Vision 本体。キャッシュミス時のみ呼ばれる。
+ * 失敗 (例外 / スキーマ不一致) 時は throw し、呼び出し側で通過扱いにする
+ * (= permissive な結果をキャッシュに載せない)。
+ */
+async function runPhotoVision(
+  buffer: ArrayBuffer,
+  contentType: string,
+  input: PhotoCheckInput,
+): Promise<Omit<PhotoCheckResult, "photoUrl" | "expectedType">> {
+  const client = getAnthropicClient();
+  const base64 = Buffer.from(buffer).toString("base64");
+
+  const msg = await withRetry("anthropic", () =>
+    client.messages.parse({
+      model: AI_MODEL_VISION,
+      max_tokens: 512,
+      system: cacheableSystem(PHOTO_CHECK_SYSTEM_PROMPT),
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: contentType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+                data: base64,
+              },
+            },
+            {
+              type: "text",
+              text: `写真種別: ${input.expectedType}\n施工カテゴリ: ${input.category}\n\nこの写真は上記の種別・カテゴリの写真として適切ですか？JSON形式で回答してください。`,
+            },
+          ],
+        },
+      ],
+      output_config: { format: zodOutputFormat(PhotoCheckSchema) },
+    }),
+  );
+
+  const result = msg.parsed_output;
+  if (!result) throw new Error("photoQualityCheck: vision response did not match schema");
+  return {
+    isValid: result.isValid,
+    detectedContent: result.detectedContent,
+    issues: result.issues,
+    confidence: result.confidence,
+  };
 }
 
 // ─────────────────────────────────────────────
