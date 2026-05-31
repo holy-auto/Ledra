@@ -75,6 +75,15 @@ src/
    Vercel Cron signature (HMAC) と `Authorization: Bearer ${CRON_SECRET}` の両対応。
 5. **Stripe webhook の冪等性**: `stripe_processed_events` テーブルへの claim が
    `23505` 以外で失敗したときは 503 を返す (Stripe が再送)。握り潰さない。
+6. **施工証明書は写真必須 — `active` は必ず写真 1 枚以上を伴う**。証明書本体の
+   作成と写真アップロードは別ステップ (新規は常に `draft` 作成 → 写真 upload →
+   発行=活性化) なので、発行 (active 化) のサーバ側チョークポイント
+   (`PUT /api/admin/certificates/status` / `POST /api/mobile/certificates/[id]/activate` /
+   `POST /api/certificates/activate-by-key`) で `certificateHasRequiredPhotos`
+   を必ず通す。新しい「active 化」経路を足すときも同じガードを入れること。
+   ルール本体は `src/lib/certificates/photoRequirement.ts`、発行副作用は
+   `src/lib/certificates/issueHooks.ts` (`triggerCertificateIssued`)。詳細は
+   `docs/certificate-photo-requirement.md`。
 
 ## 運用・可観測性
 

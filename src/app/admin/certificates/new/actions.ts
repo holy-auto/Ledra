@@ -1,12 +1,12 @@
 "use server";
 
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { makePublicId } from "@/lib/publicId";
-import { enqueueInsuranceCaseCreated } from "@/lib/qstash/publish";
 import { resolveCertifiedTemplateForTenant } from "@/lib/manufacturers/certifiedTemplates";
 
-export type CreateCertResult = { ok: true; public_id: string } | { ok: false; error: string };
+export type CreateCertResult =
+  | { ok: true; public_id: string; status: "draft"; photo_required: boolean }
+  | { ok: false; error: string };
 
 export async function createCertAction(formData: FormData): Promise<CreateCertResult> {
   const supabase = await createSupabaseServerClient();
@@ -249,14 +249,17 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
 
   const public_id = makePublicId();
 
-  // Draft or active status
+  // 写真添付必須ルール: 新規作成時点では写真が 0 枚のため、ここでは必ず
+  // draft として作成する。発行 (active 化) は写真アップロード後に活性化
+  // チョークポイント (PUT /api/admin/certificates/status) で行う。
+  // status=active を要求された場合は「発行希望」とみなし photo_required を返す。
   const statusParam = String(formData.get("status") || "active").trim();
-  const certStatus = statusParam === "draft" ? "draft" : "active";
+  const requestedActive = statusParam !== "draft";
 
   const { error } = await supabase.from("certificates").insert({
     tenant_id: tenantId,
     public_id,
-    status: certStatus,
+    status: "draft",
     customer_name,
     customer_id: resolvedCustomerId ?? undefined,
     vehicle_id: resolvedVehicleId ?? undefined,
@@ -305,76 +308,9 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
     });
   }
 
-  // Enqueue async notification via QStash (non-blocking)
-  if (certStatus === "active") {
-    enqueueInsuranceCaseCreated({
-      certificate_id: public_id, // will be resolved via public_id in handler
-      public_id,
-      tenant_id: tenantId,
-      customer_name,
-      vehicle_model: model,
-      vehicle_plate: plate,
-      service_type: template_name || content_free_text?.slice(0, 50) || "",
-      created_by: userId,
-    }).catch((e) => console.warn("[cert] QStash enqueue failed:", e));
-  }
+  // 発行 (active 化) 時の副作用 (保険案件 enqueue / フォローアップ) は、
+  // 写真アップロード後の活性化チョークポイントで triggerCertificateIssued
+  // として発火する (issueHooks.ts)。ここ (draft 作成時) では発火しない。
 
-  // 発行直後フォローアップ: send_on_issue が有効なテナントにトリガー（非同期）
-  if (certStatus === "active") {
-    triggerPostIssueFollowUp({
-      tenantId,
-      publicId: public_id,
-      customerId: resolvedCustomerId ?? undefined,
-      customerName: customer_name,
-    }).catch((e) => console.warn("[cert] post_issue follow-up failed:", e));
-  }
-
-  return { ok: true, public_id };
-}
-
-/** 発行直後フォローアップを非同期でトリガー */
-async function triggerPostIssueFollowUp(params: {
-  tenantId: string;
-  publicId: string;
-  customerId?: string;
-  customerName: string;
-}) {
-  const { admin } = createTenantScopedAdmin(params.tenantId);
-
-  // send_on_issue 設定確認
-  const { data: setting } = await admin
-    .from("follow_up_settings")
-    .select("send_on_issue, enabled")
-    .eq("tenant_id", params.tenantId)
-    .eq("enabled", true)
-    .single();
-
-  if (!setting?.send_on_issue) return;
-
-  // 重複チェック: まだ発行されていない証明書IDのみ処理
-  const { data: cert } = await admin
-    .from("certificates")
-    .select("id, service_name, warranty_period, vehicle_maker, vehicle_model, vehicle_color")
-    .eq("public_id", params.publicId)
-    .single();
-
-  if (!cert || !params.customerId) return;
-
-  const { data: existing } = await admin
-    .from("notification_logs")
-    .select("id")
-    .eq("target_id", cert.id)
-    .eq("type", "post_issue")
-    .limit(1);
-
-  if (existing?.length) return;
-
-  // post_issue 通知ログだけ記録（実際の送信はcronに任せるか、メール送信）
-  await admin.from("notification_logs").insert({
-    tenant_id: params.tenantId,
-    type: "post_issue",
-    target_type: "certificate",
-    target_id: cert.id,
-    status: "queued",
-  });
+  return { ok: true, public_id, status: "draft", photo_required: requestedActive };
 }

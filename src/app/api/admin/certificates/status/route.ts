@@ -3,6 +3,8 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { certificateHasRequiredPhotos, CERTIFICATE_PHOTO_REQUIRED_MESSAGE } from "@/lib/certificates/photoRequirement";
+import { triggerCertificateIssued } from "@/lib/certificates/issueHooks";
 import {
   apiOk,
   apiInternalError,
@@ -64,7 +66,7 @@ export async function PUT(req: Request) {
     // Fetch current certificate (scoped to caller's tenant)
     const { data: cert, error: fetchErr } = await admin
       .from("certificates")
-      .select("id, vehicle_id, status")
+      .select("id, vehicle_id, status, customer_id, customer_name, vehicle_info_json, service_type, created_by")
       .eq("tenant_id", caller.tenantId)
       .eq("public_id", publicId)
       .limit(1)
@@ -91,6 +93,15 @@ export async function PUT(req: Request) {
     // Check the role required for this specific transition
     if (!requireMinRole(caller, transition.minRole)) {
       return apiForbidden(`${currentStatus} → ${newStatus} の遷移には ${transition.minRole} 以上の権限が必要です。`);
+    }
+
+    // 写真添付必須ルール: active 化 (draft→active / void→active) は施工写真が
+    // 1 枚以上ある場合のみ許可する (全テナント一律・サーバ強制)。
+    if (newStatus === "active") {
+      const hasPhotos = await certificateHasRequiredPhotos(admin, cert.id as string);
+      if (!hasPhotos) {
+        return apiValidationError(CERTIFICATE_PHOTO_REQUIRED_MESSAGE);
+      }
     }
 
     // Perform the update via admin client (bypasses RLS)
@@ -120,6 +131,25 @@ export async function PUT(req: Request) {
       ip,
       userAgent,
     });
+
+    // 初回発行 (draft→active) のみ発行副作用を発火する。void→active の再発行では
+    // 二重通知を避けるため発火しない。
+    if (currentStatus === "draft" && newStatus === "active") {
+      const vinfo = (cert.vehicle_info_json ?? {}) as { model?: string; plate?: string };
+      triggerCertificateIssued({
+        tenantId: caller.tenantId,
+        publicId,
+        certificateId: cert.id as string,
+        customerName: (cert.customer_name as string | null) ?? "",
+        customerId: (cert.customer_id as string | null) ?? null,
+        vehicleModel: vinfo.model ?? null,
+        vehiclePlate: vinfo.plate ?? null,
+        serviceType: (cert.service_type as string | null) ?? null,
+        createdBy: (cert.created_by as string | null) ?? caller.userId,
+      }).catch(() => {
+        /* fire-and-forget: issueHooks 内で log 済み */
+      });
+    }
 
     return apiOk({ certificate: updated });
   } catch (e) {
