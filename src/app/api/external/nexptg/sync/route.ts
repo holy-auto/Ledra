@@ -1,8 +1,9 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { z } from "zod";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiInternalError, apiValidationError, apiError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import { maybeAutoDetectThicknessForReports } from "@/lib/ai/automation/thicknessAuto";
 
 const nexptgEnvelopeSchema = z.object({
   data: z
@@ -264,6 +265,8 @@ export async function POST(req: NextRequest) {
     let measurementsInserted = 0;
     let tiresInserted = 0;
     let historyInserted = 0;
+    // AI 異常検知 (thickness.auto_detect) を後で一括適用するため、今回処理したレポート ID を集める。
+    const processedReportIds: string[] = [];
 
     // ── 車両 VIN を 1 クエリで一括解決 (N+1 回避) ──
     // NexPTG は 1 sync で数十〜数百レポートを送ってくるので per-report の
@@ -323,6 +326,7 @@ export async function POST(req: NextRequest) {
       if (upsertErr || !upserted) return apiInternalError(upsertErr, "nexptg report upsert");
       const reportId = upserted.id as string;
       reportsUpserted += 1;
+      processedReportIds.push(reportId);
 
       // 測定値 / タイヤは「最新に置き換える」方針（再送時の重複防止）
       await admin.from("thickness_measurements").delete().eq("report_id", reportId);
@@ -391,6 +395,12 @@ export async function POST(req: NextRequest) {
       });
       if (hErr) return apiInternalError(hErr, "nexptg history upsert");
       historyInserted += rows.length;
+    }
+
+    // 受信レポートに AI 異常検知を自動適用 (thickness.auto_detect が opt-in のテナントのみ)。
+    // webhook レスポンスを遅らせないよう after() でレスポンス送出後に完走させる。
+    if (processedReportIds.length > 0) {
+      after(() => void maybeAutoDetectThicknessForReports({ tenantId, reportIds: processedReportIds }));
     }
 
     return apiOk({

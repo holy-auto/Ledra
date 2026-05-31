@@ -168,3 +168,87 @@ export function shouldAutoSendDocument(settings: AiAutomationSettings, docType: 
   }
   return false;
 }
+
+// ─────────────────────────────────────────────
+// 証明書ドラフト「レコード」自動作成 (draft 行を起票)
+// ─────────────────────────────────────────────
+
+export interface CertificateAutoCreateContext {
+  /** 案件 (予約) が完了済みか。 */
+  isCompleted: boolean;
+  /** 証明書の素になる車両情報が紐づいているか。 */
+  hasVehicle: boolean;
+  /** 既にこの案件 / 車両で証明書が存在するか (二重起票防止)。 */
+  alreadyHasCertificate?: boolean;
+}
+
+/**
+ * 案件完了時に証明書を status=draft の「行」として自動作成してよいか。
+ *
+ * 壁3 との整合:
+ *   - 作るのは **下書き (draft) のみ**。発行 (draft→active = 法的確定) は必ず人。
+ *     `certificate.auto_issue` は NEVER_AUTO_ACTIONS のままで常に false。
+ *   - 既に証明書がある案件には作らない (スタッフの手作業を尊重)。
+ */
+export function shouldAutoCreateDraftCertificate(
+  settings: AiAutomationSettings,
+  ctx: CertificateAutoCreateContext,
+): boolean {
+  if (!resolveAutoAction(settings, "certificate.auto_create_draft_record")) return false;
+  if (ctx.alreadyHasCertificate) return false;
+  return ctx.isCompleted && ctx.hasVehicle;
+}
+
+// ─────────────────────────────────────────────
+// 会計科目の自動推定 (案件登録時)
+// ─────────────────────────────────────────────
+
+/**
+ * 案件 (予約) 登録時に勘定科目を自動推定してよいか。
+ * 推定結果は「提案」として保存されるだけで、帳簿への計上 (確定) は行わない。
+ * 金額・科目の確定は必ず人が行う (壁3: accounting.category は NEVER_AUTO_FIELD)。
+ */
+export function shouldAutoCategorizeAccountingOnIntake(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "accounting.auto_categorize_on_intake");
+}
+
+// ─────────────────────────────────────────────
+// 塗膜厚レポート → 異常検知
+// ─────────────────────────────────────────────
+
+/**
+ * 塗膜厚レポート受信時に異常検知を自動実行してよいか。
+ * 結果は注釈 (stats / severity / comment) としてのみ保存され、
+ * 金額・本人確認・法的確定には関与しない (非壁3)。
+ */
+export function shouldAutoDetectThickness(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "thickness.auto_detect");
+}
+
+// ─────────────────────────────────────────────
+// 案件 (予約) 登録時 → ワークフロー提案
+// ─────────────────────────────────────────────
+
+/**
+ * 案件登録時にワークフローテンプレートを AI 提案してよいか。
+ * 提案は保存されるだけで自動適用しない (テンプレートの適用 = 進行開始は人が判断)。
+ * 金額・本人確認・法的確定に関与しないため非壁3。
+ */
+export function shouldAutoProposeWorkflowOnIntake(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "workflow.auto_propose_on_intake");
+}
+
+// ─────────────────────────────────────────────
+// 在庫下限割れ → 発注書ドラフト自動作成
+// ─────────────────────────────────────────────
+
+/**
+ * 在庫が下限を切ったとき発注書を draft として自動起票してよいか。
+ *
+ * 壁3 との整合:
+ *   - 作るのは **下書き (draft) のみ**。発注の承認・送信 (仕入先への金額コミット) は
+ *     必ず人が行う。自動で発注を確定・外部送信することはしない。
+ */
+export function shouldAutoDraftReorder(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "inventory.auto_draft_reorder");
+}
