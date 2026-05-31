@@ -311,8 +311,6 @@ async function sendPurchaseOrderEmail(
       to: email,
       subject: `【発注】${shopName} (${po.poNumber})`,
       html,
-      context: "purchase_order",
-      tags: [{ name: "type", value: "purchase_order" }],
     });
     return res.ok;
   } catch (e) {
