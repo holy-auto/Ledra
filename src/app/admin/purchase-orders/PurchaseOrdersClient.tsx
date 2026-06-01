@@ -5,6 +5,7 @@ import useSWR from "swr";
 import PageHeader from "@/components/ui/PageHeader";
 import { fetcher } from "@/lib/swr";
 import { formatDate } from "@/lib/format";
+import AutoSendSettings from "./AutoSendSettings";
 
 /* ---------- Types ---------- */
 
@@ -137,6 +138,8 @@ export default function PurchaseOrdersClient() {
       />
 
       {msg && <div className={`text-sm ${msg.ok ? "text-emerald-500" : "text-red-500"}`}>{msg.text}</div>}
+
+      <AutoSendSettings />
 
       {/* Filters */}
       <div className="flex flex-wrap gap-2">

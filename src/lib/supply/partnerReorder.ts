@@ -15,6 +15,9 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { computeReorderQuantity } from "@/lib/inventory/reorder";
 import { selectSourcingOption, effectiveUnitPrice, type PartnerSourcingOption } from "@/lib/supply/reorderSelection";
+import { decideAutoSend } from "@/lib/supply/autoSend";
+import { placeOrderViaApi, type SupplyAuthType } from "@/lib/supply/placeOrder";
+import { readSecret } from "@/lib/crypto/tenantSecrets";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
 import { shouldAutoDraftReorder } from "@/lib/ai/automation/orchestrator";
@@ -22,6 +25,30 @@ import { shouldAutoDraftReorder } from "@/lib/ai/automation/orchestrator";
 export interface MaybeAutoDraftPartnerReordersResult {
   created: number;
   skipped: number;
+  /** 全自動送信(auto-send)で実際に送信した発注数 (壁3 隣接 opt-in)。 */
+  autoSent: number;
+}
+
+type Line = { item_id: string; name: string; sku: string; quantity: number; unit_cost: number | null; amount: number };
+
+/** 全自動送信のテナント設定 + 対象パートナーの API/信頼状態をまとめた事前読み込み結果。 */
+interface AutoSendState {
+  enabled: boolean;
+  maxOrderJpy: number | null;
+  monthlyCapJpy: number | null;
+  monthlySentJpy: number;
+  shopName: string;
+  /** partnerId -> { trusted, endpoint, authType, apiConfig, apiKey } */
+  partners: Map<
+    string,
+    {
+      trusted: boolean;
+      endpoint: string | null;
+      authType: SupplyAuthType;
+      apiConfig: Record<string, unknown> | null;
+      apiKey: string | null;
+    }
+  >;
 }
 
 function makePoNumber(): string {
@@ -60,7 +87,7 @@ function readOverride(overrides: unknown, sku: string): number | null {
 export async function maybeAutoDraftPartnerReordersForTenant(
   tenantId: string,
 ): Promise<MaybeAutoDraftPartnerReordersResult> {
-  const result: MaybeAutoDraftPartnerReordersResult = { created: 0, skipped: 0 };
+  const result: MaybeAutoDraftPartnerReordersResult = { created: 0, skipped: 0, autoSent: 0 };
   try {
     const settings = await loadAiAutomationSettings(tenantId);
     if (!shouldAutoDraftReorder(settings)) return result;
@@ -146,14 +173,6 @@ export async function maybeAutoDraftPartnerReordersForTenant(
     }
 
     // 品目ごとに調達先を選定し、パートナーごとに発注行をまとめる。
-    type Line = {
-      item_id: string;
-      name: string;
-      sku: string;
-      quantity: number;
-      unit_cost: number | null;
-      amount: number;
-    };
     const byPartner = new Map<string, Line[]>();
     for (const item of lowStock) {
       const sku = item.supplier_sku as string;
@@ -167,6 +186,9 @@ export async function maybeAutoDraftPartnerReordersForTenant(
       byPartner.set(chosen.partnerId, list);
     }
     if (byPartner.size === 0) return result;
+
+    // 全自動送信 (opt-in) の状態を事前読み込み (有効時のみ)。
+    const autoSend = await loadAutoSendState(admin, tenantId, [...byPartner.keys()]);
 
     for (const [partnerId, lines] of byPartner.entries()) {
       // 冪等性: 同一パートナーの open な auto draft が既にあればスキップ
@@ -186,12 +208,13 @@ export async function maybeAutoDraftPartnerReordersForTenant(
       }
 
       const subtotal = lines.reduce((s, l) => s + l.amount, 0);
+      const poNumber = makePoNumber();
       const { data: po, error: poErr } = await admin
         .from("purchase_orders")
         .insert({
           tenant_id: tenantId,
           supply_partner_id: partnerId,
-          po_number: makePoNumber(),
+          po_number: poNumber,
           status: "draft",
           source: "auto",
           subtotal,
@@ -223,6 +246,15 @@ export async function maybeAutoDraftPartnerReordersForTenant(
         continue;
       }
       result.created += 1;
+
+      // 全自動送信 (壁3 隣接 / opt-in)。全条件を満たすときだけ API 発注して sent にする。
+      if (autoSend) {
+        const sent = await attemptAutoSend(admin, tenantId, po.id, poNumber, partnerId, subtotal, lines, autoSend);
+        if (sent) {
+          autoSend.monthlySentJpy += subtotal; // 月次累計を更新 (同一実行内の上限管理)
+          result.autoSent += 1;
+        }
+      }
     }
 
     return result;
@@ -230,4 +262,131 @@ export async function maybeAutoDraftPartnerReordersForTenant(
     logger.warn("[partnerReorder] threw", { tenantId, err: e instanceof Error ? e.message : String(e) });
     return result;
   }
+}
+
+type Admin = ReturnType<typeof createServiceRoleAdmin>;
+
+/**
+ * 全自動送信の事前読み込み。設定が OFF / 上限未設定なら null (= 自動送信しない)。
+ * 有効時のみ、対象パートナーの API 設定・鍵・信頼フラグと当月の自動送信累計を集める。
+ */
+async function loadAutoSendState(admin: Admin, tenantId: string, partnerIds: string[]): Promise<AutoSendState | null> {
+  const { data: settings } = await admin
+    .from("tenant_supply_auto_send_settings")
+    .select("enabled, max_order_jpy, monthly_cap_jpy")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (!settings || settings.enabled !== true) return null;
+  const maxOrderJpy = settings.max_order_jpy != null ? Number(settings.max_order_jpy) : null;
+  const monthlyCapJpy = settings.monthly_cap_jpy != null ? Number(settings.monthly_cap_jpy) : null;
+  // 上限が両方とも正でなければ自動送信しない (安全側) — 事前に打ち切ってモデル/鍵読み込みを省く。
+  if (!maxOrderJpy || maxOrderJpy <= 0 || !monthlyCapJpy || monthlyCapJpy <= 0) return null;
+
+  // 当月の自動送信累計 (transport=api かつ今月 sent)。
+  const monthStart = new Date();
+  monthStart.setUTCDate(1);
+  monthStart.setUTCHours(0, 0, 0, 0);
+  const { data: sentThisMonth } = await admin
+    .from("purchase_orders")
+    .select("subtotal")
+    .eq("tenant_id", tenantId)
+    .eq("source", "auto")
+    .eq("transport", "api")
+    .gte("sent_at", monthStart.toISOString());
+  const monthlySentJpy = (sentThisMonth ?? []).reduce((s, r) => s + Number(r.subtotal ?? 0), 0);
+
+  const { data: tenant } = await admin.from("tenants").select("name").eq("id", tenantId).maybeSingle();
+  const shopName = (tenant?.name as string | null) ?? "当店";
+
+  // 対象パートナーの API 設定 + 信頼フラグ + 鍵。
+  const { data: partnerRows } = await admin
+    .from("supply_partners")
+    .select("id, is_trusted, api_endpoint, api_auth_type")
+    .in("id", partnerIds);
+  const { data: credRows } = await admin
+    .from("supply_partner_credentials")
+    .select("supply_partner_id, api_key_ciphertext")
+    .in("supply_partner_id", partnerIds);
+  const credBy = new Map(
+    (credRows ?? []).map((c) => [c.supply_partner_id as string, c.api_key_ciphertext as string | null]),
+  );
+
+  const partners: AutoSendState["partners"] = new Map();
+  for (const p of partnerRows ?? []) {
+    const apiKey = await readSecret(credBy.get(p.id as string) ?? null, "supply_partner_credentials.api_key");
+    partners.set(p.id as string, {
+      trusted: p.is_trusted === true,
+      endpoint: (p.api_endpoint as string | null) ?? null,
+      authType: ((p.api_auth_type as string | null) ?? "none") as SupplyAuthType,
+      apiConfig: null,
+      apiKey,
+    });
+  }
+  return { enabled: true, maxOrderJpy, monthlyCapJpy, monthlySentJpy, shopName, partners };
+}
+
+/**
+ * 1 件の draft 発注を、ガード判定を通れば API 発注して sent にする。送信できたら true。
+ * 失敗 / 不許可なら draft のまま (人の承認待ち)。
+ */
+async function attemptAutoSend(
+  admin: Admin,
+  tenantId: string,
+  poId: string,
+  poNumber: string,
+  partnerId: string,
+  subtotal: number,
+  lines: Line[],
+  state: AutoSendState,
+): Promise<boolean> {
+  const p = state.partners.get(partnerId);
+  const hasApi = Boolean(p && p.authType !== "none" && p.endpoint && p.apiKey);
+
+  const decision = decideAutoSend({
+    optInEnabled: state.enabled,
+    partnerTrusted: Boolean(p?.trusted),
+    partnerHasApi: hasApi,
+    orderTotalJpy: subtotal,
+    maxOrderJpy: state.maxOrderJpy,
+    monthlyCapJpy: state.monthlyCapJpy,
+    monthlySentJpy: state.monthlySentJpy,
+  });
+  if (!decision.ok) return false;
+  if (!p) return false;
+
+  const placed = await placeOrderViaApi(
+    partnerId,
+    { endpoint: p.endpoint as string, authType: p.authType, apiKey: p.apiKey, config: p.apiConfig },
+    {
+      poNumber,
+      shopName: state.shopName,
+      items: lines.map((l) => ({ name: l.name, sku: l.sku, quantity: l.quantity, unit_cost: l.unit_cost })),
+      subtotal,
+      note: null,
+    },
+  );
+  if (!placed.ok) {
+    logger.warn("[partnerReorder] auto-send API failed; left as draft", {
+      tenantId,
+      poId,
+      partnerId,
+      err: placed.error,
+    });
+    return false;
+  }
+
+  await admin
+    .from("purchase_orders")
+    .update({
+      status: "sent",
+      source: "auto",
+      sent_at: new Date().toISOString(),
+      transport: "api",
+      transport_status: "acked",
+      external_order_id: placed.externalOrderId,
+    })
+    .eq("id", poId)
+    .eq("tenant_id", tenantId);
+  logger.info("[partnerReorder] auto-sent order", { tenantId, poId, partnerId, subtotal });
+  return true;
 }
