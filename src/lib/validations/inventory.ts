@@ -5,9 +5,9 @@ const nullableText = (max: number) =>
     .string()
     .trim()
     .max(max)
+    .transform((v) => v || null)
     .nullable()
-    .optional()
-    .transform((v) => v || null);
+    .optional();
 
 export const inventoryItemCreateSchema = z.object({
   name: z.string().trim().min(1, "品目名は必須です。").max(200),

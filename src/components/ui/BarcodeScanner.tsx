@@ -63,8 +63,15 @@ export default function BarcodeScanner({ open, onResult, onClose, title, descrip
     let cancelled = false;
     let controls: IScannerControls | null = null;
 
+    // 在庫スキャンは背面 (環境向き) カメラを優先する。ideal なので背面が無い
+    // 端末 (PC・前面のみ) では自動でフォールバックし OverconstrainedError にしない。
+    const constraints: MediaStreamConstraints = {
+      audio: false,
+      video: { facingMode: { ideal: "environment" } },
+    };
+
     reader
-      .decodeFromVideoDevice(undefined, videoEl, (result) => {
+      .decodeFromConstraints(constraints, videoEl, (result) => {
         if (cancelled || calledRef.current) return;
         if (result) {
           calledRef.current = true;
