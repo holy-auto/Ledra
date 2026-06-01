@@ -7,12 +7,17 @@
 - 本番 `schema_migrations` は repo より大きくズレていた（repo 220 version 中 120 が未記録）。
 - 未記録 120 を「作成テーブル/関数が本番に実在するか」で検証し分類:
   - **VERIFIED 49**: 実在確認済 → 「適用済み」として `schema_migrations` に後追い記録（実施済み）。
-  - **UNAPPLIED 15**: 作成オブジェクトが本番に **存在しない = 本当に未適用**（下記）。記録していない。**本番に欠落している実機能**。
+  - **UNAPPLIED 15**: 作成オブジェクトが本番に存在しなかった＝本当に未適用 → **2026-06-01 に本番へ適用済み**（下記）。10 table + 8 function を検証、advisor 新規 ERROR 0。
   - **UNVERIFIABLE 56**: ALTER/INDEX/POLICY/VIEW のみで自動検証不能 → 安全側で記録せず（多くは適用済みと推測されるが未確認）。
-- 結果: 本番記録 115 → **164**。残り未記録 71（= UNAPPLIED 15 + UNVERIFIABLE 56）。
+- 結果: 残り未記録 = **UNVERIFIABLE 56 のみ**（UNAPPLIED 15 は適用＋記録で解消、diff で確認済み）。
 
-### ⚠️ UNAPPLIED 15（本番に未適用＝欠落している機能。要デプロイ判断）
-これらは「後でDROP」もされておらず、アプリが参照しているものもある。本番で該当機能は動かない可能性が高い:
+### ✅ UNAPPLIED 15（本番に未適用だった機能 → 2026-06-01 適用済み）
+これらは「後でDROP」もされておらず、アプリが参照しているものもあった（本番で該当機能が動かない状態だった）。version 順に1本ずつ「ファイル確認→本番現状確認→冪等性判断→適用→検証」して適用した。
+- `20260429000002_academy_creator_rewards`: policy が存在しない `tenant_members` を参照していた**バグを修正**（→ `tenant_memberships`）した上で適用。repo のファイルも同様に修正済み。
+- それ以外は概ね `CREATE TABLE IF NOT EXISTS` 等で冪等。`tenants_deactivated_at_churn` は `ADD COLUMN IF NOT EXISTS` + トリガ存在ガードで安全に再適用可能だった。
+- ファイル名 version を `schema_migrations` に後追い記録済み。
+
+対象一覧（適用済み）:
 
 | migration | 欠落オブジェクト |
 |---|---|
@@ -32,7 +37,7 @@
 | 20260520000004_cert_idempotency_keys | table `cert_idempotency_keys` |
 | 20260530000001_ai_translation_cache | table `ai_translation_cache` |
 
-→ **対応案**: これら15本（+依存）を順序通り本番へ適用してrepoに揃える（機能をprodに展開する判断）。一括適用ではなく、各migrationの依存と冪等性を確認しながら段階適用を推奨。本セッションでは適用していない。
+→ **2026-06-01 実施済み**: 上記15本を version 順に段階適用し、10 table + 8 function の実在を検証。`apply_migration`（auto-version 記録）＋ ファイル名 version を後追い記録。security advisor は新規 ERROR 0（`cron_locks`/`webhook_processed_events`/`ai_translation_cache` は RLS 有効・ポリシー無し＝service-role 専用の意図どおりで INFO `rls_enabled_no_policy` のみ、既存 `error_events` と同扱い）。
 
 ### UNVERIFIABLE 56（自動検証不能・未記録のまま）
 ALTER COLUMN / INDEX / POLICY / VIEW / データ系で「作成テーブル/関数」を持たないため実在判定不可。多くは適用済みと推測されるが、確証がないため安全側で記録していない（`db push` 時に再実行され得る／古いものは IF NOT EXISTS 無しでエラーの可能性）。各 migration の効果（列・制約・index・policy）を個別確認してから記録するか、本番デプロイ経路の整理時にまとめて扱うこと。
