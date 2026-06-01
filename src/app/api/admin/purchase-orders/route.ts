@@ -43,6 +43,14 @@ const STATUSES = ["draft", "approved", "sent", "received", "cancelled"] as const
 const updateSchema = z.object({
   id: z.string().uuid("無効なIDです。"),
   status: z.enum(STATUSES),
+  // sent 遷移時、人がレビューした発注メール文面 (AI 下書きを編集したもの) を渡せる。
+  // メール送付経路でのみ使用 (API 発注は構造化ペイロードのため不使用)。
+  message: z
+    .object({
+      subject: z.string().trim().max(200).optional(),
+      body: z.string().trim().max(5000).optional(),
+    })
+    .optional(),
 });
 
 /** 許可するステータス遷移。 */
@@ -161,7 +169,7 @@ export async function PUT(req: NextRequest) {
 
     const parsed = updateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
-    const { id, status: nextStatus } = parsed.data;
+    const { id, status: nextStatus, message } = parsed.data;
 
     // 現在の発注 + 明細 + 仕入先を取得 (所有チェック込み)。
     const { data: po, error: poErr } = await supabase
@@ -222,6 +230,8 @@ export async function PUT(req: NextRequest) {
         note: (po.note as string | null) ?? null,
         subtotal: Number(po.subtotal ?? 0),
         items,
+        // 人がレビューした発注文面 (AI 下書きを編集したもの)。メール経路でのみ使う。
+        message: message ?? null,
       };
       if (po.supplier_id) {
         emailed = await sendPurchaseOrderEmail(supabase, caller.tenantId, po.supplier_id as string, poForSend);
@@ -300,6 +310,8 @@ interface PoForSend {
   note: string | null;
   subtotal: number;
   items: Array<{ name: string; sku: string | null; quantity: number; unit_cost: number | null }>;
+  /** 人がレビューした発注文面 (AI 下書きを編集したもの)。メール送付経路で本文に使う。 */
+  message?: { subject?: string; body?: string } | null;
 }
 
 /**
@@ -391,12 +403,7 @@ async function sendPurchaseOrderEmail(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   tenantId: string,
   supplierId: string,
-  po: {
-    poNumber: string;
-    note: string | null;
-    subtotal: number;
-    items: Array<{ name: string; sku: string | null; quantity: number; unit_cost: number | null }>;
-  },
+  po: PoForSend,
 ): Promise<boolean> {
   try {
     const { data: supplier } = await supabase
@@ -428,6 +435,19 @@ async function sendPoEmail(
   try {
     const { data: tenant } = await supabase.from("tenants").select("name").eq("id", tenantId).maybeSingle();
     const shopName = (tenant?.name as string | null) ?? "施工店";
+
+    // 人がレビューした文面 (AI 下書き) があればそれを本文にする (改行を保持して HTML 化)。
+    // 数量・金額は発注書側で固定されており、文面は宛名・依頼文のみ (壁3)。
+    const customBody = po.message?.body?.trim();
+    if (customBody) {
+      const html = `<div style="white-space:pre-wrap;font-family:sans-serif">${escapeHtml(customBody)}</div>`;
+      const res = await sendEmail({
+        to: recipientEmail,
+        subject: po.message?.subject?.trim() || `【発注】${shopName} (${po.poNumber})`,
+        html,
+      });
+      return res.ok;
+    }
 
     const rows = po.items
       .map(
