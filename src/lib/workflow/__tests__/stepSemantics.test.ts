@@ -14,10 +14,16 @@ describe("classifyWorkflowStep", () => {
     expect(classifyWorkflowStep({ key: "", label: "ご請求・精算" })).toBe("billing");
   });
 
+  it("recognizes the inspection step (key + label)", () => {
+    expect(classifyWorkflowStep({ key: "inspect", label: "検査・仕上げ" })).toBe("inspection");
+    expect(classifyWorkflowStep({ key: "quality_check", label: "" })).toBe("inspection");
+    expect(classifyWorkflowStep({ key: "", label: "品質チェック" })).toBe("inspection");
+  });
+
   it("returns null for operational steps", () => {
     expect(classifyWorkflowStep({ key: "wash", label: "洗車" })).toBeNull();
     expect(classifyWorkflowStep({ key: "coating", label: "コーティング施工" })).toBeNull();
-    expect(classifyWorkflowStep({ key: "inspect", label: "検査・仕上げ" })).toBeNull();
+    expect(classifyWorkflowStep({ key: "polish", label: "磨き" })).toBeNull();
   });
 
   it("handles missing fields", () => {

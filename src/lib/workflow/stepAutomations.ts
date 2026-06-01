@@ -11,6 +11,7 @@
 import { classifyWorkflowStep, type WorkflowStepSemantic } from "./stepSemantics";
 import { maybeAutoCreateDraftCertificateForReservation } from "@/lib/ai/automation/certificateRecordAuto";
 import { maybeAutoCreateDraftInvoiceForReservation } from "@/lib/ai/automation/invoiceRecordAuto";
+import { maybeAutoDetectThicknessForReservation } from "@/lib/ai/automation/thicknessStepAuto";
 
 export interface StepAutomationContext {
   tenantId: string;
@@ -21,6 +22,7 @@ export interface StepAutomationContext {
 const STEP_AUTOMATIONS: Partial<Record<WorkflowStepSemantic, (ctx: StepAutomationContext) => Promise<void>>> = {
   certificate: (ctx) => maybeAutoCreateDraftCertificateForReservation(ctx),
   billing: (ctx) => maybeAutoCreateDraftInvoiceForReservation(ctx),
+  inspection: (ctx) => maybeAutoDetectThicknessForReservation(ctx),
 };
 
 /** 自動化が登録済みの工程 semantic（テスト/可視化用）。 */

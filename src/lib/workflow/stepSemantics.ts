@@ -8,7 +8,7 @@
  * 純関数。判定は key（英語キー）と label（日本語名）の両方を見る。
  */
 
-export type WorkflowStepSemantic = "certificate" | "billing";
+export type WorkflowStepSemantic = "certificate" | "billing" | "inspection";
 
 export function classifyWorkflowStep(step: {
   key?: string | null;
@@ -29,6 +29,16 @@ export function classifyWorkflowStep(step: {
     /会計|請求|精算|支払/.test(label)
   ) {
     return "billing";
+  }
+
+  // 検査・仕上げ（inspect / check / quality / 検査 / 仕上 / 品質 / チェック）
+  if (
+    key.includes("inspect") ||
+    key.includes("check") ||
+    key.includes("quality") ||
+    /検査|仕上|品質|チェック/.test(label)
+  ) {
+    return "inspection";
   }
 
   return null;
