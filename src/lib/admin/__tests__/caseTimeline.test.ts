@@ -62,4 +62,37 @@ describe("buildCaseTimeline", () => {
     const queued = buildCaseTimeline({ reservation: { status: "completed" }, followUp: { status: "queued" } });
     expect(queued[4]).toMatchObject({ state: "current", detail: "送信予約済み" });
   });
+
+  it("attaches a start_work action when 施工 is pending", () => {
+    const steps = buildCaseTimeline({ reservation: { status: "confirmed" } });
+    expect(steps[1].action).toMatchObject({ kind: "start_work", label: "施工開始" });
+  });
+
+  it("attaches a complete_work action when 施工 is in progress", () => {
+    const steps = buildCaseTimeline({ reservation: { status: "in_progress" } });
+    expect(steps[1].action).toMatchObject({ kind: "complete_work", label: "施工完了" });
+  });
+
+  it("attaches an issue_certificate action (with public_id) on a draft certificate", () => {
+    const steps = buildCaseTimeline({
+      reservation: { status: "completed" },
+      certificate: { public_id: "PID-9", status: "draft" },
+    });
+    expect(steps[2].action).toMatchObject({ kind: "issue_certificate", label: "発行", targetId: "PID-9" });
+  });
+
+  it("does NOT attach an issue action without a public_id, and none on issued/none", () => {
+    const noPid = buildCaseTimeline({ reservation: { status: "completed" }, certificate: { status: "draft" } });
+    expect(noPid[2].action).toBeUndefined();
+    const issued = buildCaseTimeline({
+      reservation: { status: "completed" },
+      certificate: { public_id: "X", status: "active" },
+    });
+    expect(issued[2].action).toBeUndefined();
+  });
+
+  it("cancelled reservation exposes no actions", () => {
+    const steps = buildCaseTimeline({ reservation: { status: "cancelled" } });
+    expect(steps.every((s) => s.action === undefined)).toBe(true);
+  });
 });

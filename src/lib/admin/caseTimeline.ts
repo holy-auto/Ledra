@@ -13,12 +13,23 @@
 
 export type CaseStepState = "done" | "current" | "pending" | "skipped";
 
+/** ドロワー内から案件を前に進めるワンタップ操作（既存の安全なエンドポイントを再利用）。 */
+export type CaseActionKind = "start_work" | "complete_work" | "issue_certificate";
+
+export interface CaseStepAction {
+  kind: CaseActionKind;
+  label: string;
+  /** issue_certificate のとき証明書 public_id。予約系は呼び出し側が予約 id を使う。 */
+  targetId?: string;
+}
+
 export interface CaseStep {
   key: "reservation" | "work" | "certificate" | "invoice" | "follow_up";
   label: string;
   state: CaseStepState;
   detail: string;
   href?: string;
+  action?: CaseStepAction;
 }
 
 export interface CaseTimelineInput {
@@ -51,9 +62,21 @@ export function buildCaseTimeline(input: CaseTimelineInput): CaseStep[] {
   } else if (resStatus === "completed") {
     work = { key: "work", label: "施工", state: "done", detail: "完了" };
   } else if (resStatus === "in_progress") {
-    work = { key: "work", label: "施工", state: "current", detail: "作業中" };
+    work = {
+      key: "work",
+      label: "施工",
+      state: "current",
+      detail: "作業中",
+      action: { kind: "complete_work", label: "施工完了" },
+    };
   } else {
-    work = { key: "work", label: "施工", state: "pending", detail: "未着手" };
+    work = {
+      key: "work",
+      label: "施工",
+      state: "pending",
+      detail: "未着手",
+      action: { kind: "start_work", label: "施工開始" },
+    };
   }
 
   // 3. 証明書
@@ -68,6 +91,9 @@ export function buildCaseTimeline(input: CaseTimelineInput): CaseStep[] {
       state: "current",
       detail: "下書き（発行待ち）",
       href: CERT_HREF,
+      action: input.certificate?.public_id
+        ? { kind: "issue_certificate", label: "発行", targetId: input.certificate.public_id }
+        : undefined,
     };
   } else if (certStatus === "void") {
     certificate = { key: "certificate", label: "証明書", state: "skipped", detail: "無効", href: CERT_HREF };
