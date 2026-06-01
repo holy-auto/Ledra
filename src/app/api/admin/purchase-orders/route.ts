@@ -13,10 +13,13 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { enforceBilling } from "@/lib/billing/guard";
 import { sendEmail } from "@/lib/email/sendEmail";
+import { readSecret } from "@/lib/crypto/tenantSecrets";
+import { placeOrderViaApi, type SupplyAuthType } from "@/lib/supply/placeOrder";
 import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -164,7 +167,7 @@ export async function PUT(req: NextRequest) {
     const { data: po, error: poErr } = await supabase
       .from("purchase_orders")
       .select(
-        "id, status, supplier_id, po_number, subtotal, note, purchase_order_items(id, item_id, name, sku, quantity, unit_cost)",
+        "id, status, supplier_id, supply_partner_id, po_number, subtotal, note, purchase_order_items(id, item_id, name, sku, quantity, unit_cost)",
       )
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
@@ -208,14 +211,44 @@ export async function PUT(req: NextRequest) {
     }>;
 
     let emailed = false;
-    // 送信: 仕入先メールがあれば発注内容を送る (外部コミット = 人の操作で初めて起きる)。
-    if (nextStatus === "sent" && po.supplier_id) {
-      emailed = await sendPurchaseOrderEmail(supabase, caller.tenantId, po.supplier_id, {
+    let transport: "api" | "email" | null = null;
+    let externalOrderId: string | null = null;
+    // 送信 (外部コミット = 人の操作で初めて起きる)。
+    //  - 店舗ローカル仕入先 (supplier_id): メール送付。
+    //  - 供給パートナー (supply_partner_id): API があれば API 発注、無ければ連絡先メール。
+    if (nextStatus === "sent") {
+      const poForSend = {
         poNumber: (po.po_number as string | null) ?? id,
         note: (po.note as string | null) ?? null,
         subtotal: Number(po.subtotal ?? 0),
         items,
-      });
+      };
+      if (po.supplier_id) {
+        emailed = await sendPurchaseOrderEmail(supabase, caller.tenantId, po.supplier_id as string, poForSend);
+        transport = emailed ? "email" : null;
+      } else if (po.supply_partner_id) {
+        const r = await dispatchSupplyPartnerOrder(
+          supabase,
+          caller.tenantId,
+          po.supply_partner_id as string,
+          poForSend,
+        );
+        transport = r.transport;
+        externalOrderId = r.externalOrderId;
+        emailed = r.transport === "email" && r.ok;
+      }
+
+      // 搬送結果を発注書に記録 (API 注文番号・搬送ステータス)。
+      const transportStatus = transport === "api" ? "acked" : transport === "email" ? "sent" : "failed";
+      await supabase
+        .from("purchase_orders")
+        .update({
+          transport,
+          transport_status: transportStatus,
+          external_order_id: externalOrderId,
+        })
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId);
     }
 
     // 入荷: 明細の数量を在庫に in 計上する。
@@ -249,9 +282,107 @@ export async function PUT(req: NextRequest) {
         .eq("tenant_id", caller.tenantId);
     }
 
-    return apiJson({ ok: true, status: nextStatus, emailed, stocked_in: stockedIn });
+    return apiJson({
+      ok: true,
+      status: nextStatus,
+      emailed,
+      transport,
+      external_order_id: externalOrderId,
+      stocked_in: stockedIn,
+    });
   } catch (e: unknown) {
     return apiInternalError(e, "purchase order update");
+  }
+}
+
+interface PoForSend {
+  poNumber: string;
+  note: string | null;
+  subtotal: number;
+  items: Array<{ name: string; sku: string | null; quantity: number; unit_cost: number | null }>;
+}
+
+/**
+ * 供給パートナーへ実発注を搬送する。API 設定があれば API 発注、無ければ連絡先メール。
+ * 鍵 (owner 専用 RLS) の復号と送信はサーバ側 (platform スコープ) が代行する。
+ * 自店が提携 (tenant_supply_links) しているパートナーに限る。
+ */
+async function dispatchSupplyPartnerOrder(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  tenantId: string,
+  supplyPartnerId: string,
+  po: PoForSend,
+): Promise<{ transport: "api" | "email" | null; externalOrderId: string | null; ok: boolean }> {
+  try {
+    // 自店が提携済みか (RLS スコープの SSR クライアントで確認)。
+    const { data: link } = await supabase
+      .from("tenant_supply_links")
+      .select("supply_partner_id")
+      .eq("tenant_id", tenantId)
+      .eq("supply_partner_id", supplyPartnerId)
+      .maybeSingle();
+    if (!link) return { transport: null, externalOrderId: null, ok: false };
+
+    // パートナー情報 + 鍵は owner 専用 RLS のため platform スコープで読む。
+    const admin = createPlatformScopedAdmin(
+      "purchase-orders: 提携済み供給パートナーへの実発注搬送 (鍵復号 + API/メール送信)",
+    );
+    const { data: partner } = await admin
+      .from("supply_partners")
+      .select("name, contact_email, api_endpoint, api_auth_type, api_config")
+      .eq("id", supplyPartnerId)
+      .maybeSingle();
+    if (!partner) return { transport: null, externalOrderId: null, ok: false };
+
+    const authType = (partner.api_auth_type as SupplyAuthType | null) ?? "none";
+
+    // API 連携がある場合は API 発注を試みる。
+    if (authType !== "none" && partner.api_endpoint) {
+      const { data: cred } = await admin
+        .from("supply_partner_credentials")
+        .select("api_key_ciphertext")
+        .eq("supply_partner_id", supplyPartnerId)
+        .maybeSingle();
+      const apiKey = await readSecret(
+        (cred?.api_key_ciphertext as string | null) ?? null,
+        "supply_partner_credentials.api_key",
+      );
+      if (apiKey) {
+        const { data: tenant } = await admin.from("tenants").select("name").eq("id", tenantId).maybeSingle();
+        const shopName = (tenant?.name as string | null) ?? "当店";
+        const result = await placeOrderViaApi(
+          supplyPartnerId,
+          {
+            endpoint: partner.api_endpoint as string,
+            authType,
+            apiKey,
+            config: partner.api_config as Record<string, unknown> | null,
+          },
+          { poNumber: po.poNumber, shopName, items: po.items, subtotal: po.subtotal, note: po.note },
+        );
+        if (result.ok) {
+          return { transport: "api", externalOrderId: result.externalOrderId, ok: true };
+        }
+        logger.warn("[purchase-orders] supply partner API order failed, falling back to email", {
+          tenantId,
+          supplyPartnerId,
+          err: result.error,
+        });
+      }
+    }
+
+    // フォールバック: 連絡先メール。
+    const email = (partner.contact_email as string | null) ?? null;
+    if (!email) return { transport: null, externalOrderId: null, ok: false };
+    const sent = await sendPoEmail(supabase, tenantId, (partner.name as string | null) ?? "ご担当者", email, po);
+    return { transport: sent ? "email" : null, externalOrderId: null, ok: sent };
+  } catch (e) {
+    logger.warn("[purchase-orders] dispatchSupplyPartnerOrder threw", {
+      tenantId,
+      supplyPartnerId,
+      err: e instanceof Error ? e.message : String(e),
+    });
+    return { transport: null, externalOrderId: null, ok: false };
   }
 }
 
@@ -276,7 +407,25 @@ async function sendPurchaseOrderEmail(
       .maybeSingle();
     const email = (supplier?.email as string | null) ?? null;
     if (!email) return false;
+    return sendPoEmail(supabase, tenantId, (supplier?.name as string | null) ?? "ご担当者", email, po);
+  } catch (e) {
+    logger.warn("[purchase-orders] supplier email failed", {
+      tenantId,
+      err: e instanceof Error ? e.message : String(e),
+    });
+    return false;
+  }
+}
 
+/** 宛先 (名前 + メール) を直接受け取り発注メールを送る。仕入先/供給パートナー双方から再利用。 */
+async function sendPoEmail(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  tenantId: string,
+  recipientName: string,
+  recipientEmail: string,
+  po: PoForSend,
+): Promise<boolean> {
+  try {
     const { data: tenant } = await supabase.from("tenants").select("name").eq("id", tenantId).maybeSingle();
     const shopName = (tenant?.name as string | null) ?? "施工店";
 
@@ -291,7 +440,7 @@ async function sendPurchaseOrderEmail(
       .join("");
 
     const html = `
-      <p>${escapeHtml((supplier?.name as string | null) ?? "ご担当者")} 御中</p>
+      <p>${escapeHtml(recipientName)} 御中</p>
       <p>${escapeHtml(shopName)} です。下記の通り発注いたします。</p>
       <p>発注番号: <b>${escapeHtml(po.poNumber)}</b></p>
       <table style="border-collapse:collapse">
@@ -308,13 +457,13 @@ async function sendPurchaseOrderEmail(
     `.trim();
 
     const res = await sendEmail({
-      to: email,
+      to: recipientEmail,
       subject: `【発注】${shopName} (${po.poNumber})`,
       html,
     });
     return res.ok;
   } catch (e) {
-    logger.warn("[purchase-orders] supplier email failed", {
+    logger.warn("[purchase-orders] PO email failed", {
       tenantId,
       err: e instanceof Error ? e.message : String(e),
     });
