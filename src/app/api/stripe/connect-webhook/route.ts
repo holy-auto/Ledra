@@ -158,7 +158,7 @@ async function resolveReceiver(
 ): Promise<{ tenantId: string | null; agentId: string | null }> {
   const [tenantResult, agentResult] = await Promise.all([
     supabase.from("tenants").select("id").eq("stripe_connect_account_id", accountId).limit(1).maybeSingle(),
-    supabase.from("agents").select("id").eq("stripe_connect_account_id", accountId).limit(1).maybeSingle(),
+    supabase.from("agents").select("id").eq("stripe_account_id", accountId).limit(1).maybeSingle(),
   ]);
   return {
     tenantId: tenantResult.data?.id ?? null,

@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { cookies } from "next/headers";
 import { randomBytes } from "crypto";
 import { signupSchema } from "@/lib/validations/signup";
 import { apiOk, apiError, apiInternalError, apiValidationError } from "@/lib/api/response";
@@ -95,6 +96,39 @@ export async function POST(req: NextRequest) {
       await admin.from("tenants").delete().eq("id", tenant.id);
       await admin.auth.admin.deleteUser(userId);
       return apiInternalError(membershipError, "signup: membership creation");
+    }
+
+    // ── 紹介リンク (/ref/<code>) 経由のアトリビューション（best-effort） ──
+    // /ref ランディングが set した ledra_ref cookie を読み、有効な代理店リンク
+    // なら紹介(agent_referrals)を trial で起票してテナントに紐付ける。失敗しても
+    // 新規登録自体は止めない。有料化時に webhook が contracted へ自動遷移する。
+    try {
+      const cookieStore = await cookies();
+      const refCode = cookieStore.get("ledra_ref")?.value;
+      if (refCode) {
+        const { data: link } = await admin
+          .from("agent_referral_links")
+          .select("agent_id")
+          .eq("code", refCode)
+          .eq("is_active", true)
+          .maybeSingle();
+
+        if (link?.agent_id) {
+          await admin.from("agent_referrals").insert({
+            agent_id: link.agent_id,
+            tenant_id: tenant.id,
+            shop_name,
+            contact_name: display_name || null,
+            contact_email: email,
+            contact_phone: contact_phone ?? null,
+            status: "trial",
+            notes: `紹介リンク ${refCode} 経由で新規登録`,
+          });
+        }
+        cookieStore.delete("ledra_ref");
+      }
+    } catch (refErr) {
+      console.error("[signup] referral attribution failed:", refErr);
     }
 
     try {

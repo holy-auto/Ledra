@@ -45,7 +45,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const agentId = agent.agent_id as string;
 
     const referralColumns =
-      "id, agent_id, shop_name, contact_name, contact_email, contact_phone, referral_code, status, notes, contract_date, contracted_at, created_at, updated_at";
+      "id, agent_id, shop_name, contact_name, contact_email, contact_phone, referral_code, status, notes, contracted_at, created_at, updated_at";
     const { data: referral, error } = await supabase
       .from("agent_referrals")
       .select(referralColumns)

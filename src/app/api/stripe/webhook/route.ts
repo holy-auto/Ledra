@@ -15,6 +15,7 @@ import { sendTemplateSubscriptionStartedEmail } from "@/lib/email/templateOrderE
 import { maskEmail } from "@/lib/logger";
 import { invalidateTenantBillingCache } from "@/lib/billing/guard";
 import { REPORT_ACCESS_VALIDITY_DAYS } from "@/lib/vehicleReport/access";
+import { recordSubscriptionCommission, advanceReferralToContracted } from "@/lib/agents/commission";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -397,6 +398,20 @@ async function syncBySubscription(
     // Bust the billing-guard cache so the next request sees the new plan
     // immediately instead of waiting up to 60s for TTL expiry.
     await invalidateTenantBillingCache(resolvedTenantId);
+
+    // 紹介代理店経由のテナントが有料プランを開始したら、紹介を「契約成立」に
+    // 自動遷移する（コミッション計上は invoice.paid 側で実施）。失敗しても
+    // 課金同期本体は止めない。
+    if (active && plan_tier && plan_tier !== "free") {
+      try {
+        await advanceReferralToContracted(supabase, resolvedTenantId);
+      } catch (e) {
+        console.error("webhook: advanceReferralToContracted failed", {
+          tenantId: resolvedTenantId,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
   }
 }
 
@@ -677,6 +692,49 @@ export async function POST(req: NextRequest) {
           if (tenant_id && !sub.metadata?.tenant_id) sub.metadata = { ...(sub.metadata ?? {}), tenant_id };
           if (tenant_slug && !sub.metadata?.tenant_slug) sub.metadata = { ...(sub.metadata ?? {}), tenant_slug };
           await syncBySubscription(stripe, supabase, sub);
+        }
+        break;
+      }
+
+      // ─── サブスク請求の支払い完了 → 代理店コミッションを生成 ───
+      // 紹介代理店経由テナントの「実際の決済額 × 料率」で pending コミッションを
+      // 起票する（送信=送金は壁3に従い管理者承認後）。冪等キーは invoice.id。
+      case "invoice.paid":
+      case "invoice.payment_succeeded": {
+        const invoice = event.data.object as Stripe.Invoice;
+        const inv = invoice as unknown as Record<string, unknown>;
+        const subscriptionId = asStringId(inv.subscription);
+        if (!subscriptionId) break; // サブスク以外（単発決済等）は対象外
+        if (invoice.metadata?.type === "insurer") break; // 保険会社サブスクは対象外
+
+        try {
+          const customerId = asStringId(invoice.customer);
+          const selector = await resolveTenantSelector({ supabase, customerId, subscriptionId });
+          // テナントが特定できない（保険会社サブスク等）場合はスキップ
+          if (selector && selector.by === "id") {
+            const result = await recordSubscriptionCommission(supabase, {
+              tenantId: selector.value,
+              subscriptionId,
+              invoiceId: invoice.id as string,
+              amountPaid: (invoice.amount_paid as number) ?? 0,
+              currency: invoice.currency,
+              periodStart: (inv.period_start as number | undefined) ?? null,
+              periodEnd: (inv.period_end as number | undefined) ?? null,
+            });
+            if (result.status === "created") {
+              console.info("webhook: agent commission generated", {
+                tenantId: selector.value,
+                invoiceId: invoice.id,
+                amount: result.amount,
+              });
+            }
+          }
+        } catch (e) {
+          // コミッション生成の失敗で課金 webhook 本体を失敗させない
+          console.error("webhook: agent commission generation failed", {
+            invoiceId: invoice.id,
+            error: e instanceof Error ? e.message : String(e),
+          });
         }
         break;
       }
