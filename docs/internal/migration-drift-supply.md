@@ -3,7 +3,46 @@
 > 作成: 2026-06-01
 > 対象: 本番プロジェクト `cahybswpduchptvyvdkk`（WEB施工証明書 = Ledra 本番）
 
-## 背景 / 観測された事実
+## TL;DR（2026-06-01 リポジトリ全体の整合を実施）
+- 本番 `schema_migrations` は repo より大きくズレていた（repo 220 version 中 120 が未記録）。
+- 未記録 120 を「作成テーブル/関数が本番に実在するか」で検証し分類:
+  - **VERIFIED 49**: 実在確認済 → 「適用済み」として `schema_migrations` に後追い記録（実施済み）。
+  - **UNAPPLIED 15**: 作成オブジェクトが本番に **存在しない = 本当に未適用**（下記）。記録していない。**本番に欠落している実機能**。
+  - **UNVERIFIABLE 56**: ALTER/INDEX/POLICY/VIEW のみで自動検証不能 → 安全側で記録せず（多くは適用済みと推測されるが未確認）。
+- 結果: 本番記録 115 → **164**。残り未記録 71（= UNAPPLIED 15 + UNVERIFIABLE 56）。
+
+### ⚠️ UNAPPLIED 15（本番に未適用＝欠落している機能。要デプロイ判断）
+これらは「後でDROP」もされておらず、アプリが参照しているものもある。本番で該当機能は動かない可能性が高い:
+
+| migration | 欠落オブジェクト |
+|---|---|
+| 20260423000000_insurer_access_logs_tenant_id | fn `fn_insurer_access_logs_fill_tenant` |
+| 20260423000001_analytics_insurer_30days_rpc | fn `analytics_insurer_30days` |
+| 20260425000002_cron_locks | table `cron_locks`, fn `acquire/release_cron_lock` |
+| 20260429000000_follow_up_maintenance_reminders | fn `follow_up_maintenance_months_valid` |
+| 20260429000001_fix_maintenance_months_constraint | fn `follow_up_maintenance_months_valid` |
+| 20260429000002_academy_creator_rewards | table `academy_creator_rewards` |
+| 20260429000003_webhook_processed_events | table `webhook_processed_events` |
+| 20260430000002_customer_ai_summaries | table `customer_ai_summaries` |
+| 20260503000001_outbox_events | table `outbox_events` |
+| 20260503000003_customer_rights | table `customer_deletion_requests` |
+| 20260503000004_tenant_custom_domains | table `tenant_custom_domains` |
+| 20260506000000_delivery_receipts | table `delivery_receipts` + trigger fn |
+| 20260517000000_tenants_deactivated_at_churn | fn `marketing_churn_stats` / `set_tenant_deactivated_at` |
+| 20260520000004_cert_idempotency_keys | table `cert_idempotency_keys` |
+| 20260530000001_ai_translation_cache | table `ai_translation_cache` |
+
+→ **対応案**: これら15本（+依存）を順序通り本番へ適用してrepoに揃える（機能をprodに展開する判断）。一括適用ではなく、各migrationの依存と冪等性を確認しながら段階適用を推奨。本セッションでは適用していない。
+
+### UNVERIFIABLE 56（自動検証不能・未記録のまま）
+ALTER COLUMN / INDEX / POLICY / VIEW / データ系で「作成テーブル/関数」を持たないため実在判定不可。多くは適用済みと推測されるが、確証がないため安全側で記録していない（`db push` 時に再実行され得る／古いものは IF NOT EXISTS 無しでエラーの可能性）。各 migration の効果（列・制約・index・policy）を個別確認してから記録するか、本番デプロイ経路の整理時にまとめて扱うこと。
+versions: `20260404000000, 20260406200000, 20260407000000, 20260409000001, 20260409000002, 20260411000000, 20260412000000, 20260412100000, 20260421000000, 20260421000003, 20260422000000, 20260424000000, 20260425000000, 20260425000001, 20260426000000, 20260426000001, 20260427000000, 20260428000000, 20260429000004, 20260430000000, 20260430000001, 20260502000001, 20260503000000, 20260509010000, 20260509010001, 20260510000000, 20260510000001, 20260511000000, 20260511000001, 20260511000002, 20260511000003, 20260512000002, 20260514000001, 20260514100001, 20260514120000, 20260520000000, 20260520000003, 20260522000002, 20260522000005, 20260522000006, 20260522000007, 20260524000002, 20260525000001, 20260526000001, 20260527000002, 20260527000003, 20260529000001, 20260531000001, 20260531000002, 20260531000003, 20260531000005, 20260531000007, 20260531000008, 20260531000009, 20260531100000, 20260531100001`
+
+> 注（検証法の限界）: VERIFIED 判定は「migration が CREATE する table/function が本番に実在する」ことのみを根拠とする。`CREATE TABLE IF NOT EXISTS` で既存テーブルに当たり、かつ同 migration 内の ALTER 等が別途未適用、というケースは見逃し得る（残存リスク低）。
+
+---
+
+## 背景 / 観測された事実（供給パートナー分の初期調査）
 
 供給パートナー基盤（Phase 0〜）の実装中に、**本番DBのマイグレーション適用状態がリポジトリの履歴と一致しない**ことが判明した。`list_migrations`（`supabase_migrations.schema_migrations`）に基づく観測:
 
