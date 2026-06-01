@@ -12,13 +12,16 @@ import {
 
 const AUTH_TYPES: SupplyApiAuthType[] = ["none", "api_key", "bearer", "oauth2"];
 
-export default function SupplyIntegrationPage() {
+/**
+ * 代理店ポータルの発注 API 連携設定。鍵は書き込み専用 (設定済み表示のみ・画面に再表示しない)。
+ * 未設定なら発注は登録された連絡先メールに届く。
+ */
+export default function AgentIntegrationPage() {
   const [loading, setLoading] = useState(true);
   const [endpoint, setEndpoint] = useState("");
   const [authType, setAuthType] = useState<SupplyApiAuthType>("none");
   const [integrationStatus, setIntegrationStatus] = useState("unconfigured");
   const [credentialsConfigured, setCredentialsConfigured] = useState(false);
-  // 鍵入力は「新しい値を入れたときだけ」送る。空のままなら据え置き。
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
   const [saving, setSaving] = useState(false);
@@ -28,7 +31,7 @@ export default function SupplyIntegrationPage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/supply/profile", { cache: "no-store" });
+        const res = await fetch("/api/agent/supply/profile", { cache: "no-store" });
         const j = await res.json().catch(() => null);
         if (cancelled) return;
         const partner = j?.partner as SupplyPartnerProfile | null;
@@ -57,11 +60,10 @@ export default function SupplyIntegrationPage() {
         api_endpoint: endpoint.trim() || null,
         api_auth_type: authType,
       };
-      // 入力があったときだけ鍵を送る (空 = 据え置き)。
       if (apiKey.trim()) payload.api_key = apiKey.trim();
       if (apiSecret.trim()) payload.api_secret = apiSecret.trim();
 
-      const res = await fetch("/api/supply/profile", {
+      const res = await fetch("/api/agent/supply/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -74,8 +76,7 @@ export default function SupplyIntegrationPage() {
       setMsg({ ok: true, text: "保存しました。" });
       setApiKey("");
       setApiSecret("");
-      // 再取得して設定状態を更新
-      const r2 = await fetch("/api/supply/profile", { cache: "no-store" });
+      const r2 = await fetch("/api/agent/supply/profile", { cache: "no-store" });
       const j2 = await r2.json().catch(() => null);
       if (j2?.partner) setIntegrationStatus(j2.partner.integration_status ?? "unconfigured");
       setCredentialsConfigured(Boolean(j2?.credentials_configured));
@@ -93,8 +94,8 @@ export default function SupplyIntegrationPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <PageHeader
-        tag="SUPPLY PORTAL"
-        title="API 連携設定"
+        tag="SUPPLY"
+        title="発注 API 連携"
         description="発注を自動で受け取る API を設定します。未設定の場合は連絡先メールに発注が届きます。"
       />
 

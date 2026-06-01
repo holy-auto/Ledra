@@ -24,7 +24,11 @@ const EMPTY_FORM: FormState = {
   is_active: true,
 };
 
-export default function SupplyProductsPage() {
+/**
+ * 代理店ポータルの商材カタログ。代理店が卸す商材 (品番・卸値・在庫・リードタイム) を
+ * 登録する。店舗はこのカタログと提携し、在庫品目に紐付けて自動発注の対象にできる。
+ */
+export default function AgentProductsPage() {
   const [products, setProducts] = useState<SupplyPartnerProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -32,10 +36,9 @@ export default function SupplyProductsPage() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  // 一覧取得 (イベントハンドラからの再取得に使う)。effect 内では別途インライン定義する。
   const reload = useCallback(async () => {
     try {
-      const res = await fetch("/api/supply/products", { cache: "no-store" });
+      const res = await fetch("/api/agent/supply/products", { cache: "no-store" });
       const j = await res.json().catch(() => null);
       if (j?.products) setProducts(j.products as SupplyPartnerProduct[]);
     } catch {
@@ -47,7 +50,7 @@ export default function SupplyProductsPage() {
     let cancelled = false;
     const load = async () => {
       try {
-        const res = await fetch("/api/supply/products", { cache: "no-store" });
+        const res = await fetch("/api/agent/supply/products", { cache: "no-store" });
         const j = await res.json().catch(() => null);
         if (!cancelled && j?.products) setProducts(j.products as SupplyPartnerProduct[]);
       } catch {
@@ -94,7 +97,7 @@ export default function SupplyProductsPage() {
         lead_time_days: form.lead_time_days.trim() ? Number(form.lead_time_days) : null,
         is_active: form.is_active,
       };
-      const res = await fetch("/api/supply/products", {
+      const res = await fetch("/api/agent/supply/products", {
         method: editingId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editingId ? { ...payload, id: editingId } : payload),
@@ -117,7 +120,7 @@ export default function SupplyProductsPage() {
   const remove = async (id: string) => {
     if (!confirm("この商材を削除しますか？")) return;
     try {
-      const res = await fetch("/api/supply/products", {
+      const res = await fetch("/api/agent/supply/products", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
@@ -137,7 +140,7 @@ export default function SupplyProductsPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader
-        tag="SUPPLY PORTAL"
+        tag="SUPPLY"
         title="商材カタログ"
         description="店舗が発注できる商材を登録します。品番は店舗側の在庫品目と紐付けられます。"
       />
