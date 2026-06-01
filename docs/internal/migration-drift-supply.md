@@ -54,13 +54,19 @@ ON CONFLICT (version) DO NOTHING;
 --   VALUES ('20260601000001', 'supply_partners_agent_integration') ON CONFLICT DO NOTHING;
 ```
 
-### 適用前チェックリスト
-- [ ] `20260601000002_supply_webhook_secret.sql`（`webhook_secret_ciphertext` 列）が本番に適用済みか確認
-  （未適用なら先に `apply_migration` で適用してから登録）。
-- [ ] `20260601000003_supply_auto_send.sql`（`is_trusted` 列 + `tenant_supply_auto_send_settings`）が本番に適用済みか確認。
-- [ ] 上記2本は **2026-06-01 時点で本番未適用**（このセッションでは適用していない）。本番反映は運営の判断で。
+### 適用済みチェック（2026-06-01 完了）
+- [x] `20260601000002_supply_webhook_secret.sql`（`webhook_secret_ciphertext` 列）→ `apply_migration` で本番適用済み。
+- [x] `20260601000003_supply_auto_send.sql`（`is_trusted` 列 + `tenant_supply_auto_send_settings` + RLS/trigger）→ 本番適用済み。
+- [x] リポジトリのファイル名 version（`20260601000000`〜`000003`）を `schema_migrations` に後追い登録済み（下記「実施記録」）。
 
 ## 本セッションで本番に対して行ったこと（記録）
-- ✅ `20260601000001`（`my_supply_partner_ids` の agentベース化）のみ `apply_migration` で適用（ユーザー承認済み）。
-- ❌ それ以外の本番書き込みは行っていない（Phase 0 / webhook / auto-send の DDL 適用は運営判断に委ねる）。
-- 別プロジェクト `autodetailepro`（`urcennhrpanojvjyiqwu`）は **Ledra とは別アプリ**（`pro_profiles` / `scheduled_bookings` 等）であり、供給パートナー migration は適用対象外。
+- ✅ `20260601000001`（`my_supply_partner_ids` の agentベース化）を `apply_migration` で適用。
+- ✅ `20260601000002`（webhook secret 列）/ `20260601000003`（is_trusted + auto_send 設定）を `apply_migration` で適用。
+  検証: 列・テーブル・RLS(3 policy)・trigger の存在を確認、セキュリティ advisor で新規 ERROR なし。
+- ✅ DDL が検証済みで適用済みの 4 version（`20260601000000`〜`000003`）を、リポジトリのファイル名 version で
+  `schema_migrations` に後追い登録（`ON CONFLICT DO NOTHING`）。これにより repo ↔ 本番のマイグレーション履歴が整合し、
+  以後の `supabase db push` が冪等 migration を再実行しなくなった。
+  - 注: `apply_migration` は別途 auto-generated version (`20260601054455` 等) でも記録するため、同一 migration が
+    2 つの version で記録されている箇所があるが、いずれも「適用済み」マーカーであり動作に影響しない。
+- ❌ Phase 0 の DDL 自体は本セッション以前に（生 SQL 経由で）既に本番適用済みだったため、新規 DDL 適用は上記のみ。
+- 別プロジェクト `autodetailepro`（`urcennhrpanojvjyiqwu`）は **Ledra とは別アプリ**（`pro_profiles` / `scheduled_bookings` 等）であり、供給パートナー migration は適用対象外（変更なし）。
