@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     // Get referrals with dates
     const { data: referrals } = await supabase
       .from("agent_referrals")
-      .select("id, status, created_at, contract_date")
+      .select("id, status, created_at")
       .eq("agent_id", agentId)
       .order("created_at", { ascending: true });
 

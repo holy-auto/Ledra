@@ -34,13 +34,15 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
     const [{ data: referrals }, { data: commissions }, { data: members }] = await Promise.all([
       admin
         .from("agent_referrals")
-        .select("id, agent_id, customer_name, customer_email, customer_phone, status, note, created_at, updated_at")
+        .select(
+          "id, agent_id, shop_name, contact_name, contact_email, contact_phone, status, notes, created_at, updated_at",
+        )
         .eq("agent_id", id)
         .order("created_at", { ascending: false }),
       admin
         .from("agent_commissions")
         .select(
-          "id, agent_id, referral_id, amount, rate, status, period_start, period_end, paid_at, created_at, updated_at",
+          "id, agent_id, referral_id, base_amount, amount, commission_rate, commission_type, status, period_start, period_end, paid_at, created_at, updated_at",
         )
         .eq("agent_id", id)
         .order("period_start", { ascending: false }),

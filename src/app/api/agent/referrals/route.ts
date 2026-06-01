@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("agent_referrals")
       .select(
-        "id, agent_id, shop_name, contact_name, contact_email, contact_phone, referral_code, status, notes, contract_date, contracted_at, created_at, updated_at",
+        "id, agent_id, shop_name, contact_name, contact_email, contact_phone, referral_code, status, notes, contracted_at, created_at, updated_at",
         { count: "exact" },
       )
       .eq("agent_id", agentId)
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
       .from("agent_referrals")
       .insert(row)
       .select(
-        "id, agent_id, shop_name, contact_name, contact_email, contact_phone, referral_code, status, notes, contract_date, contracted_at, created_at, updated_at",
+        "id, agent_id, shop_name, contact_name, contact_email, contact_phone, referral_code, status, notes, contracted_at, created_at, updated_at",
       )
       .single();
 

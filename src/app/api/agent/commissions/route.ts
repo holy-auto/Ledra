@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("agent_commissions")
       .select(
-        "id, agent_id, referral_id, amount, rate, status, period_start, period_end, paid_at, notes, created_at, updated_at, agent_referrals(shop_name)",
+        "id, agent_id, referral_id, base_amount, amount, commission_rate, commission_type, status, period_start, period_end, paid_at, notes, created_at, updated_at, agent_referrals(shop_name)",
       )
       .eq("agent_id", agentId)
       .order("period_start", { ascending: false });
