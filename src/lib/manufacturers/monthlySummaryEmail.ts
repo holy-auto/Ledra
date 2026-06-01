@@ -60,7 +60,7 @@ export function buildMonthlySummaryEmail(stats: MonthlySummaryStats): {
     </p>
     <div style="border-top:1px solid #e5e5e5;margin-top:24px;padding-top:12px;font-size:12px;color:#86868b;">
       この通知は admin ロールの担当者宛に毎月自動送信されています。配信停止は Ledra 運営までご連絡ください。<br>
-      Ledra — 株式会社HOLY AUTO
+      Ledra — 株式会社HOLY
     </div>
   </div>`;
 

@@ -113,7 +113,7 @@ async function sendInsurerNotification(params: {
             </a>
           </p>
           <div style="border-top: 1px solid #e5e5e5; margin-top: 24px; padding-top: 12px; font-size: 12px; color: #86868b;">
-            Ledra — 株式会社HOLY AUTO
+            Ledra — 株式会社HOLY
           </div>
         </div>`;
       break;
@@ -133,7 +133,7 @@ async function sendInsurerNotification(params: {
             ご不明な点がございましたら、サポートまでお問い合わせください。
           </p>
           <div style="border-top: 1px solid #e5e5e5; margin-top: 24px; padding-top: 12px; font-size: 12px; color: #86868b;">
-            Ledra — 株式会社HOLY AUTO
+            Ledra — 株式会社HOLY
           </div>
         </div>`;
       break;
@@ -153,7 +153,7 @@ async function sendInsurerNotification(params: {
             ご不明な点がございましたら、サポートまでお問い合わせください。
           </p>
           <div style="border-top: 1px solid #e5e5e5; margin-top: 24px; padding-top: 12px; font-size: 12px; color: #86868b;">
-            Ledra — 株式会社HOLY AUTO
+            Ledra — 株式会社HOLY
           </div>
         </div>`;
       break;
