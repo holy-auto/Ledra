@@ -182,6 +182,27 @@ export const AUTOMATION_ACTION_BY_KEY: ReadonlyMap<string, AutomationActionDef> 
 
 export const AUTOMATION_ACTION_KEYS: ReadonlySet<string> = new Set(AUTOMATION_ACTIONS.map((a) => a.key));
 
+/**
+ * 「おまかせ運用」プリセットで一括 ON にする推奨アクション。
+ *
+ * 下書き / 提案 / 注釈の生成だけで、外向き送付・自動作成（予約/送付）を伴わない
+ * = 失敗しても影響が小さく取り消しやすいものに限定する。顧客への自動送付
+ * (invoice/quote.auto_send_on_confirm) や予約の自動起票
+ * (inbound_message.auto_create_reservation) は意図的に**除外**し、個別 opt-in に委ねる。
+ * 壁3 アクションは元々カタログ外なので含まれない。
+ */
+export const RECOMMENDED_AUTOMATION_ACTION_KEYS: ReadonlySet<string> = new Set<string>([
+  "inbound_message.auto_extract",
+  "certificate.auto_draft",
+  "certificate.auto_create_draft_record",
+  "review.auto_analyze",
+  "translation.auto_translate",
+  "accounting.auto_categorize_on_intake",
+  "thickness.auto_detect",
+  "workflow.auto_propose_on_intake",
+  "inventory.auto_draft_reorder",
+]);
+
 /** opt-in 可能な (カタログに存在する) アクションキーか。 */
 export function isKnownActionKey(key: unknown): key is AutomationActionKey {
   return typeof key === "string" && AUTOMATION_ACTION_KEYS.has(key);
