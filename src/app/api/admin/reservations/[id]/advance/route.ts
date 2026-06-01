@@ -6,6 +6,8 @@ import { sendProgressUpdate } from "@/lib/line/client";
 import { sendProgressCompletionReliable } from "@/lib/line/clientWithRetry";
 import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { logger } from "@/lib/logger";
+import { runStepAutomationOnReach } from "@/lib/workflow/stepAutomations";
+import { maybeAutoCreateDraftCertificateForReservation } from "@/lib/ai/automation/certificateRecordAuto";
 
 const advanceSchema = z.object({
   note: z.string().trim().max(2000).nullable().optional(),
@@ -192,6 +194,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     if (updateError) {
       return apiInternalError(updateError, "advance update");
+    }
+
+    // ─── 設定済みワークフローを汲み取った各工程の AI 自動化 ───
+    // 到達した工程の意味（証明書/会計…）に応じて先回りで下書きを生成する
+    // （各自 opt-in / 冪等 / 壁3）。新しい工程アシストは stepAutomations に追加する。
+    if (!isLastStep && nextStep) {
+      void runStepAutomationOnReach(nextStep, { tenantId: caller.tenantId, reservationId: id }).catch((e) =>
+        logger.warn("[advance] step automation failed", {
+          reservationId: id,
+          err: e instanceof Error ? e.message : String(e),
+        }),
+      );
+    }
+    // ワークフロー完了は予約 PUT ルートの発行フックを通らないため、証明書ドラフト
+    // 自動生成をここでも担保する（workflow 運用店舗の取りこぼし防止）。
+    if (isLastStep) {
+      void maybeAutoCreateDraftCertificateForReservation({
+        tenantId: caller.tenantId,
+        reservationId: id,
+      }).catch((e) =>
+        logger.warn("[advance] auto-create draft certificate (completion) failed", {
+          reservationId: id,
+          err: e instanceof Error ? e.message : String(e),
+        }),
+      );
     }
 
     // ─── 顧客公開イベント書き込み & LINE通知 ───

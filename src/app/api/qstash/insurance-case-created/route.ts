@@ -2,6 +2,7 @@ import { parseJsonSafe } from "@/lib/api/safeJson";
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiValidationError, apiInternalError } from "@/lib/api/response";
+import { notifyPartnersOnIssue } from "@/lib/certificates/issueNotifications";
 
 /**
  * QStash handler: insurance-case-created
@@ -21,16 +22,7 @@ async function handler(request: Request) {
 
   console.info("[QSTASH][insurance-case-created] processing:", JSON.stringify(body));
 
-  const {
-    certificate_id,
-    public_id,
-    tenant_id,
-    customer_name,
-    vehicle_model,
-    vehicle_plate,
-    service_type,
-    created_by,
-  } = body as Record<string, string | undefined>;
+  const { certificate_id, public_id, tenant_id, service_type } = body as Record<string, string | undefined>;
 
   if (!certificate_id || !tenant_id) {
     return apiValidationError("missing certificate_id or tenant_id");
@@ -59,39 +51,33 @@ async function handler(request: Request) {
         if (error) console.warn("[QSTASH] notification_logs insert failed:", error.message);
       });
 
-    // 3. Check if any insurers exist and should be notified
-    //    (Future: insurer notification preferences, API subscriptions)
-    const { data: insurers } = await admin
-      .from("insurers")
-      .select("id, name, contact_email, plan_tier")
-      .eq("is_active", true);
-
-    const notifiedInsurers: string[] = [];
-
-    if (insurers && insurers.length > 0) {
-      // For each active insurer, log the new certificate availability
-      for (const insurer of insurers) {
-        // Enterprise insurers could get real-time email notifications
-        if (insurer.plan_tier === "enterprise" && insurer.contact_email) {
-          // Future: Send email notification about new certificate
-          // For now, just record that the insurer was notified
-          notifiedInsurers.push(insurer.name);
-        }
-      }
-    }
+    // 3. 連携先（enterprise 保険会社 / 当証明書のメーカー）へリアルタイム通知。
+    //    PII は載せない（連携先はポータルでマスキング済みデータを参照する）。
+    //    通知失敗で発行フロー本体は止めない。
+    const notified = await notifyPartnersOnIssue(admin, {
+      publicId: public_id ?? certificate_id,
+      tenantId: tenant_id,
+      shopName,
+      serviceType: service_type ?? null,
+    }).catch((e) => {
+      console.warn("[QSTASH] partner issue notify failed:", e instanceof Error ? e.message : String(e));
+      return { insurers: 0, manufacturers: 0 };
+    });
 
     console.info("[QSTASH][insurance-case-created] done", {
       certificate_id,
       public_id,
       shopName,
-      insurersNotified: notifiedInsurers.length,
+      insurersNotified: notified.insurers,
+      manufacturersNotified: notified.manufacturers,
     });
 
     return Response.json({
       ok: true,
       certificate_id,
       public_id,
-      insurers_notified: notifiedInsurers.length,
+      insurers_notified: notified.insurers,
+      manufacturers_notified: notified.manufacturers,
     });
   } catch (e) {
     console.error("[QSTASH][insurance-case-created] error:", e);

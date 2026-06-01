@@ -34,8 +34,10 @@ export type AutomationActionKey =
   | "invoice.auto_send_on_confirm"
   | "quote.auto_send_on_confirm"
   | "accounting.auto_categorize_on_intake"
+  | "invoice.auto_draft_on_billing_step"
   | "thickness.auto_detect"
   | "workflow.auto_propose_on_intake"
+  | "workflow.auto_apply_on_intake"
   | "inventory.auto_draft_reorder";
 
 export interface AutomationActionDef {
@@ -131,6 +133,15 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     guard: "AI 有効 + Standard プラン以上 + 会計連携設定済み + メニュー明細あり",
   },
   {
+    key: "invoice.auto_draft_on_billing_step",
+    workflow: "invoice",
+    label: "ワークフローの会計工程で請求書ドラフトを自動作成",
+    description:
+      "ワークフローが「会計/請求」工程に到達した時点で、予約のメニュー（無ければ見積額）から請求書を status=draft で自動起票する。送付（金額の外向き確定）は必ず人が行う（壁3）。同じ顧客の下書きが既にあれば作らない。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Standard プラン以上 + 顧客あり + 金額の手掛かりあり",
+  },
+  {
     key: "thickness.auto_detect",
     workflow: "inventory",
     label: "塗膜厚レポート受信時に異常検知を自動実行",
@@ -147,6 +158,15 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
       "案件 (予約) が登録された時点で、メニュー内容と顧客の過去施工履歴から最適なワークフローテンプレートを AI が提案する。提案を保存するだけで自動適用はしない — スタッフが承認 (または別テンプレートに変更) してから進行する (人が判断)。",
     defaultEnabled: false,
     guard: "AI 有効 + Standard プラン以上 + ワークフローテンプレート登録済み",
+  },
+  {
+    key: "workflow.auto_apply_on_intake",
+    workflow: "job",
+    label: "案件登録時にAI提案のワークフローを自動適用",
+    description:
+      "AI 提案 (workflow.auto_propose_on_intake) の最有力テンプレートを案件に自動で割り当て、ワークフローを開始する。テンプレートを手で組まなくても工程が走る。割り当てるだけで各工程の進行・確定は人が行う。スタッフはいつでも別テンプレートへ変更可能。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Standard プラン以上 + workflow.auto_propose_on_intake 有効 + 一致テンプレートあり",
   },
   {
     key: "inventory.auto_draft_reorder",
@@ -181,6 +201,28 @@ export const AUTOMATION_ACTION_BY_KEY: ReadonlyMap<string, AutomationActionDef> 
 );
 
 export const AUTOMATION_ACTION_KEYS: ReadonlySet<string> = new Set(AUTOMATION_ACTIONS.map((a) => a.key));
+
+/**
+ * 「おまかせ運用」プリセットで一括 ON にする推奨アクション。
+ *
+ * 下書き / 提案 / 注釈の生成だけで、外向き送付・自動作成（予約/送付）を伴わない
+ * = 失敗しても影響が小さく取り消しやすいものに限定する。顧客への自動送付
+ * (invoice/quote.auto_send_on_confirm) や予約の自動起票
+ * (inbound_message.auto_create_reservation) は意図的に**除外**し、個別 opt-in に委ねる。
+ * 壁3 アクションは元々カタログ外なので含まれない。
+ */
+export const RECOMMENDED_AUTOMATION_ACTION_KEYS: ReadonlySet<string> = new Set<string>([
+  "inbound_message.auto_extract",
+  "certificate.auto_draft",
+  "certificate.auto_create_draft_record",
+  "review.auto_analyze",
+  "translation.auto_translate",
+  "accounting.auto_categorize_on_intake",
+  "thickness.auto_detect",
+  "workflow.auto_propose_on_intake",
+  "workflow.auto_apply_on_intake",
+  "inventory.auto_draft_reorder",
+]);
 
 /** opt-in 可能な (カタログに存在する) アクションキーか。 */
 export function isKnownActionKey(key: unknown): key is AutomationActionKey {

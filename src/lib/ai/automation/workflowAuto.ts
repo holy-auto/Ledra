@@ -19,7 +19,7 @@ import { proposeWorkflow, type WorkflowTemplateLite } from "@/lib/ai/workflowPro
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "./policy";
-import { shouldAutoProposeWorkflowOnIntake } from "./orchestrator";
+import { shouldAutoProposeWorkflowOnIntake, shouldAutoApplyWorkflowOnIntake } from "./orchestrator";
 
 const AUTO_PROPOSE_ENDPOINT = "/api/admin/reservations#auto-workflow-propose";
 
@@ -135,6 +135,33 @@ export async function maybeAutoProposeWorkflowForReservation(params: MaybeAutoPr
       .eq("tenant_id", tenantId);
     if (upErr && !isMissingColumnError(upErr)) {
       logger.warn("[workflowAuto] proposal update failed", { tenantId, err: upErr.message });
+    }
+
+    // ── AI 提案のワークフローを自動適用（opt-in）──
+    // テンプレートを手で組まずとも工程が走るように、最有力テンプレートを割り当てて
+    // ワークフローを開始する。割り当てるだけで各工程の進行・確定は人（壁3 維持）。
+    // スタッフはいつでも別テンプレートに変更できる。
+    if (proposal.suggestedTemplateId && shouldAutoApplyWorkflowOnIntake(settings)) {
+      const { error: applyErr } = await admin
+        .from("reservations")
+        .update({
+          workflow_template_id: proposal.suggestedTemplateId,
+          current_step_order: 0,
+          current_step_key: null,
+          progress_pct: 0,
+        })
+        .eq("id", reservationId)
+        .eq("tenant_id", tenantId)
+        .is("workflow_template_id", null); // レース時も二重適用しない
+      if (applyErr) {
+        logger.warn("[workflowAuto] auto-apply update failed", { tenantId, err: applyErr.message });
+      } else {
+        logger.info("[workflowAuto] workflow auto-applied", {
+          tenantId,
+          reservationId,
+          templateId: proposal.suggestedTemplateId,
+        });
+      }
     }
 
     usage.record({

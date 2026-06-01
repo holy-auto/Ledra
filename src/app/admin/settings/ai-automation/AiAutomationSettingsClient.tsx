@@ -12,7 +12,7 @@ import {
   type AutomationWorkflowKey,
   type FieldPolicy,
 } from "@/lib/ai/automation/fieldCatalog";
-import { AUTOMATION_ACTIONS } from "@/lib/ai/automation/actionCatalog";
+import { AUTOMATION_ACTIONS, RECOMMENDED_AUTOMATION_ACTION_KEYS } from "@/lib/ai/automation/actionCatalog";
 
 interface InitialSettings {
   enabled: boolean;
@@ -113,6 +113,15 @@ export default function AiAutomationSettingsClient({ role, initialSettings, cost
       const out = { ...prev };
       if (out[key]) delete out[key];
       else out[key] = true;
+      return out;
+    });
+  }
+
+  /** 「おまかせ運用」: 推奨アクション（下書き/提案/注釈のみ）を一括 ON。保存は別途。 */
+  function enableRecommendedAutoActions() {
+    setAutoActions((prev) => {
+      const out = { ...prev };
+      for (const key of RECOMMENDED_AUTOMATION_ACTION_KEYS) out[key] = true;
       return out;
     });
   }
@@ -367,9 +376,26 @@ export default function AiAutomationSettingsClient({ role, initialSettings, cost
           自動化されません。必ず人の確認を挟みます。
         </div>
 
+        {/* おまかせ運用プリセット: 推奨アクションを 1 クリックでまとめて ON */}
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-accent/30 bg-accent/5 px-3 py-2.5">
+          <div className="text-xs text-muted">
+            <span className="font-semibold text-primary">おまかせ運用</span> — どれを ON にすればいいか迷ったら、
+            安全な推奨セット（下書き・提案・注釈のみ。送付や自動作成は含みません）をまとめて有効化します。
+          </div>
+          <button
+            type="button"
+            onClick={enableRecommendedAutoActions}
+            disabled={!canEdit || saving || !enabled}
+            className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+          >
+            推奨をまとめてON
+          </button>
+        </div>
+
         <div className="grid gap-2">
           {AUTOMATION_ACTIONS.map((a) => {
             const on = autoActions[a.key] === true;
+            const recommended = RECOMMENDED_AUTOMATION_ACTION_KEYS.has(a.key);
             return (
               <label
                 key={a.key}
@@ -385,7 +411,14 @@ export default function AiAutomationSettingsClient({ role, initialSettings, cost
                   onChange={() => toggleAutoAction(a.key)}
                 />
                 <div className="space-y-0.5">
-                  <div className="text-sm font-medium text-primary">{a.label}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-primary">{a.label}</span>
+                    {recommended && (
+                      <span className="rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+                        推奨
+                      </span>
+                    )}
+                  </div>
                   <div className="text-[11px] text-muted">{a.description}</div>
                   {a.guard && <div className="text-[10px] text-muted opacity-70 mt-0.5">条件: {a.guard}</div>}
                 </div>

@@ -238,6 +238,19 @@ export function shouldAutoProposeWorkflowOnIntake(settings: AiAutomationSettings
   return resolveAutoAction(settings, "workflow.auto_propose_on_intake");
 }
 
+/**
+ * 受付時に AI 提案のワークフローを自動適用するか。
+ * 提案 (auto_propose) が前提 — 提案が無ければ適用するものが無い。
+ */
+export function shouldAutoApplyWorkflowOnIntake(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "workflow.auto_apply_on_intake");
+}
+
+/** ワークフローの会計/請求工程で請求書ドラフトを自動作成するか（送付は壁3で人）。 */
+export function shouldAutoDraftInvoiceOnBilling(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "invoice.auto_draft_on_billing_step");
+}
+
 // ─────────────────────────────────────────────
 // 在庫下限割れ → 発注書ドラフト自動作成
 // ─────────────────────────────────────────────

@@ -18,6 +18,8 @@ import { formatDate, formatJpy } from "@/lib/format";
 import { fetcher } from "@/lib/swr";
 import WorkflowStepper from "@/components/workflow/WorkflowStepper";
 import type { WorkflowStep } from "@/components/workflow/WorkflowTemplateEditor";
+import CaseTimeline from "./CaseTimeline";
+import type { CaseStep, CaseStepAction, CaseActionKind } from "@/lib/admin/caseTimeline";
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -207,6 +209,8 @@ export default function ReservationsClient() {
   // Workflow
   const [detailSteps, setDetailSteps] = useState<WorkflowStep[]>([]);
   const [detailStepLogs, setDetailStepLogs] = useState<StepLog[]>([]);
+  const [detailTimeline, setDetailTimeline] = useState<CaseStep[]>([]);
+  const [caseActionBusy, setCaseActionBusy] = useState<CaseActionKind | null>(null);
   const [detailTemplates, setDetailTemplates] = useState<WorkflowTemplate[]>([]);
   const [detailTemplateLoading, setDetailTemplateLoading] = useState(false);
   const [workflowTemplateId, setWorkflowTemplateId] = useState("");
@@ -265,8 +269,49 @@ export default function ReservationsClient() {
     }
   }, []);
 
+  const refreshTimeline = useCallback(async (reservationId: string) => {
+    try {
+      const res = await fetch(`/api/admin/reservations/${reservationId}/timeline`, { cache: "no-store" });
+      const j = await parseJsonSafe(res);
+      setDetailTimeline((j?.steps as CaseStep[]) ?? []);
+    } catch {
+      setDetailTimeline([]);
+    }
+  }, []);
+
+  /** タイムラインの「次のアクション」を実行（既存の安全なエンドポイントを再利用）。 */
+  const runCaseAction = async (action: CaseStepAction) => {
+    if (!detailId) return;
+    setCaseActionBusy(action.kind);
+    try {
+      if (action.kind === "start_work") {
+        await handleStatusChange(detailId, "in_progress");
+      } else if (action.kind === "complete_work") {
+        await handleStatusChange(detailId, "completed");
+      } else if (action.kind === "issue_certificate" && action.targetId) {
+        const res = await fetch("/api/admin/certificates/status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ public_id: action.targetId, status: "active" }),
+        });
+        if (!res.ok) {
+          const j = await parseJsonSafe(res);
+          throw new Error(j?.error ?? `HTTP ${res.status}`);
+        }
+      }
+      await refreshTimeline(detailId);
+    } catch (e) {
+      setMutationErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCaseActionBusy(null);
+    }
+  };
+
   const openWorkflowDetail = async (r: Reservation) => {
     setDetailId(r.id);
+    // 案件の連鎖タイムライン（予約→施工→証明書→請求→フォロー）を取得
+    setDetailTimeline([]);
+    void refreshTimeline(r.id);
     if (r.workflow_template_id) {
       try {
         const [tplRes, logsRes] = await Promise.all([
@@ -333,6 +378,8 @@ export default function ReservationsClient() {
       const logsRes = await fetch(`/api/admin/reservations/${reservationId}/step-logs`);
       const logsJ = await parseJsonSafe(logsRes);
       setDetailStepLogs(logsJ?.step_logs ?? []);
+      // ワークフロー前進で証明書ドラフトが自動生成されることがある → タイムラインも更新
+      await refreshTimeline(reservationId);
     } catch (e: unknown) {
       alert("進行に失敗: " + (e instanceof Error ? e.message : String(e)));
     }
@@ -1489,6 +1536,14 @@ export default function ReservationsClient() {
                   <div className="font-medium text-primary">{detailReservation.vehicle_label ?? "-"}</div>
                 </div>
               </div>
+
+              {/* 案件の連鎖タイムライン（予約→施工→証明書→請求→フォロー） */}
+              {detailTimeline.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold tracking-[0.18em] text-muted">案件の流れ</div>
+                  <CaseTimeline steps={detailTimeline} onAction={runCaseAction} busyKind={caseActionBusy} />
+                </div>
+              )}
 
               {/* Workflow */}
               {detailReservation.workflow_template_id ? (
