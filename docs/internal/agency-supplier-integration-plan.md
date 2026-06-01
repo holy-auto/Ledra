@@ -272,3 +272,35 @@ Phase 3（任意） ガード付き自動送信 inventory.auto_send_reorder（�
 - [ ] migration は `(tenant_id, ...)` 複合 index・冪等 DDL・3段 NOT NULL 化
 - [ ] パートナー↔店舗の越境参照（RLS）が漏れていないか（他店の発注・他社の鍵が見えない）
 ```
+
+---
+
+## 9. 本番有効化（go-live）の状態と手順（2026-06-01 時点）
+
+### 現状
+- 本番 `cahybswpduchptvyvdkk` の供給データは **すべて 0 件**（`supply_partners` / `_products` / `tenant_supply_links` / `tenant_supply_auto_send_settings` / `supply_partner_credentials` / マッピング済み `inventory_items`）。
+- 代理店アカウント（`agents`/`agent_users`）は 2 件あるが、供給パートナーとしての商材登録・店舗紐付けは未実施。在庫品目も 0 件のため、低在庫トリガー自体が発火しない。
+- → 「フラグを立てれば動く」状態ではなく、**データの連鎖（下記手順 ①〜④）を実データで揃えて初めて有効化できる**。
+
+### auto-send は API 連携必須（メールでは自動送信しない）
+`decideAutoSend` は `partnerHasApi`（`api_auth_type != 'none'` かつ `api_endpoint` かつ復号済み鍵あり）を要求し、満たさなければ `no_api_transport` で **draft のまま**（人の承認待ち）。メール搬送は手動送信時のフォールバックであり auto-send 経路では使わない。
+
+### DB/MCP からだけでは完全実走できない理由（運用側の操作が必要）
+1. **API 鍵は本番 `SECRET_ENCRYPTION_KEY` で暗号化保存**（`supply_partner_credentials.api_key_ciphertext`）。鍵を持たない経路から有効な暗号文は作れず、偽の暗号文では `readSecret` 復号失敗→`hasApi=false`→送信されない。→ 鍵は **アプリ（/agent 連携 UI）経由で登録**する必要がある。
+2. **cron 発火に `CRON_SECRET`** が必要（本番アプリ実行時）。
+3. 実送信は **本番ランタイムから外部 HTTPS** へ出る（到達可能な相手 API / サンドボックスが要る）。
+
+### 代替: フルパイプラインを実走で検証済み
+`src/lib/supply/__tests__/partnerReorder.test.ts` で、低在庫→調達先選定→ドラフト起票→`decideAutoSend`→`placeOrderViaApi` の実 HTTP→`sent` 化までを実コードのまま通し、壁3 ガード（未信頼／未 opt-in／上限超過／API 無し）が正しく弾くことも含めて green。ネットワーク境界（fetch）と DB/秘密/AI ゲートのみモック。
+
+### go-live 手順（runbook）
+1. **パートナー**（代理店）が `/agent` でプロフィール・商材カタログ・API 連携（エンドポイント＋鍵）を登録（鍵はアプリが `secretBox` で暗号化）。
+2. **運営**が当該 `supply_partners.is_trusted = true` を付与（信頼パートナーのみ auto-send 対象）。
+   - `is_trusted` は DB トリガ `supply_partners_guard_protected_cols` で保護されており、**パートナー自身は（アプリ API でも直接 PostgREST でも）変更できない**。設定できるのは service-role（運営/サーバ）のみ。
+   - 現状 **専用の管理 UI/API は未実装**。運営は service-role 接続で次の SQL を実行して付与する:
+     `UPDATE supply_partners SET is_trusted = true WHERE id = '<partner_id>';`
+   - （将来: 運営コンソールに信頼トグルを足すのは容易。必要になったら別途。）
+3. **店舗**が在庫品目を商材にマッピング（`inventory_items.supply_partner_product_id`）し、`tenant_supply_links` を有効化（優先度・卸値上書き）。
+4. **店舗**が `tenant_supply_auto_send_settings` を opt-in（`enabled=true` ＋ `max_order_jpy` ＋ `monthly_cap_jpy` を両方とも正の値で設定）。未設定なら安全側で送らない。
+5. 日次の低在庫 cron が下限割れ品目を検知 → パートナー別に発注ドラフトを起票 → 全条件成立時のみ API 自動送信し `sent`（`transport=api` / `external_order_id` 記録）。
+6. **安全に試す**: api_endpoint を相手のサンドボックスにし、`max_order_jpy`/`monthly_cap_jpy` を小さく設定、`is_trusted` は運営が明示付与。受注確認は `/api/webhooks/supply/[partnerId]`（HMAC 署名検証）で受ける。

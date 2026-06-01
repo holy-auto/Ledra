@@ -18,13 +18,14 @@
 create index concurrently if not exists idx_notification_logs_target_type
   on public.notification_logs (target_id, type);
 
--- ─── 2. notification_logs (tenant_id, type, created_at DESC) ─────────
+-- ─── 2. notification_logs (tenant_id, type, sent_at DESC) ─────────
 -- 日次 cron (low_stock_alert / maintenance_reminder) の冪等チェック:
---   .eq("tenant_id", t).eq("type", x).gte("created_at", todayStart)
--- 既存の (tenant_id, type) でも引けるが、created_at を含めると
+--   .eq("tenant_id", t).eq("type", x).gte("sent_at", todayStart)
+-- 既存の (tenant_id, type) でも引けるが、sent_at を含めると
 -- range filter まで index で完結し HOT 行のみ heap fetch になる。
+-- 注: notification_logs の時刻列は sent_at (created_at は存在しない)。
 create index concurrently if not exists idx_notification_logs_tenant_type_created
-  on public.notification_logs (tenant_id, type, created_at desc);
+  on public.notification_logs (tenant_id, type, sent_at desc);
 
 -- ─── 3. inventory_movements (tenant_id, created_at DESC) ─────────────
 -- 新しい入出庫履歴一覧 API は item_id 無しでも使えるようにページング化:

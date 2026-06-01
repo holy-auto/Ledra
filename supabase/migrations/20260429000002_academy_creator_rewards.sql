@@ -47,7 +47,7 @@ CREATE POLICY "rewards_select_tenant_admin"
   USING (
     tenant_id IN (
       SELECT tm.tenant_id
-      FROM tenant_members tm
+      FROM tenant_memberships tm
       WHERE tm.user_id = auth.uid()
         AND tm.role IN ('admin', 'super_admin')
     )
