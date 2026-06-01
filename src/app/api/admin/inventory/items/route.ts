@@ -20,6 +20,8 @@ type InventoryItemRow = {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  supply_partner_product_id: string | null;
+  supplier_sku: string | null;
 };
 
 // ─── GET: 在庫アイテム一覧 ───
@@ -37,7 +39,7 @@ export async function GET(req: NextRequest) {
     let query = supabase
       .from("inventory_items")
       .select(
-        "id, name, sku, category, unit, current_stock, min_stock, unit_cost, note, is_active, created_at, updated_at",
+        "id, name, sku, category, unit, current_stock, min_stock, unit_cost, note, is_active, created_at, updated_at, supply_partner_product_id, supplier_sku",
       )
       .eq("tenant_id", caller.tenantId)
       .order("name", { ascending: true });

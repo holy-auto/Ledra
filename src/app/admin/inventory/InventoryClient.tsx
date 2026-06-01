@@ -7,6 +7,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
 import { fetcher } from "@/lib/swr";
 import { formatJpy, formatDate } from "@/lib/format";
+import SupplyLinkSection from "./SupplyLinkSection";
 
 /* ---------- Types ---------- */
 
@@ -635,6 +636,9 @@ export default function InventoryClient() {
               </table>
             </div>
           </section>
+
+          {/* Supply partner linking */}
+          <SupplyLinkSection />
 
           {/* History */}
           {showHistory && (
