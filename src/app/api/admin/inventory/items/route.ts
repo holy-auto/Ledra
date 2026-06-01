@@ -11,6 +11,7 @@ type InventoryItemRow = {
   id: string;
   name: string;
   sku: string | null;
+  barcode: string | null;
   category: string | null;
   unit: string;
   current_stock: number;
@@ -34,17 +35,20 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const activeOnly = url.searchParams.get("active_only") !== "false";
     const q = (url.searchParams.get("q") ?? "").trim();
+    const barcode = (url.searchParams.get("barcode") ?? "").trim();
     const lowStockOnly = url.searchParams.get("low_stock") === "true";
 
     let query = supabase
       .from("inventory_items")
       .select(
-        "id, name, sku, category, unit, current_stock, min_stock, unit_cost, note, is_active, created_at, updated_at, supply_partner_product_id, supplier_sku",
+        "id, name, sku, barcode, category, unit, current_stock, min_stock, unit_cost, note, is_active, created_at, updated_at, supply_partner_product_id, supplier_sku",
       )
       .eq("tenant_id", caller.tenantId)
       .order("name", { ascending: true });
 
     if (activeOnly) query = query.eq("is_active", true);
+    // カメラスキャン用の完全一致ルックアップ (一意なので 0/1 件)。
+    if (barcode) query = query.eq("barcode", barcode);
     if (q) {
       const sq = escapePostgrestValue(escapeIlike(q));
       query = query.or(`name.ilike.%${sq}%,sku.ilike.%${sq}%,category.ilike.%${sq}%`);
@@ -94,7 +98,7 @@ export async function POST(req: NextRequest) {
       .from("inventory_items")
       .insert(row)
       .select(
-        "id, name, sku, category, unit, current_stock, min_stock, unit_cost, note, is_active, created_at, updated_at",
+        "id, name, sku, barcode, category, unit, current_stock, min_stock, unit_cost, note, is_active, created_at, updated_at",
       )
       .single();
 
@@ -102,6 +106,10 @@ export async function POST(req: NextRequest) {
       // 一意制約違反（SKU 重複）
       if (typeof error.message === "string" && error.message.includes("uq_inventory_items_tenant_sku")) {
         return apiValidationError("同じ SKU の品目が既に存在します");
+      }
+      // 一意制約違反（バーコード重複）
+      if (typeof error.message === "string" && error.message.includes("uq_inventory_items_tenant_barcode")) {
+        return apiValidationError("このバーコードは既に別の品目に登録されています");
       }
       return apiInternalError(error, "inventory-items insert");
     }

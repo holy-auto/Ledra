@@ -18,7 +18,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const { data: item, error } = await supabase
       .from("inventory_items")
       .select(
-        "id, name, sku, category, unit, current_stock, min_stock, unit_cost, note, is_active, created_at, updated_at",
+        "id, name, sku, barcode, category, unit, current_stock, min_stock, unit_cost, note, is_active, created_at, updated_at",
       )
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
@@ -67,13 +67,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .select(
-        "id, name, sku, category, unit, current_stock, min_stock, unit_cost, note, is_active, created_at, updated_at",
+        "id, name, sku, barcode, category, unit, current_stock, min_stock, unit_cost, note, is_active, created_at, updated_at",
       )
       .single();
 
     if (error) {
       if (typeof error.message === "string" && error.message.includes("uq_inventory_items_tenant_sku")) {
         return apiValidationError("同じ SKU の品目が既に存在します");
+      }
+      if (typeof error.message === "string" && error.message.includes("uq_inventory_items_tenant_barcode")) {
+        return apiValidationError("このバーコードは既に別の品目に登録されています");
       }
       return apiInternalError(error, "inventory-item update");
     }
