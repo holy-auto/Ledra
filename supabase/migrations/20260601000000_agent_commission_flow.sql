@@ -2,26 +2,20 @@
 -- Agent commission flow — close the referral → commission → payout loop
 --
 -- Adds the missing wiring for the 紹介代理店 (referral agent) portal:
---   1) idempotency key so each Stripe subscription invoice generates at
---      most one commission (event-driven generation in the webhook).
+--   1) idempotency column so each Stripe subscription invoice generates at
+--      most one commission (the UNIQUE INDEX on it ships separately in
+--      20260601000001 because CONCURRENTLY cannot run inside a transaction).
 --   2) atomic click counter + updated_at for agent_referral_links so the
 --      /ref/<code> landing route can attribute referrals.
--- All DDL is idempotent (safe to re-run). Indexes use CONCURRENTLY (the
--- Supabase migration runner auto-commits individual statements, so this is
--- not wrapped in a transaction).
+-- All DDL here is idempotent and transaction-safe (no CONCURRENTLY).
 -- =============================================================
 
 -- ─────────────────────────────────────────────────────────────
--- 1) agent_commissions: source invoice idempotency
+-- 1) agent_commissions: source invoice idempotency column
+--    (UNIQUE INDEX created CONCURRENTLY in the follow-up migration)
 -- ─────────────────────────────────────────────────────────────
 alter table agent_commissions
   add column if not exists source_invoice_id text;
-
--- One commission per Stripe invoice. NULLs stay distinct (manual rows are
--- unaffected), so this can be a plain unique index usable as an ON CONFLICT
--- target for the webhook upsert.
-create unique index concurrently if not exists uq_agent_commissions_source_invoice
-  on agent_commissions (source_invoice_id);
 
 -- ─────────────────────────────────────────────────────────────
 -- 2) agent_referral_links: updated_at + atomic click increment
