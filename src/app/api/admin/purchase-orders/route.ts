@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
     let query = supabase
       .from("purchase_orders")
       .select(
-        "id, supplier_id, po_number, status, source, note, subtotal, approved_at, sent_at, received_at, created_at, purchase_order_items(id, item_id, name, sku, quantity, unit_cost, amount, received)",
+        "id, supplier_id, supply_partner_id, po_number, status, source, note, subtotal, transport, transport_status, approved_at, sent_at, received_at, created_at, suppliers(name), purchase_order_items(id, item_id, name, sku, quantity, unit_cost, amount, received)",
       )
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
