@@ -125,19 +125,20 @@ Email：info@ledra.co.jp
 
 ## ■ 画像差し込みガイド（PR TIMES では画像の添付が推奨）
 
-PR TIMES は本文中・サムネイルに画像を設定できます。以下を JPG / PNG で書き出して添付してください
-（いずれも自社アセットを元に用意できます。必要であれば書き出しもお手伝いします）。
+PR TIMES 用の画像を `docs/marketing/press-kit/` に**書き出し済み**です。そのまま添付できます。
 
-1. **メイン画像（サムネイル, 1280×640 目安）**：Ledra のサービスロゴ／OGP。
-   既存の OGP 生成は `src/app/opengraph-image.tsx`。
-2. **補足画像①：3層構造ダイアグラム**：`src/components/marketing/diagrams/PolygonAnchoringDiagram.tsx` の図解を
-   スクリーンショット／書き出し。「発行 → C2PA署名 → SHA-256 → Polygon → 検証」の流れが伝わるもの。
-3. **補足画像②：検証バッジ画面**：公開検証ページ（`/verify` / `/c/[public_id]`）で「真正確認」バッジが
-   表示された状態のスクリーンショット。`src/components/customer/AuthenticityBadge.tsx`。
-4. **補足画像③（任意）：証明書サンプル**：QRコード付きデジタル施工証明書の見本。
+| ファイル | 用途 | サイズ(px) | 元アセット |
+|---|---|---|---|
+| `press-kit/ledra-ogp-1200x630.png` | メイン画像 / サムネイル | 1200×630 | `src/app/opengraph-image.tsx` を再現 |
+| `press-kit/anchoring-diagram-1832x928.png` | 本文：3層改ざん検知のフロー図 | 1832×928 | `PolygonAnchoringDiagram.tsx`（実コンポーネントの SVG） |
+| `press-kit/authenticity-badge-card-1000x520.png` | 本文：公開検証ページの真正性バッジ | 1000×520 | `AuthenticityBadge.tsx`（`basic` グレードの実コピー） |
+
+- 再生成手順・正確性メモは `docs/marketing/press-kit/README.md`。
+- 追加で欲しい画像（QRコード付き証明書サンプル等）があればお申し付けください。
 
 > 注意：各種ロゴ（Polygon / C2PA 等）を画像内に使う場合は、ブランドガイドライン上の許諾要否を
 > `docs/brand-contacts.md` で確認してください。未許諾のロゴは画像から外すのが安全です。
+> （同梱のバッジ画像は外部ロゴを含まず、テキストのみで構成しています。）
 
 ---
 
