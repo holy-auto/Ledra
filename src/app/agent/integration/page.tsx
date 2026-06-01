@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import PageHeader from "@/components/ui/PageHeader";
+import WebhookSection from "./WebhookSection";
 import {
   SUPPLY_API_AUTH_TYPE_LABELS,
   SUPPLY_INTEGRATION_STATUS_LABELS,
@@ -175,6 +176,8 @@ export default function AgentIntegrationPage() {
           {saving ? "保存中..." : "保存"}
         </button>
       </div>
+
+      <WebhookSection />
     </div>
   );
 }
