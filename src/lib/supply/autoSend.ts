@@ -1,0 +1,54 @@
+/**
+ * 供給パートナー発注の「全自動送信」可否判定 — 純関数 (壁3 隣接の安全ガード)。
+ *
+ * 自動送信 (人の承認なしで draft→sent し外部 API へ発注) は通常の壁3 を越える操作。
+ * そのため **すべての条件が揃ったときだけ** 許可し、既定では一切送らない。
+ * 判定ロジックを純関数に切り出してテスト可能にする (IO は partnerReorder 側)。
+ */
+
+export interface AutoSendContext {
+  /** テナントが自動送信を opt-in 済みか (tenant_supply_auto_send_settings.enabled)。 */
+  optInEnabled: boolean;
+  /** 運営が承認した信頼パートナーか (supply_partners.is_trusted)。 */
+  partnerTrusted: boolean;
+  /** パートナーが API 連携済みか (メールのみは自動送信しない)。 */
+  partnerHasApi: boolean;
+  /** この発注の概算合計 (円)。 */
+  orderTotalJpy: number;
+  /** 1 発注あたり上限 (円)。null/0 以下なら自動送信不可。 */
+  maxOrderJpy: number | null;
+  /** 月次上限 (円)。null/0 以下なら自動送信不可。 */
+  monthlyCapJpy: number | null;
+  /** 今月すでに自動送信した合計 (円)。 */
+  monthlySentJpy: number;
+}
+
+export type AutoSendDecision = { ok: true } | { ok: false; reason: AutoSendDenyReason };
+
+export type AutoSendDenyReason =
+  | "opt_out"
+  | "partner_not_trusted"
+  | "no_api_transport"
+  | "empty_order"
+  | "no_per_order_cap"
+  | "exceeds_per_order_cap"
+  | "no_monthly_cap"
+  | "exceeds_monthly_cap";
+
+/**
+ * 自動送信してよいか判定する。1 つでも条件を満たさなければ ok=false (draft のまま人の承認待ち)。
+ * 上限は両方とも正の値で設定されている必要がある (未設定 = 自動送信しない安全側)。
+ */
+export function decideAutoSend(ctx: AutoSendContext): AutoSendDecision {
+  if (!ctx.optInEnabled) return { ok: false, reason: "opt_out" };
+  if (!ctx.partnerTrusted) return { ok: false, reason: "partner_not_trusted" };
+  if (!ctx.partnerHasApi) return { ok: false, reason: "no_api_transport" };
+  if (!(ctx.orderTotalJpy > 0)) return { ok: false, reason: "empty_order" };
+  if (ctx.maxOrderJpy == null || ctx.maxOrderJpy <= 0) return { ok: false, reason: "no_per_order_cap" };
+  if (ctx.orderTotalJpy > ctx.maxOrderJpy) return { ok: false, reason: "exceeds_per_order_cap" };
+  if (ctx.monthlyCapJpy == null || ctx.monthlyCapJpy <= 0) return { ok: false, reason: "no_monthly_cap" };
+  if (ctx.monthlySentJpy + ctx.orderTotalJpy > ctx.monthlyCapJpy) {
+    return { ok: false, reason: "exceeds_monthly_cap" };
+  }
+  return { ok: true };
+}

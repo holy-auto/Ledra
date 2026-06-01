@@ -5,6 +5,7 @@ import useSWR from "swr";
 import PageHeader from "@/components/ui/PageHeader";
 import { fetcher } from "@/lib/swr";
 import { formatDate } from "@/lib/format";
+import AutoSendSettings from "./AutoSendSettings";
 
 /* ---------- Types ---------- */
 
@@ -138,6 +139,8 @@ export default function PurchaseOrdersClient() {
 
       {msg && <div className={`text-sm ${msg.ok ? "text-emerald-500" : "text-red-500"}`}>{msg.text}</div>}
 
+      <AutoSendSettings />
+
       {/* Filters */}
       <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => (
@@ -242,18 +245,38 @@ export default function PurchaseOrdersClient() {
         </div>
       )}
 
-      {aiPo && <AiDraftModal po={aiPo} onClose={() => setAiPo(null)} />}
+      {aiPo && (
+        <AiDraftModal
+          po={aiPo}
+          onClose={() => setAiPo(null)}
+          onSent={async (m) => {
+            setMsg(m);
+            await mutate();
+          }}
+        />
+      )}
     </div>
   );
 }
 
 /* ---------- AI draft modal ---------- */
 
-function AiDraftModal({ po, onClose }: { po: PurchaseOrder; onClose: () => void }) {
+function AiDraftModal({
+  po,
+  onClose,
+  onSent,
+}: {
+  po: PurchaseOrder;
+  onClose: () => void;
+  onSent: (msg: { ok: boolean; text: string }) => void;
+}) {
   const [loading, setLoading] = useState(true);
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [aiUsed, setAiUsed] = useState(false);
+  const [sending, setSending] = useState(false);
+  // この文面で発注できるのは下書き/承認済みのみ (送信済みは再送しない)。
+  const canSend = po.status === "draft" || po.status === "approved";
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -293,6 +316,31 @@ function AiDraftModal({ po, onClose }: { po: PurchaseOrder; onClose: () => void 
       setTimeout(() => setCopied(false), 2000);
     } catch {
       /* ignore */
+    }
+  };
+
+  // この文面で発注 = sent へ遷移 + レビュー済み文面をメール本文に渡す (壁3: 人の操作)。
+  const sendWithMessage = async () => {
+    if (!confirm(`発注「${po.po_number ?? ""}」をこの文面で送信します。よろしいですか？`)) return;
+    setSending(true);
+    try {
+      const res = await fetch("/api/admin/purchase-orders", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: po.id, status: "sent", message: { subject, body } }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j?.ok) {
+        onSent({ ok: false, text: j?.message ?? "発注の送信に失敗しました。" });
+        return;
+      }
+      const how = j.transport === "api" ? "API 発注" : j.emailed ? "メール送信" : "記録のみ (送信先未設定)";
+      onSent({ ok: true, text: `発注を送信しました（${how}）。` });
+      onClose();
+    } catch {
+      onSent({ ok: false, text: "通信エラーが発生しました。" });
+    } finally {
+      setSending(false);
     }
   };
 
@@ -336,13 +384,23 @@ function AiDraftModal({ po, onClose }: { po: PurchaseOrder; onClose: () => void 
             <p className="text-xs text-muted">
               ※ 数量・金額は発注内容のまま固定されています。送信（実際の発注確定）は別操作です。
             </p>
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
               <button type="button" onClick={onClose} className="btn-ghost text-sm">
                 閉じる
               </button>
-              <button type="button" onClick={copy} className="btn-primary text-sm">
+              <button type="button" onClick={copy} className="btn-ghost text-sm">
                 {copied ? "コピーしました" : "コピー"}
               </button>
+              {canSend && (
+                <button
+                  type="button"
+                  onClick={sendWithMessage}
+                  disabled={sending || !body.trim()}
+                  className="btn-primary text-sm"
+                >
+                  {sending ? "送信中..." : "この文面で発注"}
+                </button>
+              )}
             </div>
           </>
         )}

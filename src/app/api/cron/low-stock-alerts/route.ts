@@ -6,6 +6,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { withCronLock } from "@/lib/cron/lock";
 import { sendLowStockAlert } from "@/lib/follow-up/email";
 import { maybeAutoDraftReordersForTenant } from "@/lib/ai/automation/reorderAuto";
+import { maybeAutoDraftPartnerReordersForTenant } from "@/lib/supply/partnerReorder";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -77,6 +78,10 @@ export async function GET(req: NextRequest) {
         // メール未設定でも実行する (発注はメールに依存しない)。承認・送信は必ず人 (壁3)。
         const reorder = await maybeAutoDraftReordersForTenant(tenantId);
         reordersDrafted += reorder.created;
+
+        // 供給パートナー商材に紐付け済みの品目も、提携先を選定して draft 起票する (#2/#3)。
+        const partnerReorder = await maybeAutoDraftPartnerReordersForTenant(tenantId);
+        reordersDrafted += partnerReorder.created;
 
         const tenant = tenantMap.get(tenantId);
         const email = (tenant?.contact_email as string | null) ?? null;
