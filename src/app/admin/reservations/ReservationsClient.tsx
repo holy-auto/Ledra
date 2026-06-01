@@ -18,6 +18,8 @@ import { formatDate, formatJpy } from "@/lib/format";
 import { fetcher } from "@/lib/swr";
 import WorkflowStepper from "@/components/workflow/WorkflowStepper";
 import type { WorkflowStep } from "@/components/workflow/WorkflowTemplateEditor";
+import CaseTimeline from "./CaseTimeline";
+import type { CaseStep } from "@/lib/admin/caseTimeline";
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -207,6 +209,7 @@ export default function ReservationsClient() {
   // Workflow
   const [detailSteps, setDetailSteps] = useState<WorkflowStep[]>([]);
   const [detailStepLogs, setDetailStepLogs] = useState<StepLog[]>([]);
+  const [detailTimeline, setDetailTimeline] = useState<CaseStep[]>([]);
   const [detailTemplates, setDetailTemplates] = useState<WorkflowTemplate[]>([]);
   const [detailTemplateLoading, setDetailTemplateLoading] = useState(false);
   const [workflowTemplateId, setWorkflowTemplateId] = useState("");
@@ -267,6 +270,12 @@ export default function ReservationsClient() {
 
   const openWorkflowDetail = async (r: Reservation) => {
     setDetailId(r.id);
+    // 案件の連鎖タイムライン（予約→施工→証明書→請求→フォロー）を取得
+    setDetailTimeline([]);
+    fetch(`/api/admin/reservations/${r.id}/timeline`, { cache: "no-store" })
+      .then(parseJsonSafe)
+      .then((j) => setDetailTimeline((j?.steps as CaseStep[]) ?? []))
+      .catch(() => setDetailTimeline([]));
     if (r.workflow_template_id) {
       try {
         const [tplRes, logsRes] = await Promise.all([
@@ -1489,6 +1498,14 @@ export default function ReservationsClient() {
                   <div className="font-medium text-primary">{detailReservation.vehicle_label ?? "-"}</div>
                 </div>
               </div>
+
+              {/* 案件の連鎖タイムライン（予約→施工→証明書→請求→フォロー） */}
+              {detailTimeline.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold tracking-[0.18em] text-muted">案件の流れ</div>
+                  <CaseTimeline steps={detailTimeline} />
+                </div>
+              )}
 
               {/* Workflow */}
               {detailReservation.workflow_template_id ? (
