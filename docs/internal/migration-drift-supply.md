@@ -8,8 +8,12 @@
 - 未記録 120 を「作成テーブル/関数が本番に実在するか」で検証し分類:
   - **VERIFIED 49**: 実在確認済 → 「適用済み」として `schema_migrations` に後追い記録（実施済み）。
   - **UNAPPLIED 15**: 作成オブジェクトが本番に存在しなかった＝本当に未適用 → **2026-06-01 に本番へ適用済み**（下記）。10 table + 8 function を検証、advisor 新規 ERROR 0。
-  - **UNVERIFIABLE 56**: ALTER/INDEX/POLICY/VIEW のみで自動検証不能 → 安全側で記録せず（多くは適用済みと推測されるが未確認）。
-- 結果: 残り未記録 = **UNVERIFIABLE 56 のみ**（UNAPPLIED 15 は適用＋記録で解消、diff で確認済み）。
+  - **UNVERIFIABLE 56**: ALTER/INDEX/POLICY/VIEW のみで自動検証不能 → 当時は安全側で記録せず。
+- **第2弾（同 2026-06-01）で UNVERIFIABLE 56 を個別検証** → 列/index/制約/policy/view の実在を本番カタログで突合:
+  - **41 本: 実在確認＝適用済み** → `schema_migrations` に記録。
+  - **15 本: 対象オブジェクトが本番に欠落＝本当に未適用** → 本番へ適用（CONCURRENTLY index は `execute_sql` でトランザクション外実行）→ 再検証 → 記録。
+  - 副産物: `notification_logs` の時刻列は `sent_at` なのに migration `20260429000004` と一部 cron コードが存在しない `created_at` を参照していた**バグを発見・修正**（下記）。
+- **結果: repo 220 version すべて本番 `schema_migrations` に記録済み（未記録 0）。repo ↔ 本番のマイグレーション履歴が完全整合。** advisor 新規 ERROR 0。
 
 ### ✅ UNAPPLIED 15（本番に未適用だった機能 → 2026-06-01 適用済み）
 これらは「後でDROP」もされておらず、アプリが参照しているものもあった（本番で該当機能が動かない状態だった）。version 順に1本ずつ「ファイル確認→本番現状確認→冪等性判断→適用→検証」して適用した。
@@ -39,11 +43,22 @@
 
 → **2026-06-01 実施済み**: 上記15本を version 順に段階適用し、10 table + 8 function の実在を検証。`apply_migration`（auto-version 記録）＋ ファイル名 version を後追い記録。security advisor は新規 ERROR 0（`cron_locks`/`webhook_processed_events`/`ai_translation_cache` は RLS 有効・ポリシー無し＝service-role 専用の意図どおりで INFO `rls_enabled_no_policy` のみ、既存 `error_events` と同扱い）。
 
-### UNVERIFIABLE 56（自動検証不能・未記録のまま）
-ALTER COLUMN / INDEX / POLICY / VIEW / データ系で「作成テーブル/関数」を持たないため実在判定不可。多くは適用済みと推測されるが、確証がないため安全側で記録していない（`db push` 時に再実行され得る／古いものは IF NOT EXISTS 無しでエラーの可能性）。各 migration の効果（列・制約・index・policy）を個別確認してから記録するか、本番デプロイ経路の整理時にまとめて扱うこと。
-versions: `20260404000000, 20260406200000, 20260407000000, 20260409000001, 20260409000002, 20260411000000, 20260412000000, 20260412100000, 20260421000000, 20260421000003, 20260422000000, 20260424000000, 20260425000000, 20260425000001, 20260426000000, 20260426000001, 20260427000000, 20260428000000, 20260429000004, 20260430000000, 20260430000001, 20260502000001, 20260503000000, 20260509010000, 20260509010001, 20260510000000, 20260510000001, 20260511000000, 20260511000001, 20260511000002, 20260511000003, 20260512000002, 20260514000001, 20260514100001, 20260514120000, 20260520000000, 20260520000003, 20260522000002, 20260522000005, 20260522000006, 20260522000007, 20260524000002, 20260525000001, 20260526000001, 20260527000002, 20260527000003, 20260529000001, 20260531000001, 20260531000002, 20260531000003, 20260531000005, 20260531000007, 20260531000008, 20260531000009, 20260531100000, 20260531100001`
+### ✅ UNVERIFIABLE 56 → 第2弾で全件解消（2026-06-01）
+ALTER COLUMN / INDEX / POLICY / VIEW / データ系のため当初は「作成テーブル/関数」基準で判定不能だったが、**各 migration が生成する具体オブジェクト（列・index・制約・policy・view・seed 行）を本番カタログ（`information_schema` / `pg_indexes` / `pg_constraint` / `pg_policies` / `pg_proc`）で1本ずつ突合**して全件判定した。
 
-> 注（検証法の限界）: VERIFIED 判定は「migration が CREATE する table/function が本番に実在する」ことのみを根拠とする。`CREATE TABLE IF NOT EXISTS` で既存テーブルに当たり、かつ同 migration 内の ALTER 等が別途未適用、というケースは見逃し得る（残存リスク低）。
+- **適用済み 41 本（記録のみ）**: 列/index/制約/policy/view/関数 search_path/demo seed 行が本番に実在 → `schema_migrations` に後追い記録。
+- **未適用 15 本（適用＋記録）**: 対象オブジェクトが本番に欠落していた＝本当に未適用。版順に適用し再検証して記録。
+  - 内訳: `20260424000000`(customer_sessions.customer_id), `20260429000004`(perf indexes round3), `20260430000000`(maintenance列+index), `20260430000001`(notification_logs LINEチャネル), `20260503000000`(academy 動画列+index), `20260509010000`(cert画像注釈列), `20260509010001`(注釈index), `20260510000000`(shop_orders status 拡張＝**checkout 中間ステータスのバグ修正**), `20260510000001`(同 validate), `20260511000003`(tenants SSO index), `20260514000001`(demo tenant readonly policy 9本), `20260531000001`(**AI auto_actions 列**), `20260531000005`(doc_share 一意index), `20260531000007`(**AI monthly_cost_cap 列**), `20260531000008`(**ai_usage_logs.cost_jpy 列**)。
+  - **CONCURRENTLY index 7本**は `apply_migration`（暗黙トランザクション）では実行不可のため `execute_sql` で単文・トランザクション外で作成した。
+  - 注意: 太字の AI 系列（auto_actions / monthly_cost_cap / cost_jpy）が本番に欠落していたため、AI 自動化・供給 auto-send 機能はこれらを参照する経路で正しく動作していなかった可能性がある。今回の適用で解消。
+
+#### 🐞 発見・修正したバグ: `notification_logs.created_at` は存在しない（正は `sent_at`）
+`notification_logs` テーブルは元定義（`20260315000000`）で時刻列が **`sent_at`** だが、以下が存在しない `created_at` を参照していた:
+- migration `20260429000004_perf_indexes_round3.sql`: index 定義（→ `sent_at` に修正、本番にも `sent_at` で作成）
+- `src/app/api/cron/low-stock-alerts/route.ts`: low_stock_alert の日次冪等チェック `.gte("created_at", …)`（→ `sent_at`）。壊れていたため**重複アラート送信のリスク**があった（しかも供給 auto-send が乗る経路）。
+- `src/app/api/cron/data-retention/route.ts`: notification_logs の 180 日 GC ルール column（→ `sent_at`）。壊れていたため**古いログが削除されていなかった**。
+
+> 注（検証法の限界）: 列/index/制約は実在を直接突合できるが、`CREATE TABLE IF NOT EXISTS` で既存テーブルに当たりつつ同 migration 内の別 ALTER だけ未適用、といった複合ケースは代表オブジェクト1点突合では見逃し得る（残存リスク低）。今回 `shop_orders_status_check` は「制約は valid だが定義が旧値のまま（再定義未適用）」という偽陽性を `pg_get_constraintdef` の定義突合で検出できた。
 
 ---
 
