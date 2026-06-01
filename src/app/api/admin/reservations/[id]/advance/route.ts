@@ -6,6 +6,8 @@ import { sendProgressUpdate } from "@/lib/line/client";
 import { sendProgressCompletionReliable } from "@/lib/line/clientWithRetry";
 import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { logger } from "@/lib/logger";
+import { classifyWorkflowStep } from "@/lib/workflow/stepSemantics";
+import { maybeAutoCreateDraftCertificateForReservation } from "@/lib/ai/automation/certificateRecordAuto";
 
 const advanceSchema = z.object({
   note: z.string().trim().max(2000).nullable().optional(),
@@ -192,6 +194,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     if (updateError) {
       return apiInternalError(updateError, "advance update");
+    }
+
+    // ─── 設定済みワークフローを汲み取った自動化 ───
+    // テナントが各々設定したワークフローの「証明書」工程に到達した時点、または
+    // ワークフロー完了時に、証明書ドラフトを自動生成する（opt-in / 冪等 / 壁3）。
+    // 注: 完了を advance で行う場合は予約 PUT ルートの発行フックを通らないため、
+    //     ここで拾わないと workflow 運用の店舗は自動生成が走らない（その穴も塞ぐ）。
+    const reachedCertificateStep = !isLastStep && nextStep ? classifyWorkflowStep(nextStep) === "certificate" : false;
+    if (reachedCertificateStep || isLastStep) {
+      void maybeAutoCreateDraftCertificateForReservation({
+        tenantId: caller.tenantId,
+        reservationId: id,
+      }).catch((e) =>
+        logger.warn("[advance] auto-create draft certificate failed", {
+          reservationId: id,
+          err: e instanceof Error ? e.message : String(e),
+        }),
+      );
     }
 
     // ─── 顧客公開イベント書き込み & LINE通知 ───

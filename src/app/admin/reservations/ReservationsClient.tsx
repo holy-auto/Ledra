@@ -378,6 +378,8 @@ export default function ReservationsClient() {
       const logsRes = await fetch(`/api/admin/reservations/${reservationId}/step-logs`);
       const logsJ = await parseJsonSafe(logsRes);
       setDetailStepLogs(logsJ?.step_logs ?? []);
+      // ワークフロー前進で証明書ドラフトが自動生成されることがある → タイムラインも更新
+      await refreshTimeline(reservationId);
     } catch (e: unknown) {
       alert("進行に失敗: " + (e instanceof Error ? e.message : String(e)));
     }
