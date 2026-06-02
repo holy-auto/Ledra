@@ -303,3 +303,18 @@ Phase 3（任意） ガード付き自動送信 inventory.auto_send_reorder（�
 4. **店舗**が `tenant_supply_auto_send_settings` を opt-in（`enabled=true` ＋ `max_order_jpy` ＋ `monthly_cap_jpy` を両方とも正の値で設定）。未設定なら安全側で送らない。
 5. 日次の低在庫 cron が下限割れ品目を検知 → パートナー別に発注ドラフトを起票 → 全条件成立時のみ API 自動送信し `sent`（`transport=api` / `external_order_id` 記録）。
 6. **安全に試す**: api_endpoint を相手のサンドボックスにし、`max_order_jpy`/`monthly_cap_jpy` を小さく設定、`is_trusted` は運営が明示付与。受注確認は `/api/webhooks/supply/[partnerId]`（HMAC 署名検証）で受ける。
+
+### 受注確認 Webhook の実地テスト手順
+パートナー側システムが送る「受注確定/出荷/却下」通知を手元で再現し、本番デプロイへ実地で叩く。
+
+1. パートナーが `/agent` の「発注API連携」で Webhook シークレットを発行（`POST /api/agent/supply/webhook-secret`）。平文 `whsec_...` は**この一度だけ**返るので控える。受信 URL（`/api/webhooks/supply/<partnerId>`）も同画面に出る。
+2. 署名付き通知を生成して撃つ（**既存発注の `po_number`** を指定）:
+   ```
+   node scripts/supply-webhook-sign.mjs <webhook_url> <whsec_...> <po_number> accepted ORD-9
+   ```
+   出力された `curl` をそのまま実行する。
+3. 期待結果: `200 {"ok":true}`。該当発注の `transport_status` が `acked`（`rejected` なら `failed`）に、`external_order_id` が更新される。**PO の `status`（入荷計上）は変わらない**（壁3: 在庫計上は人の操作）。
+4. 異常系: 署名改ざん→`401 invalid_signature` / 未知の `po_number`→`404 order_not_found` / シークレット未設定→`404 not_configured` / 不正ステータス→`400 invalid_payload`。
+   これらはルート統合テスト `src/app/api/webhooks/supply/[partnerId]/__tests__/route.test.ts`（9件）でも担保済み。
+
+署名方式: `X-Ledra-Signature: sha256=<HMAC-SHA256(rawBody, secret)>`（`src/lib/supply/webhookSignature.ts`）。`scripts/supply-webhook-sign.mjs` は同一式で署名を再現する（署名一致を確認済み）。
