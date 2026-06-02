@@ -37,9 +37,11 @@
 | T4 | **納車時すり替え (TOCTOU)** | 撮影は新品、納車前に中古/社外品へ差し替え、純正を転売 |
 | T5 | 調達・請求不正 | 純正を仕入れていない／安価品を純正として請求 |
 | T6 | 数量水増し・二重計上 | 1入荷を複数案件で重複請求 |
+| T7 | **店による確認代行（なりすまし確定）** | 顧客の代わりに店が「顧客確認」を押して勝手に凍結する |
 
 T1〜T3・T5・T6 は**データ/会計レイヤーで詰められる**。
 T4（物理すり替え）だけは物理問題で、**第三者検証＋相互矛盾検知＋経済責任**で抑止する。
+T7 は **顧客本人の電子署名（本人の携帯）＋電話番号整合のDB強制**で封じる（§6.4）。
 
 ---
 
@@ -61,7 +63,7 @@ T4（物理すり替え）だけは物理問題で、**第三者検証＋相互�
 ```
 L7 検知・経済    : AI異常検知 / 抜き取り監査 / 保証・責任の紐付け
 L6 不変記録      : append-only + 確定後凍結トリガ + (任意) Polygonアンカー
-L5 装着検証★    : 納車時に顧客がスキャン照合（T4の決め手）
+L5 装着検証★    : 納車時に顧客が【本人の携帯で電子署名】＋電話番号整合をDB強制（T4/T7の決め手）
 L4 物理(任意)    : 封印シール / レーザー刻印（場所限定・高リスク品のみ）
 L3 調達整合      : 三方照合（納品書OCR ↔ 請求 ↔ 作業/証明書）+ 数量突合
 L2 個体/数量整合 : シリアル全体一意 / 知覚ハッシュ重複検知 / 在庫消費突合
@@ -102,9 +104,22 @@ part_installations            -- 装着イベント1件（どの作業で・ど�
   part_kind  CHECK in('serialized','lot_only','consumable','high_value')
   quantity, unit
   installed_by (auth.users), installed_at
+  customer_id                     -- 顧客本人特定（電話ハッシュ整合の照合先）
   status     CHECK in('installed','customer_verified','disputed','voided')
+  confirmation_signature_id       -- ★顧客電子署名(part_confirmation_signatures)へのFK。確定の必須条件
   customer_verified_at, customer_verified_via
-  content_hash               -- サーバ計算 SHA256（行内容の固定）
+  content_hash               -- サーバ計算 SHA256（行内容の固定。署名対象 document_hash の素）
+  created_at
+
+part_confirmation_signatures  -- ★確定＝顧客本人の携帯での電子署名（signature_sessions パターン流用）
+  id, tenant_id, installation_id
+  token UNIQUE, expires_at        -- 顧客の登録連絡先(LINE/SMS)へ送るワンタイムURL
+  document_hash, document_hash_alg -- 確定時点の content_hash を封入（後から内容が変わると不一致）
+  status CHECK in('pending','signed','expired','cancelled')
+  -- 本人性の証跡（電子署名法 第2条第1号）
+  signed_at, signer_ip, signer_user_agent
+  signer_phone_last4_hash         -- ★OTP検証済み電話の sha256(v1|tenant_id|last4|PEPPER)
+  signature, signing_payload, public_key_fingerprint  -- 非改ざん性（同 第2号）
   created_at
 
 part_installation_evidence    -- 装着イベントに紐づく証拠（写真/伝票/旧品）
@@ -159,23 +174,54 @@ part_serial_registry          -- 全テナント横断のシリアル消費台�
   （会計の赤伝・再発行と同じ考え方。履歴は両方残る）。
 - 任意で `content_hash` を Polygon アンカー（既存 `certificate_images.polygon_tx_hash` 経路を再利用）。
 
-### 6.4 確定フロー（発行＝納車時の顧客確認）
+### 6.4 確定フロー（発行＝納車時の顧客本人による電子署名）
 
-> **明記事項**: 顧客確認後は一切の変更ができない。
+> **明記事項**: 確定は **顧客本人が自分の携帯で行う電子署名** に限る。店は代行できない（T7）。
+> 顧客確認後は一切の変更ができない。
+
+店側のボタン一つで確定できると、店が勝手に「顧客確認」を押せてしまう（T7 なりすまし確定）。
+そこで確定は **顧客本人の携帯での電子署名** を必須とし、署名者が登録済み顧客本人かを
+**電話番号ハッシュの整合で DB レベルでも強制**する。
 
 ```
 installed            装着・証拠登録済み（この間は店が修正可能）
-   │  ← 発行(納車)時、顧客に内容(部品・数量・写真・証拠)を「再提示」
+   │
+   │  ① 発行(納車)時、店が「確定依頼」 → part_confirmation_signatures を pending で作成し
+   │     顧客の【登録連絡先(LINE/SMS)】へワンタイムURLを送信（店の端末には出さない）
    ▼
-[顧客が内容を確認・同意]   ← customer_verified_at / via を記録
+[顧客が自分の携帯で開く]
+   │  ② OTP(電話番号)で本人確認 → 内容(部品・数量・写真・証拠)を再提示
+   │  ③ 顧客が電子署名（document_hash = その時点の content_hash を封入）
    ▼
-customer_verified    ★ ここで完全凍結。店も運営も service-role も変更不可
+signed               signer_phone_last4_hash / signed_at / signature を記録
+   │
+   │  ④ part_installations.status を customer_verified へ遷移しようとする
+   ▼
+customer_verified    ★ 完全凍結。店も運営も service-role も変更不可
 ```
 
-- 発行時 UI で **確定前に内容を再表示**し、顧客の明示的な確認操作をもって `customer_verified` に遷移。
-- 遷移は一方向（`installed → customer_verified` のみ）。`customer_verified` からの更新は
-  トリガが拒否するため、UI 上も編集導線を出さない。
-- 訂正が必要な場合は §6.3 の **取消＋再発行** のみ（顧客の再確認が再度必要）。
+#### DB レベルの強制（アプリを信用しない）
+
+`part_installations` の `BEFORE UPDATE` 凍結トリガに、`customer_verified` への遷移条件として
+以下を **すべて満たさなければ `RAISE EXCEPTION`**（= DB が直接ガード）:
+
+1. `confirmation_signature_id` が指す `part_confirmation_signatures` が **`status='signed'`** かつ
+   `installation_id` 一致。
+2. 署名の `document_hash` が **現在の `content_hash` と一致**（確定後に内容が変わっていない）。
+3. **電話番号整合**: 署名の `signer_phone_last4_hash` ＝ その顧客
+   (`part_installations.customer_id` → `customers.phone_last4_hash`) と **一致**。
+   ※ ハッシュ規約は既存 `sha256(v1|tenant_id|last4|PEPPER)` を踏襲（`certificates_phone_hash` と同方式）。
+
+→ 店が API/PostgREST を直叩きして `customer_verified` に書き換えようとしても、
+**本人署名と電話一致が無ければ DB が拒否**。アプリ層のバグや迂回でも凍結ゲートは破れない。
+
+#### その他
+
+- ワンタイムURLは顧客の登録連絡先へのみ送信。店の画面には署名リンクを出さない（代行防止の運用面）。
+- 署名基盤は既存 `signature_sessions`（電子署名法準拠・OTP・document_hash）と同パターンを流用。
+  certificates 専用の `signature_sessions` とは結合させず、装着確定用に別テーブルで持つ。
+- 遷移は一方向（`installed → customer_verified`）。確定後は UI 上も編集導線を出さない。
+- 訂正は §6.3 の **取消＋再発行** のみ（→ 顧客の電子署名を再度取得）。
 
 ---
 
@@ -190,6 +236,7 @@ customer_verified    ★ ここで完全凍結。店も運営も service-role �
 | 調達 | `suppliers` / `purchase_orders`(draft→received) / 供給パートナーWebhook | L3 三方照合の突合相手。将来は電子納品データ源 | 中 |
 | AI | `ai_usage_logs` / `ai_extracted` / `ai_auto_actions` / thickness `ai_anomaly` | 納品書OCR・矛盾検知に流用 | 低（再利用） |
 | 顧客検証 | `customer` ポータル / `passport` / `verify` / `my/verify` | **L5 納車時検証 UI** を追加 | 中（新UI） |
+| 電子署名/本人確認 | `signature_sessions`（OTP・document_hash・電子署名法準拠）／`customers.phone_last4_hash`／`customer_sessions`／`/api/customer/verify-code`（OTP） | **流用**。確定を顧客本人の携帯署名にし、電話ハッシュ整合をDB強制（T7封じ） | 中（新テーブル＋トリガ、基盤は再利用） |
 | 測定器 | `/api/external/nexptg/sync`（静的APIキー認証） | L1: ペイロード署名検証を追加（後方互換） | 中 |
 | RLS | `my_tenant_ids()` / `tenant_memberships` 規約 | 新テーブルへ同規約で適用 | 低 |
 
@@ -204,8 +251,9 @@ customer_verified    ★ ここで完全凍結。店も運営も service-role �
   → T1・T2・T3 を即カバー。現場は「写真を撮るだけ」。
 - **Phase 2（会計整合）**: 納品書OCR（AI流用）＋ `purchase_orders`/在庫との三方照合・数量突合。
   → T5・T6 をカバー。
-- **Phase 3（装着検証）**: 納車時の顧客スキャン検証 UI（passport/verify 流用）＋ 旧品突合。
-  → T4 の中核を投入。
+- **Phase 3（装着検証・本人確認）**: 確定を **顧客本人の携帯での電子署名** に（`part_confirmation_signatures`
+  ＋電話ハッシュ整合のDB強制トリガ、`signature_sessions`/OTP 流用）。納車時検証 UI（passport/verify 流用）
+  ＋ 旧品突合。→ T4・**T7** の中核を投入。
 - **Phase 4（任意・高リスク）**: 封印シール/レーザー刻印の固有番号発行・照合、Polygonアンカー、
   AI相互矛盾検知の自動フラグ、抜き取り監査ダッシュボード。
 
