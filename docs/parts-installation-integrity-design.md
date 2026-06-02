@@ -125,19 +125,57 @@ part_integrity_findings       -- 相互矛盾/異常の自動検知結果（L7�
   severity, detail jsonb, status, created_at
 ```
 
-### 6.2 既存テーブル拡張
+### 6.2 シリアル全体横断レジストリ（決定: プラットフォーム全体一意）
 
+シリアル品の使い回し検知は **テナント横断（プラットフォーム全体）** で行う（決定事項 §10-2）。
+ただしテナント間でデータを覗かせないため、**生のシリアルではなくハッシュで照合**する。
+
+```
+part_serial_registry          -- 全テナント横断のシリアル消費台帳（個体の一回限り使用）
+  id
+  serial_fingerprint  text UNIQUE   -- HMAC(gtin + serial_no, platform_pepper)。生値は保存しない
+  consumed_by_tenant_id            -- 監査用（RLSで他テナントには非開示）
+  installation_id
+  consumed_at
+```
+
+- 装着時、`serial_fingerprint` を **UNIQUE 制約**で登録 → 既存衝突なら **2件目を拒否/フラグ**（T2 使い回し）。
+- 生のシリアルや所有テナントは他テナントへ開示しない（衝突の有無だけを返す `SECURITY DEFINER` 関数経由）。
 - `inventory_items` … `gtin`, `default_serial_tracked boolean` を追加（現状 `sku`/`supplier_sku` のみ）。
 - `inventory_movements` … `installation_id` を追加し「装着＝消費(out)」を直結（数量突合 L2 の根拠）。
-- 一意制約 … `serialized` 部品は `(tenant範囲 or グローバル, gtin, serial_no)` で**使い回し禁止**。
 
-### 6.3 不変性（L6, 既存 guard 方式を踏襲）
+### 6.3 不変性（L6） — 決定: **完全凍結（service-role 含む）**
 
-- `part_installations` … `status` が `customer_verified` 以降、保護カラム（部品同定・数量・hash）を
-  `BEFORE UPDATE` トリガで差し戻し（`supply_partners_guard_protected_cols` と同じ
-  `SECURITY DEFINER` / `SET search_path=''` パターン）。
-- `part_installation_evidence` … `BEFORE UPDATE OR DELETE` で原則拒否（append-only）。
+確定後は **運営/service-role を含め誰も変更できない**（決定事項 §10-1）。
+既存 guard は `auth.uid() IS NULL`（service-role）を例外にしていたが、本テーブルは **例外を設けない**。
+
+- `part_installations` … `status='customer_verified'` 以降、
+  `BEFORE UPDATE OR DELETE` トリガで **無条件に拒否（`RAISE EXCEPTION`）**。
+  service-role でも編集・削除不可（`supply_partners_guard` と同じ `SECURITY DEFINER` /
+  `SET search_path=''` パターンだが、auth.uid() 分岐を持たない完全版）。
+- `part_installation_evidence` … 生成後は `BEFORE UPDATE OR DELETE` で **常時拒否**（append-only）。
+- **訂正手段**: 確定済みレコードは編集できないため、誤りは
+  **`status='voided'`（取消・理由必須）＋ 新規装着レコードの再発行** でのみ表現する
+  （会計の赤伝・再発行と同じ考え方。履歴は両方残る）。
 - 任意で `content_hash` を Polygon アンカー（既存 `certificate_images.polygon_tx_hash` 経路を再利用）。
+
+### 6.4 確定フロー（発行＝納車時の顧客確認）
+
+> **明記事項**: 顧客確認後は一切の変更ができない。
+
+```
+installed            装着・証拠登録済み（この間は店が修正可能）
+   │  ← 発行(納車)時、顧客に内容(部品・数量・写真・証拠)を「再提示」
+   ▼
+[顧客が内容を確認・同意]   ← customer_verified_at / via を記録
+   ▼
+customer_verified    ★ ここで完全凍結。店も運営も service-role も変更不可
+```
+
+- 発行時 UI で **確定前に内容を再表示**し、顧客の明示的な確認操作をもって `customer_verified` に遷移。
+- 遷移は一方向（`installed → customer_verified` のみ）。`customer_verified` からの更新は
+  トリガが拒否するため、UI 上も編集導線を出さない。
+- 訂正が必要な場合は §6.3 の **取消＋再発行** のみ（顧客の再確認が再度必要）。
 
 ---
 
@@ -182,13 +220,18 @@ part_integrity_findings       -- 相互矛盾/異常の自動検知結果（L7�
 
 ---
 
-## 10. 実装前に決める未決事項
+## 10. 意思決定
 
-1. **凍結の例外**: `customer_verified` 後の訂正を service-role/運営に許すか、完全凍結か。
-2. **シリアル一意のスコープ**: テナント内 / プラットフォーム全体（横断検知の強さ）。
-3. **顧客検証の必須範囲**: 高額部品のみ必須か、全件任意か。
-4. **アンカーの対象**: 全装着 / 高額のみ / 無効化（コスト判断）。
-5. **測定器署名(L1)**: 既存テナントAPIキーとの後方互換と鍵配布方式。
+### 決定済み
+1. ✅ **凍結の例外 → 完全凍結**。`customer_verified` 後は service-role/運営含め一切変更不可
+   （§6.3・§6.4）。訂正は「取消＋再発行＋顧客の再確認」のみ。
+2. ✅ **シリアル一意のスコープ → プラットフォーム全体横断**。テナント秘匿のため
+   ハッシュ(`serial_fingerprint`)で衝突照合（§6.2）。
+
+### 未決（Phase 進行に合わせて確定）
+3. **顧客検証の必須範囲**: 高額部品のみ必須か、全件任意か（Phase 3 で確定）。
+4. **アンカーの対象**: 全装着 / 高額のみ / 無効化（Phase 4・コスト判断）。
+5. **測定器署名(L1)**: 既存テナントAPIキーとの後方互換と鍵配布方式（Phase 1〜2）。
 
 ---
 
