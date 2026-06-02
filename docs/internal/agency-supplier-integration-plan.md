@@ -297,10 +297,24 @@ Phase 3（任意） ガード付き自動送信 inventory.auto_send_reorder（�
 1. **パートナー**（代理店）が `/agent` でプロフィール・商材カタログ・API 連携（エンドポイント＋鍵）を登録（鍵はアプリが `secretBox` で暗号化）。
 2. **運営**が当該 `supply_partners.is_trusted = true` を付与（信頼パートナーのみ auto-send 対象）。
    - `is_trusted` は DB トリガ `supply_partners_guard_protected_cols` で保護されており、**パートナー自身は（アプリ API でも直接 PostgREST でも）変更できない**。設定できるのは service-role（運営/サーバ）のみ。
-   - 現状 **専用の管理 UI/API は未実装**。運営は service-role 接続で次の SQL を実行して付与する:
-     `UPDATE supply_partners SET is_trusted = true WHERE id = '<partner_id>';`
-   - （将来: 運営コンソールに信頼トグルを足すのは容易。必要になったら別途。）
+   - **運営コンソール `/admin/platform/供給パートナー審査` から信頼トグルで付与/解除**できる（`/api/admin/platform/supply-partners`、`isPlatformAdmin` ゲート、service-role 更新、`admin_audit_logs` 記録）。API 連携（active + connected + 鍵）が揃うまで付与ボタンは無効。
+   - （SQL で直接付与する場合: `UPDATE supply_partners SET is_trusted = true WHERE id = '<partner_id>';` を service-role 接続で実行。）
 3. **店舗**が在庫品目を商材にマッピング（`inventory_items.supply_partner_product_id`）し、`tenant_supply_links` を有効化（優先度・卸値上書き）。
 4. **店舗**が `tenant_supply_auto_send_settings` を opt-in（`enabled=true` ＋ `max_order_jpy` ＋ `monthly_cap_jpy` を両方とも正の値で設定）。未設定なら安全側で送らない。
 5. 日次の低在庫 cron が下限割れ品目を検知 → パートナー別に発注ドラフトを起票 → 全条件成立時のみ API 自動送信し `sent`（`transport=api` / `external_order_id` 記録）。
 6. **安全に試す**: api_endpoint を相手のサンドボックスにし、`max_order_jpy`/`monthly_cap_jpy` を小さく設定、`is_trusted` は運営が明示付与。受注確認は `/api/webhooks/supply/[partnerId]`（HMAC 署名検証）で受ける。
+
+### 受注確認 Webhook の実地テスト手順
+パートナー側システムが送る「受注確定/出荷/却下」通知を手元で再現し、本番デプロイへ実地で叩く。
+
+1. パートナーが `/agent` の「発注API連携」で Webhook シークレットを発行（`POST /api/agent/supply/webhook-secret`）。平文 `whsec_...` は**この一度だけ**返るので控える。受信 URL（`/api/webhooks/supply/<partnerId>`）も同画面に出る。
+2. 署名付き通知を生成して撃つ（**既存発注の `po_number`** を指定）:
+   ```
+   node scripts/supply-webhook-sign.mjs <webhook_url> <whsec_...> <po_number> accepted ORD-9
+   ```
+   出力された `curl` をそのまま実行する。
+3. 期待結果: `200 {"ok":true}`。該当発注の `transport_status` が `acked`（`rejected` なら `failed`）に、`external_order_id` が更新される。**PO の `status`（入荷計上）は変わらない**（壁3: 在庫計上は人の操作）。
+4. 異常系: 署名改ざん→`401 invalid_signature` / 未知の `po_number`→`404 order_not_found` / シークレット未設定→`404 not_configured` / 不正ステータス→`400 invalid_payload`。
+   これらはルート統合テスト `src/app/api/webhooks/supply/[partnerId]/__tests__/route.test.ts`（9件）でも担保済み。
+
+署名方式: `X-Ledra-Signature: sha256=<HMAC-SHA256(rawBody, secret)>`（`src/lib/supply/webhookSignature.ts`）。`scripts/supply-webhook-sign.mjs` は同一式で署名を再現する（署名一致を確認済み）。
