@@ -205,6 +205,7 @@ Supabase 用の SQL は `supabase/migrations/` にタイムスタンプ順で入
 ## 内部ドキュメント
 
 - `docs/architecture-roadmap.md` — 中長期アーキ
+- `docs/microservices-architecture.md` — 境界づけられたコンテキスト分解 / 進化的サービス抽出戦略
 - `docs/operations-guide.md` — 運用手順 (監視 / インシデント対応)
 - `docs/parts-installation-integrity-design.md` — 部品装着インテグリティ設計
 - `docs/parts-integrity-golive-checklist.md` — 部品装着インテグリティ Go-Live
