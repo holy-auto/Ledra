@@ -10,6 +10,7 @@
 
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { anchorToPolygon } from "@/lib/anchoring/providers/polygon";
+import { computePartsMetaHash } from "@/lib/parts/metaAnchor";
 
 export type PartKind = "serialized" | "lot_only" | "consumable" | "high_value";
 
@@ -79,6 +80,84 @@ export async function anchorPendingInstallations(limit = 25): Promise<AnchorRunR
       result.anchored++;
     } catch (e) {
       console.error(`[parts-anchor] failed for installation ${c.id}:`, e);
+      result.errors++;
+    }
+  }
+
+  return result;
+}
+
+export interface MetaAnchorRunResult {
+  vehiclesScanned: number;
+  reanchored: number;
+  unchanged: number;
+  errors: number;
+}
+
+/**
+ * 確定済み装着を持つ車両ごとに「部品メタアンカー」を再計算する（§6.5・全件）。
+ * meta_hash が前回と同じなら no-op（無償）。変化した車両のみ再アンカーする。
+ */
+export async function recomputeVehicleMetaAnchors(limit = 25): Promise<MetaAnchorRunResult> {
+  const admin = createServiceRoleAdmin("cron — parts 車両単位メタアンカー（全テナント横断）");
+  const result: MetaAnchorRunResult = { vehiclesScanned: 0, reanchored: 0, unchanged: 0, errors: 0 };
+
+  // 確定済み・vehicle紐付け・content_hash あり の装着を集め、車両ごとに束ねる
+  const { data: rows, error } = await admin
+    .from("part_installations")
+    .select("vehicle_id, tenant_id, content_hash")
+    .eq("status", "customer_verified")
+    .not("vehicle_id", "is", null)
+    .not("content_hash", "is", null)
+    .order("customer_verified_at", { ascending: true })
+    .limit(limit * 40);
+  if (error) throw new Error(`meta candidates load failed: ${error.message}`);
+  if (!rows || rows.length === 0) return result;
+
+  const byVehicle = new Map<string, { tenantId: string; hashes: string[] }>();
+  for (const r of rows) {
+    const v = r.vehicle_id as string;
+    const entry = byVehicle.get(v) ?? { tenantId: r.tenant_id as string, hashes: [] };
+    entry.hashes.push(r.content_hash as string);
+    byVehicle.set(v, entry);
+  }
+
+  const vehicles = [...byVehicle.entries()].slice(0, limit);
+  result.vehiclesScanned = vehicles.length;
+
+  for (const [vehicleId, { tenantId, hashes }] of vehicles) {
+    try {
+      const { metaHash, contributing } = computePartsMetaHash(vehicleId, hashes);
+
+      const { data: existing } = await admin
+        .from("part_vehicle_meta_anchors")
+        .select("meta_hash")
+        .eq("vehicle_id", vehicleId)
+        .maybeSingle();
+      if (existing?.meta_hash === metaHash) {
+        result.unchanged++;
+        continue;
+      }
+
+      const anchor = await anchorToPolygon(metaHash);
+      const now = new Date().toISOString();
+      const { error: upErr } = await admin.from("part_vehicle_meta_anchors").upsert(
+        {
+          tenant_id: tenantId,
+          vehicle_id: vehicleId,
+          meta_hash: metaHash,
+          content_hash_count: contributing.length,
+          polygon_tx_hash: anchor.anchored ? anchor.txHash : null,
+          polygon_network: anchor.anchored ? anchor.network : null,
+          anchored_at: anchor.anchored ? now : null,
+          updated_at: now,
+        },
+        { onConflict: "vehicle_id" },
+      );
+      if (upErr) throw new Error(upErr.message);
+      result.reanchored++;
+    } catch (e) {
+      console.error(`[parts-meta-anchor] failed for vehicle ${vehicleId}:`, e);
       result.errors++;
     }
   }
