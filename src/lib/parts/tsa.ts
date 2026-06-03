@@ -1,5 +1,5 @@
 /**
- * RFC3161 タイムスタンプ（国内 JIPDEC 認定TS局）の抽象。
+ * RFC3161 タイムスタンプ（国内 JIPDEC 認定TS局）の連携。
  *
  * 設計: docs/parts-installation-integrity-design.md §6.4.3b / §10-11
  *
@@ -7,12 +7,14 @@
  * Polygon アンカーと同様 env で有効化し、未設定環境では no-op（null を返す＝確定は止めない）。
  *
  * 実プロバイダ（セイコー/アマノ/セコム等）の RFC3161 HTTP エンドポイントは
- * PARTS_TSA_URL / PARTS_TSA_AUTHORITY で設定する。本体の DER TimeStampReq/Resp の
- * 生成・解析は導入時にベンダ SDK で差し替える（ここでは骨組みと no-op を提供）。
+ * PARTS_TSA_URL / PARTS_TSA_AUTHORITY で設定する。必要なら Basic 認証を
+ * PARTS_TSA_USERNAME / PARTS_TSA_PASSWORD で付与する。
  */
 
+import { fetchTimestamp } from "@/lib/parts/rfc3161";
+
 export interface TsaResult {
-  /** RFC3161 TimeStampToken（DER）。保存は bytea。 */
+  /** RFC3161 TimeStampToken（CMS DER）。保存は bytea。 */
   token: Buffer;
   authority: string;
   timestampAt: string;
@@ -25,15 +27,17 @@ export function isTsaEnabled(): boolean {
 
 /**
  * 与えられたハッシュ(hex)に対してタイムスタンプトークンを取得する。
- * 未設定環境では null（no-op）。
- *
- * NOTE: 実 TSA 連携は導入時に実装する。現状は env で無効化されている前提で null を返し、
- * 設定済みなのに未実装の場合は明示的にエラーにして「黙って無署名」を防ぐ。
+ * 未設定環境では null（no-op）。設定済みなら RFC3161 TSA に問い合わせ、
+ * 失敗時は例外を投げる（黙って無署名にしない）。
  */
 export async function requestTimestamp(hashHex: string): Promise<TsaResult | null> {
   if (!isTsaEnabled()) return null;
-  throw new Error(
-    `[tsa] PARTS_TSA_ENABLED ですが RFC3161 連携が未実装です（hash=${hashHex.slice(0, 8)}…）。` +
-      "導入時にベンダ SDK で実装してください。",
-  );
+
+  const url = process.env.PARTS_TSA_URL!;
+  const authority = process.env.PARTS_TSA_AUTHORITY ?? new URL(url).host;
+  const { token, genTime } = await fetchTimestamp(url, hashHex, {
+    username: process.env.PARTS_TSA_USERNAME,
+    password: process.env.PARTS_TSA_PASSWORD,
+  });
+  return { token, authority, timestampAt: genTime };
 }

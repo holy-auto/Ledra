@@ -48,9 +48,21 @@
 |---|---|
 | `PARTS_TSA_ENABLED` | `"true"` で有効。未設定は no-op |
 | `PARTS_TSA_URL` / `PARTS_TSA_AUTHORITY` | 国内 JIPDEC 認定TS局のエンドポイント |
+| `PARTS_TSA_USERNAME` / `PARTS_TSA_PASSWORD` | 任意（TSAが Basic 認証を要求する場合） |
 
-> ⚠️ `PARTS_TSA_ENABLED=true` だが RFC3161 連携が**未実装**の現状では `requestTimestamp` が
-> 明示的に例外を投げる（黙って無署名にしない設計）。**ベンダ連携を実装するまでは false のまま**にすること。
+> 汎用 RFC3161 クライアント実装済み（`src/lib/parts/rfc3161.ts`）。**準拠エンドポイントを
+> `PARTS_TSA_URL` に設定すれば動作する**（ベンダ固有 SDK 不要）。TimeStampReq(DER) を
+> `application/timestamp-query` で POST し、TimeStampToken(CMS) と genTime を取得・保存する。
+> 失敗時は例外（黙って無署名にしない）。投入前に実エンドポイントで 4-2 のスモークを実施すること。
+
+> **コスト方針（決定）**: 当面は **TSA を契約せず無料運用**（`PARTS_TSA_ENABLED=false`）。
+> 第三者による時刻・存在証明は **Polygon アンカー（§6.5・実質$0）** が担う。
+> 認定タイムスタンプが必要になる要件（電子帳簿保存法のスキャナ保存・長期署名(LTV)の認定・
+> 訴訟での認定時刻の証拠力 等）が生じた時点で、**国内 JIPDEC 認定TS局へ有料移行**する。
+> 移行はコード変更不要——TS局契約 → `PARTS_TSA_URL`(＋必要なら Basic 認証) 設定 →
+> `PARTS_TSA_ENABLED=true` → スモーク(4-2)、のみ。
+> 注: 不安定な無料 TSA を本番採用する場合は、`signConfirmation` の TSA 呼び出しを
+> ベストエフォート化（失敗しても署名＋アンカーで確定継続）する小調整を入れること。
 
 ### 1-5. 任意（既定値あり）
 
@@ -129,7 +141,8 @@
 
 ## 6. 残課題（コード外・後続）
 
-- **④ 実 TSA ベンダ連携**：RFC3161 の TimeStampReq/Resp（DER）生成・解析をベンダSDKで実装し、
-  `src/lib/parts/tsa.ts` の `requestTimestamp` を差し替える。完了まで `PARTS_TSA_ENABLED=false`。
+- **④ 実 TSA ベンダ連携**：✅ 汎用 RFC3161 クライアント実装済み。あとは TS局を契約し
+  `PARTS_TSA_URL`（＋必要なら Basic 認証）を設定し `PARTS_TSA_ENABLED=true` にするだけ。
+  投入前に実エンドポイントでスモーク（4-2）。任意で長期署名(LTV)対応は将来拡張。
 - LINE 配信（顧客 LINE 連携後）、findings の対応操作（resolved 化）、装着詳細ドリルダウン、
   公開検証への parts meta-anchor 露出。
