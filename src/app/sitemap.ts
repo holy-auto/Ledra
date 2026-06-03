@@ -18,6 +18,7 @@ const pages: Array<{
   { path: "/financial-transparency", changeFrequency: "monthly", priority: 0.5 },
   { path: "/privacy", changeFrequency: "yearly", priority: 0.4 },
   { path: "/terms", changeFrequency: "yearly", priority: 0.4 },
+  { path: "/security-policy", changeFrequency: "yearly", priority: 0.4 },
   { path: "/tokusho", changeFrequency: "yearly", priority: 0.4 },
 ];
 

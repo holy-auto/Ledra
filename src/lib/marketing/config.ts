@@ -77,6 +77,7 @@ export const footerNavGroups = [
     links: [
       { label: "プライバシーポリシー", href: "/privacy" },
       { label: "利用規約", href: "/terms" },
+      { label: "情報セキュリティ基本方針", href: "/security-policy" },
       { label: "特定商取引法に基づく表記", href: "/law" },
     ],
   },
