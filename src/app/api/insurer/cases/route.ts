@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
@@ -6,6 +6,7 @@ import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
 import { insurerCaseCreateSchema } from "@/lib/validations/insurer-case";
 import { applyAssignmentRules, type AssignmentRule } from "@/lib/insurer/applyAssignmentRules";
+import { maybeAutoFraudScoreForCase } from "@/lib/ai/automation/fraudScoreAuto";
 
 export const runtime = "nodejs";
 
@@ -226,6 +227,11 @@ export async function POST(req: NextRequest) {
       ip,
       user_agent: ua,
     });
+
+    // opt-in テナントでは、案件作成後に不正リスクを自動スコア (fire-and-forget / レスポンス後)。
+    after(() =>
+      maybeAutoFraudScoreForCase({ caseId: newCase.id as string, insurerId: caller.insurerId, tenantId: tenant_id }),
+    );
 
     return apiJson({ case: newCase }, { status: 201 });
   } catch (err) {

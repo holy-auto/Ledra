@@ -265,3 +265,29 @@ export function shouldAutoDraftInvoiceOnBilling(settings: AiAutomationSettings):
 export function shouldAutoDraftReorder(settings: AiAutomationSettings): boolean {
   return resolveAutoAction(settings, "inventory.auto_draft_reorder");
 }
+
+// ─────────────────────────────────────────────
+// 証明書写真 → 改ざんスクリーニング
+// ─────────────────────────────────────────────
+
+/**
+ * 証明書写真のアップロード時に改ざんスクリーニングを自動実行してよいか。
+ * 結果は注釈 (verdict / flags) としてのみ保存され、発行・金額・本人確認には
+ * 関与しない (非壁3)。
+ */
+export function shouldAutoTamperingCheck(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "photo.auto_tampering_check");
+}
+
+// ─────────────────────────────────────────────
+// 保険案件 (claim) → 不正リスク自動スコア
+// ─────────────────────────────────────────────
+
+/**
+ * 保険案件の受信時に不正リスクを自動スコアしてよいか。
+ * 結果は注釈 (risk_level / flags) としてのみ保存され、査定の確定は人が行う
+ * (リスク提示のみ・非壁3)。
+ */
+export function shouldAutoFraudScore(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "insurer_case.auto_fraud_score");
+}

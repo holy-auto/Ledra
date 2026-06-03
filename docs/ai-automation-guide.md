@@ -103,20 +103,22 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 - 設定 UI: `/admin/settings/ai-automation` の「AUTO-ACTIONS」セクション
 - **すべて既定 OFF (opt-in)**。Standard プラン以上で有効化可能。
 
-| アクションキー                            | 内容                                                                 | 既定 | 配線状況                       |
-| ----------------------------------------- | -------------------------------------------------------------------- | ---- | ------------------------------ |
-| `inbound_message.auto_extract`            | LINE 等の受信時に予約候補を自動抽出し受信箱に下書き化 (コミットなし) | OFF  | ✅ LINE webhook                |
-| `inbound_message.auto_create_reservation` | 高確信 + 既知顧客 + 有効日 + new_reservation のとき予約を自動起票    | OFF  | ✅ LINE webhook                |
-| `certificate.auto_draft`                  | 案件完了 + 車両ありで証明書ドラフトを自動生成 (発行なし)             | OFF  | ✅ 予約完了 (PUT reservations) |
-| `certificate.auto_create_draft_record`    | 案件完了 + 車両 + 顧客名ありで証明書を status=draft の行として自動起票 (発行=draft→active は人 / 壁3) | OFF | ✅ 予約完了 (PUT reservations) |
-| `review.auto_analyze`                     | レビュー受信時に感情分析を自動付与                                   | OFF  | ✅ 受領サインレビュー POST     |
-| `translation.auto_translate`              | 店舗お知らせ保存時に多言語へ自動翻訳                                 | OFF  | ✅ 店舗お知らせ保存 (POST/PUT) |
-| `invoice.auto_send_on_confirm`            | 請求書を人が確定 (draft→sent) した時点で顧客へ自動送付 (決済リンク+書類) | OFF  | ✅ documents PUT (draft→sent)  |
-| `quote.auto_send_on_confirm`              | 見積書を人が確定 (draft→sent) した時点で顧客へ自動送付 (書類リンク)   | OFF  | ✅ documents PUT (draft→sent)  |
-| `accounting.auto_categorize_on_intake`    | 案件登録時にメニュー明細から勘定科目を推定し「提案」を保存 (計上=確定は人 / 壁3) | OFF | ✅ 予約作成 (POST reservations) |
-| `thickness.auto_detect`                   | 塗膜厚レポート受信時に統計的な異常検知を自動付与 (注釈)              | OFF  | ✅ NexPTG 同期 (POST external/nexptg/sync) |
-| `workflow.auto_propose_on_intake`         | 案件登録時にメニュー+過去履歴から最適ワークフローを「提案」(適用=進行開始は人) | OFF | ✅ 予約作成 (POST reservations) |
-| `inventory.auto_draft_reorder`            | 在庫下限割れ時に仕入先ごとの発注書を draft で自動起票 (承認・送信は人 / 壁3) | OFF | ✅ 低在庫 cron (low-stock-alerts) |
+| アクションキー                            | 内容                                                                                                  | 既定 | 配線状況                                              |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---- | ----------------------------------------------------- |
+| `inbound_message.auto_extract`            | LINE 等の受信時に予約候補を自動抽出し受信箱に下書き化 (コミットなし)                                  | OFF  | ✅ LINE webhook                                       |
+| `inbound_message.auto_create_reservation` | 高確信 + 既知顧客 + 有効日 + new_reservation のとき予約を自動起票                                     | OFF  | ✅ LINE webhook                                       |
+| `certificate.auto_draft`                  | 案件完了 + 車両ありで証明書ドラフトを自動生成 (発行なし)                                              | OFF  | ✅ 予約完了 (PUT reservations)                        |
+| `certificate.auto_create_draft_record`    | 案件完了 + 車両 + 顧客名ありで証明書を status=draft の行として自動起票 (発行=draft→active は人 / 壁3) | OFF  | ✅ 予約完了 (PUT reservations)                        |
+| `review.auto_analyze`                     | レビュー受信時に感情分析を自動付与                                                                    | OFF  | ✅ 受領サインレビュー POST                            |
+| `translation.auto_translate`              | 店舗お知らせ保存時に多言語へ自動翻訳                                                                  | OFF  | ✅ 店舗お知らせ保存 (POST/PUT)                        |
+| `invoice.auto_send_on_confirm`            | 請求書を人が確定 (draft→sent) した時点で顧客へ自動送付 (決済リンク+書類)                              | OFF  | ✅ documents PUT (draft→sent)                         |
+| `quote.auto_send_on_confirm`              | 見積書を人が確定 (draft→sent) した時点で顧客へ自動送付 (書類リンク)                                   | OFF  | ✅ documents PUT (draft→sent)                         |
+| `accounting.auto_categorize_on_intake`    | 案件登録時にメニュー明細から勘定科目を推定し「提案」を保存 (計上=確定は人 / 壁3)                      | OFF  | ✅ 予約作成 (POST reservations)                       |
+| `thickness.auto_detect`                   | 塗膜厚レポート受信時に統計的な異常検知を自動付与 (注釈)                                               | OFF  | ✅ NexPTG 同期 (POST external/nexptg/sync)            |
+| `workflow.auto_propose_on_intake`         | 案件登録時にメニュー+過去履歴から最適ワークフローを「提案」(適用=進行開始は人)                        | OFF  | ✅ 予約作成 (POST reservations)                       |
+| `inventory.auto_draft_reorder`            | 在庫下限割れ時に仕入先ごとの発注書を draft で自動起票 (承認・送信は人 / 壁3)                          | OFF  | ✅ 低在庫 cron (low-stock-alerts)                     |
+| `photo.auto_tampering_check`              | 証明書写真アップロード時に改ざんスクリーニング (アップロード時シグナルの集約) を自動付与 (注釈)       | OFF  | ✅ 写真アップロード (POST certificates/images/upload) |
+| `insurer_case.auto_fraud_score`           | 保険案件作成時に不正リスクを自動スコア (ルール一次 + グレーのみ AI、注釈。査定確定は人)               | OFF  | ✅ 案件作成 (POST insurer/cases)                      |
 
 > **certificate.auto_draft の配線**: 予約 (案件) が `completed` になった時点で
 > `maybeAutoDraftCertificateForReservation` (fire-and-forget) が走り、車両 + 過去事例から
@@ -187,6 +189,24 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 > **発注の承認 (approve) / 送信 (sent = 仕入先へメール) / 入荷 (received = 在庫 in 計上) は
 > すべて人の操作** (`PUT /api/admin/purchase-orders`)。自動で発注を確定・外部送信することは
 > しない (壁3: 仕入先への金額コミットは必ず人)。仕入先マスタは `/api/admin/suppliers`。
+
+> **photo.auto_tampering_check の配線**: 証明書写真のアップロード (`POST /api/certificates/images/upload`)
+> が成功すると、レスポンス後に `after()` 経由で `maybeAutoTamperingCheckForCertificate`
+> (`photoTamperingAuto.ts`) が走る。アップロード経路は各画像の整合性シグナル
+> (sha256 / perceptual_hash / 撮影メタ / ディープフェイク判定 / authenticity_grade) を
+> `certificate_images` に保存済みで、アップロード時に EXIF/GPS を除去・再エンコードするため、
+> 本処理は **保存済みシグナルを証明書単位の改ざん判定に集約** する (追加ダウンロード・新規 AI
+> 呼び出しなし = コストゼロ)。重複ハッシュ / ディープフェイク likely_fake / 撮影日時の未来を
+> suspicious、撮影メタ欠落を inconclusive とし、`certificates.meta.tampering_check` に保存する
+> (`source="auto"`、写真集合が変わらなければ再実行しない、手動チェック結果は上書きしない)。
+> 注釈用途で発行・金額・本人確認には不介入 (壁3 対象外)。発行前に人がフラグを確認できる。
+>
+> **insurer_case.auto_fraud_score の配線**: 保険案件の作成 (`POST /api/insurer/cases`) 後に
+> `after()` 経由で `maybeAutoFraudScoreForCase` (`fraudScoreAuto.ts`) が走る。案件の `tenant_id`
+> を opt-in 判定キーにし (テナント未紐付けならスキップ)、`checkFraudPatterns` (ルール一次 +
+> グレーのみ Haiku) を実行して `insurer_cases.meta.ai_fraud` に保存し、`insurer_access_logs`
+> (`action=fraud_check_auto`) に記録する。**査定の確定は必ず人** (リスク提示のみ・壁3 不介入)。
+> AI コストはグレーゾーンの Haiku のみ発生し、master switch / 月次コストキャップに従う。
 
 ### 4.5.1 LINE 受信 → 自動処理パイプライン
 

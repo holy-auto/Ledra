@@ -38,7 +38,9 @@ export type AutomationActionKey =
   | "thickness.auto_detect"
   | "workflow.auto_propose_on_intake"
   | "workflow.auto_apply_on_intake"
-  | "inventory.auto_draft_reorder";
+  | "inventory.auto_draft_reorder"
+  | "photo.auto_tampering_check"
+  | "insurer_case.auto_fraud_score";
 
 export interface AutomationActionDef {
   key: AutomationActionKey;
@@ -177,6 +179,24 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     defaultEnabled: false,
     guard: "AI 有効 + Standard プラン以上 + 品目に仕入先 (supplier_id) が設定済み",
   },
+  {
+    key: "photo.auto_tampering_check",
+    workflow: "certificate",
+    label: "証明書写真の改ざんスクリーニングを自動実行",
+    description:
+      "施工写真がアップロードされた時点で、アップロード時に取得済みのシグナル (ハッシュ重複 / ディープフェイク判定 / 撮影メタ) を証明書単位の改ざん判定に集約し、注釈として保存する。発行・金額・本人確認には関与しないため安全 (人は発行前にフラグを確認できる)。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Standard プラン以上 (ai_quality_vision)",
+  },
+  {
+    key: "insurer_case.auto_fraud_score",
+    workflow: "insurer_case",
+    label: "保険案件の受信時に不正リスクを自動スコア",
+    description:
+      "保険案件 (claim) が作成された時点で、ルールベース一次判定 + グレーゾーンのみ AI で不正リスクを自動評価し、注釈として案件に保存する。査定の確定は必ず人が行う (リスク提示のみ・壁3 不介入)。",
+    defaultEnabled: false,
+    guard: "AI 有効 + 案件にテナント紐付けあり (証明書/車両/契約経由)",
+  },
 ];
 
 /**
@@ -222,6 +242,8 @@ export const RECOMMENDED_AUTOMATION_ACTION_KEYS: ReadonlySet<string> = new Set<s
   "workflow.auto_propose_on_intake",
   "workflow.auto_apply_on_intake",
   "inventory.auto_draft_reorder",
+  "photo.auto_tampering_check",
+  "insurer_case.auto_fraud_score",
 ]);
 
 /** opt-in 可能な (カタログに存在する) アクションキーか。 */
