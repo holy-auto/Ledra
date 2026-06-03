@@ -23,13 +23,17 @@
 
 > ペッパー生成例: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
 
-### 1-2. SMS 配信（顧客への確定リンク/OTP）
+### 1-2. 確定リンク/OTP の配信（LINE 優先 → SMS フォールバック）
 
 | 変数 | 用途 |
 |---|---|
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_PHONE_NUMBER` | Twilio SMS |
+| （LINE）テナントの LINE 連携設定（既存 `getLineConfig`） | LINE 配信 |
 
-未設定なら SMS は送られず、店は確定依頼APIの応答 `confirm_url` を顧客へ手動共有して運用可能。
+- 顧客が **LINE 連携済み（`customers.line_user_id` あり）なら LINE で配信**、未連携/失敗時は SMS。
+- どちらも未設定/失敗でも確定依頼は止まらず、店は応答の `confirm_url` を顧客へ手動共有可能。
+- ※ 本人性の照合キーは電話フルハッシュ（`phone_full_hash`）。LINE は配信経路であり、
+  確定には顧客の電話番号が `customers` に登録されている必要がある。
 
 ### 1-3. ブロックチェーンアンカー（Phase 4 高額個別 / Phase 8 全件メタ）
 
