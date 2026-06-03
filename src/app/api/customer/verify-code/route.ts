@@ -113,7 +113,7 @@ export async function POST(req: Request) {
 
     res.cookies.set(CUSTOMER_COOKIE, sess.token, {
       httpOnly: true,
-      sameSite: "lax",
+      sameSite: "strict",
       secure: isSecureCookie,
       path: "/",
       maxAge: 30 * 24 * 60 * 60,
