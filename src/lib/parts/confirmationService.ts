@@ -19,6 +19,7 @@ import { resolveConfirmation, type ContactProvenance } from "@/lib/parts/confirm
 import { signPartConfirmation } from "@/lib/parts/partSigning";
 import { requestTimestamp } from "@/lib/parts/tsa";
 import { sendNotificationSms, formatPhoneE164 } from "@/lib/sms/client";
+import { sendCustomerLineText } from "@/lib/line/client";
 
 const OTP_TTL_MIN = Number(process.env.PARTS_OTP_TTL_MIN ?? 10);
 const LINK_TTL_HOURS = Number(process.env.PARTS_CONFIRM_LINK_TTL_HOURS ?? 72);
@@ -39,12 +40,31 @@ export interface RequestConfirmationResult {
   otpDevCode?: string;
 }
 
-/** 確定リンク＋OTP を顧客へ best-effort で配信する（SMS。LINE 連携は将来）。 */
-async function notifyConfirmation(phone: string, confirmUrl: string, code: string): Promise<void> {
+/**
+ * 確定リンク＋OTP を顧客へ best-effort で配信する。
+ * LINE 連携済みなら LINE 優先、未連携/失敗時は SMS へフォールバック。
+ */
+async function notifyConfirmation(
+  channel: "line" | "sms" | "in_store_tablet",
+  target: { tenantId: string; customerId: string | null; phone: string | null; lineUserId: string | null },
+  confirmUrl: string,
+  code: string,
+): Promise<void> {
+  const message = `【Ledra】部品交換のご確認をお願いします。\n${confirmUrl}\n確認コード: ${code}`;
   try {
-    const to = formatPhoneE164(phone);
-    const message = `【Ledra】部品交換のご確認をお願いします。\n${confirmUrl}\n確認コード: ${code}`;
-    await sendNotificationSms(to, message);
+    if (channel === "line" && target.lineUserId) {
+      const ok = await sendCustomerLineText({
+        tenantId: target.tenantId,
+        customerId: target.customerId,
+        lineUserId: target.lineUserId,
+        body: message,
+      });
+      if (ok) return;
+      // LINE 送信失敗 → SMS フォールバック
+    }
+    if (target.phone) {
+      await sendNotificationSms(formatPhoneE164(target.phone), message);
+    }
   } catch (e) {
     console.error("[parts-confirm] 通知送信に失敗:", e);
   }
@@ -68,24 +88,26 @@ export async function requestConfirmation(
   if (inst.status !== "installed") throw new Error(`確定依頼できる状態ではありません (status=${inst.status})`);
   if (!inst.content_hash) throw new Error("content_hash 未設定の装着は確定できません");
 
-  // 顧客（連絡先・出所）
+  // 顧客（連絡先・出所・LINE連携）
   let phone: string | null = null;
   let contactProvenance: ContactProvenance | null = null;
   let existingFullHash: string | null = null;
+  let lineUserId: string | null = null;
   if (inst.customer_id) {
     const { data: cust } = await admin
       .from("customers")
-      .select("id, phone, phone_full_hash, contact_provenance")
+      .select("id, phone, phone_full_hash, contact_provenance, line_user_id")
       .eq("id", inst.customer_id)
       .maybeSingle();
     phone = cust?.phone ?? null;
     contactProvenance = (cust?.contact_provenance as ContactProvenance | null) ?? null;
     existingFullHash = cust?.phone_full_hash ?? null;
+    lineUserId = cust?.line_user_id ?? null;
   }
 
   const phoneAvailable = !!(phone || existingFullHash);
-  // LINE 連携の判定は将来の linkage 実装に委ねる（現状は SMS 既定）。
-  const lineLinked = false;
+  // 顧客が LINE 連携済み(customers.line_user_id)なら LINE 優先。
+  const lineLinked = !!lineUserId;
 
   const decision = resolveConfirmation({
     requiredAssurance: inst.required_assurance,
@@ -155,11 +177,16 @@ export async function requestConfirmation(
     .eq("id", installationId);
   if (linkErr) throw new Error(`link signature failed: ${linkErr.message}`);
 
-  // 確定リンク＋OTP を顧客の携帯へ配信（タブレット以外）。best-effort。
-  if (decision.channel !== "in_store_tablet" && phone && rawCode) {
+  // 確定リンク＋OTP を顧客へ配信（タブレット以外）。LINE 優先→SMS フォールバック。best-effort。
+  if (decision.channel !== "in_store_tablet" && rawCode) {
     const base = opts.origin ?? process.env.NEXT_PUBLIC_APP_URL ?? "";
     const confirmUrl = `${base}/parts/confirm/${token}`;
-    await notifyConfirmation(phone, confirmUrl, rawCode);
+    await notifyConfirmation(
+      decision.channel,
+      { tenantId, customerId: inst.customer_id ?? null, phone, lineUserId },
+      confirmUrl,
+      rawCode,
+    );
   }
 
   return { token, channel: decision.channel, assurance: decision.assurance, expiresAt, otpDevCode };
