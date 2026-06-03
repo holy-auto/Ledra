@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import PageHeader from "@/components/ui/PageHeader";
 import { formatDateTime } from "@/lib/format";
+import FindingActions from "./FindingActions";
 
 /**
  * 部品装着インテグリティ 監査ダッシュボード（抜き取り監査・L7）。
@@ -154,6 +155,7 @@ export default async function PartsIntegrityDashboard({
                 <th className="px-4 py-2">内容</th>
                 <th className="px-4 py-2">状態</th>
                 <th className="px-4 py-2">検知日時</th>
+                <th className="px-4 py-2">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border-default">
@@ -176,6 +178,9 @@ export default async function PartsIntegrityDashboard({
                   <td className="px-4 py-2 text-secondary">{detailNote(f.detail)}</td>
                   <td className="px-4 py-2 text-secondary">{f.status}</td>
                   <td className="px-4 py-2 text-secondary">{formatDateTime(f.created_at)}</td>
+                  <td className="px-4 py-2">
+                    <FindingActions id={f.id} status={f.status} />
+                  </td>
                 </tr>
               ))}
             </tbody>
