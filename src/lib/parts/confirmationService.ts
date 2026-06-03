@@ -18,6 +18,7 @@ import { phoneFullHashFromRaw } from "@/lib/parts/phoneIdentity";
 import { resolveConfirmation, type ContactProvenance } from "@/lib/parts/confirmationPolicy";
 import { signPartConfirmation } from "@/lib/parts/partSigning";
 import { requestTimestamp } from "@/lib/parts/tsa";
+import { sendNotificationSms, formatPhoneE164 } from "@/lib/sms/client";
 
 const OTP_TTL_MIN = Number(process.env.PARTS_OTP_TTL_MIN ?? 10);
 const LINK_TTL_HOURS = Number(process.env.PARTS_CONFIRM_LINK_TTL_HOURS ?? 72);
@@ -38,10 +39,21 @@ export interface RequestConfirmationResult {
   otpDevCode?: string;
 }
 
+/** 確定リンク＋OTP を顧客へ best-effort で配信する（SMS。LINE 連携は将来）。 */
+async function notifyConfirmation(phone: string, confirmUrl: string, code: string): Promise<void> {
+  try {
+    const to = formatPhoneE164(phone);
+    const message = `【Ledra】部品交換のご確認をお願いします。\n${confirmUrl}\n確認コード: ${code}`;
+    await sendNotificationSms(to, message);
+  } catch (e) {
+    console.error("[parts-confirm] 通知送信に失敗:", e);
+  }
+}
+
 export async function requestConfirmation(
   tenantId: string,
   installationId: string,
-  opts: { inStoreTablet?: boolean } = {},
+  opts: { inStoreTablet?: boolean; origin?: string } = {},
 ): Promise<RequestConfirmationResult> {
   const { admin } = createTenantScopedAdmin(tenantId);
 
@@ -107,13 +119,14 @@ export async function requestConfirmation(
 
   // OTP（タブレット以外）
   let otpDevCode: string | undefined;
+  let rawCode: string | null = null;
   let otpHash: string | null = null;
   let otpExpiresAt: string | null = null;
   if (decision.channel !== "in_store_tablet") {
-    const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
-    otpHash = otpCodeHash(token, code);
+    rawCode = String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
+    otpHash = otpCodeHash(token, rawCode);
     otpExpiresAt = new Date(now + OTP_TTL_MIN * 60_000).toISOString();
-    if (process.env.NODE_ENV !== "production") otpDevCode = code;
+    if (process.env.NODE_ENV !== "production") otpDevCode = rawCode;
   }
 
   const { error: sigErr } = await admin.from("part_confirmation_signatures").insert({
@@ -141,6 +154,13 @@ export async function requestConfirmation(
     .update({ confirmation_signature_id: sigId })
     .eq("id", installationId);
   if (linkErr) throw new Error(`link signature failed: ${linkErr.message}`);
+
+  // 確定リンク＋OTP を顧客の携帯へ配信（タブレット以外）。best-effort。
+  if (decision.channel !== "in_store_tablet" && phone && rawCode) {
+    const base = opts.origin ?? process.env.NEXT_PUBLIC_APP_URL ?? "";
+    const confirmUrl = `${base}/parts/confirm/${token}`;
+    await notifyConfirmation(phone, confirmUrl, rawCode);
+  }
 
   return { token, channel: decision.channel, assurance: decision.assurance, expiresAt, otpDevCode };
 }
