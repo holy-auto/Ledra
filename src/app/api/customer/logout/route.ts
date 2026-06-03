@@ -10,7 +10,7 @@ export async function POST() {
   // NextResponse is created directly so that we can set cookies on it; the
   // security headers (no-store / Vary: Cookie) are then applied uniformly.
   const res = applySecurityHeaders(apiJson({ ok: true }));
-  res.cookies.set(CUSTOMER_COOKIE, "", { httpOnly: true, sameSite: "lax", path: "/", maxAge: 0 });
+  res.cookies.set(CUSTOMER_COOKIE, "", { httpOnly: true, sameSite: "strict", path: "/", maxAge: 0 });
 
   if (token) {
     try {
