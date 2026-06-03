@@ -35,10 +35,8 @@ import { shouldAutoTamperingCheck } from "./orchestrator";
 
 const VISION_ENDPOINT = "/api/certificates/images/upload#auto-tampering-vision";
 
-/** Vision 審査の対象にするグレーゾーン画像数の上限。 */
+/** 1 回の実行で Vision 審査するグレーゾーン画像数の上限 (暴走防止)。 */
 const MAX_VISION_IMAGES = 6;
-/** 1 回の実行で新たに Opus を呼ぶ画像数の上限 (暴走防止)。 */
-const MAX_VISION_NEW_PER_RUN = 4;
 /** Anthropic image API が受け付ける media type のみ Vision に回す。 */
 const VISION_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
@@ -122,12 +120,10 @@ export async function maybeAutoTamperingCheckForCertificate(params: MaybeAutoTam
     const prev = asRecord(existingMeta.tampering_check);
     // 手動チェック結果 (source 無し) は人の判断なので自動で上書きしない。
     if (Object.keys(prev).length > 0 && prev.source !== "auto") return;
-    // 同じ写真集合で既に自動判定済みなら再実行しない。
-    if (prev.signature && prev.signature === firstPass.signature) return;
 
-    // ── Vision エスカレーション (グレーゾーンのみ・新規画像のみ) ──────────────
+    // ── Vision エスカレーション (グレーゾーンのみ・未判定のみ) ──────────────
     // 画像ごとの Vision 結果を meta.tampering_check.vision にキャッシュし、再アップロード時は
-    // 新規グレー画像だけ Opus を呼ぶ。source_policies.photos=false なら Vision を一切呼ばない。
+    // 未判定のグレー画像だけ Opus を呼ぶ。source_policies.photos=false なら Vision を一切呼ばない。
     const photosAllowed = settings.sourcePolicies?.photos !== false;
     const prevVision = asRecord(prev.vision) as Record<string, VisionVerdict>;
     const grayIds = pickGrayZoneImageIds(firstPass, MAX_VISION_IMAGES);
@@ -136,7 +132,12 @@ export async function maybeAutoTamperingCheckForCertificate(params: MaybeAutoTam
     for (const id of grayIds) {
       if (prevVision[id] && typeof prevVision[id].suspicious === "boolean") visionByImageId[id] = prevVision[id];
     }
-    const newIds = grayIds.filter((id) => !visionByImageId[id]).slice(0, MAX_VISION_NEW_PER_RUN);
+    // 同じ写真集合で、かつ対象のグレー画像がすべて Vision 判定済みなら再実行しない。
+    // (一部だけ判定済み = 前回バッチで Vision を呼べなかった残りがある場合は続行して処理する)
+    const allGrayCached = grayIds.every((id) => visionByImageId[id] !== undefined);
+    if (prev.signature && prev.signature === firstPass.signature && allGrayCached) return;
+
+    const newIds = grayIds.filter((id) => !visionByImageId[id]);
 
     let visionCalls = 0;
     if (photosAllowed && newIds.length > 0) {
@@ -180,9 +181,23 @@ export async function maybeAutoTamperingCheckForCertificate(params: MaybeAutoTam
       vision: visionByImageId,
     };
 
+    // Vision に数秒かかる間に手動チェック等で meta が更新され得るため、書き込み直前に
+    // meta を読み直して再ガードし、最新の meta にマージする (stale な上書きを防ぐ)。
+    const { data: fresh } = await admin
+      .from("certificates")
+      .select("meta")
+      .eq("id", certificateId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (!fresh) return;
+    const freshMeta = asRecord(fresh.meta);
+    const freshPrev = asRecord(freshMeta.tampering_check);
+    // この間に手動チェック (source 無し) が入っていたら人の判断を尊重して上書きしない。
+    if (Object.keys(freshPrev).length > 0 && freshPrev.source !== "auto") return;
+
     const { error: upErr } = await admin
       .from("certificates")
-      .update({ meta: { ...existingMeta, tampering_check } })
+      .update({ meta: { ...freshMeta, tampering_check } })
       .eq("id", certificateId)
       .eq("tenant_id", tenantId);
     if (upErr) {

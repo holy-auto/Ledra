@@ -473,23 +473,27 @@ function FraudCheckSection({
   initial?: { risk_level: string; flags?: string[]; llm_reason?: string | null; scored_at?: string } | null;
 }) {
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{
+  // 手動再実行の結果。これが無い間は受信時の自動スコア (initial) を表示する。
+  // initial は親のポーリングで後から届く (after() の書き込み完了後) ことがあるため、
+  // state に固定せず live prop から導出し、リロードなしで反映されるようにする。
+  const [manualResult, setManualResult] = useState<{
     risk_level: string;
     flags: string[];
     llm_reason: string | null;
-  } | null>(
-    initial
-      ? { risk_level: initial.risk_level, flags: initial.flags ?? [], llm_reason: initial.llm_reason ?? null }
-      : null,
-  );
-  // 受信時に自動付与されたスコアを初期表示し、手動再実行で上書きする。
-  const [isAuto, setIsAuto] = useState(!!initial);
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const result =
+    manualResult ??
+    (initial
+      ? { risk_level: initial.risk_level, flags: initial.flags ?? [], llm_reason: initial.llm_reason ?? null }
+      : null);
+  const isAuto = !manualResult && !!initial;
 
   async function runCheck() {
     setLoading(true);
     setError(null);
-    setResult(null);
+    setManualResult(null);
     try {
       const res = await fetch("/api/insurer/cases/fraud-check", {
         method: "POST",
@@ -498,8 +502,7 @@ function FraudCheckSection({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message ?? "審査に失敗しました");
-      setResult(data);
-      setIsAuto(false);
+      setManualResult(data);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "エラーが発生しました");
     } finally {
