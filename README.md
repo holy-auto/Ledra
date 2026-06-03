@@ -2,13 +2,15 @@
 
 自動車整備 / ボディリペア / コーティング / PPF 店向けのマルチテナント SaaS。
 施工証明書発行、請求・帳票、顧客ポータル、予約、保険会社 (損保) との案件連携、
-ブロックチェーン・アンカリングによる証明書改ざん検知までを一本化して提供します。
+部品装着インテグリティ (装着部品の真正性証明)、AI 業務自動化、
+ブロックチェーン・アンカリング + RFC3161 タイムスタンプによる
+証明書・装着記録の改ざん検知までを一本化して提供します。
 
 ```
 Next.js 16.2 (App Router) + React 19.2 (React Compiler)
 Supabase (Postgres + Storage + Auth) · Stripe · Upstash Redis + QStash
-Sentry · Resend (+ SendGrid fallback) · Anthropic (Sonnet 4.6)
-@react-pdf/renderer · viem/ethers · Twilio · Healthchecks.io
+Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Haiku 4.5)
+@react-pdf/renderer · viem/ethers · RFC3161 TSA · Twilio · LINE · Healthchecks.io
 ```
 
 ## ディレクトリ概観
@@ -23,11 +25,13 @@ src/
 │   ├── manufacturer/          メーカー (Manufacturer) 画面
 │   ├── market/                中古車マーケット
 │   ├── passport/              車両パスポート (vehicle passport)
+│   ├── parts/                 部品装着インテグリティ (納車時の顧客確認 UI)
 │   ├── customer/, c/, my/     顧客ポータル
 │   ├── sign/, agent-sign/     電子署名フロー
-│   └── api/                   420+ Route Handlers (32 トップレベルグループ)
+│   └── api/                   490+ Route Handlers (35 トップレベルグループ)
 │       ├── cron/              Vercel Cron (billing, follow-up, monitor, news, etc.)
 │       ├── qstash/            非同期ジョブ (batch-pdf, polygon-backfill, 等)
+│       ├── parts/             装着インジェスト / 監査 findings / 確定 / LINE 連携コード
 │       ├── stripe/            webhook + portal
 │       ├── v1/                外部公開 API (tenant API key 認証)
 │       └── webhooks/          受信 webhook (Square / LINE / etc.)
@@ -37,6 +41,8 @@ src/
 │   ├── http/                  withRetry — 外向き呼び出しの retry + circuit breaker
 │   ├── email/                 sendEmail (Resend → SendGrid フォールバック)
 │   ├── ai/                    Anthropic structured outputs + withRetry ラップ
+│   │   └── automation/        AI 自動化 orchestrator (写真改ざん検知 / 不正スコア 等)
+│   ├── parts/                 部品装着インテグリティ (TSA / アンカー / 確定署名 / 照合)
 │   ├── billing/               プラン / Stripe subscription ガード
 │   ├── signature/             電子署名 + PDF 署名
 │   ├── anchoring/             Polygon アンカリング
@@ -58,6 +64,23 @@ src/
                                ・Supabase session リフレッシュ + 認証リダイレクト
                                ・rate limit プリセット適用
 ```
+
+## 主要機能の柱
+
+- **施工証明書 × 改ざん検知**: 証明書を Polygon にアンカリングし、改ざん不能な
+  真正性を担保。写真必須ガード (下記) と組み合わせ「証拠付きの証明書」を発行します。
+- **部品装着インテグリティ**: 装着部品の真正性を、装着インジェスト → AI 自動検査 →
+  納品書 OCR との三方照合 → 確定署名 (OTP 所持証明 + 事業者署名 + RFC3161 TSA) →
+  ブロックチェーン・アンカー → 納車時の顧客 LINE 確認、という一連で証明します。
+  ロジックは `src/lib/parts/` (`installationService` / `reconcileService` /
+  `confirmationService` / `partSigning` / `tsa` / `rfc3161` / `anchorService` /
+  `metaAnchor`)、設計は `docs/parts-installation-integrity-design.md`、
+  本番投入は `docs/parts-integrity-golive-checklist.md`。
+- **AI 業務自動化**: `src/lib/ai/` に 40+ の structured-output タスク、
+  `src/lib/ai/automation/` に信頼系 auto-action の orchestrator を実装。
+  写真改ざん検知 (`photoTamperingAuto`) / 保険不正スコア (`fraudScoreAuto`) /
+  膜厚異常 (`thicknessAuto`) などは `policy.ts` のガード下で自動実行されます。
+  概説は `docs/ai-automation-guide.md`。
 
 ## セキュリティ上のお約束
 
@@ -156,10 +179,10 @@ npm run dev                       # http://localhost:3000
 
 ## テスト戦略
 
-- **Unit (`vitest`)**: `src/**/__tests__/*.test.ts`・1600+ cases (152 ファイル)。
+- **Unit (`vitest`)**: `src/**/__tests__/*.test.ts`・2200+ cases (200+ ファイル)。
   billing / stripe webhook / signature / anchoring / rate limit / withRetry /
   sendEmail / cron failureTracker / customer portal / logger / safeJson /
-  permissions など。
+  parts integrity (TSA / 照合 / 確定署名) / AI automation policy / permissions など。
 - **E2E (`Playwright`)**: `e2e/*.spec.ts`。signup / billing ガード /
   証明書フロー。カバレッジ拡張は `docs/AUDIT_REPORT_20260329.md` にロードマップ。
 - **`audit:retry` script**: `npm run audit:retry` で外向き fetch / SDK 呼び出しの
@@ -168,7 +191,7 @@ npm run dev                       # http://localhost:3000
 ## マイグレーション
 
 Supabase 用の SQL は `supabase/migrations/` にタイムスタンプ順で入っています
-(200+ 本)。追加時は以下を意識:
+(250+ 本)。追加時は以下を意識:
 
 - **zero-downtime**: `ADD COLUMN NOT NULL DEFAULT` は避け、`ADD (nullable)`
   → `UPDATE` → `SET NOT NULL` の 3 段にする
@@ -183,6 +206,9 @@ Supabase 用の SQL は `supabase/migrations/` にタイムスタンプ順で入
 
 - `docs/architecture-roadmap.md` — 中長期アーキ
 - `docs/operations-guide.md` — 運用手順 (監視 / インシデント対応)
+- `docs/parts-installation-integrity-design.md` — 部品装着インテグリティ設計
+- `docs/parts-integrity-golive-checklist.md` — 部品装着インテグリティ Go-Live
+- `docs/ai-automation-guide.md` — AI 自動化の概説 / ポリシー
 - `docs/stripe-production-checklist.md` — 本番 Stripe 切替
 - `docs/polygon-anchoring-deployment.md` — Polygon 本番投入
 - `docs/staging-environment.md` — staging 構成
