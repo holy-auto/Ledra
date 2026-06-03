@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, after } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages";
@@ -13,6 +13,7 @@ import { computeAuthenticityGrade } from "@/lib/anchoring/authenticityGrade";
 import { invokeAllUploadProviders } from "@/lib/anchoring/providers";
 import { upsertVehiclePassport } from "@/lib/passport/upsertVehiclePassport";
 import { generateImageVariants, variantStoragePath } from "@/lib/certificateImages/generateVariants";
+import { maybeAutoTamperingCheckForCertificate } from "@/lib/ai/automation/photoTamperingAuto";
 
 export const runtime = "nodejs";
 // Allow up to 60s for image processing + verification providers.
@@ -349,6 +350,10 @@ export async function POST(req: NextRequest) {
         status: 422,
       });
     }
+
+    // opt-in テナントでは、写真追加後に改ざんスクリーニングを自動実行する
+    // (fire-and-forget / レスポンス後 / 既存シグナルの集約のみで AI 課金なし)。
+    after(() => maybeAutoTamperingCheckForCertificate({ tenantId, certificateId: cert.id as string }));
 
     return apiOk({ uploaded, max: maxPhotos, plan: planTier, images: uploadedImages });
   } catch (e) {

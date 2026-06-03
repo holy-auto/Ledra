@@ -29,7 +29,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     const { data: caseData, error: caseErr } = await admin
       .from("insurer_cases")
       .select(
-        "id, insurer_id, title, description, status, priority, category, case_number, certificate_id, vehicle_id, tenant_id, assigned_to, created_by, resolved_at, closed_at, created_at, updated_at",
+        "id, insurer_id, title, description, status, priority, category, case_number, certificate_id, vehicle_id, tenant_id, assigned_to, created_by, resolved_at, closed_at, created_at, updated_at, meta",
       )
       .eq("id", id)
       .eq("insurer_id", caller.insurerId)
@@ -122,7 +122,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       .eq("id", id)
       .eq("insurer_id", caller.insurerId)
       .select(
-        "id, insurer_id, title, description, status, priority, category, case_number, certificate_id, vehicle_id, tenant_id, assigned_to, created_by, resolved_at, closed_at, created_at, updated_at",
+        "id, insurer_id, title, description, status, priority, category, case_number, certificate_id, vehicle_id, tenant_id, assigned_to, created_by, resolved_at, closed_at, created_at, updated_at, meta",
       )
       .single();
 

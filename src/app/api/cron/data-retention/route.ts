@@ -40,7 +40,7 @@ interface DeletionRule {
 const RULES: DeletionRule[] = [
   { table: "customer_login_codes", column: "created_at", days: 30 },
   { table: "customer_sessions", column: "revoked_at", days: 90 },
-  { table: "notification_logs", column: "created_at", days: 180 },
+  { table: "notification_logs", column: "sent_at", days: 180 },
   { table: "outbox_events", column: "delivered_at", days: 90, filter: { col: "status", val: "delivered" } },
   { table: "stripe_processed_events", column: "received_at", days: 90 },
 ];

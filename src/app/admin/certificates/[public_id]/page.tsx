@@ -67,13 +67,40 @@ export default async function Page({ params }: PageProps) {
   const { data: row, error } = await supabase
     .from("certificates")
     .select(
-      "id,tenant_id,customer_id,vehicle_id,public_id,status,customer_name,vehicle_info_json,content_free_text,content_preset_json,expiry_type,expiry_value,expiry_date,warranty_period_end,maintenance_date,warranty_exclusions,remarks,service_type,logo_asset_path,current_version,created_at,updated_at",
+      "id,tenant_id,customer_id,vehicle_id,public_id,status,customer_name,vehicle_info_json,content_free_text,content_preset_json,expiry_type,expiry_value,expiry_date,warranty_period_end,maintenance_date,warranty_exclusions,remarks,service_type,logo_asset_path,current_version,created_at,updated_at,meta",
     )
     .eq("tenant_id", tenantId)
     .eq("public_id", publicId)
     .single();
 
   if (error || !row?.public_id) notFound();
+
+  // アップロード時に自動付与された改ざんスクリーニング結果 (meta.tampering_check)。
+  // source==="auto" のものだけをバッジ表示する (手動審査はパネルのボタンで都度実行)。
+  const tamperingTc = (row.meta as Record<string, unknown> | null)?.tampering_check as
+    | {
+        source?: string;
+        verdict?: "clear" | "suspicious" | "inconclusive";
+        summary?: string;
+        flagged_count?: number;
+        image_count?: number;
+        flags?: string[];
+        vision_checked?: boolean;
+        checked_at?: string | null;
+      }
+    | undefined;
+  const autoTampering =
+    tamperingTc && tamperingTc.source === "auto" && tamperingTc.verdict
+      ? {
+          verdict: tamperingTc.verdict,
+          summary: tamperingTc.summary ?? "",
+          flagged_count: tamperingTc.flagged_count ?? 0,
+          image_count: tamperingTc.image_count ?? 0,
+          flags: Array.isArray(tamperingTc.flags) ? tamperingTc.flags : [],
+          vision_checked: !!tamperingTc.vision_checked,
+          checked_at: tamperingTc.checked_at ?? null,
+        }
+      : null;
 
   // 閲覧ログ記録
   logCertificateAction({
@@ -528,6 +555,7 @@ export default async function Page({ params }: PageProps) {
             <PhotoTamperingPanel
               certificateId={row.id as string}
               photoUrls={images.map((img) => img.url).filter((u): u is string => !!u)}
+              autoResult={autoTampering}
             />
           )}
 

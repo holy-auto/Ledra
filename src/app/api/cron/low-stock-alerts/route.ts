@@ -92,7 +92,7 @@ export async function GET(req: NextRequest) {
           .select("*", { count: "exact", head: true })
           .eq("tenant_id", tenantId)
           .eq("type", "low_stock_alert")
-          .gte("created_at", `${todayStr}T00:00:00Z`);
+          .gte("sent_at", `${todayStr}T00:00:00Z`);
         if ((existingLogs ?? 0) > 0) continue;
 
         let sent = false;

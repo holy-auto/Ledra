@@ -5,13 +5,14 @@ const nullableText = (max: number) =>
     .string()
     .trim()
     .max(max)
+    .transform((v) => v || null)
     .nullable()
-    .optional()
-    .transform((v) => v || null);
+    .optional();
 
 export const inventoryItemCreateSchema = z.object({
   name: z.string().trim().min(1, "品目名は必須です。").max(200),
   sku: nullableText(100),
+  barcode: nullableText(64),
   category: nullableText(100),
   unit: z
     .string()
@@ -29,6 +30,7 @@ export const inventoryItemCreateSchema = z.object({
 export const inventoryItemUpdateSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
   sku: nullableText(100),
+  barcode: nullableText(64),
   category: nullableText(100),
   unit: z.string().trim().max(20).optional(),
   current_stock: z.coerce.number().min(0).optional(),

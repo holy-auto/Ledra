@@ -33,6 +33,22 @@ const FLAG_LABELS: Record<string, string> = {
   gps_extreme: "GPS 異常値",
   exif_stripped: "EXIF 欠落",
   vision_suspicious: "AI 視覚審査で疑わしい",
+  // 自動スクリーニング (certificatePhotoIntegrity) のフラグ
+  duplicate_image: "写真の重複",
+  deepfake_suspected: "ディープフェイク疑い",
+  capture_time_future: "撮影日時が未来",
+  metadata_missing: "撮影メタ欠落",
+};
+
+/** アップロード時に自動付与される改ざんスクリーニング結果 (certificates.meta.tampering_check)。 */
+export type AutoTamperingResult = {
+  verdict: "clear" | "suspicious" | "inconclusive";
+  summary: string;
+  flagged_count: number;
+  image_count: number;
+  flags: string[];
+  vision_checked?: boolean;
+  checked_at?: string | null;
 };
 
 const VERDICT_STYLE: Record<PhotoResult["verdict"], { badge: string; label: string }> = {
@@ -44,9 +60,11 @@ const VERDICT_STYLE: Record<PhotoResult["verdict"], { badge: string; label: stri
 export default function PhotoTamperingPanel({
   certificateId,
   photoUrls,
+  autoResult,
 }: {
   certificateId: string;
   photoUrls: string[];
+  autoResult?: AutoTamperingResult | null;
 }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AuditResult | null>(null);
@@ -96,6 +114,39 @@ export default function PhotoTamperingPanel({
           )}
         </button>
       </div>
+
+      {autoResult && (
+        <div className={`rounded-xl border px-4 py-3 ${VERDICT_STYLE[autoResult.verdict].badge}`}>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-semibold">
+              {autoResult.verdict === "suspicious" ? "⚠️ " : autoResult.verdict === "clear" ? "✅ " : ""}
+              自動審査: {VERDICT_STYLE[autoResult.verdict].label}
+            </span>
+            {autoResult.checked_at && (
+              <span className="text-[11px] opacity-70">{new Date(autoResult.checked_at).toLocaleString("ja-JP")}</span>
+            )}
+          </div>
+          <p className="mt-1 text-xs">
+            {autoResult.summary}
+            {autoResult.image_count > 0 ? `（${autoResult.image_count} 枚）` : ""}
+          </p>
+          {autoResult.flags.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {autoResult.flags.map((f) => (
+                <span
+                  key={f}
+                  className="rounded-full bg-warning-dim border border-warning/30 px-2 py-0.5 text-[11px] text-warning"
+                >
+                  {FLAG_LABELS[f] ?? f}
+                </span>
+              ))}
+            </div>
+          )}
+          <p className="mt-1.5 text-[11px] opacity-70">
+            アップロード時に自動付与{autoResult.vision_checked ? "（AI 視覚審査を含む）" : ""}。発行前にご確認ください。
+          </p>
+        </div>
+      )}
 
       {error && (
         <div className="rounded-xl border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-400">{error}</div>

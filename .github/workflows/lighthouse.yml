@@ -37,6 +37,9 @@ jobs:
           CRON_SECRET: stub
           CUSTOMER_AUTH_PEPPER: stub
           RESEND_API_KEY: stub
+          QSTASH_TOKEN: stub
+          QSTASH_CURRENT_SIGNING_KEY: sig_stub
+          QSTASH_NEXT_SIGNING_KEY: sig_stub
 
       - name: Lighthouse CI
         uses: treosh/lighthouse-ci-action@v12

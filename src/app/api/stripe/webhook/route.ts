@@ -86,7 +86,7 @@ async function sendPaymentFailureEmail(
         お支払いが確認できない場合、一部機能がご利用いただけなくなる場合がございます。
       </p>
       <div style="border-top: 1px solid #e5e5e5; margin-top: 24px; padding-top: 12px; font-size: 12px; color: #86868b;">
-        Ledra — 株式会社HOLY AUTO
+        Ledra — 株式会社HOLY
       </div>
     </div>
   `;
@@ -101,7 +101,7 @@ async function sendPaymentFailureEmail(
 お支払いが確認できない場合、一部機能がご利用いただけなくなる場合がございます。
 
 ---
-Ledra — 株式会社HOLY AUTO
+Ledra — 株式会社HOLY
 `;
 
   const sent = await sendResendEmail({
@@ -179,7 +179,7 @@ async function sendSubscriptionCancelledEmail(
         </a>
       </p>
       <div style="border-top:1px solid #e5e5e5;margin-top:24px;padding-top:12px;font-size:12px;color:#86868b;">
-        Ledra — 株式会社HOLY AUTO
+        Ledra — 株式会社HOLY
       </div>
     </div>
   `;
@@ -192,7 +192,7 @@ async function sendSubscriptionCancelledEmail(
 プランを再開する: ${billingPortalUrl}
 
 ---
-Ledra — 株式会社HOLY AUTO
+Ledra — 株式会社HOLY
 `;
 
   const sent = await sendResendEmail({
@@ -269,7 +269,7 @@ async function sendTrialWillEndEmail(
         登録がない場合、トライアル終了後は一部機能がご利用いただけなくなります。
       </p>
       <div style="border-top:1px solid #e5e5e5;margin-top:24px;padding-top:12px;font-size:12px;color:#86868b;">
-        Ledra — 株式会社HOLY AUTO
+        Ledra — 株式会社HOLY
       </div>
     </div>
   `;
@@ -284,7 +284,7 @@ async function sendTrialWillEndEmail(
 登録がない場合、トライアル終了後は一部機能がご利用いただけなくなります。
 
 ---
-Ledra — 株式会社HOLY AUTO
+Ledra — 株式会社HOLY
 `;
 
   const sent = await sendResendEmail({

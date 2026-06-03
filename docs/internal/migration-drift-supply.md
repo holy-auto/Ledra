@@ -3,7 +3,66 @@
 > 作成: 2026-06-01
 > 対象: 本番プロジェクト `cahybswpduchptvyvdkk`（WEB施工証明書 = Ledra 本番）
 
-## 背景 / 観測された事実
+## TL;DR（2026-06-01 リポジトリ全体の整合を実施）
+- 本番 `schema_migrations` は repo より大きくズレていた（repo 220 version 中 120 が未記録）。
+- 未記録 120 を「作成テーブル/関数が本番に実在するか」で検証し分類:
+  - **VERIFIED 49**: 実在確認済 → 「適用済み」として `schema_migrations` に後追い記録（実施済み）。
+  - **UNAPPLIED 15**: 作成オブジェクトが本番に存在しなかった＝本当に未適用 → **2026-06-01 に本番へ適用済み**（下記）。10 table + 8 function を検証、advisor 新規 ERROR 0。
+  - **UNVERIFIABLE 56**: ALTER/INDEX/POLICY/VIEW のみで自動検証不能 → 当時は安全側で記録せず。
+- **第2弾（同 2026-06-01）で UNVERIFIABLE 56 を個別検証** → 列/index/制約/policy/view の実在を本番カタログで突合:
+  - **41 本: 実在確認＝適用済み** → `schema_migrations` に記録。
+  - **15 本: 対象オブジェクトが本番に欠落＝本当に未適用** → 本番へ適用（CONCURRENTLY index は `execute_sql` でトランザクション外実行）→ 再検証 → 記録。
+  - 副産物: `notification_logs` の時刻列は `sent_at` なのに migration `20260429000004` と一部 cron コードが存在しない `created_at` を参照していた**バグを発見・修正**（下記）。
+- **結果: repo 220 version すべて本番 `schema_migrations` に記録済み（未記録 0）。repo ↔ 本番のマイグレーション履歴が完全整合。** advisor 新規 ERROR 0。
+
+### ✅ UNAPPLIED 15（本番に未適用だった機能 → 2026-06-01 適用済み）
+これらは「後でDROP」もされておらず、アプリが参照しているものもあった（本番で該当機能が動かない状態だった）。version 順に1本ずつ「ファイル確認→本番現状確認→冪等性判断→適用→検証」して適用した。
+- `20260429000002_academy_creator_rewards`: policy が存在しない `tenant_members` を参照していた**バグを修正**（→ `tenant_memberships`）した上で適用。repo のファイルも同様に修正済み。
+- それ以外は概ね `CREATE TABLE IF NOT EXISTS` 等で冪等。`tenants_deactivated_at_churn` は `ADD COLUMN IF NOT EXISTS` + トリガ存在ガードで安全に再適用可能だった。
+- ファイル名 version を `schema_migrations` に後追い記録済み。
+
+対象一覧（適用済み）:
+
+| migration | 欠落オブジェクト |
+|---|---|
+| 20260423000000_insurer_access_logs_tenant_id | fn `fn_insurer_access_logs_fill_tenant` |
+| 20260423000001_analytics_insurer_30days_rpc | fn `analytics_insurer_30days` |
+| 20260425000002_cron_locks | table `cron_locks`, fn `acquire/release_cron_lock` |
+| 20260429000000_follow_up_maintenance_reminders | fn `follow_up_maintenance_months_valid` |
+| 20260429000001_fix_maintenance_months_constraint | fn `follow_up_maintenance_months_valid` |
+| 20260429000002_academy_creator_rewards | table `academy_creator_rewards` |
+| 20260429000003_webhook_processed_events | table `webhook_processed_events` |
+| 20260430000002_customer_ai_summaries | table `customer_ai_summaries` |
+| 20260503000001_outbox_events | table `outbox_events` |
+| 20260503000003_customer_rights | table `customer_deletion_requests` |
+| 20260503000004_tenant_custom_domains | table `tenant_custom_domains` |
+| 20260506000000_delivery_receipts | table `delivery_receipts` + trigger fn |
+| 20260517000000_tenants_deactivated_at_churn | fn `marketing_churn_stats` / `set_tenant_deactivated_at` |
+| 20260520000004_cert_idempotency_keys | table `cert_idempotency_keys` |
+| 20260530000001_ai_translation_cache | table `ai_translation_cache` |
+
+→ **2026-06-01 実施済み**: 上記15本を version 順に段階適用し、10 table + 8 function の実在を検証。`apply_migration`（auto-version 記録）＋ ファイル名 version を後追い記録。security advisor は新規 ERROR 0（`cron_locks`/`webhook_processed_events`/`ai_translation_cache` は RLS 有効・ポリシー無し＝service-role 専用の意図どおりで INFO `rls_enabled_no_policy` のみ、既存 `error_events` と同扱い）。
+
+### ✅ UNVERIFIABLE 56 → 第2弾で全件解消（2026-06-01）
+ALTER COLUMN / INDEX / POLICY / VIEW / データ系のため当初は「作成テーブル/関数」基準で判定不能だったが、**各 migration が生成する具体オブジェクト（列・index・制約・policy・view・seed 行）を本番カタログ（`information_schema` / `pg_indexes` / `pg_constraint` / `pg_policies` / `pg_proc`）で1本ずつ突合**して全件判定した。
+
+- **適用済み 41 本（記録のみ）**: 列/index/制約/policy/view/関数 search_path/demo seed 行が本番に実在 → `schema_migrations` に後追い記録。
+- **未適用 15 本（適用＋記録）**: 対象オブジェクトが本番に欠落していた＝本当に未適用。版順に適用し再検証して記録。
+  - 内訳: `20260424000000`(customer_sessions.customer_id), `20260429000004`(perf indexes round3), `20260430000000`(maintenance列+index), `20260430000001`(notification_logs LINEチャネル), `20260503000000`(academy 動画列+index), `20260509010000`(cert画像注釈列), `20260509010001`(注釈index), `20260510000000`(shop_orders status 拡張＝**checkout 中間ステータスのバグ修正**), `20260510000001`(同 validate), `20260511000003`(tenants SSO index), `20260514000001`(demo tenant readonly policy 9本), `20260531000001`(**AI auto_actions 列**), `20260531000005`(doc_share 一意index), `20260531000007`(**AI monthly_cost_cap 列**), `20260531000008`(**ai_usage_logs.cost_jpy 列**)。
+  - **CONCURRENTLY index 7本**は `apply_migration`（暗黙トランザクション）では実行不可のため `execute_sql` で単文・トランザクション外で作成した。
+  - 注意: 太字の AI 系列（auto_actions / monthly_cost_cap / cost_jpy）が本番に欠落していたため、AI 自動化・供給 auto-send 機能はこれらを参照する経路で正しく動作していなかった可能性がある。今回の適用で解消。
+
+#### 🐞 発見・修正したバグ: `notification_logs.created_at` は存在しない（正は `sent_at`）
+`notification_logs` テーブルは元定義（`20260315000000`）で時刻列が **`sent_at`** だが、以下が存在しない `created_at` を参照していた:
+- migration `20260429000004_perf_indexes_round3.sql`: index 定義（→ `sent_at` に修正、本番にも `sent_at` で作成）
+- `src/app/api/cron/low-stock-alerts/route.ts`: low_stock_alert の日次冪等チェック `.gte("created_at", …)`（→ `sent_at`）。壊れていたため**重複アラート送信のリスク**があった（しかも供給 auto-send が乗る経路）。
+- `src/app/api/cron/data-retention/route.ts`: notification_logs の 180 日 GC ルール column（→ `sent_at`）。壊れていたため**古いログが削除されていなかった**。
+
+> 注（検証法の限界）: 列/index/制約は実在を直接突合できるが、`CREATE TABLE IF NOT EXISTS` で既存テーブルに当たりつつ同 migration 内の別 ALTER だけ未適用、といった複合ケースは代表オブジェクト1点突合では見逃し得る（残存リスク低）。今回 `shop_orders_status_check` は「制約は valid だが定義が旧値のまま（再定義未適用）」という偽陽性を `pg_get_constraintdef` の定義突合で検出できた。
+
+---
+
+## 背景 / 観測された事実（供給パートナー分の初期調査）
 
 供給パートナー基盤（Phase 0〜）の実装中に、**本番DBのマイグレーション適用状態がリポジトリの履歴と一致しない**ことが判明した。`list_migrations`（`supabase_migrations.schema_migrations`）に基づく観測:
 
