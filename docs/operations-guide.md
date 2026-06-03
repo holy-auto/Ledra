@@ -1327,12 +1327,29 @@ DELETE:  tenant_id IN (SELECT my_tenant_ids()) AND my_tenant_role(tenant_id) IN 
 
 | ジョブ | パス | スケジュール | 内容 |
 |---|---|---|---|
-| 請求書期限処理 | `/api/cron/billing` | 毎日 | overdue検出、リマインダー送信 |
-| データクリーンアップ | `/api/cron/cleanup` | 毎日 | 期限切れデータの整理 |
-| フォローアップ | `/api/cron/follow-up` | 毎日 | 施工後フォローメール送信 |
-| メンテナンス | `/api/cron/maintenance` | 毎日 | DB最適化・統計更新 |
-| ニュース同期 | `/api/cron/news-sync` | 定期 | 外部ニュース取得 |
-| Square同期 | `/api/cron/square-sync` | 定期 | Square POS取引同期 |
+| 会計同期 | `/api/cron/accounting-sync` | 毎日 9/13/19時 | 全テナント・全プロバイダ会計同期（freee / マネーフォワード） |
+| 代理店手数料調整 | `/api/cron/agent-commissions-reconcile` | 毎週月曜 04:15 | エージェント手数料の調整・差分検出 |
+| 請求書期限処理 | `/api/cron/billing` | 毎日 09:00 | overdue 検出・リマインダーメール送信 |
+| 保険会社ログ削除 | `/api/cron/cleanup-insurer-logs` | 毎日 03:00 | 保険会社アクセスログの期限切れ行削除 |
+| データ保持期限処理 | `/api/cron/data-retention` | 毎日 18:00 | 全テーブルの保持期限超過行削除（ai_usage_logs, ai_translation_cache 等） |
+| 機能利用統計集計 | `/api/cron/feature-metrics-rollup` | 毎週日曜 19:00 | 機能利用状況の週次ロールアップ |
+| フォローアップ | `/api/cron/follow-up` | 毎日 10:00 | 施工後フォローメール・季節提案・メンテナンスリマインダー送信 |
+| 画像バリアントバックフィル | `/api/cron/image-variants-backfill` | 15分ごと | 未生成の画像バリアント（サムネイル等）を順次生成 |
+| 在庫不足アラート | `/api/cron/low-stock-alerts` | 毎日 11:00 | 在庫不足SKUの検出・担当者へのアラート送信 |
+| DB メンテナンス | `/api/cron/maintenance` | 毎日 06:00 | DB 統計更新・不要データの最適化 |
+| メーカー月次サマリー | `/api/cron/manufacturer-monthly-summary` | 毎月1日 00:00 | メーカー向け月次施工サマリー生成・配信 |
+| システム日次監視 | `/api/cron/monitor` | 毎日 08:00 | 課金不整合・証明書発行数・webhook 処理数・保険会社異常アクセス検知 |
+| 月次請求書生成 | `/api/cron/monthly-invoices` | 毎月28〜31日 01:00 | 月次請求書の自動生成・配信 |
+| 業界ニュース取得 | `/api/cron/news` | 毎日 07:00 | RSS 経由で業界ニュースを取得・キャッシュ |
+| オンボーディングフォロー | `/api/cron/onboarding-followup` | 毎日 10:30 | 新規テナント向けドリップメール配信 |
+| アウトボックス配信 | `/api/cron/outbox-flush` | 毎分 | トランザクショナルアウトボックスのイベント配信 |
+| 部品アンカー確定 | `/api/cron/parts-anchor` | 毎時30分 | 高額部品・シリアル装着の個別 Polygon アンカー確定 |
+| パスポート月次課金 | `/api/cron/passport-billing` | 毎月1日 17:00 | Vehicle Passport の月次課金処理 |
+| パスポートアンカーリトライ | `/api/cron/passport-meta-anchor-retry` | 毎時30分 | パスポートメタアンカーの失敗リトライ |
+| パスポート移譲期限切れ | `/api/cron/passport-transfers-expire` | 毎日 03:15 | 有効期限切れのパスポート移譲申請を自動クローズ |
+| Polygon 残高監視 | `/api/cron/polygon-signer` | 毎時 | Polygon 署名ウォレット残高の監視・低残高アラート |
+| Square 同期 | `/api/cron/square-sync` | 15分ごと | Square POS 取引の差分同期 |
+| Stripe イベント監視 | `/api/cron/stripe-event-monitor` | 5分ごと | 未処理 Stripe イベントの検出・アラート |
 
 ### 18.2 請求書Cronの詳細
 

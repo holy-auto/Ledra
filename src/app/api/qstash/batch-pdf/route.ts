@@ -53,6 +53,13 @@ async function handler(req: NextRequest) {
     type BatchPdfResult = { public_id: string; pdf_url: string } | { public_id: string; error: string };
     const resultUrls: BatchPdfResult[] = (currentJob?.result_urls as BatchPdfResult[] | null) ?? [];
 
+    // Map of already-succeeded public_ids → known storage path (for URL refresh on retry)
+    const successPathMap = new Map<string, string>(
+      resultUrls
+        .filter((r): r is { public_id: string; pdf_url: string } => "pdf_url" in r)
+        .map((r) => [r.public_id, `batch-pdf/${tenant_id}/${job_id}/${r.public_id}.pdf`]),
+    );
+
     // 未処理分のみ対象
     const remainingIds = public_ids.slice(alreadyProcessed);
 
@@ -118,6 +125,16 @@ async function handler(req: NextRequest) {
           }
 
           try {
+            // Already successfully processed in a prior run — refresh the signed URL only
+            if (successPathMap.has(pid)) {
+              const existingPath = successPathMap.get(pid)!;
+              const { data: refreshData } = await admin.storage.from("certificates").createSignedUrl(existingPath, 3600);
+              if (refreshData?.signedUrl) {
+                return { public_id: pid, pdf_url: refreshData.signedUrl };
+              }
+              // If refresh fails, fall through to full re-render
+            }
+
             const publicUrl = `${baseUrl}/c/${cert.public_id}`;
             const anchors = anchorsByCertId.get((cert as { id: string }).id) ?? [];
             // `cert` はここで Supabase select 結果。CertRow は nullable の
@@ -126,7 +143,7 @@ async function handler(req: NextRequest) {
             const pdfBuffer = await renderCertificatePdf(cert as unknown as CertRow, publicUrl, anchors);
             const pdfBytes = new Uint8Array(pdfBuffer);
 
-            const storagePath = `batch-pdf/${tenant_id}/${pid}-${Date.now()}.pdf`;
+            const storagePath = `batch-pdf/${tenant_id}/${job_id}/${pid}.pdf`;
             const { error: uploadErr } = await admin.storage.from("certificates").upload(storagePath, pdfBytes, {
               contentType: "application/pdf",
               upsert: true,

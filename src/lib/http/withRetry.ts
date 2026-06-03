@@ -13,6 +13,7 @@
  */
 
 import { logger } from "@/lib/logger";
+import { getRedis } from "@/lib/upstash";
 
 type RetryableThunk<T> = () => Promise<T>;
 
@@ -80,6 +81,24 @@ export function __resetBreakersForTest(): void {
   breakers.clear();
 }
 
+const METRIC_TTL_SECS = 86400 * 7; // 7 days
+
+function recordCallMetric(key: string, success: boolean, latencyMs: number): void {
+  const redis = getRedis();
+  if (!redis) return;
+  const entry = JSON.stringify({ t: Date.now(), ok: success ? 1 : 0, ms: latencyMs });
+  void (async () => {
+    try {
+      const listKey = `ihealth:${key}`;
+      await redis.lpush(listKey, entry);
+      await redis.ltrim(listKey, 0, 199);
+      await redis.expire(listKey, METRIC_TTL_SECS);
+    } catch {
+      // never let metrics recording affect the main call path
+    }
+  })();
+}
+
 export async function withRetry<T>(key: string, thunk: RetryableThunk<T>, opts: RetryOptions = {}): Promise<T> {
   const maxAttempts = opts.maxAttempts ?? 4;
   const initialDelayMs = opts.initialDelayMs ?? 250;
@@ -87,9 +106,12 @@ export async function withRetry<T>(key: string, thunk: RetryableThunk<T>, opts: 
   const maxDelayMs = opts.maxDelayMs ?? 8000;
   const isRetryable = opts.isRetryable ?? defaultIsRetryable;
 
+  const startMs = Date.now();
+
   const breaker = breakers.get(key) ?? { consecutiveFailures: 0, openUntil: 0 };
 
   if (breaker.openUntil > Date.now()) {
+    recordCallMetric(key, false, 0);
     throw new CircuitOpenError(key);
   }
 
@@ -101,6 +123,7 @@ export async function withRetry<T>(key: string, thunk: RetryableThunk<T>, opts: 
       breaker.consecutiveFailures = 0;
       breaker.openUntil = 0;
       breakers.set(key, breaker);
+      recordCallMetric(key, true, Date.now() - startMs);
       return result;
     } catch (error) {
       lastError = error;
@@ -112,6 +135,7 @@ export async function withRetry<T>(key: string, thunk: RetryableThunk<T>, opts: 
           logger.warn("circuit breaker opened", { key, failures: breaker.consecutiveFailures });
         }
         breakers.set(key, breaker);
+        recordCallMetric(key, false, Date.now() - startMs);
         throw error;
       }
       const delay = Math.min(initialDelayMs * Math.pow(multiplier, attempt - 1), maxDelayMs);

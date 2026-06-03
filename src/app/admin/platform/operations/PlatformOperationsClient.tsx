@@ -5,6 +5,7 @@ import Badge from "@/components/ui/Badge";
 import OnboardingFunnelSection from "./OnboardingFunnelSection";
 import OnboardingTenantsSection from "./OnboardingTenantsSection";
 import AiUsageDashboard from "./AiUsageDashboard";
+import IntegrationHealthPanel from "./IntegrationHealthPanel";
 
 // ── Types ──
 type SystemHealth = {
@@ -558,6 +559,9 @@ function OverviewTab({ data }: { data: OperationsData }) {
 
       {/* Onboarding funnel */}
       <OnboardingFunnelSection />
+
+      {/* 外部サービス連携ヘルス */}
+      <IntegrationHealthPanel />
 
       {/* AI 利用ダッシュボード */}
       <AiUsageDashboard />
