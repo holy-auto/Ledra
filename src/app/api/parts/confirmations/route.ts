@@ -42,7 +42,8 @@ export async function POST(req: Request) {
     const result = await requestConfirmation(caller.tenantId, parsed.data.installation_id, {
       inStoreTablet: parsed.data.in_store_tablet,
     });
-    return apiJson(result, { status: 201 });
+    const origin = new URL(req.url).origin;
+    return apiJson({ ...result, confirm_url: `${origin}/parts/confirm/${result.token}` }, { status: 201 });
   } catch (e) {
     return apiInternalError(e, "parts/confirmations POST");
   }
