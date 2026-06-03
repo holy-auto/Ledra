@@ -71,7 +71,7 @@
     "import-in-the-middle": "^3.0.1",
     "jszip": "^3.10.1",
     "konva": "^9.3.16",
-    "next": "^16.2.4",
+    "next": "^16.2.7",
     "next-intl": "^4.11.2",
     "posthog-js": "^1.376.0",
     "qrcode": "^1.5.4",
