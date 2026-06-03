@@ -25,7 +25,7 @@ src/
 │   ├── passport/              車両パスポート (vehicle passport)
 │   ├── customer/, c/, my/     顧客ポータル
 │   ├── sign/, agent-sign/     電子署名フロー
-│   └── api/                   420+ Route Handlers (32 トップレベルグループ)
+│   └── api/                   482 Route Handlers (34 トップレベルグループ)
 │       ├── cron/              Vercel Cron (billing, follow-up, monitor, news, etc.)
 │       ├── qstash/            非同期ジョブ (batch-pdf, polygon-backfill, 等)
 │       ├── stripe/            webhook + portal
@@ -156,7 +156,7 @@ npm run dev                       # http://localhost:3000
 
 ## テスト戦略
 
-- **Unit (`vitest`)**: `src/**/__tests__/*.test.ts`・1600+ cases (152 ファイル)。
+- **Unit (`vitest`)**: `src/**/__tests__/*.test.ts`・2,000+ cases (193 ファイル)。
   billing / stripe webhook / signature / anchoring / rate limit / withRetry /
   sendEmail / cron failureTracker / customer portal / logger / safeJson /
   permissions など。
@@ -168,7 +168,7 @@ npm run dev                       # http://localhost:3000
 ## マイグレーション
 
 Supabase 用の SQL は `supabase/migrations/` にタイムスタンプ順で入っています
-(200+ 本)。追加時は以下を意識:
+(239 本)。追加時は以下を意識:
 
 - **zero-downtime**: `ADD COLUMN NOT NULL DEFAULT` は避け、`ADD (nullable)`
   → `UPDATE` → `SET NOT NULL` の 3 段にする
