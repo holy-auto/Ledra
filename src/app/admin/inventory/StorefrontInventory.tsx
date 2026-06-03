@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import useSWR from "swr";
 import BigActionButton from "@/components/pos/BigActionButton";
 import POSSection from "@/components/pos/POSSection";
+import BarcodeScanner from "@/components/ui/BarcodeScanner";
 import { fetcher } from "@/lib/swr";
 import { formatJpy } from "@/lib/format";
 
@@ -23,6 +24,7 @@ type InventoryItem = {
   id: string;
   name: string;
   sku: string | null;
+  barcode: string | null;
   category: string | null;
   unit: string;
   current_stock: number;
@@ -78,12 +80,18 @@ export default function StorefrontInventory() {
   const [err, setErr] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
 
+  /* ---------- Barcode scan ---------- */
+  const [scanning, setScanning] = useState(false);
+  const [resolving, setResolving] = useState(false);
+  const [scanMsg, setScanMsg] = useState<string | null>(null);
+
   const openAction = (type: MoveType) => {
     setAction(type);
     setSelectedItem(null);
     setQuantity("");
     setReason("");
     setErr(null);
+    setScanMsg(null);
   };
 
   const startMove = (type: MoveType, item: InventoryItem) => {
@@ -100,6 +108,37 @@ export default function StorefrontInventory() {
     setQuantity("");
     setReason("");
     setErr(null);
+    setScanMsg(null);
+    setScanning(false);
+  };
+
+  /**
+   * スキャンしたバーコード文字列を在庫品目に解決する。
+   * 完全一致は API 側 (uq_inventory_items_tenant_barcode) に委ね、
+   * 見つかればモーダルの選択品目にセット。未登録なら inline メッセージ。
+   */
+  const resolveByBarcode = async (raw: string) => {
+    const code = raw.trim();
+    setScanning(false);
+    if (!code) return;
+    setResolving(true);
+    setScanMsg(null);
+    try {
+      const res = await fetch(`/api/admin/inventory/items?active_only=true&barcode=${encodeURIComponent(code)}`);
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
+      const found = (j?.items ?? [])[0] as InventoryItem | undefined;
+      if (found) {
+        setSelectedItem(found);
+        setQuantity("");
+      } else {
+        setScanMsg(`未登録のバーコードです（${code}）。管理モードで品目に登録できます。`);
+      }
+    } catch (e: unknown) {
+      setScanMsg(`読み取りに失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setResolving(false);
+    }
   };
 
   const submit = async () => {
@@ -411,39 +450,64 @@ export default function StorefrontInventory() {
             </div>
 
             {!selectedItem ? (
-              <div className="max-h-[50vh] overflow-y-auto">
-                {items.length === 0 ? (
-                  <div className="py-8 text-center text-sm text-muted">登録された在庫がありません</div>
-                ) : (
-                  <ul className="divide-y divide-border-subtle">
-                    {items.map((item) => (
-                      <li key={item.id}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedItem(item);
-                            setQuantity("");
-                          }}
-                          className="flex w-full items-center justify-between px-2 py-3 text-left hover:bg-surface-hover"
-                        >
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-semibold text-primary">{item.name}</div>
-                            {(item.sku || item.category) && (
-                              <div className="text-[11px] text-muted">
-                                {item.sku && <span className="font-mono">{item.sku}</span>}
-                                {item.sku && item.category && " · "}
-                                {item.category}
-                              </div>
-                            )}
-                          </div>
-                          <div className="text-right text-xs text-secondary">
-                            {Number(item.current_stock)} {item.unit}
-                          </div>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScanMsg(null);
+                    setScanning(true);
+                  }}
+                  disabled={resolving}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-3 py-3 text-sm font-bold text-white transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M3.75 4.5h.75v15h-.75m3-15v15m3-15v15m3-15v15m3.75-15v15m3-15h.75v15h-.75"
+                    />
+                  </svg>
+                  {resolving ? "照合中..." : "バーコードでスキャン"}
+                </button>
+                {scanMsg && (
+                  <div className="rounded-lg border border-warning/30 bg-warning-dim px-3 py-2 text-xs text-warning-text">
+                    {scanMsg}
+                  </div>
                 )}
+                <div className="max-h-[50vh] overflow-y-auto">
+                  {items.length === 0 ? (
+                    <div className="py-8 text-center text-sm text-muted">登録された在庫がありません</div>
+                  ) : (
+                    <ul className="divide-y divide-border-subtle">
+                      {items.map((item) => (
+                        <li key={item.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedItem(item);
+                              setQuantity("");
+                            }}
+                            className="flex w-full items-center justify-between px-2 py-3 text-left hover:bg-surface-hover"
+                          >
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-semibold text-primary">{item.name}</div>
+                              {(item.sku || item.category) && (
+                                <div className="text-[11px] text-muted">
+                                  {item.sku && <span className="font-mono">{item.sku}</span>}
+                                  {item.sku && item.category && " · "}
+                                  {item.category}
+                                </div>
+                              )}
+                            </div>
+                            <div className="text-right text-xs text-secondary">
+                              {Number(item.current_stock)} {item.unit}
+                            </div>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="space-y-3">
@@ -501,6 +565,14 @@ export default function StorefrontInventory() {
           </div>
         </div>
       )}
+
+      <BarcodeScanner
+        open={scanning}
+        onResult={resolveByBarcode}
+        onClose={() => setScanning(false)}
+        title="商品バーコードをスキャン"
+        description="入出庫する商品のバーコードにカメラをかざしてください"
+      />
     </div>
   );
 }

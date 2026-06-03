@@ -27,7 +27,9 @@ export async function GET(req: NextRequest) {
 
     let query = supabase
       .from("inventory_items")
-      .select("name, sku, category, unit, current_stock, min_stock, unit_cost, note, is_active, created_at, updated_at")
+      .select(
+        "name, sku, barcode, category, unit, current_stock, min_stock, unit_cost, note, is_active, created_at, updated_at",
+      )
       .eq("tenant_id", caller.tenantId)
       .order("name", { ascending: true });
     if (activeOnly) query = query.eq("is_active", true);
@@ -38,6 +40,7 @@ export async function GET(req: NextRequest) {
     const header = [
       "name",
       "sku",
+      "barcode",
       "category",
       "unit",
       "current_stock",
@@ -55,6 +58,7 @@ export async function GET(req: NextRequest) {
         [
           csvEscape(r.name),
           csvEscape(r.sku),
+          csvEscape(r.barcode),
           csvEscape(r.category),
           csvEscape(r.unit),
           csvEscape(r.current_stock),

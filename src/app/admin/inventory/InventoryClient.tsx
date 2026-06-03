@@ -15,6 +15,7 @@ type InventoryItem = {
   id: string;
   name: string;
   sku: string | null;
+  barcode: string | null;
   category: string | null;
   unit: string;
   current_stock: number;
@@ -89,6 +90,7 @@ export default function InventoryClient() {
   const [form, setForm] = useState({
     name: "",
     sku: "",
+    barcode: "",
     category: "",
     unit: "個",
     current_stock: "0",
@@ -103,6 +105,7 @@ export default function InventoryClient() {
     setForm({
       name: "",
       sku: "",
+      barcode: "",
       category: "",
       unit: "個",
       current_stock: "0",
@@ -145,6 +148,7 @@ export default function InventoryClient() {
   const [editForm, setEditForm] = useState({
     name: "",
     sku: "",
+    barcode: "",
     category: "",
     unit: "個",
     min_stock: "0",
@@ -158,6 +162,7 @@ export default function InventoryClient() {
     setEditForm({
       name: item.name,
       sku: item.sku ?? "",
+      barcode: item.barcode ?? "",
       category: item.category ?? "",
       unit: item.unit,
       min_stock: String(item.min_stock),
@@ -349,6 +354,16 @@ export default function InventoryClient() {
                     placeholder="例: COAT-A-500ML"
                   />
                 </Field>
+                <Field label="バーコード (JAN等)">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    className="input-field"
+                    value={form.barcode}
+                    onChange={(e) => setForm({ ...form, barcode: e.target.value })}
+                    placeholder="カメラスキャンの照合キー"
+                  />
+                </Field>
                 <Field label="カテゴリ">
                   <input
                     type="text"
@@ -500,6 +515,14 @@ export default function InventoryClient() {
                               />
                               <input
                                 type="text"
+                                inputMode="numeric"
+                                className="input-field py-1 text-xs"
+                                placeholder="バーコード"
+                                value={editForm.barcode}
+                                onChange={(e) => setEditForm({ ...editForm, barcode: e.target.value })}
+                              />
+                              <input
+                                type="text"
                                 className="input-field py-1 text-xs"
                                 placeholder="カテゴリ"
                                 value={editForm.category}
@@ -562,8 +585,9 @@ export default function InventoryClient() {
                             </td>
                             <td className="hidden md:table-cell px-5 py-3.5 text-secondary text-xs">
                               {item.sku && <div className="font-mono">{item.sku}</div>}
+                              {item.barcode && <div className="font-mono text-muted">⌗ {item.barcode}</div>}
                               {item.category && <div>{item.category}</div>}
-                              {!item.sku && !item.category && "-"}
+                              {!item.sku && !item.barcode && !item.category && "-"}
                             </td>
                             <td className="px-5 py-3.5 text-right font-bold whitespace-nowrap">
                               <span className={isLow ? "text-danger" : "text-primary"}>
