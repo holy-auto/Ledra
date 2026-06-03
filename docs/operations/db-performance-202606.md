@@ -26,7 +26,7 @@ Remediation docs: <https://supabase.com/docs/guides/database/database-linter>
 
 ## Fixed in this change
 
-### 1. Unindexed foreign keys (146 → 0)
+### 1. Unindexed foreign keys (146 advisor findings → 135 covered)
 
 Every `FOREIGN KEY` whose columns were not the leading prefix of any existing
 index. Unindexed FKs (a) force a sequential scan + row lock on the child table
@@ -36,6 +36,33 @@ FK with `CREATE INDEX CONCURRENTLY IF NOT EXISTS`.
 
 `tenant_id` FKs already covered by a `(tenant_id, …)` composite index are **not**
 re-indexed (already covered).
+
+**Drift tables excluded (10 of 146, deferred).** Ten findings sit on tables that
+exist on **live** but have no `CREATE TABLE` anywhere in `supabase/migrations`
+(`certificate_maintenance_logs`, `deals`, `inquiry_messages`, `line_link_audit_logs`,
+`line_link_candidates`, `line_link_sessions`, `line_link_tokens`, `support_tickets`,
+`support_ticket_messages`). Indexing them in this migration would make a
+fresh-from-repo apply (`supabase db reset`, preview branches, any future CI that
+builds from migrations) fail with `relation "…" does not exist`. They can't be
+guarded with `to_regclass` either, because that needs a `DO`/PL-pgSQL block — a
+transaction — which `CREATE INDEX CONCURRENTLY` forbids. The correct fix is to first
+reconcile these tables' definitions into the repo (their own migration), then add
+their FK indexes. Tracked as a follow-up; until then their FK advisor findings
+remain on live. So this migration drives lint `0001` from 146 → ~11 on live (the
+remaining ~11 are the drift-table FKs above).
+
+**Partial-predicate coverage (not an advisor finding).** A few `tenant_id`/FK
+columns are covered only by a *partial* index — e.g. `notifications.tenant_id` by
+`idx_notifications_tenant_unread … WHERE read_at IS NULL`, plus
+`tenant_api_keys.tenant_id` and `passport_api_keys.consumer_id`. The Supabase
+advisor (and our detection query) treat the leading-column match as covering and do
+**not** flag these — our query's count matched the advisor's 146 exactly — so they
+are intentionally **not** in this migration and adding full indexes would not change
+the advisor count. There is a real but minor RI nuance (a `WHERE read_at IS NULL`
+index can't service the parent-delete check for already-read rows), but tenant-wide
+deletes are rare admin operations and these tables already carry the partial index,
+so a full duplicate isn't worth the write overhead here. Revisit only if a
+tenant-deletion path shows up hot in `pg_stat`.
 
 **Live/repo drift caveat.** The list was generated from the **live** catalog. The
 live DB has drifted from the repo migrations (the schema was partly built outside

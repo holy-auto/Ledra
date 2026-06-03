@@ -1,7 +1,8 @@
 -- =============================================================
 -- 外部キー カバリングインデックス一括追加
--- Foreign-key covering indexes (resolves Supabase performance
--- advisor lint 0001_unindexed_foreign_keys, 146 findings).
+-- Foreign-key covering indexes (Supabase performance advisor lint
+-- 0001_unindexed_foreign_keys。本番 advisor は 146 件、うち 135 件を本ファイルで被覆。
+-- 残り（後述の live-only ドリフトテーブル分 10 件）は repo へテーブル定義を取り込んだ後に追加）.
 --
 -- なぜ: インデックスのない外部キーは (1) 親テーブルの DELETE/UPDATE 時に
 --   子テーブルをシーケンシャルスキャン＋ロックし、(2) 当該カラムでの
@@ -14,6 +15,13 @@
 --   欠けている。その場合は repo の canonical 名で再作成し、両環境を収束させる
 --   （fresh では IF NOT EXISTS でスキップ、本番では作成）。下記 store_status / templates_tenant
 --   / vh_cert / vehicles_customer_id_fk がこのケース。
+-- 注: 本番にのみ存在し repo に CREATE TABLE が無い「ドリフト」テーブル
+--   （certificate_maintenance_logs / deals / inquiry_messages / line_link_audit_logs /
+--   line_link_candidates / line_link_sessions / line_link_tokens / support_tickets /
+--   support_ticket_messages）への FK インデックス（10 件）は本ファイルから除外した。含めると
+--   fresh（repo から構築した DB / supabase db reset / preview branch）への適用が
+--   "relation does not exist" で失敗するため。CONCURRENTLY は to_regclass ガード（DO ブロック=
+--   トランザクション）と併用できないので、テーブル定義を repo に取り込む別 PR の後に被覆する。
 -- 注: CONCURRENTLY を使うため本ファイルはトランザクションで囲まない。Supabase の
 --   migration ランナーは各ステートメントを auto-commit するので、1ファイルに複数の
 --   CONCURRENTLY を並べても問題ない（cf. 20260429000004_perf_indexes_round3.sql）。
@@ -62,8 +70,6 @@ create index concurrently if not exists idx_certificate_edit_histories_edited_by
 
 create index concurrently if not exists idx_certificate_images_annotated_by on public.certificate_images (annotated_by);
 
-create index concurrently if not exists idx_certificate_maintenance_logs_performed_by on public.certificate_maintenance_logs (performed_by);
-
 create index concurrently if not exists idx_certificates_manufacturer_template_id on public.certificates (manufacturer_template_id);
 create index concurrently if not exists idx_certificates_parent_certificate_id on public.certificates (parent_certificate_id);
 create index concurrently if not exists idx_certificates_payment_id on public.certificates (payment_id);
@@ -86,8 +92,6 @@ create index concurrently if not exists idx_customer_messages_sent_by on public.
 
 create index concurrently if not exists idx_customer_sessions_customer_id on public.customer_sessions (customer_id);
 
-create index concurrently if not exists idx_deals_inquiry_id on public.deals (inquiry_id);
-
 create index concurrently if not exists idx_delivery_receipts_created_by on public.delivery_receipts (created_by);
 
 create index concurrently if not exists idx_documents_counterparty_tenant_id on public.documents (counterparty_tenant_id);
@@ -96,8 +100,6 @@ create index concurrently if not exists idx_documents_template_id on public.docu
 create index concurrently if not exists idx_documents_vehicle_id on public.documents (vehicle_id);
 
 create index concurrently if not exists idx_gcal_sync_log_reservation_id on public.gcal_sync_log (reservation_id);
-
-create index concurrently if not exists idx_inquiry_messages_sender_dealer_id on public.inquiry_messages (sender_dealer_id);
 
 create index concurrently if not exists idx_insurer_access_logs_insurer_user_id on public.insurer_access_logs (insurer_user_id);
 
@@ -137,15 +139,6 @@ create index concurrently if not exists idx_inventory_movements_installation_id 
 create index concurrently if not exists idx_inventory_movements_reservation_id on public.inventory_movements (reservation_id);
 
 create index concurrently if not exists idx_job_orders_cancelled_by on public.job_orders (cancelled_by);
-
-create index concurrently if not exists idx_line_link_audit_logs_customer_id on public.line_link_audit_logs (customer_id);
-create index concurrently if not exists idx_line_link_audit_logs_session_id on public.line_link_audit_logs (session_id);
-
-create index concurrently if not exists idx_line_link_candidates_matched_customer_id on public.line_link_candidates (matched_customer_id);
-
-create index concurrently if not exists idx_line_link_sessions_customer_id on public.line_link_sessions (customer_id);
-
-create index concurrently if not exists idx_line_link_tokens_customer_id on public.line_link_tokens (customer_id);
 
 create index concurrently if not exists idx_manufacturer_certified_tenants_certified_by on public.manufacturer_certified_tenants (certified_by);
 create index concurrently if not exists idx_manufacturer_certified_tenants_revoked_by on public.manufacturer_certified_tenants (revoked_by);
@@ -239,10 +232,6 @@ create index concurrently if not exists idx_square_orders_vehicle_id on public.s
 create index concurrently if not exists idx_square_sync_runs_triggered_by on public.square_sync_runs (triggered_by);
 
 create index concurrently if not exists idx_store_memberships_tenant_id on public.store_memberships (tenant_id);
-
-create index concurrently if not exists idx_support_ticket_messages_sender_id on public.support_ticket_messages (sender_id);
-
-create index concurrently if not exists idx_support_tickets_user_id on public.support_tickets (user_id);
 
 create index concurrently if not exists idx_template_orders_template_config_id on public.template_orders (template_config_id);
 
