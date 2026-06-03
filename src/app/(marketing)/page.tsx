@@ -9,7 +9,12 @@ import { FAQList } from "@/components/marketing/FAQList";
 import { FAQItem } from "@/components/marketing/FAQItem";
 import { CTABanner } from "@/components/marketing/CTABanner";
 import { ScrollReveal } from "@/components/marketing/ScrollReveal";
-import { NarrativeTypewriter } from "@/components/marketing/NarrativeTypewriter";
+import dynamic from "next/dynamic";
+
+const NarrativeTypewriter = dynamic(
+  () => import("@/components/marketing/NarrativeTypewriter").then((m) => ({ default: m.NarrativeTypewriter })),
+  { ssr: false },
+);
 import { Container } from "@/components/marketing/Container";
 import { IntegrationLogoWall } from "@/components/marketing/IntegrationLogoWall";
 import { MobileAppSection } from "@/components/marketing/MobileAppSection";

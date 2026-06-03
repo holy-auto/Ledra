@@ -3,9 +3,19 @@ import { Header } from "@/components/marketing/Header";
 import { Footer } from "@/components/marketing/Footer";
 import { OrganizationJsonLd, WebSiteJsonLd } from "@/components/marketing/JsonLd";
 import { CookieConsent } from "@/components/marketing/CookieConsent";
-import { PostHogProvider } from "@/components/marketing/PostHogProvider";
-import { CTATracker } from "@/components/marketing/CTATracker";
+import dynamic from "next/dynamic";
 import MarketingThemeWrapper from "./MarketingThemeWrapper";
+
+// posthog-js (~80KB) と CTATracker はレンダリングブロックなし (null返し/副作用のみ)。
+// ssr:false でクライアントバンドルから初回 SSR チャンクを分離し root bundle を削減。
+const PostHogProvider = dynamic(
+  () => import("@/components/marketing/PostHogProvider").then((m) => ({ default: m.PostHogProvider })),
+  { ssr: false },
+);
+const CTATracker = dynamic(
+  () => import("@/components/marketing/CTATracker").then((m) => ({ default: m.CTATracker })),
+  { ssr: false },
+);
 
 const notoSansJP = Noto_Sans_JP({
   subsets: ["latin"],
