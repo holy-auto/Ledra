@@ -16,7 +16,7 @@ headline issue. Missing FK indexes are.
 | Lint | Level | Count | Action |
 | ---- | ----- | ----: | ------ |
 | `0001_unindexed_foreign_keys` | INFO | 146 | **Fixed** → `20260603010000_fk_covering_indexes.sql` |
-| `0009_duplicate_index` | WARN | 9 | **Fixed** → `20260603010001_drop_duplicate_indexes.sql` |
+| `0009_duplicate_index` | WARN | 9 | **8 fixed** → `20260603010001_drop_duplicate_indexes.sql` (1 deferred: `job_orders`) |
 | `0003_auth_rls_initplan` | WARN | 100 | Deferred — see below |
 | `0006_multiple_permissive_policies` | WARN | 284 | Deferred — see below |
 | `0005_unused_index` | INFO | 322 | Deferred (do **not** bulk-drop) — see below |
@@ -35,7 +35,22 @@ joins/filters on that column. Migration adds one minimal `(fk_column)` index per
 FK with `CREATE INDEX CONCURRENTLY IF NOT EXISTS`.
 
 `tenant_id` FKs already covered by a `(tenant_id, …)` composite index are **not**
-re-indexed (already covered). Detection query (the basis for the migration):
+re-indexed (already covered).
+
+**Live/repo drift caveat.** The list was generated from the **live** catalog. The
+live DB has drifted from the repo migrations (the schema was partly built outside
+the migration files), so a few FKs the advisor flags on live are already covered in
+a *fresh-from-repo* schema by a differently-named or partial index. For these, the
+migration recreates the **repo-canonical** index by its exact name/definition so
+that `IF NOT EXISTS` is idempotent — skipped on fresh, created on live — converging
+both environments without producing a `0009` duplicate:
+`idx_reservations_store_status`, `idx_templates_tenant`, `idx_vh_cert`. One case
+(`vehicles.customer_id`) is genuinely uncovered in **both** environments — the
+existing `idx_vehicles_customer_id` is `(tenant_id, customer_id)` (customer_id not
+leading) — and its name is already taken, so the FK index is created under the
+non-colliding name `idx_vehicles_customer_id_fk`.
+
+Detection query (the basis for the migration):
 
 ```sql
 select cl.relname as table_name, con.conname as fk_name
@@ -55,15 +70,28 @@ tables (`*_audit_logs`, `ai_usage_logs`, `notification_logs`,
 are currently small, and the cascade-delete/lock protection is worth it. Revisit
 if write latency on a specific log table regresses.
 
-### 2. Duplicate indexes (9 → 0)
+### 2. Duplicate indexes (8 of 9 dropped)
 
 Pairs with byte-identical definitions (verified via `pg_get_indexdef`). The
-redundant, **non-constraint-backed** copy of each pair is dropped with
-`DROP INDEX CONCURRENTLY IF EXISTS`; the `*_key` (UNIQUE-constraint) index is
-always the one kept. Notable: `idx_reservations_tenant_scheduled` is misleadingly
-named but is actually `(tenant_id, scheduled_date, status)` — identical to
-`idx_reservations_tenant_date_status`. See the migration header for the full
-keep/drop table.
+redundant copy of each pair is dropped with `DROP INDEX CONCURRENTLY IF EXISTS`.
+For each drop, the **kept** side is verified to exist in a *fresh-from-repo* schema
+(either an explicit `idx_*` in a migration, or a `*_key` index auto-created by an
+inline `UNIQUE`/`PK`); where the drop side is live-only drift, `IF EXISTS` makes it
+a no-op on fresh. Notable: `idx_reservations_tenant_scheduled` is misleadingly named
+but is actually `(tenant_id, scheduled_date, status)` — identical to
+`idx_reservations_tenant_date_status` in both live and repo. See the migration
+header for the full keep/drop table.
+
+**`job_orders` deferred (1 of 9).** The advisor flags `idx_job_orders_public_id`
+(UNIQUE index) and `job_orders_public_id_key` (UNIQUE constraint) as a duplicate on
+live. But `job_orders_public_id_key` is **not** created by any repo migration —
+`20260325500000_ensure_job_orders_public_id.sql` only creates the unique *index*.
+On a fresh DB, `idx_job_orders_public_id` is therefore the **sole** uniqueness
+guard, and dropping it would let duplicate public order IDs through. The pair is
+left intact; the live-only constraint-vs-index duplicate should be reconciled in a
+dedicated migration (e.g. `ALTER TABLE … DROP CONSTRAINT IF EXISTS
+job_orders_public_id_key`, a no-op on fresh) after confirming nothing references
+that constraint.
 
 ## Deferred (need review — not auto-applied)
 

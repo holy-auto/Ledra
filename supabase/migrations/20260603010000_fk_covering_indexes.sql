@@ -9,6 +9,11 @@
 --
 -- 注: 単一カラム最小構成（FK 被覆目的）。tenant_id 先頭の複合インデックスが
 --   既に存在するテーブルは対象外（被覆済みのため）。
+-- 注: 本リストは本番 DB の advisor 出力（live catalog）から生成している。一部の FK は
+--   repo マイグレーションでは別名/部分インデックスで既に被覆されているが本番ではドリフトで
+--   欠けている。その場合は repo の canonical 名で再作成し、両環境を収束させる
+--   （fresh では IF NOT EXISTS でスキップ、本番では作成）。下記 store_status / templates_tenant
+--   / vh_cert / vehicles_customer_id_fk がこのケース。
 -- 注: CONCURRENTLY を使うため本ファイルはトランザクションで囲まない。Supabase の
 --   migration ランナーは各ステートメントを auto-commit するので、1ファイルに複数の
 --   CONCURRENTLY を並べても問題ない（cf. 20260429000004_perf_indexes_round3.sql）。
@@ -208,7 +213,10 @@ create index concurrently if not exists idx_reservation_step_logs_completed_by o
 create index concurrently if not exists idx_reservations_ai_certificate_id on public.reservations (ai_certificate_id);
 create index concurrently if not exists idx_reservations_assigned_user_id on public.reservations (assigned_user_id);
 create index concurrently if not exists idx_reservations_payment_id on public.reservations (payment_id);
-create index concurrently if not exists idx_reservations_store_id on public.reservations (store_id);
+-- store_id は repo の idx_reservations_store_status (store_id, status) WHERE store_id IS NOT NULL
+-- が先頭カラムで FK を被覆する（advisor は partial index も被覆扱い）。本番はこの index を欠く
+-- ため canonical 名で再作成して環境差を収束させる（fresh では IF NOT EXISTS でスキップ）。
+create index concurrently if not exists idx_reservations_store_status on public.reservations (store_id, status) where store_id is not null;
 
 create index concurrently if not exists idx_service_packages_recommended_template_id on public.service_packages (recommended_template_id);
 
@@ -238,7 +246,9 @@ create index concurrently if not exists idx_support_tickets_user_id on public.su
 
 create index concurrently if not exists idx_template_orders_template_config_id on public.template_orders (template_config_id);
 
-create index concurrently if not exists idx_templates_tenant_id on public.templates (tenant_id);
+-- repo の core_tables が idx_templates_tenant (tenant_id) を作成済み。本番はドリフトで欠く
+-- ため canonical 名で再作成（fresh では IF NOT EXISTS でスキップ、byte-identical 重複を防ぐ）。
+create index concurrently if not exists idx_templates_tenant on public.templates (tenant_id);
 
 create index concurrently if not exists idx_tenant_ai_automation_settings_updated_by on public.tenant_ai_automation_settings (updated_by);
 
@@ -260,6 +270,11 @@ create index concurrently if not exists idx_thickness_tires_tenant_id on public.
 
 create index concurrently if not exists idx_user_feature_prefs_user_id on public.user_feature_prefs (user_id);
 
-create index concurrently if not exists idx_vehicle_histories_certificate_id on public.vehicle_histories (certificate_id);
+-- repo の core_tables が idx_vh_cert (certificate_id) WHERE certificate_id IS NOT NULL を作成済み
+-- （advisor は partial も被覆扱い）。本番はドリフトで欠くため canonical 名で再作成。
+create index concurrently if not exists idx_vh_cert on public.vehicle_histories (certificate_id) where certificate_id is not null;
 
-create index concurrently if not exists idx_vehicles_customer_id on public.vehicles (customer_id);
+-- vehicles.customer_id: 既存 idx_vehicles_customer_id は (tenant_id, customer_id) で customer_id が
+-- 先頭でないため FK 未被覆。同名 IF NOT EXISTS だと既存にヒットしてスキップされ被覆漏れになるので、
+-- 衝突しない別名で (customer_id) を作成する。
+create index concurrently if not exists idx_vehicles_customer_id_fk on public.vehicles (customer_id);
