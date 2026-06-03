@@ -25,21 +25,34 @@ jobs:
 
       - run: npm ci --prefer-offline --no-audit
 
+      # Dummy env for the production build AND the runtime server that Lighthouse
+      # boots via `npm run start`. These never hit real services, but
+      # src/lib/envValidation.ts (run from the instrumentation hook at startup)
+      # enforces presence + format/length — short stubs make the server 500 on
+      # every request. Written to $GITHUB_ENV so both the build step and the
+      # Lighthouse step inherit them. High-entropy values are generated so they
+      # satisfy the validators (and are never committed to the repo).
+      - name: Prepare CI environment
+        run: |
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=https://test.supabase.co"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=stub"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$(openssl rand -hex 24)"
+            echo "STRIPE_SECRET_KEY=sk_test_stub"
+            echo "STRIPE_WEBHOOK_SECRET=whsec_stub"
+            echo "CRON_SECRET=$(openssl rand -hex 24)"
+            echo "CUSTOMER_AUTH_PEPPER=$(openssl rand -hex 24)"
+            echo "RESEND_API_KEY=stub"
+            echo "QSTASH_TOKEN=stub"
+            echo "QSTASH_CURRENT_SIGNING_KEY=sig_stub"
+            echo "QSTASH_NEXT_SIGNING_KEY=sig_stub"
+            echo "UPSTASH_REDIS_REST_URL=https://stub.upstash.io"
+            echo "UPSTASH_REDIS_REST_TOKEN=stub"
+            echo "SECRET_ENCRYPTION_KEY=$(openssl rand -base64 32)"
+          } >> "$GITHUB_ENV"
+
       - name: Build (production)
         run: npm run build
-        env:
-          # Build needs these even though we don't actually hit Supabase.
-          NEXT_PUBLIC_SUPABASE_URL: https://test.supabase.co
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: stub
-          SUPABASE_SERVICE_ROLE_KEY: stub
-          STRIPE_SECRET_KEY: sk_test_stub
-          STRIPE_WEBHOOK_SECRET: whsec_stub
-          CRON_SECRET: stub
-          CUSTOMER_AUTH_PEPPER: stub
-          RESEND_API_KEY: stub
-          QSTASH_TOKEN: stub
-          QSTASH_CURRENT_SIGNING_KEY: sig_stub
-          QSTASH_NEXT_SIGNING_KEY: sig_stub
 
       - name: Lighthouse CI
         uses: treosh/lighthouse-ci-action@v12
