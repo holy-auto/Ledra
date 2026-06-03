@@ -13,6 +13,7 @@ import {
   type FieldPolicy,
 } from "@/lib/ai/automation/fieldCatalog";
 import { AUTOMATION_ACTIONS, RECOMMENDED_AUTOMATION_ACTION_KEYS } from "@/lib/ai/automation/actionCatalog";
+import AiAccuracyPanel from "./AiAccuracyPanel";
 
 interface InitialSettings {
   enabled: boolean;
@@ -498,6 +499,9 @@ export default function AiAutomationSettingsClient({ role, initialSettings, cost
           </div>
         </section>
       ))}
+
+      {/* AI 精度レポート */}
+      <AiAccuracyPanel />
 
       {/* ── 保存ボタン ─────────────────────────────── */}
       {msg && (
