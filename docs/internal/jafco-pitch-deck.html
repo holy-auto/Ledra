@@ -178,16 +178,25 @@
   </section>
 
   <!-- 5 ★改ざん不能 -->
-  <section class="slide" data-time="2:25–3:05" data-note="そして発行した証明書は、誰にも改ざんできません。3層で守ります。1層目、写真はAIが改ざんを検知する。Photoshopの加工痕、未来の撮影日時、使い回しの重複画像、位置情報の矛盾を自動で弾きます。2層目、証明書を正規化してSHA-256でハッシュ化し、それをブロックチェーン（Polygon）に刻む。1文字でも書き換えればハッシュが変わるので、後からの改ざんが数学的に検知できます。3層目、カメラ署名のC2PA、ディープフェイク検知、デバイス認証まで重ねた4段階の真正性グレード。“誰でも撮れる写真”を“第三者が検証できる証拠”に変える。これが保険会社と中古車市場が本当に欲しかったものです。">
+  <section class="slide" data-time="2:25–3:05" data-note="そして発行した証明書は、誰にも改ざんできません。ポイントは“発行した後”だけでなく“発行する瞬間”の偽装も封じていることです。写真は撮影時にC2PAとデバイス認証で署名され、アップロードした瞬間にサーバ側でハッシュ計算・EXIF改ざん・ディープフェイクをAIが検査する。つまり後から用意した加工画像はこの時点で弾かれるか、真正性グレードが下がります。そして写真が無い証明書はそもそも発行できない設計です。発行されたらハッシュをブロックチェーンに刻むので、以後は1文字も書き換えられない。“撮影→発行→台帳化”の全工程で偽装を潰す——これが保険会社が本当に欲しかったものです。">
     <div class="eyebrow"><span class="star">★ アピール ②</span> &nbsp; SOLUTION</div>
     <h2>出した証明書は、<span class="hl">誰にも改ざんできない。</span></h2>
-    <div class="stack3" style="margin-top:22px">
+    <div class="stack3" style="margin-top:18px">
       <div class="layer"><div class="n g">1</div><div><h3 style="font-size:clamp(16px,1.7vw,23px)">写真の改ざんを AI が弾く</h3><p style="color:var(--muted)">Photoshop加工痕 / 撮影日時が未来 / 使い回し（重複ハッシュ）/ GPS矛盾 を自動検知</p></div></div>
       <div class="layer"><div class="n">2</div><div><h3 style="font-size:clamp(16px,1.7vw,23px)">内容をブロックチェーンに刻む</h3><p style="color:var(--muted)">正規化(RFC8785)→ SHA-256 → Polygon。1文字でも書き換えるとハッシュ不一致で検知</p></div></div>
       <div class="layer"><div class="n">3</div><div><h3 style="font-size:clamp(16px,1.7vw,23px)">写真の真正性を4段階で評価</h3><p style="color:var(--muted)">C2PA（カメラ署名）+ ディープフェイク検知 + デバイス認証 ＝ unverified→basic→verified→premium</p></div></div>
     </div>
-    <div class="row" style="margin-top:22px"><span class="pill gold">誰でも /c/[public_id] でブラウザ検証できる</span><span class="pill">"誰でも撮れる写真" を "検証できる証拠" へ</span></div>
-    <div class="footer"><span>Solution ② — Tamper-proof Certificate</span><span class="time">2:25</span></div>
+    <div class="card" style="margin-top:16px; border-color:rgba(245,158,11,.35)">
+      <div class="tag">“発行する瞬間” の偽装も封じる — 信頼の連鎖（Chain of Custody）</div>
+      <div class="flow" style="margin-top:10px">
+        <span class="chip">撮影時<br><b>C2PA署名 / 端末認証</b></span><span class="arrow">→</span>
+        <span class="chip">アップロード時<br><b>サーバ側ハッシュ + AI偽造検査</b></span><span class="arrow">→</span>
+        <span class="chip">発行時<br><b>写真なしは発行不可 + グレード刻印</b></span><span class="arrow">→</span>
+        <span class="chip">発行後<br><b>チェーンで固定</b></span>
+      </div>
+    </div>
+    <div class="row" style="margin-top:14px"><span class="pill gold">誰でも /c/[public_id] でブラウザ検証できる</span></div>
+    <div class="footer"><span>Solution ② — Tamper-proof（発行時 × 発行後の両方を封じる）</span><span class="time">2:25</span></div>
   </section>
 
   <!-- 6 モート -->
