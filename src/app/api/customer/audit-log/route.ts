@@ -10,7 +10,7 @@
 
 import { cookies } from "next/headers";
 import { apiOk, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
-import { CUSTOMER_COOKIE, getTenantIdBySlug, validateSession } from "@/lib/customerPortalServer";
+import { CUSTOMER_COOKIE, CUSTOMER_COOKIE_CLEAR_OPTIONS, getTenantIdBySlug, validateSession } from "@/lib/customerPortalServer";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +29,11 @@ export async function GET(req: Request) {
     if (!token) return apiUnauthorized();
 
     const session = await validateSession(tenantId, token);
-    if (!session) return apiUnauthorized();
+    if (!session) {
+      const res = apiUnauthorized();
+      res.cookies.set(CUSTOMER_COOKIE, "", CUSTOMER_COOKIE_CLEAR_OPTIONS);
+      return res;
+    }
 
     const admin = createServiceRoleAdmin(
       "customer/audit-log — fetches audit_logs scoped to caller customer_id pre-resolved by session",

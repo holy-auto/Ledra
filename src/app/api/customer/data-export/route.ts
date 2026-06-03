@@ -19,6 +19,7 @@ import { cookies } from "next/headers";
 import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import {
   CUSTOMER_COOKIE,
+  CUSTOMER_COOKIE_CLEAR_OPTIONS,
   getTenantIdBySlug,
   validateSession,
   listCertificatesForCustomer,
@@ -44,7 +45,11 @@ export async function GET(req: Request) {
     if (!token) return apiUnauthorized();
 
     const session = await validateSession(tenantId, token);
-    if (!session) return apiUnauthorized();
+    if (!session) {
+      const res = apiUnauthorized();
+      res.cookies.set(CUSTOMER_COOKIE, "", CUSTOMER_COOKIE_CLEAR_OPTIONS);
+      return res;
+    }
 
     const [profile, certificates, history, reservations] = await Promise.all([
       getCustomerProfile(

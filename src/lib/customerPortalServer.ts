@@ -4,6 +4,15 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 const PEPPER = process.env.CUSTOMER_AUTH_PEPPER!;
 
 export const CUSTOMER_COOKIE = "hc_cs";
+
+/** Cookie options to clear the customer session cookie (set-and-expire pattern). */
+export const CUSTOMER_COOKIE_CLEAR_OPTIONS = {
+  httpOnly: true,
+  sameSite: "strict" as const,
+  path: "/",
+  maxAge: 0,
+  secure: process.env.NODE_ENV === "production",
+};
 /**
  * OTP lifetime in minutes. Shortened from 10 → 5 to reduce the window an
  * attacker has to use a leaked code (e.g. via shared inbox, email forwarding

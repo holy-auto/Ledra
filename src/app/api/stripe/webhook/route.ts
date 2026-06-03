@@ -19,6 +19,9 @@ import { recordSubscriptionCommission, advanceReferralToContracted } from "@/lib
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Stripe は 30 秒以内の応答を期待する。DB 更新 + メール送信のチェーンを
+// 安全にこなせるよう Vercel の最大実行時間を 60 秒に設定。
+export const maxDuration = 60;
 
 // 運用方針：active/trialing/past_due は有効扱い
 function isActiveStatus(status: Stripe.Subscription.Status): boolean {

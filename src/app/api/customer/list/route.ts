@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import {
   CUSTOMER_COOKIE,
+  CUSTOMER_COOKIE_CLEAR_OPTIONS,
   getTenantIdBySlug,
   listCertificatesForCustomer,
   listHistoryForCustomer,
@@ -40,6 +41,11 @@ export async function GET(req: Request) {
         if (tenantSession.phone_last4) phoneLast4 = tenantSession.phone_last4;
         sessionEmail = tenantSession.email;
         sessionCustomerId = tenantSession.customer_id;
+      } else {
+        // トークンが存在するが無効（期限切れ・失効）→ クライアントの stale cookie を削除
+        const res = apiUnauthorized();
+        res.cookies.set(CUSTOMER_COOKIE, "", CUSTOMER_COOKIE_CLEAR_OPTIONS);
+        return res;
       }
     }
 
