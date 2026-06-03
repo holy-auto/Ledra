@@ -164,7 +164,15 @@ export default async function PartsIntegrityDashboard({
                       {f.severity === "critical" ? "重大" : f.severity === "warning" ? "警告" : "情報"}
                     </span>
                   </td>
-                  <td className="px-4 py-2 font-medium">{RULE_LABEL[f.rule] ?? f.rule}</td>
+                  <td className="px-4 py-2 font-medium">
+                    {f.installation_id ? (
+                      <a href={`/admin/parts-integrity/${f.installation_id}`} className="text-blue-700 hover:underline">
+                        {RULE_LABEL[f.rule] ?? f.rule}
+                      </a>
+                    ) : (
+                      (RULE_LABEL[f.rule] ?? f.rule)
+                    )}
+                  </td>
                   <td className="px-4 py-2 text-secondary">{detailNote(f.detail)}</td>
                   <td className="px-4 py-2 text-secondary">{f.status}</td>
                   <td className="px-4 py-2 text-secondary">{formatDateTime(f.created_at)}</td>
