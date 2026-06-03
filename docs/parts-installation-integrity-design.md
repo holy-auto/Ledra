@@ -130,6 +130,7 @@ part_confirmation_signatures  -- ★確定＝顧客本人のOTP所持証明＋�
   signer_phone_last4_hash         -- 補助（従来照合互換）
   witness_staff_id                -- in_store_tablet 時の立会いスタッフ
   signature, signing_payload, public_key_fingerprint, key_version  -- 非改ざん性（同 第2号）
+  tsa_token bytea, tsa_authority text, tsa_timestamp_at timestamptz  -- ★RFC3161 タイムスタンプ(存在/時刻証明)
   created_at
 
 part_installation_evidence    -- 装着イベントに紐づく証拠（写真/伝票/旧品）
@@ -214,6 +215,9 @@ part_serial_registry          -- 全テナント横断のシリアル消費台�
   や予約で**顧客自身が登録**した行 = 検証済み(`customer`)。店が作成した行 = 未検証(`store`)。
   → `customers` に `contact_provenance text CHECK in('customer','store')`,
   `contact_verified_at`, `contact_verified_via` を追加。
+- **高額の閾値（決定 §10-3）**: **税込の品目金額（単価×数量）が 100,000 円超** の部品は
+  `part_kind='high_value'` とし `required_assurance='customer_otp'`（顧客登録連絡先必須）。
+  閾値はテナント設定で上書き可（既定 100,000 円）。`serialized` も常に `customer_otp`。
 - 「店が自分の番号を顧客欄に入れて代行」(T7') は、**高額/シリアル品で `customer_otp` を必須**にし
   店入力連絡先(`store`)を弾くことで封じる。低リスク品は `store_contact_otp` を許容しつつ
   **出所を記録して監査・格下げ**（リスクに見合った運用）。
@@ -225,6 +229,7 @@ installed                装着・証拠登録済み（店が修正可能）
    │ ① 店が「確定依頼」。part_confirmation_signatures を pending 作成。
    │   送信先は assurance ルールで決定（customer_otp:登録連絡先 / store_contact_otp:店入力 /
    │   in_store_tablet:タブレット）。リンク/コードは店端末に出さない（タブレット型を除く）。
+   │   チャンネル（決定 §10-9）: **LINE 優先、LINE 未連携/送信失敗時は SMS にフォールバック**。
    ▼
 otp_verified             ② 顧客が自分の携帯でOTPコード入力→電話所持を証明（タブレット型は店頭で本人操作）
    │ ③ 内容(部品・数量・写真・証拠の要約)を再提示し、顧客が署名
@@ -241,9 +246,20 @@ customer_verified ★      完全凍結。店も運営も service-role も変更
 #### 6.4.3 何に署名するか（署名対象の正準化）
 
 `content_hash = sha256(canonical_manifest)`。`canonical_manifest` は
-**装着内容（部品名/GTIN/lot/serial_fingerprint/数量）＋ 全 evidence の sha256 一覧 ＋ 顧客識別ハッシュ
+**装着内容（部品名/GTIN/lot/serial_fingerprint/数量/金額）＋ 全 evidence の sha256 一覧 ＋ 顧客識別ハッシュ
 ＋ 確定時刻 ＋ nonce** を正準JSONで連結。署名は既存 `buildSigningPayload`/`signature_public_keys`
 を流用し `document_hash := content_hash`。→ 写真や数量を後で差し替えると hash 不一致で確定が無効化。
+
+#### 6.4.3b タイムスタンプ（決定 §10-10：TSA を付与）
+
+署名強度は **事業者署名型（サーバ鍵）＋ RFC3161 タイムスタンプ局(TSA)** で確定。
+署名後、`signature`（または `document_hash`）に対して **TSA から RFC3161 タイムスタンプトークンを取得**し
+`tsa_token`/`tsa_authority`/`tsa_timestamp_at` に保存。これにより
+**「その時刻にその内容が存在し、以後改変されていない」ことを第三者(TSA)が証明** = 署名日時の事後改ざんも防ぐ。
+
+- TSA は外部プロバイダ（JIPDEC 認定TS局 等）を利用。`verify` ページでトークンを検証表示。
+- 既存 Polygon アンカー(L6)は分散型の時刻証明として**併用可**だが、本件は TSA を一次手段とする。
+- 検証経路は既存 `/api/signature/verify` に TSA 検証を追加して流用。
 
 #### 6.4.4 DB レベルの強制（アプリを信用しない）
 
@@ -295,6 +311,8 @@ customer_verified ★      完全凍結。店も運営も service-role も変更
 | 顧客検証 | `customer` ポータル / `passport` / `verify` / `my/verify` | **L5 納車時検証 UI** を追加 | 中（新UI） |
 | 電子署名 | `signature_sessions`（メールリンク＋サーバ鍵署名・電子署名法準拠）／`buildSigningPayload`／`signature_public_keys` | **鍵署名部分を流用**。装着確定用に別テーブル `part_confirmation_signatures` を新設 | 中 |
 | 本人確認(OTP) | `phoneLast4Hash`/`CUSTOMER_AUTH_PEPPER`/`/api/customer/verify-code`（電話OTP）／`customers.phone_last4_hash` | **OTP所持証明を結合**。確定主キーは新規 `phone_full_hash`、整合をDB強制（T7/T7'封じ） | 中（新hash列＋トリガ） |
+| 通知チャンネル | LINE/メール送信基盤（既存）・SMS | 確定リンク/OTPを **LINE優先→SMSフォールバック**で配信 | 低〜中（SMS連携が新規なら中） |
+| タイムスタンプ | （新規）RFC3161 TSA プロバイダ・`/api/signature/verify` | 署名にTSAトークン付与・検証。**外部依存が新規** | 中（外部TS局契約・実装） |
 | 測定器 | `/api/external/nexptg/sync`（静的APIキー認証） | L1: ペイロード署名検証を追加（後方互換） | 中 |
 | RLS | `my_tenant_ids()` / `tenant_memberships` 規約 | 新テーブルへ同規約で適用 | 低 |
 
@@ -311,7 +329,8 @@ customer_verified ★      完全凍結。店も運営も service-role も変更
   → T5・T6 をカバー。
 - **Phase 3（装着検証・本人確認）**: 確定を **顧客の電話OTP所持証明＋電子署名** に
   （`part_confirmation_signatures` ＋ `phone_full_hash`/保証グレード/出所のDB強制トリガ、既存OTP＋鍵署名を結合）。
-  保証グレードの risk 使い分け（§6.4.1）、店頭タブレットfallback（§6.4.6）、取消ガバナンス（§6.4.5）、
+  保証グレードの risk 使い分け（§6.4.1・高額=税込10万円超）、LINE優先→SMSのOTP配信（§6.4.2）、
+  RFC3161 TSA タイムスタンプ付与（§6.4.3b）、店頭タブレットfallback（§6.4.6）、取消ガバナンス（§6.4.5）、
   納車時検証 UI（passport/verify 流用）＋ 旧品突合。→ T4・**T7/T7'** の中核を投入。
 - **Phase 4（任意・高リスク）**: 封印シール/レーザー刻印の固有番号発行・照合、Polygonアンカー、
   AI相互矛盾検知の自動フラグ、抜き取り監査ダッシュボード。
@@ -342,12 +361,15 @@ customer_verified ★      完全凍結。店も運営も service-role も変更
 7. ✅ **連絡先の信頼 → リスクで使い分け**（§6.4.1）。高額/シリアル品は顧客登録連絡先(`customer_otp`)必須、
    低リスク品は店入力(`store_contact_otp`)を出所記録＋格下げで許容。
 8. ✅ **顧客不在/電話なし → 店頭タブレット署名**（§6.4.6）。`consumable` 限定・立会い記録・最低保証グレード。
+3. ✅ **高額の閾値 → 税込品目金額 100,000 円超**（§6.4.1）。超過は `high_value`＝`customer_otp` 必須。
+   テナントで上書き可（既定 10万円）。
+9. ✅ **OTPチャンネル → LINE 優先、未連携/失敗時 SMS フォールバック**（§6.4.2）。
+10. ✅ **タイムスタンプ → RFC3161 TSA を付与**（§6.4.3b）。事業者署名型＋TSA で存在/時刻を証明。
 
 ### 未決（Phase 進行に合わせて確定）
-3. **顧客検証の必須範囲**: §6.4.1 の risk マッピングの閾値（どの部品を高額扱いにするか）の最終調整。
-4. **アンカーの対象**: 全装着 / 高額のみ / 無効化（Phase 4・コスト判断）。
+4. **アンカーの対象**: 全装着 / 高額のみ / 無効化（Phase 4・コスト判断。TSA とは併用可）。
 5. **測定器署名(L1)**: 既存テナントAPIキーとの後方互換と鍵配布方式（Phase 1〜2）。
-9. **チャンネル優先**: OTP送信を LINE 優先か SMS 優先か（コスト/到達率の運用判断）。
+11. **TSA プロバイダ選定**: JIPDEC 認定TS局の具体ベンダ・コスト・API（Phase 3 着手時）。
 
 ---
 
