@@ -260,6 +260,22 @@ export async function handleWebhookEvents(
     if (event.type === "message" && event.message?.type === "text" && event.source?.userId) {
       const rawText = event.message.text ?? "";
 
+      // 部品確定の連携コードなら customers.line_user_id を紐付けて完了（コードは履歴に残さない）。
+      try {
+        const { tryConsumeLineLinkCode } = await import("@/lib/line/linkCode");
+        const link = await tryConsumeLineLinkCode(tenantId, event.source.userId, rawText);
+        if (link.linked) {
+          if (event.replyToken) {
+            await replyMessage(config.channelAccessToken, event.replyToken, [
+              { type: "text", text: "LINE連携が完了しました。今後の確認はこちらにお送りします。" },
+            ]);
+          }
+          continue;
+        }
+      } catch (e) {
+        console.error("[line.linkCode] consume failed:", e);
+      }
+
       // 顧客発のテキストはすべて inbound として保存 (auto-reply 有無に関わらず)
       const stored = await recordInboundLineMessage({
         tenantId,
