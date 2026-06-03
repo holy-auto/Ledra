@@ -179,14 +179,19 @@ function sha256(buffer: ArrayBuffer): string {
 // Vision セカンドパス (疑わしい写真のみ)
 // ─────────────────────────────────────────────
 
-async function visionTamperingCheck(
+/**
+ * 1 枚の画像を Opus Vision で内容ベースに改ざん審査する (EXIF に依存しない)。
+ * hints は EXIF / 集約フラグ等の「疑う理由」を短句で渡す (プロンプトのヒント)。
+ * fail-open: エラー時は suspicious=false を返し業務を止めない。
+ */
+export async function inspectImageTamperingVision(
   base64: string,
   mediaType: string,
-  flags: TamperingFlag[],
+  hints: string[],
 ): Promise<{ suspicious: boolean; reason: string }> {
   try {
     const client = getAnthropicClient();
-    const flagHints = flags.map((f) => `・${f}`).join("\n");
+    const flagHints = hints.map((h) => `・${h}`).join("\n");
 
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
@@ -226,6 +231,15 @@ ${flagHints}
   } catch {
     return { suspicious: false, reason: "" };
   }
+}
+
+/** EXIF フラグ起点の Vision 審査 (既存 auditPhotoTampering 用の薄いラッパ)。 */
+async function visionTamperingCheck(
+  base64: string,
+  mediaType: string,
+  flags: TamperingFlag[],
+): Promise<{ suspicious: boolean; reason: string }> {
+  return inspectImageTamperingVision(base64, mediaType, flags);
 }
 
 // ─────────────────────────────────────────────

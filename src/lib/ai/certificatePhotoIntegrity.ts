@@ -12,6 +12,9 @@
  * - そこで本モジュールは、それら **既存の (ディープフェイク判定AIを含む) シグナルを
  *   証明書単位の改ざん判定に集約** する。追加の画像ダウンロードも新規 AI 呼び出しも不要で、
  *   コストゼロ・確定的・テスト容易。
+ * - DB シグナルだけでは判定不能 (inconclusive) なグレーゾーン画像については、呼び出し側
+ *   (photoTamperingAuto) が Opus Vision で内容審査し、その結果を `applyVisionVerdicts` で
+ *   折り込む (Vision は画素ベースなので EXIF 除去後でも有効)。
  *
  * 壁3 とは無関係: 出力は注釈 (verdict / flags) のみで、発行・金額・本人確認には関与しない。
  */
@@ -22,7 +25,8 @@ export type PhotoIntegrityFlag =
   | "duplicate_image" // 同一 sha256 / perceptual_hash が証明書内で複数 (使い回し)
   | "deepfake_suspected" // ディープフェイク判定が likely_fake
   | "capture_time_future" // 撮影日時が未来 (時計改ざん / 別端末)
-  | "metadata_missing"; // 撮影メタが無い (スクショ / 再エクスポート等)
+  | "metadata_missing" // 撮影メタが無い (スクショ / 再エクスポート等)
+  | "vision_suspicious"; // Opus Vision の内容審査で改ざんの疑い
 
 export type IntegrityVerdict = "clear" | "suspicious" | "inconclusive";
 
@@ -31,6 +35,7 @@ const DECISIVE_FLAGS: ReadonlySet<PhotoIntegrityFlag> = new Set<PhotoIntegrityFl
   "duplicate_image",
   "deepfake_suspected",
   "capture_time_future",
+  "vision_suspicious",
 ]);
 
 /** certificate_images から集約に必要な最小列だけを抜き出した入力。 */
@@ -70,6 +75,46 @@ function parseDate(value: string | Date | null): Date | null {
   if (!value) return null;
   const d = value instanceof Date ? value : new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** フラグ集合から単一画像の verdict を導く。 */
+function imageVerdict(flags: PhotoIntegrityFlag[]): IntegrityVerdict {
+  if (flags.some((f) => DECISIVE_FLAGS.has(f))) return "suspicious";
+  return flags.length === 0 ? "clear" : "inconclusive";
+}
+
+/** 画像ごとの判定から証明書単位のロールアップを作る。 */
+function rollupSummary(
+  perImage: ImageIntegrityVerdict[],
+  imageCount: number,
+  signature: string,
+): CertificateIntegritySummary {
+  const suspiciousCount = perImage.filter((r) => r.verdict === "suspicious").length;
+  const inconclusiveCount = perImage.filter((r) => r.verdict === "inconclusive").length;
+
+  const verdict: IntegrityVerdict =
+    suspiciousCount > 0 ? "suspicious" : inconclusiveCount > 0 ? "inconclusive" : "clear";
+
+  const flagSet = new Set<PhotoIntegrityFlag>();
+  for (const r of perImage) for (const f of r.flags) flagSet.add(f);
+
+  const summary =
+    suspiciousCount > 0
+      ? `${suspiciousCount} 枚に改ざんの疑いがあります`
+      : inconclusiveCount > 0
+        ? "一部の写真で撮影メタが不足しています（判定不能）"
+        : "写真はすべてクリアです";
+
+  return {
+    verdict,
+    anyFlagged: suspiciousCount > 0,
+    suspiciousCount,
+    imageCount,
+    flags: [...flagSet],
+    perImage,
+    summary,
+    signature,
+  };
 }
 
 /** 画像集合の署名 (id+sha256 をソートして連結し sha256)。 */
@@ -129,39 +174,42 @@ export function aggregateCertificateImageIntegrity(
 
     if (!takenAt && !im.deviceModel) flags.push("metadata_missing");
 
-    const verdict: IntegrityVerdict = flags.some((f) => DECISIVE_FLAGS.has(f))
-      ? "suspicious"
-      : flags.length === 0
-        ? "clear"
-        : "inconclusive";
-
-    return { imageId: im.id, flags, verdict };
+    return { imageId: im.id, flags, verdict: imageVerdict(flags) };
   });
 
-  const suspiciousCount = perImage.filter((r) => r.verdict === "suspicious").length;
-  const inconclusiveCount = perImage.filter((r) => r.verdict === "inconclusive").length;
+  return rollupSummary(perImage, imageCount, computeIntegritySignature(images));
+}
 
-  const verdict: IntegrityVerdict =
-    suspiciousCount > 0 ? "suspicious" : inconclusiveCount > 0 ? "inconclusive" : "clear";
+/**
+ * Vision 審査に回す「グレーゾーン」画像 (DB シグナルだけでは判定不能 = inconclusive) の
+ * id を、撮影順 (perImage の順) で最大 maxN 件返す。clear / suspicious は対象外
+ * (clear は AI 不要 / suspicious は既に確定)。
+ */
+export function pickGrayZoneImageIds(summary: CertificateIntegritySummary, maxN: number): string[] {
+  const ids: string[] = [];
+  for (const r of summary.perImage) {
+    if (r.verdict === "inconclusive") ids.push(r.imageId);
+    if (ids.length >= maxN) break;
+  }
+  return ids;
+}
 
-  const flagSet = new Set<PhotoIntegrityFlag>();
-  for (const r of perImage) for (const f of r.flags) flagSet.add(f);
-
-  const summary =
-    suspiciousCount > 0
-      ? `${suspiciousCount} 枚に改ざんの疑いがあります`
-      : inconclusiveCount > 0
-        ? "一部の写真で撮影メタが不足しています（判定不能）"
-        : "写真はすべてクリアです";
-
-  return {
-    verdict,
-    anyFlagged: suspiciousCount > 0,
-    suspiciousCount,
-    imageCount,
-    flags: [...flagSet],
-    perImage,
-    summary,
-    signature: computeIntegritySignature(images),
-  };
+/**
+ * Vision の内容審査結果 (imageId -> {suspicious}) を集約結果に折り込む。
+ * suspicious と判定された画像に vision_suspicious フラグを足し、verdict / ロールアップを
+ * 再計算する。Vision がクリア (suspicious=false) なら撮影メタ欠落は依然 inconclusive のまま
+ * (Vision は能動的な改ざんを否定するだけで、来歴の欠落は埋めない)。
+ */
+export function applyVisionVerdicts(
+  summary: CertificateIntegritySummary,
+  visionByImageId: Record<string, { suspicious: boolean }>,
+): CertificateIntegritySummary {
+  if (summary.imageCount === 0) return summary;
+  const perImage: ImageIntegrityVerdict[] = summary.perImage.map((r) => {
+    const v = visionByImageId[r.imageId];
+    if (!v?.suspicious || r.flags.includes("vision_suspicious")) return r;
+    const flags = [...r.flags, "vision_suspicious" as const];
+    return { imageId: r.imageId, flags, verdict: imageVerdict(flags) };
+  });
+  return rollupSummary(perImage, summary.imageCount, summary.signature);
 }

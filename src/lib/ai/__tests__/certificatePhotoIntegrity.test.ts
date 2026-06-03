@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   aggregateCertificateImageIntegrity,
+  applyVisionVerdicts,
   computeIntegritySignature,
+  pickGrayZoneImageIds,
   type CertImageIntegrityInput,
 } from "@/lib/ai/certificatePhotoIntegrity";
 
@@ -80,5 +82,62 @@ describe("aggregateCertificateImageIntegrity", () => {
     const c = [img({ id: "1" }), img({ id: "3" })]; // 集合違い
     expect(computeIntegritySignature(a)).toBe(computeIntegritySignature(b));
     expect(computeIntegritySignature(a)).not.toBe(computeIntegritySignature(c));
+  });
+});
+
+describe("Vision エスカレーション (グレーゾーン抽出 / 結果折り込み)", () => {
+  // clear (正常) + inconclusive (メタ欠落) + suspicious (重複) の混在を作る。
+  function mixed() {
+    return aggregateCertificateImageIntegrity(
+      [
+        img({ id: "clear" }),
+        img({ id: "gray", capturedAt: null, deviceModel: null }),
+        img({ id: "dupA", sha256: "DUP" }),
+        img({ id: "dupB", sha256: "DUP" }),
+      ],
+      NOW,
+    );
+  }
+
+  it("pickGrayZoneImageIds は inconclusive だけを返す (clear/suspicious は除外)", () => {
+    const ids = pickGrayZoneImageIds(mixed(), 10);
+    expect(ids).toEqual(["gray"]);
+  });
+
+  it("pickGrayZoneImageIds は maxN で打ち切る", () => {
+    const s = aggregateCertificateImageIntegrity(
+      [
+        img({ id: "g1", capturedAt: null, deviceModel: null }),
+        img({ id: "g2", capturedAt: null, deviceModel: null }),
+        img({ id: "g3", capturedAt: null, deviceModel: null }),
+      ],
+      NOW,
+    );
+    expect(pickGrayZoneImageIds(s, 2)).toEqual(["g1", "g2"]);
+  });
+
+  it("Vision suspicious はグレー画像を suspicious に格上げする", () => {
+    const before = mixed();
+    expect(before.perImage.find((p) => p.imageId === "gray")?.verdict).toBe("inconclusive");
+    const after = applyVisionVerdicts(before, { gray: { suspicious: true } });
+    const gray = after.perImage.find((p) => p.imageId === "gray");
+    expect(gray?.verdict).toBe("suspicious");
+    expect(gray?.flags).toContain("vision_suspicious");
+    expect(after.flags).toContain("vision_suspicious");
+    // 重複の 2 枚 + Vision の 1 枚 = 3 枚 suspicious。
+    expect(after.suspiciousCount).toBe(3);
+  });
+
+  it("Vision clear はグレー画像を inconclusive のまま据え置く", () => {
+    const before = mixed();
+    const after = applyVisionVerdicts(before, { gray: { suspicious: false } });
+    expect(after.perImage.find((p) => p.imageId === "gray")?.verdict).toBe("inconclusive");
+    expect(after.flags).not.toContain("vision_suspicious");
+  });
+
+  it("signature は Vision 折り込み後も不変 (写真集合に依存)", () => {
+    const before = mixed();
+    const after = applyVisionVerdicts(before, { gray: { suspicious: true } });
+    expect(after.signature).toBe(before.signature);
   });
 });
