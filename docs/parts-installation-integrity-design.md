@@ -257,8 +257,9 @@ customer_verified ★      完全凍結。店も運営も service-role も変更
 `tsa_token`/`tsa_authority`/`tsa_timestamp_at` に保存。これにより
 **「その時刻にその内容が存在し、以後改変されていない」ことを第三者(TSA)が証明** = 署名日時の事後改ざんも防ぐ。
 
-- TSA は外部プロバイダ（JIPDEC 認定TS局 等）を利用。`verify` ページでトークンを検証表示。
-- 既存 Polygon アンカー(L6)は分散型の時刻証明として**併用可**だが、本件は TSA を一次手段とする。
+- TSA は **国内 JIPDEC 認定TS局**（セイコーソリューションズ／アマノ／セコム 等）を利用（決定 §10-11）。
+  `verify` ページでトークンを検証表示。将来 **LTV/長期署名(PAdES-LTV 相当)** への拡張を視野に入れる。
+- 既存 Polygon アンカー(L6)は分散型の時刻証明として**併用**（§6.5）。本件は TSA を一次手段とする。
 - 検証経路は既存 `/api/signature/verify` に TSA 検証を追加して流用。
 
 #### 6.4.4 DB レベルの強制（アプリを信用しない）
@@ -296,6 +297,20 @@ customer_verified ★      完全凍結。店も運営も service-role も変更
 - 立会いスタッフ(`witness_staff_id`)・端末識別・署名時の対面状況を記録し、`assurance` は最低位。
 - 高リスク品は必ず顧客自身の携帯OTP(`customer_otp`)を要求＝タブレットでは確定不可。
 
+### 6.5 ブロックチェーンアンカー対象（決定 §10-4：全件メタ＋高額個別）
+
+TSA（一次手段）に加え、独立した第三者検証として Polygon アンカーを**併用**する。
+既存の **車両パスポート・メタアンカー**（`vehicle_passports.meta_anchor_*`、1txで多数ハッシュを束ねる、
+`~$0.001/tx`、内容不変なら再アンカー無料）を流用しコストを最小化する。
+
+- **全 `customer_verified` 装着** … 当該車両のパスポート・メタアンカーの計算対象に
+  `part_installations.content_hash` を加える（VIN＋ソート済みハッシュ群の digest に合流）。
+  → 車両単位の1txに束ねられ**実質ほぼ無償**。
+- **`high_value`（税込10万円超）** … 上記に加え **個別アンカー**（`content_hash` を単独 tx で固定）を付与し、
+  `part_installations` に `polygon_tx_hash`/`polygon_network` を保存（`certificate_images` と同方式）。
+- `POLYGON_ANCHOR_ENABLED=false` の環境では no-op（TSA＋完全凍結＋DB強制で担保は成立）。
+- 検証は既存 `insurer/anchor-verify`・`verify` 経路に装着レコードを追加して流用。
+
 ---
 
 ## 7. 既存コードへの影響分析
@@ -312,8 +327,9 @@ customer_verified ★      完全凍結。店も運営も service-role も変更
 | 電子署名 | `signature_sessions`（メールリンク＋サーバ鍵署名・電子署名法準拠）／`buildSigningPayload`／`signature_public_keys` | **鍵署名部分を流用**。装着確定用に別テーブル `part_confirmation_signatures` を新設 | 中 |
 | 本人確認(OTP) | `phoneLast4Hash`/`CUSTOMER_AUTH_PEPPER`/`/api/customer/verify-code`（電話OTP）／`customers.phone_last4_hash` | **OTP所持証明を結合**。確定主キーは新規 `phone_full_hash`、整合をDB強制（T7/T7'封じ） | 中（新hash列＋トリガ） |
 | 通知チャンネル | LINE/メール送信基盤（既存）・SMS | 確定リンク/OTPを **LINE優先→SMSフォールバック**で配信 | 低〜中（SMS連携が新規なら中） |
-| タイムスタンプ | （新規）RFC3161 TSA プロバイダ・`/api/signature/verify` | 署名にTSAトークン付与・検証。**外部依存が新規** | 中（外部TS局契約・実装） |
-| 測定器 | `/api/external/nexptg/sync`（静的APIキー認証） | L1: ペイロード署名検証を追加（後方互換） | 中 |
+| タイムスタンプ | （新規）国内 JIPDEC 認定TS局・`/api/signature/verify` | 署名にTSAトークン付与・検証。**外部依存が新規** | 中（外部TS局契約・実装） |
+| アンカー | `vehicle_passports.meta_anchor_*` / `cron/polygon-signer` / `insurer/anchor-verify` | 全件メタ＋高額個別（§6.5）。`content_hash` をパスポート digest に合流 | 低〜中（既存流用） |
+| 測定器(L1) | `/api/external/nexptg/sync`（Basic認証/APIキー） | **延期**。装置側署名は原理的に不可（§9）。今回は変更なし | なし（延期） |
 | RLS | `my_tenant_ids()` / `tenant_memberships` 規約 | 新テーブルへ同規約で適用 | 低 |
 
 **破壊的変更なし**を原則とする（既存カラムは追加のみ、既存挙動は不変）。
@@ -332,8 +348,9 @@ customer_verified ★      完全凍結。店も運営も service-role も変更
   保証グレードの risk 使い分け（§6.4.1・高額=税込10万円超）、LINE優先→SMSのOTP配信（§6.4.2）、
   RFC3161 TSA タイムスタンプ付与（§6.4.3b）、店頭タブレットfallback（§6.4.6）、取消ガバナンス（§6.4.5）、
   納車時検証 UI（passport/verify 流用）＋ 旧品突合。→ T4・**T7/T7'** の中核を投入。
-- **Phase 4（任意・高リスク）**: 封印シール/レーザー刻印の固有番号発行・照合、Polygonアンカー、
-  AI相互矛盾検知の自動フラグ、抜き取り監査ダッシュボード。
+- **Phase 4（任意・高リスク）**: アンカー（全件メタ＋高額個別・§6.5）、封印シール/レーザー刻印の
+  固有番号発行・照合、AI相互矛盾検知の自動フラグ、抜き取り監査ダッシュボード。
+- **延期**: L1 測定器入口プロベナンス（§9・装置署名は不可のため、将来 Ledra 製キャプチャアプリで再検討）。
 
 ---
 
@@ -347,6 +364,10 @@ customer_verified ★      完全凍結。店も運営も service-role も変更
 - 連絡先出所が `store` の確定は本人性が一段弱い（OTP所持は証明するが番号の帰属は店依存）→ 低リスク品のみ・監査対象。
 - ロットのみ/消耗品は個体追跡不能 → 数量・会計突合と顧客信頼で代替。
 - 部品商が紙主体のため、L3 は当面 **納品書OCR** が現実線（電子納品は将来）。
+- **測定器(L1)の限界**: NexPTGアプリは Basic認証＋固定JSONのみで**装置側のペイロード署名は実装不可**。
+  さらに不正主体がテナント自身の場合、装置鍵があってもテナントが自鍵で偽造でき**装置署名は無力**。
+  → 膜厚値の担保は最終レポートの顧客署名確認・AI異常検知・三方照合に依存（L1 は延期）。
+  高保証が要る場合のみ将来 Ledra 製キャプチャアプリ（端末アテステーション付）で対応。
 
 ---
 
@@ -365,11 +386,15 @@ customer_verified ★      完全凍結。店も運営も service-role も変更
    テナントで上書き可（既定 10万円）。
 9. ✅ **OTPチャンネル → LINE 優先、未連携/失敗時 SMS フォールバック**（§6.4.2）。
 10. ✅ **タイムスタンプ → RFC3161 TSA を付与**（§6.4.3b）。事業者署名型＋TSA で存在/時刻を証明。
+11. ✅ **TSA プロバイダ → 国内 JIPDEC 認定TS局**（セイコー/アマノ/セコム等）。将来 LTV(長期署名)対応を視野。
+4. ✅ **アンカー対象 → 全 `customer_verified` を車両単位メタアンカーでバッチ（passport 流用・ほぼ無償）
+   ＋ `high_value` は個別アンカーも付与**（§6.5）。TSA とは併用。
+5. ⏸ **測定器署名(L1) → 延期**。NexPTGアプリは Basic認証＋固定JSONのみで**装置側署名は原理的に不可**、
+   かつ不正主体がテナント自身の場合は装置鍵も無力（§9）。今回は着手せず、膜厚値の担保は
+   最終レポートの顧客署名確認・AI異常検知・三方照合側に寄せる。将来 Ledra 製キャプチャアプリで再検討。
 
-### 未決（Phase 進行に合わせて確定）
-4. **アンカーの対象**: 全装着 / 高額のみ / 無効化（Phase 4・コスト判断。TSA とは併用可）。
-5. **測定器署名(L1)**: 既存テナントAPIキーとの後方互換と鍵配布方式（Phase 1〜2）。
-11. **TSA プロバイダ選定**: JIPDEC 認定TS局の具体ベンダ・コスト・API（Phase 3 着手時）。
+### 未決（残）
+- なし（主要論点は確定。実装着手可）。
 
 ---
 
