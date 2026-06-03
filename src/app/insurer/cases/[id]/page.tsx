@@ -68,6 +68,15 @@ type CaseDetail = {
   category: string | null;
   description: string | null;
   created_at: string;
+  meta?: {
+    ai_fraud?: {
+      risk_level: string;
+      flags?: string[];
+      llm_reason?: string | null;
+      scored_at?: string;
+      source?: string;
+    } | null;
+  } | null;
 };
 
 type Message = {
@@ -332,7 +341,7 @@ export default function InsurerCaseDetailPage() {
       </section>
 
       {/* 不正リスク審査 */}
-      <FraudCheckSection caseId={caseData.id} />
+      <FraudCheckSection caseId={caseData.id} initial={caseData.meta?.ai_fraud ?? null} />
 
       <section className="rounded-2xl border border-border-default bg-surface">
         <div className="border-b border-border-default px-6 py-4">
@@ -456,13 +465,25 @@ const FLAG_JP: Record<string, string> = {
   high_claim_amount: "高額請求",
 };
 
-function FraudCheckSection({ caseId }: { caseId: string }) {
+function FraudCheckSection({
+  caseId,
+  initial,
+}: {
+  caseId: string;
+  initial?: { risk_level: string; flags?: string[]; llm_reason?: string | null; scored_at?: string } | null;
+}) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{
     risk_level: string;
     flags: string[];
     llm_reason: string | null;
-  } | null>(null);
+  } | null>(
+    initial
+      ? { risk_level: initial.risk_level, flags: initial.flags ?? [], llm_reason: initial.llm_reason ?? null }
+      : null,
+  );
+  // 受信時に自動付与されたスコアを初期表示し、手動再実行で上書きする。
+  const [isAuto, setIsAuto] = useState(!!initial);
   const [error, setError] = useState<string | null>(null);
 
   async function runCheck() {
@@ -478,6 +499,7 @@ function FraudCheckSection({ caseId }: { caseId: string }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message ?? "審査に失敗しました");
       setResult(data);
+      setIsAuto(false);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "エラーが発生しました");
     } finally {
@@ -518,6 +540,7 @@ function FraudCheckSection({ caseId }: { caseId: string }) {
         <div className="space-y-3">
           <div className={`rounded-xl border px-4 py-3 text-sm font-semibold ${style.badge}`}>
             {style.label}
+            {isAuto && <span className="ml-2 text-[11px] font-normal opacity-70">受信時に自動判定</span>}
             {result.llm_reason && <p className="mt-1 text-xs font-normal">{result.llm_reason}</p>}
           </div>
           {result.flags.length > 0 && (
