@@ -325,8 +325,7 @@ function Page3Features() {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>既存ツールとの連携</Text>
             <Text style={styles.cardDesc}>
-              Stripe / Google Calendar / LINE と接続。置き換えではなく、橋渡し。 Square /
-              電子署名サービスはロードマップ上で順次対応予定。
+              Stripe / Square / Google Calendar / LINE に対応。電子署名（ECDSA P-256）も実装済み。置き換えではなく、橋渡し。
             </Text>
           </View>
         </View>
