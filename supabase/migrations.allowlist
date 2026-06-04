@@ -172,3 +172,12 @@
 20260526000001_vehicle_passports_meta_anchor.sql
 20260527000002_customer_intake_two_stage.sql
 20260527000003_intake_validation_issues.sql
+
+# Grandfathered for security-definer-mutable-search-path (shipped before the
+# rule existed). The functions are hardened forward in
+# 20260604000000_fix_security_definer_search_path_round2.sql
+# (CREATE OR REPLACE ... SET search_path = '' + schema-qualified bodies).
+#   - customer_intake_invitations: increment_intake_ocr_attempts() search_path=public
+#   - agent_commission_flow: increment_referral_link_click() search_path=public
+20260527000001_customer_intake_invitations.sql
+20260601000000_agent_commission_flow.sql

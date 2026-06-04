@@ -151,6 +151,36 @@ const RULES = [
         });
     },
   },
+  {
+    id: "security-definer-mutable-search-path",
+    description:
+      "SECURITY DEFINER functions must SET search_path = '' (empty) to prevent search_path hijacking; reference objects with a schema qualifier (e.g. public.foo).",
+    check(sql) {
+      // Walk each CREATE [OR REPLACE] FUNCTION header up to the body delimiter
+      // (` AS `). Function attributes — LANGUAGE / SECURITY DEFINER / SET
+      // search_path — always appear before the body, so the header window is
+      // enough to decide. Comments are already stripped by stripComments(),
+      // so a "no SECURITY DEFINER" note in a comment won't trigger this.
+      const fnRe = /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([^\s(]+)[\s\S]*?\bAS\b/gi;
+      const violations = [];
+      let m;
+      while ((m = fnRe.exec(sql)) !== null) {
+        const header = m[0];
+        if (!/\bSECURITY\s+DEFINER\b/i.test(header)) continue;
+        // Accept only an explicitly-empty search_path: `= ''` or `TO ''`.
+        const okEmpty = /\bSET\s+search_path\s*(?:=|TO)\s*''/i.test(header);
+        if (!okEmpty) {
+          const found = /\bSET\s+search_path[^\n]*/i.exec(header);
+          violations.push(
+            `${m[1]} — SECURITY DEFINER function must "SET search_path = ''" (found: ${
+              found ? found[0].trim() : "no search_path"
+            }).`,
+          );
+        }
+      }
+      return violations;
+    },
+  },
 ];
 
 function stripComments(sql) {

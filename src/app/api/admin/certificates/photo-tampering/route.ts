@@ -4,6 +4,7 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { partitionImageFetchUrls } from "@/lib/security/urlAllowlist";
 import { auditPhotoTampering } from "@/lib/ai/photoTamperingCheck";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
@@ -61,6 +62,16 @@ export async function POST(req: NextRequest) {
 
   if (photoUrls.length > 20) {
     return apiValidationError("一度にチェックできる写真は最大 20 枚です");
+  }
+
+  // SSRF ガード: サーバ側 fetch する URL は許可ホスト (Supabase Storage 等) のみ。
+  // 認証済みでも内部アドレス (169.254.169.254 / localhost / 内部サービス) への
+  // 代理取得を成立させないため、許可外が 1 件でもあればフェイルクローズする。
+  const { blocked } = partitionImageFetchUrls(photoUrls);
+  if (blocked.length > 0) {
+    return apiValidationError("許可されていない画像 URL が含まれています", {
+      blocked: blocked.map((b) => b.url),
+    });
   }
 
   const usage = startAiRouteUsage("/api/admin/certificates/photo-tampering");

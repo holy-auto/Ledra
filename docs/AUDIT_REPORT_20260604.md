@@ -304,6 +304,67 @@ CodeQL 導入が効いており、**シークレット/Webhook/暗号化レイ�
 
 ---
 
+---
+
+## 9. Tier 1 実施記録（2026-06-04・同セッション）
+
+是正ロードマップ Tier 1 を本セッションで実装・検証した。
+
+### 実施内容
+
+| # | 項目 | 対象 | 内容 |
+|---|------|------|------|
+| HIGH-1 | クロステナント IDOR | `api/admin/certificates/ai-draft` | `vehicles`/`hearings` に `tenant_id` フィルタ追加（前段で是正済み） |
+| HIGH-2 | SSRF allowlist | `src/lib/security/urlAllowlist.ts`（新規）+ `photo-tampering` / Vision (`marketVehicleDescription`) | https 限定・Supabase Storage ホスト allowlist・IP リテラル/localhost/認証情報/非 443 ポート拒否。photo-tampering は許可外をフェイルクローズ、Vision はベストエフォート除外。単体テスト 11 ケース |
+| MEDIUM-2 | 顧客 GDPR 系 rate limit | `data-export`(sensitive) / `audit-log`(general) / `data-deletion` POST+DELETE(sensitive) | `checkRateLimit` をハンドラ冒頭に追加。`checkRateLimit` の引数型を `NextRequest`→`Request` に緩和（全既存呼出し後方互換） |
+| MEDIUM-4 | search_path ハードニング | `20260604000000_fix_security_definer_search_path_round2.sql`（新規）+ `scripts/lint-migrations.js` | 監査で undercount していた点を是正。実オフェンダーは **4 関数**（コメント内 "SECURITY DEFINER" の誤検出を除外）: `is_super_admin_user` / `increment_intake_ocr_attempts` / `apply_inventory_movement` / `increment_referral_link_click`。`SET search_path = ''` + schema 修飾で CREATE OR REPLACE。新規 migration lint ルール `security-definer-mutable-search-path` で再発防止（shipped 2 件は allowlist で grandfather） |
+| MEDIUM-1 | IDOR 棚卸し（admin クライアント） | 全 API ルート横断スイープ | 〜40 候補サイトを精査。**追加で 1 件の実 IDOR を発見・是正**（下記）。それ以外は tenant/insurer フィルタ適用済みで安全と確認 |
+
+### MEDIUM-1 スイープで新規発見・是正した IDOR
+
+- **`src/app/api/insurer/vehicles/[id]/route.ts`**（**High** 相当、是正済み）
+  - `createInsurerScopedAdmin`（RLS バイパス）で `vehicles` を `id` だけで取得し、
+    **証明書部分は RPC でアクセス制御されるが、車両メタ（maker/model/year/
+    plate/`vin_code`/所属テナント名）は無条件で返していた**。保険会社が任意の
+    車両 id を列挙して他テナントの VIN・ナンバー・テナント名を取得可能だった。
+  - 是正: 車両取得後・データ返却前に `insurer_tenant_access`
+    （`insurer_id` + `tenant_id` + `is_active`）でアクセス権を検証し、
+    権限がなければ存在秘匿のため 404 を返すよう変更。
+
+### ESLint ガードの評価結果（不採用）
+
+MEDIUM-1 の「ESLint ガード」として、`admin.from(...).eq("id",...).single()` で
+スコープフィルタを欠く連鎖を検出するカスタム AST ルールを試作したが、**全 src で
+203 件**ヒットした。スイープで確認した実バグは 2 件のみであり、残りは安全
+（`tenants` を自身の id で引く＝id がスコープ、上流で検証済みの id、
+プラットフォーム/Webhook 文脈 等）。真陽性率 ≈1% で、`error` 化は CI 破壊、
+`warn` 化はアラート疲労を招くため**不採用**とした。AST は RLS/所有権の文脈を
+判別できないことが根本理由。
+
+代替の構造的防御として以下に依拠する:
+1. 既存の `no-restricted-imports` ガード（scoped ラッパ使用を強制、`/api/admin/**`
+   は `createPlatformScopedAdmin` 誘導）— 既に `error` 稼働中。
+2. 完了したスイープ（実 IDOR は全数是正）。
+3. `docs/security-audit-framework.md` §4-A のレビューチェックリスト
+   「admin クライアントの全データクエリに明示 `tenant_id` フィルタ」。
+
+> より精密な検出を行う場合は、Supabase クエリ型情報を用いた型レベル制約
+> （scoped ラッパが `tenant_id` 必須のクエリビルダ型を返す）を将来検討する。
+
+### 検証結果
+
+- `npx tsc --noEmit`: **0 errors**
+- `npm run lint:migrations`: **OK**（新規 lint ルール込み、self-test で発火確認）
+- 関連テスト（`src/lib/security` + `src/app/api/customer`）: **49 passed**
+- 変更ファイルの ESLint: **0 errors**
+
+### Tier 1 残（次サイクル）
+
+- LOW-1（`createPlatformScopedAdmin` 移行完了）、LOW-2（OTP `timingSafeEqual`）、
+  Supabase `get_advisors` の CI 組込みは Tier 2 として継続。
+
+---
+
 *本レポートは 2026-06-04 時点のコードベース静的解析に基づく。動的テスト・
 ペネトレーションテスト・負荷試験は別途推奨。重大度は到達可能性（認証要否・
 RLS バイパス条件）を加味して補正済み。*
