@@ -77,6 +77,7 @@ export async function POST(req: NextRequest) {
         .from("vehicles")
         .select("maker, model, year, color, vin")
         .eq("id", vehicle_id)
+        .eq("tenant_id", caller.tenantId)
         .single();
       vehicle = data ?? {};
     }
@@ -90,6 +91,7 @@ export async function POST(req: NextRequest) {
           "service_types, budget_range, parking_type, customer_requests, vehicle_maker, vehicle_model, vehicle_year, vehicle_color",
         )
         .eq("id", hearing_id)
+        .eq("tenant_id", caller.tenantId)
         .single();
       if (data) {
         hearing = data;
