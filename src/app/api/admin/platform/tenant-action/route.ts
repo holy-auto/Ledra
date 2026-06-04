@@ -3,7 +3,7 @@ import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
-import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { ADDON_KEYS, enableAddon, disableAddon, type AddonKey } from "@/lib/billing/addons";
 import {
   apiJson,
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
     }
     const { tenantId, action, params } = parsed.data;
 
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const admin = createPlatformScopedAdmin("platform/tenant-action — activate/deactivate/change-plan any tenant");
 
     // Verify tenant exists
     const { data: tenant, error: tenantError } = await admin
