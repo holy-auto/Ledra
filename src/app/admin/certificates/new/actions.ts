@@ -256,54 +256,128 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
   const statusParam = String(formData.get("status") || "active").trim();
   const requestedActive = statusParam !== "draft";
 
-  const { error } = await supabase.from("certificates").insert({
-    tenant_id: tenantId,
-    public_id,
-    status: "draft",
-    customer_name,
-    customer_id: resolvedCustomerId ?? undefined,
-    vehicle_id: resolvedVehicleId ?? undefined,
-    vehicle_info_json: { maker: vehicle_maker, model, plate },
-    content_free_text,
-    content_preset_json: {
-      template_id,
-      template_name,
-      schema_snapshot,
-      values,
-      ...(film_thickness.length > 0 ? { film_thickness } : {}),
-      ...(package_id_form ? { package_id: package_id_form } : {}),
-      ...(package_snapshot ? { package_snapshot } : {}),
-    },
-    coating_products_json: coating_products.length > 0 ? coating_products : [],
-    ppf_coverage_json: ppf_coverage.length > 0 ? ppf_coverage : [],
-    maintenance_json: Object.keys(maintenance_data).length > 0 ? maintenance_data : {},
-    body_repair_json: Object.keys(body_repair_data).length > 0 ? body_repair_data : {},
-    service_type: service_type || null,
-    expiry_type: "text",
-    expiry_value,
-    expiry_date: expiry_date || null,
-    warranty_period_end: warranty_period_end || null,
-    maintenance_date: maintenance_date || null,
-    warranty_exclusions: warranty_exclusions || null,
-    remarks: remarks || null,
-    footer_variant: "holy",
-    logo_asset_path: tenantLogoPath,
-    manufacturer_id,
-    manufacturer_template_id,
-    created_by: userId,
-  });
+  const { data: certRow, error } = await supabase
+    .from("certificates")
+    .insert({
+      tenant_id: tenantId,
+      public_id,
+      status: "draft",
+      customer_name,
+      customer_id: resolvedCustomerId ?? undefined,
+      vehicle_id: resolvedVehicleId ?? undefined,
+      vehicle_info_json: { maker: vehicle_maker, model, plate },
+      content_free_text,
+      content_preset_json: {
+        template_id,
+        template_name,
+        schema_snapshot,
+        values,
+        ...(film_thickness.length > 0 ? { film_thickness } : {}),
+        ...(package_id_form ? { package_id: package_id_form } : {}),
+        ...(package_snapshot ? { package_snapshot } : {}),
+      },
+      coating_products_json: coating_products.length > 0 ? coating_products : [],
+      ppf_coverage_json: ppf_coverage.length > 0 ? ppf_coverage : [],
+      maintenance_json: Object.keys(maintenance_data).length > 0 ? maintenance_data : {},
+      body_repair_json: Object.keys(body_repair_data).length > 0 ? body_repair_data : {},
+      service_type: service_type || null,
+      expiry_type: "text",
+      expiry_value,
+      expiry_date: expiry_date || null,
+      warranty_period_end: warranty_period_end || null,
+      maintenance_date: maintenance_date || null,
+      warranty_exclusions: warranty_exclusions || null,
+      remarks: remarks || null,
+      footer_variant: "holy",
+      logo_asset_path: tenantLogoPath,
+      manufacturer_id,
+      manufacturer_template_id,
+      created_by: userId,
+    })
+    .select("id")
+    .single();
 
   if (error) return { ok: false, error: error.message };
 
-  // Record vehicle history entry
-  if (resolvedVehicleId) {
+  const certificateId = certRow?.id as string | undefined;
+  const now = new Date().toISOString();
+  const mileageKm = maintenance_data.mileage ? parseInt(String(maintenance_data.mileage), 10) : null;
+
+  // Structured inspection findings → vehicle_inspection_findings
+  let structured_findings: any[] = [];
+  try {
+    const raw = String(formData.get("inspection_findings_json") || "[]");
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) structured_findings = parsed;
+  } catch { /* ignore */ }
+
+  // Structured part replacements → vehicle_part_replacements
+  let structured_parts: any[] = [];
+  try {
+    const raw = String(formData.get("part_replacements_json") || "[]");
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) structured_parts = parsed;
+  } catch { /* ignore */ }
+
+  if (resolvedVehicleId && certificateId) {
+    const sideEffects: Promise<any>[] = [];
+
+    if (structured_findings.length > 0) {
+      sideEffects.push(
+        supabase.from("vehicle_inspection_findings").insert(
+          structured_findings.map((f) => ({
+            tenant_id: tenantId,
+            vehicle_id: resolvedVehicleId,
+            certificate_id: certificateId,
+            mileage_km: mileageKm ?? null,
+            finding_category: f.finding_category,
+            finding_severity: f.finding_severity ?? "ok",
+            finding_code: f.finding_code ?? null,
+            finding_note: f.finding_note ?? null,
+            inspected_at: now,
+          }))
+        )
+      );
+    }
+
+    if (structured_parts.length > 0) {
+      sideEffects.push(
+        supabase.from("vehicle_part_replacements").insert(
+          structured_parts.map((p) => ({
+            tenant_id: tenantId,
+            vehicle_id: resolvedVehicleId,
+            certificate_id: certificateId,
+            part_category: p.part_category,
+            part_name: p.part_name,
+            mileage_at_replacement: mileageKm ?? null,
+            replaced_at: now,
+            next_replacement_mileage_est: p.next_replacement_mileage_est ?? null,
+          }))
+        )
+      );
+    }
+
+    sideEffects.push(
+      supabase.from("vehicle_histories").insert({
+        tenant_id: tenantId,
+        vehicle_id: resolvedVehicleId,
+        type: "certificate_issued",
+        title: "施工証明書を発行",
+        description: `Public ID: ${public_id}`,
+        performed_at: now,
+        certificate_id: null,
+      })
+    );
+
+    await Promise.all(sideEffects);
+  } else if (resolvedVehicleId) {
     await supabase.from("vehicle_histories").insert({
       tenant_id: tenantId,
       vehicle_id: resolvedVehicleId,
       type: "certificate_issued",
       title: "施工証明書を発行",
       description: `Public ID: ${public_id}`,
-      performed_at: new Date().toISOString(),
+      performed_at: now,
       certificate_id: null,
     });
   }
