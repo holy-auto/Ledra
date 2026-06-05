@@ -32,31 +32,34 @@
 
 ## 2. OGP（最優先・配信前必須）
 
-### 2.1 現状の問題
-- `news/[slug]/page.tsx` は記事別OGを **持っていない** → 全記事が汎用 `src/app/opengraph-image.tsx`（`#18181b`・別コピー）にフォールバック。
-- 一方 `src/lib/marketing/og.tsx` の `makeOgImage()` は上質（ブランドグラデ＋バッジ＋タイトル＋タグライン）。**こちらに寄せる**。
-- ついでに**汎用 `opengraph-image.tsx` も `makeOgImage` ベースに統一**するとサイト全体のOGが揃う（推奨・別タスク）。
+### 2.1 現状（訂正）
+- 記事別OGは **既に実装済み**：`src/app/(marketing)/news/[slug]/opengraph-image.tsx` が `makeOgImage()` で記事ごとにブランドOGを生成（badge "NEWS" ＋ タイトル ＋ excerpt）。※当初「未実装」と書いたが誤りだった。
+- 本改修で **`ogTitle`/`ogSubtitle` を優先**するよう強化済み（長い記事タイトルがOGキャンバスからはみ出すのを防ぐ）。
+- 残課題：サイト**全体トップの汎用 `src/app/opengraph-image.tsx` は旧スタイル**（`#18181b`・別コピー）のまま。`makeOgImage` に寄せれば全面統一できる（任意・別タスク）。
+- ⚠️ ランタイム：このOGルートは `getContentBySlug`（node:fs）を使うため **edge 不可・nodejs 既定のまま**にすること。
 
-### 2.2 記事別OG 実装案（コピペ可）
-`src/app/(marketing)/news/[slug]/opengraph-image.tsx` を新規作成：
+### 2.2 実装（適用済み）
+現在の `opengraph-image.tsx`（`ogTitle`/`ogSubtitle` を優先）：
 
 ```tsx
 import { makeOgImage, OG_SIZE, OG_CONTENT_TYPE } from "@/lib/marketing/og";
 import { getContentBySlug } from "@/lib/marketing/content";
 
+export const alt = "Ledra お知らせ";
 export const size = OG_SIZE;            // 1200 x 630
 export const contentType = OG_CONTENT_TYPE;
-export const alt = "Ledra";
 
 export default async function Image({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const entry = await getContentBySlug("news", slug);
-  // 長い記事タイトルはOGで割れるため、frontmatter の ogTitle / ogSubtitle を優先
   const fm = entry?.frontmatter;
-  const title = (fm?.ogTitle as string) ?? fm?.title ?? "お知らせ";
-  const subtitle = (fm?.ogSubtitle as string) ?? fm?.excerpt;
-  const badge = (fm?.tags?.[0] as string) ?? "NEWS";
-  return makeOgImage({ title, subtitle, badge });
+
+  return makeOgImage({
+    badge: "NEWS",
+    // 長い記事タイトルはOGで割れるため ogTitle / ogSubtitle を優先
+    title: fm?.ogTitle ?? fm?.title ?? "Ledra お知らせ",
+    subtitle: fm?.ogSubtitle ?? fm?.excerpt,
+  });
 }
 ```
 > file-based OG 規約により `generateMetadata` 側で `openGraph.images` を手書きする必要はない（自動配線）。
@@ -124,7 +127,7 @@ ogSubtitle: 装着部品の真正性を、検証可能な事実に。
 
 ## 6. 制作チェックリスト
 - [ ] §1 のトークンのみ使用（ハードコード禁止・`DESIGN_SYSTEM.md` 準拠）
-- [ ] 記事別OG実装（§2.2）＋ `ogTitle`/`ogSubtitle` を frontmatter に追加（§2.3）
+- [x] 記事別OG（`ogTitle`/`ogSubtitle` 優先）＝**適用済み**（§2.2）。B記事に `ogTitle`/`ogSubtitle` 追加済み（§2.3）
 - [ ] 汎用 `opengraph-image.tsx` も `makeOgImage` に統一（任意・推奨）
 - [ ] フロー図 §3.3 の「描かない」を厳守（特許01/02/03）
 - [ ] SNSサイズ書き出し（§5）

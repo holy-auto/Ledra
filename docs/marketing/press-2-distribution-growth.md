@@ -123,7 +123,7 @@ D+7      : 反響まとめ、必要なら英語版・事例化へ展開
 
 - **既存の計測素地**：CTAに `data-cta-location` / `data-cta-label`、`CTAButton`/`CTABanner` に `trackLocation`。これらを集計すれば記事→CTAの動線が見える。
 - **見るべき数値**：記事PV / 平均滞在 / `news-parts-integrity` 経由の `/poc`・`/contact/insurers` 到達数 / 資料DL / 媒体掲載数 / 被リンク / 指名検索。
-- **解析ツール**：〔要確認：GA4 / Plausible 等〕。UTMとイベント計測を上記KPIに対応づける。
+- **解析ツール**：**PostHog ＋ Vercel Analytics**（`PostHogProvider` / `@vercel/analytics`。CTAクリックは `CTATracker` が `data-cta-*` を捕捉）。UTMとイベント計測を上記KPIに対応づける。
 
 ---
 
@@ -139,8 +139,8 @@ D+7      : 反響まとめ、必要なら英語版・事例化へ展開
 
 - [ ] 〔会社名・代表名・所在地・設立・配信日〕を確定（`…parts-integrity-b.mdx` / 記者キットPART4）
 - [ ] 「事件を実名化するか」の最終判断（営業リスク。既定はぼかし）
-- [ ] 記事末CTAを `/poc`・`/contact/insurers` に変更（3.1）
-- [ ] 記事別OGP実装（`press-2-visual-spec.md`）
+- [x] 記事末CTA＝B記事 frontmatter で `/poc`（主）・`/contact/insurers`（保険会社）に上書き済み（3.1案B＝frontmatter方式を実装）
+- [x] 記事別OGP（`ogTitle`/`ogSubtitle` 優先）＝適用済み（`press-2-visual-spec.md`）
 - [ ] UTM・短縮URLを用意（3.2）
 - [ ] PR TIMES カテゴリ/タグ設定、画像（OG/フロー図）添付
 - [ ] 業界紙・保険系への個別ブリーフィング先を確定
