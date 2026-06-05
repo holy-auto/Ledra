@@ -88,6 +88,18 @@ function getSignerConfig() {
 }
 
 /**
+ * Read-only config: RPC + contract で view 関数を呼ぶのに十分 (署名鍵は不要)。
+ * 検証パスは署名鍵が無くても / rotate されても動くようにする。
+ */
+function getReadConfig(networkOverride?: PolygonNetwork | null) {
+  const network = networkOverride ?? resolveNetwork();
+  const rpcUrl = perNetworkEnv("POLYGON_RPC_URL", network) ?? DEFAULT_RPC[network];
+  const contractAddress = perNetworkEnv("POLYGON_BATCH_CONTRACT_ADDRESS", network);
+  if (!contractAddress) return null;
+  return { network, rpcUrl, contractAddress } as const;
+}
+
+/**
  * Merkle root を LedraBatchAnchor へ刻む。
  *
  * 成功で { anchored: true, txHash, blockNumber } を返す。無効化 / 設定不足 / 失敗時は
@@ -147,5 +159,39 @@ export async function anchorBatchToPolygon(merkleRoot: string, leafCount: number
   } catch (error) {
     console.error("[polygon-batch] anchoring failed:", error instanceof Error ? error.message : error);
     return DISABLED_RESULT;
+  }
+}
+
+/**
+ * Merkle root がオンチェーンに刻まれているかを検証する (read-only / ガス代なし / 署名鍵不要)。
+ *
+ * 設定不足 / 不正 root のときは false を返す (throw しない)。row の network を渡せば、
+ * ランタイムが mainnet に移行したあとでも過去の Amoy batch を正しく検証できる。
+ */
+export async function verifyBatchAnchor(merkleRoot: string, network?: PolygonNetwork | null): Promise<boolean> {
+  const config = getReadConfig(network);
+  if (!config) return false;
+  if (!ROOT_RE.test(merkleRoot)) return false;
+
+  try {
+    const { createPublicClient, http } = await import("viem");
+    const { polygon, polygonAmoy } = await import("viem/chains");
+
+    const chain = config.network === "amoy" ? polygonAmoy : polygon;
+    const client = createPublicClient({ chain, transport: http(config.rpcUrl) });
+
+    const isAnchored = await withRetry("polygon-rpc", () =>
+      client.readContract({
+        address: config.contractAddress as `0x${string}`,
+        abi: LEDRA_BATCH_ANCHOR_ABI,
+        functionName: "isAnchored",
+        args: [merkleRoot as `0x${string}`],
+        authorizationList: undefined,
+      }),
+    );
+    return isAnchored as boolean;
+  } catch (error) {
+    console.error("[polygon-batch] verification failed:", error instanceof Error ? error.message : error);
+    return false;
   }
 }

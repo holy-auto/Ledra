@@ -51,3 +51,24 @@ describe("anchorBatchToPolygon", () => {
     warnSpy.mockRestore();
   });
 });
+
+describe("verifyBatchAnchor", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    delete process.env.POLYGON_NETWORK;
+    delete process.env.POLYGON_RPC_URL;
+    delete process.env.POLYGON_BATCH_CONTRACT_ADDRESS;
+  });
+
+  it("returns false when batch contract config is missing", async () => {
+    const { verifyBatchAnchor } = await import("../polygonBatch");
+    expect(await verifyBatchAnchor(ROOT)).toBe(false);
+  });
+
+  it("returns false for a malformed root even when a contract is configured", async () => {
+    process.env.POLYGON_BATCH_CONTRACT_ADDRESS = "0x" + "0".repeat(39) + "1";
+    vi.resetModules();
+    const { verifyBatchAnchor } = await import("../polygonBatch");
+    expect(await verifyBatchAnchor("0xtooshort")).toBe(false);
+  });
+});
