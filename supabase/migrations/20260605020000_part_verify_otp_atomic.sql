@@ -74,5 +74,9 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.part_verify_otp(text, uuid, text, integer, text, text) FROM public;
+-- Supabase の default privileges は public スキーマの新規関数に anon/authenticated への
+-- EXECUTE を自動付与するため、`FROM public` だけでは消えない。この RPC はサーバの
+-- service-role からのみ呼ばれ、p_max_attempts も引数で受けるので、anon/authenticated/PUBLIC
+-- から明示的に剥奪して service_role 専用にする。
+REVOKE ALL ON FUNCTION public.part_verify_otp(text, uuid, text, integer, text, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.part_verify_otp(text, uuid, text, integer, text, text) TO service_role;
