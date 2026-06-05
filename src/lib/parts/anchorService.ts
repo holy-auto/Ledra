@@ -11,6 +11,7 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { anchorToPolygon } from "@/lib/anchoring/providers/polygon";
 import { computePartsMetaHash } from "@/lib/parts/metaAnchor";
+import { logger } from "@/lib/logger";
 
 export type PartKind = "serialized" | "lot_only" | "consumable" | "high_value";
 
@@ -94,53 +95,145 @@ export interface MetaAnchorRunResult {
   errors: number;
 }
 
+/** 再アンカー判定に使う候補車両（確定装着を持つ）。 */
+export interface MetaAnchorCandidate {
+  vehicleId: string;
+  tenantId: string;
+  /** この車両の最新の customer_verified_at（ISO8601）。 */
+  latestVerifiedAt: string;
+}
+
+/** 既存メタアンカーの最小情報（dirty 判定用）。 */
+export interface ExistingMetaAnchor {
+  metaHash: string;
+  /** 前回 (再)アンカー or checkpoint 時刻（ISO8601）。 */
+  updatedAt: string;
+  /** Polygon tx が付与済みか（未付与＝アンカー失敗のリトライ対象）。 */
+  hasTx: boolean;
+}
+
+/**
+ * (再)アンカーが必要な車両を「直近アクティビティ順」で選定する純関数。
+ *
+ * 車両が dirty（要処理）なのは次のいずれか:
+ *  - まだメタアンカーが無い（新規車両・過去バグの取りこぼし）
+ *  - 前回アンカー以降に新しい確定装着がある（updatedAt < latestVerifiedAt）
+ *  - 前回のアンカーに Polygon tx が付かなかった（リトライ）
+ *
+ * `candidates` は最新確定が先（DESC）で渡す想定。車両重複は最初の出現（＝最新）を採用。
+ *
+ * @security 旧実装は customer_verified_at ASC 固定で「最古 limit 台」だけを毎回再処理し、
+ * それ以降（新規車両を含む）が永久に未アンカーになる starvation があった。dirty な車両を
+ * 直近順で拾い、処理後に updated_at を進めて dirty 集合から外すことで確実に前進する。
+ */
+export function selectVehiclesToReanchor(
+  candidates: MetaAnchorCandidate[],
+  existing: Map<string, ExistingMetaAnchor>,
+  limit: number,
+): MetaAnchorCandidate[] {
+  if (limit <= 0) return [];
+  const seen = new Set<string>();
+  const dirty: MetaAnchorCandidate[] = [];
+  for (const c of candidates) {
+    if (seen.has(c.vehicleId)) continue;
+    seen.add(c.vehicleId);
+    const a = existing.get(c.vehicleId);
+    const isDirty = !a || !a.hasTx || new Date(a.updatedAt).getTime() < new Date(c.latestVerifiedAt).getTime();
+    if (isDirty) {
+      dirty.push(c);
+      if (dirty.length >= limit) break;
+    }
+  }
+  return dirty;
+}
+
 /**
  * 確定済み装着を持つ車両ごとに「部品メタアンカー」を再計算する（§6.5・全件）。
- * meta_hash が前回と同じなら no-op（無償）。変化した車両のみ再アンカーする。
+ *
+ * 直近に確定アクティビティのある車両を起点に、(再)アンカーが必要な車両のみを処理する。
+ * 各車両は「その車両の全確定 content_hash（完全集合）」で meta_hash を計算するため、
+ * 装着件数が多くても部分集合でハッシュを誤計算しない。meta_hash が不変かつ tx 付与済みなら
+ * checkpoint（updated_at）だけ進めて無償で完了し、次回以降 dirty から外れる（前進性を担保）。
  */
 export async function recomputeVehicleMetaAnchors(limit = 25): Promise<MetaAnchorRunResult> {
   const admin = createServiceRoleAdmin("cron — parts 車両単位メタアンカー（全テナント横断）");
   const result: MetaAnchorRunResult = { vehiclesScanned: 0, reanchored: 0, unchanged: 0, errors: 0 };
 
-  // 確定済み・vehicle紐付け・content_hash あり の装着を集め、車両ごとに束ねる
-  const { data: rows, error } = await admin
+  // 1) 直近に確定した装着から候補車両を発見する（最新が先）。
+  const { data: recentRows, error } = await admin
     .from("part_installations")
-    .select("vehicle_id, tenant_id, content_hash")
+    .select("vehicle_id, tenant_id, customer_verified_at")
     .eq("status", "customer_verified")
     .not("vehicle_id", "is", null)
     .not("content_hash", "is", null)
-    .order("customer_verified_at", { ascending: true })
+    .order("customer_verified_at", { ascending: false })
     .limit(limit * 40);
   if (error) throw new Error(`meta candidates load failed: ${error.message}`);
-  if (!rows || rows.length === 0) return result;
+  if (!recentRows || recentRows.length === 0) return result;
 
-  const byVehicle = new Map<string, { tenantId: string; hashes: string[] }>();
-  for (const r of rows) {
-    const v = r.vehicle_id as string;
-    const entry = byVehicle.get(v) ?? { tenantId: r.tenant_id as string, hashes: [] };
-    entry.hashes.push(r.content_hash as string);
-    byVehicle.set(v, entry);
+  const candidates: MetaAnchorCandidate[] = recentRows
+    .filter((r) => r.vehicle_id && r.customer_verified_at)
+    .map((r) => ({
+      vehicleId: r.vehicle_id as string,
+      tenantId: r.tenant_id as string,
+      latestVerifiedAt: r.customer_verified_at as string,
+    }));
+
+  // 2) 候補車両の既存アンカーをまとめて取得（IN を 300 件ずつに分割して URL 長を抑える）。
+  const distinctIds = [...new Set(candidates.map((c) => c.vehicleId))];
+  const existing = new Map<string, ExistingMetaAnchor>();
+  for (let i = 0; i < distinctIds.length; i += 300) {
+    const chunk = distinctIds.slice(i, i + 300);
+    const { data: anchors, error: aErr } = await admin
+      .from("part_vehicle_meta_anchors")
+      .select("vehicle_id, meta_hash, updated_at, polygon_tx_hash")
+      .in("vehicle_id", chunk);
+    if (aErr) throw new Error(`meta anchors load failed: ${aErr.message}`);
+    for (const a of anchors ?? []) {
+      existing.set(a.vehicle_id as string, {
+        metaHash: (a.meta_hash as string) ?? "",
+        updatedAt: (a.updated_at as string) ?? "1970-01-01T00:00:00.000Z",
+        hasTx: !!a.polygon_tx_hash,
+      });
+    }
   }
 
-  const vehicles = [...byVehicle.entries()].slice(0, limit);
-  result.vehiclesScanned = vehicles.length;
+  // 3) (再)アンカーが必要な車両を選定（純ロジック）。
+  const toProcess = selectVehiclesToReanchor(candidates, existing, limit);
+  result.vehiclesScanned = toProcess.length;
 
-  for (const [vehicleId, { tenantId, hashes }] of vehicles) {
+  // 4) 各車両を「完全集合」で再計算してアンカー。
+  for (const { vehicleId, tenantId } of toProcess) {
     try {
-      const { metaHash, contributing } = computePartsMetaHash(vehicleId, hashes);
-
-      const { data: existing } = await admin
-        .from("part_vehicle_meta_anchors")
-        .select("meta_hash")
+      const { data: hashRows, error: hErr } = await admin
+        .from("part_installations")
+        .select("content_hash")
+        .eq("status", "customer_verified")
         .eq("vehicle_id", vehicleId)
-        .maybeSingle();
-      if (existing?.meta_hash === metaHash) {
+        .not("content_hash", "is", null);
+      if (hErr) throw new Error(hErr.message);
+
+      const { metaHash, contributing } = computePartsMetaHash(
+        vehicleId,
+        (hashRows ?? []).map((r) => r.content_hash as string),
+      );
+
+      const prev = existing.get(vehicleId);
+      const now = new Date().toISOString();
+
+      // meta_hash 不変かつ前回 tx 付与済み → 何もせず checkpoint だけ進める（無償）。
+      if (prev && prev.metaHash === metaHash && prev.hasTx) {
+        const { error: bumpErr } = await admin
+          .from("part_vehicle_meta_anchors")
+          .update({ updated_at: now })
+          .eq("vehicle_id", vehicleId);
+        if (bumpErr) throw new Error(bumpErr.message);
         result.unchanged++;
         continue;
       }
 
+      // 変更あり / 未アンカー / tx 欠落（リトライ）→ 再アンカー。
       const anchor = await anchorToPolygon(metaHash);
-      const now = new Date().toISOString();
       const { error: upErr } = await admin.from("part_vehicle_meta_anchors").upsert(
         {
           tenant_id: tenantId,
@@ -157,7 +250,10 @@ export async function recomputeVehicleMetaAnchors(limit = 25): Promise<MetaAncho
       if (upErr) throw new Error(upErr.message);
       result.reanchored++;
     } catch (e) {
-      console.error(`[parts-meta-anchor] failed for vehicle ${vehicleId}:`, e);
+      logger.error("[parts-meta-anchor] failed", {
+        vehicleId,
+        error: e instanceof Error ? e.message : String(e),
+      });
       result.errors++;
     }
   }
