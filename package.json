@@ -49,6 +49,7 @@
     "@anthropic-ai/sdk": "^0.98.0",
     "@contentauth/c2pa-node": "^0.5.5",
     "@googleapis/calendar": "^14.2.0",
+    "@openzeppelin/merkle-tree": "^1.0.8",
     "@peculiar/webcrypto": "^1.7.1",
     "@peculiar/x509": "^2.0.0",
     "@react-pdf/renderer": "^4.5.1",
