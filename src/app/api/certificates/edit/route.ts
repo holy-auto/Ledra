@@ -13,6 +13,7 @@ import {
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { resolveCertifiedTemplateForTenant } from "@/lib/manufacturers/certifiedTemplates";
+import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
 
 const certificateEditSchema = z
   .object({
@@ -158,6 +159,10 @@ export async function PUT(req: NextRequest) {
       new_values: Object.fromEntries(changes.map((c) => [c.field, c.new])),
       performed_by: caller.userId,
     });
+
+    // 内容が変わったので証明書レコードの新しい digest を anchor queue に積む
+    // (best-effort fire-and-forget / CERT_RECORD_ANCHOR_ENABLED=false なら no-op / dedup あり)。
+    enqueueCertificateAnchor({ tenantId: caller.tenantId, certificateId: cert.id as string }).catch(() => {});
 
     return apiOk({
       changed: true,

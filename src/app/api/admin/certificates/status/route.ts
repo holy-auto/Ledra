@@ -5,6 +5,7 @@ import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { certificateHasRequiredPhotos, CERTIFICATE_PHOTO_REQUIRED_MESSAGE } from "@/lib/certificates/photoRequirement";
 import { triggerCertificateIssued } from "@/lib/certificates/issueHooks";
+import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
 import {
   apiOk,
   apiInternalError,
@@ -149,6 +150,13 @@ export async function PUT(req: Request) {
       }).catch(() => {
         /* fire-and-forget: issueHooks 内で log 済み */
       });
+    }
+
+    // draft→active 以外の状態遷移 (void 化 / 再発行 等) でも証明書レコードの新しい
+    // digest を anchor queue に積む (draft→active は上の issueHooks 側で enqueue 済み)。
+    if (!(currentStatus === "draft" && newStatus === "active")) {
+      // best-effort fire-and-forget (triggerCertificateIssued と同様)。enqueue は throw しない。
+      enqueueCertificateAnchor({ tenantId: caller.tenantId, certificateId: cert.id as string }).catch(() => {});
     }
 
     return apiOk({ certificate: updated });
