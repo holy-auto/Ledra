@@ -13,6 +13,7 @@
 
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { enqueueInsuranceCaseCreated } from "@/lib/qstash/publish";
+import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
 import { logger } from "@/lib/logger";
 
 export interface CertificateIssuedParams {
@@ -44,6 +45,13 @@ export async function triggerCertificateIssued(params: CertificateIssuedParams):
     created_by: params.createdBy ?? null,
   }).catch((e) =>
     logger.warn("[cert-issued] QStash enqueue failed", { err: e instanceof Error ? e.message : String(e) }),
+  );
+
+  // 証明書レコード（メタデータ）のアンカー queue。写真ゼロの証明書でも発行日・施工内容の
+  // 存在証明をオンチェーンに残すための追記 (docs/anchoring-roadmap.md)。
+  // CERT_RECORD_ANCHOR_ENABLED=false (既定) なら no-op。発行は決して止めない。
+  enqueueCertificateAnchor({ tenantId: params.tenantId, certificateId: params.certificateId }).catch((e) =>
+    logger.warn("[cert-issued] cert-anchor enqueue failed", { err: e instanceof Error ? e.message : String(e) }),
   );
 
   // 発行直後フォローアップ (send_on_issue 有効テナントのみ)
