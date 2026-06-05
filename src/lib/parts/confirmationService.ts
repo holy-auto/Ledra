@@ -20,6 +20,7 @@ import { signPartConfirmation } from "@/lib/parts/partSigning";
 import { requestTimestamp } from "@/lib/parts/tsa";
 import { sendNotificationSms, formatPhoneE164 } from "@/lib/sms/client";
 import { sendCustomerLineText } from "@/lib/line/client";
+import { logger } from "@/lib/logger";
 
 const OTP_TTL_MIN = Number(process.env.PARTS_OTP_TTL_MIN ?? 10);
 const LINK_TTL_HOURS = Number(process.env.PARTS_CONFIRM_LINK_TTL_HOURS ?? 72);
@@ -66,7 +67,7 @@ async function notifyConfirmation(
       await sendNotificationSms(formatPhoneE164(target.phone), message);
     }
   } catch (e) {
-    console.error("[parts-confirm] 通知送信に失敗:", e);
+    logger.error("[parts-confirm] 通知送信に失敗", { error: e instanceof Error ? e.message : String(e) });
   }
 }
 
@@ -128,6 +129,7 @@ export async function requestConfirmation(
           .from("customers")
           .update({ phone_full_hash: signerPhoneFullHash })
           .eq("id", inst.customer_id)
+          .eq("tenant_id", tenantId)
           .is("phone_full_hash", null);
       }
     }
@@ -174,7 +176,8 @@ export async function requestConfirmation(
   const { error: linkErr } = await admin
     .from("part_installations")
     .update({ confirmation_signature_id: sigId })
-    .eq("id", installationId);
+    .eq("id", installationId)
+    .eq("tenant_id", tenantId);
   if (linkErr) throw new Error(`link signature failed: ${linkErr.message}`);
 
   // 確定リンク＋OTP を顧客へ配信（タブレット以外）。LINE 優先→SMS フォールバック。best-effort。
@@ -312,7 +315,8 @@ export async function signConfirmation(
       tsa_authority: tsa?.authority ?? null,
       tsa_timestamp_at: tsa?.timestampAt ?? null,
     })
-    .eq("id", sig.id);
+    .eq("id", sig.id)
+    .eq("tenant_id", tenantId);
   if (sigUpErr) throw new Error(`signature finalize failed: ${sigUpErr.message}`);
 
   // 装着を確定（完全凍結ゲートが最終判定）
@@ -323,7 +327,8 @@ export async function signConfirmation(
       customer_verified_at: signedAt,
       customer_verified_via: sig.channel,
     })
-    .eq("id", sig.installation_id);
+    .eq("id", sig.installation_id)
+    .eq("tenant_id", tenantId);
   if (verifyErr) {
     return { ok: false, reason: `確定ゲートで拒否されました: ${verifyErr.message}` };
   }

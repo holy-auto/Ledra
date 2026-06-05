@@ -74,13 +74,25 @@ export async function anchorPendingInstallations(limit = 25): Promise<AnchorRunR
         polygon_network: res.network,
       });
       if (insErr) {
-        // unique 競合（並行実行）は skip 扱い
-        result.skipped++;
+        if (insErr.code === "23505") {
+          // unique 競合（並行実行で既にアンカー済み）は skip 扱い
+          result.skipped++;
+        } else {
+          // それ以外（一時障害等）は握りつぶさず error 計上＋可視化
+          logger.error("[parts-anchor] anchor insert failed", {
+            installationId: c.id,
+            error: insErr.message,
+          });
+          result.errors++;
+        }
         continue;
       }
       result.anchored++;
     } catch (e) {
-      console.error(`[parts-anchor] failed for installation ${c.id}:`, e);
+      logger.error("[parts-anchor] failed", {
+        installationId: c.id,
+        error: e instanceof Error ? e.message : String(e),
+      });
       result.errors++;
     }
   }
