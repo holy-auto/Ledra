@@ -4,7 +4,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
-import { sendShopOrderEmail } from "@/lib/email/shopOrderEmail";
+import { sendShopOrderEmail, sendShopOrderOpsNotification } from "@/lib/email/shopOrderEmail";
 
 const shopOrderInvoiceSchema = z.object({
   items: z
@@ -142,6 +142,16 @@ export async function POST(req: NextRequest) {
     kind: "invoice",
     idempotencyKey: `shop-order-invoice:${order.id}`,
   }).catch((e) => console.error("[shop/orders] invoice email failed:", e));
+
+  // 運営（Ledra 運営チーム）への新規注文アラート。買い手向けの受領メールとは別に、
+  // 運営の通知先（CONTACT_TO_EMAIL 等）へ送って取りこぼし（埋もれ）を防ぐ。
+  void sendShopOrderOpsNotification({
+    supabase: adminSupabase,
+    tenantId: caller.tenantId,
+    shopOrderId: order.id,
+    kind: "invoice",
+    idempotencyKey: `shop-order-ops-invoice:${order.id}`,
+  }).catch((e) => console.error("[shop/orders] ops notification failed:", e));
 
   return apiOk({ order_id: order.id, order_number: orderNumber, total });
 }
