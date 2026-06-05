@@ -128,7 +128,7 @@ export async function createInstallation(
     .map((e) => e.perceptual_hash)
     .filter((s): s is string => typeof s === "string" && s.length > 0);
   if (evidenceSha256.length > 0 || phashes.length > 0) {
-    const dup = await findDuplicateEvidence(tenantId, installationId, evidenceSha256, phashes);
+    const dup = await findDuplicateEvidence(admin, tenantId, installationId, evidenceSha256, phashes);
     if (dup.length > 0) {
       findings.push({
         installation_id: installationId,
@@ -158,14 +158,14 @@ export async function createInstallation(
   };
 }
 
-/** 同テナント内の他装着で同一 sha256/知覚ハッシュの証拠を探す。 */
+/** 同テナント内の他装着で同一 sha256/知覚ハッシュの証拠を探す。admin は呼び出し側のものを再利用。 */
 async function findDuplicateEvidence(
+  admin: ReturnType<typeof createTenantScopedAdmin>["admin"],
   tenantId: string,
   selfInstallationId: string,
   sha256s: string[],
   phashes: string[],
 ): Promise<Array<{ installation_id: string; sha256: string | null; perceptual_hash: string | null }>> {
-  const { admin } = createTenantScopedAdmin(tenantId);
   // PostgREST の or フィルタへ渡すため、英数字のみに限定（フィルタ・インジェクション防止）。
   const safe = (xs: string[]) => [...new Set(xs.filter((x) => /^[A-Za-z0-9]+$/.test(x)))];
   const safeSha = safe(sha256s);

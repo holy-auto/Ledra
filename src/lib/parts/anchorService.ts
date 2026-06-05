@@ -15,9 +15,12 @@ import { logger } from "@/lib/logger";
 
 export type PartKind = "serialized" | "lot_only" | "consumable" | "high_value";
 
+/** 個別アンカー対象の part_kind（高額・シリアル品）。クエリと判定で共有する単一の真実。 */
+export const ANCHOR_PART_KINDS = ["high_value", "serialized"] as const satisfies readonly PartKind[];
+
 /** 個別アンカー対象か（高額・シリアル品）。純関数。 */
 export function shouldAnchorKind(kind: PartKind): boolean {
-  return kind === "high_value" || kind === "serialized";
+  return (ANCHOR_PART_KINDS as readonly PartKind[]).includes(kind);
 }
 
 export interface AnchorRunResult {
@@ -37,7 +40,7 @@ export async function anchorPendingInstallations(limit = 25): Promise<AnchorRunR
     .from("part_installations")
     .select("id, tenant_id, content_hash, part_kind")
     .eq("status", "customer_verified")
-    .in("part_kind", ["high_value", "serialized"])
+    .in("part_kind", [...ANCHOR_PART_KINDS])
     .not("content_hash", "is", null)
     .order("customer_verified_at", { ascending: true })
     .limit(limit);

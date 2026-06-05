@@ -285,39 +285,58 @@ export async function signConfirmation(
     .maybeSingle();
   if (error) throw new Error(`signature load failed: ${error.message}`);
   if (!sig) return { ok: false, reason: "確定リンクが無効です。" };
-  if (sig.status !== "otp_verified") return { ok: false, reason: "本人確認(OTP)が完了していません。" };
+  // otp_verified（初回）と signed（前回は署名済みだが装着遷移で失敗）を受理する。
+  // 署名行を先に signed にしてから装着遷移するため、遷移失敗時に再試行できるようにする。
+  if (sig.status !== "otp_verified" && sig.status !== "signed")
+    return { ok: false, reason: "本人確認(OTP)が完了していません。" };
   if (sig.expires_at && new Date(sig.expires_at) < new Date())
     return { ok: false, reason: "確定リンクの有効期限が切れています。" };
   if (!sig.signer_phone_full_hash) return { ok: false, reason: "署名者の電話情報がありません。" };
 
+  // 既に装着が確定済みなら冪等に成功を返す（二重 sign / 部分失敗後の再試行）。
+  const { data: instRow } = await admin
+    .from("part_installations")
+    .select("status")
+    .eq("id", sig.installation_id)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (instRow?.status === "customer_verified") {
+    return { ok: true, installationId: sig.installation_id };
+  }
+
   const signedAt = new Date().toISOString();
-  const signed = signPartConfirmation({
-    contentHash: sig.document_hash,
-    signedAt,
-    installationId: sig.installation_id,
-    signatureId: sig.id,
-    signerPhoneFullHash: sig.signer_phone_full_hash,
-  });
 
-  // RFC3161 タイムスタンプ（未設定環境では null）
-  const tsa = await requestTimestamp(sha256Hex(signed.signature));
+  // 署名がまだ（otp_verified）なら作成して signed にする。署名は不変の確定物なので、
+  // 既に signed（前回の装着遷移で失敗）なら再署名・再 TSA はせず装着遷移だけ再試行する。
+  if (sig.status === "otp_verified") {
+    const signed = signPartConfirmation({
+      contentHash: sig.document_hash,
+      signedAt,
+      installationId: sig.installation_id,
+      signatureId: sig.id,
+      signerPhoneFullHash: sig.signer_phone_full_hash,
+    });
 
-  const { error: sigUpErr } = await admin
-    .from("part_confirmation_signatures")
-    .update({
-      status: "signed",
-      signed_at: signedAt,
-      signature: signed.signature,
-      signing_payload: signed.signingPayload,
-      public_key_fingerprint: signed.publicKeyFingerprint,
-      key_version: signed.keyVersion,
-      tsa_token: tsa?.token ?? null,
-      tsa_authority: tsa?.authority ?? null,
-      tsa_timestamp_at: tsa?.timestampAt ?? null,
-    })
-    .eq("id", sig.id)
-    .eq("tenant_id", tenantId);
-  if (sigUpErr) throw new Error(`signature finalize failed: ${sigUpErr.message}`);
+    // RFC3161 タイムスタンプ（未設定環境では null）
+    const tsa = await requestTimestamp(sha256Hex(signed.signature));
+
+    const { error: sigUpErr } = await admin
+      .from("part_confirmation_signatures")
+      .update({
+        status: "signed",
+        signed_at: signedAt,
+        signature: signed.signature,
+        signing_payload: signed.signingPayload,
+        public_key_fingerprint: signed.publicKeyFingerprint,
+        key_version: signed.keyVersion,
+        tsa_token: tsa?.token ?? null,
+        tsa_authority: tsa?.authority ?? null,
+        tsa_timestamp_at: tsa?.timestampAt ?? null,
+      })
+      .eq("id", sig.id)
+      .eq("tenant_id", tenantId);
+    if (sigUpErr) throw new Error(`signature finalize failed: ${sigUpErr.message}`);
+  }
 
   // 装着を確定（完全凍結ゲートが最終判定）
   const { error: verifyErr } = await admin
