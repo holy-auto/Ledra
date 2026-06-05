@@ -6,6 +6,7 @@ import CustomerActions from "./CustomerActions";
 import MediaGallery from "./MediaGallery";
 import UnifiedTimeline, { type CertEvent, type ReservationItem } from "./UnifiedTimeline";
 import HeroCard from "@/components/customer/HeroCard";
+import RecordAnchorBadge from "@/components/customer/RecordAnchorBadge";
 import { highestGrade, type AuthenticityGrade } from "@/lib/anchoring/authenticityGrade";
 import { logCertificateAction } from "@/lib/audit/certificateLog";
 import { formatDate, formatDateTime } from "@/lib/format";
@@ -236,6 +237,10 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
           polygonTxHash={heroPolygonTxHash}
           polygonNetwork={heroPolygonNetwork}
         />
+      ) : null}
+
+      {certStatus === "active" && !isVoidCertificate ? (
+        <RecordAnchorBadge publicId={data.certificate.public_id} />
       ) : null}
 
       {passportVin && isPassportPublicEnabled() ? (
