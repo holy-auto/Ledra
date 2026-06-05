@@ -309,7 +309,9 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
     const raw = String(formData.get("inspection_findings_json") || "[]");
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) structured_findings = parsed;
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   // Structured part replacements → vehicle_part_replacements
   let structured_parts: any[] = [];
@@ -317,10 +319,15 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
     const raw = String(formData.get("part_replacements_json") || "[]");
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) structured_parts = parsed;
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   if (resolvedVehicleId && certificateId) {
-    const sideEffects: Promise<any>[] = [];
+    // Supabase query builders are PromiseLike (thenable) but not full Promises;
+    // type as PromiseLike so .insert() builders can be collected and awaited via
+    // Promise.all below. (Fixes a pre-existing tsc error surfaced on main.)
+    const sideEffects: PromiseLike<any>[] = [];
 
     if (structured_findings.length > 0) {
       sideEffects.push(
@@ -335,8 +342,8 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
             finding_code: f.finding_code ?? null,
             finding_note: f.finding_note ?? null,
             inspected_at: now,
-          }))
-        )
+          })),
+        ),
       );
     }
 
@@ -352,8 +359,8 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
             mileage_at_replacement: mileageKm ?? null,
             replaced_at: now,
             next_replacement_mileage_est: p.next_replacement_mileage_est ?? null,
-          }))
-        )
+          })),
+        ),
       );
     }
 
@@ -366,7 +373,7 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
         description: `Public ID: ${public_id}`,
         performed_at: now,
         certificate_id: null,
-      })
+      }),
     );
 
     await Promise.all(sideEffects);

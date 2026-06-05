@@ -181,3 +181,8 @@
 #   - agent_commission_flow: increment_referral_link_click() search_path=public
 20260527000001_customer_intake_invitations.sql
 20260601000000_agent_commission_flow.sql
+
+# Grandfathered for security-definer-mutable-search-path: shipped via PR #511
+# before this branch's lint rule existed. fn_sync_mileage_from_certificate() is
+# hardened forward in 20260604010000_harden_vehicle_prediction_search_path.sql.
+20260604000000_vehicle_prediction_data_infra.sql
