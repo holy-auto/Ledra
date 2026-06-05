@@ -238,38 +238,35 @@ export async function verifyOtp(
   meta: { ip?: string | null; userAgent?: string | null } = {},
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const { admin } = createTenantScopedAdmin(tenantId);
-  const { data: sig, error } = await admin
-    .from("part_confirmation_signatures")
-    .select("id, status, otp_code_hash, otp_attempts, otp_expires_at")
-    .eq("tenant_id", tenantId)
-    .eq("token", token)
-    .maybeSingle();
-  if (error) throw new Error(`signature load failed: ${error.message}`);
-  if (!sig) return { ok: false, reason: "確定リンクが無効です。" };
-  if (sig.status !== "pending") return { ok: false, reason: "この確定は既に処理済みです。" };
-  if (sig.otp_expires_at && new Date(sig.otp_expires_at) < new Date())
-    return { ok: false, reason: "OTP の有効期限が切れています。" };
-  if ((sig.otp_attempts ?? 0) >= MAX_OTP_ATTEMPTS) return { ok: false, reason: "試行回数の上限に達しました。" };
 
-  if (!sig.otp_code_hash || otpCodeHash(token, code) !== sig.otp_code_hash) {
-    await admin
-      .from("part_confirmation_signatures")
-      .update({ otp_attempts: (sig.otp_attempts ?? 0) + 1 })
-      .eq("id", sig.id);
-    return { ok: false, reason: "OTP が一致しません。" };
+  // 検査＋試行加算 or 確定を行ロック下で原子的に行う（OTP 総当たりのレース対策）。
+  // pepper を含む OTP ハッシュは app 側で算出し、比較は RPC 内で行う。
+  const { data, error } = await admin.rpc("part_verify_otp", {
+    p_token: token,
+    p_tenant_id: tenantId,
+    p_code_hash: otpCodeHash(token, code),
+    p_max_attempts: MAX_OTP_ATTEMPTS,
+    p_ip: meta.ip ?? null,
+    p_user_agent: meta.userAgent ?? null,
+  });
+  // セキュリティ制御なので fail-closed: RPC 不在/失敗は握りつぶさず例外にする。
+  if (error) throw new Error(`otp verify failed: ${error.message}`);
+
+  switch (data as string | null) {
+    case "ok":
+      return { ok: true };
+    case "mismatch":
+      return { ok: false, reason: "OTP が一致しません。" };
+    case "locked":
+      return { ok: false, reason: "試行回数の上限に達しました。" };
+    case "expired":
+      return { ok: false, reason: "OTP の有効期限が切れています。" };
+    case "processed":
+      return { ok: false, reason: "この確定は既に処理済みです。" };
+    case "not_found":
+    default:
+      return { ok: false, reason: "確定リンクが無効です。" };
   }
-
-  const { error: upErr } = await admin
-    .from("part_confirmation_signatures")
-    .update({
-      status: "otp_verified",
-      otp_verified_at: new Date().toISOString(),
-      signer_ip: meta.ip ?? null,
-      signer_user_agent: meta.userAgent ?? null,
-    })
-    .eq("id", sig.id);
-  if (upErr) throw new Error(`otp verify update failed: ${upErr.message}`);
-  return { ok: true };
 }
 
 export async function signConfirmation(
