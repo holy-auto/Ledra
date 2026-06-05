@@ -12,6 +12,7 @@
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { apiOk, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { CUSTOMER_COOKIE, getTenantIdBySlug, validateSession } from "@/lib/customerPortalServer";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { getClientIp } from "@/lib/rateLimit";
@@ -26,6 +27,10 @@ const schema = z.object({
 
 export async function POST(req: Request) {
   try {
+    // 削除リクエストの連打（請求フラッピング・証跡汚染）を抑止。
+    const limited = await checkRateLimit(req, "sensitive");
+    if (limited) return limited;
+
     const parsed = schema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
 
@@ -80,6 +85,9 @@ export async function POST(req: Request) {
 /** DELETE — クーリングオフ期間中の撤回 */
 export async function DELETE(req: Request) {
   try {
+    const limited = await checkRateLimit(req, "sensitive");
+    if (limited) return limited;
+
     const url = new URL(req.url);
     const tenantSlug = (url.searchParams.get("tenant") ?? "").trim();
     if (!tenantSlug) return apiValidationError("missing tenant");

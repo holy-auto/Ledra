@@ -10,6 +10,7 @@
 
 import { cookies } from "next/headers";
 import { apiOk, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { CUSTOMER_COOKIE, getTenantIdBySlug, validateSession } from "@/lib/customerPortalServer";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 
@@ -17,6 +18,10 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
+    // 監査ログのポーリング/列挙を抑止（IP 単位の一般上限）。
+    const limited = await checkRateLimit(req, "general");
+    if (limited) return limited;
+
     const url = new URL(req.url);
     const tenantSlug = (url.searchParams.get("tenant") ?? "").trim();
     if (!tenantSlug) return apiValidationError("missing tenant");

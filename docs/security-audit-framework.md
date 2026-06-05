@@ -151,11 +151,20 @@ Ledra プラットフォームの **定期セキュリティ監査** を再現�
 | カスタム ESLint（推奨） | `no-restricted-syntax` 等 | admin クライアントのクエリに `tenant_id` 不在を警告 / `createServiceRoleAdmin` の `/admin/**` 誤用誘導 |
 | シークレット鮮度 | `check:secrets-age`（`.secrets-age.json`） | ローテ TTL 監視 |
 
-### 推奨追加ガード（再発防止の構造化）
-- **IDOR ガード**: admin スコープラッパの戻り `admin` に対する `.from().select()` で
-  後続チェーンに `tenant_id`/`insurer_id` が現れないパターンを ESLint 警告化。
-- **SSRF ガード**: `src/lib/security/` の URL allowlist ヘルパ経由でない生 `fetch(userUrl)` を警告化。
-- **search_path lint**: `SET search_path = ''` 以外の `SECURITY DEFINER` をマイグレーション lint で拒否。
+### 追加ガードの実装状況
+- **search_path lint**: ✅ 実装済（`scripts/lint-migrations.js` の
+  `security-definer-mutable-search-path` ルール。`SET search_path = ''` 以外の
+  `SECURITY DEFINER` を新規マイグレーションで拒否）。
+- **SSRF ガード**: ✅ ヘルパ実装済（`src/lib/security/urlAllowlist.ts`）。
+  サーバ側 `fetch`/Vision は本ヘルパ経由で allowlist 検証する。生 `fetch(userUrl)`
+  を機械的に禁止する lint は将来検討（現状はレビュー + ヘルパ周知で担保）。
+- **IDOR ガード（ESLint）**: ⚠ 試作したが**不採用**。`admin` 連鎖で `tenant_id`
+  欠落を検出する AST ルールは全 src で 203 件ヒットし、真陽性は 2 件のみ
+  （`tenants` を自 id で引く等が大量に偽陽性）。AST は RLS/所有権文脈を
+  判別できないため、`error` 化は CI 破壊・`warn` 化はアラート疲労となる。
+  代替として §4-A のレビューチェックリスト + 既存の scoped ラッパ import 強制
+  （`no-restricted-imports`、`error` 稼働中）+ 定期スイープで担保する。詳細は
+  `docs/AUDIT_REPORT_20260604.md` §9。
 
 ---
 

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
-import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { ADDON_CATALOG, listEnabledAddons } from "@/lib/billing/addons";
 import {
   apiJson,
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     }
     const { tenantId } = parsed.data;
 
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const admin = createPlatformScopedAdmin("platform/tenant-addons — manage any tenant's addons");
 
     const { data: tenant, error: tenantError } = await admin
       .from("tenants")
