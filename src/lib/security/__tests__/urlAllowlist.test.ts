@@ -25,9 +25,18 @@ describe("urlAllowlist (SSRF guard)", () => {
     expect(res.ok).toBe(true);
   });
 
-  it("allows any *.supabase.co / *.supabase.in host", () => {
-    expect(checkImageFetchUrl("https://other.supabase.co/x.jpg").ok).toBe(true);
-    expect(checkImageFetchUrl("https://proj.supabase.in/x.jpg").ok).toBe(true);
+  it("rejects OTHER supabase projects (not the app's own host)", () => {
+    // Only the project host from NEXT_PUBLIC_SUPABASE_URL is allowed; a
+    // different *.supabase.co project (e.g. attacker-controlled Edge Function)
+    // must NOT pass.
+    expect(checkImageFetchUrl("https://attacker.supabase.co/x.jpg")).toMatchObject({
+      ok: false,
+      reason: "host_not_allowlisted",
+    });
+    expect(checkImageFetchUrl("https://proj.supabase.in/x.jpg")).toMatchObject({
+      ok: false,
+      reason: "host_not_allowlisted",
+    });
   });
 
   it("rejects cloud metadata IP", () => {

@@ -15,22 +15,29 @@
  *
  * Allowed:
  *   - scheme `https:` only
- *   - host ending in `.supabase.co` / `.supabase.in` (Supabase Storage)
- *   - the project host parsed from `NEXT_PUBLIC_SUPABASE_URL` (covers custom
- *     storage domains)
- *   - any suffix listed in `SSRF_ALLOWED_IMAGE_HOSTS` (comma-separated)
+ *   - the project host parsed from `NEXT_PUBLIC_SUPABASE_URL` (the app's own
+ *     Supabase Storage host) — and ONLY that host, not all `*.supabase.co`
+ *   - any host listed in `SSRF_ALLOWED_IMAGE_HOSTS` (comma-separated; a leading
+ *     dot makes it a subdomain-suffix match, otherwise it is host-or-subdomain)
  *
  * Rejected: http/file/data/etc., IP literals (v4/v6), `localhost`, embedded
- * credentials (`user:pass@`), non-443 ports, and any host outside the allowlist.
+ * credentials (`user:pass@`), non-443 ports, and any host outside the allowlist
+ * — crucially including *other* projects on `*.supabase.co` (e.g. an
+ * attacker-controlled Supabase Edge Function), which a broad suffix would let
+ * through.
+ *
+ * Redirects: this module only validates the *initial* URL. Callers that fetch
+ * server-side MUST also disable redirect following (`redirect: "error"`/
+ * `"manual"`), otherwise an allowed host could 302 to an internal address after
+ * the check has passed. The Anthropic Vision path cannot control Anthropic's
+ * fetch, so the host allowlist (own project only) is the mitigation there.
  *
  * Residual risk: a fully strict guard against DNS rebinding would resolve the
- * host and re-check the resolved IP. Because the allowlist is restricted to
- * Supabase-controlled public domains (not attacker-controlled hostnames), the
- * rebinding surface is minimal; revisit if arbitrary third-party hosts are ever
+ * host and re-check the resolved IP. Because the allowlist is restricted to the
+ * app's own Supabase domain (not attacker-controlled hostnames), the rebinding
+ * surface is minimal; revisit if arbitrary third-party hosts are ever
  * allowlisted.
  */
-
-const STATIC_SUPABASE_SUFFIXES = [".supabase.co", ".supabase.in"] as const;
 
 const IPV4_RE = /^\d{1,3}(?:\.\d{1,3}){3}$/;
 
@@ -62,7 +69,7 @@ export class SsrfBlockedError extends Error {
  * changes (e.g. in tests) take effect without a process restart.
  */
 function allowedHostSuffixes(): string[] {
-  const suffixes: string[] = [...STATIC_SUPABASE_SUFFIXES];
+  const suffixes: string[] = [];
 
   const supaUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (supaUrl) {

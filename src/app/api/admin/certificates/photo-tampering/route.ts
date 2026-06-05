@@ -84,7 +84,9 @@ export async function POST(req: NextRequest) {
     // 写真を並列ダウンロード → ArrayBuffer に変換
     const downloads = await Promise.allSettled(
       photoUrls.map(async (url) => {
-        const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+        // redirect: "error" — an allowlisted host must not be able to 302 us to
+        // an internal address after the SSRF pre-check has already passed.
+        const res = await fetch(url, { signal: AbortSignal.timeout(10_000), redirect: "error" });
         if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
         const buffer = await res.arrayBuffer();
         const contentType = res.headers.get("content-type") ?? "image/jpeg";

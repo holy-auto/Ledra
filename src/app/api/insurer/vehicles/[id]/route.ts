@@ -47,6 +47,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       .eq("insurer_id", caller.insurerId)
       .eq("tenant_id", vehicle.tenant_id)
       .eq("is_active", true)
+      .is("revoked_at", null) // 失効済みグラントは認可しない (RPC の述語と一致させる)
       .maybeSingle();
     if (!access) return apiNotFound("車両が見つかりません。");
 
