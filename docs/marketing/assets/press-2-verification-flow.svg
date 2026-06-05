@@ -1,0 +1,88 @@
+<svg width="1200" height="600" viewBox="0 0 1200 600" fill="none" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Sans JP','Hiragino Kaku Gothic ProN','Yu Gothic',sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="600" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#060a12"/>
+      <stop offset="0.45" stop-color="#0b111c"/>
+      <stop offset="1" stop-color="#0d0b1e"/>
+    </linearGradient>
+    <filter id="blur" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="80"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="600" rx="0" fill="url(#bg)"/>
+  <!-- Ambient blobs -->
+  <circle cx="1060" cy="70" r="210" fill="rgba(96,165,250,0.20)" filter="url(#blur)"/>
+  <circle cx="120" cy="560" r="190" fill="rgba(167,139,250,0.16)" filter="url(#blur)"/>
+
+  <!-- Top: brand + badge -->
+  <text x="64" y="74" fill="#ffffff" font-size="30" font-weight="700" letter-spacing="-0.5">Ledra</text>
+  <rect x="178" y="50" width="168" height="34" rx="17" fill="rgba(96,165,250,0.12)" stroke="rgba(96,165,250,0.30)"/>
+  <text x="262" y="73" fill="#93c5fd" font-size="15" font-weight="600" letter-spacing="2" text-anchor="middle">BEFORE → AFTER</text>
+
+  <!-- ===================== BEFORE ===================== -->
+  <rect x="64" y="140" width="372" height="250" rx="20" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.08)"/>
+  <text x="88" y="186" fill="rgba(255,255,255,0.85)" font-size="24" font-weight="700">これまで</text>
+
+  <rect x="88" y="206" width="324" height="42" rx="10" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.10)"/>
+  <text x="106" y="233" fill="rgba(255,255,255,0.70)" font-size="17">紙の納品書</text>
+
+  <rect x="88" y="258" width="324" height="42" rx="10" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.10)"/>
+  <text x="106" y="285" fill="rgba(255,255,255,0.70)" font-size="17">担当者の記憶</text>
+
+  <rect x="88" y="310" width="324" height="42" rx="10" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.10)"/>
+  <text x="106" y="337" fill="rgba(255,255,255,0.70)" font-size="17">バラバラのシステム</text>
+
+  <!-- BEFORE verdict -->
+  <text x="88" y="428" fill="#f87171" font-size="19" font-weight="700">✕ その車に何がされたか、誰も検証できない</text>
+
+  <!-- ===================== ARROW ===================== -->
+  <text x="484" y="236" fill="#93c5fd" font-size="14" font-weight="600" letter-spacing="1" text-anchor="middle">Ledra</text>
+  <path d="M462 248 l20 20 l-20 20" stroke="#93c5fd" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M486 248 l20 20 l-20 20" stroke="#93c5fd" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- ===================== AFTER ===================== -->
+  <text x="540" y="186" fill="#93c5fd" font-size="22" font-weight="700">装着インテグリティ</text>
+
+  <!-- 5 step pills -->
+  <!-- step 1 -->
+  <text x="586" y="214" fill="rgba(255,255,255,0.40)" font-size="12" text-anchor="middle">1</text>
+  <rect x="540" y="220" width="92" height="64" rx="14" fill="rgba(96,165,250,0.10)" stroke="rgba(96,165,250,0.35)"/>
+  <text x="586" y="259" fill="#cfe3ff" font-size="18" font-weight="600" text-anchor="middle">記録</text>
+  <!-- step 2 -->
+  <text x="702" y="214" fill="rgba(255,255,255,0.40)" font-size="12" text-anchor="middle">2</text>
+  <rect x="656" y="220" width="92" height="64" rx="14" fill="rgba(96,165,250,0.10)" stroke="rgba(96,165,250,0.35)"/>
+  <text x="702" y="259" fill="#cfe3ff" font-size="18" font-weight="600" text-anchor="middle">照合</text>
+  <!-- step 3 -->
+  <text x="818" y="214" fill="rgba(255,255,255,0.40)" font-size="12" text-anchor="middle">3</text>
+  <rect x="772" y="220" width="92" height="64" rx="14" fill="rgba(96,165,250,0.10)" stroke="rgba(96,165,250,0.35)"/>
+  <text x="818" y="259" fill="#cfe3ff" font-size="18" font-weight="600" text-anchor="middle">確定</text>
+  <!-- step 4 -->
+  <text x="934" y="214" fill="rgba(255,255,255,0.40)" font-size="12" text-anchor="middle">4</text>
+  <rect x="888" y="220" width="92" height="64" rx="14" fill="rgba(96,165,250,0.10)" stroke="rgba(96,165,250,0.35)"/>
+  <text x="934" y="259" fill="#cfe3ff" font-size="18" font-weight="600" text-anchor="middle">刻む</text>
+  <!-- step 5 -->
+  <text x="1050" y="214" fill="rgba(255,255,255,0.40)" font-size="12" text-anchor="middle">5</text>
+  <rect x="1004" y="220" width="92" height="64" rx="14" fill="rgba(96,165,250,0.10)" stroke="rgba(96,165,250,0.35)"/>
+  <text x="1050" y="259" fill="#cfe3ff" font-size="18" font-weight="600" text-anchor="middle">見せる</text>
+
+  <!-- connectors -->
+  <path d="M640 248 l8 8 l-8 8" stroke="rgba(255,255,255,0.40)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M756 248 l8 8 l-8 8" stroke="rgba(255,255,255,0.40)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M872 248 l8 8 l-8 8" stroke="rgba(255,255,255,0.40)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M988 248 l8 8 l-8 8" stroke="rgba(255,255,255,0.40)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- AFTER verified bar -->
+  <rect x="540" y="312" width="556" height="56" rx="14" fill="rgba(52,211,153,0.10)" stroke="rgba(52,211,153,0.40)"/>
+  <circle cx="572" cy="340" r="14" fill="none" stroke="#34d399" stroke-width="2.5"/>
+  <path d="M565 340 l5 5 l9 -10" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <text x="598" y="346" fill="#34d399" font-size="19" font-weight="700">改ざんを検知 ＝ 検証できる事実</text>
+
+  <!-- AFTER subnote -->
+  <text x="540" y="426" fill="rgba(255,255,255,0.55)" font-size="16">記録そのものが、正しさを語る。</text>
+
+  <!-- Bottom tagline -->
+  <text x="64" y="552" fill="#a78bfa" font-size="30" font-weight="700" letter-spacing="1">“たぶん”を、終わらせる。</text>
+  <text x="1136" y="552" fill="rgba(255,255,255,0.45)" font-size="18" letter-spacing="1" text-anchor="end">ledra.co.jp</text>
+</svg>
