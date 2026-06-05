@@ -10,7 +10,7 @@ import { apiJson, apiValidationError, apiInternalError, apiError } from "@/lib/a
 import { captureSecurityEvent } from "@/lib/observability/sentry";
 import { logAuditEvent } from "@/lib/audit/certificateLog";
 import { isResendFailure, sendResendEmail } from "@/lib/email/resendSend";
-import { sendShopOrderEmail } from "@/lib/email/shopOrderEmail";
+import { sendShopOrderEmail, sendShopOrderOpsNotification } from "@/lib/email/shopOrderEmail";
 import { sendTemplateSubscriptionStartedEmail } from "@/lib/email/templateOrderEmail";
 import { maskEmail } from "@/lib/logger";
 import { invalidateTenantBillingCache } from "@/lib/billing/guard";
@@ -599,6 +599,20 @@ export async function POST(req: NextRequest) {
               kind: "paid",
               idempotencyKey: `shop-order-paid:${event.id}`,
             });
+
+            // 運営（Ledra 運営チーム）への新規注文アラート。メール送信失敗で
+            // webhook 本体を失敗（＝ Stripe 再送）させないよう try/catch で隔離する。
+            try {
+              await sendShopOrderOpsNotification({
+                supabase,
+                tenantId,
+                shopOrderId,
+                kind: "paid",
+                idempotencyKey: `shop-order-ops-paid:${event.id}`,
+              });
+            } catch (opsErr) {
+              console.error("webhook: shop order ops notification failed", { shopOrderId, tenantId, error: opsErr });
+            }
           }
 
           console.info("webhook: shop order paid", { shopOrderId, tenantId });
