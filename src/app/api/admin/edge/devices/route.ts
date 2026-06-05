@@ -8,7 +8,7 @@
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiOk, apiError, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import { registerDevice, listDevices } from "@/lib/edge/deviceRegistry";
 import type { RegisterDeviceInput, EdgeDeviceKind } from "@/lib/edge/types";
