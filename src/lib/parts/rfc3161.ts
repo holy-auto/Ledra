@@ -10,6 +10,7 @@
  */
 
 import * as asn1js from "asn1js";
+import { withRetry } from "@/lib/http/withRetry";
 
 /** SHA-256 の OID。 */
 const SHA256_OID = "2.16.840.1.101.3.4.2.1";
@@ -114,10 +115,12 @@ export function parseTimeStampResponse(der: Uint8Array): TimeStampResult {
 }
 
 /**
- * TimeStampToken(CMS) から TSTInfo.genTime を取り出す。
- * ContentInfo → [0]SignedData → encapContentInfo.eContent(OCTET STRING) → TSTInfo.genTime。
+ * TimeStampToken(CMS=ContentInfo) から TSTInfo を取り出す。
+ * ContentInfo → [0]SignedData → encapContentInfo.eContent(OCTET STRING) → TSTInfo。
+ *
+ * TSTInfo ::= SEQUENCE { version, policy OID, messageImprint, serialNumber, genTime GeneralizedTime, ... }
  */
-function extractGenTime(contentInfo: asn1js.Sequence): Date {
+function tstInfoFromContentInfo(contentInfo: asn1js.Sequence): asn1js.Sequence {
   // ContentInfo ::= SEQUENCE { contentType OID, content [0] EXPLICIT ANY }
   const content = contentInfo.valueBlock.value[1] as asn1js.Constructed;
   const signedData = content.valueBlock.value[0] as asn1js.Sequence;
@@ -128,10 +131,34 @@ function extractGenTime(contentInfo: asn1js.Sequence): Date {
   const eContent = eContentExplicit.valueBlock.value[0] as asn1js.OctetString;
   const tstDer = eContent.valueBlock.valueHexView;
   const { result } = asn1js.fromBER(toArrayBuffer(tstDer));
-  const tstInfo = result as asn1js.Sequence;
-  // TSTInfo ::= SEQUENCE { version, policy OID, messageImprint, serialNumber, genTime GeneralizedTime, ... }
+  return result as asn1js.Sequence;
+}
+
+/** TSTInfo.genTime（index 4）を Date で取り出す。 */
+function extractGenTime(contentInfo: asn1js.Sequence): Date {
+  const tstInfo = tstInfoFromContentInfo(contentInfo);
   const genTime = tstInfo.valueBlock.value[4] as asn1js.GeneralizedTime;
   return genTime.toDate();
+}
+
+/**
+ * TimeStampToken の TSTInfo.messageImprint.hashedMessage を hex(小文字) で取り出す。
+ * 「TSA が我々の要求ハッシュにタイムスタンプを付けたか」を呼び出し側が検証するために使う。
+ * 解析不能な場合は null を返す（構造差のある正当なトークンを過度に拒否しないため）。
+ *
+ *   MessageImprint ::= SEQUENCE { hashAlgorithm AlgorithmIdentifier, hashedMessage OCTET STRING }
+ */
+export function extractTimestampedHashHex(tokenDer: Uint8Array): string | null {
+  try {
+    const { result } = asn1js.fromBER(toArrayBuffer(tokenDer));
+    const tstInfo = tstInfoFromContentInfo(result as asn1js.Sequence);
+    const messageImprint = tstInfo.valueBlock.value[2] as asn1js.Sequence;
+    const hashedMessage = messageImprint.valueBlock.value[1] as asn1js.OctetString;
+    const hex = Buffer.from(hashedMessage.valueBlock.valueHexView).toString("hex").toLowerCase();
+    return hex.length > 0 ? hex : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -143,31 +170,46 @@ export async function fetchTimestamp(
   hashHex: string,
   opts: { username?: string; password?: string; timeoutMs?: number } = {},
 ): Promise<TimeStampResult> {
-  const nonce = new Uint8Array(16);
-  crypto.getRandomValues(nonce);
-  const reqDer = buildTimeStampRequest(hashHex, { certReq: true, nonce });
+  const wantHex = hashHex.trim().toLowerCase();
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/timestamp-query",
-    Accept: "application/timestamp-reply",
-  };
-  if (opts.username) {
-    headers.Authorization = `Basic ${Buffer.from(`${opts.username}:${opts.password ?? ""}`).toString("base64")}`;
-  }
+  // 外向き HTTP は withRetry（指数バックオフ＋per-key circuit breaker）を経由する。
+  // nonce/controller は各リトライで作り直すため thunk 内で生成する。
+  return withRetry("parts-tsa", async () => {
+    const nonce = new Uint8Array(16);
+    crypto.getRandomValues(nonce);
+    const reqDer = buildTimeStampRequest(hashHex, { certReq: true, nonce });
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 15_000);
-  try {
-    const res = await fetch(tsaUrl, {
-      method: "POST",
-      headers,
-      body: reqDer as unknown as BodyInit,
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`RFC3161: TSA HTTP ${res.status}`);
-    const buf = new Uint8Array(await res.arrayBuffer());
-    return parseTimeStampResponse(buf);
-  } finally {
-    clearTimeout(timer);
-  }
+    const headers: Record<string, string> = {
+      "Content-Type": "application/timestamp-query",
+      Accept: "application/timestamp-reply",
+    };
+    if (opts.username) {
+      headers.Authorization = `Basic ${Buffer.from(`${opts.username}:${opts.password ?? ""}`).toString("base64")}`;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 15_000);
+    try {
+      const res = await fetch(tsaUrl, {
+        method: "POST",
+        headers,
+        body: reqDer as unknown as BodyInit,
+        signal: controller.signal,
+      });
+      // status を載せて 5xx/429 を withRetry の既定 isRetryable に拾わせる。
+      if (!res.ok) throw Object.assign(new Error(`RFC3161: TSA HTTP ${res.status}`), { status: res.status });
+      const buf = new Uint8Array(await res.arrayBuffer());
+      const result = parseTimeStampResponse(buf);
+
+      // 改ざん防止: TSA が「我々の要求ハッシュ」にタイムスタンプを付けたか検証する。
+      // （MITM/誤設定で別ハッシュのトークンを掴まされるのを防ぐ。解析不能時は寛容）。
+      const stampedHex = extractTimestampedHashHex(result.token);
+      if (stampedHex && stampedHex !== wantHex) {
+        throw new Error("RFC3161: TSA response messageImprint does not match request");
+      }
+      return result;
+    } finally {
+      clearTimeout(timer);
+    }
+  });
 }
