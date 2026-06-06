@@ -28,6 +28,18 @@ export type ContentFrontmatter = {
   // blog/news specific
   author?: string;
   draft?: boolean;
+  // OG image overrides (short, punchy copy for social cards)
+  ogTitle?: string;
+  ogSubtitle?: string;
+  // Per-article CTA banner overrides (fall back to the generic defaults)
+  ctaTitle?: string;
+  ctaSubtitle?: string;
+  ctaPrimaryLabel?: string;
+  ctaPrimaryHref?: string;
+  ctaSecondaryLabel?: string;
+  ctaSecondaryHref?: string;
+  ctaTertiaryLabel?: string;
+  ctaTertiaryHref?: string;
   [key: string]: unknown;
 };
 
@@ -89,8 +101,7 @@ function coerceScalar(raw: string): unknown {
   if (trimmed === "null") return null;
   if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
   // Strip quotes if present
-  if ((trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
-      (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
     return trimmed.slice(1, -1);
   }
   return trimmed;
@@ -119,9 +130,7 @@ export async function listContent(collection: ContentCollection): Promise<Conten
     const raw = await fs.readFile(full, "utf-8");
     const { data, body } = parseFrontmatter(raw);
 
-    const slug = typeof data.slug === "string" && data.slug
-      ? data.slug
-      : file.replace(/\.mdx?$/, "");
+    const slug = typeof data.slug === "string" && data.slug ? data.slug : file.replace(/\.mdx?$/, "");
 
     const frontmatter: ContentFrontmatter = {
       title: typeof data.title === "string" ? data.title : slug,
@@ -145,10 +154,7 @@ export async function listContent(collection: ContentCollection): Promise<Conten
   return entries;
 }
 
-export async function getContentBySlug(
-  collection: ContentCollection,
-  slug: string,
-): Promise<ContentEntry | null> {
+export async function getContentBySlug(collection: ContentCollection, slug: string): Promise<ContentEntry | null> {
   const entries = await listContent(collection);
   return entries.find((e) => e.frontmatter.slug === slug) ?? null;
 }
