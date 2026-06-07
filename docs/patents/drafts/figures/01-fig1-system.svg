@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 430" font-family="IPAGothic, sans-serif" font-size="12">
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,3 L0,6 z" fill="#000"/></marker></defs>
+  <rect x="0" y="0" width="800" height="430" fill="#fff"/>
+  <rect x="20" y="40" width="150" height="44" fill="#fff" stroke="#000"/><text x="95" y="67" text-anchor="middle">事業者端末 50a</text>
+  <rect x="20" y="110" width="150" height="44" fill="#fff" stroke="#000"/><text x="95" y="137" text-anchor="middle">事業者端末 50b</text>
+  <rect x="20" y="185" width="150" height="44" fill="#fff" stroke="#000"/><text x="95" y="212" text-anchor="middle">事業者端末 50c</text>
+  <rect x="300" y="40" width="190" height="90" rx="10" fill="#fff" stroke="#000"/><text x="395" y="80" text-anchor="middle">分散台帳 20</text><text x="395" y="100" text-anchor="middle">（ハッシュのみ）</text>
+  <rect x="300" y="200" width="240" height="180" fill="#fff" stroke="#000"/><text x="310" y="220">集約装置 10</text>
+  <rect x="320" y="235" width="95" height="38" fill="#fff" stroke="#000"/><text x="367" y="259" text-anchor="middle">プロセッサ11</text>
+  <rect x="425" y="235" width="95" height="38" fill="#fff" stroke="#000"/><text x="472" y="259" text-anchor="middle">メモリ12</text>
+  <rect x="320" y="290" width="95" height="38" fill="#fff" stroke="#000"/><text x="367" y="314" text-anchor="middle">通信回路13</text>
+  <rect x="425" y="290" width="95" height="38" fill="#fff" stroke="#000"/><text x="472" y="314" text-anchor="middle">記憶装置14</text>
+  <rect x="610" y="210" width="170" height="80" fill="#fff" stroke="#000"/><text x="695" y="245" text-anchor="middle">検証者端末 30</text><text x="695" y="266" text-anchor="middle">（中古車店等）</text>
+  <!-- arrows -->
+  <line x1="170" y1="62" x2="300" y2="72" stroke="#000" marker-end="url(#arrow)"/>
+  <line x1="170" y1="132" x2="300" y2="88" stroke="#000" marker-end="url(#arrow)"/>
+  <line x1="170" y1="207" x2="300" y2="104" stroke="#000" marker-end="url(#arrow)"/>
+  <text x="235" y="150" text-anchor="middle">個別アンカー</text>
+  <line x1="365" y1="130" x2="365" y2="200" stroke="#000" marker-end="url(#arrow)"/><text x="320" y="168" text-anchor="middle">tx横断収集</text>
+  <line x1="455" y1="200" x2="455" y2="130" stroke="#000" marker-end="url(#arrow)"/><text x="510" y="168" text-anchor="middle">集約値 単一tx</text>
+  <line x1="610" y1="240" x2="540" y2="255" stroke="#000" marker-end="url(#arrow)"/><text x="575" y="232" text-anchor="middle">VIN照会</text>
+  <line x1="540" y1="300" x2="610" y2="285" stroke="#000" marker-end="url(#arrow)"/><text x="575" y="320" text-anchor="middle">集約値＋tx集合</text>
+  <line x1="695" y1="210" x2="490" y2="95" stroke="#000" marker-end="url(#arrow)"/><text x="640" y="150" text-anchor="middle">記録参照</text>
+  <text x="20" y="412" font-size="12">図1（発明01：完全性証明システムの全体構成）</text>
+</svg>

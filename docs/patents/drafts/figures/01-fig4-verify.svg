@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 380" font-family="IPAGothic, sans-serif" font-size="12">
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,3 L0,6 z" fill="#000"/></marker></defs>
+  <rect x="0" y="0" width="760" height="380" fill="#fff"/>
+  <rect x="60" y="20" width="150" height="38" fill="#fff" stroke="#000"/><text x="135" y="44" text-anchor="middle">検証者端末 30</text>
+  <rect x="300" y="20" width="150" height="38" fill="#fff" stroke="#000"/><text x="375" y="44" text-anchor="middle">集約装置 10</text>
+  <rect x="555" y="20" width="150" height="38" fill="#fff" stroke="#000"/><text x="630" y="44" text-anchor="middle">分散台帳 20</text>
+  <line x1="135" y1="58" x2="135" y2="350" stroke="#000" stroke-dasharray="4,4"/>
+  <line x1="375" y1="58" x2="375" y2="350" stroke="#000" stroke-dasharray="4,4"/>
+  <line x1="630" y1="58" x2="630" y2="350" stroke="#000" stroke-dasharray="4,4"/>
+  <line x1="135" y1="95" x2="375" y2="95" stroke="#000" marker-end="url(#arrow)"/><text x="255" y="88" text-anchor="middle">車両識別子で照会</text>
+  <line x1="375" y1="140" x2="135" y2="140" stroke="#000" marker-end="url(#arrow)"/><text x="255" y="133" text-anchor="middle">集約ダイジェスト・記録tx・tx識別子の集合</text>
+  <text x="135" y="180" text-anchor="middle" font-size="11">［各txを同一規則で正規化→連結→再ハッシュ］</text>
+  <line x1="135" y1="225" x2="630" y2="225" stroke="#000" marker-end="url(#arrow)"/><text x="380" y="218" text-anchor="middle">記録txの値を参照</text>
+  <line x1="630" y1="270" x2="135" y2="270" stroke="#000" marker-end="url(#arrow)"/><text x="380" y="263" text-anchor="middle">記録された集約ダイジェスト</text>
+  <text x="290" y="312" text-anchor="middle" font-size="11">［再算出＝台帳値 → 全履歴の完全性OK（サーバ非依存）］</text>
+  <text x="20" y="368" font-size="12">図4（発明01：第三者によるサーバ非依存検証）</text>
+</svg>

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 430" font-family="IPAGothic, sans-serif" font-size="13">
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,3 L0,6 z" fill="#000"/></marker></defs>
+  <rect x="0" y="0" width="760" height="430" fill="#fff"/>
+  <rect x="40" y="110" width="300" height="170" fill="#fff" stroke="#000"/><text x="50" y="130">サーバ 10</text>
+  <rect x="60" y="145" width="120" height="42" fill="#fff" stroke="#000"/><text x="120" y="171" text-anchor="middle">プロセッサ 11</text>
+  <rect x="200" y="145" width="120" height="42" fill="#fff" stroke="#000"/><text x="260" y="171" text-anchor="middle">メモリ 12</text>
+  <rect x="60" y="205" width="120" height="42" fill="#fff" stroke="#000"/><text x="120" y="231" text-anchor="middle">通信回路 13</text>
+  <rect x="40" y="320" width="300" height="70" fill="#fff" stroke="#000"/><text x="190" y="350" text-anchor="middle">記憶装置／DB 14</text><text x="190" y="372" text-anchor="middle" font-size="12">（確定ゲートの制約を定義）</text>
+  <rect x="540" y="80" width="180" height="80" rx="10" fill="#fff" stroke="#000"/><text x="630" y="115" text-anchor="middle">分散台帳 20</text><text x="630" y="138" text-anchor="middle" font-size="12">（集約値の記録）</text>
+  <rect x="540" y="300" width="180" height="70" fill="#fff" stroke="#000"/><text x="630" y="335" text-anchor="middle">利用者端末 40</text>
+  <line x1="190" y1="280" x2="190" y2="320" stroke="#000" marker-end="url(#arrow)"/>
+  <line x1="340" y1="150" x2="540" y2="115" stroke="#000" marker-end="url(#arrow)"/><text x="450" y="120" text-anchor="middle" font-size="12">集約値の記録</text>
+  <line x1="540" y1="330" x2="340" y2="240" stroke="#000" marker-end="url(#arrow)"/><text x="450" y="305" text-anchor="middle" font-size="12">OTP入力／署名</text>
+  <text x="20" y="412" font-size="12">図1（発明07：確定システムの全体構成）</text>
+</svg>

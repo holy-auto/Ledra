@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 340" font-family="IPAGothic, sans-serif" font-size="13">
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,3 L0,6 z" fill="#000"/></marker></defs>
+  <rect x="0" y="0" width="720" height="340" fill="#fff"/>
+  <rect x="270" y="20" width="180" height="46" fill="#fff" stroke="#000"/><text x="360" y="48" text-anchor="middle">連絡先の出所は？</text>
+  <!-- left -->
+  <line x1="300" y1="66" x2="180" y2="110" stroke="#000" marker-end="url(#arrow)"/><text x="200" y="92" text-anchor="middle" font-size="12">利用者本人が登録</text>
+  <rect x="40" y="110" width="280" height="46" fill="#fff" stroke="#000"/><text x="180" y="138" text-anchor="middle">最上位グレード 到達可</text>
+  <line x1="180" y1="156" x2="180" y2="200" stroke="#000" marker-end="url(#arrow)"/>
+  <rect x="40" y="200" width="280" height="46" fill="#fff" stroke="#000"/><text x="180" y="228" text-anchor="middle">高リスク部品の確定 可</text>
+  <!-- right -->
+  <line x1="420" y1="66" x2="540" y2="110" stroke="#000" marker-end="url(#arrow)"/><text x="540" y="92" text-anchor="middle" font-size="12">作成主体が入力</text>
+  <rect x="400" y="110" width="280" height="46" fill="#fff" stroke="#000"/><text x="540" y="138" text-anchor="middle">下位グレード 止まり</text>
+  <line x1="540" y1="156" x2="540" y2="200" stroke="#000" marker-end="url(#arrow)"/>
+  <rect x="400" y="200" width="280" height="46" fill="#fff" stroke="#000"/><text x="540" y="228" text-anchor="middle">高リスク部品は確定不可</text>
+  <text x="20" y="300" font-size="12">図3（発明07：連絡先の出所による保証グレードの制限＝なりすまし確定の防止）</text>
+</svg>
