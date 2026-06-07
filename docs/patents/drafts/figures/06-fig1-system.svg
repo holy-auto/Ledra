@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 440" font-family="sans-serif" font-size="13">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 z" fill="#000"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="760" height="440" fill="#fff"/>
+
+  <!-- 生成装置10 -->
+  <rect x="40" y="120" width="320" height="210" fill="#fff" stroke="#000"/>
+  <text x="50" y="140" font-size="13">生成装置 10</text>
+  <rect x="60" y="155" width="135" height="44" fill="#fff" stroke="#000"/>
+  <text x="127" y="181" text-anchor="middle">プロセッサ 11</text>
+  <rect x="210" y="155" width="135" height="44" fill="#fff" stroke="#000"/>
+  <text x="277" y="181" text-anchor="middle">メモリ 12</text>
+  <rect x="60" y="215" width="135" height="44" fill="#fff" stroke="#000"/>
+  <text x="127" y="241" text-anchor="middle">通信回路 13</text>
+  <rect x="210" y="215" width="135" height="44" fill="#fff" stroke="#000"/>
+  <text x="277" y="241" text-anchor="middle">記憶装置 14</text>
+  <text x="200" y="305" text-anchor="middle" font-size="12">クレーム生成・葉/ルート算出・包含経路提供</text>
+
+  <!-- 分散台帳20 -->
+  <rect x="540" y="60" width="190" height="80" rx="10" fill="#fff" stroke="#000"/>
+  <text x="635" y="95" text-anchor="middle">分散台帳 20</text>
+  <text x="635" y="118" text-anchor="middle" font-size="12">（ルートのみ記録）</text>
+
+  <!-- 検証者端末30 -->
+  <rect x="540" y="300" width="190" height="80" fill="#fff" stroke="#000"/>
+  <text x="635" y="335" text-anchor="middle">検証者端末 30</text>
+  <text x="635" y="358" text-anchor="middle" font-size="12">（保険会社等）</text>
+
+  <!-- arrows -->
+  <!-- 生成→台帳 ルート記録 -->
+  <line x1="360" y1="160" x2="540" y2="110" stroke="#000" marker-end="url(#arrow)"/>
+  <text x="450" y="125" text-anchor="middle" font-size="12">ルート記録</text>
+  <!-- 検証者→生成 識別子+対象クレーム -->
+  <line x1="540" y1="320" x2="360" y2="250" stroke="#000" marker-end="url(#arrow)"/>
+  <text x="455" y="300" text-anchor="middle" font-size="12">識別子＋対象クレーム</text>
+  <!-- 生成→検証者 包含経路/開示値 -->
+  <line x1="360" y1="290" x2="540" y2="350" stroke="#000" marker-end="url(#arrow)"/>
+  <text x="452" y="343" text-anchor="middle" font-size="12">包含経路／開示値</text>
+  <!-- 検証者→台帳 記録済ルート参照 -->
+  <line x1="635" y1="300" x2="635" y2="140" stroke="#000" marker-end="url(#arrow)"/>
+  <text x="690" y="225" text-anchor="middle" font-size="12">記録済</text>
+  <text x="690" y="240" text-anchor="middle" font-size="12">ルート参照</text>
+
+  <text x="20" y="420" font-size="12">図1（発明06：選択的開示証明システムの全体構成）</text>
+</svg>
