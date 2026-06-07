@@ -42,12 +42,22 @@ const PRIORITY_TONE: Record<string, string> = {
   low: "bg-slate-100 text-slate-800",
 };
 
+/** 受信時に自動分類され DB に保存済みの結果 (policies / reason は持たない)。 */
+interface InitialClassification {
+  category: string | null;
+  priority: string | null;
+  draft_reply: string;
+  confidence: number;
+}
+
 interface Props {
   inquiryId: string;
   onUseDraft: (draft: string) => void;
+  /** 受信時に自動分類済みなら既定表示する結果。 */
+  initial?: InitialClassification | null;
 }
 
-export default function InquiryAiBanner({ inquiryId, onUseDraft }: Props) {
+export default function InquiryAiBanner({ inquiryId, onUseDraft, initial }: Props) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Classification | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -85,67 +95,69 @@ export default function InquiryAiBanner({ inquiryId, onUseDraft }: Props) {
     }
   }
 
-  if (!result && !err) {
+  // 手動再分類の結果があればそれを、無ければ受信時の自動分類 (initial) を表示する。
+  const display: Classification | null =
+    result ??
+    (initial
+      ? {
+          category: initial.category,
+          priority: initial.priority,
+          draft_reply: initial.draft_reply,
+          reason: "",
+          confidence: initial.confidence,
+          ai: true,
+          policies: {},
+        }
+      : null);
+  const isAuto = !result && !!initial;
+
+  // 未分類 (自動も手動も無い) → 起動ボタン (エラー時はここで再試行)
+  if (!display) {
     return (
       <div className="rounded-xl border border-accent/30 bg-accent/5 px-3 py-2 flex items-center justify-between gap-2">
-        <div className="text-xs text-accent">
-          ✨ AI で分類 + 返信下書きを生成できます。
+        <div className={`text-xs ${err ? "text-muted" : "text-accent"}`}>
+          {err ?? "✨ AI で分類 + 返信下書きを生成できます。"}
         </div>
-        <button
-          type="button"
-          onClick={run}
-          disabled={loading}
-          className="btn-ghost text-[11px] py-1 px-2"
-        >
-          {loading ? "解析中..." : "AI 分類"}
+        <button type="button" onClick={run} disabled={loading} className="btn-ghost text-[11px] py-1 px-2">
+          {loading ? "解析中..." : err ? "再試行" : "AI 分類"}
         </button>
       </div>
     );
   }
 
-  if (err) {
-    return (
-      <div className="rounded-xl border border-border-default bg-surface px-3 py-2 text-xs text-muted flex items-center justify-between gap-2">
-        <span>{err}</span>
-        <button type="button" onClick={() => setErr(null)} className="btn-ghost text-[11px] py-0.5 px-1.5">
-          再試行
-        </button>
-      </div>
-    );
-  }
-
-  if (!result) return null;
-
-  const category = result.category ?? "other";
-  const priority = result.priority ?? "med";
+  const category = display.category ?? "other";
+  const priority = display.priority ?? "med";
 
   return (
     <div className="rounded-xl border border-accent/30 bg-accent/5 px-3 py-3 space-y-2">
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="text-accent font-semibold">✨ AI 分類</span>
-        {result.category && (
+        {isAuto && <span className="text-muted">受信時に自動分類</span>}
+        {display.category && (
           <span className="rounded-full bg-accent/10 text-accent px-2 py-0.5">
             {CATEGORY_LABEL[category] ?? category}
           </span>
         )}
-        {result.priority && (
+        {display.priority && (
           <span className={`rounded-full px-2 py-0.5 ${PRIORITY_TONE[priority] ?? PRIORITY_TONE.med}`}>
             {priority === "high" ? "高優先" : priority === "low" ? "低優先" : "中優先"}
           </span>
         )}
-        <span className="text-muted">信頼度 {Math.round(result.confidence * 100)}%</span>
-        {!result.ai && <span className="text-muted">(ルールベース)</span>}
+        <span className="text-muted">信頼度 {Math.round(display.confidence * 100)}%</span>
+        {!display.ai && <span className="text-muted">(ルールベース)</span>}
+        <button type="button" onClick={run} disabled={loading} className="btn-ghost text-[11px] py-0.5 px-1.5 ml-auto">
+          {loading ? "解析中..." : "再分類"}
+        </button>
       </div>
-      {result.reason && (
-        <div className="text-[11px] text-muted">{result.reason}</div>
-      )}
-      {result.draft_reply && (
+      {err && <div className="text-[11px] text-danger-text">{err}</div>}
+      {display.reason && <div className="text-[11px] text-muted">{display.reason}</div>}
+      {display.draft_reply && (
         <div className="rounded-lg border border-border-subtle bg-surface px-3 py-2">
           <div className="text-[11px] text-muted mb-1">返信下書き</div>
-          <p className="text-sm text-primary whitespace-pre-wrap leading-relaxed">{result.draft_reply}</p>
+          <p className="text-sm text-primary whitespace-pre-wrap leading-relaxed">{display.draft_reply}</p>
           <button
             type="button"
-            onClick={() => onUseDraft(result.draft_reply)}
+            onClick={() => onUseDraft(display.draft_reply)}
             className="mt-2 btn-ghost text-[11px] py-1 px-2"
           >
             この下書きを使う

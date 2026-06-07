@@ -40,7 +40,9 @@ export type AutomationActionKey =
   | "workflow.auto_apply_on_intake"
   | "inventory.auto_draft_reorder"
   | "photo.auto_tampering_check"
-  | "insurer_case.auto_fraud_score";
+  | "insurer_case.auto_fraud_score"
+  | "insurer_case.auto_summary"
+  | "inquiry.auto_classify";
 
 export interface AutomationActionDef {
   key: AutomationActionKey;
@@ -197,6 +199,24 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     defaultEnabled: false,
     guard: "AI 有効 + 案件にテナント紐付けあり (証明書/車両/契約経由)",
   },
+  {
+    key: "insurer_case.auto_summary",
+    workflow: "insurer_case",
+    label: "保険案件の受信時に3行サマリを自動生成",
+    description:
+      "保険案件 (claim) が作成された時点で、車両 / 施工 / 本文から査定担当向けの 3 行サマリを自動生成し、注釈として案件に保存する。査定担当は案件を開いた瞬間に要点を把握できる。査定の確定は必ず人が行う (注釈のみ・壁3 不介入)。",
+    defaultEnabled: false,
+    guard: "AI 有効 + 案件にテナント紐付けあり (証明書/車両/契約経由)",
+  },
+  {
+    key: "inquiry.auto_classify",
+    workflow: "inquiry",
+    label: "問い合わせ受信時に分類・返信下書きを自動生成",
+    description:
+      "顧客ポータルから問い合わせを受信した時点で、カテゴリ / 優先度 / 返信下書きを自動生成し、注釈として保存する。スタッフが受信箱を開いた瞬間に分類済み・下書き済みの状態にする。返信の送信は必ず人が行う (下書き・分類のみ・壁3 不介入)。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Standard プラン以上 (ai_inquiry_classify)",
+  },
 ];
 
 /**
@@ -244,6 +264,8 @@ export const RECOMMENDED_AUTOMATION_ACTION_KEYS: ReadonlySet<string> = new Set<s
   "inventory.auto_draft_reorder",
   "photo.auto_tampering_check",
   "insurer_case.auto_fraud_score",
+  "insurer_case.auto_summary",
+  "inquiry.auto_classify",
 ]);
 
 /** opt-in 可能な (カタログに存在する) アクションキーか。 */

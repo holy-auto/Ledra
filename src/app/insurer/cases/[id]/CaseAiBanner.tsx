@@ -24,14 +24,22 @@ interface AssignCandidate {
 interface Props {
   caseId: string;
   onApplyAssignee?: (userId: string) => void;
+  /** 受信時に自動生成され meta.ai_summary に保存済みのサマリ (あれば既定表示)。 */
+  initialSummary?: SummaryResult | null;
 }
 
-export default function CaseAiBanner({ caseId, onApplyAssignee }: Props) {
-  const [summary, setSummary] = useState<SummaryResult | null>(null);
+export default function CaseAiBanner({ caseId, onApplyAssignee, initialSummary }: Props) {
+  // 手動再要約の結果。無い間は受信時の自動サマリ (initialSummary) を表示する。
+  // initialSummary は親のポーリングで後から届く (after() の書き込み完了後) ことがあるため、
+  // state に固定せず live prop から導出し、リロードなしで反映されるようにする。
+  const [manualSummary, setManualSummary] = useState<SummaryResult | null>(null);
   const [candidates, setCandidates] = useState<AssignCandidate[] | null>(null);
   const [summarizing, setSummarizing] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const summary = manualSummary ?? initialSummary ?? null;
+  const isAuto = !manualSummary && !!initialSummary;
 
   async function runSummary() {
     setSummarizing(true);
@@ -47,7 +55,7 @@ export default function CaseAiBanner({ caseId, onApplyAssignee }: Props) {
         setErr(j?.message ?? "サマリ生成に失敗しました。");
         return;
       }
-      setSummary(j.summary);
+      setManualSummary(j.summary);
     } catch {
       setErr("通信エラーが発生しました。");
     } finally {
@@ -82,12 +90,7 @@ export default function CaseAiBanner({ caseId, onApplyAssignee }: Props) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-xs font-semibold tracking-[0.18em] text-accent">✨ AI アシスト</div>
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={runSummary}
-            disabled={summarizing}
-            className="btn-ghost text-[11px] py-1 px-2"
-          >
+          <button type="button" onClick={runSummary} disabled={summarizing} className="btn-ghost text-[11px] py-1 px-2">
             {summarizing ? "要約中..." : summary ? "再要約" : "3 行で要約"}
           </button>
           <button
@@ -104,11 +107,14 @@ export default function CaseAiBanner({ caseId, onApplyAssignee }: Props) {
       {err && <div className="text-[11px] text-danger-text">{err}</div>}
 
       {summary && (
-        <ol className="space-y-1.5 text-sm text-primary list-decimal list-inside">
-          {summary.lines.map((line, i) => (
-            <li key={i}>{line}</li>
-          ))}
-        </ol>
+        <div className="space-y-1.5">
+          {isAuto && <div className="text-[11px] text-muted">受信時に自動生成</div>}
+          <ol className="space-y-1.5 text-sm text-primary list-decimal list-inside">
+            {summary.lines.map((line, i) => (
+              <li key={i}>{line}</li>
+            ))}
+          </ol>
+        </div>
       )}
 
       {candidates && candidates.length > 0 && (

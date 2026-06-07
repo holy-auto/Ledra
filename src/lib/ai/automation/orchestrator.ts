@@ -291,3 +291,25 @@ export function shouldAutoTamperingCheck(settings: AiAutomationSettings): boolea
 export function shouldAutoFraudScore(settings: AiAutomationSettings): boolean {
   return resolveAutoAction(settings, "insurer_case.auto_fraud_score");
 }
+
+/**
+ * 保険案件の受信時に 3 行サマリを自動生成してよいか。
+ * 結果は注釈 (lines / confidence) としてのみ保存され、査定の確定は人が行う
+ * (要点提示のみ・非壁3)。
+ */
+export function shouldAutoSummarizeCase(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "insurer_case.auto_summary");
+}
+
+// ─────────────────────────────────────────────
+// 顧客問い合わせ → 自動分類 / 返信下書き
+// ─────────────────────────────────────────────
+
+/**
+ * 問い合わせ受信時に分類 + 返信下書きを自動生成してよいか。
+ * 結果は注釈 (category / priority / draft_reply) としてのみ保存され、返信の送信は
+ * 必ず人が行う (下書き・分類のみ・非壁3)。
+ */
+export function shouldAutoClassifyInquiry(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "inquiry.auto_classify");
+}

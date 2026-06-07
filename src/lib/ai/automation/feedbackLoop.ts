@@ -68,6 +68,16 @@ const ENDPOINT_META: Readonly<Record<string, EndpointMeta>> = {
     actionKey: "translation.auto_translate",
     label: "お知らせの自動翻訳",
   },
+  "/api/insurer/cases/[id]/ai-summary": {
+    workflow: "insurer_case",
+    actionKey: "insurer_case.auto_summary",
+    label: "保険案件サマリの自動生成",
+  },
+  "/api/admin/customer-inquiries/[id]/ai-classify": {
+    workflow: "inquiry",
+    actionKey: "inquiry.auto_classify",
+    label: "問い合わせ分類の自動実行",
+  },
 };
 
 export type RecommendationKind =

@@ -7,6 +7,7 @@ import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
 import { insurerCaseCreateSchema } from "@/lib/validations/insurer-case";
 import { applyAssignmentRules, type AssignmentRule } from "@/lib/insurer/applyAssignmentRules";
 import { maybeAutoFraudScoreForCase } from "@/lib/ai/automation/fraudScoreAuto";
+import { maybeAutoSummarizeCase } from "@/lib/ai/automation/caseSummaryAuto";
 
 export const runtime = "nodejs";
 
@@ -231,6 +232,10 @@ export async function POST(req: NextRequest) {
     // opt-in テナントでは、案件作成後に不正リスクを自動スコア (fire-and-forget / レスポンス後)。
     after(() =>
       maybeAutoFraudScoreForCase({ caseId: newCase.id as string, insurerId: caller.insurerId, tenantId: tenant_id }),
+    );
+    // opt-in テナントでは、案件作成後に 3 行サマリを自動生成 (fire-and-forget / レスポンス後)。
+    after(() =>
+      maybeAutoSummarizeCase({ caseId: newCase.id as string, insurerId: caller.insurerId, tenantId: tenant_id }),
     );
 
     return apiJson({ case: newCase }, { status: 201 });

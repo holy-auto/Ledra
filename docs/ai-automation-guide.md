@@ -10,7 +10,7 @@ Ledra のワークフロー (証明書 / 案件 / 請求 / 顧客 / 保険 case 
 切り替えられる仕組み。
 
 - **目的**: 入力工数の削減 + コスト管理 + コンプライアンス
-- **規模**: 20+ API ルート、30+ フィールド、16 ワークフロー、7 auto-actions (全 7 ライブ配線済み / 壁3 で 6 アクションは自動化禁止)
+- **規模**: 20+ API ルート、30+ フィールド、16 ワークフロー、18 auto-actions (全 18 ライブ配線済み / 壁3 で 6 アクションは自動化禁止)
 - **設定 UI**: `/admin/settings/ai-automation` (admin 以上が編集)
 - **運営ダッシュボード**: `/admin/platform/operations` の「AI 利用状況」セクション
 
@@ -119,6 +119,10 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 | `inventory.auto_draft_reorder`            | 在庫下限割れ時に仕入先ごとの発注書を draft で自動起票 (承認・送信は人 / 壁3)                                  | OFF  | ✅ 低在庫 cron (low-stock-alerts)                     |
 | `photo.auto_tampering_check`              | 証明書写真アップロード時に改ざんスクリーニング (一次=シグナル集約 / 二次=グレーのみ Vision) を自動付与 (注釈) | OFF  | ✅ 写真アップロード (POST certificates/images/upload) |
 | `insurer_case.auto_fraud_score`           | 保険案件作成時に不正リスクを自動スコア (ルール一次 + グレーのみ AI、注釈。査定確定は人)                       | OFF  | ✅ 案件作成 (POST insurer/cases)                      |
+| `invoice.auto_draft_on_billing_step`      | ワークフローの会計/請求工程到達時に請求書を draft で自動起票 (送付は人 / 壁3)                                  | OFF  | ✅ WF会計工程 (reservations advance)                  |
+| `workflow.auto_apply_on_intake`           | 案件登録時に AI 提案ワークフローを自動適用し工程開始 (各工程の確定は人)                                        | OFF  | ✅ 予約作成 (POST reservations)                       |
+| `insurer_case.auto_summary`               | 保険案件作成時に査定担当向け 3 行サマリを自動生成 (注釈。査定確定は人)                                         | OFF  | ✅ 案件作成 (POST insurer/cases)                      |
+| `inquiry.auto_classify`                   | 問い合わせ受信時にカテゴリ/優先度/返信下書きを自動生成 (注釈・下書き。送信は人)                                | OFF  | ✅ 問い合わせ受信 (POST customer/inquiry)             |
 
 > **certificate.auto_draft の配線**: 予約 (案件) が `completed` になった時点で
 > `maybeAutoDraftCertificateForReservation` (fire-and-forget) が走り、車両 + 過去事例から
@@ -211,6 +215,23 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 > グレーのみ Haiku) を実行して `insurer_cases.meta.ai_fraud` に保存し、`insurer_access_logs`
 > (`action=fraud_check_auto`) に記録する。**査定の確定は必ず人** (リスク提示のみ・壁3 不介入)。
 > AI コストはグレーゾーンの Haiku のみ発生し、master switch / 月次コストキャップに従う。
+>
+> **insurer_case.auto_summary の配線**: 保険案件の作成 (`POST /api/insurer/cases`) 後に
+> `after()` 経由で `maybeAutoSummarizeCase` (`caseSummaryAuto.ts`) が走る。`tenant_id` を opt-in
+> 判定キーにし、車両 / 証明書 / 本文から `summarizeCase` (AI_MODEL_FAST、AI 不在時はフォールバック)
+> で 3 行サマリを生成して `insurer_cases.meta.ai_summary` に保存し (`source=auto`、既に auto 済みなら
+> 再実行しない)、`insurer_access_logs` (`action=case_summary_auto`) に記録する。査定担当が案件を
+> 開いた瞬間に要点が出る (`CaseAiBanner` が保存済みサマリを既定表示)。**査定の確定は必ず人**
+> (注釈のみ・壁3 不介入)。
+>
+> **inquiry.auto_classify の配線**: 顧客ポータルの問い合わせ送信 (`POST /api/customer/inquiry`)
+> 後に `after()` 経由で `maybeAutoClassifyInquiry` (`inquiryClassifyAuto.ts`) が走る。プラン
+> (Standard+ / `ai_inquiry_classify`) を確認し、`classifyInquiry` (AI 不在時はキーワード
+> フォールバック) でカテゴリ / 優先度 / 返信下書きを生成して `customer_inquiries` の AI 列
+> (`ai_category` / `ai_priority` / `ai_draft_reply` / `ai_confidence` / `ai_classified_at`、
+> migration 20260607000000) に保存する。スタッフが受信箱を開くと分類済み・下書き済みで表示される
+> (`InquiryAiBanner` が保存済み結果を既定表示・手動再分類も可)。**返信の送信は必ず人**
+> (注釈・下書きのみ・壁3 不介入)。
 
 ### 4.5.1 LINE 受信 → 自動処理パイプライン
 
@@ -383,7 +404,9 @@ UI は「しばらくお待ちください」を表示し、リトライ可能�
 ## 11. 関連ファイル
 
 - 設定基盤: `src/lib/ai/automation/{fieldCatalog,policy}.ts`
-- 自動実行: `src/lib/ai/automation/{actionCatalog,orchestrator,inboundAuto,reviewAuto,certificateAuto,announcementAuto,documentAuto}.ts`
+- 自動実行: `src/lib/ai/automation/{actionCatalog,orchestrator,inboundAuto,reviewAuto,certificateAuto,announcementAuto,documentAuto,fraudScoreAuto,caseSummaryAuto,inquiryClassifyAuto}.ts`
+- 保険案件サマリ 自動生成: `caseSummaryAuto.ts` + `app/api/insurer/cases` POST (after) + `insurer/cases/[id]/CaseAiBanner.tsx` (保存済みサマリ既定表示)
+- 問い合わせ 自動分類: `inquiryClassifyAuto.ts` + `app/api/customer/inquiry` POST (after) + `customer_inquiries` AI 列 (migration 20260607000000) + `admin/customer-inquiries/InquiryAiBanner.tsx` (保存済み結果既定表示)
 - 帳票 確定→自動送付: `documentAuto.ts` + `app/api/admin/documents` PUT (draft→sent 検出) + `lib/documents/share-email.ts` / `lib/line/client.ts` / `lib/stripe/invoicePaymentLink.ts`
 - 顧客セルフ確認 intake: `app/intake/[short_id]/IntakeClient.tsx` (確認ステップ) + `app/api/intake/[short_id]/submit` + `lib/identity/intakeServer.ts` (`submitAndProcessIntake`)
 - 店舗お知らせ: `shop_announcements` テーブル / `app/api/admin/shop-announcements` / `app/admin/shop-announcements` / `app/api/announcements/shop` (公開) / 顧客ポータル「お知らせ」タブ

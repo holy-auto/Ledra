@@ -76,6 +76,13 @@ type CaseDetail = {
       scored_at?: string;
       source?: string;
     } | null;
+    ai_summary?: {
+      lines?: string[];
+      confidence?: number;
+      ai?: boolean;
+      source?: string;
+      summarized_at?: string;
+    } | null;
   } | null;
 };
 
@@ -255,7 +262,22 @@ export default function InsurerCaseDetailPage() {
         </Link>
       </div>
 
-      <CaseAiBanner caseId={caseData.id} />
+      <CaseAiBanner
+        caseId={caseData.id}
+        initialSummary={
+          (caseData.meta?.ai_summary?.lines?.length ?? 0) >= 3
+            ? {
+                lines: [
+                  caseData.meta!.ai_summary!.lines![0] ?? "",
+                  caseData.meta!.ai_summary!.lines![1] ?? "",
+                  caseData.meta!.ai_summary!.lines![2] ?? "",
+                ],
+                confidence: caseData.meta!.ai_summary!.confidence ?? 0,
+                ai: caseData.meta!.ai_summary!.ai ?? false,
+              }
+            : null
+        }
+      />
 
       <header className="space-y-3">
         <div className="inline-flex rounded-full border border-border-default bg-surface px-3 py-1 text-[11px] font-semibold tracking-[0.18em] text-secondary">

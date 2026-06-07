@@ -28,9 +28,12 @@ export async function GET(req: Request) {
       .from("customer_inquiries")
       // phone_last4_hash は server-side の scope 判定にのみ使う内部識別子。
       // 管理画面 UI は表示せず、クライアントに送る必要がない。
-      .select("id, customer_name, subject, message, status, admin_reply, replied_at, created_at", {
-        count: page > 0 ? "exact" : undefined,
-      })
+      .select(
+        "id, customer_name, subject, message, status, admin_reply, replied_at, created_at, ai_category, ai_priority, ai_draft_reply, ai_confidence, ai_classified_at",
+        {
+          count: page > 0 ? "exact" : undefined,
+        },
+      )
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
 
