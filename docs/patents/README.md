@@ -26,8 +26,9 @@
 
 **drafts/ の出願実務アセット**
 - `drafts/明細書-06/07/01-*.md` … 出願基礎ドラフト（弁理士提出レベル・段落番号付き）
-- `drafts/jpo-format/` … JPO電子出願HTMLテンプレート＋様式規則（[guide](./drafts/jpo-format/README.md)：明細書/特許請求の範囲/要約書/図面）
-- `drafts/figures/*.svg` … 各発明の選択図（編集マスタ。提出時は白黒ラスタへ変換）
+- `drafts/jpo-format/` … JPO電子出願HTMLテンプレート（明細書/特許請求の範囲/要約書/図面/**願書**）＋様式規則＋**整理番号体系**（[guide](./drafts/jpo-format/README.md)）
+- `drafts/figures/*.svg` ＋ `*.png` … 全14図（06×5・07×5・01×4）の編集マスタSVGと白黒PNG（提出時は規定形式へ）
+- `drafts/en/` … **PCT/外国出願用 英文明細書**（06/07/01）＋ [PCT留意メモ](./drafts/en/pct-filing-notes.en.md)（猶予期間の国差・単一性・新規事項）
 - `drafts/統合出願-単一性と統合請求項案.md` … 1出願に束ねる場合の単一性（37条）検討＋統合請求項（推奨は個別3出願）
 
 ---
