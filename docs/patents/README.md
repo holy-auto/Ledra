@@ -26,11 +26,12 @@
 
 **drafts/ の出願実務アセット**
 - `drafts/明細書-06/07/01-*.md` … 出願基礎ドラフト（弁理士提出レベル・段落番号付き）
-- `drafts/jpo-format/` … JPO電子出願HTMLテンプレート（明細書/特許請求の範囲/要約書/図面/**願書**）＋様式規則＋**整理番号体系**（[guide](./drafts/jpo-format/README.md)）
+- `drafts/jpo-format/` … JPO電子出願HTMLテンプレート（明細書/特許請求の範囲/要約書/図面/**願書**/**譲渡証**）＋様式規則＋**整理番号体系**（[guide](./drafts/jpo-format/README.md)）
 - `drafts/figures/` … 全14図（06×5・07×5・01×4）の編集マスタSVG＋PNG。`convert_to_jpo.py` で **JPO提出向け白黒1bit GIF/BMP** を `figures/jpo/` に一括生成
 - `drafts/en/` … **PCT/外国出願用 英文明細書**（06/07/01）＋ [PCT留意メモ](./drafts/en/pct-filing-notes.en.md)＋ [請求項対応表](./drafts/en/claim-correspondence-chart.md)（EN↔JP↔差別化軸）
 - `drafts/統合出願-単一性と統合請求項案.md` … 1出願に束ねる場合の単一性（37条）検討＋統合請求項（推奨は個別3出願）
 - `drafts/出願管理台帳.csv` ＋ [記入要領](./drafts/出願管理台帳-記入要領.md) … 整理番号・出願番号・**審査請求(出願+3年)/30条(出願+30日)/優先(出願+12月)/PCT移行(優先+30/31月)/年金** の期限管理
+- `drafts/法人出願-準備チェックリスト.md` … **法人(holy-auto)で出願する場合**の準備物（識別番号・**商業登記電子証明書**・願書記載・**職務発明の権利承継＝最重要**・減免・委任状）
 
 ---
 
