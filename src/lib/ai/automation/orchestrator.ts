@@ -279,6 +279,15 @@ export function shouldAutoTamperingCheck(settings: AiAutomationSettings): boolea
   return resolveAutoAction(settings, "photo.auto_tampering_check");
 }
 
+/**
+ * 証明書写真のアップロード時に品質・抜け漏れスクリーニングを自動実行してよいか。
+ * 結果はスコア / 指摘の注釈としてのみ保存され、発行のブロックや金額・本人確認には
+ * 関与しない (非壁3)。
+ */
+export function shouldAutoQualityCheck(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "photo.auto_quality_check");
+}
+
 // ─────────────────────────────────────────────
 // 保険案件 (claim) → 不正リスク自動スコア
 // ─────────────────────────────────────────────

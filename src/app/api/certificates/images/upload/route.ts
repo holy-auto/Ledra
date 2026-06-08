@@ -14,6 +14,7 @@ import { invokeAllUploadProviders } from "@/lib/anchoring/providers";
 import { upsertVehiclePassport } from "@/lib/passport/upsertVehiclePassport";
 import { generateImageVariants, variantStoragePath } from "@/lib/certificateImages/generateVariants";
 import { maybeAutoTamperingCheckForCertificate } from "@/lib/ai/automation/photoTamperingAuto";
+import { maybeAutoQualityCheckForCertificate } from "@/lib/ai/automation/photoQualityAuto";
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
 
 export const runtime = "nodejs";
@@ -355,6 +356,9 @@ export async function POST(req: NextRequest) {
     // opt-in テナントでは、写真追加後に改ざんスクリーニングを自動実行する
     // (fire-and-forget / レスポンス後 / 既存シグナルの集約のみで AI 課金なし)。
     after(() => maybeAutoTamperingCheckForCertificate({ tenantId, certificateId: cert.id as string }));
+    // opt-in テナントでは、写真追加後に Ledra Standard 基準の品質・抜け漏れ監査も自動実行する
+    // (fire-and-forget / レスポンス後 / スコアは注釈のみ・発行はブロックしない)。
+    after(() => maybeAutoQualityCheckForCertificate({ tenantId, certificateId: cert.id as string }));
     // 画像追加で image_sha256_set が変わるため証明書レコードの新しい digest を anchor
     // queue に積む (best-effort fire-and-forget / CERT_RECORD_ANCHOR_ENABLED=false なら no-op)。
     enqueueCertificateAnchor({ tenantId, certificateId: cert.id as string }).catch(() => {});

@@ -83,6 +83,11 @@ const ENDPOINT_META: Readonly<Record<string, EndpointMeta>> = {
     actionKey: "inquiry.auto_classify",
     label: "問い合わせ分類の自動実行",
   },
+  "/api/admin/certificates/ai-quality": {
+    workflow: "certificate",
+    actionKey: "photo.auto_quality_check",
+    label: "写真品質・抜け漏れ監査の自動実行",
+  },
 };
 
 export type RecommendationKind =

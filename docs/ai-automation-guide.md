@@ -10,7 +10,7 @@ Ledra のワークフロー (証明書 / 案件 / 請求 / 顧客 / 保険 case 
 切り替えられる仕組み。
 
 - **目的**: 入力工数の削減 + コスト管理 + コンプライアンス
-- **規模**: 20+ API ルート、30+ フィールド、16 ワークフロー、19 auto-actions (全 19 ライブ配線済み / 壁3 で 6 アクションは自動化禁止)
+- **規模**: 20+ API ルート、30+ フィールド、16 ワークフロー、20 auto-actions (全 20 ライブ配線済み / 壁3 で 6 アクションは自動化禁止)
 - **設定 UI**: `/admin/settings/ai-automation` (admin 以上が編集)
 - **運営ダッシュボード**: `/admin/platform/operations` の「AI 利用状況」セクション
 
@@ -118,6 +118,7 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 | `workflow.auto_propose_on_intake`         | 案件登録時にメニュー+過去履歴から最適ワークフローを「提案」(適用=進行開始は人)                                | OFF  | ✅ 予約作成 (POST reservations)                       |
 | `inventory.auto_draft_reorder`            | 在庫下限割れ時に仕入先ごとの発注書を draft で自動起票 (承認・送信は人 / 壁3)                                  | OFF  | ✅ 低在庫 cron (low-stock-alerts)                     |
 | `photo.auto_tampering_check`              | 証明書写真アップロード時に改ざんスクリーニング (一次=シグナル集約 / 二次=グレーのみ Vision) を自動付与 (注釈) | OFF  | ✅ 写真アップロード (POST certificates/images/upload) |
+| `photo.auto_quality_check`               | 証明書写真アップロード時に Ledra Standard 基準の品質・抜け漏れ監査を自動付与 (注釈・発行はブロックしない) | OFF  | ✅ 写真アップロード (POST certificates/images/upload) |
 | `insurer_case.auto_fraud_score`           | 保険案件作成時に不正リスクを自動スコア (ルール一次 + グレーのみ AI、注釈。査定確定は人)                       | OFF  | ✅ 案件作成 (POST insurer/cases)                      |
 | `invoice.auto_draft_on_billing_step`      | ワークフローの会計/請求工程到達時に請求書を draft で自動起票 (送付は人 / 壁3)                                  | OFF  | ✅ WF会計工程 (reservations advance)                  |
 | `workflow.auto_apply_on_intake`           | 案件登録時に AI 提案ワークフローを自動適用し工程開始 (各工程の確定は人)                                        | OFF  | ✅ 予約作成 (POST reservations)                       |
@@ -209,6 +210,18 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 > や月次コストキャップ超過時は Vision を呼ばず一次判定のみ。結果は `certificates.meta.tampering_check`
 > に保存する (`source="auto"`、写真集合が変わらなければ再実行しない、手動チェック結果は上書きしない)。
 > 注釈用途で発行・金額・本人確認には不介入 (壁3 対象外)。発行前に人がフラグを確認できる。
+>
+> **photo.auto_quality_check の配線**: 同じく写真アップロード (`POST /api/certificates/images/upload`) 後に
+> `after()` 経由で `maybeAutoQualityCheckForCertificate` (`photoQualityAuto.ts`) が走る。証明書の
+> `service_type` (=カテゴリ) で `standard_rules` を引き、**作成時に保存したフラットな field_values
+> スナップショット** (`certificates.quality_fields_json`、migration 20260607000001) を使って
+> `auditCertificatePhotos` を実行する。スナップショットは発行フォームの `collectFieldValues` 相当
+> (= 発行前ゲートと同一入力) なので、ネスト JSON で永続化された証明書から監査を **誤検知なく** 再現できる。
+> Vision (写真内容審査) は master switch + プラン (`ai_quality_vision`) + `source_policies.photos` が
+> 揃ったときだけ呼び、それ以外は枚数・項目のルールベース監査のみ。結果 (スコア / 抜け漏れ / 警告) は
+> `certificates.meta.quality_check` に保存し (`source="auto"`、写真集合が変わらなければ再実行しない)、
+> 証明書詳細ページの `QualityAutoPanel` が表示する。**発行のブロックはしない** — スコアは注釈で、
+> 発行・金額・本人確認には不介入 (壁3 対象外)。
 >
 > **insurer_case.auto_fraud_score の配線**: 保険案件の作成 (`POST /api/insurer/cases`) 後に
 > `after()` 経由で `maybeAutoFraudScoreForCase` (`fraudScoreAuto.ts`) が走る。案件の `tenant_id`
@@ -413,7 +426,8 @@ UI は「しばらくお待ちください」を表示し、リトライ可能�
 ## 11. 関連ファイル
 
 - 設定基盤: `src/lib/ai/automation/{fieldCatalog,policy}.ts`
-- 自動実行: `src/lib/ai/automation/{actionCatalog,orchestrator,inboundAuto,reviewAuto,certificateAuto,announcementAuto,documentAuto,fraudScoreAuto,caseSummaryAuto,caseAssignAuto,inquiryClassifyAuto}.ts`
+- 自動実行: `src/lib/ai/automation/{actionCatalog,orchestrator,inboundAuto,reviewAuto,certificateAuto,announcementAuto,documentAuto,fraudScoreAuto,caseSummaryAuto,caseAssignAuto,inquiryClassifyAuto,photoQualityAuto}.ts`
+- 写真品質 自動監査: `photoQualityAuto.ts` + `app/api/certificates/images/upload` POST (after) + `certificates.quality_fields_json` (作成時スナップショット / migration 20260607000001) + `admin/certificates/[public_id]/QualityAutoPanel.tsx` (meta.quality_check 表示)
 - 保険案件サマリ 自動生成: `caseSummaryAuto.ts` + `app/api/insurer/cases` POST (after) + `insurer/cases/[id]/CaseAiBanner.tsx` (保存済みサマリ既定表示)
 - 保険案件 担当者候補 自動提案: `caseAssignAuto.ts` + `app/api/insurer/cases` POST (after) + `insurer/cases/[id]/CaseAiBanner.tsx` (保存済み候補既定表示)
 - 問い合わせ 自動分類: `inquiryClassifyAuto.ts` + `app/api/customer/inquiry` POST (after) + `customer_inquiries` AI 列 (migration 20260607000000) + `admin/customer-inquiries/InquiryAiBanner.tsx` (保存済み結果既定表示)

@@ -23,6 +23,7 @@ import {
   shouldAutoSummarizeCase,
   shouldAutoClassifyInquiry,
   shouldAutoSuggestAssignee,
+  shouldAutoQualityCheck,
 } from "../automation/orchestrator";
 
 describe("actionCatalog", () => {
@@ -409,5 +410,22 @@ describe("すぐやる auto-actions (insurer case summary / assignee suggest / i
     expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has("insurer_case.auto_summary")).toBe(true);
     expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has("insurer_case.auto_assign_suggest")).toBe(true);
     expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has("inquiry.auto_classify")).toBe(true);
+  });
+});
+
+describe("photo.auto_quality_check auto-action", () => {
+  const on = (key: string) => ({ ...DEFAULT_AI_AUTOMATION_SETTINGS, autoActions: { [key]: true } });
+
+  it("is known, NOT wall-3, default OFF, and recommended", () => {
+    expect(isKnownActionKey("photo.auto_quality_check")).toBe(true);
+    expect(isNeverAutoAction("photo.auto_quality_check")).toBe(false);
+    expect(AUTOMATION_ACTIONS.find((a) => a.key === "photo.auto_quality_check")?.defaultEnabled).toBe(false);
+    expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has("photo.auto_quality_check")).toBe(true);
+  });
+
+  it("shouldAutoQualityCheck follows opt-in + master switch", () => {
+    expect(shouldAutoQualityCheck(DEFAULT_AI_AUTOMATION_SETTINGS)).toBe(false);
+    expect(shouldAutoQualityCheck(on("photo.auto_quality_check"))).toBe(true);
+    expect(shouldAutoQualityCheck({ ...on("photo.auto_quality_check"), enabled: false })).toBe(false);
   });
 });

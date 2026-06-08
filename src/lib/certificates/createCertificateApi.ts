@@ -49,6 +49,10 @@ export const certCreateJsonSchema = z
     warranty_exclusions: z.string().trim().max(2000).nullable().optional(),
     remarks: z.string().trim().max(2000).nullable().optional(),
 
+    // 品質監査用のフラットな field_values スナップショット (フォームの collectFieldValues 相当)。
+    // アップロード時の自動品質監査 (photo.auto_quality_check) が誤検知なく再現するために保存する。
+    quality_fields_json: z.record(z.string(), z.string()).optional(),
+
     // ネスト JSON: そのまま *_json として渡す
     film_thickness_json: z.array(z.unknown()).optional(),
     coating_products_json: z.array(z.unknown()).optional(),
@@ -109,6 +113,9 @@ export function jsonToCertFormData(input: CertCreateJsonInput): FormData {
   appendIf("maintenance_date", input.maintenance_date ?? undefined);
   appendIf("warranty_exclusions", input.warranty_exclusions ?? undefined);
   appendIf("remarks", input.remarks ?? undefined);
+  if (input.quality_fields_json && Object.keys(input.quality_fields_json).length > 0) {
+    fd.append("quality_fields_json", JSON.stringify(input.quality_fields_json));
+  }
 
   // Nested JSON fields (Server Action does JSON.parse on these)
   if (input.film_thickness_json) {
@@ -193,6 +200,7 @@ export function formDataToCertJson(fd: FormData): Record<string, unknown> {
     "maintenance_json",
     "body_repair_json",
     "package_snapshot_json",
+    "quality_fields_json",
   ]);
   const stringFields = [
     "customer_id",

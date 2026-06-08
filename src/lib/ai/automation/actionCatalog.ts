@@ -40,6 +40,7 @@ export type AutomationActionKey =
   | "workflow.auto_apply_on_intake"
   | "inventory.auto_draft_reorder"
   | "photo.auto_tampering_check"
+  | "photo.auto_quality_check"
   | "insurer_case.auto_fraud_score"
   | "insurer_case.auto_summary"
   | "insurer_case.auto_assign_suggest"
@@ -192,6 +193,15 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     guard: "AI 有効 + Standard プラン以上 (ai_quality_vision)",
   },
   {
+    key: "photo.auto_quality_check",
+    workflow: "certificate",
+    label: "証明書写真の品質・抜け漏れスクリーニングを自動実行",
+    description:
+      "施工写真がアップロードされた時点で、Ledra Standard 基準に照らした写真品質・枚数・記入項目の抜け漏れを自動審査し、スコアと指摘を注釈として保存する。発行・金額・本人確認には関与しないため安全 (人は発行前に確認できる)。発行のブロックはしない。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Standard プラン以上 (ai_quality_vision) + 施工カテゴリ判定済み",
+  },
+  {
     key: "insurer_case.auto_fraud_score",
     workflow: "insurer_case",
     label: "保険案件の受信時に不正リスクを自動スコア",
@@ -273,6 +283,7 @@ export const RECOMMENDED_AUTOMATION_ACTION_KEYS: ReadonlySet<string> = new Set<s
   "workflow.auto_apply_on_intake",
   "inventory.auto_draft_reorder",
   "photo.auto_tampering_check",
+  "photo.auto_quality_check",
   "insurer_case.auto_fraud_score",
   "insurer_case.auto_summary",
   "insurer_case.auto_assign_suggest",
