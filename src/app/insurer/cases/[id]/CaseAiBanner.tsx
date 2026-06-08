@@ -26,20 +26,24 @@ interface Props {
   onApplyAssignee?: (userId: string) => void;
   /** 受信時に自動生成され meta.ai_summary に保存済みのサマリ (あれば既定表示)。 */
   initialSummary?: SummaryResult | null;
+  /** 受信時に自動提案され meta.ai_assign_suggestion に保存済みの担当者候補 (あれば既定表示)。 */
+  initialCandidates?: AssignCandidate[] | null;
 }
 
-export default function CaseAiBanner({ caseId, onApplyAssignee, initialSummary }: Props) {
+export default function CaseAiBanner({ caseId, onApplyAssignee, initialSummary, initialCandidates }: Props) {
   // 手動再要約の結果。無い間は受信時の自動サマリ (initialSummary) を表示する。
   // initialSummary は親のポーリングで後から届く (after() の書き込み完了後) ことがあるため、
   // state に固定せず live prop から導出し、リロードなしで反映されるようにする。
   const [manualSummary, setManualSummary] = useState<SummaryResult | null>(null);
-  const [candidates, setCandidates] = useState<AssignCandidate[] | null>(null);
+  const [manualCandidates, setManualCandidates] = useState<AssignCandidate[] | null>(null);
   const [summarizing, setSummarizing] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const summary = manualSummary ?? initialSummary ?? null;
   const isAuto = !manualSummary && !!initialSummary;
+  const candidates = manualCandidates ?? initialCandidates ?? null;
+  const isAutoCandidates = !manualCandidates && !!initialCandidates;
 
   async function runSummary() {
     setSummarizing(true);
@@ -77,7 +81,7 @@ export default function CaseAiBanner({ caseId, onApplyAssignee, initialSummary }
         setErr(j?.message ?? "担当者候補の取得に失敗しました。");
         return;
       }
-      setCandidates(j.candidates ?? []);
+      setManualCandidates(j.candidates ?? []);
     } catch {
       setErr("通信エラーが発生しました。");
     } finally {
@@ -119,7 +123,9 @@ export default function CaseAiBanner({ caseId, onApplyAssignee, initialSummary }
 
       {candidates && candidates.length > 0 && (
         <div className="space-y-2">
-          <div className="text-[11px] text-muted">担当者候補 ({candidates[0].method})</div>
+          <div className="text-[11px] text-muted">
+            担当者候補 ({candidates[0].method}){isAutoCandidates && " · 受信時に自動提案"}
+          </div>
           {candidates.map((c) => (
             <div
               key={c.user_id}

@@ -73,6 +73,11 @@ const ENDPOINT_META: Readonly<Record<string, EndpointMeta>> = {
     actionKey: "insurer_case.auto_summary",
     label: "保険案件サマリの自動生成",
   },
+  "/api/insurer/cases/[id]/ai-assign-suggest": {
+    workflow: "insurer_case",
+    actionKey: "insurer_case.auto_assign_suggest",
+    label: "保険案件 担当者候補の自動提案",
+  },
   "/api/admin/customer-inquiries/[id]/ai-classify": {
     workflow: "inquiry",
     actionKey: "inquiry.auto_classify",

@@ -83,6 +83,18 @@ type CaseDetail = {
       source?: string;
       summarized_at?: string;
     } | null;
+    ai_assign_suggestion?: {
+      candidates?: Array<{
+        user_id: string;
+        user_name?: string;
+        score: number;
+        method: "rule" | "history" | "ai" | "fallback";
+        reason: string;
+      }>;
+      source?: string;
+      ai?: boolean;
+      suggested_at?: string;
+    } | null;
   } | null;
 };
 
@@ -277,6 +289,7 @@ export default function InsurerCaseDetailPage() {
               }
             : null
         }
+        initialCandidates={caseData.meta?.ai_assign_suggestion?.candidates ?? null}
       />
 
       <header className="space-y-3">

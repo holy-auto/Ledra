@@ -22,6 +22,7 @@ import {
   shouldAutoDraftReorder,
   shouldAutoSummarizeCase,
   shouldAutoClassifyInquiry,
+  shouldAutoSuggestAssignee,
 } from "../automation/orchestrator";
 
 describe("actionCatalog", () => {
@@ -374,11 +375,11 @@ describe("phase-3 auto-action (auto-draft reorder)", () => {
   });
 });
 
-describe("すぐやる auto-actions (insurer case summary / inquiry classify)", () => {
+describe("すぐやる auto-actions (insurer case summary / assignee suggest / inquiry classify)", () => {
   const on = (key: string) => ({ ...DEFAULT_AI_AUTOMATION_SETTINGS, autoActions: { [key]: true } });
 
   it("new keys are known, NOT wall-3, default OFF", () => {
-    for (const k of ["insurer_case.auto_summary", "inquiry.auto_classify"]) {
+    for (const k of ["insurer_case.auto_summary", "insurer_case.auto_assign_suggest", "inquiry.auto_classify"]) {
       expect(isKnownActionKey(k)).toBe(true);
       expect(isNeverAutoAction(k)).toBe(false);
       const def = AUTOMATION_ACTIONS.find((a) => a.key === k);
@@ -392,6 +393,12 @@ describe("すぐやる auto-actions (insurer case summary / inquiry classify)", 
     expect(shouldAutoSummarizeCase({ ...on("insurer_case.auto_summary"), enabled: false })).toBe(false);
   });
 
+  it("shouldAutoSuggestAssignee follows opt-in + master switch", () => {
+    expect(shouldAutoSuggestAssignee(DEFAULT_AI_AUTOMATION_SETTINGS)).toBe(false);
+    expect(shouldAutoSuggestAssignee(on("insurer_case.auto_assign_suggest"))).toBe(true);
+    expect(shouldAutoSuggestAssignee({ ...on("insurer_case.auto_assign_suggest"), enabled: false })).toBe(false);
+  });
+
   it("shouldAutoClassifyInquiry follows opt-in + master switch", () => {
     expect(shouldAutoClassifyInquiry(DEFAULT_AI_AUTOMATION_SETTINGS)).toBe(false);
     expect(shouldAutoClassifyInquiry(on("inquiry.auto_classify"))).toBe(true);
@@ -400,6 +407,7 @@ describe("すぐやる auto-actions (insurer case summary / inquiry classify)", 
 
   it("are included in the recommended ('おまかせ') preset", () => {
     expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has("insurer_case.auto_summary")).toBe(true);
+    expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has("insurer_case.auto_assign_suggest")).toBe(true);
     expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has("inquiry.auto_classify")).toBe(true);
   });
 });

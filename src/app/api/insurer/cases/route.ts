@@ -8,6 +8,7 @@ import { insurerCaseCreateSchema } from "@/lib/validations/insurer-case";
 import { applyAssignmentRules, type AssignmentRule } from "@/lib/insurer/applyAssignmentRules";
 import { maybeAutoFraudScoreForCase } from "@/lib/ai/automation/fraudScoreAuto";
 import { maybeAutoSummarizeCase } from "@/lib/ai/automation/caseSummaryAuto";
+import { maybeAutoSuggestAssigneeForCase } from "@/lib/ai/automation/caseAssignAuto";
 
 export const runtime = "nodejs";
 
@@ -236,6 +237,14 @@ export async function POST(req: NextRequest) {
     // opt-in テナントでは、案件作成後に 3 行サマリを自動生成 (fire-and-forget / レスポンス後)。
     after(() =>
       maybeAutoSummarizeCase({ caseId: newCase.id as string, insurerId: caller.insurerId, tenantId: tenant_id }),
+    );
+    // opt-in テナントでは、ルール未割当の案件に担当者候補を自動提案 (fire-and-forget / レスポンス後)。
+    after(() =>
+      maybeAutoSuggestAssigneeForCase({
+        caseId: newCase.id as string,
+        insurerId: caller.insurerId,
+        tenantId: tenant_id,
+      }),
     );
 
     return apiJson({ case: newCase }, { status: 201 });

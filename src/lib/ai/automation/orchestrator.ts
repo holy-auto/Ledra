@@ -301,6 +301,15 @@ export function shouldAutoSummarizeCase(settings: AiAutomationSettings): boolean
   return resolveAutoAction(settings, "insurer_case.auto_summary");
 }
 
+/**
+ * 保険案件の受信時に担当者候補を自動提案してよいか。
+ * 結果は注釈 (candidates) としてのみ保存され、割当 (確定) は人が行う
+ * (提案のみ・非壁3)。ルールで自動割当済みの案件には提案しない (呼び出し側で判定)。
+ */
+export function shouldAutoSuggestAssignee(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "insurer_case.auto_assign_suggest");
+}
+
 // ─────────────────────────────────────────────
 // 顧客問い合わせ → 自動分類 / 返信下書き
 // ─────────────────────────────────────────────

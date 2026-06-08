@@ -42,6 +42,7 @@ export type AutomationActionKey =
   | "photo.auto_tampering_check"
   | "insurer_case.auto_fraud_score"
   | "insurer_case.auto_summary"
+  | "insurer_case.auto_assign_suggest"
   | "inquiry.auto_classify";
 
 export interface AutomationActionDef {
@@ -209,6 +210,15 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     guard: "AI 有効 + 案件にテナント紐付けあり (証明書/車両/契約経由)",
   },
   {
+    key: "insurer_case.auto_assign_suggest",
+    workflow: "insurer_case",
+    label: "保険案件の受信時に担当者候補を自動提案",
+    description:
+      "保険案件 (claim) が作成され、かつ振り分けルールで自動割当されなかった時点で、過去の担当履歴 / specialty から担当者候補を自動提案し、注釈として案件に保存する。割当 (確定) は必ず人が行う — 提案のみで自動割当はしない。",
+    defaultEnabled: false,
+    guard: "AI 有効 + 案件にテナント紐付けあり + ルール未割当 + insurer ユーザー登録済み",
+  },
+  {
     key: "inquiry.auto_classify",
     workflow: "inquiry",
     label: "問い合わせ受信時に分類・返信下書きを自動生成",
@@ -265,6 +275,7 @@ export const RECOMMENDED_AUTOMATION_ACTION_KEYS: ReadonlySet<string> = new Set<s
   "photo.auto_tampering_check",
   "insurer_case.auto_fraud_score",
   "insurer_case.auto_summary",
+  "insurer_case.auto_assign_suggest",
   "inquiry.auto_classify",
 ]);
 
