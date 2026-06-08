@@ -10,7 +10,7 @@ Ledra のワークフロー (証明書 / 案件 / 請求 / 顧客 / 保険 case 
 切り替えられる仕組み。
 
 - **目的**: 入力工数の削減 + コスト管理 + コンプライアンス
-- **規模**: 20+ API ルート、30+ フィールド、16 ワークフロー、21 auto-actions (全 21 ライブ配線済み / 壁3 で 6 アクションは自動化禁止)
+- **規模**: 20+ API ルート、30+ フィールド、16 ワークフロー、22 auto-actions (全 22 ライブ配線済み / 壁3 で 6 アクションは自動化禁止)
 - **設定 UI**: `/admin/settings/ai-automation` (admin 以上が編集)
 - **運営ダッシュボード**: `/admin/platform/operations` の「AI 利用状況」セクション
 
@@ -117,6 +117,7 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 | `thickness.auto_detect`                   | 塗膜厚レポート受信時に統計的な異常検知を自動付与 (注釈)                                                       | OFF  | ✅ NexPTG 同期 (POST external/nexptg/sync)            |
 | `workflow.auto_propose_on_intake`         | 案件登録時にメニュー+過去履歴から最適ワークフローを「提案」(適用=進行開始は人)                                | OFF  | ✅ 予約作成 (POST reservations)                       |
 | `inventory.auto_draft_reorder`            | 在庫下限割れ時に仕入先ごとの発注書を draft で自動起票 (承認・送信は人 / 壁3)                                  | OFF  | ✅ 低在庫 cron (low-stock-alerts)                     |
+| `parts.auto_reconcile_delivery_note`      | 納品書アップロード時に AI-OCR + 三方照合を自動実行し不一致を検知 (確定/署名/在庫計上は人)                      | OFF  | ✅ 納品書アップロード (POST parts/installations/[id]/delivery-note) |
 | `photo.auto_tampering_check`              | 証明書写真アップロード時に改ざんスクリーニング (一次=シグナル集約 / 二次=グレーのみ Vision) を自動付与 (注釈) | OFF  | ✅ 写真アップロード (POST certificates/images/upload) |
 | `photo.auto_quality_check`               | 証明書写真アップロード時に Ledra Standard 基準の品質・抜け漏れ監査を自動付与 (注釈・発行はブロックしない) | OFF  | ✅ 写真アップロード (POST certificates/images/upload) |
 | `insurer_case.auto_fraud_score`           | 保険案件作成時に不正リスクを自動スコア (ルール一次 + グレーのみ AI、注釈。査定確定は人)                       | OFF  | ✅ 案件作成 (POST insurer/cases)                      |
@@ -264,6 +265,16 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 > (migration 20260607000003) に提案として保存する。`job.next_action` フィールドが manual の
 > テナントはスキップ (設定尊重)。案件画面の `JobAiSuggestPanel` が `initialNextAction` として
 > 即時表示する。**各操作 (発行 / 請求 / 入金確認 等) の実行は必ず人** (提案のみ・壁3 不介入)。
+>
+> **parts.auto_reconcile_delivery_note の配線**: 部品装着の納品書アップロード
+> (`POST /api/parts/installations/[id]/delivery-note`) で画像を assets バケットへ保存し
+> `part_installation_evidence` (kind=delivery_note / content_type、migration 20260607000004) を
+> 追記した後、`after()` 経由で `maybeAutoReconcileDeliveryNote` (`partsReconcileAuto.ts`) が走る。
+> evidence の `ocr_extracted` があればそれを、無ければ assets から画像を取得して
+> `extractDeliveryNote` (Vision-OCR) で明細化し、`reconcileInstallation` で装着内容・数量と
+> 三方照合して不一致を `part_integrity_findings` に記録する。`source_policies.identity_documents`
+> が OFF / master switch OFF / 月次コストキャップ超過なら OCR を呼ばない。**確定署名・アンカー・
+> 在庫計上には不介入** (検知の注釈のみ・壁3 不介入)。UI は装着詳細ページの納品書アップロード。
 
 ### 4.5.1 LINE 受信 → 自動処理パイプライン
 
@@ -436,7 +447,8 @@ UI は「しばらくお待ちください」を表示し、リトライ可能�
 ## 11. 関連ファイル
 
 - 設定基盤: `src/lib/ai/automation/{fieldCatalog,policy}.ts`
-- 自動実行: `src/lib/ai/automation/{actionCatalog,orchestrator,inboundAuto,reviewAuto,certificateAuto,announcementAuto,documentAuto,fraudScoreAuto,caseSummaryAuto,caseAssignAuto,inquiryClassifyAuto,photoQualityAuto,nextActionAuto}.ts`
+- 自動実行: `src/lib/ai/automation/{actionCatalog,orchestrator,inboundAuto,reviewAuto,certificateAuto,announcementAuto,documentAuto,fraudScoreAuto,caseSummaryAuto,caseAssignAuto,inquiryClassifyAuto,photoQualityAuto,nextActionAuto,partsReconcileAuto}.ts`
+- 納品書 自動三方照合: `partsReconcileAuto.ts` + `app/api/parts/installations/[id]/delivery-note` (アップロード→assets保存→after) + `part_installation_evidence.content_type` (migration 20260607000004) + `admin/parts-integrity/[installationId]/DeliveryNoteUpload.tsx`
 - 案件 次アクション 自動提案: `nextActionAuto.ts` + `app/api/admin/reservations/[id]/advance` (void) + `reservations.ai_next_action` (migration 20260607000003) + `admin/jobs/[id]/JobAiSuggestPanel.tsx` (initialNextAction 即時表示)
 - 写真品質 自動監査: `photoQualityAuto.ts` + `app/api/certificates/images/upload` POST (after) + `certificates.quality_fields_json` (作成時スナップショット / migration 20260607000001) + `admin/certificates/[public_id]/QualityAutoPanel.tsx` (meta.quality_check 表示)
 - 保険案件サマリ 自動生成: `caseSummaryAuto.ts` + `app/api/insurer/cases` POST (after) + `insurer/cases/[id]/CaseAiBanner.tsx` (保存済みサマリ既定表示)

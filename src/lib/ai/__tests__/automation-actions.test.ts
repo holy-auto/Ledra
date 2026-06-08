@@ -25,6 +25,7 @@ import {
   shouldAutoSuggestAssignee,
   shouldAutoQualityCheck,
   shouldAutoNextAction,
+  shouldAutoReconcileDeliveryNote,
 } from "../automation/orchestrator";
 
 describe("actionCatalog", () => {
@@ -445,5 +446,24 @@ describe("job.auto_next_action auto-action", () => {
     expect(shouldAutoNextAction(DEFAULT_AI_AUTOMATION_SETTINGS)).toBe(false);
     expect(shouldAutoNextAction(on("job.auto_next_action"))).toBe(true);
     expect(shouldAutoNextAction({ ...on("job.auto_next_action"), enabled: false })).toBe(false);
+  });
+});
+
+describe("parts.auto_reconcile_delivery_note auto-action", () => {
+  const on = (key: string) => ({ ...DEFAULT_AI_AUTOMATION_SETTINGS, autoActions: { [key]: true } });
+
+  it("is known, NOT wall-3, default OFF, and recommended", () => {
+    expect(isKnownActionKey("parts.auto_reconcile_delivery_note")).toBe(true);
+    expect(isNeverAutoAction("parts.auto_reconcile_delivery_note")).toBe(false);
+    expect(AUTOMATION_ACTIONS.find((a) => a.key === "parts.auto_reconcile_delivery_note")?.defaultEnabled).toBe(false);
+    expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has("parts.auto_reconcile_delivery_note")).toBe(true);
+  });
+
+  it("shouldAutoReconcileDeliveryNote follows opt-in + master switch", () => {
+    expect(shouldAutoReconcileDeliveryNote(DEFAULT_AI_AUTOMATION_SETTINGS)).toBe(false);
+    expect(shouldAutoReconcileDeliveryNote(on("parts.auto_reconcile_delivery_note"))).toBe(true);
+    expect(shouldAutoReconcileDeliveryNote({ ...on("parts.auto_reconcile_delivery_note"), enabled: false })).toBe(
+      false,
+    );
   });
 });

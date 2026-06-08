@@ -40,6 +40,7 @@ export type AutomationActionKey =
   | "workflow.auto_apply_on_intake"
   | "job.auto_next_action"
   | "inventory.auto_draft_reorder"
+  | "parts.auto_reconcile_delivery_note"
   | "photo.auto_tampering_check"
   | "photo.auto_quality_check"
   | "insurer_case.auto_fraud_score"
@@ -194,6 +195,15 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     guard: "AI 有効 + Standard プラン以上 + 品目に仕入先 (supplier_id) が設定済み",
   },
   {
+    key: "parts.auto_reconcile_delivery_note",
+    workflow: "inventory",
+    label: "納品書アップロード時に三方照合を自動実行",
+    description:
+      "部品装着レコードに納品書画像がアップロードされた時点で、AI-OCR で明細化し装着内容・数量と三方照合して不一致を自動検知 (part_integrity_findings に記録) する。検知 (注釈) のみで、確定署名・アンカー・在庫計上には関与しない (人の操作のまま)。",
+    defaultEnabled: false,
+    guard: "AI 有効 (master switch + 月次コストキャップ) + 納品書画像あり (source_policies.identity_documents)",
+  },
+  {
     key: "photo.auto_tampering_check",
     workflow: "certificate",
     label: "証明書写真の改ざんスクリーニングを自動実行",
@@ -293,6 +303,7 @@ export const RECOMMENDED_AUTOMATION_ACTION_KEYS: ReadonlySet<string> = new Set<s
   "workflow.auto_apply_on_intake",
   "job.auto_next_action",
   "inventory.auto_draft_reorder",
+  "parts.auto_reconcile_delivery_note",
   "photo.auto_tampering_check",
   "photo.auto_quality_check",
   "insurer_case.auto_fraud_score",

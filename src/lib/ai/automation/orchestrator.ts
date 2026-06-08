@@ -275,6 +275,15 @@ export function shouldAutoDraftReorder(settings: AiAutomationSettings): boolean 
   return resolveAutoAction(settings, "inventory.auto_draft_reorder");
 }
 
+/**
+ * 納品書アップロード時に AI-OCR + 三方照合を自動実行してよいか。
+ * 結果は検知 (part_integrity_findings) の注釈のみで、確定署名・アンカー・在庫計上には
+ * 関与しない (非壁3)。
+ */
+export function shouldAutoReconcileDeliveryNote(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "parts.auto_reconcile_delivery_note");
+}
+
 // ─────────────────────────────────────────────
 // 証明書写真 → 改ざんスクリーニング
 // ─────────────────────────────────────────────
