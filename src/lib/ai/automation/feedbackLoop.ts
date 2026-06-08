@@ -88,6 +88,11 @@ const ENDPOINT_META: Readonly<Record<string, EndpointMeta>> = {
     actionKey: "photo.auto_quality_check",
     label: "写真品質・抜け漏れ監査の自動実行",
   },
+  "/api/admin/jobs/[id]/ai-suggest": {
+    workflow: "job",
+    actionKey: "job.auto_next_action",
+    label: "案件 次アクションの自動提案",
+  },
 };
 
 export type RecommendationKind =

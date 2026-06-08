@@ -8,6 +8,7 @@ import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalE
 import { logger } from "@/lib/logger";
 import { runStepAutomationOnReach } from "@/lib/workflow/stepAutomations";
 import { maybeAutoCreateDraftCertificateForReservation } from "@/lib/ai/automation/certificateRecordAuto";
+import { maybeAutoNextActionForReservation } from "@/lib/ai/automation/nextActionAuto";
 
 const advanceSchema = z.object({
   note: z.string().trim().max(2000).nullable().optional(),
@@ -96,6 +97,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .single();
 
       if (error) return apiInternalError(error, "advance legacy update");
+
+      // opt-in テナントでは、状態遷移後に次アクション提案を自動更新 (fire-and-forget)。
+      void maybeAutoNextActionForReservation({ tenantId: caller.tenantId, reservationId: id }).catch((e) =>
+        logger.warn("[advance] auto next-action (legacy) failed", {
+          reservationId: id,
+          err: e instanceof Error ? e.message : String(e),
+        }),
+      );
+
       return apiJson({ ok: true, reservation: updated, legacy: true });
     }
 
@@ -220,6 +230,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         }),
       );
     }
+
+    // opt-in テナントでは、状態遷移後に次アクション提案を自動更新 (fire-and-forget)。
+    void maybeAutoNextActionForReservation({ tenantId: caller.tenantId, reservationId: id }).catch((e) =>
+      logger.warn("[advance] auto next-action failed", {
+        reservationId: id,
+        err: e instanceof Error ? e.message : String(e),
+      }),
+    );
 
     // ─── 顧客公開イベント書き込み & LINE通知 ───
     const currentStepForHistory = isLastStep ? steps.find((s) => s.order === currentOrder) : nextStep;

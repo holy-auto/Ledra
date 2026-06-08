@@ -251,6 +251,15 @@ export function shouldAutoDraftInvoiceOnBilling(settings: AiAutomationSettings):
   return resolveAutoAction(settings, "invoice.auto_draft_on_billing_step");
 }
 
+/**
+ * 案件のステータス遷移時に「次アクション」を自動提案してよいか。
+ * 結果は提案 (action/message/priority) として保存されるだけで、各操作の実行は人が行う
+ * (提案のみ・非壁3)。
+ */
+export function shouldAutoNextAction(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "job.auto_next_action");
+}
+
 // ─────────────────────────────────────────────
 // 在庫下限割れ → 発注書ドラフト自動作成
 // ─────────────────────────────────────────────

@@ -53,6 +53,8 @@ interface Props {
   currentTitle: string | null;
   customerId: string | null;
   vehicleId: string | null;
+  /** 状態遷移時に保存済みの次アクション (job.auto_next_action)。マウント取得が返るまで即時表示する。 */
+  initialNextAction?: NextActionSuggestion | null;
 }
 
 const PRIORITY_TONE: Record<"high" | "med" | "low", string> = {
@@ -94,7 +96,13 @@ function nextActionHref(action: string, customerId: string | null, vehicleId: st
   }
 }
 
-export default function JobAiSuggestPanel({ reservationId, currentTitle, customerId, vehicleId }: Props) {
+export default function JobAiSuggestPanel({
+  reservationId,
+  currentTitle,
+  customerId,
+  vehicleId,
+  initialNextAction = null,
+}: Props) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<Suggestions | null>(null);
   const [disabled, setDisabled] = useState(false);
@@ -145,16 +153,16 @@ export default function JobAiSuggestPanel({ reservationId, currentTitle, custome
     }
   }
 
-  if (disabled) return null;
-  if (loading) return null;
-  if (!data) return null;
+  // 保存済みの次アクション (initialNextAction) があれば、取得完了前 / プラン不足時でも表示する。
+  if (disabled && !initialNextAction) return null;
+  if (loading && !initialNextAction) return null;
+  if (!data && !initialNextAction) return null;
 
-  const title = data.title;
-  const nextAction = data.nextAction;
-  const timer = data.timerAlert;
+  const title = data?.title ?? null;
+  const nextAction = data?.nextAction ?? initialNextAction;
+  const timer = data?.timerAlert ?? null;
 
-  const titleDiffers =
-    title && title.title && title.title !== (currentTitle ?? "") && title.policy !== "manual";
+  const titleDiffers = title && title.title && title.title !== (currentTitle ?? "") && title.policy !== "manual";
 
   // 全部空ならパネルごと省略 (ノイズ抑制)
   const hasContent =
@@ -164,10 +172,7 @@ export default function JobAiSuggestPanel({ reservationId, currentTitle, custome
   if (!hasContent) return null;
 
   return (
-    <section
-      aria-label="AI 提案"
-      className="rounded-xl border border-accent/30 bg-accent/5 p-4 space-y-3"
-    >
+    <section aria-label="AI 提案" className="rounded-xl border border-accent/30 bg-accent/5 p-4 space-y-3">
       <div className="flex items-center gap-2 text-xs font-semibold tracking-[0.18em] text-accent">
         <span>✨ AI 提案</span>
         <span className="text-muted text-[10px] font-normal">
@@ -181,7 +186,9 @@ export default function JobAiSuggestPanel({ reservationId, currentTitle, custome
 
       {titleDiffers && (
         <div className="rounded-lg border border-accent/20 bg-surface px-3 py-2">
-          <div className="text-[11px] text-muted">推奨タイトル (信頼度 {Math.round((title?.confidence ?? 0) * 100)}%)</div>
+          <div className="text-[11px] text-muted">
+            推奨タイトル (信頼度 {Math.round((title?.confidence ?? 0) * 100)}%)
+          </div>
           <div className="flex items-center justify-between gap-2 mt-0.5">
             <div className="text-sm font-medium text-primary truncate">{title!.title}</div>
             {appliedTitle === title!.title ? (

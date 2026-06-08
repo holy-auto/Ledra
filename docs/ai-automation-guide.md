@@ -10,7 +10,7 @@ Ledra のワークフロー (証明書 / 案件 / 請求 / 顧客 / 保険 case 
 切り替えられる仕組み。
 
 - **目的**: 入力工数の削減 + コスト管理 + コンプライアンス
-- **規模**: 20+ API ルート、30+ フィールド、16 ワークフロー、20 auto-actions (全 20 ライブ配線済み / 壁3 で 6 アクションは自動化禁止)
+- **規模**: 20+ API ルート、30+ フィールド、16 ワークフロー、21 auto-actions (全 21 ライブ配線済み / 壁3 で 6 アクションは自動化禁止)
 - **設定 UI**: `/admin/settings/ai-automation` (admin 以上が編集)
 - **運営ダッシュボード**: `/admin/platform/operations` の「AI 利用状況」セクション
 
@@ -122,6 +122,7 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 | `insurer_case.auto_fraud_score`           | 保険案件作成時に不正リスクを自動スコア (ルール一次 + グレーのみ AI、注釈。査定確定は人)                       | OFF  | ✅ 案件作成 (POST insurer/cases)                      |
 | `invoice.auto_draft_on_billing_step`      | ワークフローの会計/請求工程到達時に請求書を draft で自動起票 (送付は人 / 壁3)                                  | OFF  | ✅ WF会計工程 (reservations advance)                  |
 | `workflow.auto_apply_on_intake`           | 案件登録時に AI 提案ワークフローを自動適用し工程開始 (各工程の確定は人)                                        | OFF  | ✅ 予約作成 (POST reservations)                       |
+| `job.auto_next_action`                    | 案件の状態遷移時に次アクションを自動提案 (案件画面に即時表示・実行は人)                                        | OFF  | ✅ 進行 (POST reservations/[id]/advance)             |
 | `insurer_case.auto_summary`               | 保険案件作成時に査定担当向け 3 行サマリを自動生成 (注釈。査定確定は人)                                         | OFF  | ✅ 案件作成 (POST insurer/cases)                      |
 | `insurer_case.auto_assign_suggest`        | 保険案件作成時 (ルール未割当) に担当者候補を自動提案 (注釈。割当確定は人)                                       | OFF  | ✅ 案件作成 (POST insurer/cases)                      |
 | `inquiry.auto_classify`                   | 問い合わせ受信時にカテゴリ/優先度/返信下書きを自動生成 (注釈・下書き。送信は人)                                | OFF  | ✅ 問い合わせ受信 (POST customer/inquiry)             |
@@ -254,6 +255,15 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 > migration 20260607000000) に保存する。スタッフが受信箱を開くと分類済み・下書き済みで表示される
 > (`InquiryAiBanner` が保存済み結果を既定表示・手動再分類も可)。**返信の送信は必ず人**
 > (注釈・下書きのみ・壁3 不介入)。
+>
+> **job.auto_next_action の配線**: 案件 (予約) の進行 (`POST /api/admin/reservations/[id]/advance`)
+> でステータスが遷移した時点で (レガシー4段フロー / ワークフローテンプレート両対応)、
+> `maybeAutoNextActionForReservation` (`nextActionAuto.ts`) が fire-and-forget で走る。ステータス +
+> 文脈 (顧客 / 車両 / 有効な証明書 / 未払い・期限超過請求) から `generateJobNextAction`
+> (deterministic な候補 + Haiku で文章化) を実行し、`reservations.ai_next_action`
+> (migration 20260607000003) に提案として保存する。`job.next_action` フィールドが manual の
+> テナントはスキップ (設定尊重)。案件画面の `JobAiSuggestPanel` が `initialNextAction` として
+> 即時表示する。**各操作 (発行 / 請求 / 入金確認 等) の実行は必ず人** (提案のみ・壁3 不介入)。
 
 ### 4.5.1 LINE 受信 → 自動処理パイプライン
 
@@ -426,7 +436,8 @@ UI は「しばらくお待ちください」を表示し、リトライ可能�
 ## 11. 関連ファイル
 
 - 設定基盤: `src/lib/ai/automation/{fieldCatalog,policy}.ts`
-- 自動実行: `src/lib/ai/automation/{actionCatalog,orchestrator,inboundAuto,reviewAuto,certificateAuto,announcementAuto,documentAuto,fraudScoreAuto,caseSummaryAuto,caseAssignAuto,inquiryClassifyAuto,photoQualityAuto}.ts`
+- 自動実行: `src/lib/ai/automation/{actionCatalog,orchestrator,inboundAuto,reviewAuto,certificateAuto,announcementAuto,documentAuto,fraudScoreAuto,caseSummaryAuto,caseAssignAuto,inquiryClassifyAuto,photoQualityAuto,nextActionAuto}.ts`
+- 案件 次アクション 自動提案: `nextActionAuto.ts` + `app/api/admin/reservations/[id]/advance` (void) + `reservations.ai_next_action` (migration 20260607000003) + `admin/jobs/[id]/JobAiSuggestPanel.tsx` (initialNextAction 即時表示)
 - 写真品質 自動監査: `photoQualityAuto.ts` + `app/api/certificates/images/upload` POST (after) + `certificates.quality_fields_json` (作成時スナップショット / migration 20260607000001) + `admin/certificates/[public_id]/QualityAutoPanel.tsx` (meta.quality_check 表示)
 - 保険案件サマリ 自動生成: `caseSummaryAuto.ts` + `app/api/insurer/cases` POST (after) + `insurer/cases/[id]/CaseAiBanner.tsx` (保存済みサマリ既定表示)
 - 保険案件 担当者候補 自動提案: `caseAssignAuto.ts` + `app/api/insurer/cases` POST (after) + `insurer/cases/[id]/CaseAiBanner.tsx` (保存済み候補既定表示)

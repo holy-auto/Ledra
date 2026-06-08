@@ -38,6 +38,7 @@ export type AutomationActionKey =
   | "thickness.auto_detect"
   | "workflow.auto_propose_on_intake"
   | "workflow.auto_apply_on_intake"
+  | "job.auto_next_action"
   | "inventory.auto_draft_reorder"
   | "photo.auto_tampering_check"
   | "photo.auto_quality_check"
@@ -175,6 +176,15 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     guard: "AI 有効 + Standard プラン以上 + workflow.auto_propose_on_intake 有効 + 一致テンプレートあり",
   },
   {
+    key: "job.auto_next_action",
+    workflow: "job",
+    label: "案件の状態が変わったら次アクションを自動提案",
+    description:
+      "案件 (予約) のステータスが進んだ時点で、現状況 (顧客/車両/証明書/請求) から「次に何をすべきか」を自動算出し、案件画面に提案として保存・即時表示する。提案のみで、各操作 (発行/請求/入金確認 等) の実行は人が行う。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Standard プラン以上 (ai_job_assist) + job.next_action が manual でない",
+  },
+  {
     key: "inventory.auto_draft_reorder",
     workflow: "inventory",
     label: "在庫が下限を切ったら発注書ドラフトを自動作成",
@@ -281,6 +291,7 @@ export const RECOMMENDED_AUTOMATION_ACTION_KEYS: ReadonlySet<string> = new Set<s
   "thickness.auto_detect",
   "workflow.auto_propose_on_intake",
   "workflow.auto_apply_on_intake",
+  "job.auto_next_action",
   "inventory.auto_draft_reorder",
   "photo.auto_tampering_check",
   "photo.auto_quality_check",

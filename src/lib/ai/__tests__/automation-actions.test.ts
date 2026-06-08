@@ -24,6 +24,7 @@ import {
   shouldAutoClassifyInquiry,
   shouldAutoSuggestAssignee,
   shouldAutoQualityCheck,
+  shouldAutoNextAction,
 } from "../automation/orchestrator";
 
 describe("actionCatalog", () => {
@@ -427,5 +428,22 @@ describe("photo.auto_quality_check auto-action", () => {
     expect(shouldAutoQualityCheck(DEFAULT_AI_AUTOMATION_SETTINGS)).toBe(false);
     expect(shouldAutoQualityCheck(on("photo.auto_quality_check"))).toBe(true);
     expect(shouldAutoQualityCheck({ ...on("photo.auto_quality_check"), enabled: false })).toBe(false);
+  });
+});
+
+describe("job.auto_next_action auto-action", () => {
+  const on = (key: string) => ({ ...DEFAULT_AI_AUTOMATION_SETTINGS, autoActions: { [key]: true } });
+
+  it("is known, NOT wall-3, default OFF, and recommended", () => {
+    expect(isKnownActionKey("job.auto_next_action")).toBe(true);
+    expect(isNeverAutoAction("job.auto_next_action")).toBe(false);
+    expect(AUTOMATION_ACTIONS.find((a) => a.key === "job.auto_next_action")?.defaultEnabled).toBe(false);
+    expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has("job.auto_next_action")).toBe(true);
+  });
+
+  it("shouldAutoNextAction follows opt-in + master switch", () => {
+    expect(shouldAutoNextAction(DEFAULT_AI_AUTOMATION_SETTINGS)).toBe(false);
+    expect(shouldAutoNextAction(on("job.auto_next_action"))).toBe(true);
+    expect(shouldAutoNextAction({ ...on("job.auto_next_action"), enabled: false })).toBe(false);
   });
 });
