@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
@@ -98,12 +98,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       if (error) return apiInternalError(error, "advance legacy update");
 
-      // opt-in テナントでは、状態遷移後に次アクション提案を自動更新 (fire-and-forget)。
-      void maybeAutoNextActionForReservation({ tenantId: caller.tenantId, reservationId: id }).catch((e) =>
-        logger.warn("[advance] auto next-action (legacy) failed", {
-          reservationId: id,
-          err: e instanceof Error ? e.message : String(e),
-        }),
+      // opt-in テナントでは、状態遷移後に次アクション提案を自動更新する。レスポンス後に確実に
+      // 完走させるため after() を使う (un-awaited な void だと serverless で打ち切られ得る)。
+      after(() =>
+        maybeAutoNextActionForReservation({ tenantId: caller.tenantId, reservationId: id }).catch((e) =>
+          logger.warn("[advance] auto next-action (legacy) failed", {
+            reservationId: id,
+            err: e instanceof Error ? e.message : String(e),
+          }),
+        ),
       );
 
       return apiJson({ ok: true, reservation: updated, legacy: true });
@@ -231,12 +234,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       );
     }
 
-    // opt-in テナントでは、状態遷移後に次アクション提案を自動更新 (fire-and-forget)。
-    void maybeAutoNextActionForReservation({ tenantId: caller.tenantId, reservationId: id }).catch((e) =>
-      logger.warn("[advance] auto next-action failed", {
-        reservationId: id,
-        err: e instanceof Error ? e.message : String(e),
-      }),
+    // opt-in テナントでは、状態遷移後に次アクション提案を自動更新する (after() でレスポンス後に完走)。
+    after(() =>
+      maybeAutoNextActionForReservation({ tenantId: caller.tenantId, reservationId: id }).catch((e) =>
+        logger.warn("[advance] auto next-action failed", {
+          reservationId: id,
+          err: e instanceof Error ? e.message : String(e),
+        }),
+      ),
     );
 
     // ─── 顧客公開イベント書き込み & LINE通知 ───

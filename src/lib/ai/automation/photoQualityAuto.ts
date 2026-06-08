@@ -74,6 +74,12 @@ export async function maybeAutoQualityCheckForCertificate(params: MaybeAutoQuali
     const category = (cert.service_type as string | null)?.trim() || null;
     if (!category) return;
 
+    // quality_fields_json は新規作成フローでのみ保存される。スナップショットが無い証明書
+    // (既存 / API 作成 / 写真前に項目編集) を監査すると、必須項目を誤って「未入力」と判定して
+    // しまう。注釈用途で誤データを出さないため、スナップショットが空ならスキップする。
+    const fieldValues = asStringRecord(cert.quality_fields_json);
+    if (Object.keys(fieldValues).length === 0) return;
+
     // 当該カテゴリの最新有効ルールを取得 (StandardRule の最小集合)。
     const { data: rule } = await admin
       .from("standard_rules")
@@ -109,8 +115,13 @@ export async function maybeAutoQualityCheckForCertificate(params: MaybeAutoQuali
     const useVision =
       settings.enabled && photosAllowed && canUseFeature(normalizePlanTier(tenant.plan_tier), "ai_quality_vision");
 
-    // Vision は URL fetch するため、署名付き URL を発行する (詳細ページと同じ流儀)。
-    let photoUrls: string[] = [];
+    // 監査に渡す URL 配列は **常に rows.length と同じ長さ** にする (枚数判定が崩れて「写真不足」と
+    // 誤検知しないように)。Vision を使う場合のみ署名 URL を発行し、署名できなかった行 / storage_path
+    // 欠落行はプレースホルダで埋める (checkPhotoContent はプレースホルダの fetch に失敗しても
+    // permissive 扱いなので無害)。Vision を呼ぶ価値があるのは実 URL が 1 つ以上あるときだけ。
+    const placeholder = (i: number) => `cert://${certificateId}/${i}`;
+    let auditUrls: string[];
+    let hasRealUrls = false;
     if (useVision) {
       const signed = await Promise.all(
         rows.map(async (r) => {
@@ -123,18 +134,20 @@ export async function maybeAutoQualityCheckForCertificate(params: MaybeAutoQuali
           }
         }),
       );
-      photoUrls = signed.filter((u): u is string => !!u);
+      hasRealUrls = signed.some((u) => !!u);
+      auditUrls = signed.map((u, i) => u ?? placeholder(i));
+    } else {
+      auditUrls = rows.map((_, i) => placeholder(i));
     }
 
     const usage = startAiRouteUsage(QUALITY_ENDPOINT);
     const audit = await auditCertificatePhotos({
       certificateId,
       category,
-      // Vision を呼ばないときは枚数だけ渡す (URL 不要・ルールベース監査用)。
-      photoUrls: useVision ? photoUrls : Array.from({ length: rows.length }, (_, i) => `cert://${certificateId}/${i}`),
-      fieldValues: asStringRecord(cert.quality_fields_json),
+      photoUrls: auditUrls,
+      fieldValues,
       standardRule: rule as StandardRule,
-      checkPhotosWithAI: useVision && photoUrls.length > 0,
+      checkPhotosWithAI: useVision && hasRealUrls,
     });
 
     usage.record({
@@ -153,7 +166,7 @@ export async function maybeAutoQualityCheckForCertificate(params: MaybeAutoQuali
       missing_fields: audit.missingFields,
       warnings: audit.warningMessages,
       image_count: rows.length,
-      vision_checked: useVision && photoUrls.length > 0,
+      vision_checked: useVision && hasRealUrls,
       signature,
     };
 

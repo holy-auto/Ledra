@@ -230,22 +230,27 @@ export async function POST(req: NextRequest) {
       user_agent: ua,
     });
 
-    // opt-in テナントでは、案件作成後に不正リスクを自動スコア (fire-and-forget / レスポンス後)。
-    after(() =>
-      maybeAutoFraudScoreForCase({ caseId: newCase.id as string, insurerId: caller.insurerId, tenantId: tenant_id }),
-    );
-    // opt-in テナントでは、案件作成後に 3 行サマリを自動生成 (fire-and-forget / レスポンス後)。
-    after(() =>
-      maybeAutoSummarizeCase({ caseId: newCase.id as string, insurerId: caller.insurerId, tenantId: tenant_id }),
-    );
-    // opt-in テナントでは、ルール未割当の案件に担当者候補を自動提案 (fire-and-forget / レスポンス後)。
-    after(() =>
-      maybeAutoSuggestAssigneeForCase({
+    // opt-in テナントでは、案件作成後に各 auto-action を実行 (fire-and-forget / レスポンス後)。
+    // 3 つとも insurer_cases.meta を read-merge-write するため、並列だと最後の書き込みが他キーを
+    // 上書きして失われる (lost update)。1 つの after() で **順次** 実行し、各処理が直前の書き込み後の
+    // meta を読み直して安全にマージできるようにする (各 maybe* は内部で例外を握りつぶす)。
+    after(async () => {
+      await maybeAutoFraudScoreForCase({
         caseId: newCase.id as string,
         insurerId: caller.insurerId,
         tenantId: tenant_id,
-      }),
-    );
+      });
+      await maybeAutoSummarizeCase({
+        caseId: newCase.id as string,
+        insurerId: caller.insurerId,
+        tenantId: tenant_id,
+      });
+      await maybeAutoSuggestAssigneeForCase({
+        caseId: newCase.id as string,
+        insurerId: caller.insurerId,
+        tenantId: tenant_id,
+      });
+    });
 
     return apiJson({ case: newCase }, { status: 201 });
   } catch (err) {

@@ -355,10 +355,14 @@ export async function POST(req: NextRequest) {
 
     // opt-in テナントでは、写真追加後に改ざんスクリーニングを自動実行する
     // (fire-and-forget / レスポンス後 / 既存シグナルの集約のみで AI 課金なし)。
-    after(() => maybeAutoTamperingCheckForCertificate({ tenantId, certificateId: cert.id as string }));
-    // opt-in テナントでは、写真追加後に Ledra Standard 基準の品質・抜け漏れ監査も自動実行する
-    // (fire-and-forget / レスポンス後 / スコアは注釈のみ・発行はブロックしない)。
-    after(() => maybeAutoQualityCheckForCertificate({ tenantId, certificateId: cert.id as string }));
+    // opt-in テナントでは、写真追加後に改ざんスクリーニングと Ledra Standard 品質監査を自動実行する
+    // (fire-and-forget / レスポンス後 / 注釈のみ・発行はブロックしない)。両者とも certificates.meta を
+    // read-merge-write するため、並列だと一方の結果 (tampering_check / quality_check) が失われ得る。
+    // 1 つの after() で **順次** 実行し、後者が前者の書き込み後の meta を読み直してマージする。
+    after(async () => {
+      await maybeAutoTamperingCheckForCertificate({ tenantId, certificateId: cert.id as string });
+      await maybeAutoQualityCheckForCertificate({ tenantId, certificateId: cert.id as string });
+    });
     // 画像追加で image_sha256_set が変わるため証明書レコードの新しい digest を anchor
     // queue に積む (best-effort fire-and-forget / CERT_RECORD_ANCHOR_ENABLED=false なら no-op)。
     enqueueCertificateAnchor({ tenantId, certificateId: cert.id as string }).catch(() => {});

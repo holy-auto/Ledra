@@ -31,7 +31,15 @@ const settings = (autoActions: Record<string, boolean>, enabled = true) => ({
 const baseStore = (serviceType: string | null = "coating") =>
   emptyStore({
     tenants: [{ id: TENANT, is_active: true, plan_tier: "standard" }],
-    certificates: [{ id: CERT, tenant_id: TENANT, service_type: serviceType, quality_fields_json: {}, meta: null }],
+    certificates: [
+      {
+        id: CERT,
+        tenant_id: TENANT,
+        service_type: serviceType,
+        quality_fields_json: { material_name: "テスト塗料" },
+        meta: null,
+      },
+    ],
     standard_rules: [
       {
         id: "r1",
@@ -86,6 +94,16 @@ describe("maybeAutoQualityCheckForCertificate (#7)", () => {
   it("service_type 無し: standard_rule を引けないのでスキップ", async () => {
     h.settings = settings({ "photo.auto_quality_check": true });
     const store = baseStore(null);
+    h.admin = makeFakeAdmin(store);
+    await maybeAutoQualityCheckForCertificate({ tenantId: TENANT, certificateId: CERT });
+    expect(auditMock).not.toHaveBeenCalled();
+    expect(store.updates).toHaveLength(0);
+  });
+
+  it("quality_fields_json が空: スナップショット無しは誤検知回避でスキップ", async () => {
+    h.settings = settings({ "photo.auto_quality_check": true });
+    const store = baseStore();
+    store.tables.certificates[0].quality_fields_json = {};
     h.admin = makeFakeAdmin(store);
     await maybeAutoQualityCheckForCertificate({ tenantId: TENANT, certificateId: CERT });
     expect(auditMock).not.toHaveBeenCalled();
