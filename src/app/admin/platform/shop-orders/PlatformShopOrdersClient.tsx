@@ -17,6 +17,16 @@ const MANAGEABLE_STATUSES: ShopOrderStatus[] = ["pending", "paid", "processing",
 // 「要対応」= 運営の出荷・請求アクション待ち。発送済み/完了/キャンセル/決済失敗は除く。
 const ACTION_NEEDED: ShopOrderStatus[] = ["pending", "paid", "processing"];
 
+// 出力できる帳票の種類とラベル（API の type と一致）。
+type ShopDocType = "invoice" | "delivery" | "receipt";
+const DOC_LABELS: Record<ShopDocType, string> = {
+  invoice: "請求書",
+  delivery: "納品書",
+  receipt: "領収書",
+};
+// 領収書は入金確認済みの注文に対してのみ発行する。
+const RECEIPT_ALLOWED: ShopOrderStatus[] = ["paid", "processing", "shipped", "completed"];
+
 const STATUS_COLORS: Record<ShopOrderStatus, string> = {
   pending: "bg-warning-dim text-warning-text",
   pending_checkout: "bg-warning-dim text-warning-text",
@@ -85,6 +95,60 @@ export default function PlatformShopOrdersClient() {
     }
   }, []);
 
+  // 帳票 PDF / CSV のダウンロード中フラグ。
+  const [docBusy, setDocBusy] = useState<string | null>(null);
+  const [csvBusy, setCsvBusy] = useState(false);
+
+  // Blob を取得してブラウザのダウンロードを発火する共通処理。
+  const downloadBlob = useCallback(async (url: string, fallbackName: string) => {
+    const res = await fetch(url);
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    const objUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objUrl;
+    a.download = fallbackName;
+    a.click();
+    URL.revokeObjectURL(objUrl);
+  }, []);
+
+  const downloadDocument = useCallback(
+    async (orderId: string, type: ShopDocType, orderNumber: string) => {
+      const key = `${orderId}:${type}`;
+      setDocBusy(key);
+      setError(null);
+      try {
+        await downloadBlob(
+          `/api/admin/platform/shop-orders/${orderId}/document?type=${type}`,
+          `${DOC_LABELS[type]}_${orderNumber}.pdf`,
+        );
+      } catch (e: any) {
+        setError(e?.message ?? String(e));
+      } finally {
+        setDocBusy(null);
+      }
+    },
+    [downloadBlob],
+  );
+
+  const exportCsv = useCallback(async () => {
+    setCsvBusy(true);
+    setError(null);
+    try {
+      await downloadBlob(
+        "/api/admin/platform/shop-orders/export",
+        `shop_orders_${new Date().toISOString().slice(0, 10)}.csv`,
+      );
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+    } finally {
+      setCsvBusy(false);
+    }
+  }, [downloadBlob]);
+
   const actionNeededCount = useMemo(() => orders.filter((o) => ACTION_NEEDED.includes(o.status)).length, [orders]);
 
   const filteredOrders = useMemo(() => {
@@ -115,13 +179,22 @@ export default function PlatformShopOrdersClient() {
           <p className="text-xs text-secondary">要対応の注文（未発送）</p>
           <p className="text-2xl font-bold text-primary">{actionNeededCount}件</p>
         </div>
-        <button
-          onClick={fetchOrders}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-primary/20 bg-surface px-3 py-1.5 text-sm font-medium text-primary hover:bg-muted transition-colors disabled:opacity-50"
-        >
-          再読み込み
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={exportCsv}
+            disabled={csvBusy || loading}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-primary/20 bg-surface px-3 py-1.5 text-sm font-medium text-primary hover:bg-muted transition-colors disabled:opacity-50"
+          >
+            {csvBusy ? "出力中…" : "CSV出力"}
+          </button>
+          <button
+            onClick={fetchOrders}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-primary/20 bg-surface px-3 py-1.5 text-sm font-medium text-primary hover:bg-muted transition-colors disabled:opacity-50"
+          >
+            再読み込み
+          </button>
+        </div>
       </div>
 
       {/* フィルタ */}
@@ -269,6 +342,45 @@ export default function PlatformShopOrdersClient() {
                     </table>
 
                     {order.note && <p className="text-xs text-secondary">備考: {order.note}</p>}
+
+                    {/* 帳票出力（請求書・納品書・領収書） */}
+                    <div className="flex flex-wrap items-center gap-2 border-t border-primary/10 pt-3">
+                      <span className="text-xs font-medium text-secondary">帳票出力:</span>
+                      {(Object.keys(DOC_LABELS) as ShopDocType[]).map((type) => {
+                        const key = `${order.id}:${type}`;
+                        const busy = docBusy === key;
+                        const disabled = busy || (type === "receipt" && !RECEIPT_ALLOWED.includes(order.status));
+                        const title =
+                          type === "receipt" && !RECEIPT_ALLOWED.includes(order.status)
+                            ? "入金確認後に発行できます"
+                            : `${DOC_LABELS[type]}をPDFでダウンロード`;
+                        return (
+                          <button
+                            key={type}
+                            onClick={() => downloadDocument(order.id, type, order.order_number)}
+                            disabled={disabled}
+                            title={title}
+                            className="inline-flex items-center gap-1 rounded-lg border border-primary/20 bg-surface px-2.5 py-1 text-xs font-medium text-primary hover:bg-muted transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <svg
+                              width="13"
+                              height="13"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth={1.8}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
+                              />
+                            </svg>
+                            {busy ? "生成中…" : `${DOC_LABELS[type]}PDF`}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
