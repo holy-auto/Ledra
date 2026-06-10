@@ -54,6 +54,34 @@ GitHub・Gmail・Slack は Cowork のファーストパーティ・コネクタ�
 
 ---
 
+## 5. Google Search Console（GSC・読み取り専用・週次/月次で使用）
+
+検索パフォーマンス（クエリ・ページ・clicks/impressions/CTR/position）を分析するために使う。
+本プラグインの `.mcp.json` の `gsc-readonly`（`mcp-server-gsc`）で接続する。
+
+- セットアップ:
+  1. Google Cloud でプロジェクトを用意し **Search Console API** を有効化。
+  2. **サービスアカウント**を作成し JSON 鍵を発行。
+  3. Search Console のプロパティ設定で、そのサービスアカウントのメールを**ユーザー（フル/制限）として追加**。
+  4. Cowork 実行環境に環境変数 `GSC_SERVICE_ACCOUNT_JSON`＝鍵 JSON のパスを設定。
+- **読み取り専用**。プロパティ設定やデータは変更しない。鍵はパスワード同様に厳重管理。
+
+## 6. Google Analytics 4（GA4・読み取り専用・週次/月次で使用）
+
+セッション/エンゲージメント/コンバージョン/流入/LP を分析するために使う。
+公式 MCP（`googleanalytics/google-analytics-mcp`）を `.mcp.json` の `analytics-mcp` で接続。
+
+- セットアップ:
+  1. `pipx install google-analytics-mcp`（Python 3.10+。コマンド `google-analytics-mcp` が入る）。
+  2. **GA4 Admin API / Data API** を有効化。
+  3. 認証は ADC（`gcloud auth application-default login`）か**サービスアカウント JSON**。サービスアカウントを使う場合、その GA4 プロパティに**閲覧権限**を付与し、`GA4_SERVICE_ACCOUNT_JSON`＝鍵 JSON のパスを設定。
+  4. 分析対象の **GA4 プロパティ ID** を把握しておく（`run_report` 等で指定）。
+- すべて**読み取り専用**（設定変更不可）。
+
+> GSC/GA4 が未接続のときは、Cowork は数値を捏造せず「未接続」と明記する（`analyze-performance` スキルの方針）。
+
+---
+
 ## 接続ごとの「やらないこと」一覧
 
 | コネクタ | やること | やらないこと |
@@ -62,3 +90,5 @@ GitHub・Gmail・Slack は Cowork のファーストパーティ・コネクタ�
 | Gmail | 読み取り・下書き作成 | 送信 |
 | Slack | 読み取り・社内共有 | 顧客向け自動投稿 |
 | Supabase | 読み取り | 書き込み・スキーマ変更 |
+| Search Console | 検索データの読み取り | プロパティ設定の変更 |
+| GA4 | 行動/CV データの読み取り | 計測設定の変更 |

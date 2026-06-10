@@ -16,7 +16,9 @@
 | 問い合わせ対応 | `triage-inquiry` | 分類＋ Gmail 返信下書き | 下書き確認 → 送信 |
 | SEO 保守 | `seo-maintenance` | メタ/サイトマップ/OGP 修正 PR ＋点検レポート | レビュー → マージ |
 | 公開前/定期 品質チェック | `site-health-check` | lint/build/test・リンク・Lighthouse のレポート | 所見の対応判断 |
+| データ分析（GSC / GA4） | `analyze-performance` | CTR・順位11-30・CVR の機会レポート（読み取り専用） | 提案を確認 → 各スキルで実装 |
 
+これらを**日次/週次/月次のルーチン**（`daily-ops` / `weekly-ops` / `monthly-ops`）が束ねて回します（下記「運用カデンス」）。
 入口は `hp-ops` スキル（ガードレールと振り分け）。
 
 ---
@@ -36,6 +38,8 @@
 - **Gmail**（問い合わせ対応時）: `info@ledra.co.jp` 読み取り＋**下書き作成のみ**（送信権限なし）。
 - **Slack**（任意）: 問い合わせ通知の読み取り。
 - **Supabase（読み取り専用・任意）**: `saved_news` を記事素材に使う場合。環境変数 `SUPABASE_PROJECT_REF` / `SUPABASE_ACCESS_TOKEN` を Cowork 実行環境に設定（`cowork/ledra-hp-ops/.mcp.json` 参照）。
+- **Google Search Console（読み取り専用・週次/月次）**: `mcp-server-gsc`。サービスアカウント JSON を `GSC_SERVICE_ACCOUNT_JSON` に設定し、GSC プロパティにそのアカウントを追加。
+- **GA4（読み取り専用・週次/月次）**: 公式 `google-analytics-mcp`（`pipx install`）。`GA4_SERVICE_ACCOUNT_JSON`（または ADC）で認証し、対象 GA4 プロパティに閲覧権限。
 
 ---
 
@@ -50,15 +54,50 @@ Cowork は依頼に応じて該当スキルを呼び、**PR か下書き**を用
 
 ---
 
-## 定期実行（/schedule）の例
+## 運用カデンス（Daily / Weekly / Monthly）
 
-| 頻度 | 内容 | スキル |
-| --- | --- | --- |
-| 毎朝 8:30 | `saved_news` を確認し、価値ある話題があればニュース記事ドラフトの PR を作る | publish-article |
-| 平日 10:00 | 未対応の問い合わせを仕分け、一次返信の下書きを用意 | triage-inquiry |
-| 毎週月曜 9:00 | SEO 点検レポート＋サイト健全性チェック（lint/build/link/Lighthouse） | seo-maintenance / site-health-check |
+3 つのルーチンスキルが、各タスクを束ねて回します。**すべてレビュー前提**（PR / 下書き / 提案ドキュメント）。
 
-> スケジュールはあくまで**ドラフト/レポート生成**まで。レビュー待ちが溜まらないよう、確認担当を決めておくと良い。
+### Daily（`daily-ops`）— 毎日の小さな改善
+- SEO点検（軽量）・meta改善・alt追加・CTA改善・軽微リライト・改善ログ更新
+- 成果物: **1日1本の小さな PR**（`cowork/daily-YYYYMMDD`）＋ `docs/marketing/improvement-log.md` 追記
+- 何もなければ PR を作らない（改善ログに 1 行だけ）
+
+### Weekly（`weekly-ops`）— データ起点の改善 + 下書き
+- Search Console 分析・GA4 分析・CTR改善・順位11〜30位ページ改善・ブログ下書き・FAQ追加・週次レポート
+- 成果物: 関心事ごとの PR（SEO修正 / ブログ`draft` / FAQ）＋ `docs/marketing/reports/weekly/YYYY-Www.md`
+
+### Monthly（`monthly-ops`）— 振り返りと計画
+- 月次KPI分析・キーワード戦略・記事計画・CVR改善計画・新規LP候補・月次レポート
+- 成果物: `docs/marketing/reports/monthly/YYYY-MM.md` ＋ `docs/marketing/plans/*.md`（承認用の提案）
+
+## /schedule 設定例
+
+Cowork のチャットで `/schedule` を使い、以下のように登録します（時刻は運用に合わせて調整）。
+
+```
+/schedule 毎朝 8:30  → 「Ledra の daily-ops ルーチンを実行して」
+/schedule 毎週 月 9:00 → 「Ledra の weekly-ops ルーチンを実行して」
+/schedule 毎月 1日 9:00 → 「Ledra の monthly-ops ルーチンを実行して」
+```
+
+任意で粒度を分けたい場合の例:
+```
+/schedule 平日 10:00 → 「未対応の問い合わせを仕分けて一次返信の下書きを作って」（triage-inquiry）
+/schedule 毎朝 8:30  → 「saved_news を見て価値ある話題があればニュース記事ドラフトの PR を作って」（publish-article）
+```
+
+> スケジュールはあくまで**ドラフト/レポート/提案の生成**まで。公開・送信・マージ・実装は人が判断する。
+> レビュー待ちが溜まらないよう、Daily/Weekly/Monthly それぞれの確認担当・確認タイミングを決めておくと良い。
+
+### 出力先まとめ
+| 種類 | 置き場所 |
+| --- | --- |
+| 改善ログ | `docs/marketing/improvement-log.md` |
+| 週次レポート | `docs/marketing/reports/weekly/YYYY-Www.md` |
+| 月次レポート | `docs/marketing/reports/monthly/YYYY-MM.md` |
+| 各種計画 | `docs/marketing/plans/{keyword-strategy,article-calendar,cvr-improvement,lp-candidates}.md` |
+| 記事ドラフト | `src/content/{news,blog,cases}/*.mdx`（`draft: true`、PR） |
 
 ---
 

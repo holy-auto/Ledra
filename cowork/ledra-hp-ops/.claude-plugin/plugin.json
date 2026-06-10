@@ -1,7 +1,7 @@
 {
   "name": "ledra-hp-ops",
-  "version": "0.1.0",
-  "description": "Operate the Ledra marketing site (HP) with Claude Cowork: draft news/blog articles, triage contact inquiries, maintain SEO/metadata/sitemap, and run pre-publish quality checks — always review-gated (PRs for repo changes, drafts for replies).",
+  "version": "0.2.0",
+  "description": "Operate the Ledra marketing site (HP) with Claude Cowork: draft news/blog articles, triage contact inquiries, maintain SEO/metadata/sitemap, analyze Search Console/GA4, and run daily/weekly/monthly growth routines — always review-gated (PRs for repo changes, drafts for replies).",
   "author": {
     "name": "Ledra"
   },
@@ -14,6 +14,10 @@
     "blog",
     "news",
     "seo",
+    "search-console",
+    "ga4",
+    "analytics",
+    "cro",
     "inquiry-triage",
     "next-js",
     "mdx"
