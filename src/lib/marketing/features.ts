@@ -93,6 +93,7 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
         title: "案件ワークフロー（統合ワークスペース）",
         description:
           "予約 → 来店 → 作業 → 証明書発行 → 請求 → 入金を1画面で進行管理。ステータスステッパーと次アクションパネルで、案件単位に操作を束ねます。",
+        href: "/features/job-workflow",
       },
       {
         title: "予約・作業管理",
@@ -159,6 +160,7 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
         title: "Ledra Academy",
         description:
           "教材・クイズで社内教育を仕組み化。受講進捗を追跡し、修了者には受講証明書をPDFで発行できます（Standard / Pro）。",
+        href: "/features/academy",
       },
       {
         title: "施工事例ライブラリ",
@@ -230,6 +232,7 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
         title: "会計連携（freee / マネーフォワード）",
         description:
           "freee 会計・マネーフォワード クラウドと OAuth 連携。入金済みの請求書を会計仕訳として自動同期し、二重入力をなくします。",
+        href: "/features/accounting",
       },
       {
         title: "Google Calendar / LINE",
