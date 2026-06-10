@@ -33,6 +33,16 @@ const INTEGRATIONS: Integration[] = [
     logo: { src: "/brands/Square_Logo_2025_White.svg", width: 2000, height: 501 },
   },
   {
+    name: "freee会計",
+    note: "入金済請求書を自動で仕訳連携",
+    href: "https://www.freee.co.jp/",
+  },
+  {
+    name: "マネーフォワード クラウド",
+    note: "会計仕訳の自動同期",
+    href: "https://biz.moneyforward.com/",
+  },
+  {
     name: "Google Calendar",
     note: "予約カレンダー双方向同期",
     href: "https://calendar.google.com/",
@@ -134,6 +144,8 @@ export function IntegrationLogoWall() {
         <li>Supabase は Supabase Inc. の登録商標または商標です。</li>
         <li>Stripe は Stripe, Inc. の商標です。</li>
         <li>Square は Block, Inc. の商標です。</li>
+        <li>freee、freee会計 は freee株式会社の商標または登録商標です。</li>
+        <li>マネーフォワード クラウド は株式会社マネーフォワードの商標または登録商標です。</li>
         <li>Google および Google Calendar は Google LLC の商標です。</li>
         <li>Claude は Anthropic PBC の商標です。</li>
       </ul>

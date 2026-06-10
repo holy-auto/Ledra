@@ -48,6 +48,11 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
         description: "NFCタグに証明書を紐付け。スマホをかざすだけで施工証明を確認できるプレミアム体験。",
         href: "/features/nfc",
       },
+      {
+        title: "塗膜厚レポート",
+        description:
+          "PosiTector / NexDiag などの膜厚計測データを車両・施工に紐付けて保管。施工前後の膜厚比較を、客観的な品質トレースとして残せます。",
+      },
     ],
   },
   {
@@ -85,6 +90,12 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
     subtitle: "受付から決済まで、現場の動きそのままに。",
     features: [
       {
+        title: "案件ワークフロー（統合ワークスペース）",
+        description:
+          "予約 → 来店 → 作業 → 証明書発行 → 請求 → 入金を1画面で進行管理。ステータスステッパーと次アクションパネルで、案件単位に操作を束ねます。",
+        href: "/features/job-workflow",
+      },
+      {
         title: "予約・作業管理",
         description: "予約受付からチェックイン、作業進捗、完了までを一元管理。Googleカレンダーと双方向同期。",
       },
@@ -95,6 +106,15 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
       {
         title: "請求書・帳票",
         description: "請求書をPDFで自動生成。メール送信や共有リンクで顧客に送付。未回収アラート付き。",
+      },
+      {
+        title: "在庫管理",
+        description: "部材・在庫を管理し、Square と同期。BtoB ハブでは他店との在庫共有・引き合いにもつながります。",
+      },
+      {
+        title: "帳票・工程テンプレート",
+        description:
+          "証明書・請求書・領収書などのレイアウトをビジュアル編集。施工種別ごとの標準工程テンプレートを案件に即適用できます。",
       },
       {
         title: "BtoB受発注（オプション）",
@@ -124,6 +144,32 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
       {
         title: "ウィジェットカスタマイズ",
         description: "ダッシュボードの表示項目・順序をユーザーごとに設定可能。役割に応じた画面を。",
+      },
+      {
+        title: "施工価格相場",
+        description: "施工種類別の価格統計を可視化。自店の見積・料金設定の判断材料になります。",
+      },
+    ],
+  },
+  {
+    id: "academy",
+    title: "育成・ナレッジ",
+    subtitle: "施工品質を、人とチームに定着させる。",
+    features: [
+      {
+        title: "Ledra Academy",
+        description:
+          "教材・クイズで社内教育を仕組み化。受講進捗を追跡し、修了者には受講証明書をPDFで発行できます（Standard / Pro）。",
+        href: "/features/academy",
+      },
+      {
+        title: "施工事例ライブラリ",
+        description:
+          "自店の施工事例を候補 → 公開のフローで承認・蓄積。品質スコアを集計し、教育とブランディングに活用できます。",
+      },
+      {
+        title: "QAアシスタント",
+        description: "施工に関する疑問をその場でチャットに質問。現場のナレッジ共有とオンボーディングを支援します。",
       },
     ],
   },
@@ -181,6 +227,12 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
       {
         title: "Stripe / Square",
         description: "Stripe サブスクリプション・請求書、Square POS端末決済。既存の決済フローに組み込めます。",
+      },
+      {
+        title: "会計連携（freee / マネーフォワード）",
+        description:
+          "freee 会計・マネーフォワード クラウドと OAuth 連携。入金済みの請求書を会計仕訳として自動同期し、二重入力をなくします。",
+        href: "/features/accounting",
       },
       {
         title: "Google Calendar / LINE",

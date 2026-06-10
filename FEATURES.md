@@ -434,11 +434,13 @@ Ledraは自動車施工（コーティング・フィルム・ラッピング等
 |---|---|---|
 | トップ | `/` | ヒーロー、カウントダウン、ポータルログイン、ロール別CTA |
 | お問い合わせ | `/contact` | コンタクトフォーム（Resend API連携） |
-| 施工店向け | `/for-shops` | Coming Soon |
-| 代理店向け | `/for-agents` | Coming Soon |
-| 保険会社向け | `/for-insurers` | Coming Soon |
-| 料金プラン | `/pricing` | Coming Soon |
-| FAQ | `/faq` | Coming Soon |
+| 機能一覧 | `/features` | 全機能を役割横断で紹介（8カテゴリ）。詳細ページ: digital-certificate / blockchain-anchoring / vehicle-ocr / timeline / customer-360 / customer-portal / insurer-portal / digital-signature / nfc / **accounting** / **job-workflow** / **academy** |
+| 施工店向け | `/for-shops` | 課題 → 変化 → 操作デモ → 提供機能 → 導入の流れ → FAQ の LP |
+| 代理店向け | `/for-agents` | パートナープログラム・コミッションモデル・代理店ポータル機能の LP |
+| 保険会社向け | `/for-insurers` | 査定課題 → 変化 → 改ざん検知の根拠 → ポータル機能 → 導入の流れ の LP |
+| BtoB（発注企業向け） | `/for-btob` | 認定施工店への直接発注・決済・進捗管理を案内する LP |
+| 料金プラン | `/pricing` | 4プラン（Free / Starter / Standard / Pro）＋オプション・FAQ |
+| FAQ | `/faq` | カテゴリ別のよくある質問 |
 | 利用規約 | `/terms` | 利用規約全文 |
 | プライバシーポリシー | `/privacy` | プライバシーポリシー全文 |
 | 特定商取引法 | `/tokusho` | 特商法に基づく表記 |
