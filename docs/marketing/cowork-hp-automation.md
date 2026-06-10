@@ -60,7 +60,8 @@ Cowork は依頼に応じて該当スキルを呼び、**PR か下書き**を用
 
 ### Daily（`daily-ops`）— 毎日の小さな改善
 - SEO点検（軽量）・meta改善・alt追加・CTA改善・軽微リライト・改善ログ更新
-- 成果物: **1日1本の小さな PR**（`cowork/daily-YYYYMMDD`）＋ `docs/marketing/improvement-log.md` 追記
+- 成果物: **1日1本の小さな PR**（`cowork/daily-YYYYMMDD`）＋ `docs/marketing/reports/daily/YYYY-MM-DD.md` ＋ `docs/marketing/operation/improvement-log.md` 追記
+- Scheduled Task 用プロンプト: `docs/marketing/operation/prompts/daily.md`
 - 何もなければ PR を作らない（改善ログに 1 行だけ）
 
 ### Weekly（`weekly-ops`）— データ起点の改善 + 下書き
@@ -93,11 +94,20 @@ Cowork のチャットで `/schedule` を使い、以下のように登録しま
 ### 出力先まとめ
 | 種類 | 置き場所 |
 | --- | --- |
-| 改善ログ | `docs/marketing/improvement-log.md` |
+| 改善ログ | `docs/marketing/operation/improvement-log.md` |
+| 日次レポート | `docs/marketing/reports/daily/YYYY-MM-DD.md` |
 | 週次レポート | `docs/marketing/reports/weekly/YYYY-Www.md` |
 | 月次レポート | `docs/marketing/reports/monthly/YYYY-MM.md` |
 | 各種計画 | `docs/marketing/plans/{keyword-strategy,article-calendar,cvr-improvement,lp-candidates}.md` |
 | 記事ドラフト | `src/content/{news,blog,cases}/*.mdx`（`draft: true`、PR） |
+| 分析データ(入力) | `docs/marketing/data/`（コミットしない / PII禁止） |
+
+### 様式・プロンプト
+| 種類 | 置き場所 |
+| --- | --- |
+| 運営レポート様式（週次/月次/臨時） | `docs/marketing/operation/templates/growth-report.md` |
+| 日次レポート様式 | `docs/marketing/operation/templates/daily-report.md` |
+| Daily スケジュールタスク用プロンプト | `docs/marketing/operation/prompts/daily.md` |
 
 ---
 

@@ -4,8 +4,8 @@
     "name": "Ledra (holy-auto)"
   },
   "metadata": {
-    "description": "Claude Cowork plugins for operating the Ledra marketing site (HP). 公開HPの運用（記事制作・問い合わせ仕分け・SEO保守・GSC/GA4分析・日次/週次/月次の改善ルーチン）をレビュー前提で自動化します。",
-    "version": "0.2.0"
+    "description": "Claude Cowork plugins for operating the Ledra marketing site (HP). 公開HPの運用（記事制作・問い合わせ仕分け・SEO保守・GSC/GA4分析・日次/週次/月次の改善ルーチン）をレビュー前提で自動化します。運営レポート様式とスケジュールタスク用プロンプトを同梱。",
+    "version": "0.3.0"
   },
   "plugins": [
     {

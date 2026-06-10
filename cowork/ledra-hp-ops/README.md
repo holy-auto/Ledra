@@ -24,7 +24,7 @@ Ledra の公開HP（マーケティングサイト `src/app/(marketing)/`）の*
 
 | ルーチン | 主なタスク | 成果物 |
 | --- | --- | --- |
-| **daily-ops** | SEO点検(軽)・meta改善・alt追加・CTA改善・軽微リライト・改善ログ更新 | 1日1本の小さな **PR**＋`improvement-log.md` |
+| **daily-ops** | SEO点検(軽)・meta改善・alt追加・CTA改善・軽微リライト・改善ログ更新 | 1日1本の小さな **PR**＋日次レポート＋`operation/improvement-log.md` |
 | **weekly-ops** | GSC/GA4分析・CTR改善・順位11-30改善・ブログ下書き・FAQ追加・週次レポート | 関心事ごとの **PR**＋週次レポート |
 | **monthly-ops** | 月次KPI分析・キーワード戦略・記事計画・CVR改善計画・新規LP候補・月次レポート | 計画ドキュメントの **PR**（＝承認用の提案） |
 
