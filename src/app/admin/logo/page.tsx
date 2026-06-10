@@ -77,7 +77,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
 
     if (up.error) redirect("/admin/logo?e=seal_upload");
 
-    const { error } = await supabase.from("tenants").update({ seal_asset_path: objectPath }).eq("id", tenantId);
+    const { error } = await supabase.from("tenants").update({ company_seal_path: objectPath }).eq("id", tenantId);
 
     if (error) redirect("/admin/logo?e=seal_save");
 
