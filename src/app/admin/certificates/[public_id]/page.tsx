@@ -13,6 +13,7 @@ import CertImageUpload from "./CertImageUpload";
 import CertImageDeleteButton from "./CertImageDeleteButton";
 import MediaUploadSection from "./MediaUploadSection";
 import PhotoTamperingPanel from "./PhotoTamperingPanel";
+import QualityAutoPanel, { type AutoQualityResult } from "./QualityAutoPanel";
 import { resolveCertificateMedia, type CertificateMediaRow } from "@/lib/certificateMedia";
 import AnnotateExistingImageButton from "@/components/imageMarkup/AnnotateExistingImageButton";
 import { isAnnotationDocument, type AnnotationDocument } from "@/components/imageMarkup/types";
@@ -99,6 +100,37 @@ export default async function Page({ params }: PageProps) {
           flags: Array.isArray(tamperingTc.flags) ? tamperingTc.flags : [],
           vision_checked: !!tamperingTc.vision_checked,
           checked_at: tamperingTc.checked_at ?? null,
+        }
+      : null;
+
+  // アップロード時に自動付与された品質・抜け漏れ監査結果 (meta.quality_check)。
+  // source==="auto" のものだけをパネル表示する (手動チェックは作成フォーム側で実行)。
+  const qualityQc = (row.meta as Record<string, unknown> | null)?.quality_check as
+    | {
+        source?: string;
+        overall_status?: "pass" | "warning" | "fail" | "pending";
+        standard_level?: string | null;
+        score?: number;
+        missing_photos?: string[];
+        missing_fields?: string[];
+        warnings?: Array<{ level: "error" | "warning" | "info"; message: string }>;
+        image_count?: number;
+        vision_checked?: boolean;
+        checked_at?: string | null;
+      }
+    | undefined;
+  const autoQuality: AutoQualityResult | null =
+    qualityQc && qualityQc.source === "auto" && qualityQc.overall_status
+      ? {
+          overall_status: qualityQc.overall_status,
+          standard_level: qualityQc.standard_level ?? null,
+          score: typeof qualityQc.score === "number" ? qualityQc.score : 0,
+          missing_photos: Array.isArray(qualityQc.missing_photos) ? qualityQc.missing_photos : [],
+          missing_fields: Array.isArray(qualityQc.missing_fields) ? qualityQc.missing_fields : [],
+          warnings: Array.isArray(qualityQc.warnings) ? qualityQc.warnings : [],
+          image_count: typeof qualityQc.image_count === "number" ? qualityQc.image_count : 0,
+          vision_checked: !!qualityQc.vision_checked,
+          checked_at: qualityQc.checked_at ?? null,
         }
       : null;
 
@@ -558,6 +590,9 @@ export default async function Page({ params }: PageProps) {
               autoResult={autoTampering}
             />
           )}
+
+          {/* 写真品質・抜け漏れ監査 (アップロード時に自動付与された結果のみ表示) */}
+          {autoQuality && <QualityAutoPanel result={autoQuality} />}
 
           {/* 電子署名依頼パネル */}
           {!isVoid && (

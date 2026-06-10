@@ -108,6 +108,26 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
   // Service type (ppf | coating | maintenance | body_repair | etc)
   const service_type = String(formData.get("service_type") || "").trim() || null;
 
+  // 品質監査用のフラットな field_values スナップショット (フォームの collectFieldValues 相当)。
+  // アップロード時の自動品質監査 (photo.auto_quality_check) が、誤検知なく
+  // 「発行前ゲートと同じ入力」で監査を再現できるよう、作成時に保存しておく。
+  let quality_fields: Record<string, string> | null = null;
+  try {
+    const raw = String(formData.get("quality_fields_json") || "");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const out: Record<string, string> = {};
+        for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+          if (typeof v === "string") out[k] = v;
+        }
+        if (Object.keys(out).length > 0) quality_fields = out;
+      }
+    }
+  } catch {
+    // optional — parse 失敗は無視 (品質監査はベストエフォート)
+  }
+
   // 施工パッケージのスナップショット (任意)
   // form 上の hidden input から取り出し、content_preset_json に保存して
   // 「どのパッケージを元に発行されたか」を後追いできるようにする。
@@ -281,6 +301,7 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
       maintenance_json: Object.keys(maintenance_data).length > 0 ? maintenance_data : {},
       body_repair_json: Object.keys(body_repair_data).length > 0 ? body_repair_data : {},
       service_type: service_type || null,
+      quality_fields_json: quality_fields,
       expiry_type: "text",
       expiry_value,
       expiry_date: expiry_date || null,

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import PageHeader from "@/components/ui/PageHeader";
 import { formatDateTime } from "@/lib/format";
+import DeliveryNoteUpload from "./DeliveryNoteUpload";
 
 /**
  * 装着詳細ドリルダウン（運用監査）。
@@ -179,6 +180,11 @@ export default async function PartInstallationDetail({ params }: { params: Promi
       {/* 証拠 */}
       <section className="rounded-lg border border-border-default p-4">
         <h2 className="mb-3 font-semibold text-primary">証拠（{evidence.length}件・追記専用）</h2>
+        {inst.status !== "customer_verified" && inst.status !== "voided" && (
+          <div className="mb-4 border-b border-border-subtle pb-4">
+            <DeliveryNoteUpload installationId={installationId} />
+          </div>
+        )}
         {evidence.length === 0 ? (
           <p className="text-sm text-secondary">証拠は登録されていません。</p>
         ) : (

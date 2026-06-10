@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import { cookies } from "next/headers";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
@@ -7,6 +7,7 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { CUSTOMER_COOKIE, getTenantIdBySlug, validateSession, getCustomerProfile } from "@/lib/customerPortalServer";
 import { GLOBAL_PORTAL_COOKIE, resolvePortalTenantAccessByGlobalToken } from "@/lib/customerPortalGlobal";
 import { notifySlack } from "@/lib/slack";
+import { maybeAutoClassifyInquiry } from "@/lib/ai/automation/inquiryClassifyAuto";
 
 const customerInquirySchema = z.object({
   tenant_slug: z.string().trim().min(1, "missing tenant_slug").max(100),
@@ -125,6 +126,17 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       console.error("[customer/inquiry] slack notify failed:", err);
     }
+
+    // opt-in テナントでは、受信後に分類 + 返信下書きを自動生成 (fire-and-forget / レスポンス後)。
+    after(() =>
+      maybeAutoClassifyInquiry({
+        tenantId: sess.tenantId,
+        inquiryId: data.id as string,
+        subject,
+        message,
+        customerName,
+      }),
+    );
 
     return apiJson({ ok: true, id: data.id }, { status: 201 });
   } catch (e) {
