@@ -736,7 +736,7 @@ function FeaturesCover() {
 
       <View style={[styles.card, { marginTop: 18 }]}>
         <Text style={styles.cardTitle}>本資料の読み方</Text>
-        <Text style={styles.bullet}>• 7カテゴリ、合計約30の機能を、業務の順番に沿って並べています。</Text>
+        <Text style={styles.bullet}>• 8カテゴリ、合計約38の機能を、業務の順番に沿って並べています。</Text>
         <Text style={styles.bullet}>• Admin / Agent / Insurer / Customer の4ポータルで利用可能な機能を明示。</Text>
         <Text style={styles.bullet}>• 料金・契約条件は別紙「料金プラン詳細資料」をご参照ください。</Text>
       </View>
