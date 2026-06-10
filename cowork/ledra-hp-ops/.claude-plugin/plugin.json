@@ -1,0 +1,21 @@
+{
+  "name": "ledra-hp-ops",
+  "version": "0.1.0",
+  "description": "Operate the Ledra marketing site (HP) with Claude Cowork: draft news/blog articles, triage contact inquiries, maintain SEO/metadata/sitemap, and run pre-publish quality checks — always review-gated (PRs for repo changes, drafts for replies).",
+  "author": {
+    "name": "Ledra"
+  },
+  "homepage": "https://ledra.co.jp",
+  "keywords": [
+    "ledra",
+    "marketing",
+    "hp",
+    "content",
+    "blog",
+    "news",
+    "seo",
+    "inquiry-triage",
+    "next-js",
+    "mdx"
+  ]
+}
