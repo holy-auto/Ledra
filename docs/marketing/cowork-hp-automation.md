@@ -69,8 +69,8 @@ Cowork は依頼に応じて該当スキルを呼び、**PR か下書き**を用
 - 成果物: 関心事ごとの PR（SEO修正 / ブログ`draft` / FAQ）＋ `docs/marketing/reports/weekly/YYYY-Www.md`
 
 ### Monthly（`monthly-ops`）— 振り返りと計画
-- 月次KPI分析・キーワード戦略・記事計画・CVR改善計画・新規LP候補・月次レポート
-- 成果物: `docs/marketing/reports/monthly/YYYY-MM.md` ＋ `docs/marketing/plans/*.md`（承認用の提案）
+- 月次KPI分析・コンテンツカレンダー・キーワード戦略・CVR改善計画・月次レポート
+- 成果物: `docs/marketing/reports/monthly/YYYY-MM.md` ＋ `docs/marketing/operation/content-calendar-YYYY-MM.md` ＋ `operation/keyword-strategy-YYYY-MM.md` ＋ `operation/cvr-improvement-plan-YYYY-MM.md`（承認用の提案）
 
 ## /schedule 設定例
 
@@ -98,16 +98,21 @@ Cowork のチャットで `/schedule` を使い、以下のように登録しま
 | 日次レポート | `docs/marketing/reports/daily/YYYY-MM-DD.md` |
 | 週次レポート | `docs/marketing/reports/weekly/YYYY-Www.md` |
 | 月次レポート | `docs/marketing/reports/monthly/YYYY-MM.md` |
-| 各種計画 | `docs/marketing/plans/{keyword-strategy,article-calendar,cvr-improvement,lp-candidates}.md` |
+| 月次計画 | `docs/marketing/operation/content-calendar-YYYY-MM.md` / `keyword-strategy-YYYY-MM.md` / `cvr-improvement-plan-YYYY-MM.md` |
 | 記事ドラフト | `src/content/{news,blog,cases}/*.mdx`（`draft: true`、PR） |
 | 分析データ(入力) | `docs/marketing/data/`（コミットしない / PII禁止） |
 
 ### 様式・プロンプト
 | 種類 | 置き場所 |
 | --- | --- |
-| 運営レポート様式（週次/月次/臨時） | `docs/marketing/operation/templates/growth-report.md` |
 | 日次レポート様式 | `docs/marketing/operation/templates/daily-report.md` |
+| 週次レポート様式 | `docs/marketing/operation/templates/weekly-report.md` |
+| 月次レポート様式 | `docs/marketing/operation/templates/monthly-report.md` |
+| 汎用運営レポート様式（臨時） | `docs/marketing/operation/templates/growth-report.md` |
 | Daily スケジュールタスク用プロンプト | `docs/marketing/operation/prompts/daily.md` |
+| Weekly スケジュールタスク用プロンプト | `docs/marketing/operation/prompts/weekly.md` |
+| Monthly スケジュールタスク用プロンプト | `docs/marketing/operation/prompts/monthly.md` |
+| KPI改善専用プロンプト（CSV投入後に使用） | `docs/marketing/operation/prompts/kpi-analysis.md` |
 
 ---
 

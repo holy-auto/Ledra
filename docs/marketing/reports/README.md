@@ -19,11 +19,15 @@ Cowork の `daily-ops` / `weekly-ops` / `monthly-ops` が生成するレポー�
 | レポート | 使う様式 |
 | --- | --- |
 | 日次 | `operation/templates/daily-report.md`（Daily SEO & CVR Report） |
-| 週次 / 月次 / 臨時 | `operation/templates/growth-report.md`（HPグロース運営レポート） |
+| 週次 | `operation/templates/weekly-report.md`（Weekly KPI Growth Report） |
+| 月次 | `operation/templates/monthly-report.md`（Monthly HP Growth Report） |
+| 臨時 | `operation/templates/growth-report.md`（HPグロース運営レポート） |
 
 > 様式を変えたいときは `operation/templates/` を編集すれば、全ルーチンの出力に反映されます。
 
 ## 月次レポートの補足
 
-月次は KPI（当月 / 前月比 / 前年同月比）に加え、計画ドキュメント（`docs/marketing/plans/`）へのリンクを必ず含める:
-キーワード戦略 / 記事計画 / CVR 改善計画 / 新規 LP 候補。
+月次は KPI（当月 / 前月比 / 前年同月比）に加え、計画ドキュメントへのリンクを必ず含める:
+- `docs/marketing/operation/content-calendar-YYYY-MM.md`（コンテンツカレンダー）
+- `docs/marketing/operation/keyword-strategy-YYYY-MM.md`（キーワード戦略）
+- `docs/marketing/operation/cvr-improvement-plan-YYYY-MM.md`（CVR改善計画）
