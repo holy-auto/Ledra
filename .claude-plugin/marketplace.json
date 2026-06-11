@@ -1,0 +1,22 @@
+{
+  "name": "ledra-cowork",
+  "owner": {
+    "name": "Ledra (holy-auto)"
+  },
+  "metadata": {
+    "description": "Claude Cowork plugins for operating the Ledra marketing site (HP). 公開HPの運用（記事制作・問い合わせ仕分け・SEO保守・GSC/GA4分析・日次/週次/月次の改善ルーチン）をレビュー前提で自動化します。運営レポート様式とスケジュールタスク用プロンプトを同梱。",
+    "version": "0.4.1"
+  },
+  "plugins": [
+    {
+      "name": "ledra-hp-ops",
+      "displayName": "Ledra HP 運用 (Marketing Site Ops)",
+      "source": "./cowork/ledra-hp-ops",
+      "description": "Ledra の公開HP（マーケティングサイト）の運用を Claude Cowork で回すためのスキル集。記事ドラフト制作・問い合わせ仕分け・SEO保守・Search Console/GA4 分析に加え、日次/週次/月次の改善ルーチン（meta/alt/CTA改善、CTR・順位11-30改善、FAQ追加、KPI/キーワード/記事/CVR/LP 計画、各レポート）をカバー。すべて『人のレビュー必須』で、リポジトリ変更は必ず PR、メール返信は必ず下書きまで。",
+      "category": "marketing",
+      "author": {
+        "name": "Ledra"
+      }
+    }
+  ]
+}

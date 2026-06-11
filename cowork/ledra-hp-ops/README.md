@@ -1,0 +1,89 @@
+# Ledra HP 運用 — Claude Cowork プラグイン
+
+Ledra の公開HP（マーケティングサイト `src/app/(marketing)/`）の**運用を Claude Cowork で回す**ためのスキル集です。
+記事制作・問い合わせ対応・SEO 保守・公開前チェックを、**人のレビューを必ず挟む**前提で自動化します。
+
+> このプラグインは「人の代わりに公開する」ものではありません。
+> **Cowork は下書き（draft）と PR を作るところまで**を担い、**公開・送信・マージの判断は必ず人**が行います。
+
+---
+
+## できること（スキル）
+
+### 能力スキル（何をするか）
+
+| スキル | 何をするか | 成果物 | レビュー方法 |
+| --- | --- | --- | --- |
+| **publish-article** | ニュース/ブログ/事例の記事ドラフトを MDX で作成 | `src/content/<collection>/*.mdx`（`draft: true`）を載せた **PR** | PR レビュー → `draft` を外してマージ |
+| **triage-inquiry** | 問い合わせメール/Slack を分類し一次返信を作成 | Gmail の**下書き**（送信しない） | 下書きを確認 → 人が送信 |
+| **seo-maintenance** | メタ情報・OGP・サイトマップ・内部リンクを点検し改善 | 修正を載せた **PR**＋点検レポート | PR レビュー → マージ |
+| **site-health-check** | リンク切れ・ビルド・Lighthouse など公開前/定期チェック | レポート（＋必要なら Issue / 小さな PR） | レポート確認 → 対応判断 |
+| **analyze-performance** | Search Console / GA4 を読み取り、CTR・順位11-30・CVR の機会を分析 | 分析レポート（数値＋機会） | 提案を確認 → 各能力スキルで実装 |
+
+### 運用ルーチン（いつ回すか）
+
+| ルーチン | 主なタスク | 成果物 |
+| --- | --- | --- |
+| **daily-ops** | SEO点検(軽)・meta改善・alt追加・CTA改善・軽微リライト・改善ログ更新 | 1日1本の小さな **PR**＋日次レポート＋`operation/improvement-log.md` |
+| **weekly-ops** | GSC/GA4分析・CTR改善・順位11-30改善・ブログ下書き・FAQ追加・週次レポート | 関心事ごとの **PR**＋週次レポート |
+| **monthly-ops** | 月次KPI分析・キーワード戦略・記事計画・CVR改善計画・新規LP候補・月次レポート | 計画ドキュメントの **PR**（＝承認用の提案） |
+
+`hp-ops`（オーバービュー＆ガードレール）スキルが入口で、依頼内容から適切なサブスキル/ルーチンへ振り分けます。
+運用カデンスの導入・スケジュール設定・出力先は `docs/marketing/cowork-hp-automation.md` を参照。
+
+---
+
+## インストール
+
+**Cowork デスクトップ**は UI から追加します（チャットに `/plugin ...` と打っても動きません＝「不明なスキル: plugin」）。
+
+1. **Customize（カスタマイズ）→ Plugins** タブを開く
+2. **Personal plugins** の **＋** → **Add marketplace** → **GitHub リポジトリ**に `holy-auto/ledra` を指定（プライベートのため GitHub 認可が必要）
+3. 追加された `ledra-cowork` マーケットプレイスから **`ledra-hp-ops`** を **Install**
+
+> 手順の詳細・コネクタ設定・スケジュール登録は [`SETUP.md`](./SETUP.md) に全ステップをまとめています。
+> マーケットプレイス定義はリポジトリ直下 `.claude-plugin/marketplace.json`。
+> Claude Code CLI（ターミナル版）の場合のみ `/plugin marketplace add holy-auto/ledra` → `/plugin install ledra-hp-ops@ledra-cowork` が使えます。
+
+インストール後、スキルは依頼内容に応じて自動で呼ばれます。明示的に呼ぶ場合は
+「Ledra のニュース記事を書いて」「この問い合わせを仕分けて」のように指示してください。
+
+---
+
+## 必要な接続（コネクタ）
+
+詳細・最小権限は [`CONNECTORS.md`](./CONNECTORS.md) を参照。要点だけ：
+
+- **GitHub**（必須）— ブランチ作成・コミット・**PR 作成**。`holy-auto/ledra` への書き込み。マージ権限は不要。
+- **Gmail**（triage を使う場合）— `info@ledra.co.jp` 宛の問い合わせ読み取り＋**下書き作成**。送信権限は不要。
+- **Slack**（任意）— `#問い合わせ` 等の通知読み取り（問い合わせは Slack にも届きます）。
+- **Supabase（読み取り専用・任意）** — `saved_news` テーブル（業界ニュース自動収集）を記事の素材に使う場合。`.mcp.json` に設定済み（環境変数で project ref / token を渡す）。
+
+---
+
+## 安全設計（このプラグインの約束）
+
+1. **公開・送信・マージは人間だけ**。Cowork は `draft: true` の MDX / Gmail 下書き / PR まで。
+2. **触ってよいファイルは限定**（記事・マーケ文書・サイトマップ等）。アプリのビジネスロジック / API / DB マイグレーション / 認証 / 秘密情報には**触れない**。詳細は `skills/hp-ops/SKILL.md`。
+3. **main へ直接 push しない**。必ずブランチ＋PR。
+4. **本番データを書き換えない**。Supabase 接続は読み取り専用。
+5. **事実は出典付き**。ニュース要約・主張は一次ソースの URL を残す。憶測で数値や実績を書かない。
+
+---
+
+## 定期実行（任意）
+
+Cowork の `/schedule` で定型運用を回せます（例）：
+
+- 毎朝 8:30 — `saved_news` を確認し、価値ある話題があればニュース記事ドラフトの PR を作る
+- 平日 10:00 — 未対応の問い合わせを仕分けし、一次返信の下書きを用意
+- 毎週月曜 — SEO 点検レポート＋サイト健全性チェック
+
+`docs/marketing/cowork-hp-automation.md`（運用者向けガイド）に手順とスケジュール例をまとめています。
+
+---
+
+## 開発・編集
+
+スキルはすべて Markdown + YAML フロントマターです。ビルド不要・編集即反映。
+表現や運用ルールを変えたいときは各 `SKILL.md` と `references/*.md` を直接編集してください。
