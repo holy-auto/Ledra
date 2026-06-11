@@ -12,8 +12,8 @@ export const siteConfig = {
   siteName: "Ledra",
   siteDescription: "車の施工証明をデジタルで。施工店と保険会社をつなぐSaaSプラットフォームです。",
 
-  /** マーケティングサイトのベースURL（ledra.co.jp 移行後に更新） */
-  siteUrl: process.env.NEXT_PUBLIC_SITE_URL ?? "https://ledra.co.jp",
+  /** マーケティングサイトのベースURL。canonical は www に統一。NEXT_PUBLIC_SITE_URL で上書き可。 */
+  siteUrl: process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.ledra.co.jp",
 
   /** アプリ本体のベースURL（app.ledra.co.jp 移行後に更新） */
   appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "https://app.ledra.co.jp",
