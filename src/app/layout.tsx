@@ -5,6 +5,7 @@ import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ThemeProvider } from "@/lib/theme/ThemeContext";
 import { ServiceWorkerRegistrar } from "@/components/ServiceWorkerRegistrar";
+import { siteConfig } from "@/lib/marketing/config";
 import { cookies, headers } from "next/headers";
 
 const geistMono = Geist_Mono({
@@ -25,7 +26,7 @@ const notoSansJP = Noto_Sans_JP({
 export const metadata = {
   title: "Ledra",
   description: "WEB施工証明書SaaS",
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://ledra.co.jp"),
+  metadataBase: new URL(siteConfig.siteUrl),
   openGraph: {
     title: "Ledra | WEB施工証明書SaaS",
     description: "施工証明をデジタルで。施工店と保険会社をつなぐSaaSプラットフォームです。",
