@@ -101,6 +101,11 @@ const CRITICAL_ENV_VARS: EnvVarCheck[] = [
   // Phase 4: Provider-specific API keys
   { name: "HIVE_API_KEY", required: false, warnOnly: true },
   { name: "PINATA_JWT", required: false, warnOnly: true },
+  // LinkedIn daily auto-post (optional until configured)
+  { name: "LINKEDIN_AUTOPOST_ENABLED", required: false, warnOnly: true },
+  { name: "LINKEDIN_ACCESS_TOKEN", required: false, warnOnly: true },
+  { name: "LINKEDIN_AUTHOR_URN", required: false, warnOnly: true },
+  { name: "LINKEDIN_API_VERSION", required: false, warnOnly: true },
 ];
 
 export function validateRequiredEnvVars(): void {
