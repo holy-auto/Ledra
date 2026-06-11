@@ -57,6 +57,9 @@ export function buildCsp(options: CspOptions): Record<CspDirective, string[]> {
     "https://*.vercel-scripts.com",
     // Sentry browser SDK loader (only used if loader script is enabled)
     "https://*.sentry-cdn.com",
+    // Google Analytics 4 — gtag.js loader. Injected client-side only when
+    // NEXT_PUBLIC_GA_MEASUREMENT_ID is set; external src so no nonce needed.
+    "https://www.googletagmanager.com",
   ];
   if (isDev) scriptSrc.push("'unsafe-eval'");
 
@@ -74,6 +77,9 @@ export function buildCsp(options: CspOptions): Record<CspDirective, string[]> {
       "https://*.supabase.co",
       "https://*.supabase.in",
       "https://api.qrserver.com", // QR fallback (referral links, certificate PDF)
+      // Google Analytics 4 — pixel / no-cors transport fallback
+      "https://*.google-analytics.com",
+      "https://www.googletagmanager.com",
     ],
     "font-src": [
       "'self'",
@@ -95,6 +101,11 @@ export function buildCsp(options: CspOptions): Record<CspDirective, string[]> {
       // doesn't expand attack surface — there is no script-src entry).
       "https://*.posthog.com",
       "https://*.i.posthog.com",
+      // Google Analytics 4 — gtag config fetch + measurement/collection
+      // beacons (active only when NEXT_PUBLIC_GA_MEASUREMENT_ID is set).
+      "https://*.google-analytics.com",
+      "https://*.analytics.google.com",
+      "https://www.googletagmanager.com",
     ],
     "frame-src": ["https://js.stripe.com", "https://hooks.stripe.com", "https://vercel.live"],
     "media-src": ["'none'"],

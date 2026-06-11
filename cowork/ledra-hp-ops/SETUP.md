@@ -181,12 +181,12 @@ npx -y mcp-server-gsc --version
 
 ```bash
 pip install pipx   # pipx が未インストールの場合
-pipx install google-analytics-mcp
+pipx install analytics-mcp   # 公式パッケージ名は analytics-mcp（これで google-analytics-mcp コマンドが入る）
 ```
 
-コマンドが通ることを確認:
+コマンドが入ったことを確認（apps に `analytics-mcp` と `google-analytics-mcp` の2つが出ればOK）:
 ```bash
-google-analytics-mcp --version
+pipx list
 ```
 
 ### 6-2. GA4 プロパティ ID を確認する

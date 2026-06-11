@@ -72,7 +72,7 @@ GitHub・Gmail・Slack は Cowork のファーストパーティ・コネクタ�
 公式 MCP（`googleanalytics/google-analytics-mcp`）を `.mcp.json` の `analytics-mcp` で接続。
 
 - セットアップ:
-  1. `pipx install google-analytics-mcp`（Python 3.10+。コマンド `google-analytics-mcp` が入る）。
+  1. `pipx install analytics-mcp`（Python 3.10+。公式パッケージ名は `analytics-mcp`。これで `.mcp.json` が使う `google-analytics-mcp` コマンドが入る）。
   2. **GA4 Admin API / Data API** を有効化。
   3. 認証は ADC（`gcloud auth application-default login`）か**サービスアカウント JSON**。サービスアカウントを使う場合、その GA4 プロパティに**閲覧権限**を付与し、`GA4_SERVICE_ACCOUNT_JSON`＝鍵 JSON のパスを設定。
   4. 分析対象の **GA4 プロパティ ID** を把握しておく（`run_report` 等で指定）。

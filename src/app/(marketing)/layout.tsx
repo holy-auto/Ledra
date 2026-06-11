@@ -4,6 +4,7 @@ import { Footer } from "@/components/marketing/Footer";
 import { OrganizationJsonLd, WebSiteJsonLd } from "@/components/marketing/JsonLd";
 import { CookieConsent } from "@/components/marketing/CookieConsent";
 import { PostHogProvider } from "@/components/marketing/PostHogProvider";
+import { GoogleAnalytics } from "@/components/marketing/GoogleAnalytics";
 import { CTATracker } from "@/components/marketing/CTATracker";
 import MarketingThemeWrapper from "./MarketingThemeWrapper";
 
@@ -41,6 +42,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
       <WebSiteJsonLd />
       <OrganizationJsonLd />
       <PostHogProvider />
+      <GoogleAnalytics />
       <CTATracker />
       <Header />
       <main>{children}</main>

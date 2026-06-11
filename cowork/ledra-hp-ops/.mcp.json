@@ -16,14 +16,14 @@
       "command": "npx",
       "args": ["-y", "mcp-server-gsc"],
       "env": {
-        "GOOGLE_APPLICATION_CREDENTIALS": "${GSC_SERVICE_ACCOUNT_JSON}"
+        "GOOGLE_APPLICATION_CREDENTIALS": "C:/Users/admin/AppData/Roaming/gcloud/application_default_credentials.json"
       }
     },
     "analytics-mcp": {
       "command": "google-analytics-mcp",
       "args": [],
       "env": {
-        "GOOGLE_APPLICATION_CREDENTIALS": "${GA4_SERVICE_ACCOUNT_JSON}"
+        "GOOGLE_APPLICATION_CREDENTIALS": "C:/Users/admin/AppData/Roaming/gcloud/application_default_credentials.json"
       }
     }
   }
