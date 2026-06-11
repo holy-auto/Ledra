@@ -7,17 +7,28 @@
 
 ## Step 1 — プラグインをインストールする
 
-Cowork のチャット画面で以下を順番に実行。
+> ⚠️ **Cowork のチャットに `/plugin ...` と打っても動きません**（「不明なスキル: plugin」エラーになる）。
+> `/plugin` は Claude Code CLI 専用の構文です。Cowork デスクトップでは **Customize（カスタマイズ）メニューの UI** から追加します。
+> また `holy-auto/ledra` は**プライベートリポジトリ**のため、先に **Step 2 の GitHub 接続を済ませておく**とスムーズです（マーケットプレイス追加時に GitHub の認可を求められます）。
 
-```
-/plugin marketplace add holy-auto/ledra
-```
-```
-/plugin install ledra-hp-ops@ledra-cowork
-```
+### 1-1. マーケットプレイスを追加する（Cowork UI）
 
-インストール後、以下のスキルが使えることを確認:
-`hp-ops` / `publish-article` / `triage-inquiry` / `seo-maintenance` / `site-health-check` / `analyze-performance` / `daily-ops` / `weekly-ops` / `monthly-ops`
+1. 左メニューの **Customize（カスタマイズ）** を開く
+2. **Plugins** タブを開く
+3. **Personal plugins（個人用プラグイン）** セクションの **＋** ボタン → **Add marketplace（マーケットプレイスを追加）**
+4. **GitHub リポジトリから追加**を選び、リポジトリに `holy-auto/ledra` を指定（URL を求められたら `https://github.com/holy-auto/ledra`）
+5. GitHub の認可を求められたら**許可**（プライベートリポジトリの読み取りに必要）
+6. **Add** → **Done**。マーケットプレイス `ledra-cowork` が一覧に表示される
+
+### 1-2. プラグインをインストールする
+
+1. 追加した `ledra-cowork` マーケットプレイスを開く
+2. プラグイン **`ledra-hp-ops`** を見つけて **Install**
+3. インストール後、以下のスキルが使えることを確認（`/` を押す or `＋` で一覧表示）:
+   `hp-ops` / `publish-article` / `triage-inquiry` / `seo-maintenance` / `site-health-check` / `analyze-performance` / `daily-ops` / `weekly-ops` / `monthly-ops`
+
+> 参考: Claude Code CLI（ターミナル版）で使う場合のみ、`/plugin marketplace add holy-auto/ledra` → `/plugin install ledra-hp-ops@ledra-cowork` が使えます。**Cowork デスクトップは上記 UI 手順**を使ってください。
+> 既知の不具合: アプリ再起動後に個人マーケットプレイスのインストールが消える事象が報告されています。消えた場合は 1-2 を再実行してください。
 
 ---
 
@@ -50,12 +61,11 @@ PR 作成に使う。**マージ権限は不要**。
 
 ### 2-2. Cowork に登録する
 
-Cowork の設定 → **Connectors** → **GitHub** → PAT を貼り付けて保存。
+Cowork の **Settings（設定）→ Connectors** → **GitHub** を選び、案内に従って接続。
+PAT 入力欄があれば 2-1 でコピーしたトークンを貼り付け、なければ OAuth で `holy-auto` 組織を認可（`holy-auto/ledra` を含む）。
 
-または Cowork のチャットで:
-```
-/connect github token=<コピーしたトークン> repo=holy-auto/ledra
-```
+> GitHub をファーストパーティ・コネクタ（OAuth）で接続する場合は PAT 作成（2-1）は不要なこともあります。
+> その場合も**マージ権限は付与せず**、PR 作成までに留めてください。
 
 ---
 
@@ -223,24 +233,34 @@ Ledra の今週の Search Console データを確認して、CTRが低いペー�
 
 ## Step 8 — スケジュールを登録する
 
-Cowork のチャットで以下を実行（時刻は運用に合わせて変更可）。
+Cowork 左メニューの **Scheduled（予定済み）** から定期タスクを作ります（チャットに `/schedule` と打つ方式ではありません）。
+時刻は運用に合わせて変更可。**3つ**登録します。
 
-**日次（毎朝 8:30）**
+各タスクの作り方:
+1. **New task（新しいタスク）** を開く（または Scheduled → ＋）
+2. 指示文（下記）を貼り付ける
+3. **実行** の横などにあるスケジュール設定で**繰り返し（毎日 / 毎週 / 毎月）と時刻**を指定
+4. **プロジェクトで作業**で対象リポジトリ（`holy-auto/ledra`）を選んでおくと、プロンプト内のパスを参照できます
+5. 保存 → **Scheduled** 一覧に表示されることを確認
+
+登録する3タスク（指示文をそのまま貼り付け）:
+
+**日次（毎朝 8:30 など）**
 ```
-/schedule "毎朝 8:30" "Ledra の daily-ops ルーチンを実行して。docs/marketing/operation/prompts/daily.md の手順に従うこと。"
+Ledra の daily-ops ルーチンを実行して。docs/marketing/operation/prompts/daily.md の手順に従うこと。
 ```
 
-**週次（毎週月曜 9:00）**
+**週次（毎週月曜 9:00 など）**
 ```
-/schedule "毎週月曜 9:00" "Ledra の weekly-ops ルーチンを実行して。docs/marketing/operation/prompts/weekly.md の手順に従うこと。"
-```
-
-**月次（毎月 1日 9:00）**
-```
-/schedule "毎月1日 9:00" "Ledra の monthly-ops ルーチンを実行して。docs/marketing/operation/prompts/monthly.md の手順に従うこと。"
+Ledra の weekly-ops ルーチンを実行して。docs/marketing/operation/prompts/weekly.md の手順に従うこと。
 ```
 
-登録後、`/schedule list` で確認。
+**月次（毎月 1日 9:00 など）**
+```
+Ledra の monthly-ops ルーチンを実行して。docs/marketing/operation/prompts/monthly.md の手順に従うこと。
+```
+
+> プロンプト全文を貼りたい場合は、各 `prompts/*.md` の ```md ブロックの中身```をコピーして貼り付けてもOK。
 
 ---
 

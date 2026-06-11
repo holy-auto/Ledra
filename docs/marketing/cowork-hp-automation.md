@@ -26,11 +26,10 @@
 ## セットアップ
 
 ### 1. プラグインを Cowork に入れる
-```
-/plugin marketplace add holy-auto/ledra
-/plugin install ledra-hp-ops@ledra-cowork
-```
-（Cowork アプリの Plugins 設定からリポジトリ指定でも可。定義はリポジトリ直下 `.claude-plugin/marketplace.json`。）
+**Cowork デスクトップ**は UI から追加します（チャットに `/plugin ...` は不可＝「不明なスキル: plugin」）。
+**Customize（カスタマイズ）→ Plugins → Personal plugins → ＋ → Add marketplace → GitHub リポジトリ `holy-auto/ledra`**（プライベートのため GitHub 認可が必要）→ `ledra-hp-ops` を **Install**。
+全ステップは `cowork/ledra-hp-ops/SETUP.md`。定義はリポジトリ直下 `.claude-plugin/marketplace.json`。
+（Claude Code CLI の場合のみ `/plugin marketplace add holy-auto/ledra` → `/plugin install ledra-hp-ops@ledra-cowork`。）
 
 ### 2. コネクタを接続する（最小権限）
 詳細は `cowork/ledra-hp-ops/CONNECTORS.md`。要点：
@@ -72,21 +71,23 @@ Cowork は依頼に応じて該当スキルを呼び、**PR か下書き**を用
 - 月次KPI分析・コンテンツカレンダー・キーワード戦略・CVR改善計画・月次レポート
 - 成果物: `docs/marketing/reports/monthly/YYYY-MM.md` ＋ `docs/marketing/operation/content-calendar-YYYY-MM.md` ＋ `operation/keyword-strategy-YYYY-MM.md` ＋ `operation/cvr-improvement-plan-YYYY-MM.md`（承認用の提案）
 
-## /schedule 設定例
+## スケジュール設定例
 
-Cowork のチャットで `/schedule` を使い、以下のように登録します（時刻は運用に合わせて調整）。
+Cowork 左メニューの **Scheduled（予定済み）/ New task** から定期タスクを作ります（`/schedule` チャットコマンドではなく UI）。
+指示文を貼り付け、繰り返し（毎日/毎週/毎月）と時刻を指定。**プロジェクトで作業**に `holy-auto/ledra` を選ぶとパス参照が効きます。
 
-```
-/schedule 毎朝 8:30  → 「Ledra の daily-ops ルーチンを実行して」
-/schedule 毎週 月 9:00 → 「Ledra の weekly-ops ルーチンを実行して」
-/schedule 毎月 1日 9:00 → 「Ledra の monthly-ops ルーチンを実行して」
-```
+| 周期（例） | 指示文 |
+| --- | --- |
+| 毎朝 8:30 | `Ledra の daily-ops ルーチンを実行して。docs/marketing/operation/prompts/daily.md の手順に従うこと。` |
+| 毎週 月 9:00 | `Ledra の weekly-ops ルーチンを実行して。docs/marketing/operation/prompts/weekly.md の手順に従うこと。` |
+| 毎月 1日 9:00 | `Ledra の monthly-ops ルーチンを実行して。docs/marketing/operation/prompts/monthly.md の手順に従うこと。` |
 
 任意で粒度を分けたい場合の例:
-```
-/schedule 平日 10:00 → 「未対応の問い合わせを仕分けて一次返信の下書きを作って」（triage-inquiry）
-/schedule 毎朝 8:30  → 「saved_news を見て価値ある話題があればニュース記事ドラフトの PR を作って」（publish-article）
-```
+
+| 周期（例） | 指示文 |
+| --- | --- |
+| 平日 10:00 | 未対応の問い合わせを仕分けて一次返信の下書きを作って（triage-inquiry） |
+| 毎朝 8:30 | saved_news を見て価値ある話題があればニュース記事ドラフトの PR を作って（publish-article） |
 
 > スケジュールはあくまで**ドラフト/レポート/提案の生成**まで。公開・送信・マージ・実装は人が判断する。
 > レビュー待ちが溜まらないよう、Daily/Weekly/Monthly それぞれの確認担当・確認タイミングを決めておくと良い。

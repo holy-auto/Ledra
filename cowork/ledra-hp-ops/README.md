@@ -35,15 +35,15 @@ Ledra の公開HP（マーケティングサイト `src/app/(marketing)/`）の*
 
 ## インストール
 
-Cowork のチャットで、この**リポジトリのマーケットプレイス**を追加してから本プラグインを入れます。
+**Cowork デスクトップ**は UI から追加します（チャットに `/plugin ...` と打っても動きません＝「不明なスキル: plugin」）。
 
-```
-/plugin marketplace add holy-auto/ledra
-/plugin install ledra-hp-ops@ledra-cowork
-```
+1. **Customize（カスタマイズ）→ Plugins** タブを開く
+2. **Personal plugins** の **＋** → **Add marketplace** → **GitHub リポジトリ**に `holy-auto/ledra` を指定（プライベートのため GitHub 認可が必要）
+3. 追加された `ledra-cowork` マーケットプレイスから **`ledra-hp-ops`** を **Install**
 
-> 上記は Claude Code / Cowork のプラグイン CLI 構文です。Cowork アプリの設定画面（Plugins）からリポジトリ URL を指定して入れることもできます。
-> マーケットプレイス定義はリポジトリ直下 `.claude-plugin/marketplace.json` にあります。
+> 手順の詳細・コネクタ設定・スケジュール登録は [`SETUP.md`](./SETUP.md) に全ステップをまとめています。
+> マーケットプレイス定義はリポジトリ直下 `.claude-plugin/marketplace.json`。
+> Claude Code CLI（ターミナル版）の場合のみ `/plugin marketplace add holy-auto/ledra` → `/plugin install ledra-hp-ops@ledra-cowork` が使えます。
 
 インストール後、スキルは依頼内容に応じて自動で呼ばれます。明示的に呼ぶ場合は
 「Ledra のニュース記事を書いて」「この問い合わせを仕分けて」のように指示してください。

@@ -1,6 +1,6 @@
 {
   "name": "ledra-hp-ops",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Operate the Ledra marketing site (HP) with Claude Cowork: draft news/blog articles, triage contact inquiries, maintain SEO/metadata/sitemap, analyze Search Console/GA4, and run daily/weekly/monthly growth routines — always review-gated (PRs for repo changes, drafts for replies).",
   "author": {
     "name": "Ledra"
