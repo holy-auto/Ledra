@@ -1,13 +1,18 @@
 "use client";
 
 import { useEffect } from "react";
+import { ANALYTICS_CONSENT_EVENT } from "@/lib/marketing/analytics";
 
 /**
  * Loads Google Analytics 4 (gtag.js) on the marketing site.
  *
  * No-ops unless `NEXT_PUBLIC_GA_MEASUREMENT_ID` is set AND the visitor has
- * granted analytics consent (`__ledra_consent` cookie === "granted") — the
- * same gate PostHogProvider uses, so both honour one cookie banner.
+ * granted analytics consent (`__ledra_consent` cookie === "granted"). On mount
+ * it starts immediately for returning visitors who already consented; for a
+ * fresh visitor it also listens for the consent-granted event the cookie
+ * banner fires (via grantAnalyticsConsent), so the consenting session is
+ * tracked without a reload — the same liveness PostHog gets from
+ * opt_in_capturing().
  *
  * gtag.js is injected as an *external* script, which CSP permits via the
  * googletagmanager.com entry in `script-src` (an external `src` needs no
@@ -17,26 +22,32 @@ import { useEffect } from "react";
 export function GoogleAnalytics(): null {
   useEffect(() => {
     const measurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
-    if (!measurementId) return;
-    if (typeof window === "undefined") return;
-    if (readConsent() !== "granted") return;
-    if (window.__ga4Initialized) return;
-    window.__ga4Initialized = true;
+    if (!measurementId || typeof window === "undefined") return;
 
-    const dataLayer = (window.dataLayer = window.dataLayer ?? []);
-    // gtag.js consumes the native `arguments` object verbatim — replicate the
-    // canonical bootstrap rather than pushing a plain array.
-    window.gtag = function gtag() {
-      // eslint-disable-next-line prefer-rest-params -- gtag.js requires the literal arguments object
-      dataLayer.push(arguments);
+    const start = () => {
+      if (readConsent() !== "granted") return;
+      if (window.__ga4Initialized) return;
+      window.__ga4Initialized = true;
+
+      const dataLayer = (window.dataLayer = window.dataLayer ?? []);
+      // gtag.js consumes the native `arguments` object verbatim — replicate
+      // the canonical bootstrap rather than pushing a plain array.
+      window.gtag = function gtag() {
+        // eslint-disable-next-line prefer-rest-params -- gtag.js requires the literal arguments object
+        dataLayer.push(arguments);
+      };
+      window.gtag("js", new Date());
+      window.gtag("config", measurementId);
+
+      const script = document.createElement("script");
+      script.async = true;
+      script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(measurementId)}`;
+      document.head.appendChild(script);
     };
-    window.gtag("js", new Date());
-    window.gtag("config", measurementId);
 
-    const script = document.createElement("script");
-    script.async = true;
-    script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(measurementId)}`;
-    document.head.appendChild(script);
+    start();
+    window.addEventListener(ANALYTICS_CONSENT_EVENT, start);
+    return () => window.removeEventListener(ANALYTICS_CONSENT_EVENT, start);
   }, []);
 
   return null;
