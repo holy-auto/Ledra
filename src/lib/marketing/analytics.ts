@@ -17,6 +17,11 @@ type PostHogLike = {
 declare global {
   interface Window {
     posthog?: PostHogLike;
+    /** GA4 gtag.js queue & helper — see components/marketing/GoogleAnalytics.tsx */
+    dataLayer?: unknown[];
+    gtag?: (...args: unknown[]) => void;
+    /** Guards against double-injecting gtag.js (React StrictMode / re-mounts). */
+    __ga4Initialized?: boolean;
   }
 }
 
