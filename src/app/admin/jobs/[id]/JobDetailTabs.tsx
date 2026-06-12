@@ -4,10 +4,12 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
+import MutationGuard from "@/components/ui/MutationGuard";
 import { formatDate, formatJpy } from "@/lib/format";
 import JobPackageApply from "./JobPackageApply";
 import JobPhotosTab from "./JobPhotosTab";
 import JobHandoffPanel from "./JobHandoffPanel";
+import BillingSplitPanel from "@/components/admin/BillingSplitPanel";
 import type {
   MenuItem,
   HandoffNote,
@@ -74,7 +76,7 @@ const certStatusVariant = (s: string) => {
   }
 };
 
-type TabKey = "summary" | "parties" | "certificates" | "photos" | "billing" | "handoff";
+type TabKey = "summary" | "parties" | "certificates" | "photos" | "billing" | "billing_split" | "handoff";
 
 interface Props {
   reservation: JobReservation;
@@ -141,6 +143,8 @@ export default function JobDetailTabs({
               k: "billing",
               label: `請求・見積 (${invoices.length + estimates.length})`,
             },
+            // 按分タブは請求書 (invoice/consolidated_invoice) が存在する場合のみ表示。
+            ...(invoices.length > 0 ? [{ k: "billing_split" as const, label: "按分" }] : []),
             {
               k: "handoff",
               label: (
@@ -218,11 +222,13 @@ export default function JobDetailTabs({
                 メニュー ({menuItems.length})
               </div>
               {reservation.status !== "cancelled" && (
-                <JobPackageApply
-                  reservationId={reservation.id}
-                  existingMenuItems={menuItems}
-                  existingEstimate={reservation.estimated_amount}
-                />
+                <MutationGuard>
+                  <JobPackageApply
+                    reservationId={reservation.id}
+                    existingMenuItems={menuItems}
+                    existingEstimate={reservation.estimated_amount}
+                  />
+                </MutationGuard>
               )}
             </div>
             {menuItems.length === 0 ? (
@@ -335,9 +341,11 @@ export default function JobDetailTabs({
               <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">Certificates</div>
               <div className="mt-1 text-base font-semibold text-primary">紐付き証明書 ({certificates.length}件)</div>
             </div>
-            <Link href={certificateNewUrl} className="btn-primary text-xs px-3 py-1.5">
-              + 新規発行
-            </Link>
+            <MutationGuard>
+              <Link href={certificateNewUrl} className="btn-primary text-xs px-3 py-1.5">
+                + 新規発行
+              </Link>
+            </MutationGuard>
           </div>
           {certificates.length === 0 ? (
             <div className="p-8 text-center text-sm text-muted">この車両・顧客に紐付く証明書はまだありません</div>
@@ -389,9 +397,11 @@ export default function JobDetailTabs({
                 <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">Invoices</div>
                 <div className="mt-1 text-base font-semibold text-primary">請求書 ({invoices.length}件)</div>
               </div>
-              <Link href={invoiceNewUrl} className="btn-primary text-xs px-3 py-1.5">
-                + 請求書作成
-              </Link>
+              <MutationGuard>
+                <Link href={invoiceNewUrl} className="btn-primary text-xs px-3 py-1.5">
+                  + 請求書作成
+                </Link>
+              </MutationGuard>
             </div>
             {invoices.length === 0 ? (
               <div className="p-8 text-center text-sm text-muted">この顧客宛の請求書はまだありません</div>
@@ -422,6 +432,24 @@ export default function JobDetailTabs({
               </div>
               <DocTable docs={otherDocs} />
             </Card>
+          )}
+        </div>
+      )}
+
+      {tab === "billing_split" && (
+        <div className="space-y-4">
+          {invoices.length === 0 ? (
+            <div className="p-8 text-center text-sm text-muted">按分対象の請求書がありません。</div>
+          ) : (
+            invoices.map((d) => (
+              <div key={d.id} className="space-y-2">
+                <div className="flex items-center gap-2 px-1 text-xs text-muted">
+                  <span className="font-mono text-secondary">{d.doc_number ?? d.id.slice(0, 8)}</span>
+                  <span>{DOC_TYPE_LABEL[d.doc_type] ?? d.doc_type}</span>
+                </div>
+                <BillingSplitPanel documentId={d.id} documentTotal={d.total ?? 0} />
+              </div>
+            ))
           )}
         </div>
       )}

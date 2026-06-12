@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import MutationGuard from "@/components/ui/MutationGuard";
 import {
   BODY_REPAIR_STAGES,
   BODY_REPAIR_STAGE_LABEL,
@@ -151,15 +152,17 @@ export default function BodyRepairClient() {
             受付 → 協定 → 鈑金 → 塗装 → 完成 → 出庫 の工程を案件ごとに管理します
           </p>
         </div>
-        <button
-          onClick={() => setCreateOpen(true)}
-          className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2 font-medium text-white transition-colors hover:bg-accent/90"
-        >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-          新規案件
-        </button>
+        <MutationGuard>
+          <button
+            onClick={() => setCreateOpen(true)}
+            className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2 font-medium text-white transition-colors hover:bg-accent/90"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+            新規案件
+          </button>
+        </MutationGuard>
       </div>
 
       {/* Kanban ボード */}
@@ -250,13 +253,15 @@ function JobCard({ job, busy, onAdvance }: { job: BodyRepairJob; busy: boolean; 
           <span className="text-[11px] text-muted">&nbsp;</span>
         )}
         {next && (
-          <button
-            disabled={busy}
-            onClick={onAdvance}
-            className="shrink-0 rounded-md bg-accent px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
-          >
-            {busy ? "…" : `→ ${BODY_REPAIR_STAGE_LABEL[next]}へ`}
-          </button>
+          <MutationGuard>
+            <button
+              disabled={busy}
+              onClick={onAdvance}
+              className="shrink-0 rounded-md bg-accent px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+            >
+              {busy ? "…" : `→ ${BODY_REPAIR_STAGE_LABEL[next]}へ`}
+            </button>
+          </MutationGuard>
         )}
       </div>
     </div>

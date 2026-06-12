@@ -17,6 +17,7 @@
 import { useMemo, useState } from "react";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import { formatDateTime } from "@/lib/format";
+import MutationGuard from "@/components/ui/MutationGuard";
 
 export type HandoffPriority = "normal" | "important" | "urgent";
 
@@ -117,50 +118,52 @@ export default function JobHandoffPanel({ reservationId, initialNotes = [], curr
 
   return (
     <div className="space-y-4">
-      {/* 入力フォーム */}
-      <form onSubmit={handleSubmit} className="glass-card p-4 space-y-3">
-        <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">申し送りを追加</div>
-        <textarea
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          placeholder="次の担当者への引き継ぎ事項を入力 (例: 左ドアの再塗装は乾燥待ち、明日午後に研磨予定)"
-          rows={3}
-          maxLength={2000}
-          className="w-full resize-y rounded-lg border border-border-default bg-surface px-3 py-2 text-[14px] text-primary outline-none focus:border-accent"
-        />
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5">
-            {PRIORITY_OPTIONS.map((p) => {
-              const active = priority === p;
-              const tone = PRIORITY_BADGE[p];
-              return (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setPriority(p)}
-                  className="rounded-full px-3 py-1 text-[12px] font-medium transition-opacity"
-                  style={
-                    active
-                      ? { backgroundColor: tone.bg, color: tone.fg, opacity: 1 }
-                      : { backgroundColor: "transparent", color: "var(--text-secondary)", opacity: 0.6 }
-                  }
-                  aria-pressed={active}
-                >
-                  {PRIORITY_LABEL[p]}
-                </button>
-              );
-            })}
+      {/* 入力フォーム (閲覧専用ユーザには非表示) */}
+      <MutationGuard>
+        <form onSubmit={handleSubmit} className="glass-card p-4 space-y-3">
+          <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">申し送りを追加</div>
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder="次の担当者への引き継ぎ事項を入力 (例: 左ドアの再塗装は乾燥待ち、明日午後に研磨予定)"
+            rows={3}
+            maxLength={2000}
+            className="w-full resize-y rounded-lg border border-border-default bg-surface px-3 py-2 text-[14px] text-primary outline-none focus:border-accent"
+          />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-1.5">
+              {PRIORITY_OPTIONS.map((p) => {
+                const active = priority === p;
+                const tone = PRIORITY_BADGE[p];
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setPriority(p)}
+                    className="rounded-full px-3 py-1 text-[12px] font-medium transition-opacity"
+                    style={
+                      active
+                        ? { backgroundColor: tone.bg, color: tone.fg, opacity: 1 }
+                        : { backgroundColor: "transparent", color: "var(--text-secondary)", opacity: 0.6 }
+                    }
+                    aria-pressed={active}
+                  >
+                    {PRIORITY_LABEL[p]}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              type="submit"
+              disabled={submitting || content.trim().length === 0}
+              className="rounded-lg bg-accent px-4 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {submitting ? "送信中…" : "申し送りを追加"}
+            </button>
           </div>
-          <button
-            type="submit"
-            disabled={submitting || content.trim().length === 0}
-            className="rounded-lg bg-accent px-4 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            {submitting ? "送信中…" : "申し送りを追加"}
-          </button>
-        </div>
-        {err && <p className="text-[12px] text-danger">{err}</p>}
-      </form>
+          {err && <p className="text-[12px] text-danger">{err}</p>}
+        </form>
+      </MutationGuard>
 
       {/* 一覧 (新しい順) */}
       {sorted.length === 0 ? (

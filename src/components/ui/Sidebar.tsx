@@ -919,10 +919,38 @@ const NAV_GROUPS: NavGroup[] = [
         ),
       },
       {
+        href: "/admin/organizations",
+        label: "組織管理",
+        requiredPermission: "stores:manage",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21"
+            />
+          </svg>
+        ),
+      },
+      {
         href: "/admin/stocktake",
         label: "在庫棚卸",
         requiredPermission: "menu_items:manage",
         icon: <span className="text-base leading-none">📦</span>,
+      },
+      {
+        href: "/admin/settings/customer-ranks",
+        label: "顧客ランク",
+        requiredPermission: "settings:view",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z"
+            />
+          </svg>
+        ),
       },
       // テンプレート編集は無効化（プリセットテンプレートを使用）
       {
