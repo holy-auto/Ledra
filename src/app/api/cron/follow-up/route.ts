@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 import { verifyCronRequest } from "@/lib/cronAuth";
 import { sendCronFailureAlert } from "@/lib/cronAlert";
@@ -17,6 +17,7 @@ import {
   processMaintenanceReminders,
 } from "@/lib/cron/followUp";
 import { processInspectionReminders } from "@/lib/cron/inspectionReminders";
+import { processShakenReminders } from "@/lib/cron/shakenReminders";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -42,6 +43,7 @@ export async function GET(req: NextRequest) {
       let seasonalSent = 0;
       let maintenanceSent = 0;
       let inspectionSent = 0;
+      let shakenSent = 0;
       try {
         const { data: rawSettings } = await supabase
           .from("follow_up_settings")
@@ -74,12 +76,13 @@ export async function GET(req: NextRequest) {
             seasonalSent += await processSeasonalProposals(supabase, setting, shopName, today);
             maintenanceSent += await processMaintenanceReminders(supabase, setting, tenant, shopName, planTier, today);
             inspectionSent += await processInspectionReminders(supabase, setting, shopName, today);
+            shakenSent += await processShakenReminders(supabase, setting.tenant_id, shopName, today);
           }
         }
       } catch (e) {
         console.error("[cron/follow-up] failed:", e);
       }
-      return { remindersSent, followUpsSent, seasonalSent, maintenanceSent, inspectionSent };
+      return { remindersSent, followUpsSent, seasonalSent, maintenanceSent, inspectionSent, shakenSent };
     });
 
     if (!lock.acquired) {
@@ -93,6 +96,7 @@ export async function GET(req: NextRequest) {
       seasonal_sent: lock.value.seasonalSent,
       maintenance_sent: lock.value.maintenanceSent,
       inspection_sent: lock.value.inspectionSent,
+      shaken_sent: lock.value.shakenSent,
       date: todayStr,
     });
   } catch (e) {

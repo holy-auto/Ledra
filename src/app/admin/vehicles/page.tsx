@@ -34,7 +34,7 @@ export default async function AdminVehicleListPage() {
   const { data: vehicles, error } = await supabase
     .from("vehicles")
     .select(
-      "id,maker,model,year,plate_display,vin_code,notes,created_at,updated_at,customer_id,customer:customers(id,name)",
+      "id,maker,model,year,plate_display,vin_code,inspection_expiry_date,notes,created_at,updated_at,customer_id,customer:customers(id,name)",
     )
     .eq("tenant_id", membership.tenant_id)
     .order("created_at", { ascending: false })
@@ -47,6 +47,7 @@ export default async function AdminVehicleListPage() {
         year: number | null;
         plate_display: string | null;
         vin_code: string | null;
+        inspection_expiry_date: string | null;
         notes: string | null;
         created_at: string | null;
         updated_at: string | null;
@@ -120,6 +121,9 @@ export default async function AdminVehicleListPage() {
                   <th className="hidden md:table-cell p-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">
                     車体番号
                   </th>
+                  <th className="hidden lg:table-cell p-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">
+                    車検満了日
+                  </th>
                   <th className="hidden sm:table-cell p-3 text-left text-xs font-semibold tracking-[0.12em] text-muted">
                     所有者
                   </th>
@@ -135,6 +139,9 @@ export default async function AdminVehicleListPage() {
                     <td className="hidden sm:table-cell p-3 text-secondary">{v.year ? String(v.year) : "-"}</td>
                     <td className="hidden sm:table-cell p-3 font-mono text-primary">{v.plate_display || "-"}</td>
                     <td className="hidden md:table-cell p-3 font-mono text-secondary text-xs">{v.vin_code || "-"}</td>
+                    <td className="hidden lg:table-cell p-3 text-secondary text-sm">
+                      {v.inspection_expiry_date || "-"}
+                    </td>
                     <td className="hidden sm:table-cell p-3 text-secondary text-sm">{v.customer?.name || "-"}</td>
                     <td className="p-3">
                       <div className="flex gap-2 flex-wrap">

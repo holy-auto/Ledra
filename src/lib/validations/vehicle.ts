@@ -50,5 +50,15 @@ export const vehicleUpdateSchema = vehicleCreateSchema.partial().extend({
   id: z.string().uuid(),
 });
 
+/**
+ * 車検満了日管理ダッシュボードからの車検満了日更新。
+ * 日付を null にすると車検満了日を未設定に戻す。
+ */
+export const vehicleShakenUpdateSchema = z.object({
+  vehicle_id: z.string().uuid("車両 ID が不正です。"),
+  shaken_expiry_date: inspectionExpiryDateField,
+});
+
 export type VehicleCreateInput = z.infer<typeof vehicleCreateSchema>;
 export type VehicleUpdateInput = z.infer<typeof vehicleUpdateSchema>;
+export type VehicleShakenUpdateInput = z.infer<typeof vehicleShakenUpdateSchema>;
