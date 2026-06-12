@@ -31,6 +31,7 @@ export async function GET() {
         `
         id, category_id, title, description, file_name, file_size, file_type,
         version, is_pinned, download_count, created_at, updated_at,
+        has_template, template_fields,
         agent_material_categories ( name )
       `,
       )

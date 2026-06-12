@@ -12,7 +12,7 @@
  */
 
 import React from "react";
-import { Document, Page, Text, View, StyleSheet, Font } from "@react-pdf/renderer";
+import { Document, Page, Text, View, StyleSheet, Font, type DocumentProps } from "@react-pdf/renderer";
 import { notoSansJpDataUrl } from "@/lib/marketing/pdfFonts";
 
 export type CoverData = {
@@ -51,7 +51,7 @@ const styles = StyleSheet.create({
   footerText: { fontSize: 9, color: "#9ca3af" },
 });
 
-export function AgentProposalCover({ data }: { data: CoverData }) {
+export function AgentProposalCover({ data }: { data: CoverData }): React.ReactElement<DocumentProps> {
   ensureFonts();
   return (
     <Document>

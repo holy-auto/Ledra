@@ -117,6 +117,16 @@ export const agentSupportMessageCreateSchema = z.object({
 });
 export type AgentSupportMessageCreate = z.infer<typeof agentSupportMessageCreateSchema>;
 
+/* ─── Materials (提案表紙 PDF 差し込み) ────────────────────── */
+
+export const agentMaterialPersonalizeSchema = z.object({
+  company_name: NON_EMPTY(200, "会社名"),
+  contact_name: NON_EMPTY(100, "担当者名"),
+  proposal_date: OPTIONAL_TRIMMED(40),
+  memo: OPTIONAL_TRIMMED(2000),
+});
+export type AgentMaterialPersonalize = z.infer<typeof agentMaterialPersonalizeSchema>;
+
 /* ─── Training (進捗更新) ─────────────────────────────────── */
 
 export const agentTrainingProgressSchema = z.object({
