@@ -9,6 +9,15 @@ export const metadata = {
   title: "お知らせ",
   description: "Ledra からのプレスリリース・製品アップデート・イベント情報をお届けします。",
   alternates: { canonical: "/news" },
+  openGraph: {
+    title: "お知らせ | Ledra",
+    description: "Ledra からのプレスリリース・製品アップデート・イベント情報をお届けします。",
+    url: "/news",
+    siteName: "Ledra",
+    locale: "ja_JP",
+    type: "website" as const,
+  },
+  twitter: { card: "summary_large_image" as const },
 };
 
 export default async function NewsPage() {

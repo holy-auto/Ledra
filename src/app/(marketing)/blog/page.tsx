@@ -10,6 +10,15 @@ export const metadata = {
   title: "ブログ",
   description: "Ledra 編集部による、施工業界・証明書のあり方・技術解説に関する記事をお届けします。",
   alternates: { canonical: "/blog" },
+  openGraph: {
+    title: "ブログ | Ledra",
+    description: "Ledra 編集部による、施工業界・証明書のあり方・技術解説に関する記事をお届けします。",
+    url: "/blog",
+    siteName: "Ledra",
+    locale: "ja_JP",
+    type: "website" as const,
+  },
+  twitter: { card: "summary_large_image" as const },
 };
 
 type Item = {

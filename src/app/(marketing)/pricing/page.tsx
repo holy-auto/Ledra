@@ -6,6 +6,7 @@ import { CTABanner } from "@/components/marketing/CTABanner";
 import { ScrollReveal } from "@/components/marketing/ScrollReveal";
 import { FAQList } from "@/components/marketing/FAQList";
 import { FAQItem } from "@/components/marketing/FAQItem";
+import type { Metadata } from "next";
 import { PricingJsonLd, BreadcrumbJsonLd } from "@/components/marketing/JsonLd";
 import {
   PLANS,
@@ -16,9 +17,19 @@ import {
   LAUNCH_CAMPAIGN,
 } from "@/lib/marketing/pricing";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "料金プラン",
   description: "Ledraの料金プラン。フリーからプロまで、施工店の規模に合わせた4つのプランをご用意。",
+  alternates: { canonical: "/pricing" },
+  openGraph: {
+    title: "料金プラン | Ledra",
+    description: "Ledraの料金プラン。フリーからプロまで、施工店の規模に合わせた4つのプランをご用意。",
+    url: "/pricing",
+    siteName: "Ledra",
+    locale: "ja_JP",
+    type: "website",
+  },
+  twitter: { card: "summary_large_image" },
 };
 
 const PLAN_OFFERS = Object.values(PLANS).map((p) => ({

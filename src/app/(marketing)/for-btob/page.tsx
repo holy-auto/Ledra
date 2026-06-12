@@ -14,6 +14,16 @@ export const metadata = {
   description:
     "コーティング・PPF・ラッピング・板金塗装の外注先をお探しですか？Ledraなら全国の認定施工店へ発注から支払いまで一元管理。プラットフォーム手数料10%で決済・証明書発行まで完全自動化します。",
   alternates: { canonical: "/for-btob" },
+  openGraph: {
+    title: "施工を依頼したい企業の方へ | Ledra",
+    description:
+      "コーティング・PPF・ラッピング・板金塗装の外注先をお探しですか？Ledraなら全国の認定施工店へ発注から支払いまで一元管理。プラットフォーム手数料10%で決済・証明書発行まで完全自動化します。",
+    url: "/for-btob",
+    siteName: "Ledra",
+    locale: "ja_JP",
+    type: "website" as const,
+  },
+  twitter: { card: "summary_large_image" as const },
 };
 
 const challenges = [
