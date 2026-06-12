@@ -383,6 +383,20 @@ const NAV_GROUPS: NavGroup[] = [
         ),
       },
       {
+        href: "/admin/parts-orders",
+        label: "部品発注",
+        requiredPermission: "reservations:view",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="m7.5 4.27 9 5.15M21 8.25v7.5a.75.75 0 0 1-.38.65l-7.5 4.286a.75.75 0 0 1-.74 0l-7.5-4.286A.75.75 0 0 1 3 15.75v-7.5a.75.75 0 0 1 .38-.65l7.5-4.286a.75.75 0 0 1 .74 0l7.5 4.286a.75.75 0 0 1 .38.65Zm0 0L12 12m0 0L3 8.25M12 12v9"
+            />
+          </svg>
+        ),
+      },
+      {
         href: "/admin/nfc",
         label: "NFC管理",
         requiredPermission: "vehicles:view",
@@ -392,6 +406,34 @@ const NAV_GROUPS: NavGroup[] = [
               strokeLinecap="round"
               strokeLinejoin="round"
               d="M7.5 7.5h-.75A2.25 2.25 0 0 0 4.5 9.75v7.5a2.25 2.25 0 0 0 2.25 2.25h7.5a2.25 2.25 0 0 0 2.25-2.25v-7.5a2.25 2.25 0 0 0-2.25-2.25h-.75m0-3-3-3m0 0-3 3m3-3v11.25m6-2.25h.75a2.25 2.25 0 0 1 2.25 2.25v7.5a2.25 2.25 0 0 1-2.25 2.25h-7.5a2.25 2.25 0 0 1-2.25-2.25v-.75"
+            />
+          </svg>
+        ),
+      },
+      {
+        href: "/admin/loaner-cars",
+        label: "代車管理",
+        requiredPermission: "reservations:view",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M8.25 18.75a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 0 1-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 0 0-3.213-9.193 2.056 2.056 0 0 0-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 0 0-10.026 0 1.106 1.106 0 0 0-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12"
+            />
+          </svg>
+        ),
+      },
+      {
+        href: "/admin/tire-storage",
+        label: "タイヤ保管",
+        requiredPermission: "vehicles:view",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-5.25a3.75 3.75 0 1 0 0-7.5 3.75 3.75 0 0 0 0 7.5Z"
             />
           </svg>
         ),
@@ -948,6 +990,20 @@ const NAV_GROUPS: NavGroup[] = [
               strokeLinecap="round"
               strokeLinejoin="round"
               d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z"
+            />
+          </svg>
+        ),
+      },
+      {
+        href: "/admin/inspection-templates",
+        label: "点検テンプレート",
+        requiredPermission: "settings:view",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M9 12l2 2 4-4m-3-6.75h2.25A2.25 2.25 0 0 1 16.5 4.5v1.5m-7.5-2.25H6.75A2.25 2.25 0 0 0 4.5 6v12a2.25 2.25 0 0 0 2.25 2.25h10.5A2.25 2.25 0 0 0 19.5 18V6a2.25 2.25 0 0 0-2.25-2.25H15M9 3.75A1.5 1.5 0 0 1 10.5 2.25h3A1.5 1.5 0 0 1 15 3.75v.75a.75.75 0 0 1-.75.75h-4.5A.75.75 0 0 1 9 4.5v-.75Z"
             />
           </svg>
         ),

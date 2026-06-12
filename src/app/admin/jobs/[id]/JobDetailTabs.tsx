@@ -9,6 +9,8 @@ import { formatDate, formatJpy } from "@/lib/format";
 import JobPackageApply from "./JobPackageApply";
 import JobPhotosTab from "./JobPhotosTab";
 import JobHandoffPanel from "./JobHandoffPanel";
+import JobInspectionTab from "./JobInspectionTab";
+import JobPartsTab from "./JobPartsTab";
 import BillingSplitPanel from "@/components/admin/BillingSplitPanel";
 import type {
   MenuItem,
@@ -76,7 +78,16 @@ const certStatusVariant = (s: string) => {
   }
 };
 
-type TabKey = "summary" | "parties" | "certificates" | "photos" | "billing" | "billing_split" | "handoff";
+type TabKey =
+  | "summary"
+  | "parties"
+  | "certificates"
+  | "photos"
+  | "inspection"
+  | "parts"
+  | "billing"
+  | "billing_split"
+  | "handoff";
 
 interface Props {
   reservation: JobReservation;
@@ -139,6 +150,8 @@ export default function JobDetailTabs({
             { k: "parties", label: "顧客・車両" },
             { k: "certificates", label: `証明書 (${certificates.length})` },
             { k: "photos", label: "📸 写真" },
+            { k: "inspection", label: "点検" },
+            { k: "parts", label: "部品" },
             {
               k: "billing",
               label: `請求・見積 (${invoices.length + estimates.length})`,
@@ -176,6 +189,16 @@ export default function JobDetailTabs({
       </div>
 
       {tab === "photos" && <JobPhotosTab reservationId={reservation.id} certificateNewUrl={certificateNewUrl} />}
+
+      {tab === "inspection" && (
+        <JobInspectionTab
+          reservationId={reservation.id}
+          vehicleId={reservation.vehicle_id}
+          customerId={reservation.customer_id}
+        />
+      )}
+
+      {tab === "parts" && <JobPartsTab reservationId={reservation.id} />}
 
       {tab === "summary" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
