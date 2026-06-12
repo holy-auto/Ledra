@@ -32,7 +32,22 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
       });
 
     if (signErr || !signedData?.signedUrl) {
-      return apiInternalError(new Error("download_url_failed"), "admin/agent-materials/[id]/download");
+      const msg = signErr?.message?.toLowerCase() ?? "";
+      const isNotFound = msg.includes("not found") || msg.includes("does not exist");
+      if (isNotFound) {
+        return Response.json(
+          {
+            error: "file_not_in_storage",
+            message:
+              "ファイルがストレージに見つかりません。管理画面の「デモファイル生成」ボタンで実ファイルをアップロードしてください。",
+          },
+          { status: 404 },
+        );
+      }
+      return apiInternalError(
+        new Error(signErr?.message ?? "download_url_failed"),
+        "admin/agent-materials/[id]/download",
+      );
     }
 
     return apiJson({ url: signedData.signedUrl });

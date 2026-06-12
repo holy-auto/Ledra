@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
@@ -30,7 +30,22 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
       .createSignedUrl(material.storage_path, 300);
 
     if (signErr || !signedData?.signedUrl) {
-      return apiInternalError(new Error("preview_url_failed"), "admin/agent-materials/[id]/preview");
+      const msg = signErr?.message?.toLowerCase() ?? "";
+      const isNotFound = msg.includes("not found") || msg.includes("does not exist");
+      if (isNotFound) {
+        return Response.json(
+          {
+            error: "file_not_in_storage",
+            message:
+              "ファイルがストレージに見つかりません。管理画面の「デモファイル生成」ボタンで実ファイルをアップロードしてください。",
+          },
+          { status: 404 },
+        );
+      }
+      return apiInternalError(
+        new Error(signErr?.message ?? "preview_url_failed"),
+        "admin/agent-materials/[id]/preview",
+      );
     }
 
     return apiJson({ url: signedData.signedUrl, file_type: material.file_type });

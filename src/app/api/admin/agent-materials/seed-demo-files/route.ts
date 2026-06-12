@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 import { renderToBuffer } from "@react-pdf/renderer";
@@ -117,9 +116,9 @@ export async function POST() {
     const supabase = await createClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    if (!isPlatformAdmin(caller)) return apiForbidden();
+    if (!requireMinRole(caller, "admin")) return apiForbidden();
 
-    const admin = createPlatformScopedAdmin("seed demo agent materials — platform admin only");
+    const admin = createPlatformScopedAdmin("seed demo agent materials — admin triggered");
     const results: { path: string; ok: boolean; error?: string }[] = [];
 
     for (const m of DEMO_MATERIALS) {
