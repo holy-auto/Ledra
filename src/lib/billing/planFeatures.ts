@@ -161,6 +161,42 @@ const MATRIX: Record<PlanTier, Record<FeatureKey, boolean>> = {
     api_integration: true,
     detailed_reports: true,
   },
+  buddica: {
+    issue_certificate: true,
+    export_one_csv: true,
+    export_search_csv: true,
+    export_selected_csv: true,
+    pdf_one: true,
+    pdf_zip: true,
+    manage_templates: true,
+    upload_logo: true,
+    manage_stores: true,
+    ai_draft: true,
+    ai_explain: true,
+    ai_quality: true,
+    ai_quality_vision: true,
+    ai_follow_up: true,
+    ai_academy_feedback: true,
+    ai_academy_qa: true,
+    academy_know_how: true,
+    ai_proposal: true,
+    ai_follow_up_email: true,
+    ai_job_assist: true,
+    ai_invoice_quote: true,
+    ai_accounting: true,
+    ai_inquiry_classify: true,
+    ai_inbound_extract: true,
+    ai_review_sentiment: true,
+    ai_master_normalize: true,
+    ai_thickness_anomaly: true,
+    ai_pos_deduction: true,
+    ai_menu_price: true,
+    ai_market_description: true,
+    ai_translation: true,
+    audit_log: true,
+    api_integration: true,
+    detailed_reports: true,
+  },
 };
 
 export function normalizePlanTier(v: string | null | undefined): PlanTier {
@@ -169,6 +205,7 @@ export function normalizePlanTier(v: string | null | undefined): PlanTier {
   if (s === "starter" || s === "mini") return "starter";
   if (s === "standard") return "standard";
   if (s === "pro") return "pro";
+  if (s === "buddica") return "buddica";
   return "free";
 }
 
@@ -258,6 +295,7 @@ export const PHOTO_LIMITS: Record<PlanTier, number> = {
   starter: 5,
   standard: 10,
   pro: 20,
+  buddica: 50,
 };
 
 /** 店舗数上限（プランごと） */
@@ -266,6 +304,7 @@ export const STORE_LIMITS: Record<PlanTier, number> = {
   starter: 1,
   standard: 2,
   pro: 5,
+  buddica: 9999,
 };
 
 /** 月間証明発行上限（プランごと、null = 無制限） */
@@ -274,6 +313,7 @@ export const CERT_LIMITS: Record<PlanTier, number | null> = {
   starter: 80,
   standard: 300,
   pro: null,
+  buddica: null,
 };
 
 /** compile-time exhaustiveness check (auto) */
@@ -286,6 +326,7 @@ __assertExactFeatureKeys(MATRIX.free);
 __assertExactFeatureKeys(MATRIX.starter);
 __assertExactFeatureKeys(MATRIX.standard);
 __assertExactFeatureKeys(MATRIX.pro);
+__assertExactFeatureKeys(MATRIX.buddica);
 /** compile-time diff (auto): show missing/extra keys as readable TS errors */
 type __MissingFeatureKeys = Exclude<FeatureId, keyof typeof MATRIX>;
 type __ExtraFeatureKeys = Exclude<keyof typeof MATRIX, FeatureId>;

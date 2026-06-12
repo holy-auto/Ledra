@@ -8,6 +8,7 @@ export function priceIdToPlanTier(priceId: string): PlanTier | null {
   const starterAnnual = process.env.STRIPE_PRICE_STARTER_ANNUAL;
   const standardAnnual = process.env.STRIPE_PRICE_STANDARD_ANNUAL;
   const proAnnual = process.env.STRIPE_PRICE_PRO_ANNUAL;
+  const buddica = process.env.STRIPE_PRICE_BUDDICA;
 
   // 旧 mini → starter 互換
   const mini = process.env.STRIPE_PRICE_MINI;
@@ -19,15 +20,22 @@ export function priceIdToPlanTier(priceId: string): PlanTier | null {
   if (starterAnnual && priceId === starterAnnual) return "starter";
   if (standardAnnual && priceId === standardAnnual) return "standard";
   if (proAnnual && priceId === proAnnual) return "pro";
+  if (buddica && priceId === buddica) return "buddica";
   return null;
 }
 
 /**
  * free プランは Stripe サブスクリプション不要のため対象外。
+ * buddica は個別契約のため STRIPE_PRICE_BUDDICA が未設定の場合はエラー。
  * plan === "free" で呼ばれた場合はエラー。
  */
 export function planTierToPriceId(plan: PlanTier, annual = false): string {
   if (plan === "free") throw new Error("Free plan does not require a Stripe Price");
+  if (plan === "buddica") {
+    const v = process.env.STRIPE_PRICE_BUDDICA;
+    if (!v) throw new Error("Missing STRIPE_PRICE_BUDDICA for buddica plan");
+    return v;
+  }
 
   const m: Record<string, string | undefined> = {
     starter: annual ? process.env.STRIPE_PRICE_STARTER_ANNUAL : process.env.STRIPE_PRICE_STARTER,

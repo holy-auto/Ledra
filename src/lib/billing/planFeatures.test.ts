@@ -22,6 +22,11 @@ describe("normalizePlanTier", () => {
     expect(normalizePlanTier("MINI")).toBe("starter");
   });
 
+  it("buddica を正規化する", () => {
+    expect(normalizePlanTier("buddica")).toBe("buddica");
+    expect(normalizePlanTier("BUDDICA")).toBe("buddica");
+  });
+
   it("不明な値は free にフォールバック", () => {
     expect(normalizePlanTier("")).toBe("free");
     expect(normalizePlanTier(null)).toBe("free");
@@ -108,9 +113,15 @@ describe("canUseFeature", () => {
 
     it("全機能が使える", () => {
       const allFeatures: FeatureId[] = [
-        "issue_certificate", "export_one_csv", "export_search_csv",
-        "export_selected_csv", "pdf_one", "pdf_zip",
-        "manage_templates", "upload_logo", "manage_stores",
+        "issue_certificate",
+        "export_one_csv",
+        "export_search_csv",
+        "export_selected_csv",
+        "pdf_one",
+        "pdf_zip",
+        "manage_templates",
+        "upload_logo",
+        "manage_stores",
       ];
       for (const f of allFeatures) {
         expect(canUseFeature(plan, f)).toBe(true);
@@ -123,9 +134,15 @@ describe("canUseFeature", () => {
 describe("featureLabel", () => {
   it("全FeatureIdに日本語ラベルが定義されている", () => {
     const features: FeatureId[] = [
-      "issue_certificate", "export_one_csv", "export_search_csv",
-      "export_selected_csv", "pdf_one", "pdf_zip",
-      "manage_templates", "upload_logo", "manage_stores",
+      "issue_certificate",
+      "export_one_csv",
+      "export_search_csv",
+      "export_selected_csv",
+      "pdf_one",
+      "pdf_zip",
+      "manage_templates",
+      "upload_logo",
+      "manage_stores",
     ];
     for (const f of features) {
       const label = featureLabel(f);
@@ -153,10 +170,15 @@ describe("PHOTO_LIMITS", () => {
     expect(PHOTO_LIMITS.pro).toBe(20);
   });
 
+  it("buddica は50枚", () => {
+    expect(PHOTO_LIMITS.buddica).toBe(50);
+  });
+
   it("上位プランほど上限が大きい", () => {
     expect(PHOTO_LIMITS.free).toBeLessThan(PHOTO_LIMITS.starter);
     expect(PHOTO_LIMITS.starter).toBeLessThan(PHOTO_LIMITS.standard);
     expect(PHOTO_LIMITS.standard).toBeLessThan(PHOTO_LIMITS.pro);
+    expect(PHOTO_LIMITS.pro).toBeLessThan(PHOTO_LIMITS.buddica);
   });
 });
 
@@ -176,5 +198,9 @@ describe("CERT_LIMITS", () => {
 
   it("proは無制限（null）", () => {
     expect(CERT_LIMITS.pro).toBeNull();
+  });
+
+  it("buddicaは無制限（null）", () => {
+    expect(CERT_LIMITS.buddica).toBeNull();
   });
 });

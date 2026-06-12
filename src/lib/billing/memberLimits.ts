@@ -6,6 +6,7 @@ const LIMITS: Record<PlanTier, number | null> = {
   starter: 3,
   standard: 7,
   pro: 15,
+  buddica: null,
 };
 
 export function memberLimit(plan: PlanTier): number | null {
