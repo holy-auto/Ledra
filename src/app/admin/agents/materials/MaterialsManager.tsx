@@ -47,6 +47,7 @@ export default function MaterialsManager() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewBusy, setPreviewBusy] = useState<string | null>(null);
   const [downloadBusy, setDownloadBusy] = useState<string | null>(null);
+  const [seedingDemo, setSeedingDemo] = useState(false);
 
   // Upload form
   const fileRef = useRef<HTMLInputElement>(null);
@@ -158,11 +159,17 @@ export default function MaterialsManager() {
     setPreviewBusy(id);
     try {
       const res = await fetch(`/api/admin/agent-materials/${id}/preview`);
-      if (!res.ok) return;
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMsg(
+          json?.error ??
+            "プレビューURLの取得に失敗しました。ファイルがストレージにアップロードされているか確認してください。",
+        );
+        return;
+      }
       if (json.url) setPreviewUrl(json.url);
     } catch {
-      // ignore
+      setMsg("プレビューの取得中にエラーが発生しました。");
     } finally {
       setPreviewBusy(null);
     }
@@ -172,13 +179,44 @@ export default function MaterialsManager() {
     setDownloadBusy(id);
     try {
       const res = await fetch(`/api/admin/agent-materials/${id}/download`);
-      if (!res.ok) return;
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMsg(
+          json?.error ??
+            "ダウンロードURLの取得に失敗しました。ファイルがストレージにアップロードされているか確認してください。",
+        );
+        return;
+      }
       if (json.url) window.open(json.url, "_blank");
     } catch {
-      // ignore
+      setMsg("ダウンロードの取得中にエラーが発生しました。");
     } finally {
       setDownloadBusy(null);
+    }
+  };
+
+  const seedDemoFiles = async () => {
+    if (!confirm("デモ用プレースホルダーPDFをストレージに生成・アップロードします。よろしいですか？")) return;
+    setSeedingDemo(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/admin/agent-materials/seed-demo-files", { method: "POST" });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok || res.status === 207) {
+        const failed = (json.results ?? []).filter((r: { ok: boolean }) => !r.ok);
+        setMsg(
+          failed.length === 0
+            ? "デモファイルを生成しました。プレビュー・ダウンロードをお試しください。"
+            : `${failed.length} 件の生成に失敗しました。`,
+        );
+        fetchData();
+      } else {
+        setMsg("デモファイルの生成に失敗しました。");
+      }
+    } catch {
+      setMsg("デモファイルの生成中にエラーが発生しました。");
+    } finally {
+      setSeedingDemo(false);
     }
   };
 
@@ -205,9 +243,19 @@ export default function MaterialsManager() {
       {/* Actions bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="text-sm text-muted">{materials.length} 件の資料</span>
-        <button onClick={() => setShowUpload(!showUpload)} className="btn-primary">
-          {showUpload ? "閉じる" : "新規アップロード"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={seedDemoFiles}
+            disabled={seedingDemo}
+            className="rounded-xl border border-border-default bg-surface px-3 py-2 text-sm font-medium text-secondary hover:bg-surface-hover disabled:opacity-40"
+            title="デモ用プレースホルダーPDFをストレージに生成"
+          >
+            {seedingDemo ? "生成中..." : "デモファイル生成"}
+          </button>
+          <button onClick={() => setShowUpload(!showUpload)} className="btn-primary">
+            {showUpload ? "閉じる" : "新規アップロード"}
+          </button>
+        </div>
       </div>
 
       {msg && <div className="rounded-xl border border-default bg-surface-solid p-3 text-sm text-secondary">{msg}</div>}
