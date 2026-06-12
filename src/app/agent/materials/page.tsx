@@ -12,6 +12,14 @@ type Category = {
   description: string | null;
 };
 
+type TemplateField = {
+  key: string;
+  label: string;
+  required?: boolean;
+  type?: string;
+  placeholder?: string;
+};
+
 type Material = {
   id: string;
   category_id: string;
@@ -24,8 +32,17 @@ type Material = {
   version: string | null;
   is_pinned: boolean;
   download_count: number;
+  has_template: boolean;
+  template_fields: TemplateField[];
   created_at: string;
   updated_at: string;
+};
+
+type PersonalizeForm = {
+  company_name: string;
+  contact_name: string;
+  proposal_date: string;
+  memo: string;
 };
 
 function formatFileSize(bytes: number): string {
@@ -67,6 +84,22 @@ export default function AgentMaterialsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [downloading, setDownloading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Feature 1: in-browser PDF preview
+  const [previewMaterial, setPreviewMaterial] = useState<Material | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState<string | null>(null);
+
+  // Feature 2: personalized cover sheet (表紙作成)
+  const [personalizeMaterial, setPersonalizeMaterial] = useState<Material | null>(null);
+  const [personalizeData, setPersonalizeData] = useState<PersonalizeForm>({
+    company_name: "",
+    contact_name: "",
+    proposal_date: "",
+    memo: "",
+  });
+  const [generating, setGenerating] = useState(false);
+  const [personalizeError, setPersonalizeError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -110,6 +143,81 @@ export default function AgentMaterialsPage() {
       // ignore
     } finally {
       setDownloading(null);
+    }
+  };
+
+  const handlePreview = async (material: Material) => {
+    setPreviewing(material.id);
+    try {
+      const res = await fetch(`/api/agent/materials/${material.id}/preview`);
+      if (!res.ok) throw new Error("preview_failed");
+      const json = await res.json();
+      if (json.url) {
+        setPreviewMaterial(material);
+        setPreviewUrl(json.url as string);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setPreviewing(null);
+    }
+  };
+
+  const closePreview = () => {
+    setPreviewMaterial(null);
+    setPreviewUrl(null);
+  };
+
+  const openPersonalize = (material: Material) => {
+    setPersonalizeMaterial(material);
+    setPersonalizeData({ company_name: "", contact_name: "", proposal_date: "", memo: "" });
+    setPersonalizeError(null);
+  };
+
+  const closePersonalize = () => {
+    setPersonalizeMaterial(null);
+    setPersonalizeError(null);
+  };
+
+  const handleGenerateCover = async () => {
+    if (!personalizeMaterial) return;
+    setGenerating(true);
+    setPersonalizeError(null);
+    try {
+      const res = await fetch(`/api/agent/materials/${personalizeMaterial.id}/personalize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_name: personalizeData.company_name,
+          contact_name: personalizeData.contact_name,
+          proposal_date: personalizeData.proposal_date || undefined,
+          memo: personalizeData.memo || undefined,
+        }),
+      });
+      if (!res.ok) {
+        let message = "表紙PDFの生成に失敗しました。";
+        try {
+          const json = await res.json();
+          if (typeof json?.message === "string") message = json.message;
+        } catch {
+          // non-JSON error body — keep default message
+        }
+        throw new Error(message);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `cover_${personalizeMaterial.id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      closePersonalize();
+    } catch (e) {
+      setPersonalizeError(e instanceof Error ? e.message : "表紙PDFの生成に失敗しました。");
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -254,6 +362,9 @@ export default function AgentMaterialsPage() {
                     material={m}
                     onDownload={handleDownload}
                     downloading={downloading === m.id}
+                    onPreview={handlePreview}
+                    previewing={previewing === m.id}
+                    onPersonalize={openPersonalize}
                     pinned
                   />
                 ))}
@@ -266,7 +377,15 @@ export default function AgentMaterialsPage() {
             {pinned.length > 0 && <div className="text-xs font-semibold tracking-[0.18em] text-muted">ALL FILES</div>}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {regular.map((m) => (
-                <MaterialCard key={m.id} material={m} onDownload={handleDownload} downloading={downloading === m.id} />
+                <MaterialCard
+                  key={m.id}
+                  material={m}
+                  onDownload={handleDownload}
+                  downloading={downloading === m.id}
+                  onPreview={handlePreview}
+                  previewing={previewing === m.id}
+                  onPersonalize={openPersonalize}
+                />
               ))}
             </div>
           </div>
@@ -280,6 +399,166 @@ export default function AgentMaterialsPage() {
           {activeCategory !== "all" && ` — ${categories.find((c) => c.id === activeCategory)?.name ?? ""}`}
         </div>
       )}
+
+      {/* Preview modal (Feature 1) */}
+      {previewMaterial && previewUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 sm:p-8"
+          onClick={closePreview}
+          role="presentation"
+        >
+          <div
+            className="flex h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-surface shadow-sm"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${previewMaterial.title} プレビュー`}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-border-default px-4 py-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-primary">{previewMaterial.title}</div>
+                <div className="truncate text-[11px] text-muted">{previewMaterial.file_name}</div>
+              </div>
+              <button
+                onClick={closePreview}
+                aria-label="閉じる"
+                className="shrink-0 rounded-lg border border-border-default bg-surface p-1.5 text-secondary hover:bg-surface-hover"
+              >
+                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <iframe src={previewUrl} title={previewMaterial.title} className="w-full h-full flex-1 bg-inset" />
+          </div>
+        </div>
+      )}
+
+      {/* Personalize / cover-sheet modal (Feature 2) */}
+      {personalizeMaterial && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={closePersonalize}
+          role="presentation"
+        >
+          <div
+            className="w-full max-w-md overflow-hidden rounded-2xl bg-surface shadow-sm"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="表紙作成"
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-border-default px-5 py-4">
+              <div className="min-w-0">
+                <div className="text-xs font-semibold tracking-[0.18em] text-accent">COVER SHEET</div>
+                <h2 className="mt-1 text-base font-semibold text-primary">提案表紙を作成</h2>
+                <p className="mt-0.5 truncate text-xs text-muted">{personalizeMaterial.title}</p>
+              </div>
+              <button
+                onClick={closePersonalize}
+                aria-label="閉じる"
+                className="shrink-0 rounded-lg border border-border-default bg-surface p-1.5 text-secondary hover:bg-surface-hover"
+              >
+                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4 px-5 py-5">
+              {personalizeError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+                  {personalizeError}
+                </div>
+              )}
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-secondary">
+                  会社名 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  value={personalizeData.company_name}
+                  onChange={(e) => setPersonalizeData((d) => ({ ...d, company_name: e.target.value }))}
+                  placeholder="株式会社○○"
+                  className="w-full rounded-xl border border-border-default bg-inset px-3 py-2 text-sm focus:bg-surface focus:outline-none focus:ring-2 focus:ring-border-strong"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-secondary">
+                  担当者名 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  value={personalizeData.contact_name}
+                  onChange={(e) => setPersonalizeData((d) => ({ ...d, contact_name: e.target.value }))}
+                  placeholder="山田 太郎"
+                  className="w-full rounded-xl border border-border-default bg-inset px-3 py-2 text-sm focus:bg-surface focus:outline-none focus:ring-2 focus:ring-border-strong"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-secondary">提案日</label>
+                <input
+                  type="date"
+                  value={personalizeData.proposal_date}
+                  onChange={(e) => setPersonalizeData((d) => ({ ...d, proposal_date: e.target.value }))}
+                  className="w-full rounded-xl border border-border-default bg-inset px-3 py-2 text-sm focus:bg-surface focus:outline-none focus:ring-2 focus:ring-border-strong"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-secondary">メモ・一言添え</label>
+                <textarea
+                  value={personalizeData.memo}
+                  onChange={(e) => setPersonalizeData((d) => ({ ...d, memo: e.target.value }))}
+                  rows={3}
+                  placeholder="ご提案内容や一言メッセージを記入できます。"
+                  className="w-full resize-none rounded-xl border border-border-default bg-inset px-3 py-2 text-sm focus:bg-surface focus:outline-none focus:ring-2 focus:ring-border-strong"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-border-default px-5 py-4">
+              <button
+                onClick={closePersonalize}
+                disabled={generating}
+                className="rounded-lg border border-border-default bg-surface px-4 py-2 text-sm font-medium text-secondary hover:bg-surface-hover disabled:opacity-40"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleGenerateCover}
+                disabled={generating || !personalizeData.company_name.trim() || !personalizeData.contact_name.trim()}
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-inverse hover:opacity-90 disabled:opacity-40"
+              >
+                {generating ? (
+                  <span className="flex items-center gap-1.5">
+                    <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24">
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                        fill="none"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
+                    </svg>
+                    生成中
+                  </span>
+                ) : (
+                  "表紙PDFを生成"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -290,15 +569,22 @@ function MaterialCard({
   material,
   onDownload,
   downloading,
+  onPreview,
+  previewing,
+  onPersonalize,
   pinned,
 }: {
   material: Material;
   onDownload: (m: Material) => void;
   downloading: boolean;
+  onPreview: (m: Material) => void;
+  previewing: boolean;
+  onPersonalize: (m: Material) => void;
   pinned?: boolean;
 }) {
   const icon = getFileIcon(material.file_type);
   const iconColor = getFileColor(material.file_type);
+  const canPreview = material.file_type.includes("pdf");
 
   return (
     <div
@@ -344,18 +630,78 @@ function MaterialCard({
             )}
           </div>
 
-          <div className="mt-2 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-[11px] text-muted">
-              <span className="font-medium text-muted">{material.category_name}</span>
-              <span className="text-muted">|</span>
-              <span>{formatDateTime(material.created_at)}</span>
-              {material.download_count > 0 && (
-                <>
-                  <span className="text-muted">|</span>
-                  <span>{material.download_count} DL</span>
-                </>
-              )}
-            </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted">
+            <span className="font-medium text-muted">{material.category_name}</span>
+            <span className="text-muted">|</span>
+            <span>{formatDateTime(material.created_at)}</span>
+            {material.download_count > 0 && (
+              <>
+                <span className="text-muted">|</span>
+                <span>{material.download_count} DL</span>
+              </>
+            )}
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+            {canPreview && (
+              <button
+                onClick={() => onPreview(material)}
+                disabled={previewing}
+                className="rounded-lg border border-border-default bg-surface px-3 py-1 text-xs font-medium text-secondary hover:bg-surface-hover disabled:opacity-40"
+              >
+                {previewing ? (
+                  <span className="flex items-center gap-1">
+                    <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                        fill="none"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
+                    </svg>
+                    読込中
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1">
+                    <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"
+                      />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                    </svg>
+                    プレビュー
+                  </span>
+                )}
+              </button>
+            )}
+
+            {material.has_template && (
+              <button
+                onClick={() => onPersonalize(material)}
+                className="rounded-lg border border-accent/40 bg-accent-dim/20 px-3 py-1 text-xs font-medium text-accent hover:bg-accent-dim/30"
+              >
+                <span className="flex items-center gap-1">
+                  <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z"
+                    />
+                  </svg>
+                  表紙作成
+                </span>
+              </button>
+            )}
 
             <button
               onClick={() => onDownload(material)}
