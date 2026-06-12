@@ -365,8 +365,7 @@ export default function ManagementClient() {
   const thisMonthGrowth = customers.growthByMonth.find((m) => m.month === thisMonthKey);
   const actualNewCustomers = thisMonthGrowth?.count ?? 0;
   const hasTarget =
-    !!target &&
-    (target.target_revenue !== null || target.target_jobs !== null || target.target_new_customers !== null);
+    !!target && (target.target_revenue !== null || target.target_jobs !== null || target.target_new_customers !== null);
 
   return (
     <div className="mx-auto max-w-6xl space-y-8">
@@ -418,7 +417,9 @@ export default function ManagementClient() {
             <div className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-3">
                 <label className="space-y-1.5">
-                  <span className="text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">売上目標 (円)</span>
+                  <span className="text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">
+                    売上目標 (円)
+                  </span>
                   <input
                     type="number"
                     min={0}
@@ -619,6 +620,38 @@ export default function ManagementClient() {
             <div>
               <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">粗利率</div>
               <div className="text-[12px] text-muted mt-0.5">Gross Margin</div>
+            </div>
+          </div>
+
+          <div className="glass-card p-4 space-y-3 sm:col-span-2">
+            <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">収益構造内訳</div>
+            <div className="space-y-2">
+              {/* 売上・原価・粗利の3段積み */}
+              <div className="flex justify-between text-[11px]">
+                <span className="text-muted">売上高</span>
+                <span className="font-medium text-primary">{formatJpy(profitability.totalRevenue)}</span>
+              </div>
+              <div className="flex justify-between text-[11px]">
+                <span className="text-muted">仕入原価</span>
+                <span className="font-medium text-warning-text">{formatJpy(profitability.totalPurchases)}</span>
+              </div>
+              <div className="h-px bg-border-default my-1" />
+              <div className="flex justify-between text-[12px] font-semibold">
+                <span className="text-primary">粗利益</span>
+                <span style={{ color: "var(--accent-emerald)" }}>{formatJpy(profitability.grossProfit)}</span>
+              </div>
+              <div className="h-2 rounded-full bg-surface-hover overflow-hidden">
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${Math.min(Math.max(profitability.grossMarginRate ?? 0, 0), 100)}%`,
+                    backgroundColor: "var(--accent-emerald)",
+                  }}
+                />
+              </div>
+              <div className="text-right text-[11px] text-muted">
+                粗利率 {profitability.grossMarginRate?.toFixed(1) ?? "-"}%
+              </div>
             </div>
           </div>
         </div>
