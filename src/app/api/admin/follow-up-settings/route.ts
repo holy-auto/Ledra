@@ -18,6 +18,8 @@ const followUpSettingsSchema = z.object({
   enabled: z.boolean().default(true),
   maintenance_reminder_months: z.array(z.coerce.number().int().min(1).max(120)).max(10).default([6, 12]),
   maintenance_schedule_by_service: maintenanceScheduleByServiceSchema,
+  // 季節提案 (10-11月: 冬前 / 5-6月: 梅雨前)。DB の seasonal_enabled に対応。
+  seasonal_enabled: z.boolean().default(false),
 });
 
 export const dynamic = "force-dynamic";
@@ -32,7 +34,7 @@ export async function GET() {
     const { data } = await supabase
       .from("follow_up_settings")
       .select(
-        "reminder_days_before, follow_up_days_after, enabled, maintenance_reminder_months, maintenance_schedule_by_service",
+        "reminder_days_before, follow_up_days_after, enabled, maintenance_reminder_months, maintenance_schedule_by_service, seasonal_enabled",
       )
       .eq("tenant_id", caller.tenantId)
       .maybeSingle();
@@ -44,6 +46,7 @@ export async function GET() {
         enabled: true,
         maintenance_reminder_months: [6, 12],
         maintenance_schedule_by_service: {},
+        seasonal_enabled: false,
       },
     });
   } catch (e: unknown) {
