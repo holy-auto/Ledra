@@ -42,7 +42,7 @@ export default function MaterialsManager() {
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewBusy, setPreviewBusy] = useState<string | null>(null);
@@ -83,7 +83,7 @@ export default function MaterialsManager() {
   const handleUpload = async () => {
     const file = fileRef.current?.files?.[0];
     if (!file || !title || !categoryId) {
-      setMsg("ファイル、タイトル、カテゴリは必須です");
+      setMsg({ text: "ファイル、タイトル、カテゴリは必須です", ok: false });
       return;
     }
 
@@ -104,10 +104,10 @@ export default function MaterialsManager() {
       });
       if (!res.ok) {
         const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
 
-      setMsg("アップロードしました");
+      setMsg({ text: "アップロードしました", ok: true });
       setTitle("");
       setDescription("");
       setVersion("");
@@ -116,7 +116,7 @@ export default function MaterialsManager() {
       setShowUpload(false);
       fetchData();
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : String(e));
+      setMsg({ text: e instanceof Error ? e.message : String(e), ok: false });
     } finally {
       setUploading(false);
     }
@@ -161,15 +161,18 @@ export default function MaterialsManager() {
       const res = await fetch(`/api/admin/agent-materials/${id}/preview`);
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setMsg(
-          json?.error ??
+        setMsg({
+          text:
+            json?.message ??
+            json?.error ??
             "プレビューURLの取得に失敗しました。ファイルがストレージにアップロードされているか確認してください。",
-        );
+          ok: false,
+        });
         return;
       }
       if (json.url) setPreviewUrl(json.url);
     } catch {
-      setMsg("プレビューの取得中にエラーが発生しました。");
+      setMsg({ text: "プレビューの取得中にエラーが発生しました。", ok: false });
     } finally {
       setPreviewBusy(null);
     }
@@ -181,15 +184,18 @@ export default function MaterialsManager() {
       const res = await fetch(`/api/admin/agent-materials/${id}/download`);
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setMsg(
-          json?.error ??
+        setMsg({
+          text:
+            json?.message ??
+            json?.error ??
             "ダウンロードURLの取得に失敗しました。ファイルがストレージにアップロードされているか確認してください。",
-        );
+          ok: false,
+        });
         return;
       }
       if (json.url) window.open(json.url, "_blank");
     } catch {
-      setMsg("ダウンロードの取得中にエラーが発生しました。");
+      setMsg({ text: "ダウンロードの取得中にエラーが発生しました。", ok: false });
     } finally {
       setDownloadBusy(null);
     }
@@ -206,15 +212,15 @@ export default function MaterialsManager() {
         const failed = (json.results ?? []).filter((r: { ok: boolean }) => !r.ok);
         setMsg(
           failed.length === 0
-            ? "デモファイルを生成しました。プレビュー・ダウンロードをお試しください。"
-            : `${failed.length} 件の生成に失敗しました。`,
+            ? { text: "デモファイルを生成しました。プレビュー・ダウンロードをお試しください。", ok: true }
+            : { text: `${failed.length} 件の生成に失敗しました。`, ok: false },
         );
         fetchData();
       } else {
-        setMsg("デモファイルの生成に失敗しました。");
+        setMsg({ text: "デモファイルの生成に失敗しました。", ok: false });
       }
     } catch {
-      setMsg("デモファイルの生成中にエラーが発生しました。");
+      setMsg({ text: "デモファイルの生成中にエラーが発生しました。", ok: false });
     } finally {
       setSeedingDemo(false);
     }
@@ -228,7 +234,7 @@ export default function MaterialsManager() {
         method: "DELETE",
       });
       if (res.ok) {
-        setMsg("削除しました");
+        setMsg({ text: "削除しました", ok: true });
         fetchData();
       }
     } catch {
@@ -258,7 +264,50 @@ export default function MaterialsManager() {
         </div>
       </div>
 
-      {msg && <div className="rounded-xl border border-default bg-surface-solid p-3 text-sm text-secondary">{msg}</div>}
+      {msg && (
+        <div
+          className={`flex items-start gap-2 rounded-xl border p-3 text-sm ${
+            msg.ok
+              ? "border-green-200 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300"
+              : "border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400"
+          }`}
+        >
+          {msg.ok ? (
+            <svg
+              width="16"
+              height="16"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+              className="mt-0.5 shrink-0"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+              />
+            </svg>
+          ) : (
+            <svg
+              width="16"
+              height="16"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+              className="mt-0.5 shrink-0"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z"
+              />
+            </svg>
+          )}
+          {msg.text}
+        </div>
+      )}
 
       {/* Upload form */}
       {showUpload && (
