@@ -181,6 +181,30 @@ const NAV_GROUPS: NavGroup[] = [
         ),
       },
       {
+        href: "/admin/coupons",
+        label: "クーポン管理",
+        requiredPermission: "customers:view",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M9 12h6m-6 0a3 3 0 1 1 0-6h6a3 3 0 1 1 0 6m-6 0a3 3 0 1 0 0 6h6a3 3 0 1 0 0-6M3 9.75A2.25 2.25 0 0 1 5.25 7.5h13.5A2.25 2.25 0 0 1 21 9.75v.75a2.25 2.25 0 0 0 0 4.5v.75a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15.75V15a2.25 2.25 0 0 0 0-4.5v-.75Z"
+            />
+          </svg>
+        ),
+      },
+      {
+        href: "/admin/service-reminders",
+        label: "整備提案・交換管理",
+        requiredPermission: "menu_items:manage",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+          </svg>
+        ),
+      },
+      {
         href: "/admin/quick-quote",
         label: "概算見積",
         requiredPermission: "reservations:view",
