@@ -84,26 +84,22 @@ const reminderBase = z.object({
 });
 
 /**
- * reminder_type に応じて必要な入力が揃っているかを検証する共通リファイン。
+ * reminder_type に応じて必要な入力が揃っているかを検証する。
  *  - mileage: recommended_interval_km が必須
  *  - interval_months: recommended_interval_months が必須
  *  - both: 両方必須
  * (last_service_* は未確定でも登録できるよう必須にしない。次回推奨日時は
  *  両方揃ったときのみ DB 側で算出される。)
  */
-function refineReminderType<T extends z.ZodTypeAny>(schema: T) {
-  return schema
-    .refine(
-      (v: z.infer<typeof reminderBase>) => v.reminder_type === "interval_months" || v.recommended_interval_km != null,
-      { message: "走行距離ベースの提案には推奨交換距離 (km) が必要です。", path: ["recommended_interval_km"] },
-    )
-    .refine(
-      (v: z.infer<typeof reminderBase>) => v.reminder_type === "mileage" || v.recommended_interval_months != null,
-      { message: "期間ベースの提案には推奨交換間隔 (月) が必要です。", path: ["recommended_interval_months"] },
-    );
-}
-
-export const serviceReminderCreateSchema = refineReminderType(reminderBase);
+export const serviceReminderCreateSchema = reminderBase
+  .refine((v) => v.reminder_type === "interval_months" || v.recommended_interval_km != null, {
+    message: "走行距離ベースの提案には推奨交換距離 (km) が必要です。",
+    path: ["recommended_interval_km"],
+  })
+  .refine((v) => v.reminder_type === "mileage" || v.recommended_interval_months != null, {
+    message: "期間ベースの提案には推奨交換間隔 (月) が必要です。",
+    path: ["recommended_interval_months"],
+  });
 
 export const serviceReminderUpdateSchema = z.object({
   id: z.string().uuid("リマインダー ID が不正です。"),

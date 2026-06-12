@@ -210,6 +210,7 @@ export default async function JobWorkflowPage({ params }: { params: Promise<{ id
           customer={customer}
           vehicle={vehicle}
           tenantId={tenantId}
+          currentUserId={userRes.user.id}
         />
       </Suspense>
     </main>

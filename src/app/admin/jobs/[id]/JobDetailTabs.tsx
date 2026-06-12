@@ -7,7 +7,16 @@ import Badge from "@/components/ui/Badge";
 import { formatDate, formatJpy } from "@/lib/format";
 import JobPackageApply from "./JobPackageApply";
 import JobPhotosTab from "./JobPhotosTab";
-import type { MenuItem, JobReservation, JobCustomer, JobVehicle, JobCertificate, JobDocument } from "./types";
+import JobHandoffPanel from "./JobHandoffPanel";
+import type {
+  MenuItem,
+  HandoffNote,
+  JobReservation,
+  JobCustomer,
+  JobVehicle,
+  JobCertificate,
+  JobDocument,
+} from "./types";
 
 /**
  * JobDetailTabs
@@ -65,7 +74,7 @@ const certStatusVariant = (s: string) => {
   }
 };
 
-type TabKey = "summary" | "parties" | "certificates" | "photos" | "billing";
+type TabKey = "summary" | "parties" | "certificates" | "photos" | "billing" | "handoff";
 
 interface Props {
   reservation: JobReservation;
@@ -73,12 +82,25 @@ interface Props {
   vehicle: JobVehicle;
   certificates: JobCertificate[];
   documents: JobDocument[];
+  /** 現在のログインユーザ id (申し送りの自己投稿判定用)。 */
+  currentUserId?: string | null;
 }
 
-export default function JobDetailTabs({ reservation, customer, vehicle, certificates, documents }: Props) {
+export default function JobDetailTabs({
+  reservation,
+  customer,
+  vehicle,
+  certificates,
+  documents,
+  currentUserId = null,
+}: Props) {
   const [tab, setTab] = useState<TabKey>("summary");
 
   const menuItems: MenuItem[] = Array.isArray(reservation.menu_items_json) ? reservation.menu_items_json : [];
+
+  const handoffNotes: HandoffNote[] = Array.isArray(reservation.handoff_notes) ? reservation.handoff_notes : [];
+  // important / urgent な申し送り件数 (タブバッジ表示用)。
+  const handoffAlertCount = handoffNotes.filter((n) => n.priority === "important" || n.priority === "urgent").length;
 
   const invoices = useMemo(
     () => documents.filter((d) => ["invoice", "consolidated_invoice"].includes(d.doc_type)),
@@ -119,7 +141,23 @@ export default function JobDetailTabs({ reservation, customer, vehicle, certific
               k: "billing",
               label: `請求・見積 (${invoices.length + estimates.length})`,
             },
-          ] as const
+            {
+              k: "handoff",
+              label: (
+                <span className="inline-flex items-center gap-1.5">
+                  申し送り
+                  {handoffAlertCount > 0 && (
+                    <span
+                      className="inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold leading-[18px] text-white"
+                      style={{ backgroundColor: "var(--accent-red)" }}
+                    >
+                      {handoffAlertCount}
+                    </span>
+                  )}
+                </span>
+              ),
+            },
+          ] as { k: TabKey; label: React.ReactNode }[]
         ).map((t) => (
           <button
             key={t.k}
@@ -386,6 +424,10 @@ export default function JobDetailTabs({ reservation, customer, vehicle, certific
             </Card>
           )}
         </div>
+      )}
+
+      {tab === "handoff" && (
+        <JobHandoffPanel reservationId={reservation.id} initialNotes={handoffNotes} currentUserId={currentUserId} />
       )}
     </div>
   );
