@@ -6,6 +6,7 @@ import { withCronLock } from "@/lib/cron/lock";
 import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 import { LINKEDIN_POSTS, LINKEDIN_POST_COUNT } from "@/lib/marketing/linkedinPosts";
 import { postToLinkedIn } from "@/lib/marketing/linkedin";
+import { resolveLinkedInCredentials } from "@/lib/marketing/linkedinTokens";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -51,8 +52,6 @@ export async function GET(req: NextRequest) {
       const index = (count ?? 0) % LINKEDIN_POST_COUNT;
       const post = LINKEDIN_POSTS[index];
 
-      const result = await postToLinkedIn(post.text);
-
       const logRow = {
         post_index: index,
         post_day: post.day,
@@ -62,15 +61,22 @@ export async function GET(req: NextRequest) {
         error: null as string | null,
       };
 
-      if (result.ok) {
-        logRow.status = "posted";
-        logRow.linkedin_urn = result.urn || null;
-      } else if ("skipped" in result) {
+      // Resolve a valid access token (auto-refreshing if near expiry). When the
+      // feature is disabled or unconfigured this returns a skip reason instead
+      // of credentials, so the run is recorded as 'skipped' without alerting.
+      const resolved = await resolveLinkedInCredentials(supabase);
+      if (!resolved.ok) {
         logRow.status = "skipped";
-        logRow.error = result.skipped; // "disabled" | "not-configured"
+        logRow.error = resolved.reason;
       } else {
-        logRow.status = "failed";
-        logRow.error = result.error;
+        const result = await postToLinkedIn(post.text, resolved.credentials);
+        if (result.ok) {
+          logRow.status = "posted";
+          logRow.linkedin_urn = result.urn || null;
+        } else {
+          logRow.status = "failed";
+          logRow.error = result.error;
+        }
       }
 
       const { error: insertError } = await supabase.from("marketing_linkedin_log").insert(logRow);

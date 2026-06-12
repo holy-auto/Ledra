@@ -104,6 +104,9 @@ const CRITICAL_ENV_VARS: EnvVarCheck[] = [
   // LinkedIn daily auto-post (optional until configured)
   { name: "LINKEDIN_AUTOPOST_ENABLED", required: false, warnOnly: true },
   { name: "LINKEDIN_ACCESS_TOKEN", required: false, warnOnly: true },
+  { name: "LINKEDIN_REFRESH_TOKEN", required: false, warnOnly: true },
+  { name: "LINKEDIN_CLIENT_ID", required: false, warnOnly: true },
+  { name: "LINKEDIN_CLIENT_SECRET", required: false, warnOnly: true },
   { name: "LINKEDIN_AUTHOR_URN", required: false, warnOnly: true },
   { name: "LINKEDIN_API_VERSION", required: false, warnOnly: true },
 ];

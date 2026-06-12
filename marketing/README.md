@@ -9,9 +9,11 @@ LinkedIn へ **毎朝1本** 自動投稿する仕組みです。Ledra のメリ�
 | `marketing/linkedin-posts.md` | 人が読む用の30日分ストック（コピペ手動投稿にも使える） |
 | `marketing/linkedin-posts.json` | 投稿コンテンツの編集用ソース（人が編集しやすい形） |
 | `src/lib/marketing/linkedinPosts.ts` | **実行時のソース・オブ・トゥルース**。cron がここを読む |
-| `src/lib/marketing/linkedin.ts` | LinkedIn REST Posts API クライアント |
+| `src/lib/marketing/linkedin.ts` | LinkedIn REST Posts API クライアント（トークンを受け取り投稿） |
+| `src/lib/marketing/linkedinTokens.ts` | トークン保管＋**自動リフレッシュ**（期限前に更新しDBへ書き戻し） |
 | `src/app/api/cron/linkedin-posting/route.ts` | 毎日のcronエンドポイント |
 | `supabase/migrations/20260611000000_marketing_linkedin_log.sql` | 投稿ログ＆ローテーション管理テーブル |
+| `supabase/migrations/20260611000001_marketing_linkedin_credentials.sql` | トークン保管テーブル（暗号化・シングルトン行） |
 
 ## 仕組み（ローテーション）
 
@@ -46,13 +48,28 @@ LinkedIn へ **毎朝1本** 自動投稿する仕組みです。Ledra のメリ�
 
 ```bash
 LINKEDIN_AUTOPOST_ENABLED=true
-LINKEDIN_ACCESS_TOKEN=<OAuth2 アクセストークン>
-LINKEDIN_AUTHOR_URN=urn:li:organization:12345678   # 個人なら urn:li:person:xxxx
+LINKEDIN_ACCESS_TOKEN=<OAuth2 アクセストークン>      # 初回ブートストラップ用
+LINKEDIN_REFRESH_TOKEN=<リフレッシュトークン>        # 自動更新に必須
+LINKEDIN_CLIENT_ID=<アプリのClient ID>               # 自動更新に必須
+LINKEDIN_CLIENT_SECRET=<アプリのClient Secret>       # 自動更新に必須
+LINKEDIN_AUTHOR_URN=urn:li:organization:12345678    # 個人なら urn:li:person:xxxx
 LINKEDIN_API_VERSION=202405                          # 任意（未設定なら既定値）
 ```
 
-> 注: LinkedIn のアクセストークンには有効期限があります。長期運用ではリフレッシュ
-> トークンによる更新が必要です（本実装はトークンを環境変数から読むのみ）。
+## トークンの自動リフレッシュ
+
+LinkedIn のアクセストークンは約60日で失効します。本実装は**自動更新**します：
+
+- 初回起動時、env（`LINKEDIN_ACCESS_TOKEN` / `LINKEDIN_REFRESH_TOKEN`）から
+  暗号化して `marketing_linkedin_credentials`（シングルトン行）へ保存（ブートストラップ）。
+- 以降は cron が毎回、有効期限まで2日を切っていたら `LINKEDIN_REFRESH_TOKEN` で
+  新しいアクセストークンを取得し、DBへ書き戻します（env の手動更新は不要）。
+- リフレッシュには **`LINKEDIN_CLIENT_ID` / `LINKEDIN_CLIENT_SECRET`** が必須です。
+- トークンは既存の暗号化方式（AES-256-GCM, `SECRET_ENCRYPTION_KEY`）で保存されます。
+
+> ⚠️ リフレッシュトークンは**承認済みアプリにのみ発行**されます。アプリがリフレッシュ
+> トークン非対応の場合、約60日ごとに手動で `LINKEDIN_ACCESS_TOKEN` を入れ直すか、
+> DBの行を更新する必要があります（その場合 cron は `token-expired-needs-reauth` を記録）。
 
 ## コンテンツを編集したら（TSモジュールの再生成）
 
