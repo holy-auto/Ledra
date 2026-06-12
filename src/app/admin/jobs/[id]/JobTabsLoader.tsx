@@ -19,9 +19,11 @@ interface Props {
   customer: JobCustomer;
   vehicle: JobVehicle;
   tenantId: string;
+  /** 現在のログインユーザ id (申し送りの自己投稿判定用)。 */
+  currentUserId?: string | null;
 }
 
-export default async function JobTabsLoader({ reservation, customer, vehicle, tenantId }: Props) {
+export default async function JobTabsLoader({ reservation, customer, vehicle, tenantId, currentUserId = null }: Props) {
   const supabase = await createSupabaseServerClient();
 
   // 証明書 (vehicle_id 優先、無ければ customer_id)
@@ -69,6 +71,7 @@ export default async function JobTabsLoader({ reservation, customer, vehicle, te
       vehicle={vehicle}
       certificates={certificates}
       documents={documents}
+      currentUserId={currentUserId}
     />
   );
 }

@@ -11,6 +11,8 @@ interface Props {
   vehicle: JobVehicle;
   certificates: JobCertificate[];
   documents: JobDocument[];
+  /** 現在のログインユーザ id (申し送りの自己投稿判定用)。 */
+  currentUserId?: string | null;
 }
 
 /**
@@ -22,7 +24,14 @@ interface Props {
  * - admin: タブ構成・関連ドキュメント一覧等の詳細ビュー
  *   (<JobDetailTabs>; ステッパーは page.tsx の <JobStatusPanel> が別途担当)
  */
-export default function JobWorkflowModeSwitch({ reservation, customer, vehicle, certificates, documents }: Props) {
+export default function JobWorkflowModeSwitch({
+  reservation,
+  customer,
+  vehicle,
+  certificates,
+  documents,
+  currentUserId = null,
+}: Props) {
   const { mode, hydrated } = useViewMode();
 
   if (!hydrated || mode === "admin") {
@@ -33,6 +42,7 @@ export default function JobWorkflowModeSwitch({ reservation, customer, vehicle, 
         vehicle={vehicle}
         certificates={certificates}
         documents={documents}
+        currentUserId={currentUserId}
       />
     );
   }

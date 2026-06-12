@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
+import MutationGuard from "@/components/ui/MutationGuard";
 import { useViewMode } from "@/lib/view-mode/ViewModeContext";
 import { fetcher } from "@/lib/swr";
 import { computeWorkDurationText } from "@/lib/admin/work-duration";
@@ -168,13 +169,15 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
             </div>
           </div>
           {nextStatus && !isCancelled && (
-            <button
-              onClick={() => advanceStatus(nextStatus)}
-              disabled={busy}
-              className="btn-primary text-sm px-4 py-2 disabled:opacity-50"
-            >
-              {busy ? "更新中..." : `${STATUS_LABEL[nextStatus]} へ進む →`}
-            </button>
+            <MutationGuard>
+              <button
+                onClick={() => advanceStatus(nextStatus)}
+                disabled={busy}
+                className="btn-primary text-sm px-4 py-2 disabled:opacity-50"
+              >
+                {busy ? "更新中..." : `${STATUS_LABEL[nextStatus]} へ進む →`}
+              </button>
+            </MutationGuard>
           )}
         </div>
 
@@ -189,20 +192,22 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
             ) : (
               <span className="text-muted">未割当</span>
             )}
-            <select
-              aria-label="担当者を変更"
-              className="rounded-md border border-border-default bg-surface px-2 py-1 text-xs text-primary disabled:opacity-50"
-              value={reservation.assigned_user_id ?? ""}
-              disabled={assigneeBusy || isCancelled}
-              onChange={(e) => changeAssignee(e.target.value === "" ? null : e.target.value)}
-            >
-              <option value="">— 未割当 —</option>
-              {members.map((m) => (
-                <option key={m.user_id} value={m.user_id}>
-                  {m.display_name ?? m.email ?? m.user_id.slice(0, 8)}
-                </option>
-              ))}
-            </select>
+            <MutationGuard>
+              <select
+                aria-label="担当者を変更"
+                className="rounded-md border border-border-default bg-surface px-2 py-1 text-xs text-primary disabled:opacity-50"
+                value={reservation.assigned_user_id ?? ""}
+                disabled={assigneeBusy || isCancelled}
+                onChange={(e) => changeAssignee(e.target.value === "" ? null : e.target.value)}
+              >
+                <option value="">— 未割当 —</option>
+                {members.map((m) => (
+                  <option key={m.user_id} value={m.user_id}>
+                    {m.display_name ?? m.email ?? m.user_id.slice(0, 8)}
+                  </option>
+                ))}
+              </select>
+            </MutationGuard>
             {assigneeBusy && <span className="text-muted">更新中…</span>}
           </div>
 

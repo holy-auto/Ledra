@@ -4,10 +4,23 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
+import MutationGuard from "@/components/ui/MutationGuard";
 import { formatDate, formatJpy } from "@/lib/format";
 import JobPackageApply from "./JobPackageApply";
 import JobPhotosTab from "./JobPhotosTab";
-import type { MenuItem, JobReservation, JobCustomer, JobVehicle, JobCertificate, JobDocument } from "./types";
+import JobHandoffPanel from "./JobHandoffPanel";
+import JobInspectionTab from "./JobInspectionTab";
+import JobPartsTab from "./JobPartsTab";
+import BillingSplitPanel from "@/components/admin/BillingSplitPanel";
+import type {
+  MenuItem,
+  HandoffNote,
+  JobReservation,
+  JobCustomer,
+  JobVehicle,
+  JobCertificate,
+  JobDocument,
+} from "./types";
 
 /**
  * JobDetailTabs
@@ -65,7 +78,16 @@ const certStatusVariant = (s: string) => {
   }
 };
 
-type TabKey = "summary" | "parties" | "certificates" | "photos" | "billing";
+type TabKey =
+  | "summary"
+  | "parties"
+  | "certificates"
+  | "photos"
+  | "inspection"
+  | "parts"
+  | "billing"
+  | "billing_split"
+  | "handoff";
 
 interface Props {
   reservation: JobReservation;
@@ -73,12 +95,25 @@ interface Props {
   vehicle: JobVehicle;
   certificates: JobCertificate[];
   documents: JobDocument[];
+  /** 現在のログインユーザ id (申し送りの自己投稿判定用)。 */
+  currentUserId?: string | null;
 }
 
-export default function JobDetailTabs({ reservation, customer, vehicle, certificates, documents }: Props) {
+export default function JobDetailTabs({
+  reservation,
+  customer,
+  vehicle,
+  certificates,
+  documents,
+  currentUserId = null,
+}: Props) {
   const [tab, setTab] = useState<TabKey>("summary");
 
   const menuItems: MenuItem[] = Array.isArray(reservation.menu_items_json) ? reservation.menu_items_json : [];
+
+  const handoffNotes: HandoffNote[] = Array.isArray(reservation.handoff_notes) ? reservation.handoff_notes : [];
+  // important / urgent な申し送り件数 (タブバッジ表示用)。
+  const handoffAlertCount = handoffNotes.filter((n) => n.priority === "important" || n.priority === "urgent").length;
 
   const invoices = useMemo(
     () => documents.filter((d) => ["invoice", "consolidated_invoice"].includes(d.doc_type)),
@@ -115,11 +150,31 @@ export default function JobDetailTabs({ reservation, customer, vehicle, certific
             { k: "parties", label: "顧客・車両" },
             { k: "certificates", label: `証明書 (${certificates.length})` },
             { k: "photos", label: "📸 写真" },
+            { k: "inspection", label: "点検" },
+            { k: "parts", label: "部品" },
             {
               k: "billing",
               label: `請求・見積 (${invoices.length + estimates.length})`,
             },
-          ] as const
+            // 按分タブは請求書 (invoice/consolidated_invoice) が存在する場合のみ表示。
+            ...(invoices.length > 0 ? [{ k: "billing_split" as const, label: "按分" }] : []),
+            {
+              k: "handoff",
+              label: (
+                <span className="inline-flex items-center gap-1.5">
+                  申し送り
+                  {handoffAlertCount > 0 && (
+                    <span
+                      className="inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold leading-[18px] text-white"
+                      style={{ backgroundColor: "var(--accent-red)" }}
+                    >
+                      {handoffAlertCount}
+                    </span>
+                  )}
+                </span>
+              ),
+            },
+          ] as { k: TabKey; label: React.ReactNode }[]
         ).map((t) => (
           <button
             key={t.k}
@@ -134,6 +189,16 @@ export default function JobDetailTabs({ reservation, customer, vehicle, certific
       </div>
 
       {tab === "photos" && <JobPhotosTab reservationId={reservation.id} certificateNewUrl={certificateNewUrl} />}
+
+      {tab === "inspection" && (
+        <JobInspectionTab
+          reservationId={reservation.id}
+          vehicleId={reservation.vehicle_id}
+          customerId={reservation.customer_id}
+        />
+      )}
+
+      {tab === "parts" && <JobPartsTab reservationId={reservation.id} />}
 
       {tab === "summary" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -180,11 +245,13 @@ export default function JobDetailTabs({ reservation, customer, vehicle, certific
                 メニュー ({menuItems.length})
               </div>
               {reservation.status !== "cancelled" && (
-                <JobPackageApply
-                  reservationId={reservation.id}
-                  existingMenuItems={menuItems}
-                  existingEstimate={reservation.estimated_amount}
-                />
+                <MutationGuard>
+                  <JobPackageApply
+                    reservationId={reservation.id}
+                    existingMenuItems={menuItems}
+                    existingEstimate={reservation.estimated_amount}
+                  />
+                </MutationGuard>
               )}
             </div>
             {menuItems.length === 0 ? (
@@ -297,9 +364,11 @@ export default function JobDetailTabs({ reservation, customer, vehicle, certific
               <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">Certificates</div>
               <div className="mt-1 text-base font-semibold text-primary">紐付き証明書 ({certificates.length}件)</div>
             </div>
-            <Link href={certificateNewUrl} className="btn-primary text-xs px-3 py-1.5">
-              + 新規発行
-            </Link>
+            <MutationGuard>
+              <Link href={certificateNewUrl} className="btn-primary text-xs px-3 py-1.5">
+                + 新規発行
+              </Link>
+            </MutationGuard>
           </div>
           {certificates.length === 0 ? (
             <div className="p-8 text-center text-sm text-muted">この車両・顧客に紐付く証明書はまだありません</div>
@@ -351,9 +420,11 @@ export default function JobDetailTabs({ reservation, customer, vehicle, certific
                 <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">Invoices</div>
                 <div className="mt-1 text-base font-semibold text-primary">請求書 ({invoices.length}件)</div>
               </div>
-              <Link href={invoiceNewUrl} className="btn-primary text-xs px-3 py-1.5">
-                + 請求書作成
-              </Link>
+              <MutationGuard>
+                <Link href={invoiceNewUrl} className="btn-primary text-xs px-3 py-1.5">
+                  + 請求書作成
+                </Link>
+              </MutationGuard>
             </div>
             {invoices.length === 0 ? (
               <div className="p-8 text-center text-sm text-muted">この顧客宛の請求書はまだありません</div>
@@ -386,6 +457,28 @@ export default function JobDetailTabs({ reservation, customer, vehicle, certific
             </Card>
           )}
         </div>
+      )}
+
+      {tab === "billing_split" && (
+        <div className="space-y-4">
+          {invoices.length === 0 ? (
+            <div className="p-8 text-center text-sm text-muted">按分対象の請求書がありません。</div>
+          ) : (
+            invoices.map((d) => (
+              <div key={d.id} className="space-y-2">
+                <div className="flex items-center gap-2 px-1 text-xs text-muted">
+                  <span className="font-mono text-secondary">{d.doc_number ?? d.id.slice(0, 8)}</span>
+                  <span>{DOC_TYPE_LABEL[d.doc_type] ?? d.doc_type}</span>
+                </div>
+                <BillingSplitPanel documentId={d.id} documentTotal={d.total ?? 0} />
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {tab === "handoff" && (
+        <JobHandoffPanel reservationId={reservation.id} initialNotes={handoffNotes} currentUserId={currentUserId} />
       )}
     </div>
   );
