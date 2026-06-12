@@ -44,6 +44,9 @@ export default function MaterialsManager() {
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewBusy, setPreviewBusy] = useState<string | null>(null);
+  const [downloadBusy, setDownloadBusy] = useState<string | null>(null);
 
   // Upload form
   const fileRef = useRef<HTMLInputElement>(null);
@@ -147,6 +150,35 @@ export default function MaterialsManager() {
       // ignore
     } finally {
       setActionBusy(null);
+    }
+  };
+
+  const handlePreview = async (id: string, fileType: string) => {
+    if (!fileType.includes("pdf")) return;
+    setPreviewBusy(id);
+    try {
+      const res = await fetch(`/api/admin/agent-materials/${id}/preview`);
+      if (!res.ok) return;
+      const json = await res.json();
+      if (json.url) setPreviewUrl(json.url);
+    } catch {
+      // ignore
+    } finally {
+      setPreviewBusy(null);
+    }
+  };
+
+  const handleDownload = async (id: string) => {
+    setDownloadBusy(id);
+    try {
+      const res = await fetch(`/api/admin/agent-materials/${id}/download`);
+      if (!res.ok) return;
+      const json = await res.json();
+      if (json.url) window.open(json.url, "_blank");
+    } catch {
+      // ignore
+    } finally {
+      setDownloadBusy(null);
     }
   };
 
@@ -325,7 +357,94 @@ export default function MaterialsManager() {
                     </td>
                     <td className="p-3 whitespace-nowrap text-muted">{formatDateTime(m.created_at)}</td>
                     <td className="p-3">
-                      <div className="flex gap-1.5">
+                      <div className="flex gap-1.5 flex-wrap">
+                        {m.file_type.includes("pdf") && (
+                          <button
+                            onClick={() => handlePreview(m.id, m.file_type)}
+                            disabled={previewBusy === m.id}
+                            className="rounded-lg border border-border-default bg-surface px-2 py-1 text-xs text-secondary hover:bg-surface-hover disabled:opacity-40"
+                            title="プレビュー"
+                          >
+                            {previewBusy === m.id ? (
+                              <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                                <circle
+                                  className="opacity-25"
+                                  cx="12"
+                                  cy="12"
+                                  r="10"
+                                  stroke="currentColor"
+                                  strokeWidth="4"
+                                  fill="none"
+                                />
+                                <path
+                                  className="opacity-75"
+                                  fill="currentColor"
+                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                                />
+                              </svg>
+                            ) : (
+                              <svg
+                                width="12"
+                                height="12"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"
+                                />
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+                                />
+                              </svg>
+                            )}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDownload(m.id)}
+                          disabled={downloadBusy === m.id}
+                          className="rounded-lg border border-border-default bg-surface px-2 py-1 text-xs text-secondary hover:bg-surface-hover disabled:opacity-40"
+                          title="ダウンロード"
+                        >
+                          {downloadBusy === m.id ? (
+                            <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                                fill="none"
+                              />
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                              />
+                            </svg>
+                          ) : (
+                            <svg
+                              width="12"
+                              height="12"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                              />
+                            </svg>
+                          )}
+                        </button>
                         <button
                           onClick={() => togglePin(m.id, m.is_pinned)}
                           disabled={actionBusy === m.id}
@@ -358,6 +477,32 @@ export default function MaterialsManager() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* PDF Preview modal */}
+      {previewUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+          onClick={() => setPreviewUrl(null)}
+        >
+          <div
+            className="relative flex h-[90vh] w-[90vw] max-w-5xl flex-col rounded-2xl bg-surface shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-border-default px-4 py-3">
+              <span className="text-sm font-semibold text-primary">プレビュー</span>
+              <button
+                onClick={() => setPreviewUrl(null)}
+                className="rounded-lg p-1.5 text-muted hover:bg-surface-hover"
+              >
+                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <iframe src={previewUrl} className="flex-1 w-full border-0" title="PDF プレビュー" />
           </div>
         </div>
       )}
