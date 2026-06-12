@@ -167,6 +167,34 @@ const NAV_GROUPS: NavGroup[] = [
         ),
       },
       {
+        href: "/admin/contact-schedules",
+        label: "コンタクト管理",
+        requiredPermission: "customers:view",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 0 0 2.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 0 1-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 0 0-1.091-.852H4.5A2.25 2.25 0 0 0 2.25 4.5v2.25Z"
+            />
+          </svg>
+        ),
+      },
+      {
+        href: "/admin/quick-quote",
+        label: "概算見積",
+        requiredPermission: "reservations:view",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M15.75 15.75V18m-7.5-6.75h.008v.008H8.25v-.008Zm0 2.25h.008v.008H8.25V13.5Zm0 2.25h.008v.008H8.25v-.008Zm0 2.25h.008v.008H8.25V18Zm2.498-6.75h.007v.008h-.007v-.008Zm0 2.25h.007v.008h-.007V13.5Zm0 2.25h.007v.008h-.007v-.008Zm0 2.25h.007v.008h-.007V18Zm2.504-6.75h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V13.5Zm0 2.25h.008v.008h-.008v-.008Zm0-4.5V18m3-12.75H6.75A2.25 2.25 0 0 0 4.5 7.5v11.25a2.25 2.25 0 0 0 2.25 2.25h10.5a2.25 2.25 0 0 0 2.25-2.25V7.5a2.25 2.25 0 0 0-2.25-2.25Z"
+            />
+          </svg>
+        ),
+      },
+      {
         href: "/admin/workflow-templates",
         label: "ワークフロー",
         requiredPermission: "reservations:view",
@@ -229,6 +257,20 @@ const NAV_GROUPS: NavGroup[] = [
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+          </svg>
+        ),
+      },
+      {
+        href: "/admin/settings/follow-up",
+        label: "フォローアップ設定",
+        requiredPermission: "settings:view",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0"
+            />
           </svg>
         ),
       },
