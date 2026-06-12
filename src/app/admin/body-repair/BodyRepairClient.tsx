@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import MutationGuard from "@/components/ui/MutationGuard";
+import InsuranceClaimMiniPanel from "./InsuranceClaimMiniPanel";
 import {
   BODY_REPAIR_STAGES,
   BODY_REPAIR_STAGE_LABEL,
@@ -229,6 +230,7 @@ function JobCard({ job, busy, onAdvance }: { job: BodyRepairJob; busy: boolean; 
   const next = BODY_REPAIR_NEXT_STAGE[job.stage];
   const days = daysSince(job.intake_at);
   const amount = formatAmount(job.estimate_amount);
+  const [showClaims, setShowClaims] = useState(false);
 
   return (
     <div className="rounded-lg border border-border-subtle bg-surface p-3">
@@ -264,6 +266,29 @@ function JobCard({ job, busy, onAdvance }: { job: BodyRepairJob; busy: boolean; 
           </MutationGuard>
         )}
       </div>
+
+      {/* 損保協定パネル (折りたたみ) */}
+      <button
+        type="button"
+        onClick={() => setShowClaims((v) => !v)}
+        className="mt-2 flex w-full items-center justify-center gap-1 rounded-md border border-border-subtle px-2 py-1 text-[11px] text-secondary transition-colors hover:bg-surface-hover hover:text-primary"
+      >
+        <svg
+          className={`h-3 w-3 transition-transform ${showClaims ? "rotate-90" : ""}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+        </svg>
+        損保協定
+      </button>
+      {showClaims && (
+        <div className="mt-2">
+          <InsuranceClaimMiniPanel bodyRepairJobId={job.id} />
+        </div>
+      )}
     </div>
   );
 }
