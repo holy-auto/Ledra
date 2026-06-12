@@ -371,6 +371,164 @@ export async function listReservationsForCustomer(
   }));
 }
 
+/**
+ * ポータルの (phoneHash + email) または session の customer_id から、
+ * 当該テナント内の customer_id を 1 件解決する。
+ *
+ * listReservationsForCustomer と同じ解決ロジックを共有し、マイページ
+ * (作業進捗 / 証明書) の追加クエリでも同じ顧客スコープを使えるようにする。
+ */
+async function resolveCustomerIdForPortal(
+  tenantId: string,
+  phoneHash: string,
+  phoneLast4?: string,
+  email?: string,
+  sessionCustomerId?: string | null,
+): Promise<string | null> {
+  if (sessionCustomerId) return sessionCustomerId;
+
+  const certs = await listCertificatesForCustomer(tenantId, phoneHash, phoneLast4, email);
+  if (!certs || certs.length === 0) return null;
+
+  const customerNames = [
+    ...new Set(certs.map((c: { customer_name: string | null }) => c.customer_name).filter(Boolean)),
+  ];
+  if (customerNames.length === 0) return null;
+
+  const { data: customers } = await admin()
+    .from("customers")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("name", customerNames[0])
+    .limit(1);
+  if (!customers || customers.length === 0) return null;
+  return String(customers[0].id);
+}
+
+export type PortalJob = {
+  id: string;
+  title: string;
+  scheduled_date: string | null;
+  status: string;
+  vehicle: { maker: string | null; model: string | null; plate_display: string | null } | null;
+};
+
+/**
+ * マイページ「作業進捗確認」用。顧客の予約 (案件) を全ステータス含めて
+ * 取得し、車両情報を結合して返す。listReservationsForCustomer と違い
+ * 過去分・キャンセルも含む (進捗確認なので)。
+ */
+export async function listJobsForCustomer(
+  tenantId: string,
+  phoneHash: string,
+  phoneLast4?: string,
+  email?: string,
+  sessionCustomerId?: string | null,
+): Promise<PortalJob[]> {
+  const customerId = await resolveCustomerIdForPortal(tenantId, phoneHash, phoneLast4, email, sessionCustomerId);
+  if (!customerId) return [];
+
+  const { data: reservations } = await admin()
+    .from("reservations")
+    .select("id, title, scheduled_date, status, vehicle:vehicles(maker, model, plate_display)")
+    .eq("tenant_id", tenantId)
+    .eq("customer_id", customerId)
+    .order("scheduled_date", { ascending: false })
+    .limit(50);
+
+  return (reservations ?? []).map((r) => {
+    const v = Array.isArray(r.vehicle) ? r.vehicle[0] : r.vehicle;
+    return {
+      id: String(r.id),
+      title: String(r.title ?? "予約"),
+      scheduled_date: (r.scheduled_date as string | null) ?? null,
+      status: String(r.status ?? "confirmed"),
+      vehicle: v
+        ? {
+            maker: (v.maker as string | null) ?? null,
+            model: (v.model as string | null) ?? null,
+            plate_display: (v.plate_display as string | null) ?? null,
+          }
+        : null,
+    } satisfies PortalJob;
+  });
+}
+
+export type PortalCertificate = {
+  id: string;
+  public_id: string;
+  created_at: string;
+  vehicle: { maker: string | null; model: string | null; plate_display: string | null } | null;
+  download_url: string;
+};
+
+/**
+ * マイページ「証明書ダウンロード」用。顧客の有効な施工証明書を取得し、
+ * 車両情報を結合、公開ビューアの download_url (/c/[public_id]) を付与する。
+ */
+export async function listDownloadableCertificatesForCustomer(
+  tenantId: string,
+  phoneHash: string,
+  phoneLast4?: string,
+  email?: string,
+  sessionCustomerId?: string | null,
+): Promise<PortalCertificate[]> {
+  const db = admin();
+  const selectCols =
+    "public_id, customer_email, vehicle_info_json, created_at, status, vehicle:vehicles(maker, model, plate_display)";
+
+  let query = db
+    .from("certificates")
+    .select(selectCols)
+    .eq("tenant_id", tenantId)
+    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (sessionCustomerId) {
+    query = query.eq("customer_id", sessionCustomerId);
+  } else if (phoneLast4) {
+    query = query.or(`customer_phone_last4_hash.eq.${phoneHash},customer_phone_last4.eq.${phoneLast4}`);
+  } else {
+    query = query.eq("customer_phone_last4_hash", phoneHash);
+  }
+
+  const { data } = await query;
+  let rows = data ?? [];
+
+  // email filter — legacy path の追加防御 (customer_id scope の場合は冗長)
+  if (!sessionCustomerId && email) {
+    const normalized = normalizeEmail(email);
+    rows = rows.filter((c) => {
+      const certEmail = (c as { customer_email?: string | null }).customer_email;
+      const e = certEmail ? normalizeEmail(certEmail) : null;
+      return e === null || e === normalized;
+    });
+  }
+
+  return rows.map((c) => {
+    const v = Array.isArray(c.vehicle) ? c.vehicle[0] : c.vehicle;
+    const info = (c.vehicle_info_json ?? {}) as Record<string, unknown>;
+    return {
+      id: String(c.public_id),
+      public_id: String(c.public_id),
+      created_at: String(c.created_at),
+      vehicle: v
+        ? {
+            maker: (v.maker as string | null) ?? null,
+            model: (v.model as string | null) ?? null,
+            plate_display: (v.plate_display as string | null) ?? null,
+          }
+        : {
+            maker: (info.maker as string | null) ?? null,
+            model: (info.model as string | null) ?? null,
+            plate_display: (info.plate_display as string | null) ?? null,
+          },
+      download_url: `/c/${encodeURIComponent(String(c.public_id))}`,
+    } satisfies PortalCertificate;
+  });
+}
+
 /** 顧客プロフィール情報を取得 */
 export async function getCustomerProfile(
   tenantId: string,

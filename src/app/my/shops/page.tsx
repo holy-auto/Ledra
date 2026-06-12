@@ -101,9 +101,24 @@ export default function PortalShopListPage() {
               <div>{shop.line_linked ? "LINE連携済み" : "LINE未連携"}</div>
             </div>
 
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => router.push(`/my/jobs?tenant=${encodeURIComponent(shop.tenant_slug)}`)}
+                className="inline-flex items-center justify-center rounded-2xl border border-border-default bg-surface px-3 py-2 text-sm font-semibold text-primary hover:bg-surface-hover"
+              >
+                作業状況
+              </button>
+              <button
+                onClick={() => router.push(`/my/certificates?tenant=${encodeURIComponent(shop.tenant_slug)}`)}
+                className="inline-flex items-center justify-center rounded-2xl border border-border-default bg-surface px-3 py-2 text-sm font-semibold text-primary hover:bg-surface-hover"
+              >
+                証明書
+              </button>
+            </div>
+
             <button
               onClick={() => router.push(`/customer/${encodeURIComponent(shop.tenant_slug)}?from=portal`)}
-              className="mt-5 inline-flex w-full items-center justify-center rounded-2xl bg-accent px-4 py-3 text-sm font-semibold text-white hover:bg-accent/90"
+              className="mt-3 inline-flex w-full items-center justify-center rounded-2xl bg-accent px-4 py-3 text-sm font-semibold text-white hover:bg-accent/90"
             >
               この加盟店を見る
             </button>

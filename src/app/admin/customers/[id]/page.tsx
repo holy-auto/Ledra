@@ -114,9 +114,14 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         tag="CUSTOMERS"
         title="顧客詳細"
         actions={
-          <Link href="/admin/customers" className="btn-secondary">
-            一覧に戻る
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href={`/admin/customers/${id}/maintenance-suggestion`} className="btn-secondary">
+              AI整備提案
+            </Link>
+            <Link href="/admin/customers" className="btn-secondary">
+              一覧に戻る
+            </Link>
+          </div>
         }
       />
 

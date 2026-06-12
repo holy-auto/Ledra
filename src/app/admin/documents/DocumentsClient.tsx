@@ -62,6 +62,77 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   // Delete
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // 一括ダウンロード (batch PDF) モード
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [downloading, setDownloading] = useState(false);
+
+  const visibleIds = docs.map((d) => d.id);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+
+  const toggleSelectMode = () => {
+    setSelectMode((prev) => {
+      if (prev) setSelectedIds(new Set());
+      return !prev;
+    });
+  };
+
+  const toggleOne = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllVisible = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        for (const id of visibleIds) next.delete(id);
+      } else {
+        for (const id of visibleIds) next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleBatchDownload = async () => {
+    const ids = Array.from(selectedIds).slice(0, 50);
+    if (ids.length === 0) return;
+    setDownloading(true);
+    try {
+      const res = await fetch("/api/admin/documents/batch-pdf", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ doc_ids: ids }),
+      });
+      if (!res.ok) {
+        const j = await parseJsonSafe(res);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const isZip = blob.type.includes("zip");
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const today = new Date().toISOString().slice(0, 10);
+      a.download = isZip ? `documents_${today}.zip` : `document_${today}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setSaveMsg({ text: `${ids.length}件の帳票をダウンロードしました`, ok: true });
+      setSelectMode(false);
+      setSelectedIds(new Set());
+    } catch (e: any) {
+      alert("一括ダウンロードに失敗しました: " + (e?.message ?? String(e)));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const handleFilterChange = (newType: string, newStatus: string) => {
     setTypeFilter(newType);
     setStatusFilter(newStatus);
@@ -100,16 +171,26 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
         title="帳票管理"
         description="見積書・納品書・請求書・領収書などの作成・管理を行います。"
         actions={
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => {
-              setShowForm(!showForm);
-              setSaveMsg(null);
-            }}
-          >
-            {showForm ? "閉じる" : "新規作成"}
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className={selectMode ? "btn-primary" : "btn-secondary"}
+              onClick={toggleSelectMode}
+              aria-pressed={selectMode}
+            >
+              {selectMode ? "選択を終了" : "一括ダウンロード"}
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => {
+                setShowForm(!showForm);
+                setSaveMsg(null);
+              }}
+            >
+              {showForm ? "閉じる" : "新規作成"}
+            </button>
+          </div>
         }
       />
 
@@ -194,6 +275,17 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
               <table className="min-w-full text-sm">
                 <thead className="bg-surface-hover">
                   <tr>
+                    {selectMode && (
+                      <th className="w-10 px-5 py-3 text-left">
+                        <input
+                          type="checkbox"
+                          aria-label="表示中の帳票をすべて選択"
+                          checked={allVisibleSelected}
+                          onChange={toggleAllVisible}
+                          className="h-4 w-4 cursor-pointer accent-accent"
+                        />
+                      </th>
+                    )}
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">種別</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">書類番号</th>
                     <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
@@ -211,7 +303,21 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                 </thead>
                 <tbody className="divide-y divide-border-subtle">
                   {docs.map((doc) => (
-                    <tr key={doc.id} className="hover:bg-surface-hover/60">
+                    <tr
+                      key={doc.id}
+                      className={`hover:bg-surface-hover/60 ${selectMode && selectedIds.has(doc.id) ? "bg-accent/5" : ""}`}
+                    >
+                      {selectMode && (
+                        <td className="px-5 py-3.5">
+                          <input
+                            type="checkbox"
+                            aria-label={`${doc.doc_number} を選択`}
+                            checked={selectedIds.has(doc.id)}
+                            onChange={() => toggleOne(doc.id)}
+                            className="h-4 w-4 cursor-pointer accent-accent"
+                          />
+                        </td>
+                      )}
                       <td className="px-5 py-3.5">
                         <Badge variant={DOC_TYPES[doc.doc_type]?.color ?? "default"}>
                           {docTypeLabel(doc.doc_type)}
@@ -256,7 +362,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                   ))}
                   {docs.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-5 py-8 text-center text-muted">
+                      <td colSpan={selectMode ? 8 : 7} className="px-5 py-8 text-center text-muted">
                         帳票がありません
                       </td>
                     </tr>
@@ -266,6 +372,28 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
             </div>
           </section>
         </>
+      )}
+
+      {/* 一括ダウンロード フローティングアクションバー */}
+      {selectMode && selectedIds.size > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <div className="glass-card flex w-full max-w-3xl items-center justify-between gap-4 px-5 py-3 shadow-lg">
+            <div className="text-sm font-medium text-primary">{selectedIds.size}件選択中</div>
+            <div className="flex items-center gap-2">
+              <button type="button" className="btn-ghost px-3 py-1.5 text-sm" onClick={() => setSelectedIds(new Set())}>
+                選択解除
+              </button>
+              <button
+                type="button"
+                className="btn-primary px-4 py-1.5 text-sm"
+                disabled={downloading}
+                onClick={handleBatchDownload}
+              >
+                {downloading ? "生成中…" : "PDFを一括ダウンロード"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

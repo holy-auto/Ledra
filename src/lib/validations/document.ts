@@ -136,3 +136,16 @@ export const documentUpdateSchema = documentCreateSchema.partial().extend({
 export const documentDeleteSchema = z.object({
   id: z.string().uuid("無効なIDです。"),
 });
+
+/**
+ * 帳票一括 PDF ダウンロードのリクエスト。
+ * 1〜50 件の document id を受け取り、ZIP (または 1 件なら PDF) を返す。
+ */
+export const documentBatchPdfSchema = z.object({
+  doc_ids: z
+    .array(z.string().uuid("無効なIDです。"))
+    .min(1, "帳票を1件以上選択してください。")
+    .max(50, "一度にダウンロードできるのは50件までです。"),
+});
+
+export type DocumentBatchPdfInput = z.infer<typeof documentBatchPdfSchema>;
