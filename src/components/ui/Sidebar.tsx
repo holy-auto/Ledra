@@ -181,6 +181,20 @@ const NAV_GROUPS: NavGroup[] = [
         ),
       },
       {
+        href: "/admin/body-repair",
+        label: "鈑金工程",
+        requiredPermission: "reservations:view",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M11.42 15.17 17.25 21A2.652 2.652 0 0 0 21 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 1 1-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 0 0 4.486-6.336l-3.276 3.277a3.004 3.004 0 0 1-2.25-2.25l3.276-3.276a4.5 4.5 0 0 0-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437 1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008Z"
+            />
+          </svg>
+        ),
+      },
+      {
         href: "/admin/coupons",
         label: "クーポン管理",
         requiredPermission: "customers:view",
@@ -413,6 +427,20 @@ const NAV_GROUPS: NavGroup[] = [
               strokeLinecap="round"
               strokeLinejoin="round"
               d="M8.625 9.75a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z"
+            />
+          </svg>
+        ),
+      },
+      {
+        href: "/admin/line-broadcasts",
+        label: "LINE配信",
+        requiredPermission: "customers:view",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M2.25 12.76c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 0 1 1.037-.443 48.282 48.282 0 0 0 5.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z"
             />
           </svg>
         ),
@@ -833,6 +861,18 @@ const NAV_GROUPS: NavGroup[] = [
     defaultOpen: false,
   },
   {
+    label: "経理",
+    items: [
+      {
+        href: "/admin/payment-ledger",
+        label: "売掛元帳",
+        requiredPermission: "invoices:view",
+        icon: <span className="text-base leading-none">💴</span>,
+      },
+    ],
+    defaultOpen: true,
+  },
+  {
     label: "設定",
     items: [
       {
@@ -877,6 +917,12 @@ const NAV_GROUPS: NavGroup[] = [
             />
           </svg>
         ),
+      },
+      {
+        href: "/admin/stocktake",
+        label: "在庫棚卸",
+        requiredPermission: "menu_items:manage",
+        icon: <span className="text-base leading-none">📦</span>,
       },
       // テンプレート編集は無効化（プリセットテンプレートを使用）
       {
