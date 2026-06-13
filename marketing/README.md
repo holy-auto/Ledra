@@ -12,6 +12,8 @@ LinkedIn へ **毎朝1本** 自動投稿する仕組みです。Ledra のメリ�
 | `src/lib/marketing/linkedin.ts` | LinkedIn REST Posts API クライアント（トークンを受け取り投稿） |
 | `src/lib/marketing/linkedinTokens.ts` | トークン保管＋**自動リフレッシュ**（期限前に更新しDBへ書き戻し） |
 | `src/app/api/cron/linkedin-posting/route.ts` | 毎日のcronエンドポイント |
+| `src/lib/marketing/runLinkedInPost.ts` | cron / 手動テスト共通の「次の1本を投稿」ロジック |
+| `src/app/api/admin/marketing/linkedin/test/route.ts` | 手動テスト用エンドポイント（運営管理者限定） |
 | `supabase/migrations/20260611000000_marketing_linkedin_log.sql` | 投稿ログ＆ローテーション管理テーブル |
 | `supabase/migrations/20260611000001_marketing_linkedin_credentials.sql` | トークン保管テーブル（暗号化・シングルトン行） |
 
@@ -88,6 +90,33 @@ npx prettier --write src/lib/marketing/linkedinPosts.ts
 ```
 
 （`linkedinPosts.ts` を直接編集してもOKです。その場合は JSON も合わせて更新してください。）
+
+## 手動テスト（cronを待たずに確認）
+
+承認直後の動作確認用に、運営管理者限定のエンドポイントを用意しています。
+**プラットフォーム管理者（Ledra運営テナントの owner/admin、または super_admin）**として
+ログインした状態で叩いてください。
+
+```bash
+# 1) 投稿せず「いま投稿できる状態か」を確認（トークン解決のドライラン＋直近ログ）
+curl -s https://<your-domain>/api/admin/marketing/linkedin/test \
+  -H "Cookie: <ログイン済みセッション>"
+#   → { ready: true/false, enabled, next: {...}, recent: [...] }
+
+# 2) いますぐ「次の1本」を本番投稿（動作確認）
+curl -s -X POST https://<your-domain>/api/admin/marketing/linkedin/test \
+  -H "Cookie: <ログイン済みセッション>"
+
+# 3) ローテーションを無視して特定の day を投稿
+curl -s -X POST "https://<your-domain>/api/admin/marketing/linkedin/test?day=1" ...
+
+# 4) 投稿せずトークン解決だけ確認（POSTのドライラン）
+curl -s -X POST "https://<your-domain>/api/admin/marketing/linkedin/test?dryRun=1" ...
+```
+
+`ready: false` のときは `next.reason` に理由が入ります（`disabled` / `not-configured`
+/ `refresh-failed` / `token-expired-needs-reauth`）。まず GET でドライランし、
+`ready: true` を確認してから POST で本番投稿するのがおすすめです。
 
 ## マイグレーション適用
 
