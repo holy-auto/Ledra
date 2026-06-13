@@ -51,8 +51,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ short_id: 
 
   try {
     const minted = await mintInvitationFromLink(link, baseUrl);
-    // 既存の公開フォームへ誘導 (絶対 URL の path 部分のみを返す)
-    return apiOk({ intake_path: `/intake/${minted.shortId}?t=${minted.rawToken}` });
+    // 既存の公開フォームへ誘導するための識別子のみを返す (経路はクライアントで
+    // 定数プレフィックス付きで組み立てるため、オープンリダイレクトにならない).
+    return apiOk({ short_id: minted.shortId, token: minted.rawToken });
   } catch (err) {
     return apiInternalError(err, "POST /api/intake/link/[short_id]");
   }

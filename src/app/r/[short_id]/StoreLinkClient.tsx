@@ -60,11 +60,19 @@ export default function StoreLinkClient({ shortId }: { shortId: string }) {
         method: "POST",
       });
       const j = await res.json().catch(() => null);
-      if (!res.ok || !j?.ok || !j.intake_path) {
+      if (!res.ok || !j?.ok) {
         setStartErr(j?.error?.message ?? j?.message ?? "開始できませんでした");
         return;
       }
-      router.push(j.intake_path as string);
+      // サーバが返すのは識別子のみ。経路は定数プレフィックス + 形式検証で組み立て、
+      // 任意 URL への遷移 (オープンリダイレクト) を防ぐ。
+      const mintedShortId = typeof j.short_id === "string" ? j.short_id : "";
+      const mintedToken = typeof j.token === "string" ? j.token : "";
+      if (!/^[a-z0-9]{8}$/.test(mintedShortId) || !mintedToken) {
+        setStartErr("開始できませんでした");
+        return;
+      }
+      router.push(`/intake/${mintedShortId}?t=${encodeURIComponent(mintedToken)}`);
     } catch (e) {
       setStartErr(e instanceof Error ? e.message : "通信エラー");
     } finally {
