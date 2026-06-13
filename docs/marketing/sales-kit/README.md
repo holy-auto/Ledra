@@ -14,9 +14,12 @@
 | No | 資料名 | ファイル | 主な用途 | 渡す相手 |
 |---|---|---|---|---|
 | 1 | **料金プラン・機能比較表** | [`01-pricing-and-features.md`](./01-pricing-and-features.md) | 料金・プラン選び・他社比較の説明 | 施工店の経営者／決裁者 |
-| 2 | **サービス利用規約** | [`02-terms-of-service.md`](./02-terms-of-service.md) | 契約条件・責任範囲の確認 | 施工店の経営者／法務 |
+| 2 | **サービス利用規約（説明付き）** | [`02-terms-of-service.md`](./02-terms-of-service.md) | 商談時に条文をかみくだいて説明する社内用 | 営業担当が説明に使用 |
+| 2-正 | **サービス利用規約（正規版）** | [`terms-of-service-official.md`](./terms-of-service-official.md) | お客さまに配布する正式な契約条件 | 施工店の経営者／法務 |
 | 3 | **操作マニュアル** | [`03-operation-manual.md`](./03-operation-manual.md) | 導入後の使い方・現場スタッフ向け | 施工店の現場スタッフ |
 | 4 | **施工店向け 紹介パンフレット** | [`04-shop-brochure.md`](./04-shop-brochure.md) | サービスの魅力を1冊で伝える | 施工店（最初に渡す1枚） |
+
+> **利用規約の2種類について**: `02-terms-of-service.md` は条文＋やさしい解説を併記した **営業担当の説明用（社内用）** です。お客さまへ実際に配布・提示するのは、解説のない **正規版 `terms-of-service-official.md`** を使用してください。
 
 ---
 
