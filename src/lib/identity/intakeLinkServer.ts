@@ -73,6 +73,7 @@ export async function createStoreLink(input: CreateStoreLinkInput): Promise<Crea
         tenant_id: input.tenantId,
         store_id: input.storeId ?? null,
         token_hash: tokenHash,
+        token_plain: rawToken,
         short_id: shortId,
         label: input.label ?? null,
         created_by: input.createdBy,
@@ -179,14 +180,18 @@ export interface StoreLinkRow {
   submission_count: number;
   created_at: string;
   last_used_at: string | null;
+  /** 再表示用の完全な URL. raw token を保持しているため任意のタイミングで再生成できる. */
+  url: string;
 }
 
-/** tenant の登録リンク一覧を返す. */
-export async function listStoreLinks(tenantId: string): Promise<StoreLinkRow[]> {
+/** tenant の登録リンク一覧を返す. url は baseUrl から再構成する. */
+export async function listStoreLinks(tenantId: string, baseUrl: string): Promise<StoreLinkRow[]> {
   const { admin } = createTenantScopedAdmin(tenantId);
   const { data, error } = await admin
     .from("customer_intake_links")
-    .select("id, short_id, store_id, label, is_active, submission_count, created_at, last_used_at, stores(name)")
+    .select(
+      "id, short_id, store_id, label, is_active, submission_count, created_at, last_used_at, token_plain, stores(name)",
+    )
     .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false });
   if (error) throw error;
@@ -204,6 +209,7 @@ export async function listStoreLinks(tenantId: string): Promise<StoreLinkRow[]> 
       submission_count: r.submission_count,
       created_at: r.created_at,
       last_used_at: r.last_used_at,
+      url: `${baseUrl}/r/${r.short_id}?t=${r.token_plain}`,
     };
   });
 }

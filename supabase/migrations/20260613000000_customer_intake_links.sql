@@ -19,8 +19,12 @@ CREATE TABLE IF NOT EXISTS customer_intake_links (
   tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   -- 店舗ごとに発行。店舗が消えたらリンクも消す。
   store_id uuid REFERENCES stores(id) ON DELETE CASCADE,
-  -- sha256(token || pepper). raw token は never stored.
+  -- sha256(token || pepper). 公開フローの検証はこのハッシュ照合で行う.
   token_hash text NOT NULL UNIQUE,
+  -- raw token. このリンクは「登録フォームを開くだけ」の低リスク用途であり、
+  -- 店舗が QR/URL をいつでも再表示・再印刷できる必要があるため、招待 (1回限り)
+  -- と違って raw token も保持する. 参照できるのは RLS で tenant 内に限定される.
+  token_plain text NOT NULL,
   -- URL の人間可読部分 (例: /r/abc23xyz).
   short_id text NOT NULL UNIQUE,
   -- 表示用ラベル (任意). 例: "本店 受付QR".

@@ -85,6 +85,7 @@ interface StoreLink {
   submission_count: number;
   created_at: string;
   last_used_at: string | null;
+  url: string;
 }
 
 interface StoreLinksResp {
@@ -178,6 +179,18 @@ export default function CustomerIntakesClient() {
   function copyLinkUrl() {
     if (!createdLink) return;
     void navigator.clipboard.writeText(createdLink.url);
+  }
+
+  // 既存リンクの QR/URL をいつでも再表示する
+  const [shownLink, setShownLink] = useState<StoreLink | null>(null);
+  const [shownQrSvg, setShownQrSvg] = useState<string | null>(null);
+
+  async function openShowLink(lk: StoreLink) {
+    setShownLink(lk);
+    setShownQrSvg(null);
+    const { default: QRCode } = await import("qrcode");
+    const svg = await QRCode.toString(lk.url, { type: "svg", margin: 1, width: 256 });
+    setShownQrSvg(svg);
   }
 
   async function handleCreate() {
@@ -514,8 +527,7 @@ export default function CustomerIntakesClient() {
                   </button>
                 </div>
                 <p className="text-xs text-muted">
-                  ※ この URL は今だけ表示されます。閉じると再表示できないため、QR を保存・印刷するか URL
-                  を控えてください。
+                  ※ この QR / URL は下の一覧の「QR/URL表示」からいつでも再表示・再印刷できます。
                 </p>
               </div>
               {linkQrSvg && (
@@ -554,15 +566,24 @@ export default function CustomerIntakesClient() {
                     </td>
                     <td className="px-4 py-2 text-muted">{lk.submission_count} 件</td>
                     <td className="px-4 py-2 text-muted">{formatDate(lk.created_at)}</td>
-                    <td className="px-4 py-2 text-right">
+                    <td className="px-4 py-2 text-right space-x-3 whitespace-nowrap">
                       {lk.is_active && (
-                        <button
-                          type="button"
-                          className="text-xs text-danger"
-                          onClick={() => handleDeactivateLink(lk.id)}
-                        >
-                          無効化
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            className="text-xs font-semibold text-accent"
+                            onClick={() => openShowLink(lk)}
+                          >
+                            QR/URL表示
+                          </button>
+                          <button
+                            type="button"
+                            className="text-xs text-danger"
+                            onClick={() => handleDeactivateLink(lk.id)}
+                          >
+                            無効化
+                          </button>
+                        </>
                       )}
                     </td>
                   </tr>
@@ -626,6 +647,67 @@ export default function CustomerIntakesClient() {
           </tbody>
         </table>
       </section>
+
+      {/* 既存リンクの QR/URL 再表示モーダル */}
+      {shownLink && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShownLink(null);
+              setShownQrSvg(null);
+            }
+          }}
+        >
+          <div className="w-full max-w-md space-y-4 rounded-2xl bg-surface p-6 shadow-xl">
+            <div>
+              <div className="text-xs font-semibold tracking-[0.18em] text-muted">店舗用 登録QR</div>
+              <h2 className="mt-1 text-base font-semibold text-primary">
+                {shownLink.store_name ?? shownLink.label ?? "登録リンク"}
+              </h2>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-muted">URL</label>
+              <div className="flex gap-2">
+                <input className="input-field flex-1" readOnly value={shownLink.url} />
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => void navigator.clipboard.writeText(shownLink.url)}
+                >
+                  コピー
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center gap-2 rounded-xl border border-border-default bg-surface p-4">
+              {shownQrSvg ? (
+                <div
+                  className="rounded-lg bg-white p-2 [&_svg]:h-48 [&_svg]:w-48"
+                  dangerouslySetInnerHTML={{ __html: shownQrSvg }}
+                />
+              ) : (
+                <div className="py-12 text-sm text-muted">QR生成中…</div>
+              )}
+              <p className="text-xs text-muted">このQRを店頭に掲示してください</p>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  setShownLink(null);
+                  setShownQrSvg(null);
+                }}
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {reviewing && (
         <div

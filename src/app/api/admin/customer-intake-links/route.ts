@@ -32,8 +32,11 @@ export async function GET(req: NextRequest) {
   if (!caller) return apiUnauthorized();
   if (!hasPermission(caller.role, "customers:view")) return apiForbidden();
 
+  const baseUrl =
+    process.env.NEXT_PUBLIC_APP_URL ?? process.env.APP_URL ?? `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+
   try {
-    const links = await listStoreLinks(caller.tenantId);
+    const links = await listStoreLinks(caller.tenantId, baseUrl);
     return apiOk({ links });
   } catch (err) {
     return apiInternalError(err, "GET /api/admin/customer-intake-links");
