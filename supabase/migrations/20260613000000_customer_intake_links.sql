@@ -75,7 +75,9 @@ CREATE POLICY intake_link_tenant_delete ON customer_intake_links
 COMMENT ON TABLE customer_intake_links IS
   '店舗ごとに発行する繰り返し利用可能な顧客登録リンク/QR. 開くたびに customer_intake_invitations の1回限りトークンを mint する.';
 COMMENT ON COLUMN customer_intake_links.token_hash IS
-  'sha256(intakelink|token|pepper). raw token は never stored.';
+  'sha256(intakelink|token|pepper). 公開フローの検証用.';
+COMMENT ON COLUMN customer_intake_links.token_plain IS
+  'raw token. 店舗が QR/URL を再表示するために保持. 参照は RLS で tenant 内に限定.';
 COMMENT ON COLUMN customer_intake_links.submission_count IS
   'このリンク経由で発行された intake の累計件数 (best-effort).';
 
@@ -96,5 +98,7 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION increment_intake_link_usage(uuid) FROM public;
+-- service_role からのみ呼ぶ (公開フローは service-role admin 経由). anon/authenticated
+-- には明示的に EXECUTE を渡さない (SECURITY DEFINER の濫用面を最小化).
+REVOKE ALL ON FUNCTION increment_intake_link_usage(uuid) FROM public, anon, authenticated;
 GRANT EXECUTE ON FUNCTION increment_intake_link_usage(uuid) TO service_role;
