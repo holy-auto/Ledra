@@ -192,16 +192,25 @@ export default function CustomersClient() {
         description="顧客情報の登録・編集・検索を行います。"
         actions={
           <MutationGuard>
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={() => {
-                setShowForm(!showForm);
-                setSaveMsg(null);
-              }}
-            >
-              {showForm ? "閉じる" : "新規追加"}
-            </button>
+            <div className="flex flex-wrap items-center gap-3">
+              <Link
+                href="/admin/customer-intakes"
+                className="btn-secondary"
+                title="お客様自身がスマホから登録できるWeb登録用URL・QRコードを発行します"
+              >
+                Web登録URLを発行
+              </Link>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => {
+                  setShowForm(!showForm);
+                  setSaveMsg(null);
+                }}
+              >
+                {showForm ? "閉じる" : "新規追加"}
+              </button>
+            </div>
           </MutationGuard>
         }
       />
