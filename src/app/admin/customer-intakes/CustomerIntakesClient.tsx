@@ -75,6 +75,40 @@ interface CreateResp {
   expires_at: string;
 }
 
+interface StoreLink {
+  id: string;
+  short_id: string;
+  store_id: string | null;
+  store_name: string | null;
+  label: string | null;
+  is_active: boolean;
+  submission_count: number;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+interface StoreLinksResp {
+  ok: true;
+  links: StoreLink[];
+}
+
+interface Store {
+  id: string;
+  name: string;
+  is_active: boolean;
+}
+
+interface StoresResp {
+  stores: Store[];
+}
+
+interface CreateLinkResp {
+  ok: true;
+  id: string;
+  short_id: string;
+  url: string;
+}
+
 export default function CustomerIntakesClient() {
   const [showForm, setShowForm] = useState(false);
   const [label, setLabel] = useState("");
@@ -86,6 +120,65 @@ export default function CustomerIntakesClient() {
   const [qrSvg, setQrSvg] = useState<string | null>(null);
 
   const { data, mutate } = useSWR<ListResp>("/api/admin/customer-intakes", fetcher);
+
+  // ── 店舗用 登録リンク (繰り返し使える固定 QR) ───────────────
+  const { data: linksData, mutate: mutateLinks } = useSWR<StoreLinksResp>("/api/admin/customer-intake-links", fetcher);
+  const { data: storesData } = useSWR<StoresResp>("/api/admin/stores", fetcher);
+  const stores = (storesData?.stores ?? []).filter((s) => s.is_active);
+
+  const [showLinkForm, setShowLinkForm] = useState(false);
+  const [linkStoreId, setLinkStoreId] = useState("");
+  const [linkLabel, setLinkLabel] = useState("");
+  const [linkCreating, setLinkCreating] = useState(false);
+  const [linkErr, setLinkErr] = useState<string | null>(null);
+  const [createdLink, setCreatedLink] = useState<CreateLinkResp | null>(null);
+  const [linkQrSvg, setLinkQrSvg] = useState<string | null>(null);
+
+  async function handleCreateLink() {
+    setLinkCreating(true);
+    setLinkErr(null);
+    setCreatedLink(null);
+    setLinkQrSvg(null);
+    try {
+      const res = await fetch("/api/admin/customer-intake-links", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          store_id: linkStoreId || null,
+          label: linkLabel.trim() || null,
+        }),
+      });
+      const j = await res.json();
+      if (!res.ok || !j?.ok) {
+        setLinkErr(j?.error?.message ?? j?.message ?? "発行に失敗しました");
+        return;
+      }
+      setCreatedLink(j);
+      const { default: QRCode } = await import("qrcode");
+      const svg = await QRCode.toString(j.url, { type: "svg", margin: 1, width: 256 });
+      setLinkQrSvg(svg);
+      mutateLinks();
+    } catch (e) {
+      setLinkErr(e instanceof Error ? e.message : "通信エラー");
+    } finally {
+      setLinkCreating(false);
+    }
+  }
+
+  async function handleDeactivateLink(id: string) {
+    if (!confirm("このリンクを無効化しますか？掲示中のQRが使えなくなります。")) return;
+    const res = await fetch(`/api/admin/customer-intake-links/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      alert("無効化に失敗しました");
+      return;
+    }
+    mutateLinks();
+  }
+
+  function copyLinkUrl() {
+    if (!createdLink) return;
+    void navigator.clipboard.writeText(createdLink.url);
+  }
 
   async function handleCreate() {
     setCreating(true);
@@ -348,6 +441,137 @@ export default function CustomerIntakesClient() {
           )}
         </section>
       )}
+
+      {/* 店舗用 登録QRコード (繰り返し使える固定リンク) */}
+      <section className="glass-card p-5 space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted">店舗用 登録QR</div>
+            <div className="mt-1 text-base font-semibold text-primary">店舗ごとの顧客登録QR / URL</div>
+            <p className="mt-1 text-xs text-muted">
+              待合室・レジ横などに掲示する繰り返し使えるQRです。お客様が読み取って自分で登録でき、AIが内容を確認して自動登録します。来店していないお客様にはURLを共有してください。
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => {
+              setShowLinkForm((v) => !v);
+              setCreatedLink(null);
+              setLinkQrSvg(null);
+              setLinkErr(null);
+            }}
+          >
+            {showLinkForm ? "閉じる" : "リンクを発行"}
+          </button>
+        </div>
+
+        {showLinkForm &&
+          (!createdLink ? (
+            <div className="space-y-3 rounded-xl border border-border-default bg-surface p-4">
+              {stores.length > 0 && (
+                <div className="space-y-1">
+                  <label className="text-xs text-muted">店舗</label>
+                  <select className="input-field" value={linkStoreId} onChange={(e) => setLinkStoreId(e.target.value)}>
+                    <option value="">店舗を選択しない</option>
+                    {stores.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="space-y-1">
+                <label className="text-xs text-muted">ラベル (任意 / 管理用)</label>
+                <input
+                  className="input-field"
+                  value={linkLabel}
+                  onChange={(e) => setLinkLabel(e.target.value)}
+                  placeholder="例: 本店 受付QR"
+                />
+              </div>
+              {linkErr && (
+                <div className="rounded-xl border border-danger-border bg-danger-bg px-3 py-2 text-sm text-danger-text">
+                  {linkErr}
+                </div>
+              )}
+              <button type="button" className="btn-primary" onClick={handleCreateLink} disabled={linkCreating}>
+                {linkCreating ? "発行中…" : "QR / URL を発行"}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3 rounded-xl border border-success-border bg-success-bg/40 p-4">
+              <div className="text-sm text-success-text">
+                発行しました。下記の QR を印刷して掲示するか、URL を共有してください。
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted">URL</label>
+                <div className="flex gap-2">
+                  <input className="input-field flex-1" readOnly value={createdLink.url} />
+                  <button type="button" className="btn-secondary" onClick={copyLinkUrl}>
+                    コピー
+                  </button>
+                </div>
+                <p className="text-xs text-muted">
+                  ※ この URL は今だけ表示されます。閉じると再表示できないため、QR を保存・印刷するか URL
+                  を控えてください。
+                </p>
+              </div>
+              {linkQrSvg && (
+                <div className="flex flex-col items-center gap-2 rounded-xl border border-border-default bg-surface p-4">
+                  <div
+                    className="rounded-lg bg-white p-2 [&_svg]:h-48 [&_svg]:w-48"
+                    dangerouslySetInnerHTML={{ __html: linkQrSvg }}
+                  />
+                  <p className="text-xs text-muted">このQRを店頭に掲示してください</p>
+                </div>
+              )}
+            </div>
+          ))}
+
+        {(linksData?.links ?? []).length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-surface-hover text-xs uppercase text-muted">
+                <tr>
+                  <th className="px-4 py-2 text-left">店舗 / ラベル</th>
+                  <th className="px-4 py-2 text-left">状態</th>
+                  <th className="px-4 py-2 text-left">登録数</th>
+                  <th className="px-4 py-2 text-left">作成日</th>
+                  <th className="px-4 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {(linksData?.links ?? []).map((lk) => (
+                  <tr key={lk.id} className="border-t border-border-default/50">
+                    <td className="px-4 py-2 text-primary">
+                      {lk.store_name ?? lk.label ?? <span className="text-muted">（店舗未指定）</span>}
+                      {lk.store_name && lk.label && <span className="ml-2 text-xs text-muted">{lk.label}</span>}
+                    </td>
+                    <td className="px-4 py-2">
+                      {lk.is_active ? <Badge variant="success">有効</Badge> : <Badge variant="default">無効</Badge>}
+                    </td>
+                    <td className="px-4 py-2 text-muted">{lk.submission_count} 件</td>
+                    <td className="px-4 py-2 text-muted">{formatDate(lk.created_at)}</td>
+                    <td className="px-4 py-2 text-right">
+                      {lk.is_active && (
+                        <button
+                          type="button"
+                          className="text-xs text-danger"
+                          onClick={() => handleDeactivateLink(lk.id)}
+                        >
+                          無効化
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <section className="glass-card overflow-hidden">
         <table className="w-full text-sm">
