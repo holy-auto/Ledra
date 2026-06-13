@@ -137,7 +137,7 @@ export default function AgentMaterialsPage() {
       if (!res.ok) throw new Error("download_failed");
       const json = await res.json();
       if (json.url) {
-        window.open(json.url, "_blank");
+        window.location.href = json.url;
       }
     } catch {
       // ignore

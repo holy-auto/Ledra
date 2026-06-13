@@ -69,10 +69,12 @@ describe("buildCsp", () => {
     expect(csp["connect-src"]).toContain("https://api.stripe.com");
   });
 
-  it("allows Supabase in img-src and connect-src", () => {
+  it("allows Supabase in img-src, connect-src, and frame-src (PDF preview iframes)", () => {
     const csp = buildCsp({ nonce: NONCE, isDev: false });
     expect(csp["img-src"]).toContain("https://*.supabase.co");
     expect(csp["connect-src"]).toContain("https://*.supabase.co");
+    expect(csp["frame-src"]).toContain("https://*.supabase.co");
+    expect(csp["frame-src"]).toContain("https://*.supabase.in");
   });
 
   it("allows Sentry telemetry in connect-src", () => {

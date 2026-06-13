@@ -48,6 +48,8 @@ export default function MaterialsManager() {
   const [previewBusy, setPreviewBusy] = useState<string | null>(null);
   const [downloadBusy, setDownloadBusy] = useState<string | null>(null);
   const [seedingDemo, setSeedingDemo] = useState(false);
+  const [replacingFile, setReplacingFile] = useState<string | null>(null);
+  const replaceFileRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   // Upload form
   const fileRef = useRef<HTMLInputElement>(null);
@@ -193,7 +195,7 @@ export default function MaterialsManager() {
         });
         return;
       }
-      if (json.url) window.open(json.url, "_blank");
+      if (json.url) window.location.href = json.url;
     } catch {
       setMsg({ text: "ダウンロードの取得中にエラーが発生しました。", ok: false });
     } finally {
@@ -241,6 +243,30 @@ export default function MaterialsManager() {
       // ignore
     } finally {
       setActionBusy(null);
+    }
+  };
+
+  const handleReplaceFile = async (id: string, file: File) => {
+    setReplacingFile(id);
+    setMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/admin/agent-materials/${id}`, {
+        method: "PATCH",
+        body: fd,
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMsg({ text: j?.message ?? j?.error ?? "ファイルの差し替えに失敗しました", ok: false });
+        return;
+      }
+      setMsg({ text: "ファイルを差し替えました", ok: true });
+      fetchData();
+    } catch {
+      setMsg({ text: "ファイルの差し替え中にエラーが発生しました", ok: false });
+    } finally {
+      setReplacingFile(null);
     }
   };
 
@@ -561,6 +587,28 @@ export default function MaterialsManager() {
                         >
                           {m.is_published ? "非公開" : "公開"}
                         </button>
+                        <>
+                          <input
+                            type="file"
+                            ref={(el) => {
+                              replaceFileRefs.current[m.id] = el;
+                            }}
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) handleReplaceFile(m.id, file);
+                              e.target.value = "";
+                            }}
+                          />
+                          <button
+                            onClick={() => replaceFileRefs.current[m.id]?.click()}
+                            disabled={replacingFile === m.id || actionBusy === m.id}
+                            className="rounded-lg border border-blue-300 bg-blue-50 px-2 py-1 text-xs text-blue-700 hover:bg-blue-100 disabled:opacity-40"
+                            title="ファイルを差し替える"
+                          >
+                            {replacingFile === m.id ? "差し替え中..." : "差し替え"}
+                          </button>
+                        </>
                         <button
                           onClick={() => deleteMaterial(m.id)}
                           disabled={actionBusy === m.id}

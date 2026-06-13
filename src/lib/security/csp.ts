@@ -96,7 +96,14 @@ export function buildCsp(options: CspOptions): Record<CspDirective, string[]> {
       "https://*.posthog.com",
       "https://*.i.posthog.com",
     ],
-    "frame-src": ["https://js.stripe.com", "https://hooks.stripe.com", "https://vercel.live"],
+    "frame-src": [
+      "https://js.stripe.com",
+      "https://hooks.stripe.com",
+      "https://vercel.live",
+      // Supabase Storage signed URLs — used in PDF preview iframes
+      "https://*.supabase.co",
+      "https://*.supabase.in",
+    ],
     "media-src": ["'none'"],
     "object-src": ["'none'"],
     "base-uri": ["'self'"],

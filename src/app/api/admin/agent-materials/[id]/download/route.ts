@@ -39,7 +39,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
           {
             error: "file_not_in_storage",
             message:
-              "ファイルがストレージに見つかりません。管理画面の「デモファイル生成」ボタンで実ファイルをアップロードしてください。",
+              "ファイルがストレージにアップロードされていません。操作列の「差し替え」ボタンから実ファイルをアップロードしてください。",
           },
           { status: 404 },
         );
