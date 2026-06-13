@@ -59,7 +59,28 @@ export default function MaterialsManager() {
   const [version, setVersion] = useState("");
   const [isPinned, setIsPinned] = useState(false);
 
-  const fetchData = async () => {
+  const runSeed = async () => {
+    setSeedingDemo(true);
+    try {
+      const res = await fetch("/api/admin/agent-materials/seed-demo-files", { method: "POST" });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok || res.status === 207) {
+        const failed = (json.results ?? []).filter((r: { ok: boolean }) => !r.ok);
+        if (failed.length > 0) {
+          setMsg({
+            text: `初期ファイルの生成に一部失敗しました（${failed.length} 件）。各行の「差し替え」から手動でアップロードしてください。`,
+            ok: false,
+          });
+        }
+      }
+    } catch {
+      // seed failure is non-fatal; user can replace files manually
+    } finally {
+      setSeedingDemo(false);
+    }
+  };
+
+  const fetchData = async (opts?: { autoSeedIfEmpty?: boolean }) => {
     setLoading(true);
     try {
       const res = await fetch("/api/admin/agent-materials", { cache: "no-store" });
@@ -70,6 +91,9 @@ export default function MaterialsManager() {
         if (!categoryId && json.categories?.length) {
           setCategoryId(json.categories[0].id);
         }
+        if (opts?.autoSeedIfEmpty && !json.storageInitialized && (json.materials?.length ?? 0) > 0) {
+          await runSeed();
+        }
       }
     } catch {
       // ignore
@@ -79,7 +103,7 @@ export default function MaterialsManager() {
   };
 
   useEffect(() => {
-    fetchData();
+    fetchData({ autoSeedIfEmpty: true });
   }, []);
 
   const handleUpload = async () => {
@@ -203,31 +227,6 @@ export default function MaterialsManager() {
     }
   };
 
-  const seedDemoFiles = async () => {
-    if (!confirm("デモ用プレースホルダーPDFをストレージに生成・アップロードします。よろしいですか？")) return;
-    setSeedingDemo(true);
-    setMsg(null);
-    try {
-      const res = await fetch("/api/admin/agent-materials/seed-demo-files", { method: "POST" });
-      const json = await res.json().catch(() => ({}));
-      if (res.ok || res.status === 207) {
-        const failed = (json.results ?? []).filter((r: { ok: boolean }) => !r.ok);
-        setMsg(
-          failed.length === 0
-            ? { text: "デモファイルを生成しました。プレビュー・ダウンロードをお試しください。", ok: true }
-            : { text: `${failed.length} 件の生成に失敗しました。`, ok: false },
-        );
-        fetchData();
-      } else {
-        setMsg({ text: "デモファイルの生成に失敗しました。", ok: false });
-      }
-    } catch {
-      setMsg({ text: "デモファイルの生成中にエラーが発生しました。", ok: false });
-    } finally {
-      setSeedingDemo(false);
-    }
-  };
-
   const deleteMaterial = async (id: string) => {
     if (!confirm("この資料を削除しますか？")) return;
     setActionBusy(id);
@@ -274,16 +273,28 @@ export default function MaterialsManager() {
     <div className="space-y-4">
       {/* Actions bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <span className="text-sm text-muted">{materials.length} 件の資料</span>
+        <span className="text-sm text-muted">
+          {seedingDemo ? (
+            <span className="flex items-center gap-2 text-muted">
+              <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24">
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                  fill="none"
+                />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              ファイルを初期化中...
+            </span>
+          ) : (
+            `${materials.length} 件の資料`
+          )}
+        </span>
         <div className="flex gap-2">
-          <button
-            onClick={seedDemoFiles}
-            disabled={seedingDemo}
-            className="rounded-xl border border-border-default bg-surface px-3 py-2 text-sm font-medium text-secondary hover:bg-surface-hover disabled:opacity-40"
-            title="デモ用プレースホルダーPDFをストレージに生成"
-          >
-            {seedingDemo ? "生成中..." : "デモファイル生成"}
-          </button>
           <button onClick={() => setShowUpload(!showUpload)} className="btn-primary">
             {showUpload ? "閉じる" : "新規アップロード"}
           </button>

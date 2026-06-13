@@ -29,12 +29,13 @@ export async function GET(request: NextRequest) {
     else materialsQuery = materialsQuery.limit(p.perPage);
 
     // Categories are reference data — never paginate; the list is small.
-    const [catResult, matResult] = await Promise.all([
+    const [catResult, matResult, storageCheck] = await Promise.all([
       admin
         .from("agent_material_categories")
         .select("id, name, sort_order, created_at, updated_at")
         .order("sort_order", { ascending: true }),
       materialsQuery,
+      admin.storage.from("agent-materials").list("materials", { limit: 1 }),
     ]);
 
     const materials = (matResult.data ?? []).map((m: any) => ({
@@ -43,9 +44,12 @@ export async function GET(request: NextRequest) {
       agent_material_categories: undefined,
     }));
 
+    const storageInitialized = (storageCheck.data?.length ?? 0) > 0;
+
     return apiJson({
       categories: catResult.data ?? [],
       materials,
+      storageInitialized,
       page: p.page,
       per_page: p.perPage,
       total: matResult.count ?? null,
