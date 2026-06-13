@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     const [catResult, matResult] = await Promise.all([
       admin
         .from("agent_material_categories")
-        .select("id, name, sort_order, created_at, updated_at")
+        .select("id, name, slug, sort_order, created_at")
         .order("sort_order", { ascending: true }),
       materialsQuery,
     ]);
