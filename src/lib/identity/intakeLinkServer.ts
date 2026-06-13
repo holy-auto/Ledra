@@ -34,8 +34,12 @@ export function hashLinkToken(token: string): string {
 
 /** URL に載せる short_id (8 文字、紛らわしい文字を除外). */
 function generateShortId(): string {
-  const bytes = crypto.randomBytes(5);
-  return [...bytes].map((b) => "abcdefghjkmnpqrstuvwxyz23456789"[b % 30]).join("");
+  // crypto.randomInt は内部で棄却サンプリングを行い、剰余バイアスなく一様に
+  // 選ぶ ([0, n) の一様分布). `randomBytes % 30` のような剰余バイアスを避ける.
+  const alphabet = "abcdefghjkmnpqrstuvwxyz23456789"; // 30 文字
+  let out = "";
+  for (let i = 0; i < 8; i++) out += alphabet[crypto.randomInt(alphabet.length)];
+  return out;
 }
 
 /** raw token 本体 (URL のクエリに載せる). 32 bytes 256bit. */
