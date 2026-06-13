@@ -16,6 +16,7 @@
 import crypto from "crypto";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { createIntakeInvitation, type CreatedIntake } from "@/lib/identity/intakeServer";
+import { encryptSecret, decryptSecret } from "@/lib/crypto/secretBox";
 
 /** mint する1回限り intake の有効期限 (日). 店頭でその場入力する想定なので短め. */
 const MINTED_INTAKE_EXPIRY_DAYS = 1;
@@ -63,6 +64,8 @@ export interface CreateStoreLinkInput {
 export async function createStoreLink(input: CreateStoreLinkInput): Promise<CreatedStoreLink> {
   const rawToken = generateRawToken();
   const tokenHash = hashLinkToken(rawToken);
+  // 再表示できるよう token を復号可能な形で保持するが、平文では保存せず暗号化する.
+  const tokenCipher = await encryptSecret(rawToken);
   const { admin } = createTenantScopedAdmin(input.tenantId);
 
   for (let i = 0; i < 3; i++) {
@@ -73,7 +76,7 @@ export async function createStoreLink(input: CreateStoreLinkInput): Promise<Crea
         tenant_id: input.tenantId,
         store_id: input.storeId ?? null,
         token_hash: tokenHash,
-        token_plain: rawToken,
+        token_cipher: tokenCipher,
         short_id: shortId,
         label: input.label ?? null,
         created_by: input.createdBy,
@@ -180,38 +183,51 @@ export interface StoreLinkRow {
   submission_count: number;
   created_at: string;
   last_used_at: string | null;
-  /** 再表示用の完全な URL. raw token を保持しているため任意のタイミングで再生成できる. */
+  /**
+   * 再表示用の完全な URL. token を復号して再構成する.
+   * 復号できない (鍵未設定など) 場合は空文字。
+   */
   url: string;
 }
 
-/** tenant の登録リンク一覧を返す. url は baseUrl から再構成する. */
+/** tenant の登録リンク一覧を返す. url は token を復号して再構成する. */
 export async function listStoreLinks(tenantId: string, baseUrl: string): Promise<StoreLinkRow[]> {
   const { admin } = createTenantScopedAdmin(tenantId);
   const { data, error } = await admin
     .from("customer_intake_links")
     .select(
-      "id, short_id, store_id, label, is_active, submission_count, created_at, last_used_at, token_plain, stores(name)",
+      "id, short_id, store_id, label, is_active, submission_count, created_at, last_used_at, token_cipher, stores(name)",
     )
     .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false });
   if (error) throw error;
 
-  return (data ?? []).map((r) => {
-    const store = r.stores as { name: string | null } | { name: string | null }[] | null;
-    const storeName = Array.isArray(store) ? (store[0]?.name ?? null) : (store?.name ?? null);
-    return {
-      id: r.id,
-      short_id: r.short_id,
-      store_id: r.store_id,
-      store_name: storeName,
-      label: r.label,
-      is_active: r.is_active,
-      submission_count: r.submission_count,
-      created_at: r.created_at,
-      last_used_at: r.last_used_at,
-      url: `${baseUrl}/r/${r.short_id}?t=${r.token_plain}`,
-    };
-  });
+  return Promise.all(
+    (data ?? []).map(async (r) => {
+      const store = r.stores as { name: string | null } | { name: string | null }[] | null;
+      const storeName = Array.isArray(store) ? (store[0]?.name ?? null) : (store?.name ?? null);
+      let url = "";
+      try {
+        const rawToken = await decryptSecret(r.token_cipher);
+        url = `${baseUrl}/r/${r.short_id}?t=${rawToken}`;
+      } catch {
+        // 鍵未設定 / envelope 破損時は再表示不可 (空文字). 機能は縮退するが一覧は出す.
+        url = "";
+      }
+      return {
+        id: r.id,
+        short_id: r.short_id,
+        store_id: r.store_id,
+        store_name: storeName,
+        label: r.label,
+        is_active: r.is_active,
+        submission_count: r.submission_count,
+        created_at: r.created_at,
+        last_used_at: r.last_used_at,
+        url,
+      };
+    }),
+  );
 }
 
 /** リンクを無効化 (is_active=false). 履歴は残す. */

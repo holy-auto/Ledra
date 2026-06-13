@@ -21,10 +21,11 @@ CREATE TABLE IF NOT EXISTS customer_intake_links (
   store_id uuid REFERENCES stores(id) ON DELETE CASCADE,
   -- sha256(token || pepper). 公開フローの検証はこのハッシュ照合で行う.
   token_hash text NOT NULL UNIQUE,
-  -- raw token. このリンクは「登録フォームを開くだけ」の低リスク用途であり、
-  -- 店舗が QR/URL をいつでも再表示・再印刷できる必要があるため、招待 (1回限り)
-  -- と違って raw token も保持する. 参照できるのは RLS で tenant 内に限定される.
-  token_plain text NOT NULL,
+  -- raw token を AES-256-GCM で暗号化した envelope (v1.iv.ct). このリンクは
+  -- 「登録フォームを開くだけ」の低リスク用途だが、店舗が QR/URL をいつでも
+  -- 再表示・再印刷できる必要があるため token を復号可能な形で保持する.
+  -- 平文では保存しない (SECRET_ENCRYPTION_KEY で暗号化). 参照は RLS で tenant 内に限定.
+  token_cipher text NOT NULL,
   -- URL の人間可読部分 (例: /r/abc23xyz).
   short_id text NOT NULL UNIQUE,
   -- 表示用ラベル (任意). 例: "本店 受付QR".
@@ -76,8 +77,8 @@ COMMENT ON TABLE customer_intake_links IS
   '店舗ごとに発行する繰り返し利用可能な顧客登録リンク/QR. 開くたびに customer_intake_invitations の1回限りトークンを mint する.';
 COMMENT ON COLUMN customer_intake_links.token_hash IS
   'sha256(intakelink|token|pepper). 公開フローの検証用.';
-COMMENT ON COLUMN customer_intake_links.token_plain IS
-  'raw token. 店舗が QR/URL を再表示するために保持. 参照は RLS で tenant 内に限定.';
+COMMENT ON COLUMN customer_intake_links.token_cipher IS
+  'raw token を AES-256-GCM 暗号化した envelope. 店舗が QR/URL を再表示するために保持. 平文では保存しない.';
 COMMENT ON COLUMN customer_intake_links.submission_count IS
   'このリンク経由で発行された intake の累計件数 (best-effort).';
 

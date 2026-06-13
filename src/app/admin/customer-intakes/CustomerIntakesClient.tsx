@@ -569,13 +569,15 @@ export default function CustomerIntakesClient() {
                     <td className="px-4 py-2 text-right space-x-3 whitespace-nowrap">
                       {lk.is_active && (
                         <>
-                          <button
-                            type="button"
-                            className="text-xs font-semibold text-accent"
-                            onClick={() => openShowLink(lk)}
-                          >
-                            QR/URL表示
-                          </button>
+                          {lk.url && (
+                            <button
+                              type="button"
+                              className="text-xs font-semibold text-accent"
+                              onClick={() => openShowLink(lk)}
+                            >
+                              QR/URL表示
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="text-xs text-danger"
