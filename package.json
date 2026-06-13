@@ -34,7 +34,8 @@
   },
   "overrides": {
     "picomatch": "^4.0.4",
-    "ox": "0.14.29"
+    "ox": "0.14.29",
+    "esbuild": "0.28.1"
   },
   "lint-staged": {
     "src/**/*.{ts,tsx}": [
