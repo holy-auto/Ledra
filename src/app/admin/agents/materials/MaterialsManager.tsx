@@ -1,9 +1,13 @@
 "use client";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Badge from "@/components/ui/Badge";
 import { formatDateTime } from "@/lib/format";
+import { createClient } from "@/lib/supabase/client";
+
+const MATERIALS_BUCKET = "agent-materials";
+const MAX_MATERIAL_SIZE = 100 * 1024 * 1024; // 100MB — keep in sync with the API
 
 type Category = {
   id: string;
@@ -37,6 +41,7 @@ function formatFileSize(bytes: number): string {
 }
 
 export default function MaterialsManager() {
+  const supabase = useMemo(() => createClient(), []);
   const [categories, setCategories] = useState<Category[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,20 +92,50 @@ export default function MaterialsManager() {
       return;
     }
 
+    if (file.size > MAX_MATERIAL_SIZE) {
+      setMsg(`ファイルサイズは ${Math.floor(MAX_MATERIAL_SIZE / (1024 * 1024))}MB 以下にしてください。`);
+      return;
+    }
+
     setUploading(true);
     setMsg(null);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("title", title);
-      fd.append("category_id", categoryId);
-      fd.append("description", description);
-      fd.append("version", version);
-      fd.append("is_pinned", isPinned ? "true" : "false");
+      // Step 1: ask the server for a signed upload URL (tiny JSON request).
+      const urlRes = await fetch("/api/admin/agent-materials/upload-url", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ file_name: file.name, file_type: file.type, file_size: file.size }),
+      });
+      if (!urlRes.ok) {
+        const j = await parseJsonSafe(urlRes);
+        throw new Error(j?.error ?? `HTTP ${urlRes.status}`);
+      }
+      const { path, token, storage_path } = await urlRes.json();
 
+      // Step 2: upload the file bytes DIRECTLY to Supabase Storage, bypassing
+      // the hosting platform's request body limit (the cause of HTTP 413).
+      const { error: uploadErr } = await supabase.storage
+        .from(MATERIALS_BUCKET)
+        .uploadToSignedUrl(path, token, file, { contentType: file.type || undefined });
+      if (uploadErr) {
+        throw new Error(uploadErr.message || "ストレージへのアップロードに失敗しました。");
+      }
+
+      // Step 3: create the DB record with metadata only.
       const res = await fetch("/api/admin/agent-materials", {
         method: "POST",
-        body: fd,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title,
+          category_id: categoryId,
+          description,
+          version,
+          is_pinned: isPinned,
+          storage_path,
+          file_name: file.name,
+          file_size: file.size,
+          file_type: file.type,
+        }),
       });
       if (!res.ok) {
         const j = await parseJsonSafe(res);
