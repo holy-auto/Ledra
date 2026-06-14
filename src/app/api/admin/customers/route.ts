@@ -253,8 +253,10 @@ export async function DELETE(req: NextRequest) {
     // RLS をバイパスしてサービスロールで操作（tenant_id で必ずスコープ限定）
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
-    // リンク済み証明書/請求書があるか確認（並列実行）
-    const [{ count: certCount }, { count: invCount }] = await Promise.all([
+    // 紐付くデータがあると外部キー制約 (ON DELETE: 無指定 = RESTRICT) で
+    // 削除が失敗するため、事前に件数を確認して分かりやすいメッセージを返す。
+    // 対象は ON DELETE 制約が RESTRICT のテーブル: 証明書 / 帳票 / 予約。
+    const [{ count: certCount }, { count: docCount }, { count: reservationCount }] = await Promise.all([
       admin
         .from("certificates")
         .select("id", { count: "exact", head: true })
@@ -264,17 +266,35 @@ export async function DELETE(req: NextRequest) {
         .from("documents")
         .select("id", { count: "exact", head: true })
         .eq("tenant_id", caller.tenantId)
-        .in("doc_type", ["invoice", "consolidated_invoice"])
+        .eq("customer_id", id),
+      admin
+        .from("reservations")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", caller.tenantId)
         .eq("customer_id", id),
     ]);
 
-    if ((certCount ?? 0) > 0 || (invCount ?? 0) > 0) {
-      return apiValidationError("この顧客には証明書または請求書が紐付いているため削除できません。");
+    const blockers: string[] = [];
+    if ((certCount ?? 0) > 0) blockers.push(`証明書${certCount}件`);
+    if ((docCount ?? 0) > 0) blockers.push(`帳票${docCount}件`);
+    if ((reservationCount ?? 0) > 0) blockers.push(`予約${reservationCount}件`);
+
+    if (blockers.length > 0) {
+      return apiValidationError(
+        `この顧客には${blockers.join("・")}が紐付いているため削除できません。先に紐付くデータを削除または別の顧客へ移してください。`,
+      );
     }
 
     const { error } = await admin.from("customers").delete().eq("id", id).eq("tenant_id", caller.tenantId);
 
     if (error) {
+      // 事前チェックで捕捉できなかった外部キー制約違反 (Postgres 23503) は
+      // サーバーエラー扱いにせず、紐付くデータがある旨を返す。
+      if ((error as { code?: string }).code === "23503") {
+        return apiValidationError(
+          "この顧客には紐付くデータがあるため削除できません。先に紐付くデータを削除または別の顧客へ移してください。",
+        );
+      }
       return apiInternalError(error, "customers DELETE");
     }
 
