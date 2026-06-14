@@ -13,6 +13,12 @@ export interface AutoSendContext {
   partnerTrusted: boolean;
   /** パートナーが API 連携済みか (メールのみは自動送信しない)。 */
   partnerHasApi: boolean;
+  /**
+   * パートナーが Ledra ホストの受注ポータルを使うか (supply_partners.portal_enabled)。
+   * ポータルは Ledra が両側を握るプル型で確実に届くため、API 同様に構造化搬送として
+   * 自動送信の対象に含める (信頼パートナーなら API 無しでも可)。既定 false。
+   */
+  partnerHasPortal?: boolean;
   /** この発注の概算合計 (円)。 */
   orderTotalJpy: number;
   /** 1 発注あたり上限 (円)。null/0 以下なら自動送信不可。 */
@@ -42,7 +48,8 @@ export type AutoSendDenyReason =
 export function decideAutoSend(ctx: AutoSendContext): AutoSendDecision {
   if (!ctx.optInEnabled) return { ok: false, reason: "opt_out" };
   if (!ctx.partnerTrusted) return { ok: false, reason: "partner_not_trusted" };
-  if (!ctx.partnerHasApi) return { ok: false, reason: "no_api_transport" };
+  // 構造化搬送 (API or ポータル) が無ければ自動送信しない。メールのみは対象外。
+  if (!ctx.partnerHasApi && !ctx.partnerHasPortal) return { ok: false, reason: "no_api_transport" };
   if (!(ctx.orderTotalJpy > 0)) return { ok: false, reason: "empty_order" };
   if (ctx.maxOrderJpy == null || ctx.maxOrderJpy <= 0) return { ok: false, reason: "no_per_order_cap" };
   if (ctx.orderTotalJpy > ctx.maxOrderJpy) return { ok: false, reason: "exceeds_per_order_cap" };

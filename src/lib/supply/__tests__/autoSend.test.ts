@@ -27,8 +27,19 @@ describe("decideAutoSend (壁3 隣接の全ガード)", () => {
     expect(decideAutoSend(ctx({ partnerTrusted: false }))).toEqual({ ok: false, reason: "partner_not_trusted" });
   });
 
-  it("denies partner without API transport (メールのみは自動送信しない)", () => {
+  it("denies partner without structured transport (メールのみは自動送信しない)", () => {
     expect(decideAutoSend(ctx({ partnerHasApi: false }))).toEqual({ ok: false, reason: "no_api_transport" });
+  });
+
+  it("allows trusted portal partner without API (ポータルは構造化搬送)", () => {
+    expect(decideAutoSend(ctx({ partnerHasApi: false, partnerHasPortal: true }))).toEqual({ ok: true });
+  });
+
+  it("denies when neither API nor portal is available", () => {
+    expect(decideAutoSend(ctx({ partnerHasApi: false, partnerHasPortal: false }))).toEqual({
+      ok: false,
+      reason: "no_api_transport",
+    });
   });
 
   it("denies empty/zero order", () => {
