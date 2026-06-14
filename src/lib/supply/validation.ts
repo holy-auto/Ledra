@@ -51,3 +51,36 @@ export const supplyProductUpdateSchema = supplyProductSchema.partial().extend({
 });
 
 export const supplyProductDeleteSchema = z.object({ id: z.string().uuid("無効なIDです。") });
+
+/** メーカーがポータルで発注に回答する (受注 / 一部欠品 / 辞退)。 */
+export const supplyPortalRespondSchema = z
+  .object({
+    action: z.enum(["accept", "partial", "decline"]),
+    // partial 時の行ごとの受注数量。accept/decline では無視される。
+    lines: z
+      .array(
+        z.object({
+          item_id: z.string().uuid("無効な明細IDです。"),
+          accepted_quantity: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
+        }),
+      )
+      .max(500)
+      .optional(),
+    decline_reason: z
+      .enum(["discontinued", "out_of_stock", "price_mismatch", "min_lot", "other"])
+      .nullable()
+      .optional(),
+    // 出荷予定日 (YYYY-MM-DD)。受注時に任意。
+    ship_eta: z
+      .string()
+      .trim()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "出荷予定日は YYYY-MM-DD 形式で入力してください。")
+      .nullable()
+      .optional(),
+    tracking_no: z.string().trim().max(120).nullable().optional(),
+    note: z.string().trim().max(2000).nullable().optional(),
+  })
+  .refine((v) => v.action !== "decline" || !!v.decline_reason, {
+    message: "辞退する場合は理由を選択してください。",
+    path: ["decline_reason"],
+  });

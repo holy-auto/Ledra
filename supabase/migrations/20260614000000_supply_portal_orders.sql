@@ -72,12 +72,15 @@ ALTER TABLE supply_partners
 COMMENT ON COLUMN supply_partners.portal_enabled IS
   'メーカーが Ledra ホストの受注ポータルを使うか。true なら API 無しでも transport=portal の対象。';
 
--- ═══ ⑤ メーカー回答列をテナント側更新から保護 (壁3 / source of truth 保護) ═══════
--- purchase_orders は tenant スコープの RLS で、テナントメンバーは行全体を UPDATE できる
--- (note 編集・承認など)。だが partner_response 系はメーカーの回答であり、テナント
--- (店舗ユーザー / クライアント直叩き) に書かせてはいけない。supply_partners の
--- guard_protected_cols と同じ作法で、service-role (auth.uid() IS NULL) 以外による
--- これら列の変更は差し戻す。Phase 2 のメーカー書き込みはサーバ API (service-role) 経由。
+-- ═══ ⑤ メーカー回答列をテナント側書き込みから保護 (壁3 / source of truth 保護) ═════
+-- purchase_orders は tenant スコープの RLS で、テナントメンバーは行を INSERT/UPDATE
+-- できる (発注作成・note 編集・承認など)。だが partner_response 系はメーカーの回答で
+-- あり、テナント (店舗ユーザー / クライアント直叩き) に書かせてはいけない。
+-- supply_partners の guard_protected_cols と同じ作法で、service-role (auth.uid() IS NULL)
+-- 以外による INSERT/UPDATE では:
+--   - UPDATE: これら列の変更を差し戻す (OLD 値を維持)。
+--   - INSERT: NULL に固定する (作成時に回答を仕込めない)。
+-- メーカーの回答書き込みはサーバ API (service-role) 経由のみ。
 CREATE OR REPLACE FUNCTION purchase_orders_guard_partner_response()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -86,12 +89,21 @@ SET search_path = ''
 AS $$
 BEGIN
   IF auth.uid() IS NOT NULL THEN
-    NEW.partner_response      := OLD.partner_response;
-    NEW.partner_responded_at  := OLD.partner_responded_at;
-    NEW.partner_ship_eta      := OLD.partner_ship_eta;
-    NEW.partner_tracking_no   := OLD.partner_tracking_no;
-    NEW.partner_response_note := OLD.partner_response_note;
-    NEW.decline_reason        := OLD.decline_reason;
+    IF TG_OP = 'UPDATE' THEN
+      NEW.partner_response      := OLD.partner_response;
+      NEW.partner_responded_at  := OLD.partner_responded_at;
+      NEW.partner_ship_eta      := OLD.partner_ship_eta;
+      NEW.partner_tracking_no   := OLD.partner_tracking_no;
+      NEW.partner_response_note := OLD.partner_response_note;
+      NEW.decline_reason        := OLD.decline_reason;
+    ELSE  -- INSERT
+      NEW.partner_response      := NULL;
+      NEW.partner_responded_at  := NULL;
+      NEW.partner_ship_eta      := NULL;
+      NEW.partner_tracking_no   := NULL;
+      NEW.partner_response_note := NULL;
+      NEW.decline_reason        := NULL;
+    END IF;
   END IF;
   RETURN NEW;
 END;
@@ -99,5 +111,35 @@ $$;
 
 DROP TRIGGER IF EXISTS trg_purchase_orders_guard_partner_response ON purchase_orders;
 CREATE TRIGGER trg_purchase_orders_guard_partner_response
-  BEFORE UPDATE ON purchase_orders
+  BEFORE INSERT OR UPDATE ON purchase_orders
   FOR EACH ROW EXECUTE FUNCTION purchase_orders_guard_partner_response();
+
+-- ═══ ⑥ 明細の受注/欠品数量も同様に保護 ════════════════════════════════════════
+-- accepted_quantity / backorder_quantity は partial/declined 回答時にメーカーが
+-- 確定する supplier-owned な状態。po_items_update (tenant) で書き換えられないよう、
+-- ④ と同じく service-role 以外の書き込みを差し戻す/NULL 固定する。
+-- (quantity / received / unit_cost 等の既存列は従来どおりテナントが編集可。)
+CREATE OR REPLACE FUNCTION purchase_order_items_guard_response_qty()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF auth.uid() IS NOT NULL THEN
+    IF TG_OP = 'UPDATE' THEN
+      NEW.accepted_quantity  := OLD.accepted_quantity;
+      NEW.backorder_quantity := OLD.backorder_quantity;
+    ELSE  -- INSERT
+      NEW.accepted_quantity  := NULL;
+      NEW.backorder_quantity := NULL;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_po_items_guard_response_qty ON purchase_order_items;
+CREATE TRIGGER trg_po_items_guard_response_qty
+  BEFORE INSERT OR UPDATE ON purchase_order_items
+  FOR EACH ROW EXECUTE FUNCTION purchase_order_items_guard_response_qty();
