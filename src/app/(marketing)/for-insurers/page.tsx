@@ -60,6 +60,11 @@ const securityHighlights = [
     title: "完全な操作ログ",
     description: "閲覧・検索・案件操作のすべてを監査ログとして保存。コンプライアンス対応を即時化。",
   },
+  {
+    title: "施工前後の膜厚エビデンス",
+    description:
+      "PosiTector などで計測した施工前後の膜厚を、証明書・車両に紐付けて保管。施工品質を申告ではなく、客観的な計測データで裏付けます。",
+  },
 ];
 
 const features = [
