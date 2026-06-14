@@ -15,6 +15,11 @@
 -- ═══ ① purchase_orders.transport に 'portal' を追加 (CHECK 再定義) ═══════════════
 -- 元の列は 20260601000000 で `CHECK (transport IN ('email','api'))` を inline 付与。
 -- 制約名は自動生成 (purchase_orders_transport_check)。冪等に drop → re-add する。
+--
+-- ゼロダウンタイム方針 (scripts/lint-migrations.js): CHECK は NOT VALID で追加し、
+-- 既存行のスキャン (ACCESS EXCLUSIVE 保持) を避ける。検証は後続マイグレーション
+-- 20260614000001 の VALIDATE CONSTRAINT (軽量ロック) で行う。既存行は email/api/NULL
+-- のみで新 CHECK を必ず満たすため検証は即時完了する。
 DO $$
 BEGIN
   IF EXISTS (
@@ -26,7 +31,7 @@ BEGIN
   END IF;
   ALTER TABLE purchase_orders
     ADD CONSTRAINT purchase_orders_transport_check
-    CHECK (transport IN ('email', 'api', 'portal'));
+    CHECK (transport IN ('email', 'api', 'portal')) NOT VALID;
 EXCEPTION
   WHEN undefined_table THEN NULL;  -- purchase_orders 未作成環境では何もしない
 END $$;
@@ -66,3 +71,33 @@ ALTER TABLE supply_partners
 
 COMMENT ON COLUMN supply_partners.portal_enabled IS
   'メーカーが Ledra ホストの受注ポータルを使うか。true なら API 無しでも transport=portal の対象。';
+
+-- ═══ ⑤ メーカー回答列をテナント側更新から保護 (壁3 / source of truth 保護) ═══════
+-- purchase_orders は tenant スコープの RLS で、テナントメンバーは行全体を UPDATE できる
+-- (note 編集・承認など)。だが partner_response 系はメーカーの回答であり、テナント
+-- (店舗ユーザー / クライアント直叩き) に書かせてはいけない。supply_partners の
+-- guard_protected_cols と同じ作法で、service-role (auth.uid() IS NULL) 以外による
+-- これら列の変更は差し戻す。Phase 2 のメーカー書き込みはサーバ API (service-role) 経由。
+CREATE OR REPLACE FUNCTION purchase_orders_guard_partner_response()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF auth.uid() IS NOT NULL THEN
+    NEW.partner_response      := OLD.partner_response;
+    NEW.partner_responded_at  := OLD.partner_responded_at;
+    NEW.partner_ship_eta      := OLD.partner_ship_eta;
+    NEW.partner_tracking_no   := OLD.partner_tracking_no;
+    NEW.partner_response_note := OLD.partner_response_note;
+    NEW.decline_reason        := OLD.decline_reason;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_purchase_orders_guard_partner_response ON purchase_orders;
+CREATE TRIGGER trg_purchase_orders_guard_partner_response
+  BEFORE UPDATE ON purchase_orders
+  FOR EACH ROW EXECUTE FUNCTION purchase_orders_guard_partner_response();
