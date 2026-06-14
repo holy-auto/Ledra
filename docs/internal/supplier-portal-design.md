@@ -147,21 +147,29 @@ RLS（Phase 2 で追加）：メーカー（`my_supply_partner_ids()`）が
 - [x] `decideAutoSend()` を portal トランスポートまで拡張（信頼 portal パートナーを対象に）
 - [x] ユニットテスト（portalResponse / autoSend 拡張）
 
-### Phase 2 — メーカー側ポータル UI + API
-- 受信トレイ `/supply/orders`（横断・タブ）
-- 発注詳細 + 回答 API（`POST /api/agent/supply/orders/[id]/respond`）— サーバ側で数量検証・backorder 算出（Phase 1 の純関数を使用）
-- RLS ポリシー追加
-- メール通知（新規発注時）
+### Phase 2 — メーカー側ポータル UI + API（実装済み）
+- [x] 受信トレイ `/agent/supply/orders`（横断・タブ）
+- [x] 発注詳細 + 回答 API（`POST /api/agent/supply/orders/[id]/respond`）— サーバ側で数量検証・backorder 算出（Phase 1 の純関数を使用）
+- [x] RLS ポリシー追加（`20260614000002`）
+- [x] メール通知（新規発注時 / `notifyPartnerNewPortalOrder`）
 
-### Phase 3 — ショップ側の受け皿
-- 発注一覧にポータル回答状態（受注/欠品/辞退・出荷予定）を表示
-- 欠品分の再発注/取消フロー
-- 全自動送信 UI の文言を「API・ポータル」に更新
+### Phase 2.5 — 投函（dispatch）経路（実装済み）
+- [x] 共通ヘルパ `markOrderDeliveredToPortal`（`transport='portal'` / `partner_response='pending'` / `sent`）
+- [x] ショップ手動送信（`PUT /api/admin/purchase-orders`）の搬送選定を API → **ポータル** → メール に拡張
+- [x] cron 全自動送信（`partnerReorder.ts`）で信頼 portal パートナーへ投函
+- [x] 投函時にメーカーへ通知（メール + 後述 LINE）
 
-### Phase 4 — LINE 通知
-- プラットフォーム共通 Ledra 公式 LINE チャネル
-- メーカーの友だち追加 + `line_user_id` 紐付け
-- 新規発注の LINE 通知（メール失敗時フォールバック含む）
+### Phase 3 — ショップ側の受け皿（一部実装済み）
+- [x] 発注一覧にポータル回答状態（受注/欠品/辞退・出荷予定・追跡・辞退理由）と行ごとの受注/欠品数量を表示
+- [x] 全自動送信 UI の文言を「API・ポータル」に更新
+- [ ] 欠品分の再発注/取消フロー（次の作業）
+
+### Phase 4 — LINE 通知（土台実装済み・運用設定は別途）
+- [x] `notifyPartnerNewPortalOrder` がプラットフォーム共通チャネルで best-effort 送信
+      （env `LEDRA_PARTNER_LINE_CHANNEL_ACCESS_TOKEN` + `supply_partners.line_user_id` があるときのみ）
+- [ ] メーカーの友だち追加 + `line_user_id` 紐付け導線（連携コード方式 / 運用設定）
+
+> 通知のリンク先は `APP_URL` から組み立てる（`resolveBaseUrl()`）。
 
 ---
 

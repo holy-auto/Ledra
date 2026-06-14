@@ -5,6 +5,12 @@ import useSWR from "swr";
 import PageHeader from "@/components/ui/PageHeader";
 import { fetcher } from "@/lib/swr";
 import { formatDate } from "@/lib/format";
+import {
+  SUPPLY_PARTNER_RESPONSE_LABELS,
+  SUPPLY_DECLINE_REASON_LABELS,
+  type SupplyPartnerResponse,
+  type SupplyDeclineReason,
+} from "@/types/supply";
 import AutoSendSettings from "./AutoSendSettings";
 
 /* ---------- Types ---------- */
@@ -17,6 +23,8 @@ type POItem = {
   unit_cost: number | null;
   amount: number;
   received: boolean;
+  accepted_quantity: number | null;
+  backorder_quantity: number | null;
 };
 
 type PurchaseOrder = {
@@ -30,9 +38,21 @@ type PurchaseOrder = {
   subtotal: number;
   transport: string | null;
   transport_status: string | null;
+  partner_response: SupplyPartnerResponse | null;
+  partner_responded_at: string | null;
+  partner_ship_eta: string | null;
+  partner_tracking_no: string | null;
+  decline_reason: SupplyDeclineReason | null;
   created_at: string;
   suppliers?: { name: string } | null;
   purchase_order_items?: POItem[];
+};
+
+const PARTNER_RESPONSE_CLASS: Record<SupplyPartnerResponse, string> = {
+  pending: "bg-amber-500/10 text-amber-500",
+  accepted: "bg-emerald-500/10 text-emerald-500",
+  partial: "bg-orange-500/10 text-orange-500",
+  declined: "bg-red-500/10 text-red-400",
 };
 
 type POResponse = { ok: boolean; purchase_orders: PurchaseOrder[] };
@@ -178,6 +198,21 @@ export default function PurchaseOrdersClient() {
                   <div className="text-xs text-muted">
                     仕入先: {supplierLabel(po)} ・ {formatDate(po.created_at)}
                   </div>
+                  {po.transport === "portal" && po.partner_response && (
+                    <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
+                      <span className="text-muted">メーカー回答:</span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 font-medium ${PARTNER_RESPONSE_CLASS[po.partner_response]}`}
+                      >
+                        {SUPPLY_PARTNER_RESPONSE_LABELS[po.partner_response]}
+                      </span>
+                      {po.partner_ship_eta && <span className="text-secondary">出荷予定 {po.partner_ship_eta}</span>}
+                      {po.partner_tracking_no && <span className="text-secondary">追跡 {po.partner_tracking_no}</span>}
+                      {po.partner_response === "declined" && po.decline_reason && (
+                        <span className="text-red-400">理由: {SUPPLY_DECLINE_REASON_LABELS[po.decline_reason]}</span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="text-right">
                   <div className="text-lg font-bold text-primary">¥{Number(po.subtotal).toLocaleString("ja-JP")}</div>
@@ -202,7 +237,14 @@ export default function PurchaseOrdersClient() {
                       <tr key={it.id} className="border-t border-border-subtle/40">
                         <td className="px-4 py-2 text-primary">{it.name}</td>
                         <td className="px-4 py-2 font-mono text-xs text-muted">{it.sku ?? "—"}</td>
-                        <td className="px-4 py-2 text-right text-secondary">{Number(it.quantity)}</td>
+                        <td className="px-4 py-2 text-right text-secondary">
+                          {Number(it.quantity)}
+                          {it.backorder_quantity != null && Number(it.backorder_quantity) > 0 && (
+                            <span className="ml-1 text-[10px] text-orange-500">
+                              （受注 {Number(it.accepted_quantity ?? 0)} / 欠品 {Number(it.backorder_quantity)}）
+                            </span>
+                          )}
+                        </td>
                         <td className="px-4 py-2 text-right text-secondary">
                           {it.unit_cost != null ? `¥${Number(it.unit_cost).toLocaleString("ja-JP")}` : "—"}
                         </td>
@@ -334,7 +376,14 @@ function AiDraftModal({
         onSent({ ok: false, text: j?.message ?? "発注の送信に失敗しました。" });
         return;
       }
-      const how = j.transport === "api" ? "API 発注" : j.emailed ? "メール送信" : "記録のみ (送信先未設定)";
+      const how =
+        j.transport === "api"
+          ? "API 発注"
+          : j.transport === "portal"
+            ? "ポータル投函"
+            : j.emailed
+              ? "メール送信"
+              : "記録のみ (送信先未設定)";
       onSent({ ok: true, text: `発注を送信しました（${how}）。` });
       onClose();
     } catch {
