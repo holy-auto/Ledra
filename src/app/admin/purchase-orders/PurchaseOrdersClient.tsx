@@ -124,6 +124,30 @@ export default function PurchaseOrdersClient() {
     return "—";
   };
 
+  const hasBackorder = (po: PurchaseOrder): boolean =>
+    po.partner_response === "partial" &&
+    (po.purchase_order_items ?? []).some((it) => it.backorder_quantity != null && Number(it.backorder_quantity) > 0);
+
+  const reorderBackorder = async (po: PurchaseOrder) => {
+    if (!confirm("欠品分を新しい発注ドラフトとして作成します。よろしいですか？")) return;
+    setBusyId(po.id);
+    setMsg(null);
+    try {
+      const res = await fetch(`/api/admin/purchase-orders/${po.id}/backorder`, { method: "POST" });
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j?.ok) {
+        setMsg({ ok: false, text: j?.message ?? "再発注ドラフトの作成に失敗しました。" });
+        return;
+      }
+      setMsg({ ok: true, text: "欠品分の発注ドラフトを作成しました（仕入先を選んで送信してください）。" });
+      await mutate();
+    } catch {
+      setMsg({ ok: false, text: "通信エラーが発生しました。" });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const transition = async (po: PurchaseOrder, to: PurchaseOrder["status"]) => {
     if (to === "sent" && !confirm(`発注「${po.po_number ?? ""}」を送信扱いにします。よろしいですか？`)) return;
     if (to === "cancelled" && !confirm("この発注を取消します。よろしいですか？")) return;
@@ -267,6 +291,16 @@ export default function PurchaseOrdersClient() {
                     disabled={busyId === po.id}
                   >
                     ✨ AI下書き
+                  </button>
+                )}
+                {hasBackorder(po) && (
+                  <button
+                    type="button"
+                    onClick={() => reorderBackorder(po)}
+                    className="btn-ghost text-xs text-orange-500"
+                    disabled={busyId === po.id}
+                  >
+                    欠品分を再発注
                   </button>
                 )}
                 <div className="flex-1" />
