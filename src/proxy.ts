@@ -279,8 +279,11 @@ async function refreshSession(request: NextRequest) {
     },
   });
 
-  // Only called when token is near expiry or cannot be decoded
-  await supabase.auth.getUser();
+  // Only called when token is near expiry or cannot be decoded.
+  // `.catch` guards against an unreachable or misconfigured Supabase endpoint
+  // (e.g. stub credentials in CI, or a transient auth outage): session refresh
+  // is best-effort and must not turn every public page into a 500.
+  await supabase.auth.getUser().catch(() => null);
 
   return response;
 }
@@ -312,9 +315,12 @@ async function refreshSessionAndProtect(request: NextRequest) {
     },
   });
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // `.catch` guards against an unreachable/misconfigured Supabase endpoint
+  // (stub credentials in CI, transient auth outage): a failed lookup must not
+  // 500 the request. On failure the visitor is treated as unauthenticated —
+  // protected prefixes below redirect to login; public pages fall through.
+  const auth = await supabase.auth.getUser().catch(() => null);
+  const user = auth?.data?.user ?? null;
 
   if (!user) {
     if (pathname.startsWith("/admin")) {
