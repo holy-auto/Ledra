@@ -31,7 +31,7 @@ create table if not exists service_reminders (
   ) stored,
   next_due_date date generated always as (
     case when last_service_date is not null and recommended_interval_months is not null
-    then (last_service_date + (recommended_interval_months || ' months')::interval)::date
+    then (last_service_date + make_interval(months => recommended_interval_months))::date
     else null end
   ) stored,
   status                      text not null default 'active'
