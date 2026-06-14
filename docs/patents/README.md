@@ -25,13 +25,16 @@
 | [drafts/](./drafts/) | **明細書（出願基礎ドラフト・弁理士提出レベル）** — 06/07/01。段落番号・ハードウェア協働の明記・具体的実施例・変形例・多カテゴリ多段の請求項・約400字要約・符号付き図面 | `drafts/明細書-*.md` | （出願原稿） |
 
 **drafts/ の出願実務アセット**
+- **[`drafts/出願実行手順.md`](./drafts/出願実行手順.md) … 出願ランブック（人が動く外部タスク＋提出順06→07→01＋GO/NO-GO）＝ここが実行の入口**
 - `drafts/明細書-06/07/01-*.md` … 出願基礎ドラフト（弁理士提出レベル・段落番号付き）
-- `drafts/jpo-format/` … JPO電子出願HTMLテンプレート（明細書/特許請求の範囲/要約書/図面/**願書**/**譲渡証**）＋様式規則＋**整理番号体系**（[guide](./drafts/jpo-format/README.md)）
+- `drafts/jpo-format/` … JPO電子出願HTMLテンプレート（明細書/特許請求の範囲/要約書/図面/**願書**/**譲渡証**）＋様式規則＋**整理番号体系**（[guide](./drafts/jpo-format/README.md)）。`md_to_jpo.py` で明細書MdをHTML化し **`jpo-format/out/06|07|01/`** に提出パッケージ（4HTML＋図GIF同梱）を自動生成
+- `drafts/法人出願-準備チェックリスト.md` 関連の前に、まず **[出願実行手順.md](./drafts/出願実行手順.md)** で全体の段取りを確認
 - `drafts/figures/` … 全14図（06×5・07×5・01×4）の編集マスタSVG＋PNG。`convert_to_jpo.py` で **JPO提出向け白黒1bit GIF/BMP** を `figures/jpo/` に一括生成
-- `drafts/en/` … **PCT/外国出願用 英文明細書**（06/07/01）＋ [PCT留意メモ](./drafts/en/pct-filing-notes.en.md)＋ [請求項対応表](./drafts/en/claim-correspondence-chart.md)（EN↔JP↔差別化軸）
+- `drafts/en/` … **PCT/外国出願用 英文明細書**（06/07/01）＋ [PCT留意メモ](./drafts/en/pct-filing-notes.en.md)＋ [請求項対応表](./drafts/en/claim-correspondence-chart.md)。`en_to_html.py` で **`en/out-en/06|07|01/`** に description/claims/abstract/drawings のHTML（図GIF同梱）を生成＋ [英語クレームチャート](./drafts/en/out-en/claim-chart.en.md)（out-en同梱）
 - `drafts/統合出願-単一性と統合請求項案.md` … 1出願に束ねる場合の単一性（37条）検討＋統合請求項（推奨は個別3出願）
-- `drafts/出願管理台帳.csv` ＋ [記入要領](./drafts/出願管理台帳-記入要領.md) … 整理番号・出願番号・**審査請求(出願+3年)/30条(出願+30日)/優先(出願+12月)/PCT移行(優先+30/31月)/年金** の期限管理
-- `drafts/法人出願-準備チェックリスト.md` … **法人(holy-auto)で出願する場合**の準備物（識別番号・**商業登記電子証明書**・願書記載・**職務発明の権利承継＝最重要**・減免・委任状）
+- `drafts/出願管理台帳.csv` / **`出願管理台帳.xlsx`（数式入り・出願日を入れると期限自動計算／`make_xlsx.py`）** ＋ [記入要領](./drafts/出願管理台帳-記入要領.md) … 出願人(株式会社HOLY)・**審査請求(出願+3年)/30条(出願+30日)/優先(出願+12月)/PCT移行(優先+30/31月)/年金** の期限管理
+- `drafts/check_paragraphs.py` … 明細書(和/英)の段落番号 連番QA（全件連番OK）
+- `drafts/法人出願-準備チェックリスト.md` … **法人(株式会社HOLY)で出願する場合**の準備物（識別番号・**商業登記電子証明書**・願書記載・**職務発明の権利承継＝最重要**・減免・委任状）
 
 ---
 
