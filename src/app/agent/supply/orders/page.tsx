@@ -120,6 +120,8 @@ export default function SupplyOrdersInboxPage() {
         <p className="text-xs text-muted">提携先からの発注を確認し、受注・一部欠品・辞退を回答できます。</p>
       </div>
 
+      <LineLinkCard />
+
       <div className="flex flex-wrap gap-2">
         {TABS.map((t) => (
           <button
@@ -173,6 +175,79 @@ export default function SupplyOrdersInboxPage() {
             void load();
           }}
         />
+      )}
+    </div>
+  );
+}
+
+function LineLinkCard() {
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState<string | null>(null);
+  const [addUrl, setAddUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const issue = async () => {
+    setLoading(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/agent/supply/line-link", { method: "POST" });
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j?.ok) {
+        setErr(j?.message ?? "コードの発行に失敗しました。");
+        return;
+      }
+      setCode(j.code as string);
+      setAddUrl((j.add_url as string | null) ?? null);
+    } catch {
+      setErr("通信エラーが発生しました。");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="glass-card overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between border-b border-border-subtle p-4 text-left"
+      >
+        <div>
+          <div className="text-sm font-semibold text-primary">LINEで発注通知を受け取る（任意）</div>
+          <div className="text-xs text-muted">Ledra公式LINEを友だち追加し、発行コードを送ると通知が届きます。</div>
+        </div>
+        <span className="text-sm text-muted">{open ? "閉じる ▲" : "設定 ▼"}</span>
+      </button>
+      {open && (
+        <div className="space-y-3 p-4 text-sm">
+          <ol className="list-decimal space-y-1 pl-5 text-xs text-secondary">
+            <li>下の「連携コードを発行」を押す。</li>
+            <li>Ledra公式LINEを友だち追加する{addUrl ? "（下のボタン）" : ""}。</li>
+            <li>トークにコードを送信すると連携完了。</li>
+          </ol>
+          {code ? (
+            <div className="rounded-lg bg-surface-subtle p-3 text-center">
+              <div className="text-xs text-muted">連携コード（30分有効）</div>
+              <div className="font-mono text-2xl font-bold tracking-widest text-primary">{code}</div>
+            </div>
+          ) : (
+            <button type="button" onClick={() => void issue()} disabled={loading} className="btn-primary text-sm">
+              {loading ? "発行中..." : "連携コードを発行"}
+            </button>
+          )}
+          {addUrl && (
+            <a
+              href={addUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block text-xs text-blue-500 underline"
+            >
+              Ledra公式LINEを友だち追加
+            </a>
+          )}
+          {err && <div className="text-xs text-red-500">{err}</div>}
+        </div>
       )}
     </div>
   );
