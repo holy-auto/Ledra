@@ -177,7 +177,7 @@ export async function PUT(req: NextRequest) {
     const { data: po, error: poErr } = await supabase
       .from("purchase_orders")
       .select(
-        "id, status, supplier_id, supply_partner_id, po_number, subtotal, note, purchase_order_items(id, item_id, name, sku, quantity, unit_cost)",
+        "id, status, supplier_id, supply_partner_id, po_number, subtotal, note, purchase_order_items(id, item_id, name, sku, quantity, unit_cost, accepted_quantity)",
       )
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
@@ -218,6 +218,7 @@ export async function PUT(req: NextRequest) {
       sku: string | null;
       quantity: number;
       unit_cost: number | null;
+      accepted_quantity: number | null;
     }>;
 
     let emailed = false;
@@ -271,11 +272,15 @@ export async function PUT(req: NextRequest) {
     if (nextStatus === "received") {
       for (const it of items) {
         if (!it.item_id) continue;
+        // ポータルで一部欠品の回答があった場合は実際に受注された数量を在庫計上する
+        // (accepted_quantity が null の通常発注は発注数量どおり)。
+        const inQty = it.accepted_quantity != null ? Number(it.accepted_quantity) : Number(it.quantity);
+        if (!(inQty > 0)) continue;
         const { error: mvErr } = await supabase.rpc("apply_inventory_movement", {
           p_tenant_id: caller.tenantId,
           p_item_id: it.item_id,
           p_type: "in",
-          p_quantity: it.quantity,
+          p_quantity: inQty,
           p_reason: `発注入荷 (${(po.po_number as string | null) ?? id})`,
           p_reservation_id: null,
           p_created_by: caller.userId,
