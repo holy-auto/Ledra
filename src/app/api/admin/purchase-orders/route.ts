@@ -20,6 +20,8 @@ import { enforceBilling } from "@/lib/billing/guard";
 import { sendEmail } from "@/lib/email/sendEmail";
 import { readSecret } from "@/lib/crypto/tenantSecrets";
 import { placeOrderViaApi, type SupplyAuthType } from "@/lib/supply/placeOrder";
+import { markOrderDeliveredToPortal } from "@/lib/supply/portalDispatch";
+import { notifyPartnerNewPortalOrder } from "@/lib/supply/portalNotify";
 import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -81,7 +83,7 @@ export async function GET(req: NextRequest) {
     let query = supabase
       .from("purchase_orders")
       .select(
-        "id, supplier_id, supply_partner_id, po_number, status, source, note, subtotal, transport, transport_status, approved_at, sent_at, received_at, created_at, suppliers(name), purchase_order_items(id, item_id, name, sku, quantity, unit_cost, amount, received)",
+        "id, supplier_id, supply_partner_id, po_number, status, source, note, subtotal, transport, transport_status, partner_response, partner_responded_at, partner_ship_eta, partner_tracking_no, decline_reason, approved_at, sent_at, received_at, created_at, suppliers(name), purchase_order_items(id, item_id, name, sku, quantity, unit_cost, amount, received, accepted_quantity, backorder_quantity)",
       )
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
@@ -219,7 +221,7 @@ export async function PUT(req: NextRequest) {
     }>;
 
     let emailed = false;
-    let transport: "api" | "email" | null = null;
+    let transport: "api" | "email" | "portal" | null = null;
     let externalOrderId: string | null = null;
     // 送信 (外部コミット = 人の操作で初めて起きる)。
     //  - 店舗ローカル仕入先 (supplier_id): メール送付。
@@ -241,6 +243,7 @@ export async function PUT(req: NextRequest) {
           supabase,
           caller.tenantId,
           po.supply_partner_id as string,
+          id,
           poForSend,
         );
         transport = r.transport;
@@ -249,7 +252,9 @@ export async function PUT(req: NextRequest) {
       }
 
       // 搬送結果を発注書に記録 (API 注文番号・搬送ステータス)。
-      const transportStatus = transport === "api" ? "acked" : transport === "email" ? "sent" : "failed";
+      // portal は markOrderDeliveredToPortal が transport/partner_response を確定済みのため
+      // ここでの上書きは整合する値 (transport='portal' / transport_status='sent')。
+      const transportStatus = transport === "api" ? "acked" : transport ? "sent" : "failed";
       await supabase
         .from("purchase_orders")
         .update({
@@ -323,8 +328,9 @@ async function dispatchSupplyPartnerOrder(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   tenantId: string,
   supplyPartnerId: string,
+  poId: string,
   po: PoForSend,
-): Promise<{ transport: "api" | "email" | null; externalOrderId: string | null; ok: boolean }> {
+): Promise<{ transport: "api" | "email" | "portal" | null; externalOrderId: string | null; ok: boolean }> {
   try {
     // 自店が提携済みか (RLS スコープの SSR クライアントで確認)。
     const { data: link } = await supabase
@@ -337,11 +343,11 @@ async function dispatchSupplyPartnerOrder(
 
     // パートナー情報 + 鍵は owner 専用 RLS のため platform スコープで読む。
     const admin = createPlatformScopedAdmin(
-      "purchase-orders: 提携済み供給パートナーへの実発注搬送 (鍵復号 + API/メール送信)",
+      "purchase-orders: 提携済み供給パートナーへの実発注搬送 (鍵復号 + API/ポータル/メール送信)",
     );
     const { data: partner } = await admin
       .from("supply_partners")
-      .select("name, contact_email, api_endpoint, api_auth_type, api_config")
+      .select("name, contact_email, api_endpoint, api_auth_type, api_config, portal_enabled, line_user_id")
       .eq("id", supplyPartnerId)
       .maybeSingle();
     if (!partner) return { transport: null, externalOrderId: null, ok: false };
@@ -375,12 +381,31 @@ async function dispatchSupplyPartnerOrder(
         if (result.ok) {
           return { transport: "api", externalOrderId: result.externalOrderId, ok: true };
         }
-        logger.warn("[purchase-orders] supply partner API order failed, falling back to email", {
+        logger.warn("[purchase-orders] supply partner API order failed, falling back to portal/email", {
           tenantId,
           supplyPartnerId,
           err: result.error,
         });
       }
+    }
+
+    // API が無い / 失敗した場合、ポータル連携が有効ならポータルに投函する。
+    // メーカーが受信トレイで受注/欠品/辞退を回答できる (メールの送りっぱなしより上位)。
+    if (partner.portal_enabled === true) {
+      const delivered = await markOrderDeliveredToPortal(admin, tenantId, poId);
+      if (delivered) {
+        const { data: tenant } = await admin.from("tenants").select("name").eq("id", tenantId).maybeSingle();
+        await notifyPartnerNewPortalOrder(
+          {
+            partnerName: (partner.name as string | null) ?? null,
+            email: (partner.contact_email as string | null) ?? null,
+            lineUserId: (partner.line_user_id as string | null) ?? null,
+          },
+          { shopName: (tenant?.name as string | null) ?? "当店", poNumber: po.poNumber },
+        );
+        return { transport: "portal", externalOrderId: null, ok: true };
+      }
+      logger.warn("[purchase-orders] portal delivery failed, falling back to email", { tenantId, supplyPartnerId });
     }
 
     // フォールバック: 連絡先メール。
