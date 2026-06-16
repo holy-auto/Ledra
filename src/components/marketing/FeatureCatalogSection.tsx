@@ -77,7 +77,7 @@ const CATEGORIES = [
     items: [
       "案件ワークフロー (予約→入金を1画面)",
       "在庫管理 (Square 連携)",
-      "塗膜厚レポート (NexDiag / PosiTector)",
+      "塗膜厚レポート (NexDiag)",
       "帳票・工程テンプレート",
     ],
   },

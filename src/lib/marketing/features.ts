@@ -51,7 +51,7 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
       {
         title: "塗膜厚レポート",
         description:
-          "PosiTector / NexDiag などの膜厚計測データを車両・施工に紐付けて保管。施工前後の膜厚比較を、客観的な品質トレースとして残せます。",
+          "NexPTG（NexDiag）の膜厚計データを VIN で車両に紐付けて保管。施工品質を、客観的な計測データとして残せます。",
         href: "/features/thickness",
       },
     ],

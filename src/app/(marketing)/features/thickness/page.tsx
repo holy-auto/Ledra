@@ -11,7 +11,7 @@ import { ScrollReveal } from "@/components/marketing/ScrollReveal";
 export const metadata = {
   title: "塗膜厚レポート",
   description:
-    "PosiTector / DeFelsko などの膜厚計測データを車両・施工に紐付けて保管。施工前後の膜厚を、客観的な品質トレースとして残す Ledra の塗膜厚レポート機能です。",
+    "NexPTG（NexDiag）の膜厚計アプリから測定データを取り込み、VIN で車両に自動紐付け。施工品質を客観的な計測データとして残す Ledra の塗膜厚レポート機能です。",
   alternates: { canonical: "/features/thickness" },
 };
 
@@ -22,33 +22,34 @@ const problems = [
   },
   {
     title: "計測データが計測器に眠る",
-    desc: "膜厚計で測っても、データは機器やメモに散在。どの車両のどの施工の測定値かが結びつかず、後から振り返れません。",
+    desc: "膜厚計で測っても、データは機器やメモに散在。どの車両の測定値かが結びつかず、後から振り返れません。",
   },
   {
-    title: "施工前後の比較を示せない",
-    desc: "「どれだけ塗膜が乗ったか」を施工前後で比較できないと、顧客や保険会社に対して仕上がりの根拠を提示しにくくなります。",
+    title: "品質の裏付けが口頭だけ",
+    desc: "膜厚という客観的な数値があっても、記録として残さなければ、顧客や品質管理での説明は口頭止まりになります。",
   },
 ];
 
 const capabilityCards = [
   {
-    title: "計測器のデータを取り込む",
+    title: "NexPTG の測定データを取り込む",
     description:
-      "PosiTector / DeFelsko 系などの膜厚計測機から測定データを取り込み。測定日・デバイス型番・ブランドとともに保管します。",
+      "NexPTG（NexDiag）の膜厚計アプリから測定データを取り込み。測定日・デバイスのシリアル番号・ブランド・モデルとともに保管します。",
   },
   {
-    title: "車両・施工に紐付けて保管",
+    title: "VIN で車両に自動紐付け",
     description:
-      "測定データを車両 VIN・施工メニュー・証明書に紐付け。未紐付け / 紐付け済み / 全体のタブで、件数を見ながら整理できます。",
+      "取り込んだ測定レポートを、VIN をキーに該当車両へ自動で紐付け。未紐付け / 紐付け済みのタブで、紐付け状況を確認しながら整理できます。",
   },
   {
-    title: "施工前後の膜厚を比較",
+    title: "品質を数値として残す",
     description:
-      "施工前後の膜厚を比較できる形で残し、仕上がりを数値で裏付け。顧客説明や、保険会社向けの客観的なエビデンスとして活用できます。",
+      "膜厚を計測データとして車両に紐付けて保管。施工品質を、申告ではなく数値で裏付けられます。顧客への説明や品質管理の資料として活用できます。",
   },
   {
-    title: "検索でいつでも遡れる",
-    description: "測定日・デバイス型番・ブランド・車両 VIN・施工メニューで検索。過去の測定値にすぐ辿り着けます。",
+    title: "AI による測定値の異常検知",
+    description:
+      "取り込んだ測定値に対する AI 異常検知の結果をレポートに付与。値のばらつきや外れ値の気づきを補助します。",
   },
 ];
 
@@ -56,17 +57,17 @@ const flowSteps = [
   {
     step: "1",
     title: "膜厚を計測する",
-    desc: "塗装 / コーティング作業時に、PosiTector / DeFelsko 系などの膜厚計測機で測定します。",
+    desc: "塗装 / コーティング作業時に、NexPTG（NexDiag）の膜厚計で測定し、アプリに記録します。",
   },
   {
     step: "2",
-    title: "データを取り込み、紐付ける",
-    desc: "測定データを Ledra に取り込み、車両 VIN・施工メニュー・証明書に紐付け。どの施工の測定値かが明確になります。",
+    title: "取り込んで、車両に紐付ける",
+    desc: "NexPTG アプリから Ledra に測定レポートを取り込み。VIN が一致する車両に自動で紐付きます。一致しなかったものは『未紐付け』として確認できます。",
   },
   {
     step: "3",
-    title: "品質エビデンスとして残す",
-    desc: "施工前後の膜厚比較を品質トレースとして保管。顧客への説明や、保険会社の査定時の客観的な参考資料になります。",
+    title: "品質の記録として残す",
+    desc: "膜厚を客観的な計測データとして車両に紐付けて保管。品質管理や、顧客への説明の裏付けとして活用できます。",
   },
 ];
 
@@ -76,7 +77,7 @@ export default function ThicknessPage() {
       <PageHero
         badge="FEATURE › 塗膜厚レポート"
         title="仕上がりを、数値で裏付ける。"
-        subtitle="PosiTector / DeFelsko などの膜厚計測データを車両・施工に紐付けて保管。施工前後の膜厚を、客観的な品質トレースとして残します。"
+        subtitle="NexPTG（NexDiag）の膜厚計アプリから測定データを取り込み、VIN で車両に自動紐付け。施工品質を、客観的な計測データとして残します。"
       />
 
       {/* Problems */}
@@ -94,7 +95,7 @@ export default function ThicknessPage() {
 
       {/* Capabilities */}
       <Section>
-        <SectionHeading title="塗膜厚レポートでできること" subtitle="計測データを、施工の記録に結びつけます。" />
+        <SectionHeading title="塗膜厚レポートでできること" subtitle="計測データを、車両の記録に結びつけます。" />
         <FeatureGrid className="mt-10">
           {capabilityCards.map((c, i) => (
             <FeatureCard key={c.title} title={c.title} description={c.description} delay={i * 50} />
@@ -104,7 +105,7 @@ export default function ThicknessPage() {
 
       {/* Flow */}
       <Section bg="alt">
-        <SectionHeading title="計測から品質エビデンスまで" subtitle="測って、紐付けて、根拠として残す。" />
+        <SectionHeading title="計測から品質記録まで" subtitle="測って、取り込んで、車両の記録として残す。" />
         <div className="mx-auto mt-10 max-w-3xl space-y-4">
           {flowSteps.map((s, i) => (
             <ScrollReveal key={s.step} variant="fade-up" delay={i * 60}>
@@ -127,27 +128,27 @@ export default function ThicknessPage() {
         <SectionHeading title="よくあるご質問" />
         <FAQList>
           <FAQItem
-            question="どの膜厚計測機に対応していますか？"
-            answer="PosiTector / DeFelsko 系などの膜厚計測機の測定データを取り込めます。測定日・デバイス型番・ブランドとともに保管します。"
+            question="どの膜厚計に対応していますか？"
+            answer="NexPTG（NexDiag）の膜厚計アプリからの取り込みに対応しています。測定日・デバイスのシリアル番号・ブランド・モデルとともに保管します。"
           />
           <FAQItem
-            question="測定データは車両や証明書に紐付けられますか？"
-            answer="はい。車両 VIN・施工メニュー・証明書に紐付けて保管できます。未紐付け / 紐付け済みのタブで整理し、後から紐付けを編集することも可能です。"
+            question="測定データはどうやって車両に紐付きますか？"
+            answer="VIN をキーに、一致する車両へ自動で紐付きます。VIN が一致しなかったレポートは『未紐付け』として確認でき、車両側に VIN を登録するか、再同期することで紐付きます。"
           />
           <FAQItem
-            question="保険会社へのエビデンスとして使えますか？"
-            answer="施工前後の膜厚比較を客観的な品質トレースとして残せるため、顧客への説明や、保険会社の査定時の参考資料として活用いただけます。"
+            question="取り込んだ測定値の異常は分かりますか？"
+            answer="取り込んだ測定値に対する AI 異常検知の結果をレポートに付与します。値のばらつきや外れ値の気づきを補助する用途です。"
           />
           <FAQItem
-            question="過去の測定値は検索できますか？"
-            answer="測定日・デバイス型番・ブランド・車両 VIN・施工メニューで検索できます。必要な測定値にすぐ辿り着けます。"
+            question="品質の裏付けとして使えますか？"
+            answer="膜厚を客観的な計測データとして車両に紐付けて残せるため、顧客への説明や、社内の品質管理の資料として活用いただけます。"
           />
         </FAQList>
       </Section>
 
       <CTABanner
-        title="仕上がりを、根拠として残す。"
-        subtitle="膜厚を品質トレースに変える Ledra の塗膜厚レポートを試してみてください。"
+        title="仕上がりを、記録として残す。"
+        subtitle="膜厚を客観的な計測データに変える Ledra の塗膜厚レポートを試してみてください。"
         primaryLabel="無料で試す"
         primaryHref="/signup"
         secondaryLabel="機能一覧に戻る"
