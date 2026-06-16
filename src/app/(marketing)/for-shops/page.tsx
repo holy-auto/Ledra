@@ -15,6 +15,16 @@ export const metadata = {
   description:
     "コーティング・フィルム・ラッピング施工店のための WEB 施工証明書 SaaS。証明書発行・車両管理・POS・帳票までをLedra一つに。",
   alternates: { canonical: "/for-shops" },
+  openGraph: {
+    title: "施工店の方へ | Ledra",
+    description:
+      "コーティング・フィルム・ラッピング施工店のための WEB 施工証明書 SaaS。証明書発行・車両管理・POS・帳票までをLedra一つに。",
+    url: "/for-shops",
+    siteName: "Ledra",
+    locale: "ja_JP",
+    type: "website" as const,
+  },
+  twitter: { card: "summary_large_image" as const },
 };
 
 const challenges = [

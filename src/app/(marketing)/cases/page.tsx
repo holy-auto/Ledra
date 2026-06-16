@@ -11,6 +11,15 @@ export const metadata = {
   title: "導入事例",
   description: "Ledra を導入いただいている施工店・代理店・保険会社の事例をご紹介します。",
   alternates: { canonical: "/cases" },
+  openGraph: {
+    title: "導入事例 | Ledra",
+    description: "Ledra を導入いただいている施工店・代理店・保険会社の事例をご紹介します。",
+    url: "/cases",
+    siteName: "Ledra",
+    locale: "ja_JP",
+    type: "website" as const,
+  },
+  twitter: { card: "summary_large_image" as const },
 };
 
 export default async function CasesPage() {

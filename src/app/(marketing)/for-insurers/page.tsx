@@ -14,6 +14,16 @@ export const metadata = {
   description:
     "施工証明書の真正性確認を、数秒で。Ledra は保険会社の査定担当に、改ざん検知付きデジタル証明書と案件管理機能を提供します。",
   alternates: { canonical: "/for-insurers" },
+  openGraph: {
+    title: "保険会社の方へ | Ledra",
+    description:
+      "施工証明書の真正性確認を、数秒で。Ledra は保険会社の査定担当に、改ざん検知付きデジタル証明書と案件管理機能を提供します。",
+    url: "/for-insurers",
+    siteName: "Ledra",
+    locale: "ja_JP",
+    type: "website" as const,
+  },
+  twitter: { card: "summary_large_image" as const },
 };
 
 const challenges = [
