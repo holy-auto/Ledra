@@ -66,15 +66,23 @@ declare
   v_target      bigint;
   v_actual      bigint;
 begin
+  -- SECURITY DEFINER のため RLS を迂回する。呼び出し者が p_tenant_id のメンバーで
+  -- ない場合は他テナントの売上目標・入金額を返さない（クロステナント漏洩防止）。
+  if not exists (
+    select 1 from public.tenant_memberships
+    where tenant_id = p_tenant_id and user_id = auth.uid()
+  ) then
+    return json_build_object('month', v_month_key, 'target', 0, 'actual', 0, 'achievementRate', null);
+  end if;
+
   select target_amount into v_target
   from public.sales_targets
   where tenant_id = p_tenant_id and year_month = v_month_key;
 
+  -- 実績は documents のみで集計する。public.invoices は documents(doc_type='invoice')
+  -- の互換ビューのため、両方を UNION すると入金済み invoice を二重計上してしまう
+  -- （management_kpi_stats の修正 20260323090000 と同じ documents-only 方針）。
   with all_paid as (
-    select coalesce(total, 0) as total, coalesce(issued_at::timestamptz, created_at) as effective_date
-    from public.invoices
-    where tenant_id = p_tenant_id and status = 'paid'
-    union all
     select coalesce(total, 0) as total, coalesce(issued_at::timestamptz, created_at) as effective_date
     from public.documents
     where tenant_id = p_tenant_id and status = 'paid'

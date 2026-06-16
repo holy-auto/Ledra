@@ -89,10 +89,12 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
   const boothList = (boothsData?.booths ?? []).filter((b) => b.is_active);
   const [boothBusy, setBoothBusy] = useState(false);
 
-  // 案件テキスト（タイトル + メニュー名）から必要スキルを推定し、担当候補とマッチングする
-  const jobSkillTags = inferJobSkillTags(
-    [reservation.title ?? "", ...(reservation.menu_items_json ?? []).map((m) => m.name)].join(" "),
-  );
+  // 案件テキスト（タイトル + メニュー名）から必要スキルを推定し、担当候補とマッチングする。
+  // menu_items_json は z.any() で配列保証が無いため Array.isArray でガードする（非配列で .map クラッシュ防止）。
+  const menuNames = Array.isArray(reservation.menu_items_json)
+    ? reservation.menu_items_json.map((m) => m?.name).filter(Boolean)
+    : [];
+  const jobSkillTags = inferJobSkillTags([reservation.title ?? "", ...menuNames].join(" "));
 
   // 作業タイマー: in_progress 中はライブ更新 (60 秒間隔)、完了済みは静的表示
   const [tick, setTick] = useState(0);

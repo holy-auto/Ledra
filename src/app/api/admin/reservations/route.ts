@@ -17,6 +17,39 @@ import { maybeAutoCategorizeReservationOnIntake } from "@/lib/ai/automation/acco
 
 export const dynamic = "force-dynamic";
 
+/**
+ * assigned_staff_id / booth_id が呼び出し元テナントのものか検証する。
+ * FK は staff_members(id) / booths(id) を参照するがテナント制約は無いため、
+ * リークした UUID で他テナントの行を指すクロステナント結合を防ぐ。
+ * null/undefined（未指定・割当解除）は許可。問題があればエラーキーを返す。
+ */
+async function validateReservationRefs(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  tenantId: string,
+  assignedStaffId: string | null | undefined,
+  boothId: string | null | undefined,
+): Promise<string | null> {
+  if (assignedStaffId) {
+    const { data } = await supabase
+      .from("staff_members")
+      .select("id")
+      .eq("id", assignedStaffId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (!data) return "assigned_staff_not_found";
+  }
+  if (boothId) {
+    const { data } = await supabase
+      .from("booths")
+      .select("id")
+      .eq("id", boothId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (!data) return "booth_not_found";
+  }
+  return null;
+}
+
 // ─── GET: 予約一覧 ───
 export async function GET(req: NextRequest) {
   try {
@@ -137,6 +170,9 @@ export async function POST(req: NextRequest) {
     }
     const input = parsed.data;
 
+    const refErr = await validateReservationRefs(supabase, caller.tenantId, input.assigned_staff_id, input.booth_id);
+    if (refErr) return apiValidationError(refErr);
+
     const row = {
       id: crypto.randomUUID(),
       tenant_id: caller.tenantId,
@@ -229,6 +265,15 @@ export async function PUT(req: NextRequest) {
     for (const [key, value] of Object.entries(rest)) {
       if (value !== undefined && sentKeys.has(key)) updates[key] = value;
     }
+
+    // 送られた assigned_staff_id / booth_id はテナント所有を検証（クロステナント参照防止）
+    const putRefErr = await validateReservationRefs(
+      supabase,
+      caller.tenantId,
+      sentKeys.has("assigned_staff_id") ? (updates.assigned_staff_id as string | null) : undefined,
+      sentKeys.has("booth_id") ? (updates.booth_id as string | null) : undefined,
+    );
+    if (putRefErr) return apiValidationError(putRefErr);
 
     // キャンセル時はタイムスタンプと理由を追記
     if (rest.status === "cancelled") {

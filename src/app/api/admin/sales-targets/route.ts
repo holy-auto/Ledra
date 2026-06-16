@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { apiJson, apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +18,7 @@ export async function GET() {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "management:view")) return apiForbidden();
 
     const [targetsRes, progressRes] = await Promise.all([
       supabase
@@ -46,6 +47,7 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "management:view")) return apiForbidden();
 
     const parsed = putSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

@@ -156,3 +156,43 @@ comment on function public.staff_roster_stats(uuid, timestamptz) is
   '担当者(staff_members)別の施工実績: 担当件数 / 完了 / キャンセル / 平均作業分。assigned_staff_id ベース。';
 
 grant execute on function public.staff_roster_stats(uuid, timestamptz) to anon, authenticated, service_role;
+
+-- ─── replace_staff_shifts(p_staff_id, p_shifts) ──────────────────────────────
+-- 指定スタッフの「今日以降」のシフトを一括置換する。delete + insert を 1 つの
+-- 関数（=単一トランザクション）で行うため、挿入が失敗しても既存シフトは消えない
+-- （アトミック）。テナント所有とメンバーシップを関数内で検証する。
+create or replace function public.replace_staff_shifts(p_staff_id uuid, p_shifts jsonb)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_tenant uuid;
+  v_today  date := current_date;
+begin
+  select tenant_id into v_tenant from public.staff_members where id = p_staff_id;
+  if v_tenant is null then
+    raise exception 'staff not found';
+  end if;
+  if not exists (
+    select 1 from public.tenant_memberships where tenant_id = v_tenant and user_id = auth.uid()
+  ) then
+    raise exception 'forbidden';
+  end if;
+
+  delete from public.staff_shifts
+  where staff_id = p_staff_id and tenant_id = v_tenant and work_date >= v_today;
+
+  insert into public.staff_shifts (id, tenant_id, staff_id, work_date, start_time, end_time, note)
+  select gen_random_uuid(), v_tenant, p_staff_id,
+         (s->>'work_date')::date,
+         nullif(s->>'start_time', '')::time,
+         nullif(s->>'end_time', '')::time,
+         nullif(s->>'note', '')
+  from jsonb_array_elements(coalesce(p_shifts, '[]'::jsonb)) as s
+  where (s->>'work_date')::date >= v_today;
+end;
+$$;
+
+grant execute on function public.replace_staff_shifts(uuid, jsonb) to authenticated;

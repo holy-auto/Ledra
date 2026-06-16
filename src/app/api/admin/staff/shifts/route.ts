@@ -61,30 +61,15 @@ export async function PUT(req: NextRequest) {
     if (!staff) return apiValidationError("staff not found");
 
     const today = new Date().toISOString().slice(0, 10);
-
-    // today 以降の既存シフトを削除してから入れ直す（過去のシフトは履歴として温存）
-    const { error: delErr } = await supabase
-      .from("staff_shifts")
-      .delete()
-      .eq("tenant_id", caller.tenantId)
-      .eq("staff_id", staff_id)
-      .gte("work_date", today);
-    if (delErr) return apiInternalError(delErr, "staff shifts replace(delete)");
-
     const futureShifts = shifts.filter((s) => s.work_date >= today);
-    if (futureShifts.length > 0) {
-      const rows = futureShifts.map((s) => ({
-        id: crypto.randomUUID(),
-        tenant_id: caller.tenantId,
-        staff_id,
-        work_date: s.work_date,
-        start_time: s.start_time,
-        end_time: s.end_time,
-        note: s.note,
-      }));
-      const { error: insErr } = await supabase.from("staff_shifts").insert(rows);
-      if (insErr) return apiInternalError(insErr, "staff shifts replace(insert)");
-    }
+
+    // delete + insert を 1 つの RPC（単一トランザクション）で実行し、アトミックに置換する。
+    // 挿入が落ちても既存シフトは消えない（部分的なワイプを防ぐ）。
+    const { error } = await supabase.rpc("replace_staff_shifts", {
+      p_staff_id: staff_id,
+      p_shifts: futureShifts,
+    });
+    if (error) return apiInternalError(error, "staff shifts replace");
 
     return apiJson({ ok: true });
   } catch (e) {
