@@ -14,8 +14,6 @@
  * @see https://www.denshishakensho-portal.mlit.go.jp/
  */
 import sharp from "sharp";
-// sharp >=0.34 では Region は名前付き export ではなく namespace メンバー。
-type Region = sharp.Region;
 import {
   MultiFormatReader,
   BarcodeFormat,
@@ -26,6 +24,10 @@ import {
   NotFoundException,
 } from "@zxing/library";
 import type { ShakenshoData } from "./shakensho";
+
+// sharp.Region は名前空間メンバーで top-level named export ではないため別名定義する。
+// (sharp 型バンプ後に main で顕在化していた tsc エラーを修正。挙動変更なし。)
+type Region = sharp.Region;
 
 // ─────────────────────────────────────────────
 // 画像デコード

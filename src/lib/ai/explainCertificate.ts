@@ -8,6 +8,7 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { withRetry } from "@/lib/http/withRetry";
 import { getAnthropicClient, AI_MODEL, cacheableSystem } from "@/lib/ai/client";
+import { wrapUntrusted, untrustedNotice } from "@/lib/ai/promptSafety";
 
 const ExplanationSchema = z.object({
   subject: z.string(),
@@ -142,11 +143,13 @@ ${instruction}
   "callToAction": "次のアクション（顧客向けのみ、他はnull）",
   "warningFlags": ["確認事項1"]（保険会社向けのみ、他はnull）,
   "internalMemo": "社内メモ（社内向けのみ、他はnull）"
-}`;
+}
 
-  const userMessage = `以下の証明書情報を「${input.audience}」向けの文章に変換してください。
+${untrustedNotice("証明書データ")}`;
 
-【証明書情報】
+  // 証明書説明文・材料名・車両/顧客名はスタッフや顧客が入力した未信頼テキストを
+  // 含みうるため、データブロックを明示デリミタで包囲する（プロンプトインジェクション対策）。
+  const dataBlock = `【証明書情報】
 ${certInfo}
 
 【車両情報】
@@ -157,6 +160,10 @@ ${input.shop.name}${input.shop.phone ? ` / TEL: ${input.shop.phone}` : ""}
 
 【顧客名】
 ${input.customer?.name ?? "非公開"}`;
+
+  const userMessage = `以下の証明書情報を「${input.audience}」向けの文章に変換してください。
+
+${wrapUntrusted(dataBlock, { tag: "証明書データ", maxLen: 6000 })}`;
 
   try {
     const msg = await withRetry("anthropic", () =>
