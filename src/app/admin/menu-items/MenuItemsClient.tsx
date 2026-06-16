@@ -24,6 +24,7 @@ type MenuItem = {
   cost_price: number | null;
   margin_rate: number | null;
   tax_category: number | null;
+  estimated_minutes: number | null;
   is_active: boolean;
   created_at: string;
 };
@@ -58,6 +59,7 @@ export default function MenuItemsClient() {
   const [formCostPrice, setFormCostPrice] = useState("");
   const [formMarginRate, setFormMarginRate] = useState("");
   const [formTaxCategory, setFormTaxCategory] = useState("10");
+  const [formEstimatedMinutes, setFormEstimatedMinutes] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
@@ -108,6 +110,7 @@ export default function MenuItemsClient() {
           cost_price: formCostPrice ? parseInt(formCostPrice, 10) : 0,
           margin_rate: formMarginRate === "" ? null : parseFloat(formMarginRate),
           tax_category: parseInt(formTaxCategory, 10),
+          estimated_minutes: formEstimatedMinutes === "" ? null : parseInt(formEstimatedMinutes, 10),
         }),
       });
       const j = await parseJsonSafe(res);
@@ -119,6 +122,7 @@ export default function MenuItemsClient() {
       setFormCostPrice("");
       setFormMarginRate("");
       setFormTaxCategory("10");
+      setFormEstimatedMinutes("");
       setSaveMsg({ text: `品目「${j.item?.name ?? formName}」を登録しました`, ok: true });
       mutate();
     } catch (e: any) {
@@ -533,6 +537,18 @@ export default function MenuItemsClient() {
                     <option value="10">10%（標準税率）</option>
                     <option value="8">8%（軽減税率）</option>
                   </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted">標準作業時間（分）</label>
+                  <input
+                    type="number"
+                    className="input-field"
+                    min="0"
+                    placeholder="例: 120"
+                    value={formEstimatedMinutes}
+                    onChange={(e) => setFormEstimatedMinutes(e.target.value)}
+                  />
+                  <p className="text-[10px] text-muted">ピット所要時間の概算に使用（車両サイズで自動補正）</p>
                 </div>
               </div>
 

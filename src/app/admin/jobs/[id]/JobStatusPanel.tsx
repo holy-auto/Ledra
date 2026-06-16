@@ -11,7 +11,7 @@ import { useViewMode } from "@/lib/view-mode/ViewModeContext";
 import { fetcher } from "@/lib/swr";
 import { computeWorkDurationText } from "@/lib/admin/work-duration";
 import { enqueueOrFetch } from "@/lib/outbox/enqueueOrFetch";
-import { inferJobSkillTags, skillMatchScore } from "@/lib/staff/skills";
+import { inferJobSkillTags, skillMatchScore, SERVICE_TYPES } from "@/lib/staff/skills";
 import { STATUS_FLOW, STATUS_LABEL, STATUS_HINT, type JobReservation } from "./types";
 
 type MemberRow = {
@@ -30,6 +30,14 @@ type StaffRow = {
   is_active: boolean;
 };
 type StaffResponse = { staff: StaffRow[] };
+
+type BoothRow = {
+  id: string;
+  name: string;
+  booth_type: string | null;
+  is_active: boolean;
+};
+type BoothsResponse = { booths: BoothRow[] };
 
 /**
  * JobStatusPanel
@@ -72,6 +80,14 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
   });
   const staffList = (staffData?.staff ?? []).filter((s) => s.is_active);
   const [staffBusy, setStaffBusy] = useState(false);
+
+  // ブース（ピット）ピッカー用。
+  const { data: boothsData } = useSWR<BoothsResponse>("/api/admin/booths", fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 60000,
+  });
+  const boothList = (boothsData?.booths ?? []).filter((b) => b.is_active);
+  const [boothBusy, setBoothBusy] = useState(false);
 
   // 案件テキスト（タイトル + メニュー名）から必要スキルを推定し、担当候補とマッチングする
   const jobSkillTags = inferJobSkillTags(
@@ -177,6 +193,33 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
     }
   }
 
+  async function changeBooth(newBoothId: string | null) {
+    setBoothBusy(true);
+    setErr(null);
+    try {
+      const r = await enqueueOrFetch({
+        url: "/api/admin/reservations",
+        method: "PUT",
+        body: { id: reservation.id, booth_id: newBoothId },
+        label: `ブース変更 (${reservation.title ?? "案件"})`,
+        kind: "reservation_update",
+      });
+      if (r.queued) {
+        setErr(`📡 オフラインです。ブース変更を保留し、ネット復帰後に自動同期します。`);
+        return;
+      }
+      if (!r.ok && r.response) {
+        const j = await parseJsonSafe(r.response);
+        throw new Error(j?.error ?? `HTTP ${r.status}`);
+      }
+      router.refresh();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBoothBusy(false);
+    }
+  }
+
   const certificateNewUrl = (() => {
     const params = new URLSearchParams();
     if (vehicleId) params.set("vehicle_id", vehicleId);
@@ -210,6 +253,15 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
     const diff = skillMatchScore(b.skills, jobSkillTags) - skillMatchScore(a.skills, jobSkillTags);
     return diff !== 0 ? diff : a.name.localeCompare(b.name);
   });
+
+  const currentBooth = boothList.find((b) => b.id === reservation.booth_id) ?? null;
+  // ブース区分が案件内容に合うものを優先表示（キー + 日本語ラベルの両方でマッチ判定）
+  const boothMatch = (b: BoothRow) => {
+    if (!b.booth_type) return 0;
+    const label = SERVICE_TYPES.find((s) => s.key === b.booth_type)?.label ?? b.booth_type;
+    return skillMatchScore([b.booth_type, label], jobSkillTags);
+  };
+  const sortedBooths = [...boothList].sort((a, b) => boothMatch(b) - boothMatch(a) || a.name.localeCompare(b.name));
 
   return (
     <div className="space-y-6">
@@ -299,6 +351,34 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
               <span className="text-[10px] text-muted">★=スキル一致（{jobSkillTags.join("・")}）</span>
             )}
           </div>
+
+          {/* ブース（ピット）ピッカー */}
+          {boothList.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="font-semibold tracking-[0.12em] text-muted uppercase">ブース</span>
+              {currentBooth ? (
+                <span className="text-primary">{currentBooth.name}</span>
+              ) : (
+                <span className="text-muted">未割当</span>
+              )}
+              <select
+                aria-label="ブースを変更"
+                className="rounded-md border border-border-default bg-surface px-2 py-1 text-xs text-primary disabled:opacity-50"
+                value={reservation.booth_id ?? ""}
+                disabled={boothBusy || isCancelled}
+                onChange={(e) => changeBooth(e.target.value === "" ? null : e.target.value)}
+              >
+                <option value="">— 未割当 —</option>
+                {sortedBooths.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {boothMatch(b) > 0 ? "★ " : ""}
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+              {boothBusy && <span className="text-muted">更新中…</span>}
+            </div>
+          )}
 
           {workDurationText && (
             <div className="flex items-center gap-2">
