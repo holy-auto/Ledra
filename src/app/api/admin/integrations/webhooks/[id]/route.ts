@@ -15,6 +15,7 @@ import {
   apiValidationError,
   apiInternalError,
 } from "@/lib/api/response";
+import { isValidWebhookTopic } from "@/lib/webhook-topics";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,11 @@ const patchSchema = z.object({
     .url()
     .regex(/^https:\/\//, "url_must_be_https")
     .optional(),
-  topics: z.array(z.string().min(1).max(64)).min(1).max(64).optional(),
+  topics: z
+    .array(z.string().min(1).max(64).refine(isValidWebhookTopic, { message: "unknown_topic" }))
+    .min(1)
+    .max(64)
+    .optional(),
   description: z.string().max(200).nullable().optional(),
   is_active: z.boolean().optional(),
 });

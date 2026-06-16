@@ -61,6 +61,68 @@ export function dedupeByRef<T extends { external_ref: string }>(rows: T[]): T[] 
   return [...map.values()];
 }
 
+/** resource → webhook トピックの単数 base。 */
+const TOPIC_BASE: Record<IngestResource, string> = {
+  customers: "customer",
+  vehicles: "vehicle",
+  work_history: "work_history",
+};
+
+/**
+ * 取込で upsert した各レコードについて outbound webhook (双方向同期) を発火する。
+ *
+ * - tenant に有効な webhook 購読が 1 件も無ければ何もしない (outbox を汚さない)。
+ * - customer/vehicle は新規=created / 既存=updated、work_history は created のみ。
+ * - 配送は outbox + cron に委譲 (ここは enqueue のみ)。best-effort で取込本体は止めない。
+ */
+async function emitIngestWebhooks(
+  admin: ReturnType<typeof createTenantScopedAdmin>["admin"],
+  tenantId: string,
+  resource: IngestResource,
+  sourceSystem: string,
+  upserted: Array<{ id: string; external_ref: string }>,
+  existingSet: Set<string>,
+): Promise<void> {
+  if (upserted.length === 0) return;
+  try {
+    const { count } = await admin
+      .from("tenant_webhooks")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .eq("is_active", true);
+    if (!count) return;
+
+    const base = TOPIC_BASE[resource];
+    const now = new Date().toISOString();
+    const events = [];
+    for (const row of upserted) {
+      const isUpdate = existingSet.has(row.external_ref);
+      let eventTopic: string;
+      if (resource === "work_history") {
+        if (isUpdate) continue; // work_history は created のみ
+        eventTopic = "work_history.created";
+      } else {
+        eventTopic = `${base}.${isUpdate ? "updated" : "created"}`;
+      }
+      events.push({
+        tenant_id: tenantId,
+        topic: "webhook",
+        aggregate_id: row.id,
+        next_attempt_at: now,
+        payload: {
+          event_topic: eventTopic,
+          data: { id: row.id, external_ref: row.external_ref, source_system: sourceSystem },
+        },
+      });
+    }
+    if (events.length === 0) return;
+    const { error } = await admin.from("outbox_events").insert(events);
+    if (error) logger.warn("ingest webhook emit failed", { error: error.message });
+  } catch (e) {
+    logger.warn("ingest webhook emit threw", { error: e instanceof Error ? e.message : String(e) });
+  }
+}
+
 /** 取込結果サマリ。 */
 export interface IngestResult {
   total: number;
@@ -115,9 +177,10 @@ export async function runIngest(opts: {
     }
     const existingSet = new Set((existing ?? []).map((r) => (r as { external_ref: string }).external_ref));
 
-    const { error: upErr } = await admin
+    const { data: upserted, error: upErr } = await admin
       .from(table)
-      .upsert(rows, { onConflict: "tenant_id,source_system,external_ref" });
+      .upsert(rows, { onConflict: "tenant_id,source_system,external_ref" })
+      .select("id, external_ref");
 
     if (upErr) {
       failed += rows.length;
@@ -128,6 +191,15 @@ export async function runIngest(opts: {
         if (existingSet.has(ref)) updated++;
         else inserted++;
       }
+      // 双方向同期: 取込結果を outbound webhook で通知 (購読があるときのみ)。
+      await emitIngestWebhooks(
+        admin,
+        tenantId,
+        resource,
+        sourceSystem,
+        (upserted ?? []) as Array<{ id: string; external_ref: string }>,
+        existingSet,
+      );
     }
   }
 

@@ -12,20 +12,11 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { generateApiKey } from "@/lib/tenant-api-keys";
+import { API_KEY_SCOPES } from "@/lib/api-key-scopes";
 
 export const dynamic = "force-dynamic";
 
-const KNOWN_SCOPES = [
-  "*",
-  "certificates:read",
-  "certificates:write",
-  "customers:read",
-  "customers:write",
-  "reservations:read",
-  "reservations:write",
-  "webhooks:read",
-  "webhooks:write",
-] as const;
+const KNOWN_SCOPES = API_KEY_SCOPES;
 
 const createSchema = z.object({
   description: z.string().max(200).optional(),
