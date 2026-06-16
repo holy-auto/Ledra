@@ -14,7 +14,7 @@
 
 使い方:  python3 md_to_jpo.py
 """
-import os, re, glob, shutil
+import os, re, glob, shutil, base64
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DRAFTS = os.path.dirname(HERE)               # .../drafts
@@ -85,6 +85,30 @@ def conv_figures(inv: str) -> str:
         out.append(f'<img src="{stem}.gif" alt="fig{i}"><BR>')  # 同階層に同梱（パスは半角厳守）
     return "\n".join(out) + "\n"
 
+def figures_preview_html(inv: str) -> str:
+    """レビュー用の自己完結HTML。図GIFをbase64で埋め込むので、HTML単体を
+    どこで開いても（GIF同梱なし・Web/モバイルのビューアでも）図が表示される。
+    ⚠️ 提出用ではない。電子出願ソフトへは out/<inv>/図面.html（別ファイル参照）を取り込むこと。"""
+    rows = []
+    for i, stem in enumerate(FIGS.get(inv, []), start=1):
+        src = os.path.join(DRAFTS, "figures", "jpo", stem + ".gif")
+        if os.path.exists(src):
+            with open(src, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode("ascii")
+            img = f'<img src="data:image/gif;base64,{b64}" alt="fig{i}">'
+        else:
+            img = f'<p style="color:#b00">[欠落] {stem}.gif が未生成（figures/convert_to_jpo.py を実行）</p>'
+        rows.append(f'<figure><figcaption>図{i}（{stem}）</figcaption>{img}</figure>')
+    css = ("body{font-family:sans-serif;max-width:60em;margin:2em auto;}"
+           "figure{margin:1.5em 0;border-top:1px solid #ccc;padding-top:1em;}"
+           "figcaption{font-weight:bold;margin-bottom:.5em;}"
+           "img{max-width:100%;border:1px solid #000;}")
+    note = ("<p style=\"color:#555\">※ これは<b>レビュー用プレビュー</b>です（図を埋め込み）。"
+            "電子出願ソフトには <code>図面.html</code>（別ファイル参照版）＋同梱GIFを取り込んでください。</p>")
+    return (f'<!DOCTYPE html>\n<html lang="ja">\n<head>\n<meta charset="UTF-8">\n'
+            f'<title>図面プレビュー（発明{inv}）</title>\n<style>{css}</style>\n</head>\n<body>\n'
+            f'<h1>図面プレビュー（発明{inv}）</h1>\n{note}\n' + "\n".join(rows) + '\n</body>\n</html>\n')
+
 def process(md_path: str, inv: str):
     with open(md_path, encoding="utf-8") as f:
         text = f.read()
@@ -133,6 +157,11 @@ def process(md_path: str, inv: str):
         with open(path, "w", encoding="utf-8") as f:
             f.write(html_wrap("図面", conv_figures(inv)))
         made.append(os.path.relpath(path, HERE))
+    # レビュー用：図を埋め込んだ自己完結プレビュー（単体で開いても図が表示される）
+    ppath = os.path.join(outdir, "図面-プレビュー.html")
+    with open(ppath, "w", encoding="utf-8") as f:
+        f.write(figures_preview_html(inv))
+    made.append(os.path.relpath(ppath, HERE))
     return made
 
 def main():
