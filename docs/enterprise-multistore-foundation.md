@@ -129,10 +129,35 @@ distinct 扱い)。
 `status` は `completed` / `partial` / `failed`。取込実行は監査用に
 `integration_sync_runs` に記録される (店舗 / 本社から閲覧可)。
 
-## 5. 後続フェーズ (このPRの範囲外)
+## 5. 本社チーム管理 / 横断リード API (Phase 2)
 
-- 本社横断 UI (店舗一覧 → 顧客 / 車両 / 作業履歴のドリルダウン閲覧)。
-- 店舗を持たない本社専用ユーザのセッション / ナビゲーション。
-- 本社チーム (`organization_users`) 管理画面 + 招待フロー。
+UI に先行して API 層を提供する。すべて admin セッション認証 + 組織アクセス権で保護。
+
+### 本社チーム (`organization_users`) 管理 — owner のみ書込
+
+- `GET    /api/admin/organizations/[id]/users` — 本社チーム一覧 (owner / メンバー閲覧可)
+- `POST   /api/admin/organizations/[id]/users` — メール招待で追加 `{ email, role }`
+- `PUT    /api/admin/organizations/[id]/users` — ロール変更 `{ user_id, role }`
+- `DELETE /api/admin/organizations/[id]/users?user_id=…` — 除外
+
+`role` は `org_admin` / `org_viewer` のみ割当可 (`org_owner` は `organizations.owner_id` 専用)。
+
+### 本社横断リード (read-only) — owner / 本社メンバー
+
+- `GET /api/admin/organizations/[id]/stores` — 所属店舗一覧
+- `GET /api/admin/organizations/[id]/stores/[tenantId]/customers`
+- `GET /api/admin/organizations/[id]/stores/[tenantId]/vehicles`
+- `GET /api/admin/organizations/[id]/stores/[tenantId]/work-history?vehicle_id=…`
+
+共通: `?limit` (1..200, 既定50) / `?offset`。対象 `tenantId` が組織所属であることを検証し、
+RLS バイパスの platform-scoped admin で `tenant_id` スコープして読む。書込手段は提供しない
+(本社は閲覧のみ)。認可ヘルパー: `src/lib/api/orgStoreRead.ts` / `src/lib/auth/orgAccess.ts`。
+
+## 6. 後続フェーズ
+
+- 本社横断 UI (店舗一覧 → 顧客 / 車両 / 作業履歴のドリルダウン閲覧) — 上記 API を利用。
+- 店舗を持たない本社専用ユーザのセッション / ナビゲーション解決
+  (現状 `resolveCallerWithRole` は tenant membership を要求するため、本社専用アカウントは
+  別途いずれかの店舗メンバーである必要がある)。
 - API キー発行時のスコープ UI への取込スコープ追加。
 - 双方向同期 (Ledra → 基幹) の outbound webhook トピック拡張。
