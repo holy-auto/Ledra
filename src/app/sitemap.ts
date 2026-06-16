@@ -36,6 +36,8 @@ const staticPages: Array<{ path: string; changeFrequency: Freq; priority: number
   { path: "/features/job-workflow", changeFrequency: "monthly", priority: 0.7 },
   { path: "/features/accounting", changeFrequency: "monthly", priority: 0.7 },
   { path: "/features/academy", changeFrequency: "monthly", priority: 0.7 },
+  { path: "/features/inventory", changeFrequency: "monthly", priority: 0.7 },
+  { path: "/features/thickness", changeFrequency: "monthly", priority: 0.7 },
 
   // Decision support
   { path: "/faq", changeFrequency: "monthly", priority: 0.7 },

@@ -51,7 +51,8 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
       {
         title: "塗膜厚レポート",
         description:
-          "PosiTector / NexDiag などの膜厚計測データを車両・施工に紐付けて保管。施工前後の膜厚比較を、客観的な品質トレースとして残せます。",
+          "NexPTG（NexDiag）の膜厚計データを VIN で車両に紐付けて保管。施工品質を、客観的な計測データとして残せます。",
+        href: "/features/thickness",
       },
     ],
   },
@@ -110,6 +111,7 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
       {
         title: "在庫管理",
         description: "部材・在庫を管理し、Square と同期。BtoB ハブでは他店との在庫共有・引き合いにもつながります。",
+        href: "/features/inventory",
       },
       {
         title: "帳票・工程テンプレート",
