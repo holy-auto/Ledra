@@ -594,3 +594,28 @@ export async function sendMaintenanceLineMessage(params: {
     return false;
   }
 }
+
+/**
+ * 誕生日メッセージを LINE で送信する。
+ *
+ * cron (follow-up) が birthday_enabled なテナントの該当顧客へ送る。
+ * 戻り値 boolean は email フォールバック判定のため
+ * (`sendMaintenanceLineMessage` と同じ流儀)。本文は呼び出し側で組み立てる。
+ */
+export async function sendBirthdayLineMessage(params: {
+  tenantId: string;
+  lineUserId: string;
+  message: string;
+}): Promise<boolean> {
+  if (!params.lineUserId || !params.message) return false;
+  const config = await getLineConfig(params.tenantId);
+  if (!config) return false;
+
+  try {
+    await sendMessage(config.channelAccessToken, params.lineUserId, [{ type: "text", text: params.message }]);
+    return true;
+  } catch (err) {
+    console.error("[line] sendBirthdayLineMessage failed:", err);
+    return false;
+  }
+}

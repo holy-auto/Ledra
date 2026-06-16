@@ -194,6 +194,40 @@ export async function sendMaintenanceReminder(params: {
 }
 
 /**
+ * 誕生日お祝いメール
+ *
+ * customers.birth_date の月日が一致した顧客へ送る。
+ * follow_up_settings.birthday_enabled が ON のテナントのみ、
+ * cron が日次で送信する。LINE が繋がっていれば LINE 優先・email フォールバック。
+ */
+export async function sendBirthdayEmail(params: {
+  shopName: string;
+  customerEmail: string;
+  customerName: string;
+}): Promise<boolean> {
+  const shop = escapeHtml(params.shopName);
+  const customer = escapeHtml(params.customerName);
+  const html = wrap(
+    "お誕生日おめでとうございます",
+    `
+      <p style="color: #1d1d1f; font-size: 14px;">
+        ${customer} 様<br><br>
+        ${shop}です。<br>
+        お誕生日おめでとうございます🎉
+      </p>
+      <p style="color: #1d1d1f; font-size: 14px;">
+        日頃のご愛顧に心より感謝申し上げます。<br>
+        素敵な一年になりますよう、スタッフ一同お祈りしております。
+      </p>
+      <p style="font-size: 13px; color: #86868b;">
+        メンテナンスやお車のご相談は ${shop} までお気軽にどうぞ。
+      </p>
+    `,
+  );
+  return send(params.customerEmail, `[${shop}] お誕生日おめでとうございます`, html);
+}
+
+/**
  * 車検前メンテナンスリマインダー
  *
  * 車検証 OCR で抽出した inspection_expiry_date の N 日前に
