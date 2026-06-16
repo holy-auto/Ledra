@@ -26,3 +26,26 @@ export const organizationMemberAddSchema = z.object({
   tenant_id: z.string().uuid("店舗IDが不正です。"),
 });
 export type OrganizationMemberAddInput = z.infer<typeof organizationMemberAddSchema>;
+
+/**
+ * 本社チーム (organization_users) 管理スキーマ。
+ * org_owner はオーナー (organizations.owner_id) 専用の概念のため UI からは割当不可。
+ * 割当可能なのは org_admin / org_viewer のみ。
+ */
+const assignableOrgRole = z.enum(["org_admin", "org_viewer"], {
+  message: "ロールは org_admin / org_viewer のいずれかです。",
+});
+
+/** 本社チーム追加 (POST /api/admin/organizations/[id]/users) — メール招待 */
+export const organizationUserAddSchema = z.object({
+  email: z.string().trim().email("メールアドレスの形式が不正です。").max(254),
+  role: assignableOrgRole.default("org_viewer"),
+});
+export type OrganizationUserAddInput = z.infer<typeof organizationUserAddSchema>;
+
+/** 本社チームのロール変更 (PUT /api/admin/organizations/[id]/users) */
+export const organizationUserRoleSchema = z.object({
+  user_id: z.string().uuid("ユーザーIDが不正です。"),
+  role: assignableOrgRole,
+});
+export type OrganizationUserRoleInput = z.infer<typeof organizationUserRoleSchema>;
