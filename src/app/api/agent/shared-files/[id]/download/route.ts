@@ -23,12 +23,14 @@ export async function POST(_request: NextRequest, ctx: RouteContext) {
       return apiForbidden("not_agent");
     }
 
-    // RLS ensures agent can only see their own files
+    // RLS already restricts to the caller's own files; the explicit agent_id
+    // filter is defense-in-depth so a future RLS regression can't open a hole.
     const { data: file, error: fileErr } = await supabase
       .from("agent_shared_files")
       .select("id, storage_path, file_name")
       .eq("id", id)
-      .single();
+      .eq("agent_id", agentRow.agent_id)
+      .maybeSingle();
 
     if (fileErr || !file) {
       return apiNotFound("file_not_found");
