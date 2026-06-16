@@ -256,6 +256,35 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
   const statusParam = String(formData.get("status") || "active").trim();
   const requestedActive = statusParam !== "draft";
 
+  // ⑦ 職人名×施工証明: 施工担当（職人）を解決。明示指定 (craftsman_staff_id) を優先し、
+  // 無ければこの車両に紐づく直近の予約 (assigned_staff_id) から引き当てる。
+  // 発行時点の表示名をスナップショットして証明書に刻む（退会後も証跡が残る）。
+  let craftsman_staff_id = String(formData.get("craftsman_staff_id") || "").trim() || null;
+  if (!craftsman_staff_id && resolvedVehicleId) {
+    const { data: recentRes } = await supabase
+      .from("reservations")
+      .select("assigned_staff_id")
+      .eq("tenant_id", tenantId)
+      .eq("vehicle_id", resolvedVehicleId)
+      .not("assigned_staff_id", "is", null)
+      .order("scheduled_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    craftsman_staff_id = (recentRes?.assigned_staff_id as string | null) ?? null;
+  }
+  let craftsman_name: string | null = null;
+  if (craftsman_staff_id) {
+    const { data: staffRow } = await supabase
+      .from("staff_members")
+      .select("name")
+      .eq("id", craftsman_staff_id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    craftsman_name = (staffRow?.name as string | null) ?? null;
+    if (!craftsman_name) craftsman_staff_id = null; // 不整合なら付けない
+  }
+
   const { data: certRow, error } = await supabase
     .from("certificates")
     .insert({
@@ -293,6 +322,8 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
       manufacturer_id,
       manufacturer_template_id,
       created_by: userId,
+      craftsman_staff_id: craftsman_staff_id ?? undefined,
+      craftsman_name: craftsman_name ?? undefined,
     })
     .select("id")
     .single();
@@ -309,7 +340,9 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
     const raw = String(formData.get("inspection_findings_json") || "[]");
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) structured_findings = parsed;
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   // Structured part replacements → vehicle_part_replacements
   let structured_parts: any[] = [];
@@ -317,7 +350,9 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
     const raw = String(formData.get("part_replacements_json") || "[]");
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) structured_parts = parsed;
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   if (resolvedVehicleId && certificateId) {
     const sideEffects: Promise<any>[] = [];
@@ -335,8 +370,8 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
             finding_code: f.finding_code ?? null,
             finding_note: f.finding_note ?? null,
             inspected_at: now,
-          }))
-        )
+          })),
+        ),
       );
     }
 
@@ -352,8 +387,8 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
             mileage_at_replacement: mileageKm ?? null,
             replaced_at: now,
             next_replacement_mileage_est: p.next_replacement_mileage_est ?? null,
-          }))
-        )
+          })),
+        ),
       );
     }
 
@@ -366,7 +401,7 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
         description: `Public ID: ${public_id}`,
         performed_at: now,
         certificate_id: null,
-      })
+      }),
     );
 
     await Promise.all(sideEffects);

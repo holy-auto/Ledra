@@ -127,6 +127,29 @@ describe("hashContent", () => {
   });
 });
 
+describe("buildCanonicalCertificate — craftsman (⑦)", () => {
+  it("omits craftsman_name when absent (digest stays v1-compatible)", () => {
+    const without = buildCanonicalCertificate(baseInput) as unknown as Record<string, unknown>;
+    expect("craftsman_name" in without).toBe(false);
+    // 明示的に null / 空文字でも omit される
+    expect("craftsman_name" in (buildCanonicalCertificate({ ...baseInput, craftsmanName: null }) as object)).toBe(
+      false,
+    );
+    expect("craftsman_name" in (buildCanonicalCertificate({ ...baseInput, craftsmanName: "" }) as object)).toBe(false);
+  });
+
+  it("includes craftsman_name when present and changes the digest", () => {
+    const c = buildCanonicalCertificate({ ...baseInput, craftsmanName: "山田 太郎" }) as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(c.craftsman_name).toBe("山田 太郎");
+    const a = computeCertDigest(baseInput).digest;
+    const b = computeCertDigest({ ...baseInput, craftsmanName: "山田 太郎" }).digest;
+    expect(a).not.toBe(b);
+  });
+});
+
 describe("buildCanonicalCertificate", () => {
   it("emits schema version constant", () => {
     const c = buildCanonicalCertificate(baseInput);
