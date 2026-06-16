@@ -14,7 +14,8 @@
  * @see https://www.denshishakensho-portal.mlit.go.jp/
  */
 import sharp from "sharp";
-import type { Region } from "sharp";
+// sharp >=0.34 では Region は名前付き export ではなく namespace メンバー。
+type Region = sharp.Region;
 import {
   MultiFormatReader,
   BarcodeFormat,
@@ -43,17 +44,11 @@ function buildHints(): Map<DecodeHintType, unknown> {
 }
 
 /** 指定領域（または画像全体）から単一の 2D コードをデコード */
-async function tryDecodeRegion(
-  imageBuffer: Buffer,
-  region?: Region,
-): Promise<string | null> {
+async function tryDecodeRegion(imageBuffer: Buffer, region?: Region): Promise<string | null> {
   try {
     let pipeline = sharp(imageBuffer).rotate(); // EXIF 回転を先に反映
     if (region) pipeline = pipeline.extract(region);
-    const { data, info } = await pipeline
-      .grayscale()
-      .raw()
-      .toBuffer({ resolveWithObject: true });
+    const { data, info } = await pipeline.grayscale().raw().toBuffer({ resolveWithObject: true });
 
     const luminances = new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength);
     const source = new RGBLuminanceSource(luminances, info.width, info.height);
