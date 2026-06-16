@@ -73,12 +73,13 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
   });
   const members = membersData?.members ?? [];
 
-  // 施工担当（職人）ピッカー用。社内/外注を含む staff_members を取得。
-  const { data: staffData } = useSWR<StaffResponse>("/api/admin/staff", fetcher, {
+  // 施工担当（職人）ピッカー用。PII を含まない最小ピッカー API を使う（roster は members:view）。
+  const { data: staffData } = useSWR<StaffResponse>("/api/admin/staff/picker", fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 60000,
   });
-  const staffList = (staffData?.staff ?? []).filter((s) => s.is_active);
+  const allStaff = staffData?.staff ?? [];
+  const staffList = allStaff.filter((s) => s.is_active); // 選択候補は在籍者のみ
   const [staffBusy, setStaffBusy] = useState(false);
 
   // ブース（ピット）ピッカー用。
@@ -86,7 +87,8 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
     revalidateOnFocus: false,
     dedupingInterval: 60000,
   });
-  const boothList = (boothsData?.booths ?? []).filter((b) => b.is_active);
+  const allBooths = boothsData?.booths ?? [];
+  const boothList = allBooths.filter((b) => b.is_active); // 選択候補は稼働中のみ
   const [boothBusy, setBoothBusy] = useState(false);
 
   // 案件テキスト（タイトル + メニュー名）から必要スキルを推定し、担当候補とマッチングする。
@@ -248,7 +250,8 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
   });
 
   const currentAssignee = members.find((m) => m.user_id === reservation.assigned_user_id) ?? null;
-  const currentStaff = staffList.find((s) => s.id === reservation.assigned_staff_id) ?? null;
+  // 担当者は休止後も表示できるよう全件から解決（選択候補だけ在籍者に絞る）
+  const currentStaff = allStaff.find((s) => s.id === reservation.assigned_staff_id) ?? null;
 
   // 担当候補をスキルマッチ順に並べる（マッチ多い順 → 名前順）
   const sortedStaff = [...staffList].sort((a, b) => {
@@ -256,7 +259,7 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
     return diff !== 0 ? diff : a.name.localeCompare(b.name);
   });
 
-  const currentBooth = boothList.find((b) => b.id === reservation.booth_id) ?? null;
+  const currentBooth = allBooths.find((b) => b.id === reservation.booth_id) ?? null;
   // ブース区分が案件内容に合うものを優先表示（キー + 日本語ラベルの両方でマッチ判定）
   const boothMatch = (b: BoothRow) => {
     if (!b.booth_type) return 0;

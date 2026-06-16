@@ -34,6 +34,9 @@ export async function GET(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 連絡先・メモ・実績を含む管理ロスターは members:view に限定。
+    // 案件アサイン用の最小一覧は /api/admin/staff/picker（reservations:view）を使う。
+    if (!requirePermission(caller, "members:view")) return apiForbidden();
 
     const window = new URL(req.url).searchParams.get("window");
     const since = windowToSince(window);

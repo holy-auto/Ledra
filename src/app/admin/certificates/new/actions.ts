@@ -261,12 +261,17 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
   // 発行時点の表示名をスナップショットして証明書に刻む（退会後も証跡が残る）。
   let craftsman_staff_id = String(formData.get("craftsman_staff_id") || "").trim() || null;
   if (!craftsman_staff_id && resolvedVehicleId) {
+    // フォールバックは「この車両の、キャンセルでない、今日以前の予約」の直近に限定する。
+    // 未来予約や別案件（別職人）の予約を誤って拾い、誤った職人名を刻むのを防ぐ。
+    const cutoff = new Date().toISOString().slice(0, 10);
     const { data: recentRes } = await supabase
       .from("reservations")
       .select("assigned_staff_id")
       .eq("tenant_id", tenantId)
       .eq("vehicle_id", resolvedVehicleId)
       .not("assigned_staff_id", "is", null)
+      .neq("status", "cancelled")
+      .lte("scheduled_date", cutoff)
       .order("scheduled_date", { ascending: false })
       .order("created_at", { ascending: false })
       .limit(1)
@@ -355,7 +360,7 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
   }
 
   if (resolvedVehicleId && certificateId) {
-    const sideEffects: Promise<any>[] = [];
+    const sideEffects: PromiseLike<any>[] = [];
 
     if (structured_findings.length > 0) {
       sideEffects.push(

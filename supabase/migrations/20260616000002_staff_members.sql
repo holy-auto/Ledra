@@ -175,8 +175,11 @@ begin
   if v_tenant is null then
     raise exception 'staff not found';
   end if;
+  -- 直接 RPC を叩かれても低権限ロールがシフトを書き換えられないよう、
+  -- members:manage を持つロール（owner / admin）に限定する。
   if not exists (
-    select 1 from public.tenant_memberships where tenant_id = v_tenant and user_id = auth.uid()
+    select 1 from public.tenant_memberships
+    where tenant_id = v_tenant and user_id = auth.uid() and role in ('owner', 'admin')
   ) then
     raise exception 'forbidden';
   end if;

@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { boothCreateSchema, boothUpdateSchema, boothDeleteSchema } from "@/lib/validations/booth";
 
 export const dynamic = "force-dynamic";
@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "reservations:edit")) return apiForbidden();
 
     const parsed = boothCreateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -85,6 +86,7 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "reservations:edit")) return apiForbidden();
 
     const rawBody = await req.json().catch(() => ({}));
     const parsed = boothUpdateSchema.safeParse(rawBody);
@@ -116,6 +118,7 @@ export async function DELETE(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "reservations:edit")) return apiForbidden();
 
     const parsed = boothDeleteSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

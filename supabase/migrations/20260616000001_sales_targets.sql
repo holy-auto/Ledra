@@ -66,11 +66,12 @@ declare
   v_target      bigint;
   v_actual      bigint;
 begin
-  -- SECURITY DEFINER のため RLS を迂回する。呼び出し者が p_tenant_id のメンバーで
-  -- ない場合は他テナントの売上目標・入金額を返さない（クロステナント漏洩防止）。
+  -- SECURITY DEFINER のため RLS を迂回する。クロステナント漏洩を防ぐと同時に、
+  -- 売上目標・入金額は経営指標のため management:view を持つロール（owner / admin）
+  -- に限定する。非該当ロールが直接 RPC を叩いても空の結果を返す。
   if not exists (
     select 1 from public.tenant_memberships
-    where tenant_id = p_tenant_id and user_id = auth.uid()
+    where tenant_id = p_tenant_id and user_id = auth.uid() and role in ('owner', 'admin')
   ) then
     return json_build_object('month', v_month_key, 'target', 0, 'actual', 0, 'achievementRate', null);
   end if;

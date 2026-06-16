@@ -71,6 +71,7 @@ export default function MenuItemsClient() {
   const [editCostPrice, setEditCostPrice] = useState("");
   const [editMarginRate, setEditMarginRate] = useState("");
   const [editTaxCategory, setEditTaxCategory] = useState("10");
+  const [editEstimatedMinutes, setEditEstimatedMinutes] = useState("");
   const [editSaving, setEditSaving] = useState(false);
 
   // Delete
@@ -178,6 +179,7 @@ export default function MenuItemsClient() {
     setEditCostPrice(item.cost_price != null ? String(item.cost_price) : "");
     setEditMarginRate(item.margin_rate != null ? String(item.margin_rate) : "");
     setEditTaxCategory(item.tax_category != null ? String(item.tax_category) : "10");
+    setEditEstimatedMinutes(item.estimated_minutes != null ? String(item.estimated_minutes) : "");
   };
 
   const cancelEdit = () => {
@@ -199,6 +201,7 @@ export default function MenuItemsClient() {
           cost_price: editCostPrice ? parseInt(editCostPrice, 10) : 0,
           margin_rate: editMarginRate === "" ? null : parseFloat(editMarginRate),
           tax_category: parseInt(editTaxCategory, 10),
+          estimated_minutes: editEstimatedMinutes === "" ? null : parseInt(editEstimatedMinutes, 10),
         },
         label: `品目編集: ${editName.trim()}`,
         kind: "other",
@@ -671,6 +674,15 @@ export default function MenuItemsClient() {
                                 <option value="10">10%</option>
                                 <option value="8">8%</option>
                               </select>
+                              <input
+                                type="number"
+                                className="input-field py-1 text-sm mt-1"
+                                min="0"
+                                placeholder="作業分"
+                                title="標準作業時間（分）"
+                                value={editEstimatedMinutes}
+                                onChange={(e) => setEditEstimatedMinutes(e.target.value)}
+                              />
                             </td>
                             <td className="hidden sm:table-cell px-5 py-3">
                               <Badge variant={item.is_active ? "success" : "default"}>
