@@ -1,6 +1,11 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import dynamic from "next/dynamic";
 import BillingGate from "./BillingGate";
+
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 import AdminRouteGuard from "./AdminRouteGuard";
 import BillingFetchGuard from "./BillingFetchGuard";
 import DemoTenantBanner from "./DemoTenantBanner";
