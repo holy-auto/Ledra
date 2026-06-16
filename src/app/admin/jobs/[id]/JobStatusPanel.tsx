@@ -11,6 +11,7 @@ import { useViewMode } from "@/lib/view-mode/ViewModeContext";
 import { fetcher } from "@/lib/swr";
 import { computeWorkDurationText } from "@/lib/admin/work-duration";
 import { enqueueOrFetch } from "@/lib/outbox/enqueueOrFetch";
+import { inferJobSkillTags, skillMatchScore } from "@/lib/staff/skills";
 import { STATUS_FLOW, STATUS_LABEL, STATUS_HINT, type JobReservation } from "./types";
 
 type MemberRow = {
@@ -20,6 +21,15 @@ type MemberRow = {
   role: string;
 };
 type MembersResponse = { members: MemberRow[] };
+
+type StaffRow = {
+  id: string;
+  name: string;
+  kind: "internal" | "external";
+  skills: string[];
+  is_active: boolean;
+};
+type StaffResponse = { staff: StaffRow[] };
 
 /**
  * JobStatusPanel
@@ -54,6 +64,19 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
     dedupingInterval: 60000,
   });
   const members = membersData?.members ?? [];
+
+  // 施工担当（職人）ピッカー用。社内/外注を含む staff_members を取得。
+  const { data: staffData } = useSWR<StaffResponse>("/api/admin/staff", fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 60000,
+  });
+  const staffList = (staffData?.staff ?? []).filter((s) => s.is_active);
+  const [staffBusy, setStaffBusy] = useState(false);
+
+  // 案件テキスト（タイトル + メニュー名）から必要スキルを推定し、担当候補とマッチングする
+  const jobSkillTags = inferJobSkillTags(
+    [reservation.title ?? "", ...(reservation.menu_items_json ?? []).map((m) => m.name)].join(" "),
+  );
 
   // 作業タイマー: in_progress 中はライブ更新 (60 秒間隔)、完了済みは静的表示
   const [tick, setTick] = useState(0);
@@ -127,6 +150,33 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
     }
   }
 
+  async function changeAssignedStaff(newStaffId: string | null) {
+    setStaffBusy(true);
+    setErr(null);
+    try {
+      const r = await enqueueOrFetch({
+        url: "/api/admin/reservations",
+        method: "PUT",
+        body: { id: reservation.id, assigned_staff_id: newStaffId },
+        label: `施工担当変更 (${reservation.title ?? "案件"})`,
+        kind: "reservation_update",
+      });
+      if (r.queued) {
+        setErr(`📡 オフラインです。担当変更を保留し、ネット復帰後に自動同期します。`);
+        return;
+      }
+      if (!r.ok && r.response) {
+        const j = await parseJsonSafe(r.response);
+        throw new Error(j?.error ?? `HTTP ${r.status}`);
+      }
+      router.refresh();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setStaffBusy(false);
+    }
+  }
+
   const certificateNewUrl = (() => {
     const params = new URLSearchParams();
     if (vehicleId) params.set("vehicle_id", vehicleId);
@@ -153,6 +203,13 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
   });
 
   const currentAssignee = members.find((m) => m.user_id === reservation.assigned_user_id) ?? null;
+  const currentStaff = staffList.find((s) => s.id === reservation.assigned_staff_id) ?? null;
+
+  // 担当候補をスキルマッチ順に並べる（マッチ多い順 → 名前順）
+  const sortedStaff = [...staffList].sort((a, b) => {
+    const diff = skillMatchScore(b.skills, jobSkillTags) - skillMatchScore(a.skills, jobSkillTags);
+    return diff !== 0 ? diff : a.name.localeCompare(b.name);
+  });
 
   return (
     <div className="space-y-6">
@@ -204,6 +261,43 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
               ))}
             </select>
             {assigneeBusy && <span className="text-muted">更新中…</span>}
+          </div>
+
+          {/* 施工担当（職人）ピッカー — 社内/外注を含む staff_members。スキルマッチ順。 */}
+          <div className="flex items-center gap-2">
+            <span className="font-semibold tracking-[0.12em] text-muted uppercase">施工担当</span>
+            {currentStaff ? (
+              <span className="text-primary">
+                {currentStaff.name}
+                {currentStaff.kind === "external" && <span className="ml-1 text-[10px] text-warning">外注</span>}
+              </span>
+            ) : (
+              <span className="text-muted">未割当</span>
+            )}
+            <select
+              aria-label="施工担当を変更"
+              className="rounded-md border border-border-default bg-surface px-2 py-1 text-xs text-primary disabled:opacity-50"
+              value={reservation.assigned_staff_id ?? ""}
+              disabled={staffBusy || isCancelled}
+              onChange={(e) => changeAssignedStaff(e.target.value === "" ? null : e.target.value)}
+            >
+              <option value="">— 未割当 —</option>
+              {sortedStaff.map((s) => {
+                const match = skillMatchScore(s.skills, jobSkillTags) > 0;
+                return (
+                  <option key={s.id} value={s.id}>
+                    {match ? "★ " : ""}
+                    {s.name}
+                    {s.kind === "external" ? "（外注）" : ""}
+                    {s.skills.length ? ` — ${s.skills.join("/")}` : ""}
+                  </option>
+                );
+              })}
+            </select>
+            {staffBusy && <span className="text-muted">更新中…</span>}
+            {jobSkillTags.length > 0 && (
+              <span className="text-[10px] text-muted">★=スキル一致（{jobSkillTags.join("・")}）</span>
+            )}
           </div>
 
           {workDurationText && (

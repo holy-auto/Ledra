@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
     let query = supabase
       .from("reservations")
       .select(
-        "id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, status, estimated_amount, created_at, workflow_template_id, current_step_key, current_step_order, progress_pct",
+        "id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, assigned_staff_id, status, estimated_amount, created_at, workflow_template_id, current_step_key, current_step_order, progress_pct",
         { count: "exact" },
       )
       .eq("tenant_id", caller.tenantId)
@@ -149,6 +149,7 @@ export async function POST(req: NextRequest) {
       start_time: input.start_time,
       end_time: input.end_time,
       assigned_user_id: input.assigned_user_id,
+      assigned_staff_id: input.assigned_staff_id,
       status: input.status,
       estimated_amount: input.estimated_amount ?? 0,
     };
@@ -157,7 +158,7 @@ export async function POST(req: NextRequest) {
       .from("reservations")
       .insert(row)
       .select(
-        "id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, status, estimated_amount, created_at, updated_at",
+        "id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, assigned_staff_id, status, estimated_amount, created_at, updated_at",
       )
       .single();
     if (error) {
@@ -206,20 +207,26 @@ export async function PUT(req: NextRequest) {
     });
     if (deny) return deny;
 
-    const parsed = reservationUpdateSchema.safeParse(await req.json().catch(() => ({})));
+    const rawBody = await req.json().catch(() => ({}));
+    const parsed = reservationUpdateSchema.safeParse(rawBody);
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
     const { id, cancel_reason, ...rest } = parsed.data;
 
+    // 部分更新で「送っていないフィールド」を誤って null 上書きしないよう、
+    // クライアントが実際に送ったキーだけを採用する。nullableUuid 等の transform は
+    // 未指定フィールドも null 化するため、生ボディのキー集合で絞り込む必要がある。
+    // (これが無いと例: ステータス前進や担当変更だけのリクエストで
+    //  customer_id / vehicle_id / assigned_* / note が null に消えてしまう)
+    const sentKeys = new Set(
+      rawBody && typeof rawBody === "object" ? Object.keys(rawBody as Record<string, unknown>) : [],
+    );
     const updates: Record<string, unknown> = {
-      ...rest,
       updated_at: new Date().toISOString(),
     };
-
-    // menu_items_json が undefined のキーは update で上書きしたくないので剥がす
-    for (const key of Object.keys(updates)) {
-      if (updates[key] === undefined) delete updates[key];
+    for (const [key, value] of Object.entries(rest)) {
+      if (value !== undefined && sentKeys.has(key)) updates[key] = value;
     }
 
     // キャンセル時はタイムスタンプと理由を追記
@@ -267,7 +274,7 @@ export async function PUT(req: NextRequest) {
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .select(
-        "id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, status, estimated_amount, gcal_event_id, cancelled_at, cancel_reason, work_started_at, work_completed_at, created_at, updated_at",
+        "id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, assigned_staff_id, status, estimated_amount, gcal_event_id, cancelled_at, cancel_reason, work_started_at, work_completed_at, created_at, updated_at",
       )
       .single();
 
