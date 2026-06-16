@@ -70,9 +70,13 @@ export async function generateReplyDraft(input: ReplyDraftInput): Promise<ReplyD
   if (input.customerName) facts.push(`顧客名: ${input.customerName}`);
   // 直近 12 ターンだけ文脈に渡す (長すぎる履歴を避ける)。
   const recent = input.turns.slice(-12);
-  const convo = recent.map((t) => `${t.direction === "inbound" ? "顧客" : "店舗"}: ${t.body.trim()}`).join("\n");
+  const convoFull = recent.map((t) => `${t.direction === "inbound" ? "顧客" : "店舗"}: ${t.body.trim()}`).join("\n");
+  // 会話は古い順なので、超過時は**末尾（=返信対象の最新発言）を必ず残す**ため
+  // 先頭ではなく後方を優先して切り詰める。
+  const MAX_CONVO = 6000;
+  const convo = convoFull.length > MAX_CONVO ? convoFull.slice(-MAX_CONVO) : convoFull;
   // 顧客発言は未信頼入力。プロンプトインジェクション対策として明示デリミタで包囲する。
-  facts.push(`会話 (古い順):\n${wrapUntrusted(convo, { tag: "会話履歴", maxLen: 6000 })}`);
+  facts.push(`会話 (古い順):\n${wrapUntrusted(convo, { tag: "会話履歴", maxLen: MAX_CONVO })}`);
 
   try {
     const msg = await withRetry("anthropic", () =>

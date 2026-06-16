@@ -84,6 +84,14 @@ if (security === null && performance === null) {
   process.exit(STRICT ? 1 : 0);
 }
 
+// In strict mode, a missing SECURITY result must NOT be summarized as "no
+// findings" — that would let the blocking check pass precisely when it did not
+// run (e.g. 403 missing advisors_read, or a transient 5xx). Fail instead.
+if (STRICT && security === null) {
+  console.error("\n[advisors] strict mode: SECURITY advisors could not be fetched — failing (did not run, not 'clean').");
+  process.exit(1);
+}
+
 const sec = summarize("security", security ?? { lints: [] });
 summarize("performance", performance ?? { lints: [] });
 

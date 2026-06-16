@@ -40,7 +40,9 @@ SOC 2 CC7.3–7.5 / 個人情報保護法（漏えい報告義務）に対応。
 
 ### 3.2 封じ込め（Containment）
 状況に応じて実施（証跡保全を優先し、可能な限り「無効化」を先に）:
-- **鍵/シークレット漏えい**: 該当鍵を即ローテーション（`.secrets-age.json` の手順参照: service_role / Stripe / CRON_SECRET / CUSTOMER_AUTH_PEPPER / SECRET_ENCRYPTION_KEY 等）。Vercel env 更新 → 再デプロイ。
+- **鍵/シークレット漏えい**: 該当鍵を即ローテーション（`.secrets-age.json` の手順参照: service_role / Stripe / CRON_SECRET / CUSTOMER_AUTH_PEPPER / SECRET_ENCRYPTION_KEY 等）。原則 Vercel env 更新 → 再デプロイ。ただし以下は**単純差し替え不可**、移行手順が必須:
+  - **`SECRET_ENCRYPTION_KEY`**: テナントシークレット（LINE/Square/Webhook）は現行鍵でのみ復号できる AES-GCM 封筒で、`secretBox.ts` に**デュアルキー fallback が無い**。鍵を差し替えるだけだと既存シークレットが復号不能になり連携が全断する。**(1) 旧鍵を保持したまま新鍵を併設 → (2) 旧鍵で全レコードを復号し新鍵で再暗号するバックフィルを実行 → (3) 全件移行を確認後に旧鍵を撤去**、の順で行う（漏えい時は旧鍵での復号が攻撃者にも可能な点を踏まえ、バックフィルを最優先で完了させる）。
+  - **`CUSTOMER_AUTH_PEPPER`**: 旧 pepper の verifier を併走させ、移行期間（30 日目安）を設けてから撤去（既存 OTP/セッションの無効化を避ける。`.secrets-age.json` 参照）。
 - **不正セッション**: 対象ユーザ/顧客セッションを失効（`customer_sessions` revoke）。必要なら全顧客セッション無効化。
 - **悪用エンドポイント**: 該当ルートを feature flag / デプロイで停止、またはレート制限を強化。
 - **テナント侵害**: `tenant-action` で該当テナントを一時停止。
