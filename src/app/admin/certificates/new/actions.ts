@@ -283,19 +283,34 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
   // 案件フローから reservation_id が渡っていれば、その予約の担当を最優先で使う（最も正確）。
   const reservation_id_form = String(formData.get("reservation_id") || "").trim() || null;
   let craftsman_staff_id = String(formData.get("craftsman_staff_id") || "").trim() || null;
-  if (!craftsman_staff_id && reservation_id_form) {
+  // 案件フローから渡された reservation_id は一度だけ取得し、職人の解決と「この案件から
+  // 発行」リンクの両方に使い回す。
+  let reservationFound = false; // テナント内に当該予約が実在するか（車両フォールバックの抑止に使う）
+  let linked_reservation_id: string | null = null; // 車両/顧客が一致したときだけ証明書に紐付ける
+  if (reservation_id_form) {
     const { data: jobRes } = await supabase
       .from("reservations")
-      .select("assigned_staff_id")
+      .select("assigned_staff_id, vehicle_id, customer_id")
       .eq("id", reservation_id_form)
       .eq("tenant_id", tenantId)
       .maybeSingle();
-    craftsman_staff_id = (jobRes?.assigned_staff_id as string | null) ?? null;
+    if (jobRes) {
+      reservationFound = true;
+      // 明示指定が無ければ、この案件の担当者をそのまま職人として採用する（最も正確）。
+      if (!craftsman_staff_id) craftsman_staff_id = (jobRes.assigned_staff_id as string | null) ?? null;
+      // 証明書側で確定した車両/顧客と矛盾しない場合のみ「この案件から発行」とみなす。
+      // 取り違え（別案件を「作成済」に誤マーク）を防ぐため、不一致なら紐付けない。
+      const vehicleOk = resolvedVehicleId ? jobRes.vehicle_id === resolvedVehicleId : true;
+      const customerOk = resolvedCustomerId ? jobRes.customer_id === resolvedCustomerId : true;
+      if (vehicleOk && customerOk) linked_reservation_id = reservation_id_form;
+    }
   }
-  if (!craftsman_staff_id && resolvedVehicleId) {
-    // フォールバック: この車両の「キャンセルでない・今日以前」の予約担当を引き当てる。
-    // ただし最近の該当予約に複数の異なる担当が居る場合は、どの案件向けの証明書か
-    // 確定できないため敢えて付けない（誤った職人名の刻印を防ぐ）。
+  if (!craftsman_staff_id && !reservationFound && resolvedVehicleId) {
+    // フォールバック: 明示の案件指定が無い場合のみ、この車両の「キャンセルでない・
+    // 今日以前」の予約担当を引き当てる。案件が指定されていれば（担当未設定でも）その
+    // 案件に従い、車両履歴からの推定は行わない（誤った職人名の刻印を防ぐ）。
+    // また最近の該当予約に複数の異なる担当が居る場合も、どの案件向けの証明書か
+    // 確定できないため敢えて付けない。
     const cutoff = new Date().toISOString().slice(0, 10);
     const { data: recentRows } = await supabase
       .from("reservations")
@@ -367,7 +382,8 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
       craftsman_staff_id: craftsman_staff_id ?? undefined,
       craftsman_name: craftsman_name ?? undefined,
       // 案件から発行された証明書は元の予約に紐付ける（タイムライン/フォローで「作成済」に）。
-      reservation_id: reservation_id_form ?? undefined,
+      // 車両/顧客が一致した検証済みの予約のみ（取り違え防止）。
+      reservation_id: linked_reservation_id ?? undefined,
     })
     .select("id")
     .single();
