@@ -153,11 +153,43 @@ UI に先行して API 層を提供する。すべて admin セッション認�
 RLS バイパスの platform-scoped admin で `tenant_id` スコープして読む。書込手段は提供しない
 (本社は閲覧のみ)。認可ヘルパー: `src/lib/api/orgStoreRead.ts` / `src/lib/auth/orgAccess.ts`。
 
-## 6. 後続フェーズ
+## 6. 管理 UI / 連携 UI (Phase 3)
 
-- 本社横断 UI (店舗一覧 → 顧客 / 車両 / 作業履歴のドリルダウン閲覧) — 上記 API を利用。
+### 本社横断ビュー — `/admin/hq-overview`
+
+本社ユーザが「組織 → 店舗 → 顧客 / 車両 / 作業履歴」とドリルダウンして配下全店舗を
+横断**閲覧**する画面 (書込手段なし)。Phase 2 の本社横断リード API を利用。権限は
+`stores:manage`。実装: `src/app/admin/hq-overview/`。
+
+### API連携 — `/admin/integrations`
+
+基幹ソフト連携の管理画面。権限は `settings:view`。実装: `src/app/admin/integrations/`。
+
+- **APIキー**: 発行 (スコープをチェックボックスで選択、取込スコープ `customers:write` /
+  `vehicles:write` / `work_history:write` を含む) / 一覧 / 失効。生鍵は発行時のみ表示。
+  スコープ定義は `src/lib/api-key-scopes.ts` (発行 API と共有)。
+- **Webhook**: 登録 (URL + 購読トピックをチェックボックスで選択) / 有効化・停止 / 削除。
+  署名シークレットは作成時のみ表示。
+
+### Webhook トピック (双方向同期)
+
+トピックレジストリ: `src/lib/webhook-topics.ts`。`tenant_webhooks.topics` はこの一覧
+(+ ワイルドカード `*`) のみ購読可 (作成・更新 API で検証)。
+
+| topic | 発火タイミング |
+| --- | --- |
+| `certificate.issued` | 証明書発行 (既存) |
+| `customer.created` / `customer.updated` | 取込で顧客が新規 / 更新 |
+| `vehicle.created` / `vehicle.updated` | 取込で車両が新規 / 更新 |
+| `work_history.created` | 取込で作業履歴が新規 |
+
+取込 (`runIngest`) は upsert 成功後、**有効な webhook 購読がある場合のみ** outbox に
+イベントを enqueue する (購読が無ければ outbox を汚さない)。配送は outbox + cron に委譲。
+ペイロード `data`: `{ id, external_ref, source_system }`。
+
+## 7. 残課題 (後続)
+
 - 店舗を持たない本社専用ユーザのセッション / ナビゲーション解決
   (現状 `resolveCallerWithRole` は tenant membership を要求するため、本社専用アカウントは
   別途いずれかの店舗メンバーである必要がある)。
-- API キー発行時のスコープ UI への取込スコープ追加。
-- 双方向同期 (Ledra → 基幹) の outbound webhook トピック拡張。
+- 手動編集 (UI からの顧客 / 車両更新) での webhook 発火 (現状は取込経路のみ)。

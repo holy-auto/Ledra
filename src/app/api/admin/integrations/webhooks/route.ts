@@ -13,6 +13,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { isValidWebhookTopic } from "@/lib/webhook-topics";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,11 @@ const createSchema = z.object({
     .string()
     .url()
     .regex(/^https:\/\//, "url_must_be_https"),
-  topics: z.array(z.string().min(1).max(64)).min(1).max(64).default(["*"]),
+  topics: z
+    .array(z.string().min(1).max(64).refine(isValidWebhookTopic, { message: "unknown_topic" }))
+    .min(1)
+    .max(64)
+    .default(["*"]),
   description: z.string().max(200).optional(),
 });
 
