@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { makePublicId } from "@/lib/publicId";
 import { resolveCertifiedTemplateForTenant } from "@/lib/manufacturers/certifiedTemplates";
 
@@ -280,7 +281,10 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
   }
   let craftsman_name: string | null = null;
   if (craftsman_staff_id) {
-    const { data: staffRow } = await supabase
+    // staff_members の SELECT は RLS で管理ロール限定のため、発行者が staff ロール
+    // でも職人名を解決できるよう、サービスロールで tenant 限定 + name のみ読む。
+    const { admin } = createTenantScopedAdmin(tenantId);
+    const { data: staffRow } = await admin
       .from("staff_members")
       .select("name")
       .eq("id", craftsman_staff_id)

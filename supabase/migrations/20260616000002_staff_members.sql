@@ -45,9 +45,13 @@ create unique index if not exists uq_staff_members_user
 
 alter table staff_members enable row level security;
 
+-- 連絡先・メモ等を含むロスターは members:manage 相当（super_admin/owner/admin）に限定。
+-- 案件アサイン用の最小一覧（id/name/kind/skills/is_active のみ）が必要な
+-- reservations 系ロールや、証明書発行時の職人名解決は、サービスロールで
+-- 列を絞って読む（/api/admin/staff/picker, certificates/new/actions.ts）。
 drop policy if exists "staff_members_select" on staff_members;
 create policy "staff_members_select" on staff_members
-  for select using (tenant_id in (select my_tenant_ids()));
+  for select using (public.tenant_caller_has_role(tenant_id, array['super_admin', 'owner', 'admin']));
 -- 書込は members:manage を持つロール（super_admin / owner / admin）に限定。
 -- API ゲートに加え、Supabase クライアント直叩きでの改ざんも RLS で防ぐ。
 drop policy if exists "staff_members_insert" on staff_members;
@@ -89,7 +93,7 @@ alter table staff_shifts enable row level security;
 
 drop policy if exists "staff_shifts_select" on staff_shifts;
 create policy "staff_shifts_select" on staff_shifts
-  for select using (tenant_id in (select my_tenant_ids()));
+  for select using (public.tenant_caller_has_role(tenant_id, array['super_admin', 'owner', 'admin']));
 -- 書込は members:manage を持つロール（super_admin / owner / admin）に限定。
 -- replace_staff_shifts RPC のロール検査に加え、直接の table 書込も RLS で塞ぐ。
 drop policy if exists "staff_shifts_insert" on staff_shifts;

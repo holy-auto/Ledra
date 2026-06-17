@@ -122,12 +122,6 @@ export interface CertificateHashInput {
   expiryValue: string | null;
   /** SHA-256 hex of each attached image (any order; sorted internally). */
   imageSha256s: string[];
-  /**
-   * 施工担当（職人）の表示名。⑦ 職人名×施工証明の連携。
-   * 値が無い証明書では canonical から omit され、過去のダイジェストと
-   * バイト互換（schema v1 のまま）になる。職人名がある場合のみ刻まれる。
-   */
-  craftsmanName?: string | null;
 }
 
 export interface CertificateCanonical {
@@ -145,8 +139,6 @@ export interface CertificateCanonical {
   expiry_value?: string;
   /** Image SHA-256 hashes, sorted lex ascending. */
   image_sha256_set: string[];
-  /** 施工担当（職人）名。値が無い証明書では omit（過去ダイジェストと互換）。 */
-  craftsman_name?: string;
 }
 
 /**
@@ -173,11 +165,6 @@ export function buildCanonicalCertificate(input: CertificateHashInput): Certific
   }
   if (input.expiryValue !== null && input.expiryValue !== undefined) {
     result.expiry_value = input.expiryValue;
-  }
-  // 職人名は存在するときだけ刻む（omit-when-absent）。これにより職人名の無い
-  // 既存証明書のダイジェストは従来とバイト互換のまま保たれる。
-  if (input.craftsmanName !== null && input.craftsmanName !== undefined && input.craftsmanName !== "") {
-    result.craftsman_name = input.craftsmanName;
   }
   return result;
 }

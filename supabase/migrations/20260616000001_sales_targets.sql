@@ -46,7 +46,7 @@ alter table sales_targets enable row level security;
 
 drop policy if exists "sales_targets_select" on sales_targets;
 create policy "sales_targets_select" on sales_targets
-  for select using (tenant_id in (select my_tenant_ids()));
+  for select using (public.tenant_caller_has_role(tenant_id, array['super_admin', 'owner', 'admin']));
 drop policy if exists "sales_targets_insert" on sales_targets;
 create policy "sales_targets_insert" on sales_targets
   for insert with check (public.tenant_caller_has_role(tenant_id, array['super_admin', 'owner', 'admin']));
