@@ -29,12 +29,15 @@ function requiredFeatureForPath(pathname: string): FeatureKey | null {
 
 export default function AdminRouteGuard({ children }: { children: ReactNode }) {
   const bs = useAdminBillingStatus();
-  const { can, loading: roleLoading } = useCurrentRole();
+  const { can, loading: roleLoading, isOrgUser } = useCurrentRole();
   const pathname = usePathname();
   const sp = useSearchParams();
 
   const feature = requiredFeatureForPath(pathname);
   const requiredPerm = requiredPermissionForPath(pathname);
+
+  // 本社専用ユーザ (tenant role 無し) は本社向け画面のみアクセス可能。
+  const isHqPage = pathname.startsWith("/admin/hq-overview") || pathname.startsWith("/admin/organizations");
 
   // useMemo must be called unconditionally (before any early returns)
   const nextUrl = useMemo(() => {
@@ -42,8 +45,9 @@ export default function AdminRouteGuard({ children }: { children: ReactNode }) {
     return qs ? pathname + "?" + qs : pathname;
   }, [pathname, sp]);
 
-  // Role-based access check (skip while loading to avoid false blocks)
-  if (!roleLoading && requiredPerm && !can(requiredPerm)) {
+  // Role-based access check (skip while loading to avoid false blocks).
+  // 本社専用ユーザは本社向け画面 (isHqPage) では許可する。
+  if (!roleLoading && requiredPerm && !can(requiredPerm) && !(isOrgUser && isHqPage)) {
     return (
       <div className="space-y-3">
         <div className="glass-card p-4 text-sm glow-amber">

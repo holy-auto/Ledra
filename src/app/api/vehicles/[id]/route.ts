@@ -3,6 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { vehicleUpdateSchema } from "@/lib/validations/vehicle";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiInternalError, apiUnauthorized, apiNotFound, apiValidationError } from "@/lib/api/response";
+import { emitEntityWebhook } from "@/lib/outbound-webhooks";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,15 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       if (error?.code === "PGRST116") return apiNotFound("車両が見つかりません。");
       return apiInternalError(error, "vehicles/[id] PUT");
     }
+
+    await emitEntityWebhook(caller.tenantId, "vehicle.updated", vehicle.id, {
+      id: vehicle.id,
+      maker: vehicle.maker,
+      model: vehicle.model,
+      plate_display: vehicle.plate_display,
+      vin_code: vehicle.vin_code,
+      customer_id: vehicle.customer_id,
+    });
 
     return apiOk({ vehicle });
   } catch (e) {

@@ -77,6 +77,18 @@ export async function resolveCallerWithRole(
   };
 }
 
+/**
+ * 認証済みユーザの id のみを解決する (テナント membership 不要)。
+ * 本社専用ユーザ (organization_users にのみ所属し tenant_memberships を持たない)
+ * でも通る。組織スコープの API は本ヘルパー + resolveOrgAccess で認可する。
+ */
+export async function resolveUserId(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+): Promise<string | null> {
+  const { data } = await supabase.auth.getUser();
+  return data?.user?.id ?? null;
+}
+
 /** テナントの plan_tier を取得して正規化する */
 async function resolvePlanTier(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,

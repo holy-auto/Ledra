@@ -1,6 +1,6 @@
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveUserId } from "@/lib/auth/checkRole";
 import { resolveOrgAccess } from "@/lib/auth/orgAccess";
 import { apiUnauthorized, apiNotFound } from "@/lib/api/response";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -24,10 +24,10 @@ export async function authorizeOrgStoreRead(
   tenantId: string,
 ): Promise<{ ok: true; admin: AdminDb; tenantId: string } | { ok: false; response: Response }> {
   const supabase = await createSupabaseServerClient();
-  const caller = await resolveCallerWithRole(supabase);
-  if (!caller) return { ok: false, response: apiUnauthorized() };
+  const userId = await resolveUserId(supabase);
+  if (!userId) return { ok: false, response: apiUnauthorized() };
 
-  const access = await resolveOrgAccess(supabase, orgId, caller.userId);
+  const access = await resolveOrgAccess(supabase, orgId, userId);
   if (!access) return { ok: false, response: apiNotFound("対象の組織が見つかりません。") };
 
   const admin = createPlatformScopedAdmin("本社による所属店舗データの横断閲覧 (read-only クロステナント)");

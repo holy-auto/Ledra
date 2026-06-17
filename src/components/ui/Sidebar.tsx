@@ -102,6 +102,12 @@ type NavItem = {
    * the role loads so contractors never see a flash of the link.
    */
   platformOnly?: boolean;
+  /**
+   * 本社専用ユーザ (テナント未所属の組織オーナー / 本社チーム) に表示する項目。
+   * これらのユーザは tenant role が無いため通常の requiredPermission では
+   * 何も見えない。本社向け画面 (横断ビュー・組織管理) のみ true にする。
+   */
+  orgUserVisible?: boolean;
 };
 
 type NavGroup = {
@@ -964,6 +970,7 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/organizations",
         label: "組織管理",
         requiredPermission: "stores:manage",
+        orgUserVisible: true,
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path
@@ -978,6 +985,7 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/hq-overview",
         label: "本社横断ビュー",
         requiredPermission: "stores:manage",
+        orgUserVisible: true,
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path
@@ -1278,7 +1286,7 @@ function CollapsibleGroup({
 /* ------------------------------------------------------------------ */
 export default function Sidebar() {
   const pathname = usePathname();
-  const { role, can, loading, isPlatformAdmin } = useCurrentRole();
+  const { role, can, loading, isPlatformAdmin, isOrgUser } = useCurrentRole();
   const { tenantDisabled, userVisible, loading: prefsLoading } = useFeaturePrefs();
   const tenantDisabledSet = useMemo(() => new Set(tenantDisabled), [tenantDisabled]);
   const userVisibleSet = useMemo(() => new Set(userVisible), [userVisible]);
@@ -1332,6 +1340,12 @@ export default function Sidebar() {
         // No optimistic display — contractors must never see these links.
         if (item.platformOnly && !isPlatformAdmin) return false;
 
+        // 本社専用ユーザ (tenant role 無し): 本社向け項目のみ表示する。
+        // role が永続的に null のため、下の楽観的ゲートだと全項目が出てしまう。
+        if (isOrgUser && !role) {
+          return item.orgUserVisible === true;
+        }
+
         // Existing role/permission gate (optimistic while the role loads).
         if (item.requiredPermission && !loading && role && !can(item.requiredPermission)) {
           return false;
@@ -1349,7 +1363,7 @@ export default function Sidebar() {
 
         return true;
       }),
-    [loading, role, can, isPlatformAdmin, prefsLoading, tenantDisabledSet, userVisibleSet],
+    [loading, role, can, isPlatformAdmin, isOrgUser, prefsLoading, tenantDisabledSet, userVisibleSet],
   );
 
   const renderItem = (item: NavItem) => {

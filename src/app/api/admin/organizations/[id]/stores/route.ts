@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveUserId } from "@/lib/auth/checkRole";
 import { resolveOrgAccess } from "@/lib/auth/orgAccess";
 import { apiJson, apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
 
@@ -18,11 +18,11 @@ export const runtime = "nodejs";
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+    const userId = await resolveUserId(supabase);
+    if (!userId) return apiUnauthorized();
 
     const { id: orgId } = await params;
-    const access = await resolveOrgAccess(supabase, orgId, caller.userId);
+    const access = await resolveOrgAccess(supabase, orgId, userId);
     if (!access) return apiNotFound("対象の組織が見つかりません。");
 
     const admin = createPlatformScopedAdmin("本社による所属店舗一覧の参照 (read-only クロステナント)");

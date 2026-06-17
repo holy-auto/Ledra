@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveUserId } from "@/lib/auth/checkRole";
 import { resolveOrgAccess } from "@/lib/auth/orgAccess";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { ORG_ROLE_LABELS, normalizeOrgRole } from "@/lib/auth/orgRoles";
@@ -35,11 +35,11 @@ export const runtime = "nodejs";
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+    const userId = await resolveUserId(supabase);
+    if (!userId) return apiUnauthorized();
 
     const { id: orgId } = await params;
-    const access = await resolveOrgAccess(supabase, orgId, caller.userId);
+    const access = await resolveOrgAccess(supabase, orgId, userId);
     if (!access) return apiNotFound("対象の組織が見つかりません。");
 
     const admin = createPlatformScopedAdmin("本社チーム一覧の参照 (email 付帯情報取得)");
@@ -70,7 +70,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         role,
         role_label: ORG_ROLE_LABELS[role],
         created_at: r.created_at,
-        is_self: r.user_id === caller.userId,
+        is_self: r.user_id === userId,
       };
     });
 
@@ -84,11 +84,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+    const callerUserId = await resolveUserId(supabase);
+    if (!callerUserId) return apiUnauthorized();
 
     const { id: orgId } = await params;
-    const access = await resolveOrgAccess(supabase, orgId, caller.userId);
+    const access = await resolveOrgAccess(supabase, orgId, callerUserId);
     if (!access) return apiNotFound("対象の組織が見つかりません。");
     if (!access.canManage) return apiForbidden("本社チームを管理する権限がありません。");
 
@@ -144,11 +144,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+    const userId = await resolveUserId(supabase);
+    if (!userId) return apiUnauthorized();
 
     const { id: orgId } = await params;
-    const access = await resolveOrgAccess(supabase, orgId, caller.userId);
+    const access = await resolveOrgAccess(supabase, orgId, userId);
     if (!access) return apiNotFound("対象の組織が見つかりません。");
     if (!access.canManage) return apiForbidden("本社チームを管理する権限がありません。");
 
@@ -178,11 +178,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+    const userId = await resolveUserId(supabase);
+    if (!userId) return apiUnauthorized();
 
     const { id: orgId } = await params;
-    const access = await resolveOrgAccess(supabase, orgId, caller.userId);
+    const access = await resolveOrgAccess(supabase, orgId, userId);
     if (!access) return apiNotFound("対象の組織が見つかりません。");
     if (!access.canManage) return apiForbidden("本社チームを管理する権限がありません。");
 

@@ -7,6 +7,7 @@ import { enforceBilling } from "@/lib/billing/guard";
 import { parsePagination } from "@/lib/api/pagination";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { customerCreateSchema, customerDeleteSchema, customerUpdateSchema } from "@/lib/validations/customer";
+import { emitEntityWebhook } from "@/lib/outbound-webhooks";
 
 export const dynamic = "force-dynamic";
 
@@ -159,6 +160,13 @@ export async function POST(req: NextRequest) {
       return apiInternalError(error, "customers POST");
     }
 
+    await emitEntityWebhook(caller.tenantId, "customer.created", data.id, {
+      id: data.id,
+      name: data.name,
+      email: data.email,
+      phone: data.phone,
+    });
+
     return apiJson({ ok: true, customer: data });
   } catch (e) {
     return apiInternalError(e, "customers POST");
@@ -223,6 +231,13 @@ export async function PUT(req: NextRequest) {
       // 同期失敗はログのみ（顧客更新自体は成功扱い）
       console.warn("[customers] vehicle sync warning:", syncErr);
     }
+
+    await emitEntityWebhook(caller.tenantId, "customer.updated", data.id, {
+      id: data.id,
+      name: data.name,
+      email: data.email,
+      phone: data.phone,
+    });
 
     return apiJson({ ok: true, customer: data });
   } catch (e) {
