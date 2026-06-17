@@ -187,9 +187,37 @@ RLS バイパスの platform-scoped admin で `tenant_id` スコープして読�
 イベントを enqueue する (購読が無ければ outbox を汚さない)。配送は outbox + cron に委譲。
 ペイロード `data`: `{ id, external_ref, source_system }`。
 
-## 7. 残課題 (後続)
+## 7. 本社専用ユーザ / 手動編集 webhook (Phase 4)
 
-- 店舗を持たない本社専用ユーザのセッション / ナビゲーション解決
-  (現状 `resolveCallerWithRole` は tenant membership を要求するため、本社専用アカウントは
-  別途いずれかの店舗メンバーである必要がある)。
-- 手動編集 (UI からの顧客 / 車両更新) での webhook 発火 (現状は取込経路のみ)。
+### 本社専用ユーザのセッション解決
+
+テナント (店舗) に所属せず `organization_users` / `organizations.owner_id` だけを持つ
+「本社専用ユーザ」がログインして本社向け画面を使えるようにした。
+
+- `resolveUserId(supabase)` … テナント membership 不要のユーザ認証 (`checkRole.ts`)。
+- `resolveOrgUserContext(supabase)` … 本社ユーザ判定 (`orgAccess.ts`)。
+- `/api/admin/me` … テナント未所属でも本社ユーザなら `role: null, is_org_user: true`
+  を返す (tenant ユーザは従来どおり)。
+- `useCurrentRole` … `role: null` を保持 (normalizeRole で "admin" 化しない)。
+  `isOrgUser` / `isOrgOwner` を公開。
+- Sidebar … 本社専用ユーザには `orgUserVisible` 項目 (本社横断ビュー・組織管理) のみ表示。
+- `AdminRouteGuard` … 本社専用ユーザは本社向け画面 (`/admin/hq-overview`,
+  `/admin/organizations`) のみ許可。
+- ログイン後リダイレクト … 店舗も代理店も無い本社ユーザは `/admin/hq-overview` へ。
+- 本社向け **読取** API (`/api/admin/organizations` GET, `/stores`, `/stores/[tenantId]/*`,
+  `/dashboard`, `/users` 一覧) を `resolveUserId` + `resolveOrgAccess` で認可
+  (テナント不要)。
+
+> 制約: 組織の新規作成・所属店舗の連結 (`members`) は引き続きテナントオーナー権限が必要
+> (自社の店舗を束ねる操作のため)。本社専用ユーザは閲覧と本社チーム管理 (owner の場合) が中心。
+
+### 手動編集での webhook 発火
+
+取込経路だけでなく、管理 UI からの顧客 / 車両の作成・更新でも webhook を発火する。
+
+- `emitEntityWebhook(tenantId, topic, aggregateId, data)` (`outbound-webhooks.ts`):
+  有効な購読がある場合のみ outbox に enqueue (best-effort)。
+- 発火箇所: `POST/PUT /api/admin/customers` (`customer.created/updated`)、
+  `POST /api/vehicles/create` (`vehicle.created`)、`PUT /api/vehicles/[id]` (`vehicle.updated`)。
+
+> 後続: 一括インポート / 顧客インテーク承認など二次経路での発火、書込権限の本社ユーザ拡張。

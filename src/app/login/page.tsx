@@ -55,6 +55,29 @@ async function resolveDefaultRedirect(userId: string, activeContext: string | nu
   }
 
   if (hasAgent) return "/agent";
+
+  // 施工店も代理店も無い場合、本社専用ユーザ (組織オーナー / 本社チーム) なら
+  // 本社横断ビューへ。そうでなければ従来どおり施工店登録フローへ。
+  if (!hasShop) {
+    const { data: ownedOrg } = await admin
+      .from("organizations")
+      .select("id")
+      .eq("owner_id", userId)
+      .limit(1)
+      .maybeSingle();
+    let isOrgUser = !!ownedOrg?.id;
+    if (!isOrgUser) {
+      const { data: orgMember } = await admin
+        .from("organization_users")
+        .select("organization_id")
+        .eq("user_id", userId)
+        .limit(1)
+        .maybeSingle();
+      isOrgUser = !!orgMember?.organization_id;
+    }
+    if (isOrgUser) return "/admin/hq-overview";
+  }
+
   return "/admin/certificates";
 }
 

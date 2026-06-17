@@ -19,6 +19,7 @@
 import crypto from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { enqueueOutboxEvent, type Dispatcher } from "@/lib/outbox";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { withRetry } from "@/lib/http/withRetry";
 import { logger } from "@/lib/logger";
 
@@ -44,6 +45,34 @@ export async function emitTenantEvent(admin: AdminDb, args: EmitArgs) {
       // The outbox row's created_at is the canonical event timestamp.
     },
   });
+}
+
+/**
+ * 単一エンティティの変更を webhook 通知する (手動編集・UI 経由の作成/更新など)。
+ *
+ * - tenant に有効な webhook 購読が無ければ何もしない (outbox を汚さない)。
+ * - 自前で tenant-scoped admin を生成するため、呼び出し側は tenantId と
+ *   ペイロードを渡すだけでよい (RLS user client から outbox に書けない問題を回避)。
+ * - best-effort: 失敗しても呼び出し元の処理 (保存) は止めない。
+ */
+export async function emitEntityWebhook(
+  tenantId: string,
+  topic: string,
+  aggregateId: string | null,
+  data: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const { admin } = createTenantScopedAdmin(tenantId);
+    const { count } = await admin
+      .from("tenant_webhooks")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .eq("is_active", true);
+    if (!count) return;
+    await emitTenantEvent(admin, { tenantId, topic, aggregateId, payload: data });
+  } catch (e) {
+    logger.warn("emitEntityWebhook failed", { error: e instanceof Error ? e.message : String(e), topic });
+  }
 }
 
 /** HMAC-SHA256 over `${unix_ms}.${body}` with the per-webhook secret. */

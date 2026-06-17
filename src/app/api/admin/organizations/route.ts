@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requireMinRole, resolveUserId } from "@/lib/auth/checkRole";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { apiJson, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { organizationCreateSchema, organizationUpdateSchema } from "@/lib/validations/organization";
@@ -21,8 +21,10 @@ export const runtime = "nodejs";
 export async function GET() {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+    // 本社専用ユーザ (テナント未所属) でも閲覧できるよう user 認証のみ。
+    // RLS で owner_id = auth.uid() / org_users 所属の組織のみ可視。
+    const userId = await resolveUserId(supabase);
+    if (!userId) return apiUnauthorized();
 
     // RLS により owner_id = auth.uid() の組織のみ取得される。
     const { data: orgs, error } = await supabase

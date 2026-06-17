@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveUserId } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
@@ -37,8 +37,8 @@ const CLOSED_STATUSES = ["completed", "cancelled"] as const;
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+    const userId = await resolveUserId(supabase);
+    if (!userId) return apiUnauthorized();
 
     const { id: orgId } = await params;
 
@@ -47,7 +47,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       .from("organizations")
       .select("id, name")
       .eq("id", orgId)
-      .eq("owner_id", caller.userId)
+      .eq("owner_id", userId)
       .maybeSingle();
     if (!org) return apiNotFound("対象の組織が見つかりません。");
 

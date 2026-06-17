@@ -4,6 +4,7 @@ import { vehicleCreateSchema } from "@/lib/validations/vehicle";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiJson, apiOk, apiInternalError, apiUnauthorized, apiValidationError } from "@/lib/api/response";
 import { calcSizeClass } from "@/lib/ocr/shakensho";
+import { emitEntityWebhook } from "@/lib/outbound-webhooks";
 import type { VehicleSizeClass } from "@/lib/validations/vehicle";
 
 export const dynamic = "force-dynamic";
@@ -62,6 +63,15 @@ export async function POST(req: Request) {
     if (error) {
       return apiInternalError(error, "vehicles/create insert");
     }
+
+    await emitEntityWebhook(caller.tenantId, "vehicle.created", vehicle.id, {
+      id: vehicle.id,
+      maker: insertRow.maker,
+      model: insertRow.model,
+      plate_display: insertRow.plate_display,
+      vin_code: insertRow.vin_code,
+      customer_id: insertRow.customer_id,
+    });
 
     return apiJson({ id: vehicle.id }, { status: 200 });
   } catch (e) {

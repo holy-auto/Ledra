@@ -8,11 +8,16 @@ import { hasPermission, type Permission } from "./permissions";
 type MeData = {
   user_id: string;
   email: string;
-  tenant_id: string;
+  tenant_id: string | null;
   tenant_name: string | null;
   plan_tier: string;
-  role: Role;
+  /** 本社専用ユーザ (テナント未所属) は null。 */
+  role: Role | null;
   is_platform_admin: boolean;
+  /** 本社 (組織) 側のユーザか。 */
+  is_org_user: boolean;
+  /** 組織オーナーか。 */
+  is_org_owner: boolean;
 };
 
 let cachedData: MeData | null = null;
@@ -23,7 +28,15 @@ async function fetchMe(): Promise<MeData | null> {
     const res = await fetch("/api/admin/me", { cache: "no-store" });
     if (!res.ok) return null;
     const j = await res.json();
-    return { ...j, role: normalizeRole(j.role), is_platform_admin: j.is_platform_admin === true };
+    return {
+      ...j,
+      // role は null を保持する (本社専用ユーザ)。null を normalizeRole すると
+      // "admin" になり全権付与されてしまうため、明示的にガードする。
+      role: j.role ? normalizeRole(j.role) : null,
+      is_platform_admin: j.is_platform_admin === true,
+      is_org_user: j.is_org_user === true,
+      is_org_owner: j.is_org_owner === true,
+    };
   } catch {
     return null;
   }
@@ -54,7 +67,7 @@ export function useCurrentRole() {
 
   const can = useCallback(
     (permission: Permission): boolean => {
-      if (!data) return false;
+      if (!data || !data.role) return false;
       return hasPermission(data.role, permission);
     },
     [data],
@@ -65,6 +78,8 @@ export function useCurrentRole() {
     loading,
     role: data?.role ?? null,
     isPlatformAdmin: data?.is_platform_admin === true,
+    isOrgUser: data?.is_org_user === true,
+    isOrgOwner: data?.is_org_owner === true,
     can,
     refresh,
   };

@@ -21,6 +21,40 @@ export interface OrgAccess {
 }
 
 /**
+ * 認証済みユーザが「本社側」(いずれかの組織のオーナー or 本社チームメンバー) か判定する。
+ * orgId を特定せず、本社専用ユーザのセッション判定 (/api/admin/me 等) に使う。
+ *
+ * @returns 本社ユーザなら { userId, isOrgOwner }、それ以外 (未認証 / 組織所属なし) は null。
+ */
+export async function resolveOrgUserContext(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+): Promise<{ userId: string; isOrgOwner: boolean } | null> {
+  const { data: userRes } = await supabase.auth.getUser();
+  const userId = userRes?.user?.id;
+  if (!userId) return null;
+
+  // いずれかの組織のオーナーか (RLS: owner_id = auth.uid() の行のみ可視)。
+  const { data: owned } = await supabase
+    .from("organizations")
+    .select("id")
+    .eq("owner_id", userId)
+    .limit(1)
+    .maybeSingle();
+  if (owned) return { userId, isOrgOwner: true };
+
+  // 本社チームメンバーか (RLS: 自分の org_users 行が可視)。
+  const { data: member } = await supabase
+    .from("organization_users")
+    .select("organization_id")
+    .eq("user_id", userId)
+    .limit(1)
+    .maybeSingle();
+  if (member) return { userId, isOrgOwner: false };
+
+  return null;
+}
+
+/**
  * caller が当該組織に対して持つアクセス権を返す。所属が無ければ null。
  */
 export async function resolveOrgAccess(
