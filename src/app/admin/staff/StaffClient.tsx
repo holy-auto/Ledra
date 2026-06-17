@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import { SUGGESTED_SKILLS } from "@/lib/staff/skills";
 
@@ -83,6 +83,8 @@ export default function StaffClient() {
   const [shiftStaffId, setShiftStaffId] = useState<string | null>(null);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [shiftSaving, setShiftSaving] = useState(false);
+  // 直近に開いたスタッフID。古い fetch 応答を破棄して別スタッフのシフト誤適用を防ぐ。
+  const shiftReqRef = useRef<string | null>(null);
 
   const fetchStaff = useCallback(async () => {
     try {
@@ -189,10 +191,12 @@ export default function StaffClient() {
     }
     setShiftStaffId(s.id);
     setShifts([]);
+    shiftReqRef.current = s.id;
     try {
       const res = await fetch(`/api/admin/staff/shifts?staff_id=${s.id}&from=${todayStr()}`, { cache: "no-store" });
       const j = await parseJsonSafe(res);
-      if (res.ok && j) setShifts(j.shifts ?? []);
+      // 応答が届く間に別スタッフを開いていたら破棄（古い結果を適用しない）。
+      if (shiftReqRef.current === s.id && res.ok && j) setShifts(j.shifts ?? []);
     } catch {
       // keep empty
     }

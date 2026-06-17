@@ -82,6 +82,7 @@ function makeSupabaseMock(world: World): any {
     else if (table === "notification_logs") rows = world.notificationLogs;
 
     const filters: Array<(r: any) => boolean> = [];
+    let rangeFrom = 0; // ページング: from>0 のページは空を返す（customers は 1 ページに収まる前提）
     const builder: any = {
       select: () => {
         mode = "select";
@@ -100,6 +101,11 @@ function makeSupabaseMock(world: World): any {
         if (op === "is" && val === null) filters.push((r) => r[col] != null);
         return builder;
       },
+      order: () => builder,
+      range: (from: number) => {
+        rangeFrom = from;
+        return builder;
+      },
       insert: (payload: any) => {
         mode = "insert";
         world.insertCalls.push({ table, ...payload });
@@ -115,7 +121,7 @@ function makeSupabaseMock(world: World): any {
       },
       then: (resolve: any) => {
         if (mode !== "select") return resolve({ data: null, error: null });
-        const out = rows.filter((r) => filters.every((f) => f(r)));
+        const out = rangeFrom > 0 ? [] : rows.filter((r) => filters.every((f) => f(r)));
         return resolve({ data: out, error: null });
       },
     };

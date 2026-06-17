@@ -280,12 +280,24 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
   // ⑦ 職人名×施工証明: 施工担当（職人）を解決。明示指定 (craftsman_staff_id) を優先し、
   // 無ければこの車両に紐づく直近の予約 (assigned_staff_id) から引き当てる。
   // 発行時点の表示名をスナップショットして証明書に刻む（退会後も証跡が残る）。
+  // 案件フローから reservation_id が渡っていれば、その予約の担当を最優先で使う（最も正確）。
+  const reservation_id_form = String(formData.get("reservation_id") || "").trim() || null;
   let craftsman_staff_id = String(formData.get("craftsman_staff_id") || "").trim() || null;
+  if (!craftsman_staff_id && reservation_id_form) {
+    const { data: jobRes } = await supabase
+      .from("reservations")
+      .select("assigned_staff_id")
+      .eq("id", reservation_id_form)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    craftsman_staff_id = (jobRes?.assigned_staff_id as string | null) ?? null;
+  }
   if (!craftsman_staff_id && resolvedVehicleId) {
-    // フォールバックは「この車両の、キャンセルでない、今日以前の予約」の直近に限定する。
-    // 未来予約や別案件（別職人）の予約を誤って拾い、誤った職人名を刻むのを防ぐ。
+    // フォールバック: この車両の「キャンセルでない・今日以前」の予約担当を引き当てる。
+    // ただし最近の該当予約に複数の異なる担当が居る場合は、どの案件向けの証明書か
+    // 確定できないため敢えて付けない（誤った職人名の刻印を防ぐ）。
     const cutoff = new Date().toISOString().slice(0, 10);
-    const { data: recentRes } = await supabase
+    const { data: recentRows } = await supabase
       .from("reservations")
       .select("assigned_staff_id")
       .eq("tenant_id", tenantId)
@@ -295,9 +307,9 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
       .lte("scheduled_date", cutoff)
       .order("scheduled_date", { ascending: false })
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    craftsman_staff_id = (recentRes?.assigned_staff_id as string | null) ?? null;
+      .limit(5);
+    const distinct = [...new Set((recentRows ?? []).map((r) => r.assigned_staff_id as string).filter(Boolean))];
+    craftsman_staff_id = distinct.length === 1 ? distinct[0] : null;
   }
   let craftsman_name: string | null = null;
   if (craftsman_staff_id) {

@@ -100,6 +100,8 @@ end;
 $$;
 
 drop trigger if exists trg_reservations_check_tenant_refs on reservations;
+-- tenant_id の更新でも発火させる（両テナント所属ユーザーが tenant_id を移し替えて
+-- booth_id/assigned_staff_id を残すとガードを迂回できるため）。
 create trigger trg_reservations_check_tenant_refs
-  before insert or update of booth_id, assigned_staff_id on reservations
+  before insert or update of booth_id, assigned_staff_id, tenant_id on reservations
   for each row execute function public.reservations_check_tenant_refs();

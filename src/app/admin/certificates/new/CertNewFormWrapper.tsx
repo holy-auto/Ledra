@@ -77,6 +77,7 @@ type Props = {
   vehicles: Vehicle[];
   defaultVehicleId?: string;
   defaultCustomerId?: string;
+  defaultReservationId?: string;
   templates: Template[];
   selectedTemplate: Template | null;
   tenantLogoPath: string | null;
@@ -105,6 +106,7 @@ export default function CertNewFormWrapper({
   vehicles,
   defaultVehicleId,
   defaultCustomerId,
+  defaultReservationId,
   templates,
   selectedTemplate,
   tenantLogoPath,
@@ -551,6 +553,7 @@ export default function CertNewFormWrapper({
         <input type="hidden" name="template_id" value={selectedTemplate?.id ?? ""} />
         <input type="hidden" name="template_name" value={selectedTemplate?.name ?? ""} />
         {defaultCustomerId && <input type="hidden" name="customer_id" value={defaultCustomerId} />}
+        {defaultReservationId && <input type="hidden" name="reservation_id" value={defaultReservationId} />}
         {serviceType && <input type="hidden" name="service_type" value={serviceType} />}
 
         {/* ━━━ 0a. メーカー指定デザイン（認定施工店のみ表示） ━━━ */}

@@ -102,13 +102,21 @@ export async function processBirthdayGreetings(
 
   // birth_date を持つ顧客を取得し、月日一致を JS 側で判定する。
   // (月日マッチは式インデックスが張れないため、tenant 絞り込み + アプリ判定が素直)
-  const { data: rawCustomers } = await supabase
-    .from("customers")
-    .select("id, name, email, line_user_id, birth_date, followup_opt_out")
-    .eq("tenant_id", setting.tenant_id)
-    .not("birth_date", "is", null);
-
-  const customers = (rawCustomers ?? []) as CustomerRow[];
+  // REST のページ上限を超える大型店でも取りこぼさないよう全ページを走査する。
+  const PAGE = 1000;
+  const customers: CustomerRow[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data: page } = await supabase
+      .from("customers")
+      .select("id, name, email, line_user_id, birth_date, followup_opt_out")
+      .eq("tenant_id", setting.tenant_id)
+      .not("birth_date", "is", null)
+      .order("id", { ascending: true })
+      .range(from, from + PAGE - 1);
+    const rows = (page ?? []) as CustomerRow[];
+    customers.push(...rows);
+    if (rows.length < PAGE) break;
+  }
   const targets = customers.filter((c) => {
     if (c.followup_opt_out) return false;
     if (!c.line_user_id && !c.email) return false;

@@ -12,12 +12,13 @@ export const dynamic = "force-dynamic";
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ tid?: string; vehicle_id?: string; customer_id?: string }>;
+  searchParams: Promise<{ tid?: string; vehicle_id?: string; customer_id?: string; reservation_id?: string }>;
 }) {
   const sp = await searchParams;
   const selectedTemplateId = sp.tid ?? "";
   const defaultVehicleId = sp.vehicle_id ?? undefined;
   const defaultCustomerId = sp.customer_id ?? undefined;
+  const defaultReservationId = sp.reservation_id ?? undefined;
 
   const supabase = await createSupabaseServerClient();
   const { data: userRes } = await supabase.auth.getUser();
@@ -156,6 +157,7 @@ export default async function Page({
         vehicles={vehiclesRaw ?? []}
         defaultVehicleId={defaultVehicleId}
         defaultCustomerId={defaultCustomerId}
+        defaultReservationId={defaultReservationId}
         templates={list}
         selectedTemplate={selected}
         tenantLogoPath={tenantLogoPath}

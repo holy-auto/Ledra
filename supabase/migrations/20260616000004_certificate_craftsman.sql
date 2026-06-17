@@ -45,3 +45,28 @@ SELECT
   c.craftsman_name                  -- 施工担当（職人）。PII ではないため公開。
 FROM public.certificates c
 LEFT JOIN LATERAL public.certificate_public_tenant(c.tenant_id) tpc ON true;
+
+-- ─── certificates のテナント整合トリガー（craftsman_staff_id） ────────────────
+-- craftsman_staff_id は staff_members(id) を id のみで参照するため、Supabase 直叩きで
+-- 他テナントの職人 UUID を指せてしまう。reservations と同様に BEFORE トリガーで
+-- 「指す staff が同一テナントか」を強制する（tenant_id 変更時も発火）。
+create or replace function public.certificates_check_craftsman_tenant()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.craftsman_staff_id is not null and not exists (
+    select 1 from public.staff_members where id = new.craftsman_staff_id and tenant_id = new.tenant_id
+  ) then
+    raise exception 'craftsman % does not belong to tenant %', new.craftsman_staff_id, new.tenant_id;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_certificates_check_craftsman_tenant on certificates;
+create trigger trg_certificates_check_craftsman_tenant
+  before insert or update of craftsman_staff_id, tenant_id on certificates
+  for each row execute function public.certificates_check_craftsman_tenant();

@@ -229,6 +229,8 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
     const params = new URLSearchParams();
     if (vehicleId) params.set("vehicle_id", vehicleId);
     if (customerId) params.set("customer_id", customerId);
+    // この案件の予約 ID を渡し、証明書発行時に正しい施工担当（職人）を刻めるようにする。
+    params.set("reservation_id", reservation.id);
     const qs = params.toString();
     return `/admin/certificates/new${qs ? `?${qs}` : ""}`;
   })();
@@ -363,7 +365,7 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
           </div>
 
           {/* ブース（ピット）ピッカー */}
-          {boothList.length > 0 && (
+          {(boothList.length > 0 || currentBooth) && (
             <div className="flex items-center gap-2">
               <span className="font-semibold tracking-[0.12em] text-muted uppercase">ブース</span>
               {currentBooth ? (
