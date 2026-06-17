@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { syncCreateEvent, syncUpdateEvent, syncDeleteEvent } from "@/lib/gcal/client";
 import { enforceBilling } from "@/lib/billing/guard";
@@ -22,15 +23,18 @@ export const dynamic = "force-dynamic";
  * FK は staff_members(id) / booths(id) を参照するがテナント制約は無いため、
  * リークした UUID で他テナントの行を指すクロステナント結合を防ぐ。
  * null/undefined（未指定・割当解除）は許可。問題があればエラーキーを返す。
+ *
+ * staff_members の SELECT は RLS で管理ロール限定のため、staff ロールの発行者でも
+ * 検証できるようサービスロール（tenant 限定）で存在確認する。
  */
 async function validateReservationRefs(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   tenantId: string,
   assignedStaffId: string | null | undefined,
   boothId: string | null | undefined,
 ): Promise<string | null> {
+  const { admin } = createTenantScopedAdmin(tenantId);
   if (assignedStaffId) {
-    const { data } = await supabase
+    const { data } = await admin
       .from("staff_members")
       .select("id")
       .eq("id", assignedStaffId)
@@ -39,12 +43,7 @@ async function validateReservationRefs(
     if (!data) return "assigned_staff_not_found";
   }
   if (boothId) {
-    const { data } = await supabase
-      .from("booths")
-      .select("id")
-      .eq("id", boothId)
-      .eq("tenant_id", tenantId)
-      .maybeSingle();
+    const { data } = await admin.from("booths").select("id").eq("id", boothId).eq("tenant_id", tenantId).maybeSingle();
     if (!data) return "booth_not_found";
   }
   return null;
@@ -170,7 +169,7 @@ export async function POST(req: NextRequest) {
     }
     const input = parsed.data;
 
-    const refErr = await validateReservationRefs(supabase, caller.tenantId, input.assigned_staff_id, input.booth_id);
+    const refErr = await validateReservationRefs(caller.tenantId, input.assigned_staff_id, input.booth_id);
     if (refErr) return apiValidationError(refErr);
 
     const row = {
@@ -268,7 +267,6 @@ export async function PUT(req: NextRequest) {
 
     // 送られた assigned_staff_id / booth_id はテナント所有を検証（クロステナント参照防止）
     const putRefErr = await validateReservationRefs(
-      supabase,
       caller.tenantId,
       sentKeys.has("assigned_staff_id") ? (updates.assigned_staff_id as string | null) : undefined,
       sentKeys.has("booth_id") ? (updates.booth_id as string | null) : undefined,
