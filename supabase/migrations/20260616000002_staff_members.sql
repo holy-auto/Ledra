@@ -144,26 +144,35 @@ returns table (
   cancelled         bigint,
   avg_work_minutes  numeric
 )
-language sql
+language plpgsql
 stable
+set search_path = ''
 as $$
-  select
-    r.assigned_staff_id as staff_id,
-    count(*)::bigint as assignments_total,
-    count(*) filter (where r.status = 'completed')::bigint as completed,
-    count(*) filter (where r.status = 'cancelled')::bigint as cancelled,
-    avg(
-      extract(epoch from (r.work_completed_at - r.work_started_at)) / 60.0
-    ) filter (
-      where r.work_completed_at is not null
-        and r.work_started_at is not null
-        and r.work_completed_at > r.work_started_at
-    )::numeric as avg_work_minutes
-  from public.reservations r
-  where r.tenant_id = p_tenant_id
-    and r.assigned_staff_id is not null
-    and (p_since is null or r.created_at >= p_since)
-  group by r.assigned_staff_id
+begin
+  -- 担当者別実績はロスター相当（members:view = super_admin/owner/admin）に限定。
+  -- 直接 RPC を叩かれても非管理ロールには実績を返さない。
+  if not public.tenant_caller_has_role(p_tenant_id, array['super_admin', 'owner', 'admin']) then
+    return;
+  end if;
+  return query
+    select
+      r.assigned_staff_id as staff_id,
+      count(*)::bigint as assignments_total,
+      count(*) filter (where r.status = 'completed')::bigint as completed,
+      count(*) filter (where r.status = 'cancelled')::bigint as cancelled,
+      avg(
+        extract(epoch from (r.work_completed_at - r.work_started_at)) / 60.0
+      ) filter (
+        where r.work_completed_at is not null
+          and r.work_started_at is not null
+          and r.work_completed_at > r.work_started_at
+      )::numeric as avg_work_minutes
+    from public.reservations r
+    where r.tenant_id = p_tenant_id
+      and r.assigned_staff_id is not null
+      and (p_since is null or r.created_at >= p_since)
+    group by r.assigned_staff_id;
+end;
 $$;
 
 comment on function public.staff_roster_stats(uuid, timestamptz) is
@@ -193,7 +202,7 @@ begin
   -- members:manage を持つロール（super_admin / owner / admin）に限定する。
   if not exists (
     select 1 from public.tenant_memberships
-    where tenant_id = v_tenant and user_id = auth.uid() and role in ('super_admin', 'owner', 'admin')
+    where tenant_id = v_tenant and user_id = auth.uid() and lower(role::text) in ('super_admin', 'owner', 'admin')
   ) then
     raise exception 'forbidden';
   end if;

@@ -1,8 +1,21 @@
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { staffCreateSchema, staffUpdateSchema, staffDeleteSchema } from "@/lib/validations/staff";
+
+/** 紐付け先 user_id が当該テナントのメンバーか確認（他テナントアカウント連携の防止）。 */
+async function userInTenant(tenantId: string, userId: string): Promise<boolean> {
+  const { admin } = createTenantScopedAdmin(tenantId);
+  const { data } = await admin
+    .from("tenant_memberships")
+    .select("user_id")
+    .eq("tenant_id", tenantId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  return !!data;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -92,6 +105,9 @@ export async function POST(req: NextRequest) {
     // user_id を紐付けるなら社内扱い。外注は user_id を持たない。
     const kind = input.user_id ? "internal" : input.kind;
     const userId = kind === "external" ? null : input.user_id;
+    if (userId && !(await userInTenant(caller.tenantId, userId))) {
+      return apiValidationError("linked_user_not_in_tenant");
+    }
 
     const { data, error } = await supabase
       .from("staff_members")
@@ -144,6 +160,13 @@ export async function PUT(req: NextRequest) {
     // user_id ↔ kind の整合をとる
     if ("user_id" in updates && updates.user_id) updates.kind = "internal";
     if (updates.kind === "external") updates.user_id = null;
+    if (
+      typeof updates.user_id === "string" &&
+      updates.user_id &&
+      !(await userInTenant(caller.tenantId, updates.user_id))
+    ) {
+      return apiValidationError("linked_user_not_in_tenant");
+    }
 
     const { error } = await supabase
       .from("staff_members")

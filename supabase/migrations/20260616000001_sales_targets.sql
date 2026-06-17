@@ -22,7 +22,7 @@ language sql stable security definer set search_path = ''
 as $$
   select exists (
     select 1 from public.tenant_memberships
-    where tenant_id = p_tenant and user_id = auth.uid() and role = any(p_roles)
+    where tenant_id = p_tenant and user_id = auth.uid() and lower(role::text) = any(p_roles)
   );
 $$;
 
@@ -88,7 +88,7 @@ begin
   -- に限定する。非該当ロールが直接 RPC を叩いても空の結果を返す。
   if not exists (
     select 1 from public.tenant_memberships
-    where tenant_id = p_tenant_id and user_id = auth.uid() and role in ('super_admin', 'owner', 'admin')
+    where tenant_id = p_tenant_id and user_id = auth.uid() and lower(role::text) in ('super_admin', 'owner', 'admin')
   ) then
     return json_build_object('month', v_month_key, 'target', 0, 'actual', 0, 'achievementRate', null);
   end if;
