@@ -80,3 +80,7 @@ scripts/_clip_patch*.ps1
 /上で出たパス.txt
 
 .vercel
+
+# HP growth-ops analytics exports (never commit — may contain PII). README is tracked.
+/docs/marketing/data/*
+!/docs/marketing/data/README.md

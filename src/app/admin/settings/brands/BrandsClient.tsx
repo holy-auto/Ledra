@@ -143,6 +143,49 @@ export default function BrandsClient({ initialBrands }: { initialBrands: Brand[]
     );
   }
 
+  const brandForm = (
+    <form onSubmit={addBrand} className="glass-card p-5 space-y-4">
+      <div className="text-sm font-semibold text-primary">新しいブランドを追加</div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <input
+          value={newBrandName}
+          onChange={(e) => setNewBrandName(e.target.value)}
+          placeholder="ブランド名 *"
+          required
+          className={`${inputCls} sm:col-span-2`}
+        />
+        <input
+          value={newBrandUrl}
+          onChange={(e) => setNewBrandUrl(e.target.value)}
+          placeholder="Webサイト URL（任意）"
+          className={inputCls}
+        />
+        <input
+          value={newBrandDesc}
+          onChange={(e) => setNewBrandDesc(e.target.value)}
+          placeholder="説明（任意）"
+          className={inputCls}
+        />
+      </div>
+      {brandErr && <p className="text-sm text-red-500">{brandErr}</p>}
+      <div className="flex gap-3">
+        <Button type="submit" loading={addingBrand}>
+          追加する
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => {
+            setShowNewBrand(false);
+            setBrandErr(null);
+          }}
+        >
+          キャンセル
+        </Button>
+      </div>
+    </form>
+  );
+
   return (
     <div className="space-y-4">
       <FirstUseInlineGuide
@@ -164,6 +207,19 @@ export default function BrandsClient({ initialBrands }: { initialBrands: Brand[]
           },
         ]}
       />
+
+      {/* Top toolbar */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm text-muted">{brands.length} ブランド登録済み</div>
+        {!showNewBrand && (
+          <Button size="sm" onClick={() => setShowNewBrand(true)}>
+            ＋ ブランドを追加
+          </Button>
+        )}
+      </div>
+
+      {/* Add brand form (shown at top when open) */}
+      {showNewBrand && brandForm}
 
       {/* Brand list */}
       {brands.length === 0 ? (
@@ -309,49 +365,8 @@ export default function BrandsClient({ initialBrands }: { initialBrands: Brand[]
         </div>
       )}
 
-      {/* Add brand */}
-      {showNewBrand ? (
-        <form onSubmit={addBrand} className="glass-card p-5 space-y-4">
-          <div className="text-sm font-semibold text-primary">新しいブランドを追加</div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <input
-              value={newBrandName}
-              onChange={(e) => setNewBrandName(e.target.value)}
-              placeholder="ブランド名 *"
-              required
-              className={`${inputCls} sm:col-span-2`}
-            />
-            <input
-              value={newBrandUrl}
-              onChange={(e) => setNewBrandUrl(e.target.value)}
-              placeholder="Webサイト URL（任意）"
-              className={inputCls}
-            />
-            <input
-              value={newBrandDesc}
-              onChange={(e) => setNewBrandDesc(e.target.value)}
-              placeholder="説明（任意）"
-              className={inputCls}
-            />
-          </div>
-          {brandErr && <p className="text-sm text-red-500">{brandErr}</p>}
-          <div className="flex gap-3">
-            <Button type="submit" loading={addingBrand}>
-              追加する
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => {
-                setShowNewBrand(false);
-                setBrandErr(null);
-              }}
-            >
-              キャンセル
-            </Button>
-          </div>
-        </form>
-      ) : (
+      {/* Add brand (bottom) */}
+      {!showNewBrand && (
         <button
           type="button"
           onClick={() => setShowNewBrand(true)}

@@ -1,9 +1,13 @@
 "use client";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Badge from "@/components/ui/Badge";
 import { formatDateTime } from "@/lib/format";
+import { createClient } from "@/lib/supabase/client";
+
+const MATERIALS_BUCKET = "agent-materials";
+const MAX_MATERIAL_SIZE = 100 * 1024 * 1024; // 100MB — keep in sync with the API
 
 type Category = {
   id: string;
@@ -37,6 +41,7 @@ function formatFileSize(bytes: number): string {
 }
 
 export default function MaterialsManager() {
+  const supabase = useMemo(() => createClient(), []);
   const [categories, setCategories] = useState<Category[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,6 +49,10 @@ export default function MaterialsManager() {
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewBusy, setPreviewBusy] = useState<string | null>(null);
+  const [downloadBusy, setDownloadBusy] = useState<string | null>(null);
+  const [seedingDemo, setSeedingDemo] = useState(false);
 
   // Upload form
   const fileRef = useRef<HTMLInputElement>(null);
@@ -83,20 +92,50 @@ export default function MaterialsManager() {
       return;
     }
 
+    if (file.size > MAX_MATERIAL_SIZE) {
+      setMsg(`ファイルサイズは ${Math.floor(MAX_MATERIAL_SIZE / (1024 * 1024))}MB 以下にしてください。`);
+      return;
+    }
+
     setUploading(true);
     setMsg(null);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("title", title);
-      fd.append("category_id", categoryId);
-      fd.append("description", description);
-      fd.append("version", version);
-      fd.append("is_pinned", isPinned ? "true" : "false");
+      // Step 1: ask the server for a signed upload URL (tiny JSON request).
+      const urlRes = await fetch("/api/admin/agent-materials/upload-url", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ file_name: file.name, file_type: file.type, file_size: file.size }),
+      });
+      if (!urlRes.ok) {
+        const j = await parseJsonSafe(urlRes);
+        throw new Error(j?.error ?? `HTTP ${urlRes.status}`);
+      }
+      const { path, token, storage_path } = await urlRes.json();
 
+      // Step 2: upload the file bytes DIRECTLY to Supabase Storage, bypassing
+      // the hosting platform's request body limit (the cause of HTTP 413).
+      const { error: uploadErr } = await supabase.storage
+        .from(MATERIALS_BUCKET)
+        .uploadToSignedUrl(path, token, file, { contentType: file.type || undefined });
+      if (uploadErr) {
+        throw new Error(uploadErr.message || "ストレージへのアップロードに失敗しました。");
+      }
+
+      // Step 3: create the DB record with metadata only.
       const res = await fetch("/api/admin/agent-materials", {
         method: "POST",
-        body: fd,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title,
+          category_id: categoryId,
+          description,
+          version,
+          is_pinned: isPinned,
+          storage_path,
+          file_name: file.name,
+          file_size: file.size,
+          file_type: file.type,
+        }),
       });
       if (!res.ok) {
         const j = await parseJsonSafe(res);
@@ -150,6 +189,72 @@ export default function MaterialsManager() {
     }
   };
 
+  const handlePreview = async (id: string, fileType: string) => {
+    if (!fileType.includes("pdf")) return;
+    setPreviewBusy(id);
+    try {
+      const res = await fetch(`/api/admin/agent-materials/${id}/preview`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMsg(
+          json?.error ??
+            "プレビューURLの取得に失敗しました。ファイルがストレージにアップロードされているか確認してください。",
+        );
+        return;
+      }
+      if (json.url) setPreviewUrl(json.url);
+    } catch {
+      setMsg("プレビューの取得中にエラーが発生しました。");
+    } finally {
+      setPreviewBusy(null);
+    }
+  };
+
+  const handleDownload = async (id: string) => {
+    setDownloadBusy(id);
+    try {
+      const res = await fetch(`/api/admin/agent-materials/${id}/download`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMsg(
+          json?.error ??
+            "ダウンロードURLの取得に失敗しました。ファイルがストレージにアップロードされているか確認してください。",
+        );
+        return;
+      }
+      if (json.url) window.open(json.url, "_blank");
+    } catch {
+      setMsg("ダウンロードの取得中にエラーが発生しました。");
+    } finally {
+      setDownloadBusy(null);
+    }
+  };
+
+  const seedDemoFiles = async () => {
+    if (!confirm("デモ用プレースホルダーPDFをストレージに生成・アップロードします。よろしいですか？")) return;
+    setSeedingDemo(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/admin/agent-materials/seed-demo-files", { method: "POST" });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok || res.status === 207) {
+        const failed = (json.results ?? []).filter((r: { ok: boolean }) => !r.ok);
+        setMsg(
+          failed.length === 0
+            ? "デモファイルを生成しました。プレビュー・ダウンロードをお試しください。"
+            : `${failed.length} 件の生成に失敗しました。`,
+        );
+        fetchData();
+      } else {
+        setMsg("デモファイルの生成に失敗しました。");
+      }
+    } catch {
+      setMsg("デモファイルの生成中にエラーが発生しました。");
+    } finally {
+      setSeedingDemo(false);
+    }
+  };
+
   const deleteMaterial = async (id: string) => {
     if (!confirm("この資料を削除しますか？")) return;
     setActionBusy(id);
@@ -173,9 +278,19 @@ export default function MaterialsManager() {
       {/* Actions bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="text-sm text-muted">{materials.length} 件の資料</span>
-        <button onClick={() => setShowUpload(!showUpload)} className="btn-primary">
-          {showUpload ? "閉じる" : "新規アップロード"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={seedDemoFiles}
+            disabled={seedingDemo}
+            className="rounded-xl border border-border-default bg-surface px-3 py-2 text-sm font-medium text-secondary hover:bg-surface-hover disabled:opacity-40"
+            title="デモ用プレースホルダーPDFをストレージに生成"
+          >
+            {seedingDemo ? "生成中..." : "デモファイル生成"}
+          </button>
+          <button onClick={() => setShowUpload(!showUpload)} className="btn-primary">
+            {showUpload ? "閉じる" : "新規アップロード"}
+          </button>
+        </div>
       </div>
 
       {msg && <div className="rounded-xl border border-default bg-surface-solid p-3 text-sm text-secondary">{msg}</div>}
@@ -325,7 +440,94 @@ export default function MaterialsManager() {
                     </td>
                     <td className="p-3 whitespace-nowrap text-muted">{formatDateTime(m.created_at)}</td>
                     <td className="p-3">
-                      <div className="flex gap-1.5">
+                      <div className="flex gap-1.5 flex-wrap">
+                        {m.file_type.includes("pdf") && (
+                          <button
+                            onClick={() => handlePreview(m.id, m.file_type)}
+                            disabled={previewBusy === m.id}
+                            className="rounded-lg border border-border-default bg-surface px-2 py-1 text-xs text-secondary hover:bg-surface-hover disabled:opacity-40"
+                            title="プレビュー"
+                          >
+                            {previewBusy === m.id ? (
+                              <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                                <circle
+                                  className="opacity-25"
+                                  cx="12"
+                                  cy="12"
+                                  r="10"
+                                  stroke="currentColor"
+                                  strokeWidth="4"
+                                  fill="none"
+                                />
+                                <path
+                                  className="opacity-75"
+                                  fill="currentColor"
+                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                                />
+                              </svg>
+                            ) : (
+                              <svg
+                                width="12"
+                                height="12"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"
+                                />
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+                                />
+                              </svg>
+                            )}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDownload(m.id)}
+                          disabled={downloadBusy === m.id}
+                          className="rounded-lg border border-border-default bg-surface px-2 py-1 text-xs text-secondary hover:bg-surface-hover disabled:opacity-40"
+                          title="ダウンロード"
+                        >
+                          {downloadBusy === m.id ? (
+                            <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                                fill="none"
+                              />
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                              />
+                            </svg>
+                          ) : (
+                            <svg
+                              width="12"
+                              height="12"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                              />
+                            </svg>
+                          )}
+                        </button>
                         <button
                           onClick={() => togglePin(m.id, m.is_pinned)}
                           disabled={actionBusy === m.id}
@@ -358,6 +560,32 @@ export default function MaterialsManager() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* PDF Preview modal */}
+      {previewUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+          onClick={() => setPreviewUrl(null)}
+        >
+          <div
+            className="relative flex h-[90vh] w-[90vw] max-w-5xl flex-col rounded-2xl bg-surface shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-border-default px-4 py-3">
+              <span className="text-sm font-semibold text-primary">プレビュー</span>
+              <button
+                onClick={() => setPreviewUrl(null)}
+                className="rounded-lg p-1.5 text-muted hover:bg-surface-hover"
+              >
+                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <iframe src={previewUrl} className="flex-1 w-full border-0" title="PDF プレビュー" />
           </div>
         </div>
       )}

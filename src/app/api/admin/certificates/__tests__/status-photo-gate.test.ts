@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   resolveCaller: vi.fn(),
   hasPhotos: vi.fn(),
   issued: vi.fn(),
+  enqueue: vi.fn(),
   update: vi.fn(),
   fetchResult: { data: null as any, error: null as any },
   updateResult: { data: null as any, error: null as any },
@@ -48,6 +49,7 @@ vi.mock("@/lib/certificates/photoRequirement", async (orig) => {
   return { ...real, certificateHasRequiredPhotos: mocks.hasPhotos };
 });
 vi.mock("@/lib/certificates/issueHooks", () => ({ triggerCertificateIssued: mocks.issued }));
+vi.mock("@/lib/anchoring/certificateAnchorService", () => ({ enqueueCertificateAnchor: mocks.enqueue }));
 vi.mock("@/lib/audit/certificateLog", () => ({
   logCertificateAction: vi.fn(),
   getRequestMeta: () => ({ ip: null, userAgent: null }),
@@ -81,6 +83,7 @@ beforeEach(() => {
   mocks.resolveCaller.mockReset();
   mocks.hasPhotos.mockReset();
   mocks.issued.mockReset().mockResolvedValue(undefined);
+  mocks.enqueue.mockReset().mockResolvedValue({ queued: false, reason: "disabled" });
   mocks.update.mockReset();
   mocks.resolveCaller.mockResolvedValue({ tenantId: "tenant-1", userId: "u1", role: "admin" });
   mocks.updateResult = { data: { id: "c1", public_id: "P-1", status: "active" }, error: null };
@@ -112,6 +115,8 @@ describe("PUT /api/admin/certificates/status — photo gate", () => {
       customerName: "田中太郎",
       vehicleModel: "プリウス",
     });
+    // draft→active のレコードアンカーは issueHooks 側で積むため、ここでは直接 enqueue しない
+    expect(mocks.enqueue).not.toHaveBeenCalled();
   });
 
   it("void→active (再発行) は写真ありでも発行フックを走らせない", async () => {
@@ -122,5 +127,8 @@ describe("PUT /api/admin/certificates/status — photo gate", () => {
     expect(res.status).toBe(200);
     expect(mocks.update).toHaveBeenCalledTimes(1);
     expect(mocks.issued).not.toHaveBeenCalled();
+    // draft→active 以外 (再発行/void 等) は証明書レコードアンカーを直接 queue する
+    expect(mocks.enqueue).toHaveBeenCalledTimes(1);
+    expect(mocks.enqueue.mock.calls[0][0]).toMatchObject({ tenantId: "tenant-1", certificateId: "c1" });
   });
 });

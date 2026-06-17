@@ -10,6 +10,7 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { withRetry } from "@/lib/http/withRetry";
 import { getAnthropicClient, AI_MODEL_FAST, AI_MODEL_VISION, cacheableSystem } from "@/lib/ai/client";
+import { partitionImageFetchUrls } from "@/lib/security/urlAllowlist";
 
 export interface MarketVehicleInput {
   maker?: string | null;
@@ -82,13 +83,16 @@ export async function generateMarketVehicleDescription(
     .filter(Boolean)
     .join("\n");
 
-  const hasPhotos = input.photo_urls && input.photo_urls.length > 0;
+  // SSRF ガード: Vision API に渡す画像 URL は許可ホストのみ (内部アドレスへの
+  // 代理取得・コスト消費を防ぐ)。許可外はベストエフォートで除外する。
+  const safePhotoUrls = input.photo_urls ? partitionImageFetchUrls(input.photo_urls).allowed : [];
+  const hasPhotos = safePhotoUrls.length > 0;
 
   try {
     if (hasPhotos) {
       const imageContents: Array<
         { type: "image"; source: { type: "url"; url: string } } | { type: "text"; text: string }
-      > = input.photo_urls!.slice(0, 3).map((url) => ({
+      > = safePhotoUrls.slice(0, 3).map((url) => ({
         type: "image" as const,
         source: { type: "url" as const, url },
       }));

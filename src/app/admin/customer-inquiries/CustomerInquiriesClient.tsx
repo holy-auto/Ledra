@@ -15,6 +15,12 @@ interface InquiryRow {
   admin_reply: string | null;
   replied_at: string | null;
   created_at: string;
+  // 受信時に自動分類された結果 (inquiry.auto_classify が opt-in のテナントのみ)
+  ai_category: string | null;
+  ai_priority: string | null;
+  ai_draft_reply: string | null;
+  ai_confidence: number | null;
+  ai_classified_at: string | null;
 }
 
 const STATUS_LABELS: Record<InqStatus, string> = { new: "新規", read: "確認済", replied: "返信済" };
@@ -196,9 +202,19 @@ export default function CustomerInquiriesClient() {
                     </div>
                   )}
 
-                  {/* AI 分類バナー (このフィードに対する 1 回限り、結果を本コンポーネント内に保持) */}
+                  {/* AI 分類バナー (受信時に自動分類済みならその結果を既定表示、手動再分類も可) */}
                   <InquiryAiBanner
                     inquiryId={inq.id}
+                    initial={
+                      inq.ai_classified_at
+                        ? {
+                            category: inq.ai_category,
+                            priority: inq.ai_priority,
+                            draft_reply: inq.ai_draft_reply ?? "",
+                            confidence: inq.ai_confidence ?? 0,
+                          }
+                        : null
+                    }
                     onUseDraft={(draft) => {
                       if (draft) setReplyText(draft);
                     }}

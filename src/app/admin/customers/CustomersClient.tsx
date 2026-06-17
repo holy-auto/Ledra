@@ -8,6 +8,7 @@ import useSWR from "swr";
 import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
 import Pagination from "@/components/ui/Pagination";
+import MutationGuard from "@/components/ui/MutationGuard";
 import EmptyStateGuide from "@/components/ui/EmptyStateGuide";
 import IdentityScanButton, { type IdentityScanFields } from "@/components/admin/customers/IdentityScanButton";
 import { formatDate } from "@/lib/format";
@@ -190,16 +191,27 @@ export default function CustomersClient() {
         title="顧客管理"
         description="顧客情報の登録・編集・検索を行います。"
         actions={
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => {
-              setShowForm(!showForm);
-              setSaveMsg(null);
-            }}
-          >
-            {showForm ? "閉じる" : "新規追加"}
-          </button>
+          <MutationGuard>
+            <div className="flex flex-wrap items-center gap-3">
+              <Link
+                href="/admin/customer-intakes"
+                className="btn-secondary"
+                title="お客様自身がスマホから登録できるWeb登録用URL・QRコードを発行します"
+              >
+                Web登録URLを発行
+              </Link>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => {
+                  setShowForm(!showForm);
+                  setSaveMsg(null);
+                }}
+              >
+                {showForm ? "閉じる" : "新規追加"}
+              </button>
+            </div>
+          </MutationGuard>
         }
       />
 
@@ -560,28 +572,30 @@ export default function CustomersClient() {
                             </td>
                             <td className="px-5 py-3.5 whitespace-nowrap text-secondary">{formatDate(c.created_at)}</td>
                             <td className="px-5 py-3.5">
-                              <div className="flex gap-2">
-                                <button
-                                  type="button"
-                                  className="btn-ghost px-3 py-1 text-xs"
-                                  onClick={() => startEdit(c)}
-                                >
-                                  編集
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn-danger px-3 py-1 text-xs"
-                                  disabled={deletingId === c.id || c.certificates_count > 0 || c.invoices_count > 0}
-                                  title={
-                                    c.certificates_count > 0 || c.invoices_count > 0
-                                      ? "証明書・請求書が紐付いているため削除できません"
-                                      : ""
-                                  }
-                                  onClick={() => handleDelete(c.id)}
-                                >
-                                  {deletingId === c.id ? "削除中…" : "削除"}
-                                </button>
-                              </div>
+                              <MutationGuard fallback={<span className="text-xs text-muted">閲覧のみ</span>}>
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    className="btn-ghost px-3 py-1 text-xs"
+                                    onClick={() => startEdit(c)}
+                                  >
+                                    編集
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-danger px-3 py-1 text-xs"
+                                    disabled={deletingId === c.id || c.certificates_count > 0 || c.invoices_count > 0}
+                                    title={
+                                      c.certificates_count > 0 || c.invoices_count > 0
+                                        ? "証明書・請求書が紐付いているため削除できません"
+                                        : ""
+                                    }
+                                    onClick={() => handleDelete(c.id)}
+                                  >
+                                    {deletingId === c.id ? "削除中…" : "削除"}
+                                  </button>
+                                </div>
+                              </MutationGuard>
                             </td>
                           </tr>
                         ))}

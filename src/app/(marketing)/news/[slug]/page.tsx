@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { Section } from "@/components/marketing/Section";
 import { MarkdownBody } from "@/components/marketing/MarkdownBody";
 import { CTABanner } from "@/components/marketing/CTABanner";
+import { ArticleJsonLd } from "@/components/marketing/JsonLd";
 import { ArticleHero } from "@/components/marketing/ArticleHero";
 import { getContentBySlug, listContent } from "@/lib/marketing/content";
 
@@ -22,6 +23,18 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title: entry.frontmatter.title,
     description: entry.frontmatter.excerpt,
     alternates: { canonical: `/news/${entry.frontmatter.slug}` },
+    openGraph: {
+      type: "article",
+      title: entry.frontmatter.title,
+      description: entry.frontmatter.excerpt,
+      url: `/news/${entry.frontmatter.slug}`,
+      publishedTime: entry.frontmatter.publishedAt,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: entry.frontmatter.title,
+      description: entry.frontmatter.excerpt,
+    },
   };
 }
 
@@ -32,6 +45,12 @@ export default async function NewsDetailPage({ params }: Props) {
 
   return (
     <>
+      <ArticleJsonLd
+        title={entry.frontmatter.title}
+        description={entry.frontmatter.excerpt}
+        slug={entry.frontmatter.slug}
+        publishedAt={entry.frontmatter.publishedAt}
+      />
       <Section className="!pt-32 !pb-16">
         <article className="mx-auto max-w-2xl">
           <Link
@@ -70,12 +89,18 @@ export default async function NewsDetailPage({ params }: Props) {
       </Section>
 
       <CTABanner
-        title="Ledra のご紹介資料をお届けします"
-        subtitle="機能の全体像、導入事例、セキュリティ仕様をまとめた資料を無料でダウンロードいただけます。"
-        primaryLabel="資料ダウンロード"
-        primaryHref="/resources"
-        secondaryLabel="お問い合わせ"
-        secondaryHref="/contact"
+        title={entry.frontmatter.ctaTitle ?? "Ledra のご紹介資料をお届けします"}
+        subtitle={
+          entry.frontmatter.ctaSubtitle ??
+          "機能の全体像、導入事例、セキュリティ仕様をまとめた資料を無料でダウンロードいただけます。"
+        }
+        primaryLabel={entry.frontmatter.ctaPrimaryLabel ?? "資料ダウンロード"}
+        primaryHref={entry.frontmatter.ctaPrimaryHref ?? "/resources"}
+        secondaryLabel={entry.frontmatter.ctaSecondaryLabel ?? "お問い合わせ"}
+        secondaryHref={entry.frontmatter.ctaSecondaryHref ?? "/contact"}
+        tertiaryLabel={entry.frontmatter.ctaTertiaryLabel}
+        tertiaryHref={entry.frontmatter.ctaTertiaryHref}
+        trackLocation={`news-${entry.frontmatter.slug}`}
       />
     </>
   );

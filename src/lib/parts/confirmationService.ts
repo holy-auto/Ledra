@@ -20,6 +20,7 @@ import { signPartConfirmation } from "@/lib/parts/partSigning";
 import { requestTimestamp } from "@/lib/parts/tsa";
 import { sendNotificationSms, formatPhoneE164 } from "@/lib/sms/client";
 import { sendCustomerLineText } from "@/lib/line/client";
+import { logger } from "@/lib/logger";
 
 const OTP_TTL_MIN = Number(process.env.PARTS_OTP_TTL_MIN ?? 10);
 const LINK_TTL_HOURS = Number(process.env.PARTS_CONFIRM_LINK_TTL_HOURS ?? 72);
@@ -66,7 +67,7 @@ async function notifyConfirmation(
       await sendNotificationSms(formatPhoneE164(target.phone), message);
     }
   } catch (e) {
-    console.error("[parts-confirm] 通知送信に失敗:", e);
+    logger.error("[parts-confirm] 通知送信に失敗", { error: e instanceof Error ? e.message : String(e) });
   }
 }
 
@@ -128,6 +129,7 @@ export async function requestConfirmation(
           .from("customers")
           .update({ phone_full_hash: signerPhoneFullHash })
           .eq("id", inst.customer_id)
+          .eq("tenant_id", tenantId)
           .is("phone_full_hash", null);
       }
     }
@@ -174,7 +176,8 @@ export async function requestConfirmation(
   const { error: linkErr } = await admin
     .from("part_installations")
     .update({ confirmation_signature_id: sigId })
-    .eq("id", installationId);
+    .eq("id", installationId)
+    .eq("tenant_id", tenantId);
   if (linkErr) throw new Error(`link signature failed: ${linkErr.message}`);
 
   // 確定リンク＋OTP を顧客へ配信（タブレット以外）。LINE 優先→SMS フォールバック。best-effort。
@@ -238,38 +241,35 @@ export async function verifyOtp(
   meta: { ip?: string | null; userAgent?: string | null } = {},
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const { admin } = createTenantScopedAdmin(tenantId);
-  const { data: sig, error } = await admin
-    .from("part_confirmation_signatures")
-    .select("id, status, otp_code_hash, otp_attempts, otp_expires_at")
-    .eq("tenant_id", tenantId)
-    .eq("token", token)
-    .maybeSingle();
-  if (error) throw new Error(`signature load failed: ${error.message}`);
-  if (!sig) return { ok: false, reason: "確定リンクが無効です。" };
-  if (sig.status !== "pending") return { ok: false, reason: "この確定は既に処理済みです。" };
-  if (sig.otp_expires_at && new Date(sig.otp_expires_at) < new Date())
-    return { ok: false, reason: "OTP の有効期限が切れています。" };
-  if ((sig.otp_attempts ?? 0) >= MAX_OTP_ATTEMPTS) return { ok: false, reason: "試行回数の上限に達しました。" };
 
-  if (!sig.otp_code_hash || otpCodeHash(token, code) !== sig.otp_code_hash) {
-    await admin
-      .from("part_confirmation_signatures")
-      .update({ otp_attempts: (sig.otp_attempts ?? 0) + 1 })
-      .eq("id", sig.id);
-    return { ok: false, reason: "OTP が一致しません。" };
+  // 検査＋試行加算 or 確定を行ロック下で原子的に行う（OTP 総当たりのレース対策）。
+  // pepper を含む OTP ハッシュは app 側で算出し、比較は RPC 内で行う。
+  const { data, error } = await admin.rpc("part_verify_otp", {
+    p_token: token,
+    p_tenant_id: tenantId,
+    p_code_hash: otpCodeHash(token, code),
+    p_max_attempts: MAX_OTP_ATTEMPTS,
+    p_ip: meta.ip ?? null,
+    p_user_agent: meta.userAgent ?? null,
+  });
+  // セキュリティ制御なので fail-closed: RPC 不在/失敗は握りつぶさず例外にする。
+  if (error) throw new Error(`otp verify failed: ${error.message}`);
+
+  switch (data as string | null) {
+    case "ok":
+      return { ok: true };
+    case "mismatch":
+      return { ok: false, reason: "OTP が一致しません。" };
+    case "locked":
+      return { ok: false, reason: "試行回数の上限に達しました。" };
+    case "expired":
+      return { ok: false, reason: "OTP の有効期限が切れています。" };
+    case "processed":
+      return { ok: false, reason: "この確定は既に処理済みです。" };
+    case "not_found":
+    default:
+      return { ok: false, reason: "確定リンクが無効です。" };
   }
-
-  const { error: upErr } = await admin
-    .from("part_confirmation_signatures")
-    .update({
-      status: "otp_verified",
-      otp_verified_at: new Date().toISOString(),
-      signer_ip: meta.ip ?? null,
-      signer_user_agent: meta.userAgent ?? null,
-    })
-    .eq("id", sig.id);
-  if (upErr) throw new Error(`otp verify update failed: ${upErr.message}`);
-  return { ok: true };
 }
 
 export async function signConfirmation(
@@ -285,38 +285,58 @@ export async function signConfirmation(
     .maybeSingle();
   if (error) throw new Error(`signature load failed: ${error.message}`);
   if (!sig) return { ok: false, reason: "確定リンクが無効です。" };
-  if (sig.status !== "otp_verified") return { ok: false, reason: "本人確認(OTP)が完了していません。" };
+  // otp_verified（初回）と signed（前回は署名済みだが装着遷移で失敗）を受理する。
+  // 署名行を先に signed にしてから装着遷移するため、遷移失敗時に再試行できるようにする。
+  if (sig.status !== "otp_verified" && sig.status !== "signed")
+    return { ok: false, reason: "本人確認(OTP)が完了していません。" };
   if (sig.expires_at && new Date(sig.expires_at) < new Date())
     return { ok: false, reason: "確定リンクの有効期限が切れています。" };
   if (!sig.signer_phone_full_hash) return { ok: false, reason: "署名者の電話情報がありません。" };
 
+  // 既に装着が確定済みなら冪等に成功を返す（二重 sign / 部分失敗後の再試行）。
+  const { data: instRow } = await admin
+    .from("part_installations")
+    .select("status")
+    .eq("id", sig.installation_id)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (instRow?.status === "customer_verified") {
+    return { ok: true, installationId: sig.installation_id };
+  }
+
   const signedAt = new Date().toISOString();
-  const signed = signPartConfirmation({
-    contentHash: sig.document_hash,
-    signedAt,
-    installationId: sig.installation_id,
-    signatureId: sig.id,
-    signerPhoneFullHash: sig.signer_phone_full_hash,
-  });
 
-  // RFC3161 タイムスタンプ（未設定環境では null）
-  const tsa = await requestTimestamp(sha256Hex(signed.signature));
+  // 署名がまだ（otp_verified）なら作成して signed にする。署名は不変の確定物なので、
+  // 既に signed（前回の装着遷移で失敗）なら再署名・再 TSA はせず装着遷移だけ再試行する。
+  if (sig.status === "otp_verified") {
+    const signed = signPartConfirmation({
+      contentHash: sig.document_hash,
+      signedAt,
+      installationId: sig.installation_id,
+      signatureId: sig.id,
+      signerPhoneFullHash: sig.signer_phone_full_hash,
+    });
 
-  const { error: sigUpErr } = await admin
-    .from("part_confirmation_signatures")
-    .update({
-      status: "signed",
-      signed_at: signedAt,
-      signature: signed.signature,
-      signing_payload: signed.signingPayload,
-      public_key_fingerprint: signed.publicKeyFingerprint,
-      key_version: signed.keyVersion,
-      tsa_token: tsa?.token ?? null,
-      tsa_authority: tsa?.authority ?? null,
-      tsa_timestamp_at: tsa?.timestampAt ?? null,
-    })
-    .eq("id", sig.id);
-  if (sigUpErr) throw new Error(`signature finalize failed: ${sigUpErr.message}`);
+    // RFC3161 タイムスタンプ（未設定環境では null）
+    const tsa = await requestTimestamp(sha256Hex(signed.signature));
+
+    const { error: sigUpErr } = await admin
+      .from("part_confirmation_signatures")
+      .update({
+        status: "signed",
+        signed_at: signedAt,
+        signature: signed.signature,
+        signing_payload: signed.signingPayload,
+        public_key_fingerprint: signed.publicKeyFingerprint,
+        key_version: signed.keyVersion,
+        tsa_token: tsa?.token ?? null,
+        tsa_authority: tsa?.authority ?? null,
+        tsa_timestamp_at: tsa?.timestampAt ?? null,
+      })
+      .eq("id", sig.id)
+      .eq("tenant_id", tenantId);
+    if (sigUpErr) throw new Error(`signature finalize failed: ${sigUpErr.message}`);
+  }
 
   // 装着を確定（完全凍結ゲートが最終判定）
   const { error: verifyErr } = await admin
@@ -326,7 +346,8 @@ export async function signConfirmation(
       customer_verified_at: signedAt,
       customer_verified_via: sig.channel,
     })
-    .eq("id", sig.installation_id);
+    .eq("id", sig.installation_id)
+    .eq("tenant_id", tenantId);
   if (verifyErr) {
     return { ok: false, reason: `確定ゲートで拒否されました: ${verifyErr.message}` };
   }

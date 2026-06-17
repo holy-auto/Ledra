@@ -1,6 +1,5 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
-import { NextRequest } from "next/server";
 import { apiError } from "./response";
 
 /**
@@ -170,7 +169,7 @@ const presets: Record<RateLimitPreset, () => Ratelimit | null> = {
  * 取得できない場合は User-Agent でバケットを分散させる。
  */
 import { getClientIp as getClientIpCore } from "@/lib/rateLimit";
-function getClientIp(req: NextRequest): string {
+function getClientIp(req: Request): string {
   return getClientIpCore(req);
 }
 
@@ -186,7 +185,7 @@ function getClientIp(req: NextRequest): string {
  * }
  */
 export async function checkRateLimit(
-  req: NextRequest,
+  req: Request,
   preset: RateLimitPreset = "general",
   /** カスタム識別子（userId など）。省略時は IP アドレスを使用 */
   identifier?: string,

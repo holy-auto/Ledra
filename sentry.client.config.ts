@@ -13,6 +13,28 @@ Sentry.init({
   // hydration and the first interactions.
   integrations: [],
 
+  // Unactionable browser/OS-level noise that surfaces as uncaught promise
+  // rejections (mechanism: onunhandledrejection). None of these originate in
+  // our code — they come from the device camera pipeline / embedded browsers.
+  //
+  // "setPhotoOptions failed" is a Chromium ImageCapture-subsystem error. Our
+  // photo capture on /admin/certificates/new uses only <input type="file"
+  // capture="environment"> (PhotoUploadSection) and never touches the
+  // ImageCapture / getUserMedia Web APIs, so we cannot catch or fix it — it is
+  // injected by the Android system camera / in-app webview. The remaining
+  // entries are the sibling camera/getUserMedia failures from the same
+  // pipeline; all are equally unactionable from app code. Drop them so they
+  // don't trip high-priority alerts.
+  ignoreErrors: [
+    "setPhotoOptions failed",
+    "Could not start video source",
+    "The associated Track is in an invalid state",
+    "The object can not be found here", // NotFoundError — camera/device gone mid-capture
+    "Starting videoinput failed",
+    "Could not start source", // generic getUserMedia source failure
+    "The request is not allowed by the user agent", // NotAllowedError from embedded webviews
+  ],
+
   beforeSend(event) {
     if (event.user) {
       delete event.user.email;

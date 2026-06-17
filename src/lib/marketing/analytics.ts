@@ -8,6 +8,9 @@
 
 import type { LeadSource } from "./leads";
 
+/** Dispatched on `window` when the visitor grants analytics consent. */
+export const ANALYTICS_CONSENT_EVENT = "ledra:analytics-consent";
+
 type PostHogLike = {
   capture: (event: string, props?: Record<string, unknown>) => void;
   opt_in_capturing?: () => void;
@@ -17,6 +20,11 @@ type PostHogLike = {
 declare global {
   interface Window {
     posthog?: PostHogLike;
+    /** GA4 gtag.js queue & helper — see components/marketing/GoogleAnalytics.tsx */
+    dataLayer?: unknown[];
+    gtag?: (...args: unknown[]) => void;
+    /** Guards against double-injecting gtag.js (React StrictMode / re-mounts). */
+    __ga4Initialized?: boolean;
   }
 }
 
@@ -43,6 +51,10 @@ export function track<E extends MarketingEvent>(event: E): void {
 
 export function grantAnalyticsConsent(): void {
   client()?.opt_in_capturing?.();
+  // Signal opt-in to analytics that initialise on consent (e.g. GA4 / gtag.js).
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(ANALYTICS_CONSENT_EVENT));
+  }
 }
 
 export function revokeAnalyticsConsent(): void {

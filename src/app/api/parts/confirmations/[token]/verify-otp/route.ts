@@ -5,6 +5,7 @@
 
 import { z } from "zod";
 import { apiJson, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { getConfirmationContext, verifyOtp } from "@/lib/parts/confirmationService";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,10 @@ const schema = z.object({
 });
 
 export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
+  // OTP 総当たり対策: 機微フロー preset（5 req / 300s, IP 単位）。RPC 側の試行上限と二重防御。
+  const limited = await checkRateLimit(req, "sensitive");
+  if (limited) return limited;
+
   const { token } = await params;
   let body: unknown;
   try {

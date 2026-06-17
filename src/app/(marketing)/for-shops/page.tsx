@@ -15,6 +15,16 @@ export const metadata = {
   description:
     "コーティング・フィルム・ラッピング施工店のための WEB 施工証明書 SaaS。証明書発行・車両管理・POS・帳票までをLedra一つに。",
   alternates: { canonical: "/for-shops" },
+  openGraph: {
+    title: "施工店の方へ | Ledra",
+    description:
+      "コーティング・フィルム・ラッピング施工店のための WEB 施工証明書 SaaS。証明書発行・車両管理・POS・帳票までをLedra一つに。",
+    url: "/for-shops",
+    siteName: "Ledra",
+    locale: "ja_JP",
+    type: "website" as const,
+  },
+  twitter: { card: "summary_large_image" as const },
 };
 
 const challenges = [
@@ -246,6 +256,11 @@ const features = [
     description: "車検証をカメラで撮影するだけで車両情報を自動入力。手入力の手間を大幅に削減します。",
   },
   {
+    title: "案件ワークフロー（統合ワークスペース）",
+    description: "予約 → 来店 → 作業 → 証明書発行 → 請求 → 入金を1画面で進行管理。次にやることを画面が示します。",
+    href: "/features/job-workflow",
+  },
+  {
     title: "予約・作業管理",
     description: "予約受付からチェックイン、作業進捗、完了までを一元管理。Googleカレンダーとも双方向同期。",
   },
@@ -256,6 +271,11 @@ const features = [
   {
     title: "請求書・帳票",
     description: "請求書をPDFで自動生成、メール送信や共有リンクで顧客に送付。未回収アラート付き。",
+  },
+  {
+    title: "会計連携（freee / マネーフォワード）",
+    description: "入金済みの請求書を、お使いの会計ソフトへ自動で仕訳連携。月末の二重入力をなくします。",
+    href: "/features/accounting",
   },
   {
     title: "顧客 360°ビュー",
@@ -269,6 +289,11 @@ const features = [
   {
     title: "NFCタグ連携",
     description: "NFCタグに証明書を紐付け。スマホをかざすだけで施工証明を確認できるプレミアム体験。",
+  },
+  {
+    title: "Ledra Academy（社内教育）",
+    description: "教材・クイズ・施工事例で社内教育を仕組み化。受講進捗の追跡と受講証明書の発行まで（Standard / Pro）。",
+    href: "/features/academy",
   },
 ];
 

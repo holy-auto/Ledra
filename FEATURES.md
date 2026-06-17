@@ -218,12 +218,12 @@ Ledraは自動車施工（コーティング・フィルム・ラッピング等
 - 非アクティブ項目の表示切替
 
 ### 2.17c 塗膜厚レポート `/admin/thickness-reports`
-塗装/コーティング作業時の**塗膜厚計測機 (PosiTector / DeFelsko 系)** から取り込んだ測定データを車両・施工に紐付けて保管する品質トレース機能。
+**NexPTG (NexDiag) の膜厚計アプリ**から `POST /api/external/nexptg/sync` で取り込んだ測定データを、VIN をキーに車両へ自動紐付けして保管する品質トレース機能。
 
-- **タブ**: 未紐付け / 紐付け済み / 全体 (件数バッジ付き)
-- 測定日 / デバイス型番 / ブランド / 車両 VIN / 施工メニューで検索
-- レポート詳細 `/admin/thickness-reports/[reportId]`: 測定値一覧、車両・証明書への紐付け編集
-- 保険会社向けの「施工前後の膜厚比較」エビデンスとして活用
+- **タブ**: 未紐付け / 紐付け済み (件数バッジ付き)。VIN が Ledra 側のいずれの車両とも一致しなかったレポートは「未紐付け」として表示
+- 紐付けは VIN マッチングで自動。一致しない場合は車両側に VIN を登録するか再同期で紐付け（手動の紐付け編集 UI は無し）
+- レポート詳細 `/admin/thickness-reports/[reportId]`: 測定値一覧と AI 異常検知結果 (`ai_anomaly_result`) の表示
+- 施工品質を客観的な計測データとして残し、顧客説明・品質管理の資料として活用（証明書への直接紐付け・施工前後の比較機能は現状なし）
 
 ### 2.18 施工価格相場 `/admin/price-stats`
 - 施工種類別の価格統計
@@ -434,11 +434,13 @@ Ledraは自動車施工（コーティング・フィルム・ラッピング等
 |---|---|---|
 | トップ | `/` | ヒーロー、カウントダウン、ポータルログイン、ロール別CTA |
 | お問い合わせ | `/contact` | コンタクトフォーム（Resend API連携） |
-| 施工店向け | `/for-shops` | Coming Soon |
-| 代理店向け | `/for-agents` | Coming Soon |
-| 保険会社向け | `/for-insurers` | Coming Soon |
-| 料金プラン | `/pricing` | Coming Soon |
-| FAQ | `/faq` | Coming Soon |
+| 機能一覧 | `/features` | 全機能を役割横断で紹介（8カテゴリ）。詳細ページ: digital-certificate / blockchain-anchoring / vehicle-ocr / timeline / customer-360 / customer-portal / insurer-portal / digital-signature / nfc / **accounting** / **job-workflow** / **academy** |
+| 施工店向け | `/for-shops` | 課題 → 変化 → 操作デモ → 提供機能 → 導入の流れ → FAQ の LP |
+| 代理店向け | `/for-agents` | パートナープログラム・コミッションモデル・代理店ポータル機能の LP |
+| 保険会社向け | `/for-insurers` | 査定課題 → 変化 → 改ざん検知の根拠 → ポータル機能 → 導入の流れ の LP |
+| BtoB（発注企業向け） | `/for-btob` | 認定施工店への直接発注・決済・進捗管理を案内する LP |
+| 料金プラン | `/pricing` | 4プラン（Free / Starter / Standard / Pro）＋オプション・FAQ |
+| FAQ | `/faq` | カテゴリ別のよくある質問 |
 | 利用規約 | `/terms` | 利用規約全文 |
 | プライバシーポリシー | `/privacy` | プライバシーポリシー全文 |
 | 特定商取引法 | `/tokusho` | 特商法に基づく表記 |

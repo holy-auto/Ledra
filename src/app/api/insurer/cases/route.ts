@@ -7,6 +7,8 @@ import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
 import { insurerCaseCreateSchema } from "@/lib/validations/insurer-case";
 import { applyAssignmentRules, type AssignmentRule } from "@/lib/insurer/applyAssignmentRules";
 import { maybeAutoFraudScoreForCase } from "@/lib/ai/automation/fraudScoreAuto";
+import { maybeAutoSummarizeCase } from "@/lib/ai/automation/caseSummaryAuto";
+import { maybeAutoSuggestAssigneeForCase } from "@/lib/ai/automation/caseAssignAuto";
 
 export const runtime = "nodejs";
 
@@ -228,10 +230,27 @@ export async function POST(req: NextRequest) {
       user_agent: ua,
     });
 
-    // opt-in テナントでは、案件作成後に不正リスクを自動スコア (fire-and-forget / レスポンス後)。
-    after(() =>
-      maybeAutoFraudScoreForCase({ caseId: newCase.id as string, insurerId: caller.insurerId, tenantId: tenant_id }),
-    );
+    // opt-in テナントでは、案件作成後に各 auto-action を実行 (fire-and-forget / レスポンス後)。
+    // 3 つとも insurer_cases.meta を read-merge-write するため、並列だと最後の書き込みが他キーを
+    // 上書きして失われる (lost update)。1 つの after() で **順次** 実行し、各処理が直前の書き込み後の
+    // meta を読み直して安全にマージできるようにする (各 maybe* は内部で例外を握りつぶす)。
+    after(async () => {
+      await maybeAutoFraudScoreForCase({
+        caseId: newCase.id as string,
+        insurerId: caller.insurerId,
+        tenantId: tenant_id,
+      });
+      await maybeAutoSummarizeCase({
+        caseId: newCase.id as string,
+        insurerId: caller.insurerId,
+        tenantId: tenant_id,
+      });
+      await maybeAutoSuggestAssigneeForCase({
+        caseId: newCase.id as string,
+        insurerId: caller.insurerId,
+        tenantId: tenant_id,
+      });
+    });
 
     return apiJson({ case: newCase }, { status: 201 });
   } catch (err) {

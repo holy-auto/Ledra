@@ -1,0 +1,30 @@
+{
+  "mcpServers": {
+    "supabase-ledra-readonly": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--read-only",
+        "--project-ref=${SUPABASE_PROJECT_REF}"
+      ],
+      "env": {
+        "SUPABASE_ACCESS_TOKEN": "${SUPABASE_ACCESS_TOKEN}"
+      }
+    },
+    "gsc-readonly": {
+      "command": "npx",
+      "args": ["-y", "mcp-server-gsc"],
+      "env": {
+        "GOOGLE_APPLICATION_CREDENTIALS": "C:/Users/admin/AppData/Roaming/gcloud/application_default_credentials.json"
+      }
+    },
+    "analytics-mcp": {
+      "command": "google-analytics-mcp",
+      "args": [],
+      "env": {
+        "GOOGLE_APPLICATION_CREDENTIALS": "C:/Users/admin/AppData/Roaming/gcloud/application_default_credentials.json"
+      }
+    }
+  }
+}

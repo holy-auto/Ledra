@@ -5,6 +5,16 @@
 
 export type MenuItem = { menu_item_id?: string; name: string; price: number };
 
+/** 申し送りメモ 1 件 (reservations.handoff_notes JSONB 配列の要素)。 */
+export type HandoffNote = {
+  id: string;
+  author_id: string;
+  author_name: string;
+  content: string;
+  created_at: string;
+  priority: "normal" | "important" | "urgent";
+};
+
 /** certificate.auto_draft が reservations.ai_certificate_draft に保存するスナップショット。 */
 export type AiCertificateDraft = {
   draft: {
@@ -43,6 +53,7 @@ export type JobReservation = {
   work_completed_at: string | null;
   created_at: string;
   ai_certificate_draft?: AiCertificateDraft | null;
+  handoff_notes?: HandoffNote[] | null;
 };
 
 export type JobCustomer = {

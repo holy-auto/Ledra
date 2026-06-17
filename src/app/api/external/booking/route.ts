@@ -100,18 +100,24 @@ export async function POST(req: NextRequest) {
       return apiValidationError("指定された店舗が見つかりません");
     }
 
-    // テナント固有のAPIキーで検証
-    // テナントにキーが設定されていない場合は CRON_SECRET へフォールバック（後方互換）
-    const cronSecret = process.env.CRON_SECRET;
-    const expectedKey = tenant.external_api_key ?? cronSecret;
+    // テナント固有のAPIキーで検証。
+    // キー未設定テナントへの予約作成は拒否する (以前は共有 CRON_SECRET へ
+    // フォールバックしていたが、CRON_SECRET を知る者が任意のキー未設定テナントに
+    // 予約を作成できる弱い認証だったため廃止)。
+    const expectedKey = tenant.external_api_key;
+    if (!expectedKey) {
+      return apiError({
+        code: "unauthorized",
+        message: "この店舗では外部予約APIが有効化されていません (external_api_key 未設定)。",
+        status: 401,
+      });
+    }
     // Use timingSafeEqual to prevent timing-based API key enumeration.
-    const apiKeyValid =
-      !!expectedKey &&
-      (() => {
-        const a = Buffer.from(apiKey, "utf8");
-        const b = Buffer.from(expectedKey, "utf8");
-        return a.length === b.length && crypto.timingSafeEqual(a, b);
-      })();
+    const apiKeyValid = (() => {
+      const a = Buffer.from(apiKey, "utf8");
+      const b = Buffer.from(expectedKey, "utf8");
+      return a.length === b.length && crypto.timingSafeEqual(a, b);
+    })();
     if (!apiKeyValid) {
       return apiError({ code: "unauthorized", message: "Invalid API key", status: 401 });
     }

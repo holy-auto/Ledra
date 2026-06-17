@@ -10,7 +10,7 @@ Ledra のワークフロー (証明書 / 案件 / 請求 / 顧客 / 保険 case 
 切り替えられる仕組み。
 
 - **目的**: 入力工数の削減 + コスト管理 + コンプライアンス
-- **規模**: 20+ API ルート、30+ フィールド、16 ワークフロー、7 auto-actions (全 7 ライブ配線済み / 壁3 で 6 アクションは自動化禁止)
+- **規模**: 20+ API ルート、30+ フィールド、16 ワークフロー、22 auto-actions (全 22 ライブ配線済み / 壁3 で 6 アクションは自動化禁止)
 - **設定 UI**: `/admin/settings/ai-automation` (admin 以上が編集)
 - **運営ダッシュボード**: `/admin/platform/operations` の「AI 利用状況」セクション
 
@@ -117,8 +117,16 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 | `thickness.auto_detect`                   | 塗膜厚レポート受信時に統計的な異常検知を自動付与 (注釈)                                                       | OFF  | ✅ NexPTG 同期 (POST external/nexptg/sync)            |
 | `workflow.auto_propose_on_intake`         | 案件登録時にメニュー+過去履歴から最適ワークフローを「提案」(適用=進行開始は人)                                | OFF  | ✅ 予約作成 (POST reservations)                       |
 | `inventory.auto_draft_reorder`            | 在庫下限割れ時に仕入先ごとの発注書を draft で自動起票 (承認・送信は人 / 壁3)                                  | OFF  | ✅ 低在庫 cron (low-stock-alerts)                     |
+| `parts.auto_reconcile_delivery_note`      | 納品書アップロード時に AI-OCR + 三方照合を自動実行し不一致を検知 (確定/署名/在庫計上は人)                      | OFF  | ✅ 納品書アップロード (POST parts/installations/[id]/delivery-note) |
 | `photo.auto_tampering_check`              | 証明書写真アップロード時に改ざんスクリーニング (一次=シグナル集約 / 二次=グレーのみ Vision) を自動付与 (注釈) | OFF  | ✅ 写真アップロード (POST certificates/images/upload) |
+| `photo.auto_quality_check`               | 証明書写真アップロード時に Ledra Standard 基準の品質・抜け漏れ監査を自動付与 (注釈・発行はブロックしない) | OFF  | ✅ 写真アップロード (POST certificates/images/upload) |
 | `insurer_case.auto_fraud_score`           | 保険案件作成時に不正リスクを自動スコア (ルール一次 + グレーのみ AI、注釈。査定確定は人)                       | OFF  | ✅ 案件作成 (POST insurer/cases)                      |
+| `invoice.auto_draft_on_billing_step`      | ワークフローの会計/請求工程到達時に請求書を draft で自動起票 (送付は人 / 壁3)                                  | OFF  | ✅ WF会計工程 (reservations advance)                  |
+| `workflow.auto_apply_on_intake`           | 案件登録時に AI 提案ワークフローを自動適用し工程開始 (各工程の確定は人)                                        | OFF  | ✅ 予約作成 (POST reservations)                       |
+| `job.auto_next_action`                    | 案件の状態遷移時に次アクションを自動提案 (案件画面に即時表示・実行は人)                                        | OFF  | ✅ 進行 (POST reservations/[id]/advance)             |
+| `insurer_case.auto_summary`               | 保険案件作成時に査定担当向け 3 行サマリを自動生成 (注釈。査定確定は人)                                         | OFF  | ✅ 案件作成 (POST insurer/cases)                      |
+| `insurer_case.auto_assign_suggest`        | 保険案件作成時 (ルール未割当) に担当者候補を自動提案 (注釈。割当確定は人)                                       | OFF  | ✅ 案件作成 (POST insurer/cases)                      |
+| `inquiry.auto_classify`                   | 問い合わせ受信時にカテゴリ/優先度/返信下書きを自動生成 (注釈・下書き。送信は人)                                | OFF  | ✅ 問い合わせ受信 (POST customer/inquiry)             |
 
 > **certificate.auto_draft の配線**: 予約 (案件) が `completed` になった時点で
 > `maybeAutoDraftCertificateForReservation` (fire-and-forget) が走り、車両 + 過去事例から
@@ -205,12 +213,68 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 > に保存する (`source="auto"`、写真集合が変わらなければ再実行しない、手動チェック結果は上書きしない)。
 > 注釈用途で発行・金額・本人確認には不介入 (壁3 対象外)。発行前に人がフラグを確認できる。
 >
+> **photo.auto_quality_check の配線**: 同じく写真アップロード (`POST /api/certificates/images/upload`) 後に
+> `after()` 経由で `maybeAutoQualityCheckForCertificate` (`photoQualityAuto.ts`) が走る。証明書の
+> `service_type` (=カテゴリ) で `standard_rules` を引き、**作成時に保存したフラットな field_values
+> スナップショット** (`certificates.quality_fields_json`、migration 20260607000001) を使って
+> `auditCertificatePhotos` を実行する。スナップショットは発行フォームの `collectFieldValues` 相当
+> (= 発行前ゲートと同一入力) なので、ネスト JSON で永続化された証明書から監査を **誤検知なく** 再現できる。
+> Vision (写真内容審査) は master switch + プラン (`ai_quality_vision`) + `source_policies.photos` が
+> 揃ったときだけ呼び、それ以外は枚数・項目のルールベース監査のみ。結果 (スコア / 抜け漏れ / 警告) は
+> `certificates.meta.quality_check` に保存し (`source="auto"`、写真集合が変わらなければ再実行しない)、
+> 証明書詳細ページの `QualityAutoPanel` が表示する。**発行のブロックはしない** — スコアは注釈で、
+> 発行・金額・本人確認には不介入 (壁3 対象外)。
+>
 > **insurer_case.auto_fraud_score の配線**: 保険案件の作成 (`POST /api/insurer/cases`) 後に
 > `after()` 経由で `maybeAutoFraudScoreForCase` (`fraudScoreAuto.ts`) が走る。案件の `tenant_id`
 > を opt-in 判定キーにし (テナント未紐付けならスキップ)、`checkFraudPatterns` (ルール一次 +
 > グレーのみ Haiku) を実行して `insurer_cases.meta.ai_fraud` に保存し、`insurer_access_logs`
 > (`action=fraud_check_auto`) に記録する。**査定の確定は必ず人** (リスク提示のみ・壁3 不介入)。
 > AI コストはグレーゾーンの Haiku のみ発生し、master switch / 月次コストキャップに従う。
+>
+> **insurer_case.auto_summary の配線**: 保険案件の作成 (`POST /api/insurer/cases`) 後に
+> `after()` 経由で `maybeAutoSummarizeCase` (`caseSummaryAuto.ts`) が走る。`tenant_id` を opt-in
+> 判定キーにし、車両 / 証明書 / 本文から `summarizeCase` (AI_MODEL_FAST、AI 不在時はフォールバック)
+> で 3 行サマリを生成して `insurer_cases.meta.ai_summary` に保存し (`source=auto`、既に auto 済みなら
+> 再実行しない)、`insurer_access_logs` (`action=case_summary_auto`) に記録する。査定担当が案件を
+> 開いた瞬間に要点が出る (`CaseAiBanner` が保存済みサマリを既定表示)。**査定の確定は必ず人**
+> (注釈のみ・壁3 不介入)。
+>
+> **insurer_case.auto_assign_suggest の配線**: 保険案件の作成 (`POST /api/insurer/cases`) 後に
+> `after()` 経由で `maybeAutoSuggestAssigneeForCase` (`caseAssignAuto.ts`) が走る。案件作成ルートが
+> 振り分けルールで既に `assigned_to` を立てた場合はスキップ (二重作業回避)。未割当のときだけ
+> `suggestCaseAssignees` (ルール → 過去履歴 → AI → fallback) を実行し、担当者候補を
+> `insurer_cases.meta.ai_assign_suggestion` に **候補として** 保存し (`source=auto`、既に auto 済みなら
+> 再実行しない)、`insurer_access_logs` (`action=case_assign_suggest_auto`) に記録する。`CaseAiBanner`
+> が候補を既定表示する。**割当 (確定) は必ず人** (提案のみ・自動割当はしない・壁3 不介入)。
+>
+> **inquiry.auto_classify の配線**: 顧客ポータルの問い合わせ送信 (`POST /api/customer/inquiry`)
+> 後に `after()` 経由で `maybeAutoClassifyInquiry` (`inquiryClassifyAuto.ts`) が走る。プラン
+> (Standard+ / `ai_inquiry_classify`) を確認し、`classifyInquiry` (AI 不在時はキーワード
+> フォールバック) でカテゴリ / 優先度 / 返信下書きを生成して `customer_inquiries` の AI 列
+> (`ai_category` / `ai_priority` / `ai_draft_reply` / `ai_confidence` / `ai_classified_at`、
+> migration 20260607000000) に保存する。スタッフが受信箱を開くと分類済み・下書き済みで表示される
+> (`InquiryAiBanner` が保存済み結果を既定表示・手動再分類も可)。**返信の送信は必ず人**
+> (注釈・下書きのみ・壁3 不介入)。
+>
+> **job.auto_next_action の配線**: 案件 (予約) の進行 (`POST /api/admin/reservations/[id]/advance`)
+> でステータスが遷移した時点で (レガシー4段フロー / ワークフローテンプレート両対応)、
+> `maybeAutoNextActionForReservation` (`nextActionAuto.ts`) が fire-and-forget で走る。ステータス +
+> 文脈 (顧客 / 車両 / 有効な証明書 / 未払い・期限超過請求) から `generateJobNextAction`
+> (deterministic な候補 + Haiku で文章化) を実行し、`reservations.ai_next_action`
+> (migration 20260607000003) に提案として保存する。`job.next_action` フィールドが manual の
+> テナントはスキップ (設定尊重)。案件画面の `JobAiSuggestPanel` が `initialNextAction` として
+> 即時表示する。**各操作 (発行 / 請求 / 入金確認 等) の実行は必ず人** (提案のみ・壁3 不介入)。
+>
+> **parts.auto_reconcile_delivery_note の配線**: 部品装着の納品書アップロード
+> (`POST /api/parts/installations/[id]/delivery-note`) で画像を assets バケットへ保存し
+> `part_installation_evidence` (kind=delivery_note / content_type、migration 20260607000004) を
+> 追記した後、`after()` 経由で `maybeAutoReconcileDeliveryNote` (`partsReconcileAuto.ts`) が走る。
+> evidence の `ocr_extracted` があればそれを、無ければ assets から画像を取得して
+> `extractDeliveryNote` (Vision-OCR) で明細化し、`reconcileInstallation` で装着内容・数量と
+> 三方照合して不一致を `part_integrity_findings` に記録する。`source_policies.identity_documents`
+> が OFF / master switch OFF / 月次コストキャップ超過なら OCR を呼ばない。**確定署名・アンカー・
+> 在庫計上には不介入** (検知の注釈のみ・壁3 不介入)。UI は装着詳細ページの納品書アップロード。
 
 ### 4.5.1 LINE 受信 → 自動処理パイプライン
 
@@ -383,7 +447,13 @@ UI は「しばらくお待ちください」を表示し、リトライ可能�
 ## 11. 関連ファイル
 
 - 設定基盤: `src/lib/ai/automation/{fieldCatalog,policy}.ts`
-- 自動実行: `src/lib/ai/automation/{actionCatalog,orchestrator,inboundAuto,reviewAuto,certificateAuto,announcementAuto,documentAuto}.ts`
+- 自動実行: `src/lib/ai/automation/{actionCatalog,orchestrator,inboundAuto,reviewAuto,certificateAuto,announcementAuto,documentAuto,fraudScoreAuto,caseSummaryAuto,caseAssignAuto,inquiryClassifyAuto,photoQualityAuto,nextActionAuto,partsReconcileAuto}.ts`
+- 納品書 自動三方照合: `partsReconcileAuto.ts` + `app/api/parts/installations/[id]/delivery-note` (アップロード→assets保存→after) + `part_installation_evidence.content_type` (migration 20260607000004) + `admin/parts-integrity/[installationId]/DeliveryNoteUpload.tsx`
+- 案件 次アクション 自動提案: `nextActionAuto.ts` + `app/api/admin/reservations/[id]/advance` (void) + `reservations.ai_next_action` (migration 20260607000003) + `admin/jobs/[id]/JobAiSuggestPanel.tsx` (initialNextAction 即時表示)
+- 写真品質 自動監査: `photoQualityAuto.ts` + `app/api/certificates/images/upload` POST (after) + `certificates.quality_fields_json` (作成時スナップショット / migration 20260607000001) + `admin/certificates/[public_id]/QualityAutoPanel.tsx` (meta.quality_check 表示)
+- 保険案件サマリ 自動生成: `caseSummaryAuto.ts` + `app/api/insurer/cases` POST (after) + `insurer/cases/[id]/CaseAiBanner.tsx` (保存済みサマリ既定表示)
+- 保険案件 担当者候補 自動提案: `caseAssignAuto.ts` + `app/api/insurer/cases` POST (after) + `insurer/cases/[id]/CaseAiBanner.tsx` (保存済み候補既定表示)
+- 問い合わせ 自動分類: `inquiryClassifyAuto.ts` + `app/api/customer/inquiry` POST (after) + `customer_inquiries` AI 列 (migration 20260607000000) + `admin/customer-inquiries/InquiryAiBanner.tsx` (保存済み結果既定表示)
 - 帳票 確定→自動送付: `documentAuto.ts` + `app/api/admin/documents` PUT (draft→sent 検出) + `lib/documents/share-email.ts` / `lib/line/client.ts` / `lib/stripe/invoicePaymentLink.ts`
 - 顧客セルフ確認 intake: `app/intake/[short_id]/IntakeClient.tsx` (確認ステップ) + `app/api/intake/[short_id]/submit` + `lib/identity/intakeServer.ts` (`submitAndProcessIntake`)
 - 店舗お知らせ: `shop_announcements` テーブル / `app/api/admin/shop-announcements` / `app/admin/shop-announcements` / `app/api/announcements/shop` (公開) / 顧客ポータル「お知らせ」タブ

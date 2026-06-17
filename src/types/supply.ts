@@ -15,7 +15,13 @@ export type SupplyApiAuthType = "none" | "api_key" | "bearer" | "oauth2";
 export type SupplyIntegrationStatus = "unconfigured" | "connected" | "error";
 
 /** 発注の搬送方法 (purchase_orders.transport)。 */
-export type SupplyTransport = "email" | "api";
+export type SupplyTransport = "email" | "api" | "portal";
+
+/** メーカーのポータル回答 (purchase_orders.partner_response)。 */
+export type SupplyPartnerResponse = "pending" | "accepted" | "partial" | "declined";
+
+/** 辞退理由 (purchase_orders.decline_reason)。 */
+export type SupplyDeclineReason = "discontinued" | "out_of_stock" | "price_mismatch" | "min_lot" | "other";
 
 export const SUPPLY_PARTNER_STATUS_LABELS: Record<SupplyPartnerStatus, string> = {
   active_pending_review: "審査待ち",
@@ -35,6 +41,32 @@ export const SUPPLY_INTEGRATION_STATUS_LABELS: Record<SupplyIntegrationStatus, s
   connected: "接続済み",
   error: "エラー",
 };
+
+export const SUPPLY_TRANSPORT_LABELS: Record<SupplyTransport, string> = {
+  email: "メール発注",
+  api: "API 連携",
+  portal: "ポータル受注",
+};
+
+export const SUPPLY_PARTNER_RESPONSE_LABELS: Record<SupplyPartnerResponse, string> = {
+  pending: "回答待ち",
+  accepted: "受注",
+  partial: "一部欠品",
+  declined: "辞退",
+};
+
+export const SUPPLY_DECLINE_REASON_LABELS: Record<SupplyDeclineReason, string> = {
+  discontinued: "廃番",
+  out_of_stock: "在庫切れ",
+  price_mismatch: "価格不一致",
+  min_lot: "最低ロット未満",
+  other: "その他",
+};
+
+export function normalizeSupplyPartnerResponse(raw: string | null | undefined): SupplyPartnerResponse {
+  if (raw === "accepted" || raw === "partial" || raw === "declined") return raw;
+  return "pending";
+}
 
 export function normalizeSupplyPartnerStatus(raw: string | null | undefined): SupplyPartnerStatus {
   if (raw === "active" || raw === "suspended") return raw;

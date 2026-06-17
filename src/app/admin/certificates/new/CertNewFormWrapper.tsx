@@ -209,7 +209,8 @@ export default function CertNewFormWrapper({
     const out: Record<string, string> = {};
     for (const [key, value] of formData.entries()) {
       if (typeof value !== "string") continue;
-      if (key === "status" || key === "template_id" || key === "template_name") continue;
+      if (key === "status" || key === "template_id" || key === "template_name" || key === "quality_fields_json")
+        continue;
       const trimmed = value.trim();
       if (trimmed) out[key] = trimmed;
     }
@@ -267,6 +268,10 @@ export default function CertNewFormWrapper({
     const form = e.currentTarget;
     const formData = new FormData(form);
     formData.set("status", submitStatus);
+    // 品質監査用のフラットな field_values スナップショット (発行前ゲートと同一の入力) を
+    // 作成リクエストに載せ、アップロード時の自動品質監査が誤検知なく再現できるようにする。
+    // オンライン (createCertAction) / オフライン (formDataToCertJson) 両経路で round-trip する。
+    formData.set("quality_fields_json", JSON.stringify(collectFieldValues(formData)));
 
     const vehicleId = String(formData.get("vehicle_id") ?? "").trim();
     const vehicleMaker = String(formData.get("vehicle_maker") ?? "").trim();

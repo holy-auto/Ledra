@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 360" font-family="IPAGothic, sans-serif" font-size="12">
+  <rect x="0" y="0" width="780" height="360" fill="#fff"/>
+  <!-- root -->
+  <rect x="300" y="24" width="120" height="40" fill="#fff" stroke="#000"/><text x="360" y="49" text-anchor="middle">ルート R</text>
+  <!-- internal -->
+  <rect x="150" y="120" width="120" height="40" fill="#fff" stroke="#000"/><text x="210" y="145" text-anchor="middle">内部ノード</text>
+  <rect x="450" y="120" width="120" height="40" fill="#fff" stroke="#000"/><text x="510" y="145" text-anchor="middle">内部ノード</text>
+  <!-- leaves -->
+  <rect x="40" y="230" width="150" height="56" fill="#fff" stroke="#000"/><text x="115" y="254" text-anchor="middle">葉：部品カテゴリ</text><text x="115" y="272" text-anchor="middle">（開示）</text>
+  <rect x="230" y="230" width="150" height="56" fill="#fff" stroke="#000"/><text x="305" y="254" text-anchor="middle">葉：ブランド等級</text><text x="305" y="272" text-anchor="middle">（開示）</text>
+  <rect x="420" y="230" width="150" height="56" fill="#fff" stroke="#000"/><text x="495" y="254" text-anchor="middle">葉：装着時期</text><text x="495" y="272" text-anchor="middle">（粗粒度・開示）</text>
+  <rect x="600" y="230" width="150" height="56" fill="#fff" stroke="#000"/><text x="675" y="254" text-anchor="middle">葉：数量／本人確認</text><text x="675" y="272" text-anchor="middle">（非開示）</text>
+  <!-- edges -->
+  <line x1="345" y1="64" x2="210" y2="120" stroke="#000"/>
+  <line x1="375" y1="64" x2="510" y2="120" stroke="#000"/>
+  <line x1="180" y1="160" x2="115" y2="230" stroke="#000"/>
+  <line x1="240" y1="160" x2="305" y2="230" stroke="#000"/>
+  <line x1="480" y1="160" x2="495" y2="230" stroke="#000"/>
+  <line x1="540" y1="160" x2="675" y2="230" stroke="#000"/>
+  <text x="20" y="330" font-size="12">図3（発明06：開示／非開示／粗粒度を混在させた木構造）</text>
+</svg>

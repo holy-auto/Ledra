@@ -17,6 +17,8 @@ import { computeReorderQuantity } from "@/lib/inventory/reorder";
 import { selectSourcingOption, effectiveUnitPrice, type PartnerSourcingOption } from "@/lib/supply/reorderSelection";
 import { decideAutoSend } from "@/lib/supply/autoSend";
 import { placeOrderViaApi, type SupplyAuthType } from "@/lib/supply/placeOrder";
+import { markOrderDeliveredToPortal } from "@/lib/supply/portalDispatch";
+import { notifyPartnerNewPortalOrder } from "@/lib/supply/portalNotify";
 import { readSecret } from "@/lib/crypto/tenantSecrets";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
@@ -38,7 +40,7 @@ interface AutoSendState {
   monthlyCapJpy: number | null;
   monthlySentJpy: number;
   shopName: string;
-  /** partnerId -> { trusted, endpoint, authType, apiConfig, apiKey } */
+  /** partnerId -> 信頼/搬送 (API・ポータル)/連絡先 */
   partners: Map<
     string,
     {
@@ -47,6 +49,10 @@ interface AutoSendState {
       authType: SupplyAuthType;
       apiConfig: Record<string, unknown> | null;
       apiKey: string | null;
+      portalEnabled: boolean;
+      name: string | null;
+      contactEmail: string | null;
+      lineUserId: string | null;
     }
   >;
 }
@@ -301,7 +307,7 @@ async function loadAutoSendState(admin: Admin, tenantId: string, partnerIds: str
   // 対象パートナーの API 設定 + 信頼フラグ + 鍵。
   const { data: partnerRows } = await admin
     .from("supply_partners")
-    .select("id, is_trusted, api_endpoint, api_auth_type")
+    .select("id, is_trusted, api_endpoint, api_auth_type, portal_enabled, name, contact_email, line_user_id")
     .in("id", partnerIds);
   const { data: credRows } = await admin
     .from("supply_partner_credentials")
@@ -320,6 +326,10 @@ async function loadAutoSendState(admin: Admin, tenantId: string, partnerIds: str
       authType: ((p.api_auth_type as string | null) ?? "none") as SupplyAuthType,
       apiConfig: null,
       apiKey,
+      portalEnabled: p.portal_enabled === true,
+      name: (p.name as string | null) ?? null,
+      contactEmail: (p.contact_email as string | null) ?? null,
+      lineUserId: (p.line_user_id as string | null) ?? null,
     });
   }
   return { enabled: true, maxOrderJpy, monthlyCapJpy, monthlySentJpy, shopName, partners };
@@ -341,11 +351,13 @@ async function attemptAutoSend(
 ): Promise<boolean> {
   const p = state.partners.get(partnerId);
   const hasApi = Boolean(p && p.authType !== "none" && p.endpoint && p.apiKey);
+  const hasPortal = Boolean(p?.portalEnabled);
 
   const decision = decideAutoSend({
     optInEnabled: state.enabled,
     partnerTrusted: Boolean(p?.trusted),
     partnerHasApi: hasApi,
+    partnerHasPortal: hasPortal,
     orderTotalJpy: subtotal,
     maxOrderJpy: state.maxOrderJpy,
     monthlyCapJpy: state.monthlyCapJpy,
@@ -353,6 +365,18 @@ async function attemptAutoSend(
   });
   if (!decision.ok) return false;
   if (!p) return false;
+
+  // API 連携が無く、ポータル連携のみのパートナーはポータルに投函 (回答待ち) する。
+  if (!hasApi && hasPortal) {
+    const delivered = await markOrderDeliveredToPortal(admin, tenantId, poId);
+    if (!delivered) return false;
+    await notifyPartnerNewPortalOrder(
+      { partnerName: p.name, email: p.contactEmail, lineUserId: p.lineUserId },
+      { shopName: state.shopName, poNumber },
+    );
+    logger.info("[partnerReorder] auto-delivered order to portal", { tenantId, poId, partnerId, subtotal });
+    return true;
+  }
 
   const placed = await placeOrderViaApi(
     partnerId,

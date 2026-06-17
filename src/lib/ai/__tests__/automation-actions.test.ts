@@ -4,6 +4,7 @@ import {
   isKnownActionKey,
   isNeverAutoAction,
   sanitizeAutoActions,
+  RECOMMENDED_AUTOMATION_ACTION_KEYS,
 } from "../automation/actionCatalog";
 import { DEFAULT_AI_AUTOMATION_SETTINGS, resolveAutoAction } from "../automation/policy";
 import {
@@ -19,6 +20,12 @@ import {
   shouldAutoCreateDraftCertificate,
   shouldAutoProposeWorkflowOnIntake,
   shouldAutoDraftReorder,
+  shouldAutoSummarizeCase,
+  shouldAutoClassifyInquiry,
+  shouldAutoSuggestAssignee,
+  shouldAutoQualityCheck,
+  shouldAutoNextAction,
+  shouldAutoReconcileDeliveryNote,
 } from "../automation/orchestrator";
 
 describe("actionCatalog", () => {
@@ -368,5 +375,95 @@ describe("phase-3 auto-action (auto-draft reorder)", () => {
     ]) {
       expect(keys).toContain(k);
     }
+  });
+});
+
+describe("すぐやる auto-actions (insurer case summary / assignee suggest / inquiry classify)", () => {
+  const on = (key: string) => ({ ...DEFAULT_AI_AUTOMATION_SETTINGS, autoActions: { [key]: true } });
+
+  it("new keys are known, NOT wall-3, default OFF", () => {
+    for (const k of ["insurer_case.auto_summary", "insurer_case.auto_assign_suggest", "inquiry.auto_classify"]) {
+      expect(isKnownActionKey(k)).toBe(true);
+      expect(isNeverAutoAction(k)).toBe(false);
+      const def = AUTOMATION_ACTIONS.find((a) => a.key === k);
+      expect(def?.defaultEnabled).toBe(false);
+    }
+  });
+
+  it("shouldAutoSummarizeCase follows opt-in + master switch", () => {
+    expect(shouldAutoSummarizeCase(DEFAULT_AI_AUTOMATION_SETTINGS)).toBe(false);
+    expect(shouldAutoSummarizeCase(on("insurer_case.auto_summary"))).toBe(true);
+    expect(shouldAutoSummarizeCase({ ...on("insurer_case.auto_summary"), enabled: false })).toBe(false);
+  });
+
+  it("shouldAutoSuggestAssignee follows opt-in + master switch", () => {
+    expect(shouldAutoSuggestAssignee(DEFAULT_AI_AUTOMATION_SETTINGS)).toBe(false);
+    expect(shouldAutoSuggestAssignee(on("insurer_case.auto_assign_suggest"))).toBe(true);
+    expect(shouldAutoSuggestAssignee({ ...on("insurer_case.auto_assign_suggest"), enabled: false })).toBe(false);
+  });
+
+  it("shouldAutoClassifyInquiry follows opt-in + master switch", () => {
+    expect(shouldAutoClassifyInquiry(DEFAULT_AI_AUTOMATION_SETTINGS)).toBe(false);
+    expect(shouldAutoClassifyInquiry(on("inquiry.auto_classify"))).toBe(true);
+    expect(shouldAutoClassifyInquiry({ ...on("inquiry.auto_classify"), enabled: false })).toBe(false);
+  });
+
+  it("are included in the recommended ('おまかせ') preset", () => {
+    expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has("insurer_case.auto_summary")).toBe(true);
+    expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has("insurer_case.auto_assign_suggest")).toBe(true);
+    expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has("inquiry.auto_classify")).toBe(true);
+  });
+});
+
+describe("photo.auto_quality_check auto-action", () => {
+  const on = (key: string) => ({ ...DEFAULT_AI_AUTOMATION_SETTINGS, autoActions: { [key]: true } });
+
+  it("is known, NOT wall-3, default OFF, and recommended", () => {
+    expect(isKnownActionKey("photo.auto_quality_check")).toBe(true);
+    expect(isNeverAutoAction("photo.auto_quality_check")).toBe(false);
+    expect(AUTOMATION_ACTIONS.find((a) => a.key === "photo.auto_quality_check")?.defaultEnabled).toBe(false);
+    expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has("photo.auto_quality_check")).toBe(true);
+  });
+
+  it("shouldAutoQualityCheck follows opt-in + master switch", () => {
+    expect(shouldAutoQualityCheck(DEFAULT_AI_AUTOMATION_SETTINGS)).toBe(false);
+    expect(shouldAutoQualityCheck(on("photo.auto_quality_check"))).toBe(true);
+    expect(shouldAutoQualityCheck({ ...on("photo.auto_quality_check"), enabled: false })).toBe(false);
+  });
+});
+
+describe("job.auto_next_action auto-action", () => {
+  const on = (key: string) => ({ ...DEFAULT_AI_AUTOMATION_SETTINGS, autoActions: { [key]: true } });
+
+  it("is known, NOT wall-3, default OFF, and recommended", () => {
+    expect(isKnownActionKey("job.auto_next_action")).toBe(true);
+    expect(isNeverAutoAction("job.auto_next_action")).toBe(false);
+    expect(AUTOMATION_ACTIONS.find((a) => a.key === "job.auto_next_action")?.defaultEnabled).toBe(false);
+    expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has("job.auto_next_action")).toBe(true);
+  });
+
+  it("shouldAutoNextAction follows opt-in + master switch", () => {
+    expect(shouldAutoNextAction(DEFAULT_AI_AUTOMATION_SETTINGS)).toBe(false);
+    expect(shouldAutoNextAction(on("job.auto_next_action"))).toBe(true);
+    expect(shouldAutoNextAction({ ...on("job.auto_next_action"), enabled: false })).toBe(false);
+  });
+});
+
+describe("parts.auto_reconcile_delivery_note auto-action", () => {
+  const on = (key: string) => ({ ...DEFAULT_AI_AUTOMATION_SETTINGS, autoActions: { [key]: true } });
+
+  it("is known, NOT wall-3, default OFF, and recommended", () => {
+    expect(isKnownActionKey("parts.auto_reconcile_delivery_note")).toBe(true);
+    expect(isNeverAutoAction("parts.auto_reconcile_delivery_note")).toBe(false);
+    expect(AUTOMATION_ACTIONS.find((a) => a.key === "parts.auto_reconcile_delivery_note")?.defaultEnabled).toBe(false);
+    expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has("parts.auto_reconcile_delivery_note")).toBe(true);
+  });
+
+  it("shouldAutoReconcileDeliveryNote follows opt-in + master switch", () => {
+    expect(shouldAutoReconcileDeliveryNote(DEFAULT_AI_AUTOMATION_SETTINGS)).toBe(false);
+    expect(shouldAutoReconcileDeliveryNote(on("parts.auto_reconcile_delivery_note"))).toBe(true);
+    expect(shouldAutoReconcileDeliveryNote({ ...on("parts.auto_reconcile_delivery_note"), enabled: false })).toBe(
+      false,
+    );
   });
 });

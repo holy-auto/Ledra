@@ -251,6 +251,15 @@ export function shouldAutoDraftInvoiceOnBilling(settings: AiAutomationSettings):
   return resolveAutoAction(settings, "invoice.auto_draft_on_billing_step");
 }
 
+/**
+ * 案件のステータス遷移時に「次アクション」を自動提案してよいか。
+ * 結果は提案 (action/message/priority) として保存されるだけで、各操作の実行は人が行う
+ * (提案のみ・非壁3)。
+ */
+export function shouldAutoNextAction(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "job.auto_next_action");
+}
+
 // ─────────────────────────────────────────────
 // 在庫下限割れ → 発注書ドラフト自動作成
 // ─────────────────────────────────────────────
@@ -266,6 +275,15 @@ export function shouldAutoDraftReorder(settings: AiAutomationSettings): boolean 
   return resolveAutoAction(settings, "inventory.auto_draft_reorder");
 }
 
+/**
+ * 納品書アップロード時に AI-OCR + 三方照合を自動実行してよいか。
+ * 結果は検知 (part_integrity_findings) の注釈のみで、確定署名・アンカー・在庫計上には
+ * 関与しない (非壁3)。
+ */
+export function shouldAutoReconcileDeliveryNote(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "parts.auto_reconcile_delivery_note");
+}
+
 // ─────────────────────────────────────────────
 // 証明書写真 → 改ざんスクリーニング
 // ─────────────────────────────────────────────
@@ -279,6 +297,15 @@ export function shouldAutoTamperingCheck(settings: AiAutomationSettings): boolea
   return resolveAutoAction(settings, "photo.auto_tampering_check");
 }
 
+/**
+ * 証明書写真のアップロード時に品質・抜け漏れスクリーニングを自動実行してよいか。
+ * 結果はスコア / 指摘の注釈としてのみ保存され、発行のブロックや金額・本人確認には
+ * 関与しない (非壁3)。
+ */
+export function shouldAutoQualityCheck(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "photo.auto_quality_check");
+}
+
 // ─────────────────────────────────────────────
 // 保険案件 (claim) → 不正リスク自動スコア
 // ─────────────────────────────────────────────
@@ -290,4 +317,35 @@ export function shouldAutoTamperingCheck(settings: AiAutomationSettings): boolea
  */
 export function shouldAutoFraudScore(settings: AiAutomationSettings): boolean {
   return resolveAutoAction(settings, "insurer_case.auto_fraud_score");
+}
+
+/**
+ * 保険案件の受信時に 3 行サマリを自動生成してよいか。
+ * 結果は注釈 (lines / confidence) としてのみ保存され、査定の確定は人が行う
+ * (要点提示のみ・非壁3)。
+ */
+export function shouldAutoSummarizeCase(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "insurer_case.auto_summary");
+}
+
+/**
+ * 保険案件の受信時に担当者候補を自動提案してよいか。
+ * 結果は注釈 (candidates) としてのみ保存され、割当 (確定) は人が行う
+ * (提案のみ・非壁3)。ルールで自動割当済みの案件には提案しない (呼び出し側で判定)。
+ */
+export function shouldAutoSuggestAssignee(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "insurer_case.auto_assign_suggest");
+}
+
+// ─────────────────────────────────────────────
+// 顧客問い合わせ → 自動分類 / 返信下書き
+// ─────────────────────────────────────────────
+
+/**
+ * 問い合わせ受信時に分類 + 返信下書きを自動生成してよいか。
+ * 結果は注釈 (category / priority / draft_reply) としてのみ保存され、返信の送信は
+ * 必ず人が行う (下書き・分類のみ・非壁3)。
+ */
+export function shouldAutoClassifyInquiry(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "inquiry.auto_classify");
 }

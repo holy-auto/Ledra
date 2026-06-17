@@ -99,6 +99,23 @@ export default async function JobWorkflowPage({ params }: { params: Promise<{ id
   const customer = customerRes.data as JobCustomer;
   const vehicle = vehicleRes.data as JobVehicle;
 
+  // 状態遷移時に保存済みの次アクション (job.auto_next_action) があれば即時表示用に渡す。
+  const storedNextActionRaw = (
+    reservation as {
+      ai_next_action?: { action?: string; message?: string; priority?: "high" | "med" | "low"; ai?: boolean } | null;
+    }
+  ).ai_next_action;
+  const initialNextAction =
+    storedNextActionRaw && storedNextActionRaw.action && storedNextActionRaw.message
+      ? {
+          action: storedNextActionRaw.action,
+          message: storedNextActionRaw.message,
+          priority: storedNextActionRaw.priority ?? ("med" as const),
+          ai: !!storedNextActionRaw.ai,
+          policy: "suggest" as const,
+        }
+      : null;
+
   // この顧客向け LINE outbound の未配信件数 (過去 30 日、clientWithRetry が記録するもの)
   let failedLineCount = 0;
   if (customer?.id) {
@@ -174,6 +191,7 @@ export default async function JobWorkflowPage({ params }: { params: Promise<{ id
         currentTitle={(reservation.title as string | null) ?? null}
         customerId={(reservation.customer_id as string | null) ?? null}
         vehicleId={(reservation.vehicle_id as string | null) ?? null}
+        initialNextAction={initialNextAction}
       />
 
       {/* certificate.auto_draft が生成した証明書ドラフト (あれば表示。発行は人=壁3) */}
@@ -192,6 +210,7 @@ export default async function JobWorkflowPage({ params }: { params: Promise<{ id
           customer={customer}
           vehicle={vehicle}
           tenantId={tenantId}
+          currentUserId={userRes.user.id}
         />
       </Suspense>
     </main>

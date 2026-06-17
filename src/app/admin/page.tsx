@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { logger } from "@/lib/logger";
 import PageHeader from "@/components/ui/PageHeader";
 import DashboardCharts from "./DashboardCharts";
@@ -11,7 +11,6 @@ import CmdKHintToast from "./CmdKHintToast";
 import DashboardModeSwitch from "./DashboardModeSwitch";
 import TodayTasksWidget, { TodayTasksWidgetSkeleton } from "./TodayTasksWidget";
 import SetupChecklist, { SetupChecklistSkeleton } from "./SetupChecklist";
-import SalesTargetWidget, { SalesTargetWidgetSkeleton } from "./SalesTargetWidget";
 
 // ── Partner Rank System ──
 interface PartnerRank {
@@ -606,13 +605,6 @@ export default async function AdminHome({ searchParams }: { searchParams?: Promi
       {tenantId && (
         <Suspense fallback={<TodayTasksWidgetSkeleton />}>
           <TodayTasksWidget tenantId={tenantId} scope={tasksScope} currentUserId={caller.userId} />
-        </Suspense>
-      )}
-
-      {/* 今月の売上目標 + 達成率（経営指標のため management:view ロールのみ表示） */}
-      {tenantId && requirePermission(caller, "management:view") && (
-        <Suspense fallback={<SalesTargetWidgetSkeleton />}>
-          <SalesTargetWidget tenantId={tenantId} />
         </Suspense>
       )}
 

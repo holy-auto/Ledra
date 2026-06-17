@@ -13,6 +13,16 @@ export const metadata = {
   description:
     "施工店・代理店・保険会社・顧客の4者をつなぐWEB施工証明書SaaS。証明書発行・車両管理・POS・帳票・分析まで一気通貫。",
   alternates: { canonical: "/features" },
+  openGraph: {
+    title: "機能一覧 | Ledra",
+    description:
+      "施工店・代理店・保険会社・顧客の4者をつなぐWEB施工証明書SaaS。証明書発行・車両管理・POS・帳票・分析まで一気通貫。",
+    url: "/features",
+    siteName: "Ledra",
+    locale: "ja_JP",
+    type: "website" as const,
+  },
+  twitter: { card: "summary_large_image" as const },
 };
 
 export default function FeaturesPage() {

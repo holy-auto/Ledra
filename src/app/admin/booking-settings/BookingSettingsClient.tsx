@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import SlotCalendarGrid, { type GridSlot } from "./SlotCalendarGrid";
 
 // ─── 型定義 ──────────────────────────────────────────────────────
 type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -48,6 +49,17 @@ function newClosedId() {
   return `new_${Math.random().toString(36).slice(2)}`;
 }
 
+// "HH:MM" → 分。"24:00" は 1440。
+function toMinutes(t: string): number {
+  const [h, m] = t.slice(0, 5).split(":").map(Number);
+  return h * 60 + m;
+}
+// 分 → "HH:MM"（1440 は "24:00"）
+function minutesToTime(m: number): string {
+  if (m >= 1440) return "24:00";
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
 // ─── 共通インプット / セレクト スタイル ─────────────────────────
 const inputCls =
   "text-sm border border-border-default rounded-md px-2 py-1 bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent";
@@ -62,6 +74,8 @@ export default function BookingSettingsClient() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [activeTab, setActiveTab] = useState<"slots" | "closed">("slots");
+  // 受付時間スロットの編集方法: カレンダー(grid) / 一覧(list)
+  const [slotView, setSlotView] = useState<"grid" | "list">("grid");
 
   // 追加フォーム用 state
   const [newSlot, setNewSlot] = useState<Partial<BookingSlot>>({
@@ -141,6 +155,103 @@ export default function BookingSettingsClient() {
       },
     ]);
     setNewSlot((prev) => ({ ...prev, label: "" }));
+  }
+
+  // ─── カレンダー塗り操作（ミツモア風ドラッグ選択） ───
+  // 指定曜日に [startMin, endMin) のスロットを作成。隣接/重複する既存枠は1枠に結合。
+  function paintCreate(day: number, startMin: number, endMin: number) {
+    setSlots((prev) => {
+      let mergeStart = startMin;
+      let mergeEnd = endMin;
+      let maxBookings = 1;
+      let label = "";
+      const result: (BookingSlot & { _tempId: string })[] = [];
+      for (const s of prev) {
+        const isActiveRow = !s._deleted && s.day_of_week === day;
+        if (isActiveRow) {
+          const sStart = toMinutes(s.start_time);
+          const sEnd = toMinutes(s.end_time);
+          // 重複または隣接していれば結合対象
+          if (sStart <= mergeEnd && sEnd >= mergeStart) {
+            mergeStart = Math.min(mergeStart, sStart);
+            mergeEnd = Math.max(mergeEnd, sEnd);
+            if (s.max_bookings) maxBookings = s.max_bookings;
+            if (s.label) label = s.label;
+            // 既存枠は取り除く（id 付きは削除マーク、未保存は破棄）
+            if (s.id) result.push({ ...s, _deleted: true });
+            continue;
+          }
+        }
+        result.push(s);
+      }
+      result.push({
+        _tempId: newSlotId(),
+        _new: true,
+        day_of_week: day as DayOfWeek,
+        start_time: minutesToTime(mergeStart),
+        end_time: minutesToTime(mergeEnd),
+        max_bookings: maxBookings,
+        is_active: true,
+        label,
+      });
+      return result;
+    });
+  }
+
+  // 指定曜日の [startMin, endMin) を削除。途中にかかる枠は分割して残す。
+  function paintErase(day: number, startMin: number, endMin: number) {
+    setSlots((prev) => {
+      const result: (BookingSlot & { _tempId: string })[] = [];
+      for (const s of prev) {
+        const isActiveRow = !s._deleted && s.day_of_week === day;
+        if (isActiveRow) {
+          const sStart = toMinutes(s.start_time);
+          const sEnd = toMinutes(s.end_time);
+          if (sStart < endMin && sEnd > startMin) {
+            // 元の枠を取り除く
+            if (s.id) result.push({ ...s, _deleted: true });
+            // 左側の残り
+            if (sStart < startMin) {
+              result.push({
+                _tempId: newSlotId(),
+                _new: true,
+                day_of_week: day as DayOfWeek,
+                start_time: minutesToTime(sStart),
+                end_time: minutesToTime(startMin),
+                max_bookings: s.max_bookings,
+                is_active: s.is_active,
+                label: s.label,
+              });
+            }
+            // 右側の残り
+            if (sEnd > endMin) {
+              result.push({
+                _tempId: newSlotId(),
+                _new: true,
+                day_of_week: day as DayOfWeek,
+                start_time: minutesToTime(endMin),
+                end_time: minutesToTime(sEnd),
+                max_bookings: s.max_bookings,
+                is_active: s.is_active,
+                label: s.label,
+              });
+            }
+            continue;
+          }
+        }
+        result.push(s);
+      }
+      return result;
+    });
+  }
+
+  // 指定曜日の atMin を含む枠をまるごと削除。
+  function eraseSlotAt(day: number, atMin: number) {
+    const target = slots.find(
+      (s) => !s._deleted && s.day_of_week === day && toMinutes(s.start_time) <= atMin && toMinutes(s.end_time) > atMin,
+    );
+    if (!target) return;
+    paintErase(day, toMinutes(target.start_time), toMinutes(target.end_time));
   }
 
   // ─── 毎週定休曜日トグル ───
@@ -297,222 +408,264 @@ export default function BookingSettingsClient() {
       {/* ─── タブ: 受付時間スロット ─── */}
       {activeTab === "slots" && (
         <div className="space-y-4">
-          {/* スロット一覧（曜日グループ） */}
-          {([0, 1, 2, 3, 4, 5, 6] as DayOfWeek[]).map((dow) => {
-            const daySlots = activeSlots.filter((s) => s.day_of_week === dow);
-            const isClosed = weeklyClosedDows.has(dow);
-            return (
-              <div
-                key={dow}
-                className={`bg-surface rounded-xl border border-border-default shadow-sm overflow-hidden ${isClosed ? "opacity-50" : ""}`}
+          {/* 編集方法トグル: カレンダー / 一覧 */}
+          <div className="flex items-center gap-1 rounded-lg border border-border-default bg-inset p-0.5 w-fit">
+            {(["grid", "list"] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setSlotView(v)}
+                className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                  slotView === v ? "bg-accent text-white shadow-sm" : "text-secondary hover:text-primary"
+                }`}
               >
-                {/* 曜日ヘッダー */}
-                <div
-                  className={`flex items-center justify-between px-4 py-3 ${
-                    dow === 0 ? "bg-danger-dim" : dow === 6 ? "bg-accent-dim" : "bg-inset"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`font-bold text-base ${
-                        dow === 0 ? "text-danger" : dow === 6 ? "text-accent" : "text-primary"
+                {v === "grid" ? "カレンダーで選択" : "一覧で編集"}
+              </button>
+            ))}
+          </div>
+
+          {/* ── カレンダー（ドラッグ/タッチ選択） ── */}
+          {slotView === "grid" && (
+            <div className="bg-surface rounded-xl border border-border-default shadow-sm p-4">
+              <SlotCalendarGrid
+                slots={activeSlots as GridSlot[]}
+                onCreateRange={paintCreate}
+                onEraseRange={paintErase}
+                onEraseSlotAt={eraseSlotAt}
+              />
+              <p className="mt-3 text-xs text-muted">
+                同時受付数やラベルを細かく調整したいときは「一覧で編集」に切り替えてください。変更は上部の「保存する」で確定します。
+              </p>
+            </div>
+          )}
+
+          {slotView === "list" && (
+            <div className="space-y-4">
+              {/* スロット一覧（曜日グループ） */}
+              {([0, 1, 2, 3, 4, 5, 6] as DayOfWeek[]).map((dow) => {
+                const daySlots = activeSlots.filter((s) => s.day_of_week === dow);
+                const isClosed = weeklyClosedDows.has(dow);
+                return (
+                  <div
+                    key={dow}
+                    className={`bg-surface rounded-xl border border-border-default shadow-sm overflow-hidden ${isClosed ? "opacity-50" : ""}`}
+                  >
+                    {/* 曜日ヘッダー */}
+                    <div
+                      className={`flex items-center justify-between px-4 py-3 ${
+                        dow === 0 ? "bg-danger-dim" : dow === 6 ? "bg-accent-dim" : "bg-inset"
                       }`}
                     >
-                      {DAY_NAMES[dow]}曜日
-                    </span>
-                    {isClosed && (
-                      <span className="text-xs bg-muted/40 text-secondary px-2 py-0.5 rounded-full">定休日</span>
-                    )}
-                  </div>
-                  <span className="text-xs text-muted">{daySlots.length}スロット</span>
-                </div>
-
-                {/* スロット行 */}
-                <div className="divide-y divide-border-subtle">
-                  {daySlots.length === 0 ? (
-                    <p className="px-4 py-3 text-sm text-muted italic">スロットなし</p>
-                  ) : (
-                    daySlots.map((slot) => (
-                      <div key={slot._tempId} className="flex items-center gap-3 px-4 py-3 hover:bg-surface-hover">
-                        {/* ON/OFFトグル */}
-                        <button
-                          onClick={() => handleSlotChange(slot._tempId, "is_active", !slot.is_active)}
-                          className={`relative w-10 h-5 rounded-full transition-colors ${
-                            slot.is_active ? "bg-accent" : "bg-border-strong"
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`font-bold text-base ${
+                            dow === 0 ? "text-danger" : dow === 6 ? "text-accent" : "text-primary"
                           }`}
                         >
-                          <span
-                            className={`absolute top-0.5 w-4 h-4 bg-inverse rounded-full shadow transition-transform ${
-                              slot.is_active ? "translate-x-5" : "translate-x-0.5"
-                            }`}
-                          />
-                        </button>
-
-                        {/* 開始・終了時刻 */}
-                        <select
-                          value={slot.start_time.slice(0, 5)}
-                          onChange={(e) => handleSlotChange(slot._tempId, "start_time", e.target.value)}
-                          className={selectCls}
-                        >
-                          {TIME_OPTIONS.map((t) => (
-                            <option key={t} value={t}>
-                              {t}
-                            </option>
-                          ))}
-                        </select>
-                        <span className="text-muted text-sm">〜</span>
-                        <select
-                          value={slot.end_time.slice(0, 5)}
-                          onChange={(e) => handleSlotChange(slot._tempId, "end_time", e.target.value)}
-                          className={selectCls}
-                        >
-                          {TIME_OPTIONS.map((t) => (
-                            <option key={t} value={t}>
-                              {t}
-                            </option>
-                          ))}
-                        </select>
-
-                        {/* 同時受付数 */}
-                        <div className="flex items-center gap-1 ml-2">
-                          <button
-                            onClick={() =>
-                              handleSlotChange(slot._tempId, "max_bookings", Math.max(1, slot.max_bookings - 1))
-                            }
-                            className="w-6 h-6 rounded-full bg-inset hover:bg-surface-active flex items-center justify-center text-sm font-bold text-primary"
-                          >
-                            −
-                          </button>
-                          <span className="w-6 text-center text-sm font-medium text-primary">{slot.max_bookings}</span>
-                          <button
-                            onClick={() =>
-                              handleSlotChange(slot._tempId, "max_bookings", Math.min(99, slot.max_bookings + 1))
-                            }
-                            className="w-6 h-6 rounded-full bg-inset hover:bg-surface-active flex items-center justify-center text-sm font-bold text-primary"
-                          >
-                            ＋
-                          </button>
-                          <span className="text-xs text-muted ml-1">名</span>
-                        </div>
-
-                        {/* ラベル */}
-                        <input
-                          type="text"
-                          value={slot.label ?? ""}
-                          onChange={(e) => handleSlotChange(slot._tempId, "label", e.target.value)}
-                          placeholder="ラベル（任意）"
-                          className={`flex-1 min-w-0 ${inputCls}`}
-                        />
-
-                        {/* 削除 */}
-                        <button
-                          onClick={() => handleDeleteSlot(slot._tempId)}
-                          className="text-muted hover:text-danger transition-colors flex-shrink-0"
-                          title="削除"
-                        >
-                          <svg
-                            className="w-4 h-4"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                            strokeWidth={2}
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
+                          {DAY_NAMES[dow]}曜日
+                        </span>
+                        {isClosed && (
+                          <span className="text-xs bg-muted/40 text-secondary px-2 py-0.5 rounded-full">定休日</span>
+                        )}
                       </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            );
-          })}
+                      <span className="text-xs text-muted">{daySlots.length}スロット</span>
+                    </div>
 
-          {/* スロット追加フォーム */}
-          <div className="bg-accent-dim border border-accent/20 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-accent-text mb-3">スロットを追加</h3>
-            <div className="flex flex-wrap items-end gap-3">
-              <div>
-                <label className="block text-xs text-secondary mb-1">曜日</label>
-                <select
-                  value={newSlot.day_of_week ?? 1}
-                  onChange={(e) => setNewSlot((p) => ({ ...p, day_of_week: Number(e.target.value) as DayOfWeek }))}
-                  className={selectCls}
-                >
-                  {DAY_NAMES.map((d, i) => (
-                    <option key={i} value={i}>
-                      {d}曜日
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-secondary mb-1">開始</label>
-                <select
-                  value={newSlot.start_time ?? "09:00"}
-                  onChange={(e) => setNewSlot((p) => ({ ...p, start_time: e.target.value }))}
-                  className={selectCls}
-                >
-                  {TIME_OPTIONS.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-secondary mb-1">終了</label>
-                <select
-                  value={newSlot.end_time ?? "10:00"}
-                  onChange={(e) => setNewSlot((p) => ({ ...p, end_time: e.target.value }))}
-                  className={selectCls}
-                >
-                  {TIME_OPTIONS.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-secondary mb-1">同時受付数</label>
-                <div className="flex items-center gap-1">
+                    {/* スロット行 */}
+                    <div className="divide-y divide-border-subtle">
+                      {daySlots.length === 0 ? (
+                        <p className="px-4 py-3 text-sm text-muted italic">スロットなし</p>
+                      ) : (
+                        daySlots.map((slot) => (
+                          <div key={slot._tempId} className="flex items-center gap-3 px-4 py-3 hover:bg-surface-hover">
+                            {/* ON/OFFトグル */}
+                            <button
+                              onClick={() => handleSlotChange(slot._tempId, "is_active", !slot.is_active)}
+                              className={`relative w-10 h-5 rounded-full transition-colors ${
+                                slot.is_active ? "bg-accent" : "bg-border-strong"
+                              }`}
+                            >
+                              <span
+                                className={`absolute top-0.5 w-4 h-4 bg-inverse rounded-full shadow transition-transform ${
+                                  slot.is_active ? "translate-x-5" : "translate-x-0.5"
+                                }`}
+                              />
+                            </button>
+
+                            {/* 開始・終了時刻 */}
+                            <select
+                              value={slot.start_time.slice(0, 5)}
+                              onChange={(e) => handleSlotChange(slot._tempId, "start_time", e.target.value)}
+                              className={selectCls}
+                            >
+                              {TIME_OPTIONS.map((t) => (
+                                <option key={t} value={t}>
+                                  {t}
+                                </option>
+                              ))}
+                            </select>
+                            <span className="text-muted text-sm">〜</span>
+                            <select
+                              value={slot.end_time.slice(0, 5)}
+                              onChange={(e) => handleSlotChange(slot._tempId, "end_time", e.target.value)}
+                              className={selectCls}
+                            >
+                              {TIME_OPTIONS.map((t) => (
+                                <option key={t} value={t}>
+                                  {t}
+                                </option>
+                              ))}
+                            </select>
+
+                            {/* 同時受付数 */}
+                            <div className="flex items-center gap-1 ml-2">
+                              <button
+                                onClick={() =>
+                                  handleSlotChange(slot._tempId, "max_bookings", Math.max(1, slot.max_bookings - 1))
+                                }
+                                className="w-6 h-6 rounded-full bg-inset hover:bg-surface-active flex items-center justify-center text-sm font-bold text-primary"
+                              >
+                                −
+                              </button>
+                              <span className="w-6 text-center text-sm font-medium text-primary">
+                                {slot.max_bookings}
+                              </span>
+                              <button
+                                onClick={() =>
+                                  handleSlotChange(slot._tempId, "max_bookings", Math.min(99, slot.max_bookings + 1))
+                                }
+                                className="w-6 h-6 rounded-full bg-inset hover:bg-surface-active flex items-center justify-center text-sm font-bold text-primary"
+                              >
+                                ＋
+                              </button>
+                              <span className="text-xs text-muted ml-1">名</span>
+                            </div>
+
+                            {/* ラベル */}
+                            <input
+                              type="text"
+                              value={slot.label ?? ""}
+                              onChange={(e) => handleSlotChange(slot._tempId, "label", e.target.value)}
+                              placeholder="ラベル（任意）"
+                              className={`flex-1 min-w-0 ${inputCls}`}
+                            />
+
+                            {/* 削除 */}
+                            <button
+                              onClick={() => handleDeleteSlot(slot._tempId)}
+                              className="text-muted hover:text-danger transition-colors flex-shrink-0"
+                              title="削除"
+                            >
+                              <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* スロット追加フォーム */}
+              <div className="bg-accent-dim border border-accent/20 rounded-xl p-5">
+                <h3 className="text-sm font-semibold text-accent-text mb-3">スロットを追加</h3>
+                <div className="flex flex-wrap items-end gap-3">
+                  <div>
+                    <label className="block text-xs text-secondary mb-1">曜日</label>
+                    <select
+                      value={newSlot.day_of_week ?? 1}
+                      onChange={(e) => setNewSlot((p) => ({ ...p, day_of_week: Number(e.target.value) as DayOfWeek }))}
+                      className={selectCls}
+                    >
+                      {DAY_NAMES.map((d, i) => (
+                        <option key={i} value={i}>
+                          {d}曜日
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-secondary mb-1">開始</label>
+                    <select
+                      value={newSlot.start_time ?? "09:00"}
+                      onChange={(e) => setNewSlot((p) => ({ ...p, start_time: e.target.value }))}
+                      className={selectCls}
+                    >
+                      {TIME_OPTIONS.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-secondary mb-1">終了</label>
+                    <select
+                      value={newSlot.end_time ?? "10:00"}
+                      onChange={(e) => setNewSlot((p) => ({ ...p, end_time: e.target.value }))}
+                      className={selectCls}
+                    >
+                      {TIME_OPTIONS.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-secondary mb-1">同時受付数</label>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() =>
+                          setNewSlot((p) => ({ ...p, max_bookings: Math.max(1, (p.max_bookings ?? 1) - 1) }))
+                        }
+                        className="w-7 h-7 rounded bg-surface border border-border-default hover:bg-surface-hover flex items-center justify-center text-sm font-bold text-primary"
+                      >
+                        −
+                      </button>
+                      <span className="w-7 text-center text-sm font-medium text-primary">
+                        {newSlot.max_bookings ?? 1}
+                      </span>
+                      <button
+                        onClick={() =>
+                          setNewSlot((p) => ({ ...p, max_bookings: Math.min(99, (p.max_bookings ?? 1) + 1) }))
+                        }
+                        className="w-7 h-7 rounded bg-surface border border-border-default hover:bg-surface-hover flex items-center justify-center text-sm font-bold text-primary"
+                      >
+                        ＋
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-[120px]">
+                    <label className="block text-xs text-secondary mb-1">ラベル（任意）</label>
+                    <input
+                      type="text"
+                      value={newSlot.label ?? ""}
+                      onChange={(e) => setNewSlot((p) => ({ ...p, label: e.target.value }))}
+                      placeholder="例: 午前の部"
+                      className={`w-full ${inputCls}`}
+                    />
+                  </div>
                   <button
-                    onClick={() => setNewSlot((p) => ({ ...p, max_bookings: Math.max(1, (p.max_bookings ?? 1) - 1) }))}
-                    className="w-7 h-7 rounded bg-surface border border-border-default hover:bg-surface-hover flex items-center justify-center text-sm font-bold text-primary"
+                    onClick={handleAddSlot}
+                    className="flex items-center gap-1 px-4 py-1.5 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent/90 transition-colors"
                   >
-                    −
-                  </button>
-                  <span className="w-7 text-center text-sm font-medium text-primary">{newSlot.max_bookings ?? 1}</span>
-                  <button
-                    onClick={() => setNewSlot((p) => ({ ...p, max_bookings: Math.min(99, (p.max_bookings ?? 1) + 1) }))}
-                    className="w-7 h-7 rounded bg-surface border border-border-default hover:bg-surface-hover flex items-center justify-center text-sm font-bold text-primary"
-                  >
-                    ＋
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                    追加
                   </button>
                 </div>
               </div>
-              <div className="flex-1 min-w-[120px]">
-                <label className="block text-xs text-secondary mb-1">ラベル（任意）</label>
-                <input
-                  type="text"
-                  value={newSlot.label ?? ""}
-                  onChange={(e) => setNewSlot((p) => ({ ...p, label: e.target.value }))}
-                  placeholder="例: 午前の部"
-                  className={`w-full ${inputCls}`}
-                />
-              </div>
-              <button
-                onClick={handleAddSlot}
-                className="flex items-center gap-1 px-4 py-1.5 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent/90 transition-colors"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                </svg>
-                追加
-              </button>
             </div>
-          </div>
+          )}
         </div>
       )}
 

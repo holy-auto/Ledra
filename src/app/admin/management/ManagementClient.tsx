@@ -50,6 +50,22 @@ type KPIData = {
   };
 };
 
+/** 売上目標 (sales_targets) — 各指標は未設定 (null) を許容。 */
+type SalesTarget = {
+  target_revenue: number | null;
+  target_jobs: number | null;
+  target_new_customers: number | null;
+};
+
+/** 担当者別 月次実績 (staff-performance API)。 */
+type StaffRow = {
+  user_id: string;
+  display_name: string;
+  completed_jobs: number;
+  estimated_revenue: number;
+  month: string;
+};
+
 /* ─── Helpers ─── */
 
 function GrowthBadge({ rate, suffix = "%" }: { rate: number | null; suffix?: string }) {
@@ -166,6 +182,58 @@ function ProgressRing({
   );
 }
 
+/** 達成率を 0〜100 に丸める (表示用ラベルは丸めない実値を別途渡す)。 */
+function pctOf(actual: number, target: number | null): number | null {
+  if (target === null || target <= 0) return null;
+  return (actual / target) * 100;
+}
+
+/** 目標 vs 実績の横棒。達成率に応じて色を変える (>=100% emerald / >=60% blue / それ未満 amber)。 */
+function TargetProgressRow({
+  label,
+  actualText,
+  targetText,
+  rate,
+}: {
+  label: string;
+  actualText: string;
+  targetText: string;
+  rate: number | null;
+}) {
+  const clamped = rate === null ? 0 : Math.min(Math.max(rate, 0), 100);
+  const color =
+    rate === null
+      ? "var(--accent-blue)"
+      : rate >= 100
+        ? "var(--accent-emerald)"
+        : rate >= 60
+          ? "var(--accent-blue)"
+          : "var(--accent-amber)";
+  return (
+    <div className="space-y-1">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">{label}</span>
+        <span className="text-[12px] text-secondary">
+          <span className="font-semibold text-primary">{actualText}</span>
+          <span className="mx-1 text-muted">/</span>
+          <span>{targetText}</span>
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="h-2 flex-1 rounded-full bg-surface-hover overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-700 ease-out"
+            style={{ width: `${clamped}%`, backgroundColor: color }}
+          />
+        </div>
+        <span className="w-10 text-right text-[12px] font-bold" style={{ color }}>
+          {rate !== null ? `${Math.round(rate)}%` : "-"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Main Component ─── */
 
 export default function ManagementClient() {
@@ -173,19 +241,86 @@ export default function ManagementClient() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
+  // 売上目標 / PDCA
+  const [target, setTarget] = useState<SalesTarget | null>(null);
+  const [editingTarget, setEditingTarget] = useState(false);
+  const [targetDraft, setTargetDraft] = useState<SalesTarget>({
+    target_revenue: null,
+    target_jobs: null,
+    target_new_customers: null,
+  });
+  const [savingTarget, setSavingTarget] = useState(false);
+  const [targetErr, setTargetErr] = useState<string | null>(null);
+
+  // 担当者別実績
+  const [staff, setStaff] = useState<StaffRow[] | null>(null);
+
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/api/admin/management-kpi", { cache: "no-store" });
-        const j = await parseJsonSafe(res);
-        if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
-        setData(j);
+        const [kpiRes, targetRes, staffRes] = await Promise.all([
+          fetch("/api/admin/management-kpi", { cache: "no-store" }),
+          fetch("/api/admin/sales-targets", { cache: "no-store" }),
+          fetch("/api/admin/staff-performance", { cache: "no-store" }),
+        ]);
+
+        const kpiJson = await parseJsonSafe<KPIData & { error?: string }>(kpiRes);
+        if (!kpiRes.ok) throw new Error(kpiJson?.error ?? `HTTP ${kpiRes.status}`);
+        setData(kpiJson);
+
+        // 目標・担当者実績は副次データ。失敗してもダッシュボード本体は描画する。
+        if (targetRes.ok) {
+          const tj = await parseJsonSafe<{ target: SalesTarget | null }>(targetRes);
+          setTarget(tj?.target ?? null);
+        }
+        if (staffRes.ok) {
+          const sj = await parseJsonSafe<{ staff: StaffRow[] }>(staffRes);
+          setStaff(sj?.staff ?? []);
+        }
       } catch (e: unknown) {
         setErr(e instanceof Error ? e.message : String(e));
       }
       setLoading(false);
     })();
   }, []);
+
+  /** 編集モードへ。現在の目標値を draft にコピー。 */
+  function startEditTarget() {
+    setTargetDraft({
+      target_revenue: target?.target_revenue ?? null,
+      target_jobs: target?.target_jobs ?? null,
+      target_new_customers: target?.target_new_customers ?? null,
+    });
+    setTargetErr(null);
+    setEditingTarget(true);
+  }
+
+  /** 目標値を PUT で upsert。成功したら表示モードへ戻す。 */
+  async function saveTarget() {
+    setSavingTarget(true);
+    setTargetErr(null);
+    try {
+      const now = new Date();
+      const res = await fetch("/api/admin/sales-targets", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          year: now.getFullYear(),
+          month: now.getMonth() + 1,
+          target_revenue: targetDraft.target_revenue,
+          target_jobs: targetDraft.target_jobs,
+          target_new_customers: targetDraft.target_new_customers,
+        }),
+      });
+      const j = await parseJsonSafe<{ target?: SalesTarget; error?: string }>(res);
+      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      setTarget(j?.target ?? { ...targetDraft });
+      setEditingTarget(false);
+    } catch (e: unknown) {
+      setTargetErr(e instanceof Error ? e.message : String(e));
+    }
+    setSavingTarget(false);
+  }
 
   if (loading) {
     return (
@@ -220,6 +355,18 @@ export default function ManagementClient() {
   const custMax = Math.max(...customers.growthByMonth.map((m) => m.count), 1);
   const certMax = Math.max(...certificates.byMonth.map((m) => m.count), 1);
 
+  // ─── PDCA 用の当月実績 ───
+  // 当月の完了案件 (staff-performance API: status='completed' の月次集計) から
+  // 受注件数・売上の実績を導出。新規顧客は当月の顧客増加数 (growthByMonth 末尾)。
+  const thisMonthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+  const staffRows = staff ?? [];
+  const actualRevenue = staffRows.reduce((s, r) => s + r.estimated_revenue, 0);
+  const actualJobs = staffRows.reduce((s, r) => s + r.completed_jobs, 0);
+  const thisMonthGrowth = customers.growthByMonth.find((m) => m.month === thisMonthKey);
+  const actualNewCustomers = thisMonthGrowth?.count ?? 0;
+  const hasTarget =
+    !!target && (target.target_revenue !== null || target.target_jobs !== null || target.target_new_customers !== null);
+
   return (
     <div className="mx-auto max-w-6xl space-y-8">
       {/* Header */}
@@ -230,6 +377,149 @@ export default function ManagementClient() {
           キャッシュフロー・収益性・顧客指標など経営に重要なKPIを一覧表示
         </p>
       </div>
+
+      {/* ═══ Section 0: PDCA / 今月の目標 ═══ */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xs font-semibold tracking-[0.18em] text-muted">PDCA / 今月の目標</h2>
+          {hasTarget && !editingTarget && (
+            <button
+              type="button"
+              onClick={startEditTarget}
+              className="inline-flex items-center gap-1 text-[12px] font-medium text-secondary hover:text-primary transition-colors"
+              aria-label="目標を編集"
+            >
+              <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"
+                />
+              </svg>
+              編集
+            </button>
+          )}
+        </div>
+
+        <div className="glass-card p-5 space-y-4">
+          {!hasTarget && !editingTarget ? (
+            <div className="flex flex-col items-center gap-3 py-4 text-center">
+              <p className="text-[13px] text-muted">今月の目標がまだ設定されていません。</p>
+              <button
+                type="button"
+                onClick={startEditTarget}
+                className="rounded-lg bg-accent px-4 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90"
+              >
+                目標を設定する
+              </button>
+            </div>
+          ) : editingTarget ? (
+            <div className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <label className="space-y-1.5">
+                  <span className="text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">
+                    売上目標 (円)
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    inputMode="numeric"
+                    value={targetDraft.target_revenue ?? ""}
+                    onChange={(e) =>
+                      setTargetDraft((d) => ({
+                        ...d,
+                        target_revenue: e.target.value === "" ? null : Math.max(0, Number(e.target.value)),
+                      }))
+                    }
+                    placeholder="例: 1200000"
+                    className="w-full rounded-lg border border-default bg-surface px-3 py-2 text-[14px] text-primary outline-none focus:border-accent"
+                  />
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">受注件数目標</span>
+                  <input
+                    type="number"
+                    min={0}
+                    inputMode="numeric"
+                    value={targetDraft.target_jobs ?? ""}
+                    onChange={(e) =>
+                      setTargetDraft((d) => ({
+                        ...d,
+                        target_jobs: e.target.value === "" ? null : Math.max(0, Number(e.target.value)),
+                      }))
+                    }
+                    placeholder="例: 20"
+                    className="w-full rounded-lg border border-default bg-surface px-3 py-2 text-[14px] text-primary outline-none focus:border-accent"
+                  />
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">新規顧客目標</span>
+                  <input
+                    type="number"
+                    min={0}
+                    inputMode="numeric"
+                    value={targetDraft.target_new_customers ?? ""}
+                    onChange={(e) =>
+                      setTargetDraft((d) => ({
+                        ...d,
+                        target_new_customers: e.target.value === "" ? null : Math.max(0, Number(e.target.value)),
+                      }))
+                    }
+                    placeholder="例: 5"
+                    className="w-full rounded-lg border border-default bg-surface px-3 py-2 text-[14px] text-primary outline-none focus:border-accent"
+                  />
+                </label>
+              </div>
+              {targetErr && <p className="text-[12px] text-danger">{targetErr}</p>}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={saveTarget}
+                  disabled={savingTarget}
+                  className="rounded-lg bg-accent px-4 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  {savingTarget ? "保存中…" : "保存"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingTarget(false);
+                    setTargetErr(null);
+                  }}
+                  disabled={savingTarget}
+                  className="rounded-lg border border-default px-4 py-2 text-[13px] font-medium text-secondary transition-colors hover:text-primary disabled:opacity-50"
+                >
+                  キャンセル
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3.5">
+              <TargetProgressRow
+                label="売上目標"
+                actualText={formatJpy(actualRevenue)}
+                targetText={target?.target_revenue != null ? formatJpy(target.target_revenue) : "未設定"}
+                rate={pctOf(actualRevenue, target?.target_revenue ?? null)}
+              />
+              <TargetProgressRow
+                label="受注件数目標"
+                actualText={`${actualJobs}件`}
+                targetText={target?.target_jobs != null ? `${target.target_jobs}件` : "未設定"}
+                rate={pctOf(actualJobs, target?.target_jobs ?? null)}
+              />
+              <TargetProgressRow
+                label="新規顧客目標"
+                actualText={`${actualNewCustomers}名`}
+                targetText={target?.target_new_customers != null ? `${target.target_new_customers}名` : "未設定"}
+                rate={pctOf(actualNewCustomers, target?.target_new_customers ?? null)}
+              />
+              <p className="pt-1 text-[10px] text-muted">
+                実績は当月の完了案件 (受注件数・売上) と顧客増加数から算出しています。
+              </p>
+            </div>
+          )}
+        </div>
+      </section>
 
       {/* ═══ Section 1: Cash Flow ═══ */}
       <section className="space-y-3">
@@ -332,6 +622,38 @@ export default function ManagementClient() {
               <div className="text-[12px] text-muted mt-0.5">Gross Margin</div>
             </div>
           </div>
+
+          <div className="glass-card p-4 space-y-3 sm:col-span-2">
+            <div className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">収益構造内訳</div>
+            <div className="space-y-2">
+              {/* 売上・原価・粗利の3段積み */}
+              <div className="flex justify-between text-[11px]">
+                <span className="text-muted">売上高</span>
+                <span className="font-medium text-primary">{formatJpy(profitability.totalRevenue)}</span>
+              </div>
+              <div className="flex justify-between text-[11px]">
+                <span className="text-muted">仕入原価</span>
+                <span className="font-medium text-warning-text">{formatJpy(profitability.totalPurchases)}</span>
+              </div>
+              <div className="h-px bg-border-default my-1" />
+              <div className="flex justify-between text-[12px] font-semibold">
+                <span className="text-primary">粗利益</span>
+                <span style={{ color: "var(--accent-emerald)" }}>{formatJpy(profitability.grossProfit)}</span>
+              </div>
+              <div className="h-2 rounded-full bg-surface-hover overflow-hidden">
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${Math.min(Math.max(profitability.grossMarginRate ?? 0, 0), 100)}%`,
+                    backgroundColor: "var(--accent-emerald)",
+                  }}
+                />
+              </div>
+              <div className="text-right text-[11px] text-muted">
+                粗利率 {profitability.grossMarginRate?.toFixed(1) ?? "-"}%
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -429,6 +751,46 @@ export default function ManagementClient() {
               color="var(--accent-blue)"
             />
           </div>
+        </div>
+      </section>
+
+      {/* ═══ Section 4.5: Staff Performance / 担当者別実績 ═══ */}
+      <section className="space-y-3">
+        <h2 className="text-xs font-semibold tracking-[0.18em] text-muted">STAFF PERFORMANCE / 担当者別実績</h2>
+
+        <div className="glass-card p-4">
+          {staffRows.length === 0 ? (
+            <p className="py-6 text-center text-[13px] text-muted">担当者が割り当てられた案件がありません。</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[13px]">
+                <thead>
+                  <tr className="border-b border-default text-left">
+                    <th className="pb-2 pr-3 text-[10px] font-semibold tracking-[0.12em] text-muted uppercase">
+                      担当者名
+                    </th>
+                    <th className="pb-2 px-3 text-right text-[10px] font-semibold tracking-[0.12em] text-muted uppercase">
+                      完了件数
+                    </th>
+                    <th className="pb-2 pl-3 text-right text-[10px] font-semibold tracking-[0.12em] text-muted uppercase">
+                      売上貢献
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {staffRows.map((s) => (
+                    <tr key={s.user_id} className="border-b border-default/50 last:border-0">
+                      <td className="py-2.5 pr-3 font-medium text-primary">{s.display_name}</td>
+                      <td className="py-2.5 px-3 text-right tabular-nums text-secondary">{s.completed_jobs}件</td>
+                      <td className="py-2.5 pl-3 text-right font-semibold tabular-nums text-primary">
+                        {formatJpy(s.estimated_revenue)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </section>
 

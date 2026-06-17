@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 360" font-family="IPAGothic, sans-serif" font-size="13">
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,3 L0,6 z" fill="#000"/></marker></defs>
+  <rect x="0" y="0" width="720" height="360" fill="#fff"/>
+  <rect x="40" y="30" width="220" height="46" fill="#fff" stroke="#000"/><text x="150" y="58" text-anchor="middle">識別子＋個体番号</text>
+  <line x1="260" y1="53" x2="320" y2="53" stroke="#000" marker-end="url(#arrow)"/>
+  <rect x="320" y="30" width="280" height="46" fill="#fff" stroke="#000"/><text x="460" y="58" text-anchor="middle">鍵付きハッシュ＝個体指紋</text>
+  <line x1="460" y1="76" x2="460" y2="116" stroke="#000" marker-end="url(#arrow)"/>
+  <polygon points="460,116 620,162 460,208 300,162" fill="#fff" stroke="#000"/><text x="460" y="166" text-anchor="middle">横断レジストリに既存？</text>
+  <line x1="380" y1="186" x2="220" y2="240" stroke="#000" marker-end="url(#arrow)"/><text x="270" y="216" text-anchor="middle" font-size="12">無し</text>
+  <rect x="80" y="240" width="240" height="46" fill="#fff" stroke="#000"/><text x="200" y="268" text-anchor="middle">新規登録（一意制約）</text>
+  <line x1="540" y1="186" x2="640" y2="240" stroke="#000" marker-end="url(#arrow)"/><text x="610" y="216" text-anchor="middle" font-size="12">有り</text>
+  <rect x="440" y="240" width="240" height="46" fill="#fff" stroke="#000"/><text x="560" y="268" text-anchor="middle">使い回しとして検知</text>
+  <text x="20" y="322" font-size="12">図5（発明07：横断的な個体照合。生の個体番号・消費主体は非開示、衝突有無のみ返却）</text>
+</svg>

@@ -151,6 +151,60 @@ const RULES = [
         });
     },
   },
+  {
+    id: "security-definer-mutable-search-path",
+    description:
+      "SECURITY DEFINER functions must SET search_path = '' (empty) to prevent search_path hijacking; reference objects with a schema qualifier (e.g. public.foo).",
+    check(sql) {
+      // Inspect each CREATE [OR REPLACE] FUNCTION's FULL statement, including
+      // options that appear AFTER the dollar-quoted body — Postgres accepts both
+      // `... SECURITY DEFINER AS $$..$$` and `... AS $$..$$ LANGUAGE sql SECURITY
+      // DEFINER`, so bounding at the first `AS` would miss the trailing form.
+      // Comments are already stripped by stripComments(), so a "no SECURITY
+      // DEFINER" note in a comment won't trigger this.
+      const violations = [];
+      const startRe = /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([^\s(]+)/gi;
+      let m;
+      while ((m = startRe.exec(sql)) !== null) {
+        const name = m[1];
+        const startIdx = m.index;
+        // Locate the dollar-quoted body opening (e.g. $$ or $func$) after the
+        // signature, then its matching close, then extend to the next ';'.
+        const after = sql.slice(startRe.lastIndex);
+        const open = /\$([A-Za-z0-9_]*)\$/.exec(after);
+        let stmtText;
+        if (open) {
+          const tag = open[1];
+          const bodyOpenAbs = startRe.lastIndex + open.index + open[0].length;
+          const closeIdxRel = sql.slice(bodyOpenAbs).indexOf(`$${tag}$`);
+          if (closeIdxRel !== -1) {
+            const closeEnd = bodyOpenAbs + closeIdxRel + tag.length + 2;
+            const semi = sql.indexOf(";", closeEnd);
+            stmtText = sql.slice(startIdx, semi === -1 ? sql.length : semi);
+            startRe.lastIndex = closeEnd; // don't re-scan inside this body
+          } else {
+            stmtText = sql.slice(startIdx);
+          }
+        } else {
+          const semi = sql.indexOf(";", startRe.lastIndex);
+          stmtText = sql.slice(startIdx, semi === -1 ? sql.length : semi);
+        }
+
+        if (!/\bSECURITY\s+DEFINER\b/i.test(stmtText)) continue;
+        // Accept only an explicitly-empty search_path: `= ''` or `TO ''`.
+        const okEmpty = /\bSET\s+search_path\s*(?:=|TO)\s*''/i.test(stmtText);
+        if (!okEmpty) {
+          const found = /\bSET\s+search_path[^\n]*/i.exec(stmtText);
+          violations.push(
+            `${name} — SECURITY DEFINER function must "SET search_path = ''" (found: ${
+              found ? found[0].trim() : "no search_path"
+            }).`,
+          );
+        }
+      }
+      return violations;
+    },
+  },
 ];
 
 function stripComments(sql) {

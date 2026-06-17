@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" font-family="IPAGothic, sans-serif" font-size="13">
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,3 L0,6 z" fill="#000"/></marker></defs>
+  <rect x="0" y="0" width="720" height="300" fill="#fff"/>
+  <rect x="40" y="110" width="150" height="50" rx="8" fill="#fff" stroke="#000"/><text x="115" y="140" text-anchor="middle">装着済み</text>
+  <rect x="290" y="110" width="170" height="50" rx="8" fill="#fff" stroke="#000"/><text x="375" y="140" text-anchor="middle">利用者確認済み</text>
+  <rect x="560" y="110" width="130" height="50" rx="8" fill="#fff" stroke="#000"/><text x="625" y="140" text-anchor="middle">取消済み</text>
+  <line x1="190" y1="135" x2="290" y2="135" stroke="#000" marker-end="url(#arrow)"/><text x="240" y="125" text-anchor="middle" font-size="11">確定ゲート充足</text>
+  <line x1="460" y1="135" x2="560" y2="135" stroke="#000" marker-end="url(#arrow)"/><text x="510" y="125" text-anchor="middle" font-size="11">理由付き取消のみ</text>
+  <text x="375" y="205" text-anchor="middle" font-size="12">利用者確認済み以降：内容・署名・本人識別は変更不可（削除も不可）</text>
+  <text x="375" y="227" text-anchor="middle" font-size="12">訂正は新たな記録の発行＋利用者の再署名によってのみ表現</text>
+  <text x="20" y="280" font-size="12">図4（発明07：確定後の不変性。取消のみ許容し内容は据置）</text>
+</svg>

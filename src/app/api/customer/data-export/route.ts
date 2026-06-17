@@ -17,6 +17,7 @@
  */
 import { cookies } from "next/headers";
 import { apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import {
   CUSTOMER_COOKIE,
   getTenantIdBySlug,
@@ -32,6 +33,11 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
+    // GDPR エクスポートは PII を一括返却するため、盗まれたセッションでの
+    // 連打・情報収集を抑止する（IP 単位の機微フロー上限）。
+    const limited = await checkRateLimit(req, "sensitive");
+    if (limited) return limited;
+
     const { searchParams } = new URL(req.url);
     const tenantSlug = (searchParams.get("tenant") ?? "").trim();
     if (!tenantSlug) return apiValidationError("missing tenant");

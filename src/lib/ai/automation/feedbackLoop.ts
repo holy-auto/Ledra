@@ -68,6 +68,31 @@ const ENDPOINT_META: Readonly<Record<string, EndpointMeta>> = {
     actionKey: "translation.auto_translate",
     label: "お知らせの自動翻訳",
   },
+  "/api/insurer/cases/[id]/ai-summary": {
+    workflow: "insurer_case",
+    actionKey: "insurer_case.auto_summary",
+    label: "保険案件サマリの自動生成",
+  },
+  "/api/insurer/cases/[id]/ai-assign-suggest": {
+    workflow: "insurer_case",
+    actionKey: "insurer_case.auto_assign_suggest",
+    label: "保険案件 担当者候補の自動提案",
+  },
+  "/api/admin/customer-inquiries/[id]/ai-classify": {
+    workflow: "inquiry",
+    actionKey: "inquiry.auto_classify",
+    label: "問い合わせ分類の自動実行",
+  },
+  "/api/admin/certificates/ai-quality": {
+    workflow: "certificate",
+    actionKey: "photo.auto_quality_check",
+    label: "写真品質・抜け漏れ監査の自動実行",
+  },
+  "/api/admin/jobs/[id]/ai-suggest": {
+    workflow: "job",
+    actionKey: "job.auto_next_action",
+    label: "案件 次アクションの自動提案",
+  },
 };
 
 export type RecommendationKind =

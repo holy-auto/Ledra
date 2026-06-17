@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { timingSafeEqual } from "crypto";
 import { z } from "zod";
 import {
   createSession,
@@ -91,7 +92,11 @@ export async function POST(req: Request) {
     if (new Date(row.expires_at).getTime() < Date.now()) return invalidCodeResponse;
 
     const expected = otpCodeHash(tenantId, email, phoneHash, code);
-    if (expected !== row.code_hash) {
+    // 定数時間比較。長さが違えば即不一致 (timingSafeEqual は等長バッファ必須)。
+    const expectedBuf = Buffer.from(expected);
+    const actualBuf = Buffer.from(row.code_hash ?? "");
+    const codeMatches = expectedBuf.length === actualBuf.length && timingSafeEqual(expectedBuf, actualBuf);
+    if (!codeMatches) {
       const nextAttempts = (row.attempts ?? 0) + 1;
       await markCodeAttempt(row.id, nextAttempts);
       if (nextAttempts >= OTP_MAX_ATTEMPTS) {

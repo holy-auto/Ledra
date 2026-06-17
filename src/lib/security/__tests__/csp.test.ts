@@ -61,6 +61,16 @@ describe("buildCsp", () => {
     expect(csp["connect-src"]).toContain("https://*.posthog.com");
   });
 
+  it("allows Google Analytics 4 (gtag) endpoints", () => {
+    const csp = buildCsp({ nonce: NONCE, isDev: false });
+    // gtag.js loads as an external script from googletagmanager.com
+    expect(csp["script-src"]).toContain("https://www.googletagmanager.com");
+    // measurement / collection beacons
+    expect(csp["connect-src"]).toContain("https://*.google-analytics.com");
+    expect(csp["connect-src"]).toContain("https://*.analytics.google.com");
+    expect(csp["img-src"]).toContain("https://*.google-analytics.com");
+  });
+
   it("allows Stripe.js in script-src and frame-src", () => {
     const csp = buildCsp({ nonce: NONCE, isDev: false });
     expect(csp["script-src"]).toContain("https://js.stripe.com");

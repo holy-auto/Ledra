@@ -13,6 +13,15 @@ export const metadata = {
   title: "代理店の方へ",
   description: "Ledra パートナープログラム。施工店を紹介して継続コミッションを受け取る、代理店向けの仕組みです。",
   alternates: { canonical: "/for-agents" },
+  openGraph: {
+    title: "代理店の方へ | Ledra",
+    description: "Ledra パートナープログラム。施工店を紹介して継続コミッションを受け取る、代理店向けの仕組みです。",
+    url: "/for-agents",
+    siteName: "Ledra",
+    locale: "ja_JP",
+    type: "website" as const,
+  },
+  twitter: { card: "summary_large_image" as const },
 };
 
 const reasons = [

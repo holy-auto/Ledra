@@ -4,6 +4,7 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { partitionImageFetchUrls } from "@/lib/security/urlAllowlist";
 import { auditPhotoTampering } from "@/lib/ai/photoTamperingCheck";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
@@ -63,6 +64,16 @@ export async function POST(req: NextRequest) {
     return apiValidationError("一度にチェックできる写真は最大 20 枚です");
   }
 
+  // SSRF ガード: サーバ側 fetch する URL は許可ホスト (Supabase Storage 等) のみ。
+  // 認証済みでも内部アドレス (169.254.169.254 / localhost / 内部サービス) への
+  // 代理取得を成立させないため、許可外が 1 件でもあればフェイルクローズする。
+  const { blocked } = partitionImageFetchUrls(photoUrls);
+  if (blocked.length > 0) {
+    return apiValidationError("許可されていない画像 URL が含まれています", {
+      blocked: blocked.map((b) => b.url),
+    });
+  }
+
   const usage = startAiRouteUsage("/api/admin/certificates/photo-tampering");
   try {
     // AI マスタースイッチ OFF / 月次コストキャップ超過時は Vision (Opus) を呼ばず
@@ -73,7 +84,9 @@ export async function POST(req: NextRequest) {
     // 写真を並列ダウンロード → ArrayBuffer に変換
     const downloads = await Promise.allSettled(
       photoUrls.map(async (url) => {
-        const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+        // redirect: "error" — an allowlisted host must not be able to 302 us to
+        // an internal address after the SSRF pre-check has already passed.
+        const res = await fetch(url, { signal: AbortSignal.timeout(10_000), redirect: "error" });
         if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
         const buffer = await res.arrayBuffer();
         const contentType = res.headers.get("content-type") ?? "image/jpeg";

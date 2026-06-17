@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages";
 import { apiOk, apiInternalError, apiUnauthorized, apiNotFound } from "@/lib/api/response";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
 
 export const runtime = "nodejs";
 
@@ -50,6 +51,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       console.error("[image delete] db delete error", dbError);
       return apiInternalError(dbError, "image delete");
     }
+
+    // 画像削除で image_sha256_set が変わるため証明書レコードの新しい digest を anchor
+    // queue に積む (best-effort fire-and-forget / CERT_RECORD_ANCHOR_ENABLED=false なら no-op)。
+    enqueueCertificateAnchor({
+      tenantId: caller.tenantId,
+      certificateId: imageRow.certificate_id as string,
+    }).catch(() => {});
 
     return apiOk({ deleted: true });
   } catch (e) {

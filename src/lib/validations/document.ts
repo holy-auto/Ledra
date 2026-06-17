@@ -13,6 +13,27 @@ const docTypes = [
 const docStatuses = ["draft", "sent", "accepted", "paid", "rejected", "cancelled"] as const;
 const honorifics = ["御中", "様", ""] as const;
 
+/**
+ * 伝票明細 1 行のスキーマ。
+ * documents.items_json は本スキーマの配列として保存される。
+ * - cost_price: 原価。伝票レベルの粗利 (= Σ(unit_price-cost_price)×quantity) 算出に使う。
+ * - type が "line" 以外 (subtotal / heading / note) の行は金額計算の対象外として扱う。
+ */
+export const documentItemSchema = z.object({
+  id: z.string().optional(),
+  type: z.enum(["line", "subtotal", "heading", "note"]).default("line"),
+  name: z.string().min(1).max(200),
+  quantity: z.number().min(0).default(1),
+  unit: z.string().max(20).optional(),
+  unit_price: z.number().min(0).default(0),
+  cost_price: z.number().min(0).default(0),
+  tax_category: z.enum(["standard", "reduced", "exempt"]).default("standard"),
+  menu_item_id: z.string().uuid().optional().nullable(),
+  note: z.string().max(500).optional(),
+});
+
+export type DocumentItem = z.infer<typeof documentItemSchema>;
+
 export const documentCreateSchema = z.object({
   doc_type: z.enum(docTypes, { message: "無効な帳票タイプです。" }),
   customer_id: z.string().uuid().nullable().optional(),
@@ -75,7 +96,7 @@ export const documentCreateSchema = z.object({
     .optional()
     .transform((v) => v || null),
   template_id: z.string().uuid().nullable().optional(),
-  items_json: z.any().nullable().optional(),
+  items_json: z.array(documentItemSchema).nullable().optional(),
   subtotal: z.number().min(0).default(0),
   tax: z.number().min(0).default(0),
   total: z.number().min(0).default(0),

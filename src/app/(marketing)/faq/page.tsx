@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { FAQList } from "@/components/marketing/FAQList";
@@ -5,9 +6,19 @@ import { FAQItem } from "@/components/marketing/FAQItem";
 import { CTABanner } from "@/components/marketing/CTABanner";
 import { FAQJsonLd, BreadcrumbJsonLd } from "@/components/marketing/JsonLd";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "よくある質問",
   description: "Ledraについてのよくある質問と回答。サービス内容、料金、導入方法など。",
+  alternates: { canonical: "/faq" },
+  openGraph: {
+    title: "よくある質問 | Ledra",
+    description: "Ledraについてのよくある質問と回答。サービス内容、料金、導入方法など。",
+    url: "/faq",
+    siteName: "Ledra",
+    locale: "ja_JP",
+    type: "website",
+  },
+  twitter: { card: "summary_large_image" },
 };
 
 type FaqSection = { heading: string; items: { question: string; answer: string }[] };

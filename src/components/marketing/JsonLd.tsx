@@ -95,6 +95,47 @@ export async function PricingJsonLd({ plans }: { plans: PlanOffer[] }) {
   return <script type="application/ld+json" nonce={nonce} dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />;
 }
 
+type ArticleJsonLdInput = {
+  title: string;
+  description?: string;
+  slug: string;
+  publishedAt?: string;
+  imageUrl?: string;
+};
+
+/**
+ * NewsArticle structured data for /news/[slug] press releases.
+ * Organization-level JSON-LD is already emitted site-wide by the marketing
+ * layout, so this only adds the article entity. `image` is optional and
+ * omitted when absent (JSON.stringify drops undefined) — the social card is
+ * handled separately by the route's opengraph-image.
+ */
+export async function ArticleJsonLd({ title, description, slug, publishedAt, imageUrl }: ArticleJsonLdInput) {
+  const url = `${siteConfig.siteUrl}/news/${slug}`;
+  const data = {
+    "@context": "https://schema.org",
+    "@type": "NewsArticle",
+    headline: title,
+    description,
+    datePublished: publishedAt,
+    dateModified: publishedAt,
+    inLanguage: "ja",
+    url,
+    mainEntityOfPage: { "@type": "WebPage", "@id": url },
+    image: imageUrl ? [imageUrl] : undefined,
+    author: { "@type": "Organization", name: siteConfig.siteName, url: siteConfig.siteUrl },
+    publisher: {
+      "@type": "Organization",
+      name: siteConfig.siteName,
+      url: siteConfig.siteUrl,
+      logo: { "@type": "ImageObject", url: `${siteConfig.siteUrl}/apple-touch-icon.png` },
+    },
+  };
+
+  const nonce = await getNonce();
+  return <script type="application/ld+json" nonce={nonce} dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />;
+}
+
 type BreadcrumbItem = { name: string; url: string };
 
 export async function BreadcrumbJsonLd({ items }: { items: BreadcrumbItem[] }) {
