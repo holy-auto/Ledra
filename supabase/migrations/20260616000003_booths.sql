@@ -71,3 +71,35 @@ alter table menu_items
 
 comment on column menu_items.estimated_minutes is
   'このメニューの基準作業分（所要時間概算の素材）。車両サイズ係数はアプリ側 estimateReservationMinutes で掛ける。';
+
+-- ─── reservations のテナント整合トリガー ────────────────────────────────────
+-- booth_id / assigned_staff_id は単一カラム FK（on delete set null）のため、
+-- tenant_id が NOT NULL である reservations では複合 FK が使えない（SET NULL が
+-- tenant_id を NULL にしようとして失敗する）。代わりに BEFORE トリガーで
+-- 「指す booth / staff が同一テナントか」を強制し、Supabase 直叩きでの
+-- クロステナント結合（リークした UUID の悪用）を DB レベルで防ぐ。
+create or replace function public.reservations_check_tenant_refs()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.booth_id is not null and not exists (
+    select 1 from public.booths where id = new.booth_id and tenant_id = new.tenant_id
+  ) then
+    raise exception 'booth % does not belong to tenant %', new.booth_id, new.tenant_id;
+  end if;
+  if new.assigned_staff_id is not null and not exists (
+    select 1 from public.staff_members where id = new.assigned_staff_id and tenant_id = new.tenant_id
+  ) then
+    raise exception 'staff % does not belong to tenant %', new.assigned_staff_id, new.tenant_id;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_reservations_check_tenant_refs on reservations;
+create trigger trg_reservations_check_tenant_refs
+  before insert or update of booth_id, assigned_staff_id on reservations
+  for each row execute function public.reservations_check_tenant_refs();

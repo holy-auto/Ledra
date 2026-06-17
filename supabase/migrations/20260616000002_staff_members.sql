@@ -34,7 +34,10 @@ create table if not exists staff_members (
   is_active   boolean not null default true,
   note        text,
   created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now()
+  updated_at  timestamptz not null default now(),
+  -- staff_shifts の (tenant_id, staff_id) 複合FK が参照するための一意制約
+  -- （id は PK で一意だが、複合FK には (tenant_id, id) の一意制約が必要）。
+  unique (tenant_id, id)
 );
 
 create index if not exists idx_staff_members_tenant on staff_members(tenant_id);
@@ -77,13 +80,16 @@ comment on table staff_members is
 create table if not exists staff_shifts (
   id          uuid primary key default gen_random_uuid(),
   tenant_id   uuid not null references tenants(id) on delete cascade,
-  staff_id    uuid not null references staff_members(id) on delete cascade,
+  staff_id    uuid not null,
   work_date   date not null,
   start_time  time,
   end_time    time,
   note        text,
   created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now()
+  updated_at  timestamptz not null default now(),
+  -- テナント整合を DB レベルで強制（他テナントの staff_id を指せない）。
+  -- 単一カラム FK ではなく (tenant_id, staff_id) 複合 FK で参照する。
+  foreign key (tenant_id, staff_id) references staff_members (tenant_id, id) on delete cascade
 );
 
 create index if not exists idx_staff_shifts_tenant_date on staff_shifts(tenant_id, work_date);
