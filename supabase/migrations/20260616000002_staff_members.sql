@@ -48,16 +48,18 @@ alter table staff_members enable row level security;
 drop policy if exists "staff_members_select" on staff_members;
 create policy "staff_members_select" on staff_members
   for select using (tenant_id in (select my_tenant_ids()));
+-- 書込は members:manage を持つロール（super_admin / owner / admin）に限定。
+-- API ゲートに加え、Supabase クライアント直叩きでの改ざんも RLS で防ぐ。
 drop policy if exists "staff_members_insert" on staff_members;
 create policy "staff_members_insert" on staff_members
-  for insert with check (tenant_id in (select my_tenant_ids()));
+  for insert with check (public.tenant_caller_has_role(tenant_id, array['super_admin', 'owner', 'admin']));
 drop policy if exists "staff_members_update" on staff_members;
 create policy "staff_members_update" on staff_members
-  for update using (tenant_id in (select my_tenant_ids()))
-  with check (tenant_id in (select my_tenant_ids()));
+  for update using (public.tenant_caller_has_role(tenant_id, array['super_admin', 'owner', 'admin']))
+  with check (public.tenant_caller_has_role(tenant_id, array['super_admin', 'owner', 'admin']));
 drop policy if exists "staff_members_delete" on staff_members;
 create policy "staff_members_delete" on staff_members
-  for delete using (tenant_id in (select my_tenant_ids()));
+  for delete using (public.tenant_caller_has_role(tenant_id, array['super_admin', 'owner', 'admin']));
 
 drop trigger if exists trg_staff_members_updated_at on staff_members;
 create trigger trg_staff_members_updated_at
@@ -88,16 +90,18 @@ alter table staff_shifts enable row level security;
 drop policy if exists "staff_shifts_select" on staff_shifts;
 create policy "staff_shifts_select" on staff_shifts
   for select using (tenant_id in (select my_tenant_ids()));
+-- 書込は members:manage を持つロール（super_admin / owner / admin）に限定。
+-- replace_staff_shifts RPC のロール検査に加え、直接の table 書込も RLS で塞ぐ。
 drop policy if exists "staff_shifts_insert" on staff_shifts;
 create policy "staff_shifts_insert" on staff_shifts
-  for insert with check (tenant_id in (select my_tenant_ids()));
+  for insert with check (public.tenant_caller_has_role(tenant_id, array['super_admin', 'owner', 'admin']));
 drop policy if exists "staff_shifts_update" on staff_shifts;
 create policy "staff_shifts_update" on staff_shifts
-  for update using (tenant_id in (select my_tenant_ids()))
-  with check (tenant_id in (select my_tenant_ids()));
+  for update using (public.tenant_caller_has_role(tenant_id, array['super_admin', 'owner', 'admin']))
+  with check (public.tenant_caller_has_role(tenant_id, array['super_admin', 'owner', 'admin']));
 drop policy if exists "staff_shifts_delete" on staff_shifts;
 create policy "staff_shifts_delete" on staff_shifts
-  for delete using (tenant_id in (select my_tenant_ids()));
+  for delete using (public.tenant_caller_has_role(tenant_id, array['super_admin', 'owner', 'admin']));
 
 drop trigger if exists trg_staff_shifts_updated_at on staff_shifts;
 create trigger trg_staff_shifts_updated_at
@@ -176,10 +180,10 @@ begin
     raise exception 'staff not found';
   end if;
   -- 直接 RPC を叩かれても低権限ロールがシフトを書き換えられないよう、
-  -- members:manage を持つロール（owner / admin）に限定する。
+  -- members:manage を持つロール（super_admin / owner / admin）に限定する。
   if not exists (
     select 1 from public.tenant_memberships
-    where tenant_id = v_tenant and user_id = auth.uid() and role in ('owner', 'admin')
+    where tenant_id = v_tenant and user_id = auth.uid() and role in ('super_admin', 'owner', 'admin')
   ) then
     raise exception 'forbidden';
   end if;

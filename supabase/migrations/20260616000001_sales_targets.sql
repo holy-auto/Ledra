@@ -11,6 +11,23 @@
 --   を coalesce(issued_at, created_at) で当月にバケットする。
 --   → ダッシュボードの「未回収」「経営分析の入金」と数字がブレない。
 
+-- ─── tenant_caller_has_role: RLS 書込ポリシー用のロール判定ヘルパー ──────────
+-- 呼び出し元 (auth.uid()) が指定テナントで指定ロールのいずれかを持つか返す。
+-- 「管理ロールのみ書込可」を RLS で表現するために使う（API ゲートをすり抜けて
+-- Supabase クライアントから直接書き込まれるのを防ぐ）。security definer +
+-- search_path='' は my_tenant_ids() と同じ流儀（tenant_memberships の RLS 再帰回避）。
+create or replace function public.tenant_caller_has_role(p_tenant uuid, p_roles text[])
+returns boolean
+language sql stable security definer set search_path = ''
+as $$
+  select exists (
+    select 1 from public.tenant_memberships
+    where tenant_id = p_tenant and user_id = auth.uid() and role = any(p_roles)
+  );
+$$;
+
+grant execute on function public.tenant_caller_has_role(uuid, text[]) to authenticated;
+
 -- ─── sales_targets（月次売上目標） ──────────────────────────────────────────
 create table if not exists sales_targets (
   id            uuid primary key default gen_random_uuid(),
@@ -32,14 +49,14 @@ create policy "sales_targets_select" on sales_targets
   for select using (tenant_id in (select my_tenant_ids()));
 drop policy if exists "sales_targets_insert" on sales_targets;
 create policy "sales_targets_insert" on sales_targets
-  for insert with check (tenant_id in (select my_tenant_ids()));
+  for insert with check (public.tenant_caller_has_role(tenant_id, array['super_admin', 'owner', 'admin']));
 drop policy if exists "sales_targets_update" on sales_targets;
 create policy "sales_targets_update" on sales_targets
-  for update using (tenant_id in (select my_tenant_ids()))
-  with check (tenant_id in (select my_tenant_ids()));
+  for update using (public.tenant_caller_has_role(tenant_id, array['super_admin', 'owner', 'admin']))
+  with check (public.tenant_caller_has_role(tenant_id, array['super_admin', 'owner', 'admin']));
 drop policy if exists "sales_targets_delete" on sales_targets;
 create policy "sales_targets_delete" on sales_targets
-  for delete using (tenant_id in (select my_tenant_ids()));
+  for delete using (public.tenant_caller_has_role(tenant_id, array['super_admin', 'owner', 'admin']));
 
 drop trigger if exists trg_sales_targets_updated_at on sales_targets;
 create trigger trg_sales_targets_updated_at
@@ -71,7 +88,7 @@ begin
   -- に限定する。非該当ロールが直接 RPC を叩いても空の結果を返す。
   if not exists (
     select 1 from public.tenant_memberships
-    where tenant_id = p_tenant_id and user_id = auth.uid() and role in ('owner', 'admin')
+    where tenant_id = p_tenant_id and user_id = auth.uid() and role in ('super_admin', 'owner', 'admin')
   ) then
     return json_build_object('month', v_month_key, 'target', 0, 'actual', 0, 'achievementRate', null);
   end if;

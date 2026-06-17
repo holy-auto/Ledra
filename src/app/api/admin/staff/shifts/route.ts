@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { shiftsPutSchema } from "@/lib/validations/staff";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +12,8 @@ export async function GET(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // シフトは勤務情報のため roster と同じ members:view に限定（staff_id 省略で全件取得を防ぐ）。
+    if (!requirePermission(caller, "members:view")) return apiForbidden();
 
     const url = new URL(req.url);
     const staffId = url.searchParams.get("staff_id");
@@ -44,6 +46,7 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "members:manage")) return apiForbidden();
 
     const parsed = shiftsPutSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
