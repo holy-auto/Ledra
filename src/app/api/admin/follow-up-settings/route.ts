@@ -67,16 +67,22 @@ export async function PUT(req: NextRequest) {
     if (!caller) return apiUnauthorized();
     if (!requirePermission(caller, "settings:edit")) return apiForbidden();
 
-    const parsed = followUpSettingsSchema.safeParse(await req.json().catch(() => ({})));
+    const rawBody = await req.json().catch(() => ({}));
+    const parsed = followUpSettingsSchema.safeParse(rawBody);
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
 
-    const row = {
-      tenant_id: caller.tenantId,
-      ...parsed.data,
-      updated_at: new Date().toISOString(),
-    };
+    // クライアントが実際に送ったキーだけを書く。別の設定ページ（birthday_* を
+    // 送らない旧フォーム等）からの保存で、Zod の既定値が omitted フィールドを
+    // false/0 に上書きして誕生日自動送信などを無効化してしまうのを防ぐ。
+    const sentKeys = new Set(
+      rawBody && typeof rawBody === "object" ? Object.keys(rawBody as Record<string, unknown>) : [],
+    );
+    const row: Record<string, unknown> = { tenant_id: caller.tenantId, updated_at: new Date().toISOString() };
+    for (const [key, value] of Object.entries(parsed.data)) {
+      if (sentKeys.has(key)) row[key] = value;
+    }
 
     // Upsert
     const { data: existing } = await supabase

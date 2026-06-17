@@ -4,7 +4,7 @@
 -- main 側に別スキーマの sales_targets (20260612000002, year/month/各指標) が
 -- 既に存在するため、テーブル/RPC/UI は main 実装に統一した。本 migration は
 -- staff_members / staff_shifts / booths の RLS が参照するロール判定ヘルパー
--- public.tenant_caller_has_role のみを定義する（20260616000002/000003 が依存）。
+-- public.tenant_caller_has_role のみを定義する（20260617000002/000003 が依存）。
 --
 -- 呼び出し元 (auth.uid()) が指定テナントで指定ロールのいずれかを持つか返す。
 -- 「管理ロールのみ書込可」を RLS で表現するために使う（API ゲートをすり抜けて

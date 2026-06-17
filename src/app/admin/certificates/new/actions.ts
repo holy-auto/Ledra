@@ -366,6 +366,8 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
       created_by: userId,
       craftsman_staff_id: craftsman_staff_id ?? undefined,
       craftsman_name: craftsman_name ?? undefined,
+      // 案件から発行された証明書は元の予約に紐付ける（タイムライン/フォローで「作成済」に）。
+      reservation_id: reservation_id_form ?? undefined,
     })
     .select("id")
     .single();

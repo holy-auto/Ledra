@@ -50,6 +50,30 @@ function typeLabel(t: string | null): string {
 function fmtTime(t: string | null): string {
   return t ? t.slice(0, 5) : "";
 }
+/**
+ * 同時に重なる予約の最大数（=ブース占有のピーク）を返す。
+ * 連続（午前/午後など重ならない）予約は満杯と見なさない。時間未設定の予約は
+ * 終日占有として全件に重ねてカウントする。
+ */
+function maxConcurrent(items: Assignment[]): number {
+  const allDay = items.filter((a) => !a.start_time || !a.end_time).length;
+  const events: Array<[string, number]> = [];
+  for (const a of items) {
+    if (a.start_time && a.end_time) {
+      events.push([a.start_time, 1]);
+      events.push([a.end_time, -1]);
+    }
+  }
+  // 同時刻は終了(-1)を開始(+1)より先に処理し、隣接予約を重複と見なさない。
+  events.sort((x, y) => (x[0] === y[0] ? x[1] - y[1] : x[0] < y[0] ? -1 : 1));
+  let cur = 0;
+  let peak = 0;
+  for (const [, d] of events) {
+    cur += d;
+    if (cur > peak) peak = cur;
+  }
+  return allDay + peak;
+}
 
 export default function BoothsClient() {
   const [booths, setBooths] = useState<Booth[]>([]);
@@ -226,7 +250,8 @@ export default function BoothsClient() {
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {booths.map((b) => {
             const items = assignments.filter((a) => a.booth_id === b.id);
-            const full = items.length >= b.capacity;
+            const used = maxConcurrent(items); // 同時占有のピーク（連続予約は満杯扱いしない）
+            const full = used >= b.capacity;
             return (
               <div key={b.id} className={`glass-card p-4 ${b.is_active ? "" : "opacity-60"}`}>
                 <div className="flex items-start justify-between gap-2">
@@ -242,8 +267,9 @@ export default function BoothsClient() {
                     <div className="mt-0.5 text-[11px] text-muted">
                       収容 {b.capacity} 台 ・{" "}
                       <span className={full ? "text-warning" : "text-success"}>
-                        {items.length}/{b.capacity} 使用
+                        同時 {used}/{b.capacity}
                       </span>
+                      <span className="ml-1">（本日 {items.length} 件）</span>
                     </div>
                   </div>
                   <div className="flex gap-1">

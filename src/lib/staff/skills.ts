@@ -12,6 +12,7 @@ export const SERVICE_TYPES = [
   { key: "coating", label: "コーティング" },
   { key: "ppf", label: "PPF" },
   { key: "wrapping", label: "ラッピング" },
+  { key: "polish", label: "磨き" },
   { key: "body_repair", label: "板金" },
   { key: "other", label: "その他" },
 ] as const;
@@ -36,6 +37,7 @@ const SERVICE_TYPE_TO_SKILLS: Record<string, string[]> = {
   coating: ["コーティング", "ガラスコーティング", "セラミック"],
   ppf: ["PPF", "プロテクションフィルム"],
   wrapping: ["ラッピング"],
+  polish: ["磨き", "研磨"],
   body_repair: ["板金"],
   other: [],
 };

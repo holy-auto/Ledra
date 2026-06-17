@@ -36,7 +36,7 @@ drop policy if exists "booths_select" on booths;
 create policy "booths_select" on booths
   for select using (tenant_id in (select my_tenant_ids()));
 -- 書込は reservations:edit を持つロール（super_admin / owner / admin / staff）に限定。
--- ヘルパー public.tenant_caller_has_role は 20260616000001 で定義済み。
+-- ヘルパー public.tenant_caller_has_role は 20260617000001 で定義済み。
 drop policy if exists "booths_insert" on booths;
 create policy "booths_insert" on booths
   for insert with check (public.tenant_caller_has_role(tenant_id, array['super_admin', 'owner', 'admin', 'staff']));
