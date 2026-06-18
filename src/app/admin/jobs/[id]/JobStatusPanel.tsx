@@ -338,26 +338,28 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
             ) : (
               <span className="text-muted">未割当</span>
             )}
-            <select
-              aria-label="施工担当を変更"
-              className="rounded-md border border-border-default bg-surface px-2 py-1 text-xs text-primary disabled:opacity-50"
-              value={reservation.assigned_staff_id ?? ""}
-              disabled={staffBusy || isCancelled}
-              onChange={(e) => changeAssignedStaff(e.target.value === "" ? null : e.target.value)}
-            >
-              <option value="">— 未割当 —</option>
-              {sortedStaff.map((s) => {
-                const match = skillMatchScore(s.skills, jobSkillTags) > 0;
-                return (
-                  <option key={s.id} value={s.id}>
-                    {match ? "★ " : ""}
-                    {s.name}
-                    {s.kind === "external" ? "（外注）" : ""}
-                    {s.skills.length ? ` — ${s.skills.join("/")}` : ""}
-                  </option>
-                );
-              })}
-            </select>
+            <MutationGuard>
+              <select
+                aria-label="施工担当を変更"
+                className="rounded-md border border-border-default bg-surface px-2 py-1 text-xs text-primary disabled:opacity-50"
+                value={reservation.assigned_staff_id ?? ""}
+                disabled={staffBusy || isCancelled}
+                onChange={(e) => changeAssignedStaff(e.target.value === "" ? null : e.target.value)}
+              >
+                <option value="">— 未割当 —</option>
+                {sortedStaff.map((s) => {
+                  const match = skillMatchScore(s.skills, jobSkillTags) > 0;
+                  return (
+                    <option key={s.id} value={s.id}>
+                      {match ? "★ " : ""}
+                      {s.name}
+                      {s.kind === "external" ? "（外注）" : ""}
+                      {s.skills.length ? ` — ${s.skills.join("/")}` : ""}
+                    </option>
+                  );
+                })}
+              </select>
+            </MutationGuard>
             {staffBusy && <span className="text-muted">更新中…</span>}
             {jobSkillTags.length > 0 && (
               <span className="text-[10px] text-muted">★=スキル一致（{jobSkillTags.join("・")}）</span>
@@ -373,21 +375,23 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
               ) : (
                 <span className="text-muted">未割当</span>
               )}
-              <select
-                aria-label="ブースを変更"
-                className="rounded-md border border-border-default bg-surface px-2 py-1 text-xs text-primary disabled:opacity-50"
-                value={reservation.booth_id ?? ""}
-                disabled={boothBusy || isCancelled}
-                onChange={(e) => changeBooth(e.target.value === "" ? null : e.target.value)}
-              >
-                <option value="">— 未割当 —</option>
-                {sortedBooths.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {boothMatch(b) > 0 ? "★ " : ""}
-                    {b.name}
-                  </option>
-                ))}
-              </select>
+              <MutationGuard>
+                <select
+                  aria-label="ブースを変更"
+                  className="rounded-md border border-border-default bg-surface px-2 py-1 text-xs text-primary disabled:opacity-50"
+                  value={reservation.booth_id ?? ""}
+                  disabled={boothBusy || isCancelled}
+                  onChange={(e) => changeBooth(e.target.value === "" ? null : e.target.value)}
+                >
+                  <option value="">— 未割当 —</option>
+                  {sortedBooths.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {boothMatch(b) > 0 ? "★ " : ""}
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </MutationGuard>
               {boothBusy && <span className="text-muted">更新中…</span>}
             </div>
           )}

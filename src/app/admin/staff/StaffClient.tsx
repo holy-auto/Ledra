@@ -83,6 +83,9 @@ export default function StaffClient() {
   const [shiftStaffId, setShiftStaffId] = useState<string | null>(null);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [shiftSaving, setShiftSaving] = useState(false);
+  const [shiftLoading, setShiftLoading] = useState(false);
+  // 読み込み失敗フラグ。失敗を「空シフト」と誤認して保存→既存シフト全消去を防ぐ。
+  const [shiftLoadError, setShiftLoadError] = useState(false);
   // 直近に開いたスタッフID。古い fetch 応答を破棄して別スタッフのシフト誤適用を防ぐ。
   const shiftReqRef = useRef<string | null>(null);
 
@@ -184,26 +187,41 @@ export default function StaffClient() {
     }
   };
 
-  const openShifts = async (s: Staff) => {
+  const loadShifts = useCallback(async (staffId: string) => {
+    setShifts([]);
+    setShiftLoadError(false);
+    setShiftLoading(true);
+    shiftReqRef.current = staffId;
+    try {
+      const res = await fetch(`/api/admin/staff/shifts?staff_id=${staffId}&from=${todayStr()}`, { cache: "no-store" });
+      const j = await parseJsonSafe(res);
+      // 応答が届く間に別スタッフを開いていたら破棄（古い結果を適用しない）。
+      if (shiftReqRef.current !== staffId) return;
+      if (res.ok && j) {
+        setShifts(j.shifts ?? []);
+      } else {
+        // 読み込み失敗。空配列のまま保存させると既存シフトを全消去してしまうため明示エラーに。
+        setShiftLoadError(true);
+      }
+    } catch {
+      if (shiftReqRef.current === staffId) setShiftLoadError(true);
+    } finally {
+      if (shiftReqRef.current === staffId) setShiftLoading(false);
+    }
+  }, []);
+
+  const openShifts = (s: Staff) => {
     if (shiftStaffId === s.id) {
       setShiftStaffId(null);
       return;
     }
     setShiftStaffId(s.id);
-    setShifts([]);
-    shiftReqRef.current = s.id;
-    try {
-      const res = await fetch(`/api/admin/staff/shifts?staff_id=${s.id}&from=${todayStr()}`, { cache: "no-store" });
-      const j = await parseJsonSafe(res);
-      // 応答が届く間に別スタッフを開いていたら破棄（古い結果を適用しない）。
-      if (shiftReqRef.current === s.id && res.ok && j) setShifts(j.shifts ?? []);
-    } catch {
-      // keep empty
-    }
+    void loadShifts(s.id);
   };
 
   const saveShifts = async () => {
-    if (!shiftStaffId) return;
+    // 読み込み未完 / 失敗時は保存しない（空配列での全消去を防ぐ）。
+    if (!shiftStaffId || shiftLoading || shiftLoadError) return;
     setShiftSaving(true);
     setMsg(null);
     try {
@@ -443,62 +461,84 @@ export default function StaffClient() {
               {shiftStaffId === s.id && (
                 <div className="mt-3 rounded-lg border border-border-subtle bg-surface p-3 space-y-2">
                   <div className="text-xs font-semibold text-primary">稼働シフト（本日以降）</div>
-                  {shifts.length === 0 && <div className="text-[11px] text-muted">シフトはまだありません。</div>}
-                  {shifts.map((sh, i) => (
-                    <div key={i} className="flex flex-wrap items-center gap-2">
-                      <input
-                        type="date"
-                        className="input-field w-40"
-                        value={sh.work_date}
-                        onChange={(e) =>
-                          setShifts(shifts.map((x, j) => (j === i ? { ...x, work_date: e.target.value } : x)))
-                        }
-                      />
-                      <input
-                        type="time"
-                        className="input-field w-28"
-                        value={sh.start_time ?? ""}
-                        onChange={(e) =>
-                          setShifts(shifts.map((x, j) => (j === i ? { ...x, start_time: e.target.value } : x)))
-                        }
-                      />
-                      <span className="text-muted text-xs">〜</span>
-                      <input
-                        type="time"
-                        className="input-field w-28"
-                        value={sh.end_time ?? ""}
-                        onChange={(e) =>
-                          setShifts(shifts.map((x, j) => (j === i ? { ...x, end_time: e.target.value } : x)))
-                        }
-                      />
+                  {shiftLoading ? (
+                    <div className="text-[11px] text-muted">読み込み中…</div>
+                  ) : shiftLoadError ? (
+                    <div className="space-y-2">
+                      <div className="text-[11px] text-red-500">
+                        シフトの読み込みに失敗しました。このまま保存すると既存のシフトが消える恐れがあるため、再読み込みしてください。
+                      </div>
                       <button
                         type="button"
-                        onClick={() => setShifts(shifts.filter((_, j) => j !== i))}
-                        className="text-xs text-red-500 hover:underline"
+                        onClick={() => loadShifts(s.id)}
+                        className="btn-secondary text-xs px-3 py-1.5"
                       >
-                        削除
+                        再読み込み
                       </button>
                     </div>
-                  ))}
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setShifts([...shifts, { work_date: todayStr(), start_time: null, end_time: null, note: null }])
-                      }
-                      className="btn-secondary text-xs px-3 py-1.5"
-                    >
-                      + 行を追加
-                    </button>
-                    <button
-                      type="button"
-                      onClick={saveShifts}
-                      disabled={shiftSaving}
-                      className="btn-primary text-xs px-3 py-1.5"
-                    >
-                      {shiftSaving ? "保存中…" : "シフトを保存"}
-                    </button>
-                  </div>
+                  ) : (
+                    <>
+                      {shifts.length === 0 && <div className="text-[11px] text-muted">シフトはまだありません。</div>}
+                      {shifts.map((sh, i) => (
+                        <div key={i} className="flex flex-wrap items-center gap-2">
+                          <input
+                            type="date"
+                            className="input-field w-40"
+                            value={sh.work_date}
+                            onChange={(e) =>
+                              setShifts(shifts.map((x, j) => (j === i ? { ...x, work_date: e.target.value } : x)))
+                            }
+                          />
+                          <input
+                            type="time"
+                            className="input-field w-28"
+                            value={sh.start_time ?? ""}
+                            onChange={(e) =>
+                              setShifts(shifts.map((x, j) => (j === i ? { ...x, start_time: e.target.value } : x)))
+                            }
+                          />
+                          <span className="text-muted text-xs">〜</span>
+                          <input
+                            type="time"
+                            className="input-field w-28"
+                            value={sh.end_time ?? ""}
+                            onChange={(e) =>
+                              setShifts(shifts.map((x, j) => (j === i ? { ...x, end_time: e.target.value } : x)))
+                            }
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShifts(shifts.filter((_, j) => j !== i))}
+                            className="text-xs text-red-500 hover:underline"
+                          >
+                            削除
+                          </button>
+                        </div>
+                      ))}
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShifts([
+                              ...shifts,
+                              { work_date: todayStr(), start_time: null, end_time: null, note: null },
+                            ])
+                          }
+                          className="btn-secondary text-xs px-3 py-1.5"
+                        >
+                          + 行を追加
+                        </button>
+                        <button
+                          type="button"
+                          onClick={saveShifts}
+                          disabled={shiftSaving}
+                          className="btn-primary text-xs px-3 py-1.5"
+                        >
+                          {shiftSaving ? "保存中…" : "シフトを保存"}
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>

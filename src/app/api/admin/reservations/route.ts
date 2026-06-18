@@ -1,11 +1,18 @@
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { syncCreateEvent, syncUpdateEvent, syncDeleteEvent } from "@/lib/gcal/client";
 import { enforceBilling } from "@/lib/billing/guard";
 import { parsePagination } from "@/lib/api/pagination";
-import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiForbidden,
+  apiValidationError,
+  apiNotFound,
+  apiInternalError,
+} from "@/lib/api/response";
 import { logger } from "@/lib/logger";
 import {
   reservationCreateSchema,
@@ -155,6 +162,9 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 予約の作成は編集権限が必要（viewer は不可）。RLS は同テナントなら書込を許すため、
+    // サイドバー非表示だけでなく API 層でもロールを強制する。
+    if (!requirePermission(caller, "reservations:edit")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "starter",
@@ -235,6 +245,8 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 担当者・ブース・ステータス等の更新は編集権限が必要（viewer は不可）。
+    if (!requirePermission(caller, "reservations:edit")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "starter",
@@ -394,6 +406,8 @@ export async function DELETE(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 予約の削除は編集権限が必要（viewer は不可）。
+    if (!requirePermission(caller, "reservations:edit")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "starter",
