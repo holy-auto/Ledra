@@ -81,6 +81,17 @@ src/
   写真改ざん検知 (`photoTamperingAuto`) / 保険不正スコア (`fraudScoreAuto`) /
   膜厚異常 (`thicknessAuto`) などは `policy.ts` のガード下で自動実行されます。
   概説は `docs/ai-automation-guide.md`。
+- **エンタープライズ多店舗 (本社 + 支店 / FC)**: 複数テナント (店舗) を「組織 (本社)」で
+  束ね、本社チーム (`organization_users`, 複数ユーザ + 役割) が配下全店舗の顧客 / 車両 /
+  作業履歴を **横断「閲覧」** できます (`/admin/hq-overview`)。書込は店舗単位の membership が
+  必要で、本社以外は他店を変更できません (RLS ヘルパー `my_org_tenant_ids()`、
+  閲覧は横断・書込は店舗単位)。店舗を持たない「本社専用ユーザ」もログイン可能です。
+  基幹ソフト (車検・整備・販売管理) からは冪等 Push 取込 API
+  (`POST /api/v1/ingest/{customers,vehicles,work-history}`、tenant API キー +
+  `customers:write` 等のスコープ) で顧客 / 車両 / 作業履歴を吸い上げ、
+  `(tenant_id, source_system, external_ref)` で重複なく upsert。逆方向は outbound webhook
+  (`customer.created/updated` 等、取込 + 管理 UI 編集の両方で発火) で双方向同期します。
+  連携管理 UI は `/admin/integrations`、設計は `docs/enterprise-multistore-foundation.md`。
 
 ## セキュリティ上のお約束
 
@@ -210,6 +221,7 @@ Supabase 用の SQL は `supabase/migrations/` にタイムスタンプ順で入
 - `docs/parts-installation-integrity-design.md` — 部品装着インテグリティ設計
 - `docs/parts-integrity-golive-checklist.md` — 部品装着インテグリティ Go-Live
 - `docs/ai-automation-guide.md` — AI 自動化の概説 / ポリシー
+- `docs/enterprise-multistore-foundation.md` — エンタープライズ多店舗基盤 (本社横断 RLS / 取込 API / 双方向 webhook / 本社専用ユーザ)
 - `docs/stripe-production-checklist.md` — 本番 Stripe 切替
 - `docs/polygon-anchoring-deployment.md` — Polygon 本番投入
 - `docs/staging-environment.md` — staging 構成
