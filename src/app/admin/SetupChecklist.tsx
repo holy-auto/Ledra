@@ -14,6 +14,7 @@ type ChecklistItem = {
 };
 
 type TenantRow = {
+  name: string | null;
   logo_asset_path: string | null;
   contact_email: string | null;
   contact_phone: string | null;
@@ -22,28 +23,36 @@ type TenantRow = {
 
 async function fetchTenantInfo(tenantId: string): Promise<TenantRow> {
   const { admin } = createTenantScopedAdmin(tenantId);
-  const empty: TenantRow = { logo_asset_path: null, contact_email: null, contact_phone: null, address: null };
+  const empty: TenantRow = {
+    name: null,
+    logo_asset_path: null,
+    contact_email: null,
+    contact_phone: null,
+    address: null,
+  };
 
   // logo_asset_path is always present; extended columns may not exist in older DBs
   try {
     const { data } = await admin
       .from("tenants")
-      .select("logo_asset_path,contact_email,contact_phone,address")
+      .select("name,logo_asset_path,contact_email,contact_phone,address")
       .eq("id", tenantId)
       .maybeSingle();
     if (!data) return empty;
     return {
+      name: (data as TenantRow).name ?? null,
       logo_asset_path: (data as TenantRow).logo_asset_path ?? null,
       contact_email: (data as TenantRow).contact_email ?? null,
       contact_phone: (data as TenantRow).contact_phone ?? null,
       address: (data as TenantRow).address ?? null,
     };
   } catch {
-    // Extended columns missing — fall back to logo-only query
+    // Extended columns missing — fall back to name + logo only
     try {
-      const { data } = await admin.from("tenants").select("logo_asset_path").eq("id", tenantId).maybeSingle();
+      const { data } = await admin.from("tenants").select("name,logo_asset_path").eq("id", tenantId).maybeSingle();
       return {
         ...empty,
+        name: (data as { name?: string | null } | null)?.name ?? null,
         logo_asset_path: (data as { logo_asset_path?: string | null } | null)?.logo_asset_path ?? null,
       };
     } catch (e) {
@@ -153,9 +162,11 @@ export default async function SetupChecklist({ tenantId }: { tenantId: string })
       <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
         <div className="min-w-0">
           <div className="text-xs font-semibold tracking-[0.18em] text-accent">セットアップ</div>
-          <div className="mt-1 text-base font-semibold text-primary">使い始めの準備</div>
+          <div className="mt-1 text-base font-semibold text-primary">
+            {tenant.name ? `${tenant.name} へようこそ！使い始めの準備` : "使い始めの準備"}
+          </div>
           <p className="mt-1 text-xs text-muted">
-            はじめてのお客様向け。完了するとこのカードは自動的に非表示になります。
+            下のステップを順に進めるだけで証明書発行まで完了できます。完了するとこのカードは自動的に非表示になります。
           </p>
         </div>
         <div className="text-right shrink-0">

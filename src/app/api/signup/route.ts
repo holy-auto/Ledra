@@ -36,13 +36,16 @@ export async function POST(req: NextRequest) {
       return apiValidationError(messages.join(" "), { messages });
     }
 
-    const { email, password, shop_name, display_name, contact_phone } = parsed.data;
+    const { email, password, passwordless, shop_name, display_name, contact_phone } = parsed.data;
     const admin = createServiceRoleAdmin("signup — creates new tenant + owner user (pre-auth, no scope yet)");
 
     // ── 1) Supabase Auth ユーザー作成 ──
+    // パスワードレス登録ではパスワードを設定せず作成し、後段でメールリンク
+    // (signInWithOtp) からログインしてもらう。email_confirm: true なので
+    // OTP / マジックリンクでそのままサインインできる。
     const { data: authData, error: authError } = await admin.auth.admin.createUser({
       email,
-      password,
+      ...(passwordless ? {} : { password }),
       email_confirm: true,
       user_metadata: { display_name: display_name || shop_name },
     });

@@ -119,6 +119,32 @@ describe("signupSchema", () => {
     });
   });
 
+  // ─── パスワードレス（メールリンク）登録 ───
+  describe("パスワードレス登録", () => {
+    it("passwordless=true ならパスワード省略でも許可", () => {
+      const { password, ...rest } = validInput;
+      const result = signupSchema.safeParse({ ...rest, passwordless: true });
+      expect(result.success).toBe(true);
+    });
+
+    it("passwordless=true なら短いパスワードを送っても許可（無視される）", () => {
+      const result = signupSchema.safeParse({ ...validInput, password: "", passwordless: true });
+      expect(result.success).toBe(true);
+    });
+
+    it("passwordless 未指定ならパスワード必須（従来どおり）", () => {
+      const { password, ...rest } = validInput;
+      const result = signupSchema.safeParse(rest);
+      expect(result.success).toBe(false);
+    });
+
+    it("passwordless=false ならパスワード必須", () => {
+      const { password, ...rest } = validInput;
+      const result = signupSchema.safeParse({ ...rest, passwordless: false });
+      expect(result.success).toBe(false);
+    });
+  });
+
   // ─── 複数エラー ───
   describe("複数エラー", () => {
     it("全フィールド不正の場合、複数のエラーが返る", () => {

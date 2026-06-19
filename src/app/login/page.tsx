@@ -5,6 +5,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { checkPasswordSignInAllowed } from "@/lib/auth/ssoPolicy";
 import { SsoSignInButton } from "@/components/auth/SsoSignInButton";
+import { MagicLinkSignIn } from "./MagicLinkSignIn";
 
 /**
  * ログイン後のリダイレクト先を安全に決定する。
@@ -197,6 +198,8 @@ export default async function Page({
             <span className="bg-base px-2 text-muted">または</span>
           </div>
         </div>
+
+        <MagicLinkSignIn next={rawNext} />
 
         <SsoSignInButton defaultDomain={sp.domain} next={rawNext} />
 
