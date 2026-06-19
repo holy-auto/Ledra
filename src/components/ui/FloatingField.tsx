@@ -88,7 +88,6 @@ export const FloatingField = forwardRef<HTMLInputElement, Props>(function Floati
         <button
           type="button"
           onClick={() => setReveal((v) => !v)}
-          tabIndex={-1}
           aria-label={reveal ? "パスワードを隠す" : "パスワードを表示"}
           aria-pressed={reveal}
           className="absolute right-2 top-[1.05rem] flex h-8 w-8 items-center justify-center rounded-md text-muted hover:text-primary transition-colors"

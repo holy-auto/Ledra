@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 
 /**
  * パスワードを使わないログイン導線。
@@ -9,9 +8,10 @@ import { createClient } from "@/lib/supabase/client";
  *   stage 1 — collapsed: 「メールリンクでログイン」ボタン1つ。
  *   stage 2 — expanded:  メール入力 + 送信。
  *
- * `signInWithOtp({ shouldCreateUser: false })` でログイン用リンクを送る。
- * 新規ユーザーは作成しない（登録は /signup に誘導）。リンクは
- * /auth/callback?next=... に着地し、セッション確立後にリダイレクトする。
+ * 送信は `/api/auth/magic-link` 経由。サーバー側で SSO 必須ドメインを弾いて
+ * から `signInWithOtp` を実行するため、SAML 必須テナントのユーザーが
+ * マジックリンクで SSO を回避することを防ぐ。リンクは /auth/callback に
+ * 着地し、ユーザーのコンテキストに応じて遷移先が決まる。
  */
 export function MagicLinkSignIn({ next }: { next?: string }) {
   const [expanded, setExpanded] = useState(false);
@@ -19,8 +19,6 @@ export function MagicLinkSignIn({ next }: { next?: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
-
-  const dest = next && next.startsWith("/") ? next : "/admin";
 
   async function sendLink() {
     const trimmed = email.trim().toLowerCase();
@@ -31,15 +29,18 @@ export function MagicLinkSignIn({ next }: { next?: string }) {
     setBusy(true);
     setError(null);
     try {
-      const supabase = createClient();
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email: trimmed,
-        options: {
-          shouldCreateUser: false,
-          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(dest)}`,
-        },
+      const res = await fetch("/api/auth/magic-link", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: trimmed, next }),
       });
-      if (otpError) {
+      const data = await res.json().catch(() => ({}));
+
+      if (res.status === 403 && data?.error === "sso_required") {
+        setError("このメールアドレスは SSO ログインが必須です。下の「会社の SSO でログイン」をご利用ください。");
+        return;
+      }
+      if (!res.ok) {
         setError("ログインリンクを送信できませんでした。時間をおいて再度お試しください。");
         return;
       }

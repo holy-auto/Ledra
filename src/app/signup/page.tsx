@@ -98,28 +98,15 @@ export default function SignupPage() {
         return;
       }
 
-      const supabase = createClient();
-
       if (mode === "magic") {
-        // 2a) メールリンク（OTP）を送信。クリックで /auth/callback → /admin。
-        const { error: otpError } = await supabase.auth.signInWithOtp({
-          email,
-          options: {
-            shouldCreateUser: false,
-            emailRedirectTo: `${window.location.origin}/auth/callback?next=/admin`,
-          },
-        });
-        if (otpError) {
-          setErrors(["確認メールの送信に失敗しました。ログインページからお試しください。"]);
-          setLoading(false);
-          return;
-        }
+        // 2a) マジックリンクは API 側で送信済み（作成と一体・失敗時はロールバック）。
         setDone("magic");
         setLoading(false);
         return;
       }
 
       // 2b) パスワード方式: 作成したアカウントで自動ログイン
+      const supabase = createClient();
       const { error: loginError } = await supabase.auth.signInWithPassword({ email, password });
       if (loginError) {
         setDone("password");
