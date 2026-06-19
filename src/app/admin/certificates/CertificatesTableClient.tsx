@@ -15,6 +15,7 @@ type Row = {
   status: string;
   customer_name: string;
   created_at: string;
+  is_hidden?: boolean;
 };
 
 const statusVariant = (s: string) => {
@@ -47,10 +48,47 @@ const statusLabel = (s: string) => {
   }
 };
 
-export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: string }) {
+export default function CertificatesTableClient({
+  rows,
+  q,
+  showHidden = false,
+}: {
+  rows: Row[];
+  q: string;
+  showHidden?: boolean;
+}) {
   const router = useRouter();
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [voidingId, setVoidingId] = useState<string | null>(null);
+  const [hidingId, setHidingId] = useState<string | null>(null);
+
+  const handleToggleHidden = useCallback(
+    async (publicId: string, hidden: boolean) => {
+      if (
+        hidden &&
+        !confirm(
+          "この証明書を非表示にしますか？\n※ 通常の一覧から除外されます。「非表示の証明書」からいつでも再表示できます。",
+        )
+      )
+        return;
+      setHidingId(publicId);
+      try {
+        const res = await fetch("/api/admin/certificates/hide", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ public_id: publicId, hidden }),
+        });
+        const j = await parseJsonSafe(res);
+        if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+        router.refresh();
+      } catch (e: any) {
+        alert((hidden ? "非表示" : "再表示") + "に失敗しました: " + (e?.message ?? String(e)));
+      } finally {
+        setHidingId(null);
+      }
+    },
+    [router],
+  );
 
   const handleVoid = useCallback(
     async (publicId: string) => {
@@ -240,7 +278,7 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
                 >
                   CSV
                 </Link>
-                {!isVoid && (
+                {!isVoid && !showHidden && (
                   <Link
                     href={`/admin/certificates/${encodeURIComponent(r.public_id)}`}
                     className="btn-secondary text-xs py-1.5 px-4"
@@ -248,10 +286,30 @@ export default function CertificatesTableClient({ rows, q }: { rows: Row[]; q: s
                     編集
                   </Link>
                 )}
-                {!isVoid && (
+                {showHidden ? (
                   <button
                     type="button"
-                    className="btn-danger px-4 py-1.5 text-xs ml-auto"
+                    className="btn-secondary text-xs py-1.5 px-4 ml-auto"
+                    disabled={hidingId === r.public_id}
+                    onClick={() => handleToggleHidden(r.public_id, false)}
+                  >
+                    {hidingId === r.public_id ? "処理中…" : "再表示"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn-ghost text-xs py-1.5 px-4 ml-auto"
+                    disabled={hidingId === r.public_id}
+                    onClick={() => handleToggleHidden(r.public_id, true)}
+                    title="一覧から非表示にして管理しやすくします"
+                  >
+                    {hidingId === r.public_id ? "処理中…" : "非表示"}
+                  </button>
+                )}
+                {!isVoid && !showHidden && (
+                  <button
+                    type="button"
+                    className="btn-danger px-4 py-1.5 text-xs"
                     disabled={voidingId === r.public_id}
                     onClick={() => handleVoid(r.public_id)}
                   >

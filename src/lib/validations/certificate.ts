@@ -23,6 +23,11 @@ export const certificateVoidSchema = z.object({
   public_id: z.string().trim().min(10, "公開IDは10文字以上です。").max(100),
 });
 
+export const certificateHideSchema = z.object({
+  public_id: z.string().trim().min(10, "公開IDは10文字以上です。").max(100),
+  hidden: z.boolean(),
+});
+
 export const certificateEditSchema = z.object({
   id: z.string().uuid("無効なIDです。"),
   customer_name: z.string().trim().min(1).max(200).optional(),
