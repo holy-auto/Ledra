@@ -81,28 +81,29 @@ editorial な落ち着き＝高級感のため各段を一段締めている。�
 
 ## Components (`src/components/ui/`)
 
-| Component       | File                | Purpose                                                            |
-| --------------- | ------------------- | ------------------------------------------------------------------ |
-| `Button`        | `Button.tsx`        | Variants: primary/secondary/ghost/danger/outline. Sizes: sm/md/lg  |
-| `Badge`         | `Badge.tsx`         | Status pills. Variants: default/success/warning/danger/info/violet |
-| `Card`          | `Card.tsx`          | Surface container. Variants: default(glass)/elevated/inset         |
-| `Input`         | `Input.tsx`         | Text input with error state                                        |
-| `Select`        | `Select.tsx`        | Select dropdown with error state                                   |
-| `Textarea`      | `Textarea.tsx`      | Multi-line input                                                   |
-| `FormField`     | `FormField.tsx`     | Label + input + hint + error wrapper                               |
-| `SectionTag`    | `SectionTag.tsx`    | Uppercase monospace section label                                  |
-| `StatCard`      | `StatCard.tsx`      | Dashboard metric card                                              |
-| `EmptyState`    | `EmptyState.tsx`    | No-data placeholder                                                |
-| `Skeleton`      | `Skeleton.tsx`      | Loading placeholder                                                |
-| `Modal`         | `Modal.tsx`         | Dialog overlay                                                     |
-| `Drawer`        | `Drawer.tsx`        | Slide-in panel                                                     |
-| `Toast`         | `Toast.tsx`         | Notification system (with `ToastProvider`, `useToast`)             |
-| `ConfirmDialog` | `ConfirmDialog.tsx` | Destructive action confirmation                                    |
-| `DataTable`     | `DataTable.tsx`     | Structured table with selection/sorting                            |
-| `Accordion`     | `Accordion.tsx`     | Expandable sections                                                |
-| `PageHeader`    | `PageHeader.tsx`    | Page title area                                                    |
-| `Pagination`    | `Pagination.tsx`    | Page navigation                                                    |
-| `Sidebar`       | `Sidebar.tsx`       | App navigation                                                     |
+| Component       | File                | Purpose                                                                        |
+| --------------- | ------------------- | ------------------------------------------------------------------------------ |
+| `Button`        | `Button.tsx`        | Variants: primary/secondary/ghost/danger/outline. Sizes: sm/md/lg              |
+| `Badge`         | `Badge.tsx`         | Status pills. Variants: default/success/warning/danger/info/violet             |
+| `Card`          | `Card.tsx`          | Surface container. Variants: default(glass)/elevated/inset                     |
+| `Input`         | `Input.tsx`         | Text input with error state                                                    |
+| `Select`        | `Select.tsx`        | Select dropdown with error state                                               |
+| `Textarea`      | `Textarea.tsx`      | Multi-line input                                                               |
+| `FormField`     | `FormField.tsx`     | Label + input + hint + error wrapper                                           |
+| `SectionTag`    | `SectionTag.tsx`    | Uppercase monospace section label                                              |
+| `StatCard`      | `StatCard.tsx`      | Dashboard metric card                                                          |
+| `EmptyState`    | `EmptyState.tsx`    | No-data placeholder                                                            |
+| `Skeleton`      | `Skeleton.tsx`      | Loading placeholder                                                            |
+| `Modal`         | `Modal.tsx`         | Dialog overlay                                                                 |
+| `Drawer`        | `Drawer.tsx`        | Slide-in panel                                                                 |
+| `Toast`         | `Toast.tsx`         | Notification system (with `ToastProvider`, `useToast`)                         |
+| `ConfirmDialog` | `ConfirmDialog.tsx` | Destructive action confirmation                                                |
+| `DataTable`     | `DataTable.tsx`     | Structured table with selection/sorting                                        |
+| `Accordion`     | `Accordion.tsx`     | Expandable sections                                                            |
+| `PageHeader`    | `PageHeader.tsx`    | Page title area. `tag` + `title` + optional `meta` + `description` + `actions` |
+| `Tabs`          | `Tabs.tsx`          | タブ切替。下線=テキスト幅整合 / 件数バッジ=アクティブ塗り・非アクティブ枠線    |
+| `Pagination`    | `Pagination.tsx`    | Page navigation                                                                |
+| `Sidebar`       | `Sidebar.tsx`       | App navigation                                                                 |
 
 ### Status Maps (`src/lib/statusMaps.ts`)
 
@@ -131,6 +132,40 @@ Centralized status-to-badge-variant mappings:
 ### Button Size Modifiers
 
 `data-size="sm"` / `data-size="lg"` on any `.btn-*` class.
+
+---
+
+## Navigation (L-Shell)
+
+サイドバー + ページ見出し + タブの統一規約（WORKSTREAM B）。
+
+### PageHeader の構成
+
+`tag`（micro ラベル）/ `title`（一次識別子: ID だけ / 名称だけ / ID+名称）/ `meta`（任意・title 右の補助情報＝StatusBadge・件数・所属・納期）/ `description` / `actions`（ページ固有操作・右端）。
+
+- **title + meta は `inline-flex { gap: 10px }` のクラスタにまとめる。** 負マージン（`marginLeft: -8` 等）でのにじり寄せは禁止。
+- `actions` は最大 3 つ + 主アクション 1 つ。**1 画面に主アクションは 1 つ**。
+
+### Tabs の意味論（混在させない）
+
+| 種別               | 出る場所   | 例                                 | バッジ                  |
+| ------------------ | ---------- | ---------------------------------- | ----------------------- |
+| ステータスフィルタ | 一覧ページ | 全て・発行待ち・検収中・公式・完了 | 件数。順序=処理フロー順 |
+| セクション切替     | 詳細ページ | 概要・工程・見積・写真・メモ       | 子要素数。順序=重要度   |
+
+- 件数バッジ（`count`）は **アクティブ=黒塗り / 非アクティブ=アウトライン**。アクティブだけが浮き上がる。
+- アクティブ下線は **ラベル文字幅に整合**（badge を含めず label span にアンカー）。
+- 件数ではなくアラート等の特別表示が要る場合のみ `badge`（任意要素）で差し替える。
+
+### L3 クローム適用メモ（5 Fix）
+
+handoff の確定 5 Fix のうち、本リポに該当クロームが存在するもののみ適用：
+
+- **Fix 1（title+meta クラスタ・負マージン排除）** → `PageHeader.meta` で実装。
+- **Fix 2（下線をテキスト幅に整合）** / **Fix 4（非アクティブ badge アウトライン化）** → `Tabs` に内蔵。
+- **Fix 3（二段グローバルバー）** / **Fix 5（ダッシュボードの「新規入庫」CTA 撤去）** → 当該クローム（細グローバルバー・該当 CTA）が現リポに存在しないため **N/A**。導入時に本節へ追記する。
+
+> CmdK（検索）幅は将来一元化する場合 `CMDK_W = { default: 320, compact: 260 }` を基準にする（現状の CommandPalette はモーダル中央表示で別系統）。
 
 ---
 
