@@ -20,10 +20,13 @@ export async function isAdvancedFeatureVisibleForUser(tenantId: string, userId: 
     let tenantDisabled = new Set<string>();
     let userVisible = new Set<string>();
 
+    // throwOnError: PostgREST エラー時は例外 → catch で false（fail-closed）。
+    // 片方の読み取りだけ失敗してテナント無効化を検証できないまま許可する事故を防ぐ。
     const { data: tRow } = await admin
       .from("tenant_feature_settings")
       .select("disabled_features")
       .eq("tenant_id", tenantId)
+      .throwOnError()
       .maybeSingle();
     if (tRow?.disabled_features) tenantDisabled = new Set(sanitizeFeatureKeys(tRow.disabled_features));
 
@@ -32,6 +35,7 @@ export async function isAdvancedFeatureVisibleForUser(tenantId: string, userId: 
       .select("visible_features")
       .eq("tenant_id", tenantId)
       .eq("user_id", userId)
+      .throwOnError()
       .maybeSingle();
     if (uRow?.visible_features) userVisible = new Set(sanitizeFeatureKeys(uRow.visible_features));
 

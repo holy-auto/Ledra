@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   type GanttData,
   type GanttKind,
@@ -45,7 +45,12 @@ export default function GanttBoard({ realData, dateStr }: { realData: GanttData;
   const [showDemo, setShowDemo] = useState(realEmpty);
   const data = showDemo ? demoGanttData(dateStr) : realData;
 
-  const nowH = nowHoursJst();
+  // NOW ライン: 開きっぱなしの運用ディスプレイでも現在時刻に追従するよう毎分更新。
+  const [nowH, setNowH] = useState(() => nowHoursJst());
+  useEffect(() => {
+    const id = setInterval(() => setNowH(nowHoursJst()), 60_000);
+    return () => clearInterval(id);
+  }, []);
   const nowVisible = nowH >= SHIFT_START && nowH <= SHIFT_END;
   const nowX = hourToX(nowH);
 

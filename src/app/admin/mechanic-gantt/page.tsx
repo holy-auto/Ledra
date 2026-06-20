@@ -9,8 +9,6 @@ import { buildGanttData, todayJst, type ReservationRow, type RosterMember } from
 
 export const dynamic = "force-dynamic";
 
-const WORKER_ROLES = new Set(["owner", "admin", "staff"]);
-
 function roleLabel(role: string): string {
   switch (role) {
     case "owner":
@@ -19,6 +17,8 @@ function roleLabel(role: string): string {
       return "管理者";
     case "staff":
       return "スタッフ";
+    case "viewer":
+      return "閲覧者";
     default:
       return "メンバー";
   }
@@ -99,7 +99,10 @@ export default async function MechanicGanttPage() {
       .from("tenant_memberships")
       .select("user_id, role")
       .eq("tenant_id", tenantId);
-    const workers = (memberships ?? []).filter((m) => WORKER_ROLES.has(m.role ?? ""));
+    // 予約の担当者はどのロール（viewer 含む）にも割り当て得る（JobStatusPanel は
+    // 全メンバーを候補に出す）ため、ロールで絞らず全員を名簿に含める。絞ると
+    // viewer への実割当が未アサイン扱いに誤分類される。
+    const workers = memberships ?? [];
     if (workers.length > 0) {
       const {
         data: { users },
