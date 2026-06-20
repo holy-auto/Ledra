@@ -178,10 +178,7 @@ export default function ContactSchedulesClient() {
   }
 
   // ─── 状態更新 (完了 / スキップ / リスケ) ───
-  async function patchSchedule(
-    id: string,
-    body: { status?: ContactStatus; result?: ContactResult | null },
-  ) {
+  async function patchSchedule(id: string, body: { status?: ContactStatus; result?: ContactResult | null }) {
     setBusyId(id);
     try {
       const res = await fetch("/api/admin/contact-schedules", {
@@ -529,7 +526,11 @@ function AddDialog({
           {/* 顧客 */}
           <div>
             <label className="block text-xs text-secondary mb-1">顧客</label>
-            <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} className={`w-full ${selectCls}`}>
+            <select
+              value={customerId}
+              onChange={(e) => setCustomerId(e.target.value)}
+              className={`w-full ${selectCls}`}
+            >
               <option value="">（顧客なし）</option>
               {customers.map((c) => (
                 <option key={c.id} value={c.id}>

@@ -1,10 +1,18 @@
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { syncCreateEvent, syncUpdateEvent, syncDeleteEvent } from "@/lib/gcal/client";
 import { enforceBilling } from "@/lib/billing/guard";
 import { parsePagination } from "@/lib/api/pagination";
-import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiForbidden,
+  apiValidationError,
+  apiNotFound,
+  apiInternalError,
+} from "@/lib/api/response";
 import { logger } from "@/lib/logger";
 import {
   reservationCreateSchema,
@@ -16,6 +24,37 @@ import { maybeAutoCreateDraftCertificateForReservation } from "@/lib/ai/automati
 import { maybeAutoCategorizeReservationOnIntake } from "@/lib/ai/automation/accountingAuto";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * assigned_staff_id / booth_id が呼び出し元テナントのものか検証する。
+ * FK は staff_members(id) / booths(id) を参照するがテナント制約は無いため、
+ * リークした UUID で他テナントの行を指すクロステナント結合を防ぐ。
+ * null/undefined（未指定・割当解除）は許可。問題があればエラーキーを返す。
+ *
+ * staff_members の SELECT は RLS で管理ロール限定のため、staff ロールの発行者でも
+ * 検証できるようサービスロール（tenant 限定）で存在確認する。
+ */
+async function validateReservationRefs(
+  tenantId: string,
+  assignedStaffId: string | null | undefined,
+  boothId: string | null | undefined,
+): Promise<string | null> {
+  const { admin } = createTenantScopedAdmin(tenantId);
+  if (assignedStaffId) {
+    const { data } = await admin
+      .from("staff_members")
+      .select("id")
+      .eq("id", assignedStaffId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (!data) return "assigned_staff_not_found";
+  }
+  if (boothId) {
+    const { data } = await admin.from("booths").select("id").eq("id", boothId).eq("tenant_id", tenantId).maybeSingle();
+    if (!data) return "booth_not_found";
+  }
+  return null;
+}
 
 // ─── GET: 予約一覧 ───
 export async function GET(req: NextRequest) {
@@ -34,7 +73,7 @@ export async function GET(req: NextRequest) {
     let query = supabase
       .from("reservations")
       .select(
-        "id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, status, estimated_amount, created_at, workflow_template_id, current_step_key, current_step_order, progress_pct",
+        "id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, assigned_staff_id, booth_id, status, estimated_amount, created_at, workflow_template_id, current_step_key, current_step_order, progress_pct",
         { count: "exact" },
       )
       .eq("tenant_id", caller.tenantId)
@@ -123,6 +162,9 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 予約の作成は編集権限が必要（viewer は不可）。RLS は同テナントなら書込を許すため、
+    // サイドバー非表示だけでなく API 層でもロールを強制する。
+    if (!requirePermission(caller, "reservations:edit")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "starter",
@@ -137,6 +179,9 @@ export async function POST(req: NextRequest) {
     }
     const input = parsed.data;
 
+    const refErr = await validateReservationRefs(caller.tenantId, input.assigned_staff_id, input.booth_id);
+    if (refErr) return apiValidationError(refErr);
+
     const row = {
       id: crypto.randomUUID(),
       tenant_id: caller.tenantId,
@@ -149,6 +194,8 @@ export async function POST(req: NextRequest) {
       start_time: input.start_time,
       end_time: input.end_time,
       assigned_user_id: input.assigned_user_id,
+      assigned_staff_id: input.assigned_staff_id,
+      booth_id: input.booth_id,
       status: input.status,
       estimated_amount: input.estimated_amount ?? 0,
     };
@@ -157,7 +204,7 @@ export async function POST(req: NextRequest) {
       .from("reservations")
       .insert(row)
       .select(
-        "id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, status, estimated_amount, created_at, updated_at",
+        "id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, assigned_staff_id, booth_id, status, estimated_amount, created_at, updated_at",
       )
       .single();
     if (error) {
@@ -198,6 +245,8 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 担当者・ブース・ステータス等の更新は編集権限が必要（viewer は不可）。
+    if (!requirePermission(caller, "reservations:edit")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "starter",
@@ -206,21 +255,35 @@ export async function PUT(req: NextRequest) {
     });
     if (deny) return deny;
 
-    const parsed = reservationUpdateSchema.safeParse(await req.json().catch(() => ({})));
+    const rawBody = await req.json().catch(() => ({}));
+    const parsed = reservationUpdateSchema.safeParse(rawBody);
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
     const { id, cancel_reason, ...rest } = parsed.data;
 
+    // 部分更新で「送っていないフィールド」を誤って null 上書きしないよう、
+    // クライアントが実際に送ったキーだけを採用する。nullableUuid 等の transform は
+    // 未指定フィールドも null 化するため、生ボディのキー集合で絞り込む必要がある。
+    // (これが無いと例: ステータス前進や担当変更だけのリクエストで
+    //  customer_id / vehicle_id / assigned_* / note が null に消えてしまう)
+    const sentKeys = new Set(
+      rawBody && typeof rawBody === "object" ? Object.keys(rawBody as Record<string, unknown>) : [],
+    );
     const updates: Record<string, unknown> = {
-      ...rest,
       updated_at: new Date().toISOString(),
     };
-
-    // menu_items_json が undefined のキーは update で上書きしたくないので剥がす
-    for (const key of Object.keys(updates)) {
-      if (updates[key] === undefined) delete updates[key];
+    for (const [key, value] of Object.entries(rest)) {
+      if (value !== undefined && sentKeys.has(key)) updates[key] = value;
     }
+
+    // 送られた assigned_staff_id / booth_id はテナント所有を検証（クロステナント参照防止）
+    const putRefErr = await validateReservationRefs(
+      caller.tenantId,
+      sentKeys.has("assigned_staff_id") ? (updates.assigned_staff_id as string | null) : undefined,
+      sentKeys.has("booth_id") ? (updates.booth_id as string | null) : undefined,
+    );
+    if (putRefErr) return apiValidationError(putRefErr);
 
     // キャンセル時はタイムスタンプと理由を追記
     if (rest.status === "cancelled") {
@@ -267,7 +330,7 @@ export async function PUT(req: NextRequest) {
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .select(
-        "id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, status, estimated_amount, gcal_event_id, cancelled_at, cancel_reason, work_started_at, work_completed_at, created_at, updated_at",
+        "id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, assigned_staff_id, booth_id, status, estimated_amount, gcal_event_id, cancelled_at, cancel_reason, work_started_at, work_completed_at, created_at, updated_at",
       )
       .single();
 
@@ -343,6 +406,8 @@ export async function DELETE(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 予約の削除は編集権限が必要（viewer は不可）。
+    if (!requirePermission(caller, "reservations:edit")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "starter",

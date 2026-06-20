@@ -35,6 +35,8 @@ export const reservationCreateSchema = z.object({
   menu_items_json: z.any().nullable().optional(),
   estimated_amount: z.coerce.number().int().min(0).nullable().optional(),
   assigned_user_id: nullableUuid,
+  assigned_staff_id: nullableUuid,
+  booth_id: nullableUuid,
   note: z
     .string()
     .trim()
@@ -67,6 +69,8 @@ export const reservationUpdateSchema = z.object({
   menu_items_json: z.any().nullable().optional(),
   estimated_amount: z.coerce.number().int().min(0).nullable().optional(),
   assigned_user_id: nullableUuid,
+  assigned_staff_id: nullableUuid,
+  booth_id: nullableUuid,
   note: z
     .string()
     .trim()

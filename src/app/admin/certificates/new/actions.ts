@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { makePublicId } from "@/lib/publicId";
 import { resolveCertifiedTemplateForTenant } from "@/lib/manufacturers/certifiedTemplates";
 
@@ -276,6 +277,70 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
   const statusParam = String(formData.get("status") || "active").trim();
   const requestedActive = statusParam !== "draft";
 
+  // ⑦ 職人名×施工証明: 施工担当（職人）を解決。明示指定 (craftsman_staff_id) を優先し、
+  // 無ければこの車両に紐づく直近の予約 (assigned_staff_id) から引き当てる。
+  // 発行時点の表示名をスナップショットして証明書に刻む（退会後も証跡が残る）。
+  // 案件フローから reservation_id が渡っていれば、その予約の担当を最優先で使う（最も正確）。
+  const reservation_id_form = String(formData.get("reservation_id") || "").trim() || null;
+  let craftsman_staff_id = String(formData.get("craftsman_staff_id") || "").trim() || null;
+  // 案件フローから渡された reservation_id は一度だけ取得し、職人の解決と「この案件から
+  // 発行」リンクの両方に使い回す。
+  let reservationFound = false; // テナント内に当該予約が実在するか（車両フォールバックの抑止に使う）
+  let linked_reservation_id: string | null = null; // 車両/顧客が一致したときだけ証明書に紐付ける
+  if (reservation_id_form) {
+    const { data: jobRes } = await supabase
+      .from("reservations")
+      .select("assigned_staff_id, vehicle_id, customer_id")
+      .eq("id", reservation_id_form)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (jobRes) {
+      reservationFound = true;
+      // 明示指定が無ければ、この案件の担当者をそのまま職人として採用する（最も正確）。
+      if (!craftsman_staff_id) craftsman_staff_id = (jobRes.assigned_staff_id as string | null) ?? null;
+      // 証明書側で確定した車両/顧客と矛盾しない場合のみ「この案件から発行」とみなす。
+      // 取り違え（別案件を「作成済」に誤マーク）を防ぐため、不一致なら紐付けない。
+      const vehicleOk = resolvedVehicleId ? jobRes.vehicle_id === resolvedVehicleId : true;
+      const customerOk = resolvedCustomerId ? jobRes.customer_id === resolvedCustomerId : true;
+      if (vehicleOk && customerOk) linked_reservation_id = reservation_id_form;
+    }
+  }
+  if (!craftsman_staff_id && !reservationFound && resolvedVehicleId) {
+    // フォールバック: 明示の案件指定が無い場合のみ、この車両の「キャンセルでない・
+    // 今日以前」の予約担当を引き当てる。案件が指定されていれば（担当未設定でも）その
+    // 案件に従い、車両履歴からの推定は行わない（誤った職人名の刻印を防ぐ）。
+    // また最近の該当予約に複数の異なる担当が居る場合も、どの案件向けの証明書か
+    // 確定できないため敢えて付けない。
+    const cutoff = new Date().toISOString().slice(0, 10);
+    const { data: recentRows } = await supabase
+      .from("reservations")
+      .select("assigned_staff_id")
+      .eq("tenant_id", tenantId)
+      .eq("vehicle_id", resolvedVehicleId)
+      .not("assigned_staff_id", "is", null)
+      .neq("status", "cancelled")
+      .lte("scheduled_date", cutoff)
+      .order("scheduled_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(5);
+    const distinct = [...new Set((recentRows ?? []).map((r) => r.assigned_staff_id as string).filter(Boolean))];
+    craftsman_staff_id = distinct.length === 1 ? distinct[0] : null;
+  }
+  let craftsman_name: string | null = null;
+  if (craftsman_staff_id) {
+    // staff_members の SELECT は RLS で管理ロール限定のため、発行者が staff ロール
+    // でも職人名を解決できるよう、サービスロールで tenant 限定 + name のみ読む。
+    const { admin } = createTenantScopedAdmin(tenantId);
+    const { data: staffRow } = await admin
+      .from("staff_members")
+      .select("name")
+      .eq("id", craftsman_staff_id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    craftsman_name = (staffRow?.name as string | null) ?? null;
+    if (!craftsman_name) craftsman_staff_id = null; // 不整合なら付けない
+  }
+
   const { data: certRow, error } = await supabase
     .from("certificates")
     .insert({
@@ -314,6 +379,11 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
       manufacturer_id,
       manufacturer_template_id,
       created_by: userId,
+      craftsman_staff_id: craftsman_staff_id ?? undefined,
+      craftsman_name: craftsman_name ?? undefined,
+      // 案件から発行された証明書は元の予約に紐付ける（タイムライン/フォローで「作成済」に）。
+      // 車両/顧客が一致した検証済みの予約のみ（取り違え防止）。
+      reservation_id: linked_reservation_id ?? undefined,
     })
     .select("id")
     .single();

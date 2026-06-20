@@ -36,6 +36,7 @@ type CertPublic = {
   tenant_name: string | null;
   tenant_slug: string | null;
   tenant_custom_domain?: string | null;
+  craftsman_name?: string | null;
 };
 
 function buildOriginFromCert(cert: { tenant_custom_domain?: string | null }, fallbackOrigin: string) {
@@ -224,6 +225,8 @@ export async function GET(req: Request) {
     created_at: cert.created_at ?? new Date().toISOString(),
     tenant_custom_domain: cert.tenant_custom_domain,
     current_version: fullCert?.current_version ?? null,
+    // ⑦ 施工担当（職人）。certificates_public ビューが公開する craftsman_name をそのまま渡す。
+    craftsman_name: cert.craftsman_name ?? null,
   };
 
   // ── メーカー指定デザインが選択されていればそれを最優先で描画 ──

@@ -7,10 +7,7 @@ import Badge from "@/components/ui/Badge";
 import { fetcher } from "@/lib/swr";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import { formatJpy, formatDate } from "@/lib/format";
-import {
-  MAINTENANCE_PACK_STATUS_LABEL,
-  type MaintenancePackStatus,
-} from "@/lib/validations/maintenance-pack";
+import { MAINTENANCE_PACK_STATUS_LABEL, type MaintenancePackStatus } from "@/lib/validations/maintenance-pack";
 import type { BadgeVariant } from "@/lib/statusMaps";
 
 // ─── 型 ───
@@ -181,9 +178,7 @@ export default function MaintenancePacksClient() {
         ))}
       </div>
 
-      {errorMsg && (
-        <div className="glass-card border-l-4 border-danger p-3 text-xs text-danger-text">{errorMsg}</div>
-      )}
+      {errorMsg && <div className="glass-card border-l-4 border-danger p-3 text-xs text-danger-text">{errorMsg}</div>}
 
       {isLoading && <div className="text-sm text-muted">読み込み中…</div>}
       {error && (
@@ -198,9 +193,7 @@ export default function MaintenancePacksClient() {
           <div className="mt-2 text-sm font-medium text-primary">
             {tab === "active" ? "アクティブなメンテパックはありません" : "該当するメンテパックはありません"}
           </div>
-          <p className="mt-1 text-xs text-muted">
-            「+ 新規パック」から 3 年保証メンテパックなどを販売・登録できます。
-          </p>
+          <p className="mt-1 text-xs text-muted">「+ 新規パック」から 3 年保証メンテパックなどを販売・登録できます。</p>
         </div>
       )}
 
@@ -219,9 +212,7 @@ export default function MaintenancePacksClient() {
                     <div className="mt-0.5 line-clamp-1 text-[11px] text-muted">{pack.description}</div>
                   )}
                 </div>
-                <Badge variant={STATUS_BADGE[pack.status]}>
-                  {MAINTENANCE_PACK_STATUS_LABEL[pack.status]}
-                </Badge>
+                <Badge variant={STATUS_BADGE[pack.status]}>{MAINTENANCE_PACK_STATUS_LABEL[pack.status]}</Badge>
               </div>
 
               {(customerName || vLabel) && (
@@ -296,9 +287,8 @@ function CreatePackDialog({ onClose, onCreated }: { onClose: () => void; onCreat
   const [formError, setFormError] = useState<string | null>(null);
 
   // 顧客検索 (datalist): クエリが 1 文字以上のときだけ叩く
-  const customerKey = customerQuery.trim().length >= 1
-    ? `/api/admin/customers?q=${encodeURIComponent(customerQuery.trim())}`
-    : null;
+  const customerKey =
+    customerQuery.trim().length >= 1 ? `/api/admin/customers?q=${encodeURIComponent(customerQuery.trim())}` : null;
   const { data: customerData } = useSWR<CustomerListResponse>(customerKey, fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 1000,

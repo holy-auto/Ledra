@@ -210,9 +210,7 @@ export default function BrandsClient({ initialBrands }: { initialBrands: Brand[]
 
       {/* Top toolbar */}
       <div className="flex items-center justify-between gap-3">
-        <div className="text-sm text-muted">
-          {brands.length} ブランド登録済み
-        </div>
+        <div className="text-sm text-muted">{brands.length} ブランド登録済み</div>
         {!showNewBrand && (
           <Button size="sm" onClick={() => setShowNewBrand(true)}>
             ＋ ブランドを追加
