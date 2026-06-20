@@ -25,3 +25,13 @@ export function formatJpy(n?: number | null): string {
   if (n == null) return "-";
   return `¥${n.toLocaleString("ja-JP")}`;
 }
+
+/**
+ * ハッシュ / アドレスを中央省略する (例: `0x12345678…abcdef`)。
+ * 先頭 `head` 文字・末尾 `tail` 文字を残す。短い値はそのまま返す。
+ */
+export function truncateHash(v?: string | null, head = 10, tail = 6): string {
+  if (!v) return "-";
+  if (v.length <= head + tail + 1) return v;
+  return `${v.slice(0, head)}…${v.slice(-tail)}`;
+}

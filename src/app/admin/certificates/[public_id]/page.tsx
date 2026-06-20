@@ -18,7 +18,7 @@ import { resolveCertificateMedia, type CertificateMediaRow } from "@/lib/certifi
 import AnnotateExistingImageButton from "@/components/imageMarkup/AnnotateExistingImageButton";
 import { isAnnotationDocument, type AnnotationDocument } from "@/components/imageMarkup/types";
 import { formatDateTime } from "@/lib/format";
-import { buildExplorerUrl } from "@/lib/anchoring/providers";
+import AnchorBadge from "@/components/ui/AnchorBadge";
 import { normalizePlanTier, PHOTO_LIMITS } from "@/lib/billing/planFeatures";
 
 type PageProps = {
@@ -455,7 +455,6 @@ export default async function Page({ params }: PageProps) {
             {images.length > 0 ? (
               <div className="grid gap-4 md:grid-cols-2">
                 {images.map((img) => {
-                  const explorerUrl = buildExplorerUrl(img.polygon_tx_hash, img.polygon_network);
                   const gradeLabel =
                     img.authenticity_grade === "premium"
                       ? "プレミアム"
@@ -524,16 +523,8 @@ export default async function Page({ params }: PageProps) {
                           </span>
 
                           <span className="text-muted">Polygon</span>
-                          {explorerUrl ? (
-                            <a
-                              href={explorerUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="break-all text-success hover:underline"
-                              title={`${img.polygon_network === "amoy" ? "Amoy testnet" : "Polygon mainnet"} で検証`}
-                            >
-                              {img.polygon_tx_hash?.slice(0, 16)}… ↗
-                            </a>
+                          {img.polygon_tx_hash && img.polygon_network ? (
+                            <AnchorBadge txHash={img.polygon_tx_hash} network={img.polygon_network} />
                           ) : img.sha256 ? (
                             <span className="text-warning">未記録</span>
                           ) : (
