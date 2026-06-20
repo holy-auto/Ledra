@@ -1,7 +1,8 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { isAdvancedFeatureVisibleForUser } from "@/lib/features/serverVisibility";
 import PageHeader from "@/components/ui/PageHeader";
 import GanttBoard from "@/components/admin/gantt/GanttBoard";
 import { buildGanttData, todayJst, type ReservationRow, type RosterMember } from "@/lib/gantt/board";
@@ -34,6 +35,12 @@ export default async function MechanicGanttPage() {
   if (!caller) redirect("/login?next=/admin/mechanic-gantt");
 
   const tenantId = caller.tenantId;
+
+  // advanced 機能ゲート（既定 OFF）。URL 直叩きでも未 opt-in / テナント無効なら 404。
+  if (!(await isAdvancedFeatureVisibleForUser(tenantId, caller.userId, "mechanic-gantt"))) {
+    notFound();
+  }
+
   const today = todayJst();
 
   // ── 当日の予約 ──

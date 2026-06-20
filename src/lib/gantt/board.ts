@@ -138,6 +138,31 @@ function initialOf(name: string): string {
   return (name.trim()[0] ?? "?").toUpperCase();
 }
 
+export interface LaidOutCase extends GanttCase {
+  /** 重なり回避のためのレーン番号（0 始まり）。 */
+  lane: number;
+}
+
+/**
+ * 1 行内の重なる予約をレーンに振り分ける（貪欲法）。ダブルブッキングを
+ * 重ねて隠さず、縦に積んで可視化するためのレイアウト計算。
+ */
+export function layoutLanes(cases: GanttCase[]): { items: LaidOutCase[]; laneCount: number } {
+  const sorted = [...cases].sort((a, b) => a.start - b.start || a.end - b.end);
+  const laneEnds: number[] = [];
+  const items = sorted.map((c) => {
+    let lane = laneEnds.findIndex((end) => end <= c.start);
+    if (lane === -1) {
+      lane = laneEnds.length;
+      laneEnds.push(c.end);
+    } else {
+      laneEnds[lane] = c.end;
+    }
+    return { ...c, lane };
+  });
+  return { items, laneCount: Math.max(1, laneEnds.length) };
+}
+
 // ── 実データ整形 ──
 export interface ReservationRow {
   id: string;
@@ -187,19 +212,27 @@ export function buildGanttData(
     const sub = r.customer_name ?? "";
     const tag = r.title ?? "";
     const start = parseTimeToHours(r.start_time);
-    const assigned = r.assigned_user_id && staffIds.has(r.assigned_user_id);
+    const assigned = Boolean(r.assigned_user_id && staffIds.has(r.assigned_user_id));
 
-    if (assigned && start != null) {
-      const endParsed = parseTimeToHours(r.end_time);
-      const end = endParsed != null && endParsed > start ? endParsed : start + 1;
+    // シフト窓 [SHIFT_START, SHIFT_END] にクランプし、有効な区間だけバー化。
+    // 窓外（例 06:00–07:00）や開始時刻なしは未アサイン列へ送る。
+    const rawEnd = (() => {
+      if (start == null) return null;
+      const e = parseTimeToHours(r.end_time);
+      return e != null && e > start ? e : start + 1;
+    })();
+    const cStart = start != null ? Math.max(SHIFT_START, start) : null;
+    const cEnd = rawEnd != null ? Math.min(SHIFT_END, rawEnd) : null;
+
+    if (assigned && cStart != null && cEnd != null && cEnd > cStart) {
       cases.push({
         id: r.id,
         label,
         sub,
         kind,
         tag,
-        start: Math.max(SHIFT_START, start),
-        end: Math.min(SHIFT_END, end),
+        start: cStart,
+        end: cEnd,
         prog: deriveProgress(r.progress_pct, r.status),
         staffIds: [r.assigned_user_id as string],
       });
@@ -210,10 +243,12 @@ export function buildGanttData(
 
   cases.sort((a, b) => a.start - b.start);
 
-  // 当日割当のあるスタッフを先頭に、その他はその後（最大 12 行）。
+  // 当日割当のあるスタッフは必ず表示（行を落とすとそのバーが消えるため）。
+  // 空きスタッフは合計 12 行を上限に後ろへ。
   const withWork = new Set(cases.flatMap((c) => c.staffIds));
-  const ordered = [...staff].sort((a, b) => Number(withWork.has(b.id)) - Number(withWork.has(a.id)));
-  const shown = ordered.slice(0, 12);
+  const withWorkStaff = staff.filter((s) => withWork.has(s.id));
+  const idleStaff = staff.filter((s) => !withWork.has(s.id));
+  const shown = [...withWorkStaff, ...idleStaff].slice(0, Math.max(12, withWorkStaff.length));
 
   return { staff: shown, cases, unassigned, dateLabel: ganttDateLabel(dateStr), staffCount: shown.length };
 }

@@ -13,6 +13,7 @@ import {
   formatHour,
   capacityOf,
   nowHoursJst,
+  layoutLanes,
   demoGanttData,
 } from "@/lib/gantt/board";
 
@@ -34,9 +35,9 @@ const KIND: Record<GanttKind, { accent: string; text: string; dim: string; label
   },
 };
 
-const ROW_H = 80;
 const ROW_LABEL_W = 200;
 const UNASSIGN_W = 200;
+const LANE_H = 46;
 
 export default function GanttBoard({ realData, dateStr }: { realData: GanttData; dateStr: string }) {
   const realEmpty = realData.cases.length === 0 && realData.unassigned.length === 0 && realData.staff.length === 0;
@@ -50,6 +51,14 @@ export default function GanttBoard({ realData, dateStr }: { realData: GanttData;
 
   const hours: number[] = [];
   for (let h = SHIFT_START; h < SHIFT_END; h++) hours.push(h);
+
+  // 行ごとにレーン割当と高さを事前計算（ラベル列とグリッド列で共有して高さを揃える）。
+  const rows = data.staff.map((s) => {
+    const mine = data.cases.filter((c) => c.staffIds.includes(s.id));
+    const { items, laneCount } = layoutLanes(mine);
+    const rowH = Math.max(80, laneCount * LANE_H + 12);
+    return { staff: s, items, laneCount, rowH, pct: capacityOf(s.id, data.cases) };
+  });
 
   return (
     <div className="overflow-hidden rounded-[var(--radius-lg)] border border-border-default bg-surface shadow-[var(--shadow-md)]">
@@ -91,7 +100,7 @@ export default function GanttBoard({ realData, dateStr }: { realData: GanttData;
       </div>
 
       <div className="flex min-h-0">
-        {/* unassigned column */}
+        {/* unassigned column (fixed) */}
         <div className="flex shrink-0 flex-col border-r border-border-default bg-base" style={{ width: UNASSIGN_W }}>
           <div className="flex h-8 items-center gap-2 border-b border-border-default bg-inset px-3">
             <span className="text-micro text-muted">未アサイン</span>
@@ -127,42 +136,17 @@ export default function GanttBoard({ realData, dateStr }: { realData: GanttData;
           </div>
         </div>
 
-        {/* staff × time */}
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          {/* header */}
-          <div className="flex h-8 border-b border-border-default">
-            <div
-              className="flex items-center border-r border-border-default bg-inset px-3"
-              style={{ width: ROW_LABEL_W }}
-            >
-              <span className="text-micro text-muted">スタッフ</span>
-              <span className="ml-auto font-mono text-[10px] text-muted">稼働率</span>
-            </div>
-            <div className="overflow-x-auto">
-              <div className="flex bg-inset" style={{ width: GRID_W, height: "100%" }}>
-                {hours.map((h) => (
-                  <div
-                    key={h}
-                    className="flex items-center border-r border-border-default px-2"
-                    style={{ width: SLOTS_PER_HR * SLOT_W }}
-                  >
-                    <span className="font-mono text-[10.5px] font-medium text-muted">
-                      {String(h).padStart(2, "0")}:00
-                    </span>
-                  </div>
-                ))}
+        {data.staff.length === 0 ? (
+          <div className="flex-1 px-4 py-10 text-center text-sm text-muted">表示できるスタッフがいません</div>
+        ) : (
+          <div className="flex min-w-0 flex-1">
+            {/* staff labels (fixed left column) */}
+            <div className="shrink-0 border-r border-border-default" style={{ width: ROW_LABEL_W }}>
+              <div className="flex h-8 items-center bg-inset px-3">
+                <span className="text-micro text-muted">スタッフ</span>
+                <span className="ml-auto font-mono text-[10px] text-muted">稼働率</span>
               </div>
-            </div>
-          </div>
-
-          {/* rows */}
-          <div className="overflow-auto">
-            {data.staff.length === 0 ? (
-              <div className="px-4 py-10 text-center text-sm text-muted">表示できるスタッフがいません</div>
-            ) : (
-              data.staff.map((s, i) => {
-                const myCases = data.cases.filter((c) => c.staffIds.includes(s.id)).sort((a, b) => a.start - b.start);
-                const pct = capacityOf(s.id, data.cases);
+              {rows.map(({ staff: s, rowH, pct }) => {
                 const capColor =
                   pct >= 90
                     ? "var(--accent-red)"
@@ -172,108 +156,131 @@ export default function GanttBoard({ realData, dateStr }: { realData: GanttData;
                         ? "var(--accent-blue)"
                         : "var(--text-muted)";
                 return (
-                  <div key={s.id} className="flex border-b border-border-default" style={{ height: ROW_H }}>
-                    {/* label */}
-                    <div
-                      className="flex items-center gap-2.5 border-r border-border-default bg-surface px-3 py-2.5"
-                      style={{ width: ROW_LABEL_W }}
-                    >
-                      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-white">
-                        {s.initial}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-xs font-semibold text-primary">{s.name}</div>
-                        <div className="truncate text-[10.5px] text-muted">{s.sub}</div>
-                        <div className="mt-1 flex items-center gap-1.5">
-                          <div className="h-[3px] flex-1 overflow-hidden rounded-full bg-inset">
-                            <div className="h-full rounded-full" style={{ width: `${pct}%`, background: capColor }} />
-                          </div>
-                          <span className="min-w-[26px] text-right font-mono text-[9.5px] text-muted">{pct}%</span>
+                  <div
+                    key={s.id}
+                    className="flex items-center gap-2.5 border-b border-border-default bg-surface px-3"
+                    style={{ height: rowH }}
+                  >
+                    <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-white">
+                      {s.initial}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs font-semibold text-primary">{s.name}</div>
+                      <div className="truncate text-[10.5px] text-muted">{s.sub}</div>
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <div className="h-[3px] flex-1 overflow-hidden rounded-full bg-inset">
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: capColor }} />
                         </div>
-                      </div>
-                    </div>
-                    {/* grid */}
-                    <div className="relative overflow-x-auto">
-                      <div
-                        className="relative"
-                        style={{
-                          width: GRID_W,
-                          height: ROW_H,
-                          background: i % 2 ? "var(--bg-surface-solid)" : "var(--bg-inset)",
-                        }}
-                      >
-                        {/* hour lines */}
-                        {hours.map((h) => (
-                          <div
-                            key={h}
-                            className="absolute top-0 bottom-0 w-px"
-                            style={{ left: hourToX(h), background: "var(--border-default)" }}
-                          />
-                        ))}
-                        {/* case bars */}
-                        {myCases.map((c) => {
-                          const left = hourToX(c.start) + 3;
-                          const width = Math.max(28, hourToX(c.end) - hourToX(c.start) - 6);
-                          const k = KIND[c.kind];
-                          return (
-                            <div
-                              key={c.id}
-                              title={`${c.label} · ${c.sub}\n${formatHour(c.start)}–${formatHour(c.end)} · ${c.tag} · ${c.prog}%`}
-                              className="absolute flex flex-col justify-between overflow-hidden rounded-[var(--radius-sm)] px-2 py-1.5"
-                              style={{
-                                left,
-                                top: 6,
-                                width,
-                                height: ROW_H - 16,
-                                background: k.dim,
-                                boxShadow: `inset 0 0 0 1px ${k.accent}`,
-                                borderLeft: `3px solid ${k.accent}`,
-                              }}
-                            >
-                              <div className="flex items-center justify-between gap-1.5">
-                                <span className="truncate text-[12px] font-semibold text-primary">{c.label}</span>
-                                <span
-                                  className="shrink-0 font-mono text-[9.5px] font-semibold"
-                                  style={{ color: k.text }}
-                                >
-                                  {formatHour(c.start)}–{formatHour(c.end)}
-                                </span>
-                              </div>
-                              <div className="truncate text-[10.5px] text-muted">
-                                {c.sub} · {c.tag}
-                              </div>
-                              <div className="mt-auto flex items-center gap-2">
-                                <div
-                                  className="h-[3px] flex-1 overflow-hidden rounded-full"
-                                  style={{ background: "var(--border-default)" }}
-                                >
-                                  <div
-                                    className="h-full rounded-full"
-                                    style={{ width: `${c.prog}%`, background: k.accent }}
-                                  />
-                                </div>
-                                <span className="font-mono text-[9.5px] font-semibold" style={{ color: k.text }}>
-                                  {c.prog}%
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                        {/* now line */}
-                        {nowVisible && (
-                          <div
-                            className="absolute top-0 bottom-0 z-[2] w-px"
-                            style={{ left: nowX, borderLeft: "1px dashed var(--accent-red)", opacity: 0.85 }}
-                          />
-                        )}
+                        <span className="min-w-[26px] text-right font-mono text-[9.5px] text-muted">{pct}%</span>
                       </div>
                     </div>
                   </div>
                 );
-              })
-            )}
+              })}
+            </div>
+
+            {/* single horizontal scroller: header + grid rows stay aligned */}
+            <div className="flex-1 overflow-x-auto">
+              <div style={{ width: GRID_W }}>
+                {/* hour header */}
+                <div className="flex h-8 border-b border-border-default bg-inset">
+                  {hours.map((h) => (
+                    <div
+                      key={h}
+                      className="flex items-center border-r border-border-default px-2"
+                      style={{ width: SLOTS_PER_HR * SLOT_W }}
+                    >
+                      <span className="font-mono text-[10.5px] font-medium text-muted">
+                        {String(h).padStart(2, "0")}:00
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* rows */}
+                {rows.map(({ staff: s, items, laneCount, rowH }, i) => {
+                  const laneH = (rowH - 12) / laneCount;
+                  return (
+                    <div
+                      key={s.id}
+                      className="relative border-b border-border-default"
+                      style={{ height: rowH, background: i % 2 ? "var(--bg-surface-solid)" : "var(--bg-inset)" }}
+                    >
+                      {/* hour lines */}
+                      {hours.map((h) => (
+                        <div
+                          key={h}
+                          className="absolute top-0 bottom-0 w-px"
+                          style={{ left: hourToX(h), background: "var(--border-default)" }}
+                        />
+                      ))}
+                      {/* case bars (lane-stacked) */}
+                      {items.map((c) => {
+                        const left = hourToX(c.start) + 3;
+                        const width = Math.max(28, hourToX(c.end) - hourToX(c.start) - 6);
+                        const height = laneH - 4;
+                        const top = 6 + c.lane * laneH;
+                        const k = KIND[c.kind];
+                        const compact = height < 58;
+                        return (
+                          <div
+                            key={c.id}
+                            title={`${c.label} · ${c.sub}\n${formatHour(c.start)}–${formatHour(c.end)} · ${c.tag} · ${c.prog}%`}
+                            className="absolute flex flex-col overflow-hidden rounded-[var(--radius-sm)] px-2 py-1"
+                            style={{
+                              left,
+                              top,
+                              width,
+                              height,
+                              background: k.dim,
+                              boxShadow: `inset 0 0 0 1px ${k.accent}`,
+                              borderLeft: `3px solid ${k.accent}`,
+                            }}
+                          >
+                            <div className="flex items-center justify-between gap-1.5">
+                              <span className="truncate text-[12px] font-semibold text-primary">{c.label}</span>
+                              <span className="shrink-0 font-mono text-[9.5px] font-semibold" style={{ color: k.text }}>
+                                {formatHour(c.start)}–{formatHour(c.end)}
+                              </span>
+                            </div>
+                            {!compact && (
+                              <div className="truncate text-[10.5px] text-muted">
+                                {c.sub} · {c.tag}
+                              </div>
+                            )}
+                            <div className="mt-auto flex items-center gap-2">
+                              <div
+                                className="h-[3px] flex-1 overflow-hidden rounded-full"
+                                style={{ background: "var(--border-default)" }}
+                              >
+                                <div
+                                  className="h-full rounded-full"
+                                  style={{ width: `${c.prog}%`, background: k.accent }}
+                                />
+                              </div>
+                              {!compact && (
+                                <span className="font-mono text-[9.5px] font-semibold" style={{ color: k.text }}>
+                                  {c.prog}%
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {/* now line */}
+                      {nowVisible && (
+                        <div
+                          className="absolute top-0 bottom-0 z-[2] w-px"
+                          style={{ left: nowX, borderLeft: "1px dashed var(--accent-red)", opacity: 0.85 }}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

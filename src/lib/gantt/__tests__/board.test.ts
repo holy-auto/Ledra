@@ -5,10 +5,15 @@ import {
   deriveProgress,
   capacityOf,
   buildGanttData,
+  layoutLanes,
   type ReservationRow,
   type RosterMember,
   type GanttCase,
 } from "../board";
+
+function mkCase(id: string, start: number, end: number): GanttCase {
+  return { id, label: "", sub: "", kind: "work", tag: "", start, end, prog: 0, staffIds: ["u1"] };
+}
 
 describe("parseTimeToHours", () => {
   it("parses HH:MM:SS to fractional hours", () => {
@@ -98,5 +103,35 @@ describe("buildGanttData", () => {
     const noEnd: ReservationRow = { ...base, end_time: null };
     const out = buildGanttData([noEnd], roster, "2026-06-20");
     expect(out.cases[0]).toMatchObject({ start: 9, end: 10 });
+  });
+
+  it("routes reservations entirely outside the shift window to unassigned", () => {
+    const early: ReservationRow = { ...base, id: "r5", start_time: "06:00:00", end_time: "07:00:00" };
+    const out = buildGanttData([early], roster, "2026-06-20");
+    expect(out.cases).toHaveLength(0);
+    expect(out.unassigned.map((u) => u.id)).toContain("r5");
+  });
+
+  it("never drops a staff row that has assigned work", () => {
+    const many: RosterMember[] = Array.from({ length: 15 }, (_, i) => ({ user_id: `m${i}`, name: `M${i}` }));
+    // 13番目(m12)に当日割当。truncate しても m12 行が残ること。
+    const res: ReservationRow = { ...base, id: "rx", assigned_user_id: "m12" };
+    const out = buildGanttData([res], many, "2026-06-20");
+    expect(out.staff.some((s) => s.id === "m12")).toBe(true);
+    expect(out.cases).toHaveLength(1);
+  });
+});
+
+describe("layoutLanes", () => {
+  it("keeps non-overlapping cases on a single lane", () => {
+    const { laneCount, items } = layoutLanes([mkCase("a", 9, 11), mkCase("b", 11, 13)]);
+    expect(laneCount).toBe(1);
+    expect(items.every((c) => c.lane === 0)).toBe(true);
+  });
+
+  it("stacks overlapping cases onto separate lanes", () => {
+    const { laneCount, items } = layoutLanes([mkCase("a", 9, 12), mkCase("b", 10, 13)]);
+    expect(laneCount).toBe(2);
+    expect(new Set(items.map((c) => c.lane))).toEqual(new Set([0, 1]));
   });
 });
