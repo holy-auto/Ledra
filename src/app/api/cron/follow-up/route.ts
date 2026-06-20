@@ -17,6 +17,7 @@ import {
   processMaintenanceReminders,
 } from "@/lib/cron/followUp";
 import { processInspectionReminders } from "@/lib/cron/inspectionReminders";
+import { processBirthdayGreetings } from "@/lib/cron/birthdayGreetings";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -42,11 +43,12 @@ export async function GET(req: NextRequest) {
       let seasonalSent = 0;
       let maintenanceSent = 0;
       let inspectionSent = 0;
+      let birthdaySent = 0;
       try {
         const { data: rawSettings } = await supabase
           .from("follow_up_settings")
           .select(
-            "tenant_id, reminder_days_before, follow_up_days_after, enabled, send_on_issue, first_reminder_days, warranty_end_days, inspection_pre_days, seasonal_enabled, maintenance_reminder_months, maintenance_schedule_by_service",
+            "tenant_id, reminder_days_before, follow_up_days_after, enabled, send_on_issue, first_reminder_days, warranty_end_days, inspection_pre_days, seasonal_enabled, maintenance_reminder_months, maintenance_schedule_by_service, birthday_enabled, birthday_lead_days",
           )
           .eq("enabled", true);
         const settings = (rawSettings ?? []) as unknown as FollowUpSetting[];
@@ -74,12 +76,13 @@ export async function GET(req: NextRequest) {
             seasonalSent += await processSeasonalProposals(supabase, setting, shopName, today);
             maintenanceSent += await processMaintenanceReminders(supabase, setting, tenant, shopName, planTier, today);
             inspectionSent += await processInspectionReminders(supabase, setting, shopName, today);
+            birthdaySent += await processBirthdayGreetings(supabase, setting, shopName, today);
           }
         }
       } catch (e) {
         console.error("[cron/follow-up] failed:", e);
       }
-      return { remindersSent, followUpsSent, seasonalSent, maintenanceSent, inspectionSent };
+      return { remindersSent, followUpsSent, seasonalSent, maintenanceSent, inspectionSent, birthdaySent };
     });
 
     if (!lock.acquired) {
@@ -93,6 +96,7 @@ export async function GET(req: NextRequest) {
       seasonal_sent: lock.value.seasonalSent,
       maintenance_sent: lock.value.maintenanceSent,
       inspection_sent: lock.value.inspectionSent,
+      birthday_sent: lock.value.birthdaySent,
       date: todayStr,
     });
   } catch (e) {

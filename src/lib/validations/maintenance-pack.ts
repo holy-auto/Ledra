@@ -30,7 +30,11 @@ const optionalUuid = z
 
 /** 空文字 / undefined を null に正規化する nullable な YYYY-MM-DD 日付 */
 const optionalDate = z
-  .union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/u, "日付は YYYY-MM-DD 形式で指定してください。"), z.literal(""), z.null()])
+  .union([
+    z.string().regex(/^\d{4}-\d{2}-\d{2}$/u, "日付は YYYY-MM-DD 形式で指定してください。"),
+    z.literal(""),
+    z.null(),
+  ])
   .optional()
   .transform((v) => (v ? v : null));
 
@@ -42,7 +46,10 @@ const optionalText = (max: number) =>
 
 /** 価格 (円, 整数, 0 以上)。null 可。 */
 const optionalPrice = z
-  .union([z.coerce.number().int("価格は整数で指定してください。").min(0, "価格は 0 以上で指定してください。"), z.null()])
+  .union([
+    z.coerce.number().int("価格は整数で指定してください。").min(0, "価格は 0 以上で指定してください。"),
+    z.null(),
+  ])
   .optional()
   .transform((v) => (v == null ? null : v));
 
@@ -63,10 +70,10 @@ export const maintenancePackCreateSchema = z
     vehicle_id: optionalUuid,
     notes: optionalText(2000),
   })
-  .refine(
-    (v) => v.valid_from == null || v.valid_until == null || v.valid_from <= v.valid_until,
-    { message: "有効期間の開始日は終了日以前にしてください。", path: ["valid_until"] },
-  );
+  .refine((v) => v.valid_from == null || v.valid_until == null || v.valid_from <= v.valid_until, {
+    message: "有効期間の開始日は終了日以前にしてください。",
+    path: ["valid_until"],
+  });
 
 export const maintenancePackUpdateSchema = z
   .object({
@@ -81,10 +88,10 @@ export const maintenancePackUpdateSchema = z
     status: z.enum(MAINTENANCE_PACK_STATUSES).optional(),
     notes: optionalText(2000),
   })
-  .refine(
-    (v) => v.valid_from == null || v.valid_until == null || v.valid_from <= v.valid_until,
-    { message: "有効期間の開始日は終了日以前にしてください。", path: ["valid_until"] },
-  );
+  .refine((v) => v.valid_from == null || v.valid_until == null || v.valid_from <= v.valid_until, {
+    message: "有効期間の開始日は終了日以前にしてください。",
+    path: ["valid_until"],
+  });
 
 /** チケット消費 (POST /[id]/use) のボディ */
 export const maintenancePackUseSchema = z.object({

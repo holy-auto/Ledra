@@ -24,6 +24,7 @@ type MenuItem = {
   cost_price: number | null;
   margin_rate: number | null;
   tax_category: number | null;
+  estimated_minutes: number | null;
   is_active: boolean;
   created_at: string;
 };
@@ -58,6 +59,7 @@ export default function MenuItemsClient() {
   const [formCostPrice, setFormCostPrice] = useState("");
   const [formMarginRate, setFormMarginRate] = useState("");
   const [formTaxCategory, setFormTaxCategory] = useState("10");
+  const [formEstimatedMinutes, setFormEstimatedMinutes] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
@@ -69,6 +71,7 @@ export default function MenuItemsClient() {
   const [editCostPrice, setEditCostPrice] = useState("");
   const [editMarginRate, setEditMarginRate] = useState("");
   const [editTaxCategory, setEditTaxCategory] = useState("10");
+  const [editEstimatedMinutes, setEditEstimatedMinutes] = useState("");
   const [editSaving, setEditSaving] = useState(false);
 
   // Delete
@@ -108,6 +111,7 @@ export default function MenuItemsClient() {
           cost_price: formCostPrice ? parseInt(formCostPrice, 10) : 0,
           margin_rate: formMarginRate === "" ? null : parseFloat(formMarginRate),
           tax_category: parseInt(formTaxCategory, 10),
+          estimated_minutes: formEstimatedMinutes === "" ? null : parseInt(formEstimatedMinutes, 10),
         }),
       });
       const j = await parseJsonSafe(res);
@@ -119,6 +123,7 @@ export default function MenuItemsClient() {
       setFormCostPrice("");
       setFormMarginRate("");
       setFormTaxCategory("10");
+      setFormEstimatedMinutes("");
       setSaveMsg({ text: `品目「${j.item?.name ?? formName}」を登録しました`, ok: true });
       mutate();
     } catch (e: any) {
@@ -174,6 +179,7 @@ export default function MenuItemsClient() {
     setEditCostPrice(item.cost_price != null ? String(item.cost_price) : "");
     setEditMarginRate(item.margin_rate != null ? String(item.margin_rate) : "");
     setEditTaxCategory(item.tax_category != null ? String(item.tax_category) : "10");
+    setEditEstimatedMinutes(item.estimated_minutes != null ? String(item.estimated_minutes) : "");
   };
 
   const cancelEdit = () => {
@@ -195,6 +201,7 @@ export default function MenuItemsClient() {
           cost_price: editCostPrice ? parseInt(editCostPrice, 10) : 0,
           margin_rate: editMarginRate === "" ? null : parseFloat(editMarginRate),
           tax_category: parseInt(editTaxCategory, 10),
+          estimated_minutes: editEstimatedMinutes === "" ? null : parseInt(editEstimatedMinutes, 10),
         },
         label: `品目編集: ${editName.trim()}`,
         kind: "other",
@@ -534,6 +541,18 @@ export default function MenuItemsClient() {
                     <option value="8">8%（軽減税率）</option>
                   </select>
                 </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted">標準作業時間（分）</label>
+                  <input
+                    type="number"
+                    className="input-field"
+                    min="0"
+                    placeholder="例: 120"
+                    value={formEstimatedMinutes}
+                    onChange={(e) => setFormEstimatedMinutes(e.target.value)}
+                  />
+                  <p className="text-[10px] text-muted">ピット所要時間の概算に使用（車両サイズで自動補正）</p>
+                </div>
               </div>
 
               <div className="flex gap-3">
@@ -655,6 +674,15 @@ export default function MenuItemsClient() {
                                 <option value="10">10%</option>
                                 <option value="8">8%</option>
                               </select>
+                              <input
+                                type="number"
+                                className="input-field py-1 text-sm mt-1"
+                                min="0"
+                                placeholder="作業分"
+                                title="標準作業時間（分）"
+                                value={editEstimatedMinutes}
+                                onChange={(e) => setEditEstimatedMinutes(e.target.value)}
+                              />
                             </td>
                             <td className="hidden sm:table-cell px-5 py-3">
                               <Badge variant={item.is_active ? "success" : "default"}>

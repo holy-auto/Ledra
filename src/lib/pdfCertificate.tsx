@@ -54,6 +54,8 @@ export type CertRow = {
   logo_asset_path: string | null;
   created_at: string;
   current_version?: number | null;
+  /** ⑦ 施工担当（職人）の表示名。発行時スナップショット。PII ではないため公開PDFにも出す。 */
+  craftsman_name?: string | null;
 };
 
 /** 1 枚の施工画像に対するオンチェーンアンカー情報 */
@@ -771,6 +773,8 @@ export async function renderCertificatePdf(
                   ...(model ? [{ label: "車種", value: model }] : []),
                   ...(plate ? [{ label: "ナンバー", value: plate }] : []),
                   ...(color ? [{ label: "ボディカラー", value: color }] : []),
+                  // ⑦ 施工担当（職人）。発行時スナップショット名。PII ではないため匿名PDFでも表示する。
+                  ...(row.craftsman_name ? [{ label: "施工担当", value: row.craftsman_name }] : []),
                 ] as { label: string; value: string }[]
               ).map((f, idx) => (
                 <View key={f.label} style={[styles.row, idx === 0 ? styles.rowFirst : {}]}>

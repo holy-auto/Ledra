@@ -60,7 +60,7 @@ async function handler(req: NextRequest) {
     const { data: certs, error: fetchErr } = await admin
       .from("certificates")
       .select(
-        "id, public_id, status, customer_name, vehicle_info_json, content_free_text, content_preset_json, expiry_type, expiry_value, logo_asset_path, created_at, service_type, ppf_coverage_json, coating_products_json, warranty_period_end, warranty_exclusions, current_version, maintenance_json, body_repair_json",
+        "id, public_id, status, customer_name, vehicle_info_json, content_free_text, content_preset_json, expiry_type, expiry_value, logo_asset_path, created_at, service_type, ppf_coverage_json, coating_products_json, warranty_period_end, warranty_exclusions, current_version, maintenance_json, body_repair_json, craftsman_name",
       )
       .eq("tenant_id", tenant_id)
       .in("public_id", remainingIds);

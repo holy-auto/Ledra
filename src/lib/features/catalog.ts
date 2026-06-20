@@ -83,6 +83,14 @@ export const FEATURES: readonly FeatureDef[] = [
     requiredPermission: "reservations:view",
   },
   {
+    key: "mechanic-gantt",
+    href: "/admin/mechanic-gantt",
+    label: "メカニック稼働管理",
+    groupKey: "operations",
+    tier: "advanced",
+    requiredPermission: "reservations:view",
+  },
+  {
     key: "certificates",
     href: "/admin/certificates",
     label: "証明書",

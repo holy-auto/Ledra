@@ -246,6 +246,8 @@ const baseSetting = (over: Partial<FollowUpSetting> = {}): FollowUpSetting => ({
   seasonal_enabled: null,
   maintenance_reminder_months: [6, 12],
   maintenance_schedule_by_service: null,
+  birthday_enabled: null,
+  birthday_lead_days: null,
   ...over,
 });
 

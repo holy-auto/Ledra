@@ -239,7 +239,9 @@ export default function FollowUpSettingsClient() {
       <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-primary">フォローアップ設定</h1>
-          <p className="text-sm text-secondary mt-1">有効期限リマインダー・施工後フォロー・メンテ案内の自動送信を設定します</p>
+          <p className="text-sm text-secondary mt-1">
+            有効期限リマインダー・施工後フォロー・メンテ案内の自動送信を設定します
+          </p>
         </div>
         <button
           onClick={handleSave}

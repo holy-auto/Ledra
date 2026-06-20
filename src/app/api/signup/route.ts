@@ -5,6 +5,8 @@ import { signupSchema } from "@/lib/validations/signup";
 import { apiOk, apiError, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { resolveBaseUrl } from "@/lib/url";
 import { notifySlack } from "@/lib/slack";
 
 export const dynamic = "force-dynamic";
@@ -36,13 +38,16 @@ export async function POST(req: NextRequest) {
       return apiValidationError(messages.join(" "), { messages });
     }
 
-    const { email, password, shop_name, display_name, contact_phone } = parsed.data;
+    const { email, password, passwordless, shop_name, display_name, contact_phone } = parsed.data;
     const admin = createServiceRoleAdmin("signup — creates new tenant + owner user (pre-auth, no scope yet)");
 
     // ── 1) Supabase Auth ユーザー作成 ──
+    // パスワードレス登録ではパスワードを設定せず作成し、後段でメールリンク
+    // (signInWithOtp) からログインしてもらう。email_confirm: true なので
+    // OTP / マジックリンクでそのままサインインできる。
     const { data: authData, error: authError } = await admin.auth.admin.createUser({
       email,
-      password,
+      ...(passwordless ? {} : { password }),
       email_confirm: true,
       user_metadata: { display_name: display_name || shop_name },
     });
@@ -96,6 +101,37 @@ export async function POST(req: NextRequest) {
       await admin.from("tenants").delete().eq("id", tenant.id);
       await admin.auth.admin.deleteUser(userId);
       return apiInternalError(membershipError, "signup: membership creation");
+    }
+
+    // ── パスワードレス登録: マジックリンク送信（作成と一体で原子的に） ──
+    // パスワードを持たないアカウントなので、リンク送信に失敗すると本人が
+    // 二度とログインできない「孤児テナント」になる。ここで送信まで行い、
+    // 失敗時は user/tenant/membership をまとめてロールバックして、再登録
+    // 時の「メール重複」エラーで詰まる事態を防ぐ。
+    if (passwordless) {
+      try {
+        const baseUrl = resolveBaseUrl({ req });
+        const supabase = await createClient();
+        const { error: otpError } = await supabase.auth.signInWithOtp({
+          email,
+          options: {
+            shouldCreateUser: false,
+            emailRedirectTo: `${baseUrl}/auth/callback?next=/admin`,
+          },
+        });
+        if (otpError) throw otpError;
+      } catch (otpErr) {
+        console.error("signup: magic-link send failed, rolling back", otpErr);
+        await admin.from("tenant_memberships").delete().eq("tenant_id", tenant.id);
+        await admin.from("tenants").delete().eq("id", tenant.id);
+        await admin.auth.admin.deleteUser(userId);
+        return apiError({
+          code: "internal_error",
+          message: "確認メールの送信に失敗しました。時間をおいて再度お試しください。",
+          status: 502,
+          data: { messages: ["確認メールの送信に失敗しました。時間をおいて再度お試しください。"] },
+        });
+      }
     }
 
     // ── 紹介リンク (/ref/<code>) 経由のアトリビューション（best-effort） ──

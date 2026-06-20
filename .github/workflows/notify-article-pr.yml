@@ -1,0 +1,103 @@
+name: 記事ドラフトPRをSlackに通知
+
+# cowork/{news,blog,cases}-* ブランチで PR が立ったら、
+# 記事 MDX の本文を抜き出して Slack の専用チャンネルへ通知する。
+# 公開やマージはしない（通知のみ）。マージ判断は人が行う。
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+
+jobs:
+  notify:
+    # 記事系ブランチのときだけ動かす
+    if: >
+      startsWith(github.head_ref, 'cowork/news-') ||
+      startsWith(github.head_ref, 'cowork/blog-') ||
+      startsWith(github.head_ref, 'cowork/cases-')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 追加された記事MDXを抽出
+        id: build
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          node <<'NODE'
+          const { execSync } = require('child_process');
+          const fs = require('fs');
+          const out = (k, v) =>
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `${k}<<EOF\n${v}\nEOF\n`);
+
+          // PRで追加/変更された content 配下の MDX を拾う
+          const files = execSync(
+            `git diff --name-only --diff-filter=AM ${process.env.BASE_SHA} ${process.env.HEAD_SHA}`
+          ).toString().trim().split('\n')
+           .filter(f => /^src\/content\/(news|blog|cases)\/.+\.mdx$/.test(f));
+
+          if (files.length === 0) { out('skip', 'true'); process.exit(0); }
+
+          const file = files[0];
+          const raw = fs.readFileSync(file, 'utf8');
+          const fm = (raw.match(/^---\n([\s\S]*?)\n---/) || [, ''])[1];
+          const get = (k) => {
+            const m = fm.match(new RegExp('^' + k + ':\\s*"?(.*?)"?\\s*$', 'm'));
+            return m ? m[1] : '';
+          };
+          // Slackの1ブロックは約3000字上限。本文は安全side で1500字に丸める
+          const body = raw.replace(/^---\n[\s\S]*?\n---\n/, '').trim().slice(0, 1500);
+
+          out('skip', 'false');
+          out('collection', file.split('/')[2]); // news | blog | cases
+          out('title', get('title'));
+          out('excerpt', get('excerpt'));
+          out('draft', get('draft'));
+          out('body', body);
+          NODE
+
+      - name: Slackへ通知
+        if: steps.build.outputs.skip != 'true'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          TITLE: ${{ steps.build.outputs.title }}
+          EXCERPT: ${{ steps.build.outputs.excerpt }}
+          DRAFT: ${{ steps.build.outputs.draft }}
+          COLLECTION: ${{ steps.build.outputs.collection }}
+          BODY: ${{ steps.build.outputs.body }}
+        run: |
+          payload=$(jq -n \
+            --arg title "$TITLE" \
+            --arg excerpt "$EXCERPT" \
+            --arg collection "$COLLECTION" \
+            --arg draft "$DRAFT" \
+            --arg body "$BODY" \
+            --arg pr "$PR_URL" \
+            '{
+              blocks: [
+                { type: "header",
+                  text: { type: "plain_text", text: "📝 記事ドラフトができました" } },
+                { type: "section", fields: [
+                  { type: "mrkdwn", text: ("*種別:*\n" + $collection) },
+                  { type: "mrkdwn", text: ("*draft:*\n" + $draft) }
+                ] },
+                { type: "section",
+                  text: { type: "mrkdwn", text: ("*" + $title + "*\n" + $excerpt) } },
+                { type: "section",
+                  text: { type: "mrkdwn", text: ("```" + $body + "```") } },
+                { type: "context", elements: [
+                  { type: "mrkdwn",
+                    text: "レビュー観点: 出典の有無 / 断定表現(景表法・薬機) / フロントマター。OKなら draft を外してマージ。" }
+                ] },
+                { type: "actions", elements: [
+                  { type: "button", style: "primary",
+                    text: { type: "plain_text", text: "PRを開いてレビュー" }, url: $pr }
+                ] }
+              ]
+            }')
+          curl -sS -X POST -H 'Content-type: application/json' \
+            --data "$payload" "$SLACK_WEBHOOK_URL"
