@@ -16,25 +16,62 @@ LedraのHP（マーケティング）とアプリ（ダッシュボード）を�
 
 ### Color
 
-| Token | Light | Dark |
-|-------|-------|------|
-| `--bg-base` | `#f5f5f7` | `#060a12` |
-| `--bg-surface-solid` | `#ffffff` | `#0d1525` |
-| `--text-primary` | `#1d1d1f` | `#ffffff` |
-| `--text-secondary` | `#6e6e73` | `rgba(255,255,255,0.5)` |
-| `--accent-blue` | `#0071e3` | (same) |
+| Token                | Light     | Dark                     |
+| -------------------- | --------- | ------------------------ |
+| `--bg-base`          | `#f5f5f7` | `#060a12`                |
+| `--bg-surface-solid` | `#ffffff` | `#0d1525`                |
+| `--text-primary`     | `#1d1d1f` | `#ffffff`                |
+| `--text-secondary`   | `#424247` | `rgba(255,255,255,0.95)` |
+| `--text-ink2`        | `#555560` | —                        |
+| `--text-muted`       | `#6e6e73` | `rgba(255,255,255,0.85)` |
+| `--accent-blue`      | `#0071e3` | `#4d9fff`                |
+| `--accent-gold`      | `#b08d3f` | (same)                   |
+
+**Text の階段:** `primary (#1d1d1f)` → `ink2 (#555560)` → `secondary (#424247)`〜`muted (#6e6e73)`。`--text-ink2` は見出し補助・メタ情報用の中間階調（白背景比 ≈ 7.5:1 で AA 維持）。2番手テキストが沈むのを防ぐ用途に使う。
+
+#### Accent — Gold（差し色）
+
+`--accent-gold (#b08d3f)` / `--accent-gold-dim` / `--accent-gold-text (#7a5d28)` は **UI アクセント専用の新設トークン**。Apple Blue を主アクセントに据えたまま、「信頼と格式」の文脈にだけ Gold を差す。**全面ゴールド化はしない。** 使用は年に数回しか目にしない“特別な瞬間”に限定：
+
+- 証明書（PDF / 詳細）のヘッダ罫線・シール周り
+- 料金プランの章扉、insurer ロールの公式ラベル
+- ブロックチェーン・アンカー成功表示（AnchorBadge）— Gold 差し色の主用途
+
+Tailwind 経由では `accent-gold` / `accent-gold-dim` / `accent-gold-text` として参照可。
 
 ### Font
 
-| Token | Value |
-|-------|-------|
-| `--font-sans` | Noto Sans JP + fallbacks |
-| `--font-serif` | Yu Mincho + fallbacks |
-| `--font-mono` | Geist Mono |
+| Token          | Value                    |
+| -------------- | ------------------------ |
+| `--font-sans`  | Noto Sans JP + fallbacks |
+| `--font-serif` | Yu Mincho + fallbacks    |
+| `--font-mono`  | Geist Mono               |
 
 ### Radius
 
-`--radius-sm` (8px) / `--radius-md` (12px) / `--radius-lg` (16px) / `--radius-xl` (20px) / `--radius-full`
+`--radius-sm` (6px) / `--radius-md` (10px) / `--radius-lg` (14px) / `--radius-xl` (18px) / `--radius-full`
+
+editorial な落ち着き＝高級感のため各段を一段締めている。割り当て: chips/小ボタン = sm(6) / Button・Input = md(10) / Card = lg(14) / Modal・glass-card = xl(18)。トークン経由で波及するため個別指定は不要。
+
+### Type Ramp
+
+見出しは下記7段に揃える。`globals.css` の `.text-*` ユーティリティで提供（色は別途指定）。
+
+| role    | class           | size / line-height / weight / tracking | 用途                |
+| ------- | --------------- | -------------------------------------- | ------------------- |
+| display | `.text-display` | 48 / 1.05 / 500 / −0.03em              | HP のみ             |
+| h1      | `.text-h1`      | 32 / 1.15 / 500 / −0.02em              | ページタイトル      |
+| h2      | `.text-h2`      | 22 / 1.3 / 600 / −0.01em               | セクション見出し    |
+| h3      | `.text-h3`      | 17 / 1.4 / 600 / 0                     | カード見出し        |
+| body    | `.text-body`    | 14 / 1.6 / 400                         | 本文                |
+| small   | `.text-small`   | 12.5 / 1.5 / 400                       | 補足                |
+| micro   | `.text-micro`   | 11 / 1.4 / 600 / 0.16em uppercase      | section-tag / label |
+
+### Font Roles（書体の使い分け）
+
+- **Sans（Noto Sans JP）= ほぼ全 UI。** weight は 400 / 500 のみ使用、**700 は使わない**（太字は密度を下げる）。
+- **Serif（Yu Mincho / Noto Serif JP）= 信頼と格式の場面に限定:** ①証明書 PDF ②料金プラン章扉 ③insurer / 会社情報の公式ラベル ④HP 大見出し。**日常 UI には入れない**（これを守ることが高級感の源泉）。
+- **Mono（Geist Mono）= 数値と識別子:** 金額・ID・SKU・ハッシュ・日時はすべて mono、`font-variant-numeric: tabular-nums` 常時オン（絶対ルール #4 の徹底）。
 
 ### Shadow
 
@@ -44,32 +81,33 @@ LedraのHP（マーケティング）とアプリ（ダッシュボード）を�
 
 ## Components (`src/components/ui/`)
 
-| Component | File | Purpose |
-|-----------|------|---------|
-| `Button` | `Button.tsx` | Variants: primary/secondary/ghost/danger/outline. Sizes: sm/md/lg |
-| `Badge` | `Badge.tsx` | Status pills. Variants: default/success/warning/danger/info/violet |
-| `Card` | `Card.tsx` | Surface container. Variants: default(glass)/elevated/inset |
-| `Input` | `Input.tsx` | Text input with error state |
-| `Select` | `Select.tsx` | Select dropdown with error state |
-| `Textarea` | `Textarea.tsx` | Multi-line input |
-| `FormField` | `FormField.tsx` | Label + input + hint + error wrapper |
-| `SectionTag` | `SectionTag.tsx` | Uppercase monospace section label |
-| `StatCard` | `StatCard.tsx` | Dashboard metric card |
-| `EmptyState` | `EmptyState.tsx` | No-data placeholder |
-| `Skeleton` | `Skeleton.tsx` | Loading placeholder |
-| `Modal` | `Modal.tsx` | Dialog overlay |
-| `Drawer` | `Drawer.tsx` | Slide-in panel |
-| `Toast` | `Toast.tsx` | Notification system (with `ToastProvider`, `useToast`) |
-| `ConfirmDialog` | `ConfirmDialog.tsx` | Destructive action confirmation |
-| `DataTable` | `DataTable.tsx` | Structured table with selection/sorting |
-| `Accordion` | `Accordion.tsx` | Expandable sections |
-| `PageHeader` | `PageHeader.tsx` | Page title area |
-| `Pagination` | `Pagination.tsx` | Page navigation |
-| `Sidebar` | `Sidebar.tsx` | App navigation |
+| Component       | File                | Purpose                                                            |
+| --------------- | ------------------- | ------------------------------------------------------------------ |
+| `Button`        | `Button.tsx`        | Variants: primary/secondary/ghost/danger/outline. Sizes: sm/md/lg  |
+| `Badge`         | `Badge.tsx`         | Status pills. Variants: default/success/warning/danger/info/violet |
+| `Card`          | `Card.tsx`          | Surface container. Variants: default(glass)/elevated/inset         |
+| `Input`         | `Input.tsx`         | Text input with error state                                        |
+| `Select`        | `Select.tsx`        | Select dropdown with error state                                   |
+| `Textarea`      | `Textarea.tsx`      | Multi-line input                                                   |
+| `FormField`     | `FormField.tsx`     | Label + input + hint + error wrapper                               |
+| `SectionTag`    | `SectionTag.tsx`    | Uppercase monospace section label                                  |
+| `StatCard`      | `StatCard.tsx`      | Dashboard metric card                                              |
+| `EmptyState`    | `EmptyState.tsx`    | No-data placeholder                                                |
+| `Skeleton`      | `Skeleton.tsx`      | Loading placeholder                                                |
+| `Modal`         | `Modal.tsx`         | Dialog overlay                                                     |
+| `Drawer`        | `Drawer.tsx`        | Slide-in panel                                                     |
+| `Toast`         | `Toast.tsx`         | Notification system (with `ToastProvider`, `useToast`)             |
+| `ConfirmDialog` | `ConfirmDialog.tsx` | Destructive action confirmation                                    |
+| `DataTable`     | `DataTable.tsx`     | Structured table with selection/sorting                            |
+| `Accordion`     | `Accordion.tsx`     | Expandable sections                                                |
+| `PageHeader`    | `PageHeader.tsx`    | Page title area                                                    |
+| `Pagination`    | `Pagination.tsx`    | Page navigation                                                    |
+| `Sidebar`       | `Sidebar.tsx`       | App navigation                                                     |
 
 ### Status Maps (`src/lib/statusMaps.ts`)
 
 Centralized status-to-badge-variant mappings:
+
 - `CERTIFICATE_STATUS_MAP`
 - `NFC_STATUS_MAP`
 - `DOCUMENT_STATUS_MAP`
@@ -80,15 +118,15 @@ Centralized status-to-badge-variant mappings:
 
 ## CSS Classes (`globals.css`)
 
-| Class | Use |
-|-------|-----|
-| `.glass-card` | App card with backdrop blur |
-| `.dark-card` | Marketing dark card |
-| `.btn-primary/secondary/ghost/danger/outline` | Button variants |
-| `.input-field` | Form input |
-| `.select-field` | Form select |
-| `.section-tag` | Uppercase monospace label |
-| `.skeleton` | Loading pulse |
+| Class                                         | Use                         |
+| --------------------------------------------- | --------------------------- |
+| `.glass-card`                                 | App card with backdrop blur |
+| `.dark-card`                                  | Marketing dark card         |
+| `.btn-primary/secondary/ghost/danger/outline` | Button variants             |
+| `.input-field`                                | Form input                  |
+| `.select-field`                               | Form select                 |
+| `.section-tag`                                | Uppercase monospace label   |
+| `.skeleton`                                   | Loading pulse               |
 
 ### Button Size Modifiers
 
