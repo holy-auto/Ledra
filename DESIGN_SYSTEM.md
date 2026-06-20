@@ -81,28 +81,29 @@ editorial な落ち着き＝高級感のため各段を一段締めている。�
 
 ## Components (`src/components/ui/`)
 
-| Component       | File                | Purpose                                                            |
-| --------------- | ------------------- | ------------------------------------------------------------------ |
-| `Button`        | `Button.tsx`        | Variants: primary/secondary/ghost/danger/outline. Sizes: sm/md/lg  |
-| `Badge`         | `Badge.tsx`         | Status pills. Variants: default/success/warning/danger/info/violet |
-| `Card`          | `Card.tsx`          | Surface container. Variants: default(glass)/elevated/inset         |
-| `Input`         | `Input.tsx`         | Text input with error state                                        |
-| `Select`        | `Select.tsx`        | Select dropdown with error state                                   |
-| `Textarea`      | `Textarea.tsx`      | Multi-line input                                                   |
-| `FormField`     | `FormField.tsx`     | Label + input + hint + error wrapper                               |
-| `SectionTag`    | `SectionTag.tsx`    | Uppercase monospace section label                                  |
-| `StatCard`      | `StatCard.tsx`      | Dashboard metric card                                              |
-| `EmptyState`    | `EmptyState.tsx`    | No-data placeholder                                                |
-| `Skeleton`      | `Skeleton.tsx`      | Loading placeholder                                                |
-| `Modal`         | `Modal.tsx`         | Dialog overlay                                                     |
-| `Drawer`        | `Drawer.tsx`        | Slide-in panel                                                     |
-| `Toast`         | `Toast.tsx`         | Notification system (with `ToastProvider`, `useToast`)             |
-| `ConfirmDialog` | `ConfirmDialog.tsx` | Destructive action confirmation                                    |
-| `DataTable`     | `DataTable.tsx`     | Structured table with selection/sorting                            |
-| `Accordion`     | `Accordion.tsx`     | Expandable sections                                                |
-| `PageHeader`    | `PageHeader.tsx`    | Page title area                                                    |
-| `Pagination`    | `Pagination.tsx`    | Page navigation                                                    |
-| `Sidebar`       | `Sidebar.tsx`       | App navigation                                                     |
+| Component       | File                | Purpose                                                                                  |
+| --------------- | ------------------- | ---------------------------------------------------------------------------------------- |
+| `Button`        | `Button.tsx`        | Variants: primary/secondary/ghost/danger/outline. Sizes: sm/md/lg                        |
+| `Badge`         | `Badge.tsx`         | Status pills. Variants: default/success/warning/danger/info/violet                       |
+| `Card`          | `Card.tsx`          | Surface container. Variants: default(glass)/elevated/inset                               |
+| `Input`         | `Input.tsx`         | Text input with error state                                                              |
+| `Select`        | `Select.tsx`        | Select dropdown with error state                                                         |
+| `Textarea`      | `Textarea.tsx`      | Multi-line input                                                                         |
+| `FormField`     | `FormField.tsx`     | Label + input + hint + error wrapper                                                     |
+| `SectionTag`    | `SectionTag.tsx`    | Uppercase monospace section label                                                        |
+| `StatCard`      | `StatCard.tsx`      | Dashboard metric card                                                                    |
+| `EmptyState`    | `EmptyState.tsx`    | No-data placeholder                                                                      |
+| `Skeleton`      | `Skeleton.tsx`      | Loading placeholder                                                                      |
+| `Modal`         | `Modal.tsx`         | Dialog overlay                                                                           |
+| `Drawer`        | `Drawer.tsx`        | Slide-in panel                                                                           |
+| `Toast`         | `Toast.tsx`         | Notification system (with `ToastProvider`, `useToast`)                                   |
+| `ConfirmDialog` | `ConfirmDialog.tsx` | Destructive action confirmation                                                          |
+| `DataTable`     | `DataTable.tsx`     | Structured table with selection/sorting                                                  |
+| `Accordion`     | `Accordion.tsx`     | Expandable sections                                                                      |
+| `PageHeader`    | `PageHeader.tsx`    | Page title area                                                                          |
+| `Pagination`    | `Pagination.tsx`    | Page navigation                                                                          |
+| `Sidebar`       | `Sidebar.tsx`       | App navigation                                                                           |
+| `AnchorBadge`   | `AnchorBadge.tsx`   | ブロックチェーン記録バッジ（TX hash + Polygonscan リンク・Gold 差し色）。未記録時は null |
 
 ### Status Maps (`src/lib/statusMaps.ts`)
 
