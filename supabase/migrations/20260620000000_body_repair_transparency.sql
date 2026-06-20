@@ -34,9 +34,8 @@ comment on column certificate_images.stage is
   '車体整備ガイドライン4.2(1)の撮影段階。'
   'intake_before=入庫後〜作業開始前 / in_progress=作業実施中 / after=作業実施後 / unspecified=未指定(証明書一般写真)。';
 
--- 段階別の事後検証クエリ用 (例: 案件の作業実施中写真だけ取得)
-create index if not exists idx_certimg_stage
-  on certificate_images (certificate_id, stage);
+-- 段階別の事後検証クエリ用 index は既存テーブルへの追加のため、書込ロックを
+-- 避けるべく companion migration 20260620000001 で CONCURRENTLY 作成する。
 
 -- =============================================================
 -- (2)(3)(4) body_repair_jobs の拡張
@@ -80,16 +79,9 @@ comment on column body_repair_jobs.recorded_by is
 comment on column body_repair_jobs.actual_amount is
   'ガイドライン4.2(3)②: 実施した車体整備の実績料金 (円)。';
 
--- FK covering index (lookup / on delete set null 用)
-create index if not exists idx_brj_certificate
-  on body_repair_jobs (certificate_id) where certificate_id is not null;
-create index if not exists idx_brj_estimate_doc
-  on body_repair_jobs (estimate_document_id) where estimate_document_id is not null;
-create index if not exists idx_brj_invoice_doc
-  on body_repair_jobs (invoice_document_id) where invoice_document_id is not null;
--- 保存期限を過ぎていない記録の抽出 (retention cron / 事後検証) 用
-create index if not exists idx_brj_retention
-  on body_repair_jobs (tenant_id, record_retention_until) where record_retention_until is not null;
+-- body_repair_jobs は既存テーブルのため、FK covering index / retention 抽出用
+-- index は companion migration 20260620000001 で CONCURRENTLY 作成する
+-- (CREATE INDEX CONCURRENTLY はトランザクション内で実行できないため別ファイル)。
 
 -- =============================================================
 -- (5) 消費者等への説明と書面同意
@@ -98,10 +90,13 @@ create index if not exists idx_brj_retention
 --     既存の受領サイン基盤 (signature_sessions / 二要素 / 同意文ハッシュ /
 --     Polygon アンカリング) を再利用するため purpose を拡張する。
 -- =============================================================
+-- NOT VALID で追加し VALIDATE CONSTRAINT で検証することで ACCESS EXCLUSIVE 下の
+-- 全行スキャンを回避する (既存行は拡張前の許容値なので必ず通る)。
 alter table signature_sessions drop constraint if exists signature_sessions_purpose_check;
 alter table signature_sessions
   add constraint signature_sessions_purpose_check
-  check (purpose in ('certificate', 'delivery_receipt', 'estimate_consent', 'change_consent'));
+  check (purpose in ('certificate', 'delivery_receipt', 'estimate_consent', 'change_consent')) not valid;
+alter table signature_sessions validate constraint signature_sessions_purpose_check;
 
 comment on column signature_sessions.purpose is
   '署名の用途。certificate=証明書 / delivery_receipt=受領サイン(作業後) / '
