@@ -37,7 +37,7 @@ export default function Stepper({
           <li
             key={i}
             aria-current={state === "current" ? "step" : undefined}
-            className={vertical ? "flex gap-3 pb-5 last:pb-0" : "flex flex-1 flex-col items-center gap-2"}
+            className={vertical ? "flex gap-3 pb-5 last:pb-0" : "flex flex-1 flex-col items-center"}
           >
             {/* marker + connector */}
             {vertical ? (
@@ -46,13 +46,19 @@ export default function Stepper({
                 {!last && <span className="mt-1 w-px flex-1 bg-border-default" />}
               </div>
             ) : (
+              // マーカーを左右の半コネクタで挟み、中央寄せラベルの真上に配置する。
               <div className="flex w-full items-center">
+                <span
+                  className={`h-px flex-1 ${i === 0 ? "bg-transparent" : i <= current ? "bg-success" : "bg-border-default"}`}
+                />
                 <StepMarker state={state} index={i} />
-                {!last && <span className={`mx-2 h-px flex-1 ${i < current ? "bg-success" : "bg-border-default"}`} />}
+                <span
+                  className={`h-px flex-1 ${last ? "bg-transparent" : i < current ? "bg-success" : "bg-border-default"}`}
+                />
               </div>
             )}
             {/* label */}
-            <div className={vertical ? "min-w-0 flex-1 pt-0.5" : "text-center"}>
+            <div className={vertical ? "min-w-0 flex-1 pt-0.5" : "mt-2 px-1 text-center"}>
               <div
                 className={`text-[13px] font-medium ${
                   state === "current" ? "text-primary" : state === "done" ? "text-secondary" : "text-muted"

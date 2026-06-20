@@ -92,9 +92,11 @@ function Frame({ label, children }: { label: string; children: React.ReactNode }
   return (
     <div className="relative aspect-video overflow-hidden rounded-[var(--radius-lg)] border border-border-default bg-inset">
       {children}
-      <span className="absolute left-2 top-2 rounded-[var(--radius-full)] bg-primary/80 px-2 py-0.5 text-[10px] font-semibold text-inverse">
+      {/* span ではなく div（ダーク時に span を白文字化する globals.css の
+          セーフティネットを回避し、text-inverse のコントラストを保つ）。 */}
+      <div className="absolute left-2 top-2 rounded-[var(--radius-full)] bg-primary/80 px-2 py-0.5 text-[10px] font-semibold text-inverse">
         {label}
-      </span>
+      </div>
     </div>
   );
 }
