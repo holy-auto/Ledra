@@ -107,6 +107,7 @@
 
   --text-primary: #ffffff;
   --text-secondary: rgba(255, 255, 255, 0.95);
+  --text-ink2: rgba(255, 255, 255, 0.9); /* 中間階調のダーク上書き（コントラスト確保） */
   --text-muted: rgba(255, 255, 255, 0.85);
   --text-inverse: #1d1d1f;
 
@@ -884,13 +885,13 @@ body {
 [data-theme="dark"] h5,
 [data-theme="dark"] h6,
 [data-theme="dark"]
-  span:not([class*="text-blue"]):not([class*="text-emerald"]):not([class*="text-amber"]):not([class*="text-red"]):not(
-    [class*="text-violet"]
-  ):not([class*="text-green"]):not([class*="text-yellow"]):not([class*="text-pink"]):not([class*="text-orange"]):not(
-    [class*="text-purple"]
-  ):not([class*="text-rose"]):not([class*="text-cyan"]):not([class*="text-sky"]):not([class*="text-indigo"]):not(
-    [class*="text-teal"]
-  ),
+  span:not([class*="accent-gold"]):not([class*="text-blue"]):not([class*="text-emerald"]):not(
+    [class*="text-amber"]
+  ):not([class*="text-red"]):not([class*="text-violet"]):not([class*="text-green"]):not([class*="text-yellow"]):not(
+    [class*="text-pink"]
+  ):not([class*="text-orange"]):not([class*="text-purple"]):not([class*="text-rose"]):not([class*="text-cyan"]):not(
+    [class*="text-sky"]
+  ):not([class*="text-indigo"]):not([class*="text-teal"]),
 [data-theme="dark"] div.text-white {
   color: #ffffff !important;
 }

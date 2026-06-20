@@ -69,7 +69,7 @@ editorial な落ち着き＝高級感のため各段を一段締めている。�
 
 ### Font Roles（書体の使い分け）
 
-- **Sans（Noto Sans JP）= ほぼ全 UI。** weight は 400 / 500 のみ使用、**700 は使わない**（太字は密度を下げる）。
+- **Sans（Noto Sans JP）= ほぼ全 UI。** 本文・UI は weight 400 / 500 を基本とし、**見出し（`.text-h2` / `.text-h3` / `.text-micro` など Type ramp で 600 指定の段）に限り 600 まで許容**。**700 は使わない**（太字は密度を下げる）。
 - **Serif（Yu Mincho / Noto Serif JP）= 信頼と格式の場面に限定:** ①証明書 PDF ②料金プラン章扉 ③insurer / 会社情報の公式ラベル ④HP 大見出し。**日常 UI には入れない**（これを守ることが高級感の源泉）。
 - **Mono（Geist Mono）= 数値と識別子:** 金額・ID・SKU・ハッシュ・日時はすべて mono、`font-variant-numeric: tabular-nums` 常時オン（絶対ルール #4 の徹底）。
 
