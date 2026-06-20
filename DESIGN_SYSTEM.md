@@ -103,6 +103,9 @@ editorial な落ち着き＝高級感のため各段を一段締めている。�
 | `PageHeader`    | `PageHeader.tsx`    | Page title area                                                    |
 | `Pagination`    | `Pagination.tsx`    | Page navigation                                                    |
 | `Sidebar`       | `Sidebar.tsx`       | App navigation                                                     |
+| `Stepper`       | `Stepper.tsx`       | ウィザード進捗インジケータ（汎用・表示専用。done/current/upcoming）           |
+| `Timeline`      | `Timeline.tsx`      | 縦型タイムライン（工程履歴・汎用）                                  |
+| `PhotoCompare`  | `PhotoCompare.tsx`  | 施工前後の対比（スライダー / 並列トグル）                           |
 
 ### Status Maps (`src/lib/statusMaps.ts`)
 
