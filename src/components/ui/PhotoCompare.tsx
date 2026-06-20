@@ -56,20 +56,23 @@ export default function PhotoCompare({
           </Frame>
         </div>
       ) : (
-        <div className="relative select-none overflow-hidden rounded-[var(--radius-lg)] border border-border-default">
+        // aspect-video で高さを先に確保（remote 画像のロード前 CLS / 0 高さを回避）。
+        <div className="relative aspect-video select-none overflow-hidden rounded-[var(--radius-lg)] border border-border-default bg-inset">
           {/* before (base) */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={beforeSrc} alt={`${alt} (${beforeLabel})`} className="block h-auto w-full object-cover" />
-          {/* after (clipped overlay) */}
-          <div className="absolute inset-0 overflow-hidden" style={{ width: `${pos}%` }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={afterSrc}
-              alt={`${alt} (${afterLabel})`}
-              className="absolute inset-0 h-full max-w-none object-cover"
-              style={{ width: `${10000 / pos}%` }}
-            />
-          </div>
+          <img
+            src={beforeSrc}
+            alt={`${alt} (${beforeLabel})`}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+          {/* after — clip-path で左から pos% を表示（10000/pos の Infinity を回避）。 */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={afterSrc}
+            alt={`${alt} (${afterLabel})`}
+            className="absolute inset-0 h-full w-full object-cover"
+            style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }}
+          />
           {/* handle line */}
           <div className="pointer-events-none absolute inset-y-0 w-px bg-surface" style={{ left: `${pos}%` }} />
           {/* range control */}
@@ -102,14 +105,16 @@ function Frame({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function Tag({ tone, children }: { tone: "muted" | "accent"; children: React.ReactNode }) {
+  // span ではなく div: ダーク時に span を白文字化する globals.css のセーフティネットを
+  // 回避し、tone（muted/accent）の文字色をダークでも維持する。
   return (
-    <span
+    <div
       className={`inline-flex items-center rounded-[var(--radius-full)] px-2 py-0.5 text-[10px] font-semibold ${
         tone === "accent" ? "bg-accent-dim text-accent-text" : "bg-inset text-muted"
       }`}
     >
       {children}
-    </span>
+    </div>
   );
 }
 
