@@ -35,9 +35,9 @@ export async function GET(req: NextRequest) {
 
     const url = new URL(req.url);
     const statusParam = (url.searchParams.get("status") ?? "active").trim();
-    const status: MaintenancePackStatusFilter = (
-      MAINTENANCE_PACK_STATUS_FILTERS as readonly string[]
-    ).includes(statusParam)
+    const status: MaintenancePackStatusFilter = (MAINTENANCE_PACK_STATUS_FILTERS as readonly string[]).includes(
+      statusParam,
+    )
       ? (statusParam as MaintenancePackStatusFilter)
       : "active";
     const customerId = (url.searchParams.get("customer_id") ?? "").trim();

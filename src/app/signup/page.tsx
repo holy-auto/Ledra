@@ -8,41 +8,72 @@ import { createClient } from "@/lib/supabase/client";
 import { FloatingField } from "@/components/ui/FloatingField";
 
 type FieldKey = "shop_name" | "display_name" | "contact_phone" | "email" | "password" | "password_confirm";
+type Mode = "password" | "magic";
+
+const initialValues: Record<FieldKey, string> = {
+  shop_name: "",
+  display_name: "",
+  contact_phone: "",
+  email: "",
+  password: "",
+  password_confirm: "",
+};
+
+const isEmail = (v: string) => /^\S+@\S+\.\S+$/.test(v);
 
 export default function SignupPage() {
   const router = useRouter();
+  const [mode, setMode] = useState<Mode>("password");
+  const [values, setValues] = useState<Record<FieldKey, string>>(initialValues);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldKey, string>>>({});
+  const [showDetails, setShowDetails] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
-  const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldKey, string>>>({});
-  const [success, setSuccess] = useState(false);
+  const [done, setDone] = useState<null | "password" | "magic">(null);
+
+  const setValue = (key: FieldKey) => (v: string) => {
+    setValues((prev) => ({ ...prev, [key]: v }));
+    // 入力するそばからエラーを解除し、ストレスを減らす。
+    setFieldErrors((prev) => (prev[key] ? { ...prev, [key]: undefined } : prev));
+  };
+
+  /** 単一フィールドの即時バリデーション（onBlur 用） */
+  const validateField = (key: FieldKey) => (raw: string) => {
+    const v = raw.trim();
+    let msg: string | undefined;
+    if (key === "shop_name" && !v) msg = "店舗名を入力してください";
+    else if (key === "email") {
+      if (!v) msg = "メールアドレスを入力してください";
+      else if (!isEmail(v)) msg = "メールアドレスの形式が正しくありません";
+    } else if (key === "password" && mode === "password") {
+      if (!v || v.length < 8) msg = "8文字以上で入力してください";
+    } else if (key === "password_confirm" && mode === "password") {
+      if (v !== values.password.trim()) msg = "パスワードが一致しません";
+    }
+    if (msg) setFieldErrors((prev) => ({ ...prev, [key]: msg }));
+  };
+
+  function validateAll(): boolean {
+    const next: Partial<Record<FieldKey, string>> = {};
+    if (!values.shop_name.trim()) next.shop_name = "店舗名を入力してください";
+    if (!values.email.trim()) next.email = "メールアドレスを入力してください";
+    else if (!isEmail(values.email.trim())) next.email = "メールアドレスの形式が正しくありません";
+    if (mode === "password") {
+      if (!values.password || values.password.trim().length < 8) next.password = "8文字以上で入力してください";
+      if (values.password.trim() !== values.password_confirm.trim()) next.password_confirm = "パスワードが一致しません";
+    }
+    setFieldErrors(next);
+    return Object.keys(next).length === 0;
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setLoading(true);
     setErrors([]);
-    setFieldErrors({});
+    if (!validateAll()) return;
 
-    const form = new FormData(e.currentTarget);
-    const email = ((form.get("email") as string) || "").trim();
-    const password = ((form.get("password") as string) || "").trim();
-    const passwordConfirm = ((form.get("password_confirm") as string) || "").trim();
-    const shopName = ((form.get("shop_name") as string) || "").trim();
-    const displayName = ((form.get("display_name") as string) || "").trim();
-    const contactPhone = ((form.get("contact_phone") as string) || "").trim();
-
-    // クライアント側バリデーション
-    const clientFieldErrors: Partial<Record<FieldKey, string>> = {};
-    if (!shopName) clientFieldErrors.shop_name = "店舗名を入力してください";
-    if (!email) clientFieldErrors.email = "メールアドレスを入力してください";
-    else if (!/^\S+@\S+\.\S+$/.test(email)) clientFieldErrors.email = "メールアドレスの形式が正しくありません";
-    if (!password || password.length < 8) clientFieldErrors.password = "8文字以上で入力してください";
-    if (password !== passwordConfirm) clientFieldErrors.password_confirm = "パスワードが一致しません";
-
-    if (Object.keys(clientFieldErrors).length > 0) {
-      setFieldErrors(clientFieldErrors);
-      setLoading(false);
-      return;
-    }
+    setLoading(true);
+    const email = values.email.trim();
+    const password = values.password.trim();
 
     try {
       // 1) API でユーザー + テナント作成
@@ -51,10 +82,11 @@ export default function SignupPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           email,
-          password,
-          shop_name: shopName,
-          display_name: displayName || null,
-          contact_phone: contactPhone || null,
+          passwordless: mode === "magic",
+          password: mode === "password" ? password : undefined,
+          shop_name: values.shop_name.trim(),
+          display_name: values.display_name.trim() || null,
+          contact_phone: values.contact_phone.trim() || null,
         }),
       });
 
@@ -66,13 +98,18 @@ export default function SignupPage() {
         return;
       }
 
-      // 2) 作成したアカウントで自動ログイン
+      if (mode === "magic") {
+        // 2a) マジックリンクは API 側で送信済み（作成と一体・失敗時はロールバック）。
+        setDone("magic");
+        setLoading(false);
+        return;
+      }
+
+      // 2b) パスワード方式: 作成したアカウントで自動ログイン
       const supabase = createClient();
       const { error: loginError } = await supabase.auth.signInWithPassword({ email, password });
-
       if (loginError) {
-        // ログインだけ失敗した場合はログインページに誘導
-        setSuccess(true);
+        setDone("password");
         setLoading(false);
         return;
       }
@@ -85,7 +122,8 @@ export default function SignupPage() {
     }
   }
 
-  if (success) {
+  if (done) {
+    const magic = done === "magic";
     return (
       <main className="min-h-screen flex items-center justify-center bg-base p-6">
         <div className="glass-card w-full max-w-sm space-y-6 p-8 text-center">
@@ -119,8 +157,17 @@ export default function SignupPage() {
               />
             </svg>
           </div>
-          <h1 className="text-xl font-bold text-primary">登録完了</h1>
-          <p className="text-sm text-secondary">アカウントが作成されました。ログインしてご利用ください。</p>
+          <h1 className="text-xl font-bold text-primary">{magic ? "確認メールを送信しました" : "登録完了"}</h1>
+          {magic ? (
+            <p className="text-sm text-secondary">
+              <span className="font-medium text-primary">{values.email.trim()}</span>{" "}
+              宛にログイン用のリンクを送信しました。
+              <br />
+              メール内のボタンを押すと、そのまま管理画面に入れます。
+            </p>
+          ) : (
+            <p className="text-sm text-secondary">アカウントが作成されました。ログインしてご利用ください。</p>
+          )}
           <Link href="/login" className="btn-primary w-full inline-block text-center">
             ログインページへ
           </Link>
@@ -154,24 +201,19 @@ export default function SignupPage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-2">
-          {/* 店舗情報 */}
+          {/* 店舗情報（最小限） */}
           <FloatingField
             label="店舗名"
             name="shop_name"
             required
             maxLength={100}
             placeholder="例: カーコーティング専門店 SAMPLE"
+            value={values.shop_name}
+            onChange={setValue("shop_name")}
+            onBlur={validateField("shop_name")}
             error={fieldErrors.shop_name}
           />
 
-          <div className="grid grid-cols-2 gap-3">
-            <FloatingField label="担当者名" name="display_name" maxLength={50} placeholder="例: 山田 太郎" />
-            <FloatingField label="電話番号" name="contact_phone" type="tel" placeholder="例: 03-1234-5678" />
-          </div>
-
-          <hr className="border-border my-2" />
-
-          {/* アカウント情報 */}
           <FloatingField
             label="メールアドレス"
             name="email"
@@ -179,37 +221,93 @@ export default function SignupPage() {
             required
             autoComplete="email"
             placeholder="you@example.com"
+            value={values.email}
+            onChange={setValue("email")}
+            onBlur={validateField("email")}
             error={fieldErrors.email}
           />
 
-          <FloatingField
-            label="パスワード"
-            name="password"
-            type="password"
-            required
-            minLength={8}
-            autoComplete="new-password"
-            placeholder="8文字以上"
-            error={fieldErrors.password}
-          />
+          {/* パスワード方式のときだけ表示 */}
+          {mode === "password" && (
+            <>
+              <FloatingField
+                label="パスワード"
+                name="password"
+                type="password"
+                required
+                minLength={8}
+                autoComplete="new-password"
+                placeholder="8文字以上"
+                value={values.password}
+                onChange={setValue("password")}
+                onBlur={validateField("password")}
+                error={fieldErrors.password}
+              />
+              <FloatingField
+                label="パスワード（確認）"
+                name="password_confirm"
+                type="password"
+                required
+                minLength={8}
+                autoComplete="new-password"
+                placeholder="もう一度入力"
+                value={values.password_confirm}
+                onChange={setValue("password_confirm")}
+                onBlur={validateField("password_confirm")}
+                error={fieldErrors.password_confirm}
+              />
+            </>
+          )}
 
-          <FloatingField
-            label="パスワード（確認）"
-            name="password_confirm"
-            type="password"
-            required
-            minLength={8}
-            autoComplete="new-password"
-            placeholder="もう一度入力"
-            error={fieldErrors.password_confirm}
-          />
+          {/* 任意項目はデフォルトで折りたたみ、入力欄を最小化 */}
+          {showDetails ? (
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <FloatingField
+                label="担当者名"
+                name="display_name"
+                maxLength={50}
+                placeholder="例: 山田 太郎"
+                value={values.display_name}
+                onChange={setValue("display_name")}
+              />
+              <FloatingField
+                label="電話番号"
+                name="contact_phone"
+                type="tel"
+                placeholder="例: 03-1234-5678"
+                value={values.contact_phone}
+                onChange={setValue("contact_phone")}
+              />
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowDetails(true)}
+              className="text-xs text-accent hover:underline pt-1"
+            >
+              ＋ 担当者名・電話番号を追加（任意）
+            </button>
+          )}
 
           <button
             type="submit"
             disabled={loading}
             className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed mt-4"
           >
-            {loading ? "登録中..." : "無料で始める"}
+            {loading ? "送信中..." : mode === "magic" ? "メールリンクで登録" : "無料で始める"}
+          </button>
+
+          {/* 登録方式の切り替え */}
+          <button
+            type="button"
+            onClick={() => {
+              setMode((m) => (m === "password" ? "magic" : "password"));
+              setFieldErrors({});
+              setErrors([]);
+            }}
+            className="block w-full text-center text-xs text-muted hover:text-accent transition-colors mt-2"
+          >
+            {mode === "password" ? "パスワードを設定せず、メールリンクで登録する" : "パスワードを設定して登録する"}
           </button>
         </form>
 

@@ -67,6 +67,12 @@ export const certCreateJsonSchema = z
     // テンプレートフィールド (Server Action 側で `f__` プレフィックスで読む)
     template_fields: z.record(z.string(), z.union([z.string(), z.boolean(), z.array(z.string())])).optional(),
 
+    // 案件連携: 発行元の予約 ID と施工担当（職人）。Server Action 側で職人の解決と
+    // 予約への紐付け（タイムラインの「作成済」化）に使う。オフライン同期でも欠落
+    // しないよう、FormData ↔ JSON の round-trip に含める。
+    reservation_id: z.string().uuid().nullable().optional(),
+    craftsman_staff_id: z.string().uuid().nullable().optional(),
+
     // ステータス: draft or active
     status: z.enum(["draft", "active"]).optional().default("active"),
   })
@@ -139,6 +145,10 @@ export function jsonToCertFormData(input: CertCreateJsonInput): FormData {
   if (input.package_snapshot_json !== undefined) {
     fd.append("package_snapshot_json", JSON.stringify(input.package_snapshot_json));
   }
+
+  // 案件連携 (職人解決 / 予約紐付け)
+  appendIf("reservation_id", input.reservation_id ?? undefined);
+  appendIf("craftsman_staff_id", input.craftsman_staff_id ?? undefined);
 
   // Template fields (f__ prefix). Server Action expects multi-value as repeated appends
   // and "on" string for booleans.
@@ -223,6 +233,8 @@ export function formDataToCertJson(fd: FormData): Record<string, unknown> {
     "warranty_exclusions",
     "remarks",
     "package_id",
+    "reservation_id",
+    "craftsman_staff_id",
     "status",
   ] as const;
 

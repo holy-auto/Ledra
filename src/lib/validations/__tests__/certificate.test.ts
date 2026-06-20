@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { certificateCreateSchema, certificateVoidSchema } from "../certificate";
+import { certificateCreateSchema, certificateVoidSchema, certificateHideSchema } from "../certificate";
 
 // ─── certificateCreateSchema ───
 describe("certificateCreateSchema", () => {
@@ -204,6 +204,39 @@ describe("certificateVoidSchema", () => {
 
   it("rejects 9-character public_id", () => {
     const result = certificateVoidSchema.safeParse({ public_id: "123456789" });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ─── certificateHideSchema ───
+describe("certificateHideSchema", () => {
+  it("accepts hidden=true with valid public_id", () => {
+    const result = certificateHideSchema.safeParse({ public_id: "abcdefghij", hidden: true });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts hidden=false with valid public_id", () => {
+    const result = certificateHideSchema.safeParse({ public_id: "abcdefghij", hidden: false });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects missing hidden flag", () => {
+    const result = certificateHideSchema.safeParse({ public_id: "abcdefghij" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects non-boolean hidden flag", () => {
+    const result = certificateHideSchema.safeParse({ public_id: "abcdefghij", hidden: "yes" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects public_id shorter than 10 characters", () => {
+    const result = certificateHideSchema.safeParse({ public_id: "short", hidden: true });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects missing public_id", () => {
+    const result = certificateHideSchema.safeParse({ hidden: true });
     expect(result.success).toBe(false);
   });
 });

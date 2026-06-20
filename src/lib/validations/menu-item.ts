@@ -18,6 +18,7 @@ export const menuItemCreateSchema = z.object({
     .refine((v) => v === 8 || v === 10, { message: "税率区分は8または10です。" })
     .default(10),
   sort_order: z.coerce.number().int().min(0).default(0),
+  estimated_minutes: z.coerce.number().int().min(0).max(100000).nullable().optional(),
 });
 
 export const menuItemUpdateSchema = z.object({
@@ -39,6 +40,7 @@ export const menuItemUpdateSchema = z.object({
     .refine((v) => v === 8 || v === 10, { message: "税率区分は8または10です。" })
     .optional(),
   sort_order: z.coerce.number().int().min(0).optional(),
+  estimated_minutes: z.coerce.number().int().min(0).max(100000).nullable().optional(),
   is_active: z.boolean().optional(),
 });
 

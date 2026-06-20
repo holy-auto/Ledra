@@ -95,9 +95,7 @@ export async function PUT(req: NextRequest) {
         .eq("month", month);
       if (error) return apiInternalError(error, "sales-targets PUT");
     } else {
-      const { error } = await supabase
-        .from("sales_targets")
-        .insert({ ...row, id: crypto.randomUUID() });
+      const { error } = await supabase.from("sales_targets").insert({ ...row, id: crypto.randomUUID() });
       if (error) return apiInternalError(error, "sales-targets PUT");
     }
 

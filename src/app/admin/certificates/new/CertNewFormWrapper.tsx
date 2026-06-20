@@ -77,6 +77,7 @@ type Props = {
   vehicles: Vehicle[];
   defaultVehicleId?: string;
   defaultCustomerId?: string;
+  defaultReservationId?: string;
   templates: Template[];
   selectedTemplate: Template | null;
   tenantLogoPath: string | null;
@@ -105,6 +106,7 @@ export default function CertNewFormWrapper({
   vehicles,
   defaultVehicleId,
   defaultCustomerId,
+  defaultReservationId,
   templates,
   selectedTemplate,
   tenantLogoPath,
@@ -518,6 +520,12 @@ export default function CertNewFormWrapper({
           <div className="mt-1 text-base font-semibold text-primary">テンプレートを選択</div>
         </div>
         <form action="/admin/certificates/new" method="get" className="flex gap-3 items-center">
+          {/* テンプレ切替の GET で案件コンテキスト（車両/顧客/予約）を引き継ぐ。
+              これが無いと案件発行→テンプレ変更で reservation_id 等が落ち、職人名の
+              解決が車両全体のフォールバックに退化してしまう。 */}
+          {defaultVehicleId && <input type="hidden" name="vehicle_id" value={defaultVehicleId} />}
+          {defaultCustomerId && <input type="hidden" name="customer_id" value={defaultCustomerId} />}
+          {defaultReservationId && <input type="hidden" name="reservation_id" value={defaultReservationId} />}
           <select name="tid" defaultValue={tid} className={`flex-1 ${inputCls}`}>
             {templates.length === 0 ? (
               <option value="">テンプレートがありません</option>
@@ -551,6 +559,7 @@ export default function CertNewFormWrapper({
         <input type="hidden" name="template_id" value={selectedTemplate?.id ?? ""} />
         <input type="hidden" name="template_name" value={selectedTemplate?.name ?? ""} />
         {defaultCustomerId && <input type="hidden" name="customer_id" value={defaultCustomerId} />}
+        {defaultReservationId && <input type="hidden" name="reservation_id" value={defaultReservationId} />}
         {serviceType && <input type="hidden" name="service_type" value={serviceType} />}
 
         {/* ━━━ 0a. メーカー指定デザイン（認定施工店のみ表示） ━━━ */}

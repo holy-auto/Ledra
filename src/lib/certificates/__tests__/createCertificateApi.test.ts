@@ -187,4 +187,28 @@ describe("formDataToCertJson", () => {
     const out = formDataToCertJson(fd);
     expect("film_thickness_json" in out).toBe(false);
   });
+
+  it("preserves reservation_id/craftsman_staff_id through the offline round-trip", () => {
+    // 案件フロー由来の hidden 入力を含む FormData（オフライン経路と同じ形）。
+    const reservationId = "11111111-1111-4111-8111-111111111111";
+    const craftsmanId = "22222222-2222-4222-8222-222222222222";
+    const fd = new FormData();
+    fd.append("customer_name", "x");
+    fd.append("reservation_id", reservationId);
+    fd.append("craftsman_staff_id", craftsmanId);
+
+    // form → JSON（strict スキーマで弾かれず通る）
+    const json = formDataToCertJson(fd);
+    const parsed = certCreateJsonSchema.safeParse(json);
+    expect(parsed.success).toBe(true);
+    expect(json.reservation_id).toBe(reservationId);
+    expect(json.craftsman_staff_id).toBe(craftsmanId);
+
+    // JSON → form（Server Action 側が読む field 名で復元される）
+    if (parsed.success) {
+      const back = jsonToCertFormData(parsed.data);
+      expect(back.get("reservation_id")).toBe(reservationId);
+      expect(back.get("craftsman_staff_id")).toBe(craftsmanId);
+    }
+  });
 });

@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
     let query = supabase
       .from("menu_items")
       .select(
-        "id, name, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, created_at",
+        "id, name, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, estimated_minutes, created_at",
       )
       .eq("tenant_id", caller.tenantId)
       .order("sort_order", { ascending: true })
@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
       .from("menu_items")
       .insert(row)
       .select(
-        "id, name, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, created_at, updated_at",
+        "id, name, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, estimated_minutes, created_at, updated_at",
       )
       .single();
     if (error) {
@@ -148,7 +148,7 @@ export async function PUT(req: NextRequest) {
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .select(
-        "id, name, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, created_at, updated_at",
+        "id, name, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, estimated_minutes, created_at, updated_at",
       )
       .single();
 

@@ -4,7 +4,9 @@ import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { checkPasswordSignInAllowed } from "@/lib/auth/ssoPolicy";
+import { resolveDefaultRedirect } from "@/lib/auth/loginRedirect";
 import { SsoSignInButton } from "@/components/auth/SsoSignInButton";
+import { MagicLinkSignIn } from "./MagicLinkSignIn";
 
 /**
  * ログイン後のリダイレクト先を安全に決定する。
@@ -21,66 +23,6 @@ function safeNextPath(value: string | undefined) {
   return null;
 }
 
-/**
- * ログイン後のデフォルトリダイレクト先をコンテキストに基づいて決定する。
- * - 施工店のみ → /admin/certificates
- * - 代理店のみ → /agent
- * - 両方 → 前回のアクティブコンテキスト or デフォルト施工店
- * - どちらでもない → /admin/certificates (施工店登録フローへ)
- */
-async function resolveDefaultRedirect(userId: string, activeContext: string | null): Promise<string> {
-  const admin = createServiceRoleAdmin(
-    "login redirect — resolves whether user has tenant membership or agent record, pre-resolution",
-  );
-
-  // 施工店メンバーシップ確認
-  const { data: membership } = await admin
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .eq("user_id", userId)
-    .limit(1)
-    .maybeSingle();
-
-  const hasShop = !!membership?.tenant_id;
-
-  // 代理店確認
-  const { data: agentRecord } = await admin.from("agents").select("id, status").eq("user_id", userId).maybeSingle();
-
-  const hasAgent = !!agentRecord?.id && agentRecord.status === "active";
-
-  if (hasShop && hasAgent) {
-    // 両方持っている: 前回のコンテキストまたはデフォルト施工店
-    if (activeContext === "agent") return "/agent";
-    return "/admin/certificates";
-  }
-
-  if (hasAgent) return "/agent";
-
-  // 施工店も代理店も無い場合、本社専用ユーザ (組織オーナー / 本社チーム) なら
-  // 本社横断ビューへ。そうでなければ従来どおり施工店登録フローへ。
-  if (!hasShop) {
-    const { data: ownedOrg } = await admin
-      .from("organizations")
-      .select("id")
-      .eq("owner_id", userId)
-      .limit(1)
-      .maybeSingle();
-    let isOrgUser = !!ownedOrg?.id;
-    if (!isOrgUser) {
-      const { data: orgMember } = await admin
-        .from("organization_users")
-        .select("organization_id")
-        .eq("user_id", userId)
-        .limit(1)
-        .maybeSingle();
-      isOrgUser = !!orgMember?.organization_id;
-    }
-    if (isOrgUser) return "/admin/hq-overview";
-  }
-
-  return "/admin/certificates";
-}
-
 export default async function Page({
   searchParams,
 }: {
@@ -88,6 +30,7 @@ export default async function Page({
     next?: string;
     redirect_to?: string;
     e?: string;
+    error?: string;
     reason?: string;
     sso?: string;
     domain?: string;
@@ -167,6 +110,12 @@ export default async function Page({
           <div className="text-sm text-red-400 text-center">メールアドレスまたはパスワードが正しくありません。</div>
         )}
 
+        {sp.error && (
+          <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-400 text-center">
+            ログインリンクが無効か、有効期限が切れています。下のフォームから再度ログインするか、メールリンクを再送してください。
+          </div>
+        )}
+
         {sp.sso === "1" && (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-400">
             このメールアドレスは SSO ログインが必須に設定されています。下の「会社の SSO
@@ -197,6 +146,8 @@ export default async function Page({
             <span className="bg-base px-2 text-muted">または</span>
           </div>
         </div>
+
+        <MagicLinkSignIn next={rawNext} />
 
         <SsoSignInButton defaultDomain={sp.domain} next={rawNext} />
 
