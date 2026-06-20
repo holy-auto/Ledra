@@ -186,3 +186,13 @@
 # before this branch's lint rule existed. fn_sync_mileage_from_certificate() is
 # hardened forward in 20260604010000_harden_vehicle_prediction_search_path.sql.
 20260604000000_vehicle_prediction_data_infra.sql
+
+# Grandfathered for create-index-without-concurrently. Already shipped to main
+# (certificates 非表示フラグ機能, 2026-06-19) — the file is frozen history.
+# idx_certs_tenant_hidden_created is created on the EXISTING `certificates`
+# table, so it cannot use the new-empty-table exception; and CONCURRENTLY is
+# impractical here because Supabase wraps each migration file in a transaction
+# (see the rule note in scripts/lint-migrations.js — CONCURRENTLY cannot run
+# inside a transaction). The one-time write lock to build the index is bounded
+# and was accepted at ship time. Rationale: docs/operations/zero-downtime-migrations.md.
+20260619000000_certificates_hidden.sql

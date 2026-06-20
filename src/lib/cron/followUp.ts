@@ -28,6 +28,10 @@ export type FollowUpSetting = {
    * `{}` (default) のときは全種別が既定値で動く。
    */
   maintenance_schedule_by_service: Record<string, number[]> | null;
+  /** 誕生日メッセージ自動送信の ON/OFF（既定 false）。 */
+  birthday_enabled: boolean | null;
+  /** 誕生日の何日前に送るか。0 = 当日。 */
+  birthday_lead_days: number | null;
 };
 
 export type TenantInfo = {

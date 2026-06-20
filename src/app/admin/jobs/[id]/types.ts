@@ -47,6 +47,8 @@ export type JobReservation = {
   cancelled_at: string | null;
   cancel_reason: string | null;
   assigned_user_id: string | null;
+  assigned_staff_id: string | null;
+  booth_id: string | null;
   work_started_at: string | null;
   work_completed_at: string | null;
   created_at: string;

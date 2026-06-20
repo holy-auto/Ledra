@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
+import Tabs, { type TabItem } from "@/components/ui/Tabs";
 import MutationGuard from "@/components/ui/MutationGuard";
 import { formatDate, formatJpy } from "@/lib/format";
 import JobPackageApply from "./JobPackageApply";
@@ -141,52 +142,35 @@ export default function JobDetailTabs({
     return `/admin/invoices/new?${params.toString()}`;
   })();
 
+  const tabItems: TabItem<TabKey>[] = [
+    { key: "summary", label: "サマリ" },
+    { key: "parties", label: "顧客・車両" },
+    { key: "certificates", label: "証明書", count: certificates.length },
+    { key: "photos", label: "📸 写真" },
+    { key: "inspection", label: "点検" },
+    { key: "parts", label: "部品" },
+    { key: "billing", label: "請求・見積", count: invoices.length + estimates.length },
+    // 按分タブは請求書 (invoice/consolidated_invoice) が存在する場合のみ表示。
+    ...(invoices.length > 0 ? [{ key: "billing_split" as TabKey, label: "按分" }] : []),
+    {
+      key: "handoff",
+      label: "申し送り",
+      // important / urgent の申し送りは件数ではなくアラートなので赤バッジで強調。
+      badge:
+        handoffAlertCount > 0 ? (
+          <span
+            className="inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold leading-[18px] text-white"
+            style={{ backgroundColor: "var(--accent-red)" }}
+          >
+            {handoffAlertCount}
+          </span>
+        ) : undefined,
+    },
+  ];
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-1 border-b border-border-subtle overflow-x-auto">
-        {(
-          [
-            { k: "summary", label: "サマリ" },
-            { k: "parties", label: "顧客・車両" },
-            { k: "certificates", label: `証明書 (${certificates.length})` },
-            { k: "photos", label: "📸 写真" },
-            { k: "inspection", label: "点検" },
-            { k: "parts", label: "部品" },
-            {
-              k: "billing",
-              label: `請求・見積 (${invoices.length + estimates.length})`,
-            },
-            // 按分タブは請求書 (invoice/consolidated_invoice) が存在する場合のみ表示。
-            ...(invoices.length > 0 ? [{ k: "billing_split" as const, label: "按分" }] : []),
-            {
-              k: "handoff",
-              label: (
-                <span className="inline-flex items-center gap-1.5">
-                  申し送り
-                  {handoffAlertCount > 0 && (
-                    <span
-                      className="inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold leading-[18px] text-white"
-                      style={{ backgroundColor: "var(--accent-red)" }}
-                    >
-                      {handoffAlertCount}
-                    </span>
-                  )}
-                </span>
-              ),
-            },
-          ] as { k: TabKey; label: React.ReactNode }[]
-        ).map((t) => (
-          <button
-            key={t.k}
-            onClick={() => setTab(t.k)}
-            className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
-              tab === t.k ? "border-accent text-primary" : "border-transparent text-secondary hover:text-primary"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <Tabs tabs={tabItems} value={tab} onChange={setTab} ariaLabel="案件詳細タブ" />
 
       {tab === "photos" && <JobPhotosTab reservationId={reservation.id} certificateNewUrl={certificateNewUrl} />}
 

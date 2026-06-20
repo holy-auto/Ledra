@@ -53,6 +53,7 @@ type PublicStatusResponse = {
     maintenance_json?: Record<string, any> | null;
     body_repair_json?: Record<string, any> | null;
     /* eslint-enable @typescript-eslint/no-explicit-any */
+    craftsman_name?: string | null;
   };
   vehicle?: {
     id?: string | null;
@@ -387,6 +388,12 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
             <div className="rounded-lg bg-base px-3 py-2 text-secondary">
               施工店: <span className="text-primary">{data.shop?.name || "-"}</span>
             </div>
+            {data.certificate.craftsman_name ? (
+              <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+                施工担当: <span className="font-semibold text-primary">{data.certificate.craftsman_name}</span>
+                <span className="ml-1 text-[11px] text-muted">氏 施工・証明済み</span>
+              </div>
+            ) : null}
             <div className="rounded-lg bg-base px-3 py-2 text-secondary">
               ステータス: <span className="text-primary">{getStatusLabel(data.certificate.status)}</span>
             </div>

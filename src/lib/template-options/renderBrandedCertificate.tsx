@@ -338,6 +338,14 @@ export async function renderBrandedCertificatePdf(row: CertRow, publicUrl: strin
           </View>
         )}
 
+        {/* ---- ⑦ 施工担当（職人）スナップショット名。PII ではないため公開PDFでも表示 ---- */}
+        {row.craftsman_name ? (
+          <View style={s.box}>
+            <Text style={s.label}>施工担当</Text>
+            <Text style={s.value}>{row.craftsman_name}</Text>
+          </View>
+        ) : null}
+
         {/* ---- PPF: Film info ---- */}
         {isPpf && Array.isArray(row.coating_products_json) && row.coating_products_json.length > 0 && (
           <View style={s.box}>

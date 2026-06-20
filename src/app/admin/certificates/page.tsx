@@ -17,7 +17,7 @@ import CertificatesModeSwitch from "./CertificatesModeSwitch";
 // 呼べないため、ssr: false 指定をクライアントラッパーに閉じ込めている。
 import PendingOfflineCerts from "./PendingOfflineCertsClient";
 
-type SearchParams = { q?: string };
+type SearchParams = { q?: string; hidden?: string };
 
 async function getMyTenantId(supabase: any) {
   const { data, error } = await supabase.from("tenant_memberships").select("tenant_id").limit(1).single();
@@ -28,7 +28,15 @@ async function getMyTenantId(supabase: any) {
 export default async function Page({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
-  const returnTo = `/admin/certificates${q ? `?q=${encodeURIComponent(q)}` : ""}`;
+  const showHidden = sp.hidden === "1";
+  const buildHref = (params: { q?: string; hidden?: boolean }) => {
+    const usp = new URLSearchParams();
+    if (params.q) usp.set("q", params.q);
+    if (params.hidden) usp.set("hidden", "1");
+    const qs = usp.toString();
+    return `/admin/certificates${qs ? `?${qs}` : ""}`;
+  };
+  const returnTo = buildHref({ q, hidden: showHidden });
 
   const supabase = await createSupabaseServerClient();
   const { data: userRes } = await supabase.auth.getUser();
@@ -46,11 +54,18 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
     );
   }
 
-  type CertListRow = { public_id: string; status: string; customer_name: string; created_at: string };
+  type CertListRow = {
+    public_id: string;
+    status: string;
+    customer_name: string;
+    created_at: string;
+    is_hidden: boolean;
+  };
   let certQuery = supabase
     .from("certificates")
-    .select("public_id,status,customer_name,created_at")
+    .select("public_id,status,customer_name,created_at,is_hidden")
     .eq("tenant_id", tenantId)
+    .eq("is_hidden", showHidden)
     .order("created_at", { ascending: false })
     .limit(50);
 
@@ -59,9 +74,14 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
     certQuery = certQuery.or(`public_id.ilike.%${sq}%,customer_name.ilike.%${sq}%`);
   }
 
-  const [{ data: t }, { data: rows, error }] = await Promise.all([
+  const [{ data: t }, { data: rows, error }, { count: hiddenCount }] = await Promise.all([
     supabase.from("tenants").select("plan_tier,is_active").eq("id", tenantId).single(),
     certQuery.returns<CertListRow[]>(),
+    supabase
+      .from("certificates")
+      .select("public_id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .eq("is_hidden", true),
   ]);
 
   const planTier = String(t?.plan_tier ?? "pro");
@@ -82,7 +102,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
   const allRows = rows ?? [];
   const activeCount = allRows.filter((r) => r.status === "active").length;
   const voidCount = allRows.filter((r) => r.status === "void").length;
-  const isFirstUse = allRows.length === 0 && !q;
+  const hiddenTotal = hiddenCount ?? 0;
+  const isFirstUse = allRows.length === 0 && !q && !showHidden;
 
   const adminContent = (
     <>
@@ -97,18 +118,30 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
 
       <PageHeader
         tag="証明書管理"
-        title="証明書一覧"
-        description={isFirstUse ? "施工証明書の発行・管理を行います。" : `最新50件を表示${q ? ` / 検索: "${q}"` : ""}`}
+        title={showHidden ? "非表示の証明書" : "証明書一覧"}
+        description={
+          isFirstUse
+            ? "施工証明書の発行・管理を行います。"
+            : showHidden
+              ? `非表示にした証明書を表示${q ? ` / 検索: "${q}"` : ""}`
+              : `最新50件を表示${q ? ` / 検索: "${q}"` : ""}`
+        }
         actions={
           <div className="flex gap-3 items-center flex-wrap">
-            <Link
-              className={canIssue ? "btn-primary" : "btn-primary opacity-50"}
-              href={issueHref}
-              aria-disabled={!canIssue}
-              title={!canIssue ? "課金状態/プランにより利用不可" : ""}
-            >
-              + 新規発行
-            </Link>
+            {showHidden ? (
+              <Link className="btn-secondary" href={buildHref({ q })}>
+                ← 通常一覧に戻る
+              </Link>
+            ) : (
+              <Link
+                className={canIssue ? "btn-primary" : "btn-primary opacity-50"}
+                href={issueHref}
+                aria-disabled={!canIssue}
+                title={!canIssue ? "課金状態/プランにより利用不可" : ""}
+              >
+                + 新規発行
+              </Link>
+            )}
           </div>
         }
       />
@@ -158,22 +191,35 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
           {/* Search */}
           <section className="glass-card p-5">
             <form className="flex gap-3 items-end flex-wrap" action="/admin/certificates" method="get">
+              {showHidden && <input type="hidden" name="hidden" value="1" />}
               <div className="flex-1 min-w-0 space-y-1">
                 <label className="text-xs text-muted">検索</label>
                 <input name="q" defaultValue={q} placeholder="証明書ID / お客様名で検索" className="input-field" />
               </div>
               <button className="btn-secondary">検索</button>
               {q && (
-                <Link className="btn-ghost" href="/admin/certificates">
+                <Link className="btn-ghost" href={buildHref({ hidden: showHidden })}>
                   クリア
                 </Link>
               )}
             </form>
+            {!showHidden && hiddenTotal > 0 && (
+              <div className="mt-3 text-xs text-muted">
+                ミスなどで非表示にした証明書が <span className="font-semibold text-primary">{hiddenTotal}</span>{" "}
+                件あります。{" "}
+                <Link
+                  className="underline font-medium text-accent hover:text-accent/80"
+                  href={buildHref({ q, hidden: true })}
+                >
+                  非表示の証明書を確認
+                </Link>
+              </div>
+            )}
           </section>
 
-          <PendingOfflineCerts />
+          {!showHidden && <PendingOfflineCerts />}
 
-          <CertificatesTableClient rows={allRows} q={q} />
+          <CertificatesTableClient rows={allRows} q={q} showHidden={showHidden} />
         </>
       )}
     </>

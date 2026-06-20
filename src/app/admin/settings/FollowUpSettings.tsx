@@ -9,6 +9,8 @@ type Settings = {
   enabled: boolean;
   maintenance_reminder_months: number[];
   maintenance_schedule_by_service: Record<string, number[]>;
+  birthday_enabled: boolean;
+  birthday_lead_days: number;
 };
 
 const DEFAULT_SETTINGS: Settings = {
@@ -17,6 +19,8 @@ const DEFAULT_SETTINGS: Settings = {
   enabled: true,
   maintenance_reminder_months: [6, 12],
   maintenance_schedule_by_service: {},
+  birthday_enabled: false,
+  birthday_lead_days: 0,
 };
 
 interface DryRunItem {
@@ -313,6 +317,53 @@ export default function FollowUpSettings() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* ── 誕生日メッセージ ── */}
+      <div className="space-y-3 border-t border-border-subtle pt-4">
+        <div className="flex items-center gap-3">
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold text-primary">誕生日メッセージ</h3>
+            <p className="text-[11px] text-muted">
+              顧客の誕生日にお祝いを自動送信。LINE が繋がっていれば LINE 優先、無ければ
+              email。生年月日が登録された顧客のみ対象。
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSettings((prev) => ({ ...prev, birthday_enabled: !prev.birthday_enabled }))}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              settings.birthday_enabled ? "bg-success" : "bg-surface-active"
+            }`}
+            aria-pressed={settings.birthday_enabled}
+          >
+            <span
+              className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
+                settings.birthday_enabled ? "translate-x-6" : "translate-x-1"
+              }`}
+            />
+          </button>
+        </div>
+
+        {settings.birthday_enabled && (
+          <div className="space-y-1">
+            <label className="text-xs text-secondary">送信タイミング（誕生日の何日前）</label>
+            <input
+              type="number"
+              min={0}
+              max={60}
+              value={settings.birthday_lead_days}
+              onChange={(e) =>
+                setSettings((prev) => ({
+                  ...prev,
+                  birthday_lead_days: Math.max(0, Math.min(60, parseInt(e.target.value, 10) || 0)),
+                }))
+              }
+              className="input-field w-28"
+            />
+            <p className="text-[11px] text-muted">0 = 誕生日当日に送信。例: 3 にすると 3 日前に送ります（0〜60）。</p>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-3">
