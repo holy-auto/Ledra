@@ -38,12 +38,18 @@ export default function AnchorBadge({
       target="_blank"
       rel="noopener noreferrer"
       title={title}
-      className={`inline-flex items-center gap-1.5 rounded-full border border-accent-gold/40 bg-accent-gold-dim px-2.5 py-1 text-xs font-semibold text-accent-gold-text transition-opacity hover:opacity-80 ${className}`}
+      className={`inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-full border border-accent-gold/40 bg-accent-gold-dim px-2.5 py-1 text-xs font-semibold text-accent-gold-text transition-opacity hover:opacity-80 ${className}`}
     >
-      <span aria-hidden>⛓</span>
-      <span>ブロックチェーン記録済み</span>
-      <span className="font-mono text-[10px] opacity-80">{truncateHash(txHash)}</span>
-      <span aria-hidden className="opacity-70">
+      {/* 子 span にも accent-gold クラスを付与: globals.css のダーク時 span 白文字化
+          セーフティネット（span:not([class*="accent-gold"])）から除外して金文字を保つ。 */}
+      <span aria-hidden className="text-accent-gold-text">
+        ⛓
+      </span>
+      <span className="text-accent-gold-text">ブロックチェーン記録済み</span>
+      <span className="min-w-0 break-all font-mono text-[10px] text-accent-gold-text opacity-80">
+        {truncateHash(txHash)}
+      </span>
+      <span aria-hidden className="text-accent-gold-text opacity-70">
         ↗
       </span>
     </a>
