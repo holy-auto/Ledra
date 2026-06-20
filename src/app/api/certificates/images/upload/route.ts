@@ -90,6 +90,11 @@ export async function POST(req: NextRequest) {
     let publicId = String(form.get("public_id") ?? "").trim();
     const certIdemKey = String(form.get("cert_idempotency_key") ?? "").trim();
 
+    // 車体整備ガイドライン4.2(1): 撮影段階のタグ (任意。未指定は 'unspecified')。
+    const STAGE_VALUES = ["intake_before", "in_progress", "after", "unspecified"] as const;
+    const rawStage = String(form.get("stage") ?? "").trim();
+    const stage = (STAGE_VALUES as readonly string[]).includes(rawStage) ? rawStage : "unspecified";
+
     // public_id が無く cert_idempotency_key だけある場合 (オフライン同期時の
     // 写真 upload) は永続マッピング表から逆引きする。これで cert 作成と
     // 画像 upload の連鎖実行が IP/network 変化後も成立する。
@@ -277,6 +282,7 @@ export async function POST(req: NextRequest) {
           content_type: mime,
           file_size: finalBuffer.length,
           sort_order: existing + uploaded,
+          stage,
           sha256,
           perceptual_hash: perceptualHash,
           exif_captured_at: exif.capturedAt ? exif.capturedAt.toISOString() : null,
