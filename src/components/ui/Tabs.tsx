@@ -1,17 +1,18 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useRef, type KeyboardEvent, type ReactNode } from "react";
 
 /**
  * Tabs
  * ------------------------------------------------------------
  * L-Shell ナビ仕様（WORKSTREAM B）の確定タブクローム。
  *
- * - アクティブ下線は **テキスト幅に整合**（`inset-x-3` = padding と同じ 12px で
- *   左右をフラッシュ。旧実装の「下線が padding 全幅に伸びて左右に隙間」を解消）。
- * - 件数バッジは **アクティブ=黒塗り / 非アクティブ=アウトライン**。アクティブ
- *   タブだけがバッジごと浮き上がる。
+ * - アクティブ下線は **ラベル文字幅に整合**（badge を含めず label span に
+ *   アンカー。旧実装の「下線が padding/badge 全幅に伸びる」を解消＝Fix 2）。
+ * - 件数バッジは **アクティブ=黒塗り / 非アクティブ=アウトライン**（Fix 4）。
  * - 色はすべてトークン経由（hex 直書きなし）。数値は `font-mono`。
+ * - ARIA tab パターン: `role="tablist"`/`role="tab"` + roving tabindex +
+ *   ←/→/Home/End キーでの移動に対応。
  *
  * タブの意味論（混在させない）:
  * - 一覧ページ = ステータスフィルタ（順序 = 処理フロー順 / バッジ = 件数）
@@ -37,26 +38,64 @@ interface TabsProps<K extends string> {
 }
 
 export default function Tabs<K extends string>({ tabs, value, onChange, className = "", ariaLabel }: TabsProps<K>) {
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const current = tabs.findIndex((t) => t.key === value);
+    if (current < 0) return;
+    let next = current;
+    switch (e.key) {
+      case "ArrowRight":
+      case "ArrowDown":
+        next = (current + 1) % tabs.length;
+        break;
+      case "ArrowLeft":
+      case "ArrowUp":
+        next = (current - 1 + tabs.length) % tabs.length;
+        break;
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = tabs.length - 1;
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+    onChange(tabs[next].key);
+    tabRefs.current[next]?.focus();
+  };
+
   return (
     <div
       role="tablist"
       aria-label={ariaLabel}
+      onKeyDown={handleKeyDown}
       className={`flex items-center gap-1 overflow-x-auto border-b border-border-subtle ${className}`}
     >
-      {tabs.map((t) => {
+      {tabs.map((t, i) => {
         const active = t.key === value;
         return (
           <button
             key={t.key}
+            ref={(el) => {
+              tabRefs.current[i] = el;
+            }}
             type="button"
             role="tab"
             aria-selected={active}
+            tabIndex={active ? 0 : -1}
             onClick={() => onChange(t.key)}
             className={`relative inline-flex items-center gap-1.5 whitespace-nowrap px-3 py-2.5 text-sm transition-colors ${
               active ? "font-medium text-primary" : "font-normal text-secondary hover:text-primary"
             }`}
           >
-            <span>{t.label}</span>
+            {/* 下線はラベル文字幅にのみアンカー（badge は含めない）。 */}
+            <span className="relative">
+              {t.label}
+              {active && <span className="absolute inset-x-0 -bottom-[11px] h-0.5 rounded-full bg-primary" />}
+            </span>
             {t.badge != null
               ? t.badge
               : t.count != null && (
@@ -68,7 +107,6 @@ export default function Tabs<K extends string>({ tabs, value, onChange, classNam
                     {t.count}
                   </span>
                 )}
-            {active && <span className="absolute inset-x-3 -bottom-px h-0.5 rounded-full bg-primary" />}
           </button>
         );
       })}

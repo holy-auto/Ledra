@@ -19,7 +19,7 @@ export default function PageHeader({ tag, title, meta, description, actions }: P
         <span className="text-[11px] font-medium tracking-[0.12em] text-secondary uppercase">{tag}</span>
         <div className="inline-flex flex-wrap items-center gap-2.5">
           <h1 className="text-[28px] font-semibold tracking-tight text-primary leading-tight">{title}</h1>
-          {meta && <div className="inline-flex items-center gap-2">{meta}</div>}
+          {meta != null && <div className="inline-flex items-center gap-2">{meta}</div>}
         </div>
         {description && <p className="text-[14px] text-secondary leading-relaxed">{description}</p>}
       </div>
