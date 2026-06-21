@@ -155,12 +155,9 @@ export function maskPhone(phone: string | null | undefined): string {
  * 必ずこれを通すこと。
  */
 export function scrubLog(value: unknown): string {
-  let out = "";
-  for (const ch of String(value)) {
-    const code = ch.charCodeAt(0);
-    out += code < 0x20 || code === 0x7f ? " " : ch;
-  }
-  return out;
+  // 改行・タブ・制御文字をスペースに置換。`replace(/.../g)` 形式にすることで
+  // ランタイムの除去に加え、CodeQL の log-injection サニタイザとしても認識される。
+  return String(value).replace(/[\r\n\t\u0000-\u001f\u007f]/g, " ");
 }
 
 /**
