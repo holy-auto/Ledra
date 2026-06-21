@@ -688,10 +688,108 @@ function EditDialog({
         {job.record_retention_until && (
           <p className="text-[11px] text-muted">記録保存期限: {job.record_retention_until}</p>
         )}
+
+        <ConsentShareActions jobId={job.id} onError={onError} />
       </div>
 
       <DialogActions onClose={onClose} onSubmit={save} submitting={submitting} submitLabel="保存する" />
     </DialogShell>
+  );
+}
+
+// ─── 顧客への同意依頼・進捗共有リンク発行 (ガイドライン4.2(5)/4.3) ───
+function ConsentShareActions({ jobId, onError }: { jobId: string; onError: (msg: string) => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [links, setLinks] = useState<{ label: string; url: string }[]>([]);
+
+  const absolute = (path: string) => (typeof window !== "undefined" ? `${window.location.origin}${path}` : path);
+
+  const run = useCallback(
+    async (action: string, label: string, url: string, body?: Record<string, unknown>) => {
+      setBusy(action);
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.message ?? "発行に失敗しました");
+        const path = (json.sign_url ?? json.track_url) as string;
+        setLinks((prev) => [{ label, url: absolute(path) }, ...prev.filter((l) => l.label !== label)]);
+      } catch (e) {
+        onError(e instanceof Error ? e.message : "発行に失敗しました");
+      } finally {
+        setBusy(null);
+      }
+    },
+    [onError],
+  );
+
+  return (
+    <div className="rounded-lg border border-border-subtle bg-inset p-3">
+      <div className="mb-2 text-xs font-semibold text-primary">顧客への同意・共有</div>
+      <div className="flex flex-wrap gap-2">
+        <MutationGuard>
+          <button
+            type="button"
+            disabled={busy != null}
+            onClick={() =>
+              run("pre_work", "作業前同意", `/api/admin/body-repair-jobs/${jobId}/consent-request`, {
+                kind: "pre_work",
+              })
+            }
+            className="rounded-md border border-border-default px-2.5 py-1 text-xs text-secondary hover:bg-surface-hover disabled:opacity-50"
+          >
+            {busy === "pre_work" ? "…" : "作業前同意を依頼"}
+          </button>
+        </MutationGuard>
+        <MutationGuard>
+          <button
+            type="button"
+            disabled={busy != null}
+            onClick={() =>
+              run("change", "変更同意", `/api/admin/body-repair-jobs/${jobId}/consent-request`, { kind: "change" })
+            }
+            className="rounded-md border border-border-default px-2.5 py-1 text-xs text-secondary hover:bg-surface-hover disabled:opacity-50"
+          >
+            {busy === "change" ? "…" : "変更同意を依頼"}
+          </button>
+        </MutationGuard>
+        <MutationGuard>
+          <button
+            type="button"
+            disabled={busy != null}
+            onClick={() => run("track", "進捗リンク", `/api/admin/body-repair-jobs/${jobId}/track-link`)}
+            className="rounded-md border border-border-default px-2.5 py-1 text-xs text-secondary hover:bg-surface-hover disabled:opacity-50"
+          >
+            {busy === "track" ? "…" : "進捗リンクを発行"}
+          </button>
+        </MutationGuard>
+      </div>
+      {links.length > 0 && (
+        <div className="mt-2 space-y-1">
+          {links.map((l) => (
+            <div key={l.label} className="flex items-center gap-2 text-[11px]">
+              <span className="shrink-0 text-muted">{l.label}:</span>
+              <input
+                readOnly
+                value={l.url}
+                onFocus={(e) => e.currentTarget.select()}
+                className="min-w-0 flex-1 rounded border border-border-subtle bg-surface px-1.5 py-0.5 text-secondary"
+              />
+              <button
+                type="button"
+                onClick={() => navigator.clipboard?.writeText(l.url)}
+                className="shrink-0 rounded bg-accent px-2 py-0.5 text-white"
+              >
+                コピー
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
