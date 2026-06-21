@@ -147,6 +147,20 @@ export function maskPhone(phone: string | null | undefined): string {
 }
 
 /**
+ * 外部由来の文字列を `console.*` のプレーンテキストログ行へ直接埋め込む前に、
+ * 改行・タブ・制御文字を除去してログインジェクション（log forging）を防ぐ。
+ *
+ * 構造化 logger（emit）は JSON.stringify を通すため不要だが、webhook の
+ * type / orderId / OAuth state など untrusted な値を console.* に渡す箇所では
+ * 必ずこれを通すこと。
+ */
+export function scrubLog(value: unknown): string {
+  // 改行・タブ・制御文字をスペースに置換。`replace(/.../g)` 形式にすることで
+  // ランタイムの除去に加え、CodeQL の log-injection サニタイザとしても認識される。
+  return String(value).replace(/[\r\n\t\u0000-\u001f\u007f]/g, " ");
+}
+
+/**
  * Generate or propagate a request id.
  * middleware で呼び、logger.child({ requestId }) として使う。
  */

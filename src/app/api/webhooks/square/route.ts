@@ -5,6 +5,7 @@ import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "
 import { readSecret } from "@/lib/crypto/tenantSecrets";
 import { captureSecurityEvent } from "@/lib/observability/sentry";
 import { claimWebhookEvent } from "@/lib/webhooks/idempotency";
+import { scrubLog } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -172,7 +173,7 @@ async function processEvent(type: string, merchantId: string, data: SquareWebhoo
       await handlePaymentCompleted(merchantId, data);
       break;
     default:
-      console.info(`[square-webhook] Unhandled event type: ${type}`);
+      console.info(`[square-webhook] Unhandled event type: ${scrubLog(type)}`);
   }
 }
 
@@ -214,7 +215,7 @@ async function resolveTenant(merchantId: string) {
 async function handleOrderUpdated(merchantId: string, data: SquareWebhookEvent["data"]) {
   const conn = await resolveTenant(merchantId);
   if (!conn) {
-    console.warn(`[square-webhook] No active connection for merchant: ${merchantId}`);
+    console.warn(`[square-webhook] No active connection for merchant: ${scrubLog(merchantId)}`);
     return;
   }
 
@@ -243,12 +244,12 @@ async function handleOrderUpdated(merchantId: string, data: SquareWebhookEvent["
   }
   const fullOrder = await fetchSquareOrder(accessToken, orderId);
   if (!fullOrder) {
-    console.warn(`[square-webhook] Could not fetch order ${orderId} from Square API`);
+    console.warn(`[square-webhook] Could not fetch order ${scrubLog(orderId)} from Square API`);
     return;
   }
 
   await upsertOrder(admin, tenantId, fullOrder);
-  console.info(`[square-webhook] order.updated processed: ${orderId} tenant: ${tenantId}`);
+  console.info(`[square-webhook] order.updated processed: ${scrubLog(orderId)} tenant: ${tenantId}`);
 }
 
 /**
@@ -257,7 +258,7 @@ async function handleOrderUpdated(merchantId: string, data: SquareWebhookEvent["
 async function handlePaymentCompleted(merchantId: string, data: SquareWebhookEvent["data"]) {
   const conn = await resolveTenant(merchantId);
   if (!conn) {
-    console.warn(`[square-webhook] No active connection for merchant: ${merchantId}`);
+    console.warn(`[square-webhook] No active connection for merchant: ${scrubLog(merchantId)}`);
     return;
   }
 
@@ -280,12 +281,12 @@ async function handlePaymentCompleted(merchantId: string, data: SquareWebhookEve
 
   const fullOrder = await fetchSquareOrder(accessToken, orderId);
   if (!fullOrder) {
-    console.warn(`[square-webhook] Could not fetch order ${orderId} from Square API`);
+    console.warn(`[square-webhook] Could not fetch order ${scrubLog(orderId)} from Square API`);
     return;
   }
 
   await upsertOrder(admin, tenantId, fullOrder);
-  console.info(`[square-webhook] payment.completed processed: order ${orderId} tenant: ${tenantId}`);
+  console.info(`[square-webhook] payment.completed processed: order ${scrubLog(orderId)} tenant: ${tenantId}`);
 }
 
 /**
@@ -302,7 +303,7 @@ async function fetchSquareOrder(accessToken: string, orderId: string): Promise<S
     });
 
     if (!res.ok) {
-      console.error(`[square-webhook] Fetch order ${orderId} failed: ${res.status}`);
+      console.error(`[square-webhook] Fetch order ${scrubLog(orderId)} failed: ${res.status}`);
       return null;
     }
 

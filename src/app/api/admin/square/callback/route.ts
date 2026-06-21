@@ -2,6 +2,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { buildSecretWrite } from "@/lib/crypto/tenantSecrets";
+import { scrubLog } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +52,7 @@ export async function GET(req: NextRequest) {
   const { data: tenant } = await admin.from("tenants").select("id").eq("id", state).maybeSingle();
 
   if (!tenant) {
-    console.error("[square callback] invalid state (tenant not found):", state);
+    console.error("[square callback] invalid state (tenant not found):", scrubLog(state));
     return NextResponse.redirect(new URL("/admin/square?square=error&reason=invalid_state", baseUrl));
   }
 

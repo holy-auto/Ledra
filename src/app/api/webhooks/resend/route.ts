@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Webhook } from "svix";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError, apiError } from "@/lib/api/response";
-import { maskEmail } from "@/lib/logger";
+import { maskEmail, scrubLog } from "@/lib/logger";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { claimWebhookEvent } from "@/lib/webhooks/idempotency";
 import { captureSecurityEvent } from "@/lib/observability/sentry";
@@ -136,7 +136,10 @@ export async function POST(req: NextRequest) {
     case "email.sent":
     case "email.opened":
     case "email.clicked":
-      console.info(`[resend-webhook] ${type}`, {
+      // 外部由来の `type` はフォーマット文字列の位置に置かず、構造化フィールド
+      // として渡す（externally-controlled format string / log injection 対策）。
+      console.info("[resend-webhook] event", {
+        type: scrubLog(type),
         email_id: data.email_id,
         toMasked,
         recipientCount,
@@ -144,7 +147,7 @@ export async function POST(req: NextRequest) {
       break;
 
     default:
-      console.info(`[resend-webhook] unknown event: ${type}`);
+      console.info("[resend-webhook] unknown event", { type: scrubLog(type) });
   }
 
   return apiJson({ received: true });
