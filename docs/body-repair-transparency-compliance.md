@@ -51,41 +51,59 @@
 
 すべて同一 Postgres (Supabase) に保存され、`my_tenant_ids()` による RLS でテナント分離。
 
-### (5) 消費者等への適切な説明と消費者等の了承 — ⚠️ 一部対応 (基盤実装済)
+### (5) 消費者等への適切な説明と消費者等の了承 — ✅ 対応
 
 | 段階 | 状況 |
 | --- | --- |
-| ③作業後 (受領サイン) | ✅ 実装済。`delivery_receipts` + `signature_sessions` (二要素認証 + 同意文ハッシュ + Polygon アンカリング)。 |
-| ①作業前 (見積同意) | 🟡 スキーマ実装済。`signature_sessions.purpose='estimate_consent'` + `body_repair_consents` (kind=`pre_work`)。署名 UI/トークンページは受領サイン基盤の流用で実装予定。 |
-| ②作業中 (変更同意) | 🟡 スキーマ実装済。`purpose='change_consent'` + `body_repair_consents` (kind=`change`)。同上。 |
+| ①作業前 (見積同意) | ✅ 実装済。`purpose='estimate_consent'` + `body_repair_consents` (kind=`pre_work`)。署名フロー = 受領サイン基盤を流用 (二要素認証 + 同意文ハッシュ + ECDSA 署名 + Polygon アンカリング)。 |
+| ②作業中 (変更同意) | ✅ 実装済。`purpose='change_consent'` + `body_repair_consents` (kind=`change`)。同フロー。 |
+| ③作業後 (受領サイン) | ✅ 実装済。`delivery_receipts` + `signature_sessions`。 |
 | ④引き渡し後の問い合わせ対応 | ✅ 顧客ポータル / 問い合わせ機能で対応。 |
 
 `body_repair_consents.explanation_json` に説明時点のスナップショットを不変保存する。
+管理画面の案件編集ダイアログから「作業前同意を依頼」「変更同意を依頼」で署名 URL を発行し、
+顧客は `/sign/consent/[token]` で電話番号下4桁の本人確認を経て電子署名する。
 
-> **残作業**: 作業前/変更同意の署名フロー UI (トークンページ + 通知) は、既存
-> `src/app/sign/receipt/[token]` を雛形に追加する。スキーマ・purpose は準備済み。
+**フロー実装**:
+- 依頼発行: `POST /api/admin/body-repair-jobs/[id]/consent-request`
+- セッション取得: `GET /api/signature/body-repair-consent/session/[token]`
+- 署名実行: `POST /api/signature/body-repair-consent/sign/[token]`
+- 署名ページ: `src/app/sign/consent/[token]/`
+- ドメインロジック: `src/lib/signature/bodyRepairConsent.ts`
 
 ---
 
 ## 4.3 実施することが望ましい取組み (任意)
 
-### (A) 車体整備作業の見える化 — 🟡 部分
+### (A) 車体整備作業の見える化 — ✅ 対応
 
-社内向けには工程 Kanban (`/admin/body-repair`) で進捗を可視化。顧客向けの
-工程進捗公開・カメラ映像は今後の拡張候補。
+社内向けの工程 Kanban (`/admin/body-repair`) に加え、**顧客向けの進捗トラッキング**を実装。
+案件編集ダイアログの「進捗リンクを発行」で `body_repair_jobs.track_token` を発行し、顧客は
+ログイン不要で `/track/[token]` から工程ステージ (受付→協定→鈑金→塗装→完成→出庫) の進捗と
+到達時刻を確認できる (PII 最小)。
 
-### (B) 消費者に対する積極的な情報発信 — 🟡 部分
+- 発行 API: `POST /api/admin/body-repair-jobs/[id]/track-link`
+- 公開ページ: `src/app/track/[token]/page.tsx`
 
-メニュー/標準料金の登録 (`/admin/menu-items`)、メーカー認定 (`manufacturer_certifications`) は
-あるが、整備士資格・優良認定を載せた公開店舗プロフィール / SNS 発信は拡張候補。
+### (B) 消費者に対する積極的な情報発信 — ✅ 対応
+
+公開店舗プロフィール `/shop/[slug]` を実装。提供サービス・標準料金 (`menu_items`)、
+メーカー認定 (`manufacturer_certified_tenants`)、整備士資格・専門スキル (`staff_members.skills`)
+を公開表示する。
+
+- 公開ページ: `src/app/shop/[slug]/page.tsx`
 
 ---
 
 ## 実装ファイル一覧
 
-- マイグレーション: `supabase/migrations/20260620000000_body_repair_transparency.sql`
+- マイグレーション: `supabase/migrations/20260620000000_body_repair_transparency.sql`,
+  `20260621000000_body_repair_tracking.sql` (+ `..._index.sql`)
 - バリデーション: `src/lib/validations/body-repair-job.ts` (+ `__tests__/body-repair-job.test.ts`)
-- 案件 API: `src/app/api/admin/body-repair-jobs/route.ts`
+- 同意ロジック: `src/lib/signature/bodyRepairConsent.ts` (+ `__tests__/bodyRepairConsent.test.ts`)
+- 案件 API: `src/app/api/admin/body-repair-jobs/route.ts` (+ `[id]/consent-request`, `[id]/track-link`)
+- 同意署名 API/ページ: `src/app/api/signature/body-repair-consent/*`, `src/app/sign/consent/[token]/`
+- 公開ページ: `src/app/track/[token]/`, `src/app/shop/[slug]/`
 - 画像アップロード (stage): `src/app/api/certificates/images/upload/route.ts`
 - 管理 UI: `src/app/admin/body-repair/BodyRepairClient.tsx`
 
