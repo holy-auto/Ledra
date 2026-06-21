@@ -173,6 +173,20 @@ const NAV_GROUPS: NavGroup[] = [
         ),
       },
       {
+        href: "/admin/mechanic-gantt",
+        label: "メカニック稼働管理",
+        requiredPermission: "reservations:view",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M3.75 4.5h9m-9 4.5h13.5m-13.5 4.5h7.5m-7.5 4.5h10.5"
+            />
+          </svg>
+        ),
+      },
+      {
         href: "/admin/contact-schedules",
         label: "コンタクト管理",
         requiredPermission: "customers:view",
