@@ -37,6 +37,8 @@ jobs:
           # path traversal, SSRF, and prototype pollution beyond the default
           # set. Worth the extra runtime for a tenant-isolated SaaS.
           queries: security-extended
+          # 開発専用スクリプト (scripts/**) を解析対象から除外する設定。
+          config-file: ./.github/codeql/codeql-config.yml
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
