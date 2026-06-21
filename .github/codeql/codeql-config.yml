@@ -1,0 +1,9 @@
+name: "Ledra CodeQL config"
+
+# 開発・ビルド専用スクリプトは本番ランタイムの攻撃面ではないため解析対象外とする。
+# ここに含まれる CodeQL アラート（regex anchor の欠落 / insecure temp file 等）は
+# いずれも意図的な実装で、トリアージ済みの誤検知:
+#   - scripts/audit-withRetry.ts  : 行内の任意位置マッチが目的（アンカー不要）
+#   - scripts/generate-*.ts       : ビルド時に /tmp へ PDF を書き出すローカル実行専用
+paths-ignore:
+  - "scripts/**"
