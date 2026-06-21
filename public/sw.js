@@ -180,6 +180,9 @@ self.addEventListener("sync", (event) => {
 //   - "drain-outbox": Outbox を SW スコープで drain (Background Sync の手動 trigger)
 //   - "clear-offline-cache": ログアウト等で HTML / API キャッシュを全消去
 self.addEventListener("message", (event) => {
+  // 同一オリジンのクライアントからの postMessage のみ受け付ける。
+  // (origin が空のケース = 同一オリジンの内部メッセージは許容)
+  if (event.origin && event.origin !== self.location.origin) return;
   const type = event.data && event.data.type;
   if (type === "drain-outbox") {
     event.waitUntil(drainOutbox());

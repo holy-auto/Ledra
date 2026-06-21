@@ -8,6 +8,18 @@ import FirstUseInlineGuide from "@/components/ui/FirstUseInlineGuide";
 import { useStripeAction } from "@/hooks/useStripeAction";
 import { CheckoutErrorPanel } from "@/components/billing/CheckoutErrorPanel";
 
+/**
+ * `?return=` クエリは外部入力。`javascript:` スキームによる XSS や外部URLへの
+ * オープンリダイレクトを防ぐため、同一オリジンの相対パス（"/" 始まりかつ
+ * プロトコル相対 "//" でない）のみ許可する。それ以外は null を返して破棄。
+ */
+function safeInternalPath(value: string | null): string | null {
+  if (!value) return null;
+  // 単一スラッシュ始まり = 相対パス。"//" や "/\" はオープンリダイレクトになりうる。
+  if (!value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\")) return null;
+  return value;
+}
+
 const PLANS = [
   {
     tier: "starter",
@@ -306,7 +318,7 @@ export default function BillingPage() {
       setStatus(qs.get("status"));
       setReason(qs.get("reason"));
       setAction(qs.get("action"));
-      setRet(qs.get("return"));
+      setRet(safeInternalPath(qs.get("return")));
       setFromPortal(qs.get("from") === "portal");
     } catch {
       setStatus(null);

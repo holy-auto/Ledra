@@ -32,8 +32,12 @@ export function hashIntakeToken(token: string): string {
 /** URL に載せる short_id (8 文字、英小文字+数字). */
 function generateShortId(): string {
   // base32-ish (避ける文字なし) で 8 桁. 約 40bit のエントロピー.
-  const bytes = crypto.randomBytes(5);
-  return [...bytes].map((b) => "abcdefghjkmnpqrstuvwxyz23456789"[b % 30]).join("");
+  // crypto.randomInt は剰余バイアスのない一様乱数を返すため、`% 30` のような
+  // モジュロバイアスを避けられる。
+  const alphabet = "abcdefghjkmnpqrstuvwxyz23456789";
+  let out = "";
+  for (let i = 0; i < 8; i++) out += alphabet[crypto.randomInt(alphabet.length)];
+  return out;
 }
 
 /** raw token 本体 (URL のクエリ or path に載せる). 32 bytes 256bit. */

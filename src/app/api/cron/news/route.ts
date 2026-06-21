@@ -400,13 +400,21 @@ async function scrapesite(target: ScrapeTarget): Promise<ScrapedArticle[]> {
 
     // リンク取得
     const $linkEl = $el.find(target.selectors.link).first();
-    let href = $linkEl.attr("href") ?? "";
-    if (href && !href.startsWith("http")) {
-      href = href.startsWith("/") ? `${target.baseUrl}${href}` : `${target.baseUrl}/${href}`;
+    const rawHref = ($linkEl.attr("href") ?? "").trim();
+    if (!rawHref || rawHref.startsWith("#")) return;
+
+    // スキーム検証: javascript:/data: 等の非 http(s) スキームをブラックリストでは
+    // なくホワイトリストで弾く。相対パスは baseUrl で絶対化する。
+    let href: string;
+    if (/^https?:\/\//i.test(rawHref)) {
+      href = rawHref;
+    } else if (/^[a-z][a-z0-9+.-]*:/i.test(rawHref)) {
+      // http(s) 以外の絶対スキーム (javascript:, data:, mailto: 等) は除外
+      return;
+    } else {
+      href = rawHref.startsWith("/") ? `${target.baseUrl}${rawHref}` : `${target.baseUrl}/${rawHref}`;
     }
-    if (!href || seenUrls.has(href)) return;
-    // ハッシュリンクやJSリンクは除外
-    if (href.startsWith("#") || href.startsWith("javascript:")) return;
+    if (seenUrls.has(href)) return;
     seenUrls.add(href);
 
     // 要約取得
