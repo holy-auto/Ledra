@@ -22,6 +22,20 @@ updates:
       # (missing "types" condition) that breaks moduleResolution=bundler
       # type discovery → TS7016. Stay on 18.2.10 until upstream fixes it.
       - dependency-name: "react-konva"
+  - package-ecosystem: "npm"
+    directory: "/apps/mobile"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
