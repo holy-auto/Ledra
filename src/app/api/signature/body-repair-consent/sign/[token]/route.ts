@@ -177,7 +177,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       return apiError({ code: "internal_error", message: "署名処理中にエラーが発生しました", status: 500 });
     }
 
-    const { error: updateErr } = await admin
+    const { data: updatedRows, error: updateErr } = await admin
       .from("signature_sessions")
       .update({
         status: "signed",
@@ -193,10 +193,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
         updated_at: signedAt,
       })
       .eq("id", session.id)
-      .eq("status", "pending");
+      .eq("status", "pending")
+      .select("id");
 
     if (updateErr) {
       return apiError({ code: "db_error", message: "署名の保存中にエラーが発生しました", status: 500 });
+    }
+    // 競合: 別タブ/二重送信で先に署名済みだと 0 行更新になる。
+    // ここで弾かないと未保存の署名で success を返し、consent を二重更新してしまう。
+    if (!updatedRows || updatedRows.length === 0) {
+      return apiError({ code: "conflict", message: "この同意はすでに署名されています", status: 409 });
     }
 
     await admin

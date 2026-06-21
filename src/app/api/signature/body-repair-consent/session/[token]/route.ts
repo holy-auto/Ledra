@@ -11,7 +11,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import {
-  computeConsentTextHash,
+  hashConsentText,
   getConsentTextByVersion,
   CONSENT_KIND_LABEL,
   type BodyRepairConsentKind,
@@ -108,7 +108,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
         status: 500,
       });
     }
-    if (computeConsentTextHash(consent.kind) !== sessionConsentHash) {
+    // 検証は「セッションが凍結したバージョンの文言」(lookupText) をハッシュして比較する。
+    // 現行 getConsentText を使うと、文言バージョン更新後に在中の旧リンクが誤って drift 500 になる。
+    if (hashConsentText(lookupText) !== sessionConsentHash) {
       return apiError({
         code: "internal_error",
         message: "同意文言の整合性チェックに失敗しました。施工店にリンクの再発行を依頼してください。",

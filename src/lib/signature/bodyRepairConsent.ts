@@ -55,9 +55,14 @@ export function getConsentTextByVersion(version: string | null, kind: BodyRepair
   return CONSENT_TEXTS[`${version}:${kind}`] ?? null;
 }
 
-/** 同意文言の SHA-256 ハッシュ。署名時に保存するハッシュと一致しなければならない。 */
+/** 任意の同意文言文字列の SHA-256 ハッシュ。 */
+export function hashConsentText(text: string): string {
+  return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+/** kind の現行同意文言の SHA-256 ハッシュ。署名時に保存するハッシュと一致しなければならない。 */
 export function computeConsentTextHash(kind: BodyRepairConsentKind): string {
-  return createHash("sha256").update(getConsentText(kind), "utf8").digest("hex");
+  return hashConsentText(getConsentText(kind));
 }
 
 /**

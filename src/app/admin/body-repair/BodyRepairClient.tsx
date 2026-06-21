@@ -702,7 +702,12 @@ function ConsentShareActions({ jobId, onError }: { jobId: string; onError: (msg:
   const [busy, setBusy] = useState<string | null>(null);
   const [links, setLinks] = useState<{ label: string; url: string }[]>([]);
 
-  const absolute = (path: string) => (typeof window !== "undefined" ? `${window.location.origin}${path}` : path);
+  // 相対パスのみ現在のオリジンを付与する。NEXT_PUBLIC_SIGN_BASE_URL が絶対 URL の
+  // 場合 sign_url は既に絶対なので二重連結しない。
+  const absolute = (path: string) => {
+    if (/^https?:\/\//.test(path)) return path;
+    return typeof window !== "undefined" ? `${window.location.origin}${path}` : path;
+  };
 
   const run = useCallback(
     async (action: string, label: string, url: string, body?: Record<string, unknown>) => {

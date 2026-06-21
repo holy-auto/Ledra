@@ -117,36 +117,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       );
     }
     const last4Hash = phoneLast4Hash(caller.tenantId, last4);
-
-    // 同一 kind の有効な pending 依頼があれば再利用 (idempotent)
     const purpose = CONSENT_KIND_PURPOSE[kind];
-    const { data: existing } = await admin
-      .from("body_repair_consents")
-      .select("id, status, signature_sessions:signature_sessions(token, expires_at, status)")
-      .eq("tenant_id", caller.tenantId)
-      .eq("body_repair_job_id", jobId)
-      .eq("kind", kind)
-      .eq("status", "pending")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
 
-    const existingSessRaw = existing?.signature_sessions as unknown as
-      | { token: string; expires_at: string; status: string }
-      | Array<{ token: string; expires_at: string; status: string }>
-      | null;
-    const existingSess = Array.isArray(existingSessRaw) ? (existingSessRaw[0] ?? null) : existingSessRaw;
-    if (existing && existingSess?.status === "pending" && new Date(existingSess.expires_at) > new Date()) {
-      return apiOk({
-        consent_id: existing.id,
-        sign_url: `${CONSENT_SIGN_PATH}/${existingSess.token}`,
-        expires_at: existingSess.expires_at,
-        is_existing: true,
-        message: "有効な同意依頼がすでに存在します",
-      });
-    }
-
-    // 説明内容スナップショット + document_hash
+    // 説明内容スナップショット + document_hash (現在の案件内容)
     const consentTextHash = computeConsentTextHash(kind);
     const baseSnapshot: Omit<ConsentExplanationSnapshot, "consent"> = {
       kind,
@@ -167,6 +140,51 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ...baseSnapshot,
       consent: { version: BODY_REPAIR_CONSENT_VERSION, text: getConsentText(kind), text_hash: consentTextHash },
     };
+
+    // 同一 kind の有効な pending 依頼を確認する。
+    const { data: existing } = await admin
+      .from("body_repair_consents")
+      .select(
+        "id, status, signature_session_id, signature_sessions:signature_sessions(token, expires_at, status, document_hash)",
+      )
+      .eq("tenant_id", caller.tenantId)
+      .eq("body_repair_job_id", jobId)
+      .eq("kind", kind)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const existingSessRaw = existing?.signature_sessions as unknown as
+      | { token: string; expires_at: string; status: string; document_hash: string }
+      | Array<{ token: string; expires_at: string; status: string; document_hash: string }>
+      | null;
+    const existingSess = Array.isArray(existingSessRaw) ? (existingSessRaw[0] ?? null) : existingSessRaw;
+    const existingValid =
+      existing && existingSess?.status === "pending" && new Date(existingSess.expires_at) > new Date();
+
+    if (existingValid) {
+      // 内容が同じなら再利用 (idempotent)。
+      if (existingSess?.document_hash === documentHash) {
+        return apiOk({
+          consent_id: existing!.id,
+          sign_url: `${CONSENT_SIGN_PATH}/${existingSess.token}`,
+          expires_at: existingSess.expires_at,
+          is_existing: true,
+          message: "有効な同意依頼がすでに存在します",
+        });
+      }
+      // 案件内容が変わっている: 古い (古い内容を指す) pending を無効化し、新規発行する。
+      // explanation_json は不変設計のため、内容変更時は必ず新リンクに差し替える。
+      const cancelledAt = new Date().toISOString();
+      if (existing!.signature_session_id) {
+        await admin
+          .from("signature_sessions")
+          .update({ status: "cancelled", cancelled_at: cancelledAt, cancel_reason: "superseded_by_content_change" })
+          .eq("id", existing!.signature_session_id);
+      }
+      await admin.from("body_repair_consents").update({ status: "cancelled" }).eq("id", existing!.id);
+    }
 
     // signature_sessions を作成
     const token = randomUUID();

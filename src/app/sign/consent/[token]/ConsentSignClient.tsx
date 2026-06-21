@@ -118,7 +118,12 @@ export default function ConsentSignClient({ token }: { token: string }) {
       const json = await res.json();
       if (!res.ok) {
         setErrorMsg(json.message ?? "署名に失敗しました");
-        if (res.status === 403) await fetchSession();
+        // 403 (本人確認失敗/ロック) はセッションを再取得し、phase は fetchSession に委ねる。
+        // 上限到達でセッションが cancelled になった場合に form へ戻してしまわないようにする。
+        if (res.status === 403) {
+          await fetchSession();
+          return;
+        }
         setPhase("form");
         return;
       }
