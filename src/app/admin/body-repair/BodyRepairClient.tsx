@@ -22,6 +22,13 @@ interface JobVehicle {
   model: string | null;
   plate_display: string | null;
 }
+interface WorkContent {
+  repair_type?: string;
+  panels?: string[];
+  methods?: string;
+  parts?: string;
+  paint?: string;
+}
 interface BodyRepairJob {
   id: string;
   reservation_id: string | null;
@@ -29,6 +36,7 @@ interface BodyRepairJob {
   vehicle_id: string | null;
   stage: BodyRepairStage;
   estimate_amount: number | null;
+  actual_amount: number | null;
   insurance_company: string | null;
   claim_number: string | null;
   assigned_staff_id: string | null;
@@ -41,6 +49,12 @@ interface BodyRepairJob {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  // ガイドライン準拠フィールド
+  planned_work_json: WorkContent | null;
+  actual_work_json: WorkContent | null;
+  deviation_reason: string | null;
+  is_specified_maintenance: boolean;
+  record_retention_until: string | null;
   customer: JobCustomer | null;
   vehicle: JobVehicle | null;
 }
@@ -79,6 +93,7 @@ export default function BodyRepairClient() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editJob, setEditJob] = useState<BodyRepairJob | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const showToast = useCallback((type: "success" | "error", msg: string) => {
@@ -187,7 +202,13 @@ export default function BodyRepairClient() {
                     <p className="px-2 py-6 text-center text-xs text-muted">案件なし</p>
                   ) : (
                     list.map((job) => (
-                      <JobCard key={job.id} job={job} busy={busyId === job.id} onAdvance={() => advanceStage(job)} />
+                      <JobCard
+                        key={job.id}
+                        job={job}
+                        busy={busyId === job.id}
+                        onAdvance={() => advanceStage(job)}
+                        onEdit={() => setEditJob(job)}
+                      />
                     ))
                   )}
                 </div>
@@ -210,6 +231,20 @@ export default function BodyRepairClient() {
         />
       )}
 
+      {/* 編集ダイアログ (ガイドライン準拠フィールドの記録) */}
+      {editJob && (
+        <EditDialog
+          job={editJob}
+          onClose={() => setEditJob(null)}
+          onSaved={async () => {
+            setEditJob(null);
+            showToast("success", "案件を更新しました");
+            await fetchJobs();
+          }}
+          onError={(msg) => showToast("error", msg)}
+        />
+      )}
+
       {/* トースト */}
       {toast && (
         <div
@@ -225,15 +260,38 @@ export default function BodyRepairClient() {
 }
 
 // ─── 案件カード ───
-function JobCard({ job, busy, onAdvance }: { job: BodyRepairJob; busy: boolean; onAdvance: () => void }) {
+function JobCard({
+  job,
+  busy,
+  onAdvance,
+  onEdit,
+}: {
+  job: BodyRepairJob;
+  busy: boolean;
+  onAdvance: () => void;
+  onEdit: () => void;
+}) {
   const next = BODY_REPAIR_NEXT_STAGE[job.stage];
   const days = daysSince(job.intake_at);
-  const amount = formatAmount(job.estimate_amount);
+  const amount = formatAmount(job.actual_amount ?? job.estimate_amount);
 
   return (
     <div className="rounded-lg border border-border-subtle bg-surface p-3">
-      <div className="truncate text-sm font-semibold text-primary">{job.customer?.name ?? "顧客未設定"}</div>
-      <div className="mt-0.5 truncate text-xs text-secondary">{vehicleLabel(job.vehicle)}</div>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold text-primary">{job.customer?.name ?? "顧客未設定"}</div>
+          <div className="mt-0.5 truncate text-xs text-secondary">{vehicleLabel(job.vehicle)}</div>
+        </div>
+        <MutationGuard>
+          <button
+            onClick={onEdit}
+            className="shrink-0 rounded-md border border-border-subtle px-1.5 py-0.5 text-[10px] text-secondary transition-colors hover:bg-surface-hover hover:text-primary"
+            aria-label="案件を編集"
+          >
+            編集
+          </button>
+        </MutationGuard>
+      </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <span
@@ -241,10 +299,20 @@ function JobCard({ job, busy, onAdvance }: { job: BodyRepairJob; busy: boolean; 
         >
           {BODY_REPAIR_STAGE_LABEL[job.stage]}
         </span>
+        {job.is_specified_maintenance && (
+          <span className="rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-300">
+            特定整備
+          </span>
+        )}
         {amount && <span className="text-xs font-semibold text-accent">{amount}</span>}
       </div>
 
       {job.insurance_company && <div className="mt-1 truncate text-[11px] text-muted">{job.insurance_company}</div>}
+      {job.deviation_reason && (
+        <div className="mt-1 truncate text-[11px] text-amber-400" title={job.deviation_reason}>
+          予定と差異あり
+        </div>
+      )}
 
       <div className="mt-2 flex items-center justify-between gap-2">
         {days != null ? (
@@ -285,6 +353,11 @@ function CreateDialog({
   const [insuranceCompany, setInsuranceCompany] = useState("");
   const [claimNumber, setClaimNumber] = useState("");
   const [notes, setNotes] = useState("");
+  // ガイドライン4.2(2): 作業前の予定内容と特定整備該当
+  const [plannedMethods, setPlannedMethods] = useState("");
+  const [plannedParts, setPlannedParts] = useState("");
+  const [plannedPaint, setPlannedPaint] = useState("");
+  const [isSpecified, setIsSpecified] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [searching, setSearching] = useState(false);
 
@@ -337,6 +410,12 @@ function CreateDialog({
           insurance_company: insuranceCompany.trim() || null,
           claim_number: claimNumber.trim() || null,
           notes: notes.trim() || null,
+          is_specified_maintenance: isSpecified,
+          planned_work: {
+            methods: plannedMethods.trim() || undefined,
+            parts: plannedParts.trim() || undefined,
+            paint: plannedPaint.trim() || undefined,
+          },
         }),
       });
       if (!res.ok) {
@@ -424,6 +503,45 @@ function CreateDialog({
           </Field>
         </div>
 
+        <Field label="予定する作業内容・方法（任意）">
+          <textarea
+            value={plannedMethods}
+            onChange={(e) => setPlannedMethods(e.target.value)}
+            rows={2}
+            placeholder="例: ドアパネルの交換、エンジンフードの塗装"
+            className={`w-full resize-none ${inputCls}`}
+          />
+        </Field>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="予定部品（任意）">
+            <input
+              value={plannedParts}
+              onChange={(e) => setPlannedParts(e.target.value)}
+              placeholder="例: 右ドアパネル(純正)"
+              className={`w-full ${inputCls}`}
+            />
+          </Field>
+          <Field label="予定塗料（任意）">
+            <input
+              value={plannedPaint}
+              onChange={(e) => setPlannedPaint(e.target.value)}
+              placeholder="例: ○○ベースコート"
+              className={`w-full ${inputCls}`}
+            />
+          </Field>
+        </div>
+
+        <label className="flex items-center gap-2 text-sm text-secondary">
+          <input
+            type="checkbox"
+            checked={isSpecified}
+            onChange={(e) => setIsSpecified(e.target.checked)}
+            className="h-4 w-4 rounded border-border-default accent-accent"
+          />
+          特定整備に該当する（記録簿を2年保存）
+        </label>
+
         <Field label="メモ（任意）">
           <textarea
             value={notes}
@@ -437,6 +555,152 @@ function CreateDialog({
 
       <DialogActions onClose={onClose} onSubmit={submit} submitting={submitting} submitLabel="作成する" />
     </DialogShell>
+  );
+}
+
+// ─── 編集ダイアログ (ガイドライン4.2(2)(3): 予定/実績・差異理由・実績料金) ───
+function EditDialog({
+  job,
+  onClose,
+  onSaved,
+  onError,
+}: {
+  job: BodyRepairJob;
+  onClose: () => void;
+  onSaved: () => void;
+  onError: (msg: string) => void;
+}) {
+  const planned = job.planned_work_json ?? {};
+  const actual = job.actual_work_json ?? {};
+  const [actualMethods, setActualMethods] = useState(actual.methods ?? "");
+  const [actualParts, setActualParts] = useState(actual.parts ?? "");
+  const [actualPaint, setActualPaint] = useState(actual.paint ?? "");
+  const [deviationReason, setDeviationReason] = useState(job.deviation_reason ?? "");
+  const [actualAmount, setActualAmount] = useState(job.actual_amount != null ? String(job.actual_amount) : "");
+  const [isSpecified, setIsSpecified] = useState(job.is_specified_maintenance);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function save() {
+    if (actualAmount && (!Number.isInteger(Number(actualAmount)) || Number(actualAmount) < 0)) {
+      onError("実績金額は 0 以上の整数で入力してください。");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/admin/body-repair-jobs", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: job.id,
+          actual_amount: actualAmount ? Number(actualAmount) : null,
+          deviation_reason: deviationReason.trim() || null,
+          is_specified_maintenance: isSpecified,
+          actual_work: {
+            methods: actualMethods.trim() || undefined,
+            parts: actualParts.trim() || undefined,
+            paint: actualPaint.trim() || undefined,
+          },
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message ?? "update failed");
+      }
+      onSaved();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "更新に失敗しました");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <DialogShell title="作業実績の記録" onClose={onClose}>
+      <div className="space-y-4">
+        {/* 予定内容 (読み取り専用) */}
+        <div className="rounded-lg border border-border-subtle bg-inset p-3 text-xs text-secondary">
+          <div className="mb-1 font-semibold text-primary">予定（作業開始前）</div>
+          <PlannedRow label="作業内容・方法" value={planned.methods} />
+          <PlannedRow label="部品" value={planned.parts} />
+          <PlannedRow label="塗料" value={planned.paint} />
+        </div>
+
+        <Field label="実際に行った作業内容・方法">
+          <textarea
+            value={actualMethods}
+            onChange={(e) => setActualMethods(e.target.value)}
+            rows={2}
+            placeholder="実施した板金・塗装・交換の内容"
+            className={`w-full resize-none ${inputCls}`}
+          />
+        </Field>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="実際に使用した部品">
+            <input
+              value={actualParts}
+              onChange={(e) => setActualParts(e.target.value)}
+              placeholder="例: 右ドアパネル(純正)"
+              className={`w-full ${inputCls}`}
+            />
+          </Field>
+          <Field label="実際に使用した塗料">
+            <input
+              value={actualPaint}
+              onChange={(e) => setActualPaint(e.target.value)}
+              placeholder="例: ○○ベースコート"
+              className={`w-full ${inputCls}`}
+            />
+          </Field>
+        </div>
+
+        <Field label="予定と異なる場合の理由">
+          <textarea
+            value={deviationReason}
+            onChange={(e) => setDeviationReason(e.target.value)}
+            rows={2}
+            placeholder="予定と実績に差異が生じた理由を記録（消費者等への説明にも使用）"
+            className={`w-full resize-none ${inputCls}`}
+          />
+        </Field>
+
+        <Field label="実績金額（円）">
+          <input
+            type="number"
+            min={0}
+            value={actualAmount}
+            onChange={(e) => setActualAmount(e.target.value)}
+            placeholder="例: 185000"
+            className={`w-full ${inputCls}`}
+          />
+        </Field>
+
+        <label className="flex items-center gap-2 text-sm text-secondary">
+          <input
+            type="checkbox"
+            checked={isSpecified}
+            onChange={(e) => setIsSpecified(e.target.checked)}
+            className="h-4 w-4 rounded border-border-default accent-accent"
+          />
+          特定整備に該当する（記録簿を2年保存）
+        </label>
+
+        {job.record_retention_until && (
+          <p className="text-[11px] text-muted">記録保存期限: {job.record_retention_until}</p>
+        )}
+      </div>
+
+      <DialogActions onClose={onClose} onSubmit={save} submitting={submitting} submitLabel="保存する" />
+    </DialogShell>
+  );
+}
+
+function PlannedRow({ label, value }: { label: string; value?: string }) {
+  return (
+    <div className="flex gap-2 py-0.5">
+      <span className="shrink-0 text-muted">{label}:</span>
+      <span className="truncate text-secondary">{value || "—"}</span>
+    </div>
   );
 }
 

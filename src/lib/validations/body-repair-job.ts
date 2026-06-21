@@ -46,6 +46,23 @@ export const BODY_REPAIR_NEXT_STAGE: Record<BodyRepairStage, BodyRepairStage | n
   delivered: null,
 };
 
+/**
+ * 画像の撮影段階 (ガイドライン4.2(1))。certificate_images.stage と同期。
+ *   intake_before … ①入庫後〜作業開始前
+ *   in_progress  … ②作業実施中
+ *   after        … ③作業実施後
+ *   unspecified  … 段階未指定 (証明書一般写真)
+ */
+export const PHOTO_STAGES = ["intake_before", "in_progress", "after", "unspecified"] as const;
+export type PhotoStage = (typeof PHOTO_STAGES)[number];
+
+export const PHOTO_STAGE_LABEL: Record<PhotoStage, string> = {
+  intake_before: "入庫後〜作業前",
+  in_progress: "作業実施中",
+  after: "作業実施後",
+  unspecified: "段階未指定",
+};
+
 /** 空文字 / undefined を null に正規化する nullable uuid */
 const optionalUuid = z
   .union([z.string().uuid("ID の形式が不正です。"), z.literal(""), z.null()])
@@ -67,6 +84,30 @@ const optionalAmount = z
   .optional()
   .transform((v) => (v == null ? null : v));
 
+/**
+ * 作業の内容・方法 (予定 / 実績) を表す構造 (ガイドライン4.2(2))。
+ * planned_work_json / actual_work_json に格納する。全項目任意。
+ */
+export const workContentSchema = z
+  .object({
+    repair_type: z.string().trim().max(40),
+    panels: z.array(z.string().trim().max(80)).max(60),
+    methods: z.string().trim().max(2000),
+    parts: z.string().trim().max(2000),
+    paint: z.string().trim().max(2000),
+  })
+  .partial();
+export type WorkContent = z.infer<typeof workContentSchema>;
+
+/**
+ * 作業内容の任意入力。未送信(undefined)は「変更しない」、null は「クリア({})」。
+ * PATCH の部分更新セマンティクスを壊さないため undefined は維持する。
+ */
+const optionalWorkContent = z
+  .union([workContentSchema, z.null()])
+  .optional()
+  .transform((v) => (v === null ? {} : v));
+
 export const bodyRepairJobCreateSchema = z.object({
   customer_id: optionalUuid,
   vehicle_id: optionalUuid,
@@ -77,6 +118,15 @@ export const bodyRepairJobCreateSchema = z.object({
   claim_number: optionalText(60),
   notes: optionalText(2000),
   assigned_staff_id: optionalUuid,
+  // ガイドライン準拠フィールド
+  certificate_id: optionalUuid,
+  estimate_document_id: optionalUuid,
+  invoice_document_id: optionalUuid,
+  planned_work: optionalWorkContent,
+  actual_work: optionalWorkContent,
+  deviation_reason: optionalText(2000),
+  is_specified_maintenance: z.boolean().optional(),
+  actual_amount: optionalAmount,
 });
 
 export const bodyRepairJobUpdateSchema = z.object({
@@ -87,6 +137,15 @@ export const bodyRepairJobUpdateSchema = z.object({
   claim_number: optionalText(60),
   notes: optionalText(2000),
   assigned_staff_id: optionalUuid,
+  // ガイドライン準拠フィールド
+  certificate_id: optionalUuid,
+  estimate_document_id: optionalUuid,
+  invoice_document_id: optionalUuid,
+  planned_work: optionalWorkContent,
+  actual_work: optionalWorkContent,
+  deviation_reason: optionalText(2000),
+  is_specified_maintenance: z.boolean().optional(),
+  actual_amount: optionalAmount,
 });
 
 export type BodyRepairJobCreateInput = z.infer<typeof bodyRepairJobCreateSchema>;
