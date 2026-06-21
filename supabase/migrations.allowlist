@@ -186,3 +186,9 @@
 # before this branch's lint rule existed. fn_sync_mileage_from_certificate() is
 # hardened forward in 20260604010000_harden_vehicle_prediction_search_path.sql.
 20260604000000_vehicle_prediction_data_infra.sql
+
+# Grandfathered for create-index-without-concurrently: shipped via PR #576 and
+# already applied on production (idx_certs_tenant_hidden_created exists), so the
+# file is frozen and cannot be re-run. New index migrations must use CONCURRENTLY
+# in their own file (see 20260620000001_body_repair_transparency_indexes.sql).
+20260619000000_certificates_hidden.sql
