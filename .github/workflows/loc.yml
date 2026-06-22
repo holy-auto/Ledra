@@ -59,7 +59,12 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Comment on PR
-        if: github.event_name == 'pull_request'
+        # fork からの PR では GITHUB_TOKEN が read-only に降格され、コメントの
+        # POST/PATCH が 403 で失敗して LOC チェックが赤くなる。同一リポジトリ
+        # 内の PR に限定し、fork PR では summary だけ残してコメントは黙ってスキップする。
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -78,7 +83,10 @@ jobs:
             cat "$REPORT_FILE"
           } > "$BODY_FILE"
 
-          EXISTING_ID=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+          # --paginate で全ページを走査する (REST のデフォルトは 30 件/ページ)。
+          # コメントが多い PR でもマーカー付きコメントを取りこぼさず、毎回 POST して
+          # ステッキーコメントが増殖するのを防ぐ。
+          EXISTING_ID=$(gh api --paginate "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments?per_page=100" \
             --jq '.[] | select(.body | startswith("<!-- loc-report -->")) | .id' \
             | head -n1)
 
