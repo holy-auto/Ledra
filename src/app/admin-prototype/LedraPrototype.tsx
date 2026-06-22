@@ -1119,11 +1119,11 @@ function CommandPalette({ open, onClose, go }: { open: boolean; onClose: () => v
   certs
     .slice(0, 4)
     .forEach((c) =>
-      items.push({ type: "証明書", label: c.id + " · " + c.customer, emoji: "🪪", action: () => go("certificates") }),
+      items.push({ type: "証明書", label: c.id + " · " + c.customer, emoji: "🪪", action: () => go("cert:" + c.id) }),
     );
   customers
     .slice(0, 4)
-    .forEach((c) => items.push({ type: "顧客", label: c.name, emoji: "👤", action: () => go("customers") }));
+    .forEach((c) => items.push({ type: "顧客", label: c.name, emoji: "👤", action: () => go("customer:" + c.id) }));
   const filtered = q ? items.filter((i) => i.label.toLowerCase().includes(q.toLowerCase())) : items.slice(0, 8);
   return (
     <div className="cmdk-overlay" onClick={onClose}>
@@ -1825,8 +1825,9 @@ function Customers({ go }: { go: Go }) {
                   <Badge tone={c.type === "法人" ? "info" : "muted"}>{c.type}</Badge>
                 </td>
                 <td className="mono cell-sub">{c.phone}</td>
-                <td className="num">{c.vehicles}</td>
-                <td className="num">{c.certs}</td>
+                {/* Derive from seeded records so the list matches the 360° drill-down. */}
+                <td className="num">{vehicles.filter((v) => v.customer === c.name).length}</td>
+                <td className="num">{certs.filter((x) => x.customer === c.name).length}</td>
                 <td className="num">{yen(c.ltv)}</td>
                 <td>
                   <div className="tags">
@@ -1881,7 +1882,7 @@ function Customer360({ id, go }: { id?: string; go: Go }) {
             <div className="cs-lbl">LTV</div>
           </div>
           <div>
-            <div className="cs-num">{c.certs}</div>
+            <div className="cs-num">{myCerts.length}</div>
             <div className="cs-lbl">証明書</div>
           </div>
         </div>
@@ -2078,33 +2079,30 @@ function Vehicles({ go }: { go: Go }) {
 
 function VehicleTimeline({ id, go }: { id?: string; go: Go }) {
   const v = vehicles.find((x) => x.id === id) || vehicles[0];
+  // Build the timeline from this vehicle's own certificates so each detail
+  // page reflects the row that was clicked (rather than a fixed history).
+  const vehCerts = certs.filter((x) => x.vehicle === v.model);
   const events: { type: string; icon: string; color: string; title: string; meta: string; to?: string }[] = [
-    {
+    ...vehCerts.map((c) => ({
       type: "cert",
       icon: "🪪",
       color: "var(--accent-blue)",
-      title: "ボディコーティング 証明書発行",
-      meta: "cert_01HXYZ7A · 2026-06-18",
-      to: "cert:cert_01HXYZ7A",
-    },
-    { type: "job", icon: "🔧", color: "var(--accent-amber)", title: "作業完了", meta: "山田 · 2026-06-18 13:40" },
-    { type: "job", icon: "🚪", color: "var(--accent-emerald)", title: "来店・受付", meta: "2026-06-18 10:00" },
-    {
+      title: `${c.service} 証明書発行`,
+      meta: `${c.id} · ${c.date.slice(0, 10)}`,
+      to: "cert:" + c.id,
+    })),
+    { type: "job", icon: "🔧", color: "var(--accent-amber)", title: "作業完了", meta: `${v.maker} ${v.model}` },
+    { type: "job", icon: "🚪", color: "var(--accent-emerald)", title: "来店・受付", meta: v.plate },
+  ];
+  if (v.nfc) {
+    events.push({
       type: "nfc",
       icon: "🪧",
       color: "var(--accent-violet)",
       title: "NFCタグ書き込み",
       meta: "SKU-NFC-T1 · 2026-05-02",
-    },
-    {
-      type: "cert",
-      icon: "🪪",
-      color: "var(--accent-blue)",
-      title: "ホイールコーティング 証明書発行",
-      meta: "cert_01HXYX9K · 2026-03-12",
-      to: "cert:cert_01HXYX9K",
-    },
-  ];
+    });
+  }
   return (
     <div className="screen">
       <button className="back" onClick={() => go("vehicles")}>
@@ -2236,7 +2234,7 @@ function Invoices() {
           </thead>
           <tbody>
             {invoices.map((i) => (
-              <tr key={i.id} className="row-link">
+              <tr key={i.id}>
                 <td className="mono">{i.id}</td>
                 <td>{i.customer}</td>
                 <td className="mono">{i.issued}</td>
@@ -2415,7 +2413,7 @@ function Inventory() {
           </thead>
           <tbody>
             {inventory.map((it) => (
-              <tr key={it.sku} className="row-link">
+              <tr key={it.sku}>
                 <td className="mono">{it.sku}</td>
                 <td>{it.name}</td>
                 <td>
