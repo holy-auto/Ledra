@@ -830,22 +830,23 @@ function LShell3({
   bodyKey?: string;
   children?: ReactNode;
 }) {
-  const tabKey = tabs.map((tb) => tb.l).join("|");
+  // Include bodyKey (route) so navigating between two details with identical
+  // tab labels (e.g. cert→cert via ⌘K) still resets the active tab.
+  const resetKey = (bodyKey ?? "") + "::" + tabs.map((tb) => tb.l).join("|");
   const [activeTabIdx, setActiveTabIdx] = useState(() =>
     Math.max(
       0,
       tabs.findIndex((tb) => tb.active),
     ),
   );
-  const prevTabKeyRef = useRef(tabKey);
+  const prevResetKeyRef = useRef(resetKey);
   useEffect(() => {
-    if (prevTabKeyRef.current !== tabKey) {
-      prevTabKeyRef.current = tabKey;
+    if (prevResetKeyRef.current !== resetKey) {
+      prevResetKeyRef.current = resetKey;
       const idx = tabs.findIndex((tb) => tb.active);
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: reset active tab index when the set of tabs changes (route navigation)
-      if (idx >= 0) setActiveTabIdx(idx);
+      setActiveTabIdx(idx >= 0 ? idx : 0);
     }
-  }, [tabKey, tabs]);
+  }, [resetKey, tabs]);
 
   return (
     <div style={{ display: "flex", height: "100%", background: c.bg }}>
@@ -1201,7 +1202,44 @@ function CertListPage({ go }: { go: Go }) {
   );
 }
 
+// Derive the certificate body copy from the selected service so the detail
+// page does not contradict the row's 施工内容.
+function certServiceInfo(svc: string): { desc: string; material: string; area: string; hours: string } {
+  if (svc.includes("PPF") || svc.includes("プロテ")) {
+    return {
+      desc: "ペイントプロテクションフィルム施工。脱脂・採寸の上、対象パネルへ自己修復 PPF を貼り込み、エッジを巻き込み処理。",
+      material: "Ledra PPF Pro",
+      area: svc.includes("フル") || svc.includes("ボンネット") ? "ボンネット全面" : "フロント周り",
+      hours: "6.0h",
+    };
+  }
+  if (svc.includes("フィルム")) {
+    return {
+      desc: "ウィンドウフィルム施工。可視光・赤外線カット率を測定の上、各ガラスへ気泡なく貼り込み。",
+      material: "Ledra Window Film",
+      area: "ガラス全面",
+      hours: "3.5h",
+    };
+  }
+  if (svc.includes("ラッピング")) {
+    return {
+      desc: "カーラッピング施工。脱脂・採寸の上、対象パネルへラップフィルムを貼り込み、エッジ処理・熱定着で仕上げ。",
+      material: "Ledra Wrap",
+      area: "ボディ全面",
+      hours: "9.0h",
+    };
+  }
+  return {
+    desc: "ガラスコーティング・ボディ全面。下地処理 (鉄粉除去 → 軽研磨 → 脱脂) を経て、ベース 2 層 + トップ 2 層 + 撥水仕上げを施工。",
+    material: "Ledra Coat L5",
+    area: "ボディ全面",
+    hours: "7.5h",
+  };
+}
+
 function CertDetailBody({ row }: { row: (typeof CERT_ROWS)[number] }) {
+  const svcInfo = certServiceInfo(row.svc);
+  const isFinal = row.st === "issued" || row.st === "archived";
   return (
     <div
       style={{
@@ -1225,18 +1263,15 @@ function CertDetailBody({ row }: { row: (typeof CERT_ROWS)[number] }) {
         >
           <Eyebrow>施工概要</Eyebrow>
           <div style={{ fontSize: 17, fontWeight: 600, color: c.ink, marginTop: 8 }}>{row.svc}</div>
-          <div style={{ fontSize: 12.5, color: c.ink2, lineHeight: 1.65, marginTop: 8 }}>
-            ガラスコーティング・ボディ全面。下地処理 (鉄粉除去 → 軽研磨 → 脱脂) を経て、ベース 2 層 + トップ 2 層 +
-            撥水仕上げを施工。施工時間 7.5h。
-          </div>
+          <div style={{ fontSize: 12.5, color: c.ink2, lineHeight: 1.65, marginTop: 8 }}>{svcInfo.desc}</div>
           <div style={{ height: 1, background: c.lineHair, margin: "14px 0" }} />
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, fontSize: 12 }}>
             {[
-              { l: "入庫日", v: "2024/05/16" },
-              { l: "施工完了", v: "2024/05/18" },
-              { l: "工数", v: "7.5h", mono: true },
-              { l: "使用材料", v: "Ledra Coat L5" },
-              { l: "施工エリア", v: "ボディ全面" },
+              { l: "入庫日", v: row.dt },
+              { l: "状態", v: CERT_STATUS[row.st].l },
+              { l: "工数", v: svcInfo.hours, mono: true },
+              { l: "使用材料", v: svcInfo.material },
+              { l: "施工エリア", v: svcInfo.area },
               { l: "担当", v: "山田 大輔" },
             ].map((kv, i) => (
               <div key={i}>
@@ -1329,12 +1364,12 @@ function CertDetailBody({ row }: { row: (typeof CERT_ROWS)[number] }) {
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Eyebrow>検収サイン</Eyebrow>
             <div style={{ flex: 1 }} />
-            <StatusBadge kind="amber">残 1</StatusBadge>
+            <StatusBadge kind={isFinal ? "emerald" : "amber"}>{isFinal ? "完了" : "残 1"}</StatusBadge>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
             {[
               { l: "施工者", n: "山田 大輔", done: true },
-              { l: "検収者", n: "河本 雄一", done: false },
+              { l: "検収者", n: "河本 雄一", done: isFinal },
             ].map((s, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div
@@ -1574,15 +1609,30 @@ function CaseListPage({ go }: { go: Go }) {
   );
 }
 
+const MECH_FULL: Record<string, string> = {
+  山田: "山田 大輔",
+  林: "林 翔平",
+  中川: "中川 結菜",
+  田島: "田島 美和子",
+};
+
 function CaseDetailBody({ row }: { row: (typeof CASE_ROWS)[number] }) {
-  const steps = [
-    { l: "入庫 / 受付", done: true, by: "田島", time: "05/16 09:12" },
-    { l: "下地処理", done: true, by: "山田", time: "05/16 14:30" },
-    { l: "コーティング", done: true, by: "山田", time: "05/17 16:48" },
-    { l: "品質チェック", done: false, by: "山田", time: "進行中" },
-    { l: "検収サイン", done: false, by: "河本", time: "未着手" },
-    { l: "納車 / 証明書発行", done: false, by: "田島", time: "予定 05/20" },
-  ];
+  const mechFull = MECH_FULL[row.mech] ?? row.mech;
+  // Derive the workflow step state from the row's progress so review-ready
+  // jobs (prog 100) don't show a half-finished stepper, and the final step's
+  // delivery date matches the header's納期.
+  const STEP_LABELS = ["入庫 / 受付", "下地処理", "コーティング", "品質チェック", "検収サイン", "納車 / 証明書発行"];
+  const doneCount = Math.round((row.prog / 100) * STEP_LABELS.length);
+  const steps = STEP_LABELS.map((l, i) => {
+    const done = i < doneCount;
+    const by = i === 0 || i === STEP_LABELS.length - 1 ? "田島" : i === 4 ? "河本" : row.mech;
+    let time: string;
+    if (done) time = "完了";
+    else if (i === doneCount && row.prog > 0 && row.prog < 100) time = "進行中";
+    else if (i === STEP_LABELS.length - 1) time = `予定 ${row.due}`;
+    else time = "未着手";
+    return { l, done, by, time };
+  });
   return (
     <div
       style={{
@@ -1606,7 +1656,9 @@ function CaseDetailBody({ row }: { row: (typeof CASE_ROWS)[number] }) {
         >
           <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
             <Eyebrow>進捗</Eyebrow>
-            <Mono style={{ fontSize: 12, color: c.muted }}>{row.prog}% · 工程 3/6</Mono>
+            <Mono style={{ fontSize: 12, color: c.muted }}>
+              {row.prog}% · 工程 {doneCount}/{STEP_LABELS.length}
+            </Mono>
             <div style={{ flex: 1 }} />
             <Mono style={{ fontSize: 11.5, color: c.muted }}>納期 {row.due}</Mono>
           </div>
@@ -1712,7 +1764,7 @@ function CaseDetailBody({ row }: { row: (typeof CASE_ROWS)[number] }) {
         >
           <Eyebrow style={{ marginBottom: 10 }}>担当 / 関係者</Eyebrow>
           {[
-            { l: "担当メカ", n: "山田 大輔", sub: "リード · 4年" },
+            { l: "担当メカ", n: mechFull, sub: "" },
             { l: "受付", n: "田島 美和子", sub: "" },
             { l: "検収", n: "河本 雄一", sub: "オーナー" },
           ].map((m, i) => (
@@ -2120,7 +2172,12 @@ export default function LedraPrototype() {
     obs.observe(el, { attributes: true, attributeFilter: ["data-theme"] });
     return () => {
       obs.disconnect();
-      if (prev !== null) el.setAttribute("data-theme", prev);
+      // Restore the theme ThemeProvider last resolved (it keeps the `__theme`
+      // cookie current, including OS changes that happened on this page),
+      // falling back to the value captured on mount.
+      const cookieTheme = document.cookie.match(/(?:^|;\s*)__theme=(light|dark)/)?.[1];
+      const restore = cookieTheme ?? prev;
+      if (restore) el.setAttribute("data-theme", restore);
       else el.removeAttribute("data-theme");
     };
   }, []);
@@ -2190,6 +2247,7 @@ export default function LedraPrototype() {
     case "cert": {
       const row = CERT_ROWS.find((r) => r.id === arg) ?? CERT_ROWS[0];
       const stt = CERT_STATUS[row.st];
+      const isFinal = row.st === "issued" || row.st === "archived";
       shellProps = {
         crumbRoutes: ["certs"],
         crumb: ["証明書", row.id],
@@ -2206,9 +2264,15 @@ export default function LedraPrototype() {
           <Fragment>
             <SecondaryBtn icon={<Ico.download style={{ width: 14, height: 14 }} />}>PDF</SecondaryBtn>
             <SecondaryBtn icon={<Ico.qr style={{ width: 14, height: 14 }} />}>顧客QR</SecondaryBtn>
-            <Btn kind="primary" size="sm" icon={<Ico.check style={{ width: 14, height: 14 }} />}>
-              検収 → 発行
-            </Btn>
+            {isFinal ? (
+              <Btn kind="secondary" size="sm" icon={<Ico.check style={{ width: 14, height: 14 }} />}>
+                発行済
+              </Btn>
+            ) : (
+              <Btn kind="primary" size="sm" icon={<Ico.check style={{ width: 14, height: 14 }} />}>
+                検収 → 発行
+              </Btn>
+            )}
           </Fragment>
         ),
         body: <CertDetailBody row={row} />,
