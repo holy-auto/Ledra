@@ -294,12 +294,10 @@ function CmdK({ compact, onInset, onClick }: { compact?: boolean; onInset?: bool
 function CmdKModal({ go, onClose }: { go: Go; onClose: () => void }) {
   const [q, setQ] = useState("");
   const lower = q.toLowerCase();
-  const certHits = q
-    ? CERT_ROWS.filter((r) => r.id.toLowerCase().includes(lower) || r.cust.toLowerCase().includes(lower))
-    : [];
-  const caseHits = q
-    ? CASE_ROWS.filter((r) => r.id.toLowerCase().includes(lower) || r.cust.toLowerCase().includes(lower))
-    : [];
+  const match = (r: { id: string; cust: string; car: string }) =>
+    r.id.toLowerCase().includes(lower) || r.cust.toLowerCase().includes(lower) || r.car.toLowerCase().includes(lower);
+  const certHits = q ? CERT_ROWS.filter(match) : [];
+  const caseHits = q ? CASE_ROWS.filter(match) : [];
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -817,6 +815,7 @@ function LShell3({
   go,
   active,
   onCmdK,
+  bodyKey,
   children,
 }: {
   crumb?: string[];
@@ -828,6 +827,7 @@ function LShell3({
   go: Go;
   active: string;
   onCmdK?: () => void;
+  bodyKey?: string;
   children?: ReactNode;
 }) {
   const tabKey = tabs.map((tb) => tb.l).join("|");
@@ -958,7 +958,11 @@ function LShell3({
           <div style={{ flex: 1 }} />
           {pageActions}
         </div>
-        {children}
+        {/* keyed on the route so navigating (incl. detail→detail) remounts the
+            body and resets its internal scroll position */}
+        <main key={bodyKey} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          {children}
+        </main>
       </div>
     </div>
   );
@@ -1197,7 +1201,7 @@ function CertListPage({ go }: { go: Go }) {
   );
 }
 
-function CertDetailBody() {
+function CertDetailBody({ row }: { row: (typeof CERT_ROWS)[number] }) {
   return (
     <div
       style={{
@@ -1220,9 +1224,7 @@ function CertDetailBody() {
           }}
         >
           <Eyebrow>施工概要</Eyebrow>
-          <div style={{ fontSize: 17, fontWeight: 600, color: c.ink, marginTop: 8 }}>
-            コーティング 5層 — Ledra Standard
-          </div>
+          <div style={{ fontSize: 17, fontWeight: 600, color: c.ink, marginTop: 8 }}>{row.svc}</div>
           <div style={{ fontSize: 12.5, color: c.ink2, lineHeight: 1.65, marginTop: 8 }}>
             ガラスコーティング・ボディ全面。下地処理 (鉄粉除去 → 軽研磨 → 脱脂) を経て、ベース 2 層 + トップ 2 層 +
             撥水仕上げを施工。施工時間 7.5h。
@@ -1309,12 +1311,12 @@ function CertDetailBody() {
           }}
         >
           <Eyebrow>顧客</Eyebrow>
-          <div style={{ fontSize: 15, fontWeight: 600, color: c.ink, marginTop: 6 }}>田中 雅人</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: c.ink, marginTop: 6 }}>{row.cust}</div>
           <div style={{ fontSize: 11.5, color: c.muted, marginTop: 2 }}>個人 · リピート 3 回目</div>
           <div style={{ height: 1, background: c.lineHair, margin: "12px 0" }} />
           <Eyebrow>車両</Eyebrow>
-          <div style={{ fontSize: 13.5, color: c.ink, marginTop: 6, fontWeight: 500 }}>TOYOTA ALPHARD</div>
-          <Mono style={{ fontSize: 12, color: c.ink2, marginTop: 2 }}>ZWS35 · 横浜 301 さ 4218</Mono>
+          <div style={{ fontSize: 13.5, color: c.ink, marginTop: 6, fontWeight: 500 }}>{row.car}</div>
+          <Mono style={{ fontSize: 12, color: c.ink2, marginTop: 2 }}>横浜 301 · 登録車両</Mono>
         </div>
         <div
           style={{
@@ -1572,7 +1574,7 @@ function CaseListPage({ go }: { go: Go }) {
   );
 }
 
-function CaseDetailBody() {
+function CaseDetailBody({ row }: { row: (typeof CASE_ROWS)[number] }) {
   const steps = [
     { l: "入庫 / 受付", done: true, by: "田島", time: "05/16 09:12" },
     { l: "下地処理", done: true, by: "山田", time: "05/16 14:30" },
@@ -1604,9 +1606,9 @@ function CaseDetailBody() {
         >
           <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
             <Eyebrow>進捗</Eyebrow>
-            <Mono style={{ fontSize: 12, color: c.muted }}>60% · 工程 3/6</Mono>
+            <Mono style={{ fontSize: 12, color: c.muted }}>{row.prog}% · 工程 3/6</Mono>
             <div style={{ flex: 1 }} />
-            <Mono style={{ fontSize: 11.5, color: c.muted }}>納期 05/20 · 残 2 日</Mono>
+            <Mono style={{ fontSize: 11.5, color: c.muted }}>納期 {row.due}</Mono>
           </div>
           <div style={{ display: "flex", flexDirection: "column", marginTop: 14 }}>
             {steps.map((s, i) => (
@@ -1693,12 +1695,12 @@ function CaseDetailBody() {
           }}
         >
           <Eyebrow>顧客</Eyebrow>
-          <div style={{ fontSize: 15, fontWeight: 600, color: c.ink, marginTop: 6 }}>田中 雅人</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: c.ink, marginTop: 6 }}>{row.cust}</div>
           <Mono style={{ fontSize: 11.5, color: c.muted, marginTop: 2 }}>080-XXXX-1234 · リピート 3 回目</Mono>
           <div style={{ height: 1, background: c.lineHair, margin: "12px 0" }} />
           <Eyebrow>車両</Eyebrow>
-          <div style={{ fontSize: 13.5, color: c.ink, marginTop: 6, fontWeight: 500 }}>TOYOTA ALPHARD</div>
-          <Mono style={{ fontSize: 12, color: c.ink2, marginTop: 2 }}>ZWS35 · 横浜 301 さ 4218</Mono>
+          <div style={{ fontSize: 13.5, color: c.ink, marginTop: 6, fontWeight: 500 }}>{row.car}</div>
+          <Mono style={{ fontSize: 12, color: c.ink2, marginTop: 2 }}>横浜 301 · 登録車両</Mono>
         </div>
         <div
           style={{
@@ -2100,26 +2102,33 @@ export default function LedraPrototype() {
   const [route, setRoute] = useState("dashboard");
   const [cmdkOpen, setCmdkOpen] = useState(false);
 
+  // The prototype is built with inline styles only, so the global
+  // `[data-theme="dark"] span { color:#fff !important }` safety-net in
+  // globals.css would clobber token-colored text. Force the document into
+  // light while this route is mounted. A one-time write is not enough: the
+  // root ThemeProvider re-applies `data-theme` on mount, after loading the
+  // saved theme, and on OS theme changes — so we observe and re-correct any
+  // write back to dark, then restore the previous value on unmount.
   useEffect(() => {
-    const prev = document.documentElement.dataset.theme;
-    document.documentElement.dataset.theme = "light";
+    const el = document.documentElement;
+    const prev = el.getAttribute("data-theme");
+    const force = () => {
+      if (el.getAttribute("data-theme") !== "light") el.setAttribute("data-theme", "light");
+    };
+    force();
+    const obs = new MutationObserver(force);
+    obs.observe(el, { attributes: true, attributeFilter: ["data-theme"] });
     return () => {
-      if (prev !== undefined) {
-        document.documentElement.dataset.theme = prev;
-      } else {
-        delete document.documentElement.dataset.theme;
-      }
+      obs.disconnect();
+      if (prev !== null) el.setAttribute("data-theme", prev);
+      else el.removeAttribute("data-theme");
     };
   }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: sync route to window.location.hash after mount (SSR-safe)
     setRoute(parseHash());
-    const onHash = () => {
-      setRoute(parseHash());
-      const root = document.querySelector(".lp main");
-      if (root) root.scrollTop = 0;
-    };
+    const onHash = () => setRoute(parseHash());
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
@@ -2178,12 +2187,14 @@ export default function LedraPrototype() {
         body: <CertListPage go={go} />,
       };
       break;
-    case "cert":
+    case "cert": {
+      const row = CERT_ROWS.find((r) => r.id === arg) ?? CERT_ROWS[0];
+      const stt = CERT_STATUS[row.st];
       shellProps = {
         crumbRoutes: ["certs"],
-        crumb: ["証明書", arg || "CERT-2024-0142"],
-        pageTitle: arg || "CERT-2024-0142",
-        pageMeta: <StatusBadge kind="amber">発行待ち</StatusBadge>,
+        crumb: ["証明書", row.id],
+        pageTitle: row.id,
+        pageMeta: <StatusBadge kind={stt.tone}>{stt.l}</StatusBadge>,
         tabs: [
           { l: "概要", active: true },
           { l: "写真", badge: 12 },
@@ -2200,9 +2211,10 @@ export default function LedraPrototype() {
             </Btn>
           </Fragment>
         ),
-        body: <CertDetailBody />,
+        body: <CertDetailBody row={row} />,
       };
       break;
+    }
     case "cases":
       shellProps = {
         crumb: ["案件"],
@@ -2226,15 +2238,19 @@ export default function LedraPrototype() {
         body: <CaseListPage go={go} />,
       };
       break;
-    case "job":
+    case "job": {
+      const row = CASE_ROWS.find((r) => r.id === arg) ?? CASE_ROWS[0];
+      const stt = CASE_STATUS[row.st];
       shellProps = {
         crumbRoutes: ["cases"],
-        crumb: ["案件", arg || "JOB-2412"],
-        pageTitle: arg || "JOB-2412",
+        crumb: ["案件", row.id],
+        pageTitle: row.id,
         pageMeta: (
           <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-            <StatusBadge kind="blue">作業中</StatusBadge>
-            <Mono style={{ fontSize: 12, color: c.muted }}>田中 雅人 · ALPHARD</Mono>
+            <StatusBadge kind={stt.tone}>{stt.l}</StatusBadge>
+            <Mono style={{ fontSize: 12, color: c.muted }}>
+              {row.cust} · {row.car}
+            </Mono>
           </div>
         ),
         tabs: [
@@ -2252,12 +2268,12 @@ export default function LedraPrototype() {
             </Btn>
           </Fragment>
         ),
-        body: <CaseDetailBody />,
+        body: <CaseDetailBody row={row} />,
       };
       break;
+    }
     case "insurance":
       shellProps = {
-        crumbRoutes: ["dashboard"],
         crumb: ["外部", "損保案件"],
         pageTitle: "損保連携",
         pageMeta: <Mono style={{ fontSize: 12.5, color: c.muted }}>43 件</Mono>,
@@ -2354,6 +2370,7 @@ export default function LedraPrototype() {
         tabs={shellProps.tabs}
         pageActions={shellProps.pageActions}
         onCmdK={() => setCmdkOpen(true)}
+        bodyKey={route}
       >
         {shellProps.body}
       </LShell3>
