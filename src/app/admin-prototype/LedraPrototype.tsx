@@ -17,7 +17,7 @@
 // All data is fictional preview seed data (no Supabase).
 // ════════════════════════════════════════════════════════════
 
-import { useEffect, useState, type CSSProperties, type ReactNode, type ReactElement, Fragment } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type ReactElement, Fragment } from "react";
 import "./ledra-prototype.css";
 
 type Go = (route: string) => void;
@@ -255,9 +255,10 @@ function StatusBadge({ kind, children }: { kind?: string; children: ReactNode })
 }
 
 // ── Global bar pieces ───────────────────────────────────────
-function CmdK({ compact, onInset }: { compact?: boolean; onInset?: boolean }) {
+function CmdK({ compact, onInset, onClick }: { compact?: boolean; onInset?: boolean; onClick?: () => void }) {
   return (
     <div
+      onClick={onClick}
       style={{
         width: compact ? 260 : 320,
         height: compact ? 30 : 34,
@@ -270,6 +271,7 @@ function CmdK({ compact, onInset }: { compact?: boolean; onInset?: boolean }) {
         gap: 10,
         color: c.muted,
         fontSize: 12.5,
+        cursor: onClick ? "pointer" : "default",
       }}
     >
       <Ico.search style={{ width: 14, height: 14 }} />
@@ -285,6 +287,161 @@ function CmdK({ compact, onInset }: { compact?: boolean; onInset?: boolean }) {
       >
         ⌘K
       </Mono>
+    </div>
+  );
+}
+
+function CmdKModal({ go, onClose }: { go: Go; onClose: () => void }) {
+  const [q, setQ] = useState("");
+  const lower = q.toLowerCase();
+  const certHits = q
+    ? CERT_ROWS.filter((r) => r.id.toLowerCase().includes(lower) || r.cust.toLowerCase().includes(lower))
+    : [];
+  const caseHits = q
+    ? CASE_ROWS.filter((r) => r.id.toLowerCase().includes(lower) || r.cust.toLowerCase().includes(lower))
+    : [];
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        background: "rgba(0,0,0,0.35)",
+        display: "flex",
+        justifyContent: "center",
+        paddingTop: "20vh",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 480,
+          maxHeight: "60vh",
+          background: c.surface,
+          borderRadius: t.radius.lg,
+          boxShadow: "0 16px 48px rgba(0,0,0,0.2)",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          alignSelf: "flex-start",
+        }}
+      >
+        <div
+          style={{
+            padding: "12px 16px",
+            borderBottom: `1px solid ${c.line}`,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <Ico.search style={{ width: 16, height: 16, color: c.muted, flexShrink: 0 }} />
+          <input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="検索 · 顧客 / 車両 / 証明書 ID"
+            style={{
+              flex: 1,
+              border: "none",
+              outline: "none",
+              background: "transparent",
+              fontSize: 14,
+              color: c.ink,
+              fontFamily: t.font.sans,
+            }}
+          />
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
+          {certHits.length === 0 && caseHits.length === 0 && q && (
+            <div style={{ padding: "16px 20px", fontSize: 13, color: c.muted, textAlign: "center" }}>該当なし</div>
+          )}
+          {certHits.length > 0 && (
+            <div>
+              <div
+                style={{
+                  padding: "4px 16px",
+                  fontSize: 10.5,
+                  fontWeight: 600,
+                  color: c.muted,
+                  textTransform: "uppercase" as const,
+                }}
+              >
+                証明書
+              </div>
+              {certHits.map((r) => (
+                <div
+                  key={r.id}
+                  onClick={() => {
+                    go("cert:" + r.id);
+                    onClose();
+                  }}
+                  style={{
+                    padding: "8px 16px",
+                    fontSize: 13,
+                    cursor: "pointer",
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "center",
+                    color: c.ink,
+                  }}
+                >
+                  <Mono style={{ fontSize: 12, color: c.muted }}>{r.id}</Mono>
+                  <span>{r.cust}</span>
+                  <span style={{ color: c.muted, marginLeft: "auto", fontSize: 12 }}>{r.car}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {caseHits.length > 0 && (
+            <div>
+              <div
+                style={{
+                  padding: "4px 16px",
+                  fontSize: 10.5,
+                  fontWeight: 600,
+                  color: c.muted,
+                  textTransform: "uppercase" as const,
+                }}
+              >
+                案件
+              </div>
+              {caseHits.map((r) => (
+                <div
+                  key={r.id}
+                  onClick={() => {
+                    go("job:" + r.id);
+                    onClose();
+                  }}
+                  style={{
+                    padding: "8px 16px",
+                    fontSize: 13,
+                    cursor: "pointer",
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "center",
+                    color: c.ink,
+                  }}
+                >
+                  <Mono style={{ fontSize: 12, color: c.muted }}>{r.id}</Mono>
+                  <span>{r.cust}</span>
+                  <span style={{ color: c.muted, marginLeft: "auto", fontSize: 12 }}>{r.car}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -347,7 +504,7 @@ function BellAvatar({ initial = "K" }: { initial?: string }) {
   );
 }
 
-function Crumb({ items, go }: { items: string[]; go: Go }) {
+function Crumb({ items, go, routes }: { items: string[]; go: Go; routes?: string[] }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: c.muted, minWidth: 0 }}>
       {items.map((it, i) => (
@@ -358,12 +515,12 @@ function Crumb({ items, go }: { items: string[]; go: Go }) {
             </span>
           )}
           <span
-            onClick={i === 0 ? () => go("dashboard") : undefined}
+            onClick={routes?.[i] ? () => go(routes[i]) : undefined}
             style={{
               color: i === items.length - 1 ? c.ink : c.muted,
               fontWeight: i === items.length - 1 ? 500 : 400,
               whiteSpace: "nowrap",
-              cursor: i === 0 ? "pointer" : "default",
+              cursor: routes?.[i] ? "pointer" : "default",
             }}
           >
             {it}
@@ -652,23 +809,44 @@ const DASH_TABS: Tab[] = [{ l: "今日", active: true }, { l: "今週" }, { l: "
 
 function LShell3({
   crumb = ["横浜ガレージ工房", "ダッシュボード"],
+  crumbRoutes,
   pageTitle = "ダッシュボード",
   pageMeta,
   tabs = DASH_TABS,
   pageActions,
   go,
   active,
+  onCmdK,
   children,
 }: {
   crumb?: string[];
+  crumbRoutes?: string[];
   pageTitle?: string;
   pageMeta?: ReactNode;
   tabs?: Tab[];
   pageActions?: ReactNode;
   go: Go;
   active: string;
+  onCmdK?: () => void;
   children?: ReactNode;
 }) {
+  const tabKey = tabs.map((tb) => tb.l).join("|");
+  const [activeTabIdx, setActiveTabIdx] = useState(() =>
+    Math.max(
+      0,
+      tabs.findIndex((tb) => tb.active),
+    ),
+  );
+  const prevTabKeyRef = useRef(tabKey);
+  useEffect(() => {
+    if (prevTabKeyRef.current !== tabKey) {
+      prevTabKeyRef.current = tabKey;
+      const idx = tabs.findIndex((tb) => tb.active);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: reset active tab index when the set of tabs changes (route navigation)
+      if (idx >= 0) setActiveTabIdx(idx);
+    }
+  }, [tabKey, tabs]);
+
   return (
     <div style={{ display: "flex", height: "100%", background: c.bg }}>
       <SidebarA go={go} active={active} />
@@ -686,9 +864,9 @@ function LShell3({
             flexShrink: 0,
           }}
         >
-          <Crumb items={crumb} go={go} />
+          <Crumb items={crumb} go={go} routes={crumbRoutes} />
           <div style={{ flex: 1 }} />
-          <CmdK compact onInset />
+          <CmdK compact onInset onClick={onCmdK} />
           <BellAvatar />
         </div>
         {/* page header bar — 60px, on surface */}
@@ -709,69 +887,73 @@ function LShell3({
             {pageMeta}
           </div>
           <div style={{ display: "flex", alignItems: "stretch", gap: 4, alignSelf: "stretch" }}>
-            {tabs.map((tab, i) => (
-              <div
-                key={i}
-                style={{
-                  position: "relative",
-                  padding: "0 12px",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  fontSize: 13,
-                  fontWeight: tab.active ? 500 : 400,
-                  color: tab.active ? c.ink : c.ink2,
-                  cursor: "pointer",
-                }}
-              >
-                {tab.l}
-                {tab.badge != null ? (
-                  tab.active ? (
+            {tabs.map((tab, i) => {
+              const isActive = i === activeTabIdx;
+              return (
+                <div
+                  key={i}
+                  onClick={() => setActiveTabIdx(i)}
+                  style={{
+                    position: "relative",
+                    padding: "0 12px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: 13,
+                    fontWeight: isActive ? 500 : 400,
+                    color: isActive ? c.ink : c.ink2,
+                    cursor: "pointer",
+                  }}
+                >
+                  {tab.l}
+                  {tab.badge != null ? (
+                    isActive ? (
+                      <span
+                        style={{
+                          fontSize: 10,
+                          padding: "1px 5px",
+                          borderRadius: 999,
+                          background: c.ink,
+                          color: c.surface,
+                          fontWeight: 600,
+                          fontFamily: t.font.mono,
+                        }}
+                      >
+                        {tab.badge}
+                      </span>
+                    ) : (
+                      <span
+                        style={{
+                          fontSize: 10,
+                          padding: "0px 5px",
+                          borderRadius: 999,
+                          background: "transparent",
+                          color: c.muted,
+                          fontWeight: 600,
+                          fontFamily: t.font.mono,
+                          boxShadow: `inset 0 0 0 1px ${c.line2}`,
+                        }}
+                      >
+                        {tab.badge}
+                      </span>
+                    )
+                  ) : null}
+                  {isActive && (
                     <span
                       style={{
-                        fontSize: 10,
-                        padding: "1px 5px",
-                        borderRadius: 999,
+                        position: "absolute",
+                        left: 12,
+                        right: 12,
+                        bottom: -1,
+                        height: 2,
                         background: c.ink,
-                        color: c.surface,
-                        fontWeight: 600,
-                        fontFamily: t.font.mono,
+                        borderRadius: 1,
                       }}
-                    >
-                      {tab.badge}
-                    </span>
-                  ) : (
-                    <span
-                      style={{
-                        fontSize: 10,
-                        padding: "0px 5px",
-                        borderRadius: 999,
-                        background: "transparent",
-                        color: c.muted,
-                        fontWeight: 600,
-                        fontFamily: t.font.mono,
-                        boxShadow: `inset 0 0 0 1px ${c.line2}`,
-                      }}
-                    >
-                      {tab.badge}
-                    </span>
-                  )
-                ) : null}
-                {tab.active && (
-                  <span
-                    style={{
-                      position: "absolute",
-                      left: 12,
-                      right: 12,
-                      bottom: -1,
-                      height: 2,
-                      background: c.ink,
-                      borderRadius: 1,
-                    }}
-                  />
-                )}
-              </div>
-            ))}
+                    />
+                  )}
+                </div>
+              );
+            })}
           </div>
           <div style={{ flex: 1 }} />
           {pageActions}
@@ -1916,6 +2098,19 @@ function parseHash(): string {
 
 export default function LedraPrototype() {
   const [route, setRoute] = useState("dashboard");
+  const [cmdkOpen, setCmdkOpen] = useState(false);
+
+  useEffect(() => {
+    const prev = document.documentElement.dataset.theme;
+    document.documentElement.dataset.theme = "light";
+    return () => {
+      if (prev !== undefined) {
+        document.documentElement.dataset.theme = prev;
+      } else {
+        delete document.documentElement.dataset.theme;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: sync route to window.location.hash after mount (SSR-safe)
@@ -1929,6 +2124,17 @@ export default function LedraPrototype() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setCmdkOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const go: Go = (r) => {
     window.location.hash = r;
   };
@@ -1939,6 +2145,7 @@ export default function LedraPrototype() {
   // Per-route L3 chrome + body.
   let shellProps: {
     crumb: string[];
+    crumbRoutes?: string[];
     pageTitle: string;
     pageMeta?: ReactNode;
     tabs?: Tab[];
@@ -1973,6 +2180,7 @@ export default function LedraPrototype() {
       break;
     case "cert":
       shellProps = {
+        crumbRoutes: ["certs"],
         crumb: ["証明書", arg || "CERT-2024-0142"],
         pageTitle: arg || "CERT-2024-0142",
         pageMeta: <StatusBadge kind="amber">発行待ち</StatusBadge>,
@@ -2020,6 +2228,7 @@ export default function LedraPrototype() {
       break;
     case "job":
       shellProps = {
+        crumbRoutes: ["cases"],
         crumb: ["案件", arg || "JOB-2412"],
         pageTitle: arg || "JOB-2412",
         pageMeta: (
@@ -2048,6 +2257,7 @@ export default function LedraPrototype() {
       break;
     case "insurance":
       shellProps = {
+        crumbRoutes: ["dashboard"],
         crumb: ["外部", "損保案件"],
         pageTitle: "損保連携",
         pageMeta: <Mono style={{ fontSize: 12.5, color: c.muted }}>43 件</Mono>,
@@ -2123,6 +2333,7 @@ export default function LedraPrototype() {
       break;
     default:
       shellProps = {
+        crumbRoutes: ["dashboard"],
         crumb: ["横浜ガレージ工房", "ダッシュボード"],
         pageTitle: "ダッシュボード",
         tabs: DASH_TABS,
@@ -2137,13 +2348,16 @@ export default function LedraPrototype() {
         go={go}
         active={active}
         crumb={shellProps.crumb}
+        crumbRoutes={shellProps.crumbRoutes}
         pageTitle={shellProps.pageTitle}
         pageMeta={shellProps.pageMeta}
         tabs={shellProps.tabs}
         pageActions={shellProps.pageActions}
+        onCmdK={() => setCmdkOpen(true)}
       >
         {shellProps.body}
       </LShell3>
+      {cmdkOpen && <CmdKModal go={go} onClose={() => setCmdkOpen(false)} />}
     </div>
   );
 }
