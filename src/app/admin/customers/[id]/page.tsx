@@ -5,6 +5,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import PageHeader from "@/components/ui/PageHeader";
 import CustomerDetailClient from "./CustomerDetailClient";
+import CustomerLineLinkCard from "./CustomerLineLinkCard";
 import CustomerNextActionPanel from "./CustomerNextActionPanel";
 import CustomerTabs from "./CustomerTabs";
 import { deriveSignals, type CustomerSignals } from "@/lib/customers/signals";
@@ -91,7 +92,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       .eq("customer_id", id)
       .in("doc_type", ["invoice", "consolidated_invoice"])
       .order("created_at", { ascending: false }),
-    supabase.from("tenants").select("name").eq("id", tenantId).maybeSingle(),
+    supabase.from("tenants").select("name, line_enabled").eq("id", tenantId).maybeSingle(),
   ]);
 
   const vehicles = vehiclesRes.data ?? [];
@@ -99,6 +100,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const reservations = reservationsRes.data ?? [];
   const invoices = invoiceDocsRes.data ?? [];
   const shopName = (tenantRes.data?.name as string | undefined) ?? undefined;
+  const lineEnabled = Boolean(tenantRes.data?.line_enabled);
+  const lineLinked = Boolean((customer as { line_user_id?: string | null }).line_user_id);
 
   const signals = deriveSignals({
     customer: { id, created_at: customer.created_at },
@@ -122,6 +125,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
       {/* Customer Info + Edit */}
       <CustomerDetailClient customer={customer} />
+
+      {/* LINE 連携（連携コード発行 / 状態表示） */}
+      <CustomerLineLinkCard customerId={id} initialLinked={lineLinked} lineEnabled={lineEnabled} />
 
       {/* 次のアクション。signals はサーバ側で確定済みなので即時表示。
           AI サマリは Suspense で並行ストリーム (失敗 / 未生成でも signals だけで動く)。 */}

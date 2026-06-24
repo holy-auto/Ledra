@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { formatDateTime } from "@/lib/format";
 import CustomerProgressBar from "@/components/workflow/CustomerProgressBar";
+import LineLinkPanel from "./LineLinkPanel";
 
 type Row = {
   public_id: string;
@@ -362,6 +363,11 @@ export default function CustomerListPage() {
           </div>
         ) : null}
       </header>
+
+      <LineLinkPanel
+        tenantSlug={tenant}
+        initialLinked={shops.find((s) => s.tenant_slug === tenant)?.line_linked ?? false}
+      />
 
       {profile && (profile.email || profile.phone) ? (
         <div className="mb-4 rounded-3xl border border-border-default bg-inset p-4 text-sm shadow-sm">

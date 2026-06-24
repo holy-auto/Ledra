@@ -33,6 +33,16 @@ export async function POST(req: Request) {
   const { data: cust } = await supabase.from("customers").select("id").eq("id", parsed.data.customer_id).maybeSingle();
   if (!cust) return apiJson({ error: "not_found" }, { status: 404 });
 
+  // LINE 未連携テナントでコードを発行しても無意味なので弾く。
+  const { data: tenant } = await supabase
+    .from("tenants")
+    .select("line_enabled")
+    .eq("id", caller.tenantId)
+    .maybeSingle();
+  if (!tenant?.line_enabled) {
+    return apiJson({ error: "line_disabled", message: "LINE公式アカウントが未連携です。" }, { status: 409 });
+  }
+
   try {
     const result = await generateCustomerLinkCode(caller.tenantId, parsed.data.customer_id, caller.userId);
     return apiJson(result, { status: 201 });
