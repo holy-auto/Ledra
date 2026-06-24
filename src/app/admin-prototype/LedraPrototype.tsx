@@ -1254,6 +1254,9 @@ function certServiceInfo(svc: string): { desc: string; material: string; area: s
 function CertDetailBody({ row }: { row: (typeof CERT_ROWS)[number] }) {
   const svcInfo = certServiceInfo(row.svc);
   const isFinal = row.st === "issued" || row.st === "archived";
+  // Flow: review (検収中) → pending (発行待ち) → issued (公式) → archived (完了).
+  // The inspector has signed off everything except a certificate still in review.
+  const inspectorSigned = row.st !== "review";
   return (
     <div
       style={{
@@ -1380,12 +1383,14 @@ function CertDetailBody({ row }: { row: (typeof CERT_ROWS)[number] }) {
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Eyebrow>検収サイン</Eyebrow>
             <div style={{ flex: 1 }} />
-            <StatusBadge kind={isFinal ? "emerald" : "amber"}>{isFinal ? "完了" : "残 1"}</StatusBadge>
+            <StatusBadge kind={isFinal ? "emerald" : row.st === "pending" ? "blue" : "amber"}>
+              {isFinal ? "完了" : row.st === "pending" ? "発行待ち" : "残 1"}
+            </StatusBadge>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
             {[
               { l: "施工者", n: "山田 大輔", done: true },
-              { l: "検収者", n: "河本 雄一", done: isFinal },
+              { l: "検収者", n: "河本 雄一", done: inspectorSigned },
             ].map((s, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div
@@ -1462,6 +1467,7 @@ const CASE_ROWS = [
     id: "JOB-2412",
     cust: "田中 雅人",
     car: "ALPHARD",
+    svc: "コーティング 5層",
     in: "05/16",
     due: "05/20",
     mech: "山田",
@@ -1473,6 +1479,7 @@ const CASE_ROWS = [
     id: "JOB-2411",
     cust: "佐々木 健司",
     car: "LEXUS RX 500h",
+    svc: "PPF フルボンネット",
     in: "05/15",
     due: "05/19",
     mech: "林",
@@ -1484,6 +1491,7 @@ const CASE_ROWS = [
     id: "JOB-2410",
     cust: "株式会社 木野",
     car: "HIACE GDH206W",
+    svc: "ウィンドウフィルム",
     in: "05/15",
     due: "05/17",
     mech: "山田",
@@ -1495,6 +1503,7 @@ const CASE_ROWS = [
     id: "JOB-2409",
     cust: "横田 美紀",
     car: "CIVIC FL5",
+    svc: "ラッピング (マットPPF)",
     in: "05/14",
     due: "05/22",
     mech: "中川",
@@ -1506,6 +1515,7 @@ const CASE_ROWS = [
     id: "JOB-2408",
     cust: "高橋 隆志",
     car: "PORSCHE 992 GT3",
+    svc: "コーティング 7層",
     in: "05/14",
     due: "05/18",
     mech: "林",
@@ -1517,6 +1527,7 @@ const CASE_ROWS = [
     id: "JOB-2407",
     cust: "小野 結衣",
     car: "BMW M3 G80",
+    svc: "PPF + コーティング",
     in: "05/13",
     due: "05/21",
     mech: "中川",
@@ -1528,6 +1539,7 @@ const CASE_ROWS = [
     id: "JOB-2406",
     cust: "岸 文哉",
     car: "GR YARIS",
+    svc: "ラッピング",
     in: "05/13",
     due: "05/16",
     mech: "山田",
@@ -1632,20 +1644,53 @@ const MECH_FULL: Record<string, string> = {
   田島: "田島 美和子",
 };
 
+// Derive the quote line items from the selected job's service so the estimate
+// does not show the same coating+PPF package for every record.
+function caseEstimate(svc: string): { items: { l: string; v: string }[]; total: string } {
+  const base = { l: "下地処理", v: "¥38,000" };
+  if (svc.includes("ラッピング")) {
+    return { items: [{ l: "カーラッピング", v: "¥280,000" }, base], total: "¥349,800" };
+  }
+  if (svc.includes("PPF") && svc.includes("コーティング")) {
+    return {
+      items: [{ l: "PPF (要部)", v: "¥120,000" }, { l: "ガラスコーティング", v: "¥180,000" }, base],
+      total: "¥371,800",
+    };
+  }
+  if (svc.includes("PPF")) {
+    return { items: [{ l: svc, v: "¥150,000" }, base], total: "¥206,800" };
+  }
+  if (svc.includes("フィルム")) {
+    return { items: [{ l: "ウィンドウフィルム", v: "¥68,000" }], total: "¥74,800" };
+  }
+  const layers = svc.match(/(\d+)\s*層/)?.[1] ?? "5";
+  const coatPrice = layers === "7" ? "¥320,000" : "¥220,000";
+  const total = layers === "7" ? "¥413,600" : "¥303,600";
+  return {
+    items: [{ l: `コーティング ${layers}層`, v: coatPrice }, base, { l: "室内クリーニング", v: "¥18,000" }],
+    total,
+  };
+}
+
 function CaseDetailBody({ row }: { row: (typeof CASE_ROWS)[number] }) {
   const mechFull = MECH_FULL[row.mech] ?? row.mech;
+  const est = caseEstimate(row.svc);
   // Derive the workflow step state from the row's progress so review-ready
   // jobs (prog 100) don't show a half-finished stepper, and the final step's
   // delivery date matches the header's納期.
   const STEP_LABELS = ["入庫 / 受付", "下地処理", "コーティング", "品質チェック", "検収サイン", "納車 / 証明書発行"];
-  // floor (not round) so completed steps never get ahead of the row's progress
-  const doneCount = Math.floor((row.prog / 100) * STEP_LABELS.length);
+  // floor (not round) so completed steps never get ahead of the row's progress.
+  // A job awaiting inspection (review) keeps the 検収サイン / 納車 steps open even
+  // at 100% so the stepper doesn't look already approved and issued.
+  const SIGNOFF_STEP = 4; // 検収サイン
+  let doneCount = Math.floor((row.prog / 100) * STEP_LABELS.length);
+  if (row.st === "review") doneCount = Math.min(doneCount, SIGNOFF_STEP);
   const steps = STEP_LABELS.map((l, i) => {
     const done = i < doneCount;
-    const by = i === 0 || i === STEP_LABELS.length - 1 ? "田島" : i === 4 ? "河本" : row.mech;
+    const by = i === 0 || i === STEP_LABELS.length - 1 ? "田島" : i === SIGNOFF_STEP ? "河本" : row.mech;
     let time: string;
     if (done) time = "完了";
-    else if (i === doneCount && row.prog > 0 && row.prog < 100) time = "進行中";
+    else if (i === doneCount && row.prog > 0) time = "進行中";
     else if (i === STEP_LABELS.length - 1) time = `予定 ${row.due}`;
     else time = "未着手";
     return { l, done, by, time };
@@ -1733,15 +1778,10 @@ function CaseDetailBody({ row }: { row: (typeof CASE_ROWS)[number] }) {
           <div
             style={{ display: "grid", gridTemplateColumns: "1fr 80px 110px", gap: 8, marginTop: 12, fontSize: 12.5 }}
           >
-            {[
-              { l: "コーティング 5層", q: 1, v: "¥220,000" },
-              { l: "下地処理", q: 1, v: "¥38,000" },
-              { l: "室内クリーニング", q: 1, v: "¥18,000" },
-              { l: "PPF (フロント)", q: 1, v: "¥85,000" },
-            ].map((it, i) => (
+            {est.items.map((it, i) => (
               <Fragment key={i}>
                 <div style={{ color: c.ink }}>{it.l}</div>
-                <Mono style={{ color: c.muted, textAlign: "right" }}>×{it.q}</Mono>
+                <Mono style={{ color: c.muted, textAlign: "right" }}>×1</Mono>
                 <Mono style={{ color: c.ink, textAlign: "right" }}>{it.v}</Mono>
               </Fragment>
             ))}
@@ -1750,7 +1790,7 @@ function CaseDetailBody({ row }: { row: (typeof CASE_ROWS)[number] }) {
           <div style={{ display: "flex", alignItems: "baseline" }}>
             <div style={{ fontSize: 11.5, color: c.muted }}>合計 (税込)</div>
             <div style={{ flex: 1 }} />
-            <Mono style={{ fontSize: 18, color: c.ink, fontWeight: 500, letterSpacing: "-0.01em" }}>¥397,100</Mono>
+            <Mono style={{ fontSize: 18, color: c.ink, fontWeight: 500, letterSpacing: "-0.01em" }}>{est.total}</Mono>
           </div>
         </div>
       </div>
@@ -2285,9 +2325,13 @@ export default function LedraPrototype() {
               <Btn kind="secondary" size="sm" icon={<Ico.check style={{ width: 14, height: 14 }} />}>
                 発行済
               </Btn>
+            ) : row.st === "pending" ? (
+              <Btn kind="primary" size="sm" icon={<Ico.check style={{ width: 14, height: 14 }} />}>
+                発行する
+              </Btn>
             ) : (
               <Btn kind="primary" size="sm" icon={<Ico.check style={{ width: 14, height: 14 }} />}>
-                検収 → 発行
+                検収して発行
               </Btn>
             )}
           </Fragment>
