@@ -324,6 +324,7 @@ function CmdKModal({ go, onClose }: { go: Go; onClose: () => void }) {
         onClick={(e) => e.stopPropagation()}
         style={{
           width: 480,
+          maxWidth: "calc(100vw - 32px)",
           maxHeight: "60vh",
           background: c.surface,
           borderRadius: t.radius.lg,
@@ -570,11 +571,11 @@ const NAV: NavGroup[] = [
 // detail routes map back to their list for the active highlight
 const ACTIVE_MAP: Record<string, string> = { cert: "certs", job: "cases" };
 
-function SidebarA({ go, active }: { go: Go; active: string }) {
+function SidebarA({ go, active, width = 220 }: { go: Go; active: string; width?: number }) {
   return (
     <aside
       style={{
-        width: 220,
+        width,
         flexShrink: 0,
         height: "100%",
         background: c.surface,
@@ -898,7 +899,7 @@ function LShell3({
               boxShadow: "0 16px 48px rgba(0,0,0,0.2)",
             }}
           >
-            <SidebarA go={goAndClose} active={active} />
+            <SidebarA go={goAndClose} active={active} width={248} />
           </div>
         </div>
       )}
@@ -938,7 +939,7 @@ function LShell3({
               <Ico.grid style={{ width: 16, height: 16 }} />
             </button>
           )}
-          <Crumb items={crumb} go={go} routes={crumbRoutes} />
+          {!isMobile && <Crumb items={crumb} go={go} routes={crumbRoutes} />}
           <div style={{ flex: 1 }} />
           {isMobile ? (
             <button
@@ -983,7 +984,17 @@ function LShell3({
             <H2 style={{ whiteSpace: "nowrap" }}>{pageTitle}</H2>
             {pageMeta}
           </div>
-          <div style={{ display: "flex", alignItems: "stretch", gap: 4, alignSelf: "stretch" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "stretch",
+              gap: 4,
+              alignSelf: "stretch",
+              // On mobile the tab strip scrolls horizontally instead of clipping
+              // later tabs against the .lp overflow:hidden root.
+              ...(isMobile ? { flex: 1, minWidth: 0, overflowX: "auto" as const } : null),
+            }}
+          >
             {tabs.map((tab, i) => {
               const isActive = i === activeTabIdx;
               return (
@@ -1052,8 +1063,10 @@ function LShell3({
               );
             })}
           </div>
-          <div style={{ flex: 1 }} />
-          {pageActions}
+          {!isMobile && <div style={{ flex: 1 }} />}
+          {/* Secondary page actions are hidden on mobile to keep the page bar
+              within the viewport; primary flows remain reachable in the body. */}
+          {!isMobile && pageActions}
         </div>
         {/* keyed on the route so navigating (incl. detail→detail) remounts the
             body and resets its internal scroll position */}
