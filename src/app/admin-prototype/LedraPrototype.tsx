@@ -848,9 +848,60 @@ function LShell3({
     }
   }, [resetKey, tabs]);
 
+  // Responsive drawer: below 880px the sidebar collapses into an overlay
+  // opened from a hamburger in the global bar. Initialize to false for SSR
+  // safety, then sync to the real viewport width on mount.
+  const [isMobile, setIsMobile] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  useEffect(() => {
+    const apply = () => {
+      const mobile = window.innerWidth < 880;
+      setIsMobile(mobile);
+      // Never leave the drawer mounted once we return to the desktop layout.
+      if (!mobile) setDrawerOpen(false);
+    };
+    apply();
+    window.addEventListener("resize", apply);
+    return () => window.removeEventListener("resize", apply);
+  }, []);
+  // Close the drawer on Escape.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDrawerOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawerOpen]);
+  const goAndClose: Go = (r) => {
+    setDrawerOpen(false);
+    go(r);
+  };
+
   return (
     <div style={{ display: "flex", height: "100%", background: c.bg }}>
-      <SidebarA go={go} active={active} />
+      {!isMobile && <SidebarA go={go} active={active} />}
+      {isMobile && drawerOpen && (
+        <div
+          onClick={() => setDrawerOpen(false)}
+          style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,0.35)" }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              bottom: 0,
+              width: 248,
+              zIndex: 9998,
+              boxShadow: "0 16px 48px rgba(0,0,0,0.2)",
+            }}
+          >
+            <SidebarA go={goAndClose} active={active} />
+          </div>
+        </div>
+      )}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         {/* top thin global bar — 44px, sunk into bg-inset for the two-tier feel */}
         <div
@@ -865,9 +916,54 @@ function LShell3({
             flexShrink: 0,
           }}
         >
+          {isMobile && (
+            <button
+              onClick={() => setDrawerOpen(true)}
+              aria-label="メニュー"
+              style={{
+                width: 32,
+                height: 32,
+                border: 0,
+                background: "transparent",
+                color: c.ink2,
+                cursor: "pointer",
+                borderRadius: t.radius.sm,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                boxShadow: `inset 0 0 0 1px ${c.line}`,
+              }}
+            >
+              <Ico.grid style={{ width: 16, height: 16 }} />
+            </button>
+          )}
           <Crumb items={crumb} go={go} routes={crumbRoutes} />
           <div style={{ flex: 1 }} />
-          <CmdK compact onInset onClick={onCmdK} />
+          {isMobile ? (
+            <button
+              onClick={onCmdK}
+              aria-label="検索"
+              style={{
+                width: 32,
+                height: 32,
+                border: 0,
+                background: "transparent",
+                color: c.ink2,
+                cursor: "pointer",
+                borderRadius: t.radius.sm,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                boxShadow: `inset 0 0 0 1px ${c.line}`,
+              }}
+            >
+              <Ico.search style={{ width: 16, height: 16 }} />
+            </button>
+          ) : (
+            <CmdK compact onInset onClick={onCmdK} />
+          )}
           <BellAvatar />
         </div>
         {/* page header bar — 60px, on surface */}
@@ -2187,28 +2283,523 @@ function SettingsBody() {
   );
 }
 
-// Generic placeholder for routes without a dedicated body (no dead ends).
-function PlaceholderBody({ title }: { title: string }) {
+// ── Shared list-page wrappers ───────────────────────────────
+function BodyScroll({ children, style }: { children: ReactNode; style?: CSSProperties }) {
   return (
-    <div style={{ flex: 1, padding: "24px 28px", background: c.bg, minWidth: 0, overflow: "hidden", display: "flex" }}>
-      <div
-        style={{
-          flex: 1,
-          borderRadius: t.radius.lg,
-          background: c.surface,
-          boxShadow: `inset 0 0 0 1px ${c.line}`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: c.muted,
-        }}
-      >
-        <div style={{ textAlign: "center", opacity: 0.8 }}>
-          <Eyebrow style={{ marginBottom: 6 }}>{title}</Eyebrow>
-          <div style={{ fontSize: 12 }}>このページは L3 シェルのスカフォルドです（実装で専用UIに差し替え）。</div>
+    <div
+      style={{
+        flex: 1,
+        padding: "20px 28px 24px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 14,
+        minHeight: 0,
+        overflow: "auto",
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+// KPI strip matching the dashboard / insurance convention.
+function KpiStrip({ items }: { items: { l: string; v: string; gold?: boolean; sub?: string }[] }) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: `repeat(${items.length}, 1fr)`,
+        gap: 1,
+        background: c.line,
+        borderRadius: t.radius.lg,
+        overflow: "hidden",
+        boxShadow: `inset 0 0 0 1px ${c.line}`,
+      }}
+    >
+      {items.map((k, i) => (
+        <div key={i} style={{ background: c.surface, padding: "14px 18px" }}>
+          <div style={{ fontSize: 11, color: k.gold ? c.goldText : c.muted, letterSpacing: "0.06em", fontWeight: 600 }}>
+            {k.l}
+          </div>
+          <Mono
+            style={{
+              fontSize: 22,
+              color: c.ink,
+              fontWeight: 500,
+              letterSpacing: "-0.02em",
+              marginTop: 6,
+              display: "block",
+            }}
+          >
+            {k.v}
+          </Mono>
+          {k.sub && <div style={{ fontSize: 10.5, color: c.muted, marginTop: 2 }}>{k.sub}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Analytics ───────────────────────────────────────────────
+const CERT_TREND = [
+  { m: "12月", v: 24 },
+  { m: "1月", v: 28 },
+  { m: "2月", v: 31 },
+  { m: "3月", v: 27 },
+  { m: "4月", v: 34 },
+  { m: "5月", v: 38 },
+];
+const SVC_BREAKDOWN = [
+  { l: "コーティング", pct: 38 },
+  { l: "PPF", pct: 27 },
+  { l: "フィルム", pct: 18 },
+  { l: "ラッピング", pct: 17 },
+];
+
+function AnalyticsBody() {
+  const maxTrend = Math.max(...CERT_TREND.map((d) => d.v));
+  return (
+    <BodyScroll>
+      <KpiStrip
+        items={[
+          { l: "売上 · 今月", v: "¥3.82M" },
+          { l: "案件", v: "42" },
+          { l: "証明書発行", v: "38", gold: true },
+          { l: "平均単価", v: "¥91K" },
+        ]}
+      />
+      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 14, flex: 1, minHeight: 0 }}>
+        <div
+          style={{
+            background: c.surface,
+            borderRadius: t.radius.lg,
+            boxShadow: `inset 0 0 0 1px ${c.line}`,
+            padding: "18px 20px",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Eyebrow>発行推移</Eyebrow>
+            <div style={{ flex: 1 }} />
+            <Mono style={{ fontSize: 11, color: c.muted }}>直近 6ヶ月</Mono>
+          </div>
+          <div
+            style={{
+              flex: 1,
+              minHeight: 160,
+              marginTop: 18,
+              display: "grid",
+              gridTemplateColumns: `repeat(${CERT_TREND.length}, 1fr)`,
+              alignItems: "end",
+              gap: 14,
+            }}
+          >
+            {CERT_TREND.map((d, i) => {
+              const last = i === CERT_TREND.length - 1;
+              return (
+                <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+                  <Mono style={{ fontSize: 10.5, color: last ? c.ink : c.muted, fontWeight: last ? 600 : 400 }}>
+                    {d.v}
+                  </Mono>
+                  <div
+                    style={{
+                      width: "100%",
+                      height: `${(d.v / maxTrend) * 130}px`,
+                      background: last ? c.gold : c.ink,
+                      borderRadius: `${t.radius.sm} ${t.radius.sm} 0 0`,
+                      opacity: last ? 1 : 0.8,
+                    }}
+                  />
+                  <div style={{ fontSize: 10.5, color: c.muted }}>{d.m}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div
+          style={{
+            background: c.surface,
+            borderRadius: t.radius.lg,
+            boxShadow: `inset 0 0 0 1px ${c.line}`,
+            padding: "18px 20px",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <Eyebrow>施工種別</Eyebrow>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 18 }}>
+            {SVC_BREAKDOWN.map((s, i) => (
+              <div key={i}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                  <div style={{ fontSize: 12.5, color: c.ink, fontWeight: 500 }}>{s.l}</div>
+                  <div style={{ flex: 1 }} />
+                  <Mono style={{ fontSize: 12, color: c.ink2 }}>{s.pct}%</Mono>
+                </div>
+                <div
+                  style={{
+                    height: 6,
+                    background: c.inset,
+                    borderRadius: 3,
+                    overflow: "hidden",
+                    marginTop: 7,
+                  }}
+                >
+                  <div style={{ width: `${s.pct}%`, height: "100%", background: c.blue, borderRadius: 3 }} />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-    </div>
+    </BodyScroll>
+  );
+}
+
+// ── Customers (derived from CERT_ROWS) ──────────────────────
+function CustomersBody() {
+  const byCust = new Map<string, { cust: string; cars: Set<string>; certs: number; lastDt: string }>();
+  for (const r of CERT_ROWS) {
+    const e = byCust.get(r.cust) ?? { cust: r.cust, cars: new Set<string>(), certs: 0, lastDt: r.dt };
+    e.cars.add(r.car);
+    e.certs += 1;
+    if (r.dt > e.lastDt) e.lastDt = r.dt;
+    byCust.set(r.cust, e);
+  }
+  const rows = Array.from(byCust.values())
+    .map((e) => ({
+      cust: e.cust,
+      corp: e.cust.includes("会社"),
+      cars: e.cars.size,
+      certs: e.certs,
+      lastDt: e.lastDt,
+    }))
+    .sort((a, b) => (a.lastDt < b.lastDt ? 1 : -1));
+  const corpCount = rows.filter((r) => r.corp).length;
+  const cols = "1.6fr 110px 90px 110px 120px";
+  return (
+    <BodyScroll>
+      <KpiStrip
+        items={[
+          { l: "総顧客数", v: String(rows.length) },
+          { l: "法人", v: String(corpCount) },
+          { l: "個人", v: String(rows.length - corpCount) },
+          { l: "今月の新規", v: "3" },
+        ]}
+      />
+      <div
+        style={{
+          background: c.surface,
+          borderRadius: t.radius.lg,
+          boxShadow: `inset 0 0 0 1px ${c.line}`,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: cols,
+            padding: "10px 18px",
+            borderBottom: `1px solid ${c.line}`,
+            fontSize: 10.5,
+            fontWeight: 600,
+            color: c.muted,
+            letterSpacing: "0.16em",
+            textTransform: "uppercase",
+          }}
+        >
+          <div>顧客</div>
+          <div>種別</div>
+          <div style={{ textAlign: "right" }}>車両</div>
+          <div style={{ textAlign: "right" }}>証明書</div>
+          <div style={{ textAlign: "right" }}>最終来店</div>
+        </div>
+        {rows.map((r, i) => (
+          <div
+            key={i}
+            style={{
+              display: "grid",
+              gridTemplateColumns: cols,
+              padding: "12px 18px",
+              alignItems: "center",
+              borderBottom: i < rows.length - 1 ? `1px solid ${c.lineHair}` : "none",
+              fontSize: 12.5,
+              color: c.ink,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div
+                style={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: "50%",
+                  background: c.inset,
+                  color: c.ink2,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 11,
+                  fontWeight: 600,
+                }}
+              >
+                {r.cust.charAt(0)}
+              </div>
+              <div>{r.cust}</div>
+            </div>
+            <div>
+              <StatusBadge kind={r.corp ? "blue" : "muted"}>{r.corp ? "法人" : "個人"}</StatusBadge>
+            </div>
+            <Mono style={{ fontSize: 12, color: c.ink2, textAlign: "right" }}>{r.cars}</Mono>
+            <Mono style={{ fontSize: 12, color: c.ink2, textAlign: "right" }}>{r.certs}</Mono>
+            <Mono style={{ fontSize: 11.5, color: c.muted, textAlign: "right" }}>{r.lastDt}</Mono>
+          </div>
+        ))}
+      </div>
+    </BodyScroll>
+  );
+}
+
+// ── Invoices ────────────────────────────────────────────────
+const INVOICE_ROWS = [
+  { id: "INV-2024-018", cust: "田中 雅人", iss: "2024/05/18", due: "2024/06/17", amt: "¥303,600", st: "draft" },
+  { id: "INV-2024-017", cust: "佐々木 健司", iss: "2024/05/17", due: "2024/06/16", amt: "¥206,800", st: "sent" },
+  { id: "INV-2024-016", cust: "株式会社 木野", iss: "2024/05/15", due: "2024/06/14", amt: "¥74,800", st: "paid" },
+  { id: "INV-2024-015", cust: "横田 美紀", iss: "2024/05/14", due: "2024/06/13", amt: "¥349,800", st: "sent" },
+  { id: "INV-2024-014", cust: "高橋 隆志", iss: "2024/04/28", due: "2024/05/28", amt: "¥413,600", st: "overdue" },
+  { id: "INV-2024-013", cust: "小野 結衣", iss: "2024/04/22", due: "2024/05/22", amt: "¥371,800", st: "paid" },
+];
+const INVOICE_STATUS: Record<string, { l: string; tone: string }> = {
+  draft: { l: "下書き", tone: "muted" },
+  sent: { l: "送付済", tone: "blue" },
+  paid: { l: "入金済", tone: "emerald" },
+  overdue: { l: "期限超過", tone: "red" },
+};
+
+function InvoicesBody() {
+  const cols = "150px 1.4fr 110px 110px 120px 100px";
+  return (
+    <BodyScroll>
+      <KpiStrip
+        items={[
+          { l: "請求総額", v: "¥1.72M" },
+          { l: "入金済", v: "¥446K", sub: "2 件" },
+          { l: "未入金", v: "¥860K", sub: "3 件" },
+          { l: "期限超過", v: "¥413K", sub: "1 件" },
+        ]}
+      />
+      <div
+        style={{
+          background: c.surface,
+          borderRadius: t.radius.lg,
+          boxShadow: `inset 0 0 0 1px ${c.line}`,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: cols,
+            padding: "10px 18px",
+            borderBottom: `1px solid ${c.line}`,
+            fontSize: 10.5,
+            fontWeight: 600,
+            color: c.muted,
+            letterSpacing: "0.16em",
+            textTransform: "uppercase",
+          }}
+        >
+          <div>請求番号</div>
+          <div>顧客</div>
+          <div>発行日</div>
+          <div>期限</div>
+          <div style={{ textAlign: "right" }}>金額</div>
+          <div>状態</div>
+        </div>
+        {INVOICE_ROWS.map((r, i) => {
+          const stt = INVOICE_STATUS[r.st];
+          return (
+            <div
+              key={i}
+              style={{
+                display: "grid",
+                gridTemplateColumns: cols,
+                padding: "12px 18px",
+                alignItems: "center",
+                borderBottom: i < INVOICE_ROWS.length - 1 ? `1px solid ${c.lineHair}` : "none",
+                fontSize: 12.5,
+                color: c.ink,
+              }}
+            >
+              <Mono style={{ fontSize: 12 }}>{r.id}</Mono>
+              <div>{r.cust}</div>
+              <Mono style={{ fontSize: 11.5, color: c.muted }}>{r.iss}</Mono>
+              <Mono style={{ fontSize: 11.5, color: r.st === "overdue" ? c.red : c.muted }}>{r.due}</Mono>
+              <Mono style={{ color: c.ink, textAlign: "right" }}>{r.amt}</Mono>
+              <div>
+                <StatusBadge kind={stt.tone}>{stt.l}</StatusBadge>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </BodyScroll>
+  );
+}
+
+// ── Inventory ───────────────────────────────────────────────
+const INVENTORY_ROWS = [
+  { id: "PRT-C5L", name: "Ledra Coat L5 (1L)", stock: 14, reorder: 6 },
+  { id: "PRT-C7L", name: "Ledra Coat L7 (1L)", stock: 5, reorder: 6 },
+  { id: "PRT-PPF", name: "PPF Pro ロール (1.52m)", stock: 8, reorder: 4 },
+  { id: "PRT-WF", name: "ウィンドウフィルム ロール", stock: 3, reorder: 5 },
+  { id: "PRT-WRP", name: "ラップフィルム ロール", stock: 6, reorder: 3 },
+  { id: "PRT-DEG", name: "脱脂剤 (5L)", stock: 11, reorder: 8 },
+  { id: "PRT-PAD", name: "研磨パッド (50枚)", stock: 2, reorder: 4 },
+];
+
+function InventoryBody() {
+  const rows = INVENTORY_ROWS.map((r) => {
+    let st: { l: string; tone: string };
+    if (r.stock <= r.reorder) st = { l: "要発注", tone: "red" };
+    else if (r.stock <= r.reorder * 1.5) st = { l: "残少", tone: "amber" };
+    else st = { l: "在庫あり", tone: "emerald" };
+    return { ...r, st };
+  });
+  const reorderCount = rows.filter((r) => r.st.l === "要発注").length;
+  const cols = "120px 1.6fr 90px 90px 110px";
+  return (
+    <BodyScroll>
+      <KpiStrip
+        items={[
+          { l: "総SKU", v: String(rows.length) },
+          { l: "要発注", v: String(reorderCount) },
+          { l: "今月入荷", v: "6" },
+          { l: "在庫評価額", v: "¥1.24M" },
+        ]}
+      />
+      <div
+        style={{
+          background: c.surface,
+          borderRadius: t.radius.lg,
+          boxShadow: `inset 0 0 0 1px ${c.line}`,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: cols,
+            padding: "10px 18px",
+            borderBottom: `1px solid ${c.line}`,
+            fontSize: 10.5,
+            fontWeight: 600,
+            color: c.muted,
+            letterSpacing: "0.16em",
+            textTransform: "uppercase",
+          }}
+        >
+          <div>品番</div>
+          <div>品名</div>
+          <div style={{ textAlign: "right" }}>在庫数</div>
+          <div style={{ textAlign: "right" }}>発注点</div>
+          <div>状態</div>
+        </div>
+        {rows.map((r, i) => (
+          <div
+            key={i}
+            style={{
+              display: "grid",
+              gridTemplateColumns: cols,
+              padding: "12px 18px",
+              alignItems: "center",
+              borderBottom: i < rows.length - 1 ? `1px solid ${c.lineHair}` : "none",
+              fontSize: 12.5,
+              color: c.ink,
+            }}
+          >
+            <Mono style={{ fontSize: 12 }}>{r.id}</Mono>
+            <div style={{ color: c.ink }}>{r.name}</div>
+            <Mono style={{ fontSize: 12, color: c.ink, textAlign: "right" }}>{r.stock}</Mono>
+            <Mono style={{ fontSize: 12, color: c.muted, textAlign: "right" }}>{r.reorder}</Mono>
+            <div>
+              <StatusBadge kind={r.st.tone}>{r.st.l}</StatusBadge>
+            </div>
+          </div>
+        ))}
+      </div>
+    </BodyScroll>
+  );
+}
+
+// ── Customer portal ─────────────────────────────────────────
+const PORTAL_ACTIVITY = [
+  { cust: "田中 雅人", act: "証明書を閲覧", ts: "5分前" },
+  { cust: "横田 美紀", act: "レビューを投稿 ★5", ts: "1時間前" },
+  { cust: "高橋 隆志", act: "QRから来店予約", ts: "3時間前" },
+  { cust: "佐々木 健司", act: "PDF をダウンロード", ts: "昨日 18:20" },
+  { cust: "小野 結衣", act: "証明書を共有", ts: "昨日 14:05" },
+];
+
+function PortalBody() {
+  return (
+    <BodyScroll>
+      <KpiStrip
+        items={[
+          { l: "登録顧客", v: "312" },
+          { l: "アクティブ率", v: "68%" },
+          { l: "平均評価", v: "★4.8" },
+          { l: "今月レビュー", v: "27" },
+        ]}
+      />
+      <div
+        style={{
+          background: c.surface,
+          borderRadius: t.radius.lg,
+          boxShadow: `inset 0 0 0 1px ${c.line}`,
+          padding: "18px 20px",
+        }}
+      >
+        <Eyebrow>最近のポータル活動</Eyebrow>
+        <div style={{ display: "flex", flexDirection: "column", marginTop: 12 }}>
+          {PORTAL_ACTIVITY.map((a, i) => (
+            <div
+              key={i}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "10px 0",
+                borderBottom: i < PORTAL_ACTIVITY.length - 1 ? `1px solid ${c.lineHair}` : "none",
+              }}
+            >
+              <div
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "50%",
+                  background: c.inset,
+                  color: c.ink2,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  flexShrink: 0,
+                }}
+              >
+                {a.cust.charAt(0)}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, color: c.ink, fontWeight: 500 }}>{a.cust}</div>
+                <div style={{ fontSize: 11.5, color: c.ink2, marginTop: 1 }}>{a.act}</div>
+              </div>
+              <Mono style={{ fontSize: 10.5, color: c.muted }}>{a.ts}</Mono>
+            </div>
+          ))}
+        </div>
+      </div>
+    </BodyScroll>
   );
 }
 
@@ -2460,7 +3051,7 @@ export default function LedraPrototype() {
         crumb: ["分析"],
         pageTitle: "分析",
         tabs: [{ l: "概要", active: true }, { l: "売上" }, { l: "稼働" }],
-        body: <PlaceholderBody title="分析" />,
+        body: <AnalyticsBody />,
       };
       break;
     case "customers":
@@ -2468,7 +3059,7 @@ export default function LedraPrototype() {
         crumb: ["車両 / 顧客"],
         pageTitle: "車両 / 顧客",
         tabs: [{ l: "全て", active: true }, { l: "個人" }, { l: "法人" }, { l: "VIP" }],
-        body: <PlaceholderBody title="車両 / 顧客" />,
+        body: <CustomersBody />,
       };
       break;
     case "invoices":
@@ -2476,7 +3067,7 @@ export default function LedraPrototype() {
         crumb: ["請求書"],
         pageTitle: "請求書",
         tabs: [{ l: "全て", active: true }, { l: "下書き" }, { l: "送付済" }, { l: "入金済" }],
-        body: <PlaceholderBody title="請求書" />,
+        body: <InvoicesBody />,
       };
       break;
     case "inventory":
@@ -2484,7 +3075,7 @@ export default function LedraPrototype() {
         crumb: ["部品 / 在庫"],
         pageTitle: "部品 / 在庫",
         tabs: [{ l: "在庫", active: true }, { l: "発注" }, { l: "低在庫" }],
-        body: <PlaceholderBody title="部品 / 在庫" />,
+        body: <InventoryBody />,
       };
       break;
     case "portal":
@@ -2492,7 +3083,7 @@ export default function LedraPrototype() {
         crumb: ["顧客ポータル"],
         pageTitle: "顧客ポータル",
         tabs: [{ l: "概要", active: true }],
-        body: <PlaceholderBody title="顧客ポータル" />,
+        body: <PortalBody />,
       };
       break;
     default:
