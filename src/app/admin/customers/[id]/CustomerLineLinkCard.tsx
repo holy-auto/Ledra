@@ -17,10 +17,13 @@ export default function CustomerLineLinkCard({
   customerId,
   initialLinked,
   lineEnabled,
+  canIssue,
 }: {
   customerId: string;
   initialLinked: boolean;
   lineEnabled: boolean;
+  /** 連携コード発行（書き込み）が許可されたロールか。閲覧のみは false。 */
+  canIssue: boolean;
 }) {
   const [code, setCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -61,7 +64,7 @@ export default function CustomerLineLinkCard({
             </span>
           </div>
         </div>
-        {lineEnabled && !initialLinked && !code && (
+        {lineEnabled && !initialLinked && !code && canIssue && (
           <button type="button" className="btn-primary text-xs" disabled={loading} onClick={issue}>
             {loading ? "発行中…" : "連携コードを発行"}
           </button>
@@ -74,7 +77,7 @@ export default function CustomerLineLinkCard({
         </p>
       )}
 
-      {lineEnabled && !initialLinked && (
+      {lineEnabled && !initialLinked && canIssue && (
         <p className="text-xs text-secondary">
           発行したコードをお客様に伝え、店舗の公式LINEを友だち追加してトークに送信してもらうと連携が完了します（30分有効・1回限り）。
         </p>

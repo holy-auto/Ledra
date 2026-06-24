@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 /**
  * LineLinkPanel（顧客ポータル）
@@ -8,14 +8,47 @@ import { useState } from "react";
  * お客様が自分で LINE 連携コードを取得するパネル。
  * 取得したコードを店舗の公式 LINE トークへ送信すると連携が完了する。
  *
- * - すでに連携済みなら状態表示のみ。
- * - 未連携なら「連携コードを発行」→ コード表示 + 手順。
+ * 連携状態・店舗の LINE 対応可否は GET /api/customer/line-link で都度取得する
+ * （テナント別 cookie ログインでも正しく判定でき、グローバル memberships に
+ * 依存しない）。tenantSlug が変わったら state をリセットして前店舗のコードが
+ * 残らないようにする。
  */
-export default function LineLinkPanel({ tenantSlug, initialLinked }: { tenantSlug: string; initialLinked: boolean }) {
+export default function LineLinkPanel({ tenantSlug }: { tenantSlug: string }) {
+  const [loaded, setLoaded] = useState(false);
+  const [lineEnabled, setLineEnabled] = useState(false);
+  const [linked, setLinked] = useState(false);
   const [open, setOpen] = useState(false);
   const [code, setCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // マウント時に連携状態を取得する。親側で key={tenant} を付けているため、
+  // 店舗を切り替えると本コンポーネントは再マウントされ state は初期化される
+  // （前店舗向けに発行したコードが残らない）。
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/customer/line-link?tenant=${encodeURIComponent(tenantSlug)}`, {
+          cache: "no-store",
+          credentials: "include",
+        });
+        const j = await res.json().catch(() => ({}) as Record<string, unknown>);
+        if (cancelled) return;
+        if (res.ok && j?.ok) {
+          setLineEnabled(Boolean(j.lineEnabled));
+          setLinked(Boolean(j.linked));
+        }
+      } catch {
+        // 取得失敗時はパネルを出さない（loaded=true & lineEnabled=false）。
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantSlug]);
 
   const issue = async () => {
     setLoading(true);
@@ -40,7 +73,10 @@ export default function LineLinkPanel({ tenantSlug, initialLinked }: { tenantSlu
     }
   };
 
-  if (initialLinked) {
+  // 未取得 / 店舗が LINE 未対応のときはパネルを出さない。
+  if (!loaded || !lineEnabled) return null;
+
+  if (linked) {
     return (
       <div className="mb-4 rounded-3xl border border-border-default bg-inset p-4 text-sm shadow-sm">
         <div className="flex items-center gap-2">

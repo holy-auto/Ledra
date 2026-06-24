@@ -364,10 +364,7 @@ export default function CustomerListPage() {
         ) : null}
       </header>
 
-      <LineLinkPanel
-        tenantSlug={tenant}
-        initialLinked={shops.find((s) => s.tenant_slug === tenant)?.line_linked ?? false}
-      />
+      <LineLinkPanel key={tenant} tenantSlug={tenant} />
 
       {profile && (profile.email || profile.phone) ? (
         <div className="mb-4 rounded-3xl border border-border-default bg-inset p-4 text-sm shadow-sm">

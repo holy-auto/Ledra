@@ -1,8 +1,10 @@
 /**
- * POST /api/customer/line-link — 顧客ポータルから自分用の LINE 連携コードを発行する。
+ * /api/customer/line-link — 顧客ポータルから自分用の LINE 連携の状態取得 / コード発行。
  *
- * 顧客が自分でコードを取得 → 店舗の LINE 公式アカウントへ送信すると
- * customers.line_user_id が紐付く（webhook の tryConsumeLineLinkCode）。
+ * GET  : 現在の連携状態と、店舗が LINE 連携対応かを返す（パネル表示制御用）。
+ * POST : 連携コードを発行する。顧客が店舗の LINE 公式アカウントへ送信すると
+ *        customers.line_user_id が紐付く（webhook の tryConsumeLineLinkCode）。
+ *
  * 店スタッフ用の /api/parts/line-link-codes と同じ仕組みを、顧客ポータル
  * セッションで本人確認して提供する顧客向け入口。
  */
@@ -20,9 +22,16 @@ import { generateCustomerLinkCode } from "@/lib/line/linkCode";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const schema = z.object({ tenant_slug: z.string().trim().min(1).max(100) });
+const bodySchema = z.object({ tenant_slug: z.string().trim().min(1).max(100) });
 
-/** 連携コード発行先の (tenantId, customerId) をポータルセッションから解決する。 */
+/**
+ * 連携コード発行先の (tenantId, customerId) をポータルセッションから一意に解決する。
+ *
+ * セッションに baked された customer_id を最優先で使う。無い場合は email 一致で
+ * 引くが、複数候補があるとき（同一メールの家族・共有メール等）は下4桁が一意に
+ * 一致した行だけを採用する。一意に特定できなければ null を返し、別人の顧客行に
+ * line_user_id を書き込んでしまう事故を防ぐ。
+ */
 async function resolvePortalCustomer(tenantSlug: string): Promise<{ tenantId: string; customerId: string } | null> {
   const tenantId = await getTenantIdBySlug(tenantSlug);
   if (!tenantId) return null;
@@ -56,7 +65,7 @@ async function resolvePortalCustomer(tenantSlug: string): Promise<{ tenantId: st
   // セッションに customer_id が baked されていればそれを最優先で使う。
   if (customerId) return { tenantId, customerId };
 
-  // フォールバック: テナント内で email 一致の顧客を引く（複数なら下4桁で絞る）。
+  // フォールバック: テナント内で email 一致の顧客を引く。
   const { admin } = createTenantScopedAdmin(tenantId);
   const { data: rows } = await admin
     .from("customers")
@@ -65,33 +74,68 @@ async function resolvePortalCustomer(tenantSlug: string): Promise<{ tenantId: st
     .ilike("email", email);
   if (!rows || rows.length === 0) return null;
 
-  const digits = (s: string | null) => (s ?? "").replace(/\D/g, "");
-  const matched = (phoneLast4 && rows.find((r) => digits(r.phone).endsWith(phoneLast4))) || rows[0];
-  if (!matched) return null;
-  return { tenantId, customerId: matched.id as string };
+  // 候補が 1 件だけなら一意。複数あるときは下4桁が一意に一致した行のみ採用し、
+  // 曖昧（0 件 / 複数一致 / 下4桁不明）なら特定失敗として null を返す。
+  let chosen: { id: string } | null = null;
+  if (rows.length === 1) {
+    chosen = rows[0] as { id: string };
+  } else if (phoneLast4) {
+    const digits = (s: string | null) => (s ?? "").replace(/\D/g, "");
+    const matches = rows.filter((r) => digits(r.phone).endsWith(phoneLast4));
+    if (matches.length === 1) chosen = matches[0] as { id: string };
+  }
+  if (!chosen) return null;
+  return { tenantId, customerId: chosen.id };
 }
 
+/** テナントの LINE 有効フラグと、この顧客が既に連携済みかを取得する。 */
+async function loadStatus(tenantId: string, customerId: string): Promise<{ lineEnabled: boolean; linked: boolean }> {
+  const { admin } = createTenantScopedAdmin(tenantId);
+  const [{ data: tenant }, { data: cust }] = await Promise.all([
+    admin.from("tenants").select("line_enabled").eq("id", tenantId).maybeSingle(),
+    admin.from("customers").select("line_user_id").eq("id", customerId).eq("tenant_id", tenantId).maybeSingle(),
+  ]);
+  return { lineEnabled: Boolean(tenant?.line_enabled), linked: Boolean(cust?.line_user_id) };
+}
+
+/** GET /api/customer/line-link?tenant=slug — パネル表示用の連携状態。 */
+export async function GET(req: NextRequest) {
+  try {
+    const tenantSlug = (new URL(req.url).searchParams.get("tenant") ?? "").trim();
+    if (!tenantSlug) return apiValidationError("missing tenant");
+
+    const resolved = await resolvePortalCustomer(tenantSlug);
+    if (!resolved) return apiUnauthorized();
+
+    const status = await loadStatus(resolved.tenantId, resolved.customerId);
+    return apiJson({ ok: true, ...status });
+  } catch (e) {
+    return apiInternalError(e, "customer/line-link GET");
+  }
+}
+
+/** POST /api/customer/line-link — 連携コードを発行する。 */
 export async function POST(req: NextRequest) {
   // 本人確認済みとはいえコード乱発を防ぐため per-IP のレート制限をかける。
   const limited = await checkRateLimit(req, "auth");
   if (limited) return limited;
 
   try {
-    const parsed = schema.safeParse(await req.json().catch(() => ({})));
+    const parsed = bodySchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return apiValidationError("tenant_slug が不正です。");
 
     const resolved = await resolvePortalCustomer(parsed.data.tenant_slug);
     if (!resolved) return apiUnauthorized();
 
+    const { lineEnabled, linked } = await loadStatus(resolved.tenantId, resolved.customerId);
+
     // LINE 未連携のテナントでコードを発行しても無意味なので弾く。
-    const { admin } = createTenantScopedAdmin(resolved.tenantId);
-    const { data: tenant } = await admin
-      .from("tenants")
-      .select("line_enabled")
-      .eq("id", resolved.tenantId)
-      .maybeSingle();
-    if (!tenant?.line_enabled) {
+    if (!lineEnabled) {
       return apiJson({ ok: false, message: "この店舗はLINE連携に対応していません。" }, { status: 409 });
+    }
+    // すでに連携済みなら再発行を弾く（別アカウントへの付け替え防止）。
+    if (linked) {
+      return apiJson({ ok: false, message: "すでにLINE連携済みです。" }, { status: 409 });
     }
 
     const { code, expiresAt } = await generateCustomerLinkCode(resolved.tenantId, resolved.customerId, null);

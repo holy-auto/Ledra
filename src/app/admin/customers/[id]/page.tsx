@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import PageHeader from "@/components/ui/PageHeader";
 import CustomerDetailClient from "./CustomerDetailClient";
 import CustomerLineLinkCard from "./CustomerLineLinkCard";
@@ -102,6 +103,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const shopName = (tenantRes.data?.name as string | undefined) ?? undefined;
   const lineEnabled = Boolean(tenantRes.data?.line_enabled);
   const lineLinked = Boolean((customer as { line_user_id?: string | null }).line_user_id);
+  // 連携コード発行は書き込み操作。閲覧のみロール（viewer 等）には発行UIを出さない。
+  const caller = await resolveCallerWithRole(supabase);
+  const canIssueLineCode = caller ? requirePermission(caller, "customers:edit") : false;
 
   const signals = deriveSignals({
     customer: { id, created_at: customer.created_at },
@@ -127,7 +131,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       <CustomerDetailClient customer={customer} />
 
       {/* LINE 連携（連携コード発行 / 状態表示） */}
-      <CustomerLineLinkCard customerId={id} initialLinked={lineLinked} lineEnabled={lineEnabled} />
+      <CustomerLineLinkCard
+        customerId={id}
+        initialLinked={lineLinked}
+        lineEnabled={lineEnabled}
+        canIssue={canIssueLineCode}
+      />
 
       {/* 次のアクション。signals はサーバ側で確定済みなので即時表示。
           AI サマリは Suspense で並行ストリーム (失敗 / 未生成でも signals だけで動く)。 */}

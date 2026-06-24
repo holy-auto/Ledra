@@ -6,9 +6,9 @@
  */
 
 import { z } from "zod";
-import { apiJson, apiInternalError, apiValidationError, apiUnauthorized } from "@/lib/api/response";
+import { apiJson, apiInternalError, apiValidationError, apiUnauthorized, apiForbidden } from "@/lib/api/response";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { generateCustomerLinkCode } from "@/lib/line/linkCode";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +20,10 @@ export async function POST(req: Request) {
   const caller = await resolveCallerWithRole(supabase);
   if (!caller) return apiUnauthorized();
 
+  // 連携コードは顧客の通知チャネルを書き換える credential なので、閲覧のみの
+  // ロール（viewer 等）には発行させない。customers:edit 権限を必須にする。
+  if (!requirePermission(caller, "customers:edit")) return apiForbidden();
+
   let body: unknown;
   try {
     body = await req.json();
@@ -29,9 +33,17 @@ export async function POST(req: Request) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) return apiValidationError("customer_id が不正です。");
 
-  // 顧客が自テナントのものか確認（RLS スコープの server client で存在確認）
-  const { data: cust } = await supabase.from("customers").select("id").eq("id", parsed.data.customer_id).maybeSingle();
+  // 顧客が自テナントのものか確認（RLS スコープの server client で存在確認）。
+  // すでに LINE 連携済みなら再発行を弾く（別アカウントへの付け替え防止）。
+  const { data: cust } = await supabase
+    .from("customers")
+    .select("id, line_user_id")
+    .eq("id", parsed.data.customer_id)
+    .maybeSingle();
   if (!cust) return apiJson({ error: "not_found" }, { status: 404 });
+  if (cust.line_user_id) {
+    return apiJson({ error: "already_linked", message: "このお客様はすでにLINE連携済みです。" }, { status: 409 });
+  }
 
   // LINE 未連携テナントでコードを発行しても無意味なので弾く。
   const { data: tenant } = await supabase
