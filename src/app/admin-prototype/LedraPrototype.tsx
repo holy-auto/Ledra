@@ -1453,7 +1453,11 @@ function CertDetailBody({ row }: { row: (typeof CERT_ROWS)[number] }) {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12.5, color: c.goldText, fontWeight: 600 }}>Ledra 公式 証明書</div>
             <div style={{ fontSize: 11, color: c.goldText, opacity: 0.78, marginTop: 2 }}>
-              {isFinal ? "改ざん不可で確定済みです" : "検収完了で改ざん不可で確定します"}
+              {isFinal
+                ? "改ざん不可で確定済みです"
+                : row.st === "pending"
+                  ? "発行で改ざん不可に確定します"
+                  : "検収完了で改ざん不可で確定します"}
             </div>
           </div>
         </div>
@@ -1678,7 +1682,16 @@ function CaseDetailBody({ row }: { row: (typeof CASE_ROWS)[number] }) {
   // Derive the workflow step state from the row's progress so review-ready
   // jobs (prog 100) don't show a half-finished stepper, and the final step's
   // delivery date matches the header's納期.
-  const STEP_LABELS = ["入庫 / 受付", "下地処理", "コーティング", "品質チェック", "検収サイン", "納車 / 証明書発行"];
+  const workLabel = row.svc.includes("ラッピング")
+    ? "ラッピング施工"
+    : row.svc.includes("フィルム")
+      ? "フィルム施工"
+      : row.svc.includes("PPF") && row.svc.includes("コーティング")
+        ? "PPF + コーティング施工"
+        : row.svc.includes("PPF")
+          ? "PPF 施工"
+          : "コーティング施工";
+  const STEP_LABELS = ["入庫 / 受付", "下地処理", workLabel, "品質チェック", "検収サイン", "納車 / 証明書発行"];
   // floor (not round) so completed steps never get ahead of the row's progress.
   // A job awaiting inspection (review) keeps the 検収サイン / 納車 steps open even
   // at 100% so the stepper doesn't look already approved and issued.
@@ -1719,7 +1732,7 @@ function CaseDetailBody({ row }: { row: (typeof CASE_ROWS)[number] }) {
           <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
             <Eyebrow>進捗</Eyebrow>
             <Mono style={{ fontSize: 12, color: c.muted }}>
-              {row.prog}% · 工程 {doneCount}/{STEP_LABELS.length}
+              {row.st === "review" ? "検収待ち" : `${row.prog}%`} · 工程 {doneCount}/{STEP_LABELS.length}
             </Mono>
             <div style={{ flex: 1 }} />
             <Mono style={{ fontSize: 11.5, color: c.muted }}>納期 {row.due}</Mono>
