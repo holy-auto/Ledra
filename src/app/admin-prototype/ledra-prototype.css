@@ -31,6 +31,15 @@
   border-radius: 4px;
 }
 
+@media (max-width: 880px) {
+  .lp .lp-table {
+    overflow-x: auto !important;
+  }
+  .lp .lp-table > div {
+    min-width: 680px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lp * {
     animation: none !important;

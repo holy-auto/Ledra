@@ -978,9 +978,12 @@ function LShell3({
             background: c.surface,
             borderBottom: `1px solid ${c.line}`,
             flexShrink: 0,
+            // On mobile the whole lower bar scrolls horizontally so nothing
+            // (tabs or primary actions) is hidden or compressed.
+            ...(isMobile ? { overflowX: "auto" as const } : null),
           }}
         >
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 10, minWidth: 0, flexShrink: 0 }}>
             <H2 style={{ whiteSpace: "nowrap" }}>{pageTitle}</H2>
             {pageMeta}
           </div>
@@ -990,9 +993,7 @@ function LShell3({
               alignItems: "stretch",
               gap: 4,
               alignSelf: "stretch",
-              // On mobile the tab strip scrolls horizontally instead of clipping
-              // later tabs against the .lp overflow:hidden root.
-              ...(isMobile ? { flex: 1, minWidth: 0, overflowX: "auto" as const } : null),
+              flexShrink: 0,
             }}
           >
             {tabs.map((tab, i) => {
@@ -1011,6 +1012,8 @@ function LShell3({
                     fontWeight: isActive ? 500 : 400,
                     color: isActive ? c.ink : c.ink2,
                     cursor: "pointer",
+                    flexShrink: 0,
+                    whiteSpace: "nowrap",
                   }}
                 >
                   {tab.l}
@@ -1064,9 +1067,12 @@ function LShell3({
             })}
           </div>
           {!isMobile && <div style={{ flex: 1 }} />}
-          {/* Secondary page actions are hidden on mobile to keep the page bar
-              within the viewport; primary flows remain reachable in the body. */}
-          {!isMobile && pageActions}
+          {/* Page actions include primary CTAs (新規…, 発行/承認 etc.) that are
+              not duplicated elsewhere, so they render on mobile too — the whole
+              bar scrolls horizontally rather than hiding them. */}
+          {pageActions && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>{pageActions}</div>
+          )}
         </div>
         {/* keyed on the route so navigating (incl. detail→detail) remounts the
             body and resets its internal scroll position */}
@@ -1246,6 +1252,7 @@ function CertListPage({ go }: { go: Go }) {
     >
       <div style={{ flex: 1, padding: "20px 28px 24px", minHeight: 0, overflow: "auto" }}>
         <div
+          className="lp-table"
           style={{
             background: c.surface,
             borderRadius: t.radius.lg,
@@ -1681,6 +1688,7 @@ function CaseListPage({ go }: { go: Go }) {
             boxShadow: `inset 0 0 0 1px ${c.line}`,
             overflow: "hidden",
           }}
+          className="lp-table"
         >
           <div
             style={{
@@ -2076,6 +2084,7 @@ function InsuranceBody() {
         ))}
       </div>
       <div
+        className="lp-table"
         style={{
           background: c.surface,
           borderRadius: t.radius.lg,
@@ -2225,6 +2234,7 @@ function SettingsBody() {
           </div>
         </div>
         <div
+          className="lp-table"
           style={{
             background: c.surface,
             borderRadius: t.radius.lg,
@@ -2502,6 +2512,7 @@ function CustomersBody() {
         ]}
       />
       <div
+        className="lp-table"
         style={{
           background: c.surface,
           borderRadius: t.radius.lg,
@@ -2602,6 +2613,7 @@ function InvoicesBody() {
         ]}
       />
       <div
+        className="lp-table"
         style={{
           background: c.surface,
           borderRadius: t.radius.lg,
@@ -2692,6 +2704,7 @@ function InventoryBody() {
         ]}
       />
       <div
+        className="lp-table"
         style={{
           background: c.surface,
           borderRadius: t.radius.lg,
