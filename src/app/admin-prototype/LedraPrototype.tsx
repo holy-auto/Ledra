@@ -1162,7 +1162,7 @@ function CertListPage({ go }: { go: Go }) {
             <div>車両</div>
             <div>施工内容</div>
             <div>状態</div>
-            <div style={{ textAlign: "right" }}>発行日</div>
+            <div style={{ textAlign: "right" }}>入庫日</div>
             <div />
           </div>
           {CERT_ROWS.map((r, i) => {
@@ -1203,9 +1203,31 @@ function CertListPage({ go }: { go: Go }) {
 }
 
 // Derive the certificate body copy from the selected service so the detail
-// page does not contradict the row's 施工内容.
+// page does not contradict the row's 施工内容. Order matters: composite and
+// wrapping services must be classified before the PPF-only fallback.
 function certServiceInfo(svc: string): { desc: string; material: string; area: string; hours: string } {
-  if (svc.includes("PPF") || svc.includes("プロテ")) {
+  const hasPPF = svc.includes("PPF") || svc.includes("プロテ");
+  const hasCoat = svc.includes("コーティング");
+  const layerMatch = svc.match(/(\d+)\s*層/);
+  const layers = layerMatch ? layerMatch[1] : "5";
+
+  if (svc.includes("ラッピング")) {
+    return {
+      desc: "カーラッピング施工。脱脂・採寸の上、対象パネルへラップフィルムを貼り込み、エッジ処理・熱定着で仕上げ。",
+      material: "Ledra Wrap",
+      area: "ボディ全面",
+      hours: "9.0h",
+    };
+  }
+  if (hasPPF && hasCoat) {
+    return {
+      desc: `PPF + ガラスコーティングの複合施工。要部へ自己修復 PPF を貼り込み、全面に ${layers} 層コーティングを施工。`,
+      material: `Ledra PPF Pro + Coat L${layers}`,
+      area: "ボディ全面",
+      hours: "10.5h",
+    };
+  }
+  if (hasPPF) {
     return {
       desc: "ペイントプロテクションフィルム施工。脱脂・採寸の上、対象パネルへ自己修復 PPF を貼り込み、エッジを巻き込み処理。",
       material: "Ledra PPF Pro",
@@ -1221,17 +1243,9 @@ function certServiceInfo(svc: string): { desc: string; material: string; area: s
       hours: "3.5h",
     };
   }
-  if (svc.includes("ラッピング")) {
-    return {
-      desc: "カーラッピング施工。脱脂・採寸の上、対象パネルへラップフィルムを貼り込み、エッジ処理・熱定着で仕上げ。",
-      material: "Ledra Wrap",
-      area: "ボディ全面",
-      hours: "9.0h",
-    };
-  }
   return {
-    desc: "ガラスコーティング・ボディ全面。下地処理 (鉄粉除去 → 軽研磨 → 脱脂) を経て、ベース 2 層 + トップ 2 層 + 撥水仕上げを施工。",
-    material: "Ledra Coat L5",
+    desc: `ガラスコーティング・ボディ全面。下地処理 (鉄粉除去 → 軽研磨 → 脱脂) を経て、${layers} 層 + 撥水仕上げを施工。`,
+    material: `Ledra Coat L${layers}`,
     area: "ボディ全面",
     hours: "7.5h",
   };
@@ -1347,7 +1361,9 @@ function CertDetailBody({ row }: { row: (typeof CERT_ROWS)[number] }) {
         >
           <Eyebrow>顧客</Eyebrow>
           <div style={{ fontSize: 15, fontWeight: 600, color: c.ink, marginTop: 6 }}>{row.cust}</div>
-          <div style={{ fontSize: 11.5, color: c.muted, marginTop: 2 }}>個人 · リピート 3 回目</div>
+          <div style={{ fontSize: 11.5, color: c.muted, marginTop: 2 }}>
+            {row.cust.includes("会社") ? "法人" : "個人"} · リピート 3 回目
+          </div>
           <div style={{ height: 1, background: c.lineHair, margin: "12px 0" }} />
           <Eyebrow>車両</Eyebrow>
           <div style={{ fontSize: 13.5, color: c.ink, marginTop: 6, fontWeight: 500 }}>{row.car}</div>
@@ -1432,7 +1448,7 @@ function CertDetailBody({ row }: { row: (typeof CERT_ROWS)[number] }) {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12.5, color: c.goldText, fontWeight: 600 }}>Ledra 公式 証明書</div>
             <div style={{ fontSize: 11, color: c.goldText, opacity: 0.78, marginTop: 2 }}>
-              検収完了で改ざん不可で確定します
+              {isFinal ? "改ざん不可で確定済みです" : "検収完了で改ざん不可で確定します"}
             </div>
           </div>
         </div>
@@ -1622,7 +1638,8 @@ function CaseDetailBody({ row }: { row: (typeof CASE_ROWS)[number] }) {
   // jobs (prog 100) don't show a half-finished stepper, and the final step's
   // delivery date matches the header's納期.
   const STEP_LABELS = ["入庫 / 受付", "下地処理", "コーティング", "品質チェック", "検収サイン", "納車 / 証明書発行"];
-  const doneCount = Math.round((row.prog / 100) * STEP_LABELS.length);
+  // floor (not round) so completed steps never get ahead of the row's progress
+  const doneCount = Math.floor((row.prog / 100) * STEP_LABELS.length);
   const steps = STEP_LABELS.map((l, i) => {
     const done = i < doneCount;
     const by = i === 0 || i === STEP_LABELS.length - 1 ? "田島" : i === 4 ? "河本" : row.mech;
@@ -2327,9 +2344,19 @@ export default function LedraPrototype() {
         pageActions: (
           <Fragment>
             <SecondaryBtn icon={<Ico.user style={{ width: 14, height: 14 }} />}>担当変更</SecondaryBtn>
-            <Btn kind="primary" size="sm" icon={<Ico.check style={{ width: 14, height: 14 }} />}>
-              検収へ送る
-            </Btn>
+            {row.st === "review" ? (
+              <Btn kind="primary" size="sm" icon={<Ico.check style={{ width: 14, height: 14 }} />}>
+                検収を承認
+              </Btn>
+            ) : row.st === "pending" ? (
+              <Btn kind="primary" size="sm" icon={<Ico.check style={{ width: 14, height: 14 }} />}>
+                作業を開始
+              </Btn>
+            ) : (
+              <Btn kind="primary" size="sm" icon={<Ico.check style={{ width: 14, height: 14 }} />}>
+                検収へ送る
+              </Btn>
+            )}
           </Fragment>
         ),
         body: <CaseDetailBody row={row} />,
