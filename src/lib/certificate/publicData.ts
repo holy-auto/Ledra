@@ -4,6 +4,7 @@ import {
   type CertificateMediaRow,
   type ResolvedCertificateMedia,
 } from "@/lib/certificateMedia";
+import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages";
 
 /**
  * scheduled_date (YYYY-MM-DD) と start_time (HH:MM[:SS]) を ISO 8601 文字列に
@@ -323,12 +324,12 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
   ).map((img) => {
     let url: string | null = null;
     if (img.storage_path) {
-      const { data: signedData } = supabase.storage.from("certificate-images").getPublicUrl(img.storage_path);
+      const { data: signedData } = supabase.storage.from(CERTIFICATE_IMAGE_BUCKET).getPublicUrl(img.storage_path);
       url = signedData?.publicUrl ?? null;
     }
     let renderedUrl: string | null = null;
     if (img.rendered_storage_path) {
-      const { data: signedData } = supabase.storage.from("certificate-images").getPublicUrl(img.rendered_storage_path);
+      const { data: signedData } = supabase.storage.from(CERTIFICATE_IMAGE_BUCKET).getPublicUrl(img.rendered_storage_path);
       renderedUrl = signedData?.publicUrl ?? null;
     }
     return { ...img, url, rendered_url: renderedUrl };
