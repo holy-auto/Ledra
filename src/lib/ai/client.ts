@@ -73,6 +73,41 @@ export const AI_MODEL_FAST = "claude-haiku-4-5" as const;
 export const AI_MODEL_VISION = "claude-sonnet-4-6" as const;
 
 /**
+ * プランに応じた AI モデルを返す。
+ * Starter は Haiku（低コスト）、Standard は Sonnet、Pro は Opus。
+ * コスト構造: Starter ¥9,800 に対し Haiku コストは月数百円程度。
+ */
+export function modelForPlanTier(planTier: string | null | undefined): string {
+  const tier = String(planTier ?? "").toLowerCase();
+  switch (tier) {
+    case "starter":
+    case "mini":
+      return AI_MODEL_FAST;
+    case "standard":
+      return AI_MODEL;
+    case "pro":
+      return AI_MODEL_CRITICAL;
+    default:
+      return AI_MODEL_FAST;
+  }
+}
+
+/**
+ * プランに応じた Vision モデルを返す。
+ * Starter は Haiku（Vision 対応）、Standard+ は Sonnet。
+ */
+export function visionModelForPlanTier(planTier: string | null | undefined): string {
+  const tier = String(planTier ?? "").toLowerCase();
+  switch (tier) {
+    case "starter":
+    case "mini":
+      return AI_MODEL_FAST;
+    default:
+      return AI_MODEL_VISION;
+  }
+}
+
+/**
  * 信頼性・法的に重要で「低頻度」なパス専用の最高精度モデル (既定 Opus)。
  *
  * 用途: 写真改ざんの最終判定、身分証 OCR の低信頼ケースの昇格 (escalation) など。

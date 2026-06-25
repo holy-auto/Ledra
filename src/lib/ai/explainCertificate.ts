@@ -108,7 +108,10 @@ const AUDIENCE_INSTRUCTIONS: Record<Audience, string> = {
 // 説明変換生成
 // ─────────────────────────────────────────────
 
-export async function generateExplanation(input: ExplainCertificateInput): Promise<ExplanationResult> {
+export async function generateExplanation(
+  input: ExplainCertificateInput,
+  opts?: { model?: string },
+): Promise<ExplanationResult> {
   const client = getAnthropicClient();
   const instruction = AUDIENCE_INSTRUCTIONS[input.audience];
 
@@ -168,7 +171,7 @@ ${wrapUntrusted(dataBlock, { tag: "証明書データ", maxLen: 6000 })}`;
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL,
+        model: opts?.model ?? AI_MODEL,
         max_tokens: 1024,
         system: cacheableSystem(systemPrompt),
         messages: [{ role: "user", content: userMessage }],

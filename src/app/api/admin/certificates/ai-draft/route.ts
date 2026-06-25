@@ -10,6 +10,7 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateCertificateDraft } from "@/lib/ai/draftCertificate";
+import { modelForPlanTier } from "@/lib/ai/client";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { loadAiAutomationSettings, filterDraftByPolicy, isSourceAllowed } from "@/lib/ai/automation/policy";
 
@@ -116,33 +117,43 @@ export async function POST(req: NextRequest) {
           .not("service_name", "is", null)
           .order("created_at", { ascending: false })
           .limit(5)
-      : { data: [] as Array<{ service_name: string | null; description: string | null; material_info: string | null; warranty_period: string | null }> };
+      : {
+          data: [] as Array<{
+            service_name: string | null;
+            description: string | null;
+            material_info: string | null;
+            warranty_period: string | null;
+          }>,
+        };
 
-    const draft = await generateCertificateDraft({
-      vehicle: {
-        maker: vehicle.maker as string | undefined,
-        model: vehicle.model as string | undefined,
-        year: vehicle.year as number | undefined,
-        color: vehicle.color as string | undefined,
-        vin: vehicle.vin as string | undefined,
+    const draft = await generateCertificateDraft(
+      {
+        vehicle: {
+          maker: vehicle.maker as string | undefined,
+          model: vehicle.model as string | undefined,
+          year: vehicle.year as number | undefined,
+          color: vehicle.color as string | undefined,
+          vin: vehicle.vin as string | undefined,
+        },
+        hearing: hearing
+          ? {
+              service_types: hearing.service_types as string[] | undefined,
+              budget_range: hearing.budget_range as string | undefined,
+              parking_type: hearing.parking_type as string | undefined,
+              customer_requests: hearing.customer_requests as string | undefined,
+            }
+          : undefined,
+        similarCertificates: (similar ?? []).map((s) => ({
+          service_name: s.service_name ?? "",
+          description: s.description ?? undefined,
+          material_info: s.material_info ?? undefined,
+          warranty_period: s.warranty_period ?? undefined,
+        })),
+        photoDescriptions: undefined, // Vision解析は別途
+        templateCategory: template_category,
       },
-      hearing: hearing
-        ? {
-            service_types: hearing.service_types as string[] | undefined,
-            budget_range: hearing.budget_range as string | undefined,
-            parking_type: hearing.parking_type as string | undefined,
-            customer_requests: hearing.customer_requests as string | undefined,
-          }
-        : undefined,
-      similarCertificates: (similar ?? []).map((s) => ({
-        service_name: s.service_name ?? "",
-        description: s.description ?? undefined,
-        material_info: s.material_info ?? undefined,
-        warranty_period: s.warranty_period ?? undefined,
-      })),
-      photoDescriptions: undefined, // Vision解析は別途
-      templateCategory: template_category,
-    });
+      { model: modelForPlanTier(caller.planTier) },
+    );
 
     const filtered = filterDraftByPolicy(draft, automation);
 
@@ -151,7 +162,7 @@ export async function POST(req: NextRequest) {
       policies: filtered.policies,
       source_data: {
         similar_certs_used: similar?.length ?? 0,
-        photos_analyzed: isSourceAllowed(automation, "photos") ? photo_urls?.length ?? 0 : 0,
+        photos_analyzed: isSourceAllowed(automation, "photos") ? (photo_urls?.length ?? 0) : 0,
         hearing_used: !!hearing,
       },
     });

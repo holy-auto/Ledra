@@ -111,7 +111,10 @@ export interface DraftCertificateResult {
 // 自動下書き生成
 // ─────────────────────────────────────────────
 
-export async function generateCertificateDraft(input: DraftCertificateInput): Promise<DraftCertificateResult> {
+export async function generateCertificateDraft(
+  input: DraftCertificateInput,
+  opts?: { model?: string },
+): Promise<DraftCertificateResult> {
   const client = getAnthropicClient();
 
   const vehicleDesc = [
@@ -181,7 +184,7 @@ ${input.templateCategory || "未指定"}`;
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL,
+        model: opts?.model ?? AI_MODEL,
         max_tokens: 1024,
         system: cacheableSystem(systemPrompt),
         messages: [{ role: "user", content: userMessage }],

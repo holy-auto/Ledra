@@ -9,10 +9,10 @@ export const PLANS = {
     price: "¥0",
     unit: "/月",
     description: "まずは試してみたい方に",
-    certLimit: "月10件まで証明書発行",
-    certLimitShort: "月10件",
+    certLimit: "月20件まで証明書発行",
+    certLimitShort: "月20件",
     features: [
-      "月10件まで発行",
+      "月20件まで発行",
       "基本テンプレート",
       "URL共有・QR対応",
       "車両・顧客台帳",
@@ -32,6 +32,7 @@ export const PLANS = {
     certLimitShort: "月80件",
     features: [
       "月80件まで発行",
+      "AI機能（Haiku）対応",
       "基本テンプレート＋ロゴ",
       "CSV/PDF単体出力",
       "車両・顧客台帳",
@@ -205,6 +206,7 @@ export const FEATURE_COMPARISON = [
   { feature: "ユーザー数", free: "1", starter: "3", standard: "7", pro: "15" },
   { feature: "テンプレート", free: "基本", starter: "基本+ロゴ", standard: "カスタム", pro: "フルカスタム" },
   { feature: "保険会社ポータル", free: "✓", starter: "✓", standard: "✓", pro: "✓" },
+  { feature: "AI機能", free: "—", starter: "✓（Haiku）", standard: "✓（Sonnet）", pro: "✓（Opus）" },
   { feature: "CSV/PDFエクスポート", free: "—", starter: "単体のみ", standard: "✓", pro: "✓" },
   { feature: "レポート", free: "—", starter: "—", standard: "基本", pro: "詳細" },
   {

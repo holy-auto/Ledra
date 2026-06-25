@@ -10,6 +10,7 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateExplanation, type Audience } from "@/lib/ai/explainCertificate";
+import { modelForPlanTier } from "@/lib/ai/client";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -78,31 +79,34 @@ export async function POST(req: NextRequest) {
     // 公開URL生成
     const publicUrl = cert.public_id ? `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/c/${cert.public_id}` : undefined;
 
-    const explanation = await generateExplanation({
-      audience: audience satisfies Audience,
-      certificate: {
-        public_id: cert.public_id ?? "",
-        service_name: cert.service_name ?? "",
-        description: cert.description ?? undefined,
-        material_info: cert.material_info ?? undefined,
-        warranty_period: cert.warranty_period ?? undefined,
-        issued_at: cert.created_at ?? "",
-        expiry_date: cert.expiry_date ?? undefined,
-        work_areas: cert.work_areas ?? undefined,
-        public_url: publicUrl,
+    const explanation = await generateExplanation(
+      {
+        audience: audience satisfies Audience,
+        certificate: {
+          public_id: cert.public_id ?? "",
+          service_name: cert.service_name ?? "",
+          description: cert.description ?? undefined,
+          material_info: cert.material_info ?? undefined,
+          warranty_period: cert.warranty_period ?? undefined,
+          issued_at: cert.created_at ?? "",
+          expiry_date: cert.expiry_date ?? undefined,
+          work_areas: cert.work_areas ?? undefined,
+          public_url: publicUrl,
+        },
+        vehicle: {
+          maker: vehicleInfo.maker,
+          model: vehicleInfo.model,
+          color: vehicleInfo.color,
+          plate_display: vehicleInfo.plate_display,
+        },
+        shop: {
+          name: tenant?.name ?? "施工店",
+          phone: tenant?.phone ?? undefined,
+        },
+        customer: { name: cert.customer_name ?? undefined },
       },
-      vehicle: {
-        maker: vehicleInfo.maker,
-        model: vehicleInfo.model,
-        color: vehicleInfo.color,
-        plate_display: vehicleInfo.plate_display,
-      },
-      shop: {
-        name: tenant?.name ?? "施工店",
-        phone: tenant?.phone ?? undefined,
-      },
-      customer: { name: cert.customer_name ?? undefined },
-    });
+      { model: modelForPlanTier(caller.planTier) },
+    );
 
     return apiOk({ explanation });
   } catch (e: unknown) {
