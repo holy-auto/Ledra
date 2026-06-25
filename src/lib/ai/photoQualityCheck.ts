@@ -121,7 +121,7 @@ const PHOTO_CHECK_SYSTEM_PROMPT = `あなたは自動車施工記録の写真品
 /** Vision 結果キャッシュの TTL。キーは画像内容ハッシュなので長めで安全 (7 日)。 */
 const PHOTO_CHECK_CACHE_TTL_SEC = 7 * 24 * 60 * 60;
 
-export async function checkPhotoContent(input: PhotoCheckInput): Promise<PhotoCheckResult> {
+export async function checkPhotoContent(input: PhotoCheckInput, opts?: { model?: string }): Promise<PhotoCheckResult> {
   try {
     // fetch 自体は安価。高コストなのは Vision 呼び出しなので、画像内容のハッシュで
     // 結果をキャッシュし、同一写真の再チェック (再保存・再表示・再実行) では
@@ -136,7 +136,7 @@ export async function checkPhotoContent(input: PhotoCheckInput): Promise<PhotoCh
     // Redis 未設定 (dev/CI) では withCache は fn() に素通しするので挙動は不変。
     // runPhotoVision は失敗時に throw するため、permissive な失敗結果はキャッシュされない。
     const verdict = await withCache(cacheKey, PHOTO_CHECK_CACHE_TTL_SEC, () =>
-      runPhotoVision(buffer, contentType, input),
+      runPhotoVision(buffer, contentType, input, opts?.model),
     );
     return { photoUrl: input.photoUrl, expectedType: input.expectedType, ...verdict };
   } catch (err) {
@@ -162,13 +162,14 @@ async function runPhotoVision(
   buffer: ArrayBuffer,
   contentType: string,
   input: PhotoCheckInput,
+  modelOverride?: string,
 ): Promise<Omit<PhotoCheckResult, "photoUrl" | "expectedType">> {
   const client = getAnthropicClient();
   const base64 = Buffer.from(buffer).toString("base64");
 
   const msg = await withRetry("anthropic", () =>
     client.messages.parse({
-      model: AI_MODEL_VISION,
+      model: modelOverride ?? AI_MODEL_VISION,
       max_tokens: 512,
       system: cacheableSystem(PHOTO_CHECK_SYSTEM_PROMPT),
       messages: [
@@ -215,6 +216,7 @@ export async function auditCertificatePhotos(params: {
   fieldValues: Record<string, string | undefined>;
   standardRule: StandardRule;
   checkPhotosWithAI?: boolean; // Vision APIを使うか（デフォルトtrue）
+  model?: string;
 }): Promise<CertificatePhotoAudit> {
   const { category, photoUrls, fieldValues, standardRule, checkPhotosWithAI = true } = params;
 
@@ -253,12 +255,15 @@ export async function auditCertificatePhotos(params: {
   let photoResults: PhotoCheckResult[] = [];
   if (checkPhotosWithAI && photoUrls.length > 0) {
     const checks = photoUrls.slice(0, 5).map((url, i) =>
-      checkPhotoContent({
-        photoUrl: url,
-        expectedType: standardRule.required_photos[i]?.id ?? "photo",
-        category,
-        index: i,
-      }),
+      checkPhotoContent(
+        {
+          photoUrl: url,
+          expectedType: standardRule.required_photos[i]?.id ?? "photo",
+          category,
+          index: i,
+        },
+        { model: params.model },
+      ),
     );
     photoResults = await Promise.all(checks);
 

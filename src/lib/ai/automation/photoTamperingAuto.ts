@@ -28,6 +28,7 @@ import {
   type PhotoIntegrityFlag,
 } from "@/lib/ai/certificatePhotoIntegrity";
 import { inspectImageTamperingVision } from "@/lib/ai/photoTamperingCheck";
+import { visionModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "./policy";
@@ -152,7 +153,9 @@ export async function maybeAutoTamperingCheckForCertificate(params: MaybeAutoTam
         const base64 = await downloadImageBase64(admin, row.storagePath);
         if (!base64) continue;
         const hints = (flagsById.get(id) ?? []).map((f) => FLAG_HINT_JA[f] ?? f);
-        const v = await inspectImageTamperingVision(base64, mime, hints);
+        const v = await inspectImageTamperingVision(base64, mime, hints, {
+          model: visionModelForPlanTier(tenant.plan_tier),
+        });
         visionByImageId[id] = v;
         visionCalls++;
       }

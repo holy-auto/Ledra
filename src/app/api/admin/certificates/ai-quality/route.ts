@@ -10,7 +10,8 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { normalizePlanTier } from "@/lib/billing/planFeatures";
+import { normalizePlanTier, canUseFeature } from "@/lib/billing/planFeatures";
+import { visionModelForPlanTier } from "@/lib/ai/client";
 import { auditCertificatePhotos, decideGate, type StandardRule } from "@/lib/ai/photoQualityCheck";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
@@ -90,7 +91,7 @@ export async function POST(req: NextRequest) {
     // AI マスタースイッチ OFF / 月次コストキャップ超過時は settings.enabled=false に
     // 倒るので、Vision (課金) を呼ばずルールベース監査だけにフォールバックする。
     const aiSettings = precheck ? null : await loadAiAutomationSettings(caller.tenantId);
-    const useVision = !precheck && (tier === "standard" || tier === "pro") && aiSettings?.enabled === true;
+    const useVision = !precheck && canUseFeature(tier, "ai_quality_vision") && aiSettings?.enabled === true;
 
     // precheck では photo_count を photo_urls.length 相当として扱う
     const effectivePhotoUrls =
@@ -105,6 +106,7 @@ export async function POST(req: NextRequest) {
       fieldValues: field_values ?? {},
       standardRule: rule as StandardRule,
       checkPhotosWithAI: useVision,
+      model: visionModelForPlanTier(tier),
     });
 
     // 実際に呼んだ (キャッシュミスの) Vision のトークンを usageContext が捕捉済み。
