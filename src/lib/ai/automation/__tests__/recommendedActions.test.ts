@@ -20,9 +20,16 @@ describe("RECOMMENDED_AUTOMATION_ACTION_KEYS (おまかせ運用)", () => {
     expect(NEVER_AUTO_ACTIONS.size).toBe(0);
   });
 
-  it("includes all catalog actions in the recommended preset", () => {
-    for (const key of AUTOMATION_ACTION_KEYS) {
-      expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has(key)).toBe(true);
+  it("excludes high-risk actions (send/issue/charge/customer-create) from the safe preset", () => {
+    for (const key of [
+      "certificate.auto_issue",
+      "invoice.auto_send",
+      "invoice.auto_finalize",
+      "quote.auto_send",
+      "customer.auto_create",
+      "payment.auto_charge",
+    ]) {
+      expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has(key)).toBe(false);
     }
   });
 
@@ -30,5 +37,7 @@ describe("RECOMMENDED_AUTOMATION_ACTION_KEYS (おまかせ運用)", () => {
     expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has("certificate.auto_create_draft_record")).toBe(true);
     expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has("inventory.auto_draft_reorder")).toBe(true);
     expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has("review.auto_analyze")).toBe(true);
+    expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has("invoice.auto_send_on_confirm")).toBe(true);
+    expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has("quote.auto_send_on_confirm")).toBe(true);
   });
 });

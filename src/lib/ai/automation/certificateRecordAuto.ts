@@ -19,8 +19,9 @@ import type { DraftCertificateResult } from "@/lib/ai/draftCertificate";
 import { makePublicId } from "@/lib/publicId";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
+import { triggerCertificateIssued } from "@/lib/certificates/issueHooks";
 import { loadAiAutomationSettings } from "./policy";
-import { shouldAutoCreateDraftCertificate, canAutoIssueCertificate } from "./orchestrator";
+import { shouldAutoCreateDraftCertificate, shouldAutoIssueCertificate } from "./orchestrator";
 
 const AUTO_CREATE_ENDPOINT = "/api/admin/reservations#auto-create-draft-certificate";
 
@@ -179,9 +180,21 @@ export async function maybeAutoCreateDraftCertificateForReservation(
         warranty_candidates: Array.isArray(draft?.warrantyCandidates) ? draft!.warrantyCandidates : [],
       },
       service_type: null,
-      status: canAutoIssueCertificate(settings) ? "active" : "draft",
+      status: "draft",
       created_by: null,
     };
+
+    const draftConfidence = typeof draft?.confidence === "number" ? draft.confidence : 0;
+    const autoIssue = shouldAutoIssueCertificate(settings, {
+      hasDraft: !!draft,
+      photoQualityPassed: false,
+      tamperingCheckPassed: false,
+      hasRequiredFields: !!customerName && !!serviceName,
+      confidence: draftConfidence,
+    });
+    if (autoIssue) {
+      certRow.status = "active";
+    }
 
     const { data: cert, error: certErr } = await admin
       .from("certificates")
@@ -194,6 +207,23 @@ export async function maybeAutoCreateDraftCertificateForReservation(
       return;
     }
 
+    if (autoIssue) {
+      triggerCertificateIssued({
+        tenantId,
+        publicId,
+        certificateId: cert.id as string,
+        customerName,
+        customerId: reservation.customer_id,
+        vehicleModel: vehicleModel,
+        vehiclePlate: nonEmpty(vehicle?.plate_display),
+      }).catch((e) => {
+        logger.warn("[certificateRecordAuto] triggerCertificateIssued failed", {
+          tenantId,
+          err: e instanceof Error ? e.message : String(e),
+        });
+      });
+    }
+
     // 重複防止マーカーを予約に書き戻す (次回以降は再作成しない)。
     const { error: backErr } = await admin
       .from("reservations")
@@ -204,7 +234,7 @@ export async function maybeAutoCreateDraftCertificateForReservation(
       logger.warn("[certificateRecordAuto] reservation back-link failed", { tenantId, err: backErr.message });
     }
 
-    const certStatus = canAutoIssueCertificate(settings) ? "active" : "draft";
+    const certStatus = autoIssue ? "active" : "draft";
     usage.record({
       tenantId,
       outcome: "ok",

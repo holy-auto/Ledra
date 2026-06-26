@@ -33,6 +33,8 @@ export interface MaybeAutoProcessParams {
   channel?: "line" | "email" | "form";
   /** 相対日付の解釈に使う受信日 (YYYY-MM-DD)。 */
   receivedDate?: string;
+  /** LINE ユーザー ID。顧客自動作成時に line_user_id を紐付けるために使う。 */
+  lineUserId?: string;
 }
 
 function isMissingColumnError(err: { message?: string; code?: string } | null | undefined): boolean {
@@ -91,11 +93,25 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
     if (decision.create && result.scheduled_date) {
       // 未知顧客の場合は自動作成 (customer.auto_create が有効な場合のみここに到達する)
       if (!resolvedCustomerId && decision.reason === "ok_with_new_customer") {
-        resolvedCustomerId = await autoCreateCustomer(admin, {
-          tenantId,
-          name: result.customer_name?.trim() ?? "自動登録顧客",
-          channel: params.channel,
-        });
+        // customer.auto_create requires Pro plan
+        const planTier = normalizePlanTier(tenant.plan_tier);
+        if (planTier !== "pro") {
+          logger.info("[inboundAuto] customer auto-create requires Pro plan", { tenantId, planTier });
+        } else {
+          resolvedCustomerId = await autoCreateCustomer(admin, {
+            tenantId,
+            name: result.customer_name?.trim() ?? "自動登録顧客",
+            channel: params.channel,
+            lineUserId: params.lineUserId,
+          });
+          if (resolvedCustomerId && messageId) {
+            await admin
+              .from("customer_messages")
+              .update({ customer_id: resolvedCustomerId })
+              .eq("id", messageId)
+              .eq("tenant_id", tenantId);
+          }
+        }
         if (!resolvedCustomerId) {
           logger.warn("[inboundAuto] customer auto-create failed, skipping reservation", { tenantId });
         }
@@ -197,6 +213,7 @@ interface AutoCreateCustomerInput {
   tenantId: string;
   name: string;
   channel?: "line" | "email" | "form";
+  lineUserId?: string;
 }
 
 /** 顧客レコードを service-role で自動作成する。失敗時は null を返す (投げない)。 */
@@ -206,12 +223,16 @@ async function autoCreateCustomer(
 ): Promise<string | null> {
   try {
     const id = crypto.randomUUID();
-    const { error } = await admin.from("customers").insert({
+    const row: Record<string, unknown> = {
       id,
       tenant_id: input.tenantId,
       name: input.name,
       source: `ai_auto_create_${input.channel ?? "unknown"}`,
-    });
+    };
+    if (input.lineUserId) {
+      row.line_user_id = input.lineUserId;
+    }
+    const { error } = await admin.from("customers").insert(row);
     if (error) {
       logger.warn("[inboundAuto] customer auto-create insert failed", {
         tenantId: input.tenantId,

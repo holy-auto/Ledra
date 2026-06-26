@@ -340,23 +340,19 @@ export const AUTOMATION_ACTION_KEYS: ReadonlySet<string> = new Set(AUTOMATION_AC
 /**
  * 「おまかせ運用」プリセットで一括 ON にする推奨アクション。
  *
- * 全カタログアクションを含む。旧・壁3 アクション (証明書発行 / 無ゲート送付 /
- * 自動課金 / 顧客自動作成) も含まれる。各アクションは confidence_threshold と
- * Pro プラン要件で安全性を担保する。
+ * ドラフト生成・提案・注釈などの安全なアクションのみ含む。
+ * 送付・発行・課金・顧客自動作成など外部影響のあるアクションは含まない —
+ * それらはテナントが個別に opt-in する。
  */
 export const RECOMMENDED_AUTOMATION_ACTION_KEYS: ReadonlySet<string> = new Set<string>([
   "inbound_message.auto_extract",
   "inbound_message.auto_create_reservation",
   "certificate.auto_draft",
   "certificate.auto_create_draft_record",
-  "certificate.auto_issue",
   "review.auto_analyze",
   "translation.auto_translate",
   "invoice.auto_send_on_confirm",
-  "invoice.auto_send",
-  "invoice.auto_finalize",
   "quote.auto_send_on_confirm",
-  "quote.auto_send",
   "accounting.auto_categorize_on_intake",
   "invoice.auto_draft_on_billing_step",
   "thickness.auto_detect",
@@ -371,8 +367,6 @@ export const RECOMMENDED_AUTOMATION_ACTION_KEYS: ReadonlySet<string> = new Set<s
   "insurer_case.auto_summary",
   "insurer_case.auto_assign_suggest",
   "inquiry.auto_classify",
-  "customer.auto_create",
-  "payment.auto_charge",
 ]);
 
 /** opt-in 可能な (カタログに存在する) アクションキーか。 */

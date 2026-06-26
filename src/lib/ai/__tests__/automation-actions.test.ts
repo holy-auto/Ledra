@@ -14,7 +14,8 @@ import {
   shouldAutoAnalyzeReview,
   shouldAutoDraftCertificate,
   shouldAutoExtractInbound,
-  shouldAutoSendDocument,
+  shouldAutoSendDocumentOnConfirm,
+  shouldAutoSendDocumentUngated,
   shouldAutoDetectThickness,
   shouldAutoCategorizeAccountingOnIntake,
   shouldAutoCreateDraftCertificate,
@@ -280,7 +281,7 @@ describe("certificate auto-draft / auto-issue", () => {
   });
 });
 
-describe("shouldAutoSendDocument (確定→自動送付)", () => {
+describe("shouldAutoSendDocumentOnConfirm (確定→自動送付)", () => {
   const invoiceOn = {
     ...DEFAULT_AI_AUTOMATION_SETTINGS,
     autoActions: { "invoice.auto_send_on_confirm": true },
@@ -291,39 +292,54 @@ describe("shouldAutoSendDocument (確定→自動送付)", () => {
   };
 
   it("auto-sends invoices (incl. consolidated) only when opted in", () => {
-    expect(shouldAutoSendDocument(invoiceOn, "invoice")).toBe(true);
-    expect(shouldAutoSendDocument(invoiceOn, "consolidated_invoice")).toBe(true);
-    // 見積の opt-in は請求書には効かない
-    expect(shouldAutoSendDocument(invoiceOn, "estimate")).toBe(false);
-    // opt-in 無しは false
-    expect(shouldAutoSendDocument(DEFAULT_AI_AUTOMATION_SETTINGS, "invoice")).toBe(false);
+    expect(shouldAutoSendDocumentOnConfirm(invoiceOn, "invoice")).toBe(true);
+    expect(shouldAutoSendDocumentOnConfirm(invoiceOn, "consolidated_invoice")).toBe(true);
+    expect(shouldAutoSendDocumentOnConfirm(invoiceOn, "estimate")).toBe(false);
+    expect(shouldAutoSendDocumentOnConfirm(DEFAULT_AI_AUTOMATION_SETTINGS, "invoice")).toBe(false);
   });
 
   it("auto-sends quotes only when opted in", () => {
-    expect(shouldAutoSendDocument(quoteOn, "estimate")).toBe(true);
-    expect(shouldAutoSendDocument(quoteOn, "invoice")).toBe(false);
-    expect(shouldAutoSendDocument(DEFAULT_AI_AUTOMATION_SETTINGS, "estimate")).toBe(false);
+    expect(shouldAutoSendDocumentOnConfirm(quoteOn, "estimate")).toBe(true);
+    expect(shouldAutoSendDocumentOnConfirm(quoteOn, "invoice")).toBe(false);
+    expect(shouldAutoSendDocumentOnConfirm(DEFAULT_AI_AUTOMATION_SETTINGS, "estimate")).toBe(false);
   });
 
   it("returns false for unrelated doc types", () => {
-    expect(shouldAutoSendDocument(invoiceOn, "receipt")).toBe(false);
-    expect(shouldAutoSendDocument(quoteOn, "delivery_note")).toBe(false);
+    expect(shouldAutoSendDocumentOnConfirm(invoiceOn, "receipt")).toBe(false);
+    expect(shouldAutoSendDocumentOnConfirm(quoteOn, "delivery_note")).toBe(false);
   });
 
   it("is gated by the global master switch", () => {
-    expect(shouldAutoSendDocument({ ...invoiceOn, enabled: false }, "invoice")).toBe(false);
+    expect(shouldAutoSendDocumentOnConfirm({ ...invoiceOn, enabled: false }, "invoice")).toBe(false);
   });
 
-  it("ungated auto_send keys are now resolvable when opted in", () => {
+  it("does NOT trigger on ungated auto_send keys (those are separate)", () => {
+    const ungated = {
+      ...DEFAULT_AI_AUTOMATION_SETTINGS,
+      autoActions: { "invoice.auto_send": true, "quote.auto_send": true },
+    };
+    expect(shouldAutoSendDocumentOnConfirm(ungated, "invoice")).toBe(false);
+    expect(shouldAutoSendDocumentOnConfirm(ungated, "estimate")).toBe(false);
+  });
+});
+
+describe("shouldAutoSendDocumentUngated (無ゲート自動送付)", () => {
+  it("ungated auto_send keys are resolvable when opted in", () => {
     const full = {
       ...DEFAULT_AI_AUTOMATION_SETTINGS,
       autoActions: { "invoice.auto_send": true, "quote.auto_send": true },
     };
-    expect(resolveAutoAction(full, "invoice.auto_send")).toBe(true);
-    expect(resolveAutoAction(full, "quote.auto_send")).toBe(true);
-    // shouldAutoSendDocument also resolves ungated keys
-    expect(shouldAutoSendDocument(full, "invoice")).toBe(true);
-    expect(shouldAutoSendDocument(full, "estimate")).toBe(true);
+    expect(shouldAutoSendDocumentUngated(full, "invoice")).toBe(true);
+    expect(shouldAutoSendDocumentUngated(full, "estimate")).toBe(true);
+  });
+
+  it("does NOT trigger on on_confirm keys", () => {
+    const onConfirm = {
+      ...DEFAULT_AI_AUTOMATION_SETTINGS,
+      autoActions: { "invoice.auto_send_on_confirm": true, "quote.auto_send_on_confirm": true },
+    };
+    expect(shouldAutoSendDocumentUngated(onConfirm, "invoice")).toBe(false);
+    expect(shouldAutoSendDocumentUngated(onConfirm, "estimate")).toBe(false);
   });
 });
 
@@ -514,7 +530,7 @@ describe("parts.auto_reconcile_delivery_note auto-action", () => {
 describe("formerly Wall-3 actions (now opt-in)", () => {
   const on = (key: string) => ({ ...DEFAULT_AI_AUTOMATION_SETTINGS, autoActions: { [key]: true } });
 
-  it("all new action keys are known, in catalog, default OFF, and recommended", () => {
+  it("all new action keys are known, in catalog, default OFF, but NOT in recommended preset", () => {
     for (const k of [
       "certificate.auto_issue",
       "invoice.auto_send",
@@ -526,7 +542,7 @@ describe("formerly Wall-3 actions (now opt-in)", () => {
       expect(isKnownActionKey(k)).toBe(true);
       expect(isNeverAutoAction(k)).toBe(false);
       expect(AUTOMATION_ACTIONS.find((a) => a.key === k)?.defaultEnabled).toBe(false);
-      expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has(k)).toBe(true);
+      expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has(k)).toBe(false);
     }
   });
 

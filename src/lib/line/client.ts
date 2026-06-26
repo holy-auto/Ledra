@@ -317,6 +317,7 @@ export async function handleWebhookEvents(
         text: rawText,
         channel: "line",
         receivedDate: event.timestamp ? new Date(event.timestamp).toISOString().slice(0, 10) : undefined,
+        lineUserId: event.source.userId,
       });
     }
   }

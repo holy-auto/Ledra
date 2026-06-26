@@ -24,7 +24,7 @@ import { getStripeClient } from "@/lib/stripe/client";
 import { createInvoicePaymentLink } from "@/lib/stripe/invoicePaymentLink";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "./policy";
-import { shouldAutoSendDocument } from "./orchestrator";
+import { shouldAutoSendDocumentOnConfirm } from "./orchestrator";
 
 export interface MaybeAutoSendDocumentParams {
   tenantId: string;
@@ -62,7 +62,7 @@ export async function maybeAutoSendDocumentOnConfirm(params: MaybeAutoSendDocume
     if (!doc) return;
 
     const docType = doc.doc_type as DocType;
-    if (!shouldAutoSendDocument(settings, docType)) return;
+    if (!shouldAutoSendDocumentOnConfirm(settings, docType)) return;
     // 念のため: 確定 (sent) 済みのものだけ送る。
     if (doc.status !== "sent") return;
 

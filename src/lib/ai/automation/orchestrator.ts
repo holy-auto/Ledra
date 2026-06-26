@@ -172,23 +172,29 @@ export function shouldAutoAnalyzeReview(settings: AiAutomationSettings): boolean
 // ─────────────────────────────────────────────
 
 /**
- * 帳票を顧客へ自動送付してよいか。
- *
- * 2 段階の判定:
- *   1. 無ゲート送付 (invoice.auto_send / quote.auto_send) が有効なら true
- *   2. 確定後送付 (invoice.auto_send_on_confirm / quote.auto_send_on_confirm) が有効なら true
- *
- * doc_type に応じて opt-in アクションキーを引き当てて判定する。
- * 送付対象でない doc_type (見積/請求以外) は常に false。
+ * 人が draft→sent に確定した後の自動送付 (on_confirm) を行うか。
+ * maybeAutoSendDocumentOnConfirm (documentAuto.ts) 用。
  */
-export function shouldAutoSendDocument(settings: AiAutomationSettings, docType: string): boolean {
+export function shouldAutoSendDocumentOnConfirm(settings: AiAutomationSettings, docType: string): boolean {
   if (docType === "invoice" || docType === "consolidated_invoice") {
-    return (
-      resolveAutoAction(settings, "invoice.auto_send") || resolveAutoAction(settings, "invoice.auto_send_on_confirm")
-    );
+    return resolveAutoAction(settings, "invoice.auto_send_on_confirm");
   }
   if (docType === "estimate") {
-    return resolveAutoAction(settings, "quote.auto_send") || resolveAutoAction(settings, "quote.auto_send_on_confirm");
+    return resolveAutoAction(settings, "quote.auto_send_on_confirm");
+  }
+  return false;
+}
+
+/**
+ * 人の確認なしで自動送付 (ungated) を行うか。
+ * 無ゲート送付ワークフロー用。on_confirm とは独立した判定。
+ */
+export function shouldAutoSendDocumentUngated(settings: AiAutomationSettings, docType: string): boolean {
+  if (docType === "invoice" || docType === "consolidated_invoice") {
+    return resolveAutoAction(settings, "invoice.auto_send");
+  }
+  if (docType === "estimate") {
+    return resolveAutoAction(settings, "quote.auto_send");
   }
   return false;
 }
