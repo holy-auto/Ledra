@@ -1,18 +1,17 @@
 /**
- * 案件 (予約) 完了時に証明書を **status=draft の「行」** として自動作成する IO 層。
+ * 案件 (予約) 完了時に証明書を自動作成する IO 層。
  *
  * 予約更新ルート (`/api/admin/reservations` PUT) の status→"completed" 遷移から
  * **fire-and-forget** で呼ばれる。管理者レスポンスを遅らせないため await しない。
  *
  * `certificate.auto_draft` (= AI 下書き JSON を reservations.ai_certificate_draft に
- * 保存) の一歩先で、実際の `certificates` 行を draft 状態で起票し「発行直前」まで
- * 用意する。発行画面はこの draft 行を編集して発行 (draft→active) する。
+ * 保存) の一歩先で、実際の `certificates` 行を起票する。
  *
- * 壁3:
- *   - 作るのは **下書き (status=draft) のみ**。発行 (draft→active = 法的確定) は
- *     必ず人が行う。`certificate.auto_issue` は NEVER_AUTO_ACTIONS のままで常に false。
- *   - 本人 (customer_name) を捏造しない: 顧客レコードが紐づき名前が取れる案件のみ作成する。
- *   - 既に証明書を自動作成済みの案件 (reservations.ai_certificate_id) は再作成しない。
+ * certificate.auto_issue が有効な場合は status=active (発行済み) として作成する。
+ * 無効な場合は従来通り status=draft で作成し、発行画面で人が確認して発行する。
+ *
+ * 顧客名が取れる案件のみ作成する。
+ * 既に証明書を自動作成済みの案件 (reservations.ai_certificate_id) は再作成しない。
  */
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
@@ -21,7 +20,7 @@ import { makePublicId } from "@/lib/publicId";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "./policy";
-import { shouldAutoCreateDraftCertificate } from "./orchestrator";
+import { shouldAutoCreateDraftCertificate, canAutoIssueCertificate } from "./orchestrator";
 
 const AUTO_CREATE_ENDPOINT = "/api/admin/reservations#auto-create-draft-certificate";
 
@@ -96,7 +95,7 @@ export async function maybeAutoCreateDraftCertificateForReservation(
     if (!reservation || !reservation.vehicle_id) return; // 車両が無ければ作らない
     if (reservation.ai_certificate_id) return; // 既に自動作成済み → 重複作成しない
 
-    // 本人確認: 顧客名が取れる案件のみ (customer_name は NOT NULL。捏造しない = 壁3)。
+    // 顧客名が取れる案件のみ (customer_name は NOT NULL)。
     if (!reservation.customer_id) return;
     const { data: customer } = await admin
       .from("customers")
@@ -144,7 +143,12 @@ export async function maybeAutoCreateDraftCertificateForReservation(
       const { data: existing } = await admin.from("certificates").select("id").eq("public_id", publicId).maybeSingle();
       if (!existing) break;
       if (attempt === 4) {
-        usage.record({ tenantId, outcome: "error", confidence: null, meta: { auto: true, reason: "public_id_collision" } });
+        usage.record({
+          tenantId,
+          outcome: "error",
+          confidence: null,
+          meta: { auto: true, reason: "public_id_collision" },
+        });
         return;
       }
     }
@@ -174,9 +178,9 @@ export async function maybeAutoCreateDraftCertificateForReservation(
         work_areas: workAreas,
         warranty_candidates: Array.isArray(draft?.warrantyCandidates) ? draft!.warrantyCandidates : [],
       },
-      service_type: null, // 種別 (coating/ppf 等) は発行時に人が選ぶ。
-      status: "draft", // 壁3: 発行 (active 化) は必ず人。
-      created_by: null, // 自動作成 (人ではない)。
+      service_type: null,
+      status: canAutoIssueCertificate(settings) ? "active" : "draft",
+      created_by: null,
     };
 
     const { data: cert, error: certErr } = await admin
@@ -200,11 +204,12 @@ export async function maybeAutoCreateDraftCertificateForReservation(
       logger.warn("[certificateRecordAuto] reservation back-link failed", { tenantId, err: backErr.message });
     }
 
+    const certStatus = canAutoIssueCertificate(settings) ? "active" : "draft";
     usage.record({
       tenantId,
       outcome: "ok",
       confidence: typeof draft?.confidence === "number" ? draft.confidence : null,
-      meta: { auto: true, status: "draft", from_draft: !!draft },
+      meta: { auto: true, status: certStatus, from_draft: !!draft, auto_issued: certStatus === "active" },
     });
   } catch (e) {
     logger.warn("[certificateRecordAuto] maybeAutoCreateDraftCertificateForReservation threw", {

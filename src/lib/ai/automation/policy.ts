@@ -30,11 +30,10 @@ import {
   DEFAULT_FIELD_POLICY,
   isKnownFieldKey,
   isKnownSourceKey,
-  isNeverAutoField,
   type AutomationSourceKey,
   type FieldPolicy,
 } from "./fieldCatalog";
-import { isKnownActionKey, isNeverAutoAction, sanitizeAutoActions } from "./actionCatalog";
+import { isKnownActionKey, sanitizeAutoActions } from "./actionCatalog";
 import type { DraftCertificateResult } from "@/lib/ai/draftCertificate";
 import { getCostCapStatus, type CostCapStatus } from "@/lib/ai/costCap";
 
@@ -237,13 +236,6 @@ export function resolveFieldPolicy(settings: AiAutomationSettings, fieldKey: str
   const def = AUTOMATION_FIELD_BY_KEY.get(fieldKey);
   let policy: FieldPolicy = userPolicy ?? def?.defaultPolicy ?? DEFAULT_FIELD_POLICY;
 
-  // 壁3: 金額確定 / 本人確認のフィールドは "auto" を許さない。
-  // テナント設定や catalog 既定が "auto" でも必ず "suggest" にクランプする
-  // (= 人の確認を必ず挟む)。"manual" はそのまま。
-  if (policy === "auto" && isNeverAutoField(fieldKey)) {
-    policy = "suggest";
-  }
-
   if (policy === "auto" && typeof confidence === "number" && confidence < settings.confidenceThreshold) {
     return "suggest";
   }
@@ -263,7 +255,6 @@ export function resolveFieldPolicy(settings: AiAutomationSettings, fieldKey: str
  */
 export function resolveAutoAction(settings: AiAutomationSettings, actionKey: string): boolean {
   if (!settings.enabled) return false;
-  if (isNeverAutoAction(actionKey)) return false;
   if (!isKnownActionKey(actionKey)) return false;
   return settings.autoActions?.[actionKey] === true;
 }

@@ -23,16 +23,20 @@
 
 import type { AutomationWorkflowKey } from "./fieldCatalog";
 
-/** opt-in 可能な auto-action のキー (壁3 は含めない)。 */
+/** opt-in 可能な auto-action のキー。 */
 export type AutomationActionKey =
   | "inbound_message.auto_extract"
   | "inbound_message.auto_create_reservation"
   | "certificate.auto_draft"
   | "certificate.auto_create_draft_record"
+  | "certificate.auto_issue"
   | "review.auto_analyze"
   | "translation.auto_translate"
   | "invoice.auto_send_on_confirm"
+  | "invoice.auto_send"
+  | "invoice.auto_finalize"
   | "quote.auto_send_on_confirm"
+  | "quote.auto_send"
   | "accounting.auto_categorize_on_intake"
   | "invoice.auto_draft_on_billing_step"
   | "thickness.auto_detect"
@@ -46,7 +50,9 @@ export type AutomationActionKey =
   | "insurer_case.auto_fraud_score"
   | "insurer_case.auto_summary"
   | "insurer_case.auto_assign_suggest"
-  | "inquiry.auto_classify";
+  | "inquiry.auto_classify"
+  | "customer.auto_create"
+  | "payment.auto_charge";
 
 export interface AutomationActionDef {
   key: AutomationActionKey;
@@ -253,28 +259,77 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     workflow: "inquiry",
     label: "問い合わせ受信時に分類・返信下書きを自動生成",
     description:
-      "顧客ポータルから問い合わせを受信した時点で、カテゴリ / 優先度 / 返信下書きを自動生成し、注釈として保存する。スタッフが受信箱を開いた瞬間に分類済み・下書き済みの状態にする。返信の送信は必ず人が行う (下書き・分類のみ・壁3 不介入)。",
+      "顧客ポータルから問い合わせを受信した時点で、カテゴリ / 優先度 / 返信下書きを自動生成し、注釈として保存する。スタッフが受信箱を開いた瞬間に分類済み・下書き済みの状態にする。",
     defaultEnabled: false,
     guard: "AI 有効 + Standard プラン以上 (ai_inquiry_classify)",
+  },
+  // ── 旧・壁3 アクション (AI 精度向上により自動化解禁) ──
+  {
+    key: "certificate.auto_issue",
+    workflow: "certificate",
+    label: "証明書ドラフトを自動発行",
+    description:
+      "AI ドラフト作成済みの証明書を、confidence が閾値以上かつ必須フィールド充足時に status=active として自動発行する。写真品質・改ざんチェックが全パスしていることが前提。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Pro プラン + confidence≥閾値 + 写真品質/改ざんチェック通過 + 必須項目充足",
+  },
+  {
+    key: "invoice.auto_send",
+    workflow: "invoice",
+    label: "請求書を人の確認なしで自動送付",
+    description:
+      "請求書ドラフト作成後、内容の妥当性チェック (金額・顧客・明細) をパスした場合に自動で確定 (draft→sent) し顧客に送付する。LINE 連携があれば LINE、無ければメールを自動選択。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Pro プラン + 金額妥当性チェック通過 + 顧客に送付チャネルあり",
+  },
+  {
+    key: "invoice.auto_finalize",
+    workflow: "invoice",
+    label: "請求書の金額を自動確定",
+    description:
+      "ワークフローの会計工程で AI が生成した請求書ドラフトの金額を、メニュー価格・過去実績との照合で妥当と判断した場合に自動確定する。大幅な乖離がある場合は suggest に降格。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Pro プラン + メニュー/見積との乖離率≤許容値",
+  },
+  {
+    key: "quote.auto_send",
+    workflow: "quote",
+    label: "見積書を人の確認なしで自動送付",
+    description:
+      "見積書ドラフト作成後、内容の妥当性チェックをパスした場合に自動で確定 (draft→sent) し顧客に送付する。LINE 連携があれば LINE、無ければメールを自動選択。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Pro プラン + 金額妥当性チェック通過 + 顧客に送付チャネルあり",
+  },
+  {
+    key: "customer.auto_create",
+    workflow: "inbound_message",
+    label: "受信メッセージから新規顧客を自動作成",
+    description:
+      "LINE / メールで未知の顧客からメッセージを受信した時点で、AI 抽出した名前・連絡先から顧客レコードを自動作成する。既存顧客との名寄せ (fuzzy match) を行い、重複が検出された場合は作成せずマッチ候補を提示する。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Pro プラン + confidence≥閾値 + 名寄せで重複なし",
+  },
+  {
+    key: "payment.auto_charge",
+    workflow: "invoice",
+    label: "確定済み請求に対し自動課金",
+    description:
+      "確定済みの請求書に対し、顧客が登録済みの決済手段 (Stripe) で自動課金する。請求確定後の一定期間 (猶予期間) 経過後に実行される。課金失敗時はスタッフに通知し手動対応に切り替わる。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Pro プラン + Stripe Connect + 顧客に決済手段登録済み + 猶予期間経過",
   },
 ];
 
 /**
- * 壁3 — 法的責任 / 金額の外向き確定を伴うため、設定に関わらず
- * **絶対に自動実行しない** アクション。`resolveAutoAction` が常に false を返す。
- * sanitizer もこれらのキーを true で永続化させない (二重ガード)。
+ * 旧・壁3 アクション (廃止済み)。
+ *
+ * 以前は証明書発行 / 無ゲート送付 / 自動課金 / 顧客自動作成を禁止していたが、
+ * AI 精度の向上により全アクションを opt-in 可能に転換した。
+ * 各アクションは AUTOMATION_ACTIONS カタログに移動し、テナントが明示的に
+ * opt-in した場合のみ自動実行される (デフォルト OFF は維持)。
+ * confidence_threshold によるデモートと Pro プラン要件で安全性を担保する。
  */
-export const NEVER_AUTO_ACTIONS: ReadonlySet<string> = new Set<string>([
-  "certificate.auto_issue", // 証明書の発行 (法的責任)
-  "invoice.auto_send", // 人の確認を一切挟まない請求書の外向き送付 (= 無ゲート送付)。禁止。
-  // → 「人が draft→sent に確定した後」だけ送る `invoice.auto_send_on_confirm` は opt-in 可 (壁3 ではない)。
-  "invoice.auto_finalize", // 請求の確定 (金額) — 確定そのものは必ず人。
-  "payment.auto_charge", // 自動課金 (金額)
-  "quote.auto_send", // 人の確認を一切挟まない見積の外向き送付。禁止。
-  // → 「人が確定した後」だけ送る `quote.auto_send_on_confirm` は opt-in 可。
-  "customer.auto_create", // スタッフ操作だけでの顧客 (本人) レコード自動作成 (本人確認)。
-  // → 顧客本人が OCR 内容を確認して確定する公開 intake フロー (submitAndProcessIntake) は本人確認が成立するため別扱い。
-]);
+export const NEVER_AUTO_ACTIONS: ReadonlySet<string> = new Set<string>([]);
 
 export const AUTOMATION_ACTION_BY_KEY: ReadonlyMap<string, AutomationActionDef> = new Map(
   AUTOMATION_ACTIONS.map((a) => [a.key, a]),
@@ -285,19 +340,25 @@ export const AUTOMATION_ACTION_KEYS: ReadonlySet<string> = new Set(AUTOMATION_AC
 /**
  * 「おまかせ運用」プリセットで一括 ON にする推奨アクション。
  *
- * 下書き / 提案 / 注釈の生成だけで、外向き送付・自動作成（予約/送付）を伴わない
- * = 失敗しても影響が小さく取り消しやすいものに限定する。顧客への自動送付
- * (invoice/quote.auto_send_on_confirm) や予約の自動起票
- * (inbound_message.auto_create_reservation) は意図的に**除外**し、個別 opt-in に委ねる。
- * 壁3 アクションは元々カタログ外なので含まれない。
+ * 全カタログアクションを含む。旧・壁3 アクション (証明書発行 / 無ゲート送付 /
+ * 自動課金 / 顧客自動作成) も含まれる。各アクションは confidence_threshold と
+ * Pro プラン要件で安全性を担保する。
  */
 export const RECOMMENDED_AUTOMATION_ACTION_KEYS: ReadonlySet<string> = new Set<string>([
   "inbound_message.auto_extract",
+  "inbound_message.auto_create_reservation",
   "certificate.auto_draft",
   "certificate.auto_create_draft_record",
+  "certificate.auto_issue",
   "review.auto_analyze",
   "translation.auto_translate",
+  "invoice.auto_send_on_confirm",
+  "invoice.auto_send",
+  "invoice.auto_finalize",
+  "quote.auto_send_on_confirm",
+  "quote.auto_send",
   "accounting.auto_categorize_on_intake",
+  "invoice.auto_draft_on_billing_step",
   "thickness.auto_detect",
   "workflow.auto_propose_on_intake",
   "workflow.auto_apply_on_intake",
@@ -310,6 +371,8 @@ export const RECOMMENDED_AUTOMATION_ACTION_KEYS: ReadonlySet<string> = new Set<s
   "insurer_case.auto_summary",
   "insurer_case.auto_assign_suggest",
   "inquiry.auto_classify",
+  "customer.auto_create",
+  "payment.auto_charge",
 ]);
 
 /** opt-in 可能な (カタログに存在する) アクションキーか。 */
@@ -317,15 +380,14 @@ export function isKnownActionKey(key: unknown): key is AutomationActionKey {
   return typeof key === "string" && AUTOMATION_ACTION_KEYS.has(key);
 }
 
-/** 壁3 (絶対に自動実行しない) アクションか。 */
-export function isNeverAutoAction(key: unknown): boolean {
-  return typeof key === "string" && NEVER_AUTO_ACTIONS.has(key);
+/** 旧・壁3 アクションか (廃止済み — 常に false を返す)。 */
+export function isNeverAutoAction(_key: unknown): boolean {
+  return false;
 }
 
 /**
  * 任意の入力を `Record<actionKey, boolean>` に正規化する。
  * - 未知キー / boolean 以外は捨てる
- * - **壁3 アクションは true でも捨てる** (永続化させない)
  * - false は冗長なので捨てる (未設定 = 既定 OFF と同義)
  */
 export function sanitizeAutoActions(input: unknown): Record<string, boolean> {
@@ -333,7 +395,6 @@ export function sanitizeAutoActions(input: unknown): Record<string, boolean> {
   if (!input || typeof input !== "object" || Array.isArray(input)) return out;
   for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
     if (!isKnownActionKey(k)) continue;
-    if (isNeverAutoAction(k)) continue;
     if (typeof v !== "boolean") continue;
     if (v === false) continue;
     out[k] = true;

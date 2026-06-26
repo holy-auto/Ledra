@@ -26,6 +26,10 @@ import {
   shouldAutoQualityCheck,
   shouldAutoNextAction,
   shouldAutoReconcileDeliveryNote,
+  shouldAutoIssueCertificate,
+  shouldAutoFinalizeInvoice,
+  shouldAutoCharge,
+  shouldAutoCreateCustomer,
 } from "../automation/orchestrator";
 
 describe("actionCatalog", () => {
@@ -35,25 +39,33 @@ describe("actionCatalog", () => {
     }
   });
 
-  it("classifies known / never-auto action keys", () => {
+  it("classifies known action keys (all formerly-Wall-3 actions now in catalog)", () => {
     expect(isKnownActionKey("inbound_message.auto_extract")).toBe(true);
-    expect(isKnownActionKey("certificate.auto_issue")).toBe(false); // 壁3 はカタログに無い
+    expect(isKnownActionKey("certificate.auto_issue")).toBe(true);
+    expect(isKnownActionKey("invoice.auto_send")).toBe(true);
+    expect(isKnownActionKey("invoice.auto_finalize")).toBe(true);
+    expect(isKnownActionKey("payment.auto_charge")).toBe(true);
+    expect(isKnownActionKey("quote.auto_send")).toBe(true);
+    expect(isKnownActionKey("customer.auto_create")).toBe(true);
     expect(isKnownActionKey("nope")).toBe(false);
-    expect(isNeverAutoAction("certificate.auto_issue")).toBe(true);
-    expect(isNeverAutoAction("invoice.auto_send")).toBe(true);
-    expect(isNeverAutoAction("payment.auto_charge")).toBe(true);
-    expect(isNeverAutoAction("inbound_message.auto_extract")).toBe(false);
+    // isNeverAutoAction is now always false
+    expect(isNeverAutoAction("certificate.auto_issue")).toBe(false);
+    expect(isNeverAutoAction("invoice.auto_send")).toBe(false);
+    expect(isNeverAutoAction("payment.auto_charge")).toBe(false);
   });
 
-  it("sanitizes auto-actions: drops unknown / false / 壁3, keeps known true", () => {
+  it("sanitizes auto-actions: drops unknown / false, keeps known true (including former Wall-3)", () => {
     const out = sanitizeAutoActions({
       "inbound_message.auto_extract": true,
       "certificate.auto_draft": false, // false は捨てる
-      "certificate.auto_issue": true, // 壁3 は捨てる
+      "certificate.auto_issue": true, // formerly Wall-3, now allowed
       "ghost.action": true, // 未知
       garbage: 42,
     });
-    expect(out).toEqual({ "inbound_message.auto_extract": true });
+    expect(out).toEqual({
+      "inbound_message.auto_extract": true,
+      "certificate.auto_issue": true,
+    });
   });
 
   it("sanitizes non-object input to empty", () => {
@@ -85,18 +97,20 @@ describe("resolveAutoAction", () => {
     expect(resolveAutoAction(settings, "inbound_message.auto_extract")).toBe(false);
   });
 
-  it("壁3: never returns true even if the DB somehow stored it true", () => {
+  it("formerly Wall-3 actions are now resolvable when opted in", () => {
     const settings = {
       ...DEFAULT_AI_AUTOMATION_SETTINGS,
       autoActions: {
         "certificate.auto_issue": true,
         "invoice.auto_send": true,
         "payment.auto_charge": true,
+        "customer.auto_create": true,
       },
     };
-    expect(resolveAutoAction(settings, "certificate.auto_issue")).toBe(false);
-    expect(resolveAutoAction(settings, "invoice.auto_send")).toBe(false);
-    expect(resolveAutoAction(settings, "payment.auto_charge")).toBe(false);
+    expect(resolveAutoAction(settings, "certificate.auto_issue")).toBe(true);
+    expect(resolveAutoAction(settings, "invoice.auto_send")).toBe(true);
+    expect(resolveAutoAction(settings, "payment.auto_charge")).toBe(true);
+    expect(resolveAutoAction(settings, "customer.auto_create")).toBe(true);
   });
 });
 
@@ -184,10 +198,36 @@ describe("decideInboundCommit", () => {
     expect(d.reason).toBe("low_confidence");
   });
 
-  it("壁3: does not create for unknown customers (no auto identity creation)", () => {
+  it("does not create for unknown customers when customer.auto_create is off", () => {
     const d = decideInboundCommit(
       enabled,
       { intent: "new_reservation", confidence: 0.9, scheduled_date: "2026-06-01" },
+      { knownCustomerId: null },
+    );
+    expect(d.reason).toBe("unknown_customer");
+  });
+
+  it("creates for unknown customers when customer.auto_create is on and name is present", () => {
+    const withAutoCreate = {
+      ...enabled,
+      autoActions: { ...enabled.autoActions, "customer.auto_create": true },
+    };
+    const d = decideInboundCommit(
+      withAutoCreate,
+      { intent: "new_reservation", confidence: 0.9, scheduled_date: "2026-06-01", customer_name: "田中太郎" },
+      { knownCustomerId: null },
+    );
+    expect(d).toEqual({ create: true, reason: "ok_with_new_customer" });
+  });
+
+  it("rejects unknown customers even with auto_create if name is missing", () => {
+    const withAutoCreate = {
+      ...enabled,
+      autoActions: { ...enabled.autoActions, "customer.auto_create": true },
+    };
+    const d = decideInboundCommit(
+      withAutoCreate,
+      { intent: "new_reservation", confidence: 0.9, scheduled_date: "2026-06-01", customer_name: "" },
       { knownCustomerId: null },
     );
     expect(d.reason).toBe("unknown_customer");
@@ -229,14 +269,14 @@ describe("certificate auto-draft / auto-issue", () => {
     );
   });
 
-  it("壁3: certificate issuance is never auto", () => {
+  it("certificate issuance is auto when opted in", () => {
     expect(canAutoIssueCertificate(DEFAULT_AI_AUTOMATION_SETTINGS)).toBe(false);
     expect(
       canAutoIssueCertificate({
         ...DEFAULT_AI_AUTOMATION_SETTINGS,
         autoActions: { "certificate.auto_issue": true },
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 });
 
@@ -274,13 +314,16 @@ describe("shouldAutoSendDocument (確定→自動送付)", () => {
     expect(shouldAutoSendDocument({ ...invoiceOn, enabled: false }, "invoice")).toBe(false);
   });
 
-  it("壁3: ungated auto_send keys are still never auto", () => {
-    const sneaky = {
+  it("ungated auto_send keys are now resolvable when opted in", () => {
+    const full = {
       ...DEFAULT_AI_AUTOMATION_SETTINGS,
       autoActions: { "invoice.auto_send": true, "quote.auto_send": true },
     };
-    expect(resolveAutoAction(sneaky, "invoice.auto_send")).toBe(false);
-    expect(resolveAutoAction(sneaky, "quote.auto_send")).toBe(false);
+    expect(resolveAutoAction(full, "invoice.auto_send")).toBe(true);
+    expect(resolveAutoAction(full, "quote.auto_send")).toBe(true);
+    // shouldAutoSendDocument also resolves ungated keys
+    expect(shouldAutoSendDocument(full, "invoice")).toBe(true);
+    expect(shouldAutoSendDocument(full, "estimate")).toBe(true);
   });
 });
 
@@ -324,8 +367,8 @@ describe("phase-1 auto-actions (thickness / accounting / certificate draft-recor
     expect(
       shouldAutoCreateDraftCertificate(s, { isCompleted: true, hasVehicle: true, alreadyHasCertificate: true }),
     ).toBe(false);
-    // 壁3: issuance stays forbidden regardless of this opt-in
-    expect(isNeverAutoAction("certificate.auto_issue")).toBe(true);
+    // issuance is now a separate opt-in action
+    expect(isKnownActionKey("certificate.auto_issue")).toBe(true);
   });
 });
 
@@ -465,5 +508,63 @@ describe("parts.auto_reconcile_delivery_note auto-action", () => {
     expect(shouldAutoReconcileDeliveryNote({ ...on("parts.auto_reconcile_delivery_note"), enabled: false })).toBe(
       false,
     );
+  });
+});
+
+describe("formerly Wall-3 actions (now opt-in)", () => {
+  const on = (key: string) => ({ ...DEFAULT_AI_AUTOMATION_SETTINGS, autoActions: { [key]: true } });
+
+  it("all new action keys are known, in catalog, default OFF, and recommended", () => {
+    for (const k of [
+      "certificate.auto_issue",
+      "invoice.auto_send",
+      "invoice.auto_finalize",
+      "quote.auto_send",
+      "customer.auto_create",
+      "payment.auto_charge",
+    ]) {
+      expect(isKnownActionKey(k)).toBe(true);
+      expect(isNeverAutoAction(k)).toBe(false);
+      expect(AUTOMATION_ACTIONS.find((a) => a.key === k)?.defaultEnabled).toBe(false);
+      expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has(k)).toBe(true);
+    }
+  });
+
+  it("shouldAutoIssueCertificate requires opt-in + all quality checks", () => {
+    const fullCtx = {
+      hasDraft: true,
+      photoQualityPassed: true,
+      tamperingCheckPassed: true,
+      hasRequiredFields: true,
+      confidence: 0.95,
+    };
+    expect(shouldAutoIssueCertificate(DEFAULT_AI_AUTOMATION_SETTINGS, fullCtx)).toBe(false);
+    expect(shouldAutoIssueCertificate(on("certificate.auto_issue"), fullCtx)).toBe(true);
+    // fails when photo quality not passed
+    expect(shouldAutoIssueCertificate(on("certificate.auto_issue"), { ...fullCtx, photoQualityPassed: false })).toBe(
+      false,
+    );
+    // fails when confidence below threshold
+    expect(shouldAutoIssueCertificate(on("certificate.auto_issue"), { ...fullCtx, confidence: 0.1 })).toBe(false);
+    // fails when no draft
+    expect(shouldAutoIssueCertificate(on("certificate.auto_issue"), { ...fullCtx, hasDraft: false })).toBe(false);
+  });
+
+  it("shouldAutoFinalizeInvoice follows opt-in + master switch", () => {
+    expect(shouldAutoFinalizeInvoice(DEFAULT_AI_AUTOMATION_SETTINGS)).toBe(false);
+    expect(shouldAutoFinalizeInvoice(on("invoice.auto_finalize"))).toBe(true);
+    expect(shouldAutoFinalizeInvoice({ ...on("invoice.auto_finalize"), enabled: false })).toBe(false);
+  });
+
+  it("shouldAutoCharge follows opt-in + master switch", () => {
+    expect(shouldAutoCharge(DEFAULT_AI_AUTOMATION_SETTINGS)).toBe(false);
+    expect(shouldAutoCharge(on("payment.auto_charge"))).toBe(true);
+    expect(shouldAutoCharge({ ...on("payment.auto_charge"), enabled: false })).toBe(false);
+  });
+
+  it("shouldAutoCreateCustomer follows opt-in + master switch", () => {
+    expect(shouldAutoCreateCustomer(DEFAULT_AI_AUTOMATION_SETTINGS)).toBe(false);
+    expect(shouldAutoCreateCustomer(on("customer.auto_create"))).toBe(true);
+    expect(shouldAutoCreateCustomer({ ...on("customer.auto_create"), enabled: false })).toBe(false);
   });
 });

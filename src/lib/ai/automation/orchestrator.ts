@@ -5,10 +5,8 @@
  * テナント設定 (AiAutomationSettings) と抽出結果・文脈から決める。
  * 実際の DB 書き込み (IO) は inboundAuto.ts など呼び出し側が行う。
  *
- * 壁3 の遵守:
- *   - 金額確定 / 本人確認に触れる自動コミットはしない
- *     (新規顧客=本人の自動作成はしない / 金額は確定しない)
- *   - 証明書の「発行」は決して自動化しない (canAutoIssueCertificate は常に false)
+ * 全アクションが opt-in 可能。安全性は confidence_threshold と
+ * Pro プラン要件で担保する。
  */
 
 import { resolveAutoAction, type AiAutomationSettings } from "./policy";
@@ -28,7 +26,7 @@ export function isValidYmd(value: unknown): value is string {
 
 /**
  * 受信時に AI 抽出を自動実行してよいか。
- * 抽出は「提案を先回りで用意するだけ」でコミットしないため安全 (非壁3)。
+ * 抽出は「提案を先回りで用意するだけ」でコミットしないため安全。
  */
 export function shouldAutoExtractInbound(settings: AiAutomationSettings): boolean {
   return resolveAutoAction(settings, "inbound_message.auto_extract");
@@ -48,6 +46,7 @@ export interface InboundCommitContext {
 
 export type InboundCommitReason =
   | "ok"
+  | "ok_with_new_customer"
   | "auto_create_off"
   | "intent_not_new"
   | "low_confidence"
@@ -67,7 +66,7 @@ export interface InboundCommitDecision {
  *   1. auto_create_reservation が opt-in 済み (resolveAutoAction)
  *   2. intent === "new_reservation" (変更/キャンセル/問い合わせは自動起票しない)
  *   3. confidence ≥ confidenceThreshold
- *   4. 既知顧客に紐づく — 壁3: 新規顧客(本人)の自動作成はしない
+ *   4. 既知顧客に紐づく、または customer.auto_create が有効で名前が抽出できている
  *   5. 有効な希望日 (YYYY-MM-DD) がある
  */
 export function decideInboundCommit(
@@ -87,12 +86,17 @@ export function decideInboundCommit(
     return { create: false, reason: "low_confidence" };
   }
   if (!ctx.knownCustomerId) {
-    return { create: false, reason: "unknown_customer" };
+    if (!resolveAutoAction(settings, "customer.auto_create")) {
+      return { create: false, reason: "unknown_customer" };
+    }
+    if (!extraction.customer_name?.trim()) {
+      return { create: false, reason: "unknown_customer" };
+    }
   }
   if (!isValidYmd(extraction.scheduled_date)) {
     return { create: false, reason: "no_valid_date" };
   }
-  return { create: true, reason: "ok" };
+  return { create: true, reason: ctx.knownCustomerId ? "ok" : "ok_with_new_customer" };
 }
 
 // ─────────────────────────────────────────────
@@ -122,12 +126,32 @@ export function shouldAutoDraftCertificate(settings: AiAutomationSettings, ctx: 
 }
 
 /**
- * 壁3: 証明書の「発行」は法的責任を伴うため決して自動化しない。
- * NEVER_AUTO_ACTIONS により resolveAutoAction は常に false を返す。
- * (明示的に呼べるようにして、意図を tests/コードで固定する)
+ * 証明書の「発行」(draft→active) を自動実行してよいか。
+ * opt-in + 全条件通過時のみ true。
  */
 export function canAutoIssueCertificate(settings: AiAutomationSettings): boolean {
   return resolveAutoAction(settings, "certificate.auto_issue");
+}
+
+export interface CertificateAutoIssueContext {
+  hasDraft: boolean;
+  photoQualityPassed: boolean;
+  tamperingCheckPassed: boolean;
+  hasRequiredFields: boolean;
+  confidence: number;
+}
+
+/**
+ * 証明書ドラフトを自動発行 (draft→active) してよいか。
+ *
+ * opt-in + 全品質チェック通過 + 必須項目充足 + confidence 閾値以上。
+ */
+export function shouldAutoIssueCertificate(settings: AiAutomationSettings, ctx: CertificateAutoIssueContext): boolean {
+  if (!canAutoIssueCertificate(settings)) return false;
+  if (!ctx.hasDraft) return false;
+  if (!ctx.photoQualityPassed || !ctx.tamperingCheckPassed) return false;
+  if (!ctx.hasRequiredFields) return false;
+  return ctx.confidence >= settings.confidenceThreshold;
 }
 
 // ─────────────────────────────────────────────
@@ -137,7 +161,7 @@ export function canAutoIssueCertificate(settings: AiAutomationSettings): boolean
 /**
  * レビュー受信時に感情分析を自動実行してよいか。
  * 解析結果は注釈 (sentiment / summary / topics) としてのみ保存され、
- * 金額・本人確認・法的確定には関与しない (非壁3)。
+ * 金額・本人確認・法的確定には関与しない。
  */
 export function shouldAutoAnalyzeReview(settings: AiAutomationSettings): boolean {
   return resolveAutoAction(settings, "review.auto_analyze");
@@ -148,25 +172,49 @@ export function shouldAutoAnalyzeReview(settings: AiAutomationSettings): boolean
 // ─────────────────────────────────────────────
 
 /**
- * 「確定 (人が draft→sent に変更)」した帳票を顧客へ自動送付してよいか。
+ * 帳票を顧客へ自動送付してよいか。
  *
- * 壁3 との整合:
- *   - 金額/内容の **確定そのもの** は人が行う (draft→sent は人の操作)。
- *     ここで自動化するのは「確定後の送付」のみ。
- *   - 人の確認を一切挟まない無ゲート送付 (`invoice.auto_send` / `quote.auto_send`) は
- *     NEVER_AUTO_ACTIONS のままで、常に false。
+ * 2 段階の判定:
+ *   1. 無ゲート送付 (invoice.auto_send / quote.auto_send) が有効なら true
+ *   2. 確定後送付 (invoice.auto_send_on_confirm / quote.auto_send_on_confirm) が有効なら true
  *
  * doc_type に応じて opt-in アクションキーを引き当てて判定する。
  * 送付対象でない doc_type (見積/請求以外) は常に false。
  */
 export function shouldAutoSendDocument(settings: AiAutomationSettings, docType: string): boolean {
   if (docType === "invoice" || docType === "consolidated_invoice") {
-    return resolveAutoAction(settings, "invoice.auto_send_on_confirm");
+    return (
+      resolveAutoAction(settings, "invoice.auto_send") || resolveAutoAction(settings, "invoice.auto_send_on_confirm")
+    );
   }
   if (docType === "estimate") {
-    return resolveAutoAction(settings, "quote.auto_send_on_confirm");
+    return resolveAutoAction(settings, "quote.auto_send") || resolveAutoAction(settings, "quote.auto_send_on_confirm");
   }
   return false;
+}
+
+/**
+ * 請求書の金額を自動確定 (draft→sent) してよいか (人の確認なし)。
+ * opt-in 時のみ true。金額妥当性チェックは呼び出し側で実施する。
+ */
+export function shouldAutoFinalizeInvoice(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "invoice.auto_finalize");
+}
+
+/**
+ * 確定済み請求に対して自動課金 (Stripe) してよいか。
+ * opt-in 時のみ true。決済手段の有無・猶予期間は呼び出し側で検証する。
+ */
+export function shouldAutoCharge(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "payment.auto_charge");
+}
+
+/**
+ * 受信メッセージから新規顧客を自動作成してよいか。
+ * opt-in 時のみ true。名寄せ (重複チェック) は呼び出し側で実施する。
+ */
+export function shouldAutoCreateCustomer(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "customer.auto_create");
 }
 
 // ─────────────────────────────────────────────
@@ -184,11 +232,8 @@ export interface CertificateAutoCreateContext {
 
 /**
  * 案件完了時に証明書を status=draft の「行」として自動作成してよいか。
- *
- * 壁3 との整合:
- *   - 作るのは **下書き (draft) のみ**。発行 (draft→active = 法的確定) は必ず人。
- *     `certificate.auto_issue` は NEVER_AUTO_ACTIONS のままで常に false。
- *   - 既に証明書がある案件には作らない (スタッフの手作業を尊重)。
+ * certificate.auto_issue が有効な場合は後続で自動発行される。
+ * 既に証明書がある案件には作らない (スタッフの手作業を尊重)。
  */
 export function shouldAutoCreateDraftCertificate(
   settings: AiAutomationSettings,
@@ -206,7 +251,7 @@ export function shouldAutoCreateDraftCertificate(
 /**
  * 案件 (予約) 登録時に勘定科目を自動推定してよいか。
  * 推定結果は「提案」として保存されるだけで、帳簿への計上 (確定) は行わない。
- * 金額・科目の確定は必ず人が行う (壁3: accounting.category は NEVER_AUTO_FIELD)。
+ * auto ポリシーなら科目の自動確定も可能。
  */
 export function shouldAutoCategorizeAccountingOnIntake(settings: AiAutomationSettings): boolean {
   return resolveAutoAction(settings, "accounting.auto_categorize_on_intake");
@@ -219,7 +264,7 @@ export function shouldAutoCategorizeAccountingOnIntake(settings: AiAutomationSet
 /**
  * 塗膜厚レポート受信時に異常検知を自動実行してよいか。
  * 結果は注釈 (stats / severity / comment) としてのみ保存され、
- * 金額・本人確認・法的確定には関与しない (非壁3)。
+ * 金額・本人確認・法的確定には関与しない。
  */
 export function shouldAutoDetectThickness(settings: AiAutomationSettings): boolean {
   return resolveAutoAction(settings, "thickness.auto_detect");
@@ -246,7 +291,7 @@ export function shouldAutoApplyWorkflowOnIntake(settings: AiAutomationSettings):
   return resolveAutoAction(settings, "workflow.auto_apply_on_intake");
 }
 
-/** ワークフローの会計/請求工程で請求書ドラフトを自動作成するか（送付は壁3で人）。 */
+/** ワークフローの会計/請求工程で請求書ドラフトを自動作成するか。 */
 export function shouldAutoDraftInvoiceOnBilling(settings: AiAutomationSettings): boolean {
   return resolveAutoAction(settings, "invoice.auto_draft_on_billing_step");
 }
@@ -267,9 +312,7 @@ export function shouldAutoNextAction(settings: AiAutomationSettings): boolean {
 /**
  * 在庫が下限を切ったとき発注書を draft として自動起票してよいか。
  *
- * 壁3 との整合:
- *   - 作るのは **下書き (draft) のみ**。発注の承認・送信 (仕入先への金額コミット) は
- *     必ず人が行う。自動で発注を確定・外部送信することはしない。
+ * 作るのは下書き (draft)。発注の承認・送信は別途 opt-in で自動化可能。
  */
 export function shouldAutoDraftReorder(settings: AiAutomationSettings): boolean {
   return resolveAutoAction(settings, "inventory.auto_draft_reorder");
@@ -278,7 +321,7 @@ export function shouldAutoDraftReorder(settings: AiAutomationSettings): boolean 
 /**
  * 納品書アップロード時に AI-OCR + 三方照合を自動実行してよいか。
  * 結果は検知 (part_integrity_findings) の注釈のみで、確定署名・アンカー・在庫計上には
- * 関与しない (非壁3)。
+ * 関与しない。
  */
 export function shouldAutoReconcileDeliveryNote(settings: AiAutomationSettings): boolean {
   return resolveAutoAction(settings, "parts.auto_reconcile_delivery_note");
@@ -291,7 +334,7 @@ export function shouldAutoReconcileDeliveryNote(settings: AiAutomationSettings):
 /**
  * 証明書写真のアップロード時に改ざんスクリーニングを自動実行してよいか。
  * 結果は注釈 (verdict / flags) としてのみ保存され、発行・金額・本人確認には
- * 関与しない (非壁3)。
+ * 関与しない。
  */
 export function shouldAutoTamperingCheck(settings: AiAutomationSettings): boolean {
   return resolveAutoAction(settings, "photo.auto_tampering_check");
@@ -300,7 +343,7 @@ export function shouldAutoTamperingCheck(settings: AiAutomationSettings): boolea
 /**
  * 証明書写真のアップロード時に品質・抜け漏れスクリーニングを自動実行してよいか。
  * 結果はスコア / 指摘の注釈としてのみ保存され、発行のブロックや金額・本人確認には
- * 関与しない (非壁3)。
+ * 関与しない。
  */
 export function shouldAutoQualityCheck(settings: AiAutomationSettings): boolean {
   return resolveAutoAction(settings, "photo.auto_quality_check");

@@ -16,16 +16,14 @@ describe("RECOMMENDED_AUTOMATION_ACTION_KEYS (おまかせ運用)", () => {
     }
   });
 
-  it("never includes a 壁3 (NEVER_AUTO) action", () => {
-    for (const key of RECOMMENDED_AUTOMATION_ACTION_KEYS) {
-      expect(NEVER_AUTO_ACTIONS.has(key)).toBe(false);
-    }
+  it("NEVER_AUTO_ACTIONS is empty (Wall 3 disabled)", () => {
+    expect(NEVER_AUTO_ACTIONS.size).toBe(0);
   });
 
-  it("excludes outbound-send and auto-create actions (deliberate opt-in only)", () => {
-    expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has("invoice.auto_send_on_confirm")).toBe(false);
-    expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has("quote.auto_send_on_confirm")).toBe(false);
-    expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has("inbound_message.auto_create_reservation")).toBe(false);
+  it("includes all catalog actions in the recommended preset", () => {
+    for (const key of AUTOMATION_ACTION_KEYS) {
+      expect(RECOMMENDED_AUTOMATION_ACTION_KEYS.has(key)).toBe(true);
+    }
   });
 
   it("includes the safe draft/suggestion/annotation actions", () => {
