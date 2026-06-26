@@ -30,7 +30,7 @@ const SYSTEM_PROMPT = `あなたは自動車施工店スタッフ向けのコン
 - 推奨アクションは signals.nextActions に含まれる範囲だけ。
 `.trim();
 
-export async function generateCustomerSummary(input: SummaryInput): Promise<string | null> {
+export async function generateCustomerSummary(input: SummaryInput, opts?: { model?: string }): Promise<string | null> {
   if (!process.env.ANTHROPIC_API_KEY) return null;
 
   const client = getAnthropicClient();
@@ -39,7 +39,7 @@ export async function generateCustomerSummary(input: SummaryInput): Promise<stri
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.create({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 256,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: userMessage }],

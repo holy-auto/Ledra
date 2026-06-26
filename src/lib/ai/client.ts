@@ -93,6 +93,22 @@ export function modelForPlanTier(planTier: string | null | undefined): string {
 }
 
 /**
+ * 軽量タスク（分類・スコアリング・抽出等）のプラン別モデル。
+ * Starter は Haiku、Standard/Pro は Sonnet に昇格。
+ * Opus は軽量タスクにはオーバースペックなので使わない。
+ */
+export function fastModelForPlanTier(planTier: string | null | undefined): string {
+  const tier = String(planTier ?? "").toLowerCase();
+  switch (tier) {
+    case "standard":
+    case "pro":
+      return AI_MODEL;
+    default:
+      return AI_MODEL_FAST;
+  }
+}
+
+/**
  * プランに応じた Vision モデルを返す。
  * Starter は Haiku（Vision 対応）、Standard+ は Sonnet。
  */

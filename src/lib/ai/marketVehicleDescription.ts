@@ -61,6 +61,7 @@ const SYSTEM_PROMPT_VISION = `${SYSTEM_PROMPT_TEXT}
 
 export async function generateMarketVehicleDescription(
   input: MarketVehicleInput,
+  opts?: { model?: string },
 ): Promise<MarketVehicleDescriptionResult> {
   const fallback: MarketVehicleDescriptionResult = {
     description: buildFallbackDescription(input),
@@ -119,7 +120,7 @@ export async function generateMarketVehicleDescription(
 
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 768,
         system: cacheableSystem(SYSTEM_PROMPT_TEXT),
         messages: [{ role: "user", content: facts }],

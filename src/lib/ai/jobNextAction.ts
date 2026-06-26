@@ -70,15 +70,35 @@ export function pickJobNextActionCandidate(input: JobNextActionInput): JobNextAc
   switch (input.status) {
     case "confirmed":
       if (!input.hasCustomer) {
-        return { action: "link_customer", message: "顧客が未紐付けです。先に顧客を選択してください。", priority: "high", ai: false };
+        return {
+          action: "link_customer",
+          message: "顧客が未紐付けです。先に顧客を選択してください。",
+          priority: "high",
+          ai: false,
+        };
       }
       if (!input.hasVehicle) {
-        return { action: "link_vehicle", message: "車両が未紐付けです。来店までに車両を登録してください。", priority: "med", ai: false };
+        return {
+          action: "link_vehicle",
+          message: "車両が未紐付けです。来店までに車両を登録してください。",
+          priority: "med",
+          ai: false,
+        };
       }
-      return { action: "start_work", message: "来店待ち。チェックイン時に作業開始へ進めてください。", priority: "low", ai: false };
+      return {
+        action: "start_work",
+        message: "来店待ち。チェックイン時に作業開始へ進めてください。",
+        priority: "low",
+        ai: false,
+      };
 
     case "arrived":
-      return { action: "start_work", message: "来店中です。作業開始ステータスに進めてください。", priority: "high", ai: false };
+      return {
+        action: "start_work",
+        message: "来店中です。作業開始ステータスに進めてください。",
+        priority: "high",
+        ai: false,
+      };
 
     case "in_progress":
       if (overrun) {
@@ -89,29 +109,57 @@ export function pickJobNextActionCandidate(input: JobNextActionInput): JobNextAc
           ai: false,
         };
       }
-      return { action: "issue_certificate", message: "作業中。完了したら証明書を発行してください。", priority: "med", ai: false };
+      return {
+        action: "issue_certificate",
+        message: "作業中。完了したら証明書を発行してください。",
+        priority: "med",
+        ai: false,
+      };
 
     case "completed":
       if (!input.hasActiveCertificate) {
-        return { action: "issue_certificate", message: "完了済みですが有効な証明書がありません。", priority: "high", ai: false };
+        return {
+          action: "issue_certificate",
+          message: "完了済みですが有効な証明書がありません。",
+          priority: "high",
+          ai: false,
+        };
       }
       if (input.hasUnpaidInvoice) {
-        return { action: "collect_payment", message: "未払いの請求があります。入金確認してください。", priority: "med", ai: false };
+        return {
+          action: "collect_payment",
+          message: "未払いの請求があります。入金確認してください。",
+          priority: "med",
+          ai: false,
+        };
       }
       if (!input.hasUnpaidInvoice && !input.hasOverdueInvoice) {
-        return { action: "send_thanks", message: "全工程完了。サンクスメッセージ送付の検討時期です。", priority: "low", ai: false };
+        return {
+          action: "send_thanks",
+          message: "全工程完了。サンクスメッセージ送付の検討時期です。",
+          priority: "low",
+          ai: false,
+        };
       }
       return { action: "create_invoice", message: "請求書がまだ作成されていません。", priority: "med", ai: false };
 
     case "cancelled":
-      return { action: "cancel_or_close", message: "キャンセル済み。資料を整理してアーカイブしてください。", priority: "low", ai: false };
+      return {
+        action: "cancel_or_close",
+        message: "キャンセル済み。資料を整理してアーカイブしてください。",
+        priority: "low",
+        ai: false,
+      };
   }
 }
 
 /**
  * AI で 1 文を文章化する。失敗時は deterministic な message をそのまま返す。
  */
-export async function generateJobNextAction(input: JobNextActionInput): Promise<JobNextActionSuggestion> {
+export async function generateJobNextAction(
+  input: JobNextActionInput,
+  opts?: { model?: string },
+): Promise<JobNextActionSuggestion> {
   const base = pickJobNextActionCandidate(input);
   if (!process.env.ANTHROPIC_API_KEY) return base;
   const client = getAnthropicClient();
@@ -131,7 +179,7 @@ export async function generateJobNextAction(input: JobNextActionInput): Promise<
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.create({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 192,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: facts.map((f) => `- ${f}`).join("\n") }],

@@ -98,7 +98,10 @@ function buildFallbackContent(ctx: FollowUpContext): FollowUpContent {
 // AI パーソナライズ生成
 // ─────────────────────────────────────────────
 
-export async function generateFollowUpContent(ctx: FollowUpContext): Promise<FollowUpContent> {
+export async function generateFollowUpContent(
+  ctx: FollowUpContext,
+  opts?: { model?: string },
+): Promise<FollowUpContent> {
   const client = getAnthropicClient();
   const triggerLabel = TRIGGER_LABELS[ctx.trigger];
 
@@ -135,7 +138,7 @@ ${contextDesc ? `補足: ${contextDesc}` : ""}
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 512,
         system: systemPrompt,
         messages: [{ role: "user", content: userMessage }],

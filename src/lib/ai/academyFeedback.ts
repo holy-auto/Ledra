@@ -212,14 +212,17 @@ export interface AcademyCaseSummary {
   difficulty: number;
 }
 
-export async function generateAcademyCaseSummary(params: {
-  serviceName: string;
-  description?: string;
-  materialInfo?: string;
-  category: string;
-  qualityScore: number;
-  photoCount: number;
-}): Promise<AcademyCaseSummary> {
+export async function generateAcademyCaseSummary(
+  params: {
+    serviceName: string;
+    description?: string;
+    materialInfo?: string;
+    category: string;
+    qualityScore: number;
+    photoCount: number;
+  },
+  opts?: { model?: string },
+): Promise<AcademyCaseSummary> {
   const client = getAnthropicClient();
 
   const systemPrompt = `あなたはLedra Academy の教材作成AIです。
@@ -254,7 +257,7 @@ export async function generateAcademyCaseSummary(params: {
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 512,
         system: systemPrompt,
         messages: [{ role: "user", content: userMessage }],
