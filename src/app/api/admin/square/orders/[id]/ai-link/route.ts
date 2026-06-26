@@ -15,6 +15,7 @@ import { apiOk, apiUnauthorized, apiNotFound, apiInternalError, apiPlanLimit } f
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { fuzzyMatchCustomer } from "@/lib/ai/customerFuzzyMatch";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { loadAiAutomationSettings, resolveFieldPolicy, isSourceAllowed } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
@@ -48,12 +49,22 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       return apiOk({ ai_disabled: true, match: null });
     }
     if (!isSourceAllowed(settings, "customer_history")) {
-      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled", meta: { reason: "source_disabled" } });
+      usage.record({
+        tenantId: caller.tenantId,
+        userId: caller.userId,
+        outcome: "ai_disabled",
+        meta: { reason: "source_disabled" },
+      });
       return apiOk({ ai_disabled: false, match: null, skipped: "customer_history source disabled" });
     }
     const policy = resolveFieldPolicy(settings, "master_data.customer_fuzzy_match");
     if (policy === "manual") {
-      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled", meta: { reason: "policy_manual" } });
+      usage.record({
+        tenantId: caller.tenantId,
+        userId: caller.userId,
+        outcome: "ai_disabled",
+        meta: { reason: "policy_manual" },
+      });
       return apiOk({ ai_disabled: false, match: null, skipped: "policy is manual" });
     }
 
@@ -81,16 +92,19 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       .eq("tenant_id", tenantId)
       .limit(500);
 
-    const result = await fuzzyMatchCustomer({
-      query,
-      candidates: (candidates ?? []) as Array<{
-        id: string;
-        name: string;
-        name_kana: string | null;
-        phone: string | null;
-        email: string | null;
-      }>,
-    });
+    const result = await fuzzyMatchCustomer(
+      {
+        query,
+        candidates: (candidates ?? []) as Array<{
+          id: string;
+          name: string;
+          name_kana: string | null;
+          phone: string | null;
+          email: string | null;
+        }>,
+      },
+      { model: fastModelForPlanTier(caller.planTier) },
+    );
 
     usage.record({
       tenantId: caller.tenantId,

@@ -16,6 +16,7 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { detectThicknessAnomaly, type ThicknessMeasurement } from "@/lib/ai/thicknessAnomaly";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "./policy";
@@ -56,8 +57,9 @@ export async function maybeAutoDetectThicknessForReports(params: MaybeAutoDetect
     if (!canUseFeature(normalizePlanTier(tenant.plan_tier), "ai_thickness_anomaly")) return;
 
     const targets = reportIds.slice(0, MAX_REPORTS_PER_RUN);
+    const modelOpts = { model: fastModelForPlanTier(tenant.plan_tier) };
     for (const reportId of targets) {
-      await detectForReport(admin, tenantId, reportId);
+      await detectForReport(admin, tenantId, reportId, modelOpts);
     }
   } catch (e) {
     logger.warn("[thicknessAuto] maybeAutoDetectThicknessForReports threw", {
@@ -71,6 +73,7 @@ async function detectForReport(
   admin: ReturnType<typeof createServiceRoleAdmin>,
   tenantId: string,
   reportId: string,
+  opts?: { model?: string },
 ): Promise<void> {
   const { data: report } = await admin
     .from("thickness_reports")
@@ -97,10 +100,13 @@ async function detectForReport(
   if (measurementList.length === 0) return;
 
   const usage = startAiRouteUsage(AUTO_ANOMALY_ENDPOINT);
-  const result = await detectThicknessAnomaly({
-    measurements: measurementList,
-    serviceName: [report.name, report.brand, report.model].filter(Boolean).join(" ") || null,
-  });
+  const result = await detectThicknessAnomaly(
+    {
+      measurements: measurementList,
+      serviceName: [report.name, report.brand, report.model].filter(Boolean).join(" ") || null,
+    },
+    opts,
+  );
 
   const snapshot = {
     stats: result.stats,

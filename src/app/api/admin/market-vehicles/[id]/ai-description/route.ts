@@ -15,6 +15,7 @@ import { parseJsonBody } from "@/lib/api/parseBody";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateMarketVehicleDescription } from "@/lib/ai/marketVehicleDescription";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { loadAiAutomationSettings, resolveFieldPolicy, isSourceAllowed } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
@@ -60,7 +61,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const descPolicy = resolveFieldPolicy(settings, "market_vehicle.description");
     const featuresPolicy = resolveFieldPolicy(settings, "market_vehicle.features");
     if (descPolicy === "manual" && featuresPolicy === "manual") {
-      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled", meta: { reason: "policy_manual" } });
+      usage.record({
+        tenantId: caller.tenantId,
+        userId: caller.userId,
+        outcome: "ai_disabled",
+        meta: { reason: "policy_manual" },
+      });
       return apiOk({ ai_disabled: false, description: null, skipped: "policy is manual" });
     }
 
@@ -76,18 +82,21 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     if (!vehicle) return apiNotFound("market vehicle not found");
 
     const photoAllowed = isSourceAllowed(settings, "photos");
-    const photoUrls = photoAllowed ? parsed.data.photo_urls ?? [] : [];
+    const photoUrls = photoAllowed ? (parsed.data.photo_urls ?? []) : [];
 
-    const result = await generateMarketVehicleDescription({
-      maker: vehicle.maker as string | null,
-      model: vehicle.model as string | null,
-      year: vehicle.year as number | null,
-      color: vehicle.color as string | null,
-      mileage_km: vehicle.mileage as number | null,
-      features: Array.isArray(vehicle.features) ? (vehicle.features as string[]) : undefined,
-      photo_urls: photoUrls,
-      sellerNotes: parsed.data.seller_notes ?? null,
-    });
+    const result = await generateMarketVehicleDescription(
+      {
+        maker: vehicle.maker as string | null,
+        model: vehicle.model as string | null,
+        year: vehicle.year as number | null,
+        color: vehicle.color as string | null,
+        mileage_km: vehicle.mileage as number | null,
+        features: Array.isArray(vehicle.features) ? (vehicle.features as string[]) : undefined,
+        photo_urls: photoUrls,
+        sellerNotes: parsed.data.seller_notes ?? null,
+      },
+      { model: fastModelForPlanTier(caller.planTier) },
+    );
 
     usage.record({
       tenantId: caller.tenantId,

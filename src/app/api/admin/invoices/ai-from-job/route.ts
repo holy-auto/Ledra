@@ -18,6 +18,7 @@ import { parseJsonBody } from "@/lib/api/parseBody";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateInvoiceFromJob } from "@/lib/ai/invoiceFromJob";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
@@ -70,11 +71,7 @@ export async function POST(req: NextRequest) {
         ? admin.from("customers").select("name").eq("id", reservation.customer_id).maybeSingle()
         : Promise.resolve({ data: null, error: null }),
       reservation.vehicle_id
-        ? admin
-            .from("vehicles")
-            .select("maker, model, plate_display")
-            .eq("id", reservation.vehicle_id)
-            .maybeSingle()
+        ? admin.from("vehicles").select("maker, model, plate_display").eq("id", reservation.vehicle_id).maybeSingle()
         : Promise.resolve({ data: null, error: null }),
     ]);
 
@@ -85,14 +82,17 @@ export async function POST(req: NextRequest) {
     const customerType = guessCustomerType(customer?.name ?? null);
 
     const menuItems = extractMenuItems(reservation.menu_items_json);
-    const draft = await generateInvoiceFromJob({
-      customerName: customer?.name ?? null,
-      customerType,
-      vehicle: vehicleRes.data as { maker?: string; model?: string; plate_display?: string } | null,
-      menuItems,
-      estimatedAmount: reservation.estimated_amount,
-      serviceCategory: reservation.title,
-    });
+    const draft = await generateInvoiceFromJob(
+      {
+        customerName: customer?.name ?? null,
+        customerType,
+        vehicle: vehicleRes.data as { maker?: string; model?: string; plate_display?: string } | null,
+        menuItems,
+        estimatedAmount: reservation.estimated_amount,
+        serviceCategory: reservation.title,
+      },
+      { model: fastModelForPlanTier(caller.planTier) },
+    );
 
     usage.record({
       tenantId: caller.tenantId,
@@ -139,7 +139,8 @@ function extractMenuItems(raw: unknown): Array<{ name: string; unit_price?: numb
     if (!name) continue;
     out.push({
       name,
-      unit_price: typeof rec.unit_price === "number" ? rec.unit_price : typeof rec.price === "number" ? rec.price : null,
+      unit_price:
+        typeof rec.unit_price === "number" ? rec.unit_price : typeof rec.price === "number" ? rec.price : null,
       quantity: typeof rec.quantity === "number" ? rec.quantity : 1,
     });
   }

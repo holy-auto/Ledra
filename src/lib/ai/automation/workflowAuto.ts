@@ -16,6 +16,7 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { proposeWorkflow, type WorkflowTemplateLite } from "@/lib/ai/workflowProposal";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "./policy";
@@ -109,13 +110,16 @@ export async function maybeAutoProposeWorkflowForReservation(params: MaybeAutoPr
     const vehicleLabel = await loadVehicleLabel(admin, reservation.vehicle_id);
 
     const usage = startAiRouteUsage(AUTO_PROPOSE_ENDPOINT);
-    const proposal = await proposeWorkflow({
-      title: reservation.title,
-      menuItemNames,
-      vehicleLabel,
-      pastServiceTypes,
-      templates,
-    });
+    const proposal = await proposeWorkflow(
+      {
+        title: reservation.title,
+        menuItemNames,
+        vehicleLabel,
+        pastServiceTypes,
+        templates,
+      },
+      { model: fastModelForPlanTier(tenant.plan_tier) },
+    );
 
     const snapshot = {
       suggested_template_id: proposal.suggestedTemplateId,

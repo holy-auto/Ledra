@@ -14,6 +14,7 @@ import { apiOk, apiUnauthorized, apiInternalError, apiValidationError, apiForbid
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { reformatVoiceMemo } from "@/lib/ai/voiceMemoReformat";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -45,12 +46,15 @@ export async function POST(req: NextRequest) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
 
-    const draft = await reformatVoiceMemo({
-      transcript: parsed.data.transcript,
-      serviceType: parsed.data.service_type,
-      vehicleHint: parsed.data.vehicle_hint,
-      customerHint: parsed.data.customer_hint,
-    });
+    const draft = await reformatVoiceMemo(
+      {
+        transcript: parsed.data.transcript,
+        serviceType: parsed.data.service_type,
+        vehicleHint: parsed.data.vehicle_hint,
+        customerHint: parsed.data.customer_hint,
+      },
+      { model: fastModelForPlanTier(caller.planTier) },
+    );
 
     if (!draft) {
       return apiOk({ ok: false, reason: "ai_unavailable" });

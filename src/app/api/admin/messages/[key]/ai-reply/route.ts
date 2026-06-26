@@ -27,6 +27,7 @@ import { canUseFeature } from "@/lib/billing/planFeatures";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { generateReplyDraft, type ReplyDraftTurn } from "@/lib/ai/replyDraft";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { parseThreadKey } from "@/lib/messages/threadKey";
 
 export const runtime = "nodejs";
@@ -126,11 +127,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ key: strin
     // 店舗名 (トーン調整用)。
     const { data: tenant } = await admin.from("tenants").select("name").eq("id", tenantId).maybeSingle();
 
-    const result = await generateReplyDraft({
-      turns,
-      customerName,
-      shopName: (tenant?.name as string | null) ?? null,
-    });
+    const result = await generateReplyDraft(
+      {
+        turns,
+        customerName,
+        shopName: (tenant?.name as string | null) ?? null,
+      },
+      { model: fastModelForPlanTier(caller.planTier) },
+    );
 
     usage.record({
       tenantId,

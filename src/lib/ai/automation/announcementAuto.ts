@@ -15,6 +15,7 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { translateText, translationCacheKey, type TargetLang } from "@/lib/ai/translateContent";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { getCachedTranslation, putCachedTranslation } from "@/lib/ai/translationCache";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
@@ -40,14 +41,14 @@ function isMissingColumnError(err: { message?: string; code?: string } | null | 
 }
 
 /** 1 フィールドを翻訳 (キャッシュ優先)。失敗時は null。 */
-async function translateField(text: string, lang: TargetLang): Promise<string | null> {
+async function translateField(text: string, lang: TargetLang, opts?: { model?: string }): Promise<string | null> {
   const trimmed = text.trim();
   if (!trimmed) return "";
   const cacheKey = translationCacheKey(trimmed, lang, "formal");
   const cached = await getCachedTranslation(cacheKey);
   if (cached) return cached.translated_text;
 
-  const result = await translateText({ text: trimmed, targetLang: lang, tone: "formal" });
+  const result = await translateText({ text: trimmed, targetLang: lang, tone: "formal" }, opts);
   if (!result.ai || !result.translated || result.translated === trimmed) return null;
 
   void putCachedTranslation({
@@ -78,9 +79,10 @@ export async function maybeAutoTranslateShopAnnouncement(params: MaybeAutoTransl
     if (!canUseFeature(normalizePlanTier(tenant.plan_tier), "ai_translation")) return;
 
     const usage = startAiRouteUsage(AUTO_TRANSLATE_ENDPOINT);
+    const modelOpts = { model: fastModelForPlanTier(tenant.plan_tier) };
     const translations: Record<string, { title: string; body: string }> = {};
     for (const lang of ANNOUNCEMENT_LANGS) {
-      const [t, b] = await Promise.all([translateField(title, lang), translateField(body, lang)]);
+      const [t, b] = await Promise.all([translateField(title, lang, modelOpts), translateField(body, lang, modelOpts)]);
       // どちらかが翻訳できた言語だけ保存 (原文フォールバックは入れない)。
       if (t != null || b != null) {
         translations[lang] = { title: t ?? title, body: b ?? body };

@@ -26,6 +26,7 @@ import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { generateJobAutoTitle, clipTitle } from "@/lib/ai/jobAutoTitle";
 import { generateJobNextAction, type JobStatus } from "@/lib/ai/jobNextAction";
 import { generateTimerAlert } from "@/lib/ai/jobTimerAlert";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -87,11 +88,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         ? admin.from("customers").select("name").eq("id", reservation.customer_id).maybeSingle()
         : Promise.resolve({ data: null, error: null }),
       reservation.vehicle_id
-        ? admin
-            .from("certificates")
-            .select("status")
-            .eq("vehicle_id", reservation.vehicle_id)
-            .eq("tenant_id", tenantId)
+        ? admin.from("certificates").select("status").eq("vehicle_id", reservation.vehicle_id).eq("tenant_id", tenantId)
         : Promise.resolve({ data: [] as Array<{ status: string }>, error: null }),
       reservation.customer_id
         ? admin
@@ -139,12 +136,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const titlePolicy = resolveFieldPolicy(settings, "job.title");
     let titleSuggestion: { title: string; confidence: number; policy: string } | null = null;
     if (titlePolicy !== "manual") {
-      const generated = await generateJobAutoTitle({
-        vehicle: vehicle ?? undefined,
-        customerName,
-        menuItemNames,
-        recentTitles,
-      });
+      const generated = await generateJobAutoTitle(
+        {
+          vehicle: vehicle ?? undefined,
+          customerName,
+          menuItemNames,
+          recentTitles,
+        },
+        { model: fastModelForPlanTier(caller.planTier) },
+      );
       const fallback = buildFallbackTitle(customerName, vehicle, menuItemNames);
       titleSuggestion = {
         title: generated?.title ?? fallback,
@@ -159,16 +159,19 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       nextActionPolicy === "manual"
         ? null
         : {
-            ...(await generateJobNextAction({
-              status,
-              hasCustomer: !!reservation.customer_id,
-              hasVehicle: !!reservation.vehicle_id,
-              hasActiveCertificate,
-              hasUnpaidInvoice,
-              hasOverdueInvoice,
-              minutesSinceStatusChange,
-              estimatedDurationMin,
-            })),
+            ...(await generateJobNextAction(
+              {
+                status,
+                hasCustomer: !!reservation.customer_id,
+                hasVehicle: !!reservation.vehicle_id,
+                hasActiveCertificate,
+                hasUnpaidInvoice,
+                hasOverdueInvoice,
+                minutesSinceStatusChange,
+                estimatedDurationMin,
+              },
+              { model: fastModelForPlanTier(caller.planTier) },
+            )),
             policy: nextActionPolicy,
           };
 
@@ -176,11 +179,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const notesPolicy = resolveFieldPolicy(settings, "job.notes");
     let timerAlert: Awaited<ReturnType<typeof generateTimerAlert>> | null = null;
     if (notesPolicy !== "manual" && estimatedDurationMin != null && minutesSinceStatusChange != null) {
-      timerAlert = await generateTimerAlert({
-        actualMinutes: minutesSinceStatusChange,
-        estimatedMinutes: estimatedDurationMin,
-        finalized: status === "completed",
-      });
+      timerAlert = await generateTimerAlert(
+        {
+          actualMinutes: minutesSinceStatusChange,
+          estimatedMinutes: estimatedDurationMin,
+          finalized: status === "completed",
+        },
+        { model: fastModelForPlanTier(caller.planTier) },
+      );
     }
 
     usage.record({
