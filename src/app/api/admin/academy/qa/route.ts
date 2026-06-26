@@ -10,6 +10,7 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateQAAnswer } from "@/lib/ai/qaAssistant";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 
 const qaSchema = z.object({
   question: z.string().trim().min(5, "質問を5文字以上で入力してください").max(2000),
@@ -37,11 +38,14 @@ export async function POST(req: NextRequest) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
 
-    const answer = await generateQAAnswer({
-      question: parsed.data.question,
-      category: parsed.data.category,
-      tenantId: caller.tenantId,
-    });
+    const answer = await generateQAAnswer(
+      {
+        question: parsed.data.question,
+        category: parsed.data.category,
+        tenantId: caller.tenantId,
+      },
+      { model: fastModelForPlanTier(caller.planTier) },
+    );
 
     return apiOk({ answer });
   } catch (e: unknown) {

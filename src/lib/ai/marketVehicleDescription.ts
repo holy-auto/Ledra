@@ -101,7 +101,7 @@ export async function generateMarketVehicleDescription(
 
       const msg = await withRetry("anthropic", () =>
         client.messages.parse({
-          model: AI_MODEL_VISION,
+          model: opts?.model ?? AI_MODEL_VISION,
           max_tokens: 768,
           system: cacheableSystem(SYSTEM_PROMPT_VISION),
           messages: [{ role: "user", content: imageContents }],

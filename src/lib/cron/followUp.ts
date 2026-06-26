@@ -2,6 +2,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { sendExpiryReminder, sendFollowUpEmail, sendMaintenanceReminder } from "@/lib/follow-up/email";
 import { sendMaintenanceLineMessage } from "@/lib/line/client";
 import { normalizePlanTier } from "@/lib/billing/planFeatures";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import {
   generateFollowUpContent,
   getSeasonalTrigger,
@@ -47,7 +48,7 @@ export type FollowUpResult = {
   seasonalSent: number;
 };
 
-const isAiPlan = (tier: string) => ["standard", "pro"].includes(tier);
+const isAiPlan = (tier: string) => ["starter", "standard", "pro"].includes(tier);
 
 // ─── 共通: 通知送信 ─────────────────────────────────────────────
 async function sendNotification(
@@ -77,21 +78,24 @@ async function sendNotification(
 
   try {
     if (useAI) {
-      await generateFollowUpContent({
-        trigger: params.trigger,
-        customer: { name: params.customerName },
-        certificate: {
-          label: params.serviceName,
-          issued_at: params.issuedAt,
-          warranty_period: params.warrantyPeriod ?? undefined,
+      await generateFollowUpContent(
+        {
+          trigger: params.trigger,
+          customer: { name: params.customerName },
+          certificate: {
+            label: params.serviceName,
+            issued_at: params.issuedAt,
+            warranty_period: params.warrantyPeriod ?? undefined,
+          },
+          vehicle: {
+            maker: params.vehicleMaker ?? undefined,
+            model: params.vehicleModel ?? undefined,
+            color: params.vehicleColor ?? undefined,
+          },
+          shop: { name: params.shopName, phone: params.shopPhone ?? undefined },
         },
-        vehicle: {
-          maker: params.vehicleMaker ?? undefined,
-          model: params.vehicleModel ?? undefined,
-          color: params.vehicleColor ?? undefined,
-        },
-        shop: { name: params.shopName, phone: params.shopPhone ?? undefined },
-      });
+        { model: fastModelForPlanTier(params.planTier) },
+      );
 
       if (params.customerEmail) {
         sent = await sendFollowUpEmail({
