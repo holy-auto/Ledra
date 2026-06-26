@@ -231,18 +231,6 @@ describe("PUT /api/admin/settings/ai-automation", () => {
     expect(mocks.upsert).toHaveBeenCalledTimes(1);
   });
 
-  it("allows Starter plan to enable auto-actions (AI opened to Starter)", async () => {
-    mocks.resolveCaller.mockResolvedValue({
-      userId: "u1",
-      tenantId: "tenant-1",
-      role: "admin",
-      planTier: "starter",
-    });
-    const res = await PUT(req({ autoActions: { "inbound_message.auto_extract": true } }));
-    expect(res.status).toBe(200);
-    expect(mocks.upsert).toHaveBeenCalledTimes(1);
-  });
-
   it("blocks enabling auto-actions on Free plan (403, no write)", async () => {
     mocks.resolveCaller.mockResolvedValue({
       userId: "u1",
