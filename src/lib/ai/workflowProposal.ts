@@ -140,7 +140,10 @@ export function pickWorkflowProposalCandidate(input: WorkflowProposalInput): Wor
  * AI で理由文を 1 文に整える。失敗時は deterministic な結果をそのまま返す。
  * テンプレートの選択自体は deterministic 側を尊重する (AI に勝手に変えさせない)。
  */
-export async function proposeWorkflow(input: WorkflowProposalInput): Promise<WorkflowProposalResult> {
+export async function proposeWorkflow(
+  input: WorkflowProposalInput,
+  opts?: { model?: string },
+): Promise<WorkflowProposalResult> {
   const base = pickWorkflowProposalCandidate(input);
   if (!process.env.ANTHROPIC_API_KEY || !base.suggestedTemplateId) return base;
 
@@ -156,7 +159,7 @@ export async function proposeWorkflow(input: WorkflowProposalInput): Promise<Wor
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.create({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 192,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: facts.map((f) => `- ${f}`).join("\n") }],

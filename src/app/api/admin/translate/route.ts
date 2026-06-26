@@ -15,6 +15,7 @@ import { parseJsonBody } from "@/lib/api/parseBody";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { translateText, translationCacheKey } from "@/lib/ai/translateContent";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { getCachedTranslation, putCachedTranslation } from "@/lib/ai/translationCache";
 import { loadAiAutomationSettings, resolveFieldPolicy } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
@@ -68,7 +69,12 @@ export async function POST(req: NextRequest) {
           : "translation.announcement"; // general も announcement と同じ閾値で扱う
 
     if (resolveFieldPolicy(settings, policyKey) === "manual") {
-      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled", meta: { reason: "policy_manual" } });
+      usage.record({
+        tenantId: caller.tenantId,
+        userId: caller.userId,
+        outcome: "ai_disabled",
+        meta: { reason: "policy_manual" },
+      });
       return apiOk({ ai_disabled: false, translated: parsed.data.text, skipped: "policy is manual" });
     }
 
@@ -96,12 +102,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const result = await translateText({
-      text: parsed.data.text,
-      targetLang: parsed.data.target_lang,
-      tone: parsed.data.tone,
-      glossary: parsed.data.glossary,
-    });
+    const result = await translateText(
+      {
+        text: parsed.data.text,
+        targetLang: parsed.data.target_lang,
+        tone: parsed.data.tone,
+        glossary: parsed.data.glossary,
+      },
+      { model: fastModelForPlanTier(caller.planTier) },
+    );
 
     // AI が正常に翻訳した (= result.ai = true) ものだけキャッシュ。
     // フォールバック (= 元テキストをそのまま返した) は cache に入れない。

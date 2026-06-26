@@ -16,6 +16,7 @@ import { parseJsonBody } from "@/lib/api/parseBody";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { detectThicknessAnomaly } from "@/lib/ai/thicknessAnomaly";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { loadAiAutomationSettings, resolveFieldPolicy } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
@@ -78,7 +79,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ reportId: 
       .select("value_um, place_id, section")
       .eq("report_id", reportId);
 
-    const measurements = ((rows ?? []) as Array<{ value_um: number | null; place_id: string | null; section: string | null }>)
+    const measurements = (
+      (rows ?? []) as Array<{ value_um: number | null; place_id: string | null; section: string | null }>
+    )
       .map((r) => ({
         value: typeof r.value_um === "number" ? r.value_um : NaN,
         location: [r.place_id, r.section].filter(Boolean).join("/") || undefined,
@@ -102,11 +105,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ reportId: 
         .filter(Boolean)
         .join(" ") || null;
 
-    const anomaly = await detectThicknessAnomaly({
-      measurements,
-      expectedRange: parsed.data.expected_range,
-      serviceName,
-    });
+    const anomaly = await detectThicknessAnomaly(
+      {
+        measurements,
+        expectedRange: parsed.data.expected_range,
+        serviceName,
+      },
+      { model: fastModelForPlanTier(caller.planTier) },
+    );
     usage.record({
       tenantId: caller.tenantId,
       userId: caller.userId,

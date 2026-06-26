@@ -16,6 +16,7 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { generateCertificateDraft } from "@/lib/ai/draftCertificate";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings, filterDraftByPolicy, isSourceAllowed } from "./policy";
@@ -101,21 +102,24 @@ export async function maybeAutoDraftCertificateForReservation(params: MaybeAutoD
       : { data: [] as Array<Record<string, unknown>> };
 
     const usage = startAiRouteUsage(AUTO_DRAFT_ENDPOINT);
-    const draft = await generateCertificateDraft({
-      vehicle: {
-        maker: vehicle.maker as string | undefined,
-        model: vehicle.model as string | undefined,
-        year: vehicle.year as number | undefined,
-        color: vehicle.color as string | undefined,
-        vin: vehicle.vin as string | undefined,
+    const draft = await generateCertificateDraft(
+      {
+        vehicle: {
+          maker: vehicle.maker as string | undefined,
+          model: vehicle.model as string | undefined,
+          year: vehicle.year as number | undefined,
+          color: vehicle.color as string | undefined,
+          vin: vehicle.vin as string | undefined,
+        },
+        similarCertificates: (similar ?? []).map((s) => ({
+          service_name: (s.service_name as string | null) ?? "",
+          description: (s.description as string | null) ?? undefined,
+          material_info: (s.material_info as string | null) ?? undefined,
+          warranty_period: (s.warranty_period as string | null) ?? undefined,
+        })),
       },
-      similarCertificates: (similar ?? []).map((s) => ({
-        service_name: (s.service_name as string | null) ?? "",
-        description: (s.description as string | null) ?? undefined,
-        material_info: (s.material_info as string | null) ?? undefined,
-        warranty_period: (s.warranty_period as string | null) ?? undefined,
-      })),
-    });
+      { model: fastModelForPlanTier(tenant.plan_tier) },
+    );
 
     // 生成に失敗 (空ドラフト) なら保存しない。
     if (!draft.title) {

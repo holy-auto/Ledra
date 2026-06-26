@@ -54,7 +54,10 @@ const SYSTEM_PROMPT = `あなたは自動車施工の証明書作成を補助す
   {"title":"...","description":"...","cautions":"..."}
 `.trim();
 
-export async function reformatVoiceMemo(input: VoiceMemoReformatInput): Promise<VoiceMemoDraft | null> {
+export async function reformatVoiceMemo(
+  input: VoiceMemoReformatInput,
+  opts?: { model?: string },
+): Promise<VoiceMemoDraft | null> {
   if (!process.env.ANTHROPIC_API_KEY) return null;
 
   const transcript = (input.transcript ?? "").trim();
@@ -80,7 +83,7 @@ export async function reformatVoiceMemo(input: VoiceMemoReformatInput): Promise<
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 1024,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: userMessage }],

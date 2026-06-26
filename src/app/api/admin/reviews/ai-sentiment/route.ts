@@ -14,6 +14,7 @@ import { parseJsonBody } from "@/lib/api/parseBody";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { analyzeReviewSentiment } from "@/lib/ai/reviewSentiment";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { loadAiAutomationSettings, resolveFieldPolicy } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
@@ -56,11 +57,14 @@ export async function POST(req: NextRequest) {
       return apiOk({ ai_disabled: true, sentiment: null });
     }
 
-    const result = await analyzeReviewSentiment({
-      text: parsed.data.text,
-      npsScore: parsed.data.nps_score,
-      daysSinceCertificate: parsed.data.days_since_certificate,
-    });
+    const result = await analyzeReviewSentiment(
+      {
+        text: parsed.data.text,
+        npsScore: parsed.data.nps_score,
+        daysSinceCertificate: parsed.data.days_since_certificate,
+      },
+      { model: fastModelForPlanTier(caller.planTier) },
+    );
 
     const sentimentPolicy = resolveFieldPolicy(settings, "review.sentiment", result.confidence);
     const summaryPolicy = resolveFieldPolicy(settings, "review.summary", result.confidence);

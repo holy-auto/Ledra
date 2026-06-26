@@ -18,6 +18,7 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { extractInboundReservation } from "@/lib/ai/inboundReservationExtract";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "./policy";
@@ -62,11 +63,14 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
     if (!canUseFeature(normalizePlanTier(tenant.plan_tier), "ai_inbound_extract")) return;
 
     const usage = startAiRouteUsage(AUTO_EXTRACT_ENDPOINT);
-    const result = await extractInboundReservation({
-      text,
-      channel: params.channel,
-      receivedDate: params.receivedDate,
-    });
+    const result = await extractInboundReservation(
+      {
+        text,
+        channel: params.channel,
+        receivedDate: params.receivedDate,
+      },
+      { model: fastModelForPlanTier(tenant.plan_tier) },
+    );
 
     const snapshot = { ...result, auto: true, extracted_at: new Date().toISOString() };
 

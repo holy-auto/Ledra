@@ -111,7 +111,7 @@ async function searchAcademyCases(params: {
 // QA回答生成
 // ─────────────────────────────────────────────
 
-export async function generateQAAnswer(input: QAQuestion): Promise<QAAnswer> {
+export async function generateQAAnswer(input: QAQuestion, opts?: { model?: string }): Promise<QAAnswer> {
   const client = getAnthropicClient();
 
   // 並列でナレッジ検索
@@ -164,7 +164,7 @@ ${context}`;
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL,
+        model: opts?.model ?? AI_MODEL,
         max_tokens: 768,
         system: cacheableSystem(systemPrompt),
         messages: [{ role: "user", content: userMessage }],

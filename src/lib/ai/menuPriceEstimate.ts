@@ -56,7 +56,7 @@ export function calculatePriceBand(input: MenuPriceInput): {
   return { band: { min, p50, max }, baseline };
 }
 
-export async function estimateMenuPrice(input: MenuPriceInput): Promise<MenuPriceResult> {
+export async function estimateMenuPrice(input: MenuPriceInput, opts?: { model?: string }): Promise<MenuPriceResult> {
   const { band, baseline } = calculatePriceBand(input);
   const fallback: MenuPriceResult = {
     recommended_price: baseline,
@@ -87,7 +87,7 @@ export async function estimateMenuPrice(input: MenuPriceInput): Promise<MenuPric
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 384,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: facts }],
@@ -116,4 +116,3 @@ const SYSTEM_PROMPT = `あなたは自動車施工店の価格設定を支援す
 - 自店過去価格バンドから外れた極端な値は出さない (min ÷ 0.8 〜 max × 1.2 の範囲内)
 - 業界中央値とのギャップが大きい場合は理由文に明記
 - rationale は 100 字以内、1 文`.trim();
-

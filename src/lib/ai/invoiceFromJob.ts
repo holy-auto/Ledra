@@ -76,7 +76,10 @@ export function buildDeterministicInvoiceDraft(input: InvoiceFromJobInput): Invo
   return { items, tax_rate: 10, recipient_name: recipient, note, confidence: 0.6, ai: false };
 }
 
-export async function generateInvoiceFromJob(input: InvoiceFromJobInput): Promise<InvoiceFromJobResult> {
+export async function generateInvoiceFromJob(
+  input: InvoiceFromJobInput,
+  opts?: { model?: string },
+): Promise<InvoiceFromJobResult> {
   const baseline = buildDeterministicInvoiceDraft(input);
   if (!process.env.ANTHROPIC_API_KEY) return baseline;
   if (baseline.items.length === 0) return baseline;
@@ -87,9 +90,7 @@ export async function generateInvoiceFromJob(input: InvoiceFromJobInput): Promis
   if (input.customerType) facts.push(`顧客区分: ${input.customerType}`);
   if (input.vehicle) {
     facts.push(
-      `車両: ${[input.vehicle.maker, input.vehicle.model, input.vehicle.plate_display]
-        .filter(Boolean)
-        .join(" / ")}`,
+      `車両: ${[input.vehicle.maker, input.vehicle.model, input.vehicle.plate_display].filter(Boolean).join(" / ")}`,
     );
   }
   facts.push(`明細: ${baseline.items.map((i) => `${i.description} ¥${i.unit_price} × ${i.quantity}`).join(", ")}`);
@@ -97,7 +98,7 @@ export async function generateInvoiceFromJob(input: InvoiceFromJobInput): Promis
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 384,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: facts.join("\n") }],
@@ -134,7 +135,10 @@ const SYSTEM_PROMPT = `あなたは自動車施工店の事務担当を支援す
 
 confidence は 0.0〜1.0 で自己評価。`.trim();
 
-function buildRecipientName(name: string | null | undefined, type: "individual" | "corporate" | null | undefined): string {
+function buildRecipientName(
+  name: string | null | undefined,
+  type: "individual" | "corporate" | null | undefined,
+): string {
   if (!name) return "";
   if (type === "corporate") return `${name} 御中`;
   return `${name} 様`;

@@ -131,7 +131,8 @@ export async function checkPhotoContent(input: PhotoCheckInput, opts?: { model?:
     const contentType = response.headers.get("content-type") || "image/jpeg";
 
     const sha = createHash("sha256").update(Buffer.from(buffer)).digest("hex");
-    const cacheKey = `aiqc:v1:${sha}:${input.expectedType}:${input.category}`;
+    const resolvedModel = opts?.model ?? AI_MODEL_VISION;
+    const cacheKey = `aiqc:v1:${sha}:${input.expectedType}:${input.category}:${resolvedModel}`;
 
     // Redis 未設定 (dev/CI) では withCache は fn() に素通しするので挙動は不変。
     // runPhotoVision は失敗時に throw するため、permissive な失敗結果はキャッシュされない。

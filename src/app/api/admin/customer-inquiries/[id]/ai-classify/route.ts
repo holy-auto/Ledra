@@ -15,6 +15,7 @@ import { apiOk, apiUnauthorized, apiNotFound, apiInternalError, apiPlanLimit } f
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { classifyInquiry } from "@/lib/ai/inquiryClassify";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { loadAiAutomationSettings, resolveFieldPolicy, isSourceAllowed } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
@@ -86,11 +87,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       }
     }
 
-    const result = await classifyInquiry({
-      subject: inquiry.subject ?? "",
-      message: inquiry.message ?? "",
-      customerHistory: history ?? (inquiry.customer_name ? { name: inquiry.customer_name } : undefined),
-    });
+    const result = await classifyInquiry(
+      {
+        subject: inquiry.subject ?? "",
+        message: inquiry.message ?? "",
+        customerHistory: history ?? (inquiry.customer_name ? { name: inquiry.customer_name } : undefined),
+      },
+      { model: fastModelForPlanTier(caller.planTier) },
+    );
 
     const categoryPolicy = resolveFieldPolicy(settings, "inquiry.category", result.confidence);
     const priorityPolicy = resolveFieldPolicy(settings, "inquiry.priority", result.confidence);

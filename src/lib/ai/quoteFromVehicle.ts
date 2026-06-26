@@ -62,7 +62,7 @@ export function buildDeterministicQuote(input: QuoteFromVehicleInput): QuoteFrom
       const price =
         m.default_price && m.default_price > 0
           ? Math.round(m.default_price)
-          : medianUnitPriceFor(input.pastInvoices, m.name) ?? 0;
+          : (medianUnitPriceFor(input.pastInvoices, m.name) ?? 0);
       items.push({ description: m.name, quantity: 1, unit_price: price });
     }
   } else if (input.pastInvoices.length > 0) {
@@ -101,7 +101,10 @@ export function buildDeterministicQuote(input: QuoteFromVehicleInput): QuoteFrom
   };
 }
 
-export async function generateQuoteFromVehicle(input: QuoteFromVehicleInput): Promise<QuoteFromVehicleResult> {
+export async function generateQuoteFromVehicle(
+  input: QuoteFromVehicleInput,
+  opts?: { model?: string },
+): Promise<QuoteFromVehicleResult> {
   const baseline = buildDeterministicQuote(input);
   if (!process.env.ANTHROPIC_API_KEY) return baseline;
 
@@ -129,7 +132,7 @@ export async function generateQuoteFromVehicle(input: QuoteFromVehicleInput): Pr
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 1024,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: facts.join("\n\n") }],
@@ -170,7 +173,9 @@ const SYSTEM_PROMPT = `あなたは自動車施工店の見積もり作成を支
 confidence: 0.0〜1.0 で自己評価 (事例件数が少ない場合は低めに)。`.trim();
 
 function medianUnitPriceFor(invoices: QuoteFromVehicleInput["pastInvoices"], description: string): number | null {
-  const prices = invoices.flatMap((inv) => inv.items.filter((l) => l.description === description).map((l) => l.unit_price));
+  const prices = invoices.flatMap((inv) =>
+    inv.items.filter((l) => l.description === description).map((l) => l.unit_price),
+  );
   if (prices.length === 0) return null;
   prices.sort((a, b) => a - b);
   return Math.round(prices[Math.floor(prices.length / 2)]);
@@ -180,4 +185,3 @@ function avgTotal(invoices: QuoteFromVehicleInput["pastInvoices"]): number {
   if (invoices.length === 0) return 0;
   return Math.round(invoices.reduce((s, i) => s + i.total, 0) / invoices.length);
 }
-

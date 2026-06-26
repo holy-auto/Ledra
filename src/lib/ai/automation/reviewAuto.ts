@@ -15,6 +15,7 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { analyzeReviewSentiment } from "@/lib/ai/reviewSentiment";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "./policy";
@@ -55,7 +56,7 @@ export async function maybeAutoAnalyzeReview(params: MaybeAutoAnalyzeReviewParam
     if (!canUseFeature(normalizePlanTier(tenant.plan_tier), "ai_review_sentiment")) return;
 
     const usage = startAiRouteUsage(AUTO_ANALYZE_ENDPOINT);
-    const result = await analyzeReviewSentiment({ text: comment });
+    const result = await analyzeReviewSentiment({ text: comment }, { model: fastModelForPlanTier(tenant.plan_tier) });
 
     const { error: upErr } = await admin
       .from("signature_reviews")

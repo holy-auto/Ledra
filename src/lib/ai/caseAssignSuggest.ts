@@ -66,7 +66,10 @@ export interface CaseAssignResult {
   ai: boolean;
 }
 
-export async function suggestCaseAssignees(input: CaseAssignInput): Promise<CaseAssignResult> {
+export async function suggestCaseAssignees(
+  input: CaseAssignInput,
+  opts?: { model?: string },
+): Promise<CaseAssignResult> {
   const userById = new Map(input.users.map((u) => [u.id, u]));
 
   // 1. ルールベース hit
@@ -144,14 +147,13 @@ export async function suggestCaseAssignees(input: CaseAssignInput): Promise<Case
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 768,
         system: SYSTEM_PROMPT,
         messages: [
           {
             role: "user",
-            content:
-              `カテゴリ: ${input.category ?? "(不明)"}\n優先度: ${input.priority}\n件名: ${input.subject ?? ""}\n本文要約:\n${(input.body ?? "").slice(0, 1500)}\n\n候補ユーザー:\n${userList}`,
+            content: `カテゴリ: ${input.category ?? "(不明)"}\n優先度: ${input.priority}\n件名: ${input.subject ?? ""}\n本文要約:\n${(input.body ?? "").slice(0, 1500)}\n\n候補ユーザー:\n${userList}`,
           },
         ],
         output_config: { format: zodOutputFormat(AiAssignSchema) },
@@ -183,9 +185,7 @@ export async function suggestCaseAssignees(input: CaseAssignInput): Promise<Case
     console.error("[caseAssignSuggest] failed:", err);
     const first = input.users[0];
     return {
-      candidates: first
-        ? [{ user_id: first.id, score: 0.1, method: "fallback", reason: "AI 例外、暫定提案" }]
-        : [],
+      candidates: first ? [{ user_id: first.id, score: 0.1, method: "fallback", reason: "AI 例外、暫定提案" }] : [],
       ai: false,
     };
   }
