@@ -27,9 +27,10 @@
 | **A** | 保険会社との往復 | 見積提出・承認待ち・支払指示を手作業で追跡 | 中〜大 |
 | **B** | 納期・進捗の顧客通知 | `due_date` が無く、進捗通知は URL 手動コピペ | 小〜中 |
 | **C** | 作業記録の手入力 | 音声入力は証明書画面のみ。案件側は手打ち | 小 |
+| **D** | 見積(協定)の作成 UI | AI 見積は draft 止まりで作成 UI/document 紐付け未配線 | 小〜中 |
 | **横断** | 工程ボードのリアルタイム性 | 稼働ガントは SSR 一発描画で自動更新されない | 小 |
 
-A/B/C/横断はいずれも**バックエンド・データモデルが 7〜9 割存在**しており、
+A/B/C/D/横断はいずれも**バックエンド・データモデルが 7〜9 割存在**しており、
 追加コードはそれぞれ概ね 100〜300 行規模。詳細は §5〜§6。
 
 ---
@@ -71,9 +72,9 @@ A/B/C/横断はいずれも**バックエンド・データモデルが 7〜9 �
 |---|---|---|---|
 | 入庫受付 | ✅ | `body_repair_jobs.intake_at` 自動記録、Kanban ステージ管理 | `20260612000009_body_repair_workflow.sql` |
 | 損傷写真(3段階) | ✅ | `certificate_images.stage`(intake_before/in_progress/after) + EXIF 撮影時刻 + 改ざんアンカリング | `20260620000000_body_repair_transparency.sql` |
-| 見積(協定) | ✅ | AI 見積 `quoteFromVehicle.ts`、`documents(doc_type=estimate)`、予定/実績 `planned_work_json`/`actual_work_json` | `src/lib/ai/quoteFromVehicle.ts` |
+| 見積(協定) | ⚠️ **断絶D** | 予定/実績 `planned_work_json`/`actual_work_json` は実装済。ただし AI 見積(`quoteFromVehicle.ts`)は draft を返すのみで**作成 UI が未配線**。`BodyRepairClient` は手入力 `estimate_amount` のみで `ai-from-vehicle` 未使用・`estimate_document_id` 未紐付け | `src/lib/ai/quoteFromVehicle.ts` / `BodyRepairClient.tsx` |
 | **保険会社へ提出** | ⚠️ **断絶A** | 見積は作れるが**保険会社への提出・承認待ち追跡が無い**。`insurer_cases` は保険会社→施工店の閲覧主体で、施工店→保険会社の往復が手作業 | `src/app/api/insurer/cases/route.ts` |
-| 代車手配 | ⚠️ | `loaner_cars` テーブル・`/admin/loaner-cars` はあるが**案件と未連携**(FK なし)。「この車の代車はいつ返る?」が照合できない | `20260612000016_loaner_cars.sql` |
+| 代車手配 | ⚠️ | 貸出記録 `loaner_car_loans`(`reservation_id`/`customer_id`/`return_due_at`/`returned_at`)は実装済。ただし**案件と join する導線が無い**ため「この案件の代車はいつ返る?」が UI で照合できない | `20260612000016_loaner_cars.sql` |
 | 入庫〜板金〜塗装〜完成 | ✅ | ステージ遷移 + 各 `*_start_at` 自動タイムスタンプ(上書き不可で正確な履歴) | `body_repair_workflow.sql` |
 | 作業前/変更同意 | ✅ | `body_repair_consents` + ECDSA 署名 + Polygon アンカー | `body_repair_transparency.sql` L106-166 |
 | **進捗の顧客通知** | ⚠️ **断絶B** | `track_token` で `/track/[token]` 公開ページはあるが**URL を手動共有**。ステージ遷移時の自動通知なし | `src/app/track/[token]/page.tsx` |
@@ -82,7 +83,7 @@ A/B/C/横断はいずれも**バックエンド・データモデルが 7〜9 �
 | 完成検査 | ⚠️ | 画像記録はあるが品質スコアの傾向分析・スタッフ別評価は薄い | `photoQualityAuto` |
 | 納車(受領) | ✅ | `delivery_receipts` 電子署名 | — |
 | 請求(分割) | ✅ | `documents(invoice)` + `billing_splits`(保険/自費分割) | `billing_splits` |
-| 保険金請求・消込 | ⚠️ **断絶A** | `claim_number` の記録は手入力。保険会社の支払可否指示を受け取るスキーマ・会話録なし | `billing_splits.claim_number` |
+| 保険金請求・消込 | ⚠️ **断絶A** | `claim_number` の記録は手入力。会話/添付スキーマ(`insurer_case_messages`/`insurer_case_attachments`)は実在するが、**支払可否指示を構造化して扱うセマンティクスと施工店向けフロー**が無い | `billing_splits.claim_number` / `insurer_portal_v2.sql` |
 | 工程ボード(横断) | ⚠️ **横断** | `mechanic-gantt` は完成だが SSR 一発描画で**リアルタイム更新が無い** | `src/app/admin/mechanic-gantt/page.tsx` |
 
 凡例: ✅ 実装済 / ⚠️ 部分(断絶あり) / ❌ 未実装
@@ -101,17 +102,19 @@ A/B/C/横断はいずれも**バックエンド・データモデルが 7〜9 �
 - `insurer_cases`(`src/app/api/insurer/cases/route.ts`)は**保険会社ユーザーが
   施工店の証明書・案件を閲覧・スコアリングする向き**。AI 不正スコア/サマリ/
   自動アサインまで保険会社側は充実している。
-- 一方、**施工店→保険会社**の方向、すなわち
-  - 見積書(`documents.doc_type='estimate'`)の保険会社への提出・通知
-  - 「保険承認待ち」ステータスと案件の連動
+- **会話/添付のスキーマは既に存在する**: `insurer_case_messages`
+  (`sender_type` に `insurer`/`tenant`/`system`、テナント双方向 RLS
+  `icm_select_tenant`/`icm_insert_tenant`)と `insurer_case_attachments`
+  (`supabase/migrations/20260326000000_insurer_portal_v2.sql`)。
+- **欠落しているのはスキーマではなく、施工店向けのフロー/UL と意味付け**:
+  - 見積書(`documents.doc_type='estimate'`)を case に紐付けて提出する施工店 UI
+  - 「保険承認待ち」ステータスと `body_repair_jobs`↔`insurer_cases` リンク
   - 承認額の確定・上限枠との照合
-  - 支払可否指示の受領記録・差し戻し会話録
-  が**いずれもスキーマ/フローとして存在しない**(`insurer_cases.meta` の任意
-  JSON に手で書く程度)。
+  - 支払可否指示を構造化して扱うセマンティクス(現状は message の自由文/meta 任せ)
 
-**断絶の本質**: 保険ネットワークの「片側(保険会社の閲覧)」しか繋がっておらず、
-施工店フロントの最大の事務(往復追跡)が空白。ここは Ledra の中核差別化
-(双方向ネットワーク)に直結する。
+**断絶の本質**: 保険ネットワークの「会話基盤」は両側にあるのに、**施工店フロント
+側の操作 UI と、提出/承認/支払指示という業務状態の構造化**が無い。ここは Ledra の
+中核差別化(双方向ネットワーク)に直結する。
 
 ### 断絶B: 納期・工程進捗の顧客通知
 
@@ -122,11 +125,15 @@ A/B/C/横断はいずれも**バックエンド・データモデルが 7〜9 �
 - 進捗の素材は完成済み: `track_token`(`20260621000000_body_repair_tracking.sql`)、
   顧客ページ `src/app/track/[token]/page.tsx`、各ステージの自動タイムスタンプ。
 - **欠落**: ①`body_repair_jobs` に `due_date`(完成予定日)カラムが無い、
-  ②ステージ遷移時の LINE/メール自動通知が無い(通知基盤 `sendEmail`/LINE
-  クライアントは既存)、③遅延警告ロジックが無い。
+  ②鈑金 Kanban のステージ遷移時の自動通知が無い、③遅延警告ロジックが無い。
+- **通知フックの注意点**: 鈑金のステージは `BodyRepairClient` が
+  `PATCH /api/admin/body-repair-jobs` で遷移させる。汎用予約の
+  `reservations/[id]/advance` は既に LINE 進捗通知を送るが、**鈑金 stage は別経路**
+  なので、通知の結線先は **body-repair PATCH route**(`src/app/api/admin/body-repair-jobs/route.ts`)。
 
-**断絶の本質**: 「通知を送る部品」も「顧客が見るページ」も既にあるのに、
-**遷移イベント→通知のトリガー線**と**納期という 1 カラム**が無いだけ。
+**断絶の本質**: 「通知を送る部品」(`sendProgressUpdate` 等)も「顧客が見るページ」も
+既にあるのに、**鈑金 PATCH route での遷移→通知のトリガー線**と**納期という 1 カラム**が
+無いだけ。
 
 ### 断絶C: 作業記録の手入力(音声入力の横展開)
 
@@ -166,8 +173,8 @@ A/B/C/横断はいずれも**バックエンド・データモデルが 7〜9 �
 | 音声整形エンジン | `src/lib/ai/voiceMemoReformat.ts` / `.../certificates/voice-memo/route.ts` | 案件フォームへパネル移植 + `job.notes` 保存(~100行) |
 | 工程ガント | `src/lib/gantt/board.ts` / `components/admin/gantt/GanttBoard.tsx` | `/api/admin/gantt` + SWR ラッパで live 化(~110行) |
 | 顧客進捗ページ | `src/app/track/[token]/page.tsx` + 自動タイムスタンプ | ステージ遷移→LINE/メール自動通知の結線 |
-| 代車管理 | `src/app/admin/loaner-cars/` + `loaner_cars` | `body_repair_jobs` との FK + 返却照合 |
-| 保険分割請求 | `billing_splits` | 保険会社提出・承認待ちステータスの上載せ |
+| 代車管理 | `src/app/admin/loaner-cars/` + `loaner_car_loans` | `reservation_id` 経由で案件と join + 返却照合 |
+| 保険会話基盤 | `insurer_case_messages`/`insurer_case_attachments` | 施工店向け送受信 UI + 提出/承認/支払指示の構造化 |
 
 ---
 
@@ -184,25 +191,31 @@ A/B/C/横断はいずれも**バックエンド・データモデルが 7〜9 �
 3. **`due_date` カラム + 遅延警告(断絶B 前半)**
    `body_repair_jobs.due_date` を追加(nullable→運用)。一覧で超過ハイライト。
 4. **代車↔案件の連携(断絶B 関連)**
-   `loaner_cars` に `body_repair_job_id` FK、返却照合クエリ。
+   `loaner_car_loans.reservation_id` ↔ `body_repair_jobs.reservation_id` で
+   join し返却照合(マスタ `loaner_cars` には FK を足さない。案件が予約を
+   持たない経路がある場合のみ `loaner_car_loans` に nullable `body_repair_job_id`)。
+5. **見積 UI の結線(断絶D)**
+   `BodyRepairClient` から `quotes/ai-from-vehicle` を呼び、estimate document 作成 →
+   `body_repair_jobs.estimate_document_id` 紐付け。手入力 `estimate_amount` を解消。
 
 ### 中期(各 ~1 ヶ月)
 
-5. **ステージ遷移→顧客自動通知(断絶B 後半)**
-   既存の遷移イベント(`advance` route)にフックし、`sendEmail`/LINE で
-   「本日 ○○ 工程に進みました/完成予定日は ○○」を自動送信。
-6. **保険会社への見積提出 + 承認待ちワークフロー(断絶A 中核)**
-   `body_repair_jobs` ↔ `insurer_cases` の双方向リンク、提出ステータス、
-   承認額照合、支払可否指示の記録スキーマ。
-7. **音声入力のモバイル対応**
+6. **ステージ遷移→顧客自動通知(断絶B 後半)**
+   鈑金は **body-repair PATCH route** にフックし(`advance` route ではない)、
+   LINE で「本日 ○○ 工程に進みました/完成予定日は ○○」を自動送信(opt-in)。
+7. **保険会社への見積提出 + 承認待ちワークフロー(断絶A 中核)**
+   既存の `insurer_case_messages`/`insurer_case_attachments` を活用し、
+   `body_repair_jobs` ↔ `insurer_cases` のリンク、提出ステータス、承認額照合、
+   支払可否指示の構造化を上載せ(会話/添付スキーマの新設は不要)。
+8. **音声入力のモバイル対応**
    `apps/mobile` に録音 UI + 文字起こし(Web Speech API 不可のため Whisper 等
    の transcription API 選定が必要)。
 
 ### 長期(各 2〜3 ヶ月)
 
-8. **鈑金固有の単価体系**(指数・レバーレート・コマ単価)を `menu_items` に統合。
-9. **特定整備該当判定の AI 支援**(修理内容→該当判定/チェックリスト化)。
-10. **保険会社との書類往復自動化**(指定フォーマット変換 / FAX→OCR→記録)。
+9. **鈑金固有の単価体系**(指数・レバーレート・コマ単価)を `menu_items` に統合。
+10. **特定整備該当判定の AI 支援**(修理内容→該当判定/チェックリスト化)。
+11. **保険会社との書類往復自動化**(指定フォーマット変換 / FAX→OCR→記録)。
 
 ---
 
