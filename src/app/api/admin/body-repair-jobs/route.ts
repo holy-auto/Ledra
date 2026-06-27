@@ -9,6 +9,7 @@ import {
   BODY_REPAIR_STAGES,
   type BodyRepairStage,
 } from "@/lib/validations/body-repair-job";
+import { maybeNotifyBodyRepairStageAdvance } from "@/lib/bodyRepair/stageNotify";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -223,6 +224,7 @@ export async function PATCH(req: NextRequest) {
 
     // ステージ変更時: 対応する到達タイムスタンプが未設定なら now() をセットする
     // (一度入った工程の到達時刻は上書きしない = 出戻りで時刻が消えない)。
+    let stageChanged = false;
     if (stage !== undefined) {
       // 現在の案件を取得して到達タイムスタンプの既存値を確認する。
       const { data: existing, error: fetchErr } = await admin
@@ -234,6 +236,7 @@ export async function PATCH(req: NextRequest) {
       if (fetchErr) return apiInternalError(fetchErr, "body-repair-jobs PATCH fetch");
       if (!existing) return apiValidationError("対象の案件が見つかりません。");
 
+      stageChanged = (existing as { stage?: BodyRepairStage }).stage !== stage;
       updates.stage = stage;
       const tsColumn = STAGE_TIMESTAMP_COLUMN[stage];
       const existingTs = (existing as Record<string, unknown>)[tsColumn];
@@ -251,6 +254,16 @@ export async function PATCH(req: NextRequest) {
       .maybeSingle();
     if (error) return apiInternalError(error, "body-repair-jobs PATCH");
     if (!updated) return apiValidationError("対象の案件が見つかりません。");
+
+    // 工程が実際に進んだら、opt-in 済みテナントでは顧客へ進捗を自動通知する
+    // (fire-and-forget; レスポンスは待たせない)。
+    if (stageChanged && stage !== undefined) {
+      void maybeNotifyBodyRepairStageAdvance({
+        tenantId: caller.tenantId,
+        customerId: (updated as { customer_id?: string | null }).customer_id ?? null,
+        stage,
+      });
+    }
 
     return apiJson({ ok: true, job: updated });
   } catch (e) {

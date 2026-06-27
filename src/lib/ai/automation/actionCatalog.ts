@@ -52,7 +52,8 @@ export type AutomationActionKey =
   | "insurer_case.auto_assign_suggest"
   | "inquiry.auto_classify"
   | "customer.auto_create"
-  | "payment.auto_charge";
+  | "payment.auto_charge"
+  | "body_repair.auto_notify_on_stage_advance";
 
 export interface AutomationActionDef {
   key: AutomationActionKey;
@@ -317,6 +318,15 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
       "確定済みの請求書に対し、顧客が登録済みの決済手段 (Stripe) で自動課金する。請求確定後の一定期間 (猶予期間) 経過後に実行される。課金失敗時はスタッフに通知し手動対応に切り替わる。",
     defaultEnabled: false,
     guard: "AI 有効 + Pro プラン + Stripe Connect + 顧客に決済手段登録済み + 猶予期間経過",
+  },
+  {
+    key: "body_repair.auto_notify_on_stage_advance",
+    workflow: "job",
+    label: "鈑金の工程が進んだら顧客へ自動通知",
+    description:
+      "鈑金 Kanban の工程ステージ (受付 → 協定 → 鈑金 → 塗装 → 完成 → 出庫) が進むたび、顧客へ LINE で進捗を自動通知する。顧客に LINE 連携 (line_user_id) がある場合のみ送信される。",
+    defaultEnabled: false,
+    guard: "AI 有効 + 顧客に LINE 連携あり",
   },
 ];
 
