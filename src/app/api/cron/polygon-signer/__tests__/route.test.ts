@@ -60,12 +60,12 @@ vi.mock("@/lib/supabase/admin", () => ({
   createServiceRoleAdmin: () => ({}),
 }));
 
-import { GET } from "@/app/api/cron/polygon-signer/route";
+import { GET, POST } from "@/app/api/cron/polygon-signer/route";
 import { NextRequest } from "next/server";
 
-function req(): NextRequest {
+function req(method: "GET" | "POST" = "GET"): NextRequest {
   return new Request("http://localhost/api/cron/polygon-signer", {
-    method: "GET",
+    method,
     headers: { authorization: "Bearer test" },
   }) as unknown as NextRequest;
 }
@@ -161,5 +161,14 @@ describe("GET /api/cron/polygon-signer", () => {
     const body = (await res.json()) as { status: string; message: string };
     expect(body.status).toBe("error");
     expect(body.message).toContain("rpc down");
+  });
+
+  it("POST is accepted (no 405) and behaves like GET — POST-based schedulers / monitors", async () => {
+    expect(POST).toBe(GET);
+    getBalanceMock.mockResolvedValueOnce(ETH(2.5));
+    const res = await POST(req("POST"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { status: string };
+    expect(body.status).toBe("healthy");
   });
 });
