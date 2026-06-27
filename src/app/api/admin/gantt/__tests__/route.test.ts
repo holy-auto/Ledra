@@ -65,4 +65,11 @@ describe("GET /api/admin/gantt", () => {
     expect(usedDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(usedDate).not.toContain("DROP");
   });
+
+  it("falls back for a regex-shaped but impossible calendar date", async () => {
+    await GET(req("https://x/api/admin/gantt?date=2026-13-99"));
+    const usedDate = mocks.load.mock.calls[0][2];
+    expect(usedDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(usedDate).not.toBe("2026-13-99");
+  });
 });

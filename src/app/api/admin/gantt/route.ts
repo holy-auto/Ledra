@@ -10,6 +10,14 @@ export const dynamic = "force-dynamic";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** YYYY-MM-DD の形かつ実在するカレンダー日付か（2026-13-99 のような不正値を弾く）。 */
+function isValidYmd(s: string): boolean {
+  if (!DATE_RE.test(s)) return false;
+  const [y, m, d] = s.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
 /**
  * メカニック稼働ガントの live データ。
  * `GanttBoardLive` が SWR で定期ポーリングし、運用ディスプレイをリアルタイム更新する。
@@ -28,9 +36,9 @@ export async function GET(req: NextRequest) {
       return apiNotFound();
     }
 
-    // 不正な date は黙って当日にフォールバック（任意の文字列で SQL に流さない）。
+    // 不正・非実在の date は黙って当日にフォールバック（任意の文字列で SQL に流さない）。
     const raw = new URL(req.url).searchParams.get("date");
-    const dateStr = raw && DATE_RE.test(raw) ? raw : todayJst();
+    const dateStr = raw && isValidYmd(raw) ? raw : todayJst();
 
     const data = await loadGanttData(supabase, caller.tenantId, dateStr);
     return apiJson({ data }, { cacheControl: "no-store" });

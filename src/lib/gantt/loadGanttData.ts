@@ -20,6 +20,50 @@ function roleLabel(role: string): string {
   }
 }
 
+// スタッフ名簿は滅多に変わらないが、live ガントは 10 秒ごとにポーリングされる。
+// 名簿だけ短い TTL でキャッシュし、予約データ（毎回フレッシュに取得）と分離して
+// Supabase Auth admin API (listUsers) の連打を避ける。プロセス内 (warm instance) のみ有効。
+const ROSTER_TTL_MS = 5 * 60_000;
+const rosterCache = new Map<string, { roster: RosterMember[]; expires: number }>();
+
+async function loadRoster(tenantId: string): Promise<RosterMember[]> {
+  const now = Date.now();
+  const cached = rosterCache.get(tenantId);
+  if (cached && cached.expires > now) return cached.roster;
+
+  try {
+    const { admin } = createTenantScopedAdmin(tenantId);
+    const { data: memberships } = await admin
+      .from("tenant_memberships")
+      .select("user_id, role")
+      .eq("tenant_id", tenantId);
+    // 予約の担当者はどのロール（viewer 含む）にも割り当て得るため、ロールで絞らず
+    // 全員を名簿に含める。絞ると viewer への実割当が未アサイン扱いに誤分類される。
+    const workers = memberships ?? [];
+    let roster: RosterMember[] = [];
+    if (workers.length > 0) {
+      const {
+        data: { users },
+      } = await admin.auth.admin.listUsers({ perPage: 1000 });
+      const userMap = new Map(
+        (users as Array<{ id: string; email?: string; user_metadata?: Record<string, unknown> }>).map((u) => [u.id, u]),
+      );
+      roster = workers.map((m) => {
+        const u = userMap.get(m.user_id);
+        const meta = u?.user_metadata as Record<string, unknown> | undefined;
+        const name = (meta?.display_name as string | undefined) ?? u?.email?.split("@")[0] ?? "メンバー";
+        return { user_id: m.user_id, name, sub: roleLabel(m.role ?? "") };
+      });
+    }
+    // 成功時のみキャッシュ（空名簿も valid な結果としてキャッシュ）。
+    rosterCache.set(tenantId, { roster, expires: now + ROSTER_TTL_MS });
+    return roster;
+  } catch {
+    // service-role が使えない / 一時障害ではキャッシュせず空で返し、次回再試行させる。
+    return [];
+  }
+}
+
 /**
  * メカニック稼働ガントのデータを組み立てる。
  *
@@ -82,34 +126,8 @@ export async function loadGanttData(supabase: ServerSupabase, tenantId: string, 
   }));
 
   // ── スタッフ名簿（表示名は auth.users.user_metadata から） ──
-  let roster: RosterMember[] = [];
-  try {
-    const { admin } = createTenantScopedAdmin(tenantId);
-    const { data: memberships } = await admin
-      .from("tenant_memberships")
-      .select("user_id, role")
-      .eq("tenant_id", tenantId);
-    // 予約の担当者はどのロール（viewer 含む）にも割り当て得るため、ロールで絞らず
-    // 全員を名簿に含める。絞ると viewer への実割当が未アサイン扱いに誤分類される。
-    const workers = memberships ?? [];
-    if (workers.length > 0) {
-      const {
-        data: { users },
-      } = await admin.auth.admin.listUsers({ perPage: 1000 });
-      const userMap = new Map(
-        (users as Array<{ id: string; email?: string; user_metadata?: Record<string, unknown> }>).map((u) => [u.id, u]),
-      );
-      roster = workers.map((m) => {
-        const u = userMap.get(m.user_id);
-        const meta = u?.user_metadata as Record<string, unknown> | undefined;
-        const name = (meta?.display_name as string | undefined) ?? u?.email?.split("@")[0] ?? "メンバー";
-        return { user_id: m.user_id, name, sub: roleLabel(m.role ?? "") };
-      });
-    }
-  } catch {
-    // service-role が使えない環境ではデモ表示にフォールバック（roster 空）。
-    roster = [];
-  }
+  // 名簿は TTL キャッシュで取得し、毎ポーリングでの listUsers を避ける。
+  const roster = await loadRoster(tenantId);
 
   return { ...buildGanttData(reservationRows, roster, dateStr), isDemo: false };
 }
