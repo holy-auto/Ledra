@@ -224,7 +224,8 @@ export async function PATCH(req: NextRequest) {
 
     // ステージ変更時: 対応する到達タイムスタンプが未設定なら now() をセットする
     // (一度入った工程の到達時刻は上書きしない = 出戻りで時刻が消えない)。
-    let stageChanged = false;
+    let previousStage: BodyRepairStage | null = null;
+    let isForwardAdvance = false;
     if (stage !== undefined) {
       // 現在の案件を取得して到達タイムスタンプの既存値を確認する。
       const { data: existing, error: fetchErr } = await admin
@@ -236,7 +237,11 @@ export async function PATCH(req: NextRequest) {
       if (fetchErr) return apiInternalError(fetchErr, "body-repair-jobs PATCH fetch");
       if (!existing) return apiValidationError("対象の案件が見つかりません。");
 
-      stageChanged = (existing as { stage?: BodyRepairStage }).stage !== stage;
+      previousStage = (existing as { stage?: BodyRepairStage }).stage ?? null;
+      // 工程インデックスが増える「前進」のときだけ顧客通知の対象とする。
+      // 後退・補正 (admin/API のやり直し) で「進捗が進んだ」通知を送らない。
+      isForwardAdvance =
+        previousStage !== null && BODY_REPAIR_STAGES.indexOf(stage) > BODY_REPAIR_STAGES.indexOf(previousStage);
       updates.stage = stage;
       const tsColumn = STAGE_TIMESTAMP_COLUMN[stage];
       const existingTs = (existing as Record<string, unknown>)[tsColumn];
@@ -245,21 +250,36 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
-    const { data: updated, error } = await admin
-      .from("body_repair_jobs")
-      .update(updates)
-      .eq("id", id)
-      .eq("tenant_id", caller.tenantId)
-      .select(SELECT_COLUMNS)
-      .maybeSingle();
+    // ステージ遷移時は UPDATE を「現在 stage が previousStage のまま」に条件付ける。
+    // 並行 PATCH (二重送信・別タブ) では先勝ちした 1 件だけが行を更新し、後続は
+    // updated=null になるため、進捗通知が重複しない (TOCTOU 安全)。
+    let updateQuery = admin.from("body_repair_jobs").update(updates).eq("id", id).eq("tenant_id", caller.tenantId);
+    if (stage !== undefined && previousStage !== null) {
+      updateQuery = updateQuery.eq("stage", previousStage);
+    }
+    const { data: updated, error } = await updateQuery.select(SELECT_COLUMNS).maybeSingle();
     if (error) return apiInternalError(error, "body-repair-jobs PATCH");
-    if (!updated) return apiValidationError("対象の案件が見つかりません。");
+    if (!updated) {
+      // stage ガード不一致 = 並行更新で既に遷移済みの可能性。存在すれば現状を返す
+      // (通知はしない)。本当に存在しなければ not found。
+      if (stage !== undefined) {
+        const { data: current } = await admin
+          .from("body_repair_jobs")
+          .select(SELECT_COLUMNS)
+          .eq("id", id)
+          .eq("tenant_id", caller.tenantId)
+          .maybeSingle();
+        if (current) return apiJson({ ok: true, job: current });
+      }
+      return apiValidationError("対象の案件が見つかりません。");
+    }
 
-    // 工程が実際に進んだら、opt-in 済みテナントでは顧客へ進捗を自動通知する
-    // (fire-and-forget; レスポンスは待たせない)。
-    if (stageChanged && stage !== undefined) {
+    // 工程が「前進」したときだけ、opt-in 済みテナントで顧客へ進捗を自動通知する
+    // (fire-and-forget; レスポンスは待たせない)。重複は上の stage ガードで防ぐ。
+    if (isForwardAdvance && stage !== undefined) {
       void maybeNotifyBodyRepairStageAdvance({
         tenantId: caller.tenantId,
+        jobId: id,
         customerId: (updated as { customer_id?: string | null }).customer_id ?? null,
         stage,
       });

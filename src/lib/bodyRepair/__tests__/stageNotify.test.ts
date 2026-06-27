@@ -18,6 +18,10 @@ vi.mock("@/lib/ai/automation/policy", () => ({
   resolveAutoAction: mocks.resolveAction,
 }));
 vi.mock("@/lib/line/client", () => ({ sendProgressUpdate: mocks.sendProgress }));
+vi.mock("@/lib/bodyRepair/trackToken", () => ({
+  ensureBodyRepairTrackToken: vi.fn().mockResolvedValue("tok123"),
+  TRACK_BASE_PATH: "/track",
+}));
 vi.mock("@/lib/supabase/admin", () => ({
   createTenantScopedAdmin: () => {
     let table = "";
@@ -42,24 +46,24 @@ beforeEach(() => {
 
 describe("maybeNotifyBodyRepairStageAdvance", () => {
   it("does nothing when customerId is null", async () => {
-    await maybeNotifyBodyRepairStageAdvance({ tenantId: "t1", customerId: null, stage: "paint" });
+    await maybeNotifyBodyRepairStageAdvance({ tenantId: "t1", jobId: "j1", customerId: null, stage: "paint" });
     expect(mocks.sendProgress).not.toHaveBeenCalled();
   });
 
   it("does nothing when the action is not opted in", async () => {
     mocks.resolveAction.mockReturnValue(false);
-    await maybeNotifyBodyRepairStageAdvance({ tenantId: "t1", customerId: "c1", stage: "paint" });
+    await maybeNotifyBodyRepairStageAdvance({ tenantId: "t1", jobId: "j1", customerId: "c1", stage: "paint" });
     expect(mocks.sendProgress).not.toHaveBeenCalled();
   });
 
   it("does nothing when the customer has no line_user_id", async () => {
     mocks.customerRow.data = { id: "c1", name: "山田太郎", line_user_id: null };
-    await maybeNotifyBodyRepairStageAdvance({ tenantId: "t1", customerId: "c1", stage: "paint" });
+    await maybeNotifyBodyRepairStageAdvance({ tenantId: "t1", jobId: "j1", customerId: "c1", stage: "paint" });
     expect(mocks.sendProgress).not.toHaveBeenCalled();
   });
 
   it("sends a progress update with the mapped stage label and totals", async () => {
-    await maybeNotifyBodyRepairStageAdvance({ tenantId: "t1", customerId: "c1", stage: "paint" });
+    await maybeNotifyBodyRepairStageAdvance({ tenantId: "t1", jobId: "j1", customerId: "c1", stage: "paint" });
     expect(mocks.sendProgress).toHaveBeenCalledTimes(1);
     const arg = mocks.sendProgress.mock.calls[0][0];
     expect(arg.lineUserId).toBe("U123");
@@ -67,12 +71,14 @@ describe("maybeNotifyBodyRepairStageAdvance", () => {
     expect(arg.totalSteps).toBe(BODY_REPAIR_STAGES.length);
     expect(arg.currentStep).toBe(BODY_REPAIR_STAGES.indexOf("paint") + 1);
     expect(arg.tenantName).toBe("テスト鈑金");
+    // 顧客ポータルではなく案件トラッキング (/track/[token]) へリンクすること。
+    expect(arg.portalUrl).toContain("/track/tok123");
   });
 
   it("swallows errors (non-blocking)", async () => {
     mocks.sendProgress.mockRejectedValue(new Error("LINE down"));
     await expect(
-      maybeNotifyBodyRepairStageAdvance({ tenantId: "t1", customerId: "c1", stage: "complete" }),
+      maybeNotifyBodyRepairStageAdvance({ tenantId: "t1", jobId: "j1", customerId: "c1", stage: "complete" }),
     ).resolves.toBeUndefined();
   });
 });

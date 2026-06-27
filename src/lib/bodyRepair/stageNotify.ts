@@ -2,6 +2,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { loadAiAutomationSettings, resolveAutoAction } from "@/lib/ai/automation/policy";
 import { sendProgressUpdate } from "@/lib/line/client";
 import { logger } from "@/lib/logger";
+import { ensureBodyRepairTrackToken, TRACK_BASE_PATH } from "@/lib/bodyRepair/trackToken";
 import { BODY_REPAIR_STAGES, BODY_REPAIR_STAGE_LABEL, type BodyRepairStage } from "@/lib/validations/body-repair-job";
 
 export const BODY_REPAIR_STAGE_ADVANCE_ACTION = "body_repair.auto_notify_on_stage_advance";
@@ -18,10 +19,11 @@ export const BODY_REPAIR_STAGE_ADVANCE_ACTION = "body_repair.auto_notify_on_stag
  */
 export async function maybeNotifyBodyRepairStageAdvance(params: {
   tenantId: string;
+  jobId: string;
   customerId: string | null;
   stage: BodyRepairStage;
 }): Promise<void> {
-  const { tenantId, customerId, stage } = params;
+  const { tenantId, jobId, customerId, stage } = params;
   if (!customerId) return;
 
   try {
@@ -45,7 +47,11 @@ export async function maybeNotifyBodyRepairStageAdvance(params: {
     const index = BODY_REPAIR_STAGES.indexOf(stage);
     const currentStep = index >= 0 ? index + 1 : totalSteps;
     const progressPct = Math.round((currentStep / totalSteps) * 100);
-    const portalUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/customer/${tenantId}`;
+
+    // この自動通知が手作業を置き換える対象は、まさに案件の進捗トラッキング URL
+    // (/track/[token])。顧客ポータル (/customer/[slug]) は別物 (認証/別解決) なので使わない。
+    const token = await ensureBodyRepairTrackToken(admin, tenantId, jobId);
+    const portalUrl = token ? `${process.env.NEXT_PUBLIC_APP_URL ?? ""}${TRACK_BASE_PATH}/${token}` : "";
 
     await sendProgressUpdate({
       tenantId,
