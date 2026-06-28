@@ -736,6 +736,184 @@ function CreateDialog({
 }
 
 // ─── 編集ダイアログ (ガイドライン4.2(2)(3): 予定/実績・差異理由・実績料金) ───
+interface ActiveLoan {
+  id: string;
+  return_due_at: string | null;
+  loaner_car: { name: string | null; plate_display: string | null } | null;
+}
+
+function formatLoanDue(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+/**
+ * 案件に紐付く代車の貸出/返却を扱う。アクティブな貸出があれば代車名・返却予定
+ * (超過は赤) と「返却する」を表示し、無ければ貸出可能な代車を選んで貸し出す。
+ * loaner_car_loans.body_repair_job_id 経由で案件と紐付ける (Phase 2B)。
+ */
+function LoanerSection({ job, onError }: { job: BodyRepairJob; onError: (msg: string) => void }) {
+  const [loan, setLoan] = useState<ActiveLoan | null>(null);
+  const [cars, setCars] = useState<VehicleOption[]>([]);
+  const [carId, setCarId] = useState("");
+  const [dueAt, setDueAt] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/loaner-cars/loans?body_repair_job_id=${job.id}&active_only=true`);
+      const data = res.ok ? await res.json() : { loans: [] };
+      const active = (Array.isArray(data.loans) && data.loans.length > 0 ? data.loans[0] : null) as ActiveLoan | null;
+      setLoan(active);
+      if (!active) {
+        const carsRes = await fetch("/api/admin/loaner-cars");
+        const carsData = carsRes.ok ? await carsRes.json() : { cars: [] };
+        const list = ((carsData.cars ?? []) as Array<Record<string, unknown>>).filter(
+          (c) => c.is_active && !c.current_loan,
+        );
+        setCars(
+          list.map((c) => ({
+            id: String(c.id),
+            label: [c.name, c.plate_display].filter(Boolean).join(" / ") || "代車",
+          })),
+        );
+      }
+    } catch {
+      /* 取得失敗時は何も表示しない */
+    } finally {
+      setLoading(false);
+    }
+  }, [job.id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function lend() {
+    if (!carId) {
+      onError("代車を選択してください。");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/loaner-cars/loans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          loaner_car_id: carId,
+          customer_id: job.customer_id ?? undefined,
+          body_repair_job_id: job.id,
+          return_due_at: dueAt || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.message ?? "貸出に失敗しました");
+      }
+      setCarId("");
+      setDueAt("");
+      await load();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "貸出に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function returnCar() {
+    if (!loan) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/loaner-cars/loans", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: loan.id }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.message ?? "返却に失敗しました");
+      }
+      await load();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "返却に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const overdue = loan?.return_due_at ? new Date(loan.return_due_at).getTime() < Date.now() : false;
+
+  return (
+    <div className="rounded-lg border border-border-subtle bg-inset p-3">
+      <div className="mb-1.5 text-xs font-semibold text-primary">代車</div>
+      {loading ? (
+        <p className="text-[11px] text-muted">読み込み中…</p>
+      ) : loan ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-primary">
+            {loan.loaner_car
+              ? [loan.loaner_car.name, loan.loaner_car.plate_display].filter(Boolean).join(" / ")
+              : "代車"}
+          </span>
+          {loan.return_due_at && (
+            <span
+              className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                overdue ? "border-red-500/40 bg-red-500/15 text-red-300" : "border-border-subtle bg-surface text-muted"
+              }`}
+            >
+              返却予定 {formatLoanDue(loan.return_due_at)}
+              {overdue ? " ・超過" : ""}
+            </span>
+          )}
+          <MutationGuard>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={returnCar}
+              className="rounded-md border border-border-strong px-2.5 py-1 text-[11px] text-secondary transition-colors hover:text-primary disabled:opacity-50"
+            >
+              {busy ? "…" : "返却する"}
+            </button>
+          </MutationGuard>
+        </div>
+      ) : cars.length === 0 ? (
+        <p className="text-[11px] text-muted">貸出可能な代車がありません</p>
+      ) : (
+        <div className="flex flex-wrap items-end gap-2">
+          <select value={carId} onChange={(e) => setCarId(e.target.value)} className={inputCls}>
+            <option value="">代車を選択</option>
+            {cars.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+          <input
+            type="date"
+            value={dueAt}
+            onChange={(e) => setDueAt(e.target.value)}
+            className={inputCls}
+            aria-label="返却予定日"
+          />
+          <MutationGuard>
+            <button
+              type="button"
+              disabled={busy || !carId}
+              onClick={lend}
+              className="rounded-md bg-accent px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+            >
+              {busy ? "…" : "貸し出す"}
+            </button>
+          </MutationGuard>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EditDialog({
   job,
   canAiQuote,
@@ -912,6 +1090,9 @@ function EditDialog({
             <p className="text-[11px] text-muted">AI 見積は Standard プラン以上でご利用いただけます。</p>
           )}
         </div>
+
+        {/* 代車 */}
+        <LoanerSection job={job} onError={onError} />
 
         {/* 予定内容 (読み取り専用) */}
         <div className="rounded-lg border border-border-subtle bg-inset p-3 text-xs text-secondary">

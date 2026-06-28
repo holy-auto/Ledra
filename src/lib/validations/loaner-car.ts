@@ -69,6 +69,7 @@ export const loanerLoanCreateSchema = z.object({
   loaner_car_id: z.string().uuid("代車 ID が不正です。"),
   reservation_id: optionalUuid,
   customer_id: optionalUuid,
+  body_repair_job_id: optionalUuid,
   customer_name: optionalText(80),
   lent_at: optionalDateTime,
   return_due_at: optionalDateTime,

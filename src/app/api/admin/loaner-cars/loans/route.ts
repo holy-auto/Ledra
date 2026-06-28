@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const LOAN_COLUMNS = `
-  id, loaner_car_id, reservation_id, customer_id, customer_name,
+  id, loaner_car_id, reservation_id, customer_id, body_repair_job_id, customer_name,
   lent_at, return_due_at, returned_at, notes, created_at, updated_at,
   loaner_car:loaner_cars ( id, name, plate_display ),
   customer:customers ( id, name ),
@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
 
     const url = new URL(req.url);
     const carId = (url.searchParams.get("car_id") ?? "").trim();
+    const jobId = (url.searchParams.get("body_repair_job_id") ?? "").trim();
     // active_only は明示的に "false" のときのみ false。既定 true。
     const activeOnly = url.searchParams.get("active_only") !== "false";
 
@@ -44,6 +45,7 @@ export async function GET(req: NextRequest) {
       .order("lent_at", { ascending: false });
 
     if (carId) query = query.eq("loaner_car_id", carId);
+    if (jobId) query = query.eq("body_repair_job_id", jobId);
     if (activeOnly) query = query.is("returned_at", null);
 
     const { data: loans, error } = await query;
@@ -71,7 +73,16 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-    const { loaner_car_id, reservation_id, customer_id, customer_name, lent_at, return_due_at, notes } = parsed.data;
+    const {
+      loaner_car_id,
+      reservation_id,
+      customer_id,
+      body_repair_job_id,
+      customer_name,
+      lent_at,
+      return_due_at,
+      notes,
+    } = parsed.data;
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
@@ -85,8 +96,12 @@ export async function POST(req: NextRequest) {
     if (carErr) return apiInternalError(carErr, "loaner-cars/loans POST car");
     if (!car) return apiValidationError("指定された代車が見つかりません。");
 
-    // 2) 顧客 / 予約参照のテナント検証。
-    const refError = await validateTenantRefs(admin, caller.tenantId, { customer_id, reservation_id });
+    // 2) 顧客 / 予約 / 鈑金案件参照のテナント検証。
+    const refError = await validateTenantRefs(admin, caller.tenantId, {
+      customer_id,
+      reservation_id,
+      body_repair_job_id,
+    });
     if (refError) return apiValidationError(refError);
 
     // 3) すでに貸出中 (未返却) なら 409。
@@ -120,6 +135,7 @@ export async function POST(req: NextRequest) {
       loaner_car_id,
       reservation_id,
       customer_id,
+      body_repair_job_id,
       customer_name: snapshotName,
       return_due_at,
       notes,
@@ -178,7 +194,7 @@ export async function PATCH(req: NextRequest) {
 async function validateTenantRefs(
   admin: ReturnType<typeof createTenantScopedAdmin>["admin"],
   tenantId: string,
-  refs: { customer_id: string | null; reservation_id: string | null },
+  refs: { customer_id: string | null; reservation_id: string | null; body_repair_job_id?: string | null },
 ): Promise<string | null> {
   if (refs.customer_id) {
     const { data, error } = await admin
@@ -199,6 +215,16 @@ async function validateTenantRefs(
       .maybeSingle();
     if (error) throw error;
     if (!data) return "指定された予約が見つかりません。";
+  }
+  if (refs.body_repair_job_id) {
+    const { data, error } = await admin
+      .from("body_repair_jobs")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("id", refs.body_repair_job_id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return "指定された鈑金案件が見つかりません。";
   }
   return null;
 }
