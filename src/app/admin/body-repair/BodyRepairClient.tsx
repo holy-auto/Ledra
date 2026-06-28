@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import nextDynamic from "next/dynamic";
 import MutationGuard from "@/components/ui/MutationGuard";
+import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import {
   BODY_REPAIR_STAGES,
   BODY_REPAIR_STAGE_LABEL,
@@ -9,6 +11,8 @@ import {
   BODY_REPAIR_NEXT_STAGE,
   type BodyRepairStage,
 } from "@/lib/validations/body-repair-job";
+
+const VoiceMemoPanel = nextDynamic(() => import("@/app/admin/certificates/new/VoiceMemoPanel"), { ssr: false });
 
 // ─── 型定義 ──────────────────────────────────────────────────────
 interface JobCustomer {
@@ -95,6 +99,8 @@ export default function BodyRepairClient() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editJob, setEditJob] = useState<BodyRepairJob | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // 音声→備考 (Standard 以上の ai_draft 機能)。current tenant の plan_tier から判定。
+  const [canAiNote, setCanAiNote] = useState(false);
 
   const showToast = useCallback((type: "success" | "error", msg: string) => {
     setToast({ type, msg });
@@ -119,6 +125,27 @@ export default function BodyRepairClient() {
   useEffect(() => {
     fetchJobs();
   }, [fetchJobs]);
+
+  // 現在テナントの plan_tier から音声→備考の可否を判定。
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/tenants");
+        if (!res.ok) return;
+        const data = await res.json();
+        const current = data?.tenants?.find((t: { is_current?: boolean }) => t.is_current) ?? data?.tenants?.[0];
+        if (alive && current?.plan_tier) {
+          setCanAiNote(canUseFeature(normalizePlanTier(current.plan_tier), "ai_draft"));
+        }
+      } catch {
+        /* plan 取得失敗時は非表示のまま (API 側でも 403 ガード) */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const advanceStage = useCallback(
     async (job: BodyRepairJob) => {
@@ -221,6 +248,7 @@ export default function BodyRepairClient() {
       {/* 新規作成ダイアログ */}
       {createOpen && (
         <CreateDialog
+          canAiNote={canAiNote}
           onClose={() => setCreateOpen(false)}
           onCreated={async () => {
             setCreateOpen(false);
@@ -338,10 +366,12 @@ function JobCard({
 
 // ─── 新規作成ダイアログ ───
 function CreateDialog({
+  canAiNote,
   onClose,
   onCreated,
   onError,
 }: {
+  canAiNote: boolean;
   onClose: () => void;
   onCreated: () => void;
   onError: (msg: string) => void;
@@ -551,6 +581,13 @@ function CreateDialog({
             className={`w-full resize-none ${inputCls}`}
           />
         </Field>
+        {canAiNote && (
+          <VoiceMemoPanel
+            variant="note"
+            serviceType="body_repair"
+            onApply={(note) => setNotes((prev) => (prev.trim() ? `${prev.trim()}\n${note}` : note))}
+          />
+        )}
       </div>
 
       <DialogActions onClose={onClose} onSubmit={submit} submitting={submitting} submitLabel="作成する" />
