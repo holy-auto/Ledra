@@ -41,8 +41,11 @@ const LANE_H = 46;
 
 export default function GanttBoard({ realData, dateStr }: { realData: GanttData; dateStr: string }) {
   const realEmpty = realData.cases.length === 0 && realData.unassigned.length === 0 && realData.staff.length === 0;
-  // 実データが空ならデモ表示で開始（空の店舗でもデザインが伝わる）。
-  const [showDemo, setShowDemo] = useState(realEmpty);
+  // デモ表示は「ユーザが明示トグルしていなければ realEmpty に追従」する純導出。
+  // これにより live ポーリングで空→実データに変わると自動でデモを抜け、ユーザが
+  // 明示トグルした場合 (override 非 null) はその選択を尊重する。effect 不要。
+  const [demoOverride, setDemoOverride] = useState<boolean | null>(null);
+  const showDemo = demoOverride ?? realEmpty;
   const data = showDemo ? demoGanttData(dateStr) : realData;
 
   // NOW ライン: 開きっぱなしの運用ディスプレイでも現在時刻に追従するよう毎分更新。
@@ -91,7 +94,7 @@ export default function GanttBoard({ realData, dateStr }: { realData: GanttData;
           {realEmpty && <span className="text-[11px] text-muted">本日の予約なし</span>}
           <button
             type="button"
-            onClick={() => setShowDemo((v) => !v)}
+            onClick={() => setDemoOverride(!showDemo)}
             aria-pressed={showDemo}
             className={`rounded-[var(--radius-full)] border px-2.5 py-1 text-[11px] font-medium transition-colors ${
               showDemo
