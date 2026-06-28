@@ -81,6 +81,7 @@ describe("bodyRepairJobUpdateSchema — 部分更新セマンティクス", () =
       expect(r.data.notes).toBeUndefined();
       expect(r.data.insurance_company).toBeUndefined();
       expect(r.data.certificate_id).toBeUndefined();
+      expect(r.data.insurer_case_id).toBeUndefined();
     }
   });
 
