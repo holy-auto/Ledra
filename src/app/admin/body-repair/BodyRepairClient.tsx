@@ -60,8 +60,14 @@ interface BodyRepairJob {
   deviation_reason: string | null;
   is_specified_maintenance: boolean;
   record_retention_until: string | null;
+  estimate_document_id: string | null;
   customer: JobCustomer | null;
   vehicle: JobVehicle | null;
+}
+
+interface VehicleOption {
+  id: string;
+  label: string;
 }
 
 interface CustomerOption {
@@ -125,8 +131,9 @@ export default function BodyRepairClient() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editJob, setEditJob] = useState<BodyRepairJob | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  // 音声→備考 (Standard 以上の ai_draft 機能)。current tenant の plan_tier から判定。
+  // 音声→備考 (ai_draft) / AI 見積 (ai_invoice_quote)。current tenant の plan_tier から判定。
   const [canAiNote, setCanAiNote] = useState(false);
+  const [canAiQuote, setCanAiQuote] = useState(false);
   // 納期チップは JST 当日基準。開きっぱなしでも日付境界で再計算するための tick。
   const [, setDayTick] = useState(0);
 
@@ -183,7 +190,9 @@ export default function BodyRepairClient() {
         const data = await res.json();
         const current = data?.tenants?.find((t: { is_current?: boolean }) => t.is_current) ?? data?.tenants?.[0];
         if (alive && current?.plan_tier) {
-          setCanAiNote(canUseFeature(normalizePlanTier(current.plan_tier), "ai_draft"));
+          const tier = normalizePlanTier(current.plan_tier);
+          setCanAiNote(canUseFeature(tier, "ai_draft"));
+          setCanAiQuote(canUseFeature(tier, "ai_invoice_quote"));
         }
       } catch {
         /* plan 取得失敗時は非表示のまま (API 側でも 403 ガード) */
@@ -310,6 +319,7 @@ export default function BodyRepairClient() {
       {editJob && (
         <EditDialog
           job={editJob}
+          canAiQuote={canAiQuote}
           onClose={() => setEditJob(null)}
           onSaved={async () => {
             setEditJob(null);
@@ -395,6 +405,11 @@ function JobCard({
             {due === "overdue" ? " ・超過" : due === "today" ? " ・本日" : due === "soon" ? " ・明日" : ""}
           </span>
         )}
+        {job.estimate_document_id && (
+          <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">
+            見積書
+          </span>
+        )}
       </div>
 
       {job.insurance_company && <div className="mt-1 truncate text-[11px] text-muted">{job.insurance_company}</div>}
@@ -441,6 +456,10 @@ function CreateDialog({
   const [query, setQuery] = useState("");
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [customerId, setCustomerId] = useState("");
+  // 車両は顧客に紐づくため、顧客選択後にその顧客の車両を候補表示する。
+  // 車両を紐付けておくと案件から AI 見積 (ai-from-vehicle) を作成できる。
+  const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
+  const [vehicleId, setVehicleId] = useState("");
   const [estimateAmount, setEstimateAmount] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [insuranceCompany, setInsuranceCompany] = useState("");
@@ -486,6 +505,35 @@ function CreateDialog({
     };
   }, [query]);
 
+  // 顧客が決まったらその顧客の車両を取得。顧客変更時は車両選択をリセットする。
+  useEffect(() => {
+    setVehicleId("");
+    setVehicles([]);
+    if (!customerId) return;
+    let active = true;
+    (async () => {
+      try {
+        const res = await fetch(`/api/admin/vehicles?customer_id=${customerId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const list = (data.vehicles ?? data.items ?? []) as Array<Record<string, unknown>>;
+        if (!active) return;
+        setVehicles(
+          list.map((v) => ({
+            id: String(v.id),
+            label:
+              [v.maker, v.model, v.year ? String(v.year) : null, v.plate_display].filter(Boolean).join(" ") || "車両",
+          })),
+        );
+      } catch {
+        /* 取得失敗時は車両候補なし */
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [customerId]);
+
   async function submit() {
     if (estimateAmount && (!Number.isInteger(Number(estimateAmount)) || Number(estimateAmount) < 0)) {
       onError("見積金額は 0 以上の整数で入力してください。");
@@ -498,6 +546,7 @@ function CreateDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customer_id: customerId || null,
+          vehicle_id: vehicleId || null,
           stage: "intake",
           estimate_amount: estimateAmount ? Number(estimateAmount) : null,
           due_date: dueDate || null,
@@ -566,6 +615,23 @@ function CreateDialog({
             ))
           )}
         </div>
+
+        {customerId && (
+          <Field label="車両（任意・紐付けると AI 見積を作成できます）">
+            {vehicles.length === 0 ? (
+              <p className="text-xs text-muted">この顧客に登録車両がありません</p>
+            ) : (
+              <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} className={`w-full ${inputCls}`}>
+                <option value="">（車両を指定しない）</option>
+                {vehicles.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.label}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="見積金額（円）">
@@ -672,11 +738,13 @@ function CreateDialog({
 // ─── 編集ダイアログ (ガイドライン4.2(2)(3): 予定/実績・差異理由・実績料金) ───
 function EditDialog({
   job,
+  canAiQuote,
   onClose,
   onSaved,
   onError,
 }: {
   job: BodyRepairJob;
+  canAiQuote: boolean;
   onClose: () => void;
   onSaved: () => void;
   onError: (msg: string) => void;
@@ -691,6 +759,87 @@ function EditDialog({
   const [dueDate, setDueDate] = useState(job.due_date ?? "");
   const [isSpecified, setIsSpecified] = useState(job.is_specified_maintenance);
   const [submitting, setSubmitting] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+
+  /**
+   * AI 見積を作成して案件に添付する。
+   * ai-from-vehicle で下書き生成 → documents に見積書を作成 → 案件へ
+   * estimate_document_id / estimate_amount を紐付け、の 3 ステップを順に実行する。
+   */
+  async function createAiEstimate() {
+    if (!job.vehicle_id) {
+      onError("AI 見積には車両の紐付けが必要です。");
+      return;
+    }
+    setAiBusy(true);
+    try {
+      // 1) AI 見積下書き
+      const aiRes = await fetch("/api/admin/quotes/ai-from-vehicle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vehicle_id: job.vehicle_id,
+          customer_id: job.customer_id ?? undefined,
+          service_category: "板金塗装",
+        }),
+      });
+      if (!aiRes.ok) {
+        const err = await aiRes.json().catch(() => ({}));
+        throw new Error(err.message ?? "AI 見積の生成に失敗しました");
+      }
+      const aiData = await aiRes.json();
+      if (aiData.ai_disabled || !aiData.draft) {
+        throw new Error("AI 自動化が無効です（設定から有効化してください）");
+      }
+      const draft = aiData.draft as {
+        items: Array<{ description: string; quantity: number; unit_price: number }>;
+        total: number;
+        terms?: string;
+      };
+
+      // 2) 見積書 (documents.doc_type='estimate') を作成
+      const items = draft.items.map((i) => ({
+        item_type: "item",
+        description: i.description,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+      }));
+      const docRes = await fetch("/api/admin/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          doc_type: "estimate",
+          customer_id: job.customer_id ?? null,
+          subject: "お見積書（鈑金塗装）",
+          items,
+          note: draft.terms ?? null,
+          status: "draft",
+          tax_rate: 10,
+        }),
+      });
+      if (!docRes.ok) {
+        const err = await docRes.json().catch(() => ({}));
+        throw new Error(err.message ?? "見積書の作成に失敗しました");
+      }
+      const doc = (await docRes.json()).document as { id: string; total: number };
+
+      // 3) 案件へ紐付け（見積金額も同期）
+      const patchRes = await fetch("/api/admin/body-repair-jobs", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: job.id, estimate_document_id: doc.id, estimate_amount: doc.total }),
+      });
+      if (!patchRes.ok) {
+        const err = await patchRes.json().catch(() => ({}));
+        throw new Error(err.message ?? "案件への紐付けに失敗しました");
+      }
+      onSaved();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "AI 見積の作成に失敗しました");
+    } finally {
+      setAiBusy(false);
+    }
+  }
 
   async function save() {
     if (actualAmount && (!Number.isInteger(Number(actualAmount)) || Number(actualAmount) < 0)) {
@@ -730,6 +879,40 @@ function EditDialog({
   return (
     <DialogShell title="作業実績の記録" onClose={onClose}>
       <div className="space-y-4">
+        {/* AI 見積 */}
+        <div className="rounded-lg border border-border-subtle bg-inset p-3">
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-primary">AI 見積</span>
+            {job.estimate_document_id && (
+              <a
+                href={`/admin/documents/${job.estimate_document_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-md border border-accent/40 bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent transition-colors hover:bg-accent/20"
+              >
+                見積書を開く →
+              </a>
+            )}
+          </div>
+          {canAiQuote ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <MutationGuard>
+                <button
+                  type="button"
+                  disabled={aiBusy || !job.vehicle_id}
+                  onClick={createAiEstimate}
+                  className="rounded-md bg-accent px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+                >
+                  {aiBusy ? "作成中…" : job.estimate_document_id ? "AIで見積書を作り直す" : "AIで見積書を作成"}
+                </button>
+              </MutationGuard>
+              {!job.vehicle_id && <span className="text-[11px] text-muted">※ 車両が紐付いた案件で利用できます</span>}
+            </div>
+          ) : (
+            <p className="text-[11px] text-muted">AI 見積は Standard プラン以上でご利用いただけます。</p>
+          )}
+        </div>
+
         {/* 予定内容 (読み取り専用) */}
         <div className="rounded-lg border border-border-subtle bg-inset p-3 text-xs text-secondary">
           <div className="mb-1 font-semibold text-primary">予定（作業開始前）</div>
