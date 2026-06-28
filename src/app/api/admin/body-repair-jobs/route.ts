@@ -25,6 +25,7 @@ const SELECT_COLUMNS = `
   intake_at, estimate_at, bodywork_start_at, paint_start_at, complete_at, delivered_at,
   notes, created_at, updated_at,
   certificate_id, estimate_document_id, invoice_document_id, insurer_case_id,
+  claim_status, claim_approved_amount, claim_decided_at,
   planned_work_json, actual_work_json, deviation_reason,
   is_specified_maintenance, record_retention_until, recorded_by,
   customer:customers ( id, name, phone ),

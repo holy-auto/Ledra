@@ -9,6 +9,8 @@ import {
   BODY_REPAIR_STAGE_LABEL,
   BODY_REPAIR_STAGE_COLOR,
   BODY_REPAIR_NEXT_STAGE,
+  CLAIM_STATUSES,
+  CLAIM_STATUS_LABEL,
   type BodyRepairStage,
 } from "@/lib/validations/body-repair-job";
 
@@ -62,6 +64,9 @@ interface BodyRepairJob {
   record_retention_until: string | null;
   estimate_document_id: string | null;
   insurer_case_id: string | null;
+  claim_status: string | null;
+  claim_approved_amount: number | null;
+  claim_decided_at: string | null;
   customer: JobCustomer | null;
   vehicle: JobVehicle | null;
 }
@@ -97,6 +102,20 @@ function daysSince(iso: string | null): number | null {
 function formatAmount(n: number | null): string | null {
   if (n == null) return null;
   return `¥${n.toLocaleString("ja-JP")}`;
+}
+
+/** 保険査定ステータスのチップ配色。承認=緑 / 一部=琥珀 / 差戻=赤 / 提出済=青。 */
+function claimChipCls(status: string): string {
+  switch (status) {
+    case "approved":
+      return "border-green-500/40 bg-green-500/15 text-green-300";
+    case "partial":
+      return "border-amber-500/40 bg-amber-500/15 text-amber-300";
+    case "rejected":
+      return "border-red-500/40 bg-red-500/15 text-red-300";
+    default:
+      return "border-blue-500/40 bg-blue-500/15 text-blue-300";
+  }
 }
 
 /** JST の当日 (YYYY-MM-DD)。納期の超過判定に使う。 */
@@ -409,6 +428,11 @@ function JobCard({
         {job.estimate_document_id && (
           <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">
             見積書
+          </span>
+        )}
+        {job.claim_status && (
+          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${claimChipCls(job.claim_status)}`}>
+            保険:{CLAIM_STATUS_LABEL[job.claim_status as keyof typeof CLAIM_STATUS_LABEL] ?? job.claim_status}
           </span>
         )}
       </div>
@@ -1158,6 +1182,11 @@ function EditDialog({
   const [deviationReason, setDeviationReason] = useState(job.deviation_reason ?? "");
   const [actualAmount, setActualAmount] = useState(job.actual_amount != null ? String(job.actual_amount) : "");
   const [dueDate, setDueDate] = useState(job.due_date ?? "");
+  const [claimStatus, setClaimStatus] = useState(job.claim_status ?? "");
+  const [claimApproved, setClaimApproved] = useState(
+    job.claim_approved_amount != null ? String(job.claim_approved_amount) : "",
+  );
+  const [claimDecidedAt, setClaimDecidedAt] = useState(job.claim_decided_at ? job.claim_decided_at.slice(0, 10) : "");
   const [isSpecified, setIsSpecified] = useState(job.is_specified_maintenance);
   const [submitting, setSubmitting] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
@@ -1256,6 +1285,9 @@ function EditDialog({
           id: job.id,
           actual_amount: actualAmount ? Number(actualAmount) : null,
           due_date: dueDate || null,
+          claim_status: claimStatus || null,
+          claim_approved_amount: claimApproved ? Number(claimApproved) : null,
+          claim_decided_at: claimDecidedAt || null,
           deviation_reason: deviationReason.trim() || null,
           is_specified_maintenance: isSpecified,
           actual_work: {
@@ -1386,6 +1418,45 @@ function EditDialog({
               className={`w-full ${inputCls}`}
             />
           </Field>
+        </div>
+
+        {/* 保険査定 (保険会社から受領した結果の記録) */}
+        <div className="rounded-lg border border-border-subtle bg-inset p-3">
+          <div className="mb-2 text-xs font-semibold text-primary">保険査定（受領結果）</div>
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="ステータス">
+              <select
+                value={claimStatus}
+                onChange={(e) => setClaimStatus(e.target.value)}
+                className={`w-full ${inputCls}`}
+              >
+                <option value="">未提出</option>
+                {CLAIM_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {CLAIM_STATUS_LABEL[s]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="承認額（円）">
+              <input
+                type="number"
+                min={0}
+                value={claimApproved}
+                onChange={(e) => setClaimApproved(e.target.value)}
+                placeholder="例: 175000"
+                className={`w-full ${inputCls}`}
+              />
+            </Field>
+            <Field label="査定受領日">
+              <input
+                type="date"
+                value={claimDecidedAt}
+                onChange={(e) => setClaimDecidedAt(e.target.value)}
+                className={`w-full ${inputCls}`}
+              />
+            </Field>
+          </div>
         </div>
 
         <label className="flex items-center gap-2 text-sm text-secondary">
