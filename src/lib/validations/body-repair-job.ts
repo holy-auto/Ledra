@@ -75,6 +75,19 @@ const optionalText = (max: number) =>
     .optional()
     .transform((v) => (v ? v : null));
 
+/** 日付 (YYYY-MM-DD) or null。空文字 / undefined は null に正規化。 */
+const optionalDate = z
+  .union([
+    z
+      .string()
+      .trim()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "日付は YYYY-MM-DD 形式で指定してください。"),
+    z.literal(""),
+    z.null(),
+  ])
+  .optional()
+  .transform((v) => (v ? v : null));
+
 /** 見積金額 (0 以上の整数 or null)。円単位、numeric(12,0) に格納。 */
 const optionalAmount = z
   .union([
@@ -114,6 +127,7 @@ export const bodyRepairJobCreateSchema = z.object({
   reservation_id: optionalUuid,
   stage: z.enum(BODY_REPAIR_STAGES).default("intake"),
   estimate_amount: optionalAmount,
+  due_date: optionalDate,
   insurance_company: optionalText(120),
   claim_number: optionalText(60),
   notes: optionalText(2000),
@@ -133,6 +147,7 @@ export const bodyRepairJobUpdateSchema = z.object({
   id: z.string().uuid("案件 ID が不正です。"),
   stage: z.enum(BODY_REPAIR_STAGES).optional(),
   estimate_amount: optionalAmount,
+  due_date: optionalDate,
   insurance_company: optionalText(120),
   claim_number: optionalText(60),
   notes: optionalText(2000),

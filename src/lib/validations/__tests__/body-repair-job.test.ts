@@ -38,6 +38,21 @@ describe("bodyRepairJobCreateSchema — ガイドライン準拠フィールド"
     const r = bodyRepairJobCreateSchema.safeParse({ estimate_amount: -1 });
     expect(r.success).toBe(false);
   });
+
+  it("納期 (due_date) を YYYY-MM-DD で受理し、空文字は null に正規化する", () => {
+    const ok = bodyRepairJobCreateSchema.safeParse({ due_date: "2026-07-15" });
+    expect(ok.success).toBe(true);
+    if (ok.success) expect(ok.data.due_date).toBe("2026-07-15");
+
+    const empty = bodyRepairJobCreateSchema.safeParse({ due_date: "" });
+    expect(empty.success).toBe(true);
+    if (empty.success) expect(empty.data.due_date).toBeNull();
+  });
+
+  it("不正な日付形式の納期を弾く", () => {
+    expect(bodyRepairJobCreateSchema.safeParse({ due_date: "2026/07/15" }).success).toBe(false);
+    expect(bodyRepairJobCreateSchema.safeParse({ due_date: "来週" }).success).toBe(false);
+  });
 });
 
 describe("bodyRepairJobUpdateSchema — 部分更新セマンティクス", () => {

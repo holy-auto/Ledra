@@ -41,6 +41,7 @@ interface BodyRepairJob {
   stage: BodyRepairStage;
   estimate_amount: number | null;
   actual_amount: number | null;
+  due_date: string | null;
   insurance_company: string | null;
   claim_number: string | null;
   assigned_staff_id: string | null;
@@ -89,6 +90,31 @@ function daysSince(iso: string | null): number | null {
 function formatAmount(n: number | null): string | null {
   if (n == null) return null;
   return `¥${n.toLocaleString("ja-JP")}`;
+}
+
+/** JST の当日 (YYYY-MM-DD)。納期の超過判定に使う。 */
+function jstTodayDate(): string {
+  return new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
+}
+
+/**
+ * 納期の状態。出庫済みは対象外。YYYY-MM-DD は辞書順比較で日付比較になる。
+ *   overdue … 期限超過 / today … 本日締切 / soon … 翌日締切 / null … 余裕あり or 未設定
+ */
+function dueState(job: BodyRepairJob): "overdue" | "today" | "soon" | null {
+  if (!job.due_date || job.stage === "delivered") return null;
+  const today = jstTodayDate();
+  if (job.due_date < today) return "overdue";
+  if (job.due_date === today) return "today";
+  const tomorrow = new Date(Date.now() + 9 * 3_600_000 + 86_400_000).toISOString().slice(0, 10);
+  if (job.due_date === tomorrow) return "soon";
+  return null;
+}
+
+function formatDueLabel(due: string): string {
+  // YYYY-MM-DD → M/D
+  const [, m, d] = due.split("-");
+  return `${Number(m)}/${Number(d)}`;
 }
 
 // ─── メインコンポーネント ─────────────────────────────────────────
@@ -302,6 +328,13 @@ function JobCard({
   const next = BODY_REPAIR_NEXT_STAGE[job.stage];
   const days = daysSince(job.intake_at);
   const amount = formatAmount(job.actual_amount ?? job.estimate_amount);
+  const due = dueState(job);
+  const dueChipCls =
+    due === "overdue"
+      ? "border-red-500/40 bg-red-500/15 text-red-300"
+      : due === "today"
+        ? "border-amber-500/40 bg-amber-500/15 text-amber-300"
+        : "border-border-subtle bg-inset text-muted";
 
   return (
     <div className="rounded-lg border border-border-subtle bg-surface p-3">
@@ -333,6 +366,12 @@ function JobCard({
           </span>
         )}
         {amount && <span className="text-xs font-semibold text-accent">{amount}</span>}
+        {job.due_date && (
+          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${dueChipCls}`}>
+            納期 {formatDueLabel(job.due_date)}
+            {due === "overdue" ? " ・超過" : due === "today" ? " ・本日" : due === "soon" ? " ・明日" : ""}
+          </span>
+        )}
       </div>
 
       {job.insurance_company && <div className="mt-1 truncate text-[11px] text-muted">{job.insurance_company}</div>}
@@ -380,6 +419,7 @@ function CreateDialog({
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [customerId, setCustomerId] = useState("");
   const [estimateAmount, setEstimateAmount] = useState("");
+  const [dueDate, setDueDate] = useState("");
   const [insuranceCompany, setInsuranceCompany] = useState("");
   const [claimNumber, setClaimNumber] = useState("");
   const [notes, setNotes] = useState("");
@@ -437,6 +477,7 @@ function CreateDialog({
           customer_id: customerId || null,
           stage: "intake",
           estimate_amount: estimateAmount ? Number(estimateAmount) : null,
+          due_date: dueDate || null,
           insurance_company: insuranceCompany.trim() || null,
           claim_number: claimNumber.trim() || null,
           notes: notes.trim() || null,
@@ -503,16 +544,26 @@ function CreateDialog({
           )}
         </div>
 
-        <Field label="見積金額（円）">
-          <input
-            type="number"
-            min={0}
-            value={estimateAmount}
-            onChange={(e) => setEstimateAmount(e.target.value)}
-            placeholder="例: 180000"
-            className={`w-full ${inputCls}`}
-          />
-        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="見積金額（円）">
+            <input
+              type="number"
+              min={0}
+              value={estimateAmount}
+              onChange={(e) => setEstimateAmount(e.target.value)}
+              placeholder="例: 180000"
+              className={`w-full ${inputCls}`}
+            />
+          </Field>
+          <Field label="納期（完成予定日）">
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className={`w-full ${inputCls}`}
+            />
+          </Field>
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="保険会社">
@@ -614,6 +665,7 @@ function EditDialog({
   const [actualPaint, setActualPaint] = useState(actual.paint ?? "");
   const [deviationReason, setDeviationReason] = useState(job.deviation_reason ?? "");
   const [actualAmount, setActualAmount] = useState(job.actual_amount != null ? String(job.actual_amount) : "");
+  const [dueDate, setDueDate] = useState(job.due_date ?? "");
   const [isSpecified, setIsSpecified] = useState(job.is_specified_maintenance);
   const [submitting, setSubmitting] = useState(false);
 
@@ -630,6 +682,7 @@ function EditDialog({
         body: JSON.stringify({
           id: job.id,
           actual_amount: actualAmount ? Number(actualAmount) : null,
+          due_date: dueDate || null,
           deviation_reason: deviationReason.trim() || null,
           is_specified_maintenance: isSpecified,
           actual_work: {
@@ -701,16 +754,26 @@ function EditDialog({
           />
         </Field>
 
-        <Field label="実績金額（円）">
-          <input
-            type="number"
-            min={0}
-            value={actualAmount}
-            onChange={(e) => setActualAmount(e.target.value)}
-            placeholder="例: 185000"
-            className={`w-full ${inputCls}`}
-          />
-        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="実績金額（円）">
+            <input
+              type="number"
+              min={0}
+              value={actualAmount}
+              onChange={(e) => setActualAmount(e.target.value)}
+              placeholder="例: 185000"
+              className={`w-full ${inputCls}`}
+            />
+          </Field>
+          <Field label="納期（完成予定日）">
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className={`w-full ${inputCls}`}
+            />
+          </Field>
+        </div>
 
         <label className="flex items-center gap-2 text-sm text-secondary">
           <input

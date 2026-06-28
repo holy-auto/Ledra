@@ -21,7 +21,7 @@ export const runtime = "nodejs";
  */
 const SELECT_COLUMNS = `
   id, reservation_id, customer_id, vehicle_id, stage,
-  estimate_amount, actual_amount, insurance_company, claim_number, assigned_staff_id,
+  estimate_amount, actual_amount, due_date, insurance_company, claim_number, assigned_staff_id,
   intake_at, estimate_at, bodywork_start_at, paint_start_at, complete_at, delivered_at,
   notes, created_at, updated_at,
   certificate_id, estimate_document_id, invoice_document_id,
