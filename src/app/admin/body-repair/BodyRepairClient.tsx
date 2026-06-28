@@ -61,6 +61,7 @@ interface BodyRepairJob {
   is_specified_maintenance: boolean;
   record_retention_until: string | null;
   estimate_document_id: string | null;
+  insurer_case_id: string | null;
   customer: JobCustomer | null;
   vehicle: JobVehicle | null;
 }
@@ -736,6 +737,228 @@ function CreateDialog({
 }
 
 // ─── 編集ダイアログ (ガイドライン4.2(2)(3): 予定/実績・差異理由・実績料金) ───
+const CASE_STATUS_LABEL: Record<string, string> = {
+  open: "新規",
+  in_progress: "処理中",
+  pending_tenant: "返答待ち",
+  resolved: "解決済",
+  closed: "クローズ",
+};
+const SENDER_LABEL: Record<string, string> = { insurer: "保険会社", tenant: "自店", system: "システム" };
+
+interface CaseMsg {
+  id: string;
+  sender_type: string;
+  content: string;
+  created_at: string;
+}
+interface CaseSummary {
+  id: string;
+  case_number: string | null;
+  title: string | null;
+  status: string;
+}
+interface InsurerCaseOption {
+  id: string;
+  case_number: string | null;
+  title: string | null;
+  status: string;
+  insurer: { name: string | null } | null;
+}
+
+function formatMsgTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/**
+ * 案件に紐づく保険案件 (insurer_cases) との往復メッセージを扱う (Phase 2D)。
+ * 未リンクなら自社の保険案件を選んで紐付け、リンク済みならスレッド表示 +
+ * 施工店としてメッセージ送信 (sender_type=tenant は API 側で固定)。
+ */
+function InsurerCaseSection({ job, onError }: { job: BodyRepairJob; onError: (msg: string) => void }) {
+  const [caseId, setCaseId] = useState<string | null>(job.insurer_case_id);
+  const [caseInfo, setCaseInfo] = useState<CaseSummary | null>(null);
+  const [messages, setMessages] = useState<CaseMsg[]>([]);
+  const [options, setOptions] = useState<InsurerCaseOption[]>([]);
+  const [pick, setPick] = useState("");
+  const [draft, setDraft] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  const loadThread = useCallback(async (cid: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/insurer-cases/${cid}/messages`);
+      const data = res.ok ? await res.json() : { case: null, messages: [] };
+      setCaseInfo((data.case ?? null) as CaseSummary | null);
+      setMessages(Array.isArray(data.messages) ? data.messages : []);
+    } catch {
+      /* noop */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const loadOptions = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/insurer-cases");
+      const data = res.ok ? await res.json() : { cases: [] };
+      setOptions(Array.isArray(data.cases) ? data.cases : []);
+    } catch {
+      /* noop */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (caseId) loadThread(caseId);
+    else loadOptions();
+  }, [caseId, loadThread, loadOptions]);
+
+  async function patchLink(value: string | null) {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/body-repair-jobs", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: job.id, insurer_case_id: value }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.message ?? "更新に失敗しました");
+      }
+      if (value) {
+        setCaseId(value);
+      } else {
+        setCaseId(null);
+        setCaseInfo(null);
+        setMessages([]);
+        setPick("");
+      }
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "更新に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function send() {
+    if (!caseId || !draft.trim()) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/admin/insurer-cases/${caseId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: draft.trim() }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.message ?? "送信に失敗しました");
+      }
+      setDraft("");
+      await loadThread(caseId);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "送信に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-border-subtle bg-inset p-3">
+      <div className="mb-1.5 text-xs font-semibold text-primary">保険会社とのやり取り</div>
+      {loading ? (
+        <p className="text-[11px] text-muted">読み込み中…</p>
+      ) : caseId && caseInfo ? (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-[11px] text-secondary">{caseInfo.case_number ?? "案件"}</span>
+            <span className="truncate text-xs text-primary">{caseInfo.title}</span>
+            <span className="rounded-full border border-border-subtle bg-surface px-2 py-0.5 text-[10px] text-muted">
+              {CASE_STATUS_LABEL[caseInfo.status] ?? caseInfo.status}
+            </span>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => patchLink(null)}
+              className="ml-auto text-[10px] text-muted underline transition-colors hover:text-primary disabled:opacity-50"
+            >
+              紐付け解除
+            </button>
+          </div>
+          <div className="max-h-44 space-y-1.5 overflow-y-auto rounded-md border border-border-subtle bg-surface p-2">
+            {messages.length === 0 ? (
+              <p className="text-[11px] text-muted">まだメッセージはありません</p>
+            ) : (
+              messages.map((m) => (
+                <div key={m.id} className={m.sender_type === "tenant" ? "text-right" : "text-left"}>
+                  <div className="text-[9.5px] text-muted">
+                    {SENDER_LABEL[m.sender_type] ?? m.sender_type} · {formatMsgTime(m.created_at)}
+                  </div>
+                  <div
+                    className={`inline-block max-w-[85%] whitespace-pre-wrap rounded-md px-2 py-1 text-left text-[11px] ${
+                      m.sender_type === "tenant" ? "bg-accent/15 text-primary" : "bg-inset text-secondary"
+                    }`}
+                  >
+                    {m.content}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="flex items-end gap-2">
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              rows={2}
+              placeholder="保険会社へのメッセージ（見積提出・確認依頼など）"
+              className={`w-full resize-none ${inputCls}`}
+            />
+            <MutationGuard>
+              <button
+                type="button"
+                disabled={busy || !draft.trim()}
+                onClick={send}
+                className="shrink-0 rounded-md bg-accent px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+              >
+                {busy ? "…" : "送信"}
+              </button>
+            </MutationGuard>
+          </div>
+        </div>
+      ) : options.length === 0 ? (
+        <p className="text-[11px] text-muted">紐付け可能な保険案件がありません</p>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={pick} onChange={(e) => setPick(e.target.value)} className={inputCls}>
+            <option value="">保険案件を選択</option>
+            {options.map((c) => (
+              <option key={c.id} value={c.id}>
+                {[c.case_number, c.insurer?.name, c.title].filter(Boolean).join(" / ")}
+              </option>
+            ))}
+          </select>
+          <MutationGuard>
+            <button
+              type="button"
+              disabled={busy || !pick}
+              onClick={() => patchLink(pick)}
+              className="rounded-md bg-accent px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+            >
+              {busy ? "…" : "この案件に紐付け"}
+            </button>
+          </MutationGuard>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface ActiveLoan {
   id: string;
   return_due_at: string | null;
@@ -1093,6 +1316,9 @@ function EditDialog({
 
         {/* 代車 */}
         <LoanerSection job={job} onError={onError} />
+
+        {/* 保険会社とのやり取り */}
+        <InsurerCaseSection job={job} onError={onError} />
 
         {/* 予定内容 (読み取り専用) */}
         <div className="rounded-lg border border-border-subtle bg-inset p-3 text-xs text-secondary">

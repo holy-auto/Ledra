@@ -24,7 +24,7 @@ const SELECT_COLUMNS = `
   estimate_amount, actual_amount, due_date, insurance_company, claim_number, assigned_staff_id,
   intake_at, estimate_at, bodywork_start_at, paint_start_at, complete_at, delivered_at,
   notes, created_at, updated_at,
-  certificate_id, estimate_document_id, invoice_document_id,
+  certificate_id, estimate_document_id, invoice_document_id, insurer_case_id,
   planned_work_json, actual_work_json, deviation_reason,
   is_specified_maintenance, record_retention_until, recorded_by,
   customer:customers ( id, name, phone ),
@@ -110,6 +110,7 @@ export async function POST(req: NextRequest) {
       certificate_id,
       estimate_document_id,
       invoice_document_id,
+      insurer_case_id,
       is_specified_maintenance,
       ...rest
     } = parsed.data;
@@ -123,6 +124,7 @@ export async function POST(req: NextRequest) {
       certificate_id,
       estimate_document_id,
       invoice_document_id,
+      insurer_case_id,
     });
     if (refError) return apiValidationError(refError);
 
@@ -146,6 +148,7 @@ export async function POST(req: NextRequest) {
         certificate_id,
         estimate_document_id,
         invoice_document_id,
+        insurer_case_id,
         is_specified_maintenance: isSpecified,
         // ガイドライン4.2(2): 記録者と保存期限を作成時に確定する
         recorded_by: caller.userId,
@@ -185,6 +188,7 @@ export async function PATCH(req: NextRequest) {
       certificate_id,
       estimate_document_id,
       invoice_document_id,
+      insurer_case_id,
       is_specified_maintenance,
       ...fields
     } = parsed.data;
@@ -200,6 +204,7 @@ export async function PATCH(req: NextRequest) {
       certificate_id,
       estimate_document_id,
       invoice_document_id,
+      insurer_case_id,
     });
     if (refError) return apiValidationError(refError);
 
@@ -214,6 +219,7 @@ export async function PATCH(req: NextRequest) {
     if (certificate_id !== undefined) updates.certificate_id = certificate_id;
     if (estimate_document_id !== undefined) updates.estimate_document_id = estimate_document_id;
     if (invoice_document_id !== undefined) updates.invoice_document_id = invoice_document_id;
+    if (insurer_case_id !== undefined) updates.insurer_case_id = insurer_case_id;
     // 特定整備フラグ変更時は保存期限 (特定整備=2年) を再計算する。
     if (is_specified_maintenance !== undefined) {
       updates.is_specified_maintenance = is_specified_maintenance;
@@ -306,6 +312,7 @@ async function validateTenantRefs(
     certificate_id?: string | null;
     estimate_document_id?: string | null;
     invoice_document_id?: string | null;
+    insurer_case_id?: string | null;
   },
 ): Promise<string | null> {
   if (refs.customer_id) {
@@ -359,6 +366,18 @@ async function validateTenantRefs(
       .maybeSingle();
     if (error) throw error;
     if (!data) return "指定された帳票が見つかりません。";
+  }
+  // 保険案件は insurer_cases.tenant_id が自テナントであることを確認する
+  // (他テナント/他保険会社の案件 ID をリークさせて紐付けるのを防ぐ)。
+  if (refs.insurer_case_id) {
+    const { data, error } = await admin
+      .from("insurer_cases")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("id", refs.insurer_case_id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return "指定された保険案件が見つかりません。";
   }
   return null;
 }
