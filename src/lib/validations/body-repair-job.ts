@@ -63,19 +63,36 @@ export const PHOTO_STAGE_LABEL: Record<PhotoStage, string> = {
   unspecified: "段階未指定",
 };
 
-/** 空文字 / undefined を null に正規化する nullable uuid */
+/**
+ * 部分更新 (PATCH) の意味論を壊さないため、未送信(undefined)は undefined のまま保持し、
+ * 空文字 / null のみ null に正規化する。これを怠ると `{ id, stage }` のような部分更新で
+ * 省略フィールドが null 化され、ステージ前進だけで納期・金額・備考が消える。
+ */
+const normalizeOptional = <T>(v: T | "" | null | undefined): T | null | undefined =>
+  v === undefined ? undefined : v === "" || v === null ? null : v;
+
+/** 実在する暦日かを検証する (regex は 2026-02-31 等を弾けないため)。 */
+function isRealCalendarDate(s: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
+}
+
+/** 空文字 / null を null に正規化する nullable uuid。未送信は undefined を維持。 */
 const optionalUuid = z
   .union([z.string().uuid("ID の形式が不正です。"), z.literal(""), z.null()])
   .optional()
-  .transform((v) => (v ? v : null));
+  .transform(normalizeOptional);
 
 const optionalText = (max: number) =>
   z
     .union([z.string().trim().max(max), z.null()])
     .optional()
-    .transform((v) => (v ? v : null));
+    .transform(normalizeOptional);
 
-/** 日付 (YYYY-MM-DD) or null。空文字 / undefined は null に正規化。 */
+/** 日付 (YYYY-MM-DD) or null。空文字→null、未送信→undefined。実在しない暦日は拒否。 */
 const optionalDate = z
   .union([
     z
@@ -86,16 +103,17 @@ const optionalDate = z
     z.null(),
   ])
   .optional()
-  .transform((v) => (v ? v : null));
+  .transform(normalizeOptional)
+  .refine((v) => v == null || isRealCalendarDate(v), { message: "存在しない日付です。" });
 
-/** 見積金額 (0 以上の整数 or null)。円単位、numeric(12,0) に格納。 */
+/** 見積金額 (0 以上の整数 or null)。円単位、numeric(12,0) に格納。未送信は undefined を維持。 */
 const optionalAmount = z
   .union([
     z.coerce.number().int("整数で指定してください。").min(0, "0 以上で指定してください。").max(999_999_999_999),
     z.null(),
   ])
   .optional()
-  .transform((v) => (v == null ? null : v));
+  .transform((v) => (v === undefined ? undefined : v == null ? null : v));
 
 /**
  * 作業の内容・方法 (予定 / 実績) を表す構造 (ガイドライン4.2(2))。

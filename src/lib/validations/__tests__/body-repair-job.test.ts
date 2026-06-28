@@ -53,6 +53,12 @@ describe("bodyRepairJobCreateSchema — ガイドライン準拠フィールド"
     expect(bodyRepairJobCreateSchema.safeParse({ due_date: "2026/07/15" }).success).toBe(false);
     expect(bodyRepairJobCreateSchema.safeParse({ due_date: "来週" }).success).toBe(false);
   });
+
+  it("形式は正しいが実在しない暦日を弾く (2026-02-31 / 2026-13-01)", () => {
+    expect(bodyRepairJobCreateSchema.safeParse({ due_date: "2026-02-31" }).success).toBe(false);
+    expect(bodyRepairJobCreateSchema.safeParse({ due_date: "2026-13-01" }).success).toBe(false);
+    expect(bodyRepairJobCreateSchema.safeParse({ due_date: "2026-02-28" }).success).toBe(true);
+  });
 });
 
 describe("bodyRepairJobUpdateSchema — 部分更新セマンティクス", () => {
@@ -62,6 +68,34 @@ describe("bodyRepairJobUpdateSchema — 部分更新セマンティクス", () =
     if (r.success) {
       expect(r.data.planned_work).toBeUndefined();
       expect(r.data.actual_work).toBeUndefined();
+    }
+  });
+
+  it("省略フィールドは undefined を維持する (部分更新で既存値を消さない)", () => {
+    const r = bodyRepairJobUpdateSchema.safeParse({ id: "33333333-3333-4333-8333-333333333333", stage: "paint" });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      // ステージ前進のみのペイロードで他フィールドが null 化されない (= PATCH で消えない)
+      expect(r.data.due_date).toBeUndefined();
+      expect(r.data.estimate_amount).toBeUndefined();
+      expect(r.data.notes).toBeUndefined();
+      expect(r.data.insurance_company).toBeUndefined();
+      expect(r.data.certificate_id).toBeUndefined();
+    }
+  });
+
+  it("空文字 / null は明示クリア (null) に正規化される", () => {
+    const r = bodyRepairJobUpdateSchema.safeParse({
+      id: "33333333-3333-4333-8333-333333333333",
+      due_date: "",
+      notes: "",
+      insurance_company: "",
+    });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.due_date).toBeNull();
+      expect(r.data.notes).toBeNull();
+      expect(r.data.insurance_company).toBeNull();
     }
   });
 

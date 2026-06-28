@@ -127,6 +127,8 @@ export default function BodyRepairClient() {
   const [busyId, setBusyId] = useState<string | null>(null);
   // 音声→備考 (Standard 以上の ai_draft 機能)。current tenant の plan_tier から判定。
   const [canAiNote, setCanAiNote] = useState(false);
+  // 納期チップは JST 当日基準。開きっぱなしでも日付境界で再計算するための tick。
+  const [, setDayTick] = useState(0);
 
   const showToast = useCallback((type: "success" | "error", msg: string) => {
     setToast({ type, msg });
@@ -151,6 +153,25 @@ export default function BodyRepairClient() {
   useEffect(() => {
     fetchJobs();
   }, [fetchJobs]);
+
+  // JST 日付境界で納期チップ (超過/本日/明日) を再計算する。開きっぱなしの
+  // 運用画面で「本日締切」が翌日に「超過」へ自動で切り替わるようにする。
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      const now = Date.now();
+      const jst = new Date(now + 9 * 3_600_000);
+      const nextJstMidnightUtc =
+        Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth(), jst.getUTCDate() + 1) - 9 * 3_600_000;
+      const ms = Math.max(1_000, nextJstMidnightUtc - now);
+      timer = setTimeout(() => {
+        setDayTick((t) => t + 1);
+        schedule();
+      }, ms);
+    };
+    schedule();
+    return () => clearTimeout(timer);
+  }, []);
 
   // 現在テナントの plan_tier から音声→備考の可否を判定。
   useEffect(() => {
@@ -334,7 +355,9 @@ function JobCard({
       ? "border-red-500/40 bg-red-500/15 text-red-300"
       : due === "today"
         ? "border-amber-500/40 bg-amber-500/15 text-amber-300"
-        : "border-border-subtle bg-inset text-muted";
+        : due === "soon"
+          ? "border-blue-500/40 bg-blue-500/15 text-blue-300"
+          : "border-border-subtle bg-inset text-muted";
 
   return (
     <div className="rounded-lg border border-border-subtle bg-surface p-3">

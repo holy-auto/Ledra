@@ -300,9 +300,9 @@ async function validateTenantRefs(
   admin: ReturnType<typeof createTenantScopedAdmin>["admin"],
   tenantId: string,
   refs: {
-    customer_id: string | null;
-    vehicle_id: string | null;
-    reservation_id: string | null;
+    customer_id?: string | null;
+    vehicle_id?: string | null;
+    reservation_id?: string | null;
     certificate_id?: string | null;
     estimate_document_id?: string | null;
     invoice_document_id?: string | null;
