@@ -18,12 +18,15 @@
 | 業種 | バックエンド完成度 | 現場 UI/結線 | 最重の断絶点 |
 |---|---|---|---|
 | ディテイリング | 高(証明書・保証・メンテ通知) | 低〜中 | 見積パッケージ UI 未配線 / 保証終了日の自動計算 |
-| 整備・車検 | 高(車検OCR・車検満了通知・記録簿) | 低〜中 | **定期点検(6/12ヶ月)の自動起票・通知** |
+| 整備・車検 | 高(車検OCR・記録簿) | 低〜中 | **車検満了リマインドのバグ修正** + 定期点検(6/12ヶ月)の自動化 |
 | 用品取付 | 非常に高(部品装着インテグリティ) | 低 | 現場の装着記録 UI / 見積承認 / 部品適合確認 |
 
-**重要な確認**: 整備の **車検満了リマインドは既に完成・本番運用中**
-(`src/lib/cron/inspectionReminders.ts`、日次 cron 登録済み)。当初「次の打ち手」候補に
-挙げていたが**実装済み**だった。整備の真の穴は**定期点検サイクルの自動化**。
+**重要な訂正(Codex レビューで判明)**: 整備の **車検満了リマインドは「実装はあるが
+動いていない」**。`processInspectionReminders` が削除済みカラム(`customer_name`/
+`customer_email`、`20260321000002` で DROP)を SELECT しており、かつ車両作成フローが
+OCR の有効期限を `inspection_expiry_date` に保存しない。→ **これは要修正の実害バグ**
+(当初「完成・運用中」としていたが誤り)。整備の穴は ①このバグ修正 と
+②**定期点検サイクルの自動化**。
 
 横断して刺さる low-hanging fruit(鈑金で実装済みの横展開):
 - **音声→案件メモ**は鈑金/予約で結線済み(#617)。3 業種とも同じ部品を流用可能。
@@ -41,8 +44,8 @@
 | 工程 | 対応 | 実装/断絶点 | 根拠 |
 |---|---|---|---|
 | 受付・来店 | ✅ | 顧客登録・電話ハッシュ重複検出 | `src/lib/customers/` |
-| メニュー/パッケージ選定 | ⚠️ **断絶A1** | `STARTER_PACKAGES`(coating Lv1-3 / PPF / detailing)定義済だが**見積フォーム UI 未配線**、予約への適用も手動 | `src/lib/service-packages/starter-templates.ts` / `ReservationsClient.tsx` |
-| 見積作成 | ⚠️ | `expandServicePackage()` は完成だが見積文書への自動展開なし | `src/lib/service-packages/expand.ts` |
+| メニュー/パッケージ選定 | ✅ | パッケージ適用は配線済(`JobPackageApply` が予約に `menu_items_json`/`estimated_amount` を反映、証明書は `CertPackagePicker`) | `src/app/admin/jobs/[id]/JobPackageApply.tsx` / `CertPackagePicker` |
+| 見積作成(見積書化) | ⚠️ **断絶A1** | パッケージ→予約の金額反映は済。残る穴は**見積「文書(documents)」の自動生成・紐付け**(鈑金 #620 と同型の横展開で解消) | `src/lib/service-packages/expand.ts` / `src/lib/ai/quoteFromVehicle.ts` |
 | 予約入庫 | ✅ | `reservations.status` / `menu_items_json` | `20260315000002_reservations.sql` |
 | 施工(コーティング/PPF) | ✅ | PPF パネル(`ppf_coverage_json`)・コーティング製品トラッキング | `src/lib/ppf/constants.ts` / `20260322000006_ppf_support.sql` |
 | 施工写真 | ✅ | `certificate_images.stage` + EXIF + 改ざんアンカリング | `20260620000000_body_repair_transparency.sql` |
@@ -50,13 +53,14 @@
 | **保証開始/期間設定** | ⚠️ **断絶A2** | `certificates.warranty_period_end` カラムはあるが、施工日からの**自動逆算が薄く手入力依存** | `src/lib/ai/followUpContent.ts`(文字列パースのみ) / `20260322000000_cert_expiry_warranty.sql` |
 | 保証期間管理 | ✅ | `follow_up_settings` + 月別リマインド + 種別 override | `20260430000000_maintenance_reminder_enhancements.sql` |
 | メンテリマインダー(6/12ヶ月) | ✅ | `processMaintenanceReminders()` cron(種別別スケジュール対応) | `src/lib/cron/followUp.ts` |
-| 施工記録メモ | ⚠️ **断絶A3** | 音声入力は証明書画面のみ(鈑金/予約は結線済、ディテイリング案件側は未) | `src/app/admin/certificates/new/VoiceMemoPanel.tsx` |
+| 施工記録メモ | ✅ | 予約画面に `VoiceMemoPanel` 配線済(#617、note に追記)。証明書画面でも利用可 | `ReservationsClient.tsx:1414` / `VoiceMemoPanel.tsx` |
 | 請求・入金 | ✅ | `documents(invoice)` + `billing_splits` | — |
 
-### A-2. 断絶トップ3
-1. **見積・パッケージ UI 未配線**(中) — `expandServicePackage()` は完成、予約/見積への配線のみ(~100-150行)。
-2. **保証終了日の自動計算**(中) — `warranty_period`(例「3年」)→ `warranty_period_end` を施工日から自動算出(~50-100行)。`service_packages.warranty_years` 既定値の追加も有効。
-3. **施工メモの現場入力 UI**(小〜中) — `VoiceMemoPanel` を案件側へ流用(鈑金の #617 と同型)。
+### A-2. 断絶トップ3(Codex レビューで精緻化)
+1. **保証終了日の自動計算**(中) — `warranty_period`(例「3年」)→ `warranty_period_end` を施工日から自動算出(~50-100行)。`service_packages.warranty_years` 既定値の追加も有効。**ディテイリング最重**。
+2. **見積「文書」化の結線**(中) — パッケージ→予約金額は配線済(`JobPackageApply`)。残るは AI 見積→見積書 document 生成・紐付け(鈑金 #620 の横展開)。
+3. **定番保証期間の事前登録**(小) — `service_packages.warranty_years` を追加し、証明書作成時の既定値に。
+- 注: 「施工メモ音声」「パッケージ適用」は配線済のため当初リストから除外(Codex 指摘反映)。
 
 ---
 
@@ -72,21 +76,22 @@
 | 受付/入庫 | ✅ | `reservations` / `body_repair_jobs.intake_at` | `20260315000002_reservations.sql` |
 | 車検証 OCR/QR | ✅ | Claude Vision + QR デコード、`expiry_date`/初度登録/型式を抽出・検証 | `src/lib/ocr/shakensho.ts` / `shakensho-qr.ts` |
 | 車検有効期限の保持 | ✅ | `vehicles.inspection_expiry_date`(OCR から自動保存) | `20260522000005_vehicles_inspection_expiry.sql` |
-| **車検満了リマインド** | ✅ **完成・運用中** | `processInspectionReminders()`(既定60日前・二重送信防止・日次 cron 登録済) | `src/lib/cron/inspectionReminders.ts` / `api/cron/follow-up/route.ts` |
+| **車検満了リマインド** | ⚠️ **断絶B0(要バグ修正)** | ロジック骨格(`processInspectionReminders`・60日前・二重送信防止・日次 cron 登録)はあるが、**実際には機能していない**: ①cron が**削除済みカラム** `customer_name`/`customer_email` を SELECT(`20260321000002` で DROP 済→クエリ失敗)、②車両作成 UI が OCR の `expiry_date` を捨て `inspection_expiry_date` を保存しない | `src/lib/cron/inspectionReminders.ts:73-77`(バグ)/ `src/app/admin/vehicles/new/page.tsx`(expiry 未送信) |
 | 見積作成 | ⚠️ **断絶B(=鈑金D)** | AI 見積はあるが整備 UI から未使用・手入力 `estimate_amount` のみ | `src/lib/ai/quoteFromVehicle.ts` |
 | 作業指示/計画記録 | ⚠️ | `planned_work_json`/`actual_work_json` はあるが整備向け UI 未配置 | `20260620000000_body_repair_transparency.sql` |
 | 整備実施・記録(メモ) | ⚠️ **断絶(音声)** | 音声入力が証明書画面のみ。整備案件側は手打ち | `VoiceMemoPanel.tsx` |
 | 整備記録簿(電子) | ✅ | `inspection_records`(チェックリスト+写真+テンプレ snapshot) | `20260612000018_inspection_checklists.sql` |
-| 特定整備記録(2年保存) | ✅ | `is_specified_maintenance` + `record_retention_until` | `20260620000000_body_repair_transparency.sql` |
+| 特定整備記録(2年保存) | ⚠️ **鈑金のみ** | `is_specified_maintenance`+`record_retention_until` は `body_repair_jobs`/`BodyRepairClient` のみ。**整備の `inspection_records`・点検タブには無く**、整備工場の点検フローでは2年保存フラグを記録できない | `20260620000000_body_repair_transparency.sql:50-55` |
 | 請求/入金 | ✅ | `documents(invoice)` + `billing_splits` + `payment_status` | — |
 | **定期点検(6/12ヶ月)** | ⚠️ **断絶B1(最重)** | `service_reminders`(`next_due_date`/`next_due_mileage` は GENERATED 列で完成)。だが**自動起票 cron も自動通知 cron も無い**(`api/cron/` に service-reminder 無し) | `20260612000008_service_reminders.sql` |
 | 車検→定期点検チェーン | ❌ | 車検完了後の点検自動起票なし | — |
 | リコール対応 | ❌ | VIN→リコールDB照合・案内なし | — |
 
-### B-2. 断絶トップ3
-1. **定期点検(6/12ヶ月)の自動起票・通知**(最重・実装は ~100-150行) — テーブルと生成列は完成。新規 cron(`api/cron/service-reminders`)で `next_due_date` ≤ 当日+N を抽出 → LINE/メール、+ 作業完了時の `service_reminders` 自動起票。
-2. **整備記録の音声入力**(小・~50行) — 鈑金 #617 の横展開。
-3. **見積→請求の UI 連結**(小〜中・~100-150行) — 鈑金 #620 の横展開(整備でも `quoteFromVehicle`→見積書→紐付け)。
+### B-2. 断絶トップ3(Codex レビューで精緻化)
+1. **車検満了リマインドのバグ修正**(B0・実害・小) — 既存 `processInspectionReminders` が削除済みカラムを SELECT しており動作していない。SELECT 修正 + 顧客連絡先を `customers` から join + 車両作成フローで `inspection_expiry_date` を保存。**最優先(壊れている機能の復旧)**。
+2. **定期点検(6/12ヶ月)の自動起票・通知**(最重・~100-150行) — `service_reminders` のテーブルと生成列は完成。新規 cron(`api/cron/service-reminders`)で `next_due_date` ≤ 当日+N を抽出 → LINE/メール、+ 作業完了時の `service_reminders` 自動起票。
+3. **見積→見積書の結線**(小〜中・~100-150行) — 鈑金 #620 の横展開(`quoteFromVehicle`→見積書 document→紐付け)。
+- 注: 整備記録の音声入力は予約画面で配線済(#617)のため除外。特定整備フラグは整備の点検フローに未対応(上表参照)。
 - 中長期: リコール DB 連携 / 整備記録簿の PDF 自動生成 / 走行距離ベースの交換提案 cron。
 
 ---
@@ -115,7 +120,7 @@
 | **保証・アフター** | ❌ **断絶C3** | `part_installations` に保証期間/範囲のフィールド無し | `20260603000000_part_installations.sql` |
 
 ### C-2. 断絶トップ3
-1. **現場の装着記録 UI(タブレット)**(高 ROI・~100-200行) — API は完成。写真撮影→自動記録のモバイル UI を載せるだけ。毎日 30-100 分削減見込み。
+1. **現場の装着記録フロー(タブレット)**(高 ROI・UI のみではない) — 装着レコード作成 API はあるが、`partEvidenceSchema` は**アップロード済みの写真メタ(storage_path/sha256)を前提**で、写真アップロード経路は納品書用しか無い(`parts/installations/[id]/delivery-note`)。よって**写真の撮影→アップロード→ハッシュ/EXIF 処理 + UI** が必要(当初「UI のみ ~100-200行」は過小評価。Codex 指摘反映)。それでも装着レコード・三方照合・確定署名の中核は再利用できる。
 2. **見積→承認フロー**(中・~300行) — 既存の確定署名機構を見積承認にも適用(見積 PDF 化 + 顧客署名)。
 3. **部品適合確認**(中〜大・~500-1000行) — `inventory_items` ↔ `vehicles` 適合マトリックス。初期データ投入が要るが以降は自動化。最大の事務負荷だが着手は重め。
 - 加えて: 取付保証(`part_installations.warranty_end_at` 等)/ 入荷 OCR→在庫自動反映 / 用品取付ステージ管理。
