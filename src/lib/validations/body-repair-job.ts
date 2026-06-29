@@ -36,6 +36,20 @@ export const BODY_REPAIR_STAGE_COLOR: Record<BodyRepairStage, string> = {
   delivered: "bg-gray-500/15 text-gray-400 border-gray-500/30",
 };
 
+/**
+ * 保険査定ステータス (施工店が受領した結果を記録)。null=未提出。
+ *   submitted=提出済(承認待ち) / approved=承認 / partial=一部承認 / rejected=差戻
+ */
+export const CLAIM_STATUSES = ["submitted", "approved", "partial", "rejected"] as const;
+export type ClaimStatus = (typeof CLAIM_STATUSES)[number];
+
+export const CLAIM_STATUS_LABEL: Record<ClaimStatus, string> = {
+  submitted: "提出済",
+  approved: "承認",
+  partial: "一部承認",
+  rejected: "差戻",
+};
+
 /** 次工程の対応表。delivered(出庫) は最終なので null。 */
 export const BODY_REPAIR_NEXT_STAGE: Record<BodyRepairStage, BodyRepairStage | null> = {
   intake: "estimate",
@@ -106,6 +120,12 @@ const optionalDate = z
   .transform(normalizeOptional)
   .refine((v) => v == null || isRealCalendarDate(v), { message: "存在しない日付です。" });
 
+/** 保険査定ステータス。未送信→undefined、空文字→null(未提出)、それ以外は enum。 */
+const optionalClaimStatus = z
+  .union([z.enum(CLAIM_STATUSES), z.literal(""), z.null()])
+  .optional()
+  .transform((v) => (v === undefined ? undefined : v ? v : null));
+
 /** 見積金額 (0 以上の整数 or null)。円単位、numeric(12,0) に格納。未送信は undefined を維持。 */
 const optionalAmount = z
   .union([
@@ -155,6 +175,9 @@ export const bodyRepairJobCreateSchema = z.object({
   estimate_document_id: optionalUuid,
   invoice_document_id: optionalUuid,
   insurer_case_id: optionalUuid,
+  claim_status: optionalClaimStatus,
+  claim_approved_amount: optionalAmount,
+  claim_decided_at: optionalDate,
   planned_work: optionalWorkContent,
   actual_work: optionalWorkContent,
   deviation_reason: optionalText(2000),
@@ -176,6 +199,9 @@ export const bodyRepairJobUpdateSchema = z.object({
   estimate_document_id: optionalUuid,
   invoice_document_id: optionalUuid,
   insurer_case_id: optionalUuid,
+  claim_status: optionalClaimStatus,
+  claim_approved_amount: optionalAmount,
+  claim_decided_at: optionalDate,
   planned_work: optionalWorkContent,
   actual_work: optionalWorkContent,
   deviation_reason: optionalText(2000),

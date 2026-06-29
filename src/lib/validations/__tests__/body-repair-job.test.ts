@@ -59,6 +59,28 @@ describe("bodyRepairJobCreateSchema — ガイドライン準拠フィールド"
     expect(bodyRepairJobCreateSchema.safeParse({ due_date: "2026-13-01" }).success).toBe(false);
     expect(bodyRepairJobCreateSchema.safeParse({ due_date: "2026-02-28" }).success).toBe(true);
   });
+
+  it("保険査定 (claim_status / 承認額) を受理し、空文字は null(未提出)に正規化する", () => {
+    const ok = bodyRepairJobCreateSchema.safeParse({
+      claim_status: "approved",
+      claim_approved_amount: 175000,
+      claim_decided_at: "2026-07-01",
+    });
+    expect(ok.success).toBe(true);
+    if (ok.success) {
+      expect(ok.data.claim_status).toBe("approved");
+      expect(ok.data.claim_approved_amount).toBe(175000);
+      expect(ok.data.claim_decided_at).toBe("2026-07-01");
+    }
+
+    const empty = bodyRepairJobCreateSchema.safeParse({ claim_status: "" });
+    expect(empty.success).toBe(true);
+    if (empty.success) expect(empty.data.claim_status).toBeNull();
+  });
+
+  it("不正な claim_status を弾く", () => {
+    expect(bodyRepairJobCreateSchema.safeParse({ claim_status: "yes" }).success).toBe(false);
+  });
 });
 
 describe("bodyRepairJobUpdateSchema — 部分更新セマンティクス", () => {
