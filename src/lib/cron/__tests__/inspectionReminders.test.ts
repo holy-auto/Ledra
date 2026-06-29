@@ -7,14 +7,14 @@ vi.mock("@/lib/follow-up/email", () => ({
 
 import { sendInspectionReminder } from "@/lib/follow-up/email";
 
+// vehicles からは customer_name / customer_email は SELECT しない
+// (20260321000002 で削除済み)。連絡先は customers テーブルから解決する。
 type StubVehicle = {
   id: string;
   maker: string | null;
   model: string | null;
   year: number | null;
   customer_id: string | null;
-  customer_name: string | null;
-  customer_email: string | null;
   inspection_expiry_date: string;
   inspection_reminder_sent_at: string | null;
 };
@@ -27,9 +27,14 @@ type StubCustomer = {
 
 /**
  * Minimal fake supabase client modelling only the calls inspectionReminders
- * makes. Records writes for assertions.
+ * makes. Records writes for assertions. `vehiclesError` simulates the dropped-
+ * column regression (SELECT が失敗するケース)。
  */
-function makeStub(opts: { vehiclesForDate: StubVehicle[]; customers?: StubCustomer[] }) {
+function makeStub(opts: {
+  vehiclesForDate: StubVehicle[];
+  customers?: StubCustomer[];
+  vehiclesError?: { message: string };
+}) {
   const updatedVehicleIds: string[] = [];
   const inserts: Array<Record<string, unknown>> = [];
 
@@ -39,7 +44,12 @@ function makeStub(opts: { vehiclesForDate: StubVehicle[]; customers?: StubCustom
         return {
           select: () => ({
             eq: () => ({
-              eq: () => Promise.resolve({ data: opts.vehiclesForDate, error: null }),
+              eq: () =>
+                Promise.resolve(
+                  opts.vehiclesError
+                    ? { data: null, error: opts.vehiclesError }
+                    : { data: opts.vehiclesForDate, error: null },
+                ),
             }),
           }),
           update: () => ({
@@ -110,7 +120,20 @@ describe("processInspectionReminders", () => {
     expect(sent).toBe(0);
   });
 
-  it("sends to vehicles with denormalized customer_email", async () => {
+  it("returns 0 (and does not throw) when the vehicles SELECT errors", async () => {
+    // 回帰: 以前は削除済みカラムを SELECT してエラー → 無言で 0 件だった。
+    const { client } = makeStub({ vehiclesForDate: [], vehiclesError: { message: "column does not exist" } });
+    const sent = await processInspectionReminders(
+      client,
+      { tenant_id: tenantId, inspection_pre_days: 60 },
+      "Test Shop",
+      today,
+    );
+    expect(sent).toBe(0);
+    expect(sendInspectionReminderMock).not.toHaveBeenCalled();
+  });
+
+  it("resolves the customer from the customers table and sends", async () => {
     const { client, updatedVehicleIds, inserts } = makeStub({
       vehiclesForDate: [
         {
@@ -119,12 +142,11 @@ describe("processInspectionReminders", () => {
           model: "Aqua",
           year: 2022,
           customer_id: "c1",
-          customer_name: "山田 太郎",
-          customer_email: "yamada@example.com",
           inspection_expiry_date: "2026-07-21",
           inspection_reminder_sent_at: null,
         },
       ],
+      customers: [{ id: "c1", name: "山田 太郎", email: "yamada@example.com" }],
     });
 
     const sent = await processInspectionReminders(
@@ -135,7 +157,6 @@ describe("processInspectionReminders", () => {
     );
 
     expect(sent).toBe(1);
-    expect(sendInspectionReminderMock).toHaveBeenCalledTimes(1);
     expect(sendInspectionReminderMock).toHaveBeenCalledWith(
       expect.objectContaining({
         shopName: "Test Shop",
@@ -156,7 +177,7 @@ describe("processInspectionReminders", () => {
     });
   });
 
-  it("falls back to customers table when vehicle has no denormalized email", async () => {
+  it("falls back to お客様 when the customer name is null", async () => {
     const { client } = makeStub({
       vehiclesForDate: [
         {
@@ -165,13 +186,11 @@ describe("processInspectionReminders", () => {
           model: "Fit",
           year: 2023,
           customer_id: "c1",
-          customer_name: null,
-          customer_email: null,
           inspection_expiry_date: "2026-07-21",
           inspection_reminder_sent_at: null,
         },
       ],
-      customers: [{ id: "c1", name: "佐藤 花子", email: "sato@example.com" }],
+      customers: [{ id: "c1", name: null, email: "sato@example.com" }],
     });
 
     const sent = await processInspectionReminders(
@@ -183,11 +202,11 @@ describe("processInspectionReminders", () => {
 
     expect(sent).toBe(1);
     expect(sendInspectionReminderMock).toHaveBeenCalledWith(
-      expect.objectContaining({ customerEmail: "sato@example.com", customerName: "佐藤 花子" }),
+      expect.objectContaining({ customerEmail: "sato@example.com", customerName: "お客様" }),
     );
   });
 
-  it("skips vehicles with no resolvable email", async () => {
+  it("skips vehicles with no resolvable email (no customer / no email)", async () => {
     const { client, inserts } = makeStub({
       vehiclesForDate: [
         {
@@ -196,8 +215,6 @@ describe("processInspectionReminders", () => {
           model: "Prius",
           year: 2020,
           customer_id: null,
-          customer_name: null,
-          customer_email: null,
           inspection_expiry_date: "2026-07-21",
           inspection_reminder_sent_at: null,
         },
@@ -224,13 +241,12 @@ describe("processInspectionReminders", () => {
           maker: "Toyota",
           model: "Aqua",
           year: 2022,
-          customer_id: null,
-          customer_name: "山田",
-          customer_email: "yamada@example.com",
+          customer_id: "c1",
           inspection_expiry_date: "2026-07-21",
           inspection_reminder_sent_at: "2026-04-01T00:00:00Z",
         },
       ],
+      customers: [{ id: "c1", name: "山田", email: "yamada@example.com" }],
     });
 
     const sent = await processInspectionReminders(
@@ -252,13 +268,12 @@ describe("processInspectionReminders", () => {
           maker: "Mazda",
           model: "CX-5",
           year: 2024,
-          customer_id: null,
-          customer_name: "鈴木",
-          customer_email: "suzuki@example.com",
+          customer_id: "c1",
           inspection_expiry_date: "2026-07-21",
           inspection_reminder_sent_at: null,
         },
       ],
+      customers: [{ id: "c1", name: "鈴木", email: "suzuki@example.com" }],
     });
 
     const sent = await processInspectionReminders(

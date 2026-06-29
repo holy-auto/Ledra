@@ -20,6 +20,7 @@ export default function AdminVehicleNewPage() {
   const [year, setYear] = useState("");
   const [plateDisplay, setPlateDisplay] = useState("");
   const [vinCode, setVinCode] = useState("");
+  const [inspectionExpiry, setInspectionExpiry] = useState("");
   const [sizeClass, setSizeClass] = useState("");
   const [sizeAuto, setSizeAuto] = useState(false);
   const [notes, setNotes] = useState("");
@@ -65,12 +66,14 @@ export default function AdminVehicleNewPage() {
     vin_code?: string | null;
     plate_display?: string | null;
     size_class?: string | null;
+    expiry_date?: string | null;
   }) {
     if (x.maker) setMaker(x.maker);
     if (x.model) setModel(x.model);
     if (x.year) setYear(String(x.year));
     if (x.vin_code) setVinCode(x.vin_code);
     if (x.plate_display) setPlateDisplay(x.plate_display);
+    if (x.expiry_date) setInspectionExpiry(x.expiry_date);
     if (x.size_class) {
       setSizeClass(x.size_class);
       setSizeAuto(false);
@@ -166,6 +169,7 @@ export default function AdminVehicleNewPage() {
           year: year ? Number(year) : null,
           plate_display: plateDisplay || null,
           vin_code: vinCode || null,
+          inspection_expiry_date: inspectionExpiry || null,
           notes: notes || null,
           customer_id: customerId || null,
           size_class: sizeClass || null,
@@ -338,6 +342,21 @@ export default function AdminVehicleNewPage() {
                 className={`${inputCls} font-mono`}
                 placeholder="例: JF1GP7LD7EG000001"
                 maxLength={50}
+              />
+            </label>
+
+            <label className="space-y-2">
+              <div className="text-sm font-medium text-primary flex items-center gap-1.5">
+                車検満了日
+                <HelpTooltip>
+                  自動車検査証の有効期間の満了日。登録しておくと、満了の約60日前に車検案内を自動送信します（車検証OCRから自動入力されます）。
+                </HelpTooltip>
+              </div>
+              <input
+                type="date"
+                value={inspectionExpiry}
+                onChange={(e) => setInspectionExpiry(e.target.value)}
+                className={inputCls}
               />
             </label>
           </div>
