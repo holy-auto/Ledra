@@ -13,7 +13,9 @@ type StubReminder = {
   customer_id: string | null;
   vehicle_id: string | null;
   service_name: string;
-  next_due_date: string;
+  reminder_type: "mileage" | "interval_months" | "both";
+  next_due_date: string | null;
+  next_due_mileage: number | null;
 };
 type StubCustomer = {
   id: string;
@@ -22,16 +24,18 @@ type StubCustomer = {
   line_user_id: string | null;
   followup_opt_out: boolean | null;
 };
+type StubMileageLog = { vehicle_id: string; mileage_km: number };
 
 function makeStub(opts: {
   reminders: StubReminder[];
   customers?: StubCustomer[];
+  mileageLogs?: StubMileageLog[];
   remindersError?: { message: string };
 }) {
   const notifiedIds: string[] = [];
   const logs: Array<Record<string, unknown>> = [];
 
-  // service_reminders の select チェーンは長い (.eq.eq.in.not.lte.is)。
+  // service_reminders の select チェーンは長い (.eq.eq.is.or)。
   // すべて自分自身を返し、await で結果を解決する thenable にする。
   const selectChain: any = {
     select: () => selectChain,
@@ -40,6 +44,7 @@ function makeStub(opts: {
     not: () => selectChain,
     lte: () => selectChain,
     is: () => selectChain,
+    or: () => selectChain,
     then: (resolve: (v: unknown) => void) =>
       resolve(opts.remindersError ? { data: null, error: opts.remindersError } : { data: opts.reminders, error: null }),
   };
@@ -65,6 +70,11 @@ function makeStub(opts: {
       if (table === "vehicles") {
         return { select: () => ({ in: () => Promise.resolve({ data: [], error: null }) }) };
       }
+      if (table === "vehicle_mileage_logs") {
+        return {
+          select: () => ({ eq: () => ({ in: () => Promise.resolve({ data: opts.mileageLogs ?? [], error: null }) }) }),
+        };
+      }
       if (table === "notification_logs") {
         return {
           insert: (row: Record<string, unknown>) => {
@@ -85,12 +95,28 @@ const emailMock = vi.mocked(sendServiceReminderEmail);
 
 const tenantId = "t1";
 const today = new Date("2026-05-22T00:00:00Z");
-const reminder = (over: Partial<StubReminder> = {}): StubReminder => ({
+
+/** 期間軸の提案 (interval_months, next_due_date 到達)。 */
+const dateReminder = (over: Partial<StubReminder> = {}): StubReminder => ({
   id: "r1",
   customer_id: "c1",
   vehicle_id: null,
   service_name: "エンジンオイル交換",
+  reminder_type: "interval_months",
   next_due_date: "2026-05-30",
+  next_due_mileage: null,
+  ...over,
+});
+
+/** 距離軸の提案 (mileage, next_due_mileage 到達)。 */
+const mileageReminder = (over: Partial<StubReminder> = {}): StubReminder => ({
+  id: "r1",
+  customer_id: "c1",
+  vehicle_id: "v1",
+  service_name: "タイヤローテーション",
+  reminder_type: "mileage",
+  next_due_date: null,
+  next_due_mileage: 40000,
   ...over,
 });
 
@@ -102,9 +128,9 @@ describe("processServiceReminders", () => {
     emailMock.mockResolvedValue(true);
   });
 
-  it("sends via LINE when the customer has a line_user_id, marks notified, logs sent", async () => {
+  it("sends via LINE when the date is due, marks notified, logs sent", async () => {
     const { client, notifiedIds, logs } = makeStub({
-      reminders: [reminder()],
+      reminders: [dateReminder()],
       customers: [{ id: "c1", name: "山田", email: "y@example.com", line_user_id: "U1", followup_opt_out: false }],
     });
 
@@ -117,9 +143,9 @@ describe("processServiceReminders", () => {
     expect(logs[0]).toMatchObject({ type: "service_reminder", target_id: "r1", channel: "line", status: "sent" });
   });
 
-  it("falls back to email when no line_user_id", async () => {
+  it("falls back to email when no line_user_id (date-based timing)", async () => {
     const { client, logs } = makeStub({
-      reminders: [reminder()],
+      reminders: [dateReminder()],
       customers: [{ id: "c1", name: "佐藤", email: "s@example.com", line_user_id: null, followup_opt_out: false }],
     });
 
@@ -127,12 +153,58 @@ describe("processServiceReminders", () => {
 
     expect(sent).toBe(1);
     expect(emailMock).toHaveBeenCalledTimes(1);
+    expect(emailMock).toHaveBeenCalledWith(expect.objectContaining({ timing: "2026-05-30頃" }));
     expect(logs[0]).toMatchObject({ channel: "email", status: "sent" });
+  });
+
+  it("sends when mileage is within the threshold (current >= next_due - 5000km)", async () => {
+    const { client, notifiedIds } = makeStub({
+      reminders: [mileageReminder()], // next_due_mileage 40000
+      customers: [{ id: "c1", name: "田中", email: "t@example.com", line_user_id: "U1", followup_opt_out: false }],
+      mileageLogs: [{ vehicle_id: "v1", mileage_km: 38000 }], // 残り 2000km → 閾値内
+    });
+
+    const sent = await processServiceReminders(client, { tenant_id: tenantId }, "Shop", today);
+
+    expect(sent).toBe(1);
+    expect(lineMock).toHaveBeenCalledTimes(1);
+    expect(lineMock).toHaveBeenCalledWith(
+      expect.objectContaining({ lineMessage: expect.stringContaining("40,000km") }),
+    );
+    expect(notifiedIds).toEqual(["r1"]);
+  });
+
+  it("does NOT send when mileage is still far from the threshold", async () => {
+    const { client, notifiedIds } = makeStub({
+      reminders: [mileageReminder()], // next_due_mileage 40000
+      customers: [{ id: "c1", name: "田中", email: "t@example.com", line_user_id: "U1", followup_opt_out: false }],
+      mileageLogs: [{ vehicle_id: "v1", mileage_km: 30000 }], // 残り 10000km → 閾値外
+    });
+
+    const sent = await processServiceReminders(client, { tenant_id: tenantId }, "Shop", today);
+
+    expect(sent).toBe(0);
+    expect(lineMock).not.toHaveBeenCalled();
+    expect(emailMock).not.toHaveBeenCalled();
+    expect(notifiedIds).toEqual([]);
+  });
+
+  it("does NOT send a mileage reminder when the vehicle has no mileage log", async () => {
+    const { client, notifiedIds } = makeStub({
+      reminders: [mileageReminder()],
+      customers: [{ id: "c1", name: "田中", email: "t@example.com", line_user_id: "U1", followup_opt_out: false }],
+      mileageLogs: [],
+    });
+
+    const sent = await processServiceReminders(client, { tenant_id: tenantId }, "Shop", today);
+
+    expect(sent).toBe(0);
+    expect(notifiedIds).toEqual([]);
   });
 
   it("skips opt-out customers and those without any channel", async () => {
     const { client, notifiedIds } = makeStub({
-      reminders: [reminder({ id: "r1", customer_id: "c1" }), reminder({ id: "r2", customer_id: "c2" })],
+      reminders: [dateReminder({ id: "r1", customer_id: "c1" }), dateReminder({ id: "r2", customer_id: "c2" })],
       customers: [
         { id: "c1", name: "A", email: "a@example.com", line_user_id: "U1", followup_opt_out: true },
         { id: "c2", name: "B", email: null, line_user_id: null, followup_opt_out: false },
@@ -151,7 +223,7 @@ describe("processServiceReminders", () => {
     lineMock.mockResolvedValueOnce(false);
     emailMock.mockResolvedValueOnce(false);
     const { client, notifiedIds, logs } = makeStub({
-      reminders: [reminder()],
+      reminders: [dateReminder()],
       customers: [{ id: "c1", name: "鈴木", email: "z@example.com", line_user_id: "U1", followup_opt_out: false }],
     });
 
