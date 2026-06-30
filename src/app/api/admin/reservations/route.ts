@@ -21,6 +21,7 @@ import {
 } from "@/lib/validations/reservation";
 import { maybeAutoDraftCertificateForReservation } from "@/lib/ai/automation/certificateAuto";
 import { maybeAutoCreateDraftCertificateForReservation } from "@/lib/ai/automation/certificateRecordAuto";
+import { maybeAutoCreateDraftInvoiceForReservation } from "@/lib/ai/automation/invoiceRecordAuto";
 import { maybeAutoCategorizeReservationOnIntake } from "@/lib/ai/automation/accountingAuto";
 
 export const dynamic = "force-dynamic";
@@ -391,6 +392,11 @@ export async function PUT(req: NextRequest) {
         await maybeAutoDraftCertificateForReservation({ tenantId: caller.tenantId, reservationId: data.id });
         // certificate.auto_create_draft_record: 証明書を status=draft の行として起票 (発行は必ず人 = 壁3)。
         await maybeAutoCreateDraftCertificateForReservation({ tenantId: caller.tenantId, reservationId: data.id });
+        // invoice.auto_draft_on_billing_step: 完了 = 請求のタイミングとして請求書を draft 起票
+        // (送付=金額の外向き確定は必ず人 = 壁3)。ワークフロー請求工程を使わないテナントでも
+        // 完了で請求書下書きが出るようにする。冪等 (同顧客+車両の draft があれば作らない) なので
+        // ワークフロー側と二重起票しない。
+        await maybeAutoCreateDraftInvoiceForReservation({ tenantId: caller.tenantId, reservationId: data.id });
       })();
     }
 
