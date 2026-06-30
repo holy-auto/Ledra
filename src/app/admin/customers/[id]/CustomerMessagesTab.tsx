@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/swr";
-import MessageAiExtractButton from "./MessageAiExtractButton";
+import MessageAiExtractButton, { ExtractedCandidateCard, type ExtractedResult } from "./MessageAiExtractButton";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 
 /**
@@ -29,6 +29,8 @@ type MessageRow = {
   line_message_id: string | null;
   line_timestamp_ms: number | null;
   created_at: string;
+  /** 紐づけ時の履歴一括取り込み等で保存された予約候補スナップショット (未抽出は null)。 */
+  ai_extracted: ExtractedResult | null;
 };
 
 type ThreadResponse = {
@@ -161,7 +163,12 @@ export default function CustomerMessagesTab({ customerId }: { customerId: string
                     </span>
                   )}
                 </div>
-                {!isOutbound && <MessageAiExtractButton messageId={m.id} />}
+                {!isOutbound &&
+                  (m.ai_extracted ? (
+                    <ExtractedCandidateCard result={m.ai_extracted} />
+                  ) : (
+                    <MessageAiExtractButton messageId={m.id} />
+                  ))}
               </div>
             </div>
           );

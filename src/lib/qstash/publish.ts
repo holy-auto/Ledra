@@ -86,3 +86,21 @@ export async function enqueueSquareSync(payload: { job_id: string; tenant_id: st
     deduplicationId: `square-sync:init:${payload.job_id}`,
   });
 }
+
+/**
+ * Enqueue LINE message-history reservation extraction for a newly linked customer.
+ *
+ * 顧客に line_user_id が紐づいた直後に呼ぶ。過去の inbound LINE メッセージを
+ * AI 解析して予約候補 (customer_messages.ai_extracted) を埋める。
+ * 顧客単位で deduplicate するので、複数経路から多重 enqueue されても 1 度だけ走る。
+ */
+export async function enqueueLineHistoryImport(payload: {
+  tenant_id: string;
+  customer_id: string;
+  line_user_id: string;
+}) {
+  return publish("/api/qstash/line-history-import", payload, {
+    retries: 2,
+    deduplicationId: `line-history-import:${payload.customer_id}`,
+  });
+}
