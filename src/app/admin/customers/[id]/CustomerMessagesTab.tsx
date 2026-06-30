@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/swr";
 import MessageAiExtractButton, { ExtractedCandidateCard, type ExtractedResult } from "./MessageAiExtractButton";
+import LinkCodeButton from "./LinkCodeButton";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 
 /**
@@ -181,6 +182,7 @@ export default function CustomerMessagesTab({ customerId }: { customerId: string
             この顧客にはまだ LINE ユーザが紐付いていません (`customers.line_user_id` が空)。 送信するには、顧客が LINE
             公式アカウントを友だち追加して 1 度メッセージを送るか、 予約フォームの LIFF
             経由で紐付けてもらう必要があります。
+            <LinkCodeButton customerId={customerId} />
           </div>
         )}
         <div className="flex gap-2">

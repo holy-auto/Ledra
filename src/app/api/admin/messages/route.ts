@@ -32,6 +32,7 @@ type Row = {
   delivered_at: string | null;
   failed_at: string | null;
   created_at: string;
+  ai_extracted: { intent?: string } | null;
 };
 
 interface ThreadAccum {
@@ -44,6 +45,14 @@ interface ThreadAccum {
   last_created_at: string;
   unread_count: number;
   message_count: number;
+  /** 予約系 intent の AI 抽出候補 (ai_extracted) が付いた未確認メッセージ数。 */
+  candidate_count: number;
+}
+
+/** ai_extracted が予約系 (予約候補) かどうか。 */
+function isReservationCandidate(ai: { intent?: string } | null): boolean {
+  const intent = ai?.intent;
+  return intent === "new_reservation" || intent === "change_reservation";
 }
 
 function isMissingColumnError(err: { message?: string; code?: string } | null | undefined): boolean {
@@ -65,8 +74,8 @@ export async function GET(req: NextRequest) {
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     const cols =
-      "id, customer_id, line_user_id, channel, direction, body, read_at, delivered_at, failed_at, created_at";
-    // read_at 列が未作成 (マイグレーション未適用) なら外して取得する。
+      "id, customer_id, line_user_id, channel, direction, body, read_at, delivered_at, failed_at, created_at, ai_extracted";
+    // read_at / ai_extracted 列が未作成 (マイグレーション未適用) なら外して取得する。
     let rows: Row[] = [];
     {
       const sel = await admin
@@ -83,7 +92,11 @@ export async function GET(req: NextRequest) {
           .order("created_at", { ascending: false })
           .limit(MAX_SCAN);
         if (retry.error) return apiInternalError(retry.error, "messages list (fallback)");
-        rows = ((retry.data ?? []) as Omit<Row, "read_at">[]).map((r) => ({ ...r, read_at: null }));
+        rows = ((retry.data ?? []) as Omit<Row, "read_at" | "ai_extracted">[]).map((r) => ({
+          ...r,
+          read_at: null,
+          ai_extracted: null,
+        }));
       } else if (sel.error) {
         return apiInternalError(sel.error, "messages list");
       } else {
@@ -108,6 +121,7 @@ export async function GET(req: NextRequest) {
           last_created_at: r.created_at,
           unread_count: 0,
           message_count: 0,
+          candidate_count: 0,
         };
         threads.set(key, t);
       }
@@ -116,6 +130,7 @@ export async function GET(req: NextRequest) {
       if (!t.customer_id && r.customer_id) t.customer_id = r.customer_id;
       if (!t.line_user_id && r.line_user_id) t.line_user_id = r.line_user_id;
       if (r.direction === "inbound" && !r.read_at) t.unread_count += 1;
+      if (r.direction === "inbound" && isReservationCandidate(r.ai_extracted)) t.candidate_count += 1;
     }
 
     let list = Array.from(threads.values());

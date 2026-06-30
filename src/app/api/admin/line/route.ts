@@ -23,6 +23,7 @@ const lineActionSchema = z.discriminatedUnion("action", [
       .transform((v) => v || null),
   }),
   z.object({ action: z.literal("disconnect") }),
+  z.object({ action: z.literal("set_link_prompt"), enabled: z.boolean() }),
 ]);
 
 /**
@@ -39,7 +40,7 @@ export async function GET() {
     const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data: tenant } = await admin
       .from("tenants")
-      .select("line_channel_id, line_liff_id, line_enabled")
+      .select("line_channel_id, line_liff_id, line_enabled, line_link_prompt_enabled")
       .eq("id", caller.tenantId)
       .single();
 
@@ -47,6 +48,7 @@ export async function GET() {
       enabled: !!tenant?.line_enabled,
       channel_id: tenant?.line_channel_id || null,
       liff_id: tenant?.line_liff_id || null,
+      link_prompt_enabled: !!tenant?.line_link_prompt_enabled,
       webhook_url: tenant?.line_enabled
         ? `${process.env.NEXT_PUBLIC_APP_URL || ""}/api/line/webhook?tenant_id=${caller.tenantId}`
         : null,
@@ -100,6 +102,12 @@ export async function POST(req: NextRequest) {
         enabled: true,
         webhook_url: `${process.env.NEXT_PUBLIC_APP_URL || ""}/api/line/webhook?tenant_id=${caller.tenantId}`,
       });
+    }
+
+    if (data.action === "set_link_prompt") {
+      // 未紐づけユーザーへの連携案内の自動返信トグル。
+      await admin.from("tenants").update({ line_link_prompt_enabled: data.enabled }).eq("id", caller.tenantId);
+      return apiOk({ link_prompt_enabled: data.enabled });
     }
 
     // data.action === "disconnect"
