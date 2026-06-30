@@ -7,6 +7,7 @@ import {
   generateFollowUpContent,
   getSeasonalTrigger,
   getDaysUntilWarrantyEnd,
+  daysUntilJstDate,
   type FollowUpTriggerType,
 } from "@/lib/ai/followUpContent";
 
@@ -466,13 +467,12 @@ export async function processWarrantyEndFollowUps(
     .or("warranty_period.not.is.null,warranty_period_end.not.is.null")
     .neq("status", "void");
 
-  const today = new Date();
   const filtered = (activeCerts ?? []).filter((cert) => {
     if (!cert.customer_id) return false;
     // 算出済みの保証終了日 (date) があればそれを優先。無ければ保証期間テキストから算出
-    // (年だけでなく月にも対応)。
+    // (年だけでなく月にも対応)。いずれも JST 暦日基準の日数差で比較する (実行時刻に非依存)。
     const daysUntilEnd = cert.warranty_period_end
-      ? Math.floor((new Date(cert.warranty_period_end).getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+      ? daysUntilJstDate(cert.warranty_period_end)
       : getDaysUntilWarrantyEnd(cert.created_at, cert.warranty_period);
     return daysUntilEnd !== null && daysUntilEnd === warrantyEndDays;
   });
