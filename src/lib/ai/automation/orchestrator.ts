@@ -310,6 +310,11 @@ export function shouldAutoDraftInvoiceOnBilling(settings: AiAutomationSettings):
   return resolveAutoAction(settings, "invoice.auto_draft_on_billing_step");
 }
 
+/** 案件完了 (status=completed) 時に請求書ドラフトを自動作成するか (会計工程とは別 opt-in)。 */
+export function shouldAutoDraftInvoiceOnCompletion(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "invoice.auto_draft_on_completion");
+}
+
 /**
  * 案件のステータス遷移時に「次アクション」を自動提案してよいか。
  * 結果は提案 (action/message/priority) として保存されるだけで、各操作の実行は人が行う

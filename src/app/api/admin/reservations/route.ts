@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
@@ -21,6 +21,7 @@ import {
 } from "@/lib/validations/reservation";
 import { maybeAutoDraftCertificateForReservation } from "@/lib/ai/automation/certificateAuto";
 import { maybeAutoCreateDraftCertificateForReservation } from "@/lib/ai/automation/certificateRecordAuto";
+import { maybeAutoCreateDraftInvoiceForReservation } from "@/lib/ai/automation/invoiceRecordAuto";
 import { maybeAutoCategorizeReservationOnIntake } from "@/lib/ai/automation/accountingAuto";
 
 export const dynamic = "force-dynamic";
@@ -324,6 +325,19 @@ export async function PUT(req: NextRequest) {
       }
     }
 
+    // 完了オートメーションは「実際の completed への遷移」だけを対象にする
+    // (既に completed の予約を編集する PUT で再発火し、二重に下書きを作るのを防ぐ)。
+    let priorStatus: string | null = null;
+    if (rest.status === "completed") {
+      const { data: prev } = await supabase
+        .from("reservations")
+        .select("status")
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
+      priorStatus = (prev?.status as string | null) ?? null;
+    }
+
     const { data, error } = await supabase
       .from("reservations")
       .update(updates)
@@ -383,15 +397,24 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    // 案件完了時: 証明書ドラフトを自動生成 (certificate.auto_draft が opt-in のテナントのみ)。
-    // 発行は必ず人が行う (壁3)。レスポンスを遅らせないよう fire-and-forget。
-    if (data.status === "completed") {
-      void (async () => {
+    // 案件完了時: 各種ドラフトを自動生成 (各自 opt-in のテナントのみ・発行/送付は必ず人 = 壁3)。
+    // 「未完了 → completed」の実遷移時のみ発火する (既存 completed の編集では再発火しない)。
+    // serverless でレスポンス後に打ち切られないよう after() で確実に完走させる。
+    if (data.status === "completed" && priorStatus !== "completed") {
+      after(async () => {
         // certificate.auto_draft: AI 下書きを reservations.ai_certificate_draft に保存。
         await maybeAutoDraftCertificateForReservation({ tenantId: caller.tenantId, reservationId: data.id });
-        // certificate.auto_create_draft_record: 証明書を status=draft の行として起票 (発行は必ず人 = 壁3)。
+        // certificate.auto_create_draft_record: 証明書を status=draft の行として起票。
         await maybeAutoCreateDraftCertificateForReservation({ tenantId: caller.tenantId, reservationId: data.id });
-      })();
+        // invoice.auto_draft_on_completion: 完了を請求のタイミングとして請求書を draft 起票。
+        // ワークフロー請求工程を使わないテナント向け (会計工程の opt-in とは別)。冪等 (同顧客+
+        // 車両の draft があれば作らない) なのでワークフロー側と二重起票しない。
+        await maybeAutoCreateDraftInvoiceForReservation({
+          tenantId: caller.tenantId,
+          reservationId: data.id,
+          trigger: "completion",
+        });
+      });
     }
 
     return apiJson({ ok: true, reservation: data });

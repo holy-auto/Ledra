@@ -40,6 +40,7 @@ export type AutomationActionKey =
   | "quote.auto_send"
   | "accounting.auto_categorize_on_intake"
   | "invoice.auto_draft_on_billing_step"
+  | "invoice.auto_draft_on_completion"
   | "thickness.auto_detect"
   | "workflow.auto_propose_on_intake"
   | "workflow.auto_apply_on_intake"
@@ -163,6 +164,15 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     label: "ワークフローの会計工程で請求書ドラフトを自動作成",
     description:
       "ワークフローが「会計/請求」工程に到達した時点で、予約のメニュー（無ければ見積額）から請求書を status=draft で自動起票する。送付（金額の外向き確定）は必ず人が行う（壁3）。同じ顧客の下書きが既にあれば作らない。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Standard プラン以上 + 顧客あり + 金額の手掛かりあり",
+  },
+  {
+    key: "invoice.auto_draft_on_completion",
+    workflow: "invoice",
+    label: "案件完了時に請求書ドラフトを自動作成",
+    description:
+      "予約が「完了」になった時点で、予約のメニュー（無ければ見積額）から請求書を status=draft で自動起票する。ワークフローの会計工程を使わないテナント向け。送付（金額の外向き確定）は必ず人が行う（壁3）。同じ顧客の下書きが既にあれば作らない。",
     defaultEnabled: false,
     guard: "AI 有効 + Standard プラン以上 + 顧客あり + 金額の手掛かりあり",
   },
