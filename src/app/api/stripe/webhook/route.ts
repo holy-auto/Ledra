@@ -653,24 +653,50 @@ export async function POST(req: NextRequest) {
         // ─── 請求書 (documents) 決済リンク checkout (Connect destination charge, mode=payment) ───
         // send-line-payment-link / connect/payment-link が createInvoicePaymentLink で作る
         // Checkout の完了。metadata.invoice_id の請求書を「入金済」にして請求完了の導線を閉じる。
-        // 手動「入金」操作や Stripe の webhook 再送と二重更新しないよう .neq("status","paid") で冪等化。
         if (session.metadata?.invoice_id) {
           const invoiceId = session.metadata.invoice_id;
           const tenantId = session.metadata.tenant_id ?? null;
-          const nowIso = new Date().toISOString();
 
+          // 非同期決済 (コンビニ/銀行振込 等) は completed 時点で payment_status が
+          // 'unpaid' のことがある。実際に入金確定 ('paid') したときのみ paid 化し、
+          // 未確定で早まって閉じない (未確定分は別イベント/手動入金にフォールバック)。
+          if (session.payment_status !== "paid") {
+            console.info("webhook: invoice checkout completed but not yet paid", {
+              invoiceId,
+              paymentStatus: session.payment_status,
+            });
+            break;
+          }
+
+          const nowIso = new Date().toISOString();
+          // 古い決済リンクが取消後・金額変更後に完了しても誤って閉じないための防壁:
+          //  - payable な status のみ対象 (paid/cancelled/rejected を除外、再送にも冪等)
+          //  - 請求額と一致する入金のみ受け付ける (amount_total は最小通貨単位。JPY は
+          //    ゼロ小数なので円の documents.total とそのまま比較できる)
+          //  - tenant_id があれば追加スコープ (他テナントの doc を誤更新しない最終防壁)
           let invQuery = supabase
             .from("documents")
             .update({ status: "paid", payment_date: nowIso.slice(0, 10), updated_at: nowIso })
             .eq("id", invoiceId)
             .in("doc_type", ["invoice", "consolidated_invoice"])
-            .neq("status", "paid");
-          // metadata の tenant_id があれば追加スコープ (他テナントの doc を誤更新しない最終防壁)。
+            .not("status", "in", "(paid,cancelled,rejected)");
           if (tenantId) invQuery = invQuery.eq("tenant_id", tenantId);
+          if (typeof session.amount_total === "number") invQuery = invQuery.eq("total", session.amount_total);
 
-          const { error: invErr } = await invQuery;
+          const { data: paidDocs, error: invErr } = await invQuery.select("id");
           if (invErr) {
+            // 一時的な DB 障害。break (=200/processed) で握りつぶすと請求書が未入金の
+            // まま放置され再処理もされないため、throw して claim に error_message を残し
+            // monitor cron の検知対象にする (Stripe へは 500 を返す)。
             console.error("webhook: invoice paid update failed", { invoiceId, error: invErr });
+            throw invErr;
+          }
+          if (!paidDocs || paidDocs.length === 0) {
+            // 既に paid / 取消 / 金額不一致 等 → 冪等に no-op (再送でも安全)。
+            console.warn("webhook: invoice not marked paid (already paid, cancelled, or amount mismatch)", {
+              invoiceId,
+              amountTotal: session.amount_total,
+            });
             break;
           }
 

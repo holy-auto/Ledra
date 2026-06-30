@@ -292,7 +292,11 @@ function extractFailingTypeValue(
 
 async function reset(): Promise<void> {
   console.log("🧹 デモテナントのデータを削除します...");
-  // cascade 削除: tenant 削除で一連の関連レコードが消える
+  // documents.tenant_id は ON DELETE RESTRICT (金銭データ保護, 20260323070000_scale_hardening)。
+  // tenant 削除前に明示的に請求書/帳票を消さないと RESTRICT で tenant 削除が失敗する。
+  const { error: docErr } = await admin.from("documents").delete().eq("tenant_id", TENANT_ID);
+  if (docErr && !docErr.message.includes("does not exist")) throw docErr;
+  // 残り (customers/vehicles/certificates/reservations 等) は tenant 削除で cascade。
   const { error } = await admin.from("tenants").delete().eq("id", TENANT_ID);
   if (error) throw error;
   console.log("✅ 削除完了。");
