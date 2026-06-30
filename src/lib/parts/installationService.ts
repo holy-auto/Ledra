@@ -14,7 +14,7 @@
 import { randomUUID } from "crypto";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { computePartContentHash, serialFingerprint, deriveRequiredAssurance } from "@/lib/parts/contentHash";
-import { serialReusedFinding, type IntegrityFinding } from "@/lib/parts/integrityChecks";
+import { serialReusedFinding, flagFindingsFromEvidence, type IntegrityFinding } from "@/lib/parts/integrityChecks";
 import type { PartInstallationCreateInput } from "@/lib/validations/partInstallation";
 
 export interface CreateInstallationResult {
@@ -139,6 +139,10 @@ export async function createInstallation(
     }
   }
 
+  // 4.5) ステージ時 (evidence-upload) に検出した EXIF 改ざん疑い flag → finding
+  //      (編集ソフト痕跡 → photo_edited, 撮影時刻異常 → timestamp_anomaly 等)。
+  findings.push(...flagFindingsFromEvidence(installationId, input.evidence));
+
   // 5) findings 記録
   if (findings.length > 0) {
     const { error: fErr } = await admin
@@ -159,7 +163,7 @@ export async function createInstallation(
 }
 
 /** 同テナント内の他装着で同一 sha256/知覚ハッシュの証拠を探す。admin は呼び出し側のものを再利用。 */
-export async function findDuplicateEvidence(
+async function findDuplicateEvidence(
   admin: ReturnType<typeof createTenantScopedAdmin>["admin"],
   tenantId: string,
   selfInstallationId: string,

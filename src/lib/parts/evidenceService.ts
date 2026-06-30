@@ -1,27 +1,30 @@
 /**
- * 装着エビデンス写真の取り込みサービス（現場タブレットの「撮るだけ」経路の中核）。
+ * 装着エビデンス写真の「作成前ステージ」アップロード（現場タブレットの撮るだけ経路）。
  *
  * 設計: docs/parts-installation-integrity-design.md（証拠の真正性 L2 / 使い回し検知 L7）
  *
  * 既存の作成 API (`POST /api/parts/installations`) は「アップロード済みの写真メタ
  * (storage_path / sha256 / perceptual_hash / exif_captured_at)」を前提にしていたが、
  * 実際に写真を撮影→アップロードしてハッシュ・EXIF を付与する経路は納品書用しか
- * 無かった。本サービスはその欠落を埋め、装着写真について以下をサーバ側で行う:
+ * 無かった。本サービスはその欠落を埋め、**装着レコード作成の前に** 写真を 1 枚
+ * ステージし、サーバ側で算出した真正性メタを返す。クライアントはそのメタを作成 API の
+ * `evidence[]` に渡すため、写真は content_hash（顧客が署名する manifest）に確実に
+ * 取り込まれる（＝作成後に追記せず、署名対象の外に漏れない）。
  *
  *  1. SHA-256（バイト改ざん検知。クライアント送信値は信用しない）。
  *  2. 知覚ハッシュ（aHash。再圧縮・微編集に耐え、使い回しを検出）。
- *  3. EXIF 撮影日時 (DateTimeOriginal) を抽出し、EXIF の有無で真正性グレードを付与。
- *  4. 同テナント他装着との sha256 / 知覚ハッシュ重複を検知し photo_duplicate finding を記録。
- *  5. assets バケットへ保存し part_installation_evidence に追記。
+ *  3. EXIF 撮影日時 (DateTimeOriginal) と改ざん疑い flag（編集ソフト痕跡・撮影時刻異常等）。
+ *  4. EXIF の有無・flag で真正性グレードを付与。
+ *  5. assets バケットへ保存し storage_path を返す。
  *
- * 確定署名・アンカー・在庫計上には関与しない（人の操作のまま）。
+ * 重複・シリアル使い回し・flag→finding の記録は作成 API (createInstallation) 側で、
+ * content_hash 確定と同じトランザクション文脈で行う（本サービスは DB 行を作らない）。
  */
 
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages"; // 共有 "assets" バケット
 import { hashSha256, computePerceptualHash } from "@/lib/anchoring/imageHashing";
-import { extractExifMeta } from "@/lib/ai/photoTamperingCheck";
-import { findDuplicateEvidence } from "@/lib/parts/installationService";
+import { extractExifMeta, detectExifFlags, type TamperingFlag } from "@/lib/ai/photoTamperingCheck";
 
 type Admin = ReturnType<typeof createTenantScopedAdmin>["admin"];
 
@@ -36,93 +39,54 @@ export const INSTALL_PHOTO_KINDS = [
 ] as const;
 export type InstallPhotoKind = (typeof INSTALL_PHOTO_KINDS)[number];
 
-export interface AttachPhotoResult {
-  evidence_id: string;
+export interface StagedPhoto {
+  storage_path: string;
   sha256: string;
   perceptual_hash: string;
   exif_captured_at: string | null;
   authenticity_grade: "unverified" | "basic";
-  duplicate: boolean;
+  /** EXIF から検出した改ざん疑い flag（作成時に finding 化される）。 */
+  integrity_flags: TamperingFlag[];
 }
 
 /**
- * 装着レコードに写真エビデンスを 1 枚取り込む。
- * 呼び出し側で装着の自テナント所有・追記可否 (status) を確認済みであること。
+ * 装着写真を 1 枚ステージ（保存＋真正性メタ算出）する。DB 行は作らない。
+ * 返したメタを作成 API の evidence[] に渡すことで content_hash に取り込まれる。
  */
-export async function attachInstallationPhoto(opts: {
+export async function stageInstallationPhoto(opts: {
   admin: Admin;
   tenantId: string;
-  installationId: string;
   kind: InstallPhotoKind;
   buffer: Buffer;
   arrayBuffer: ArrayBuffer;
   mime: string;
-  captureNonce?: string | null;
-}): Promise<AttachPhotoResult> {
-  const { admin, tenantId, installationId, kind, buffer, arrayBuffer, mime } = opts;
+}): Promise<StagedPhoto> {
+  const { admin, tenantId, kind, buffer, arrayBuffer, mime } = opts;
 
-  // 1) ハッシュ・EXIF（クライアント値は信用せずサーバ側で算出）。
+  // 1) ハッシュ・EXIF・flag（クライアント値は信用せずサーバ側で算出）。
   const sha256 = hashSha256(buffer);
   const perceptualHash = await computePerceptualHash(buffer);
   const exif = await extractExifMeta(arrayBuffer);
+  const integrityFlags = detectExifFlags(exif, new Date(), [exif], 0);
   const exifCapturedAt = exif.takenAt ? new Date(exif.takenAt).toISOString() : null;
-  // EXIF があれば最低限「撮影されたメタを伴う」basic、無ければ unverified。
-  const authenticityGrade: "unverified" | "basic" = exif.hasExif ? "basic" : "unverified";
+  // EXIF があり改ざん疑い flag が無ければ basic、それ以外（EXIF 無し・編集痕跡等）は unverified。
+  const authenticityGrade: "unverified" | "basic" =
+    exif.hasExif && integrityFlags.length === 0 ? "basic" : "unverified";
 
-  // 2) 保存（assets バケット）。
+  // 2) 保存（assets バケットの staging 配下。作成時に evidence.storage_path として参照される）。
   const ext = mime.split("/")[1]?.replace("jpeg", "jpg") ?? "jpg";
-  const storagePath = `parts/${tenantId}/${installationId}/evidence-${kind}-${Date.now()}.${ext}`;
+  const storagePath = `parts/${tenantId}/staging/${kind}-${Date.now()}-${sha256.slice(0, 8)}.${ext}`;
   const { error: upErr } = await admin.storage
     .from(CERTIFICATE_IMAGE_BUCKET)
     .upload(storagePath, buffer, { contentType: mime, upsert: false });
   if (upErr) throw new Error(`storage upload failed: ${upErr.message}`);
 
-  // 3) 使い回し検知（他装着と sha256 / 知覚ハッシュが一致）。
-  const dups = await findDuplicateEvidence(admin, tenantId, installationId, [sha256], [perceptualHash]);
-
-  // 4) エビデンス追記。
-  const { data: evidence, error: evErr } = await admin
-    .from("part_installation_evidence")
-    .insert({
-      tenant_id: tenantId,
-      installation_id: installationId,
-      kind,
-      storage_path: storagePath,
-      content_type: mime,
-      sha256,
-      perceptual_hash: perceptualHash,
-      authenticity_grade: authenticityGrade,
-      exif_captured_at: exifCapturedAt,
-      capture_nonce: opts.captureNonce ?? null,
-    })
-    .select("id")
-    .single();
-  if (evErr) {
-    // 証拠行が作れなければアップロード済みオブジェクトを掃除（孤児防止）。
-    admin.storage
-      .from(CERTIFICATE_IMAGE_BUCKET)
-      .remove([storagePath])
-      .catch(() => {});
-    throw new Error(`evidence insert failed: ${evErr.message}`);
-  }
-
-  // 5) 使い回しが見つかれば critical finding を記録（撮影時点で可視化）。
-  if (dups.length > 0) {
-    await admin.from("part_integrity_findings").insert({
-      tenant_id: tenantId,
-      installation_id: installationId,
-      rule: "photo_duplicate",
-      severity: "critical",
-      detail: { matches: dups, note: "他の装着と同一の写真（使い回し疑い）" },
-    });
-  }
-
   return {
-    evidence_id: evidence.id as string,
+    storage_path: storagePath,
     sha256,
     perceptual_hash: perceptualHash,
     exif_captured_at: exifCapturedAt,
     authenticity_grade: authenticityGrade,
-    duplicate: dups.length > 0,
+    integrity_flags: integrityFlags,
   };
 }

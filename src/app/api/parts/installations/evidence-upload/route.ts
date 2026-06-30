@@ -1,22 +1,24 @@
 /**
- * POST /api/parts/installations/[id]/evidence
+ * POST /api/parts/installations/evidence-upload
  *
- * 部品装着レコードに装着写真を 1 枚アップロードする（現場タブレットの「撮るだけ」経路）。
- * 画像を assets バケットに保存し、SHA-256 / 知覚ハッシュ / EXIF 撮影日時を付与して
- * part_installation_evidence に追記する。他装着との写真使い回しを検知して finding に記録する。
+ * 現場タブレットの「撮るだけ」経路の最初の一歩。装着写真を 1 枚アップロードし、
+ * サーバ側で SHA-256 / 知覚ハッシュ / EXIF 撮影日時 / 改ざん疑い flag を算出して返す。
+ * **装着レコードはまだ作らない**。クライアントは返ったメタ (storage_path / sha256 /
+ * perceptual_hash / exif_captured_at / authenticity_grade / integrity_flags) を作成 API
+ * (`POST /api/parts/installations`) の evidence[] に渡すため、写真は content_hash
+ * （顧客が署名する manifest）に確実に取り込まれる（作成後に追記して署名対象の外に
+ * 漏れることがない）。
  *
- * 納品書 (kind=delivery_note) は OCR + 三方照合を伴う専用経路
- * (`.../delivery-note`) を使う。本経路は装着・文脈・旧品・封印・刻印等の写真用。
- *
- * 確定署名・アンカー・在庫計上には関与しない（人の操作のまま）。
+ * 納品書 (kind=delivery_note) は OCR + 三方照合を伴う専用経路を使う。本経路は装着・
+ * 文脈・旧品・封印・刻印等の写真用。
  */
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { apiJson, apiInternalError, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
-import { attachInstallationPhoto, INSTALL_PHOTO_KINDS, type InstallPhotoKind } from "@/lib/parts/evidenceService";
+import { apiJson, apiInternalError, apiUnauthorized, apiValidationError } from "@/lib/api/response";
+import { stageInstallationPhoto, INSTALL_PHOTO_KINDS, type InstallPhotoKind } from "@/lib/parts/evidenceService";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,7 +47,7 @@ function detectMime(buf: Buffer): "image/jpeg" | "image/png" | "image/webp" | "i
   return null;
 }
 
-export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export async function POST(req: NextRequest) {
   try {
     const limited = await checkRateLimit(req, "general");
     if (limited) return limited;
@@ -54,23 +56,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const { id: installationId } = await ctx.params;
-    if (!installationId) return apiNotFound("installation id is required");
-
     const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
-
-    // 装着レコードが自テナントのものか確認（後続も tenant_id で絞る）。
-    const { data: inst } = await admin
-      .from("part_installations")
-      .select("id, status")
-      .eq("id", installationId)
-      .eq("tenant_id", tenantId)
-      .maybeSingle();
-    if (!inst) return apiNotFound("installation not found");
-    // 完全凍結（確定済み）/ 取消後は証拠追記しない。
-    if (inst.status === "customer_verified" || inst.status === "voided") {
-      return apiValidationError("確定済み / 取消済みの装着には写真を追加できません。");
-    }
 
     const form = await req.formData();
 
@@ -87,9 +73,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       return apiValidationError(`ファイルサイズが大きすぎます (上限 ${MAX_FILE_BYTES / 1024 / 1024}MB)。`);
     }
 
-    const captureNonceRaw = form.get("capture_nonce");
-    const captureNonce = typeof captureNonceRaw === "string" && captureNonceRaw ? captureNonceRaw.slice(0, 128) : null;
-
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const mime = detectMime(buffer);
@@ -97,19 +80,17 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       return apiValidationError("対応していないファイル形式です (JPEG・PNG・WebP・GIF のみ)。");
     }
 
-    const result = await attachInstallationPhoto({
+    const staged = await stageInstallationPhoto({
       admin,
       tenantId,
-      installationId,
       kind: kindRaw as InstallPhotoKind,
       buffer,
       arrayBuffer,
       mime,
-      captureNonce,
     });
 
-    return apiJson({ ok: true, ...result }, { status: 201 });
+    return apiJson({ ok: true, ...staged }, { status: 201 });
   } catch (e) {
-    return apiInternalError(e, "parts/installations/[id]/evidence POST");
+    return apiInternalError(e, "parts/installations/evidence-upload POST");
   }
 }
