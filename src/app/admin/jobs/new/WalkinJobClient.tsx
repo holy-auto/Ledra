@@ -3,7 +3,7 @@ import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Card from "@/components/ui/Card";
 import MessageExtractPanel from "./MessageExtractPanel";
 
@@ -29,12 +29,14 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 export default function WalkinJobClient() {
   const router = useRouter();
+  // 予定候補 (受信箱/顧客タブの AI 抽出) からの遷移で初期値を引き継ぐ。
+  const searchParams = useSearchParams();
 
-  const [title, setTitle] = useState(`飛び込み案件 ${today()}`);
-  const [customerId, setCustomerId] = useState<string>("");
+  const [title, setTitle] = useState(() => searchParams.get("title")?.trim() || `飛び込み案件 ${today()}`);
+  const [customerId, setCustomerId] = useState<string>(() => searchParams.get("customer_id") || "");
   const [vehicleId, setVehicleId] = useState<string>("");
   const [estimatedAmount, setEstimatedAmount] = useState<number>(0);
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState(() => searchParams.get("note") || "");
   const [initialStatus, setInitialStatus] = useState<"arrived" | "in_progress">("arrived");
   // 飛び込み案件では「その場で作業」か「別日に作業 (＝まず見積書)」か
   // 状況によって変わるため、都度選ばせる。未選択時は送信不可。

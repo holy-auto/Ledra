@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import PageHeader from "@/components/ui/PageHeader";
@@ -45,7 +46,9 @@ export default async function WalkinJobPage() {
           },
         ]}
       />
-      <WalkinJobClient />
+      <Suspense fallback={null}>
+        <WalkinJobClient />
+      </Suspense>
     </main>
   );
 }
