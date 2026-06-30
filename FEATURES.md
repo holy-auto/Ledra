@@ -378,8 +378,8 @@ Ledraは自動車施工（コーティング・フィルム・ラッピング等
 - **店舗検索** `/insurer/stores`: 施工店情報検索
 - **ウォッチリスト** `/insurer/watchlist`: 監視対象の証明書管理
 - **証明書詳細** `/insurer/c/[public_id]`: 個別証明書の詳細閲覧
-- **アンカー検証** `/insurer/anchor-verify` ★新規: 施工画像の SHA-256 を**ブラウザ側で計算**し Polygon の LedraAnchor コントラクトに直接照会して真正性を独立検証（画像は Ledra サーバーに送信しない / ガス代なし）。アンカー済み・契約済み施工店の証明書ならメタデータ（撮影日時・端末モデル・真正性グレード）を開示、Polygonscan/OKLink で同一 tx_hash を相互参照可能
-- **BtoB マッチ** `/insurer/btob-match` ★新規: 施工カテゴリ（PPF/コーティング/フィルム/ディテイリング/セラミック/修理）と都道府県から AI が提携施工店候補をスコアリング提案（カテゴリ適合・契約実績・案件量・エリア・評価の加点 + LLM 推薦文）
+- **アンカー検証** `/insurer/anchor-verify` ★新規: 施工画像の SHA-256 を**ブラウザ側で計算**（画像は Ledra サーバーに送信しない）し、その**ハッシュのみ**を `/api/insurer/anchor-verify/[sha256]` に送って Polygon の LedraAnchor コントラクトを照会・検証（読み取り専用 / ガス代なし）。アンカー済み・契約済み施工店の証明書ならメタデータ（撮影日時・端末モデル・真正性グレード）を開示し、返却された tx_hash を Polygonscan/OKLink で第三者が独立再検証可能
+- **BtoB マッチ** `/insurer/btob-match` ★新規: 施工カテゴリ（PPF/コーティング/フィルム/ディテイリング/セラミック/修理）と都道府県から AI が提携施工店候補をスコアリング提案（カテゴリ適合・契約実績・案件量・エリアの加点 + LLM 推薦文。店舗評価スコアによる加点は将来対応）
 
 ### 4.3 案件管理 `/insurer/cases`
 - **一覧**: 案件検索・ステータス絞り込み
@@ -1093,7 +1093,7 @@ VIN を鍵に**車両の全施工履歴を束ねる「デジタル車両パス�
 買取店など第三者が、任意 VIN の全施工履歴レポートを**都度課金（Stripe）でアンロック**できる収益化機能。
 
 - `POST /api/public/vehicle-report/checkout`: 無認証で任意 VIN のレポートを Stripe 決済（mode=payment / JPY）。VIN 実在確認（vehicle_passports に存在するもののみ）、金額はサーバ側 settings で決定、レートリミット付き
-- `POST /api/public/vehicle-report/unlock`: 支払い完了後にアクセストークンを発行し `/v/[vin]` の全履歴を表示（顧客認証不要）
+- `GET /api/public/vehicle-report/unlock?session_id=...`: Stripe の success_url からのリダイレクト先。支払い完了を検証してアクセストークンを発行し `/v/[vin]` の全履歴を表示（顧客認証不要）
 - **運営側** `/admin/platform/vehicle-report`: 第三者向けレポート価格（JPY）を設定（パスポート履歴はテナント横断のためプラットフォーム共通価格）
 
 ### 13.6 施工店ポータル（Admin）の追加業務機能 ★新規
@@ -1104,7 +1104,7 @@ VIN を鍵に**車両の全施工履歴を束ねる「デジタル車両パス�
 - **承認インボックス** `/admin/inbox`: 証明書・発注・請求書の未承認ドラフトを集約しワンタップ承認
 - **メカニック稼働管理** `/admin/mechanic-gantt`: 本日のシフトを30分刻みガントで可視化（10秒ごとライブ更新の運用ディスプレイ）
 - **コンタクト管理** `/admin/contact-schedules`: 顧客接触予定（コール等）をカレンダー一元管理（完了/スキップ/リスケ）
-- **鈑金工程** `/admin/body-repair`: 車体整備案件を「引取→見積→工程→完成→納車」で追跡（詳細は 13.8）
+- **鈑金工程** `/admin/body-repair`: 車体整備案件を「引取→見積→工程→完成→納車」で追跡（詳細は 13.7）
 - **クーポン管理** `/admin/coupons`: クーポンコードの自動生成/手動作成・有効化・発行履歴追跡
 - **整備提案・交換管理** `/admin/service-reminders`: 次回施工期日を走行距離・実施日の双方で管理し期限間近フラグで優先度表示
 - **概算見積** `/admin/quick-quote`: メニュー項目をクリック選択・数量入力し税込見積額をリアルタイム計算
@@ -1138,7 +1138,7 @@ VIN を鍵に**車両の全施工履歴を束ねる「デジタル車両パス�
 
 **外部 v1 API（基幹システム / 外部チャネル連携）**
 - `POST /api/v1/ingest/{customers,vehicles,work-history}`: 基幹ソフトから顧客/車両/作業履歴を API キーで Push 取込（source_system + external_ref で冪等）
-- `POST /api/v1/accident-match`: 保険会社向け、VIN から最適施工店 5 件をランキング（PII なし公開情報のみ返却）
+- `GET /api/v1/accident-match?vin=...`: 保険会社向け、VIN から最適施工店をランキング（PII なし公開情報のみ返却）
 - `POST /api/external/booking`: 外部チャネル（Google Maps Reserve / LINE LIFF / Web 等）からの予約受付（重複チェック・Google Calendar 同期・LINE 確認メッセージ）
 
 ### 13.7 鈑金塗装（body-repair）ワークフロー強化 ★新規
@@ -1171,9 +1171,9 @@ VIN を鍵に**車両の全施工履歴を束ねる「デジタル車両パス�
 | Standard | 300 件 | 10 枚 | 2 |
 | Pro | 無制限 | 20 枚 | 5 |
 
-- **プラン別 AI モデル選択**: 全ルートハンドラ・自動化処理がプランに応じてモデル（Haiku / Sonnet / Opus）を切替。Starter は AI 全機能を Haiku で解禁
+- **プラン別 AI モデル選択**: 多くのルートハンドラ・自動化処理がプランに応じてモデル（Haiku / Sonnet / Opus）を切替し、Starter は AI 全機能を Haiku で解禁。ただし精度要件の高い一部処理（本人確認 OCR など Vision/Critical 系）はプランに依らず固定の高精度モデルを使用
 - **Wall-3 撤廃**: 全アクションを AI 自動化の対象に開放（フィールド単位ポリシー auto/suggest/manual + 信頼度しきい値 + 月次コストキャップで制御）
-- **AI 利用集計**: `/admin/platform/ai-usage`・運営ダッシュボードでモデル別/outcome 別/トークン消費を可視化
+- **AI 利用集計**: 運営ダッシュボード `/admin/platform/operations`（API: `/api/admin/platform/ai-usage`）でモデル別/outcome 別/トークン消費を可視化
 
 ### 13.10 モバイル / マーケティングの追加
 
