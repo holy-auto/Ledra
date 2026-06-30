@@ -97,7 +97,7 @@ export default function AgentMembersPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: inviteName.trim(),
+          display_name: inviteName.trim(),
           email: inviteEmail.trim(),
           role: inviteRole,
         }),
@@ -128,9 +128,7 @@ export default function AgentMembersPage() {
         body: JSON.stringify({ role: newRole }),
       });
       if (!res.ok) throw new Error("ロール変更に失敗しました");
-      setMembers((prev) =>
-        prev.map((m) => (m.id === memberId ? { ...m, role: newRole } : m)),
-      );
+      setMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, role: newRole } : m)));
     } catch {
       // Revert on error - refetch
       fetchMembers();
@@ -165,19 +163,11 @@ export default function AgentMembersPage() {
       <div className="flex flex-wrap items-end justify-between gap-4 pb-2">
         <div className="space-y-1">
           <span className="section-tag">MEMBERS</span>
-          <h1 className="text-[28px] font-semibold tracking-tight text-primary leading-tight">
-            メンバー管理
-          </h1>
-          <p className="text-[14px] text-secondary leading-relaxed">
-            チームメンバーの管理・招待を行います。
-          </p>
+          <h1 className="text-[28px] font-semibold tracking-tight text-primary leading-tight">メンバー管理</h1>
+          <p className="text-[14px] text-secondary leading-relaxed">チームメンバーの管理・招待を行います。</p>
         </div>
         {isAdmin && (
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => setShowInvite(!showInvite)}
-          >
+          <button type="button" className="btn-primary" onClick={() => setShowInvite(!showInvite)}>
             {showInvite ? "キャンセル" : "メンバー招待"}
           </button>
         )}
@@ -186,9 +176,7 @@ export default function AgentMembersPage() {
       {/* Invite form */}
       {showInvite && isAdmin && (
         <div className="glass-card p-5 space-y-4">
-          <div className="text-xs font-semibold tracking-[0.18em] text-muted mb-3">
-            新規メンバー招待
-          </div>
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted mb-3">新規メンバー招待</div>
           <div className="grid gap-4 sm:grid-cols-3">
             <label className="space-y-1">
               <span className="text-xs text-muted">名前</span>
@@ -212,11 +200,7 @@ export default function AgentMembersPage() {
             </label>
             <label className="space-y-1">
               <span className="text-xs text-muted">ロール</span>
-              <select
-                value={inviteRole}
-                onChange={(e) => setInviteRole(e.target.value)}
-                className="input-field"
-              >
+              <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value)} className="input-field">
                 {ROLE_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label}
@@ -225,9 +209,7 @@ export default function AgentMembersPage() {
               </select>
             </label>
           </div>
-          {inviteError && (
-            <p className="text-sm text-danger">{inviteError}</p>
-          )}
+          {inviteError && <p className="text-sm text-danger">{inviteError}</p>}
           <div className="flex gap-3">
             <button
               type="button"
@@ -268,18 +250,13 @@ export default function AgentMembersPage() {
                 <th className="px-4 py-3 font-medium">ロール</th>
                 <th className="px-4 py-3 font-medium">ステータス</th>
                 <th className="px-4 py-3 font-medium">参加日</th>
-                {isAdmin && (
-                  <th className="px-4 py-3 font-medium">操作</th>
-                )}
+                {isAdmin && <th className="px-4 py-3 font-medium">操作</th>}
               </tr>
             </thead>
             <tbody>
               {members.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={isAdmin ? 6 : 5}
-                    className="px-4 py-10 text-center text-muted"
-                  >
+                  <td colSpan={isAdmin ? 6 : 5} className="px-4 py-10 text-center text-muted">
                     メンバーが登録されていません。
                   </td>
                 </tr>
@@ -300,9 +277,7 @@ export default function AgentMembersPage() {
                       key={m.id}
                       className="border-b border-border-default hover:bg-surface-hover/40 transition-colors"
                     >
-                      <td className="px-4 py-3 font-medium text-primary">
-                        {m.name}
-                      </td>
+                      <td className="px-4 py-3 font-medium text-primary">{m.name}</td>
                       <td className="px-4 py-3 text-secondary">{m.email}</td>
                       <td className="px-4 py-3">
                         <Badge variant={role.variant}>{role.label}</Badge>
@@ -310,16 +285,12 @@ export default function AgentMembersPage() {
                       <td className="px-4 py-3">
                         <Badge variant={status.variant}>{status.label}</Badge>
                       </td>
-                      <td className="px-4 py-3 text-secondary whitespace-nowrap">
-                        {formatDateTime(m.joined_at)}
-                      </td>
+                      <td className="px-4 py-3 text-secondary whitespace-nowrap">{formatDateTime(m.joined_at)}</td>
                       {isAdmin && (
                         <td className="px-4 py-3">
                           <select
                             value={m.role}
-                            onChange={(e) =>
-                              handleRoleChange(m.id, e.target.value)
-                            }
+                            onChange={(e) => handleRoleChange(m.id, e.target.value)}
                             disabled={isChanging}
                             className="input-field text-xs py-1 px-2 w-auto"
                           >
