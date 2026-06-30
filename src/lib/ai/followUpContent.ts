@@ -186,18 +186,52 @@ export function getDaysUntilInspection(nextInspectionDate: string | undefined | 
 // 保証終了前トリガー計算
 // ─────────────────────────────────────────────
 
-export function getDaysUntilWarrantyEnd(issuedAt: string, warrantyPeriod: string | undefined | null): number | null {
+/**
+ * 保証期間テキストを月数に変換する。
+ * 「3年」「12ヶ月」「6カ月」「1年6ヶ月」「36months」「2 years」等に対応
+ * (年・月の両方が含まれていれば合算する)。解釈できなければ null。
+ */
+export function parseWarrantyPeriodMonths(warrantyPeriod: string | undefined | null): number | null {
   if (!warrantyPeriod) return null;
+  let months = 0;
+  let matched = false;
 
-  const match = warrantyPeriod.match(/(\d+)\s*年/);
-  if (!match) return null;
+  const yearMatch = warrantyPeriod.match(/(\d+)\s*(?:年|years?|yrs?)/i);
+  if (yearMatch) {
+    months += parseInt(yearMatch[1], 10) * 12;
+    matched = true;
+  }
+  const monthMatch = warrantyPeriod.match(/(\d+)\s*(?:ヶ月|カ月|ケ月|か月|months?|mos?)/i);
+  if (monthMatch) {
+    months += parseInt(monthMatch[1], 10);
+    matched = true;
+  }
+  return matched ? months : null;
+}
 
-  const years = parseInt(match[1], 10);
+/**
+ * 施工日 (issuedAt) と保証期間テキストから保証終了日 (YYYY-MM-DD) を算出する。
+ * 解釈できない期間 / 不正な日付なら null。
+ */
+export function computeWarrantyEndDate(issuedAt: string, warrantyPeriod: string | undefined | null): string | null {
+  const months = parseWarrantyPeriodMonths(warrantyPeriod);
+  if (months == null) return null;
   const issued = new Date(issuedAt);
+  if (Number.isNaN(issued.getTime())) return null;
+  const end = new Date(issued);
+  end.setMonth(end.getMonth() + months);
+  return end.toISOString().slice(0, 10);
+}
+
+export function getDaysUntilWarrantyEnd(issuedAt: string, warrantyPeriod: string | undefined | null): number | null {
+  const months = parseWarrantyPeriodMonths(warrantyPeriod);
+  if (months == null) return null;
+
+  const issued = new Date(issuedAt);
+  if (Number.isNaN(issued.getTime())) return null;
   const expiryDate = new Date(issued);
-  expiryDate.setFullYear(expiryDate.getFullYear() + years);
+  expiryDate.setMonth(expiryDate.getMonth() + months);
 
   const today = new Date();
-  const diff = Math.floor((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  return diff;
+  return Math.floor((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }

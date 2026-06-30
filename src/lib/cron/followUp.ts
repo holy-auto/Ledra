@@ -459,15 +459,21 @@ export async function processWarrantyEndFollowUps(
   const { data: activeCerts } = await supabase
     .from("certificates")
     .select(
-      "id, customer_id, customer_name, service_name, created_at, warranty_period, vehicle_maker, vehicle_model, vehicle_color",
+      "id, customer_id, customer_name, service_name, created_at, warranty_period, warranty_period_end, vehicle_maker, vehicle_model, vehicle_color",
     )
     .eq("tenant_id", setting.tenant_id)
-    .not("warranty_period", "is", null)
+    // 保証期間テキスト or 算出済みの保証終了日 のいずれかがあるものを対象にする。
+    .or("warranty_period.not.is.null,warranty_period_end.not.is.null")
     .neq("status", "void");
 
+  const today = new Date();
   const filtered = (activeCerts ?? []).filter((cert) => {
     if (!cert.customer_id) return false;
-    const daysUntilEnd = getDaysUntilWarrantyEnd(cert.created_at, cert.warranty_period);
+    // 算出済みの保証終了日 (date) があればそれを優先。無ければ保証期間テキストから算出
+    // (年だけでなく月にも対応)。
+    const daysUntilEnd = cert.warranty_period_end
+      ? Math.floor((new Date(cert.warranty_period_end).getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+      : getDaysUntilWarrantyEnd(cert.created_at, cert.warranty_period);
     return daysUntilEnd !== null && daysUntilEnd === warrantyEndDays;
   });
 

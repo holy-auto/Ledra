@@ -20,6 +20,7 @@ import { makePublicId } from "@/lib/publicId";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { triggerCertificateIssued } from "@/lib/certificates/issueHooks";
+import { computeWarrantyEndDate } from "@/lib/ai/followUpContent";
 import { loadAiAutomationSettings } from "./policy";
 import { shouldAutoCreateDraftCertificate, shouldAutoIssueCertificate } from "./orchestrator";
 
@@ -164,6 +165,9 @@ export async function maybeAutoCreateDraftCertificateForReservation(
       description,
       material_info: materials.length > 0 ? materials.join(", ") : null,
       warranty_period: warranty,
+      // 施工日 (発行 ≒ 今日) と保証期間テキストから保証終了日を自動算出して保存する。
+      // 解釈できない期間なら null (cron 側でテキストからの算出にフォールバックする)。
+      warranty_period_end: computeWarrantyEndDate(new Date().toISOString(), warranty),
       content_free_text: freeText,
       vehicle_maker: vehicleMaker,
       vehicle_model: vehicleModel,
