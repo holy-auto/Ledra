@@ -96,12 +96,38 @@ export default function NewVehicleForm() {
         setOcrMsg(j?.message || "車検証の読み取りに失敗しました。");
         return;
       }
-      const x = j.extracted;
-      if (x.maker) setMaker(x.maker);
-      if (x.model) setModel(x.model);
-      if (x.year) setYear(String(x.year));
-      if (x.vin_code) setChassisNumber(x.vin_code);
-      if (x.plate_display) setPlateNumber(x.plate_display);
+      // AI 自動入力が無効 / 上限超過 / identity_documents OFF の場合は空応答が返るため、
+      // 成功扱いにせず案内する (誤った ✓ を出さない)。
+      if (j.ai_disabled) {
+        setOcrMsg("AI 自動入力が無効、または今月の利用上限に達しているため使用できません。手入力してください。");
+        return;
+      }
+      const x = j.extracted ?? {};
+      let applied = 0;
+      if (x.maker) {
+        setMaker(x.maker);
+        applied++;
+      }
+      if (x.model) {
+        setModel(x.model);
+        applied++;
+      }
+      if (x.year) {
+        setYear(String(x.year));
+        applied++;
+      }
+      if (x.vin_code) {
+        setChassisNumber(x.vin_code);
+        applied++;
+      }
+      if (x.plate_display) {
+        setPlateNumber(x.plate_display);
+        applied++;
+      }
+      if (applied === 0) {
+        setOcrMsg("車検証から項目を読み取れませんでした。画像を確認するか手入力してください。");
+        return;
+      }
       setOcrMsg("✓ 車検証から情報を取り込みました。内容を確認してください。");
     } catch (e: unknown) {
       setOcrMsg(e instanceof Error ? e.message : "通信エラーが発生しました。");
