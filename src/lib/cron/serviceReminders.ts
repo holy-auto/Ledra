@@ -27,8 +27,11 @@ import { sendMaintenanceLineMessage } from "@/lib/line/client";
 
 /** next_due_date が「今日から何日後まで」に入っていたら案内するか。 */
 const PRE_DAYS = 14;
-/** next_due_mileage まで「あと何 km 以内」に入っていたら案内するか (超過分も含む)。 */
+/** next_due_mileage まで「あと何 km 以内」に入っていたら案内するか (超過分も含む) の上限。 */
 const PRE_KM = 5000;
+
+const SERVICE_REMINDER_COLUMNS =
+  "id, customer_id, vehicle_id, service_name, reminder_type, next_due_date, next_due_mileage, recommended_interval_km";
 
 type ReminderRow = {
   id: string;
@@ -38,7 +41,19 @@ type ReminderRow = {
   reminder_type: "mileage" | "interval_months" | "both";
   next_due_date: string | null;
   next_due_mileage: number | null;
+  recommended_interval_km: number | null;
 };
+
+/**
+ * 距離軸の事前通知ウィンドウ (km)。基本は PRE_KM だが、推奨交換距離が短い提案
+ * (例: 5000km 毎のタイヤローテーション) では next_due_mileage - PRE_KM が前回施工
+ * 距離以下になり、再起票直後に即通知してしまう。推奨間隔の半分を上限にして、
+ * 短間隔でも「区間の後半に入ってから」案内するようにする。
+ */
+function preWindowKm(intervalKm: number | null): number {
+  if (intervalKm == null) return PRE_KM;
+  return Math.max(1, Math.min(PRE_KM, Math.floor(intervalKm / 2)));
+}
 
 type CustomerRow = {
   id: string;
@@ -91,37 +106,67 @@ export async function processServiceReminders(
 ): Promise<number> {
   const dateCeil = toDateString(addDays(today, PRE_DAYS));
 
-  // active かつ未通知で、いずれかの推奨時期 (期日 or 走行距離) が算出済みのもの。
-  // 軸ごとの到達判定 (距離は車両の現走行距離との突き合わせが要る) は app 層で行う。
-  const { data: rawReminders, error } = await supabase
-    .from("service_reminders")
-    .select("id, customer_id, vehicle_id, service_name, reminder_type, next_due_date, next_due_mileage")
-    .eq("tenant_id", setting.tenant_id)
-    .eq("status", "active")
-    .is("notified_at", null)
-    .or("next_due_date.not.is.null,next_due_mileage.not.is.null");
+  // 軸ごとに DB 側で絞り込む (1 本の広い OR にすると、行数上限に達したテナントで
+  // 「期日が近い分」が任意の 1 ページから漏れて無言でスキップされうる)。
+  //  - 期間軸: next_due_date <= dateCeil まで DB で絞る。
+  //  - 距離軸: 現走行距離との突き合わせは DB の生成列だけでは表現できないため
+  //    候補 (next_due_mileage 算出済み) を取り、app 層で閾値判定する。
+  const [dateRes, mileageRes] = await Promise.all([
+    supabase
+      .from("service_reminders")
+      .select(SERVICE_REMINDER_COLUMNS)
+      .eq("tenant_id", setting.tenant_id)
+      .eq("status", "active")
+      .is("notified_at", null)
+      .in("reminder_type", ["interval_months", "both"])
+      .not("next_due_date", "is", null)
+      .lte("next_due_date", dateCeil),
+    supabase
+      .from("service_reminders")
+      .select(SERVICE_REMINDER_COLUMNS)
+      .eq("tenant_id", setting.tenant_id)
+      .eq("status", "active")
+      .is("notified_at", null)
+      .in("reminder_type", ["mileage", "both"])
+      .not("next_due_mileage", "is", null),
+  ]);
 
-  if (error) {
-    console.error("[service-reminder] select failed:", error.message);
+  if (dateRes.error || mileageRes.error) {
+    console.error("[service-reminder] select failed:", (dateRes.error ?? mileageRes.error)?.message);
     return 0;
   }
 
-  const candidates = (rawReminders ?? []) as ReminderRow[];
+  // 期日クエリにヒットした行は期日到達済み。距離クエリの行は app 層で距離判定する。
+  // both が両クエリに現れることがあるので id でマージして 1 回だけ案内する。
+  const merged = new Map<string, { r: ReminderRow; dateHit: boolean; mileageHit: boolean }>();
+  for (const r of (dateRes.data ?? []) as ReminderRow[]) {
+    merged.set(r.id, { r, dateHit: true, mileageHit: false });
+  }
+  for (const r of (mileageRes.data ?? []) as ReminderRow[]) {
+    const ex = merged.get(r.id);
+    if (ex) ex.mileageHit = true;
+    else merged.set(r.id, { r, dateHit: false, mileageHit: true });
+  }
+  const candidates = [...merged.values()];
   if (candidates.length === 0) return 0;
 
-  // 車両の最新走行距離 (vehicle_mileage_logs の最大 mileage_km) と表示用車両情報を取得。
-  const vehicleIds = [...new Set(candidates.map((r) => r.vehicle_id).filter(Boolean))] as string[];
+  // 車両の現走行距離 (vehicle_mileage_logs の最新 recorded_at の mileage_km) と
+  // 表示用車両情報を取得。recorded_at 降順で取り、車両ごとに最初の 1 件を採用する
+  // (オドメーター交換・取込修正で過去に高い値が入っていても、最新の値を使う)。
+  const vehicleIds = [...new Set(candidates.map((c) => c.r.vehicle_id).filter(Boolean))] as string[];
   const currentMileage = new Map<string, number>();
   const vehicleMap = new Map<string, VehicleRow>();
   if (vehicleIds.length > 0) {
     const { data: logs } = (await supabase
       .from("vehicle_mileage_logs")
-      .select("vehicle_id, mileage_km")
+      .select("vehicle_id, mileage_km, recorded_at")
       .eq("tenant_id", setting.tenant_id)
-      .in("vehicle_id", vehicleIds)) as { data: Array<{ vehicle_id: string; mileage_km: number }> | null };
+      .in("vehicle_id", vehicleIds)
+      .order("recorded_at", { ascending: false })) as {
+      data: Array<{ vehicle_id: string; mileage_km: number }> | null;
+    };
     for (const row of logs ?? []) {
-      const prev = currentMileage.get(row.vehicle_id);
-      if (prev == null || row.mileage_km > prev) currentMileage.set(row.vehicle_id, row.mileage_km);
+      if (!currentMileage.has(row.vehicle_id)) currentMileage.set(row.vehicle_id, row.mileage_km);
     }
 
     const { data: vehicles } = (await supabase
@@ -133,14 +178,14 @@ export async function processServiceReminders(
 
   // 到達した軸を判定し、案内対象だけに絞る。
   const due = candidates
-    .map((r) => {
-      const dateDue = r.reminder_type !== "mileage" && r.next_due_date != null && r.next_due_date <= dateCeil;
+    .map(({ r, dateHit, mileageHit }) => {
+      const dateDue = dateHit; // 期日クエリ側で next_due_date <= dateCeil まで絞り済み
       const curKm = r.vehicle_id ? currentMileage.get(r.vehicle_id) : undefined;
       const mileageDue =
-        r.reminder_type !== "interval_months" &&
+        mileageHit &&
         r.next_due_mileage != null &&
         curKm != null &&
-        curKm >= r.next_due_mileage - PRE_KM;
+        curKm >= r.next_due_mileage - preWindowKm(r.recommended_interval_km);
       return { r, dateDue, mileageDue };
     })
     .filter((x) => x.dateDue || x.mileageDue);
