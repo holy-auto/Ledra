@@ -148,7 +148,15 @@ export async function POST(req: NextRequest) {
       .insert(insertRow)
       .select(LOAN_COLUMNS)
       .single();
-    if (error) return apiInternalError(error, "loaner-cars/loans POST");
+    if (error) {
+      // 部分ユニーク索引 uq_loaner_active_loan (returned_at IS NULL) 違反。
+      // 上の貸出中チェックと INSERT の隙間で並行リクエストが先に貸出を作った
+      // 場合 (TOCTOU)。500 ではなく 409 として「貸出中」を返す。
+      if ((error as { code?: string }).code === "23505") {
+        return apiError({ code: "conflict", message: "この代車は現在貸出中です。", status: 409 });
+      }
+      return apiInternalError(error, "loaner-cars/loans POST");
+    }
 
     return apiJson({ ok: true, loan: created }, { status: 201 });
   } catch (e) {
