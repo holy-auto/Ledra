@@ -14,7 +14,7 @@ import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { buildTaxBreakdown, totalTax } from "@/lib/invoice/taxBreakdown";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "./policy";
-import { shouldAutoDraftInvoiceOnBilling } from "./orchestrator";
+import { shouldAutoDraftInvoiceOnBilling, shouldAutoDraftInvoiceOnCompletion } from "./orchestrator";
 
 type Admin = ReturnType<typeof createServiceRoleAdmin>;
 
@@ -49,11 +49,17 @@ async function generateInvoiceNumber(admin: Admin, tenantId: string): Promise<st
 export async function maybeAutoCreateDraftInvoiceForReservation(params: {
   tenantId: string;
   reservationId: string;
+  /** 起動トリガ。"billing_step" = ワークフロー会計工程 / "completion" = 案件完了。各々別 opt-in。 */
+  trigger?: "billing_step" | "completion";
 }): Promise<void> {
-  const { tenantId, reservationId } = params;
+  const { tenantId, reservationId, trigger = "billing_step" } = params;
   try {
     const settings = await loadAiAutomationSettings(tenantId);
-    if (!shouldAutoDraftInvoiceOnBilling(settings)) return;
+    const enabled =
+      trigger === "completion"
+        ? shouldAutoDraftInvoiceOnCompletion(settings)
+        : shouldAutoDraftInvoiceOnBilling(settings);
+    if (!enabled) return;
 
     const admin = createServiceRoleAdmin("AI auto-create draft invoice — workflow billing step, fire-and-forget");
     const { data: tenant } = await admin.from("tenants").select("plan_tier, is_active").eq("id", tenantId).single();
