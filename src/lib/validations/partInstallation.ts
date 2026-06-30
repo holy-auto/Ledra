@@ -1,4 +1,19 @@
 import { z } from "zod";
+import type { TamperingFlag } from "@/lib/ai/photoTamperingCheck";
+
+/**
+ * ステージ時 (evidence-upload) に検出しうる EXIF 改ざん疑い flag。
+ * 値域は photoTamperingCheck の TamperingFlag と一致させる（型は import type で実体は持ち込まない）。
+ */
+const TAMPERING_FLAGS = [
+  "software_edited",
+  "timestamp_future",
+  "timestamp_mismatch",
+  "duplicate_hash",
+  "gps_extreme",
+  "exif_stripped",
+  "vision_suspicious",
+] as const satisfies readonly TamperingFlag[];
 
 /** 装着エビデンス1件（写真/伝票/旧品など）。アップロード済みのメタを受け取る。 */
 export const partEvidenceSchema = z.object({
@@ -25,6 +40,8 @@ export const partEvidenceSchema = z.object({
   exif_captured_at: z.string().datetime().nullable().optional(),
   capture_nonce: z.string().trim().max(128).nullable().optional(),
   ocr_extracted: z.any().nullable().optional(),
+  /** ステージ時に検出した改ざん疑い flag。作成時に finding 化される。 */
+  integrity_flags: z.array(z.enum(TAMPERING_FLAGS)).max(20).optional(),
 });
 
 /** 装着レコード作成リクエスト。 */

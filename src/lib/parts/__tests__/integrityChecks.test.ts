@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { mapTamperingFlag, buildFindingsFromAudit, serialReusedFinding } from "@/lib/parts/integrityChecks";
+import {
+  mapTamperingFlag,
+  buildFindingsFromAudit,
+  serialReusedFinding,
+  flagFindingsFromEvidence,
+} from "@/lib/parts/integrityChecks";
 import type { TamperingAuditResult } from "@/lib/ai/photoTamperingCheck";
 
 describe("mapTamperingFlag", () => {
@@ -71,5 +76,36 @@ describe("serialReusedFinding", () => {
     expect(f.rule).toBe("serial_reused");
     expect(f.severity).toBe("critical");
     expect(f.detail.serial_fingerprint).toBe("fp-abc");
+  });
+});
+
+describe("flagFindingsFromEvidence", () => {
+  it("flag が無ければ finding を生成しない", () => {
+    expect(flagFindingsFromEvidence("i1", [{ integrity_flags: [] }, {}])).toEqual([]);
+  });
+
+  it("編集ソフト痕跡 → critical な photo_edited を生成", () => {
+    const out = flagFindingsFromEvidence("i1", [{ integrity_flags: ["software_edited"] }]);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ installation_id: "i1", rule: "photo_edited", severity: "critical" });
+    expect(out[0].detail.flags).toEqual(["software_edited"]);
+  });
+
+  it("同一 rule は集約し、最も重い severity を採用する", () => {
+    // exif_stripped(photo_edited/warning) と software_edited(photo_edited/critical) は同 rule。
+    const out = flagFindingsFromEvidence("i1", [
+      { integrity_flags: ["exif_stripped"] },
+      { integrity_flags: ["software_edited"] },
+    ]);
+    const photoEdited = out.find((f) => f.rule === "photo_edited");
+    expect(out).toHaveLength(1);
+    expect(photoEdited?.severity).toBe("critical");
+    expect(photoEdited?.detail.flags).toEqual(["exif_stripped", "software_edited"]);
+  });
+
+  it("異なる rule は別 finding として返す", () => {
+    const out = flagFindingsFromEvidence("i1", [{ integrity_flags: ["software_edited", "timestamp_future"] }]);
+    const rules = out.map((f) => f.rule).sort();
+    expect(rules).toEqual(["photo_edited", "timestamp_anomaly"]);
   });
 });
