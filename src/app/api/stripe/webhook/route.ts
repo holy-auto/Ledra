@@ -16,6 +16,7 @@ import { maskEmail } from "@/lib/logger";
 import { invalidateTenantBillingCache } from "@/lib/billing/guard";
 import { REPORT_ACCESS_VALIDITY_DAYS } from "@/lib/vehicleReport/access";
 import { recordSubscriptionCommission, advanceReferralToContracted } from "@/lib/agents/commission";
+import { recordInvoicePaymentBalance } from "@/lib/invoice/recordPayment";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -683,7 +684,7 @@ export async function POST(req: NextRequest) {
           if (tenantId) invQuery = invQuery.eq("tenant_id", tenantId);
           if (typeof session.amount_total === "number") invQuery = invQuery.eq("total", session.amount_total);
 
-          const { data: paidDocs, error: invErr } = await invQuery.select("id");
+          const { data: paidDocs, error: invErr } = await invQuery.select("id, tenant_id, total, customer_id");
           if (invErr) {
             // 一時的な DB 障害。break (=200/processed) で握りつぶすと請求書が未入金の
             // まま放置され再処理もされないため、throw して claim に error_message を残し
@@ -698,6 +699,25 @@ export async function POST(req: NextRequest) {
               amountTotal: session.amount_total,
             });
             break;
+          }
+
+          // 売掛元帳 (payment_entries) にもクレカ入金を記帳して消込を整合させる。
+          // status 更新 (主) は成功済みのため、記帳失敗は webhook 全体を失敗させず log のみ
+          // (best-effort)。reference_no=payment_intent で再送時の重複記帳を防ぐ。
+          const paidDoc = paidDocs[0] as { tenant_id: string; total: number | null; customer_id: string | null };
+          try {
+            await recordInvoicePaymentBalance(supabase, {
+              tenantId: paidDoc.tenant_id,
+              documentId: invoiceId,
+              total: Number(paidDoc.total ?? 0),
+              customerId: paidDoc.customer_id ?? null,
+              paymentMethod: "credit_card",
+              paymentDate: nowIso.slice(0, 10),
+              referenceNo: asStringId(session.payment_intent) ?? session.id,
+              notes: "Stripe決済リンクによる入金 (自動記帳)",
+            });
+          } catch (ledgerErr) {
+            console.error("webhook: invoice ledger entry failed (non-blocking)", { invoiceId, error: ledgerErr });
           }
 
           console.info("webhook: invoice paid via payment link", { invoiceId, tenantId });

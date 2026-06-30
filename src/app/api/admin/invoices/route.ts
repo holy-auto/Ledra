@@ -14,6 +14,7 @@ import {
 } from "@/lib/api/response";
 import { invoiceCreateSchema, invoiceUpdateSchema, invoiceDeleteSchema } from "@/lib/validations/invoice";
 import { buildTaxBreakdown, totalTax, isValidRegistrationNumber } from "@/lib/invoice/taxBreakdown";
+import { recordInvoicePaymentBalance } from "@/lib/invoice/recordPayment";
 
 export const dynamic = "force-dynamic";
 
@@ -394,6 +395,27 @@ export async function PUT(req: NextRequest) {
 
     if (error) {
       return apiInternalError(error, "invoices update");
+    }
+
+    // 「入金済」に更新したら売掛元帳 (payment_entries) にも残高分を記帳して消込を
+    // 整合させる (status=paid だけだと元帳上は未消込のまま残るため)。Stripe 自動入金と
+    // 同じ recordInvoicePaymentBalance を使い、残高 0 のときは二重計上しない。
+    // 記帳失敗は status 更新 (主) を巻き戻さず log のみ (best-effort)。
+    if (body.status === "paid" && data) {
+      try {
+        await recordInvoicePaymentBalance(admin, {
+          tenantId: caller.tenantId,
+          documentId: data.id,
+          total: Number(data.total ?? 0),
+          customerId: (data.customer_id as string | null) ?? null,
+          paymentMethod: "cash",
+          paymentDate: (data.payment_date as string | null) ?? new Date().toISOString().slice(0, 10),
+          recordedBy: caller.userId,
+          notes: "請求書を入金済に更新 (自動記帳)",
+        });
+      } catch (ledgerErr) {
+        console.error("invoices PUT: ledger entry failed (non-blocking)", ledgerErr);
+      }
     }
 
     return apiJson({ ok: true, invoice: { ...data, invoice_number: data.doc_number } });
