@@ -650,6 +650,34 @@ export async function POST(req: NextRequest) {
           break;
         }
 
+        // ─── 請求書 (documents) 決済リンク checkout (Connect destination charge, mode=payment) ───
+        // send-line-payment-link / connect/payment-link が createInvoicePaymentLink で作る
+        // Checkout の完了。metadata.invoice_id の請求書を「入金済」にして請求完了の導線を閉じる。
+        // 手動「入金」操作や Stripe の webhook 再送と二重更新しないよう .neq("status","paid") で冪等化。
+        if (session.metadata?.invoice_id) {
+          const invoiceId = session.metadata.invoice_id;
+          const tenantId = session.metadata.tenant_id ?? null;
+          const nowIso = new Date().toISOString();
+
+          let invQuery = supabase
+            .from("documents")
+            .update({ status: "paid", payment_date: nowIso.slice(0, 10), updated_at: nowIso })
+            .eq("id", invoiceId)
+            .in("doc_type", ["invoice", "consolidated_invoice"])
+            .neq("status", "paid");
+          // metadata の tenant_id があれば追加スコープ (他テナントの doc を誤更新しない最終防壁)。
+          if (tenantId) invQuery = invQuery.eq("tenant_id", tenantId);
+
+          const { error: invErr } = await invQuery;
+          if (invErr) {
+            console.error("webhook: invoice paid update failed", { invoiceId, error: invErr });
+            break;
+          }
+
+          console.info("webhook: invoice paid via payment link", { invoiceId, tenantId });
+          break;
+        }
+
         // ─── テンプレートオプション checkout ───
         if (isTemplateOptionEvent(session.metadata as Record<string, string> | null)) {
           const tenantId = session.metadata?.tenant_id;

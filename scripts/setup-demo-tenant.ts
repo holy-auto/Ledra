@@ -137,12 +137,68 @@ const CERTS: Cert[] = [
   { idn: 16, vehicleIdn: 8,  public_id: "LEDRA-DEMO-0016", service_type: "glass-coating",    preset_title: "新車同時施工 ガラスコート",      preset_products: ["9H Premium", "Maintenance Kit"],                 certificate_no: "2026-LDM-0016", daysAgo: 1 },
 ];
 
+// ─── Reservations (予約 → 請求 導線デモ用) ───────────────────
+// プレゼンで「予約 → 受付 → 作業 → 完了 → 請求」を一通り見せられるよう、各
+// ステージの予約を用意する。status=completed の予約は下の INVOICES のソース。
+type Resv = {
+  idn: number;
+  vehicleIdn: number;
+  title: string;
+  items: { name: string; price: number }[];
+  status: "confirmed" | "arrived" | "in_progress" | "completed" | "cancelled";
+  dayOffset: number; // scheduled_date: 負=過去 / 0=本日 / 正=未来
+  start: string;
+  end: string;
+  note?: string;
+  cancelReason?: string;
+};
+
+const RESERVATIONS: Resv[] = [
+  { idn: 1, vehicleIdn: 1,  title: "プレミアムガラスコーティング", items: [{ name: "9H プレミアムガラスコーティング", price: 88000 }, { name: "ホイールガラスコート", price: 22000 }], status: "confirmed",  dayOffset: 3,  start: "10:00", end: "17:00", note: "リピーター。前回施工から半年。" },
+  { idn: 2, vehicleIdn: 7,  title: "ウィンドウフィルム (IR-05)",   items: [{ name: "フロントウィンドウフィルム IR-05", price: 45000 }],                                                                status: "confirmed",  dayOffset: 1,  start: "13:00", end: "16:00" },
+  { idn: 3, vehicleIdn: 3,  title: "ヘッドライトPPF",              items: [{ name: "ヘッドライト プロテクションフィルム", price: 38000 }],                                                              status: "arrived",    dayOffset: 0,  start: "09:30", end: "12:00", note: "受付済み・代車貸出あり。" },
+  { idn: 4, vehicleIdn: 6,  title: "本革シートメンテナンス",        items: [{ name: "本革シートクリーニング+保護", price: 33000 }],                                                                    status: "in_progress", dayOffset: 0,  start: "10:00", end: "15:00", note: "作業中。" },
+  { idn: 5, vehicleIdn: 10, title: "セラミックコーティング (5年保証)", items: [{ name: "Ceramic Pro Sport 5年保証", price: 165000 }],                                                                  status: "completed",  dayOffset: -2, start: "10:00", end: "18:00", note: "納車済み。請求書 入金済。" },
+  { idn: 6, vehicleIdn: 9,  title: "ファインディテイリング",        items: [{ name: "粘土+ポリッシュ+コーティング", price: 49500 }],                                                                   status: "completed",  dayOffset: -5, start: "11:00", end: "17:00", note: "納車済み。請求書 送付済 (入金待ち)。" },
+  { idn: 7, vehicleIdn: 4,  title: "撥水ガラスコーティング",        items: [{ name: "撥水ガラスコーティング", price: 55000 }],                                                                          status: "cancelled",  dayOffset: -1, start: "14:00", end: "17:00", cancelReason: "お客様都合により延期" },
+];
+
+// ─── Invoices (請求書: 下書き / 送付済 / 入金済) ──────────────
+// 「予約 → 請求完了」の終端を見せるため、completed 予約に紐づく請求書を
+// draft / sent / paid の各ステージで用意する。
+type Inv = {
+  idn: number;
+  vehicleIdn: number;
+  seq: number; // doc_number 連番
+  items: { description: string; quantity: number; unit_price: number }[];
+  status: "draft" | "sent" | "paid";
+  issuedDaysAgo: number;
+  dueInDays: number;
+  paidDaysAgo?: number; // status=paid のとき入金日
+};
+
+const INVOICES: Inv[] = [
+  // 予約5 (小林/NX セラミック) → 入金済
+  { idn: 1, vehicleIdn: 10, seq: 1, items: [{ description: "Ceramic Pro Sport セラミックコーティング (5年保証)", quantity: 1, unit_price: 165000 }], status: "paid", issuedDaysAgo: 2, dueInDays: 28, paidDaysAgo: 1 },
+  // 予約6 (伊藤/GLA ディテイリング) → 送付済 (入金待ち)
+  { idn: 2, vehicleIdn: 9,  seq: 2, items: [{ description: "ファインディテイリング (粘土/ポリッシュ/コーティング)", quantity: 1, unit_price: 49500 }], status: "sent", issuedDaysAgo: 4, dueInDays: 26 },
+  // 山田/クラウン 追加施工 → 下書き (これから送付)
+  { idn: 3, vehicleIdn: 1,  seq: 3, items: [{ description: "ホイール脱着・内側コーティング", quantity: 1, unit_price: 28000 }, { description: "鉄粉除去", quantity: 1, unit_price: 8000 }], status: "draft", issuedDaysAgo: 0, dueInDays: 30 },
+];
+
 // ─── Helpers ──────────────────────────────────────────────
 
 function dateDaysAgo(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() - days);
   return d.toISOString();
+}
+
+/** YYYY-MM-DD を返す。days 負=過去 / 0=本日 / 正=未来。 */
+function ymdOffset(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
 async function upsert<T extends Record<string, unknown>>(
@@ -412,7 +468,91 @@ async function main(): Promise<void> {
   await upsert("vehicle_histories", historyRows, "id", { typeColumn: "type" });
   console.log(`  ✓ 投入完了（不許可の type は自動スキップ済み）`);
 
-  // 7) Report
+  // 7) Reservations (予約 → 請求 導線)
+  console.log("─ Reservations");
+  const reservationRows = RESERVATIONS.map((r) => {
+    const vehicle = VEHICLES.find((v) => v.idn === r.vehicleIdn);
+    if (!vehicle) throw new Error(`missing vehicle idn=${r.vehicleIdn}`);
+    const amount = r.items.reduce((s, it) => s + it.price, 0);
+    const createdDaysAgo = Math.max(0, -r.dayOffset);
+    return {
+      id: uuid("rsv1", r.idn),
+      tenant_id: TENANT_ID,
+      customer_id: uuid("c001", vehicle.customerIdn),
+      vehicle_id: uuid("v001", r.vehicleIdn),
+      title: r.title,
+      menu_items_json: r.items.map((it) => ({ name: it.name, price: it.price })),
+      note: r.note ?? null,
+      scheduled_date: ymdOffset(r.dayOffset),
+      start_time: r.start,
+      end_time: r.end,
+      status: r.status,
+      estimated_amount: amount,
+      cancelled_at: r.status === "cancelled" ? dateDaysAgo(createdDaysAgo) : null,
+      cancel_reason: r.cancelReason ?? null,
+      created_at: dateDaysAgo(createdDaysAgo),
+    };
+  });
+  await upsert("reservations", reservationRows, "id", { typeColumn: "status" });
+  console.log(`  ✓ ${reservationRows.length} 件`);
+
+  // 8) Invoices (請求書: 下書き / 送付済 / 入金済)
+  console.log("─ Invoices");
+  const invoiceYm = new Date().toISOString().slice(0, 7).replace("-", "");
+  const invoiceRows = INVOICES.map((inv) => {
+    const vehicle = VEHICLES.find((v) => v.idn === inv.vehicleIdn);
+    if (!vehicle) throw new Error(`missing vehicle idn=${inv.vehicleIdn}`);
+    const customer = CUSTOMERS.find((c) => c.idn === vehicle.customerIdn);
+    if (!customer) throw new Error(`missing customer for vehicle idn=${inv.vehicleIdn}`);
+    const itemsJson = inv.items.map((it) => ({
+      description: it.description,
+      quantity: it.quantity,
+      unit: "式",
+      unit_price: it.unit_price,
+      amount: it.quantity * it.unit_price,
+      tax_rate: 10,
+    }));
+    const subtotal = itemsJson.reduce((s, it) => s + it.amount, 0);
+    const tax = Math.round(subtotal * 0.1);
+    const paid = inv.status === "paid" && inv.paidDaysAgo != null;
+    return {
+      id: uuid("inv1", inv.idn),
+      tenant_id: TENANT_ID,
+      customer_id: uuid("c001", vehicle.customerIdn),
+      vehicle_id: uuid("v001", inv.vehicleIdn),
+      doc_type: "invoice",
+      doc_number: `INV-${invoiceYm}-${String(inv.seq).padStart(3, "0")}`,
+      issued_at: ymdOffset(-inv.issuedDaysAgo),
+      due_date: ymdOffset(inv.dueInDays),
+      status: inv.status,
+      subtotal,
+      tax,
+      total: subtotal + tax,
+      tax_rate: 10,
+      tax_breakdown: [{ rate: 10, subtotal, tax }],
+      note: null,
+      items_json: itemsJson,
+      meta_json: {},
+      is_invoice_compliant: false,
+      show_seal: false,
+      show_logo: true,
+      show_bank_info: true,
+      recipient_name: customer.name,
+      vehicle_info_json: {
+        maker: vehicle.maker,
+        model: vehicle.model,
+        year: vehicle.year,
+        plate_display: vehicle.plate_display,
+      },
+      payment_date: paid ? ymdOffset(-(inv.paidDaysAgo as number)) : null,
+      created_at: dateDaysAgo(inv.issuedDaysAgo),
+      updated_at: dateDaysAgo(paid ? (inv.paidDaysAgo as number) : inv.issuedDaysAgo),
+    };
+  });
+  await upsert("documents", invoiceRows, "id", { typeColumn: "doc_type" });
+  console.log(`  ✓ ${invoiceRows.length} 件`);
+
+  // 9) Report
   console.log("\n🎉 セットアップ完了\n");
   console.log("  Tenant ID :", TENANT_ID);
   console.log("  Tenant slug:", TENANT_SLUG);
@@ -421,6 +561,8 @@ async function main(): Promise<void> {
   console.log("  Certificates:", certRows.length);
   console.log("  Images    :", imageRows.length);
   console.log("  Histories :", historyRows.length);
+  console.log("  Reservations:", reservationRows.length);
+  console.log("  Invoices  :", invoiceRows.length);
   console.log("\n  公開証明書の例:");
   CERTS.slice(0, 3).forEach((c) => {
     console.log(`    https://app.ledra.co.jp/c/${c.public_id}`);
