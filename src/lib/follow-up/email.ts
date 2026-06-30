@@ -98,7 +98,8 @@ export async function sendFollowUpEmail(params: {
 
 /**
  * 定期点検・交換時期のリマインドメール（顧客向け）。
- * service_reminders の next_due_date が近づいた車両に対して送る。
+ * service_reminders の next_due_date / next_due_mileage が近づいた車両に対して送る。
+ * `timing` は到達した軸に応じた時期の文言（例: "2026-07-30頃" / "走行 40,000km 到達目安"）。
  */
 export async function sendServiceReminderEmail(params: {
   shopName: string;
@@ -106,7 +107,7 @@ export async function sendServiceReminderEmail(params: {
   customerName: string;
   serviceName: string;
   vehicleLabel?: string | null;
-  dueDate: string;
+  timing: string;
 }): Promise<boolean> {
   const shop = escapeHtml(params.shopName);
   const customer = escapeHtml(params.customerName);
@@ -118,7 +119,7 @@ export async function sendServiceReminderEmail(params: {
       <p style="color: #1d1d1f; font-size: 14px;">
         ${customer} 様<br><br>
         ${shop}です。<br>
-        ${vehicle ? `${vehicle}の` : "お車の"}「${service}」の点検・交換時期（${escapeHtml(params.dueDate)}頃）が近づいてまいりました。
+        ${vehicle ? `${vehicle}の` : "お車の"}「${service}」の点検・交換時期（${escapeHtml(params.timing)}）が近づいてまいりました。
       </p>
       <p style="color: #1d1d1f; font-size: 14px;">
         ご予約・ご相談はお気軽にお問い合わせください。安全のため、お早めの点検をおすすめいたします。
