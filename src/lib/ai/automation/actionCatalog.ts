@@ -27,6 +27,7 @@ import type { AutomationWorkflowKey } from "./fieldCatalog";
 export type AutomationActionKey =
   | "inbound_message.auto_extract"
   | "inbound_message.auto_create_reservation"
+  | "inbound_message.auto_import_history_on_link"
   | "certificate.auto_draft"
   | "certificate.auto_create_draft_record"
   | "certificate.auto_issue"
@@ -87,6 +88,15 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
       "予約意図かつ高確信、さらに既知顧客に紐づく場合のみ予約を自動作成する。新規顧客 (本人確認) の自動作成はしない。タイトルに【要確認】を付与。",
     defaultEnabled: false,
     guard: "intent=new_reservation + confidence≥閾値 + 既知顧客 + 有効な希望日",
+  },
+  {
+    key: "inbound_message.auto_import_history_on_link",
+    workflow: "inbound_message",
+    label: "顧客にLINEを紐づけたら過去のやり取りから予定を一括取り込み",
+    description:
+      "未紐づけのまま溜まっていた LINE のやり取りを、顧客への紐づけ完了時にまとめて AI 解析し、予約候補 (受信箱・顧客画面の下書き) を一括で用意する。予約の自動作成は行わず候補提示のみのため安全 (人は1タップで確定)。件数上限とコストキャップを尊重する。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Standard プラン以上 + confidence 閾値",
   },
   {
     key: "certificate.auto_draft",
@@ -357,6 +367,7 @@ export const AUTOMATION_ACTION_KEYS: ReadonlySet<string> = new Set(AUTOMATION_AC
 export const RECOMMENDED_AUTOMATION_ACTION_KEYS: ReadonlySet<string> = new Set<string>([
   "inbound_message.auto_extract",
   "inbound_message.auto_create_reservation",
+  "inbound_message.auto_import_history_on_link",
   "certificate.auto_draft",
   "certificate.auto_create_draft_record",
   "review.auto_analyze",

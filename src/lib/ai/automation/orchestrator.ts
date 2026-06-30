@@ -32,6 +32,14 @@ export function shouldAutoExtractInbound(settings: AiAutomationSettings): boolea
   return resolveAutoAction(settings, "inbound_message.auto_extract");
 }
 
+/**
+ * 顧客への LINE 紐づけ完了時に、過去メッセージから予約候補を一括抽出してよいか。
+ * 抽出は「候補を ai_extracted に保存するだけ」でコミット (予約作成) しないため安全。
+ */
+export function shouldAutoImportHistoryOnLink(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "inbound_message.auto_import_history_on_link");
+}
+
 export interface InboundExtractionLike {
   intent?: string | null;
   confidence?: number | null;

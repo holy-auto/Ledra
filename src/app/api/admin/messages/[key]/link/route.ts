@@ -12,6 +12,7 @@ import {
   apiInternalError,
 } from "@/lib/api/response";
 import { parseThreadKey } from "@/lib/messages/threadKey";
+import { linkLineUserToCustomer } from "@/lib/line/linkCustomer";
 
 export const dynamic = "force-dynamic";
 
@@ -122,21 +123,21 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ key: strin
       customerName = (created.name as string | null) ?? null;
     }
 
-    // この line_user_id の未紐付けメッセージを customer に backfill する。
-    const { error: backfillErr, count } = await admin
-      .from("customer_messages")
-      .update({ customer_id: customerId }, { count: "exact" })
-      .eq("tenant_id", caller.tenantId)
-      .eq("line_user_id", lineUserId)
-      .is("customer_id", null);
-    if (backfillErr) return apiInternalError(backfillErr, "message link: backfill");
+    // この line_user_id の未紐付けメッセージを backfill し、過去履歴の予約候補化を enqueue する。
+    // customers.line_user_id は上で既に更新済みなので setLineUserId=false。
+    const linkResult = await linkLineUserToCustomer({
+      tenantId: caller.tenantId,
+      customerId,
+      lineUserId,
+      setLineUserId: false,
+    });
 
     return apiJson({
       ok: true,
       customer_id: customerId,
       customer_name: customerName,
       thread_key: `c:${customerId}`,
-      backfilled: count ?? 0,
+      backfilled: linkResult.backfilled,
     });
   } catch (e) {
     return apiInternalError(e, "message link POST");
