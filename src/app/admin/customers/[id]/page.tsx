@@ -9,6 +9,7 @@ import CustomerNextActionPanel from "./CustomerNextActionPanel";
 import CustomerTabs from "./CustomerTabs";
 import { deriveSignals, type CustomerSignals } from "@/lib/customers/signals";
 import { getOrCreateCustomerSummary } from "@/lib/customers/getOrCreateAiSummary";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 
 /**
  * 顧客詳細 (360° ビュー)
@@ -108,6 +109,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     invoices,
   });
 
+  // 連携コード発行 (本人確認に関わる書き込み) は staff 以上のみ。閲覧専用ユーザーには出さない。
+  const caller = await resolveCallerWithRole(supabase);
+  const canIssueLinkCode = !!caller && requireMinRole(caller, "staff");
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -142,6 +147,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         certificates={certificates}
         reservations={reservations}
         invoices={invoices}
+        canIssueLinkCode={canIssueLinkCode}
       />
     </div>
   );

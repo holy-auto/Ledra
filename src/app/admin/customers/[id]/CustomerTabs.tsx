@@ -57,6 +57,7 @@ interface Props {
   certificates: CertificateItem[];
   reservations: ReservationItem[];
   invoices: InvoiceItem[];
+  canIssueLinkCode?: boolean;
 }
 
 const certStatusVariant = (s: string) => {
@@ -136,7 +137,14 @@ const reservationStatusLabel = (s: string) => {
   }
 };
 
-export default function CustomerTabs({ customerId, vehicles, certificates, reservations, invoices }: Props) {
+export default function CustomerTabs({
+  customerId,
+  vehicles,
+  certificates,
+  reservations,
+  invoices,
+  canIssueLinkCode = false,
+}: Props) {
   const [tab, setTab] = useState<TabKey>("vehicles");
 
   const tabs = useMemo(
@@ -376,7 +384,7 @@ export default function CustomerTabs({ customerId, vehicles, certificates, reser
         </section>
       )}
 
-      {tab === "messages" && <CustomerMessagesTab customerId={customerId} />}
+      {tab === "messages" && <CustomerMessagesTab customerId={customerId} canIssueLinkCode={canIssueLinkCode} />}
     </div>
   );
 }

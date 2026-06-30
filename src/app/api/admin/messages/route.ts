@@ -73,34 +73,47 @@ export async function GET(req: NextRequest) {
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
-    const cols =
-      "id, customer_id, line_user_id, channel, direction, body, read_at, delivered_at, failed_at, created_at, ai_extracted";
-    // read_at / ai_extracted 列が未作成 (マイグレーション未適用) なら外して取得する。
-    let rows: Row[] = [];
-    {
-      const sel = await admin
+    const BASE_COLS = "id, customer_id, line_user_id, channel, direction, body, delivered_at, failed_at, created_at";
+    const colsFull = `${BASE_COLS}, read_at, ai_extracted`;
+    const colsNoAi = `${BASE_COLS}, read_at`; // ai_extracted だけ未作成なら read_at は残す
+
+    const scan = (cols: string) =>
+      admin
         .from("customer_messages")
         .select(cols)
         .eq("tenant_id", caller.tenantId)
         .order("created_at", { ascending: false })
         .limit(MAX_SCAN);
-      if (sel.error && isMissingColumnError(sel.error)) {
-        const retry = await admin
-          .from("customer_messages")
-          .select("id, customer_id, line_user_id, channel, direction, body, delivered_at, failed_at, created_at")
-          .eq("tenant_id", caller.tenantId)
-          .order("created_at", { ascending: false })
-          .limit(MAX_SCAN);
-        if (retry.error) return apiInternalError(retry.error, "messages list (fallback)");
-        rows = ((retry.data ?? []) as Omit<Row, "read_at" | "ai_extracted">[]).map((r) => ({
-          ...r,
-          read_at: null,
-          ai_extracted: null,
-        }));
-      } else if (sel.error) {
-        return apiInternalError(sel.error, "messages list");
+
+    // read_at / ai_extracted 列が未作成 (マイグレーション未適用) でも段階的に縮退する。
+    // 実在する列はできるだけ残すため、欠けている列だけを外して再取得する。
+    let rows: Row[] = [];
+    {
+      const sel = await scan(colsFull);
+      if (!sel.error) {
+        rows = (sel.data ?? []) as unknown as Row[];
+      } else if (isMissingColumnError(sel.error)) {
+        // まず ai_extracted だけ外す (read_at は維持して未読判定を壊さない)。
+        const noAi = await scan(colsNoAi);
+        if (!noAi.error) {
+          rows = ((noAi.data ?? []) as unknown as Omit<Row, "ai_extracted">[]).map((r) => ({
+            ...r,
+            ai_extracted: null,
+          }));
+        } else if (isMissingColumnError(noAi.error)) {
+          // read_at も無い更に古いスキーマ: 両方外す。
+          const bare = await scan(BASE_COLS);
+          if (bare.error) return apiInternalError(bare.error, "messages list (fallback)");
+          rows = ((bare.data ?? []) as unknown as Omit<Row, "read_at" | "ai_extracted">[]).map((r) => ({
+            ...r,
+            read_at: null,
+            ai_extracted: null,
+          }));
+        } else {
+          return apiInternalError(noAi.error, "messages list (fallback)");
+        }
       } else {
-        rows = (sel.data ?? []) as Row[];
+        return apiInternalError(sel.error, "messages list");
       }
     }
 

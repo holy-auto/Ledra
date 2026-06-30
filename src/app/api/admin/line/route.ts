@@ -119,6 +119,8 @@ export async function POST(req: NextRequest) {
         line_channel_access_token_ciphertext: null,
         line_liff_id: null,
         line_enabled: false,
+        // 連携解除時は案内トグルもクリアする (再連携で意図せず再有効化されないように)。
+        line_link_prompt_enabled: false,
       })
       .eq("id", caller.tenantId);
 
