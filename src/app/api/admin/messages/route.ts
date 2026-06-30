@@ -32,7 +32,7 @@ type Row = {
   delivered_at: string | null;
   failed_at: string | null;
   created_at: string;
-  ai_extracted: { intent?: string } | null;
+  ai_extracted: { intent?: string; handled_at?: string | null } | null;
 };
 
 interface ThreadAccum {
@@ -49,10 +49,10 @@ interface ThreadAccum {
   candidate_count: number;
 }
 
-/** ai_extracted が予約系 (予約候補) かどうか。 */
-function isReservationCandidate(ai: { intent?: string } | null): boolean {
-  const intent = ai?.intent;
-  return intent === "new_reservation" || intent === "change_reservation";
+/** ai_extracted が予約系 (予約候補) かつ未対応かどうか。 */
+function isReservationCandidate(ai: { intent?: string; handled_at?: string | null } | null): boolean {
+  if (!ai || ai.handled_at) return false; // 対応済みはバッジに数えない
+  return ai.intent === "new_reservation" || ai.intent === "change_reservation";
 }
 
 function isMissingColumnError(err: { message?: string; code?: string } | null | undefined): boolean {

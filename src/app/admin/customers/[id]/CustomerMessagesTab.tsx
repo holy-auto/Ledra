@@ -71,7 +71,23 @@ export default function CustomerMessagesTab({
   const [draft, setDraft] = useState("");
   const [sendBusy, setSendBusy] = useState(false);
   const [sendMsg, setSendMsg] = useState<string | null>(null);
+  const [dismissingId, setDismissingId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const handleDismissCandidate = useCallback(
+    async (messageId: string) => {
+      setDismissingId(messageId);
+      try {
+        const res = await fetch(`/api/admin/customer-messages/${messageId}/candidate-dismiss`, { method: "POST" });
+        if (res.ok) await mutate();
+      } catch {
+        /* fail-soft: 失敗時は次回再表示される */
+      } finally {
+        setDismissingId(null);
+      }
+    },
+    [mutate],
+  );
 
   const messages = useMemo(() => data?.messages ?? [], [data]);
   const canSend = data?.can_send === true;
@@ -172,9 +188,14 @@ export default function CustomerMessagesTab({
                 </div>
                 {!isOutbound &&
                   (m.ai_extracted ? (
-                    <ExtractedCandidateCard result={m.ai_extracted} />
+                    <ExtractedCandidateCard
+                      result={m.ai_extracted}
+                      customerId={customerId}
+                      onDismiss={() => handleDismissCandidate(m.id)}
+                      dismissing={dismissingId === m.id}
+                    />
                   ) : (
-                    <MessageAiExtractButton messageId={m.id} />
+                    <MessageAiExtractButton messageId={m.id} customerId={customerId} />
                   ))}
               </div>
             </div>
