@@ -21,19 +21,36 @@ export async function POST(req: NextRequest) {
     }
     const data = parsed.data;
     const inquiryId = data.inquiry_id;
-    const vehicleId = data.vehicle_id;
+
+    // 問い合わせから車両・買い手情報を引き継ぐ（自テナント所有のもののみ）。
+    // クライアントは inquiry_id だけ送れば商談化できる。明示指定があれば上書き。
+    const { data: inquiry } = await admin
+      .from("market_inquiries")
+      .select("id, vehicle_id, buyer_name, buyer_email, buyer_company, seller_tenant_id")
+      .eq("id", inquiryId)
+      .eq("seller_tenant_id", caller.tenantId)
+      .maybeSingle();
+    if (!inquiry) return apiValidationError("対象の問い合わせが見つかりません。");
+
+    const vehicleId = data.vehicle_id ?? (inquiry.vehicle_id as string | null);
+    const buyerName = data.buyer_name ?? (inquiry.buyer_name as string | null);
+    const buyerEmail = data.buyer_email ?? (inquiry.buyer_email as string | null);
+    if (!vehicleId || !buyerName || !buyerEmail) {
+      return apiValidationError("商談化に必要な車両・買い手情報が問い合わせにありません。");
+    }
 
     const row: Record<string, unknown> = {
       id: crypto.randomUUID(),
       inquiry_id: inquiryId,
       vehicle_id: vehicleId,
       seller_tenant_id: caller.tenantId,
-      buyer_name: data.buyer_name,
-      buyer_email: data.buyer_email,
+      buyer_name: buyerName,
+      buyer_email: buyerEmail,
       status: "negotiating",
     };
 
-    if (data.buyer_company !== undefined) row.buyer_company = data.buyer_company;
+    const buyerCompany = data.buyer_company ?? (inquiry.buyer_company as string | null);
+    if (buyerCompany != null) row.buyer_company = buyerCompany;
     if (data.agreed_price !== undefined && data.agreed_price !== null) row.agreed_price = data.agreed_price;
 
     const { data: deal, error } = await admin
