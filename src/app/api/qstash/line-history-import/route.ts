@@ -25,7 +25,7 @@ import { shouldAutoImportHistoryOnLink } from "@/lib/ai/automation/orchestrator"
 import { extractInboundReservation } from "@/lib/ai/inboundReservationExtract";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
-import { getCostCapStatus } from "@/lib/ai/costCap";
+import { getCapturedUsage } from "@/lib/ai/usageContext";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -95,14 +95,18 @@ async function handler(req: NextRequest) {
   let candidates = 0;
   let stoppedByCap = false;
 
-  // 3) 各メッセージを順に抽出して ai_extracted に保存。コストキャップは数件ごとに再確認。
+  // コストキャップはジョブ内で累積を自前で追う。
+  // (usage.record() の addMonthlyCostJpy は after() で応答後に遅延実行されるため、
+  //  ループ中に Redis を読み直しても今回の消費は反映されない。captured.costJpy で同期計上する)
+  const capJpy = settings.costCap?.capJpy ?? 0;
+  const baseSpentJpy = settings.costCap?.spentJpy ?? 0;
+  let inJobJpy = 0;
+
+  // 3) 各メッセージを順に抽出して ai_extracted に保存。
   for (let i = 0; i < targets.length; i++) {
-    if (i > 0 && i % 10 === 0) {
-      const cap = await getCostCapStatus(tenantId, settings.monthlyCostCapJpy);
-      if (cap?.exceeded) {
-        stoppedByCap = true;
-        break;
-      }
+    if (capJpy > 0 && baseSpentJpy + inJobJpy >= capJpy) {
+      stoppedByCap = true;
+      break;
     }
 
     const m = targets[i];
@@ -112,6 +116,8 @@ async function handler(req: NextRequest) {
     const usage = startAiRouteUsage(ENDPOINT);
     const receivedDate = typeof m.created_at === "string" ? (m.created_at as string).slice(0, 10) : undefined;
     const result = await extractInboundReservation({ text, channel: "line", receivedDate }, { model });
+    // この 1 呼び出しの実コストを同期的に積む (キャップを跨いだら次ループで停止)。
+    inJobJpy += getCapturedUsage()?.costJpy ?? 0;
 
     const snapshot = { ...result, auto: true, source: "history_import", extracted_at: new Date().toISOString() };
     const { error: upErr } = await admin

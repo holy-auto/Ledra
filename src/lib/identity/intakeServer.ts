@@ -588,7 +588,10 @@ export async function submitAndProcessIntake(input: SubmitAndProcessInput): Prom
       .eq("tenant_id", input.tenantId)
       .eq("status", "submitted");
 
-    await maybeLinkLineUserForIntake(input.tenantId, input.intakeId, strongMatch.id);
+    // 注意: 公開フォームの自動マージ (既存顧客への strong-match) では LINE を自動連携しない。
+    // email + phone を知る第三者が公開 intake URL から既存顧客に自分の LINE を紐づけ、
+    // 以後のリマインダー/請求/書類通知を乗っ取れてしまうため。既存顧客への連携は
+    // スタッフ承認 (approveIntake) 経由でのみ行う。
     return { status: "auto_completed", customerId: strongMatch.id, merged: true };
   }
 

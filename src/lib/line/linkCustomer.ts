@@ -47,14 +47,34 @@ export async function linkLineUserToCustomer(params: {
 
   // a. customers.line_user_id をセット (まだ別ユーザーが付いていない場合のみ)。
   if (setLineUserId) {
-    const { error: upErr } = await admin
+    // 既に **別の** line_user_id が紐づいている顧客は上書きしない。
+    // (重複 intake / 転送された登録 URL 等で既存の LINE 宛先を奪わないため)
+    const { data: current } = await admin
       .from("customers")
-      .update({ line_user_id: lineUserId, updated_at: new Date().toISOString() })
+      .select("line_user_id")
       .eq("id", customerId)
-      .eq("tenant_id", tenantId);
-    if (upErr) {
-      logger.warn("[linkCustomer] set line_user_id failed", { tenantId, customerId, err: upErr.message });
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    const existingLineUserId = (current?.line_user_id as string | null) ?? null;
+    if (existingLineUserId && existingLineUserId !== lineUserId) {
+      logger.warn("[linkCustomer] target already linked to a different line_user_id — skip", {
+        tenantId,
+        customerId,
+      });
       return { ok: false, backfilled: 0 };
+    }
+    if (!existingLineUserId) {
+      const { error: upErr } = await admin
+        .from("customers")
+        .update({ line_user_id: lineUserId, updated_at: new Date().toISOString() })
+        .eq("id", customerId)
+        .eq("tenant_id", tenantId)
+        // 競合時の上書き防止: NULL のときだけセットする。
+        .is("line_user_id", null);
+      if (upErr) {
+        logger.warn("[linkCustomer] set line_user_id failed", { tenantId, customerId, err: upErr.message });
+        return { ok: false, backfilled: 0 };
+      }
     }
   }
 
