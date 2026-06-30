@@ -186,18 +186,66 @@ export function getDaysUntilInspection(nextInspectionDate: string | undefined | 
 // 保証終了前トリガー計算
 // ─────────────────────────────────────────────
 
-export function getDaysUntilWarrantyEnd(issuedAt: string, warrantyPeriod: string | undefined | null): number | null {
+/** JST (UTC+9) の暦日 (年/月/日) を取り出す。保証・施工日は店舗ローカル(日本)の暦日で扱う。 */
+function toJstYmd(value: string | Date): { y: number; m: number; d: number } | null {
+  const date = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) return null;
+  const jst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  return { y: jst.getUTCFullYear(), m: jst.getUTCMonth(), d: jst.getUTCDate() };
+}
+
+/**
+ * 保証期間テキストを月数に変換する。
+ * 「3年」「12ヶ月」「6カ月」「1年6ヶ月」「36months」「2 years」等に対応。
+ * 年と月が併記されている場合、月成分は剰余 (例「1年6ヶ月」の 6) のみ加算する。
+ * 「3年（36ヶ月）」のような同一期間の重複表記を二重計上しないよう、月 >= 12 は無視する。
+ * 解釈できなければ null。
+ */
+export function parseWarrantyPeriodMonths(warrantyPeriod: string | undefined | null): number | null {
   if (!warrantyPeriod) return null;
 
-  const match = warrantyPeriod.match(/(\d+)\s*年/);
-  if (!match) return null;
+  const yearMatch = warrantyPeriod.match(/(\d+)\s*(?:年|years?|yrs?)/i);
+  const monthMatch = warrantyPeriod.match(/(\d+)\s*(?:ヶ月|カ月|ケ月|か月|months?|mos?)/i);
+  if (!yearMatch && !monthMatch) return null;
 
-  const years = parseInt(match[1], 10);
-  const issued = new Date(issuedAt);
-  const expiryDate = new Date(issued);
-  expiryDate.setFullYear(expiryDate.getFullYear() + years);
+  const years = yearMatch ? parseInt(yearMatch[1], 10) : 0;
+  const rawMonths = monthMatch ? parseInt(monthMatch[1], 10) : 0;
+  // 年が併記されているときの月は剰余分のみ採用 (12 以上は重複表記とみなして無視)。
+  const months = yearMatch && monthMatch ? (rawMonths < 12 ? rawMonths : 0) : rawMonths;
+  return years * 12 + months;
+}
 
-  const today = new Date();
-  const diff = Math.floor((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  return diff;
+/**
+ * 施工日 (issuedAt) と保証期間テキストから保証終了日 (JST 暦日, YYYY-MM-DD) を算出する。
+ * 月末オーバーフロー (例: 1/31 + 1ヶ月 → 3/3) は月末 (2/28) に丸める。
+ * 解釈できない期間 / 不正な日付なら null。
+ */
+export function computeWarrantyEndDate(issuedAt: string, warrantyPeriod: string | undefined | null): string | null {
+  const months = parseWarrantyPeriodMonths(warrantyPeriod);
+  if (months == null) return null;
+  const ymd = toJstYmd(issuedAt);
+  if (!ymd) return null;
+
+  const end = new Date(Date.UTC(ymd.y, ymd.m, ymd.d));
+  end.setUTCMonth(end.getUTCMonth() + months);
+  if (end.getUTCDate() !== ymd.d) end.setUTCDate(0); // 翌月送りになったら月末に丸める
+  return end.toISOString().slice(0, 10);
+}
+
+/**
+ * 保証終了日 (YYYY-MM-DD) と本日 (JST 暦日) の差を「日数」で返す。
+ * 双方を JST 暦日の 0 時に正準化するため、cron の実行時刻 (10:00 UTC 等) に依存しない。
+ */
+export function daysUntilJstDate(dateStr: string | null | undefined): number | null {
+  const ymd = dateStr?.slice(0, 10);
+  if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null;
+  const target = new Date(`${ymd}T00:00:00Z`).getTime();
+  const today = toJstYmd(new Date());
+  if (!today) return null;
+  return Math.round((target - Date.UTC(today.y, today.m, today.d)) / (1000 * 60 * 60 * 24));
+}
+
+export function getDaysUntilWarrantyEnd(issuedAt: string, warrantyPeriod: string | undefined | null): number | null {
+  const end = computeWarrantyEndDate(issuedAt, warrantyPeriod);
+  return end ? daysUntilJstDate(end) : null;
 }
