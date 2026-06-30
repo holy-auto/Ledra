@@ -76,7 +76,7 @@ export async function sendMessage(
 }
 
 /** LINE Messaging API でリプライ送信 */
-async function replyMessage(
+export async function replyMessage(
   accessToken: string,
   replyToken: string,
   messages: Array<{ type: string; text?: string; [key: string]: unknown }>,
@@ -286,18 +286,22 @@ export async function handleWebhookEvents(
         lineTimestampMs: event.timestamp ?? null,
       });
 
+      // replyToken は 1 イベント 1 回のみ使える。どこかで返信に使ったら以降は使わない。
+      let replyToken: string | null = event.replyToken ?? null;
+
       const text = rawText.trim().toLowerCase();
       if (text === "予約" || text === "booking") {
         // LIFF URL で予約画面へ誘導
         const liffUrl = config.liffId ? `https://liff.line.me/${config.liffId}` : null;
 
-        if (event.replyToken) {
-          await replyMessage(config.channelAccessToken, event.replyToken, [
+        if (replyToken) {
+          await replyMessage(config.channelAccessToken, replyToken, [
             {
               type: "text",
               text: liffUrl ? `こちらから予約できます:\n${liffUrl}` : "Web予約ページからご予約ください。",
             },
           ]);
+          replyToken = null; // 消費済み
         }
       }
 
@@ -309,11 +313,14 @@ export async function handleWebhookEvents(
       });
 
       // 未紐づけユーザーには「連携を促す案内」を 1 度だけ送る (opt-in テナントのみ / fail-soft)。
+      // 課金されるプッシュではなく、この受信メッセージへの**リプライ (無料)** で返す。
+      // replyToken が他で消費済み (例: 「予約」返信) の場合は今回は送らず、次の受信で返す。
       const { maybePromptLineLink } = await import("@/lib/line/linkPrompt");
       await maybePromptLineLink({
         tenantId,
         lineUserId: event.source.userId,
         customerId: stored.customerId ?? null,
+        replyToken,
       });
 
       // AI 自動処理 (auto_extract が opt-in のテナントのみ実体が動く / 既定 OFF)。

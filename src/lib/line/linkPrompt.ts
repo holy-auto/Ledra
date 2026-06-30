@@ -9,10 +9,14 @@
  *
  * webhook から fire-and-forget で呼ばれる前提で、絶対に throw しない。
  * テナントが `line_link_prompt_enabled` を opt-in した場合のみ実体が動く。
+ *
+ * 送信は**プッシュではなく、受信メッセージへのリプライ (応答メッセージ)** で行う。
+ * LINE 公式アカウントの料金は配信 (プッシュ) 数の従量で、応答メッセージは無料・無制限。
+ * そのため replyToken が無い (他で消費済み 等) 場合は今回は送らず、次の受信時に返す。
  */
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
-import { getLineConfig, sendMessage } from "@/lib/line/client";
+import { getLineConfig, replyMessage } from "@/lib/line/client";
 import { recordOutboundLineMessage } from "@/lib/line/messageStore";
 import { createIntakeInvitation } from "@/lib/identity/intakeServer";
 
@@ -34,15 +38,19 @@ export interface MaybePromptLineLinkParams {
   lineUserId: string;
   /** 受信メッセージ処理時点で解決済みの顧客 ID。非 null なら既に紐づき済みなので案内しない。 */
   customerId: string | null;
+  /** この受信メッセージの replyToken。無料のリプライ送信に使う。null なら今回は送らない。 */
+  replyToken: string | null;
 }
 
 /**
  * 条件を満たせば連携案内を 1 度だけ送る。失敗しても投げない。
+ * 送信は無料のリプライで行うため、replyToken が無ければ何もしない (次の受信で返す)。
  */
 export async function maybePromptLineLink(params: MaybePromptLineLinkParams): Promise<void> {
-  const { tenantId, lineUserId, customerId } = params;
+  const { tenantId, lineUserId, customerId, replyToken } = params;
   try {
     if (customerId) return; // 既に紐づき済み
+    if (!replyToken) return; // 無料リプライ専用: token が無ければ今回は送らない
 
     const admin = createServiceRoleAdmin("LINE 連携案内 — 未紐づけユーザーへの誘導 (webhook は auth 無し)");
 
@@ -107,7 +115,8 @@ export async function maybePromptLineLink(params: MaybePromptLineLinkParams): Pr
     }
     const body = lines.join("\n");
 
-    await sendMessage(config.channelAccessToken, lineUserId, [{ type: "text", text: body }]);
+    // 無料のリプライ (応答メッセージ) で送る。失敗時は履歴を残さず次回再試行させる。
+    await replyMessage(config.channelAccessToken, replyToken, [{ type: "text", text: body }]);
 
     // 送信した案内も履歴に残す (クールダウン判定にも使う)。
     await recordOutboundLineMessage({
