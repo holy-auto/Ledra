@@ -159,7 +159,7 @@ export async function createInstallation(
 }
 
 /** 同テナント内の他装着で同一 sha256/知覚ハッシュの証拠を探す。admin は呼び出し側のものを再利用。 */
-async function findDuplicateEvidence(
+export async function findDuplicateEvidence(
   admin: ReturnType<typeof createTenantScopedAdmin>["admin"],
   tenantId: string,
   selfInstallationId: string,
