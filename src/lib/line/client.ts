@@ -76,7 +76,7 @@ export async function sendMessage(
 }
 
 /** LINE Messaging API でリプライ送信 */
-async function replyMessage(
+export async function replyMessage(
   accessToken: string,
   replyToken: string,
   messages: Array<{ type: string; text?: string; [key: string]: unknown }>,
@@ -286,31 +286,57 @@ export async function handleWebhookEvents(
         lineTimestampMs: event.timestamp ?? null,
       });
 
+      // replyToken は 1 イベント 1 回のみ・最大 5 メッセージ。複数の返信は 1 回にまとめて送る。
+      // (別々に reply すると 2 通目以降が落ちるため)
+      const replyMessages: Array<{ type: string; text?: string; [key: string]: unknown }> = [];
+
       const text = rawText.trim().toLowerCase();
       if (text === "予約" || text === "booking") {
         // LIFF URL で予約画面へ誘導
         const liffUrl = config.liffId ? `https://liff.line.me/${config.liffId}` : null;
+        replyMessages.push({
+          type: "text",
+          text: liffUrl ? `こちらから予約できます:\n${liffUrl}` : "Web予約ページからご予約ください。",
+        });
+      }
 
-        if (event.replyToken) {
-          await replyMessage(config.channelAccessToken, event.replyToken, [
-            {
-              type: "text",
-              text: liffUrl ? `こちらから予約できます:\n${liffUrl}` : "Web予約ページからご予約ください。",
-            },
-          ]);
+      // 未紐づけユーザーへの「連携を促す案内」(opt-in テナントのみ / fail-soft)。
+      // 課金されるプッシュではなく、この受信メッセージへの**リプライ (無料)** で返す。
+      // 招待 URL を含むため、参加者全員に届くグループ/ルームでは送らず、1:1 トークのみ
+      // (source.type === "user")。replyToken が無い回はスキップし、次の受信で返す。
+      let linkPromptText: string | null = null;
+      if (event.source.type === "user" && event.replyToken) {
+        const { buildLineLinkPrompt } = await import("@/lib/line/linkPrompt");
+        const prompt = await buildLineLinkPrompt({
+          tenantId,
+          lineUserId: event.source.userId,
+          customerId: stored.customerId ?? null,
+        });
+        if (prompt) {
+          linkPromptText = prompt.text;
+          replyMessages.push({ type: "text", text: prompt.text });
+        }
+      }
+
+      // まとめて 1 回のリプライで送信 (最大 5)。送れたら案内は履歴に残す (クールダウン用)。
+      if (event.replyToken && replyMessages.length > 0) {
+        try {
+          await replyMessage(config.channelAccessToken, event.replyToken, replyMessages.slice(0, 5));
+          if (linkPromptText) {
+            await recordOutboundLineMessage({
+              tenantId,
+              lineUserId: event.source.userId,
+              body: linkPromptText,
+              delivered: true,
+            });
+          }
+        } catch (e) {
+          console.error("[LINE webhook] reply failed:", e);
         }
       }
 
       // スタッフ向け in-app 通知 (クールダウン付き / fail-soft)。受信箱で気付けるように。
       await maybeNotifyInboundMessage({
-        tenantId,
-        lineUserId: event.source.userId,
-        customerId: stored.customerId ?? null,
-      });
-
-      // 未紐づけユーザーには「連携を促す案内」を 1 度だけ送る (opt-in テナントのみ / fail-soft)。
-      const { maybePromptLineLink } = await import("@/lib/line/linkPrompt");
-      await maybePromptLineLink({
         tenantId,
         lineUserId: event.source.userId,
         customerId: stored.customerId ?? null,

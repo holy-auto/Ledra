@@ -1,5 +1,5 @@
 /**
- * 未紐づけの LINE ユーザーに「顧客連携」を促す案内の送信判定 + 送信。
+ * 未紐づけの LINE ユーザーに「顧客連携」を促す案内。
  *
  * LINE 公式アカウントは店から先に送れず必ず顧客発でやり取りが始まるため、
  * 会話が少し進んだ段階で 1 度だけ案内を送り、
@@ -7,17 +7,24 @@
  *   - はじめての方  → 登録フォーム (intake) で個人情報登録 → 完了時に自動連携
  * の 2 経路へ誘導する。
  *
- * webhook から fire-and-forget で呼ばれる前提で、絶対に throw しない。
- * テナントが `line_link_prompt_enabled` を opt-in した場合のみ実体が動く。
+ * 送信は**プッシュではなく、受信メッセージへのリプライ (応答メッセージ)** で行う。
+ * LINE 公式アカウントの料金は配信 (プッシュ) 数の従量で、応答メッセージは無料・無制限。
+ *
+ * 本モジュールは「案内本文を組み立てるだけ」(buildLineLinkPrompt)。実際のリプライ送信と
+ * 履歴記録は webhook 側 (client.ts) が行う。理由:
+ *   - 同一イベントの他の返信 (例: 「予約」案内) と **1 回のリプライにまとめて** 送るため
+ *     (replyToken は 1 イベント 1 回のみ。別々に送ると片方が落ちる)。
+ *   - グループ/ルームのリプライは参加者全員に届くため、招待 URL を含む案内は
+ *     **1:1 トーク (source.type === "user") のときだけ** 送る (呼び出し側で判定)。
+ *
+ * 失敗しても投げない。テナントが `line_link_prompt_enabled` を opt-in した場合のみ実体が動く。
  */
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
-import { getLineConfig, sendMessage } from "@/lib/line/client";
-import { recordOutboundLineMessage } from "@/lib/line/messageStore";
 import { createIntakeInvitation } from "@/lib/identity/intakeServer";
 
 /** 案内メッセージ冒頭の識別マーカー (再送クールダウン判定に使う)。 */
-const PROMPT_MARKER = "【LINE連携のお願い】";
+export const LINK_PROMPT_MARKER = "【LINE連携のお願い】";
 /** 何件くらいやり取りが進んだら案内するか (いきなり初回では送らない)。 */
 const PROMPT_AFTER_INBOUND = Number(process.env.LINE_LINK_PROMPT_AFTER_INBOUND) || 2;
 /** 同一ユーザーへの再送を抑止する日数。 */
@@ -29,7 +36,7 @@ function getBaseUrl(): string | null {
   return url.startsWith("http") ? url : `https://${url}`;
 }
 
-export interface MaybePromptLineLinkParams {
+export interface BuildLineLinkPromptParams {
   tenantId: string;
   lineUserId: string;
   /** 受信メッセージ処理時点で解決済みの顧客 ID。非 null なら既に紐づき済みなので案内しない。 */
@@ -37,18 +44,22 @@ export interface MaybePromptLineLinkParams {
 }
 
 /**
- * 条件を満たせば連携案内を 1 度だけ送る。失敗しても投げない。
+ * 連携案内の本文を組み立てる。送信条件を満たさなければ null を返す。
+ *
+ * 条件を満たすと **登録フォーム (intake) 招待を 1 件発行する副作用** があるため、
+ * 呼び出し側は「実際にリプライ送信できる (1:1 トーク + replyToken あり)」場合のみ呼ぶこと。
+ * 送信・履歴記録 (クールダウン用) は呼び出し側が行う。失敗時は null。
  */
-export async function maybePromptLineLink(params: MaybePromptLineLinkParams): Promise<void> {
+export async function buildLineLinkPrompt(params: BuildLineLinkPromptParams): Promise<{ text: string } | null> {
   const { tenantId, lineUserId, customerId } = params;
   try {
-    if (customerId) return; // 既に紐づき済み
+    if (customerId) return null; // 既に紐づき済み
 
     const admin = createServiceRoleAdmin("LINE 連携案内 — 未紐づけユーザーへの誘導 (webhook は auth 無し)");
 
     // テナントが案内を opt-in しているか。
     const { data: tenant } = await admin.from("tenants").select("line_link_prompt_enabled").eq("id", tenantId).single();
-    if (!tenant?.line_link_prompt_enabled) return;
+    if (!tenant?.line_link_prompt_enabled) return null;
 
     // やり取りが一定数進んでから案内する (いきなり初回では送らない)。
     const { count: inboundCount } = await admin
@@ -57,7 +68,7 @@ export async function maybePromptLineLink(params: MaybePromptLineLinkParams): Pr
       .eq("tenant_id", tenantId)
       .eq("line_user_id", lineUserId)
       .eq("direction", "inbound");
-    if ((inboundCount ?? 0) < PROMPT_AFTER_INBOUND) return;
+    if ((inboundCount ?? 0) < PROMPT_AFTER_INBOUND) return null;
 
     // クールダウン: 直近に同一ユーザーへ案内済みなら再送しない。
     const sinceIso = new Date(Date.now() - PROMPT_COOLDOWN_DAYS * 24 * 3600 * 1000).toISOString();
@@ -67,12 +78,9 @@ export async function maybePromptLineLink(params: MaybePromptLineLinkParams): Pr
       .eq("tenant_id", tenantId)
       .eq("line_user_id", lineUserId)
       .eq("direction", "outbound")
-      .ilike("body", `${PROMPT_MARKER}%`)
+      .ilike("body", `${LINK_PROMPT_MARKER}%`)
       .gte("created_at", sinceIso);
-    if ((promptCount ?? 0) > 0) return;
-
-    const config = await getLineConfig(tenantId);
-    if (!config) return;
+    if ((promptCount ?? 0) > 0) return null;
 
     // 新規のお客様向けに登録フォーム (intake) を 1 件発行し、URL を案内に含める。
     let intakeUrl: string | null = null;
@@ -96,7 +104,7 @@ export async function maybePromptLineLink(params: MaybePromptLineLinkParams): Pr
     }
 
     const lines = [
-      PROMPT_MARKER,
+      LINK_PROMPT_MARKER,
       "ご連絡ありがとうございます。スムーズにご案内するため、LINE とお客様情報の連携をお願いします。",
       "",
       "▼ すでに当店をご利用の方",
@@ -105,21 +113,12 @@ export async function maybePromptLineLink(params: MaybePromptLineLinkParams): Pr
     if (intakeUrl) {
       lines.push("", "▼ はじめての方", "こちらの登録フォームからお願いします:", intakeUrl);
     }
-    const body = lines.join("\n");
-
-    await sendMessage(config.channelAccessToken, lineUserId, [{ type: "text", text: body }]);
-
-    // 送信した案内も履歴に残す (クールダウン判定にも使う)。
-    await recordOutboundLineMessage({
-      tenantId,
-      lineUserId,
-      body,
-      delivered: true,
-    });
+    return { text: lines.join("\n") };
   } catch (e) {
-    logger.warn("[linkPrompt] maybePromptLineLink threw", {
+    logger.warn("[linkPrompt] buildLineLinkPrompt threw", {
       tenantId,
       err: e instanceof Error ? e.message : String(e),
     });
+    return null;
   }
 }
