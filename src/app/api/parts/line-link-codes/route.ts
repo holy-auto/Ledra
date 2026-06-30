@@ -6,9 +6,9 @@
  */
 
 import { z } from "zod";
-import { apiJson, apiInternalError, apiValidationError, apiUnauthorized } from "@/lib/api/response";
+import { apiJson, apiInternalError, apiValidationError, apiUnauthorized, apiForbidden } from "@/lib/api/response";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { generateCustomerLinkCode } from "@/lib/line/linkCode";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +19,8 @@ export async function POST(req: Request) {
   const supabase = await createSupabaseServerClient();
   const caller = await resolveCallerWithRole(supabase);
   if (!caller) return apiUnauthorized();
+  // 連携コード発行 = 本人確認に関わる書き込み操作。閲覧のみのユーザーには許可しない。
+  if (!requireMinRole(caller, "staff")) return apiForbidden();
 
   let body: unknown;
   try {

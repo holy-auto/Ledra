@@ -8,6 +8,7 @@ type LineStatus = {
   channel_id: string | null;
   liff_id: string | null;
   webhook_url: string | null;
+  link_prompt_enabled: boolean;
 };
 
 export default function LineConnectSection() {
@@ -88,11 +89,30 @@ export default function LineConnectSection() {
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
-      setStatus({ enabled: false, channel_id: null, liff_id: null, webhook_url: null });
+      setStatus({ enabled: false, channel_id: null, liff_id: null, webhook_url: null, link_prompt_enabled: false });
       setChannelId("");
       setChannelSecret("");
       setAccessToken("");
       setLiffId("");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleToggleLinkPrompt = async (next: boolean) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/admin/line", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "set_link_prompt", enabled: next }),
+      });
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      setStatus((s) => (s ? { ...s, link_prompt_enabled: next } : s));
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -252,6 +272,28 @@ export default function LineConnectSection() {
           <p className="text-sm text-success">
             LINE連携が有効です。予約確認・リマインダー・書類リンクが自動送信されます。
           </p>
+        </div>
+      )}
+
+      {/* 連携案内の自動返信トグル */}
+      {isConnected && !editing && (
+        <div className="mt-3 rounded-lg border border-border-subtle p-3 space-y-2">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={status?.link_prompt_enabled ?? false}
+              disabled={busy}
+              onChange={(e) => handleToggleLinkPrompt(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span className="text-sm text-secondary">
+              <span className="font-medium text-primary">未連携のお客様に連携案内を自動返信する</span>
+              <br />
+              <span className="text-xs text-muted">
+                まだ顧客に紐づいていないLINEユーザーとのやり取りが少し進んだ段階で、連携のお願い（既存のお客様＝連携コード入力／はじめての方＝登録フォーム）を1度だけ自動送信します。
+              </span>
+            </span>
+          </label>
         </div>
       )}
     </div>

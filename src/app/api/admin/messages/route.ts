@@ -32,6 +32,7 @@ type Row = {
   delivered_at: string | null;
   failed_at: string | null;
   created_at: string;
+  ai_extracted: { intent?: string } | null;
 };
 
 interface ThreadAccum {
@@ -44,6 +45,14 @@ interface ThreadAccum {
   last_created_at: string;
   unread_count: number;
   message_count: number;
+  /** 予約系 intent の AI 抽出候補 (ai_extracted) が付いた未確認メッセージ数。 */
+  candidate_count: number;
+}
+
+/** ai_extracted が予約系 (予約候補) かどうか。 */
+function isReservationCandidate(ai: { intent?: string } | null): boolean {
+  const intent = ai?.intent;
+  return intent === "new_reservation" || intent === "change_reservation";
 }
 
 function isMissingColumnError(err: { message?: string; code?: string } | null | undefined): boolean {
@@ -64,30 +73,47 @@ export async function GET(req: NextRequest) {
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
-    const cols =
-      "id, customer_id, line_user_id, channel, direction, body, read_at, delivered_at, failed_at, created_at";
-    // read_at 列が未作成 (マイグレーション未適用) なら外して取得する。
-    let rows: Row[] = [];
-    {
-      const sel = await admin
+    const BASE_COLS = "id, customer_id, line_user_id, channel, direction, body, delivered_at, failed_at, created_at";
+    const colsFull = `${BASE_COLS}, read_at, ai_extracted`;
+    const colsNoAi = `${BASE_COLS}, read_at`; // ai_extracted だけ未作成なら read_at は残す
+
+    const scan = (cols: string) =>
+      admin
         .from("customer_messages")
         .select(cols)
         .eq("tenant_id", caller.tenantId)
         .order("created_at", { ascending: false })
         .limit(MAX_SCAN);
-      if (sel.error && isMissingColumnError(sel.error)) {
-        const retry = await admin
-          .from("customer_messages")
-          .select("id, customer_id, line_user_id, channel, direction, body, delivered_at, failed_at, created_at")
-          .eq("tenant_id", caller.tenantId)
-          .order("created_at", { ascending: false })
-          .limit(MAX_SCAN);
-        if (retry.error) return apiInternalError(retry.error, "messages list (fallback)");
-        rows = ((retry.data ?? []) as Omit<Row, "read_at">[]).map((r) => ({ ...r, read_at: null }));
-      } else if (sel.error) {
-        return apiInternalError(sel.error, "messages list");
+
+    // read_at / ai_extracted 列が未作成 (マイグレーション未適用) でも段階的に縮退する。
+    // 実在する列はできるだけ残すため、欠けている列だけを外して再取得する。
+    let rows: Row[] = [];
+    {
+      const sel = await scan(colsFull);
+      if (!sel.error) {
+        rows = (sel.data ?? []) as unknown as Row[];
+      } else if (isMissingColumnError(sel.error)) {
+        // まず ai_extracted だけ外す (read_at は維持して未読判定を壊さない)。
+        const noAi = await scan(colsNoAi);
+        if (!noAi.error) {
+          rows = ((noAi.data ?? []) as unknown as Omit<Row, "ai_extracted">[]).map((r) => ({
+            ...r,
+            ai_extracted: null,
+          }));
+        } else if (isMissingColumnError(noAi.error)) {
+          // read_at も無い更に古いスキーマ: 両方外す。
+          const bare = await scan(BASE_COLS);
+          if (bare.error) return apiInternalError(bare.error, "messages list (fallback)");
+          rows = ((bare.data ?? []) as unknown as Omit<Row, "read_at" | "ai_extracted">[]).map((r) => ({
+            ...r,
+            read_at: null,
+            ai_extracted: null,
+          }));
+        } else {
+          return apiInternalError(noAi.error, "messages list (fallback)");
+        }
       } else {
-        rows = (sel.data ?? []) as Row[];
+        return apiInternalError(sel.error, "messages list");
       }
     }
 
@@ -108,6 +134,7 @@ export async function GET(req: NextRequest) {
           last_created_at: r.created_at,
           unread_count: 0,
           message_count: 0,
+          candidate_count: 0,
         };
         threads.set(key, t);
       }
@@ -116,6 +143,7 @@ export async function GET(req: NextRequest) {
       if (!t.customer_id && r.customer_id) t.customer_id = r.customer_id;
       if (!t.line_user_id && r.line_user_id) t.line_user_id = r.line_user_id;
       if (r.direction === "inbound" && !r.read_at) t.unread_count += 1;
+      if (r.direction === "inbound" && isReservationCandidate(r.ai_extracted)) t.candidate_count += 1;
     }
 
     let list = Array.from(threads.values());
