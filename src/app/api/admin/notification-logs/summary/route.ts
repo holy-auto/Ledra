@@ -16,6 +16,7 @@ import {
   normalizeNotifType,
   type NotifLogRow,
 } from "@/lib/admin/notificationSummary";
+import { withCache } from "@/lib/cache";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -31,37 +32,40 @@ export async function GET(req: NextRequest) {
     const days = Number.isFinite(daysParamRaw) ? Math.max(1, Math.min(180, Math.trunc(daysParamRaw))) : 30;
 
     const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
-    const floor = new Date(Date.now() - days * 86_400_000).toISOString();
 
-    const { data, error } = await admin
-      .from("notification_logs")
-      .select("type, status, channel, sent_at, recipient_email, recipient_line_user_id")
-      .eq("tenant_id", tenantId)
-      .gte("sent_at", floor)
-      .order("sent_at", { ascending: false })
-      .limit(10000);
-    if (error) return apiInternalError(error, "notification-logs summary");
+    // 集計は重い (最大 1 万行取得) 一方で数分の遅延は可観測性用途として許容できるため、
+    // テナント×期間で Redis に 5 分キャッシュする (認証は毎回検証済み)。
+    const payload = await withCache(`notif-summary:${tenantId}:${days}`, 300, async () => {
+      const floor = new Date(Date.now() - days * 86_400_000).toISOString();
+      const { data, error } = await admin
+        .from("notification_logs")
+        .select("type, status, channel, sent_at, recipient_email, recipient_line_user_id")
+        .eq("tenant_id", tenantId)
+        .gte("sent_at", floor)
+        .order("sent_at", { ascending: false })
+        .limit(10000);
+      if (error) throw error; // キャッシュせず外側の catch で 500 を返す
 
-    const rows = (data ?? []) as Array<
-      NotifLogRow & { recipient_email: string | null; recipient_line_user_id: string | null }
-    >;
-    const summary = summarizeNotifications(rows);
+      const rows = (data ?? []) as Array<
+        NotifLogRow & { recipient_email: string | null; recipient_line_user_id: string | null }
+      >;
+      const summary = summarizeNotifications(rows);
 
-    // 直近の失敗 (最大 20 件) を別に返す (調査導線)。
-    const recent_failures = rows
-      .filter((r) => r.status === "failed")
-      .slice(0, 20)
-      .map((r) => ({
-        type: labelForType(normalizeNotifType(r.type)),
-        channel: r.channel ?? null,
-        sent_at: r.sent_at ?? null,
-        recipient: r.recipient_email ?? r.recipient_line_user_id ?? null,
-      }));
+      // 直近の失敗 (最大 20 件) を別に返す (調査導線)。
+      const recent_failures = rows
+        .filter((r) => r.status === "failed")
+        .slice(0, 20)
+        .map((r) => ({
+          type: labelForType(normalizeNotifType(r.type)),
+          channel: r.channel ?? null,
+          sent_at: r.sent_at ?? null,
+          recipient: r.recipient_email ?? r.recipient_line_user_id ?? null,
+        }));
 
-    return apiJson(
-      { days, summary, recent_failures },
-      { headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=60" } },
-    );
+      return { days, summary, recent_failures };
+    });
+
+    return apiJson(payload, { headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=60" } });
   } catch (e) {
     return apiInternalError(e, "notification-logs summary GET");
   }
