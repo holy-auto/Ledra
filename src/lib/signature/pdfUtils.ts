@@ -34,6 +34,7 @@ type CertSelectRow = {
   ppf_coverage_json: Record<string, unknown>[] | null;
   maintenance_json: Record<string, unknown> | null;
   body_repair_json: Record<string, unknown> | null;
+  accessory_json: Record<string, unknown> | null;
   service_type: string | null;
   expiry_type: string | null;
   expiry_value: string | null;
@@ -72,6 +73,7 @@ export async function generateCertificatePdfBytes(certificateId: string): Promis
       ppf_coverage_json,
       maintenance_json,
       body_repair_json,
+      accessory_json,
       service_type,
       expiry_type,
       expiry_value,
@@ -108,6 +110,7 @@ export async function generateCertificatePdfBytes(certificateId: string): Promis
     ppf_coverage_json: cert.ppf_coverage_json ?? null,
     maintenance_json: cert.maintenance_json ?? null,
     body_repair_json: cert.body_repair_json ?? null,
+    accessory_json: cert.accessory_json ?? null,
     service_type: cert.service_type ?? null,
     expiry_type: cert.expiry_type ?? null,
     expiry_value: cert.expiry_value ?? null,

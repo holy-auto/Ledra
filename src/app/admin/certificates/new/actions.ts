@@ -106,7 +106,17 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
     // ignore parse errors — field is optional
   }
 
-  // Service type (ppf | coating | maintenance | body_repair | etc)
+  // Accessory JSON (optional — accessory templates only)
+  let accessory_data: Record<string, any> = {};
+  try {
+    const raw = String(formData.get("accessory_json") || "{}");
+    const parsed = JSON.parse(raw);
+    if (typeof parsed === "object" && parsed !== null) accessory_data = parsed;
+  } catch {
+    // ignore parse errors — field is optional
+  }
+
+  // Service type (ppf | coating | maintenance | body_repair | accessory | etc)
   const service_type = String(formData.get("service_type") || "").trim() || null;
 
   // 品質監査用のフラットな field_values スナップショット (フォームの collectFieldValues 相当)。
@@ -365,6 +375,7 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
       ppf_coverage_json: ppf_coverage.length > 0 ? ppf_coverage : [],
       maintenance_json: Object.keys(maintenance_data).length > 0 ? maintenance_data : {},
       body_repair_json: Object.keys(body_repair_data).length > 0 ? body_repair_data : {},
+      accessory_json: Object.keys(accessory_data).length > 0 ? accessory_data : {},
       service_type: service_type || null,
       quality_fields_json: quality_fields,
       expiry_type: "text",
