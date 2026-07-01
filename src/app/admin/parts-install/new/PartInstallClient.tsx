@@ -35,6 +35,16 @@ const GRADE_LABEL: Record<string, string> = {
   unverified: "EXIF なし",
 };
 
+/**
+ * プレビュー URL の scheme ガード。
+ * preview は `URL.createObjectURL(file)` が返す `blob:` URL のみを想定するが、
+ * 万一想定外の値が混じっても img の src に流さないよう scheme を検証する
+ * (DOM 由来テキストが HTML/URL sink に無検証で到達するのを防ぐ)。
+ */
+function safePreviewSrc(url: string): string {
+  return url.startsWith("blob:") ? url : "";
+}
+
 interface StagedPhoto {
   localId: string;
   kind: PhotoKind;
@@ -377,7 +387,7 @@ export default function PartInstallClient() {
             {photos.map((p) => (
               <div key={p.localId} className="relative overflow-hidden rounded-lg border border-border-subtle">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p.preview} alt="" className="h-28 w-full object-cover" />
+                <img src={safePreviewSrc(p.preview)} alt="" className="h-28 w-full object-cover" />
                 <button
                   type="button"
                   onClick={() => removePhoto(p.localId)}
