@@ -86,6 +86,14 @@ export default function DocumentDetailClient({
         body: JSON.stringify({
           doc_type: "invoice",
           customer_id: doc.customer_id,
+          // 顧客未紐付け (recipient_* を直接持つ) の伝票でも宛先を失わないよう引き継ぐ。
+          // 例: 中古車商談から作成した見積 (customer_id なし・宛名は buyer)。
+          recipient_name: doc.recipient_name,
+          recipient_honorific: doc.recipient_honorific,
+          recipient_postal_code: doc.recipient_postal_code,
+          recipient_address: doc.recipient_address,
+          recipient_phone: doc.recipient_phone,
+          subject: doc.subject,
           issued_at: new Date().toISOString().slice(0, 10),
           items: doc.items_json,
           tax_rate: doc.tax_rate,

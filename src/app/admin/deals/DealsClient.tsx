@@ -186,19 +186,22 @@ export default function DealsClient() {
     setCreatingEstimateId(deal.id);
     try {
       const items = buildUsedCarEstimateItems({ vehicleLabel, agreedPrice: deal.agreed_price });
+      // 法人 (buyer_company あり) は会社名 + 御中、個人は氏名 + 様 で宛先を設定する。
+      const corporate = Boolean(deal.buyer_company);
       const docRes = await fetch("/api/admin/documents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           doc_type: "estimate",
           subject: `お見積書（${vehicleLabel}）`,
-          recipient_name: deal.buyer_name,
-          recipient_honorific: deal.buyer_company ? "御中" : "様",
+          recipient_name: corporate ? deal.buyer_company : deal.buyer_name,
+          recipient_honorific: corporate ? "御中" : "様",
           items,
-          is_tax_inclusive: true,
-          tax_rate: 10,
+          // 各金額は税込 (内税)。行単位の税区分を現行 documents が扱えないため税率0で作成し、
+          // 支払総額 = 行金額の合計とする (請求書変換時も tax_rate を引き継ぎ二重課税しない)。
+          tax_rate: 0,
           status: "draft",
-          note: "法定費用・預託金・保険料は非課税です。各金額は確定後に編集してください。",
+          note: "金額は税込（内税）。消費税は各金額に含みます。法定費用・預託金・保険料は非課税です。各金額は確定後に編集してください。",
         }),
       });
       const dj = await parseJsonSafe(docRes);
