@@ -37,6 +37,7 @@ const FLAG_LABELS: Record<string, string> = {
   duplicate_image: "写真の重複",
   deepfake_suspected: "ディープフェイク疑い",
   capture_time_future: "撮影日時が未来",
+  capture_time_stale: "撮影日時が発行より大幅に前 (使い回し疑い)",
   metadata_missing: "撮影メタ欠落",
 };
 

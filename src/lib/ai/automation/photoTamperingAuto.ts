@@ -46,6 +46,7 @@ const FLAG_HINT_JA: Record<PhotoIntegrityFlag, string> = {
   duplicate_image: "他の写真とハッシュが重複",
   deepfake_suspected: "ディープフェイク判定が要注意",
   capture_time_future: "撮影日時が未来",
+  capture_time_stale: "撮影日時が発行より大幅に前 (使い回しの疑い)",
   metadata_missing: "撮影メタ(日時/端末)が欠落",
   vision_suspicious: "内容審査で要注意",
 };
@@ -106,16 +107,19 @@ export async function maybeAutoTamperingCheckForCertificate(params: MaybeAutoTam
     // 写真がまだ無ければ何もしない (アップロード初回前など)。
     if (imageRows.length === 0) return;
 
-    const firstPass = aggregateCertificateImageIntegrity(imageRows);
-
-    // 既存の判定を尊重して無駄な上書きを避ける。
+    // 既存の判定を尊重して無駄な上書きを避ける。撮影時刻の「使い回し」判定の
+    // 基準として発行 (created_at) も読む。
     const { data: cert } = await admin
       .from("certificates")
-      .select("meta")
+      .select("meta, created_at")
       .eq("id", certificateId)
       .eq("tenant_id", tenantId)
       .maybeSingle();
     if (!cert) return;
+
+    const issuedAt = cert.created_at ? new Date(cert.created_at as string) : null;
+    const referenceAt = issuedAt && !Number.isNaN(issuedAt.getTime()) ? issuedAt : null;
+    const firstPass = aggregateCertificateImageIntegrity(imageRows, new Date(), referenceAt);
 
     const existingMeta = asRecord(cert.meta);
     const prev = asRecord(existingMeta.tampering_check);

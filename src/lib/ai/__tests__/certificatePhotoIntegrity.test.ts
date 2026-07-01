@@ -69,6 +69,38 @@ describe("aggregateCertificateImageIntegrity", () => {
     expect(r.flags).toContain("capture_time_future");
   });
 
+  it("発行より大幅に前の撮影は capture_time_stale (referenceAt 指定時) で inconclusive", () => {
+    // 発行 (referenceAt) = 2026-06-01、撮影 = 2026-01-01 (約5ヶ月前 > 60日)。
+    const ref = new Date("2026-06-01T00:00:00Z");
+    const r = aggregateCertificateImageIntegrity([img({ id: "1", capturedAt: "2026-01-01T10:00:00Z" })], NOW, ref);
+    expect(r.flags).toContain("capture_time_stale");
+    // 使い回しは弱いシグナル → suspicious にはしない (Vision へ回す)。
+    expect(r.verdict).toBe("inconclusive");
+    expect(r.anyFlagged).toBe(false);
+    expect(pickGrayZoneImageIds(r, 10)).toContain("1");
+  });
+
+  it("発行直近 (60日以内) の撮影は stale にしない", () => {
+    const ref = new Date("2026-06-01T00:00:00Z");
+    const r = aggregateCertificateImageIntegrity([img({ id: "1", capturedAt: "2026-05-20T10:00:00Z" })], NOW, ref);
+    expect(r.flags).not.toContain("capture_time_stale");
+    expect(r.verdict).toBe("clear");
+  });
+
+  it("referenceAt 未指定なら stale 判定はスキップ (後方互換)", () => {
+    const r = aggregateCertificateImageIntegrity([img({ id: "1", capturedAt: "2020-01-01T10:00:00Z" })], NOW);
+    expect(r.flags).not.toContain("capture_time_stale");
+    expect(r.verdict).toBe("clear");
+  });
+
+  it("未来の撮影は stale ではなく capture_time_future を優先", () => {
+    const ref = new Date("2026-06-01T00:00:00Z");
+    const r = aggregateCertificateImageIntegrity([img({ id: "1", capturedAt: "2026-12-31T00:00:00Z" })], NOW, ref);
+    expect(r.flags).toContain("capture_time_future");
+    expect(r.flags).not.toContain("capture_time_stale");
+    expect(r.verdict).toBe("suspicious");
+  });
+
   it("撮影メタ欠落のみは inconclusive (suspicious にしない)", () => {
     const r = aggregateCertificateImageIntegrity([img({ id: "1", capturedAt: null, deviceModel: null })], NOW);
     expect(r.verdict).toBe("inconclusive");
