@@ -17,13 +17,15 @@ export type AiAuditAction =
   | "ai_settings_changed"
   | "ai_suggestion_generated"
   | "ai_suggestion_applied"
-  | "ai_suggestion_rejected";
+  | "ai_suggestion_rejected"
+  | "ai_auto_action_executed";
 
 const TITLE_MAP: Record<AiAuditAction, string> = {
   ai_settings_changed: "AI 自動入力の設定を変更",
   ai_suggestion_generated: "AI 提案を生成",
   ai_suggestion_applied: "AI 提案を反映",
   ai_suggestion_rejected: "AI 提案を却下",
+  ai_auto_action_executed: "AI が自動実行",
 };
 
 export interface AiAuditEvent {
@@ -66,4 +68,27 @@ export async function logAiAuditEvent(event: AiAuditEvent): Promise<void> {
   } catch (e) {
     console.error("[ai-audit] logAiAuditEvent failed:", e);
   }
+}
+
+/**
+ * opt-in の自動アクションが「実際に実行され業務レコードを作成/変更した」ことを記録する。
+ *
+ * 人の確認を挟まず service-role で作成される予約/顧客/請求書などの副作用を、後から
+ * 「いつ・どのアクションが・何を作ったか」で追跡できるようにするためのヘルパー。
+ * userId は常に null (自動実行 = 人ではない)。actionKey には自動化の action key
+ * (例: "inbound_message.auto_create_reservation") を入れて集計しやすくする。
+ */
+export async function logAutoActionExecuted(params: {
+  tenantId: string;
+  actionKey: string;
+  resource?: { kind: string; id?: string | null } | null;
+  detail?: Record<string, unknown>;
+}): Promise<void> {
+  return logAiAuditEvent({
+    tenantId: params.tenantId,
+    userId: null,
+    action: "ai_auto_action_executed",
+    resource: params.resource ?? null,
+    detail: { action_key: params.actionKey, ...(params.detail ?? {}) },
+  });
 }

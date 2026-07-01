@@ -18,6 +18,7 @@ import { extractInboundReservation } from "@/lib/ai/inboundReservationExtract";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
+import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { loadAiAutomationSettings } from "./policy";
 import { shouldAutoExtractInbound, decideInboundCommit } from "./orchestrator";
 
@@ -111,6 +112,15 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
               .eq("id", messageId)
               .eq("tenant_id", tenantId);
           }
+          if (resolvedCustomerId) {
+            // 人の確認なしで顧客を自動作成した事実を監査ログに残す。
+            await logAutoActionExecuted({
+              tenantId,
+              actionKey: "customer.auto_create",
+              resource: { kind: "customer", id: resolvedCustomerId },
+              detail: { channel: params.channel ?? "line", source: "inbound_message" },
+            });
+          }
         }
         if (!resolvedCustomerId) {
           logger.warn("[inboundAuto] customer auto-create failed, skipping reservation", { tenantId });
@@ -128,6 +138,20 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
           note: result.note,
           confidence: result.confidence,
         });
+        if (committedReservationId) {
+          // 人の確認なしで予約を自動起票した事実を監査ログに残す。
+          await logAutoActionExecuted({
+            tenantId,
+            actionKey: "inbound_message.auto_create_reservation",
+            resource: { kind: "reservation", id: committedReservationId },
+            detail: {
+              channel: params.channel ?? "line",
+              customer_id: resolvedCustomerId,
+              commit_reason: decision.reason,
+              confidence: typeof result.confidence === "number" ? result.confidence : null,
+            },
+          });
+        }
       }
     }
 
