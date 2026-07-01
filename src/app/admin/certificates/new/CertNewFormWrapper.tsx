@@ -50,6 +50,13 @@ type Vehicle = {
   customer?: { id: string; name: string } | null;
 };
 
+type Customer = {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+};
+
 export type FieldType = "text" | "textarea" | "number" | "date" | "select" | "multiselect" | "checkbox";
 
 export type TemplateSchema = {
@@ -75,6 +82,7 @@ export type Template = {
 
 type Props = {
   vehicles: Vehicle[];
+  customers?: Customer[];
   defaultVehicleId?: string;
   defaultCustomerId?: string;
   defaultReservationId?: string;
@@ -104,6 +112,7 @@ const PLAN_LABELS: Record<PlanTier, string> = {
 
 export default function CertNewFormWrapper({
   vehicles,
+  customers = [],
   defaultVehicleId,
   defaultCustomerId,
   defaultReservationId,
@@ -582,6 +591,7 @@ export default function CertNewFormWrapper({
                   )
                 : vehicles
             }
+            customers={customers}
             defaultVehicleId={defaultVehicleId}
             onVehicleChange={handleVehicleChange}
           />
