@@ -43,93 +43,95 @@ export async function GET(req: NextRequest) {
       // Calculate the cutoff timestamp
       const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-      // Fetch recent certificates
+      // Fetch recent certificates。エラーは throw して withCache に劣化結果を
+      // キャッシュさせない (握りつぶすと 0 件スナップショットが TTL 中配信されるため)。
       const certsPromise = (async () => {
-        try {
-          const { data } = await admin
-            .from("certificates")
-            .select("public_id, customer_name, created_at")
-            .eq("tenant_id", tenantId)
-            .gte("created_at", since)
-            .order("created_at", { ascending: false })
-            .limit(50);
-          return data ?? [];
-        } catch {
-          return [];
-        }
+        const { data, error } = await admin
+          .from("certificates")
+          .select("public_id, customer_name, created_at")
+          .eq("tenant_id", tenantId)
+          .gte("created_at", since)
+          .order("created_at", { ascending: false })
+          .limit(50);
+        if (error) throw error;
+        return data ?? [];
       })();
 
       // Fetch recent invoices (documents with doc_type = invoice)
       const invoicesPromise = (async () => {
-        try {
-          const { data } = await admin
-            .from("documents")
-            .select("id, doc_number, customer_id, created_at")
-            .eq("tenant_id", tenantId)
-            .eq("doc_type", "invoice")
-            .gte("created_at", since)
-            .order("created_at", { ascending: false })
-            .limit(50);
+        const { data, error } = await admin
+          .from("documents")
+          .select("id, doc_number, customer_id, created_at")
+          .eq("tenant_id", tenantId)
+          .eq("doc_type", "invoice")
+          .gte("created_at", since)
+          .order("created_at", { ascending: false })
+          .limit(50);
+        if (error) throw error;
 
-          if (!data || data.length === 0) return [];
+        if (!data || data.length === 0) return [];
 
-          // Resolve customer names
-          const customerIds = [...new Set(data.filter((d) => d.customer_id).map((d) => d.customer_id as string))];
-          const customerNames: Record<string, string> = {};
-          if (customerIds.length > 0) {
-            const { data: customers } = await admin.from("customers").select("id, name").in("id", customerIds);
-            for (const c of customers ?? []) {
-              customerNames[c.id] = c.name;
-            }
+        // Resolve customer names
+        const customerIds = [...new Set(data.filter((d) => d.customer_id).map((d) => d.customer_id as string))];
+        const customerNames: Record<string, string> = {};
+        if (customerIds.length > 0) {
+          const { data: customers, error: custErr } = await admin
+            .from("customers")
+            .select("id, name")
+            .in("id", customerIds);
+          if (custErr) throw custErr;
+          for (const c of customers ?? []) {
+            customerNames[c.id] = c.name;
           }
-
-          return data.map((inv) => ({
-            ...inv,
-            customer_name: inv.customer_id ? (customerNames[inv.customer_id] ?? null) : null,
-          }));
-        } catch {
-          return [];
         }
+
+        return data.map((inv) => ({
+          ...inv,
+          customer_name: inv.customer_id ? (customerNames[inv.customer_id] ?? null) : null,
+        }));
       })();
 
       // Fetch recent reservations
       const reservationsPromise = (async () => {
-        try {
-          const { data } = await admin
-            .from("reservations")
-            .select("id, scheduled_date, scheduled_time, created_at")
-            .eq("tenant_id", tenantId)
-            .gte("created_at", since)
-            .order("created_at", { ascending: false })
-            .limit(50);
-          return data ?? [];
-        } catch {
-          return [];
-        }
+        const { data, error } = await admin
+          .from("reservations")
+          .select("id, scheduled_date, scheduled_time, created_at")
+          .eq("tenant_id", tenantId)
+          .gte("created_at", since)
+          .order("created_at", { ascending: false })
+          .limit(50);
+        if (error) throw error;
+        return data ?? [];
       })();
 
       // Fetch recent customers
       const customersPromise = (async () => {
-        try {
-          const { data } = await admin
-            .from("customers")
-            .select("id, name, created_at")
-            .eq("tenant_id", tenantId)
-            .gte("created_at", since)
-            .order("created_at", { ascending: false })
-            .limit(50);
-          return data ?? [];
-        } catch {
-          return [];
-        }
+        const { data, error } = await admin
+          .from("customers")
+          .select("id, name, created_at")
+          .eq("tenant_id", tenantId)
+          .gte("created_at", since)
+          .order("created_at", { ascending: false })
+          .limit(50);
+        if (error) throw error;
+        return data ?? [];
       })();
 
-      const [certs, invoices, reservations, customers] = await Promise.all([
+      // allSettled で全件を待ってから、いずれか失敗なら throw する。all だと最初の
+      // reject 後に兄弟 Promise の reject が unhandled になりうるため避ける。
+      const [certsR, invoicesR, reservationsR, customersR] = await Promise.allSettled([
         certsPromise,
         invoicesPromise,
         reservationsPromise,
         customersPromise,
       ]);
+      for (const r of [certsR, invoicesR, reservationsR, customersR]) {
+        if (r.status === "rejected") throw r.reason;
+      }
+      const certs = certsR.status === "fulfilled" ? certsR.value : [];
+      const invoices = invoicesR.status === "fulfilled" ? invoicesR.value : [];
+      const reservations = reservationsR.status === "fulfilled" ? reservationsR.value : [];
+      const customers = customersR.status === "fulfilled" ? customersR.value : [];
 
       // Build activity items
       const activities: ActivityItem[] = [];

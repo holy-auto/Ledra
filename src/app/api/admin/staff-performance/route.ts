@@ -27,12 +27,10 @@ export async function GET(req: NextRequest) {
 
     const { year, month } = resolveYearMonth(req);
 
-    // 月次実績はテナント×年月で決まる。過去月は不変なので長め、当月は集計が日々
-    // 更新されうるため短めの TTL でキャッシュする (認証は毎回検証済み)。
-    const now = new Date();
-    const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1;
-    const ttlSec = isCurrentMonth ? 600 : 43_200; // 当月10分 / 過去月12h
-    const result = await withCache(`staff-perf:${caller.tenantId}:${year}-${month}`, ttlSec, () =>
+    // 月次実績をテナント×年月でキャッシュする (認証は毎回検証済み)。過去月も予約の
+    // 事後修正 (status/日付/担当/金額) で変わりうるため、明示的な無効化を持たない本層では
+    // 短い一律 TTL に留め、編集が数分で反映されるようにする。
+    const result = await withCache(`staff-perf:${caller.tenantId}:${year}-${month}`, 600, () =>
       getStaffMonthlyPerformance({ tenantId: caller.tenantId, year, month }),
     );
     return apiJson(result);
