@@ -285,11 +285,17 @@ export async function maybeAutoCreateDraftCertificateForReservation(
       meta: { auto: true, created: createdIds.length, auto_issued: issuedCount },
     });
     // 人の確認なしで証明書を自動作成 (下書き or 自動発行) した事実を監査ログに残す。
+    // 複数カテゴリー分を 1 度に作りうるため、代表 id + 件数で記録する。
     await logAutoActionExecuted({
       tenantId,
-      actionKey: autoIssue ? "certificate.auto_issue" : "certificate.auto_create_draft_record",
-      resource: { kind: "certificate", id: cert.id as string },
-      detail: { reservation_id: reservationId, public_id: cert.public_id, status: certStatus },
+      actionKey: issuedCount > 0 ? "certificate.auto_issue" : "certificate.auto_create_draft_record",
+      resource: { kind: "certificate", id: createdIds[0] ?? null },
+      detail: {
+        reservation_id: reservationId,
+        created: createdIds.length,
+        auto_issued: issuedCount,
+        certificate_ids: createdIds,
+      },
     });
   } catch (e) {
     logger.warn("[certificateRecordAuto] maybeAutoCreateDraftCertificateForReservation threw", {
