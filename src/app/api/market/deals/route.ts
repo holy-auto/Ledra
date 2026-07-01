@@ -96,9 +96,7 @@ export async function GET(req: NextRequest) {
 
     let query = admin
       .from("market_deals")
-      .select(
-        "*, market_vehicles(maker, model), estimate:documents!estimate_document_id(id, doc_number, total, status)",
-      )
+      .select("*, market_vehicles(maker, model)")
       .eq("seller_tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
 
@@ -112,7 +110,37 @@ export async function GET(req: NextRequest) {
       return apiInternalError(error, "market-deals list");
     }
 
-    return apiJson({ deals: deals ?? [] });
+    const rows = (deals ?? []) as Array<Record<string, unknown>>;
+
+    // 紐付く見積ドキュメントは自テナント所有のもののみ別クエリで取得して添付する。
+    // documents を embed すると service-role 経由で RLS が効かず、万一 estimate_document_id が
+    // 他テナントのドキュメントを指していても doc_number/total/status が漏れうるため、
+    // tenant_id で明示スコープした別取得にして越境参照を遮断する。
+    const docIds = Array.from(
+      new Set(rows.map((d) => d.estimate_document_id).filter((v): v is string => typeof v === "string")),
+    );
+    let estimatesById: Record<
+      string,
+      { id: string; doc_number: string | null; total: number | null; status: string | null }
+    > = {};
+    if (docIds.length > 0) {
+      const { data: docs, error: docErr } = await admin
+        .from("documents")
+        .select("id, doc_number, total, status")
+        .in("id", docIds)
+        .eq("tenant_id", caller.tenantId);
+      if (docErr) return apiInternalError(docErr, "market-deals list (estimates)");
+      estimatesById = Object.fromEntries(
+        (docs ?? []).map((d) => [d.id as string, d as (typeof estimatesById)[string]]),
+      );
+    }
+
+    const withEstimates = rows.map((d) => ({
+      ...d,
+      estimate: typeof d.estimate_document_id === "string" ? (estimatesById[d.estimate_document_id] ?? null) : null,
+    }));
+
+    return apiJson({ deals: withEstimates });
   } catch (e: unknown) {
     return apiInternalError(e, "market-deals list");
   }
