@@ -567,7 +567,10 @@ export default function CertNewFormWrapper({
       <form ref={formRef} onSubmit={handleSubmit} className="glass-card p-6 space-y-0">
         <input type="hidden" name="template_id" value={selectedTemplate?.id ?? ""} />
         <input type="hidden" name="template_name" value={selectedTemplate?.name ?? ""} />
-        {defaultCustomerId && <input type="hidden" name="customer_id" value={defaultCustomerId} />}
+        {/* customer_id は VehiclePickerSection が単一の hidden フィールドとして送出する。
+            ここで defaultCustomerId を二重に出すと formData.get("customer_id") が
+            先頭の初期値を返し、プルダウン/検索で別の顧客に変更しても反映されない。
+            defaultCustomerId は VehiclePickerSection に渡して初期選択させる。 */}
         {defaultReservationId && <input type="hidden" name="reservation_id" value={defaultReservationId} />}
         {serviceType && <input type="hidden" name="service_type" value={serviceType} />}
 
@@ -593,6 +596,7 @@ export default function CertNewFormWrapper({
             }
             customers={customers}
             defaultVehicleId={defaultVehicleId}
+            defaultCustomerId={defaultCustomerId}
             onVehicleChange={handleVehicleChange}
           />
 

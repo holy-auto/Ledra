@@ -62,11 +62,13 @@ export default function VehiclePickerSection({
   vehicles: initialVehicles,
   customers: initialCustomers = [],
   defaultVehicleId,
+  defaultCustomerId,
   onVehicleChange,
 }: {
   vehicles: Vehicle[];
   customers?: Customer[];
   defaultVehicleId?: string;
+  defaultCustomerId?: string;
   onVehicleChange?: (vehicleId: string | undefined) => void;
 }) {
   const [vehicles] = useState<Vehicle[]>(initialVehicles);
@@ -115,6 +117,23 @@ export default function VehiclePickerSection({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultVehicleId]);
+
+  // Pre-select customer when defaultCustomerId is provided (e.g. opened from a
+  // customer/reservation flow). A pre-selected vehicle that carries its own
+  // linked customer wins (that master link is more specific); otherwise seed
+  // from defaultCustomerId so the submitted customer_id is not lost.
+  useEffect(() => {
+    if (!defaultCustomerId) return;
+    const dv = defaultVehicleId ? vehicles.find((v) => v.id === defaultVehicleId) : null;
+    if (dv?.customer) return;
+    setCustomerId(defaultCustomerId);
+    const c = customers.find((x) => x.id === defaultCustomerId);
+    if (c) {
+      setCustomerName(c.name);
+      setCustomerPhone(c.phone ?? null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultCustomerId]);
 
   // Customer search debounce
   useEffect(() => {
