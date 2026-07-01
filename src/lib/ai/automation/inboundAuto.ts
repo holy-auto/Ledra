@@ -205,10 +205,40 @@ async function autoCreateReservation(
       .join("\n")
       .slice(0, 1000);
 
+    // 車両連携: フリーテキストから車両レコードを新規生成するのは誤登録リスクが
+    // 高いため行わない。顧客に紐付く車両がちょうど 1 台で、かつ受信本文の車両
+    // 記述がその車両 (メーカー/車種/ナンバー) と一致する場合のみ紐付ける。
+    // (家族の別車両など、別車両の問い合わせを誤って紐付けないため。)
+    let vehicleId: string | null = null;
+    if (input.vehicle) {
+      const { data: vehicles } = await admin
+        .from("vehicles")
+        .select("id, maker, model, plate_display")
+        .eq("tenant_id", input.tenantId)
+        .eq("customer_id", input.customerId)
+        .limit(2);
+      if (vehicles && vehicles.length === 1) {
+        const v = vehicles[0] as {
+          id: string;
+          maker: string | null;
+          model: string | null;
+          plate_display: string | null;
+        };
+        const haystack = input.vehicle.toLowerCase();
+        const tokens = [v.maker, v.model, v.plate_display]
+          .filter((t): t is string => !!t && t.trim().length >= 2)
+          .map((t) => t.toLowerCase());
+        if (tokens.some((t) => haystack.includes(t))) {
+          vehicleId = v.id;
+        }
+      }
+    }
+
     const { error } = await admin.from("reservations").insert({
       id,
       tenant_id: input.tenantId,
       customer_id: input.customerId,
+      vehicle_id: vehicleId,
       title,
       scheduled_date: input.scheduledDate,
       status: "confirmed",

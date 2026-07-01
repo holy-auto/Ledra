@@ -12,6 +12,8 @@ import type { NextRequest } from "next/server";
 import { apiOk, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { authenticateIngest, dedupeByRef, runIngest, INGEST_SCOPES } from "@/lib/api/ingest";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { createCustomerResolver } from "@/lib/customers/resolveCustomer";
 import { ingestVehiclesSchema } from "@/lib/validations/ingest";
 
 export const dynamic = "force-dynamic";
@@ -40,22 +42,57 @@ export async function POST(req: NextRequest) {
   const now = new Date().toISOString();
 
   try {
-    const rows = dedupeByRef(
-      records.map((r) => ({
-        tenant_id: auth.ctx.tenantId,
+    const { admin, tenantId } = createTenantScopedAdmin(auth.ctx.tenantId);
+
+    // external_ref で重複排除 (後勝ち)。以降の顧客解決/既存参照は 1 車両につき 1 回。
+    const deduped = dedupeByRef(records);
+
+    // 上書き防止: 取込済み車両の customer_id を external_ref で事前取得する。
+    // runIngest の upsert は行の全カラムを置換するため、既に (手動含め) 連携済みの
+    // 車両は再取込でその customer_id を保持する。
+    const refs = deduped.map((r) => r.external_ref);
+    const existingCustomerByRef = new Map<string, string | null>();
+    if (refs.length > 0) {
+      const { data: existing } = await admin
+        .from("vehicles")
+        .select("external_ref, customer_id")
+        .eq("tenant_id", tenantId)
+        .eq("source_system", source_system)
+        .in("external_ref", refs);
+      for (const v of existing ?? []) {
+        const row = v as { external_ref: string; customer_id: string | null };
+        existingCustomerByRef.set(row.external_ref, row.customer_id ?? null);
+      }
+    }
+
+    // 顧客名寄せ (バルクなので AI 判定はオフ = 決定的マッチのみ)。
+    const resolver = await createCustomerResolver(admin, tenantId, { ai: false });
+
+    const rows: Array<Record<string, unknown> & { external_ref: string }> = [];
+    for (const r of deduped) {
+      // 既存の連携があれば維持。無ければ (customer_name/email/phone から) 解決。
+      let customerId = existingCustomerByRef.get(r.external_ref) ?? null;
+      if (!customerId) {
+        const resolved = await resolver.resolve({
+          name: r.customer_name,
+          email: r.customer_email,
+          phone: r.customer_phone_masked,
+        });
+        customerId = resolved.customerId;
+      }
+      rows.push({
+        tenant_id: tenantId,
         source_system,
         external_ref: r.external_ref,
         maker: r.maker ?? null,
         model: r.model ?? null,
         year: r.year ?? null,
         plate_display: r.plate_display ?? null,
-        customer_name: r.customer_name ?? null,
-        customer_email: r.customer_email ?? null,
-        customer_phone_masked: r.customer_phone_masked ?? null,
+        customer_id: customerId,
         notes: r.notes ?? null,
         last_synced_at: now,
-      })),
-    );
+      });
+    }
 
     const result = await runIngest({
       ctx: auth.ctx,

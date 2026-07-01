@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { vehicleCreateSchema } from "@/lib/validations/vehicle";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { createCustomerResolver } from "@/lib/customers/resolveCustomer";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
@@ -14,6 +15,10 @@ type CsvRow = {
   plate_display: string | null;
   vin_code: string | null;
   notes: string | null;
+  // 顧客連携用 (任意列): customer_name, customer_phone, customer_email
+  customer_name: string | null;
+  customer_phone: string | null;
+  customer_email: string | null;
 };
 
 function parseCsv(text: string): CsvRow[] {
@@ -52,6 +57,10 @@ function parseCsv(text: string): CsvRow[] {
       plate_display: (cols[3] || "").trim() || null,
       vin_code: (cols[4] || "").trim() || null,
       notes: (cols[5] || "").trim() || null,
+      // 任意列: 顧客名 / 電話 / メール (あれば顧客マスタに名寄せして連携)
+      customer_name: (cols[6] || "").trim() || null,
+      customer_phone: (cols[7] || "").trim() || null,
+      customer_email: (cols[8] || "").trim() || null,
     });
   }
   return out;
@@ -76,16 +85,23 @@ export async function POST(req: Request) {
     }
 
     const errors: Array<{ row: number; error: string }> = [];
-    const validRows: Array<{
+    type VehicleInsert = {
+      tenant_id: string;
       maker: string;
       model: string;
       year: number | null;
       plate_display: string | null;
       vin_code: string | null;
       notes: string | null;
-    }> = [];
+      customer_id: string | null;
+    };
+    // 元 CSV 行番号を保持したまま挿入対象を組み立てる (エラー行番号の整合のため)。
+    const validRows: Array<{ rowNo: number; data: VehicleInsert }> = [];
 
-    // Validate all rows first
+    // 顧客名寄せリゾルバ (バルクなので AI 判定はオフ)。顧客列が無ければ未使用。
+    const resolver = await createCustomerResolver(supabase, caller.tenantId, { ai: false });
+
+    // Validate all rows first, resolving customer link inline.
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       const parsed = vehicleCreateSchema.safeParse(r);
@@ -93,7 +109,31 @@ export async function POST(req: Request) {
         errors.push({ row: i + 1, error: parsed.error.issues[0]?.message ?? "バリデーションエラー" });
         continue;
       }
-      validRows.push(parsed.data as (typeof validRows)[number]);
+      const b = parsed.data;
+
+      let customerId: string | null = null;
+      if (r.customer_name || r.customer_phone || r.customer_email) {
+        const resolved = await resolver.resolve({
+          name: r.customer_name,
+          phone: r.customer_phone,
+          email: r.customer_email,
+        });
+        customerId = resolved.customerId;
+      }
+
+      validRows.push({
+        rowNo: i + 1,
+        data: {
+          tenant_id: caller.tenantId,
+          maker: b.maker,
+          model: b.model,
+          year: b.year ?? null,
+          plate_display: b.plate_display ?? null,
+          vin_code: b.vin_code ?? null,
+          notes: b.notes ?? null,
+          customer_id: customerId,
+        },
+      });
     }
 
     // Batch insert valid rows in chunks of 100
@@ -101,32 +141,15 @@ export async function POST(req: Request) {
     const CHUNK_SIZE = 100;
     for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
       const chunk = validRows.slice(i, i + CHUNK_SIZE);
-      const insertData = chunk.map((b) => ({
-        tenant_id: caller.tenantId,
-        maker: b.maker,
-        model: b.model,
-        year: b.year ?? null,
-        plate_display: b.plate_display ?? null,
-        vin_code: b.vin_code ?? null,
-        notes: b.notes ?? null,
-      }));
+      const insertData = chunk.map((c) => c.data);
 
       const { error } = await supabase.from("vehicles").insert(insertData);
       if (error) {
         // If batch fails, fall back to individual inserts for this chunk
-        for (let j = 0; j < chunk.length; j++) {
-          const b = chunk[j];
-          const { error: singleErr } = await supabase.from("vehicles").insert({
-            tenant_id: caller.tenantId,
-            maker: b.maker,
-            model: b.model,
-            year: b.year ?? null,
-            plate_display: b.plate_display ?? null,
-            vin_code: b.vin_code ?? null,
-            notes: b.notes ?? null,
-          });
+        for (const c of chunk) {
+          const { error: singleErr } = await supabase.from("vehicles").insert(c.data);
           if (singleErr) {
-            errors.push({ row: i + j + 1, error: singleErr.message });
+            errors.push({ row: c.rowNo, error: singleErr.message });
           } else {
             inserted++;
           }

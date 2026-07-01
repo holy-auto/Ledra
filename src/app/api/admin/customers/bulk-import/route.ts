@@ -19,6 +19,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { parseCsv } from "@/lib/csv/parse";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import { fuzzyMatchCustomer, type CustomerCandidate } from "@/lib/ai/customerFuzzyMatch";
 import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -86,6 +87,14 @@ export async function POST(req: NextRequest) {
     let skipped = 0;
     const errors: Array<{ row_index: number; error: string }> = [];
 
+    // 名寄せ用の候補を 1 回だけ読み込む。メール完全一致で拾えない表記揺れを
+    // 氏名+電話の類似度で既存顧客に寄せ、重複顧客の増殖を防ぐ (AI 判定はオフ)。
+    const { data: candData } = await admin
+      .from("customers")
+      .select("id, name, name_kana, phone, email")
+      .eq("tenant_id", tenantId);
+    const candidates = (candData ?? []) as CustomerCandidate[];
+
     for (let i = 0; i < parsed.rows.length; i++) {
       const raw = parsed.rows[i];
       const row = rowSchema.safeParse(raw);
@@ -96,7 +105,7 @@ export async function POST(req: NextRequest) {
       }
       const v = row.data;
 
-      // Look up existing by email when present, then by exact name+phone fallback.
+      // Look up existing by email when present.
       let existingId: string | null = null;
       if (v.email) {
         const { data: ex } = await admin
@@ -108,16 +117,28 @@ export async function POST(req: NextRequest) {
         existingId = (ex as { id: string } | null)?.id ?? null;
       }
 
-      const payload = {
-        tenant_id: tenantId,
-        name: v.name,
-        email: v.email ?? null,
-        phone: v.phone ?? null,
-        note: v.note ?? null,
-      };
+      // メールで拾えなければ氏名+電話の名寄せで既存顧客に寄せる (重複防止)。
+      // ただし氏名のみの行は同名別人を誤って統合し得るため、電話 or メールの
+      // 連絡先が揃っている行に限る (弱い手がかりでの誤マージを防ぐ)。
+      if (!existingId && (v.email || v.phone) && candidates.length > 0) {
+        const match = await fuzzyMatchCustomer(
+          { query: { name: v.name, phone: v.phone ?? null, email: v.email ?? null }, candidates },
+          { ai: false },
+        );
+        if (match.best && match.confidence >= 0.85) {
+          existingId = match.best.candidate.id;
+        }
+      }
 
       if (existingId) {
-        const { error } = await admin.from("customers").update(payload).eq("id", existingId);
+        // 既存顧客の更新では、空の列で既存の連絡先を上書き (消去) しない。
+        // 値のある列だけを更新する。
+        const updatePayload: Record<string, unknown> = { name: v.name };
+        if (v.email) updatePayload.email = v.email;
+        if (v.phone) updatePayload.phone = v.phone;
+        if (v.note) updatePayload.note = v.note;
+
+        const { error } = await admin.from("customers").update(updatePayload).eq("id", existingId);
         if (error) {
           errors.push({ row_index: i, error: error.message });
           skipped += 1;
@@ -125,12 +146,24 @@ export async function POST(req: NextRequest) {
           updated += 1;
         }
       } else {
-        const { error } = await admin.from("customers").insert(payload);
-        if (error) {
-          errors.push({ row_index: i, error: error.message });
+        const { data: created, error } = await admin
+          .from("customers")
+          .insert({
+            tenant_id: tenantId,
+            name: v.name,
+            email: v.email ?? null,
+            phone: v.phone ?? null,
+            note: v.note ?? null,
+          })
+          .select("id, name, name_kana, phone, email")
+          .single();
+        if (error || !created) {
+          errors.push({ row_index: i, error: error?.message ?? "insert failed" });
           skipped += 1;
         } else {
           inserted += 1;
+          // 同一取込内の後続行が重複作成しないよう候補へ追加。
+          candidates.push(created as CustomerCandidate);
         }
       }
     }
