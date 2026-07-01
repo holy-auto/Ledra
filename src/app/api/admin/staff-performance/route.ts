@@ -3,6 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 import { getStaffMonthlyPerformance } from "@/lib/analytics/staffPerformanceMonthly";
+import { withCache } from "@/lib/cache";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,14 @@ export async function GET(req: NextRequest) {
 
     const { year, month } = resolveYearMonth(req);
 
-    const result = await getStaffMonthlyPerformance({ tenantId: caller.tenantId, year, month });
+    // 月次実績はテナント×年月で決まる。過去月は不変なので長め、当月は集計が日々
+    // 更新されうるため短めの TTL でキャッシュする (認証は毎回検証済み)。
+    const now = new Date();
+    const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1;
+    const ttlSec = isCurrentMonth ? 600 : 43_200; // 当月10分 / 過去月12h
+    const result = await withCache(`staff-perf:${caller.tenantId}:${year}-${month}`, ttlSec, () =>
+      getStaffMonthlyPerformance({ tenantId: caller.tenantId, year, month }),
+    );
     return apiJson(result);
   } catch (e: unknown) {
     return apiInternalError(e, "staff-performance GET");
