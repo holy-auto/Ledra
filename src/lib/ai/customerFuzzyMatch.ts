@@ -66,7 +66,14 @@ const RankedSchema = z.object({
   confidence: z.number().min(0).max(1),
 });
 
-export async function fuzzyMatchCustomer(input: FuzzyMatchInput, opts?: { model?: string }): Promise<FuzzyMatchResult> {
+export async function fuzzyMatchCustomer(
+  input: FuzzyMatchInput,
+  opts?: { model?: string; ai?: boolean },
+): Promise<FuzzyMatchResult> {
+  // バルク取込 (ingest / CSV) では 1 バッチ数百件になり得るため、AI 判定を
+  // 明示的に無効化して決定的マッチ (電話/メール完全一致 + Dice 類似度) のみで
+  // 判断できるようにする。既定は AI 併用 (Square 単発リンク等)。
+  const useAi = opts?.ai !== false;
   // 1. exact match (name + phone or email)
   for (const c of input.candidates) {
     if (input.query.phone && c.phone && stripPhone(c.phone) === stripPhone(input.query.phone)) {
@@ -118,7 +125,7 @@ export async function fuzzyMatchCustomer(input: FuzzyMatchInput, opts?: { model?
     };
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!useAi || !process.env.ANTHROPIC_API_KEY) {
     return {
       best: top,
       alternatives: scored.slice(1, 4),

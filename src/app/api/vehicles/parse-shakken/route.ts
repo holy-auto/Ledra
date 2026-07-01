@@ -4,6 +4,8 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { parseShakenshoAuto, extractFirstRegistrationYear, calcSizeClass } from "@/lib/ocr/shakensho";
 import { loadAiAutomationSettings, filterVehicleOcrByPolicy, isSourceAllowed } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
+import { fuzzyMatchCustomer, type CustomerCandidate } from "@/lib/ai/customerFuzzyMatch";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -91,11 +93,44 @@ export async function POST(req: Request) {
     // recordRouteUsage が実コストを月次キャップに計上する (QR のみ等トークン0なら課金0)。
     usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ok", meta: { source } });
 
+    // 車検証の所有者/使用者氏名を既存顧客に名寄せし、連携候補を返す。
+    // 生の氏名 (PII) ではなく「一致した既存顧客」だけを返す。決定的マッチのみ
+    // (AI オフ) で、confidence >= 0.6 のときのみ候補として提示する。
+    let customer_suggestion: { id: string; name: string; confidence: number; method: string } | null = null;
+    try {
+      const ownerName = parsed.owner_name?.trim() || parsed.user_name?.trim() || null;
+      if (ownerName) {
+        const { data: candidates } = await supabase
+          .from("customers")
+          .select("id, name, name_kana, phone, email")
+          .eq("tenant_id", caller.tenantId);
+        if (candidates && candidates.length > 0) {
+          const match = await fuzzyMatchCustomer(
+            { query: { name: ownerName }, candidates: candidates as CustomerCandidate[] },
+            { ai: false },
+          );
+          if (match.best && match.confidence >= 0.6) {
+            customer_suggestion = {
+              id: match.best.candidate.id,
+              name: match.best.candidate.name,
+              confidence: match.confidence,
+              method: match.method,
+            };
+          }
+        }
+      }
+    } catch (e) {
+      logger.warn("[parse-shakken] customer suggestion failed", {
+        err: e instanceof Error ? e.message : String(e),
+      });
+    }
+
     return Response.json({
       ok: true,
       source,
       extracted: filtered.extracted,
       policies: filtered.policies,
+      customer_suggestion,
     });
   } catch (e) {
     usage.record({ outcome: "error" });

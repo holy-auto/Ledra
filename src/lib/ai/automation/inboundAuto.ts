@@ -205,10 +205,27 @@ async function autoCreateReservation(
       .join("\n")
       .slice(0, 1000);
 
+    // 車両連携: フリーテキストから車両レコードを新規生成するのは誤登録リスクが
+    // 高いため行わない。ただし顧客に紐付く車両がちょうど 1 台なら、その車両を
+    // 予約に安全に紐付けられる (車検/施工履歴の突合が 1 画面で完結する)。
+    let vehicleId: string | null = null;
+    if (input.vehicle) {
+      const { data: vehicles } = await admin
+        .from("vehicles")
+        .select("id")
+        .eq("tenant_id", input.tenantId)
+        .eq("customer_id", input.customerId)
+        .limit(2);
+      if (vehicles && vehicles.length === 1) {
+        vehicleId = (vehicles[0] as { id: string }).id;
+      }
+    }
+
     const { error } = await admin.from("reservations").insert({
       id,
       tenant_id: input.tenantId,
       customer_id: input.customerId,
+      vehicle_id: vehicleId,
       title,
       scheduled_date: input.scheduledDate,
       status: "confirmed",

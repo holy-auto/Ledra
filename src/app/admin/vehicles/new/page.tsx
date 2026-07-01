@@ -35,6 +35,12 @@ export default function AdminVehicleNewPage() {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const ocrInputRef = useRef<HTMLInputElement>(null);
+  // 車検証OCR の所有者氏名から名寄せした連携候補 (confidence 0.85 未満で提示)。
+  const [customerSuggestion, setCustomerSuggestion] = useState<{
+    id: string;
+    name: string;
+    confidence: number;
+  } | null>(null);
 
   // インライン顧客作成
   const [inlineCreate, setInlineCreate] = useState(false);
@@ -207,11 +213,26 @@ export default function AdminVehicleNewPage() {
         return;
       }
       applyExtracted(j.extracted);
+      applyCustomerSuggestion(j.customer_suggestion);
     } catch (e: unknown) {
       setErr(String((e as Error)?.message ?? e));
     } finally {
       setOcrBusy(false);
       if (ocrInputRef.current) ocrInputRef.current.value = "";
+    }
+  }
+
+  // 車検証OCR が返した顧客連携候補を反映する。
+  // confidence >= 0.85 は自動連携、未満は候補チップで確認を促す。既に顧客選択済みなら無視。
+  function applyCustomerSuggestion(sug: { id: string; name: string; confidence: number } | null | undefined) {
+    if (!sug || customerId) return;
+    if (sug.confidence >= 0.85) {
+      setCustomerId(sug.id);
+      setCustomerName(sug.name);
+      setCustomerSearch(sug.name);
+      setCustomerSuggestion(null);
+    } else {
+      setCustomerSuggestion(sug);
     }
   }
 
@@ -489,6 +510,34 @@ export default function AdminVehicleNewPage() {
                 >
                   紐付けを解除
                 </button>
+              )}
+
+              {customerSuggestion && !customerId && (
+                <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-accent/30 bg-accent-dim px-3 py-2 text-xs text-primary">
+                  <span>
+                    車検証の所有者候補: <span className="font-semibold">{customerSuggestion.name}</span>（一致度
+                    {Math.round(customerSuggestion.confidence * 100)}%）
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomerId(customerSuggestion.id);
+                      setCustomerName(customerSuggestion.name);
+                      setCustomerSearch(customerSuggestion.name);
+                      setCustomerSuggestion(null);
+                    }}
+                    className="ml-auto rounded-md bg-accent px-2 py-1 font-medium text-white hover:opacity-90"
+                  >
+                    連携する
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCustomerSuggestion(null)}
+                    className="rounded-md border border-border-default px-2 py-1 text-muted hover:bg-surface-hover"
+                  >
+                    閉じる
+                  </button>
+                </div>
               )}
             </div>
 

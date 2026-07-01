@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { parsePagination } from "@/lib/api/pagination";
+import { escapeIlike } from "@/lib/sanitize";
 import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,7 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const customerId = searchParams.get("customer_id");
+    const q = searchParams.get("q")?.trim();
     const pagination = parsePagination(req);
 
     let query = supabase
@@ -27,6 +29,12 @@ export async function GET(req: NextRequest) {
 
     if (customerId) {
       query = query.eq("customer_id", customerId);
+    }
+
+    // 手動連携ピッカー向けの簡易検索 (ナンバー / メーカー / 車種 の部分一致)。
+    if (q) {
+      const sq = escapeIlike(q);
+      query = query.or(`plate_display.ilike.%${sq}%,maker.ilike.%${sq}%,model.ilike.%${sq}%`);
     }
 
     // Apply pagination if page param was provided
