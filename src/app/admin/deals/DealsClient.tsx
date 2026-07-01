@@ -5,9 +5,17 @@ import { useCallback, useEffect, useState } from "react";
 import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
 import { formatJpy, formatDate } from "@/lib/format";
+import { buildUsedCarEstimateItems } from "@/lib/market/usedCarFees";
 
 /* ---------- types ---------- */
 type DealStatus = "negotiating" | "agreed" | "completed" | "cancelled";
+
+interface LinkedEstimate {
+  id: string;
+  doc_number: string | null;
+  total: number | null;
+  status: string | null;
+}
 
 interface DealRow {
   id: string;
@@ -19,6 +27,7 @@ interface DealRow {
   note: string | null;
   status: DealStatus;
   created_at: string;
+  estimate: LinkedEstimate | null;
 }
 
 /* ---------- helpers ---------- */
@@ -76,6 +85,7 @@ export default function DealsClient() {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteValue, setEditingNoteValue] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [creatingEstimateId, setCreatingEstimateId] = useState<string | null>(null);
 
   const fetchDeals = useCallback(async (status?: string) => {
     setErr(null);
@@ -85,7 +95,18 @@ export default function DealsClient() {
       const res = await fetch(`/api/market/deals?${params.toString()}`, { cache: "no-store" });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
-      setDeals(j?.deals ?? []);
+      const rows = (j?.deals ?? []) as Array<Record<string, unknown>>;
+      setDeals(
+        rows.map((d) => {
+          const v = (d.market_vehicles ?? null) as { maker?: string; model?: string } | null;
+          return {
+            ...(d as unknown as DealRow),
+            maker: v?.maker ?? "",
+            model: v?.model ?? "",
+            estimate: (d.estimate ?? null) as LinkedEstimate | null,
+          };
+        }),
+      );
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       setErr(msg);
@@ -153,6 +174,51 @@ export default function DealsClient() {
       alert("価格更新に失敗しました: " + msg);
     } finally {
       setUpdatingId(null);
+    }
+  };
+
+  // 諸費用見積を作成し、商談に紐付ける。
+  // 車両本体 + 標準諸費用のプリセット明細 (税込入力) で estimate ドキュメントを起票し、
+  // 返った id を market_deals.estimate_document_id に結線する。金額は作成後に編集する運用。
+  const handleCreateEstimate = async (deal: DealRow) => {
+    const vehicleLabel = [deal.maker, deal.model].filter(Boolean).join(" ") || "車両";
+    if (!confirm(`「${vehicleLabel}」の諸費用見積を作成しますか？（各金額は作成後に編集できます）`)) return;
+    setCreatingEstimateId(deal.id);
+    try {
+      const items = buildUsedCarEstimateItems({ vehicleLabel, agreedPrice: deal.agreed_price });
+      const docRes = await fetch("/api/admin/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          doc_type: "estimate",
+          subject: `お見積書（${vehicleLabel}）`,
+          recipient_name: deal.buyer_name,
+          recipient_honorific: deal.buyer_company ? "御中" : "様",
+          items,
+          is_tax_inclusive: true,
+          tax_rate: 10,
+          status: "draft",
+          note: "法定費用・預託金・保険料は非課税です。各金額は確定後に編集してください。",
+        }),
+      });
+      const dj = await parseJsonSafe(docRes);
+      if (!docRes.ok) throw new Error(dj?.error ?? dj?.message ?? `HTTP ${docRes.status}`);
+      const docId = dj?.document?.id ?? dj?.id;
+      if (!docId) throw new Error("見積ドキュメントの作成に失敗しました。");
+
+      const linkRes = await fetch(`/api/market/deals/${deal.id}/estimate`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estimate_document_id: docId }),
+      });
+      const lj = await parseJsonSafe(linkRes);
+      if (!linkRes.ok) throw new Error(lj?.error ?? `HTTP ${linkRes.status}`);
+      await fetchDeals(statusFilter);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      alert("見積作成に失敗しました: " + msg);
+    } finally {
+      setCreatingEstimateId(null);
     }
   };
 
@@ -321,6 +387,29 @@ export default function DealsClient() {
                         </button>
                       )}
                     </div>
+                  </div>
+
+                  {/* 諸費用見積 */}
+                  <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-border-subtle">
+                    <div className="text-[10px] text-muted">諸費用見積</div>
+                    {deal.estimate ? (
+                      <a
+                        href={`/admin/documents/${deal.estimate.id}`}
+                        className="text-sm font-medium text-accent hover:underline"
+                      >
+                        {deal.estimate.doc_number || "見積書"}
+                        <span className="ml-2 text-secondary">支払総額 {formatJpy(deal.estimate.total)}</span>
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn-secondary px-3 py-1 text-xs"
+                        disabled={creatingEstimateId === deal.id}
+                        onClick={() => handleCreateEstimate(deal)}
+                      >
+                        {creatingEstimateId === deal.id ? "作成中..." : "諸費用見積を作成"}
+                      </button>
+                    )}
                   </div>
 
                   {/* Status transition buttons */}

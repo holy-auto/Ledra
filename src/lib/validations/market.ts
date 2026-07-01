@@ -182,6 +182,10 @@ export const dealStatusUpdateSchema = z.object({
     .transform((v) => v || null),
 });
 
+export const dealEstimateLinkSchema = z.object({
+  estimate_document_id: z.string().uuid("無効なドキュメントIDです。"),
+});
+
 export const inquiryReplySchema = z.object({
   message: z.string().trim().min(1, "message and sender_type are required").max(5000),
   sender_type: z.enum(["seller", "buyer"], { message: "message and sender_type are required" }),
