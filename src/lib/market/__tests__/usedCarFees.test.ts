@@ -51,6 +51,29 @@ describe("buildUsedCarEstimateItems", () => {
     expect(estimateTotal(items)).toBe(0);
   });
 
+  it("下取り充当はマイナス行として支払総額から差し引かれる", () => {
+    const items = buildUsedCarEstimateItems({
+      vehicleLabel: "トヨタ アクア",
+      agreedPrice: 1_200_000,
+      fees: { dealer_fee: 30_000 },
+      tradeInAllowance: 400_000,
+      tradeInLabel: "日産 デイズ",
+    });
+    const tradeInRow = items.find((i) => i.description.includes("下取り充当"));
+    expect(tradeInRow).toBeDefined();
+    expect(tradeInRow?.unit_price).toBe(-400_000);
+    expect(tradeInRow?.description).toContain("日産 デイズ");
+    // 1,200,000 + 30,000 - 400,000 = 830,000
+    expect(estimateTotal(items)).toBe(830_000);
+  });
+
+  it("下取り充当が0/未指定なら下取り行を出さない", () => {
+    const none = buildUsedCarEstimateItems({ agreedPrice: 500_000 });
+    expect(none.some((i) => i.description.includes("下取り"))).toBe(false);
+    const zero = buildUsedCarEstimateItems({ agreedPrice: 500_000, tradeInAllowance: 0 });
+    expect(zero.some((i) => i.description.includes("下取り"))).toBe(false);
+  });
+
   it("非課税諸費用行に法定費用ラベルが含まれる", () => {
     const items = buildUsedCarEstimateItems({ agreedPrice: 0 });
     const labels = items.map((i) => i.description);
