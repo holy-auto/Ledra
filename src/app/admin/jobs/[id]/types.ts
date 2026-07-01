@@ -15,19 +15,34 @@ export type HandoffNote = {
   priority: "normal" | "important" | "urgent";
 };
 
+/** AI 証明書下書きの本体 (1 カテゴリー分)。 */
+export type AiCertificateDraftBody = {
+  title: string;
+  description: string;
+  materials: Array<{ name: string; maker?: string; spec?: string; note?: string }>;
+  warrantyCandidates: string[];
+  workAreas: string[];
+  cautions: string;
+  confidence: number;
+  missingInfo?: string[];
+};
+
+/** 大カテゴリー単位の下書き 1 件 (複数種類の作業依頼を分けたときの要素)。 */
+export type AiCertificateCategorizedDraft = {
+  category: string;
+  categoryLabel: string;
+  workItems: string[];
+  draft: AiCertificateDraftBody;
+  policies?: Record<string, "auto" | "suggest" | "manual">;
+};
+
 /** certificate.auto_draft が reservations.ai_certificate_draft に保存するスナップショット。 */
 export type AiCertificateDraft = {
-  draft: {
-    title: string;
-    description: string;
-    materials: Array<{ name: string; maker?: string; spec?: string; note?: string }>;
-    warrantyCandidates: string[];
-    workAreas: string[];
-    cautions: string;
-    confidence: number;
-    missingInfo?: string[];
-  };
+  /** primary (drafts[0]) 相当。後方互換のため常に単一の draft も保持する。 */
+  draft: AiCertificateDraftBody;
   policies?: Record<string, "auto" | "suggest" | "manual">;
+  /** 複数種類の作業依頼を大カテゴリーごとに分けた下書き。1 カテゴリーなら省略/1 件。 */
+  drafts?: AiCertificateCategorizedDraft[];
   auto?: boolean;
   generated_at?: string;
 };
