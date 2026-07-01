@@ -111,6 +111,44 @@ export interface DraftCertificateResult {
 // 自動下書き生成
 // ─────────────────────────────────────────────
 
+// ─────────────────────────────────────────────
+// 大カテゴリー (テンプレート category と整合)
+// ─────────────────────────────────────────────
+
+/**
+ * 証明書テンプレートの大カテゴリー。
+ * templates.category / service_packages.category と揃える (+ wrapping / window_film)。
+ * 予約に複数種類の作業依頼がある場合、これ単位で証明書下書きを 1 枚ずつ作る。
+ */
+export const CERTIFICATE_CATEGORIES = [
+  "coating",
+  "ppf",
+  "wrapping",
+  "window_film",
+  "detailing",
+  "maintenance",
+  "body_repair",
+  "general",
+] as const;
+
+export type CertificateCategory = (typeof CERTIFICATE_CATEGORIES)[number];
+
+const CERTIFICATE_CATEGORY_LABELS: Record<CertificateCategory, string> = {
+  coating: "コーティング",
+  ppf: "PPF",
+  wrapping: "ラッピング",
+  window_film: "ウィンドウフィルム",
+  detailing: "ディテーリング",
+  maintenance: "整備",
+  body_repair: "鈑金塗装",
+  general: "その他",
+};
+
+/** 大カテゴリーの日本語ラベル。未知カテゴリーはそのまま返す。 */
+export function certificateCategoryLabel(category: string): string {
+  return CERTIFICATE_CATEGORY_LABELS[category as CertificateCategory] ?? category;
+}
+
 export async function generateCertificateDraft(
   input: DraftCertificateInput,
   opts?: { model?: string },
@@ -209,4 +247,124 @@ ${input.templateCategory || "未指定"}`;
     console.error("[draftCertificate] generation failed:", err);
     return EMPTY_DRAFT;
   }
+}
+
+// ─────────────────────────────────────────────
+// カテゴリー別下書き (複数種類の作業依頼)
+// ─────────────────────────────────────────────
+
+export interface CategorizedDraftInput {
+  vehicle: DraftCertificateInput["vehicle"];
+  /** 予約の作業依頼 (menu_items_json の名称)。空なら分類しない。 */
+  workRequests: string[];
+  similarCertificates: DraftCertificateInput["similarCertificates"];
+}
+
+export interface CategorizedDraft {
+  category: CertificateCategory;
+  categoryLabel: string;
+  /** このカテゴリーに割り当てられた作業依頼名。 */
+  workItems: string[];
+  draft: DraftCertificateResult;
+}
+
+const WorkGroupSchema = z.object({
+  groups: z.array(
+    z.object({
+      category: z.enum(CERTIFICATE_CATEGORIES),
+      workItems: z.array(z.string()),
+    }),
+  ),
+});
+
+/**
+ * 作業依頼名を大カテゴリーへ AI で分類する。
+ * 1 カテゴリーに複数作業がまとまることも、複数カテゴリーに分かれることもある。
+ * 失敗時は空配列 (呼び出し側が単一下書きにフォールバック)。
+ */
+async function categorizeWorkRequests(
+  workRequests: string[],
+  opts?: { model?: string },
+): Promise<Array<{ category: CertificateCategory; workItems: string[] }>> {
+  const names = workRequests.map((s) => s.trim()).filter(Boolean);
+  if (names.length === 0) return [];
+
+  const client = getAnthropicClient();
+  const categoryList = CERTIFICATE_CATEGORIES.map((c) => `${c} (${CERTIFICATE_CATEGORY_LABELS[c]})`).join(", ");
+
+  const systemPrompt = `あなたは自動車施工店の作業内容を分類するアシスタントです。
+渡された作業依頼を、次の大カテゴリーのいずれかに分類してください: ${categoryList}。
+
+ルール:
+- 同じカテゴリーの作業は 1 グループにまとめる (証明書はカテゴリー単位で 1 枚発行するため)。
+- 判断が難しい作業は general に入れる。
+- 入力に無い作業を創作しない。全ての作業をいずれかのグループに必ず含める。
+- 出力は groups 配列のみ。`;
+
+  const userMessage = `作業依頼一覧:\n${names.map((n, i) => `${i + 1}. ${n}`).join("\n")}`;
+
+  try {
+    const msg = await withRetry("anthropic", () =>
+      client.messages.parse({
+        model: opts?.model ?? AI_MODEL,
+        max_tokens: 512,
+        system: cacheableSystem(systemPrompt),
+        messages: [{ role: "user", content: userMessage }],
+        output_config: { format: zodOutputFormat(WorkGroupSchema) },
+      }),
+    );
+    const groups = msg.parsed_output?.groups ?? [];
+    // 同一カテゴリーが複数返っても 1 つにマージし、空グループは除外。
+    const merged = new Map<CertificateCategory, string[]>();
+    for (const g of groups) {
+      const items = (g.workItems ?? []).map((s) => s.trim()).filter(Boolean);
+      if (items.length === 0) continue;
+      const prev = merged.get(g.category) ?? [];
+      merged.set(g.category, [...prev, ...items]);
+    }
+    return [...merged.entries()].map(([category, workItems]) => ({ category, workItems }));
+  } catch (err) {
+    console.error("[draftCertificate] categorize failed:", err);
+    return [];
+  }
+}
+
+/**
+ * 予約の複数作業依頼を大カテゴリーごとに分け、カテゴリー単位で証明書下書きを生成する。
+ *
+ * 流れ:
+ *   1. 作業依頼名を AI で大カテゴリーに分類 (categorizeWorkRequests)
+ *   2. カテゴリーごとに generateCertificateDraft を並列実行 (該当作業を希望施工として渡す)
+ *
+ * 分類に失敗 / 作業依頼が無い場合は空配列を返す (呼び出し側で単一下書きにフォールバック)。
+ */
+export async function generateCategorizedCertificateDrafts(
+  input: CategorizedDraftInput,
+  opts?: { model?: string },
+): Promise<CategorizedDraft[]> {
+  const groups = await categorizeWorkRequests(input.workRequests, opts);
+  if (groups.length === 0) return [];
+
+  const results = await Promise.all(
+    groups.map(async (g) => {
+      const draft = await generateCertificateDraft(
+        {
+          vehicle: input.vehicle,
+          hearing: { service_types: g.workItems },
+          similarCertificates: input.similarCertificates,
+          templateCategory: CERTIFICATE_CATEGORY_LABELS[g.category],
+        },
+        opts,
+      );
+      return {
+        category: g.category,
+        categoryLabel: CERTIFICATE_CATEGORY_LABELS[g.category],
+        workItems: g.workItems,
+        draft,
+      } satisfies CategorizedDraft;
+    }),
+  );
+
+  // 生成に失敗した (title 空) カテゴリーは除外。
+  return results.filter((r) => r.draft.title);
 }

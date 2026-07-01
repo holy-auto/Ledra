@@ -12,10 +12,17 @@ export const dynamic = "force-dynamic";
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ tid?: string; vehicle_id?: string; customer_id?: string; reservation_id?: string }>;
+  searchParams: Promise<{
+    tid?: string;
+    vehicle_id?: string;
+    customer_id?: string;
+    reservation_id?: string;
+    category?: string;
+  }>;
 }) {
   const sp = await searchParams;
   const selectedTemplateId = sp.tid ?? "";
+  const selectedCategory = sp.category ?? "";
   const defaultVehicleId = sp.vehicle_id ?? undefined;
   const defaultCustomerId = sp.customer_id ?? undefined;
   const defaultReservationId = sp.reservation_id ?? undefined;
@@ -105,7 +112,11 @@ export default async function Page({
   const hasBrandedTemplate = !!brandedTemplateResult[0].data && !!brandedTemplateResult[1].data;
 
   const list = templates ?? [];
-  const fallbackId = list[0]?.id ?? "";
+  // tid 未指定なら category (大カテゴリー) 一致テンプレを優先し、無ければ先頭。
+  const categoryMatchId = selectedCategory
+    ? (list.find((t) => (t.category ?? null) === selectedCategory)?.id ?? "")
+    : "";
+  const fallbackId = categoryMatchId || list[0]?.id || "";
   const tid = selectedTemplateId || fallbackId;
   const selected = list.find((t) => t.id === tid) ?? list[0] ?? null;
 
