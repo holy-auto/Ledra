@@ -2,6 +2,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { loadAiAutomationSettings, resolveAutoAction } from "@/lib/ai/automation/policy";
 import { sendProgressUpdate } from "@/lib/line/client";
 import { logger } from "@/lib/logger";
+import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { ensureBodyRepairTrackToken, TRACK_BASE_PATH } from "@/lib/bodyRepair/trackToken";
 import { BODY_REPAIR_STAGES, BODY_REPAIR_STAGE_LABEL, type BodyRepairStage } from "@/lib/validations/body-repair-job";
 
@@ -53,7 +54,7 @@ export async function maybeNotifyBodyRepairStageAdvance(params: {
     const token = await ensureBodyRepairTrackToken(admin, tenantId, jobId);
     const portalUrl = token ? `${process.env.NEXT_PUBLIC_APP_URL ?? ""}${TRACK_BASE_PATH}/${token}` : "";
 
-    await sendProgressUpdate({
+    const delivered = await sendProgressUpdate({
       tenantId,
       lineUserId,
       customerName: (customer?.name as string | undefined) ?? "お客様",
@@ -64,6 +65,15 @@ export async function maybeNotifyBodyRepairStageAdvance(params: {
       totalSteps,
       portalUrl,
     });
+    if (delivered) {
+      // 人の確認なしで顧客へ進捗を自動通知した事実を監査ログに残す (外向きアクション)。
+      await logAutoActionExecuted({
+        tenantId,
+        actionKey: BODY_REPAIR_STAGE_ADVANCE_ACTION,
+        resource: { kind: "body_repair_job", id: jobId },
+        detail: { stage, customer_id: customerId, channel: "line" },
+      });
+    }
   } catch (error) {
     logger.warn("body-repair stage notify failed (non-blocking)", { error, tenantId, customerId });
   }

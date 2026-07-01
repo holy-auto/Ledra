@@ -13,6 +13,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { buildTaxBreakdown, totalTax } from "@/lib/invoice/taxBreakdown";
 import { logger } from "@/lib/logger";
+import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { loadAiAutomationSettings } from "./policy";
 import { shouldAutoDraftInvoiceOnBilling, shouldAutoDraftInvoiceOnCompletion } from "./orchestrator";
 
@@ -124,27 +125,38 @@ export async function maybeAutoCreateDraftInvoiceForReservation(params: {
     const total = subtotal + tax;
     const docNumber = await generateInvoiceNumber(admin, tenantId);
 
-    const { error } = await admin.from("documents").insert({
-      tenant_id: tenantId,
-      customer_id: reservation.customer_id,
-      vehicle_id: reservation.vehicle_id,
-      doc_type: "invoice",
-      doc_number: docNumber,
-      recipient_name: recipientName,
-      issued_at: new Date().toISOString().slice(0, 10),
-      status: "draft",
-      subtotal,
-      tax,
-      total,
-      tax_rate: taxRate,
-      items_json: items,
-      tax_breakdown: taxBreakdown,
-    });
+    const { data: inserted, error } = await admin
+      .from("documents")
+      .insert({
+        tenant_id: tenantId,
+        customer_id: reservation.customer_id,
+        vehicle_id: reservation.vehicle_id,
+        doc_type: "invoice",
+        doc_number: docNumber,
+        recipient_name: recipientName,
+        issued_at: new Date().toISOString().slice(0, 10),
+        status: "draft",
+        subtotal,
+        tax,
+        total,
+        tax_rate: taxRate,
+        items_json: items,
+        tax_breakdown: taxBreakdown,
+      })
+      .select("id")
+      .maybeSingle();
     if (error) {
       logger.warn("[invoiceRecordAuto] draft invoice insert failed", { tenantId, err: error.message });
       return;
     }
     logger.info("[invoiceRecordAuto] draft invoice auto-created", { tenantId, reservationId, docNumber });
+    // 人の確認なしで請求書下書きを自動作成した事実を監査ログに残す。
+    await logAutoActionExecuted({
+      tenantId,
+      actionKey: trigger === "completion" ? "invoice.auto_draft_on_completion" : "invoice.auto_draft_on_billing_step",
+      resource: { kind: "invoice", id: (inserted?.id as string | undefined) ?? null },
+      detail: { reservation_id: reservationId, doc_number: docNumber, total },
+    });
   } catch (e) {
     logger.warn("[invoiceRecordAuto] maybeAutoCreateDraftInvoiceForReservation threw", {
       tenantId,

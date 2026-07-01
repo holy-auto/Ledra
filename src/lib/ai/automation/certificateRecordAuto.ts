@@ -19,6 +19,7 @@ import type { DraftCertificateResult } from "@/lib/ai/draftCertificate";
 import { makePublicId } from "@/lib/publicId";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
+import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { triggerCertificateIssued } from "@/lib/certificates/issueHooks";
 import { computeWarrantyEndDate } from "@/lib/ai/followUpContent";
 import { loadAiAutomationSettings } from "./policy";
@@ -282,6 +283,13 @@ export async function maybeAutoCreateDraftCertificateForReservation(
       outcome: "ok",
       confidence: null,
       meta: { auto: true, created: createdIds.length, auto_issued: issuedCount },
+    });
+    // 人の確認なしで証明書を自動作成 (下書き or 自動発行) した事実を監査ログに残す。
+    await logAutoActionExecuted({
+      tenantId,
+      actionKey: autoIssue ? "certificate.auto_issue" : "certificate.auto_create_draft_record",
+      resource: { kind: "certificate", id: cert.id as string },
+      detail: { reservation_id: reservationId, public_id: cert.public_id, status: certStatus },
     });
   } catch (e) {
     logger.warn("[certificateRecordAuto] maybeAutoCreateDraftCertificateForReservation threw", {
