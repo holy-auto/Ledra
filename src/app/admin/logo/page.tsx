@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { resolveCallerFull } from "@/lib/api/auth";
+import { hasPermission } from "@/lib/auth/permissions";
 import AdminFeatureGuard from "@/app/admin/AdminFeatureGuard";
 import { FEATURES } from "@/lib/billing/featureKeys";
 
@@ -27,23 +29,30 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
 
   if (!mem) return <div className="text-sm text-muted">tenant_memberships が見つかりません。</div>;
 
-  // 認証済みユーザーの所属テナントを RLS 経由で再確認する。
+  // 認証・認可をサーバー側で再検証してから書き込み対象テナントを解決する。
+  //
   // 実際の Storage / tenants への書き込みは admin(service-role) で行う:
   // `assets` バケットの RLS はユーザーロールからの直接書き込みを許可しておらず
   // (他のアップロード経路もすべて admin クライアントを使用している)、
   // ユーザークライアントで upload すると RLS で弾かれてロゴが更新できないため。
-  async function resolveTenantId(): Promise<string> {
+  //
+  // service-role は RLS を丸ごとバイパスするため、これまで `tenants` の
+  // owner-only RLS が担保していた権限チェックが失われる。UI ガードは
+  // クライアント側のみなので、admin クライアントを作る前に必ず
+  // サーバー側で `logo:manage` 権限を検証する。テナントは
+  // resolveCallerFull 経由で active_tenant_id クッキーを尊重して解決し、
+  // 複数テナント所属ユーザーが別テナントへ書き込むのを防ぐ。
+  async function resolveAuthorizedTenantId(): Promise<string> {
     const supabase = await createSupabaseServerClient();
-    const { data: userRes } = await supabase.auth.getUser();
-    if (!userRes.user) redirect("/login?next=/admin/logo");
-    const { data: mem } = await supabase.from("tenant_memberships").select("tenant_id").limit(1).single();
-    if (!mem) redirect("/admin/logo?e=no_tenant");
-    return mem.tenant_id as string;
+    const caller = await resolveCallerFull(supabase);
+    if (!caller) redirect("/login?next=/admin/logo");
+    if (!hasPermission(caller.role, "logo:manage")) redirect("/admin/logo?e=forbidden");
+    return caller.tenantId;
   }
 
   async function uploadLogo(formData: FormData) {
     "use server";
-    const tid = await resolveTenantId();
+    const tid = await resolveAuthorizedTenantId();
     const { admin } = createTenantScopedAdmin(tid);
 
     const file = formData.get("file") as File | null;
@@ -72,7 +81,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
 
   async function uploadSeal(formData: FormData) {
     "use server";
-    const tid = await resolveTenantId();
+    const tid = await resolveAuthorizedTenantId();
     const { admin } = createTenantScopedAdmin(tid);
 
     const file = formData.get("seal_file") as File | null;
@@ -108,7 +117,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
         {sp.ok === "seal" && <div className="glass-card p-3 text-sm text-success">角印を保存しました</div>}
         {sp.e === "png" && <div className="glass-card p-3 text-sm text-red-500">PNGのみ対応です</div>}
         {sp.e === "seal_png" && <div className="glass-card p-3 text-sm text-red-500">角印はPNGのみ対応です</div>}
-        {sp.e && !["png", "seal_png"].includes(sp.e) && (
+        {sp.e === "forbidden" && (
+          <div className="glass-card p-3 text-sm text-red-500">ロゴ・角印を変更する権限がありません</div>
+        )}
+        {sp.e && !["png", "seal_png", "forbidden"].includes(sp.e) && (
           <div className="glass-card p-3 text-sm text-red-500">エラー: {sp.e}</div>
         )}
 
