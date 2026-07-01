@@ -12,6 +12,7 @@ import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { emitEntityWebhook } from "@/lib/outbound-webhooks";
 import {
   apiOk,
   apiUnauthorized,
@@ -23,17 +24,15 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const nullableUuid = z
-  .string()
-  .trim()
-  .nullable()
-  .optional()
-  .transform((v) => (v ? v : null))
-  .refine((v) => v === null || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v), {
-    message: "無効な顧客IDです。",
-  });
-
-const linkSchema = z.object({ customer_id: nullableUuid });
+// customer_id は **キー必須**。null は「連携解除」の明示。キー欠落 (空ボディ / {}) は
+// 誤操作とみなしバリデーションエラーにする (意図せず連携が外れるのを防ぐ)。
+const linkSchema = z.object({
+  customer_id: z
+    .string()
+    .trim()
+    .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, { message: "無効な顧客IDです。" })
+    .nullable(),
+});
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -82,6 +81,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       .single();
 
     if (updateErr) return apiInternalError(updateErr, "vehicles link-customer PUT");
+
+    // 既存の車両更新経路 (PUT /api/vehicles/[id]) と同様に双方向同期を通知する。
+    await emitEntityWebhook(caller.tenantId, "vehicle.updated", id, { id, customer_id: customerId });
 
     return apiOk({ vehicle: updated });
   } catch (e) {

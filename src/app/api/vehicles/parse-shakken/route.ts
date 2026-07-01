@@ -2,7 +2,12 @@ import { apiInternalError, apiUnauthorized, apiValidationError } from "@/lib/api
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { parseShakenshoAuto, extractFirstRegistrationYear, calcSizeClass } from "@/lib/ocr/shakensho";
-import { loadAiAutomationSettings, filterVehicleOcrByPolicy, isSourceAllowed } from "@/lib/ai/automation/policy";
+import {
+  loadAiAutomationSettings,
+  filterVehicleOcrByPolicy,
+  isSourceAllowed,
+  resolveFieldPolicy,
+} from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { fuzzyMatchCustomer, type CustomerCandidate } from "@/lib/ai/customerFuzzyMatch";
 import { logger } from "@/lib/logger";
@@ -96,9 +101,13 @@ export async function POST(req: Request) {
     // 車検証の所有者/使用者氏名を既存顧客に名寄せし、連携候補を返す。
     // 生の氏名 (PII) ではなく「一致した既存顧客」だけを返す。決定的マッチのみ
     // (AI オフ) で、confidence >= 0.6 のときのみ候補として提示する。
+    // 顧客名フィールドの自動化を manual にしているテナントでは、車検証(身分証)の
+    // 氏名から顧客を提案しない (PII 由来の自動連携を無効化する設定を尊重する)。
+    const customerNameAutomated = resolveFieldPolicy(automation, "customer.name") !== "manual";
+
     let customer_suggestion: { id: string; name: string; confidence: number; method: string } | null = null;
     try {
-      const ownerName = parsed.owner_name?.trim() || parsed.user_name?.trim() || null;
+      const ownerName = customerNameAutomated ? parsed.owner_name?.trim() || parsed.user_name?.trim() || null : null;
       if (ownerName) {
         const { data: candidates } = await supabase
           .from("customers")

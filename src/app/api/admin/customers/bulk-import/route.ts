@@ -118,7 +118,9 @@ export async function POST(req: NextRequest) {
       }
 
       // メールで拾えなければ氏名+電話の名寄せで既存顧客に寄せる (重複防止)。
-      if (!existingId && candidates.length > 0) {
+      // ただし氏名のみの行は同名別人を誤って統合し得るため、電話 or メールの
+      // 連絡先が揃っている行に限る (弱い手がかりでの誤マージを防ぐ)。
+      if (!existingId && (v.email || v.phone) && candidates.length > 0) {
         const match = await fuzzyMatchCustomer(
           { query: { name: v.name, phone: v.phone ?? null, email: v.email ?? null }, candidates },
           { ai: false },
@@ -128,16 +130,15 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      const payload = {
-        tenant_id: tenantId,
-        name: v.name,
-        email: v.email ?? null,
-        phone: v.phone ?? null,
-        note: v.note ?? null,
-      };
-
       if (existingId) {
-        const { error } = await admin.from("customers").update(payload).eq("id", existingId);
+        // 既存顧客の更新では、空の列で既存の連絡先を上書き (消去) しない。
+        // 値のある列だけを更新する。
+        const updatePayload: Record<string, unknown> = { name: v.name };
+        if (v.email) updatePayload.email = v.email;
+        if (v.phone) updatePayload.phone = v.phone;
+        if (v.note) updatePayload.note = v.note;
+
+        const { error } = await admin.from("customers").update(updatePayload).eq("id", existingId);
         if (error) {
           errors.push({ row_index: i, error: error.message });
           skipped += 1;
@@ -147,7 +148,13 @@ export async function POST(req: NextRequest) {
       } else {
         const { data: created, error } = await admin
           .from("customers")
-          .insert(payload)
+          .insert({
+            tenant_id: tenantId,
+            name: v.name,
+            email: v.email ?? null,
+            phone: v.phone ?? null,
+            note: v.note ?? null,
+          })
           .select("id, name, name_kana, phone, email")
           .single();
         if (error || !created) {

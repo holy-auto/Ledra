@@ -37,7 +37,7 @@ function LinkExistingVehicle({ customerId }: { customerId: string }) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/admin/vehicles?q=${encodeURIComponent(search)}&limit=8`);
+        const res = await fetch(`/api/admin/vehicles?q=${encodeURIComponent(search)}&page=1&per_page=8`);
         const j = await res.json();
         setResults(j.vehicles ?? []);
       } catch {
