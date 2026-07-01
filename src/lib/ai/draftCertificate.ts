@@ -314,14 +314,31 @@ async function categorizeWorkRequests(
       }),
     );
     const groups = msg.parsed_output?.groups ?? [];
-    // 同一カテゴリーが複数返っても 1 つにマージし、空グループは除外。
+    // 元の作業依頼名 (正規化キー → 原文)。モデルが返す作業名をこれに正規化する。
+    const nameByNorm = new Map(names.map((n) => [n.toLowerCase(), n] as const));
+
+    // 同一カテゴリーはマージ。モデルが返した作業名は元の作業依頼に正規化し、
+    // 一致しない (改名/創作された) 作業は除外する。
     const merged = new Map<CertificateCategory, string[]>();
     for (const g of groups) {
-      const items = (g.workItems ?? []).map((s) => s.trim()).filter(Boolean);
-      if (items.length === 0) continue;
-      const prev = merged.get(g.category) ?? [];
-      merged.set(g.category, [...prev, ...items]);
+      const kept = merged.get(g.category) ?? [];
+      for (const raw of g.workItems ?? []) {
+        const orig = nameByNorm.get(raw.trim().toLowerCase());
+        if (orig && !kept.includes(orig)) kept.push(orig);
+      }
+      if (kept.length > 0) merged.set(g.category, kept);
     }
+
+    // カバレッジ検証: 元の作業依頼が全てどこかのグループに含まれるようにする。
+    // モデルが一部を省略/改名した場合、漏れた作業は general に補完し、無下書きを防ぐ。
+    const covered = new Set<string>();
+    for (const items of merged.values()) for (const it of items) covered.add(it);
+    const missing = names.filter((n) => !covered.has(n));
+    if (missing.length > 0) {
+      const gen = merged.get("general") ?? [];
+      merged.set("general", [...gen, ...missing.filter((m) => !gen.includes(m))]);
+    }
+
     return [...merged.entries()].map(([category, workItems]) => ({ category, workItems }));
   } catch (err) {
     console.error("[draftCertificate] categorize failed:", err);

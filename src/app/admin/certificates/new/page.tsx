@@ -112,9 +112,13 @@ export default async function Page({
   const hasBrandedTemplate = !!brandedTemplateResult[0].data && !!brandedTemplateResult[1].data;
 
   const list = templates ?? [];
-  // tid 未指定なら category (大カテゴリー) 一致テンプレを優先し、無ければ先頭。
+  // tid 未指定なら category (大カテゴリー) 一致テンプレを優先。
+  // 完全一致が無いカテゴリー (wrapping / window_film 等、専用テンプレ未シード) は
+  // general テンプレへフォールバックし、無関係な先頭テンプレを開かないようにする。
   const categoryMatchId = selectedCategory
-    ? (list.find((t) => (t.category ?? null) === selectedCategory)?.id ?? "")
+    ? (list.find((t) => (t.category ?? null) === selectedCategory)?.id ??
+      list.find((t) => (t.category ?? null) === "general")?.id ??
+      "")
     : "";
   const fallbackId = categoryMatchId || list[0]?.id || "";
   const tid = selectedTemplateId || fallbackId;
