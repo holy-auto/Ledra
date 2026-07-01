@@ -35,20 +35,48 @@ const GRADE_LABEL: Record<string, string> = {
   unverified: "EXIF なし",
 };
 
+// 税込金額がこの額を超える部品は「高額品」= customer_otp 相当。個別アンカーの対象にするため、
+// UI 側でも種別の分類を促す (サーバ側 HIGH_VALUE_THRESHOLD_JPY_DEFAULT と一致)。
+const HIGH_VALUE_THRESHOLD_JPY = 100_000;
+
 /**
- * プレビュー URL の scheme ガード。
- * preview は `URL.createObjectURL(file)` が返す `blob:` URL のみを想定するが、
- * 万一想定外の値が混じっても img の src に流さないよう scheme を検証する
- * (DOM 由来テキストが HTML/URL sink に無検証で到達するのを防ぐ)。
+ * 撮影済み写真のサムネイル。
+ * File を canvas に描画して表示する (object URL 文字列を img の src に流さないことで、
+ * ユーザー選択ファイル由来の値が HTML/URL sink に到達する経路自体を作らない)。
  */
-function safePreviewSrc(url: string): string {
-  return url.startsWith("blob:") ? url : "";
+function PhotoThumb({ file }: { file: File }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    let cancelled = false;
+    let bmp: ImageBitmap | null = null;
+    createImageBitmap(file)
+      .then((b) => {
+        bmp = b;
+        const canvas = ref.current;
+        if (cancelled || !canvas) return;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        // cover フィット (中央トリミング)
+        const scale = Math.max(canvas.width / b.width, canvas.height / b.height);
+        const w = b.width * scale;
+        const h = b.height * scale;
+        ctx.drawImage(b, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+      })
+      .catch(() => {
+        /* 描画不可 (非対応形式等) はサムネなしで続行 */
+      });
+    return () => {
+      cancelled = true;
+      bmp?.close();
+    };
+  }, [file]);
+  return <canvas ref={ref} width={220} height={112} className="h-28 w-full bg-inset object-cover" />;
 }
 
 interface StagedPhoto {
   localId: string;
   kind: PhotoKind;
-  preview: string;
+  file: File;
   uploading: boolean;
   error: string | null;
   // ステージ結果 (作成 API の evidence[] に渡す)
@@ -97,7 +125,7 @@ export default function PartInstallClient() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/api/admin/customers?per_page=200");
+        const res = await fetch("/api/admin/customers?page=1&per_page=200");
         if (res.ok) {
           const j = await res.json();
           const list = (j.customers ?? j.items ?? []) as Array<Record<string, unknown>>;
@@ -111,7 +139,7 @@ export default function PartInstallClient() {
   useEffect(() => {
     (async () => {
       try {
-        const params = new URLSearchParams({ per_page: "200" });
+        const params = new URLSearchParams({ page: "1", per_page: "200" });
         if (customerId) params.set("customer_id", customerId);
         const res = await fetch(`/api/admin/vehicles?${params.toString()}`);
         if (res.ok) {
@@ -137,8 +165,7 @@ export default function PartInstallClient() {
     if (!file) return;
     const localId = `${Date.now()}-${Math.round(performance.now())}`;
     const kind = nextKind;
-    const preview = URL.createObjectURL(file);
-    setPhotos((prev) => [...prev, { localId, kind, preview, uploading: true, error: null }]);
+    setPhotos((prev) => [...prev, { localId, kind, file, uploading: true, error: null }]);
     try {
       const fd = new FormData();
       fd.append("kind", kind);
@@ -169,11 +196,7 @@ export default function PartInstallClient() {
   }
 
   function removePhoto(localId: string) {
-    setPhotos((prev) => {
-      const target = prev.find((p) => p.localId === localId);
-      if (target) URL.revokeObjectURL(target.preview);
-      return prev.filter((p) => p.localId !== localId);
-    });
+    setPhotos((prev) => prev.filter((p) => p.localId !== localId));
   }
 
   const staged = photos.filter((p) => !p.uploading && !p.error && p.storage_path);
@@ -184,8 +207,29 @@ export default function PartInstallClient() {
       showToast("error", "部品名を入力してください。");
       return;
     }
+    if (partKind === "serialized" && !serialNo.trim()) {
+      showToast("error", "シリアル管理品はシリアル番号を入力してください（重複装着チェックに必要です）。");
+      return;
+    }
+    const amountJpy = amount ? Number(amount) : null;
+    if (
+      amountJpy != null &&
+      amountJpy > HIGH_VALUE_THRESHOLD_JPY &&
+      partKind !== "high_value" &&
+      partKind !== "serialized"
+    ) {
+      showToast(
+        "error",
+        "税込10万円を超える部品は種別を「高額品」または「シリアル管理」にしてください（個別アンカーの対象にするため）。",
+      );
+      return;
+    }
     if (anyUploading) {
       showToast("error", "写真のアップロード完了をお待ちください。");
+      return;
+    }
+    if (staged.length === 0) {
+      showToast("error", "写真を1枚以上追加してください（証跡に取り込まれます）。");
       return;
     }
     setSubmitting(true);
@@ -199,7 +243,7 @@ export default function PartInstallClient() {
         serial_no: serialNo.trim() || null,
         gtin: gtin.trim() || null,
         lot_code: lotCode.trim() || null,
-        amount_jpy: amount ? Number(amount) : null,
+        amount_jpy: amountJpy,
         customer_id: customerId || null,
         vehicle_id: vehicleId || null,
         evidence: staged.map((p) => ({
@@ -229,7 +273,6 @@ export default function PartInstallClient() {
       setGtin("");
       setLotCode("");
       setAmount("");
-      photos.forEach((p) => URL.revokeObjectURL(p.preview));
       setPhotos([]);
     } catch (err) {
       showToast("error", err instanceof Error ? err.message : "登録に失敗しました");
@@ -328,7 +371,14 @@ export default function PartInstallClient() {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Field label="顧客（任意）">
-            <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} className="input-field w-full">
+            <select
+              value={customerId}
+              onChange={(e) => {
+                setCustomerId(e.target.value);
+                setVehicleId(""); // 顧客が変わったら車両選択をリセット (顧客/車両の不整合を防ぐ)
+              }}
+              className="input-field w-full"
+            >
               <option value="">（未選択）</option>
               {customers.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -386,8 +436,7 @@ export default function PartInstallClient() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {photos.map((p) => (
               <div key={p.localId} className="relative overflow-hidden rounded-lg border border-border-subtle">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={safePreviewSrc(p.preview)} alt="" className="h-28 w-full object-cover" />
+                <PhotoThumb file={p.file} />
                 <button
                   type="button"
                   onClick={() => removePhoto(p.localId)}
