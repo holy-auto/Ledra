@@ -345,6 +345,7 @@ export const ROUTE_PERMISSIONS: Record<string, Permission> = {
   "/admin/reservations": "reservations:view",
   "/admin/body-repair": "reservations:view",
   "/admin/loaner-cars": "reservations:view",
+  "/admin/parts-install": "reservations:edit",
   "/admin/tire-storage": "vehicles:view",
   "/admin/invoices": "invoices:view",
   "/admin/management": "management:view",
