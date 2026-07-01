@@ -83,6 +83,10 @@ export interface UsedCarEstimateInput {
   agreedPrice?: number | null;
   /** 諸費用の金額差し込み (キー未指定は 0)。 */
   fees?: Partial<Record<UsedCarFeeKey, number>>;
+  /** 下取り充当額 (税込)。0/未指定なら下取り行を出さない。支払総額から差し引く。 */
+  tradeInAllowance?: number | null;
+  /** 下取り車ラベル (例: "日産 デイズ")。下取り行の説明に付す。 */
+  tradeInLabel?: string | null;
 }
 
 function sanitizeAmount(v: number | null | undefined): number {
@@ -136,6 +140,20 @@ export function buildUsedCarEstimateItems(input: UsedCarEstimateInput): Estimate
       quantity: 1,
       unit: "式",
       unit_price: sanitizeAmount(fees[f.key]),
+    });
+  }
+
+  // 下取り充当 (支払総額から差し引くマイナス行)。
+  const tradeIn = sanitizeAmount(input.tradeInAllowance);
+  if (tradeIn > 0) {
+    const tradeInLabel = (input.tradeInLabel ?? "").trim();
+    items.push({ item_type: "heading", description: "下取り", quantity: 0, unit: null, unit_price: 0 });
+    items.push({
+      item_type: "item",
+      description: tradeInLabel ? `下取り充当（${tradeInLabel}）` : "下取り充当",
+      quantity: 1,
+      unit: "台",
+      unit_price: -tradeIn,
     });
   }
 

@@ -135,9 +135,25 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // 下取り車のラベルも自テナントの在庫のみ別クエリで取得して添付する。
+    const tradeInIds = Array.from(
+      new Set(rows.map((d) => d.trade_in_vehicle_id).filter((v): v is string => typeof v === "string")),
+    );
+    let tradeInById: Record<string, { id: string; maker: string | null; model: string | null }> = {};
+    if (tradeInIds.length > 0) {
+      const { data: tvs, error: tvErr } = await admin
+        .from("market_vehicles")
+        .select("id, maker, model")
+        .in("id", tradeInIds)
+        .eq("tenant_id", caller.tenantId);
+      if (tvErr) return apiInternalError(tvErr, "market-deals list (trade-in)");
+      tradeInById = Object.fromEntries((tvs ?? []).map((v) => [v.id as string, v as (typeof tradeInById)[string]]));
+    }
+
     const withEstimates = rows.map((d) => ({
       ...d,
       estimate: typeof d.estimate_document_id === "string" ? (estimatesById[d.estimate_document_id] ?? null) : null,
+      trade_in_vehicle: typeof d.trade_in_vehicle_id === "string" ? (tradeInById[d.trade_in_vehicle_id] ?? null) : null,
     }));
 
     return apiJson({ deals: withEstimates });

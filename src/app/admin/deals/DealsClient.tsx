@@ -17,6 +17,12 @@ interface LinkedEstimate {
   status: string | null;
 }
 
+interface TradeInVehicle {
+  id: string;
+  maker: string | null;
+  model: string | null;
+}
+
 interface DealRow {
   id: string;
   buyer_name: string;
@@ -28,6 +34,14 @@ interface DealRow {
   status: DealStatus;
   created_at: string;
   estimate: LinkedEstimate | null;
+  trade_in_vehicle_id: string | null;
+  trade_in_allowance: number | null;
+  trade_in_vehicle: TradeInVehicle | null;
+}
+
+interface VehicleOption {
+  id: string;
+  label: string;
 }
 
 /* ---------- helpers ---------- */
@@ -87,6 +101,12 @@ export default function DealsClient() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [creatingEstimateId, setCreatingEstimateId] = useState<string | null>(null);
 
+  // 下取り編集
+  const [vehicleOptions, setVehicleOptions] = useState<VehicleOption[]>([]);
+  const [editingTradeInId, setEditingTradeInId] = useState<string | null>(null);
+  const [tradeInVehicleValue, setTradeInVehicleValue] = useState("");
+  const [tradeInAllowanceValue, setTradeInAllowanceValue] = useState("");
+
   const fetchDeals = useCallback(async (status?: string) => {
     setErr(null);
     try {
@@ -104,6 +124,7 @@ export default function DealsClient() {
             maker: v?.maker ?? "",
             model: v?.model ?? "",
             estimate: (d.estimate ?? null) as LinkedEstimate | null,
+            trade_in_vehicle: (d.trade_in_vehicle ?? null) as TradeInVehicle | null,
           };
         }),
       );
@@ -113,13 +134,31 @@ export default function DealsClient() {
     }
   }, []);
 
+  // 下取り車の候補（自テナントの在庫）を一度だけ取得する。
+  const fetchVehicleOptions = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/market-vehicles", { cache: "no-store" });
+      const j = await parseJsonSafe(res);
+      if (!res.ok) return;
+      const list = (j?.vehicles ?? []) as Array<Record<string, unknown>>;
+      setVehicleOptions(
+        list.map((v) => ({
+          id: String(v.id),
+          label: [v.maker, v.model, v.plate_number].filter(Boolean).join(" ") || String(v.id).slice(0, 8),
+        })),
+      );
+    } catch {
+      /* optional */
+    }
+  }, []);
+
   useEffect(() => {
     (async () => {
       setLoading(true);
-      await fetchDeals();
+      await Promise.all([fetchDeals(), fetchVehicleOptions()]);
       setLoading(false);
     })();
-  }, [fetchDeals]);
+  }, [fetchDeals, fetchVehicleOptions]);
 
   const applyFilter = (newStatus: string) => {
     setStatusFilter(newStatus);
@@ -185,7 +224,15 @@ export default function DealsClient() {
     if (!confirm(`「${vehicleLabel}」の諸費用見積を作成しますか？（各金額は作成後に編集できます）`)) return;
     setCreatingEstimateId(deal.id);
     try {
-      const items = buildUsedCarEstimateItems({ vehicleLabel, agreedPrice: deal.agreed_price });
+      const tradeInLabel = deal.trade_in_vehicle
+        ? [deal.trade_in_vehicle.maker, deal.trade_in_vehicle.model].filter(Boolean).join(" ")
+        : "";
+      const items = buildUsedCarEstimateItems({
+        vehicleLabel,
+        agreedPrice: deal.agreed_price,
+        tradeInAllowance: deal.trade_in_allowance,
+        tradeInLabel,
+      });
       // 法人 (buyer_company あり) は会社名 + 御中、個人は氏名 + 様 で宛先を設定する。
       const corporate = Boolean(deal.buyer_company);
       const docRes = await fetch("/api/admin/documents", {
@@ -222,6 +269,35 @@ export default function DealsClient() {
       alert("見積作成に失敗しました: " + msg);
     } finally {
       setCreatingEstimateId(null);
+    }
+  };
+
+  // 下取り車・充当額を保存する。
+  const handleTradeInSave = async (dealId: string) => {
+    const allowance = tradeInAllowanceValue ? Number(tradeInAllowanceValue) : null;
+    if (tradeInAllowanceValue && (isNaN(allowance as number) || (allowance as number) < 0)) {
+      alert("有効な充当額を入力してください");
+      return;
+    }
+    setUpdatingId(dealId);
+    try {
+      const res = await fetch(`/api/market/deals/${dealId}/trade-in`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trade_in_vehicle_id: tradeInVehicleValue || null,
+          trade_in_allowance: allowance,
+        }),
+      });
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      setEditingTradeInId(null);
+      await fetchDeals(statusFilter);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      alert("下取りの保存に失敗しました: " + msg);
+    } finally {
+      setUpdatingId(null);
     }
   };
 
@@ -390,6 +466,69 @@ export default function DealsClient() {
                         </button>
                       )}
                     </div>
+                  </div>
+
+                  {/* 下取り */}
+                  <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-border-subtle">
+                    <div className="text-[10px] text-muted">下取り</div>
+                    {editingTradeInId === deal.id ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select
+                          className="select-field text-xs"
+                          value={tradeInVehicleValue}
+                          onChange={(e) => setTradeInVehicleValue(e.target.value)}
+                        >
+                          <option value="">（車両なし）</option>
+                          {vehicleOptions.map((v) => (
+                            <option key={v.id} value={v.id}>
+                              {v.label}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          min={0}
+                          className="input-field w-32 text-xs"
+                          value={tradeInAllowanceValue}
+                          onChange={(e) => setTradeInAllowanceValue(e.target.value)}
+                          placeholder="充当額"
+                        />
+                        <button
+                          type="button"
+                          className="btn-primary px-3 py-1 text-xs"
+                          disabled={updatingId === deal.id}
+                          onClick={() => handleTradeInSave(deal.id)}
+                        >
+                          保存
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-secondary px-3 py-1 text-xs"
+                          onClick={() => setEditingTradeInId(null)}
+                        >
+                          取消
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="text-sm text-secondary hover:underline text-left"
+                        onClick={() => {
+                          setEditingTradeInId(deal.id);
+                          setTradeInVehicleValue(deal.trade_in_vehicle_id ?? "");
+                          setTradeInAllowanceValue(deal.trade_in_allowance?.toString() ?? "");
+                        }}
+                      >
+                        {deal.trade_in_allowance != null
+                          ? `${
+                              deal.trade_in_vehicle
+                                ? [deal.trade_in_vehicle.maker, deal.trade_in_vehicle.model].filter(Boolean).join(" ") +
+                                  " "
+                                : ""
+                            }充当 ${formatJpy(deal.trade_in_allowance)}`
+                          : "設定する"}
+                      </button>
+                    )}
                   </div>
 
                   {/* 諸費用見積 */}
