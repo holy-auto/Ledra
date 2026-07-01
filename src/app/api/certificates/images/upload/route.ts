@@ -3,6 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages";
 import { normalizePlanTier, PHOTO_LIMITS } from "@/lib/billing/planFeatures";
+import { getCachedTenantBilling } from "@/lib/billing/tenantBillingCache";
 import { apiOk, apiInternalError, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 import { apiError } from "@/lib/api/response";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
@@ -77,12 +78,9 @@ export async function POST(req: NextRequest) {
     const tenantId = caller.tenantId;
 
     // ── Plan tier → photo limit ───────────────────────────────────
-    const { data: tenant } = await supabase
-      .from("tenants")
-      .select("plan_tier")
-      .eq("id", tenantId)
-      .single<{ plan_tier: string | null }>();
-    const planTier = normalizePlanTier(tenant?.plan_tier);
+    // plan_tier は billing guard と共有の 60 秒キャッシュから取得 (重複クエリを排除)。
+    const billing = await getCachedTenantBilling(tenantId);
+    const planTier = normalizePlanTier(billing?.plan_tier ?? null);
     const maxPhotos = PHOTO_LIMITS[planTier];
 
     // ── Parse multipart form ──────────────────────────────────────
