@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import AdminFeatureGuard from "@/app/admin/AdminFeatureGuard";
 import { FEATURES } from "@/lib/billing/featureKeys";
 
@@ -26,11 +27,24 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
 
   if (!mem) return <div className="text-sm text-muted">tenant_memberships が見つかりません。</div>;
 
-  const tenantId = mem.tenant_id as string;
+  // 認証済みユーザーの所属テナントを RLS 経由で再確認する。
+  // 実際の Storage / tenants への書き込みは admin(service-role) で行う:
+  // `assets` バケットの RLS はユーザーロールからの直接書き込みを許可しておらず
+  // (他のアップロード経路もすべて admin クライアントを使用している)、
+  // ユーザークライアントで upload すると RLS で弾かれてロゴが更新できないため。
+  async function resolveTenantId(): Promise<string> {
+    const supabase = await createSupabaseServerClient();
+    const { data: userRes } = await supabase.auth.getUser();
+    if (!userRes.user) redirect("/login?next=/admin/logo");
+    const { data: mem } = await supabase.from("tenant_memberships").select("tenant_id").limit(1).single();
+    if (!mem) redirect("/admin/logo?e=no_tenant");
+    return mem.tenant_id as string;
+  }
 
   async function uploadLogo(formData: FormData) {
     "use server";
-    const supabase = await createSupabaseServerClient();
+    const tid = await resolveTenantId();
+    const { admin } = createTenantScopedAdmin(tid);
 
     const file = formData.get("file") as File | null;
     if (!file || file.size === 0) redirect("/admin/logo?e=1");
@@ -38,18 +52,18 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
     if (file.type !== "image/png") redirect("/admin/logo?e=png");
     if (file.size > 2 * 1024 * 1024) redirect("/admin/logo?e=size"); // 2MB上限
 
-    const objectPath = `tenants/${tenantId}/logos/logo.png`;
+    const objectPath = `tenants/${tid}/logos/logo.png`;
 
     const bytes = new Uint8Array(await file.arrayBuffer());
     if (!isPngSignature(bytes)) redirect("/admin/logo?e=png");
 
-    const up = await supabase.storage
+    const up = await admin.storage
       .from("assets")
       .upload(objectPath, bytes, { contentType: "image/png", upsert: true });
 
     if (up.error) redirect("/admin/logo?e=2");
 
-    const { error } = await supabase.from("tenants").update({ logo_asset_path: objectPath }).eq("id", tenantId);
+    const { error } = await admin.from("tenants").update({ logo_asset_path: objectPath }).eq("id", tid);
 
     if (error) redirect("/admin/logo?e=3");
 
@@ -58,7 +72,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
 
   async function uploadSeal(formData: FormData) {
     "use server";
-    const supabase = await createSupabaseServerClient();
+    const tid = await resolveTenantId();
+    const { admin } = createTenantScopedAdmin(tid);
 
     const file = formData.get("seal_file") as File | null;
     if (!file || file.size === 0) redirect("/admin/logo?e=seal_empty");
@@ -66,18 +81,18 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
     if (file.type !== "image/png") redirect("/admin/logo?e=seal_png");
     if (file.size > 2 * 1024 * 1024) redirect("/admin/logo?e=seal_size");
 
-    const objectPath = `tenants/${tenantId}/logos/seal.png`;
+    const objectPath = `tenants/${tid}/logos/seal.png`;
 
     const bytes = new Uint8Array(await file.arrayBuffer());
     if (!isPngSignature(bytes)) redirect("/admin/logo?e=seal_png");
 
-    const up = await supabase.storage
+    const up = await admin.storage
       .from("assets")
       .upload(objectPath, bytes, { contentType: "image/png", upsert: true });
 
     if (up.error) redirect("/admin/logo?e=seal_upload");
 
-    const { error } = await supabase.from("tenants").update({ company_seal_path: objectPath }).eq("id", tenantId);
+    const { error } = await admin.from("tenants").update({ company_seal_path: objectPath }).eq("id", tid);
 
     if (error) redirect("/admin/logo?e=seal_save");
 
