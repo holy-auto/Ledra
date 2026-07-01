@@ -1,7 +1,8 @@
 /**
  * Polygon 署名ウォレット残高監視 cron
  *
- * GET /api/cron/polygon-signer   (毎時)
+ * GET  /api/cron/polygon-signer   (毎時 / Vercel cron)
+ * POST /api/cron/polygon-signer   (POST で叩く外部スケジューラ・監視ツール用)
  *
  * 用途:
  *   - Ledra が施工画像ハッシュをアンカーするために使っている POL 残高が
@@ -227,3 +228,10 @@ export async function GET(req: NextRequest) {
     return apiJson(summary, { status: 200 });
   }
 }
+
+/**
+ * Vercel cron は GET で叩くが、POST で叩く外部スケジューラ / 監視ツールも存在する
+ * (POST だと 405 になり監視アラートのノイズになる)。認可は GET と同じく
+ * verifyCronRequest で行われるため、POST も同じハンドラに委譲して許可する。
+ */
+export const POST = GET;
