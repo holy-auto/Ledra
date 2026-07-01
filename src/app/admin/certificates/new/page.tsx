@@ -44,58 +44,74 @@ export default async function Page({
     customer_id: string | null;
     customer: { id: string; name: string } | null;
   };
-  const [{ data: tenantRow }, { data: templates, error: tplErr }, { data: vehiclesRaw }, brandedTemplateResult] =
-    await Promise.all([
-      supabase
-        .from("tenants")
-        .select("logo_asset_path, plan_tier, default_warranty_exclusions")
-        .eq("id", tenantId)
-        .single(),
-      supabase
-        .from("templates")
-        .select("id, name, schema_json, category, created_at")
-        .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
-        .order("created_at", { ascending: false })
-        .returns<TemplateRow[]>(),
-      supabase
-        .from("vehicles")
-        .select(
-          "id, maker, model, year, plate_display, vin_code, size_class, customer_id, customer:customers(id, name)",
-        )
-        .eq("tenant_id", tenantId)
-        .order("created_at", { ascending: false })
-        .limit(300)
-        .returns<VehicleRow[]>(),
-      // ブランドテンプレート確認（2クエリを並列）
-      Promise.all([
-        (async (): Promise<{ data: { status: string } | null }> => {
-          try {
-            return await supabase
-              .from("tenant_option_subscriptions")
-              .select("status")
-              .eq("tenant_id", tenantId)
-              .in("status", ["active", "past_due"])
-              .limit(1)
-              .maybeSingle();
-          } catch {
-            return { data: null };
-          }
-        })(),
-        (async (): Promise<{ data: { id: string } | null }> => {
-          try {
-            return await supabase
-              .from("tenant_template_configs")
-              .select("id")
-              .eq("tenant_id", tenantId)
-              .eq("is_active", true)
-              .limit(1)
-              .maybeSingle();
-          } catch {
-            return { data: null };
-          }
-        })(),
-      ]),
-    ]);
+  type CustomerRow = {
+    id: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+  };
+  const [
+    { data: tenantRow },
+    { data: templates, error: tplErr },
+    { data: vehiclesRaw },
+    { data: customersRaw },
+    brandedTemplateResult,
+  ] = await Promise.all([
+    supabase
+      .from("tenants")
+      .select("logo_asset_path, plan_tier, default_warranty_exclusions")
+      .eq("id", tenantId)
+      .single(),
+    supabase
+      .from("templates")
+      .select("id, name, schema_json, category, created_at")
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
+      .order("created_at", { ascending: false })
+      .returns<TemplateRow[]>(),
+    supabase
+      .from("vehicles")
+      .select("id, maker, model, year, plate_display, vin_code, size_class, customer_id, customer:customers(id, name)")
+      .eq("tenant_id", tenantId)
+      .order("created_at", { ascending: false })
+      .limit(300)
+      .returns<VehicleRow[]>(),
+    supabase
+      .from("customers")
+      .select("id, name, email, phone")
+      .eq("tenant_id", tenantId)
+      .order("created_at", { ascending: false })
+      .limit(300)
+      .returns<CustomerRow[]>(),
+    // ブランドテンプレート確認（2クエリを並列）
+    Promise.all([
+      (async (): Promise<{ data: { status: string } | null }> => {
+        try {
+          return await supabase
+            .from("tenant_option_subscriptions")
+            .select("status")
+            .eq("tenant_id", tenantId)
+            .in("status", ["active", "past_due"])
+            .limit(1)
+            .maybeSingle();
+        } catch {
+          return { data: null };
+        }
+      })(),
+      (async (): Promise<{ data: { id: string } | null }> => {
+        try {
+          return await supabase
+            .from("tenant_template_configs")
+            .select("id")
+            .eq("tenant_id", tenantId)
+            .eq("is_active", true)
+            .limit(1)
+            .maybeSingle();
+        } catch {
+          return { data: null };
+        }
+      })(),
+    ]),
+  ]);
 
   if (tplErr) return <div className="text-sm text-danger">テンプレ読み込みエラー: {tplErr.message}</div>;
 
@@ -155,6 +171,7 @@ export default async function Page({
 
       <CertNewFormWrapper
         vehicles={vehiclesRaw ?? []}
+        customers={customersRaw ?? []}
         defaultVehicleId={defaultVehicleId}
         defaultCustomerId={defaultCustomerId}
         defaultReservationId={defaultReservationId}

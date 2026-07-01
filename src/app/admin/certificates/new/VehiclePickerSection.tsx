@@ -60,14 +60,19 @@ const labelTextCls = "text-sm font-medium text-secondary";
 
 export default function VehiclePickerSection({
   vehicles: initialVehicles,
+  customers: initialCustomers = [],
   defaultVehicleId,
+  defaultCustomerId,
   onVehicleChange,
 }: {
   vehicles: Vehicle[];
+  customers?: Customer[];
   defaultVehicleId?: string;
+  defaultCustomerId?: string;
   onVehicleChange?: (vehicleId: string | undefined) => void;
 }) {
   const [vehicles] = useState<Vehicle[]>(initialVehicles);
+  const [customers] = useState<Customer[]>(initialCustomers);
   const [selectedId, setSelectedId] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerId, setCustomerId] = useState("");
@@ -112,6 +117,23 @@ export default function VehiclePickerSection({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultVehicleId]);
+
+  // Pre-select customer when defaultCustomerId is provided (e.g. opened from a
+  // customer/reservation flow). A pre-selected vehicle that carries its own
+  // linked customer wins (that master link is more specific); otherwise seed
+  // from defaultCustomerId so the submitted customer_id is not lost.
+  useEffect(() => {
+    if (!defaultCustomerId) return;
+    const dv = defaultVehicleId ? vehicles.find((v) => v.id === defaultVehicleId) : null;
+    if (dv?.customer) return;
+    setCustomerId(defaultCustomerId);
+    const c = customers.find((x) => x.id === defaultCustomerId);
+    if (c) {
+      setCustomerName(c.name);
+      setCustomerPhone(c.phone ?? null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultCustomerId]);
 
   // Customer search debounce
   useEffect(() => {
@@ -418,6 +440,33 @@ export default function VehiclePickerSection({
         <input type="hidden" name="size_class" value={sizeClass ?? ""} />
 
         <div className="space-y-4">
+          {/* 登録済み車両から選択（プルダウン）— DB連携内容を一覧から確認・選択できる */}
+          {vehicles.length > 0 && (
+            <label className={labelCls}>
+              <span className={labelTextCls}>登録済み車両から選択（プルダウン）</span>
+              <select
+                value={selectedId}
+                onChange={(e) => {
+                  const v = vehicles.find((x) => x.id === e.target.value);
+                  if (v) handleVehicleSelect(v);
+                  else handleVehicleClear();
+                }}
+                className={inputCls}
+              >
+                <option value="">― 手入力 / 未選択 ―</option>
+                {vehicles.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {vehicleLabel(v)}
+                    {v.customer ? ` / ${v.customer.name}` : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-muted">
+                車両マスタから選ぶと連携内容を確認できます。未登録の車両は下の欄に手入力してください。
+              </p>
+            </label>
+          )}
+
           {/* Maker — combobox: type to search or manual entry */}
           <div className={labelCls}>
             <span className={labelTextCls}>
@@ -511,6 +560,38 @@ export default function VehiclePickerSection({
         </div>
 
         <div className="space-y-4">
+          {/* 登録済み顧客から選択（プルダウン）— DB連携内容を一覧から確認・選択できる */}
+          {customers.length > 0 && (
+            <label className={labelCls}>
+              <span className={labelTextCls}>登録済み顧客から選択（プルダウン）</span>
+              <select
+                value={customerId}
+                onChange={(e) => {
+                  const c = customers.find((x) => x.id === e.target.value);
+                  if (c) {
+                    handleCustomerSelect(c);
+                  } else {
+                    setCustomerId("");
+                    setCustomerName("");
+                    setCustomerPhone(null);
+                  }
+                }}
+                className={inputCls}
+              >
+                <option value="">― 手入力 / 未選択 ―</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                    {c.phone ? ` (${c.phone})` : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-muted">
+                顧客マスタから選ぶと連携内容を確認できます。未登録の顧客は下の欄に手入力してください。
+              </p>
+            </label>
+          )}
+
           {/* Customer name — combobox: type to search or manual entry */}
           <div className={labelCls}>
             <span className={labelTextCls}>
