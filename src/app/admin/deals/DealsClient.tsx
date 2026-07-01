@@ -25,6 +25,7 @@ interface TradeInVehicle {
 
 interface DealRow {
   id: string;
+  vehicle_id: string;
   buyer_name: string;
   buyer_company: string | null;
   maker: string;
@@ -479,11 +480,13 @@ export default function DealsClient() {
                           onChange={(e) => setTradeInVehicleValue(e.target.value)}
                         >
                           <option value="">（車両なし）</option>
-                          {vehicleOptions.map((v) => (
-                            <option key={v.id} value={v.id}>
-                              {v.label}
-                            </option>
-                          ))}
+                          {vehicleOptions
+                            .filter((v) => v.id !== deal.vehicle_id) // 販売対象の車両は下取りに選べない
+                            .map((v) => (
+                              <option key={v.id} value={v.id}>
+                                {v.label}
+                              </option>
+                            ))}
                         </select>
                         <input
                           type="number"

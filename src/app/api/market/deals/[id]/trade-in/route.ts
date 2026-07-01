@@ -28,27 +28,42 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // 商談が自テナントのものか確認。
     const { data: deal, error: dealErr } = await admin
       .from("market_deals")
-      .select("id, seller_tenant_id")
+      .select("id, seller_tenant_id, vehicle_id, trade_in_vehicle_id, trade_in_allowance")
       .eq("id", dealId)
       .eq("seller_tenant_id", tenantId)
       .single();
     if (dealErr || !deal) return apiNotFound("deal_not_found");
 
+    // 部分更新のため、指定が無い項目は既存値を維持した「最終状態」を組み立てる。
+    const finalVehicle =
+      trade_in_vehicle_id !== undefined ? trade_in_vehicle_id : (deal.trade_in_vehicle_id as string | null);
+    let finalAllowance =
+      trade_in_allowance !== undefined ? trade_in_allowance : (deal.trade_in_allowance as number | null);
+
+    // 販売対象の車両を自身の下取りには指定できない (在庫が二重に扱われるのを防ぐ)。
+    if (finalVehicle && finalVehicle === deal.vehicle_id) {
+      return apiValidationError("販売対象の車両を下取り車には指定できません。");
+    }
+    // 下取り車が無ければ充当額も持たない (解除時に金額が残って見積から差し引かれるのを防ぐ)。
+    if (!finalVehicle) finalAllowance = null;
+
     // 下取り車を指定する場合は自テナント所有の在庫であることを確認。
-    if (trade_in_vehicle_id) {
+    if (finalVehicle) {
       const { data: veh, error: vehErr } = await admin
         .from("market_vehicles")
-        .select("id, tenant_id")
-        .eq("id", trade_in_vehicle_id)
+        .select("id")
+        .eq("id", finalVehicle)
         .eq("tenant_id", tenantId)
         .maybeSingle();
       if (vehErr) return apiInternalError(vehErr, "market-deal trade-in (vehicle lookup)");
       if (!veh) return apiValidationError("対象の下取り車が見つかりません。");
     }
 
-    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (trade_in_vehicle_id !== undefined) updates.trade_in_vehicle_id = trade_in_vehicle_id;
-    if (trade_in_allowance !== undefined) updates.trade_in_allowance = trade_in_allowance;
+    const updates: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+      trade_in_vehicle_id: finalVehicle,
+      trade_in_allowance: finalAllowance,
+    };
 
     const { data: updated, error: updateErr } = await admin
       .from("market_deals")

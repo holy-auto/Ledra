@@ -96,7 +96,9 @@ export async function GET(req: NextRequest) {
 
     let query = admin
       .from("market_deals")
-      .select("*, market_vehicles(maker, model)")
+      // market_deals は market_vehicles への FK を2本持つ (販売車両 vehicle_id と
+      // 下取り車 trade_in_vehicle_id) ため、販売車両の embed は FK 列名で明示する。
+      .select("*, market_vehicles!vehicle_id(maker, model)")
       .eq("seller_tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
 
