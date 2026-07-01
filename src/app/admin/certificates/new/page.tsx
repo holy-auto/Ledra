@@ -170,7 +170,9 @@ export default async function Page({
               ? "maintenance"
               : selected?.category === "body_repair"
                 ? "body_repair"
-                : undefined
+                : selected?.category === "accessory"
+                  ? "accessory"
+                  : undefined
         }
         defaultWarrantyExclusions={defaultWarrantyExclusions}
       />

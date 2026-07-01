@@ -39,6 +39,7 @@ const EDITABLE_FIELDS: Record<string, string> = {
   ppf_coverage_json: "PPF施工範囲",
   maintenance_json: "整備内容",
   body_repair_json: "鈑金塗装内容",
+  accessory_json: "用品取付内容",
 };
 
 function valuesEqual(a: unknown, b: unknown): boolean {
@@ -70,7 +71,7 @@ export async function PUT(req: NextRequest) {
     const { data: cert, error: fetchError } = await admin
       .from("certificates")
       .select(
-        "id, tenant_id, public_id, status, customer_name, vehicle_info_json, content_free_text, expiry_type, expiry_value, expiry_date, warranty_period_end, maintenance_date, warranty_exclusions, remarks, service_type, coating_products_json, ppf_coverage_json, maintenance_json, body_repair_json, current_version, manufacturer_id, manufacturer_template_id",
+        "id, tenant_id, public_id, status, customer_name, vehicle_info_json, content_free_text, expiry_type, expiry_value, expiry_date, warranty_period_end, maintenance_date, warranty_exclusions, remarks, service_type, coating_products_json, ppf_coverage_json, maintenance_json, body_repair_json, accessory_json, current_version, manufacturer_id, manufacturer_template_id",
       )
       .eq("public_id", publicId)
       .eq("tenant_id", caller.tenantId)

@@ -25,7 +25,7 @@ export async function GET(req: Request) {
   const { data: row, error } = await supabase
     .from("certificates")
     .select(
-      "id,public_id,customer_name,vehicle_info_json,content_free_text,content_preset_json,expiry_type,expiry_value,logo_asset_path,created_at,service_type,ppf_coverage_json,coating_products_json,warranty_period_end,warranty_exclusions,current_version,maintenance_json,body_repair_json,craftsman_name",
+      "id,public_id,customer_name,vehicle_info_json,content_free_text,content_preset_json,expiry_type,expiry_value,logo_asset_path,created_at,service_type,ppf_coverage_json,coating_products_json,warranty_period_end,warranty_exclusions,current_version,maintenance_json,body_repair_json,accessory_json,craftsman_name",
     )
     .eq("tenant_id", tenantId)
     .eq("public_id", pid)

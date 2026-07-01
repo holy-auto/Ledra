@@ -144,13 +144,14 @@ export async function GET(req: Request) {
     | "current_version"
     | "maintenance_json"
     | "body_repair_json"
+    | "accessory_json"
   > & { id: string; tenant_id: string | null; manufacturer_template_id: string | null };
 
   const adm = createServiceRoleAdmin("public certificate PDF — fetch full cert + anchors for rendering");
   const { data: fullCert } = await adm
     .from("certificates")
     .select(
-      "id, tenant_id, ppf_coverage_json, service_type, coating_products_json, warranty_period_end, warranty_exclusions, current_version, maintenance_json, body_repair_json, manufacturer_template_id",
+      "id, tenant_id, ppf_coverage_json, service_type, coating_products_json, warranty_period_end, warranty_exclusions, current_version, maintenance_json, body_repair_json, accessory_json, manufacturer_template_id",
     )
     .eq("public_id", pid)
     .limit(1)
@@ -216,6 +217,7 @@ export async function GET(req: Request) {
     ppf_coverage_json: fullCert?.ppf_coverage_json ?? null,
     maintenance_json: fullCert?.maintenance_json ?? null,
     body_repair_json: fullCert?.body_repair_json ?? null,
+    accessory_json: fullCert?.accessory_json ?? null,
     service_type: fullCert?.service_type ?? null,
     expiry_type: cert.expiry_type ?? null,
     expiry_value: cert.expiry_value ?? null,

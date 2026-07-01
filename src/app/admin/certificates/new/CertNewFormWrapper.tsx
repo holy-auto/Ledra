@@ -15,6 +15,7 @@ import CoatingProductsSection from "./CoatingProductsSection";
 import PpfCoverageSection from "./PpfCoverageSection";
 import MaintenanceDetailsSection from "./MaintenanceDetailsSection";
 import BodyRepairDetailsSection from "./BodyRepairDetailsSection";
+import AccessoryDetailsSection from "./AccessoryDetailsSection";
 import PhotoUploadSection, { type PhotoUploadHandle } from "./PhotoUploadSection";
 import ManufacturerTemplatePicker from "./ManufacturerTemplatePicker";
 import Button from "@/components/ui/Button";
@@ -118,7 +119,8 @@ export default function CertNewFormWrapper({
   const isPpf = serviceType === "ppf";
   const isMaintenance = serviceType === "maintenance";
   const isBodyRepair = serviceType === "body_repair";
-  const isCoatingOrPpf = !isMaintenance && !isBodyRepair;
+  const isAccessory = serviceType === "accessory";
+  const isCoatingOrPpf = !isMaintenance && !isBodyRepair && !isAccessory;
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [submitStatus, setSubmitStatus] = useState<"active" | "draft">("active");
@@ -646,6 +648,13 @@ export default function CertNewFormWrapper({
         {isBodyRepair && (
           <section className="border-t border-border-subtle py-6">
             <BodyRepairDetailsSection />
+          </section>
+        )}
+
+        {/* ━━━ 2d. 用品取付内容（用品取付テンプレート時のみ） ━━━ */}
+        {isAccessory && (
+          <section className="border-t border-border-subtle py-6">
+            <AccessoryDetailsSection />
           </section>
         )}
 

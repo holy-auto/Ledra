@@ -46,6 +46,7 @@ type CertRow = {
   warranty_exclusions: string | null;
   maintenance_json: Json | null;
   body_repair_json: Json | null;
+  accessory_json: Json | null;
   manufacturer_id: string | null;
   manufacturer_template_id: string | null;
   craftsman_name: string | null;
@@ -196,7 +197,7 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
         "vehicle_info_json, content_free_text, content_preset_json, expiry_type, expiry_value, " +
         "logo_asset_path, footer_variant, current_version, service_type, ppf_coverage_json, " +
         "coating_products_json, warranty_period_end, warranty_exclusions, " +
-        "maintenance_json, body_repair_json, manufacturer_id, manufacturer_template_id, craftsman_name",
+        "maintenance_json, body_repair_json, accessory_json, manufacturer_id, manufacturer_template_id, craftsman_name",
     )
     .eq("public_id", pid)
     .limit(1)
