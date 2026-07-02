@@ -72,12 +72,15 @@ export interface DeductionResult {
   ai: boolean;
 }
 
-export async function suggestPosDeductions(input: {
-  sales: MenuSale[];
-  skus: SkuRef[];
-  links: DeductionLinkRow[];
-  history: PastDeductionRow[];
-}): Promise<DeductionResult> {
+export async function suggestPosDeductions(
+  input: {
+    sales: MenuSale[];
+    skus: SkuRef[];
+    links: DeductionLinkRow[];
+    history: PastDeductionRow[];
+  },
+  opts?: { model?: string },
+): Promise<DeductionResult> {
   const skuById = new Map(input.skus.map((s) => [s.id, s]));
   const linksByMenu = new Map<string, DeductionLinkRow[]>();
   for (const link of input.links) {
@@ -115,7 +118,7 @@ export async function suggestPosDeductions(input: {
       continue;
     }
     // 履歴ベース
-    const histList = sale.service_category ? historyByCategory.get(sale.service_category) ?? [] : [];
+    const histList = sale.service_category ? (historyByCategory.get(sale.service_category) ?? []) : [];
     if (histList.length > 0) {
       for (const h of histList) {
         const sku = skuById.get(h.sku_id);
@@ -141,14 +144,20 @@ export async function suggestPosDeductions(input: {
 
   // AI で未解決メニューを推定
   const client = getAnthropicClient();
-  const skuList = input.skus.slice(0, 50).map((s) => `- id=${s.id} name=${s.name} unit=${s.unit ?? "個"}`).join("\n");
+  const skuList = input.skus
+    .slice(0, 50)
+    .map((s) => `- id=${s.id} name=${s.name} unit=${s.unit ?? "個"}`)
+    .join("\n");
   const saleList = unresolved
-    .map((s) => `- menu_item_id=${s.menu_item_id} name=${s.menu_item_name} category=${s.service_category ?? "(不明)"} qty=${s.sold_quantity}`)
+    .map(
+      (s) =>
+        `- menu_item_id=${s.menu_item_id} name=${s.menu_item_name} category=${s.service_category ?? "(不明)"} qty=${s.sold_quantity}`,
+    )
     .join("\n");
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 1024,
         system: SYSTEM_PROMPT,
         messages: [

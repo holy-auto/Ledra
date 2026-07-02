@@ -20,6 +20,7 @@ import { apiOk, apiUnauthorized, apiNotFound, apiInternalError, apiPlanLimit } f
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { extractInboundReservation } from "@/lib/ai/inboundReservationExtract";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
@@ -69,12 +70,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const channel =
       message.channel === "line" || message.channel === "email" ? (message.channel as "line" | "email") : "form";
 
-    const result = await extractInboundReservation({
-      text: (message.body as string | null) ?? "",
-      channel,
-      receivedDate:
-        typeof message.created_at === "string" ? (message.created_at as string).slice(0, 10) : undefined,
-    });
+    const result = await extractInboundReservation(
+      {
+        text: (message.body as string | null) ?? "",
+        channel,
+        receivedDate: typeof message.created_at === "string" ? (message.created_at as string).slice(0, 10) : undefined,
+      },
+      { model: fastModelForPlanTier(caller.planTier) },
+    );
 
     const snapshot = {
       ...result,

@@ -205,7 +205,7 @@ describe("PUT /api/admin/settings/ai-automation", () => {
     expect(body.settings.confidenceThreshold).toBe(0.3);
   });
 
-  it("persists sanitized auto-actions, dropping 壁3 / unknown / false", async () => {
+  it("persists sanitized auto-actions, dropping unknown / false but keeping former Wall-3", async () => {
     mocks.resolveCaller.mockResolvedValue({
       userId: "u1",
       tenantId: "tenant-1",
@@ -216,7 +216,7 @@ describe("PUT /api/admin/settings/ai-automation", () => {
       req({
         autoActions: {
           "inbound_message.auto_extract": true,
-          "certificate.auto_issue": true, // 壁3 -> dropped
+          "certificate.auto_issue": true, // formerly Wall-3, now kept
           "ghost.action": true, // unknown -> dropped
           "review.auto_analyze": false, // false -> dropped
         },
@@ -224,16 +224,19 @@ describe("PUT /api/admin/settings/ai-automation", () => {
     );
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.settings.autoActions).toEqual({ "inbound_message.auto_extract": true });
+    expect(body.settings.autoActions).toEqual({
+      "inbound_message.auto_extract": true,
+      "certificate.auto_issue": true,
+    });
     expect(mocks.upsert).toHaveBeenCalledTimes(1);
   });
 
-  it("blocks enabling auto-actions on plans below Standard (403, no write)", async () => {
+  it("blocks enabling auto-actions on Free plan (403, no write)", async () => {
     mocks.resolveCaller.mockResolvedValue({
       userId: "u1",
       tenantId: "tenant-1",
       role: "admin",
-      planTier: "starter",
+      planTier: "free",
     });
     const res = await PUT(req({ autoActions: { "inbound_message.auto_extract": true } }));
     expect(res.status).toBe(403);

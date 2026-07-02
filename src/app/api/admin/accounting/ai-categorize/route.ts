@@ -17,6 +17,7 @@ import { parseJsonBody } from "@/lib/api/parseBody";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { categorizeAccountingLines } from "@/lib/ai/accountingCategoryEstimate";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
@@ -87,7 +88,9 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const result = await categorizeAccountingLines(parsed.data.lines, parsed.data.accounts, parsed.data.fallback_code);
+    const result = await categorizeAccountingLines(parsed.data.lines, parsed.data.accounts, parsed.data.fallback_code, {
+      model: fastModelForPlanTier(caller.planTier),
+    });
 
     const methods = result.lines.reduce<Record<string, number>>((acc, l) => {
       acc[l.method] = (acc[l.method] ?? 0) + 1;

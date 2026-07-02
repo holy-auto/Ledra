@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatDate, formatDateTime } from "@/lib/format";
 import ServiceTimeline, { type TimelineEvent } from "./ServiceTimeline";
+import VehicleCustomerLink from "./VehicleCustomerLink";
 
 export const dynamic = "force-dynamic";
 
@@ -387,7 +388,7 @@ export default async function AdminVehicleDetailPage({
             )}
           </div>
           <div className="font-mono">車体番号: {vehicle.vin_code ?? "-"}</div>
-          <div>現所有者: {vehicle.customer?.name ?? <span className="text-muted">未設定</span>}</div>
+          <VehicleCustomerLink vehicleId={vehicle.id} initialCustomer={vehicle.customer} />
         </div>
         {vehicle.notes ? <div className="text-sm text-secondary">メモ: {vehicle.notes}</div> : null}
       </section>

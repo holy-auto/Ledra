@@ -53,7 +53,7 @@ export default async function AcademyPage() {
   // プラン確認
   const { data: tenantRow } = await admin.from("tenants").select("plan_tier, name").eq("id", mem.tenant_id).single();
   const planTier = normalizePlanTier(tenantRow?.plan_tier);
-  const isAiEnabled = planTier === "standard" || planTier === "pro";
+  const isAiEnabled = planTier === "starter" || planTier === "standard" || planTier === "pro";
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
@@ -156,9 +156,7 @@ export default async function AcademyPage() {
           <div className="flex items-center gap-3 mb-3">
             <span className="text-2xl">📖</span>
             <div>
-              <div className="font-semibold text-primary group-hover:text-accent transition-colors">
-                オンライン学習
-              </div>
+              <div className="font-semibold text-primary group-hover:text-accent transition-colors">オンライン学習</div>
               <div className="text-xs text-muted">入門は全プラン / 基礎以上はStarter以上</div>
             </div>
           </div>

@@ -9,6 +9,7 @@ import {
   BODY_REPAIR_STAGES,
   type BodyRepairStage,
 } from "@/lib/validations/body-repair-job";
+import { maybeNotifyBodyRepairStageAdvance } from "@/lib/bodyRepair/stageNotify";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -20,10 +21,11 @@ export const runtime = "nodejs";
  */
 const SELECT_COLUMNS = `
   id, reservation_id, customer_id, vehicle_id, stage,
-  estimate_amount, actual_amount, insurance_company, claim_number, assigned_staff_id,
+  estimate_amount, actual_amount, due_date, insurance_company, claim_number, assigned_staff_id,
   intake_at, estimate_at, bodywork_start_at, paint_start_at, complete_at, delivered_at,
   notes, created_at, updated_at,
-  certificate_id, estimate_document_id, invoice_document_id,
+  certificate_id, estimate_document_id, invoice_document_id, insurer_case_id,
+  claim_status, claim_approved_amount, claim_decided_at,
   planned_work_json, actual_work_json, deviation_reason,
   is_specified_maintenance, record_retention_until, recorded_by,
   customer:customers ( id, name, phone ),
@@ -109,6 +111,7 @@ export async function POST(req: NextRequest) {
       certificate_id,
       estimate_document_id,
       invoice_document_id,
+      insurer_case_id,
       is_specified_maintenance,
       ...rest
     } = parsed.data;
@@ -122,6 +125,7 @@ export async function POST(req: NextRequest) {
       certificate_id,
       estimate_document_id,
       invoice_document_id,
+      insurer_case_id,
     });
     if (refError) return apiValidationError(refError);
 
@@ -145,6 +149,7 @@ export async function POST(req: NextRequest) {
         certificate_id,
         estimate_document_id,
         invoice_document_id,
+        insurer_case_id,
         is_specified_maintenance: isSpecified,
         // ガイドライン4.2(2): 記録者と保存期限を作成時に確定する
         recorded_by: caller.userId,
@@ -184,6 +189,7 @@ export async function PATCH(req: NextRequest) {
       certificate_id,
       estimate_document_id,
       invoice_document_id,
+      insurer_case_id,
       is_specified_maintenance,
       ...fields
     } = parsed.data;
@@ -199,6 +205,7 @@ export async function PATCH(req: NextRequest) {
       certificate_id,
       estimate_document_id,
       invoice_document_id,
+      insurer_case_id,
     });
     if (refError) return apiValidationError(refError);
 
@@ -213,6 +220,7 @@ export async function PATCH(req: NextRequest) {
     if (certificate_id !== undefined) updates.certificate_id = certificate_id;
     if (estimate_document_id !== undefined) updates.estimate_document_id = estimate_document_id;
     if (invoice_document_id !== undefined) updates.invoice_document_id = invoice_document_id;
+    if (insurer_case_id !== undefined) updates.insurer_case_id = insurer_case_id;
     // 特定整備フラグ変更時は保存期限 (特定整備=2年) を再計算する。
     if (is_specified_maintenance !== undefined) {
       updates.is_specified_maintenance = is_specified_maintenance;
@@ -223,6 +231,8 @@ export async function PATCH(req: NextRequest) {
 
     // ステージ変更時: 対応する到達タイムスタンプが未設定なら now() をセットする
     // (一度入った工程の到達時刻は上書きしない = 出戻りで時刻が消えない)。
+    let previousStage: BodyRepairStage | null = null;
+    let isForwardAdvance = false;
     if (stage !== undefined) {
       // 現在の案件を取得して到達タイムスタンプの既存値を確認する。
       const { data: existing, error: fetchErr } = await admin
@@ -234,6 +244,11 @@ export async function PATCH(req: NextRequest) {
       if (fetchErr) return apiInternalError(fetchErr, "body-repair-jobs PATCH fetch");
       if (!existing) return apiValidationError("対象の案件が見つかりません。");
 
+      previousStage = (existing as { stage?: BodyRepairStage }).stage ?? null;
+      // 工程インデックスが増える「前進」のときだけ顧客通知の対象とする。
+      // 後退・補正 (admin/API のやり直し) で「進捗が進んだ」通知を送らない。
+      isForwardAdvance =
+        previousStage !== null && BODY_REPAIR_STAGES.indexOf(stage) > BODY_REPAIR_STAGES.indexOf(previousStage);
       updates.stage = stage;
       const tsColumn = STAGE_TIMESTAMP_COLUMN[stage];
       const existingTs = (existing as Record<string, unknown>)[tsColumn];
@@ -242,15 +257,40 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
-    const { data: updated, error } = await admin
-      .from("body_repair_jobs")
-      .update(updates)
-      .eq("id", id)
-      .eq("tenant_id", caller.tenantId)
-      .select(SELECT_COLUMNS)
-      .maybeSingle();
+    // ステージ遷移時は UPDATE を「現在 stage が previousStage のまま」に条件付ける。
+    // 並行 PATCH (二重送信・別タブ) では先勝ちした 1 件だけが行を更新し、後続は
+    // updated=null になるため、進捗通知が重複しない (TOCTOU 安全)。
+    let updateQuery = admin.from("body_repair_jobs").update(updates).eq("id", id).eq("tenant_id", caller.tenantId);
+    if (stage !== undefined && previousStage !== null) {
+      updateQuery = updateQuery.eq("stage", previousStage);
+    }
+    const { data: updated, error } = await updateQuery.select(SELECT_COLUMNS).maybeSingle();
     if (error) return apiInternalError(error, "body-repair-jobs PATCH");
-    if (!updated) return apiValidationError("対象の案件が見つかりません。");
+    if (!updated) {
+      // stage ガード不一致 = 並行更新で既に遷移済みの可能性。存在すれば現状を返す
+      // (通知はしない)。本当に存在しなければ not found。
+      if (stage !== undefined) {
+        const { data: current } = await admin
+          .from("body_repair_jobs")
+          .select(SELECT_COLUMNS)
+          .eq("id", id)
+          .eq("tenant_id", caller.tenantId)
+          .maybeSingle();
+        if (current) return apiJson({ ok: true, job: current });
+      }
+      return apiValidationError("対象の案件が見つかりません。");
+    }
+
+    // 工程が「前進」したときだけ、opt-in 済みテナントで顧客へ進捗を自動通知する
+    // (fire-and-forget; レスポンスは待たせない)。重複は上の stage ガードで防ぐ。
+    if (isForwardAdvance && stage !== undefined) {
+      void maybeNotifyBodyRepairStageAdvance({
+        tenantId: caller.tenantId,
+        jobId: id,
+        customerId: (updated as { customer_id?: string | null }).customer_id ?? null,
+        stage,
+      });
+    }
 
     return apiJson({ ok: true, job: updated });
   } catch (e) {
@@ -267,12 +307,13 @@ async function validateTenantRefs(
   admin: ReturnType<typeof createTenantScopedAdmin>["admin"],
   tenantId: string,
   refs: {
-    customer_id: string | null;
-    vehicle_id: string | null;
-    reservation_id: string | null;
+    customer_id?: string | null;
+    vehicle_id?: string | null;
+    reservation_id?: string | null;
     certificate_id?: string | null;
     estimate_document_id?: string | null;
     invoice_document_id?: string | null;
+    insurer_case_id?: string | null;
   },
 ): Promise<string | null> {
   if (refs.customer_id) {
@@ -326,6 +367,18 @@ async function validateTenantRefs(
       .maybeSingle();
     if (error) throw error;
     if (!data) return "指定された帳票が見つかりません。";
+  }
+  // 保険案件は insurer_cases.tenant_id が自テナントであることを確認する
+  // (他テナント/他保険会社の案件 ID をリークさせて紐付けるのを防ぐ)。
+  if (refs.insurer_case_id) {
+    const { data, error } = await admin
+      .from("insurer_cases")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("id", refs.insurer_case_id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return "指定された保険案件が見つかりません。";
   }
   return null;
 }

@@ -28,6 +28,7 @@ import {
   type PhotoIntegrityFlag,
 } from "@/lib/ai/certificatePhotoIntegrity";
 import { inspectImageTamperingVision } from "@/lib/ai/photoTamperingCheck";
+import { modelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "./policy";
@@ -45,6 +46,7 @@ const FLAG_HINT_JA: Record<PhotoIntegrityFlag, string> = {
   duplicate_image: "他の写真とハッシュが重複",
   deepfake_suspected: "ディープフェイク判定が要注意",
   capture_time_future: "撮影日時が未来",
+  capture_time_stale: "撮影日時がアップロードより大幅に前 (使い回しの疑い)",
   metadata_missing: "撮影メタ(日時/端末)が欠落",
   vision_suspicious: "内容審査で要注意",
 };
@@ -84,7 +86,7 @@ export async function maybeAutoTamperingCheckForCertificate(params: MaybeAutoTam
     const { data: rows } = await admin
       .from("certificate_images")
       .select(
-        "id, sha256, perceptual_hash, exif_captured_at, exif_device_model, deepfake_verdict, authenticity_grade, storage_path, content_type",
+        "id, sha256, perceptual_hash, exif_captured_at, exif_device_model, deepfake_verdict, authenticity_grade, storage_path, content_type, created_at",
       )
       .eq("certificate_id", certificateId)
       .eq("tenant_id", tenantId)
@@ -95,6 +97,8 @@ export async function maybeAutoTamperingCheckForCertificate(params: MaybeAutoTam
       sha256: (r.sha256 as string | null) ?? null,
       perceptualHash: (r.perceptual_hash as string | null) ?? null,
       capturedAt: (r.exif_captured_at as string | null) ?? null,
+      // stale (使い回し) 判定の基準 = 各写真自身のアップロード時刻。
+      uploadedAt: (r.created_at as string | null) ?? null,
       deviceModel: (r.exif_device_model as string | null) ?? null,
       deepfakeVerdict: (r.deepfake_verdict as string | null) ?? null,
       authenticityGrade: (r.authenticity_grade as string | null) ?? null,
@@ -105,6 +109,8 @@ export async function maybeAutoTamperingCheckForCertificate(params: MaybeAutoTam
     // 写真がまだ無ければ何もしない (アップロード初回前など)。
     if (imageRows.length === 0) return;
 
+    // stale 判定は各写真の uploadedAt (certificate_images.created_at) を基準に
+    // 集約関数側で行うため、ここでは追加の基準時刻は渡さない。
     const firstPass = aggregateCertificateImageIntegrity(imageRows);
 
     // 既存の判定を尊重して無駄な上書きを避ける。
@@ -152,7 +158,9 @@ export async function maybeAutoTamperingCheckForCertificate(params: MaybeAutoTam
         const base64 = await downloadImageBase64(admin, row.storagePath);
         if (!base64) continue;
         const hints = (flagsById.get(id) ?? []).map((f) => FLAG_HINT_JA[f] ?? f);
-        const v = await inspectImageTamperingVision(base64, mime, hints);
+        const v = await inspectImageTamperingVision(base64, mime, hints, {
+          model: modelForPlanTier(tenant.plan_tier),
+        });
         visionByImageId[id] = v;
         visionCalls++;
       }

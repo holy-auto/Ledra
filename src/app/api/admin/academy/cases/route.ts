@@ -9,6 +9,7 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { generateAcademyCaseSummary } from "@/lib/ai/academyFeedback";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 
 const academyCaseActionSchema = z.object({
@@ -117,14 +118,17 @@ export async function POST(req: NextRequest) {
 
         if (cert) {
           try {
-            const summary = await generateAcademyCaseSummary({
-              serviceName: cert.service_name ?? "",
-              description: cert.description ?? undefined,
-              materialInfo: cert.material_info ?? undefined,
-              category: existingCase.category,
-              qualityScore: existingCase.quality_score,
-              photoCount: cert.photo_count ?? 0,
-            });
+            const summary = await generateAcademyCaseSummary(
+              {
+                serviceName: cert.service_name ?? "",
+                description: cert.description ?? undefined,
+                materialInfo: cert.material_info ?? undefined,
+                category: existingCase.category,
+                qualityScore: existingCase.quality_score,
+                photoCount: cert.photo_count ?? 0,
+              },
+              { model: fastModelForPlanTier(caller.planTier) },
+            );
             aiSummary = summary.aiSummary;
             goodPoints = summary.goodPoints;
             cautionPoints = summary.cautionPoints;

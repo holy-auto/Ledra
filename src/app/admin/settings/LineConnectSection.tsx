@@ -8,6 +8,7 @@ type LineStatus = {
   channel_id: string | null;
   liff_id: string | null;
   webhook_url: string | null;
+  link_prompt_enabled: boolean;
 };
 
 export default function LineConnectSection() {
@@ -88,11 +89,30 @@ export default function LineConnectSection() {
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
-      setStatus({ enabled: false, channel_id: null, liff_id: null, webhook_url: null });
+      setStatus({ enabled: false, channel_id: null, liff_id: null, webhook_url: null, link_prompt_enabled: false });
       setChannelId("");
       setChannelSecret("");
       setAccessToken("");
       setLiffId("");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleToggleLinkPrompt = async (next: boolean) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/admin/line", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "set_link_prompt", enabled: next }),
+      });
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      setStatus((s) => (s ? { ...s, link_prompt_enabled: next } : s));
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -115,6 +135,80 @@ export default function LineConnectSection() {
       <p className="text-sm text-secondary">
         LINE公式アカウントを連携すると、予約確認・リマインダー・書類送付をLINEで自動送信できます。
       </p>
+
+      {/* 料金の目安（設定時に確認できるヘルプ） */}
+      <details className="rounded-lg border border-border-subtle bg-surface-hover/30 px-3 py-2 text-xs text-secondary">
+        <summary className="cursor-pointer font-medium text-primary hover:text-accent">
+          💰 料金の目安（無料／有料の違い）
+        </summary>
+        <div className="mt-2 space-y-2 leading-relaxed">
+          <p>
+            <span className="font-medium text-primary">課金されるのは「プッシュ（店から先に送る通知）」だけ</span>
+            です。お客様からの問い合わせ・予約相談への自動応答（リプライ）は
+            <span className="font-medium">無料・無制限</span>。費用は「店から能動的に送る通数」で決まります。
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[11px] border-collapse">
+              <thead>
+                <tr className="text-muted text-left">
+                  <th className="py-1 pr-2 font-medium">プラン</th>
+                  <th className="py-1 pr-2 font-medium">月額</th>
+                  <th className="py-1 pr-2 font-medium">無料プッシュ枠</th>
+                  <th className="py-1 font-medium">超過</th>
+                </tr>
+              </thead>
+              <tbody className="text-secondary">
+                <tr className="border-t border-border-subtle">
+                  <td className="py-1 pr-2">コミュニケーション</td>
+                  <td className="py-1 pr-2">¥0</td>
+                  <td className="py-1 pr-2">200通/月</td>
+                  <td className="py-1">送れない</td>
+                </tr>
+                <tr className="border-t border-border-subtle">
+                  <td className="py-1 pr-2">ライト</td>
+                  <td className="py-1 pr-2">¥5,000</td>
+                  <td className="py-1 pr-2">5,000通/月</td>
+                  <td className="py-1">送れない</td>
+                </tr>
+                <tr className="border-t border-border-subtle">
+                  <td className="py-1 pr-2">スタンダード</td>
+                  <td className="py-1 pr-2">¥15,000</td>
+                  <td className="py-1 pr-2">30,000通/月</td>
+                  <td className="py-1">従量（〜¥3/通）</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="text-muted">
+            ※「1通」＝1人へ1メッセージ。100人へ一斉配信すると100通。料金は改定される場合があります。
+          </p>
+          <div>
+            <div className="font-medium text-primary">有料化が増える主な条件</div>
+            <ul className="mt-1 ml-4 list-disc space-y-0.5">
+              <li>
+                <span className="font-medium">一斉配信の頻度・対象人数</span>（友だち数×回数で一気に増える＝最大要因）
+              </li>
+              <li>友だち（連携）数の増加（配信・誕生日・リマインダーの母数）</li>
+              <li>月間の予約・作業台数（確認＋リマインダーで1台2〜3通）</li>
+              <li>リマインダーを「前日＋当日」など複数回送る設定</li>
+              <li>請求書・見積・決済リンクのLINE送付比率</li>
+              <li>鈑金など多工程案件（工程ごとの進捗通知）／点検・車検の定期リマインダー対象数</li>
+              <li>受信箱からのスタッフ手動返信（プッシュ扱い）</li>
+            </ul>
+          </div>
+          <div>
+            <div className="font-medium text-primary">目安</div>
+            <ul className="mt-1 ml-4 list-disc space-y-0.5">
+              <li>配信せず個別通知中心（月30台規模・友だち数百）→ だいたい無料〜ライト</li>
+              <li>月1回ほど配信＋通常運用（月100台・友だち1,000）→ ライト</li>
+              <li>配信を月2回以上 or 友だち2,000人超 → スタンダード検討</li>
+            </ul>
+          </div>
+          <p className="text-muted">
+            費用を抑えるコツ：会話で済むことは自動応答（無料）に寄せる／一斉配信はセグメントで人数を絞る／リマインダーは1通にまとめる／社内連絡はアプリ内通知で。
+          </p>
+        </div>
+      </details>
 
       {/* Status indicator */}
       <div className="flex items-center gap-3 text-sm">
@@ -252,6 +346,28 @@ export default function LineConnectSection() {
           <p className="text-sm text-success">
             LINE連携が有効です。予約確認・リマインダー・書類リンクが自動送信されます。
           </p>
+        </div>
+      )}
+
+      {/* 連携案内の自動返信トグル */}
+      {isConnected && !editing && (
+        <div className="mt-3 rounded-lg border border-border-subtle p-3 space-y-2">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={status?.link_prompt_enabled ?? false}
+              disabled={busy}
+              onChange={(e) => handleToggleLinkPrompt(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span className="text-sm text-secondary">
+              <span className="font-medium text-primary">未連携のお客様に連携案内を自動返信する</span>
+              <br />
+              <span className="text-xs text-muted">
+                まだ顧客に紐づいていないLINEユーザーとのやり取りが少し進んだ段階で、連携のお願い（既存のお客様＝連携コード入力／はじめての方＝登録フォーム）を1度だけ自動送信します。
+              </span>
+            </span>
+          </label>
         </div>
       )}
     </div>

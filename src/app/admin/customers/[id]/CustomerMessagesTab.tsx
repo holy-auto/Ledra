@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/swr";
-import MessageAiExtractButton from "./MessageAiExtractButton";
+import MessageAiExtractButton, { ExtractedCandidateCard, type ExtractedResult } from "./MessageAiExtractButton";
+import LinkCodeButton from "./LinkCodeButton";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 
 /**
@@ -29,6 +30,8 @@ type MessageRow = {
   line_message_id: string | null;
   line_timestamp_ms: number | null;
   created_at: string;
+  /** 紐づけ時の履歴一括取り込み等で保存された予約候補スナップショット (未抽出は null)。 */
+  ai_extracted: ExtractedResult | null;
 };
 
 type ThreadResponse = {
@@ -52,7 +55,13 @@ function formatTime(iso: string): string {
   }
 }
 
-export default function CustomerMessagesTab({ customerId }: { customerId: string }) {
+export default function CustomerMessagesTab({
+  customerId,
+  canIssueLinkCode = false,
+}: {
+  customerId: string;
+  canIssueLinkCode?: boolean;
+}) {
   const swrKey = `/api/admin/customers/${customerId}/messages`;
   const { data, error, isLoading, mutate } = useSWR<ThreadResponse>(swrKey, fetcher, {
     revalidateOnFocus: true,
@@ -62,7 +71,23 @@ export default function CustomerMessagesTab({ customerId }: { customerId: string
   const [draft, setDraft] = useState("");
   const [sendBusy, setSendBusy] = useState(false);
   const [sendMsg, setSendMsg] = useState<string | null>(null);
+  const [dismissingId, setDismissingId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const handleDismissCandidate = useCallback(
+    async (messageId: string) => {
+      setDismissingId(messageId);
+      try {
+        const res = await fetch(`/api/admin/customer-messages/${messageId}/candidate-dismiss`, { method: "POST" });
+        if (res.ok) await mutate();
+      } catch {
+        /* fail-soft: 失敗時は次回再表示される */
+      } finally {
+        setDismissingId(null);
+      }
+    },
+    [mutate],
+  );
 
   const messages = useMemo(() => data?.messages ?? [], [data]);
   const canSend = data?.can_send === true;
@@ -161,7 +186,17 @@ export default function CustomerMessagesTab({ customerId }: { customerId: string
                     </span>
                   )}
                 </div>
-                {!isOutbound && <MessageAiExtractButton messageId={m.id} />}
+                {!isOutbound &&
+                  (m.ai_extracted ? (
+                    <ExtractedCandidateCard
+                      result={m.ai_extracted}
+                      customerId={customerId}
+                      onDismiss={() => handleDismissCandidate(m.id)}
+                      dismissing={dismissingId === m.id}
+                    />
+                  ) : (
+                    <MessageAiExtractButton messageId={m.id} customerId={customerId} />
+                  ))}
               </div>
             </div>
           );
@@ -174,6 +209,7 @@ export default function CustomerMessagesTab({ customerId }: { customerId: string
             この顧客にはまだ LINE ユーザが紐付いていません (`customers.line_user_id` が空)。 送信するには、顧客が LINE
             公式アカウントを友だち追加して 1 度メッセージを送るか、 予約フォームの LIFF
             経由で紐付けてもらう必要があります。
+            {canIssueLinkCode && <LinkCodeButton customerId={customerId} />}
           </div>
         )}
         <div className="flex gap-2">

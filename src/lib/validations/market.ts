@@ -105,6 +105,16 @@ export const marketVehicleCreateSchema = z.object({
     .transform((v) => v || null),
   asking_price: z.number().min(0).nullable().optional(),
   wholesale_price: z.number().min(0).nullable().optional(),
+  // 仕入(原価・仕入先・仕入日)。在庫粗利/長期在庫の算出に使う。
+  cost_price: z.number().int().min(0).nullable().optional(),
+  supplier_name: z
+    .string()
+    .trim()
+    .max(200)
+    .nullable()
+    .optional()
+    .transform((v) => v || null),
+  acquisition_date: z.string().nullable().optional(),
   description: z
     .string()
     .trim()
@@ -146,9 +156,10 @@ export const inquiryCreateSchema = z.object({
 
 export const dealCreateSchema = z.object({
   inquiry_id: z.string().uuid("問い合わせIDは必須です。"),
-  vehicle_id: z.string().uuid("車両IDは必須です。"),
-  buyer_name: z.string().trim().min(1, "お名前は必須です。").max(100),
-  buyer_email: z.string().trim().email("有効なメールアドレスを入力してください。"),
+  // vehicle_id / buyer_* は問い合わせから引き継ぐ（サーバ側で補完）。明示指定時は上書き。
+  vehicle_id: z.string().uuid("車両IDは必須です。").optional(),
+  buyer_name: z.string().trim().min(1, "お名前は必須です。").max(100).optional(),
+  buyer_email: z.string().trim().email("有効なメールアドレスを入力してください。").optional(),
   buyer_company: z
     .string()
     .trim()
@@ -169,6 +180,20 @@ export const dealStatusUpdateSchema = z.object({
     .nullable()
     .optional()
     .transform((v) => v || null),
+});
+
+export const dealEstimateLinkSchema = z.object({
+  estimate_document_id: z.string().uuid("無効なドキュメントIDです。"),
+});
+
+export const dealTradeInSchema = z.object({
+  trade_in_vehicle_id: z.string().uuid("無効な車両IDです。").nullable().optional(),
+  trade_in_allowance: z
+    .number()
+    .int("整数で入力してください。")
+    .min(0, "0以上で入力してください。")
+    .nullable()
+    .optional(),
 });
 
 export const inquiryReplySchema = z.object({

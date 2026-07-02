@@ -17,6 +17,7 @@ import {
   processMaintenanceReminders,
 } from "@/lib/cron/followUp";
 import { processInspectionReminders } from "@/lib/cron/inspectionReminders";
+import { processServiceReminders } from "@/lib/cron/serviceReminders";
 import { processBirthdayGreetings } from "@/lib/cron/birthdayGreetings";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +44,7 @@ export async function GET(req: NextRequest) {
       let seasonalSent = 0;
       let maintenanceSent = 0;
       let inspectionSent = 0;
+      let serviceReminderSent = 0;
       let birthdaySent = 0;
       try {
         const { data: rawSettings } = await supabase
@@ -76,13 +78,22 @@ export async function GET(req: NextRequest) {
             seasonalSent += await processSeasonalProposals(supabase, setting, shopName, today);
             maintenanceSent += await processMaintenanceReminders(supabase, setting, tenant, shopName, planTier, today);
             inspectionSent += await processInspectionReminders(supabase, setting, shopName, today);
+            serviceReminderSent += await processServiceReminders(supabase, setting, shopName, today);
             birthdaySent += await processBirthdayGreetings(supabase, setting, shopName, today);
           }
         }
       } catch (e) {
         console.error("[cron/follow-up] failed:", e);
       }
-      return { remindersSent, followUpsSent, seasonalSent, maintenanceSent, inspectionSent, birthdaySent };
+      return {
+        remindersSent,
+        followUpsSent,
+        seasonalSent,
+        maintenanceSent,
+        inspectionSent,
+        serviceReminderSent,
+        birthdaySent,
+      };
     });
 
     if (!lock.acquired) {
@@ -96,6 +107,7 @@ export async function GET(req: NextRequest) {
       seasonal_sent: lock.value.seasonalSent,
       maintenance_sent: lock.value.maintenanceSent,
       inspection_sent: lock.value.inspectionSent,
+      service_reminder_sent: lock.value.serviceReminderSent,
       birthday_sent: lock.value.birthdaySent,
       date: todayStr,
     });

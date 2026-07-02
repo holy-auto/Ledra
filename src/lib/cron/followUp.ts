@@ -2,10 +2,12 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { sendExpiryReminder, sendFollowUpEmail, sendMaintenanceReminder } from "@/lib/follow-up/email";
 import { sendMaintenanceLineMessage } from "@/lib/line/client";
 import { normalizePlanTier } from "@/lib/billing/planFeatures";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import {
   generateFollowUpContent,
   getSeasonalTrigger,
   getDaysUntilWarrantyEnd,
+  daysUntilJstDate,
   type FollowUpTriggerType,
 } from "@/lib/ai/followUpContent";
 
@@ -47,7 +49,7 @@ export type FollowUpResult = {
   seasonalSent: number;
 };
 
-const isAiPlan = (tier: string) => ["standard", "pro"].includes(tier);
+const isAiPlan = (tier: string) => ["starter", "standard", "pro"].includes(tier);
 
 // ─── 共通: 通知送信 ─────────────────────────────────────────────
 async function sendNotification(
@@ -77,21 +79,24 @@ async function sendNotification(
 
   try {
     if (useAI) {
-      await generateFollowUpContent({
-        trigger: params.trigger,
-        customer: { name: params.customerName },
-        certificate: {
-          label: params.serviceName,
-          issued_at: params.issuedAt,
-          warranty_period: params.warrantyPeriod ?? undefined,
+      await generateFollowUpContent(
+        {
+          trigger: params.trigger,
+          customer: { name: params.customerName },
+          certificate: {
+            label: params.serviceName,
+            issued_at: params.issuedAt,
+            warranty_period: params.warrantyPeriod ?? undefined,
+          },
+          vehicle: {
+            maker: params.vehicleMaker ?? undefined,
+            model: params.vehicleModel ?? undefined,
+            color: params.vehicleColor ?? undefined,
+          },
+          shop: { name: params.shopName, phone: params.shopPhone ?? undefined },
         },
-        vehicle: {
-          maker: params.vehicleMaker ?? undefined,
-          model: params.vehicleModel ?? undefined,
-          color: params.vehicleColor ?? undefined,
-        },
-        shop: { name: params.shopName, phone: params.shopPhone ?? undefined },
-      });
+        { model: fastModelForPlanTier(params.planTier) },
+      );
 
       if (params.customerEmail) {
         sent = await sendFollowUpEmail({
@@ -455,15 +460,20 @@ export async function processWarrantyEndFollowUps(
   const { data: activeCerts } = await supabase
     .from("certificates")
     .select(
-      "id, customer_id, customer_name, service_name, created_at, warranty_period, vehicle_maker, vehicle_model, vehicle_color",
+      "id, customer_id, customer_name, service_name, created_at, warranty_period, warranty_period_end, vehicle_maker, vehicle_model, vehicle_color",
     )
     .eq("tenant_id", setting.tenant_id)
-    .not("warranty_period", "is", null)
+    // 保証期間テキスト or 算出済みの保証終了日 のいずれかがあるものを対象にする。
+    .or("warranty_period.not.is.null,warranty_period_end.not.is.null")
     .neq("status", "void");
 
   const filtered = (activeCerts ?? []).filter((cert) => {
     if (!cert.customer_id) return false;
-    const daysUntilEnd = getDaysUntilWarrantyEnd(cert.created_at, cert.warranty_period);
+    // 算出済みの保証終了日 (date) があればそれを優先。無ければ保証期間テキストから算出
+    // (年だけでなく月にも対応)。いずれも JST 暦日基準の日数差で比較する (実行時刻に非依存)。
+    const daysUntilEnd = cert.warranty_period_end
+      ? daysUntilJstDate(cert.warranty_period_end)
+      : getDaysUntilWarrantyEnd(cert.created_at, cert.warranty_period);
     return daysUntilEnd !== null && daysUntilEnd === warrantyEndDays;
   });
 

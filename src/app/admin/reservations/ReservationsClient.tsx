@@ -14,6 +14,8 @@ const CalendarView = dynamic(() => import("./CalendarView"), {
   ssr: false,
   loading: () => <div className="glass-card h-96 animate-pulse bg-surface-hover rounded-2xl" />,
 });
+const VoiceMemoPanel = dynamic(() => import("@/app/admin/certificates/new/VoiceMemoPanel"), { ssr: false });
+import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { formatDate, formatJpy } from "@/lib/format";
 import { fetcher } from "@/lib/swr";
 import WorkflowStepper from "@/components/workflow/WorkflowStepper";
@@ -166,6 +168,8 @@ export default function ReservationsClient() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItemMaster[]>([]);
+  // 音声→備考 (Standard 以上の ai_draft 機能)。current tenant の plan_tier から判定。
+  const [canAiNote, setCanAiNote] = useState(false);
 
   // Form
   const [showForm, setShowForm] = useState(false);
@@ -228,6 +232,7 @@ export default function ReservationsClient() {
       if (tenantRes.ok && tenantJ?.tenants) {
         const current = tenantJ.tenants.find((t: any) => t.is_current) ?? tenantJ.tenants[0];
         if (current?.slug) setTenantSlug(current.slug);
+        if (current?.plan_tier) setCanAiNote(canUseFeature(normalizePlanTier(current.plan_tier), "ai_draft"));
       }
       const custJ = await parseJsonSafe(custRes);
       if (custRes.ok && custJ?.customers) setCustomers(custJ.customers.map((c: any) => ({ id: c.id, name: c.name })));
@@ -1405,6 +1410,12 @@ export default function ReservationsClient() {
                         placeholder="備考・メモ"
                       />
                     </label>
+                    {canAiNote && (
+                      <VoiceMemoPanel
+                        variant="note"
+                        onApply={(note) => setFormNote((prev) => (prev.trim() ? `${prev.trim()}\n${note}` : note))}
+                      />
+                    )}
 
                     {saveMsg && (
                       <div

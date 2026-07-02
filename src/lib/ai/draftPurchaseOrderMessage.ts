@@ -75,6 +75,7 @@ export function buildFallbackPurchaseOrderMessage(input: PurchaseOrderMessageInp
  */
 export async function generatePurchaseOrderMessage(
   input: PurchaseOrderMessageInput,
+  opts?: { model?: string },
 ): Promise<PurchaseOrderMessageResult> {
   const systemPrompt = `あなたは自動車整備・コーティング店の発注業務を支援するAIアシスタントです。
 店舗が仕入先へ送る「発注依頼メール」の下書きを作成してください。
@@ -108,7 +109,7 @@ ${input.note ? `【備考】${input.note}` : ""}`;
     const client = getAnthropicClient();
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL,
+        model: opts?.model ?? AI_MODEL,
         max_tokens: 1024,
         system: cacheableSystem(systemPrompt),
         messages: [{ role: "user", content: userMessage }],

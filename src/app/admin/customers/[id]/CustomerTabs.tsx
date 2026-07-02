@@ -1,10 +1,119 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Badge from "@/components/ui/Badge";
 import { formatDate, formatJpy } from "@/lib/format";
 import CustomerMessagesTab from "./CustomerMessagesTab";
+
+type VehicleSearchResult = {
+  id: string;
+  maker: string | null;
+  model: string | null;
+  plate_display: string | null;
+  customer: { id: string; name: string | null } | null;
+};
+
+/**
+ * 顧客詳細から「既存の車両」を検索してこの顧客に連携するコントロール。
+ * `/api/admin/vehicles?q=` で検索し、`PUT /api/admin/vehicles/[id]/link-customer`
+ * に当該 customer_id を渡して車両の customer_id を張り替える。
+ */
+function LinkExistingVehicle({ customerId }: { customerId: string }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [results, setResults] = useState<VehicleSearchResult[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!open || !search.trim()) {
+      setResults([]);
+      return;
+    }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/admin/vehicles?q=${encodeURIComponent(search)}&page=1&per_page=8`);
+        const j = await res.json();
+        setResults(j.vehicles ?? []);
+      } catch {
+        setResults([]);
+      }
+    }, 300);
+  }, [search, open]);
+
+  async function link(vehicleId: string) {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/admin/vehicles/${vehicleId}/link-customer`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customer_id: customerId }),
+      });
+      const j = await res.json();
+      if (!res.ok) {
+        setErr(j?.message ?? "連携に失敗しました。");
+        return;
+      }
+      setOpen(false);
+      setSearch("");
+      router.refresh();
+    } catch {
+      setErr("通信エラーが発生しました。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="btn-secondary text-xs">
+        既存車両を連携
+      </button>
+      {open && (
+        <div className="absolute right-0 z-20 mt-1 w-72 rounded-xl border border-border-default bg-surface p-2 shadow-md">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="ナンバー・メーカー・車種で検索..."
+            className="input-field w-full text-sm"
+            autoComplete="off"
+            autoFocus
+          />
+          {results.length > 0 && (
+            <ul className="mt-1 max-h-56 overflow-y-auto">
+              {results.map((v) => (
+                <li key={v.id}>
+                  <button
+                    type="button"
+                    onClick={() => link(v.id)}
+                    disabled={busy}
+                    className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-hover disabled:opacity-50"
+                  >
+                    <span className="font-medium text-primary">
+                      {[v.maker, v.model].filter(Boolean).join(" ") || "(車両)"}
+                    </span>
+                    {v.plate_display && <span className="ml-2 text-xs text-secondary">{v.plate_display}</span>}
+                    {v.customer?.name && (
+                      <span className="ml-2 text-[10px] text-warning-text">連携中: {v.customer.name}</span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {err && <p className="mt-1 px-1 text-xs text-red-500">{err}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * CustomerTabs
@@ -57,6 +166,7 @@ interface Props {
   certificates: CertificateItem[];
   reservations: ReservationItem[];
   invoices: InvoiceItem[];
+  canIssueLinkCode?: boolean;
 }
 
 const certStatusVariant = (s: string) => {
@@ -136,7 +246,14 @@ const reservationStatusLabel = (s: string) => {
   }
 };
 
-export default function CustomerTabs({ customerId, vehicles, certificates, reservations, invoices }: Props) {
+export default function CustomerTabs({
+  customerId,
+  vehicles,
+  certificates,
+  reservations,
+  invoices,
+  canIssueLinkCode = false,
+}: Props) {
   const [tab, setTab] = useState<TabKey>("vehicles");
 
   const tabs = useMemo(
@@ -173,12 +290,15 @@ export default function CustomerTabs({ customerId, vehicles, certificates, reser
               <div className="text-xs font-semibold tracking-[0.18em] text-muted">VEHICLES</div>
               <div className="mt-1 text-base font-semibold text-primary">紐付き車両 ({vehicles.length}件)</div>
             </div>
-            <Link
-              href={`/admin/vehicles/new?customer_id=${customerId}&returnTo=/admin/customers/${customerId}`}
-              className="btn-secondary text-xs"
-            >
-              + 車両登録
-            </Link>
+            <div className="flex items-center gap-2">
+              <LinkExistingVehicle customerId={customerId} />
+              <Link
+                href={`/admin/vehicles/new?customer_id=${customerId}&returnTo=/admin/customers/${customerId}`}
+                className="btn-secondary text-xs"
+              >
+                + 車両登録
+              </Link>
+            </div>
           </div>
           <div className="divide-y divide-border-subtle">
             {vehicles.map((v) => (
@@ -376,7 +496,7 @@ export default function CustomerTabs({ customerId, vehicles, certificates, reser
         </section>
       )}
 
-      {tab === "messages" && <CustomerMessagesTab customerId={customerId} />}
+      {tab === "messages" && <CustomerMessagesTab customerId={customerId} canIssueLinkCode={canIssueLinkCode} />}
     </div>
   );
 }

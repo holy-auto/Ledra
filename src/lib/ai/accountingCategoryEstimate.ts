@@ -59,6 +59,7 @@ export async function categorizeAccountingLines(
   lines: AccountingLineInput[],
   accounts: AccountingAccount[],
   fallbackCode: string,
+  opts?: { model?: string },
 ): Promise<AccountingCategorizeResult> {
   const accountByCode = new Map(accounts.map((a) => [a.code, a]));
   const fallback = accountByCode.get(fallbackCode);
@@ -86,9 +87,7 @@ export async function categorizeAccountingLines(
   });
 
   // AI を呼ぶ必要のある index を集める
-  const unresolved = result
-    .map((r, i) => ({ r, i }))
-    .filter((x) => x.r.method === "fallback");
+  const unresolved = result.map((r, i) => ({ r, i })).filter((x) => x.r.method === "fallback");
 
   if (unresolved.length === 0 || !process.env.ANTHROPIC_API_KEY) {
     return { lines: result };
@@ -97,15 +96,13 @@ export async function categorizeAccountingLines(
   const client = getAnthropicClient();
   const codeList = accounts.map((a) => `- ${a.code}: ${a.label}`).join("\n");
   const lineList = unresolved
-    .map(
-      (u) => `index=${u.i} | ¥${u.r.amount.toLocaleString("ja-JP")} | ${u.r.description}`,
-    )
+    .map((u) => `index=${u.i} | ¥${u.r.amount.toLocaleString("ja-JP")} | ${u.r.description}`)
     .join("\n");
 
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 768,
         system: SYSTEM_PROMPT,
         messages: [

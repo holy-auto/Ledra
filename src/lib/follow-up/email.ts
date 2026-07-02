@@ -97,6 +97,42 @@ export async function sendFollowUpEmail(params: {
 }
 
 /**
+ * 定期点検・交換時期のリマインドメール（顧客向け）。
+ * service_reminders の next_due_date / next_due_mileage が近づいた車両に対して送る。
+ * `timing` は到達した軸に応じた時期の文言（例: "2026-07-30頃" / "走行 40,000km 到達目安"）。
+ */
+export async function sendServiceReminderEmail(params: {
+  shopName: string;
+  customerEmail: string;
+  customerName: string;
+  serviceName: string;
+  vehicleLabel?: string | null;
+  timing: string;
+}): Promise<boolean> {
+  const shop = escapeHtml(params.shopName);
+  const customer = escapeHtml(params.customerName);
+  const service = escapeHtml(params.serviceName);
+  const vehicle = params.vehicleLabel ? escapeHtml(params.vehicleLabel) : null;
+  const html = wrap(
+    "点検・交換時期のご案内",
+    `
+      <p style="color: #1d1d1f; font-size: 14px;">
+        ${customer} 様<br><br>
+        ${shop}です。<br>
+        ${vehicle ? `${vehicle}の` : "お車の"}「${service}」の点検・交換時期（${escapeHtml(params.timing)}）が近づいてまいりました。
+      </p>
+      <p style="color: #1d1d1f; font-size: 14px;">
+        ご予約・ご相談はお気軽にお問い合わせください。安全のため、お早めの点検をおすすめいたします。
+      </p>
+      <p style="font-size: 13px; color: #86868b;">
+        今後ともよろしくお願いいたします。
+      </p>
+    `,
+  );
+  return send(params.customerEmail, `[${shop}] ${service}の点検・交換時期のご案内`, html);
+}
+
+/**
  * 低在庫アラートメール（テナント運営者向け）
  *
  * cron が日次で `inventory_items.current_stock <= min_stock` の品目を

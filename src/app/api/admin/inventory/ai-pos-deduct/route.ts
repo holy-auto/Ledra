@@ -18,6 +18,7 @@ import { parseJsonBody } from "@/lib/api/parseBody";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { suggestPosDeductions } from "@/lib/ai/posInventoryDeduction";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { loadAiAutomationSettings, resolveFieldPolicy } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
@@ -93,7 +94,12 @@ export async function POST(req: NextRequest) {
     const historyMissing = isMissingTableError(historyRes.error);
 
     if (skusMissing) {
-      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ok", meta: { warning: "schema_missing" } });
+      usage.record({
+        tenantId: caller.tenantId,
+        userId: caller.userId,
+        outcome: "ok",
+        meta: { warning: "schema_missing" },
+      });
       return apiOk({
         ai_disabled: false,
         suggestions: [],
@@ -102,21 +108,28 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const result = await suggestPosDeductions({
-      sales: parsed.data.sales.map((s) => ({
-        menu_item_id: s.menu_item_id,
-        menu_item_name: s.menu_item_name,
-        service_category: s.service_category ?? null,
-        sold_quantity: s.sold_quantity,
-      })),
-      skus: (skusRes.data ?? []) as Array<{ id: string; name: string; category: string | null; unit: string | null }>,
-      links: (linksMissing ? [] : linksRes.data ?? []) as Array<{ menu_item_id: string; sku_id: string; quantity: number }>,
-      history: (historyMissing ? [] : historyRes.data ?? []) as Array<{
-        service_category: string | null;
-        sku_id: string;
-        avg_quantity: number;
-      }>,
-    });
+    const result = await suggestPosDeductions(
+      {
+        sales: parsed.data.sales.map((s) => ({
+          menu_item_id: s.menu_item_id,
+          menu_item_name: s.menu_item_name,
+          service_category: s.service_category ?? null,
+          sold_quantity: s.sold_quantity,
+        })),
+        skus: (skusRes.data ?? []) as Array<{ id: string; name: string; category: string | null; unit: string | null }>,
+        links: (linksMissing ? [] : (linksRes.data ?? [])) as Array<{
+          menu_item_id: string;
+          sku_id: string;
+          quantity: number;
+        }>,
+        history: (historyMissing ? [] : (historyRes.data ?? [])) as Array<{
+          service_category: string | null;
+          sku_id: string;
+          avg_quantity: number;
+        }>,
+      },
+      { model: fastModelForPlanTier(caller.planTier) },
+    );
 
     usage.record({
       tenantId: caller.tenantId,

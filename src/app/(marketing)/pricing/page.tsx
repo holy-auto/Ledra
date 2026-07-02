@@ -170,7 +170,7 @@ export default function PricingPage() {
         <FAQList className="mt-10">
           <FAQItem
             question="無料プランに期間制限はありますか？"
-            answer="いいえ。フリープランは期間無制限で月10件まで発行いただけます。"
+            answer="いいえ。フリープランは期間無制限で月20件まで発行いただけます。"
           />
           <FAQItem
             question="途中でプラン変更できますか？"

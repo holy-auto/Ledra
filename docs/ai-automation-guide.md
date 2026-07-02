@@ -122,6 +122,7 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 | `photo.auto_quality_check`               | 証明書写真アップロード時に Ledra Standard 基準の品質・抜け漏れ監査を自動付与 (注釈・発行はブロックしない) | OFF  | ✅ 写真アップロード (POST certificates/images/upload) |
 | `insurer_case.auto_fraud_score`           | 保険案件作成時に不正リスクを自動スコア (ルール一次 + グレーのみ AI、注釈。査定確定は人)                       | OFF  | ✅ 案件作成 (POST insurer/cases)                      |
 | `invoice.auto_draft_on_billing_step`      | ワークフローの会計/請求工程到達時に請求書を draft で自動起票 (送付は人 / 壁3)                                  | OFF  | ✅ WF会計工程 (reservations advance)                  |
+| `invoice.auto_draft_on_completion`        | 案件完了 (status=completed) 時に請求書を draft で自動起票 (WF会計工程を使わないテナント向け / 送付は人 / 壁3)   | OFF  | ✅ 完了 (reservations PUT / advance)                  |
 | `workflow.auto_apply_on_intake`           | 案件登録時に AI 提案ワークフローを自動適用し工程開始 (各工程の確定は人)                                        | OFF  | ✅ 予約作成 (POST reservations)                       |
 | `job.auto_next_action`                    | 案件の状態遷移時に次アクションを自動提案 (案件画面に即時表示・実行は人)                                        | OFF  | ✅ 進行 (POST reservations/[id]/advance)             |
 | `insurer_case.auto_summary`               | 保険案件作成時に査定担当向け 3 行サマリを自動生成 (注釈。査定確定は人)                                         | OFF  | ✅ 案件作成 (POST insurer/cases)                      |

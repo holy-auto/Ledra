@@ -10,6 +10,7 @@ import {
   apiPlanLimit,
 } from "@/lib/api/response";
 import { enforceBilling } from "@/lib/billing/guard";
+import { getCachedTenantBilling } from "@/lib/billing/tenantBillingCache";
 import { CERT_LIMITS, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { logCertificateAction } from "@/lib/audit/certificateLog";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
@@ -44,16 +45,13 @@ export async function POST(req: Request) {
 
   // ── 月間証明書発行上限チェック ──
   try {
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
-    const { data: tenant } = await admin
-      .from("tenants")
-      .select("plan_tier")
-      .eq("id", caller.tenantId)
-      .limit(1)
-      .maybeSingle();
-    const planTier = normalizePlanTier(tenant?.plan_tier);
+    // plan_tier は billing guard (enforceBilling) と共有の 60 秒キャッシュから取得
+    // (直前の enforceBilling で温まっているため通常はキャッシュヒット)。
+    const billing = await getCachedTenantBilling(caller.tenantId);
+    const planTier = normalizePlanTier(billing?.plan_tier ?? null);
     const certLimit = CERT_LIMITS[planTier];
     if (certLimit !== null) {
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
       const { count: monthlyCount } = await admin

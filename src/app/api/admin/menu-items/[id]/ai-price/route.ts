@@ -16,6 +16,7 @@ import { parseJsonBody } from "@/lib/api/parseBody";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { estimateMenuPrice } from "@/lib/ai/menuPriceEstimate";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { loadAiAutomationSettings, resolveFieldPolicy } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
@@ -87,12 +88,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     // 自店過去販売価格 (ownSales) だけで baseline を出す。
     const marketMedian: number | null = null;
 
-    const recommendation = await estimateMenuPrice({
-      menuName: menuItem.name as string,
-      vehicleSize: parsed.data.vehicle_size,
-      ownSales,
-      marketMedian,
-    });
+    const recommendation = await estimateMenuPrice(
+      {
+        menuName: menuItem.name as string,
+        vehicleSize: parsed.data.vehicle_size,
+        ownSales,
+        marketMedian,
+      },
+      { model: fastModelForPlanTier(caller.planTier) },
+    );
 
     usage.record({
       tenantId: caller.tenantId,

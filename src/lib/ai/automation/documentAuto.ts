@@ -1,22 +1,18 @@
 /**
- * 帳票 (請求書 / 見積書) を人が「確定」した時点で顧客へ自動送付する IO 層。
+ * 帳票 (請求書 / 見積書) を顧客へ自動送付する IO 層。
  *
- * `/api/admin/documents` の PUT で status が draft → sent に遷移した時点
- * (= 人が「確定/送付済みに変更」した瞬間) に **fire-and-forget** で呼ばれる。
- * 管理者レスポンスを遅らせないため await しない。
+ * 2 つのトリガーで呼ばれる:
+ *   A. 人が draft→sent に確定した時点 (auto_send_on_confirm)
+ *   B. AI がドラフトを自動確定した時点 (auto_send / auto_finalize)
+ *
+ * いずれも **fire-and-forget** で呼ばれ、管理者レスポンスを遅らせない。
  *
  * 段階:
- *   1. settings をロードし opt-in (invoice.auto_send_on_confirm /
- *      quote.auto_send_on_confirm) を確認 (既定 OFF)
+ *   1. settings をロードし opt-in を確認 (既定 OFF)
  *   2. プラン (Standard+ / ai_invoice_quote) と is_active を確認
  *   3. 顧客のチャネルを自動選択 (LINE 連携あり → LINE / 無ければメール)
  *   4. 請求書: 決済リンク (Stripe Connect) + 書類、見積書: 書類リンク を送付
  *   5. document_share_log に記録 (idempotency_key で二重送付を防止)
- *
- * 壁3:
- *   - 金額/内容の「確定」そのものは人 (draft→sent は人の操作)。ここは送付のみ。
- *   - 決済リンクは「お支払い導線」を提供するだけで、自動課金 (payment.auto_charge)
- *     は行わない。実際の支払いは顧客の操作。
  */
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
@@ -27,8 +23,9 @@ import { sendDocumentLink } from "@/lib/line/client";
 import { getStripeClient } from "@/lib/stripe/client";
 import { createInvoicePaymentLink } from "@/lib/stripe/invoicePaymentLink";
 import { logger } from "@/lib/logger";
+import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { loadAiAutomationSettings } from "./policy";
-import { shouldAutoSendDocument } from "./orchestrator";
+import { shouldAutoSendDocumentOnConfirm } from "./orchestrator";
 
 export interface MaybeAutoSendDocumentParams {
   tenantId: string;
@@ -66,7 +63,7 @@ export async function maybeAutoSendDocumentOnConfirm(params: MaybeAutoSendDocume
     if (!doc) return;
 
     const docType = doc.doc_type as DocType;
-    if (!shouldAutoSendDocument(settings, docType)) return;
+    if (!shouldAutoSendDocumentOnConfirm(settings, docType)) return;
     // 念のため: 確定 (sent) 済みのものだけ送る。
     if (doc.status !== "sent") return;
 
@@ -91,8 +88,7 @@ export async function maybeAutoSendDocumentOnConfirm(params: MaybeAutoSendDocume
     if (!customer) return;
 
     const lineUserId = (customer.line_user_id as string | null) ?? null;
-    const email =
-      customer.email && String(customer.email).includes("@") ? (customer.email as string) : null;
+    const email = customer.email && String(customer.email).includes("@") ? (customer.email as string) : null;
     if (!lineUserId && !email) {
       logger.info("auto_send_document_skipped_no_channel", { tenantId, documentId, docType });
       return;
@@ -269,6 +265,15 @@ export async function maybeAutoSendDocumentOnConfirm(params: MaybeAutoSendDocume
       delivered,
       payment_link: Boolean(paymentUrl),
     });
+    if (delivered) {
+      // 人の確認なしで書類を外部送付した事実を監査ログに残す (外向きアクションのため特に重要)。
+      await logAutoActionExecuted({
+        tenantId,
+        actionKey: "invoice.auto_send_on_confirm",
+        resource: { kind: "document", id: documentId },
+        detail: { doc_type: docType, channel: usedChannel, payment_link: Boolean(paymentUrl) },
+      });
+    }
   } catch (e) {
     logger.warn("auto_send_document_failed", {
       tenantId: params.tenantId,

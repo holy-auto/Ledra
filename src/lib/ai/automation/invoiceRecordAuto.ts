@@ -13,8 +13,9 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { buildTaxBreakdown, totalTax } from "@/lib/invoice/taxBreakdown";
 import { logger } from "@/lib/logger";
+import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { loadAiAutomationSettings } from "./policy";
-import { shouldAutoDraftInvoiceOnBilling } from "./orchestrator";
+import { shouldAutoDraftInvoiceOnBilling, shouldAutoDraftInvoiceOnCompletion } from "./orchestrator";
 
 type Admin = ReturnType<typeof createServiceRoleAdmin>;
 
@@ -49,11 +50,17 @@ async function generateInvoiceNumber(admin: Admin, tenantId: string): Promise<st
 export async function maybeAutoCreateDraftInvoiceForReservation(params: {
   tenantId: string;
   reservationId: string;
+  /** 起動トリガ。"billing_step" = ワークフロー会計工程 / "completion" = 案件完了。各々別 opt-in。 */
+  trigger?: "billing_step" | "completion";
 }): Promise<void> {
-  const { tenantId, reservationId } = params;
+  const { tenantId, reservationId, trigger = "billing_step" } = params;
   try {
     const settings = await loadAiAutomationSettings(tenantId);
-    if (!shouldAutoDraftInvoiceOnBilling(settings)) return;
+    const enabled =
+      trigger === "completion"
+        ? shouldAutoDraftInvoiceOnCompletion(settings)
+        : shouldAutoDraftInvoiceOnBilling(settings);
+    if (!enabled) return;
 
     const admin = createServiceRoleAdmin("AI auto-create draft invoice — workflow billing step, fire-and-forget");
     const { data: tenant } = await admin.from("tenants").select("plan_tier, is_active").eq("id", tenantId).single();
@@ -118,27 +125,38 @@ export async function maybeAutoCreateDraftInvoiceForReservation(params: {
     const total = subtotal + tax;
     const docNumber = await generateInvoiceNumber(admin, tenantId);
 
-    const { error } = await admin.from("documents").insert({
-      tenant_id: tenantId,
-      customer_id: reservation.customer_id,
-      vehicle_id: reservation.vehicle_id,
-      doc_type: "invoice",
-      doc_number: docNumber,
-      recipient_name: recipientName,
-      issued_at: new Date().toISOString().slice(0, 10),
-      status: "draft",
-      subtotal,
-      tax,
-      total,
-      tax_rate: taxRate,
-      items_json: items,
-      tax_breakdown: taxBreakdown,
-    });
+    const { data: inserted, error } = await admin
+      .from("documents")
+      .insert({
+        tenant_id: tenantId,
+        customer_id: reservation.customer_id,
+        vehicle_id: reservation.vehicle_id,
+        doc_type: "invoice",
+        doc_number: docNumber,
+        recipient_name: recipientName,
+        issued_at: new Date().toISOString().slice(0, 10),
+        status: "draft",
+        subtotal,
+        tax,
+        total,
+        tax_rate: taxRate,
+        items_json: items,
+        tax_breakdown: taxBreakdown,
+      })
+      .select("id")
+      .maybeSingle();
     if (error) {
       logger.warn("[invoiceRecordAuto] draft invoice insert failed", { tenantId, err: error.message });
       return;
     }
     logger.info("[invoiceRecordAuto] draft invoice auto-created", { tenantId, reservationId, docNumber });
+    // 人の確認なしで請求書下書きを自動作成した事実を監査ログに残す。
+    await logAutoActionExecuted({
+      tenantId,
+      actionKey: trigger === "completion" ? "invoice.auto_draft_on_completion" : "invoice.auto_draft_on_billing_step",
+      resource: { kind: "invoice", id: (inserted?.id as string | undefined) ?? null },
+      detail: { reservation_id: reservationId, doc_number: docNumber, total },
+    });
   } catch (e) {
     logger.warn("[invoiceRecordAuto] maybeAutoCreateDraftInvoiceForReservation threw", {
       tenantId,

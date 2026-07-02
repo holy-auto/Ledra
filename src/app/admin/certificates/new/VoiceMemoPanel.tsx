@@ -15,12 +15,27 @@
 
 import { useEffect, useRef, useState } from "react";
 
-interface Props {
+/**
+ * variant で 2 用途を切り替える:
+ * - "certificate" (既定): /api/admin/certificates/voice-memo を叩き、証明書ドラフト
+ *   {title/description/cautions} を onApply に渡す。証明書作成フォーム専用の既存挙動。
+ * - "note": /api/admin/voice-note を叩き、案件の備考向け単一テキスト (note) を
+ *   onApply に渡す。予約・板金案件の「備考」欄に流し込む。
+ */
+type CommonProps = {
   serviceType?: string;
   vehicleHint?: string;
   customerHint?: string;
+};
+type CertVariantProps = CommonProps & {
+  variant?: "certificate";
   onApply: (draft: { title: string; description: string; cautions: string }) => void;
-}
+};
+type NoteVariantProps = CommonProps & {
+  variant: "note";
+  onApply: (note: string) => void;
+};
+type Props = CertVariantProps | NoteVariantProps;
 
 // Web Speech API の型は標準では曖昧なので最小定義
 type SpeechRecognitionInstance = {
@@ -41,7 +56,9 @@ function getSpeechRecognitionCtor(): null | (new () => SpeechRecognitionInstance
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
-export default function VoiceMemoPanel({ serviceType, vehicleHint, customerHint, onApply }: Props) {
+export default function VoiceMemoPanel(props: Props) {
+  const { serviceType, vehicleHint, customerHint } = props;
+  const isNote = props.variant === "note";
   const [open, setOpen] = useState(false);
   const [supported, setSupported] = useState(true);
   const [recording, setRecording] = useState(false);
@@ -118,7 +135,8 @@ export default function VoiceMemoPanel({ serviceType, vehicleHint, customerHint,
     setGenerating(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/certificates/voice-memo", {
+      const endpoint = isNote ? "/api/admin/voice-note" : "/api/admin/certificates/voice-memo";
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -129,9 +147,16 @@ export default function VoiceMemoPanel({ serviceType, vehicleHint, customerHint,
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message ?? "ドラフト生成に失敗しました");
-      if (!data.draft) throw new Error("AI が応答しませんでした (再試行してください)");
-      onApply(data.draft);
+      if (!res.ok) throw new Error(data.message ?? "整形に失敗しました");
+      if (props.variant === "note") {
+        if (typeof data.note !== "string" || !data.note) {
+          throw new Error("AI が応答しませんでした (再試行してください)");
+        }
+        props.onApply(data.note);
+      } else {
+        if (!data.draft) throw new Error("AI が応答しませんでした (再試行してください)");
+        props.onApply(data.draft);
+      }
       setApplied(true);
       setTimeout(() => setApplied(false), 3000);
     } catch (e: any) {
@@ -149,14 +174,16 @@ export default function VoiceMemoPanel({ serviceType, vehicleHint, customerHint,
         className="w-full flex items-center gap-2 px-4 py-3 text-left text-sm font-medium hover:opacity-80 rounded-xl transition-opacity"
       >
         <span className="text-base">🎤</span>
-        <span className="text-secondary">音声メモから施工内容を生成</span>
+        <span className="text-secondary">{isNote ? "音声メモから備考を生成" : "音声メモから施工内容を生成"}</span>
         <span className="ml-auto text-muted text-xs">{open ? "▲ 閉じる" : "▼ 開く"}</span>
       </button>
 
       {open && (
         <div className="px-4 pb-4 space-y-3 border-t border-border-subtle">
           <p className="text-xs text-muted mt-3">
-            マイクで施工内容を喋ると AI が証明書ドラフトに整形します。記入内容は後から編集できます。
+            {isNote
+              ? "マイクで作業内容を喋ると AI が備考メモに整形します。記入内容は後から編集できます。"
+              : "マイクで施工内容を喋ると AI が証明書ドラフトに整形します。記入内容は後から編集できます。"}
           </p>
 
           {!supported && (
@@ -233,7 +260,9 @@ export default function VoiceMemoPanel({ serviceType, vehicleHint, customerHint,
 
           {applied && (
             <div className="rounded-lg border border-success/30 bg-success-dim px-3 py-2 text-xs text-success-text">
-              ✅ ドラフトをフォームに適用しました。内容を確認・編集してください。
+              {isNote
+                ? "✅ 備考欄に追記しました。内容を確認・編集してください。"
+                : "✅ ドラフトをフォームに適用しました。内容を確認・編集してください。"}
             </div>
           )}
           {error && (

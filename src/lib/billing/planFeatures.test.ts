@@ -108,9 +108,15 @@ describe("canUseFeature", () => {
 
     it("全機能が使える", () => {
       const allFeatures: FeatureId[] = [
-        "issue_certificate", "export_one_csv", "export_search_csv",
-        "export_selected_csv", "pdf_one", "pdf_zip",
-        "manage_templates", "upload_logo", "manage_stores",
+        "issue_certificate",
+        "export_one_csv",
+        "export_search_csv",
+        "export_selected_csv",
+        "pdf_one",
+        "pdf_zip",
+        "manage_templates",
+        "upload_logo",
+        "manage_stores",
       ];
       for (const f of allFeatures) {
         expect(canUseFeature(plan, f)).toBe(true);
@@ -123,9 +129,15 @@ describe("canUseFeature", () => {
 describe("featureLabel", () => {
   it("全FeatureIdに日本語ラベルが定義されている", () => {
     const features: FeatureId[] = [
-      "issue_certificate", "export_one_csv", "export_search_csv",
-      "export_selected_csv", "pdf_one", "pdf_zip",
-      "manage_templates", "upload_logo", "manage_stores",
+      "issue_certificate",
+      "export_one_csv",
+      "export_search_csv",
+      "export_selected_csv",
+      "pdf_one",
+      "pdf_zip",
+      "manage_templates",
+      "upload_logo",
+      "manage_stores",
     ];
     for (const f of features) {
       const label = featureLabel(f);
@@ -162,8 +174,8 @@ describe("PHOTO_LIMITS", () => {
 
 // ─── CERT_LIMITS ───
 describe("CERT_LIMITS", () => {
-  it("freeは月10件", () => {
-    expect(CERT_LIMITS.free).toBe(10);
+  it("freeは月20件", () => {
+    expect(CERT_LIMITS.free).toBe(20);
   });
 
   it("starterは月80件", () => {

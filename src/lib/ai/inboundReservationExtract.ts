@@ -83,7 +83,10 @@ export function wrapUntrustedBody(text: string): string {
   return wrapUntrusted(text, { tag: "受信本文", maxLen: 4000 });
 }
 
-export async function extractInboundReservation(input: InboundExtractInput): Promise<InboundExtractResult> {
+export async function extractInboundReservation(
+  input: InboundExtractInput,
+  opts?: { model?: string },
+): Promise<InboundExtractResult> {
   const fallback: InboundExtractResult = { intent: "other", confidence: 0, ai: false };
   if (!process.env.ANTHROPIC_API_KEY) return fallback;
   if (!input.text.trim()) return fallback;
@@ -99,7 +102,7 @@ export async function extractInboundReservation(input: InboundExtractInput): Pro
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 768,
         system: SYSTEM_PROMPT,
         messages: [

@@ -16,6 +16,7 @@
  */
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { suggestCaseAssignees, type CasePriority } from "@/lib/ai/caseAssignSuggest";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "./policy";
@@ -47,7 +48,7 @@ export async function maybeAutoSuggestAssigneeForCase(params: MaybeAutoSuggestAs
 
     const admin = createServiceRoleAdmin("AI auto assign-suggest — insurer case create after() lacks auth session");
 
-    const { data: tenant } = await admin.from("tenants").select("is_active").eq("id", tenantId).single();
+    const { data: tenant } = await admin.from("tenants").select("plan_tier, is_active").eq("id", tenantId).single();
     if (!tenant || tenant.is_active === false) return;
 
     // 案件を取得 (insurer_id で明示スコープ)。
@@ -88,24 +89,27 @@ export async function maybeAutoSuggestAssigneeForCase(params: MaybeAutoSuggestAs
     if (users.length === 0) return;
 
     const usage = startAiRouteUsage(AUTO_ASSIGN_ENDPOINT);
-    const result = await suggestCaseAssignees({
-      category: insCase.category as string | null,
-      priority: ((insCase.priority as string) || "normal") as CasePriority,
-      subject: insCase.title as string | null,
-      body: insCase.description as string | null,
-      history: (historyRes.data ?? []) as Array<{
-        category: string | null;
-        priority: string | null;
-        assigned_to: string | null;
-      }>,
-      users: users.map((u) => ({ id: u.id, display_name: u.display_name })),
-      rules: (rulesRes.data ?? []) as Array<{
-        condition_type: string;
-        condition_value: string;
-        assign_to: string;
-        is_active: boolean;
-      }>,
-    });
+    const result = await suggestCaseAssignees(
+      {
+        category: insCase.category as string | null,
+        priority: ((insCase.priority as string) || "normal") as CasePriority,
+        subject: insCase.title as string | null,
+        body: insCase.description as string | null,
+        history: (historyRes.data ?? []) as Array<{
+          category: string | null;
+          priority: string | null;
+          assigned_to: string | null;
+        }>,
+        users: users.map((u) => ({ id: u.id, display_name: u.display_name })),
+        rules: (rulesRes.data ?? []) as Array<{
+          condition_type: string;
+          condition_value: string;
+          assign_to: string;
+          is_active: boolean;
+        }>,
+      },
+      { model: fastModelForPlanTier(tenant.plan_tier) },
+    );
 
     // 候補が出なければ保存しない (空提案で UI を汚さない)。
     if (result.candidates.length === 0) return;

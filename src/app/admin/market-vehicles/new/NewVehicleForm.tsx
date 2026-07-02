@@ -96,12 +96,38 @@ export default function NewVehicleForm() {
         setOcrMsg(j?.message || "車検証の読み取りに失敗しました。");
         return;
       }
-      const x = j.extracted;
-      if (x.maker) setMaker(x.maker);
-      if (x.model) setModel(x.model);
-      if (x.year) setYear(String(x.year));
-      if (x.vin_code) setChassisNumber(x.vin_code);
-      if (x.plate_display) setPlateNumber(x.plate_display);
+      // AI 自動入力が無効 / 上限超過 / identity_documents OFF の場合は空応答が返るため、
+      // 成功扱いにせず案内する (誤った ✓ を出さない)。
+      if (j.ai_disabled) {
+        setOcrMsg("AI 自動入力が無効、または今月の利用上限に達しているため使用できません。手入力してください。");
+        return;
+      }
+      const x = j.extracted ?? {};
+      let applied = 0;
+      if (x.maker) {
+        setMaker(x.maker);
+        applied++;
+      }
+      if (x.model) {
+        setModel(x.model);
+        applied++;
+      }
+      if (x.year) {
+        setYear(String(x.year));
+        applied++;
+      }
+      if (x.vin_code) {
+        setChassisNumber(x.vin_code);
+        applied++;
+      }
+      if (x.plate_display) {
+        setPlateNumber(x.plate_display);
+        applied++;
+      }
+      if (applied === 0) {
+        setOcrMsg("車検証から項目を読み取れませんでした。画像を確認するか手入力してください。");
+        return;
+      }
       setOcrMsg("✓ 車検証から情報を取り込みました。内容を確認してください。");
     } catch (e: unknown) {
       setOcrMsg(e instanceof Error ? e.message : "通信エラーが発生しました。");
@@ -243,76 +269,70 @@ export default function NewVehicleForm() {
 
       {errMsg && <div className="glass-card p-4 text-sm text-danger">{errMsg}</div>}
 
-      {/* 車検証 OCR — 一時非表示 */}
-      {false && (
-        <section className="glass-card p-5 space-y-3">
-          <div>
-            <div className="text-xs font-semibold tracking-[0.18em] text-muted">QUICK FILL</div>
-            <div className="mt-1 text-base font-semibold text-primary">車検証から自動入力</div>
-            <p className="mt-1 text-sm text-secondary">
-              車検証を撮影またはアップロードすると、メーカー・車名・年式・車台番号・ナンバーを自動入力します。
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              disabled={ocrBusy}
-              onClick={() => {
-                if (ocrInputRef.current) {
-                  ocrInputRef.current.removeAttribute("multiple");
-                  ocrInputRef.current.setAttribute("capture", "environment");
-                  ocrInputRef.current.click();
-                }
-              }}
-              className="inline-flex items-center gap-2 rounded-lg border border-border-default bg-surface px-4 py-2 text-sm font-medium text-secondary shadow-sm hover:bg-surface-hover transition-colors disabled:opacity-50"
-            >
-              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z"
-                />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Z"
-                />
-              </svg>
-              {ocrBusy ? "読み取り中..." : "カメラで撮影"}
-            </button>
-            <button
-              type="button"
-              disabled={ocrBusy}
-              onClick={() => {
-                if (ocrInputRef.current) {
-                  ocrInputRef.current.removeAttribute("capture");
-                  ocrInputRef.current.click();
-                }
-              }}
-              className="inline-flex items-center gap-2 rounded-lg border border-border-default bg-surface px-4 py-2 text-sm font-medium text-secondary shadow-sm hover:bg-surface-hover transition-colors disabled:opacity-50"
-            >
-              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"
-                />
-              </svg>
-              ファイルを選択
-            </button>
-          </div>
-          <input
-            ref={ocrInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/gif,image/webp"
-            className="hidden"
-            onChange={onOcrFileChange}
-          />
-          {ocrMsg != null && (
-            <p className={`text-sm ${ocrMsg!.startsWith("✓") ? "text-success-text" : "text-danger"}`}>{ocrMsg}</p>
-          )}
-        </section>
-      )}
+      {/* 車検証 OCR — 撮影/アップロードで諸元を自動入力 */}
+      <section className="glass-card p-5 space-y-3">
+        <div>
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">QUICK FILL</div>
+          <div className="mt-1 text-base font-semibold text-primary">車検証から自動入力</div>
+          <p className="mt-1 text-sm text-secondary">
+            車検証を撮影またはアップロードすると、メーカー・車名・年式・車台番号・ナンバーを自動入力します。
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            disabled={ocrBusy}
+            onClick={() => {
+              if (ocrInputRef.current) {
+                ocrInputRef.current.removeAttribute("multiple");
+                ocrInputRef.current.setAttribute("capture", "environment");
+                ocrInputRef.current.click();
+              }
+            }}
+            className="inline-flex items-center gap-2 rounded-lg border border-border-default bg-surface px-4 py-2 text-sm font-medium text-secondary shadow-sm hover:bg-surface-hover transition-colors disabled:opacity-50"
+          >
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z"
+              />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Z" />
+            </svg>
+            {ocrBusy ? "読み取り中..." : "カメラで撮影"}
+          </button>
+          <button
+            type="button"
+            disabled={ocrBusy}
+            onClick={() => {
+              if (ocrInputRef.current) {
+                ocrInputRef.current.removeAttribute("capture");
+                ocrInputRef.current.click();
+              }
+            }}
+            className="inline-flex items-center gap-2 rounded-lg border border-border-default bg-surface px-4 py-2 text-sm font-medium text-secondary shadow-sm hover:bg-surface-hover transition-colors disabled:opacity-50"
+          >
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"
+              />
+            </svg>
+            ファイルを選択
+          </button>
+        </div>
+        <input
+          ref={ocrInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/gif,image/webp"
+          className="hidden"
+          onChange={onOcrFileChange}
+        />
+        {ocrMsg != null && (
+          <p className={`text-sm ${ocrMsg!.startsWith("✓") ? "text-success-text" : "text-danger"}`}>{ocrMsg}</p>
+        )}
+      </section>
 
       {/* 基本情報 */}
       <section className="glass-card p-5 space-y-4">

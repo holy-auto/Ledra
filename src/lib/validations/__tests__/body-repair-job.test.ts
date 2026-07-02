@@ -38,6 +38,49 @@ describe("bodyRepairJobCreateSchema — ガイドライン準拠フィールド"
     const r = bodyRepairJobCreateSchema.safeParse({ estimate_amount: -1 });
     expect(r.success).toBe(false);
   });
+
+  it("納期 (due_date) を YYYY-MM-DD で受理し、空文字は null に正規化する", () => {
+    const ok = bodyRepairJobCreateSchema.safeParse({ due_date: "2026-07-15" });
+    expect(ok.success).toBe(true);
+    if (ok.success) expect(ok.data.due_date).toBe("2026-07-15");
+
+    const empty = bodyRepairJobCreateSchema.safeParse({ due_date: "" });
+    expect(empty.success).toBe(true);
+    if (empty.success) expect(empty.data.due_date).toBeNull();
+  });
+
+  it("不正な日付形式の納期を弾く", () => {
+    expect(bodyRepairJobCreateSchema.safeParse({ due_date: "2026/07/15" }).success).toBe(false);
+    expect(bodyRepairJobCreateSchema.safeParse({ due_date: "来週" }).success).toBe(false);
+  });
+
+  it("形式は正しいが実在しない暦日を弾く (2026-02-31 / 2026-13-01)", () => {
+    expect(bodyRepairJobCreateSchema.safeParse({ due_date: "2026-02-31" }).success).toBe(false);
+    expect(bodyRepairJobCreateSchema.safeParse({ due_date: "2026-13-01" }).success).toBe(false);
+    expect(bodyRepairJobCreateSchema.safeParse({ due_date: "2026-02-28" }).success).toBe(true);
+  });
+
+  it("保険査定 (claim_status / 承認額) を受理し、空文字は null(未提出)に正規化する", () => {
+    const ok = bodyRepairJobCreateSchema.safeParse({
+      claim_status: "approved",
+      claim_approved_amount: 175000,
+      claim_decided_at: "2026-07-01",
+    });
+    expect(ok.success).toBe(true);
+    if (ok.success) {
+      expect(ok.data.claim_status).toBe("approved");
+      expect(ok.data.claim_approved_amount).toBe(175000);
+      expect(ok.data.claim_decided_at).toBe("2026-07-01");
+    }
+
+    const empty = bodyRepairJobCreateSchema.safeParse({ claim_status: "" });
+    expect(empty.success).toBe(true);
+    if (empty.success) expect(empty.data.claim_status).toBeNull();
+  });
+
+  it("不正な claim_status を弾く", () => {
+    expect(bodyRepairJobCreateSchema.safeParse({ claim_status: "yes" }).success).toBe(false);
+  });
 });
 
 describe("bodyRepairJobUpdateSchema — 部分更新セマンティクス", () => {
@@ -47,6 +90,35 @@ describe("bodyRepairJobUpdateSchema — 部分更新セマンティクス", () =
     if (r.success) {
       expect(r.data.planned_work).toBeUndefined();
       expect(r.data.actual_work).toBeUndefined();
+    }
+  });
+
+  it("省略フィールドは undefined を維持する (部分更新で既存値を消さない)", () => {
+    const r = bodyRepairJobUpdateSchema.safeParse({ id: "33333333-3333-4333-8333-333333333333", stage: "paint" });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      // ステージ前進のみのペイロードで他フィールドが null 化されない (= PATCH で消えない)
+      expect(r.data.due_date).toBeUndefined();
+      expect(r.data.estimate_amount).toBeUndefined();
+      expect(r.data.notes).toBeUndefined();
+      expect(r.data.insurance_company).toBeUndefined();
+      expect(r.data.certificate_id).toBeUndefined();
+      expect(r.data.insurer_case_id).toBeUndefined();
+    }
+  });
+
+  it("空文字 / null は明示クリア (null) に正規化される", () => {
+    const r = bodyRepairJobUpdateSchema.safeParse({
+      id: "33333333-3333-4333-8333-333333333333",
+      due_date: "",
+      notes: "",
+      insurance_company: "",
+    });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.due_date).toBeNull();
+      expect(r.data.notes).toBeNull();
+      expect(r.data.insurance_company).toBeNull();
     }
   });
 

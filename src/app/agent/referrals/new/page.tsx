@@ -14,7 +14,7 @@ export default function NewReferralPage() {
     contact_name: "",
     contact_email: "",
     contact_phone: "",
-    note: "",
+    notes: "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -127,8 +127,8 @@ export default function NewReferralPage() {
         <div className="space-y-1">
           <label className="text-xs text-muted">備考</label>
           <textarea
-            value={form.note}
-            onChange={set("note")}
+            value={form.notes}
+            onChange={set("notes")}
             className="input-field"
             rows={3}
             placeholder="補足情報があれば入力してください"

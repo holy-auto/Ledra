@@ -108,7 +108,10 @@ export function classifyThicknessSeverity(stats: ThicknessAnomalyStats): "ok" | 
   return "ok";
 }
 
-export async function detectThicknessAnomaly(input: ThicknessAnomalyInput): Promise<ThicknessAnomalyResult> {
+export async function detectThicknessAnomaly(
+  input: ThicknessAnomalyInput,
+  opts?: { model?: string },
+): Promise<ThicknessAnomalyResult> {
   const stats = analyzeThicknessStats(input);
   const severity = classifyThicknessSeverity(stats);
 
@@ -139,7 +142,7 @@ export async function detectThicknessAnomaly(input: ThicknessAnomalyInput): Prom
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 256,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: facts }],

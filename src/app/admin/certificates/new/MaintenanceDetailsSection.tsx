@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import HelpTooltip from "@/components/ui/HelpTooltip";
+import StaffNameField from "./StaffNameField";
 import {
   WORK_TYPE_OPTIONS,
   FINDING_CATEGORY_OPTIONS,
@@ -37,9 +38,9 @@ const selectCls =
   "rounded-lg border border-border-default bg-surface px-2 py-2 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent";
 
 const SEVERITY_COLORS: Record<string, string> = {
-  ok:       "bg-green-50 border-green-200 text-green-700",
+  ok: "bg-green-50 border-green-200 text-green-700",
   advisory: "bg-yellow-50 border-yellow-200 text-yellow-700",
-  warning:  "bg-orange-50 border-orange-200 text-orange-700",
+  warning: "bg-orange-50 border-orange-200 text-orange-700",
   critical: "bg-red-50 border-red-200 text-red-700",
 };
 
@@ -65,32 +66,23 @@ export default function MaintenanceDetailsSection() {
     }));
   };
 
-  const update = (field: keyof MaintenanceData, value: string) =>
-    setData((prev) => ({ ...prev, [field]: value }));
+  const update = (field: keyof MaintenanceData, value: string) => setData((prev) => ({ ...prev, [field]: value }));
 
   const addFinding = () =>
-    setFindings((prev) => [
-      ...prev,
-      { finding_category: "brake", finding_severity: "ok", finding_note: "" },
-    ]);
+    setFindings((prev) => [...prev, { finding_category: "brake", finding_severity: "ok", finding_note: "" }]);
 
   const updateFinding = (i: number, field: keyof InspectionFinding, value: string) =>
     setFindings((prev) => prev.map((f, idx) => (idx === i ? { ...f, [field]: value } : f)));
 
-  const removeFinding = (i: number) =>
-    setFindings((prev) => prev.filter((_, idx) => idx !== i));
+  const removeFinding = (i: number) => setFindings((prev) => prev.filter((_, idx) => idx !== i));
 
   const addPart = () =>
-    setParts((prev) => [
-      ...prev,
-      { part_category: "oil_filter", part_name: "", next_replacement_mileage_est: "" },
-    ]);
+    setParts((prev) => [...prev, { part_category: "oil_filter", part_name: "", next_replacement_mileage_est: "" }]);
 
   const updatePart = (i: number, field: keyof PartReplacement, value: string) =>
     setParts((prev) => prev.map((p, idx) => (idx === i ? { ...p, [field]: value } : p)));
 
-  const removePart = (i: number) =>
-    setParts((prev) => prev.filter((_, idx) => idx !== i));
+  const removePart = (i: number) => setParts((prev) => prev.filter((_, idx) => idx !== i));
 
   const jsonValue = JSON.stringify({
     work_types: data.work_types,
@@ -102,21 +94,25 @@ export default function MaintenanceDetailsSection() {
   });
 
   const findingsJson = JSON.stringify(
-    findings.filter((f) => f.finding_category).map((f) => ({
-      finding_category: f.finding_category,
-      finding_severity: f.finding_severity,
-      finding_note: f.finding_note.trim() || null,
-    }))
+    findings
+      .filter((f) => f.finding_category)
+      .map((f) => ({
+        finding_category: f.finding_category,
+        finding_severity: f.finding_severity,
+        finding_note: f.finding_note.trim() || null,
+      })),
   );
 
   const partsJson = JSON.stringify(
-    parts.filter((p) => p.part_name.trim()).map((p) => ({
-      part_category: p.part_category,
-      part_name: p.part_name.trim(),
-      next_replacement_mileage_est: p.next_replacement_mileage_est
-        ? parseInt(p.next_replacement_mileage_est, 10)
-        : null,
-    }))
+    parts
+      .filter((p) => p.part_name.trim())
+      .map((p) => ({
+        part_category: p.part_category,
+        part_name: p.part_name.trim(),
+        next_replacement_mileage_est: p.next_replacement_mileage_est
+          ? parseInt(p.next_replacement_mileage_est, 10)
+          : null,
+      })),
   );
 
   return (
@@ -206,7 +202,10 @@ export default function MaintenanceDetailsSection() {
         {parts.length > 0 && (
           <div className="space-y-2">
             {parts.map((part, i) => (
-              <div key={i} className="flex gap-2 items-start rounded-lg border border-border-default bg-surface-subtle p-2">
+              <div
+                key={i}
+                className="flex gap-2 items-start rounded-lg border border-border-default bg-surface-subtle p-2"
+              >
                 <select
                   value={part.part_category}
                   onChange={(e) => updatePart(i, "part_category", e.target.value)}
@@ -290,7 +289,10 @@ export default function MaintenanceDetailsSection() {
         {findings.length > 0 && (
           <div className="space-y-2">
             {findings.map((finding, i) => (
-              <div key={i} className="flex gap-2 items-start rounded-lg border border-border-default bg-surface-subtle p-2">
+              <div
+                key={i}
+                className="flex gap-2 items-start rounded-lg border border-border-default bg-surface-subtle p-2"
+              >
                 <select
                   value={finding.finding_category}
                   onChange={(e) => updateFinding(i, "finding_category", e.target.value)}
@@ -334,16 +336,16 @@ export default function MaintenanceDetailsSection() {
         )}
       </div>
 
-      {/* 整備士名 */}
-      <label className="block space-y-1.5">
+      {/* 整備士名 (スタッフマスタから選択、マスタ未登録時は自由入力) */}
+      <div className="block space-y-1.5">
         <span className="text-sm font-medium text-secondary">担当整備士</span>
-        <input
+        <StaffNameField
           value={data.mechanic_name}
-          onChange={(e) => update("mechanic_name", e.target.value)}
+          onChange={(v) => update("mechanic_name", v)}
           placeholder="整備士名を入力"
-          className={inputCls}
+          inputCls={inputCls}
         />
-      </label>
+      </div>
     </div>
   );
 }

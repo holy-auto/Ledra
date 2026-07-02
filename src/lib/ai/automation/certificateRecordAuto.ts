@@ -1,18 +1,17 @@
 /**
- * 案件 (予約) 完了時に証明書を **status=draft の「行」** として自動作成する IO 層。
+ * 案件 (予約) 完了時に証明書を自動作成する IO 層。
  *
  * 予約更新ルート (`/api/admin/reservations` PUT) の status→"completed" 遷移から
  * **fire-and-forget** で呼ばれる。管理者レスポンスを遅らせないため await しない。
  *
  * `certificate.auto_draft` (= AI 下書き JSON を reservations.ai_certificate_draft に
- * 保存) の一歩先で、実際の `certificates` 行を draft 状態で起票し「発行直前」まで
- * 用意する。発行画面はこの draft 行を編集して発行 (draft→active) する。
+ * 保存) の一歩先で、実際の `certificates` 行を起票する。
  *
- * 壁3:
- *   - 作るのは **下書き (status=draft) のみ**。発行 (draft→active = 法的確定) は
- *     必ず人が行う。`certificate.auto_issue` は NEVER_AUTO_ACTIONS のままで常に false。
- *   - 本人 (customer_name) を捏造しない: 顧客レコードが紐づき名前が取れる案件のみ作成する。
- *   - 既に証明書を自動作成済みの案件 (reservations.ai_certificate_id) は再作成しない。
+ * certificate.auto_issue が有効な場合は status=active (発行済み) として作成する。
+ * 無効な場合は従来通り status=draft で作成し、発行画面で人が確認して発行する。
+ *
+ * 顧客名が取れる案件のみ作成する。
+ * 既に証明書を自動作成済みの案件 (reservations.ai_certificate_id) は再作成しない。
  */
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
@@ -20,8 +19,11 @@ import type { DraftCertificateResult } from "@/lib/ai/draftCertificate";
 import { makePublicId } from "@/lib/publicId";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
+import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
+import { triggerCertificateIssued } from "@/lib/certificates/issueHooks";
+import { computeWarrantyEndDate } from "@/lib/ai/followUpContent";
 import { loadAiAutomationSettings } from "./policy";
-import { shouldAutoCreateDraftCertificate } from "./orchestrator";
+import { shouldAutoCreateDraftCertificate, shouldAutoIssueCertificate } from "./orchestrator";
 
 const AUTO_CREATE_ENDPOINT = "/api/admin/reservations#auto-create-draft-certificate";
 
@@ -96,7 +98,7 @@ export async function maybeAutoCreateDraftCertificateForReservation(
     if (!reservation || !reservation.vehicle_id) return; // 車両が無ければ作らない
     if (reservation.ai_certificate_id) return; // 既に自動作成済み → 重複作成しない
 
-    // 本人確認: 顧客名が取れる案件のみ (customer_name は NOT NULL。捏造しない = 壁3)。
+    // 顧客名が取れる案件のみ (customer_name は NOT NULL)。
     if (!reservation.customer_id) return;
     const { data: customer } = await admin
       .from("customers")
@@ -115,85 +117,161 @@ export async function maybeAutoCreateDraftCertificateForReservation(
       .maybeSingle();
 
     // AI 下書き (certificate.auto_draft が生成済みなら活用)。無ければ最小限で起票する。
-    const snapshot = reservation.ai_certificate_draft as { draft?: Partial<DraftCertificateResult> } | null;
-    const draft = snapshot?.draft ?? null;
+    // 複数種類の作業依頼がある予約は drafts[] にカテゴリー別下書きを持つ。その場合は
+    // カテゴリーごとに証明書行を 1 件ずつ起票する。無ければ primary draft を 1 件。
+    const snapshot = reservation.ai_certificate_draft as {
+      draft?: Partial<DraftCertificateResult>;
+      drafts?: Array<{ category?: string; draft?: Partial<DraftCertificateResult> }>;
+    } | null;
+
+    const draftUnits: Array<{ draft: Partial<DraftCertificateResult> | null; category: string | null }> =
+      Array.isArray(snapshot?.drafts) && snapshot!.drafts.length > 0
+        ? snapshot!.drafts.map((d) => ({ draft: d?.draft ?? null, category: nonEmpty(d?.category) }))
+        : [{ draft: snapshot?.draft ?? null, category: null }];
 
     const vehicleMaker = nonEmpty(vehicle?.maker);
     const vehicleModel = nonEmpty(vehicle?.model);
     const vehicleLabel = [vehicleMaker, vehicleModel].filter(Boolean).join(" ");
-    const serviceName = nonEmpty(draft?.title) ?? nonEmpty(reservation.title) ?? (vehicleLabel || null) ?? "施工証明書";
-
-    const materials = Array.isArray(draft?.materials)
-      ? draft!.materials.map(materialToText).filter((m): m is string => !!m)
-      : [];
-    const warranty = Array.isArray(draft?.warrantyCandidates) ? nonEmpty(draft!.warrantyCandidates[0]) : null;
-    const workAreas = Array.isArray(draft?.workAreas)
-      ? draft!.workAreas.map((w) => nonEmpty(w)).filter((w): w is string => !!w)
-      : [];
-    const description = nonEmpty(draft?.description);
-    const cautions = nonEmpty(draft?.cautions);
-    // 本文 (content_free_text): 説明 + 注意事項を改行で連結 (どちらか欠けても可)。
-    const freeText = [description, cautions].filter(Boolean).join("\n\n") || null;
+    const vehiclePlate = nonEmpty(vehicle?.plate_display);
 
     const usage = startAiRouteUsage(AUTO_CREATE_ENDPOINT);
 
-    // public_id 採番 (衝突回避リトライ)。
-    let publicId = "";
-    for (let attempt = 0; attempt < 5; attempt++) {
-      publicId = makePublicId();
-      const { data: existing } = await admin.from("certificates").select("id").eq("public_id", publicId).maybeSingle();
-      if (!existing) break;
-      if (attempt === 4) {
-        usage.record({ tenantId, outcome: "error", confidence: null, meta: { auto: true, reason: "public_id_collision" } });
-        return;
+    /** 一意な public_id を採番する。衝突が続いたら null。 */
+    async function allocatePublicId(): Promise<string | null> {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const candidate = makePublicId();
+        const { data: existing } = await admin
+          .from("certificates")
+          .select("id")
+          .eq("public_id", candidate)
+          .maybeSingle();
+        if (!existing) return candidate;
+      }
+      return null;
+    }
+
+    // カテゴリー別 (または単一) に証明書行を作成する。1 件でも失敗しても他は続行。
+    const createdIds: string[] = [];
+    let issuedCount = 0;
+    let collision = false;
+    let insertFailed = false;
+
+    for (const unit of draftUnits) {
+      const draft = unit.draft;
+      const serviceName =
+        nonEmpty(draft?.title) ?? nonEmpty(reservation.title) ?? (vehicleLabel || null) ?? "施工証明書";
+      const materials = Array.isArray(draft?.materials)
+        ? draft!.materials.map(materialToText).filter((m): m is string => !!m)
+        : [];
+      const warranty = Array.isArray(draft?.warrantyCandidates) ? nonEmpty(draft!.warrantyCandidates[0]) : null;
+      const workAreas = Array.isArray(draft?.workAreas)
+        ? draft!.workAreas.map((w) => nonEmpty(w)).filter((w): w is string => !!w)
+        : [];
+      const description = nonEmpty(draft?.description);
+      const cautions = nonEmpty(draft?.cautions);
+      // 本文 (content_free_text): 説明 + 注意事項を改行で連結 (どちらか欠けても可)。
+      const freeText = [description, cautions].filter(Boolean).join("\n\n") || null;
+
+      const publicId = await allocatePublicId();
+      if (!publicId) {
+        collision = true;
+        continue;
+      }
+
+      const draftConfidence = typeof draft?.confidence === "number" ? draft.confidence : 0;
+      const autoIssue = shouldAutoIssueCertificate(settings, {
+        hasDraft: !!draft,
+        photoQualityPassed: false,
+        tamperingCheckPassed: false,
+        hasRequiredFields: !!customerName && !!serviceName,
+        confidence: draftConfidence,
+      });
+
+      const certRow: Record<string, unknown> = {
+        tenant_id: tenantId,
+        public_id: publicId,
+        vehicle_id: reservation.vehicle_id,
+        customer_id: reservation.customer_id,
+        customer_name: customerName,
+        service_name: serviceName,
+        description,
+        material_info: materials.length > 0 ? materials.join(", ") : null,
+        warranty_period: warranty,
+        // 施工日 (発行 ≒ 今日) と保証期間テキストから保証終了日を自動算出して保存する。
+        // 解釈できない期間なら null (cron 側でテキストからの算出にフォールバックする)。
+        warranty_period_end: computeWarrantyEndDate(new Date().toISOString(), warranty),
+        content_free_text: freeText,
+        vehicle_maker: vehicleMaker,
+        vehicle_model: vehicleModel,
+        vehicle_info_json: {
+          maker: vehicleMaker,
+          model: vehicleModel,
+          year: vehicle?.year ?? null,
+          plate: vehiclePlate,
+        },
+        // 施工箇所など template に乗らない補助情報は preset_json に退避 (発行画面が活用可能)。
+        content_preset_json: {
+          ai_auto_draft: true,
+          work_areas: workAreas,
+          warranty_candidates: Array.isArray(draft?.warrantyCandidates) ? draft!.warrantyCandidates : [],
+        },
+        // 大カテゴリー (coating / ppf / ...) が分かればワークフロー提案の手掛かりとして残す。
+        service_type: unit.category,
+        status: autoIssue ? "active" : "draft",
+        created_by: null,
+      };
+
+      const { data: cert, error: certErr } = await admin
+        .from("certificates")
+        .insert(certRow)
+        .select("id, public_id")
+        .single();
+      if (certErr || !cert) {
+        insertFailed = true;
+        logger.warn("[certificateRecordAuto] certificate insert failed", {
+          tenantId,
+          category: unit.category,
+          err: certErr?.message,
+        });
+        continue;
+      }
+
+      createdIds.push(cert.id as string);
+
+      if (autoIssue) {
+        issuedCount++;
+        triggerCertificateIssued({
+          tenantId,
+          publicId,
+          certificateId: cert.id as string,
+          customerName,
+          customerId: reservation.customer_id,
+          vehicleModel: vehicleModel,
+          vehiclePlate,
+        }).catch((e) => {
+          logger.warn("[certificateRecordAuto] triggerCertificateIssued failed", {
+            tenantId,
+            err: e instanceof Error ? e.message : String(e),
+          });
+        });
       }
     }
 
-    const certRow: Record<string, unknown> = {
-      tenant_id: tenantId,
-      public_id: publicId,
-      vehicle_id: reservation.vehicle_id,
-      customer_id: reservation.customer_id,
-      customer_name: customerName,
-      service_name: serviceName,
-      description,
-      material_info: materials.length > 0 ? materials.join(", ") : null,
-      warranty_period: warranty,
-      content_free_text: freeText,
-      vehicle_maker: vehicleMaker,
-      vehicle_model: vehicleModel,
-      vehicle_info_json: {
-        maker: vehicleMaker,
-        model: vehicleModel,
-        year: vehicle?.year ?? null,
-        plate: nonEmpty(vehicle?.plate_display),
-      },
-      // 施工箇所など template に乗らない補助情報は preset_json に退避 (発行画面が活用可能)。
-      content_preset_json: {
-        ai_auto_draft: true,
-        work_areas: workAreas,
-        warranty_candidates: Array.isArray(draft?.warrantyCandidates) ? draft!.warrantyCandidates : [],
-      },
-      service_type: null, // 種別 (coating/ppf 等) は発行時に人が選ぶ。
-      status: "draft", // 壁3: 発行 (active 化) は必ず人。
-      created_by: null, // 自動作成 (人ではない)。
-    };
-
-    const { data: cert, error: certErr } = await admin
-      .from("certificates")
-      .insert(certRow)
-      .select("id, public_id")
-      .single();
-    if (certErr || !cert) {
-      usage.record({ tenantId, outcome: "error", confidence: null, meta: { auto: true, reason: "insert_failed" } });
-      logger.warn("[certificateRecordAuto] certificate insert failed", { tenantId, err: certErr?.message });
+    // 1 件も作れなかった場合は失敗として記録し、マーカーは書かない (再試行余地を残す)。
+    if (createdIds.length === 0) {
+      usage.record({
+        tenantId,
+        outcome: "error",
+        confidence: null,
+        meta: { auto: true, reason: collision ? "public_id_collision" : insertFailed ? "insert_failed" : "no_drafts" },
+      });
       return;
     }
 
-    // 重複防止マーカーを予約に書き戻す (次回以降は再作成しない)。
+    // 重複防止マーカーを予約に書き戻す (次回以降は再作成しない)。先頭行の id を代表とする。
     const { error: backErr } = await admin
       .from("reservations")
-      .update({ ai_certificate_id: cert.id })
+      .update({ ai_certificate_id: createdIds[0] })
       .eq("id", reservationId)
       .eq("tenant_id", tenantId);
     if (backErr && !isMissingColumnError(backErr)) {
@@ -203,8 +281,21 @@ export async function maybeAutoCreateDraftCertificateForReservation(
     usage.record({
       tenantId,
       outcome: "ok",
-      confidence: typeof draft?.confidence === "number" ? draft.confidence : null,
-      meta: { auto: true, status: "draft", from_draft: !!draft },
+      confidence: null,
+      meta: { auto: true, created: createdIds.length, auto_issued: issuedCount },
+    });
+    // 人の確認なしで証明書を自動作成 (下書き or 自動発行) した事実を監査ログに残す。
+    // 複数カテゴリー分を 1 度に作りうるため、代表 id + 件数で記録する。
+    await logAutoActionExecuted({
+      tenantId,
+      actionKey: issuedCount > 0 ? "certificate.auto_issue" : "certificate.auto_create_draft_record",
+      resource: { kind: "certificate", id: createdIds[0] ?? null },
+      detail: {
+        reservation_id: reservationId,
+        created: createdIds.length,
+        auto_issued: issuedCount,
+        certificate_ids: createdIds,
+      },
     });
   } catch (e) {
     logger.warn("[certificateRecordAuto] maybeAutoCreateDraftCertificateForReservation threw", {

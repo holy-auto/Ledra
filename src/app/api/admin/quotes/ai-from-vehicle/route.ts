@@ -18,6 +18,7 @@ import { parseJsonBody } from "@/lib/api/parseBody";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateQuoteFromVehicle } from "@/lib/ai/quoteFromVehicle";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
@@ -82,23 +83,26 @@ export async function POST(req: NextRequest) {
     // 同テナント直近 5 件の同サイズ帯請求書
     const { data: invoiceRows } = await admin
       .from("invoices")
-      .select("items_json, total_amount")
+      .select("items_json, total")
       .eq("tenant_id", tenantId)
       .order("issued_at", { ascending: false })
       .limit(20);
 
     const pastInvoices = (invoiceRows ?? [])
-      .map((r) => extractInvoiceLines(r.items_json, r.total_amount as number | null))
+      .map((r) => extractInvoiceLines(r.items_json, r.total as number | null))
       .filter((inv) => inv.items.length > 0)
       .slice(0, 5);
 
-    const draft = await generateQuoteFromVehicle({
-      vehicle,
-      customerName: customer?.name ?? null,
-      serviceCategory: parsed.data.service_category,
-      pastInvoices,
-      baseMenu: parsed.data.base_menu,
-    });
+    const draft = await generateQuoteFromVehicle(
+      {
+        vehicle,
+        customerName: customer?.name ?? null,
+        serviceCategory: parsed.data.service_category,
+        pastInvoices,
+        baseMenu: parsed.data.base_menu,
+      },
+      { model: fastModelForPlanTier(caller.planTier) },
+    );
 
     usage.record({
       tenantId: caller.tenantId,

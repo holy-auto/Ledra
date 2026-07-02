@@ -122,7 +122,10 @@ const SYSTEM_PROMPT = `あなたは自動車施工店の顧客サポート担当
 
 confidence: 0.0〜1.0 で自己評価。`.trim();
 
-export async function classifyInquiry(input: InquiryClassifyInput): Promise<InquiryClassifyResult> {
+export async function classifyInquiry(
+  input: InquiryClassifyInput,
+  opts?: { model?: string },
+): Promise<InquiryClassifyResult> {
   const baseline = buildDeterministicClassification(input);
   if (!process.env.ANTHROPIC_API_KEY) return baseline;
 
@@ -142,7 +145,7 @@ export async function classifyInquiry(input: InquiryClassifyInput): Promise<Inqu
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 1024,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: facts.join("\n\n") }],

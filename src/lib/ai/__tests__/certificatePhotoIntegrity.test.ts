@@ -14,6 +14,8 @@ function img(overrides: Partial<CertImageIntegrityInput> & { id: string }): Cert
     sha256: `sha-${overrides.id}`,
     perceptualHash: `ph-${overrides.id}`,
     capturedAt: "2026-06-01T10:00:00Z",
+    // 既定はアップロードが撮影の当日〜翌日 (= stale ではない正常ケース)。
+    uploadedAt: "2026-06-02T00:00:00Z",
     deviceModel: "Apple iPhone 15",
     deepfakeVerdict: "likely_real",
     authenticityGrade: "A",
@@ -67,6 +69,46 @@ describe("aggregateCertificateImageIntegrity", () => {
     const r = aggregateCertificateImageIntegrity([img({ id: "1", capturedAt: "2026-12-31T00:00:00Z" })], NOW);
     expect(r.verdict).toBe("suspicious");
     expect(r.flags).toContain("capture_time_future");
+  });
+
+  it("アップロードより大幅に前の撮影は capture_time_stale で inconclusive (使い回し疑い)", () => {
+    // アップロード = 2026-06-01、撮影 = 2026-01-01 (約5ヶ月前 > 60日) → 使い回しの疑い。
+    const r = aggregateCertificateImageIntegrity([
+      img({ id: "1", capturedAt: "2026-01-01T10:00:00Z", uploadedAt: "2026-06-01T00:00:00Z" }),
+    ]);
+    expect(r.flags).toContain("capture_time_stale");
+    // 使い回しは弱いシグナル → suspicious にはしない (Vision へ回す)。
+    expect(r.verdict).toBe("inconclusive");
+    expect(r.anyFlagged).toBe(false);
+    expect(pickGrayZoneImageIds(r, 10)).toContain("1");
+    // 要約はメタ欠落ではなく使い回しの疑いを明示する。
+    expect(r.summary).toContain("使い回し");
+    expect(r.summary).not.toContain("撮影メタ");
+  });
+
+  it("アップロード直近 (60日以内) の撮影は stale にしない", () => {
+    const r = aggregateCertificateImageIntegrity([
+      img({ id: "1", capturedAt: "2026-05-20T10:00:00Z", uploadedAt: "2026-06-01T00:00:00Z" }),
+    ]);
+    expect(r.flags).not.toContain("capture_time_stale");
+    expect(r.verdict).toBe("clear");
+  });
+
+  it("uploadedAt 未指定なら stale 判定はスキップ (誤検知回避)", () => {
+    const r = aggregateCertificateImageIntegrity([
+      img({ id: "1", capturedAt: "2020-01-01T10:00:00Z", uploadedAt: null }),
+    ]);
+    expect(r.flags).not.toContain("capture_time_stale");
+    expect(r.verdict).toBe("clear");
+  });
+
+  it("未来の撮影は stale ではなく capture_time_future を優先", () => {
+    const r = aggregateCertificateImageIntegrity([
+      img({ id: "1", capturedAt: "2026-12-31T00:00:00Z", uploadedAt: "2026-06-01T00:00:00Z" }),
+    ]);
+    expect(r.flags).toContain("capture_time_future");
+    expect(r.flags).not.toContain("capture_time_stale");
+    expect(r.verdict).toBe("suspicious");
   });
 
   it("撮影メタ欠落のみは inconclusive (suspicious にしない)", () => {

@@ -123,12 +123,16 @@ export function rankCandidates(candidates: TenantCandidate[], req: MatchRequirem
 // LLM 推薦文生成 (上位 N 件のみ)
 // ─────────────────────────────────────────────
 
-async function generateRecommendationText(match: MatchResult, req: MatchRequirements): Promise<string> {
+async function generateRecommendationText(
+  match: MatchResult,
+  req: MatchRequirements,
+  opts?: { model?: string },
+): Promise<string> {
   try {
     const client = getAnthropicClient();
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 128,
         system: `あなたは自動車施工業界の BtoB マッチング担当者です。
 以下の施工店を保険会社に推薦する文章を1〜2文（80文字以内）で生成してください。
@@ -161,6 +165,7 @@ export async function matchBtobTenants(
   candidates: TenantCandidate[],
   requirements: MatchRequirements,
   topN = 3,
+  opts?: { model?: string },
 ): Promise<MatchResult[]> {
   const ranked = rankCandidates(candidates, requirements);
 
@@ -170,7 +175,7 @@ export async function matchBtobTenants(
   const withText = await Promise.all(
     ranked.map(async (r, idx) => {
       if (idx >= topN) return r;
-      const text = await generateRecommendationText(r, requirements);
+      const text = await generateRecommendationText(r, requirements, opts);
       return { ...r, recommendationText: text || null };
     }),
   );

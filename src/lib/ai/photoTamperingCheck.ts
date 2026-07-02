@@ -188,6 +188,7 @@ export async function inspectImageTamperingVision(
   base64: string,
   mediaType: string,
   hints: string[],
+  opts?: { model?: string },
 ): Promise<{ suspicious: boolean; reason: string }> {
   try {
     const client = getAnthropicClient();
@@ -198,7 +199,7 @@ export async function inspectImageTamperingVision(
         // 改ざん判定は低頻度・高ステークス (証明書の信頼性 / ブロックチェーン anchoring の
         // 根拠) なので最大火力モデルを使う。EXIF で疑わしいと絞り込んだ写真のみ到達するため
         // 総コスト影響は小さい。
-        model: AI_MODEL_CRITICAL,
+        model: opts?.model ?? AI_MODEL_CRITICAL,
         max_tokens: 256,
         system: `あなたは写真の真正性を審査する専門家です。
 EXIF 解析で以下のフラグが検出されました:
@@ -239,7 +240,7 @@ async function visionTamperingCheck(
   mediaType: string,
   flags: TamperingFlag[],
 ): Promise<{ suspicious: boolean; reason: string }> {
-  return inspectImageTamperingVision(base64, mediaType, flags);
+  return inspectImageTamperingVision(base64, mediaType, flags, undefined);
 }
 
 // ─────────────────────────────────────────────

@@ -27,6 +27,7 @@ type ThreadSummary = {
   last_created_at: string;
   unread_count: number;
   message_count: number;
+  candidate_count: number;
 };
 
 type ThreadListResponse = {
@@ -248,7 +249,17 @@ export default function MessagesInboxClient() {
                     <span className="shrink-0">{t.last_direction === "outbound" ? "↪︎" : "←"}</span>
                     <span className="truncate">{t.last_body}</span>
                   </div>
-                  <div className="mt-0.5 text-[10px] text-muted">{formatTime(t.last_created_at)}</div>
+                  <div className="mt-0.5 flex items-center gap-2">
+                    <span className="text-[10px] text-muted">{formatTime(t.last_created_at)}</span>
+                    {t.candidate_count > 0 && (
+                      <span
+                        className="shrink-0 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent"
+                        title="AI が抽出した予定候補があります（未確認）"
+                      >
+                        ✨ 予定候補{t.candidate_count > 1 ? ` ${t.candidate_count}` : ""}
+                      </span>
+                    )}
+                  </div>
                 </button>
               );
             })}

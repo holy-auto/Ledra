@@ -40,7 +40,10 @@ const SYSTEM_PROMPT = `あなたは自動車施工店の案件管理を支援す
 - 改行・絵文字・カッコ書き禁止。
 `.trim();
 
-export async function generateJobAutoTitle(input: JobAutoTitleInput): Promise<{
+export async function generateJobAutoTitle(
+  input: JobAutoTitleInput,
+  opts?: { model?: string },
+): Promise<{
   title: string;
   confidence: number;
 } | null> {
@@ -58,7 +61,12 @@ export async function generateJobAutoTitle(input: JobAutoTitleInput): Promise<{
   if (input.menuItemNames?.length) facts.push(`メニュー: ${input.menuItemNames.join(", ")}`);
   if (input.serviceCategory) facts.push(`カテゴリ: ${input.serviceCategory}`);
   if (input.recentTitles?.length) {
-    facts.push(`過去の同店舗案件タイトル例:\n${input.recentTitles.slice(0, 5).map((t) => `- ${t}`).join("\n")}`);
+    facts.push(
+      `過去の同店舗案件タイトル例:\n${input.recentTitles
+        .slice(0, 5)
+        .map((t) => `- ${t}`)
+        .join("\n")}`,
+    );
   }
 
   if (facts.length === 0) return null;
@@ -66,7 +74,7 @@ export async function generateJobAutoTitle(input: JobAutoTitleInput): Promise<{
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 256,
         system: SYSTEM_PROMPT,
         messages: [

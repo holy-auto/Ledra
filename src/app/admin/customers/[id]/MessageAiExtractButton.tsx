@@ -11,7 +11,7 @@
  */
 import { useState } from "react";
 
-interface ExtractedResult {
+export interface ExtractedResult {
   customer_name?: string;
   phone?: string;
   vehicle?: string;
@@ -21,11 +21,16 @@ interface ExtractedResult {
   intent: "new_reservation" | "change_reservation" | "cancel" | "inquiry_only" | "other";
   confidence: number;
   ai: boolean;
-  extracted_at: string;
+  extracted_at?: string;
+  /** "history_import" のとき履歴一括取り込みで生成された候補。 */
+  source?: string;
+  /** スタッフが「対応済み」にした時刻。設定済みなら候補は収束 (バッジ/CTA を消す)。 */
+  handled_at?: string | null;
 }
 
 interface Props {
   messageId: string;
+  customerId?: string;
 }
 
 const INTENT_LABEL: Record<ExtractedResult["intent"], string> = {
@@ -36,7 +41,118 @@ const INTENT_LABEL: Record<ExtractedResult["intent"], string> = {
   other: "その他",
 };
 
-export default function MessageAiExtractButton({ messageId }: Props) {
+/**
+ * 抽出済み予約候補 (ai_extracted スナップショット or その場の抽出結果) を表示するカード。
+ * MessageAiExtractButton のその場抽出と、履歴一括取り込みで保存済みの候補の両方で使う。
+ */
+export function ExtractedCandidateCard({
+  result,
+  customerId,
+  onDismiss,
+  dismissing,
+}: {
+  result: ExtractedResult;
+  customerId?: string;
+  /** 指定時のみ「対応済みにする」ボタンを表示する (保存済み候補の収束用)。 */
+  onDismiss?: () => void;
+  dismissing?: boolean;
+}) {
+  const isReservation = result.intent === "new_reservation" || result.intent === "change_reservation";
+  const handled = !!result.handled_at;
+
+  // 予約候補を /admin/jobs/new に渡すためのクエリ。
+  // 遷移先 (WalkinJobClient) は customer_id / title / note を読んでフォームに反映する。
+  const params = new URLSearchParams();
+  if (customerId) params.set("customer_id", customerId);
+  if (result.service) params.set("title", result.service);
+  const noteParts: string[] = [];
+  if (result.scheduled_date || result.date_text) noteParts.push(`希望日: ${result.scheduled_date ?? result.date_text}`);
+  if (result.vehicle) noteParts.push(`車両: ${result.vehicle}`);
+  if (result.service) noteParts.push(`施工: ${result.service}`);
+  if (result.customer_name) noteParts.push(`お客様: ${result.customer_name}`);
+  if (result.phone) noteParts.push(`電話: ${result.phone}`);
+  if (noteParts.length) params.set("note", noteParts.join("\n"));
+  const reservationHint =
+    isReservation && !handled ? `/admin/jobs/new${params.toString() ? `?${params.toString()}` : ""}` : null;
+
+  return (
+    <div
+      className={`mt-1.5 rounded-lg border px-2 py-1.5 text-[11px] space-y-1 ${
+        handled ? "border-border-subtle bg-surface-hover/40 opacity-70" : "border-accent/30 bg-accent/5"
+      }`}
+    >
+      <div className="flex items-center gap-1.5">
+        <span className={`font-semibold ${handled ? "text-muted" : "text-accent"}`}>✨ AI 抽出</span>
+        <span className="rounded-full bg-accent/10 text-accent px-1.5 py-0">{INTENT_LABEL[result.intent]}</span>
+        <span className="text-muted">{Math.round(result.confidence * 100)}%</span>
+        {result.source === "history_import" && (
+          <span
+            className="rounded-full bg-surface-hover text-muted px-1.5 py-0"
+            title="紐づけ時に過去のやり取りから自動取り込み"
+          >
+            履歴から
+          </span>
+        )}
+        {handled && <span className="rounded-full bg-success-dim text-success px-1.5 py-0">✓ 対応済み</span>}
+      </div>
+      {(result.customer_name ||
+        result.phone ||
+        result.vehicle ||
+        result.service ||
+        result.scheduled_date ||
+        result.date_text) && (
+        <ul className="text-[10px] text-secondary space-y-0.5">
+          {result.customer_name && (
+            <li>
+              <span className="text-muted">顧客:</span> {result.customer_name}
+            </li>
+          )}
+          {result.phone && (
+            <li>
+              <span className="text-muted">電話:</span> {result.phone}
+            </li>
+          )}
+          {result.vehicle && (
+            <li>
+              <span className="text-muted">車両:</span> {result.vehicle}
+            </li>
+          )}
+          {result.service && (
+            <li>
+              <span className="text-muted">施工:</span> {result.service}
+            </li>
+          )}
+          {(result.scheduled_date || result.date_text) && (
+            <li>
+              <span className="text-muted">希望日:</span> {result.scheduled_date ?? result.date_text}
+            </li>
+          )}
+        </ul>
+      )}
+      {(reservationHint || (onDismiss && !handled)) && (
+        <div className="flex items-center gap-3 pt-0.5">
+          {reservationHint && (
+            <a href={reservationHint} className="inline-block underline text-accent">
+              予約候補として開く →
+            </a>
+          )}
+          {onDismiss && !handled && (
+            <button
+              type="button"
+              onClick={onDismiss}
+              disabled={dismissing}
+              className="text-[10px] text-muted underline hover:text-secondary disabled:opacity-50"
+            >
+              {dismissing ? "処理中…" : "対応済みにする"}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function MessageAiExtractButton({ messageId, customerId }: Props) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ExtractedResult | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -96,57 +212,5 @@ export default function MessageAiExtractButton({ messageId }: Props) {
 
   if (!result) return null;
 
-  // 予約候補を /admin/jobs/new に渡すためのクエリ
-  const params = new URLSearchParams();
-  if (result.customer_name) params.set("prefill_customer_name", result.customer_name);
-  if (result.service) params.set("prefill_service", result.service);
-  if (result.vehicle) params.set("prefill_vehicle", result.vehicle);
-  const reservationHint =
-    result.intent === "new_reservation" || result.intent === "change_reservation"
-      ? `/admin/jobs/new${params.toString() ? `?${params.toString()}` : ""}`
-      : null;
-
-  return (
-    <div className="mt-1.5 rounded-lg border border-accent/30 bg-accent/5 px-2 py-1.5 text-[11px] space-y-1">
-      <div className="flex items-center gap-1.5">
-        <span className="font-semibold text-accent">✨ AI 抽出</span>
-        <span className="rounded-full bg-accent/10 text-accent px-1.5 py-0">{INTENT_LABEL[result.intent]}</span>
-        <span className="text-muted">{Math.round(result.confidence * 100)}%</span>
-      </div>
-      {(result.customer_name || result.phone || result.vehicle || result.service || result.scheduled_date || result.date_text) && (
-        <ul className="text-[10px] text-secondary space-y-0.5">
-          {result.customer_name && (
-            <li>
-              <span className="text-muted">顧客:</span> {result.customer_name}
-            </li>
-          )}
-          {result.phone && (
-            <li>
-              <span className="text-muted">電話:</span> {result.phone}
-            </li>
-          )}
-          {result.vehicle && (
-            <li>
-              <span className="text-muted">車両:</span> {result.vehicle}
-            </li>
-          )}
-          {result.service && (
-            <li>
-              <span className="text-muted">施工:</span> {result.service}
-            </li>
-          )}
-          {(result.scheduled_date || result.date_text) && (
-            <li>
-              <span className="text-muted">希望日:</span> {result.scheduled_date ?? result.date_text}
-            </li>
-          )}
-        </ul>
-      )}
-      {reservationHint && (
-        <a href={reservationHint} className="inline-block underline text-accent">
-          予約候補として開く →
-        </a>
-      )}
-    </div>
-  );
+  return <ExtractedCandidateCard result={result} customerId={customerId} />;
 }

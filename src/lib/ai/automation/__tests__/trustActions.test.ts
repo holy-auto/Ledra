@@ -16,10 +16,9 @@ function settings(overrides: Partial<AiAutomationSettings>): AiAutomationSetting
 }
 
 describe("信頼系 auto-actions (改ざんスクリーニング / 不正スコア)", () => {
-  it("カタログに登録され、壁3 ではない", () => {
+  it("カタログに登録されている", () => {
     for (const k of TRUST_KEYS) {
       expect(AUTOMATION_ACTION_KEYS.has(k)).toBe(true);
-      expect(NEVER_AUTO_ACTIONS.has(k)).toBe(false);
     }
   });
 

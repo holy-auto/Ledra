@@ -4,6 +4,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { makePublicId } from "@/lib/publicId";
 import { resolveCertifiedTemplateForTenant } from "@/lib/manufacturers/certifiedTemplates";
+import { fuzzyMatchCustomer, type CustomerCandidate } from "@/lib/ai/customerFuzzyMatch";
 
 export type CreateCertResult =
   | { ok: true; public_id: string; status: "draft"; photo_required: boolean }
@@ -106,7 +107,17 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
     // ignore parse errors — field is optional
   }
 
-  // Service type (ppf | coating | maintenance | body_repair | etc)
+  // Accessory JSON (optional — accessory templates only)
+  let accessory_data: Record<string, any> = {};
+  try {
+    const raw = String(formData.get("accessory_json") || "{}");
+    const parsed = JSON.parse(raw);
+    if (typeof parsed === "object" && parsed !== null) accessory_data = parsed;
+  } catch {
+    // ignore parse errors — field is optional
+  }
+
+  // Service type (ppf | coating | maintenance | body_repair | accessory | etc)
   const service_type = String(formData.get("service_type") || "").trim() || null;
 
   // 品質監査用のフラットな field_values スナップショット (フォームの collectFieldValues 相当)。
@@ -170,17 +181,27 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
   // (Allows "type-to-create" — name entered freely will be registered to customer master.)
   let resolvedCustomerId = customer_id;
   if (!resolvedCustomerId && customer_name) {
-    // Try to find an existing customer with the same name to avoid duplicates
-    const { data: existingCustomer } = await supabase
+    // 表記揺れ (「山田たろう / ヤマダ タロウ」等) も既存顧客に寄せるため、
+    // 完全一致ではなく名寄せ (電話/メール一致 → 氏名類似度) で照合する。
+    // バルクではないが単発なので AI 判定はオフ (決定的マッチのみ) で十分。
+    const { data: candidates } = await supabase
       .from("customers")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .eq("name", customer_name)
-      .limit(1)
-      .maybeSingle();
+      .select("id, name, name_kana, phone, email")
+      .eq("tenant_id", tenantId);
 
-    if (existingCustomer?.id) {
-      resolvedCustomerId = existingCustomer.id as string;
+    let matchedId: string | null = null;
+    if (candidates && candidates.length > 0) {
+      const match = await fuzzyMatchCustomer(
+        { query: { name: customer_name }, candidates: candidates as CustomerCandidate[] },
+        { ai: false },
+      );
+      if (match.best && match.confidence >= 0.85) {
+        matchedId = match.best.candidate.id;
+      }
+    }
+
+    if (matchedId) {
+      resolvedCustomerId = matchedId;
     } else {
       const { data: newCustomer, error: customerErr } = await supabase
         .from("customers")
@@ -365,6 +386,7 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
       ppf_coverage_json: ppf_coverage.length > 0 ? ppf_coverage : [],
       maintenance_json: Object.keys(maintenance_data).length > 0 ? maintenance_data : {},
       body_repair_json: Object.keys(body_repair_data).length > 0 ? body_repair_data : {},
+      accessory_json: Object.keys(accessory_data).length > 0 ? accessory_data : {},
       service_type: service_type || null,
       quality_fields_json: quality_fields,
       expiry_type: "text",
