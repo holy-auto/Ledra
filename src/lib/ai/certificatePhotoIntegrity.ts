@@ -22,7 +22,8 @@
 import { createHash } from "crypto";
 
 export type PhotoIntegrityFlag =
-  | "duplicate_image" // 同一 sha256 / perceptual_hash が証明書内で複数 (使い回し)
+  | "duplicate_image" // 同一 sha256 が証明書内で複数 (完全一致 = 使い回し確定)
+  | "similar_image" // perceptual_hash のみ一致 (aHash は近似なので疑いに留める)
   | "deepfake_suspected" // ディープフェイク判定が likely_fake
   | "capture_time_future" // 撮影日時が未来 (時計改ざん / 別端末)
   | "capture_time_stale" // 撮影日時がアップロードより大幅に前 (過去写真の使い回しの疑い)
@@ -121,8 +122,9 @@ function rollupSummary(
 
   // inconclusive の内訳をフラグに応じて言い分ける (stale をメタ欠落と混同しない)。
   // このブランチに来る時点で suspiciousCount===0 のため、flagSet は inconclusive 級
-  // (capture_time_stale / metadata_missing) のみ。
+  // (similar_image / capture_time_stale / metadata_missing) のみ。
   const inconclusiveReasons: string[] = [];
+  if (flagSet.has("similar_image")) inconclusiveReasons.push("見た目が酷似した写真（使い回しの疑い）");
   if (flagSet.has("capture_time_stale"))
     inconclusiveReasons.push("アップロードより大幅に前に撮影された写真（使い回しの疑い）");
   if (flagSet.has("metadata_missing")) inconclusiveReasons.push("撮影メタ（日時/端末）の不足");
@@ -157,7 +159,8 @@ export function computeIntegritySignature(images: CertImageIntegrityInput[]): st
 /**
  * 証明書の画像群を、アップロード時シグナルから改ざんスクリーニングする。
  *
- * - duplicate_image: 同一 sha256 もしくは同一 perceptual_hash が複数 → 使い回しの疑い
+ * - duplicate_image: 同一 sha256 が複数 → 使い回し (完全一致なので決定的)
+ * - similar_image: perceptual_hash のみ一致 (弱いシグナル → inconclusive 止まり、Vision へ)
  * - deepfake_suspected: deepfake_verdict === "likely_fake"
  * - capture_time_future: 撮影日時が現在+2分より未来
  * - capture_time_stale: 撮影日時が、その写真のアップロード時刻 (uploadedAt) より
@@ -195,10 +198,14 @@ export function aggregateCertificateImageIntegrity(
   const perImage: ImageIntegrityVerdict[] = images.map((im) => {
     const flags: PhotoIntegrityFlag[] = [];
 
-    const isDuplicate =
-      (im.sha256 != null && (shaCount.get(im.sha256) ?? 0) > 1) ||
-      (im.perceptualHash != null && (phashCount.get(im.perceptualHash) ?? 0) > 1);
-    if (isDuplicate) flags.push("duplicate_image");
+    if (im.sha256 != null && (shaCount.get(im.sha256) ?? 0) > 1) {
+      flags.push("duplicate_image"); // 完全一致 (バイト同一) → 使い回し確定
+    } else if (im.perceptualHash != null && (phashCount.get(im.perceptualHash) ?? 0) > 1) {
+      // perceptual_hash は 8x8 平均ハッシュ (aHash) で、均一なコーティング面など
+      // 見た目が近い正当な写真同士でも容易に衝突する。決定的にはせず
+      // similar_image (inconclusive) に留めて Vision の内容審査へ回す。
+      flags.push("similar_image");
+    }
 
     if (im.deepfakeVerdict === "likely_fake") flags.push("deepfake_suspected");
 

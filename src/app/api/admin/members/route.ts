@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { normalizePlanTier } from "@/lib/billing/planFeatures";
 import { memberLimit, canAddMember } from "@/lib/billing/memberLimits";
 import { logAuditEvent } from "@/lib/audit/certificateLog";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
@@ -20,19 +19,6 @@ import {
 
 export const dynamic = "force-dynamic";
 
-/** Resolve caller and fetch plan tier for member limit checks */
-async function resolveCallerWithPlan(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>) {
-  const caller = await resolveCallerWithRole(supabase);
-  if (!caller) return null;
-
-  const { data: tenant } = await supabase.from("tenants").select("id, plan_tier").eq("id", caller.tenantId).single();
-
-  return {
-    ...caller,
-    planTier: normalizePlanTier(tenant?.plan_tier),
-  };
-}
-
 // ─── GET: メンバー一覧 ───
 export async function GET(req: NextRequest) {
   try {
@@ -40,7 +26,7 @@ export async function GET(req: NextRequest) {
     if (limited) return limited;
 
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithPlan(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
@@ -97,7 +83,7 @@ export async function POST(req: NextRequest) {
     if (limited) return limited;
 
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithPlan(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
     // Permission check: only roles with members:manage can add members
@@ -194,8 +180,9 @@ export async function POST(req: NextRequest) {
       id: crypto.randomUUID(),
       tenant_id: caller.tenantId,
       user_id: userId,
+      // 省略時は最小権限 viewer。DB デフォルトに任せない (fail-closed)
+      role: role ?? "viewer",
     };
-    if (role) row.role = role; // null の場合は DB デフォルトに任せる
 
     const { error: insertErr } = await admin.from("tenant_memberships").insert(row);
 
@@ -206,7 +193,7 @@ export async function POST(req: NextRequest) {
     logAuditEvent({
       type: "member_added",
       tenantId: caller.tenantId,
-      description: `${email} (role: ${role ?? "member"}) を追加`,
+      description: `${email} (role: ${role ?? "viewer"}) を追加`,
     });
 
     return apiJson({ ok: true, user_id: userId, email });
@@ -219,7 +206,7 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithPlan(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
     // owner または admin のみロール変更可
@@ -281,7 +268,7 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithPlan(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
     // owner または admin のみ削除可

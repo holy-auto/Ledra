@@ -35,6 +35,7 @@ const FLAG_LABELS: Record<string, string> = {
   vision_suspicious: "AI 視覚審査で疑わしい",
   // 自動スクリーニング (certificatePhotoIntegrity) のフラグ
   duplicate_image: "写真の重複",
+  similar_image: "類似写真 (使い回し疑い)",
   deepfake_suspected: "ディープフェイク疑い",
   capture_time_future: "撮影日時が未来",
   capture_time_stale: "撮影がアップロードより大幅に前 (使い回し疑い)",

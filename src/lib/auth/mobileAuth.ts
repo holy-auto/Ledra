@@ -1,4 +1,4 @@
-import type { NextRequest } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createMobileClient } from "@/lib/supabase/mobile-server";
 import { normalizeRole, type Role } from "./roles";
 
@@ -6,37 +6,37 @@ export type MobileCaller = {
   userId: string;
   tenantId: string;
   role: Role;
-  supabase: ReturnType<typeof createMobileClient> & {};
+  supabase: SupabaseClient;
 };
 
 /**
- * Resolve the mobile caller from Bearer token.
- * Returns null if not authenticated or not a tenant member.
+ * モバイル版の CallerInfo 解決（Bearer Token 認証）。
+ * checkRole.ts の resolveCallerWithRole と同等だが、セッションを持たないため
+ * Bearer Token を明示的に auth.getUser() に渡して検証する。
+ * 未認証またはテナント非所属なら null を返す。
  */
-export async function resolveMobileCaller(
-  request: NextRequest
-): Promise<MobileCaller | null> {
-  const supabase = createMobileClient(request);
-  if (!supabase) return null;
+export async function resolveMobileCaller(request: Request): Promise<MobileCaller | null> {
+  const { client, accessToken } = createMobileClient(request);
+  if (!client) return null;
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+  // JWT を検証してユーザー情報を取得
+  const { data: userRes, error: authError } = await client.auth.getUser(accessToken);
+  if (authError || !userRes?.user) return null;
 
-  const { data: mem } = await supabase
+  // テナントメンバーシップを取得（RLS は global header の JWT で動作）
+  const { data: mem } = await client
     .from("tenant_memberships")
     .select("tenant_id, role")
-    .eq("user_id", user.id)
+    .eq("user_id", userRes.user.id)
     .limit(1)
     .single();
 
   if (!mem?.tenant_id) return null;
 
   return {
-    userId: user.id,
+    userId: userRes.user.id,
     tenantId: mem.tenant_id as string,
     role: normalizeRole(mem.role),
-    supabase,
+    supabase: client,
   };
 }

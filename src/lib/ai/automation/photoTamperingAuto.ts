@@ -44,6 +44,7 @@ const VISION_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/gif
 /** グレーゾーンのフラグを Vision プロンプト用の短句ヒントに変換する。 */
 const FLAG_HINT_JA: Record<PhotoIntegrityFlag, string> = {
   duplicate_image: "他の写真とハッシュが重複",
+  similar_image: "他の写真と知覚ハッシュが近似 (使い回しの疑い)",
   deepfake_suspected: "ディープフェイク判定が要注意",
   capture_time_future: "撮影日時が未来",
   capture_time_stale: "撮影日時がアップロードより大幅に前 (使い回しの疑い)",

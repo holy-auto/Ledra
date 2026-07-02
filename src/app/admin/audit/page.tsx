@@ -45,6 +45,8 @@ const AUTO_ACTION_LABELS: Record<string, string> = {
   "certificate.auto_issue": "証明書を自動発行",
   "invoice.auto_send_on_confirm": "書類を自動送付",
   "body_repair.auto_notify_on_stage_advance": "進捗を自動通知",
+  "purchase_order.auto_draft_on_low_stock": "発注書下書きを自動作成（在庫低下）",
+  "workflow.auto_apply_on_intake": "ワークフローを自動適用（案件登録）",
 };
 
 /**

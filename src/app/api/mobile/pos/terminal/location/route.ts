@@ -5,7 +5,7 @@ import { apiForbidden, apiInternalError, apiJson, apiUnauthorized } from "@/lib/
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { createMobileClient, resolveMobileCaller } from "@/lib/supabase/mobile";
+import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -29,10 +29,7 @@ export async function GET(req: NextRequest) {
     const limited = await checkRateLimit(req, "mobile_terminal");
     if (limited) return limited;
 
-    const { client, accessToken } = createMobileClient(req);
-    if (!client) return apiUnauthorized();
-
-    const caller = await resolveMobileCaller(client, accessToken);
+    const caller = await resolveMobileCaller(req);
     if (!caller) return apiUnauthorized();
     if (!requireMinRole(caller, "staff")) return apiForbidden();
 

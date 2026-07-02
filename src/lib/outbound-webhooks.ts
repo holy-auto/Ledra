@@ -141,6 +141,9 @@ export function buildWebhookDispatcher(admin: AdminDb): Dispatcher {
         await withRetry(`webhook:${t.id}`, async () => {
           const res = await fetch(t.url, {
             method: "POST",
+            // SSRF guard 第二層: 登録時に検証済みのホストが 302 で内部アドレスへ
+            // 飛ばすのを防ぐ。リダイレクトはエラー扱い → retry / dead_letter に乗る。
+            redirect: "error",
             headers: {
               "content-type": "application/json",
               "x-ledra-signature": sig,
