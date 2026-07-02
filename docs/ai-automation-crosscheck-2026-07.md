@@ -30,8 +30,8 @@
 
 | 層 | 成熟度 | 根拠 |
 |---|---|---|
-| AI 基盤 | ★★★★★ | 22+ AI ルート / 22 auto-actions 全ライブ配線 / フィールド単位ポリシー / コストキャップ / プラン別モデル / フィードバックループまで完備 |
-| コード的自動化 (cron / webhook / outbox) | ★★★★☆ | ロック + 冪等 + リトライ + 失敗トラッカ + 安全網 cron の 5 点セット。残る穴は SLA アラート / 督促 cron / bounce 抑制の 3 つ |
+| AI 基盤 | ★★★★★ | 22+ AI ルート / auto-actions 22 種のうち大半がライブ配線 (※ `invoice.auto_finalize`・無ゲート `invoice/quote.auto_send`・`payment.auto_charge` はカタログ定義のみで**未配線 = 休眠**。§6 参照) / フィールド単位ポリシー / コストキャップ / プラン別モデル / フィードバックループまで完備 |
+| コード的自動化 (cron / webhook / outbox) | ★★★★☆ | ロック + 冪等 + リトライ + 失敗トラッカ + 安全網 cron の 5 点セットが大半に適用 (例外あり、§2.2)。残る穴は SLA アラート / 督促の制御不足 / bounce 抑制 / 信頼性ヘルパ未適用の cron・webhook 数本 |
 | 入力 UI の簡略化 | ★★★☆☆ | 証明書・車両は OCR / プリセット / AI が充実。**周辺フォーム (保険案件カテゴリ / 担当者名 / BtoB 宛先 / 住所) に自由テキストが残存** |
 
 ### 最重要の 5 提案 (先出し)
@@ -39,7 +39,7 @@
 | # | 提案 | 種別 | 効果 | 工数感 |
 |---|---|---|---|---|
 | 1 | 保険 SLA 違反の能動アラート cron | コード自動化 | 保険会社契約の信頼性 (SLA が「表示」から「保証」になる) | 小 |
-| 2 | 請求書 overdue 自動督促 (opt-in auto-action) | コード + AI | 未回収の回収率向上・毎日の手動確認を排除 | 小〜中 |
+| 2 | 既存 overdue 督促 (billing cron) の制御強化 — opt-in / LINE / 頻度・回数上限 | コード + AI | 未回収の回収率向上 + テナントが督促方針を制御可能に | 小〜中 |
 | 3 | 保険案件カテゴリの select 化ほか enum 化 8 箇所 | UI 簡略化 | 表記ゆれ根絶 → 後段の自動振り分け / 分析 / AI の精度が構造的に上がる | 小 |
 | 4 | 未紐付け膜厚レポートの手動リンク UI | 救済経路 | VIN 不一致時に救済不能な dead-end を解消 | 小 |
 | 5 | 担当者名のスタッフマスタ選択化 (3 フォーム共通) | UI 簡略化 | 入力排除 + 担当者別分析 (`/admin/analytics/staff`) のデータ品質向上 | 小 |
@@ -57,16 +57,22 @@
 - **プロバイダ**: Anthropic 一本 (`src/lib/ai/client.ts`)。プラン別モデル (Starter=Haiku / Standard=Sonnet / Pro=Opus)、
   低確信時の CRITICAL (Opus) 昇格、prompt caching。
 - **制御**: フィールド単位 auto/suggest/manual (`fieldCatalog.ts`) + イベント駆動 auto-actions 22 種 (`actionCatalog.ts`、全て opt-in・既定 OFF)。
+  ただし `shouldAutoFinalizeInvoice` / `shouldAutoSendDocumentUngated` / `shouldAutoCharge` は orchestrator とテスト以外に呼び出し元がなく、
+  対応するアクション (`invoice.auto_finalize` / 無ゲート `invoice/quote.auto_send` / `payment.auto_charge`) は **ON にしても何も実行されない休眠状態** (§6 参照)。
 - **コスト防御**: 月次コストキャップ (`costCap.ts`、超過で自動一時停止) / レート制限 (ai=20req/60s) /
   「ルール一次 → グレーのみ LLM」の 2 段構え (改ざん検知・不正検知・ファジーマッチ・膜厚異常)。
-- **信頼性**: `withRetry("anthropic")` + サーキットブレーカ、全ヘルパに決定論的フォールバック、
+- **信頼性**: `withRetry("anthropic")` + サーキットブレーカ、大半のヘルパに決定論的フォールバック、
   `ai_usage_logs` + 運営ダッシュボード + フィードバックループ (`feedbackLoop.ts`) による auto 化推薦。
+  ※例外: `generateQAAnswer` (`qaAssistant.ts:115`) は `getAnthropicClient()` を try 外で呼ぶため
+  `ANTHROPIC_API_KEY` 未設定時に throw する (フォールバック不達)。同パターンのヘルパは横並び監査が必要 (§5.6)。
 - **安全**: `promptSafety.ts` (untrusted 入力の境界化)、身分証 OCR のマイナンバー等出力禁止 + `sanitizeOcrResult` フェイルセーフ。
 
 ### 2.2 コード的自動化 (cron / webhook / 非同期)
 
-- cron 24 本すべてに `withCronLock` + `sendCronFailureAlert` + `recordCronSuccess/Failure` + 冪等キーがほぼ適用済み。
-- webhook は「署名検証 → 冪等 claim (`webhook_processed_events` / `stripe_processed_events`) → 処理 → 失敗時 5xx 再送」の統一パターン。
+- cron 24 本の**大半**に `withCronLock` + `sendCronFailureAlert` + `recordCronSuccess/Failure` + 冪等キーが適用済み。
+  ※未適用の例外: `anchor-batch` / `parts-anchor` / `monitor` は認証 + 処理のみで、ロック・失敗アラート・失敗トラッカのいずれも無し (§5.6 でハードニング対象とする)。
+- webhook の**主要系統** (Stripe / Square / LINE / Resend / supply/[partnerId]) は「署名検証 → 冪等 claim (`webhook_processed_events` / `stripe_processed_events`) → 処理 → 失敗時 5xx 再送」のパターン。
+  ※例外: `webhooks/supply-line` は冪等 claim が無く処理失敗でも 200 を返す (LINE 再送回避の意図だが取りこぼしは残る)、`webhooks/video/[provider]` は冪等 claim 無し、`line/webhook` は 200 即返し後の fire-and-forget のため下流失敗が再送に繋がらない (§5.6)。
 - **安全網 cron の二重化** (`stripe-event-monitor` / `passport-meta-anchor-retry` / `agent-commissions-reconcile`) が webhook 取りこぼしを自己修復。
 - 非同期は「DB outbox (DLQ 付き)」「IndexedDB オフライン outbox (PWA)」「QStash」の 3 層分離。
 
@@ -119,7 +125,7 @@
 | ⚙️🔘 予約タイトルの自動生成 | メニュー選択済みなら「{メニュー名} {顧客名}」を自動セット (`jobAutoTitle.ts` は AI 版が既存。**単純結合ならコード側で 0 コスト**) | タイトル入力を実質廃止 | ほぼなし。AI 版はコスト/遅延が乗るのでコード結合を一次、AI は複数メニュー時のみ |
 | 🔘 キャンセル理由の定型ボタン | 顧客都合 / 日程変更 / 店都合 / 重複 / その他 | 理由の構造化 → チャーン分析・ノーショー分析が可能になる | 「その他+自由記述」併設は必須 |
 | ⚙️ 作業タイマー自動計時 | `start`〜`complete` の実測 (FEATURES §12.3 に既掲) | 見積時間精度・スタッフ稼働分析の実データ化 | 押し忘れで異常値 → `jobTimerAlert` (既存) で乖離検知と組み合わせ |
-| 🤖 予約の全自動確定 (auto_create_reservation の閾値緩和) | 既知顧客以外も自動起票 | 受付工数ゼロ | **非推奨**: ダブルブッキング・なりすましリスク。現行の「既知顧客 + 高確信 + 金額 0 +【要確認】タイトル」の防御は妥当 |
+| 🤖 未知顧客の予約全自動確定 | **注意: これは将来案ではなく既存経路**。`customer.auto_create` (Pro 限定・opt-in) を ON にすると `decideInboundCommit` が `ok_with_new_customer` を許可し、未知の送信者から顧客レコード自動作成 + 予約自動起票まで走る (`inboundAuto.ts:96-119`) | 受付工数ゼロ | ダブルブッキング・なりすまし・ゴミ顧客レコード混入リスク。**両アクション同時 opt-in の組み合わせリスクとして §6 のガードレール対象に含めるべき** (現状は単アクション単位の opt-in のみで組み合わせへの警告が無い) |
 
 ### 3.4 請求・会計 (`/admin/invoices`, `/admin/accounting`)
 
@@ -127,7 +133,7 @@
 
 | 案 | 内容 | メリット | デメリット |
 |---|---|---|---|
-| ⚙️ **overdue 自動督促 cron** | 期限超過 N 日で督促メール/LINE を自動送信 (opt-in auto-action `invoice.auto_remind_overdue` として追加)。文面は固定テンプレ + AI パーソナライズは任意 | 未回収の早期回収。ダッシュボードの「期限切れ請求」ウィジェットを見る運用から解放 | 顧客関係がドライになる懸念 → テナント別に「N 日 / 回数上限 / 除外顧客」設定を持たせる。送信は `notification_logs` + Idempotency-Key で二重防止 (既存基盤流用) |
+| ⚙️ **overdue 督促の制御強化** | 既存 `billing` cron が期限 3 日後の督促メールを**既に全テナント強制で自動送信している** (§5.2)。これに opt-out / 段階督促 (+3 日→+10 日) / 回数上限 / 除外顧客 / LINE チャネルの制御を追加 | 未回収の早期回収を維持しつつ、テナントが督促の強度を顧客関係に応じて制御できる | 顧客関係がドライになる懸念 → 除外顧客設定で緩和。新規 auto-action として二重実装すると既存送信と**重複督促**になるため、必ず既存経路の拡張として実装 |
 | 🔘 BtoB 宛先店舗名のマスタ選択化 | 自由 text → BtoB 取引先 (受発注実績) からの検索 select | 表記ゆれ根絶・請求先の突合が可能に | 初回取引時は新規入力が必要 (併設) |
 | 🔘 備考テンプレのプリセットボタン | 振込手数料負担・お礼文など | 毎回入力の排除 | なし |
 | 🤖 金額の auto 確定 | invoice.items の auto 化 | 入力ゼロ | **非推奨**: 金額誤りは信頼・法務 (下請法/インボイス) に直結。suggest 上限を維持 |
@@ -232,7 +238,7 @@
 
 ## 5. バックエンドの仕組み化 — ギャップと提案
 
-調査で特定した「基盤は揃っているのに繋がっていない」5 つの穴。いずれも既存基盤の流用で実装可能。
+調査で特定した「基盤は揃っているのに繋がっていない」6 つの穴。いずれも既存基盤の流用で実装可能。
 
 ### 5.1 SLA 違反アラート cron (優先度: 高)
 
@@ -241,12 +247,17 @@
 - **メリット**: SLA が契約上の保証として機能。保険会社向けエンタープライズ営業の実弾。
 - **デメリット/留意**: 通知疲れ → 同一案件の再通知は cooldown (既存 `cron_failure_streaks` パターン流用)。
 
-### 5.2 請求書 overdue 自動督促 (優先度: 高)
+### 5.2 請求書 overdue 督促の制御強化 (優先度: 高)
 
-- **現状**: 期限超過はダッシュボード表示 + 手動 reminder 送信のみ。`follow-up` cron は証明書系のみ。
-- **提案**: auto-action `invoice.auto_remind_overdue` (opt-in・既定 OFF) を追加し、`follow-up` cron に督促ステージ (期限+3 日 / +10 日、回数上限) を追加。送付チャネルは `documentAuto.ts` の LINE→メールフォールバックを流用。
-- **メリット**: 未回収圧縮。心理的に嫌がられる「督促」こそ自動化の価値が高い業務。
-- **デメリット/留意**: 入金済みとの競合 (入金確認遅れで督促が飛ぶ事故) → 送信直前に支払状態を再確認。除外顧客リスト必須。
+- **現状**: `billing` cron (毎日 9 時) が既に overdue 検知 (`due_date < today AND status=sent` → overdue 化) と
+  **期限 3 日後の督促メール自動送信** (`overdue_reminder`、`notification_logs` 記録) を実装済み (`src/app/api/cron/billing/route.ts:40-121`)。
+  ただし **opt-in 制御なし (全テナント強制)・メールのみ・1 回きり・除外顧客設定なし**。
+- **提案**: 新規 cron の追加ではなく、既存 billing cron の督促に制御レイヤを追加する:
+  (a) テナント別の opt-out / 督促方針設定 (N 日 / 段階督促 +3 日→+10 日 / 回数上限 / 除外顧客リスト)、
+  (b) 送付チャネル拡張 — `documentAuto.ts` の LINE→メールフォールバックを流用、
+  (c) 送信直前の支払状態再確認 (入金確認遅れで督促が飛ぶ事故の防止)。
+- **メリット**: 未回収圧縮の強化 + テナントが顧客関係に応じて督促の強度を制御できる。
+- **デメリット/留意**: 新規 auto-action として二重実装すると**既存の強制送信と重複督促**になる。必ず既存経路の拡張として実装すること。
 
 ### 5.3 未紐付け膜厚レポートの手動リンク UI (優先度: 中)
 
@@ -270,7 +281,22 @@
 - **メリット**: コスト・遅延・不確実性が同時に下がり、監査可能性が上がる。AI は「初回の教師」に退く。
 - **デメリット**: マッピングの陳腐化 → 変更時に無効化する運用フック。
 
-### 5.6 (参考) やらないと判断してよいもの
+### 5.6 信頼性パターンの横並び適用 (優先度: 中)
+
+既存の横断基盤 (§2.2) を「持っているのに使っていない」箇所へ機械的に展開する。新規設計は不要。
+
+| 対象 | 現状の穴 | 適用するもの |
+|---|---|---|
+| cron `anchor-batch` / `parts-anchor` / `monitor` | 認証 + 処理のみ | `withCronLock` + `sendCronFailureAlert` + `recordCronSuccess/Failure` (他 21 本と同じ 3 点セット) |
+| `webhooks/supply-line` | 冪等 claim 無し・処理失敗でも 200 | `claimWebhookEvent` + 失敗種別に応じた 5xx (署名不正は 200 のままで可) |
+| `webhooks/video/[provider]` | 冪等 claim 無し | `claimWebhookEvent` |
+| `line/webhook` の fire-and-forget | 下流失敗が再送に繋がらない | 失敗イベントを outbox (`outbox_events`) に退避して再試行可能に (200 即返しは LINE 要件のため維持) |
+| AI ヘルパの client 初期化位置 | `generateQAAnswer` が try 外で `getAnthropicClient()` → API キー未設定時 throw | 初期化を try 内へ移動 or 全ヘルパを `scripts/audit-withRetry.ts` 方式で lint (「try 外 client 取得」検出) |
+
+- **メリット**: 監査済みパターンのコピーで済み、レビュー容易。障害時の自己修復範囲が広がる。
+- **デメリット**: ほぼなし (LINE outbox 退避のみ設計判断が必要)。
+
+### 5.7 (参考) やらないと判断してよいもの
 
 | 項目 | 理由 |
 |---|---|
@@ -292,7 +318,18 @@
 | メリット | テナントの成熟度に応じて自動化天井を上げられる (供給チェーン auto-send の「上限額 + 月次上限」モデルが好例)。フィードバックループの推薦と整合 |
 | デメリット | 「絶対に自動化されない」というコードレベルの保証が消えた。**設定ミス・悪意ある管理者・UI の誤解**で `certificate.auto_issue` 等を ON にできてしまう |
 
-### 推奨ガードレール (撤廃を維持したまま安全性を回復する 4 点)
+### 現状の実態 (2 つの重要な注意点)
+
+1. **高リスクアクションの一部は休眠 (カタログのみ・未配線)**: `invoice.auto_finalize` / 無ゲート `invoice/quote.auto_send` /
+   `payment.auto_charge` は resolver (`shouldAutoFinalizeInvoice` / `shouldAutoSendDocumentUngated` / `shouldAutoCharge`) に
+   本番呼び出し元が無く、**ON にしても何も起きない**。安全側に倒れている一方、
+   「設定 UI で ON にしたのに動かない」という誤解と、**将来配線された瞬間に既 ON テナントで突然発火する**時限リスクの両方がある。
+   → 配線するまで設定 UI から隠す (または「未提供」バッジ表示) のが正道。
+2. **未知顧客の自動作成 + 自動予約は既にライブ**: `customer.auto_create` (Pro・opt-in) が ON だと、
+   LINE 受信から未知の送信者の顧客レコード自動作成 → 予約自動起票まで人手ゼロで走る (`inboundAuto.ts`)。
+   単体アクションの opt-in UI では、この**組み合わせで生じる本人確認レスの経路**が見えない。
+
+### 推奨ガードレール (撤廃を維持したまま安全性を回復する 5 点)
 
 1. **高リスクアクションの ON 操作に確認ダイアログ + 監査ログ強化**: 発行/送付/課金系を ON にする操作は
    `ai_settings_changed` 監査 (既存) に加え、オーナー権限限定 + 二段確認 + (Pro 契約では) 書面同意フラグ。
@@ -300,7 +337,9 @@
    **高リスクアクションの ON の前提条件** にする (実績なしでいきなり auto_issue ON を不可に)。
 3. **自動実行の日次上限**: コストキャップ (円) に加え、**件数キャップ** (例: 自動起票は 50 件/日) を追加。
    プロンプトインジェクションや異常入力による大量自動実行の爆発半径を制限。
-4. **kill switch の周知**: master switch OFF で全停止できることを設定 UI 最上部に常時表示 (既存機能の可視化のみ)。
+4. **組み合わせリスクと休眠アクションの UI 明示**: 休眠アクション (実態 1) は設定 UI から隠すか「未提供」バッジにする。
+   `customer.auto_create` × `inbound_message.auto_create_reservation` の同時 ON には組み合わせ警告 (本人確認レス経路が開く旨) を表示。
+5. **kill switch の周知**: master switch OFF で全停止できることを設定 UI 最上部に常時表示 (既存機能の可視化のみ)。
 
 ---
 
@@ -320,11 +359,12 @@
 
 | # | 施策 | 種別 | §参照 |
 |---|---|---|---|
-| 6 | 請求書 overdue 自動督促 auto-action | ⚙️🤖 | 5.2 |
+| 6 | 既存 overdue 督促 (billing cron) の制御強化 — opt-in / LINE / 段階督促 / 除外リスト | ⚙️🤖 | 5.2 |
 | 7 | Resend bounce 自動抑制リスト | ⚙️ | 5.4 |
 | 8 | 保証情報/備考の定型文プリセット横展開 | 🔘 | 4-C |
-| 9 | 高リスク auto-action の ON ガード強化 (二段確認 + graduation) | 🏗 | 6 |
+| 9 | 高リスク auto-action の ON ガード強化 (二段確認 + graduation + 休眠アクションの UI 非表示 + 組み合わせ警告) | 🏗 | 6 |
 | 10 | 予約タイトル自動生成 (コード結合一次) + キャンセル理由ボタン | 🔘⚙️ | 3.3 |
+| 10b | 信頼性パターンの横並び適用 (cron 3 本 / webhook 3 本 / AI ヘルパ try 外 client 監査) | 🏗 | 5.6 |
 
 ### P2 (中期・基盤投資)
 
@@ -340,9 +380,9 @@
 
 - 証明書発行 (draft→active) の完全自動化 — 3.1
 - 請求金額の auto 確定 — 3.4
-- 未知顧客の予約全自動確定 — 3.3
+- 未知顧客の予約全自動確定の**推奨** — 3.3 (経路自体は `customer.auto_create` opt-in で既存。推奨プリセットに含めず、組み合わせ警告を付ける)
 - フリーテキスト生成文面の無承認自動送信 — 3.7
-- Supabase Realtime 移行 / 通知の DB トリガ化 / ニュース LLM 要約 — 5.6
+- Supabase Realtime 移行 / 通知の DB トリガ化 / ニュース LLM 要約 — 5.7
 
 ---
 
