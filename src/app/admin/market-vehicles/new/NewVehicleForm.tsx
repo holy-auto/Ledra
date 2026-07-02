@@ -652,7 +652,9 @@ export default function NewVehicleForm() {
                 <div
                   className={`font-semibold ${parseInt(askingPrice) - parseInt(costPrice) >= 0 ? "text-success" : "text-danger"}`}
                 >
-                  {(((parseInt(askingPrice) - parseInt(costPrice)) / parseInt(askingPrice)) * 100).toFixed(1)}%
+                  {Number(askingPrice) > 0
+                    ? `${(((parseInt(askingPrice) - parseInt(costPrice)) / parseInt(askingPrice)) * 100).toFixed(1)}%`
+                    : "—"}
                 </div>
               </div>
               {wholesalePrice && (
@@ -753,7 +755,10 @@ export default function NewVehicleForm() {
         {images.length > 0 && (
           <div className="grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-6 gap-2">
             {images.map((img, idx) => (
-              <div key={idx} className="group relative aspect-square rounded-lg overflow-hidden bg-surface-hover">
+              <div
+                key={img.preview}
+                className="group relative aspect-square rounded-lg overflow-hidden bg-surface-hover"
+              >
                 <Image src={img.preview} alt={`Upload ${idx + 1}`} fill className="object-cover" sizes="120px" />
                 <button
                   type="button"

@@ -2,25 +2,28 @@ import React from "react";
 import { Document, Page, Text, View, Image, StyleSheet, Font } from "@react-pdf/renderer";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { createSignedAssetUrl } from "@/lib/signedUrl";
+import { notoSansJpDataUrl } from "@/lib/marketing/pdfFonts";
+import { fmtJpy, fmtDate, fmtTotal } from "@/lib/pdf/format";
 import { DEFAULT_LAYOUT, type LayoutConfig, mergeLayout } from "@/types/documentTemplate";
 import {
   buildTaxBreakdown,
   hasMultipleRates,
   isValidRegistrationNumber,
+  totalSubtotal,
+  totalTax,
   type TaxBreakdownEntry,
 } from "@/lib/invoice/taxBreakdown";
 
 export { DEFAULT_LAYOUT, mergeLayout };
 export type { LayoutConfig };
 
-const NOTO_SANS_JP = "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-400-normal.ttf";
-const NOTO_SANS_JP_BOLD = "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-700-normal.ttf";
-
+// バンドル済み Noto Sans JP (public/fonts) を data URL として登録する。
+// 外部 CDN (@latest) への実行時フェッチを排し、供給元の改変・停止リスクを断つ。
 Font.register({
   family: "NotoSansJP",
   fonts: [
-    { src: NOTO_SANS_JP, fontWeight: 400 },
-    { src: NOTO_SANS_JP_BOLD, fontWeight: 700 },
+    { src: notoSansJpDataUrl(400), fontWeight: 400 },
+    { src: notoSansJpDataUrl(700), fontWeight: 700 },
   ],
 });
 
@@ -123,23 +126,6 @@ export type TenantForDocPdf = {
   company_seal_path: string | null;
   bank_info: BankInfo | null;
 };
-
-function fmtJpy(n: number | null | undefined): string {
-  if (n == null) return "-";
-  return `¥${n.toLocaleString("ja-JP")}`;
-}
-
-function fmtDate(v: string | null | undefined): string {
-  if (!v) return "-";
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return String(v);
-  return d.toLocaleDateString("ja-JP");
-}
-
-function fmtTotal(n: number | null | undefined): string {
-  if (n == null) return "-";
-  return n.toLocaleString("ja-JP");
-}
 
 function fmtPeriod(start: string | null | undefined, end: string | null | undefined): string | null {
   if (!start && !end) return null;
@@ -365,6 +351,12 @@ export async function renderDocumentPdf(
           doc.tax_rate ?? 10,
         );
   const showMultiRate = hasMultipleRates(breakdown);
+  // 表示用の小計・消費税・合計は breakdown を唯一の出所として導出し、税率別の内訳行と
+  // 必ず一致させる (stored subtotal/tax/total が items_json とズレていても PDF は整合)。
+  // 決済等で使う stored total (doc.total) は変更しない — PDF の表示だけ整える。
+  const displayedSubtotal = totalSubtotal(breakdown);
+  const displayedTax = totalTax(breakdown);
+  const displayedTotal = displayedSubtotal + displayedTax;
   const hasReducedItem = productItems.some((it) => it.is_reduced_rate || it.tax_category === 8 || it.tax_rate === 8);
   const isQualifiedInvoice = !!doc.is_invoice_compliant && isValidRegistrationNumber(tenant.registration_number);
 
@@ -455,7 +447,7 @@ export async function renderDocumentPdf(
 
       <View style={s.totalBig}>
         <Text style={s.totalBigLabel}>合計金額</Text>
-        <Text style={s.totalBigValue}>{fmtTotal(doc.total)}</Text>
+        <Text style={s.totalBigValue}>{fmtTotal(displayedTotal)}</Text>
         <Text style={s.totalBigUnit}>円（税込）</Text>
       </View>
     </View>
@@ -530,7 +522,7 @@ export async function renderDocumentPdf(
               <>
                 <View style={s.totalRow}>
                   <Text style={s.totalLabel}>小計</Text>
-                  <Text style={s.totalValue}>{fmtJpy(doc.subtotal)}</Text>
+                  <Text style={s.totalValue}>{fmtJpy(displayedSubtotal)}</Text>
                 </View>
                 {breakdown.map((b) => (
                   <View key={`sub-${b.rate}`} style={s.totalRow}>
@@ -546,22 +538,22 @@ export async function renderDocumentPdf(
                 ))}
                 <View style={s.grandTotalRow}>
                   <Text style={s.grandTotalLabel}>合計</Text>
-                  <Text style={s.grandTotalValue}>{fmtJpy(doc.total)}</Text>
+                  <Text style={s.grandTotalValue}>{fmtJpy(displayedTotal)}</Text>
                 </View>
               </>
             ) : (
               <>
                 <View style={s.totalRow}>
                   <Text style={s.totalLabel}>小計</Text>
-                  <Text style={s.totalValue}>{fmtJpy(doc.subtotal)}</Text>
+                  <Text style={s.totalValue}>{fmtJpy(displayedSubtotal)}</Text>
                 </View>
                 <View style={s.totalRow}>
                   <Text style={s.totalLabel}>消費税（{breakdown[0]?.rate ?? doc.tax_rate}%）</Text>
-                  <Text style={s.totalValue}>{fmtJpy(doc.tax)}</Text>
+                  <Text style={s.totalValue}>{fmtJpy(displayedTax)}</Text>
                 </View>
                 <View style={s.grandTotalRow}>
                   <Text style={s.grandTotalLabel}>合計</Text>
-                  <Text style={s.grandTotalValue}>{fmtJpy(doc.total)}</Text>
+                  <Text style={s.grandTotalValue}>{fmtJpy(displayedTotal)}</Text>
                 </View>
               </>
             )}

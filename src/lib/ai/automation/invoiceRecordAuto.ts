@@ -12,39 +12,17 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { buildTaxBreakdown, totalTax } from "@/lib/invoice/taxBreakdown";
+import { insertInvoiceWithRetry } from "@/lib/invoice/invoiceNumber";
 import { logger } from "@/lib/logger";
 import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { loadAiAutomationSettings } from "./policy";
 import { shouldAutoDraftInvoiceOnBilling, shouldAutoDraftInvoiceOnCompletion } from "./orchestrator";
-
-type Admin = ReturnType<typeof createServiceRoleAdmin>;
 
 interface MenuItem {
   name?: string;
   price?: number;
   amount?: number;
   quantity?: number;
-}
-
-/** INV-YYYYMM-NNN（invoices ルートと同じ採番ルール）。 */
-async function generateInvoiceNumber(admin: Admin, tenantId: string): Promise<string> {
-  const now = new Date();
-  const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const prefix = `INV-${ym}-`;
-  const { data } = await admin
-    .from("documents")
-    .select("doc_number")
-    .eq("tenant_id", tenantId)
-    .eq("doc_type", "invoice")
-    .like("doc_number", `${prefix}%`)
-    .order("doc_number", { ascending: false })
-    .limit(1);
-  let seq = 1;
-  if (data && data.length > 0) {
-    const num = parseInt((data[0].doc_number as string).replace(prefix, ""), 10);
-    if (!Number.isNaN(num)) seq = num + 1;
-  }
-  return `${prefix}${String(seq).padStart(3, "0")}`;
 }
 
 export async function maybeAutoCreateDraftInvoiceForReservation(params: {
@@ -123,32 +101,35 @@ export async function maybeAutoCreateDraftInvoiceForReservation(params: {
     );
     const tax = totalTax(taxBreakdown);
     const total = subtotal + tax;
-    const docNumber = await generateInvoiceNumber(admin, tenantId);
 
-    const { data: inserted, error } = await admin
-      .from("documents")
-      .insert({
-        tenant_id: tenantId,
-        customer_id: reservation.customer_id,
-        vehicle_id: reservation.vehicle_id,
-        doc_type: "invoice",
-        doc_number: docNumber,
-        recipient_name: recipientName,
-        issued_at: new Date().toISOString().slice(0, 10),
-        status: "draft",
-        subtotal,
-        tax,
-        total,
-        tax_rate: taxRate,
-        items_json: items,
-        tax_breakdown: taxBreakdown,
-      })
-      .select("id")
-      .maybeSingle();
+    // doc_number は採番→INSERT の間に競合し得る。共有ヘルパで数値採番 + 23505 リトライ。
+    const { data: inserted, error } = await insertInvoiceWithRetry(admin, tenantId, (docNumber) =>
+      admin
+        .from("documents")
+        .insert({
+          tenant_id: tenantId,
+          customer_id: reservation.customer_id,
+          vehicle_id: reservation.vehicle_id,
+          doc_type: "invoice",
+          doc_number: docNumber,
+          recipient_name: recipientName,
+          issued_at: new Date().toISOString().slice(0, 10),
+          status: "draft",
+          subtotal,
+          tax,
+          total,
+          tax_rate: taxRate,
+          items_json: items,
+          tax_breakdown: taxBreakdown,
+        })
+        .select("id, doc_number")
+        .maybeSingle(),
+    );
     if (error) {
       logger.warn("[invoiceRecordAuto] draft invoice insert failed", { tenantId, err: error.message });
       return;
     }
+    const docNumber = (inserted?.doc_number as string | undefined) ?? "";
     logger.info("[invoiceRecordAuto] draft invoice auto-created", { tenantId, reservationId, docNumber });
     // 人の確認なしで請求書下書きを自動作成した事実を監査ログに残す。
     await logAutoActionExecuted({

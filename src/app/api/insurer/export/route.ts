@@ -3,15 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { resolveInsurerCaller, enforceInsurerPlan } from "@/lib/api/insurerAuth";
 import { apiInternalError, apiJson, apiUnauthorized, apiValidationError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import { csvEscape, csvDownloadHeaders } from "@/lib/csv/serialize";
 
 export const runtime = "nodejs";
-
-function csvEscape(v: unknown) {
-  const s = (v ?? "").toString();
-  const escaped = s.replace(/"/g, '""');
-  if (/[",\r\n]/.test(escaped)) return `"${escaped}"`;
-  return escaped;
-}
 
 function getClientMeta(req: Request) {
   const ip = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? null;
@@ -106,11 +100,7 @@ export async function GET(req: NextRequest) {
     });
 
     return new NextResponse(stream, {
-      headers: {
-        "content-type": "text/csv; charset=utf-8",
-        "content-disposition": `attachment; filename="insurer_certificates_${Date.now()}.csv"`,
-        "cache-control": "no-store",
-      },
+      headers: csvDownloadHeaders(`insurer_certificates_${Date.now()}.csv`),
     });
   } catch (e) {
     console.error("[insurer/export]", e);

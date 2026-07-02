@@ -66,10 +66,11 @@ export async function sendSendGridEmail(msg: SendGridMessage): Promise<EmailSend
       {
         to: toRecipients(msg.to),
         subject: msg.subject,
-        ...(msg.reply_to ? { reply_to_list: toRecipients(msg.reply_to) } : {}),
       },
     ],
     from: { email: from },
+    // SendGrid v3 では reply_to / reply_to_list は message の top-level フィールド。
+    ...(msg.reply_to ? { reply_to_list: toRecipients(msg.reply_to) } : {}),
     content: [
       ...(msg.text != null ? [{ type: "text/plain", value: msg.text }] : []),
       ...(msg.html != null ? [{ type: "text/html", value: msg.html }] : []),

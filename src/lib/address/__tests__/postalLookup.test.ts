@@ -26,4 +26,9 @@ describe("normalizePostalCode", () => {
   it("数字以外のみの入力は null", () => {
     expect(normalizePostalCode("東京都")).toBeNull();
   });
+
+  it("数字混入 (前後に文字) は null (collapse-and-count で通していた過剰許容)", () => {
+    expect(normalizePostalCode("abc1234567xyz")).toBeNull();
+    expect(normalizePostalCode("12 34567")).toBeNull();
+  });
 });
