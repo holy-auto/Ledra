@@ -36,3 +36,26 @@ export function escapeHtml(str: string): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
+
+/**
+ * Sanitize AI-generated / untrusted HTML for outbound email bodies.
+ * Keeps a small allowlist of formatting tags (attributes are stripped);
+ * every other tag is HTML-escaped so it renders as visible text instead
+ * of executing. Prompt-injected model output or malicious customer data
+ * therefore cannot add tracking pixels, links, or scripts.
+ *
+ * ponytail: 正規表現ベースの軽量サニタイザ (属性は全除去、許可タグ以外は
+ * エスケープして可視化)。リンクや画像を許可したくなったら、その時点で
+ * sanitize-html 等の導入に切り替える。
+ */
+export function sanitizeEmailHtml(html: string): string {
+  const ALLOWED_TAGS = new Set(["p", "br", "strong", "em", "b", "i", "ul", "ol", "li"]);
+  return html.replace(/<[^>]*>/g, (tag) => {
+    const m = tag.match(/^<\s*(\/?)\s*([a-zA-Z0-9]+)(?:[\s/][^>]*)?>$/);
+    const name = m?.[2]?.toLowerCase();
+    if (m && name && ALLOWED_TAGS.has(name)) {
+      return `<${m[1]}${name}>`;
+    }
+    return escapeHtml(tag);
+  });
+}

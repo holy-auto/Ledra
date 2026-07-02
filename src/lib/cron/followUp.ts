@@ -104,11 +104,15 @@ async function sendNotification(
       : null;
 
     // ── 配信: LINE 優先、失敗時は email にフォールバック (processMaintenanceReminders と同方針) ──
-    if (content && params.lineUserId) {
+    // AI プラン以外 (content なし) でも LINE 連携済み顧客には定型文で送る
+    // (email が null の LINE-only 顧客がどのプランでも取り残されないように)
+    if (params.lineUserId) {
       const lineOk = await sendMaintenanceLineMessage({
         tenantId: params.tenantId,
         lineUserId: params.lineUserId,
-        lineMessage: content.lineMessage,
+        lineMessage:
+          content?.lineMessage ??
+          `【${params.shopName}】${params.customerName}様、「${params.serviceName}」の施工後フォローのご連絡です。状態にお変わりないでしょうか？ご不明な点はお気軽にお問い合わせください。`,
       });
       if (lineOk) {
         sent = true;
@@ -277,7 +281,8 @@ export async function processRegularFollowUps(
       if (alreadyNotifiedIds.has(cert.id)) continue;
 
       const customer = customerMap.get(cert.customer_id);
-      if (!customer?.email) continue;
+      // LINE 連携のみの顧客 (email null) も sendNotification 側の LINE 経路で送れる
+      if (!customer?.email && !customer?.line_user_id) continue;
 
       const trigger: FollowUpTriggerType = days <= 90 ? "mid_followup" : "recoat_proposal";
       const ok = await sendNotification(supabase, {
@@ -341,11 +346,14 @@ export async function processPostIssueFollowUps(
   }
 
   const customerIds = [...new Set(newCertList.map((c) => c.customer_id).filter(Boolean))] as string[];
-  const customerMap = new Map<string, { name: string | null; email: string | null }>();
+  const customerMap = new Map<string, { name: string | null; email: string | null; line_user_id: string | null }>();
   if (customerIds.length) {
-    const { data: customers } = await supabase.from("customers").select("id, name, email").in("id", customerIds);
+    const { data: customers } = await supabase
+      .from("customers")
+      .select("id, name, email, line_user_id")
+      .in("id", customerIds);
     for (const c of customers ?? []) {
-      customerMap.set(c.id, { name: c.name, email: c.email });
+      customerMap.set(c.id, { name: c.name, email: c.email, line_user_id: c.line_user_id });
     }
   }
 
@@ -354,7 +362,8 @@ export async function processPostIssueFollowUps(
     if (postIssueNotifiedIds.has(cert.id)) continue;
 
     const customer = customerMap.get(cert.customer_id);
-    if (!customer?.email) continue;
+    // LINE 連携のみの顧客 (email null) も sendNotification 側の LINE 経路で送れる
+    if (!customer?.email && !customer?.line_user_id) continue;
 
     const ok = await sendNotification(supabase, {
       tenantId: setting.tenant_id,
@@ -362,6 +371,7 @@ export async function processPostIssueFollowUps(
       customerId: cert.customer_id,
       customerName: customer.name ?? cert.customer_name ?? "お客様",
       customerEmail: customer.email,
+      lineUserId: customer.line_user_id,
       serviceName: cert.service_name ?? "施工証明書",
       issuedAt: cert.created_at,
       warrantyPeriod: cert.warranty_period,
@@ -420,11 +430,14 @@ export async function processFirstReminderFollowUps(
   }
 
   const customerIds = [...new Set(certList.map((c) => c.customer_id).filter(Boolean))] as string[];
-  const customerMap = new Map<string, { name: string | null; email: string | null }>();
+  const customerMap = new Map<string, { name: string | null; email: string | null; line_user_id: string | null }>();
   if (customerIds.length) {
-    const { data: customers } = await supabase.from("customers").select("id, name, email").in("id", customerIds);
+    const { data: customers } = await supabase
+      .from("customers")
+      .select("id, name, email, line_user_id")
+      .in("id", customerIds);
     for (const c of customers ?? []) {
-      customerMap.set(c.id, { name: c.name, email: c.email });
+      customerMap.set(c.id, { name: c.name, email: c.email, line_user_id: c.line_user_id });
     }
   }
 
@@ -433,7 +446,8 @@ export async function processFirstReminderFollowUps(
     if (notifiedIds.has(cert.id)) continue;
 
     const customer = customerMap.get(cert.customer_id);
-    if (!customer?.email) continue;
+    // LINE 連携のみの顧客 (email null) も sendNotification 側の LINE 経路で送れる
+    if (!customer?.email && !customer?.line_user_id) continue;
 
     const ok = await sendNotification(supabase, {
       tenantId: setting.tenant_id,
@@ -441,6 +455,7 @@ export async function processFirstReminderFollowUps(
       customerId: cert.customer_id,
       customerName: customer.name ?? cert.customer_name ?? "お客様",
       customerEmail: customer.email,
+      lineUserId: customer.line_user_id,
       serviceName: cert.service_name ?? "施工証明書",
       issuedAt: cert.created_at,
       warrantyPeriod: cert.warranty_period,
@@ -503,11 +518,14 @@ export async function processWarrantyEndFollowUps(
   }
 
   const customerIds = [...new Set(filtered.map((c) => c.customer_id).filter(Boolean))] as string[];
-  const customerMap = new Map<string, { name: string | null; email: string | null }>();
+  const customerMap = new Map<string, { name: string | null; email: string | null; line_user_id: string | null }>();
   if (customerIds.length) {
-    const { data: customers } = await supabase.from("customers").select("id, name, email").in("id", customerIds);
+    const { data: customers } = await supabase
+      .from("customers")
+      .select("id, name, email, line_user_id")
+      .in("id", customerIds);
     for (const c of customers ?? []) {
-      customerMap.set(c.id, { name: c.name, email: c.email });
+      customerMap.set(c.id, { name: c.name, email: c.email, line_user_id: c.line_user_id });
     }
   }
 
@@ -515,7 +533,8 @@ export async function processWarrantyEndFollowUps(
     if (notifiedIds.has(cert.id)) continue;
 
     const customer = customerMap.get(cert.customer_id!);
-    if (!customer?.email) continue;
+    // LINE 連携のみの顧客 (email null) も sendNotification 側の LINE 経路で送れる
+    if (!customer?.email && !customer?.line_user_id) continue;
 
     const ok = await sendNotification(supabase, {
       tenantId: setting.tenant_id,
@@ -523,6 +542,7 @@ export async function processWarrantyEndFollowUps(
       customerId: cert.customer_id!,
       customerName: customer.name ?? cert.customer_name ?? "お客様",
       customerEmail: customer.email,
+      lineUserId: customer.line_user_id,
       serviceName: cert.service_name ?? "施工証明書",
       issuedAt: cert.created_at,
       warrantyPeriod: cert.warranty_period,

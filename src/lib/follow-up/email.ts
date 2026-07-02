@@ -2,7 +2,7 @@
  * Follow-up & expiry reminder emails via Resend API.
  */
 
-import { escapeHtml } from "@/lib/sanitize";
+import { escapeHtml, sanitizeEmailHtml } from "@/lib/sanitize";
 import { sendEmail } from "@/lib/email/sendEmail";
 
 function wrap(title: string, body: string) {
@@ -81,7 +81,9 @@ export async function sendFollowUpEmail(params: {
   const cert = escapeHtml(params.certificateLabel);
   const html = wrap(
     "施工後のフォローアップ",
-    params.bodyHtml ??
+    // AI 生成本文は顧客名・店名などの外部由来データを含み prompt injection の
+    // 経路にもなり得るため、許可タグのみ残してサニタイズしてから埋め込む
+    (params.bodyHtml ? sanitizeEmailHtml(params.bodyHtml) : null) ??
       `
       <p style="color: #1d1d1f; font-size: 14px;">
         ${customer} 様<br><br>
