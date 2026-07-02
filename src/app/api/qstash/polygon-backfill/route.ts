@@ -172,7 +172,7 @@ async function handler(req: NextRequest) {
         delay: 5,
         // 同じ累積処理件数での再キュー要求はネットワーク再試行とみなして deduplication。
         // 進捗が進めばキーが変わるので次バッチは正しく enqueue される。
-        deduplicationId: `polygon-backfill:${job_id}:${totalProcessed}`,
+        deduplicationId: `polygon-backfill-${job_id}-${totalProcessed}`,
       });
 
       await admin
