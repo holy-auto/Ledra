@@ -13,6 +13,7 @@ import EmptyStateGuide from "@/components/ui/EmptyStateGuide";
 import IdentityScanButton, { type IdentityScanFields } from "@/components/admin/customers/IdentityScanButton";
 import { formatDate } from "@/lib/format";
 import { fetcher } from "@/lib/swr";
+import { lookupPostalAddress, normalizePostalCode } from "@/lib/address/postalLookup";
 
 type Customer = {
   id: string;
@@ -103,6 +104,28 @@ export default function CustomersClient() {
 
   // Delete
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // 郵便番号 → 住所 自動補完 (7桁揃った時点で照会し、住所が空の場合のみ埋める)
+  const [postalHint, setPostalHint] = useState<string | null>(null);
+  const [editPostalHint, setEditPostalHint] = useState<string | null>(null);
+
+  const autofillAddressFromPostal = useCallback(async (code: string, target: "create" | "edit") => {
+    const setHint = target === "create" ? setPostalHint : setEditPostalHint;
+    if (!normalizePostalCode(code)) {
+      setHint(null);
+      return;
+    }
+    const addr = await lookupPostalAddress(code);
+    if (!addr) return;
+    const setState = target === "create" ? setForm : setEditForm;
+    let filled = false;
+    setState((prev) => {
+      if (prev.address.trim()) return prev; // 入力済みの住所は上書きしない
+      filled = true;
+      return { ...prev, address: addr.full };
+    });
+    setHint(filled ? "郵便番号から住所を補完しました（番地以降を追記してください）" : null);
+  }, []);
 
   const handleSearch = () => {
     setActiveSearch(search.trim());
@@ -380,7 +403,11 @@ export default function CustomersClient() {
                       <input
                         type="text"
                         value={form.postal_code}
-                        onChange={(e) => setForm({ ...form, postal_code: e.target.value })}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setForm({ ...form, postal_code: v });
+                          void autofillAddressFromPostal(v, "create");
+                        }}
                         className="input-field"
                         placeholder="123-4567"
                       />
@@ -390,10 +417,14 @@ export default function CustomersClient() {
                       <input
                         type="text"
                         value={form.address}
-                        onChange={(e) => setForm({ ...form, address: e.target.value })}
+                        onChange={(e) => {
+                          setForm({ ...form, address: e.target.value });
+                          setPostalHint(null);
+                        }}
                         className="input-field"
                         placeholder="東京都渋谷区..."
                       />
+                      {postalHint && <p className="text-xs text-muted">{postalHint}</p>}
                     </div>
                   </div>
                   <div className="space-y-1">
@@ -479,7 +510,11 @@ export default function CustomersClient() {
                       <input
                         type="text"
                         value={editForm.postal_code}
-                        onChange={(e) => setEditForm({ ...editForm, postal_code: e.target.value })}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setEditForm({ ...editForm, postal_code: v });
+                          void autofillAddressFromPostal(v, "edit");
+                        }}
                         className="input-field"
                       />
                     </div>
@@ -488,9 +523,13 @@ export default function CustomersClient() {
                       <input
                         type="text"
                         value={editForm.address}
-                        onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                        onChange={(e) => {
+                          setEditForm({ ...editForm, address: e.target.value });
+                          setEditPostalHint(null);
+                        }}
                         className="input-field"
                       />
+                      {editPostalHint && <p className="text-xs text-muted">{editPostalHint}</p>}
                     </div>
                   </div>
                   <div className="space-y-1">

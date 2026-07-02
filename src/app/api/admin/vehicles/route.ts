@@ -31,11 +31,11 @@ export async function GET(req: NextRequest) {
       query = query.eq("customer_id", customerId);
     }
 
-    // 手動連携ピッカー向けの簡易検索 (ナンバー / メーカー / 車種 の部分一致)。
+    // 手動連携ピッカー向けの簡易検索 (ナンバー / メーカー / 車種 / VIN の部分一致)。
     // ILIKE ワイルドカードに加え、PostgREST の or() 区切り文字 (, () ) も除去する。
     if (q) {
       const sq = escapePostgrestValue(escapeIlike(q));
-      query = query.or(`plate_display.ilike.%${sq}%,maker.ilike.%${sq}%,model.ilike.%${sq}%`);
+      query = query.or(`plate_display.ilike.%${sq}%,maker.ilike.%${sq}%,model.ilike.%${sq}%,vin_code.ilike.%${sq}%`);
     }
 
     // Apply pagination if page param was provided
