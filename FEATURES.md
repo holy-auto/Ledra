@@ -578,8 +578,9 @@ Ledraは自動車施工（コーティング・フィルム・ラッピング等
 | `feature-metrics-rollup` ★新規 | 機能利用メトリクスの集計ロールアップ |
 | `image-variants-backfill` ★新規 | 画像バリアント (サムネ等) のバックフィル生成 |
 | `stripe-event-monitor` ★新規 | Stripe イベント取りこぼし監視・自己修復 |
+| `insurer-sla-alerts` ★新規 | 保険案件の SLA 期限接近 (at_risk) / 超過 (overdue) を毎時検知し担当者・管理者へ通知 |
 
-> Cron は計 **24 本** (vercel.json 登録ベース)。`maintenance` / `follow-up` は車検満了・走行距離ベースの整備リマインダーも担う。
+> Cron は計 **25 本** (vercel.json 登録ベース)。`maintenance` / `follow-up` は車検満了・走行距離ベースの整備リマインダーも担う。
 
 ---
 

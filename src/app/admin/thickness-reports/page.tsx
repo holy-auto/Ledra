@@ -209,7 +209,7 @@ export default async function ThicknessReportsListPage({
       {status === "unlinked" && reports.length > 0 && (
         <p className="text-xs text-muted">
           ※ 未紐付けのレポートは、NexPTG側のVINがLedra側のいずれの車両のVINとも一致しなかったものです。
-          車両の登録時にVINを設定するか、再同期で紐付けされます。
+          各レポートを開いて「車両に紐付け」から手動で紐付けるか、車両にVINを登録して再同期すると自動で紐付けされます。
         </p>
       )}
     </div>

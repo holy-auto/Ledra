@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import HelpTooltip from "@/components/ui/HelpTooltip";
+import StaffNameField from "./StaffNameField";
 import { ACCESSORY_TYPE_OPTIONS, INSTALL_LOCATION_OPTIONS } from "@/lib/accessory/constants";
 
 type AccessoryData = {
@@ -171,16 +172,16 @@ export default function AccessoryDetailsSection() {
         />
       </label>
 
-      {/* 取付担当者 */}
-      <label className="block space-y-1.5">
+      {/* 取付担当者 (スタッフマスタから選択、マスタ未登録時は自由入力) */}
+      <div className="block space-y-1.5">
         <span className="text-sm font-medium text-secondary">取付担当者</span>
-        <input
+        <StaffNameField
           value={data.installer_name}
-          onChange={(e) => update("installer_name", e.target.value)}
+          onChange={(v) => update("installer_name", v)}
           placeholder="担当者名を入力"
-          className={inputCls}
+          inputCls={inputCls}
         />
-      </label>
+      </div>
     </div>
   );
 }
