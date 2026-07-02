@@ -164,6 +164,29 @@ const presets: Record<RateLimitPreset, () => Ratelimit | null> = {
   identity_ocr: identityOcrLimiter,
 };
 
+// preset / カスタム上限ごとに Ratelimit インスタンスをキャッシュする
+// (src/lib/rateLimit.ts の limiterCache と同じパターン)。従来はリクエスト毎に
+// new Ratelimit していたため、その churn もここで解消する。
+const limiterCache = new Map<string, Ratelimit>();
+
+function getLimiter(preset: RateLimitPreset, limitPerMinute?: number): Ratelimit | null {
+  const useCustom = typeof limitPerMinute === "number" && Number.isFinite(limitPerMinute) && limitPerMinute > 0;
+  const key = useCustom ? `custom:${limitPerMinute}` : preset;
+  const cached = limiterCache.get(key);
+  if (cached) return cached;
+  const r = getRedis();
+  if (!r) return null;
+  const limiter = useCustom
+    ? new Ratelimit({
+        redis: r,
+        limiter: Ratelimit.slidingWindow(Math.floor(limitPerMinute), "60 s"),
+        prefix: "rl:custom",
+      })
+    : presets[preset]()!;
+  limiterCache.set(key, limiter);
+  return limiter;
+}
+
 /**
  * リクエストのIPアドレスを取得。Cloudflare / Vercel / 通常プロキシに対応し、
  * 取得できない場合は User-Agent でバケットを分散させる。
@@ -189,6 +212,8 @@ export async function checkRateLimit(
   preset: RateLimitPreset = "general",
   /** カスタム識別子（userId など）。省略時は IP アドレスを使用 */
   identifier?: string,
+  /** 分あたりのカスタム上限 (API consumer の rate_limit_per_minute など)。指定時は preset の上限より優先 */
+  limitPerMinute?: number,
 ) {
   // Fail-closed mode: when RATE_LIMIT_FAIL_CLOSED=1 and Redis is unreachable,
   // reject requests with 503 instead of silently allowing them. Recommended
@@ -197,7 +222,7 @@ export async function checkRateLimit(
   // historical behavior — opt in explicitly.
   const failClosed = process.env.RATE_LIMIT_FAIL_CLOSED === "1";
 
-  const limiter = presets[preset]();
+  const limiter = getLimiter(preset, limitPerMinute);
   if (!limiter) {
     // Redis 未設定 — fail-closed なら 503、そうでなければ Sentry 報告のみで通過。
     const msg =

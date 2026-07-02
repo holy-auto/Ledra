@@ -74,7 +74,12 @@ export async function GET(req: NextRequest) {
   // Per-consumer rate limit (in addition to IP-based above). We
   // keep the IP limiter for unauthenticated abuse traffic; the
   // consumer limiter is for billing-side abuse.
-  const consumerLimited = await checkRateLimit(req, "general", `passport-consumer:${auth.ctx.consumerId}`);
+  const consumerLimited = await checkRateLimit(
+    req,
+    "general",
+    `passport-consumer:${auth.ctx.consumerId}`,
+    auth.ctx.rateLimitPerMinute,
+  );
   if (consumerLimited) return consumerLimited;
 
   // Monthly quota: 429 once we've passed monthly_quota for the current

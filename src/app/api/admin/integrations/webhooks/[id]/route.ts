@@ -16,6 +16,7 @@ import {
   apiInternalError,
 } from "@/lib/api/response";
 import { isValidWebhookTopic } from "@/lib/webhook-topics";
+import { checkOutboundWebhookUrl } from "@/lib/security/urlAllowlist";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,11 @@ const patchSchema = z.object({
   url: z
     .string()
     .url()
-    .regex(/^https:\/\//, "url_must_be_https")
+    // SSRF guard: https 以外 / IP リテラル / localhost 系 / 埋め込み credentials を拒否
+    .superRefine((u, ctx) => {
+      const res = checkOutboundWebhookUrl(u);
+      if (!res.ok) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `url_${res.reason}` });
+    })
     .optional(),
   topics: z
     .array(z.string().min(1).max(64).refine(isValidWebhookTopic, { message: "unknown_topic" }))

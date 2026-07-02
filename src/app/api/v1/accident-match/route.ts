@@ -49,7 +49,12 @@ export async function GET(req: NextRequest) {
     return apiForbidden("このAPIキーには accident:match スコープがありません。");
   }
 
-  const consumerLimited = await checkRateLimit(req, "general", `passport-consumer:${auth.ctx.consumerId}`);
+  const consumerLimited = await checkRateLimit(
+    req,
+    "general",
+    `passport-consumer:${auth.ctx.consumerId}`,
+    auth.ctx.rateLimitPerMinute,
+  );
   if (consumerLimited) return consumerLimited;
 
   const url = new URL(req.url);

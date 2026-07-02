@@ -63,7 +63,9 @@ export async function POST(req: NextRequest) {
     const tenantData = t.data as Record<string, unknown>;
     const tenant_id = tenantData.id as string;
     const tenant_slug = tenantData.slug as string | null;
-    const plan_tier = (tenantData.plan_tier as PlanTier | null) ?? "standard";
+    // free は Stripe Price を持たない (planTierToPriceId が throw) ため null と同様 standard で再開
+    const rawPlanTier = tenantData.plan_tier as PlanTier | null;
+    const plan_tier = !rawPlanTier || rawPlanTier === "free" ? "standard" : rawPlanTier;
     const priceId = planTierToPriceId(plan_tier);
 
     const app = baseUrl(req);

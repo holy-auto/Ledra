@@ -1,6 +1,7 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { getStripeClient } from "@/lib/stripe/client";
 import { type PlanTier, PLAN_RANK as RANK } from "@/types/billing";
+import { normalizePlanTier } from "@/lib/billing/planFeatures";
 import { isPlatformTenantId } from "@/lib/auth/platformAdmin";
 import { getCachedTenantBilling } from "./tenantBillingCache";
 
@@ -188,17 +189,9 @@ export async function enforceBilling(
   const action = opts.action ?? null;
 
   // tenantId が caller から直接渡された場合（admin API など認証済みルート）は
-  // 既に resolveCallerWithRole() で認証・テナント確認済みのため billing チェックをスキップ
-  if (opts.tenantId) {
-    const tenant_id = opts.tenantId;
-    // Platform admin は常に通過
-    if (isPlatformTenantId(tenant_id)) return null;
-    // 通常テナントもアクティブ前提で通過（billing は別途 BillingGate で管理）
-    return null;
-  }
-
-  // tenantId が渡されていない場合（公開 API など）はリクエストから抽出して検証
-  const tenant_id = await extractTenantId(req);
+  // 既に resolveCallerWithRole() で認証・テナント確認済みのため、リクエストからの
+  // 抽出 (extractTenantId) だけをスキップする。is_active / プラン検証は共通で行う。
+  const tenant_id = opts.tenantId ?? (await extractTenantId(req));
 
   if (!tenant_id) {
     console.warn("[billing guard] tenant_id could not be resolved", {
@@ -227,7 +220,8 @@ export async function enforceBilling(
     return json(404, { error: "Tenant not found (billing guard)" }, { "x-billing-url": "/admin/billing" });
   }
 
-  const plan = (data.plan_tier ?? "free") as PlanTier;
+  // 旧名 "mini" や不正値も canonical な PlanTier に正規化してから比較する
+  const plan = normalizePlanTier(data.plan_tier);
   const active = !!data.is_active;
 
   // ---- inactive handling with grace for public_pdf ----

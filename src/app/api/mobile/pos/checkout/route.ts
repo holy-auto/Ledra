@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { createMobileClient, resolveMobileCaller } from "@/lib/supabase/mobile";
+import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { requireMinRole } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
@@ -12,15 +12,11 @@ export const dynamic = "force-dynamic";
 // ─── POST: POS会計処理（モバイルアプリ用 Bearer Token 認証） ───
 export async function POST(req: NextRequest) {
   try {
-    const { client, accessToken } = createMobileClient(req);
-    if (!client) {
-      return apiUnauthorized();
-    }
-
-    const caller = await resolveMobileCaller(client, accessToken);
+    const caller = await resolveMobileCaller(req);
     if (!caller) {
       return apiUnauthorized();
     }
+    const client = caller.supabase;
 
     // staff以上のロールが必要
     if (!requireMinRole(caller, "staff")) {

@@ -249,6 +249,65 @@ describe("enforceBilling — response headers", () => {
   });
 });
 
+// ─── opts.tenantId 直接指定（認証済み admin ルート）でも is_active / minPlan を検証する ───
+describe("enforceBilling — opts.tenantId direct pass", () => {
+  it("blocks with 403 when plan is below minPlan even with tenantId passed", async () => {
+    mockTenantResult.data = { plan_tier: "starter", is_active: true, stripe_subscription_id: "sub_1" };
+    const req = makeRequest("https://app.test/api/admin/market-vehicles");
+    const res = await enforceBilling(req, { minPlan: "standard", tenantId: "t1" });
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(403);
+    const body = await res!.json();
+    expect(body.error).toBe("Plan restricted");
+  });
+
+  it("blocks with 402 when billing is inactive even with tenantId passed", async () => {
+    mockTenantResult.data = { plan_tier: "pro", is_active: false, stripe_subscription_id: "sub_1" };
+    const req = makeRequest("https://app.test/api/admin/anything");
+    const res = await enforceBilling(req, { minPlan: "free", tenantId: "t1", action: "create" });
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(402);
+    const body = await res!.json();
+    expect(body.error).toBe("Billing inactive");
+  });
+
+  it("allows active tenant meeting minPlan with tenantId passed", async () => {
+    mockTenantResult.data = { plan_tier: "standard", is_active: true, stripe_subscription_id: "sub_1" };
+    const req = makeRequest("https://app.test/api/admin/anything");
+    const res = await enforceBilling(req, { minPlan: "standard", tenantId: "t1" });
+    expect(res).toBeNull();
+  });
+
+  it("returns null for platform tenant passed as tenantId", async () => {
+    const req = makeRequest("https://app.test/api/admin/anything");
+    const res = await enforceBilling(req, { minPlan: "pro", tenantId: "platform-tenant-id" });
+    expect(res).toBeNull();
+  });
+});
+
+// ─── plan_tier の正規化（旧名 "mini" / 不正値） ───
+describe("enforceBilling — plan_tier normalization", () => {
+  it('treats legacy "mini" as starter (passes starter, fails standard)', async () => {
+    mockTenantResult.data = { plan_tier: "mini", is_active: true, stripe_subscription_id: "sub_1" };
+    const ok = await enforceBilling(makeRequest("https://app.test/api/cert?tenant_id=t1"), { minPlan: "starter" });
+    expect(ok).toBeNull();
+    const blocked = await enforceBilling(makeRequest("https://app.test/api/cert?tenant_id=t1"), {
+      minPlan: "standard",
+    });
+    expect(blocked).not.toBeNull();
+    expect(blocked!.status).toBe(403);
+  });
+
+  it('treats unknown "enterprise" as free and does not bypass the gate', async () => {
+    mockTenantResult.data = { plan_tier: "enterprise", is_active: true, stripe_subscription_id: "sub_1" };
+    const res = await enforceBilling(makeRequest("https://app.test/api/cert?tenant_id=t1"), { minPlan: "starter" });
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(403);
+    const body = await res!.json();
+    expect(body.current_plan).toBe("free");
+  });
+});
+
 // ─── Null plan_tier defaults to free ───
 describe("enforceBilling — null plan_tier", () => {
   it("treats null plan_tier as free", async () => {

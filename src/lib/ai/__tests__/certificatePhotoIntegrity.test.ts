@@ -50,13 +50,18 @@ describe("aggregateCertificateImageIntegrity", () => {
     expect(r.flags).toContain("duplicate_image");
   });
 
-  it("同一 perceptual_hash の重複 (sha 異なる) も duplicate_image", () => {
+  it("同一 perceptual_hash のみの一致 (sha 異なる) は similar_image で inconclusive (aHash 衝突対策)", () => {
     const r = aggregateCertificateImageIntegrity(
       [img({ id: "1", perceptualHash: "PH" }), img({ id: "2", perceptualHash: "PH" })],
       NOW,
     );
-    expect(r.flags).toContain("duplicate_image");
-    expect(r.verdict).toBe("suspicious");
+    // aHash は見た目が近い正当写真で衝突しうる → 決定的にせず Vision へ回す。
+    expect(r.flags).toContain("similar_image");
+    expect(r.flags).not.toContain("duplicate_image");
+    expect(r.verdict).toBe("inconclusive");
+    expect(r.anyFlagged).toBe(false);
+    expect(pickGrayZoneImageIds(r, 10)).toEqual(["1", "2"]);
+    expect(r.summary).toContain("酷似");
   });
 
   it("deepfake likely_fake は suspicious", () => {

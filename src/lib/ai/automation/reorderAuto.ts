@@ -17,6 +17,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { computeReorderGroups, type ReorderableItem } from "@/lib/inventory/reorder";
 import { logger } from "@/lib/logger";
+import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { loadAiAutomationSettings } from "./policy";
 import { shouldAutoDraftReorder } from "./orchestrator";
 
@@ -134,6 +135,13 @@ export async function maybeAutoDraftReordersForTenant(tenantId: string): Promise
         continue;
       }
       result.created += 1;
+      // 人の確認なしで発注書ドラフトを自動起票した事実を監査ログに残す (失敗しても起票は成立)。
+      await logAutoActionExecuted({
+        tenantId,
+        actionKey: "purchase_order.auto_draft_on_low_stock",
+        resource: { kind: "purchase_order", id: po.id },
+        detail: { supplier_id: group.supplier_id, line_count: group.lines.length, subtotal: group.subtotal },
+      });
     }
 
     return result;
