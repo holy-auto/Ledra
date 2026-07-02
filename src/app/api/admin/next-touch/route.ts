@@ -90,7 +90,7 @@ export async function GET(_req: NextRequest) {
         .lte("inspection_expiry_date", soonCeil),
       admin
         .from("certificates")
-        .select("id, customer_id, vehicle_id, service_name, warranty_period_end")
+        .select("id, customer_id, vehicle_id, service_type, warranty_period_end")
         .eq("tenant_id", tenantId)
         .neq("status", "void")
         .not("warranty_period_end", "is", null)
@@ -123,7 +123,7 @@ export async function GET(_req: NextRequest) {
       id: string;
       customer_id: string | null;
       vehicle_id: string | null;
-      service_name: string | null;
+      service_type: string | null;
       warranty_period_end: string;
     }>;
     const birthdayCustomers = (custRes.data ?? []) as CustomerRow[];
@@ -262,7 +262,7 @@ export async function GET(_req: NextRequest) {
         id: `warr:${ct.id}`,
         reason: "warranty",
         title: "保証満了",
-        detail: [ct.service_name, vehicleLabel(ct.vehicle_id ? vehicleMap.get(ct.vehicle_id) : undefined)]
+        detail: [ct.service_type, vehicleLabel(ct.vehicle_id ? vehicleMap.get(ct.vehicle_id) : undefined)]
           .filter(Boolean)
           .join(" / "),
         due_date: ct.warranty_period_end,
