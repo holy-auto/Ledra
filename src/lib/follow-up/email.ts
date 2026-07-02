@@ -72,13 +72,17 @@ export async function sendFollowUpEmail(params: {
   customerName: string;
   certificateLabel: string;
   daysSince: number;
+  /** AI パーソナライズ文面での上書き (任意)。未指定ならテンプレート文面。 */
+  subject?: string;
+  bodyHtml?: string;
 }): Promise<boolean> {
   const shop = escapeHtml(params.shopName);
   const customer = escapeHtml(params.customerName);
   const cert = escapeHtml(params.certificateLabel);
   const html = wrap(
     "施工後のフォローアップ",
-    `
+    params.bodyHtml ??
+      `
       <p style="color: #1d1d1f; font-size: 14px;">
         ${customer} 様<br><br>
         ${shop}です。<br>
@@ -93,7 +97,7 @@ export async function sendFollowUpEmail(params: {
       </p>
     `,
   );
-  return send(params.customerEmail, `[${shop}] 施工後のご確認`, html);
+  return send(params.customerEmail, params.subject ?? `[${shop}] 施工後のご確認`, html);
 }
 
 /**

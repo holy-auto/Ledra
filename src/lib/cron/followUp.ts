@@ -76,47 +76,58 @@ async function sendNotification(
 ): Promise<boolean> {
   const useAI = isAiPlan(params.planTier);
   let sent = false;
+  let channel: "line" | "email" = "email";
+  let recipientLineUserId: string | null = null;
 
   try {
-    if (useAI) {
-      await generateFollowUpContent(
-        {
-          trigger: params.trigger,
-          customer: { name: params.customerName },
-          certificate: {
-            label: params.serviceName,
-            issued_at: params.issuedAt,
-            warranty_period: params.warrantyPeriod ?? undefined,
+    // AI プランでは文面をパーソナライズ。生成失敗時は generateFollowUpContent
+    // 内部でテンプレートにフォールバックするため content は常に得られる。
+    const content = useAI
+      ? await generateFollowUpContent(
+          {
+            trigger: params.trigger,
+            customer: { name: params.customerName },
+            certificate: {
+              label: params.serviceName,
+              issued_at: params.issuedAt,
+              warranty_period: params.warrantyPeriod ?? undefined,
+            },
+            vehicle: {
+              maker: params.vehicleMaker ?? undefined,
+              model: params.vehicleModel ?? undefined,
+              color: params.vehicleColor ?? undefined,
+            },
+            shop: { name: params.shopName, phone: params.shopPhone ?? undefined },
           },
-          vehicle: {
-            maker: params.vehicleMaker ?? undefined,
-            model: params.vehicleModel ?? undefined,
-            color: params.vehicleColor ?? undefined,
-          },
-          shop: { name: params.shopName, phone: params.shopPhone ?? undefined },
-        },
-        { model: fastModelForPlanTier(params.planTier) },
-      );
+          { model: fastModelForPlanTier(params.planTier) },
+        )
+      : null;
 
-      if (params.customerEmail) {
-        sent = await sendFollowUpEmail({
-          shopName: params.shopName,
-          customerEmail: params.customerEmail,
-          customerName: params.customerName,
-          certificateLabel: params.serviceName,
-          daysSince: 0,
-        });
+    // ── 配信: LINE 優先、失敗時は email にフォールバック (processMaintenanceReminders と同方針) ──
+    if (content && params.lineUserId) {
+      const lineOk = await sendMaintenanceLineMessage({
+        tenantId: params.tenantId,
+        lineUserId: params.lineUserId,
+        lineMessage: content.lineMessage,
+      });
+      if (lineOk) {
+        sent = true;
+        channel = "line";
+        recipientLineUserId = params.lineUserId;
       }
-    } else {
-      if (params.customerEmail) {
-        sent = await sendFollowUpEmail({
-          shopName: params.shopName,
-          customerEmail: params.customerEmail,
-          customerName: params.customerName,
-          certificateLabel: params.serviceName,
-          daysSince: 30,
-        });
-      }
+    }
+
+    if (!sent && params.customerEmail) {
+      sent = await sendFollowUpEmail({
+        shopName: params.shopName,
+        customerEmail: params.customerEmail,
+        customerName: params.customerName,
+        certificateLabel: params.serviceName,
+        daysSince: useAI ? 0 : 30,
+        // AI 生成文面があれば件名・本文を上書き。無ければテンプレート文面。
+        subject: content?.emailSubject,
+        bodyHtml: content?.emailBody,
+      });
     }
   } catch (err) {
     console.error(`[follow-up] notification error (${params.notifType}):`, err);
@@ -127,7 +138,9 @@ async function sendNotification(
     type: params.notifType,
     target_type: "certificate",
     target_id: params.certId,
-    recipient_email: params.customerEmail ?? null,
+    recipient_email: channel === "email" ? (params.customerEmail ?? null) : null,
+    recipient_line_user_id: recipientLineUserId,
+    channel,
     status: sent ? "sent" : "failed",
   });
 
@@ -537,22 +550,16 @@ export async function processSeasonalProposals(
 ): Promise<number> {
   if (!setting.seasonal_enabled) return 0;
 
-  const currentMonth = today.getMonth() + 1;
+  // today は「JST の今日」を UTC 0 時に固定した Date (route 側で生成) なので getUTC* で読む
+  const currentMonth = today.getUTCMonth() + 1;
   const seasonalTrigger = getSeasonalTrigger(currentMonth);
   if (!seasonalTrigger) return 0;
-  if (today.getDate() !== 1) return 0;
+  if (today.getUTCDate() !== 1) return 0;
 
   let sent = 0;
   const todayStr = today.toISOString().slice(0, 10);
 
-  const { data: allCustomers } = await supabase
-    .from("customers")
-    .select("id, name, email")
-    .eq("tenant_id", setting.tenant_id)
-    .not("email", "is", null)
-    .limit(100);
-
-  const notifType = `seasonal_${currentMonth}_${today.getFullYear()}`;
+  const notifType = `seasonal_${currentMonth}_${today.getUTCFullYear()}`;
   const { data: existingLogs } = await supabase
     .from("notification_logs")
     .select("target_id")
@@ -560,31 +567,56 @@ export async function processSeasonalProposals(
     .eq("type", notifType);
   const alreadySentIds = new Set((existingLogs ?? []).map((l) => l.target_id));
 
-  for (const customer of allCustomers ?? []) {
-    if (alreadySentIds.has(customer.id)) continue;
-    await generateFollowUpContent({
-      trigger: seasonalTrigger,
-      customer: { name: customer.name ?? "お客様" },
-      certificate: { label: "季節メンテナンス", issued_at: todayStr },
-      vehicle: {},
-      shop: { name: shopName },
-    });
-    const ok = await sendFollowUpEmail({
-      shopName,
-      customerEmail: customer.email!,
-      customerName: customer.name ?? "お客様",
-      certificateLabel: "季節メンテナンスのご案内",
-      daysSince: 0,
-    });
-    await supabase.from("notification_logs").insert({
-      tenant_id: setting.tenant_id,
-      type: notifType,
-      target_type: "customer",
-      target_id: customer.id,
-      recipient_email: customer.email,
-      status: ok ? "sent" : "failed",
-    });
-    if (ok) sent++;
+  // ponytail: keyset ページネーション (id 昇順 100 件ずつ)。以前は .limit(100) 固定で
+  // 100 人超のテナントが黙って打ち切られていた。1 回の cron 実行で全件回す前提 —
+  // 顧客数が数万件規模になったら maxDuration に当たるので、その時はテナント毎の
+  // ジョブ分割 + カーソル永続化に切り替える。
+  const PAGE_SIZE = 100;
+  let lastId: string | null = null;
+  for (;;) {
+    let query = supabase
+      .from("customers")
+      .select("id, name, email")
+      .eq("tenant_id", setting.tenant_id)
+      .not("email", "is", null)
+      .order("id")
+      .limit(PAGE_SIZE);
+    if (lastId) query = query.gt("id", lastId);
+    const { data: pageCustomers } = await query;
+    const page = pageCustomers ?? [];
+
+    for (const customer of page) {
+      if (alreadySentIds.has(customer.id)) continue;
+      const content = await generateFollowUpContent({
+        trigger: seasonalTrigger,
+        customer: { name: customer.name ?? "お客様" },
+        certificate: { label: "季節メンテナンス", issued_at: todayStr },
+        vehicle: {},
+        shop: { name: shopName },
+      });
+      const ok = await sendFollowUpEmail({
+        shopName,
+        customerEmail: customer.email!,
+        customerName: customer.name ?? "お客様",
+        certificateLabel: "季節メンテナンスのご案内",
+        daysSince: 0,
+        // AI 生成文面で件名・本文を上書き (生成失敗時は内部フォールバック文面)
+        subject: content.emailSubject,
+        bodyHtml: content.emailBody,
+      });
+      await supabase.from("notification_logs").insert({
+        tenant_id: setting.tenant_id,
+        type: notifType,
+        target_type: "customer",
+        target_id: customer.id,
+        recipient_email: customer.email,
+        status: ok ? "sent" : "failed",
+      });
+      if (ok) sent++;
+    }
+
+    if (page.length < PAGE_SIZE) break;
+    lastId = page[page.length - 1].id;
   }
 
   return sent;
