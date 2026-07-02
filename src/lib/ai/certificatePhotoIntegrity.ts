@@ -25,10 +25,29 @@ export type PhotoIntegrityFlag =
   | "duplicate_image" // 同一 sha256 / perceptual_hash が証明書内で複数 (使い回し)
   | "deepfake_suspected" // ディープフェイク判定が likely_fake
   | "capture_time_future" // 撮影日時が未来 (時計改ざん / 別端末)
+  | "capture_time_stale" // 撮影日時がアップロードより大幅に前 (過去写真の使い回しの疑い)
   | "metadata_missing" // 撮影メタが無い (スクショ / 再エクスポート等)
   | "vision_suspicious"; // Opus Vision の内容審査で改ざんの疑い
 
 export type IntegrityVerdict = "clear" | "suspicious" | "inconclusive";
+
+/**
+ * 撮影日時が、その写真の**アップロード時刻**より何日以上前だと「使い回しの疑い」とみなすか。
+ *
+ * 施工写真は通常、施工の当日〜数日以内に撮影・アップロードされる。アップロードより大幅に
+ * 古い撮影日時の写真は「別案件・過去に撮った写真の使い回し」の可能性がある。
+ *
+ * 基準を証明書の発行 (issue) 時刻ではなく **各写真自身のアップロード時刻** に取るのは、
+ * 証明書が draft で先に作られ後から active 化される運用だと、created_at では
+ * 「1月に開いた draft を6月に1月の写真で発行」というケースを取りこぼすため
+ * (アップロード時刻なら 6月アップロード vs 1月撮影 で正しく stale になる)。
+ *
+ * ただし端末の時計狂い等の正当なケースもあるため、**決定的 (suspicious) にはせず
+ * inconclusive 止まり**にして Vision の内容審査へ回す。閾値は誤検知を避けるため
+ * 保守的に広めに取る。
+ */
+export const STALE_CAPTURE_DAYS = 60;
+const STALE_CAPTURE_MS = STALE_CAPTURE_DAYS * 24 * 60 * 60 * 1000;
 
 /** 単一画像の判定を確定させる (= verdict=suspicious) 決定的フラグ。 */
 const DECISIVE_FLAGS: ReadonlySet<PhotoIntegrityFlag> = new Set<PhotoIntegrityFlag>([
@@ -44,6 +63,8 @@ export interface CertImageIntegrityInput {
   sha256: string | null;
   perceptualHash: string | null;
   capturedAt: string | Date | null;
+  /** この写真がアップロード (登録) された時刻 = certificate_images.created_at。stale 判定の基準。 */
+  uploadedAt: string | Date | null;
   deviceModel: string | null;
   deepfakeVerdict: string | null;
   authenticityGrade: string | null;
@@ -98,11 +119,21 @@ function rollupSummary(
   const flagSet = new Set<PhotoIntegrityFlag>();
   for (const r of perImage) for (const f of r.flags) flagSet.add(f);
 
+  // inconclusive の内訳をフラグに応じて言い分ける (stale をメタ欠落と混同しない)。
+  // このブランチに来る時点で suspiciousCount===0 のため、flagSet は inconclusive 級
+  // (capture_time_stale / metadata_missing) のみ。
+  const inconclusiveReasons: string[] = [];
+  if (flagSet.has("capture_time_stale"))
+    inconclusiveReasons.push("アップロードより大幅に前に撮影された写真（使い回しの疑い）");
+  if (flagSet.has("metadata_missing")) inconclusiveReasons.push("撮影メタ（日時/端末）の不足");
+
   const summary =
     suspiciousCount > 0
       ? `${suspiciousCount} 枚に改ざんの疑いがあります`
       : inconclusiveCount > 0
-        ? "一部の写真で撮影メタが不足しています（判定不能）"
+        ? inconclusiveReasons.length > 0
+          ? `要確認: ${inconclusiveReasons.join("・")}（判定不能）`
+          : "一部の写真は判定できません（判定不能）"
         : "写真はすべてクリアです";
 
   return {
@@ -129,6 +160,8 @@ export function computeIntegritySignature(images: CertImageIntegrityInput[]): st
  * - duplicate_image: 同一 sha256 もしくは同一 perceptual_hash が複数 → 使い回しの疑い
  * - deepfake_suspected: deepfake_verdict === "likely_fake"
  * - capture_time_future: 撮影日時が現在+2分より未来
+ * - capture_time_stale: 撮影日時が、その写真のアップロード時刻 (uploadedAt) より
+ *   STALE_CAPTURE_DAYS 以上前 (過去写真の使い回しの疑い / 弱いシグナル → inconclusive 止まり)
  * - metadata_missing: 撮影日時も端末も無い (弱いシグナル → inconclusive 止まり)
  */
 export function aggregateCertificateImageIntegrity(
@@ -171,6 +204,13 @@ export function aggregateCertificateImageIntegrity(
 
     const takenAt = parseDate(im.capturedAt);
     if (takenAt && takenAt.getTime() > futureCutoff) flags.push("capture_time_future");
+    // 未来でない撮影のみ stale 判定 (未来は capture_time_future で既に拾っている)。
+    // 基準は各写真自身のアップロード時刻 (uploadedAt)。アップロードより
+    // STALE_CAPTURE_DAYS 以上前に撮影された写真は「使い回し」の疑い。
+    else if (takenAt) {
+      const uploadedAt = parseDate(im.uploadedAt);
+      if (uploadedAt && takenAt.getTime() < uploadedAt.getTime() - STALE_CAPTURE_MS) flags.push("capture_time_stale");
+    }
 
     if (!takenAt && !im.deviceModel) flags.push("metadata_missing");
 
