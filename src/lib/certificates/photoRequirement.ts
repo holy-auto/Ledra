@@ -88,3 +88,50 @@ export async function certificateBeforeAfterState(
   const hasAfter = stages.has("after");
   return { hasBefore, hasAfter, ok: hasBefore && hasAfter };
 }
+
+// ============================================================
+// Before/After メディア必須ルール (コーティング・PPF証明書専用)
+// ============================================================
+//
+// コーティング・PPF施工証明書は Before/After 写真も発行に必須とする。
+//
+// 目的: 施工前後の比較写真を撮る運用は元々多くの現場で行われているため、新しい作業を
+// 課さずに「任意」を「必須」へ引き上げるだけで、施工そのものが行われた根拠を強める
+// （設計: docs/coating-ppf-integrity-design.md）。膜厚など他のごまかし検知とは独立。
+// 上記の案件サインオフ用ルール (certificate_images.stage) とは別物 —
+// こちらは certificate_media (media_type='before_after') を見る。
+
+export const BEFORE_AFTER_REQUIRED_SERVICE_TYPES = ["coating", "ppf"] as const;
+
+export const CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE =
+  "コーティング・PPF施工証明書の発行には施工前後(Before/After)の写真が必要です。写真を添付してから発行してください。";
+
+/** この service_type は Before/After 写真の添付が発行条件か。 */
+export function requiresBeforeAfterMedia(serviceType: string | null | undefined): boolean {
+  return (BEFORE_AFTER_REQUIRED_SERVICE_TYPES as readonly string[]).includes(serviceType ?? "");
+}
+
+/**
+ * 指定証明書に紐づく Before/After メディア (`certificate_media`, media_type='before_after') の枚数。
+ * このメディア種別は before_path/storage_path(after) の両方が揃って初めて1行になる
+ * （DB制約 `certmedia_before_after_requires_before`）ため、1行以上あれば前後両方が揃っている。
+ */
+export async function countCertificateBeforeAfterMedia(admin: SupabaseClient, certificateId: string): Promise<number> {
+  const { count, error } = await admin
+    .from("certificate_media")
+    .select("id", { count: "exact", head: true })
+    .eq("certificate_id", certificateId)
+    .eq("media_type", "before_after");
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/** Before/After 写真が必要な service_type について、添付済みかどうか。 */
+export async function certificateHasRequiredBeforeAfterMedia(
+  admin: SupabaseClient,
+  certificateId: string,
+  serviceType: string | null | undefined,
+): Promise<boolean> {
+  if (!requiresBeforeAfterMedia(serviceType)) return true;
+  return (await countCertificateBeforeAfterMedia(admin, certificateId)) >= 1;
+}

@@ -5,6 +5,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { makePublicId } from "@/lib/publicId";
 import { resolveCertifiedTemplateForTenant } from "@/lib/manufacturers/certifiedTemplates";
 import { fuzzyMatchCustomer, type CustomerCandidate } from "@/lib/ai/customerFuzzyMatch";
+import { recordCoatingConsumableInstallations } from "@/lib/parts/coatingIntegration";
 
 export type CreateCertResult =
   | { ok: true; public_id: string; status: "draft"; photo_required: boolean }
@@ -414,6 +415,20 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
 
   const certificateId = certRow?.id as string | undefined;
   const now = new Date().toISOString();
+
+  // コーティング剤/PPFフィルムは消耗品として part_installations に記録し、部品交換用の
+  // 納品書OCR三方照合・写真重複検知をそのまま流用する（設計: docs/coating-ppf-integrity-design.md）。
+  // ベストエフォート: 失敗しても証明書発行はブロックしない。
+  if (certificateId && (service_type === "coating" || service_type === "ppf") && coating_products.length > 0) {
+    recordCoatingConsumableInstallations(
+      tenantId,
+      userId,
+      { certificateId, vehicleId: resolvedVehicleId ?? null, customerId: resolvedCustomerId ?? null },
+      coating_products,
+    ).catch((e) => {
+      console.error("recordCoatingConsumableInstallations failed", e);
+    });
+  }
   const mileageKm = maintenance_data.mileage ? parseInt(String(maintenance_data.mileage), 10) : null;
 
   // Structured inspection findings → vehicle_inspection_findings

@@ -71,6 +71,7 @@ export async function createInstallation(
     tenant_id: tenantId,
     job_order_id: input.job_order_id ?? null,
     reservation_id: input.reservation_id ?? null,
+    certificate_id: input.certificate_id ?? null,
     vehicle_id: input.vehicle_id ?? null,
     customer_id: input.customer_id ?? null,
     inventory_item_id: input.inventory_item_id ?? null,

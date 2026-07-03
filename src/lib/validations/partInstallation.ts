@@ -48,6 +48,7 @@ export const partEvidenceSchema = z.object({
 export const partInstallationCreateSchema = z.object({
   job_order_id: z.string().uuid().nullable().optional(),
   reservation_id: z.string().uuid().nullable().optional(),
+  certificate_id: z.string().uuid().nullable().optional(),
   vehicle_id: z.string().uuid().nullable().optional(),
   customer_id: z.string().uuid().nullable().optional(),
   inventory_item_id: z.string().uuid().nullable().optional(),

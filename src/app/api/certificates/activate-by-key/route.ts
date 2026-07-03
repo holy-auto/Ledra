@@ -5,7 +5,12 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { lookupCertByIdempotencyKey } from "@/lib/certificates/idempotencyMap";
-import { certificateHasRequiredPhotos, CERTIFICATE_PHOTO_REQUIRED_MESSAGE } from "@/lib/certificates/photoRequirement";
+import {
+  certificateHasRequiredPhotos,
+  CERTIFICATE_PHOTO_REQUIRED_MESSAGE,
+  certificateHasRequiredBeforeAfterMedia,
+  CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE,
+} from "@/lib/certificates/photoRequirement";
 import { triggerCertificateIssued } from "@/lib/certificates/issueHooks";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
 import {
@@ -79,6 +84,14 @@ export async function POST(req: NextRequest): Promise<Response> {
     const hasPhotos = await certificateHasRequiredPhotos(admin, cert.id as string);
     if (!hasPhotos) {
       return apiValidationError(CERTIFICATE_PHOTO_REQUIRED_MESSAGE);
+    }
+    const hasBeforeAfter = await certificateHasRequiredBeforeAfterMedia(
+      admin,
+      cert.id as string,
+      cert.service_type as string | null,
+    );
+    if (!hasBeforeAfter) {
+      return apiValidationError(CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE);
     }
 
     const { data: updated, error: updateErr } = await admin
