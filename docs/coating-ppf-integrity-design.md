@@ -85,6 +85,7 @@ L0（写真真正性）は元から`certificate_images`パイプラインが全�
 ### 5.1 スキーマ
 
 `supabase/migrations/20260703000000_coating_ppf_integrity.sql`
+`supabase/migrations/20260703000001_coating_ppf_integrity_index.sql`（支援索引・CONCURRENTLY、別ファイル）
 - `part_installations.certificate_id`（`certificates(id)` への nullable FK）を追加。
   `job_order_id` と排他ではなく併用可（部品交換は job_order 経由、コーティング/PPFは certificate 経由）。
 - content_hash の正準マニフェスト（`contentHash.ts`）には含めない
