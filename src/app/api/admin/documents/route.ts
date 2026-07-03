@@ -9,40 +9,9 @@ import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalE
 import { documentCreateSchema, documentUpdateSchema, documentDeleteSchema } from "@/lib/validations/document";
 import { resolveBaseUrl } from "@/lib/url";
 import { maybeAutoSendDocumentOnConfirm } from "@/lib/ai/automation/documentAuto";
+import { insertDocWithRetry } from "@/lib/invoice/invoiceNumber";
 
 export const dynamic = "force-dynamic";
-
-/** 書類番号自動採番: {PREFIX}-YYYYMM-NNN */
-async function generateDocNumber(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
-  tenantId: string,
-  docType: DocType,
-): Promise<string> {
-  const meta = DOC_TYPES[docType];
-  if (!meta) throw new Error(`Unknown doc_type: ${docType}`);
-
-  const now = new Date();
-  const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const prefix = `${meta.prefix}-${ym}-`;
-
-  const { data } = await supabase
-    .from("documents")
-    .select("doc_number")
-    .eq("tenant_id", tenantId)
-    .eq("doc_type", docType)
-    .like("doc_number", `${prefix}%`)
-    .order("doc_number", { ascending: false })
-    .limit(1);
-
-  let seq = 1;
-  if (data && data.length > 0) {
-    const last = data[0].doc_number as string;
-    const num = parseInt(last.replace(prefix, ""), 10);
-    if (!isNaN(num)) seq = num + 1;
-  }
-
-  return `${prefix}${String(seq).padStart(3, "0")}`;
-}
 
 function calcItems(items: any[], taxRate: number, isTaxInclusive = false) {
   let itemsSum = 0; // 通常行 amount の合計（税込モードでは税込合計、税抜モードでは税抜合計）
@@ -225,7 +194,6 @@ export async function POST(req: NextRequest) {
       return apiValidationError("invalid doc_type");
     }
 
-    const docNumber = input.doc_number || (await generateDocNumber(supabase, caller.tenantId, docType));
     const customerId = input.customer_id || null;
     const issuedAt = input.issued_at || new Date().toISOString().slice(0, 10);
     const dueDate = input.due_date || null;
@@ -273,7 +241,6 @@ export async function POST(req: NextRequest) {
       delivery_date: deliveryDate,
       template_id: templateId,
       doc_type: docType,
-      doc_number: docNumber,
       issued_at: issuedAt,
       due_date: dueDate,
       status,
@@ -291,15 +258,25 @@ export async function POST(req: NextRequest) {
       show_bank_info: showBankInfo,
     };
 
-    // RLS をバイパスしてサービスロールで INSERT（tenant_id で必ずスコープ限定）
+    // RLS をバイパスしてサービスロールで INSERT（tenant_id で必ずスコープ限定）。
+    // doc_number は採番→INSERT の間に競合し得るため、UNIQUE 索引 + 23505 リトライで
+    // 二重採番を防ぐ（ユーザが番号を明示した場合はリトライせず 1 回のみ）。
     const { admin } = createTenantScopedAdmin(caller.tenantId);
-    const { data, error } = await admin
-      .from("documents")
-      .insert(row)
-      .select(
-        "id, tenant_id, customer_id, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, items_json, note, meta_json, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, created_at, updated_at",
-      )
-      .single();
+    const { data, error } = await insertDocWithRetry(
+      admin,
+      caller.tenantId,
+      docType,
+      DOC_TYPES[docType].prefix,
+      (docNumber) =>
+        admin
+          .from("documents")
+          .insert({ ...row, doc_number: docNumber })
+          .select(
+            "id, tenant_id, customer_id, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, items_json, note, meta_json, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, created_at, updated_at",
+          )
+          .single(),
+      { fixedNumber: input.doc_number || null },
+    );
     if (error) {
       return apiInternalError(error, "documents POST");
     }
