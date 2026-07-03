@@ -14,9 +14,15 @@ type Customer = {
   postal_code: string | null;
   address: string | null;
   note: string | null;
+  customer_type: "individual" | "corporate" | null;
+  billing_cycle: "per_job" | "consolidated" | null;
+  billing_terms_note: string | null;
   created_at: string;
   updated_at: string | null;
 };
+
+const CUSTOMER_TYPE_LABEL: Record<string, string> = { individual: "個人", corporate: "法人" };
+const BILLING_CYCLE_LABEL: Record<string, string> = { per_job: "都度払い", consolidated: "合算 (締め払い)" };
 
 export default function CustomerDetailClient({ customer: initial }: { customer: Customer }) {
   const [customer, setCustomer] = useState(initial);
@@ -29,6 +35,9 @@ export default function CustomerDetailClient({ customer: initial }: { customer: 
     postal_code: customer.postal_code ?? "",
     address: customer.address ?? "",
     note: customer.note ?? "",
+    customer_type: customer.customer_type ?? "individual",
+    billing_cycle: customer.billing_cycle ?? "",
+    billing_terms_note: customer.billing_terms_note ?? "",
   });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -38,10 +47,12 @@ export default function CustomerDetailClient({ customer: initial }: { customer: 
     setSaving(true);
     setMsg(null);
     try {
+      // 個人ならサイクルは常に null、法人でも未選択は null に寄せる ("" は enum 不一致)。
+      const billing_cycle = form.customer_type === "corporate" && form.billing_cycle ? form.billing_cycle : null;
       const res = await fetch("/api/admin/customers", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: customer.id, ...form }),
+        body: JSON.stringify({ id: customer.id, ...form, billing_cycle }),
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
@@ -127,6 +138,48 @@ export default function CustomerDetailClient({ customer: initial }: { customer: 
             />
           </div>
         </div>
+        {/* 顧客区分 + 法人の支払い条件 */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <label className="text-xs text-muted">顧客区分</label>
+            <select
+              value={form.customer_type}
+              onChange={(e) => setForm({ ...form, customer_type: e.target.value as "individual" | "corporate" })}
+              className="input-field"
+            >
+              <option value="individual">個人 (BtoC)</option>
+              <option value="corporate">法人 (BtoB)</option>
+            </select>
+          </div>
+          {form.customer_type === "corporate" && (
+            <div className="space-y-1">
+              <label className="text-xs text-muted">
+                支払いサイクル <span className="text-danger">*</span>
+              </label>
+              <select
+                value={form.billing_cycle}
+                onChange={(e) => setForm({ ...form, billing_cycle: e.target.value })}
+                className="input-field"
+              >
+                <option value="">— 選択してください —</option>
+                <option value="per_job">都度払い (案件ごとに会計)</option>
+                <option value="consolidated">合算・締め払い (後日まとめて請求)</option>
+              </select>
+            </div>
+          )}
+        </div>
+        {form.customer_type === "corporate" && (
+          <div className="space-y-1">
+            <label className="text-xs text-muted">支払い条件メモ (締め日・支払いサイト等)</label>
+            <input
+              type="text"
+              value={form.billing_terms_note}
+              onChange={(e) => setForm({ ...form, billing_terms_note: e.target.value })}
+              className="input-field"
+              placeholder="例: 月末締め翌月末払い"
+            />
+          </div>
+        )}
         <div className="space-y-1">
           <label className="text-xs text-muted">備考</label>
           <textarea
@@ -169,6 +222,12 @@ export default function CustomerDetailClient({ customer: initial }: { customer: 
         </div>
       </div>
       {msg && <div className={`text-sm ${msg.ok ? "text-success" : "text-danger"}`}>{msg.text}</div>}
+      {infoRow("顧客区分", CUSTOMER_TYPE_LABEL[customer.customer_type ?? "individual"])}
+      {customer.customer_type === "corporate" &&
+        infoRow("支払いサイクル", customer.billing_cycle ? BILLING_CYCLE_LABEL[customer.billing_cycle] : "未設定")}
+      {customer.customer_type === "corporate" && customer.billing_terms_note
+        ? infoRow("支払い条件", customer.billing_terms_note)
+        : null}
       {infoRow("フリガナ", customer.name_kana)}
       {infoRow("メール", customer.email)}
       {infoRow("電話番号", customer.phone)}

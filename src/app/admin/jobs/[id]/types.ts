@@ -66,6 +66,10 @@ export type JobReservation = {
   booth_id: string | null;
   work_started_at: string | null;
   work_completed_at: string | null;
+  // 案件サインオフ・ワークフロー (詳細状態は GET /signoff-state で取得)
+  signoff_status?: "not_requested" | "awaiting" | "signed" | null;
+  signoff_deadline?: string | null;
+  signed_off_at?: string | null;
   created_at: string;
   ai_certificate_draft?: AiCertificateDraft | null;
   handoff_notes?: HandoffNote[] | null;

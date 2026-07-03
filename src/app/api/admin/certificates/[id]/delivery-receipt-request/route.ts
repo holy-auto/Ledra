@@ -29,6 +29,8 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { computeDocumentHash } from "@/lib/signature/hash";
 import { generateCertificatePdfBytes } from "@/lib/signature/pdfUtils";
 import { CONSENT_VERSION, computeConsentTextHash, type ReceiptPayloadSnapshot } from "@/lib/signature/deliveryReceipt";
+import { certificateBeforeAfterState, BEFORE_AFTER_PHOTO_REQUIRED_MESSAGE } from "@/lib/certificates/photoRequirement";
+import { computeSignoffDeadline } from "@/lib/signoff/state";
 import { escapeHtml } from "@/lib/sanitize";
 import { sendEmail } from "@/lib/email/sendEmail";
 
@@ -49,7 +51,33 @@ const requestSchema = z.object({
     .optional()
     .or(z.literal("").transform(() => undefined)),
   signer_phone: z.string().trim().max(40).optional(),
+  // 案件サインオフ・ワークフロー由来の依頼では予約(案件)IDを渡す。
+  // これがあると施工前後写真ゲートを強制し、予約側を「署名待ち」に遷移させる。
+  reservation_id: z.string().uuid().optional(),
 });
+
+/**
+ * 予約(案件)を「署名待ち」に遷移させ、24h SLA 期限を刻む。
+ * 案件サインオフ・ワークフロー由来 (reservation_id 指定) の依頼でのみ呼ぶ。
+ * 既に signed の予約は上書きしない (冪等・巻き戻し防止)。
+ */
+async function markReservationAwaitingSignoff(
+  admin: ReturnType<typeof createTenantScopedAdmin>["admin"],
+  tenantId: string,
+  reservationId: string,
+): Promise<void> {
+  const requestedAt = new Date().toISOString();
+  await admin
+    .from("reservations")
+    .update({
+      signoff_status: "awaiting",
+      signoff_requested_at: requestedAt,
+      signoff_deadline: computeSignoffDeadline(requestedAt),
+    })
+    .eq("id", reservationId)
+    .eq("tenant_id", tenantId)
+    .neq("signoff_status", "signed");
+}
 
 async function sendDeliveryReceiptEmail(params: {
   to: string;
@@ -118,7 +146,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-    const { signer_name, signer_email, signer_phone } = parsed.data;
+    const { signer_name, signer_email, signer_phone, reservation_id } = parsed.data;
 
     // 証明書取得 + テナント境界チェック + 顧客電話番号ハッシュ取得
     const { data: cert, error: certError } = await supabase
@@ -153,8 +181,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       });
     }
 
-    // 既存の pending 受領サインを再利用
     const { admin } = createTenantScopedAdmin(caller.tenantId);
+
+    // ── 案件サインオフ由来の依頼: 予約検証 + 施工前後写真ゲート ──
+    // 「作業前後で傷など後から揉める」トラブルを潰すため、案件フロー経由の
+    // サイン依頼は施工前(入庫時)・施工後の写真が両方揃っていないと発行できない。
+    if (reservation_id) {
+      const { data: resv } = await admin
+        .from("reservations")
+        .select("id")
+        .eq("id", reservation_id)
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
+      if (!resv) {
+        return apiError({ code: "not_found", message: "案件(予約)が見つかりません", status: 404 });
+      }
+
+      const beforeAfter = await certificateBeforeAfterState(admin, certificateId);
+      if (!beforeAfter.ok) {
+        return apiError({
+          code: "validation_error",
+          message: BEFORE_AFTER_PHOTO_REQUIRED_MESSAGE,
+          status: 400,
+        });
+      }
+    }
+
+    // 既存の pending 受領サインを再利用
     const { data: existing } = await admin
       .from("delivery_receipts")
       .select("id, signature_session_id, status, signature_sessions:signature_sessions(token, expires_at, status)")
@@ -171,6 +224,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       | null;
     const existingSess = Array.isArray(existingSessRaw) ? (existingSessRaw[0] ?? null) : existingSessRaw;
     if (existing && existingSess?.status === "pending" && new Date(existingSess.expires_at) > new Date()) {
+      // 既存の有効な依頼を再利用する場合も、案件由来なら予約側を署名待ちに
+      // 揃えておく (reservation_id の後付けリンクも兼ねる)。
+      if (reservation_id) {
+        await admin
+          .from("delivery_receipts")
+          .update({ reservation_id })
+          .eq("id", existing.id)
+          .is("reservation_id", null);
+        await admin
+          .from("signature_sessions")
+          .update({ reservation_id })
+          .eq("id", existing.signature_session_id)
+          .is("reservation_id", null);
+        await markReservationAwaitingSignoff(admin, caller.tenantId, reservation_id);
+      }
       return apiOk({
         delivery_receipt_id: existing.id,
         sign_url: `${RECEIPT_SIGN_PATH}/${existingSess.token}`,
@@ -200,6 +268,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .insert({
         certificate_id: certificateId,
         tenant_id: caller.tenantId,
+        reservation_id: reservation_id ?? null,
         created_by: caller.userId,
         token,
         expires_at: expiresAt,
@@ -272,6 +341,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .insert({
         tenant_id: caller.tenantId,
         certificate_id: certificateId,
+        reservation_id: reservation_id ?? null,
         signature_session_id: session.id,
         status: "pending",
         receipt_payload_json: snapshot,
@@ -283,6 +353,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (receiptErr || !receipt) {
       console.error("[delivery-receipt/request] receipt insert failed:", receiptErr);
       return apiError({ code: "db_error", message: "受領サインレコードの作成に失敗しました", status: 500 });
+    }
+
+    // 案件サインオフ由来なら予約側を「署名待ち」+24h SLA に遷移させる。
+    if (reservation_id) {
+      await markReservationAwaitingSignoff(admin, caller.tenantId, reservation_id);
     }
 
     const signUrl = `${RECEIPT_SIGN_PATH}/${token}`;

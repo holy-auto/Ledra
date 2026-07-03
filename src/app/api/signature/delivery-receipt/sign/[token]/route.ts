@@ -256,6 +256,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     // certificates.delivery_acknowledged_at を更新
     await admin.from("certificates").update({ delivery_acknowledged_at: signedAt }).eq("id", session.certificate_id);
 
+    // 案件サインオフ・ワークフロー由来なら予約側を「署名済み」に遷移させる。
+    // これで案件画面のパイプラインがサイン完了を認識する。
+    if (session.reservation_id) {
+      await admin
+        .from("reservations")
+        .update({ signoff_status: "signed", signed_off_at: signedAt })
+        .eq("id", session.reservation_id)
+        .eq("tenant_id", session.tenant_id);
+    }
+
     // 監査ログ
     await admin.from("signature_audit_logs").insert({
       session_id: session.id,
