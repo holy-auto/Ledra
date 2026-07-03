@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { nextInvoiceNumber, invoiceYm } from "@/lib/invoice/invoiceNumber";
+import { nextInvoiceNumber, nextDocNumber, invoiceYm } from "@/lib/invoice/invoiceNumber";
 
 /**
  * 採番の数値ソート（999→1000 の桁上がり）と JST 月導出を検証する。
@@ -38,6 +38,24 @@ describe("nextInvoiceNumber", () => {
   it("3 桁未満はゼロ詰めする", async () => {
     const n = await nextInvoiceNumber(mockAdmin([{ doc_number: "INV-202607-004" }]), "t1", "202607");
     expect(n).toBe("INV-202607-005");
+  });
+});
+
+describe("nextDocNumber（見積・領収書など invoice 以外）", () => {
+  it("prefix を差し替えて採番する", async () => {
+    const n = await nextDocNumber(mockAdmin([{ doc_number: "EST-202607-012" }]), "t1", "estimate", "EST", "202607");
+    expect(n).toBe("EST-202607-013");
+  });
+
+  it("文字列ソートで止まる 999→1000 の桁上がりも数値で処理する", async () => {
+    const n = await nextDocNumber(
+      mockAdmin([{ doc_number: "RCP-202607-999" }, { doc_number: "RCP-202607-1000" }]),
+      "t1",
+      "receipt",
+      "RCP",
+      "202607",
+    );
+    expect(n).toBe("RCP-202607-1001");
   });
 });
 
