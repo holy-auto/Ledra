@@ -12,6 +12,8 @@ function base(overrides: Partial<SignoffStateInput> = {}): SignoffStateInput {
     signoffDeadline: null,
     signedOffAt: null,
     paymentStatus: null,
+    customerType: "individual",
+    billingCycle: null,
     anchored: false,
     now: NOW,
     ...overrides,
@@ -128,18 +130,59 @@ describe("computeSignoffState — サイン状態と SLA", () => {
   });
 });
 
-describe("computeSignoffState — 会計は任意", () => {
-  it("未払いでも会計は optional、必須ラインの currentStep には出ない", () => {
-    const s = computeSignoffState(
-      base({ status: "completed", certificate: activeCert, signoffStatus: "signed", anchored: true }),
-    );
-    expect(s.steps.payment.state).toBe("optional");
-    expect(s.currentStep).toBeNull(); // payment は current にならない
+describe("computeSignoffState — お会計 (顧客区分 × サイクル)", () => {
+  it("個人・支払い済み(事前決済) → payment=done", () => {
+    const s = computeSignoffState(base({ customerType: "individual", paymentStatus: "paid" }));
+    expect(s.steps.payment.state).toBe("done");
   });
 
-  it("支払い済みなら payment=done", () => {
-    const s = computeSignoffState(base({ paymentStatus: "paid" }));
-    expect(s.steps.payment.state).toBe("done");
+  it("個人・未払い(その場)・証明書完了 → payment=current", () => {
+    const s = computeSignoffState(
+      base({ status: "completed", certificate: activeCert, customerType: "individual", paymentStatus: "unpaid" }),
+    );
+    expect(s.steps.payment.state).toBe("current");
+    expect(s.steps.payment.detail).toContain("その場決済");
+  });
+
+  it("法人・合算(consolidated) → payment=deferred (会計不要)", () => {
+    const s = computeSignoffState(
+      base({ status: "completed", certificate: activeCert, customerType: "corporate", billingCycle: "consolidated" }),
+    );
+    expect(s.steps.payment.state).toBe("deferred");
+    expect(s.steps.payment.detail).toContain("合算");
+  });
+
+  it("法人・都度払い(per_job)・証明書完了 → payment=current (会計を挟む)", () => {
+    const s = computeSignoffState(
+      base({ status: "completed", certificate: activeCert, customerType: "corporate", billingCycle: "per_job" }),
+    );
+    expect(s.steps.payment.state).toBe("current");
+    expect(s.steps.payment.detail).toContain("都度払い");
+  });
+
+  it("法人・サイクル未設定 → payment=blocked (設定を促す)", () => {
+    const s = computeSignoffState(
+      base({ status: "completed", certificate: activeCert, customerType: "corporate", billingCycle: null }),
+    );
+    expect(s.steps.payment.state).toBe("blocked");
+    expect(s.steps.payment.detail).toContain("支払いサイクル");
+  });
+
+  it("会計は必須ライン(currentStep)をゲートしない (オンチェーンはサイン時自動)", () => {
+    // 法人・都度払いで会計 current でも、サイン済み+アンカー済みなら currentStep は null
+    const s = computeSignoffState(
+      base({
+        status: "completed",
+        certificate: activeCert,
+        signoffStatus: "signed",
+        anchored: true,
+        customerType: "corporate",
+        billingCycle: "per_job",
+        paymentStatus: "unpaid",
+      }),
+    );
+    expect(s.steps.payment.state).toBe("current");
+    expect(s.currentStep).toBeNull();
   });
 });
 

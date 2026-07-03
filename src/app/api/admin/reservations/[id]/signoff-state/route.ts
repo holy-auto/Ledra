@@ -101,6 +101,25 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       return apiError({ code: "not_found", message: "案件(予約)が見つかりません", status: 404 });
     }
 
+    // 顧客区分 + 支払いサイクル (お会計ステップの自動判定に使う)。
+    // customer_type / billing_cycle は本 PR 追加列で生成型に未反映のためキャスト。
+    let customerType: "individual" | "corporate" = "individual";
+    let billingCycle: "per_job" | "consolidated" | null = null;
+    if (resv.customer_id) {
+      const { data: custRaw } = await admin
+        .from("customers")
+        .select("customer_type, billing_cycle")
+        .eq("id", resv.customer_id)
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
+      const cust = custRaw as unknown as {
+        customer_type: "individual" | "corporate" | null;
+        billing_cycle: "per_job" | "consolidated" | null;
+      } | null;
+      if (cust?.customer_type === "corporate") customerType = "corporate";
+      billingCycle = cust?.billing_cycle ?? null;
+    }
+
     // 証明書 + 施工前後写真
     const cert = await resolveCertificate(admin, caller.tenantId, resv);
     let certState = null as null | {
@@ -165,6 +184,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       signoffDeadline: resv.signoff_deadline,
       signedOffAt: resv.signed_off_at,
       paymentStatus: resv.payment_status,
+      customerType,
+      billingCycle,
       anchored,
       now: nowIso,
     });
@@ -172,6 +193,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     return apiOk({
       reservation_id: reservationId,
       certificate: certState,
+      customer: { id: resv.customer_id, type: customerType, billing_cycle: billingCycle },
       signoff: {
         status: resv.signoff_status ?? "not_requested",
         requested_at: resv.signoff_requested_at,

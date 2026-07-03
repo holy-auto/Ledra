@@ -20,9 +20,16 @@ export type SignoffStepKey = "completion" | "certificate" | "signature" | "payme
  * - current   : 現在の実行対象 (次にやること)
  * - blocked   : 前提未達で進めない (理由あり)
  * - pending   : まだ順番が来ていない
- * - optional  : 任意ステップ (会計) で未実施
+ * - optional  : 任意ステップで未実施
+ * - deferred  : この案件では実施不要 (会計を合算請求へ回す等)。解決済み扱い。
  */
-export type StepState = "done" | "current" | "blocked" | "pending" | "optional";
+export type StepState = "done" | "current" | "blocked" | "pending" | "optional" | "deferred";
+
+/** 顧客区分。individual=個人(BtoC) / corporate=法人(BtoB)。 */
+export type CustomerType = "individual" | "corporate";
+
+/** 法人の支払いサイクル。per_job=都度払い / consolidated=合算(締め払い)。 */
+export type BillingCycle = "per_job" | "consolidated";
 
 export interface SignoffStep {
   key: SignoffStepKey;
@@ -52,6 +59,10 @@ export interface SignoffStateInput {
   signedOffAt: string | null;
   /** reservations.payment_status (unpaid / paid / partial / refunded / null) */
   paymentStatus: string | null;
+  /** 顧客区分 (customers.customer_type)。未取得時は individual 扱い。 */
+  customerType: CustomerType;
+  /** 法人の支払いサイクル (customers.billing_cycle)。個人・未設定は null。 */
+  billingCycle: BillingCycle | null;
   /** 受領サイン or 証明書がオンチェーンにアンカー済みか。 */
   anchored: boolean;
   /** 現在時刻 (ISO)。overdue 判定に使う。 */
@@ -148,13 +159,39 @@ export function computeSignoffState(input: SignoffStateInput): SignoffState {
     signature = { key: "signature", state: "pending" };
   }
 
-  // ── ④ お会計 (任意 / 後日請求可) ──────────────
+  // ── ④ お会計 (顧客区分 × 支払いサイクルで自動判定) ──
+  //   個人(事前決済=paid) / 法人合算 → 会計不要
+  //   個人その場 / 法人都度 → 会計を挟む
+  //   法人でサイクル未設定 → ブロック (顧客管理で設定を促す)
+  // オンチェーンはサイン時に自動発火するため、会計はここをゲートしない
+  // (会計判定は締め作業として並行)。
   const paid = input.paymentStatus === "paid";
-  const payment: SignoffStep = {
-    key: "payment",
-    state: paid ? "done" : "optional",
-    detail: paid ? undefined : "その場会計 または 後日請求。任意ステップです。",
-  };
+  const isCorporate = input.customerType === "corporate";
+  let payment: SignoffStep;
+  if (paid) {
+    payment = { key: "payment", state: "done", detail: "入金済み。" };
+  } else if (isCorporate && !input.billingCycle) {
+    payment = {
+      key: "payment",
+      state: "blocked",
+      detail: "この法人顧客の支払いサイクルが未設定です。顧客管理で設定してください。",
+    };
+  } else if (isCorporate && input.billingCycle === "consolidated") {
+    payment = {
+      key: "payment",
+      state: "deferred",
+      detail: "合算(締め払い)契約のため、この案件では会計不要です。後日まとめて請求します。",
+    };
+  } else {
+    // 法人 都度払い or 個人 その場決済 → 会計を実施
+    payment = {
+      key: "payment",
+      state: certDone ? "current" : "pending",
+      detail: isCorporate
+        ? "都度払い契約です。お会計 (POS) を実施してください。"
+        : "その場決済 または 事前決済を確認してください。",
+    };
+  }
 
   // ── ⑤ オンチェーン (自動) ─────────────────────
   const anchor: SignoffStep = {

@@ -37,6 +37,7 @@ type SignoffStateResponse = {
     overdue: boolean;
   };
   payment_status: string | null;
+  customer: { id: string | null; type: "individual" | "corporate"; billing_cycle: "per_job" | "consolidated" | null };
   sign_link: { url: string; token: string; expires_at: string } | null;
   anchored: boolean;
   state: SignoffState;
@@ -46,7 +47,7 @@ const STEP_LABEL: Record<SignoffStepKey, string> = {
   completion: "完了報告",
   certificate: "証明書 (施工前後写真)",
   signature: "お客様サイン",
-  payment: "お会計 (任意)",
+  payment: "お会計",
   anchor: "オンチェーン記録",
 };
 
@@ -56,6 +57,7 @@ const STATE_STYLE: Record<StepState, { icon: string; cls: string }> = {
   blocked: { icon: "⚠", cls: "border-danger/30 bg-danger-dim text-danger-text" },
   pending: { icon: "○", cls: "border-border-default bg-inset text-secondary" },
   optional: { icon: "◍", cls: "border-border-default bg-inset text-muted" },
+  deferred: { icon: "⏭", cls: "border-border-default bg-inset text-muted" },
 };
 
 const STEP_ORDER: SignoffStepKey[] = ["completion", "certificate", "signature", "payment", "anchor"];
@@ -124,7 +126,7 @@ export default function JobSignoffPanel({ reservationId }: { reservationId: stri
     );
   }
 
-  const { state, certificate, signoff, sign_link } = data;
+  const { state, certificate, signoff, sign_link, customer } = data;
   const signAbsoluteUrl = sign_link
     ? new URL(sign_link.url, typeof window !== "undefined" ? window.location.origin : "https://ledra.app").toString()
     : null;
@@ -287,10 +289,23 @@ export default function JobSignoffPanel({ reservationId }: { reservationId: stri
           </div>
         )}
 
-        {/* 会計 (任意) */}
-        {state.steps.payment.state !== "done" && state.steps.signature.state === "done" && (
+        {/* お会計 (顧客区分 × サイクルで自動判定) */}
+        {state.steps.payment.state === "blocked" && customer.id && (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted">お会計 (任意):</span>
+            <span className="text-xs text-danger-text">法人の支払いサイクルが未設定です:</span>
+            <Link href={`/admin/customers/${customer.id}`} className="btn-secondary text-xs px-3 py-1.5">
+              👤 顧客管理で設定
+            </Link>
+          </div>
+        )}
+        {state.steps.payment.state === "deferred" && (
+          <div className="rounded-lg border border-border-default bg-inset px-3 py-2 text-xs text-muted">
+            ⏭ 合算 (締め払い) 契約のため、この案件でのお会計はスキップし後日まとめて請求します。
+          </div>
+        )}
+        {state.steps.payment.state === "current" && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted">お会計:</span>
             <Link href={`/admin/pos?reservation_id=${reservationId}`} className="btn-secondary text-xs px-3 py-1.5">
               💰 その場会計 (POS)
             </Link>
