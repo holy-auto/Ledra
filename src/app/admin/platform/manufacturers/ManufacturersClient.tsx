@@ -150,16 +150,22 @@ function ManufacturerCard({
   onUpdated: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
   const toggleActive = async () => {
     setBusy(true);
+    setErr(null);
     try {
-      await fetch("/api/admin/platform/manufacturers", {
+      const res = await fetch("/api/admin/platform/manufacturers", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: manufacturer.id, is_active: !manufacturer.is_active }),
       });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message ?? "更新に失敗しました。");
       onUpdated();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "更新に失敗しました。");
     } finally {
       setBusy(false);
     }
@@ -187,6 +193,7 @@ function ManufacturerCard({
           <button onClick={toggleActive} disabled={busy} className="btn-secondary text-xs">
             {manufacturer.is_active ? "無効化" : "有効化"}
           </button>
+          {err && <p className="text-xs text-danger-text">{err}</p>}
         </div>
       </div>
     </div>

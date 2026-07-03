@@ -174,32 +174,35 @@ export default function DocumentForm({
 
   // ─── Item management ───
   const updateItem = (index: number, field: keyof DocumentItem, value: string | number | null) => {
-    const newItems = [...formItems];
-    const item = { ...newItems[index] };
-    if (field === "description") item.description = value as string;
-    if (field === "unit") item.unit = (value as string) ?? "";
-    if (field === "quantity") item.quantity = parseInt(String(value), 10) || 0;
-    if (field === "unit_price") item.unit_price = parseInt(String(value), 10) || 0;
-    if (field === "cost_price") {
-      const v = value === "" || value == null ? 0 : parseInt(String(value), 10) || 0;
-      item.cost_price = v;
-      if (item.margin_rate != null) {
-        item.unit_price = calcSellingPrice(v, item.margin_rate);
+    // 同一レンダー内で updateItem が連続呼び出しされても取りこぼさないよう関数型更新にする
+    setFormItems((prev) => {
+      const newItems = [...prev];
+      const item = { ...newItems[index] };
+      if (field === "description") item.description = value as string;
+      if (field === "unit") item.unit = (value as string) ?? "";
+      if (field === "quantity") item.quantity = parseInt(String(value), 10) || 0;
+      if (field === "unit_price") item.unit_price = parseInt(String(value), 10) || 0;
+      if (field === "cost_price") {
+        const v = value === "" || value == null ? 0 : parseInt(String(value), 10) || 0;
+        item.cost_price = v;
+        if (item.margin_rate != null) {
+          item.unit_price = calcSellingPrice(v, item.margin_rate);
+        }
       }
-    }
-    if (field === "margin_rate") {
-      const v = value === "" || value == null ? null : parseFloat(String(value));
-      item.margin_rate = v == null || isNaN(v) ? null : v;
-      if (item.cost_price != null && item.margin_rate != null) {
-        item.unit_price = calcSellingPrice(item.cost_price, item.margin_rate);
+      if (field === "margin_rate") {
+        const v = value === "" || value == null ? null : parseFloat(String(value));
+        item.margin_rate = v == null || isNaN(v) ? null : v;
+        if (item.cost_price != null && item.margin_rate != null) {
+          item.unit_price = calcSellingPrice(item.cost_price, item.margin_rate);
+        }
       }
-    }
-    const type = item.item_type ?? "item";
-    if (type === "item") {
-      item.amount = item.quantity * item.unit_price;
-    }
-    newItems[index] = item;
-    setFormItems(recalcSubtotals(newItems));
+      const type = item.item_type ?? "item";
+      if (type === "item") {
+        item.amount = item.quantity * item.unit_price;
+      }
+      newItems[index] = item;
+      return recalcSubtotals(newItems);
+    });
   };
 
   const addItem = () => setFormItems(recalcSubtotals([...formItems, emptyItem()]));

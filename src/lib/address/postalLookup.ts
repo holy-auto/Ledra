@@ -19,8 +19,13 @@ const LOOKUP_TIMEOUT_MS = 5000;
 
 /** ハイフン・全角数字を許容して 7 桁の郵便番号に正規化する。7 桁にならなければ null。 */
 export function normalizePostalCode(input: string): string | null {
-  const digits = input.replace(/[０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0)).replace(/\D/g, "");
-  return digits.length === 7 ? digits : null;
+  // 全角数字・全角ハイフンを半角化してから、7 桁 (任意の中間ハイフン) の形を厳密に検証する。
+  // collapse-and-count だと "abc1234567xyz" のような混入も通ってしまうため raw shape を見る。
+  const normalized = input
+    .replace(/[０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/[‐－ー―]/g, "-")
+    .trim();
+  return /^\d{3}-?\d{4}$/.test(normalized) ? normalized.replace(/-/g, "") : null;
 }
 
 type ZipcloudResult = {

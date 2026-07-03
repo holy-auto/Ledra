@@ -44,7 +44,10 @@ export default function AnnotatedImage({ imageUrl, renderedUrl, annotations, alt
         <img src={imageUrl} alt={alt} className="block h-full w-full object-cover" loading="lazy" decoding="async" />
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0"
+          // 挿入 SVG は原画像の px 実寸 (width/height) を持つ。object-cover した
+          // <img> に重ねるため、子 <svg> をボックス全面に伸ばす。SVG 側は
+          // preserveAspectRatio="xMidYMid slice" で object-cover と同じトリミング。
+          className="pointer-events-none absolute inset-0 [&>svg]:block [&>svg]:h-full [&>svg]:w-full"
           // dangerouslySetInnerHTML: SVG 文字列は src/lib/imageMarkup/toSvg.ts で
           // XML エスケープ済み。テキストはユーザー入力でも escapeXml() を通す。
           // 色・座標は数値・正規表現で sanitize 済み。

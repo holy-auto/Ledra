@@ -15,6 +15,7 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { buildCsv, csvDownloadHeaders } from "@/lib/csv/serialize";
 import {
   SHOP_ORDER_STATUS_LABELS,
   SHOP_PAYMENT_METHOD_LABELS,
@@ -24,11 +25,6 @@ import {
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-function csvEscape(v: unknown): string {
-  const str = v == null ? "" : String(v);
-  return /[",\r\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
-}
 
 /** ISO 文字列を "YYYY-MM-DD HH:mm"（JST）へ。空なら空文字。 */
 function fmtDateTime(v: string | null | undefined): string {
@@ -79,39 +75,31 @@ export async function GET(req: NextRequest) {
       "備考",
     ];
 
-    const lines: string[] = [header.join(",")];
-    for (const o of orders ?? []) {
+    const rows = (orders ?? []).map((o) => {
       const tenant = (o.tenants as { name: string | null; slug: string | null } | null) ?? null;
       const items = (o.shop_order_items as Array<{ quantity: number }> | null) ?? [];
       const qtyTotal = items.reduce((sum, it) => sum + (it.quantity ?? 0), 0);
-      lines.push(
-        [
-          csvEscape(o.order_number),
-          csvEscape(tenant?.name ?? tenant?.slug ?? o.tenant_id),
-          csvEscape(SHOP_ORDER_STATUS_LABELS[o.status as ShopOrderStatus] ?? o.status),
-          csvEscape(SHOP_PAYMENT_METHOD_LABELS[o.payment_method as ShopPaymentMethod] ?? o.payment_method),
-          csvEscape(o.subtotal),
-          csvEscape(o.tax),
-          csvEscape(o.total),
-          csvEscape(items.length),
-          csvEscape(qtyTotal),
-          csvEscape(fmtDateTime(o.created_at)),
-          csvEscape(fmtDateTime(o.shipped_at)),
-          csvEscape(fmtDateTime(o.completed_at)),
-          csvEscape(o.note),
-        ].join(","),
-      );
-    }
+      return [
+        o.order_number,
+        tenant?.name ?? tenant?.slug ?? o.tenant_id,
+        SHOP_ORDER_STATUS_LABELS[o.status as ShopOrderStatus] ?? o.status,
+        SHOP_PAYMENT_METHOD_LABELS[o.payment_method as ShopPaymentMethod] ?? o.payment_method,
+        o.subtotal,
+        o.tax,
+        o.total,
+        items.length,
+        qtyTotal,
+        fmtDateTime(o.created_at),
+        fmtDateTime(o.shipped_at),
+        fmtDateTime(o.completed_at),
+        o.note,
+      ];
+    });
 
     const filename = `shop_orders_${new Date().toISOString().slice(0, 10)}.csv`;
-    // 先頭に UTF-8 BOM (U+FEFF) を付与して Excel の文字化けを防ぐ。
-    return new NextResponse("﻿" + lines.join("\r\n"), {
+    return new NextResponse(buildCsv(header, rows), {
       status: 200,
-      headers: {
-        "content-type": "text/csv; charset=utf-8",
-        "content-disposition": `attachment; filename="${filename}"`,
-        "cache-control": "no-store",
-      },
+      headers: csvDownloadHeaders(filename),
     });
   } catch (e) {
     return apiInternalError(e, "admin/platform/shop-orders export");

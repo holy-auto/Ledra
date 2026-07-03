@@ -442,7 +442,7 @@ export default function PosClient() {
 
             setResult(checkoutData);
             if (mode === "invoice" && loadedInvoice) {
-              await fetch("/api/admin/invoices", {
+              const payRes = await fetch("/api/admin/invoices", {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -451,6 +451,12 @@ export default function PosClient() {
                   payment_date: new Date().toISOString().slice(0, 10),
                 }),
               });
+              // 決済は完了しているため、入金ステータス更新の失敗は握り潰さず可視化する
+              if (!payRes.ok) {
+                setQrError(
+                  "決済は完了しましたが、請求書の入金ステータス更新に失敗しました。請求書一覧から手動で入金処理してください。",
+                );
+              }
             }
             setQrStep("idle");
             await mutate();
@@ -524,7 +530,7 @@ export default function PosClient() {
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setResult(j);
       if (mode === "invoice" && loadedInvoice) {
-        await fetch("/api/admin/invoices", {
+        const payRes = await fetch("/api/admin/invoices", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -533,6 +539,12 @@ export default function PosClient() {
             payment_date: new Date().toISOString().slice(0, 10),
           }),
         });
+        // 決済は完了しているため、入金ステータス更新の失敗は握り潰さず可視化する
+        if (!payRes.ok) {
+          setError(
+            "決済は完了しましたが、請求書の入金ステータス更新に失敗しました。請求書一覧から手動で入金処理してください。",
+          );
+        }
       }
       await mutate();
     } catch (e: unknown) {

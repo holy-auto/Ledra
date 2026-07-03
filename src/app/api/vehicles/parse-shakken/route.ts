@@ -11,10 +11,14 @@ import {
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { fuzzyMatchCustomer, type CustomerCandidate } from "@/lib/ai/customerFuzzyMatch";
 import { logger } from "@/lib/logger";
+import { detectMagicByteMime } from "@/lib/media/magicBytes";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
+
+// 兄弟 OCR ルート (certificates/images/upload) と揃えた 1 ファイル上限。
+const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB
 
 const EMPTY_VEHICLE_OCR = {
   maker: null,
@@ -44,8 +48,12 @@ export async function POST(req: Request) {
     }
 
     const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+    // 申告 MIME はなりすまし可能だが、buffer 化前の安価な早期リジェクトとして残す。
     if (!allowedTypes.includes(file.type)) {
       return apiValidationError("JPG / PNG / GIF / WEBP 形式の画像を選択してください。");
+    }
+    if (file.size > MAX_FILE_BYTES) {
+      return apiValidationError(`ファイルサイズが大きすぎます（上限 ${MAX_FILE_BYTES / 1024 / 1024}MB）。`);
     }
 
     // テナントの AI 自動入力ポリシーを読む。identity_documents ソースが OFF の
@@ -66,6 +74,13 @@ export async function POST(req: Request) {
 
     const arrayBuffer = await file.arrayBuffer();
     const imageBuffer = Buffer.from(arrayBuffer);
+
+    // 申告 MIME ではなく実バイト (マジックバイト) で画像形式を検証してから
+    // sharp / base64 / Vision に渡す。HEIC・動画等は allowedTypes 外なので弾かれる。
+    const detectedMime = detectMagicByteMime(imageBuffer);
+    if (!detectedMime || !allowedTypes.includes(detectedMime)) {
+      return apiValidationError("JPG / PNG / GIF / WEBP 形式の画像を選択してください。");
+    }
 
     // maker は QR コードには含まれない（OCR 必須）ので requireFields に指定。
     // QR だけでは不足と判定され OCR を併用してマージされる。

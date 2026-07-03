@@ -184,6 +184,9 @@ function parseDate6(s: string | undefined): string | undefined {
   const dd = parseInt(m[3], 10);
   if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return undefined;
   const year = yy < 50 ? 2000 + yy : 1900 + yy;
+  // 実在日か round-trip で確認（0230 / 0431 等、日レンジ内でも存在しない日を弾く）。
+  const d = new Date(year, mm - 1, dd);
+  if (d.getFullYear() !== year || d.getMonth() !== mm - 1 || d.getDate() !== dd) return undefined;
   return `${year}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
 }
 

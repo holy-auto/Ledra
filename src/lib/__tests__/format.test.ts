@@ -98,6 +98,12 @@ describe("formatUnix", () => {
     const result = formatUnix(-86400);
     expect(result).toMatch(/1969/);
   });
+
+  it("returns dash for NaN / non-finite (not 'Invalid Date')", () => {
+    expect(formatUnix(NaN)).toBe("-");
+    expect(formatUnix(Infinity)).toBe("-");
+    expect(formatUnix(-Infinity)).toBe("-");
+  });
 });
 
 // ─── formatJpy ───

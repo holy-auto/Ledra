@@ -17,6 +17,7 @@ import { generateImageVariants, variantStoragePath } from "@/lib/certificateImag
 import { maybeAutoTamperingCheckForCertificate } from "@/lib/ai/automation/photoTamperingAuto";
 import { maybeAutoQualityCheckForCertificate } from "@/lib/ai/automation/photoQualityAuto";
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
+import { detectMagicByteMime } from "@/lib/media/magicBytes";
 
 export const runtime = "nodejs";
 // Allow up to 60s for image processing + verification providers.
@@ -28,39 +29,10 @@ export const maxDuration = 60;
 const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
 const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB per file
 
-/** Validate file magic bytes against allowed image types */
+/** Validate file magic bytes against allowed image types (JPEG/PNG/WebP/HEIC) */
 function validateMagicBytes(buffer: Buffer): string | null {
-  if (buffer.length < 12) return null;
-
-  // JPEG: FF D8 FF
-  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
-    return "image/jpeg";
-  }
-  // PNG: 89 50 4E 47 0D 0A 1A 0A
-  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) {
-    return "image/png";
-  }
-  // WebP: 52 49 46 46 ... 57 45 42 50
-  if (
-    buffer[0] === 0x52 &&
-    buffer[1] === 0x49 &&
-    buffer[2] === 0x46 &&
-    buffer[3] === 0x46 &&
-    buffer[8] === 0x57 &&
-    buffer[9] === 0x45 &&
-    buffer[10] === 0x42 &&
-    buffer[11] === 0x50
-  ) {
-    return "image/webp";
-  }
-  // HEIF/HEIC: check for 'ftyp' box at offset 4, then 'heic', 'heix', 'hevc', 'mif1'
-  if (buffer[4] === 0x66 && buffer[5] === 0x74 && buffer[6] === 0x79 && buffer[7] === 0x70) {
-    const brand = buffer.toString("ascii", 8, 12);
-    if (["heic", "heix", "hevc", "mif1"].includes(brand)) {
-      return "image/heic";
-    }
-  }
-  return null;
+  const mime = detectMagicByteMime(buffer);
+  return mime === "image/jpeg" || mime === "image/png" || mime === "image/webp" || mime === "image/heic" ? mime : null;
 }
 
 export async function POST(req: NextRequest) {

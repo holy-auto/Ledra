@@ -2,13 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { buildCsv, csvDownloadHeaders } from "@/lib/csv/serialize";
 
 export const dynamic = "force-dynamic";
-
-function csvEscape(v: unknown): string {
-  const s = v == null ? "" : String(v);
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
 
 /**
  * 在庫アイテム CSV エクスポート
@@ -52,34 +48,25 @@ export async function GET(req: NextRequest) {
       "updated_at",
     ];
 
-    const lines: string[] = [header.join(",")];
-    for (const r of data ?? []) {
-      lines.push(
-        [
-          csvEscape(r.name),
-          csvEscape(r.sku),
-          csvEscape(r.barcode),
-          csvEscape(r.category),
-          csvEscape(r.unit),
-          csvEscape(r.current_stock),
-          csvEscape(r.min_stock),
-          csvEscape(r.unit_cost),
-          csvEscape(r.note),
-          csvEscape(r.is_active),
-          csvEscape(r.created_at),
-          csvEscape(r.updated_at),
-        ].join(","),
-      );
-    }
+    const rows = (data ?? []).map((r) => [
+      r.name,
+      r.sku,
+      r.barcode,
+      r.category,
+      r.unit,
+      r.current_stock,
+      r.min_stock,
+      r.unit_cost,
+      r.note,
+      r.is_active,
+      r.created_at,
+      r.updated_at,
+    ]);
 
     const filename = `inventory_items_${new Date().toISOString().slice(0, 10)}.csv`;
-    return new NextResponse("﻿" + lines.join("\r\n"), {
+    return new NextResponse(buildCsv(header, rows), {
       status: 200,
-      headers: {
-        "content-type": "text/csv; charset=utf-8",
-        "content-disposition": `attachment; filename="${filename}"`,
-        "cache-control": "no-store",
-      },
+      headers: csvDownloadHeaders(filename),
     });
   } catch (e) {
     return apiInternalError(e, "inventory-items export");

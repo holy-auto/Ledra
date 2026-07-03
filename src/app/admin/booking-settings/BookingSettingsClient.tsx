@@ -308,6 +308,12 @@ export default function BookingSettingsClient() {
 
   // ─── 保存 ───
   async function handleSave() {
+    // 編集済みスロットも含め、開始 >= 終了の不正な時間帯を弾く
+    const invalid = slots.some((s) => !s._deleted && toMinutes(s.start_time) >= toMinutes(s.end_time));
+    if (invalid) {
+      showToast("error", "終了時刻は開始時刻より後にしてください");
+      return;
+    }
     setSaving(true);
     try {
       const slotsToSave = slots

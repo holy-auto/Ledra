@@ -12,6 +12,8 @@ export interface ParseCsvOptions {
   trim?: boolean;
   /** Maximum bytes/cells (defense against giant uploads). */
   maxRows?: number;
+  /** Maximum source byte length. Default 20MB. */
+  maxBytes?: number;
 }
 
 export interface ParseCsvResult<T extends Record<string, string>> {
@@ -26,6 +28,14 @@ export function parseCsv<T extends Record<string, string> = Record<string, strin
   const header = options.header ?? true;
   const trim = options.trim ?? true;
   const maxRows = options.maxRows ?? 50_000;
+  // ponytail: 全 parse 前の安価なバイト上限。maxRows は parse 後にしか効かず、
+  // 巨大アップロードは行チェック前に OOM しうるため入口で弾く。天井 = 20MB
+  // (想定「数 MB / 1 万行」の十分上、UTF-16 換算の粗い近似)。厳密なストリーミング
+  // 上限が要るなら chunked parser へ。
+  const maxBytes = options.maxBytes ?? 20 * 1024 * 1024;
+  if (source.length > maxBytes) {
+    throw new Error(`csv_too_many_rows:bytes:${source.length}>${maxBytes}`);
+  }
 
   const all = parseAll(source);
   if (all.length === 0) return { header: [], rows: [] };

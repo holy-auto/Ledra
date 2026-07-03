@@ -2,13 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { buildCsv, csvDownloadHeaders } from "@/lib/csv/serialize";
 
 export const dynamic = "force-dynamic";
-
-function csvEscape(v: unknown): string {
-  const s = v == null ? "" : String(v);
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
 
 /**
  * 在庫入出庫履歴 CSV エクスポート
@@ -48,32 +44,25 @@ export async function GET(req: NextRequest) {
       "movement_id",
     ];
 
-    const lines: string[] = [header.join(",")];
-    for (const r of data ?? []) {
+    const rows = (data ?? []).map((r) => {
       const item = (r as { inventory_items?: { name?: string; sku?: string; unit?: string } }).inventory_items;
-      lines.push(
-        [
-          csvEscape(r.created_at),
-          csvEscape(r.type),
-          csvEscape(item?.name ?? ""),
-          csvEscape(item?.sku ?? ""),
-          csvEscape(r.quantity),
-          csvEscape(item?.unit ?? ""),
-          csvEscape(r.reason),
-          csvEscape(r.reservation_id),
-          csvEscape(r.id),
-        ].join(","),
-      );
-    }
+      return [
+        r.created_at,
+        r.type,
+        item?.name ?? "",
+        item?.sku ?? "",
+        r.quantity,
+        item?.unit ?? "",
+        r.reason,
+        r.reservation_id,
+        r.id,
+      ];
+    });
 
     const filename = `inventory_movements_${new Date().toISOString().slice(0, 10)}.csv`;
-    return new NextResponse("﻿" + lines.join("\r\n"), {
+    return new NextResponse(buildCsv(header, rows), {
       status: 200,
-      headers: {
-        "content-type": "text/csv; charset=utf-8",
-        "content-disposition": `attachment; filename="${filename}"`,
-        "cache-control": "no-store",
-      },
+      headers: csvDownloadHeaders(filename),
     });
   } catch (e) {
     return apiInternalError(e, "inventory-movements export");
