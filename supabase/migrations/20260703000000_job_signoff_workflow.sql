@@ -34,13 +34,8 @@ alter table delivery_receipts
 comment on column delivery_receipts.reservation_id is
   '受領サインを発行した予約 (reservations.id)。案件サインオフ・ワークフロー由来のみ設定。';
 
-create index if not exists idx_signature_sessions_reservation
-  on signature_sessions (reservation_id)
-  where reservation_id is not null;
-
-create index if not exists idx_delivery_receipts_reservation
-  on delivery_receipts (reservation_id)
-  where reservation_id is not null;
+-- index は CONCURRENTLY のため別マイグレーション
+-- (20260703000001_job_signoff_workflow_indexes.sql) に切り出し済み。
 
 -- 2. 予約側サインオフ状態 + 24h SLA -------------------------------
 alter table reservations
@@ -66,7 +61,5 @@ comment on column reservations.signoff_deadline is
 comment on column reservations.signed_off_at is
   'お客様が受領サインを完了した時刻 (delivery_receipts 署名時に自動記録)。';
 
--- 署名待ちの案件を素早く一覧するための部分インデックス (overdue 監視用)。
-create index if not exists idx_reservations_signoff_awaiting
-  on reservations (tenant_id, signoff_deadline)
-  where signoff_status = 'awaiting';
+-- 署名待ち案件の overdue 監視用インデックスも CONCURRENTLY のため
+-- 20260703000001_job_signoff_workflow_indexes.sql に切り出し済み。
