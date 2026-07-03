@@ -1,7 +1,12 @@
 import { NextRequest } from "next/server";
 import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { hasPermission } from "@/lib/auth/permissions";
-import { certificateHasRequiredPhotos, CERTIFICATE_PHOTO_REQUIRED_MESSAGE } from "@/lib/certificates/photoRequirement";
+import {
+  certificateHasRequiredPhotos,
+  CERTIFICATE_PHOTO_REQUIRED_MESSAGE,
+  certificateHasRequiredBeforeAfterMedia,
+  CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE,
+} from "@/lib/certificates/photoRequirement";
 import { triggerCertificateIssued } from "@/lib/certificates/issueHooks";
 import {
   apiOk,
@@ -39,6 +44,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const hasPhotos = await certificateHasRequiredPhotos(caller.supabase, id);
     if (!hasPhotos) {
       return apiValidationError(CERTIFICATE_PHOTO_REQUIRED_MESSAGE);
+    }
+    const hasBeforeAfter = await certificateHasRequiredBeforeAfterMedia(
+      caller.supabase,
+      id,
+      cert.service_type as string | null,
+    );
+    if (!hasBeforeAfter) {
+      return apiValidationError(CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE);
     }
 
     const { data, error } = await caller.supabase

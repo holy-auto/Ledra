@@ -3,7 +3,12 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { certificateHasRequiredPhotos, CERTIFICATE_PHOTO_REQUIRED_MESSAGE } from "@/lib/certificates/photoRequirement";
+import {
+  certificateHasRequiredPhotos,
+  CERTIFICATE_PHOTO_REQUIRED_MESSAGE,
+  certificateHasRequiredBeforeAfterMedia,
+  CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE,
+} from "@/lib/certificates/photoRequirement";
 import { triggerCertificateIssued } from "@/lib/certificates/issueHooks";
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
 import {
@@ -102,6 +107,14 @@ export async function PUT(req: Request) {
       const hasPhotos = await certificateHasRequiredPhotos(admin, cert.id as string);
       if (!hasPhotos) {
         return apiValidationError(CERTIFICATE_PHOTO_REQUIRED_MESSAGE);
+      }
+      const hasBeforeAfter = await certificateHasRequiredBeforeAfterMedia(
+        admin,
+        cert.id as string,
+        cert.service_type as string | null,
+      );
+      if (!hasBeforeAfter) {
+        return apiValidationError(CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE);
       }
     }
 
