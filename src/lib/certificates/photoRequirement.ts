@@ -41,3 +41,50 @@ export async function countCertificatePhotos(admin: SupabaseClient, certificateI
 export async function certificateHasRequiredPhotos(admin: SupabaseClient, certificateId: string): Promise<boolean> {
   return (await countCertificatePhotos(admin, certificateId)) >= MIN_CERTIFICATE_PHOTOS;
 }
+
+// ============================================================
+// 施工前後写真ルール (案件サインオフ・ワークフロー専用)
+// ============================================================
+//
+// 「作業前後で傷など後から揉める」トラブルを潰すため、お客様サイン依頼の
+// 前提として施工前 (入庫時) と施工後の写真を両方要求する。
+//
+// これは受領サイン依頼のチョークポイントでのみ強制する追加ルールであり、
+// 従来の証明書発行 (draft→active, 最低1枚) の挙動は変えない。段階タグは
+// アップロード時に `certificate_images.stage` へ付与される
+// (intake_before / in_progress / after / unspecified)。
+
+/** 施工前後写真の充足状態。 */
+export interface BeforeAfterPhotoState {
+  /** 施工前 (入庫時) 写真: stage='intake_before' が1枚以上。 */
+  hasBefore: boolean;
+  /** 施工後 写真: stage='after' が1枚以上。 */
+  hasAfter: boolean;
+  /** 両方揃っているか。 */
+  ok: boolean;
+}
+
+/** 施工前後写真が不足でサイン依頼をブロックしたときのメッセージ。 */
+export const BEFORE_AFTER_PHOTO_REQUIRED_MESSAGE =
+  "お客様サイン依頼には「施工前(入庫時)」と「施工後」の写真が必要です。" +
+  "写真アップロード時に段階タグ (施工前 / 施工後) を付けて両方を添付してください。";
+
+/**
+ * 指定証明書に施工前 (intake_before) と施工後 (after) の写真が
+ * それぞれ1枚以上あるかを判定する。
+ *
+ * 親 `certificates` 行でテナントスコープ済みのため certificate_id のみで絞る。
+ * 呼び出し側は必ずテナントスコープ済みの certificateId を渡すこと。
+ */
+export async function certificateBeforeAfterState(
+  admin: SupabaseClient,
+  certificateId: string,
+): Promise<BeforeAfterPhotoState> {
+  const { data, error } = await admin.from("certificate_images").select("stage").eq("certificate_id", certificateId);
+  if (error) throw error;
+
+  const stages = new Set((data ?? []).map((r) => (r as { stage: string | null }).stage));
+  const hasBefore = stages.has("intake_before");
+  const hasAfter = stages.has("after");
+  return { hasBefore, hasAfter, ok: hasBefore && hasAfter };
+}
