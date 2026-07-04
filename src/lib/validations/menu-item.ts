@@ -19,6 +19,7 @@ export const menuItemCreateSchema = z.object({
     .default(10),
   sort_order: z.coerce.number().int().min(0).default(0),
   estimated_minutes: z.coerce.number().int().min(0).max(100000).nullable().optional(),
+  labor_hours: z.coerce.number().min(0, "標準工数は0以上で入力してください。").max(1000).nullable().optional(),
 });
 
 export const menuItemUpdateSchema = z.object({
@@ -41,6 +42,7 @@ export const menuItemUpdateSchema = z.object({
     .optional(),
   sort_order: z.coerce.number().int().min(0).optional(),
   estimated_minutes: z.coerce.number().int().min(0).max(100000).nullable().optional(),
+  labor_hours: z.coerce.number().min(0).max(1000).nullable().optional(),
   is_active: z.boolean().optional(),
 });
 
