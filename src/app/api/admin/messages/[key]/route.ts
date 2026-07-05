@@ -13,6 +13,8 @@ import {
 } from "@/lib/api/response";
 import { sendCustomerLineText } from "@/lib/line/client";
 import { parseThreadKey, type ThreadRef } from "@/lib/messages/threadKey";
+import { withAttachmentUrls } from "@/lib/messages/attachments";
+import { sendLineImageFromForm } from "@/lib/messages/sendImage";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +34,7 @@ const sendSchema = z.object({
 });
 
 const MSG_COLS =
-  "id, customer_id, line_user_id, channel, direction, body, sent_by, read_at, delivered_at, failed_at, failure_reason, line_message_id, line_timestamp_ms, created_at";
+  "id, customer_id, line_user_id, channel, direction, body, sent_by, read_at, delivered_at, failed_at, failure_reason, line_message_id, line_timestamp_ms, created_at, attachment_path, attachment_content_type";
 
 function isMissingColumnError(err: { message?: string; code?: string } | null | undefined): boolean {
   if (!err) return false;
@@ -141,7 +143,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ key: string
     const resolved = await resolveThread(admin, caller.tenantId, ref);
     if (!resolved) return apiNotFound("thread not found");
 
-    const messages = await fetchThreadMessages(admin, caller.tenantId, resolved.customerId, resolved.lineUserId);
+    const messages = await withAttachmentUrls(
+      await fetchThreadMessages(admin, caller.tenantId, resolved.customerId, resolved.lineUserId),
+    );
 
     return apiJson({
       thread: {
@@ -169,15 +173,28 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ key: strin
     if (!caller) return apiUnauthorized();
     if (!requireMinRole(caller, "staff")) return apiForbidden();
 
-    const parsed = sendSchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
-
     const { admin } = createTenantScopedAdmin(caller.tenantId);
     const resolved = await resolveThread(admin, caller.tenantId, ref);
     if (!resolved) return apiNotFound("thread not found");
     if (!resolved.lineUserId) {
       return apiValidationError("このスレッドには LINE ユーザがまだ紐付いていません。");
     }
+
+    // multipart は画像送信、JSON はテキスト送信
+    if ((req.headers.get("content-type") ?? "").includes("multipart/form-data")) {
+      const out = await sendLineImageFromForm({
+        form: await req.formData(),
+        tenantId: caller.tenantId,
+        customerId: resolved.customerId,
+        lineUserId: resolved.lineUserId,
+        sentByUserId: caller.userId,
+      });
+      if (!out.ok) return apiValidationError(out.message);
+      return apiJson({ ok: true, delivered: out.delivered });
+    }
+
+    const parsed = sendSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
 
     const delivered = await sendCustomerLineText({
       tenantId: caller.tenantId,

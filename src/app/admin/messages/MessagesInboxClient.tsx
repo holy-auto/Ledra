@@ -5,6 +5,7 @@ import Link from "next/link";
 import useSWR from "swr";
 import { fetcher } from "@/lib/swr";
 import { parseJsonSafe } from "@/lib/api/safeJson";
+import MessageBubbleBody from "@/app/admin/messages/MessageBubbleBody";
 
 /**
  * 横断的な LINE 会話受信箱 (/admin/messages)。
@@ -45,6 +46,8 @@ type MessageRow = {
   read_at: string | null;
   delivered_at: string | null;
   failed_at: string | null;
+  attachment_url?: string | null;
+  attachment_content_type?: string | null;
   failure_reason: string | null;
   created_at: string;
 };
@@ -107,6 +110,7 @@ export default function MessagesInboxClient() {
 
   const [draft, setDraft] = useState("");
   const [sendBusy, setSendBusy] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const [sendMsg, setSendMsg] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -160,6 +164,36 @@ export default function MessagesInboxClient() {
       setSendBusy(false);
     }
   }, [activeKey, canSend, draft, sendBusy, mutateDetail, mutateList]);
+
+  const handleSendImage = useCallback(
+    async (file: File) => {
+      if (!activeKey || !canSend || sendBusy) return;
+      setSendBusy(true);
+      setSendMsg(null);
+      try {
+        const form = new FormData();
+        form.append("image", file);
+        const res = await fetch(`/api/admin/messages/${encodeURIComponent(activeKey)}`, {
+          method: "POST",
+          body: form,
+        });
+        const j = (await parseJsonSafe(res)) as { ok?: boolean; delivered?: boolean; message?: string } | null;
+        if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
+        if (j?.delivered === false) {
+          setSendMsg(
+            "送信は試みましたが LINE 配信に失敗しました。履歴には残しています (LINE 設定を確認してください)。",
+          );
+        }
+        await Promise.all([mutateDetail(), mutateList()]);
+      } catch (e) {
+        setSendMsg("画像の送信に失敗しました: " + (e instanceof Error ? e.message : String(e)));
+      } finally {
+        setSendBusy(false);
+        if (imageInputRef.current) imageInputRef.current.value = "";
+      }
+    },
+    [activeKey, canSend, sendBusy, mutateDetail, mutateList],
+  );
 
   // AI 返信ドラフト: 生成結果を入力欄に流し込む (送信はしない / 人が編集して送る)。
   const handleAiDraft = useCallback(async () => {
@@ -331,7 +365,11 @@ export default function MessagesInboxClient() {
                             : "bg-surface-hover text-primary rounded-tl-sm border border-border-subtle"
                         }`}
                       >
-                        <div>{m.body}</div>
+                        <MessageBubbleBody
+                          body={m.body}
+                          attachmentUrl={m.attachment_url}
+                          attachmentContentType={m.attachment_content_type}
+                        />
                         <div
                           className={`mt-1 flex items-center gap-1.5 text-[10px] ${
                             isOutbound ? "text-white/70" : "text-muted"
@@ -383,6 +421,25 @@ export default function MessagesInboxClient() {
                       className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
                     >
                       {sendBusy ? "送信中…" : "📤 送信"}
+                    </button>
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png"
+                      hidden
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) void handleSendImage(f);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => imageInputRef.current?.click()}
+                      disabled={!canSend || sendBusy}
+                      className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
+                      title="JPEG / PNG (10MBまで) をLINEで送信"
+                    >
+                      📷 画像
                     </button>
                     <button
                       type="button"
