@@ -40,6 +40,14 @@ export function shouldAutoImportHistoryOnLink(settings: AiAutomationSettings): b
   return resolveAutoAction(settings, "inbound_message.auto_import_history_on_link");
 }
 
+/**
+ * 受信メッセージ (価格問い合わせ等) から見積ドラフトを自動起票してよいか。
+ * ドラフト作成のみで送付はしない (送付は quote.auto_send_on_confirm が別途担う)。
+ */
+export function shouldAutoDraftQuoteFromInbound(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "quote.auto_draft_from_inbound");
+}
+
 export interface InboundExtractionLike {
   intent?: string | null;
   confidence?: number | null;
