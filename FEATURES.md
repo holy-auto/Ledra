@@ -1190,6 +1190,16 @@ VIN を鍵に**車両の全施工履歴を束ねる「デジタル車両パス�
 - **Wall-3 撤廃**: 全アクションを AI 自動化の対象に開放（フィールド単位ポリシー auto/suggest/manual + 信頼度しきい値 + 月次コストキャップで制御）
 - **AI 利用集計**: 運営ダッシュボード `/admin/platform/operations`（API: `/api/admin/platform/ai-usage`）でモデル別/outcome 別/トークン消費を可視化
 
+### 13.9b 標準工数 × レバーレート 工賃自動算出 ★新規 (2026-07)
+
+整備見積に日整連 (JASPA) 等の標準工数方式を反映する土台。工数データは有償ライセンスのためテナントが CSV で取込み、Ledra は算出エンジンを担う。
+
+- **レバーレート設定**: 設定 > 工賃設定 で工賃単価 (円/時) を登録 (`tenants.labor_rate_per_hour`)。保存時に工数持ち品目の提供価格を**一括再計算**
+- **品目マスタに標準工数**: `menu_items.labor_hours` (h)。入力すると 提供価格 = round(工数 × レバーレート) を自動算出 (`src/lib/pricing/labor.ts`)
+- **CSV 取込 5 列目に工数**: 単価空欄 + 工数あり + レート設定済みなら単価を自動算出 — 指数表の一括取込導線
+- **下流は無変更で反映**: unit_price を単一の真実として保存するため、見積・請求書・クイック見積・AI 見積すべてに自動反映
+- 詳細: `docs/pdca-ideals-gap-2026-07.md`
+
 ### 13.10 モバイル / マーケティングの追加
 
 - **モバイルAPI 追加**: QR 決済セッション（`pos/checkout/qr-session` / `qr-status`）、本人確認 OCR（`identity/ocr`）、顧客インテーク取込、予約ステージ前進（`reservations/[id]/advance`）

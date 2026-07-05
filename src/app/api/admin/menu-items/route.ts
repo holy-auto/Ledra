@@ -9,8 +9,19 @@ import {
   menuItemDeleteSchema,
   menuItemUpdateSchema,
 } from "@/lib/validations/menu-item";
+import { calcLaborPrice } from "@/lib/pricing/labor";
 
 export const dynamic = "force-dynamic";
+
+/** テナントのレバーレート (円/時)。未設定・取得失敗時は null */
+async function fetchLaborRate(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  tenantId: string,
+): Promise<number | null> {
+  const { data } = await supabase.from("tenants").select("labor_rate_per_hour").eq("id", tenantId).single();
+  const rate = (data as { labor_rate_per_hour?: number | null } | null)?.labor_rate_per_hour;
+  return typeof rate === "number" && rate > 0 ? rate : null;
+}
 
 // ─── GET: 品目一覧 ───
 export async function GET(req: NextRequest) {
@@ -25,7 +36,7 @@ export async function GET(req: NextRequest) {
     let query = supabase
       .from("menu_items")
       .select(
-        "id, name, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, estimated_minutes, created_at",
+        "id, name, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, estimated_minutes, labor_hours, created_at",
       )
       .eq("tenant_id", caller.tenantId)
       .order("sort_order", { ascending: true })
@@ -33,7 +44,7 @@ export async function GET(req: NextRequest) {
 
     if (activeOnly) query = query.eq("is_active", true);
 
-    const { data, error } = await query;
+    const [{ data, error }, laborRate] = await Promise.all([query, fetchLaborRate(supabase, caller.tenantId)]);
     if (error) {
       return apiInternalError(error, "menu-items list");
     }
@@ -41,6 +52,7 @@ export async function GET(req: NextRequest) {
     const res = apiJson({
       items: data ?? [],
       stats: { total: data?.length ?? 0 },
+      labor_rate_per_hour: laborRate,
     });
     res.headers.set("Cache-Control", "private, max-age=60, stale-while-revalidate=120");
     return res;
@@ -69,15 +81,24 @@ export async function POST(req: NextRequest) {
         .map((l) => l.trim())
         .filter((l) => l && !l.startsWith("品目名")); // ヘッダー行をスキップ
 
+      // 工数 (5列目) から工賃を自動算出するためレバーレートを取得
+      const laborRate = await fetchLaborRate(supabase, caller.tenantId);
+
       const rows = lines
         .map((line) => {
           const parts = line.split(",").map((s) => s.trim());
+          const laborHours = parts[4] ? parseFloat(parts[4]) : NaN;
+          const hasLaborHours = Number.isFinite(laborHours) && laborHours > 0;
+          const unitPrice = parseInt(parts[2] || "0", 10) || 0;
+          // 単価未指定 (空/0) かつ 工数×レバーレートが算出可能なら工賃を自動採用
+          const laborPrice = unitPrice === 0 && hasLaborHours ? calcLaborPrice(laborHours, laborRate) : null;
           return {
             tenant_id: caller.tenantId,
             name: parts[0] || "",
             description: parts[1] || null,
-            unit_price: parseInt(parts[2] || "0", 10) || 0,
+            unit_price: laborPrice ?? unitPrice,
             tax_category: parseInt(parts[3] || "10", 10) === 8 ? 8 : 10,
+            labor_hours: hasLaborHours ? laborHours : null,
           };
         })
         .filter((r) => r.name);
@@ -113,7 +134,7 @@ export async function POST(req: NextRequest) {
       .from("menu_items")
       .insert(row)
       .select(
-        "id, name, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, estimated_minutes, created_at, updated_at",
+        "id, name, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, estimated_minutes, labor_hours, created_at, updated_at",
       )
       .single();
     if (error) {
@@ -148,7 +169,7 @@ export async function PUT(req: NextRequest) {
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .select(
-        "id, name, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, estimated_minutes, created_at, updated_at",
+        "id, name, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, estimated_minutes, labor_hours, created_at, updated_at",
       )
       .single();
 

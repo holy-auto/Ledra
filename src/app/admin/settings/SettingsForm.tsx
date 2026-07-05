@@ -27,6 +27,7 @@ type Props = {
   websiteUrl: string | null;
   registrationNumber: string | null;
   bankInfo: BankInfo;
+  laborRatePerHour: number | null;
   columnsExist: boolean;
   connectStatus?: ConnectStatus;
 };
@@ -43,6 +44,7 @@ export default function SettingsForm({
   websiteUrl,
   registrationNumber,
   bankInfo,
+  laborRatePerHour,
   columnsExist,
   connectStatus,
 }: Props) {
@@ -143,6 +145,28 @@ export default function SettingsForm({
                 title="T + 13桁の数字（例: T1234567890123）"
               />
               <span className="text-xs text-muted">T + 13桁の数字を入力してください</span>
+            </label>
+          </div>
+
+          <div className="border-t border-[var(--border-default)] pt-5 mt-5">
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted mb-3 flex items-center gap-1.5">
+              工賃設定
+              <HelpTooltip>
+                レバーレート（1時間あたりの工賃単価）を設定すると、品目マスタで標準工数（日整連の指数など）を持つ品目の提供価格が「工数×レバーレート」で自動算出されます。保存時に該当品目の価格を一括再計算します。
+              </HelpTooltip>
+            </div>
+            <label className={labelCls}>
+              <span className={labelTextCls}>レバーレート（円/時）</span>
+              <input
+                type="number"
+                name="labor_rate_per_hour"
+                defaultValue={laborRatePerHour ?? ""}
+                min="0"
+                step="1"
+                className={inputCls}
+                placeholder="例: 9000"
+              />
+              <span className="text-xs text-muted">未設定（空欄）の場合、工数からの工賃自動算出は行われません</span>
             </label>
           </div>
 

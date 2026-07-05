@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { calcLaborPrice } from "@/lib/pricing/labor";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type SettingsResult = { ok: true } | { ok: false; error: string };
@@ -35,6 +37,20 @@ export async function updateTenantSettingsAction(formData: FormData): Promise<Se
   if (formData.has("website_url")) payload.website_url = website_url || null;
   if (formData.has("registration_number")) payload.registration_number = registration_number || null;
 
+  // レバーレート (工賃単価、円/時)。空欄 = 未設定 (null)
+  let laborRate: number | null | undefined;
+  if (formData.has("labor_rate_per_hour")) {
+    const raw = String(formData.get("labor_rate_per_hour") ?? "").trim();
+    if (raw === "") {
+      laborRate = null;
+    } else {
+      const n = parseInt(raw, 10);
+      if (!Number.isFinite(n) || n < 0) return { ok: false, error: "レバーレートは0以上の整数で入力してください" };
+      laborRate = n > 0 ? n : null;
+    }
+    payload.labor_rate_per_hour = laborRate;
+  }
+
   if (formData.has("bank_name")) {
     payload.bank_info = {
       bank_name: String(formData.get("bank_name") ?? "").trim() || null,
@@ -48,6 +64,30 @@ export async function updateTenantSettingsAction(formData: FormData): Promise<Se
   const { error } = await supabase.from("tenants").update(payload).eq("id", tenantId);
 
   if (error) return { ok: false, error: error.message };
+
+  // レバーレート設定時は、標準工数を持つ品目の提供価格を一括再計算する。
+  // unit_price を単一の真実として維持することで、見積・クイック見積・AI 見積など
+  // 下流は変更なしで新レートの工賃が反映される。
+  if (typeof laborRate === "number" && laborRate > 0) {
+    const { admin } = createTenantScopedAdmin(tenantId);
+    const { data: laborItems } = await admin
+      .from("menu_items")
+      .select("id, labor_hours")
+      .eq("tenant_id", tenantId)
+      .gt("labor_hours", 0);
+    if (laborItems && laborItems.length > 0) {
+      // ponytail: 品目ごとに1クエリ (品目マスタは高々数百件)。数千件超で遅くなったら
+      // SQL 関数 (unit_price = round(labor_hours * rate)) の一括 UPDATE に置き換える。
+      await Promise.all(
+        laborItems.map((it) => {
+          const price = calcLaborPrice(it.labor_hours as number | null, laborRate as number);
+          if (price == null) return Promise.resolve(null);
+          return admin.from("menu_items").update({ unit_price: price }).eq("id", it.id).eq("tenant_id", tenantId);
+        }),
+      );
+    }
+  }
+
   revalidatePath("/admin/settings");
   revalidatePath("/admin");
   return { ok: true };

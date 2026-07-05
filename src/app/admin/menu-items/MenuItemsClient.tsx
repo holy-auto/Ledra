@@ -12,6 +12,7 @@ import AiPriceHint from "./AiPriceHint";
 import { fetcher } from "@/lib/swr";
 import { enqueueOrFetch } from "@/lib/outbox/enqueueOrFetch";
 import { calcSellingPrice } from "@/lib/pricing/margin";
+import { calcLaborPrice } from "@/lib/pricing/labor";
 import MenuItemPackagesPanel from "./MenuItemPackagesPanel";
 
 /* ---------- Types ---------- */
@@ -25,6 +26,7 @@ type MenuItem = {
   margin_rate: number | null;
   tax_category: number | null;
   estimated_minutes: number | null;
+  labor_hours: number | null;
   is_active: boolean;
   created_at: string;
 };
@@ -32,6 +34,7 @@ type MenuItem = {
 type MenuItemsData = {
   items: MenuItem[];
   stats: { total: number };
+  labor_rate_per_hour: number | null;
 };
 
 /* ---------- Component ---------- */
@@ -60,6 +63,7 @@ export default function MenuItemsClient() {
   const [formMarginRate, setFormMarginRate] = useState("");
   const [formTaxCategory, setFormTaxCategory] = useState("10");
   const [formEstimatedMinutes, setFormEstimatedMinutes] = useState("");
+  const [formLaborHours, setFormLaborHours] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
@@ -72,6 +76,7 @@ export default function MenuItemsClient() {
   const [editMarginRate, setEditMarginRate] = useState("");
   const [editTaxCategory, setEditTaxCategory] = useState("10");
   const [editEstimatedMinutes, setEditEstimatedMinutes] = useState("");
+  const [editLaborHours, setEditLaborHours] = useState("");
   const [editSaving, setEditSaving] = useState(false);
 
   // Delete
@@ -112,6 +117,7 @@ export default function MenuItemsClient() {
           margin_rate: formMarginRate === "" ? null : parseFloat(formMarginRate),
           tax_category: parseInt(formTaxCategory, 10),
           estimated_minutes: formEstimatedMinutes === "" ? null : parseInt(formEstimatedMinutes, 10),
+          labor_hours: formLaborHours === "" ? null : parseFloat(formLaborHours),
         }),
       });
       const j = await parseJsonSafe(res);
@@ -124,6 +130,7 @@ export default function MenuItemsClient() {
       setFormMarginRate("");
       setFormTaxCategory("10");
       setFormEstimatedMinutes("");
+      setFormLaborHours("");
       setSaveMsg({ text: `品目「${j.item?.name ?? formName}」を登録しました`, ok: true });
       mutate();
     } catch (e: any) {
@@ -169,6 +176,19 @@ export default function MenuItemsClient() {
     }
   };
 
+  // 標準工数の変更に応じて、レバーレート設定済みなら 提供価格＝工数×レバーレート を自動算出
+  const laborRate = data?.labor_rate_per_hour ?? null;
+  const handleFormLaborHoursChange = (v: string) => {
+    setFormLaborHours(v);
+    const price = calcLaborPrice(v === "" ? null : parseFloat(v), laborRate);
+    if (price != null) setFormUnitPrice(String(price));
+  };
+  const handleEditLaborHoursChange = (v: string) => {
+    setEditLaborHours(v);
+    const price = calcLaborPrice(v === "" ? null : parseFloat(v), laborRate);
+    if (price != null) setEditUnitPrice(String(price));
+  };
+
   /* ---------- Edit ---------- */
 
   const startEdit = (item: MenuItem) => {
@@ -180,6 +200,7 @@ export default function MenuItemsClient() {
     setEditMarginRate(item.margin_rate != null ? String(item.margin_rate) : "");
     setEditTaxCategory(item.tax_category != null ? String(item.tax_category) : "10");
     setEditEstimatedMinutes(item.estimated_minutes != null ? String(item.estimated_minutes) : "");
+    setEditLaborHours(item.labor_hours != null ? String(item.labor_hours) : "");
   };
 
   const cancelEdit = () => {
@@ -202,6 +223,7 @@ export default function MenuItemsClient() {
           margin_rate: editMarginRate === "" ? null : parseFloat(editMarginRate),
           tax_category: parseInt(editTaxCategory, 10),
           estimated_minutes: editEstimatedMinutes === "" ? null : parseInt(editEstimatedMinutes, 10),
+          labor_hours: editLaborHours === "" ? null : parseFloat(editLaborHours),
         },
         label: `品目編集: ${editName.trim()}`,
         kind: "other",
@@ -394,14 +416,17 @@ export default function MenuItemsClient() {
               </div>
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="text-xs text-muted">
-                  形式: <code className="text-secondary">品目名,説明,単価,税率区分(10/8)</code>
+                  形式: <code className="text-secondary">品目名,説明,単価,税率区分(10/8),標準工数(h)</code>
+                  <span className="ml-1">
+                    ※工数は任意。単価が空欄/0 かつレバーレート設定済みなら 工数×レバーレートで単価を自動算出
+                  </span>
                 </div>
                 <button
                   type="button"
                   className="btn-ghost text-xs px-3 py-1"
                   onClick={() => {
                     const sample =
-                      "品目名,説明,単価,税率区分\nガラスコーティング,ボディ全面ガラスコーティング施工,55000,10\nPPFフィルム施工,フロントバンパーPPF貼付,88000,10\nヘッドライトコーティング,ヘッドライト黄ばみ除去+コーティング,15000,10\nインテリアコーティング,本革シートコーティング,35000,10\nホイールコーティング,4本セット,12000,10\nウィンドウフィルム施工,フロント3面,25000,10\n鈑金塗装,バンパー修理塗装,45000,10\n証明書発行手数料,施工証明書の発行,3300,10\nNFCタグ取付,NFCタグ1枚取付,1100,10\n消耗品,コーティング剤等消耗品,2200,10";
+                      "品目名,説明,単価,税率区分,標準工数\nガラスコーティング,ボディ全面ガラスコーティング施工,55000,10,\nPPFフィルム施工,フロントバンパーPPF貼付,88000,10,\nヘッドライトコーティング,ヘッドライト黄ばみ除去+コーティング,15000,10,\nインテリアコーティング,本革シートコーティング,35000,10,\nホイールコーティング,4本セット,12000,10,\nウィンドウフィルム施工,フロント3面,25000,10,\n鈑金塗装,バンパー修理塗装,45000,10,\nエンジンオイル交換,工数×レバーレートで単価自動算出の例,0,10,0.3\nブレーキパッド交換(フロント),工数×レバーレートで単価自動算出の例,0,10,1.2\n証明書発行手数料,施工証明書の発行,3300,10,\nNFCタグ取付,NFCタグ1枚取付,1100,10,\n消耗品,コーティング剤等消耗品,2200,10,";
                     const blob = new Blob(["\uFEFF" + sample], { type: "text/csv;charset=utf-8" });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement("a");
@@ -515,10 +540,32 @@ export default function MenuItemsClient() {
                   />
                 </div>
                 <div className="space-y-1">
+                  <label className="text-xs text-muted">標準工数（h）</label>
+                  <input
+                    type="number"
+                    className="input-field"
+                    min="0"
+                    step="0.1"
+                    placeholder="例: 1.2"
+                    value={formLaborHours}
+                    onChange={(e) => handleFormLaborHoursChange(e.target.value)}
+                  />
+                  <p className="text-[10px] text-muted">
+                    {laborRate != null
+                      ? `レバーレート ${formatJpy(laborRate)}/h × 工数で提供価格を自動算出`
+                      : "設定 > 工賃設定 でレバーレートを登録すると工賃を自動算出できます"}
+                  </p>
+                </div>
+                <div className="space-y-1">
                   <label className="text-xs text-muted">
                     提供価格（単価）
-                    {formCostPrice && formMarginRate !== "" && (
-                      <span className="ml-2 text-[10px] text-success">＝原価×(1+利益率%) 自動算出</span>
+                    {formLaborHours !== "" && laborRate != null ? (
+                      <span className="ml-2 text-[10px] text-success">＝工数×レバーレート 自動算出</span>
+                    ) : (
+                      formCostPrice &&
+                      formMarginRate !== "" && (
+                        <span className="ml-2 text-[10px] text-success">＝原価×(1+利益率%) 自動算出</span>
+                      )
                     )}
                   </label>
                   <input
@@ -597,6 +644,9 @@ export default function MenuItemsClient() {
                     <th className="hidden md:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
                       利益率
                     </th>
+                    <th className="hidden md:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      工数(h)
+                    </th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">提供価格</th>
                     <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
                       税率
@@ -648,6 +698,18 @@ export default function MenuItemsClient() {
                                 placeholder="%"
                                 value={editMarginRate}
                                 onChange={(e) => handleEditMarginChange(e.target.value)}
+                              />
+                            </td>
+                            <td className="hidden md:table-cell px-5 py-3">
+                              <input
+                                type="number"
+                                className="input-field py-1 text-sm"
+                                min="0"
+                                step="0.1"
+                                placeholder="h"
+                                title="標準工数（時間）"
+                                value={editLaborHours}
+                                onChange={(e) => handleEditLaborHoursChange(e.target.value)}
                               />
                             </td>
                             <td className="px-5 py-3">
@@ -718,6 +780,9 @@ export default function MenuItemsClient() {
                             <td className="hidden md:table-cell px-5 py-3.5 text-secondary whitespace-nowrap">
                               {item.margin_rate != null ? `${item.margin_rate}%` : "-"}
                             </td>
+                            <td className="hidden md:table-cell px-5 py-3.5 text-secondary whitespace-nowrap">
+                              {item.labor_hours != null ? `${item.labor_hours}h` : "-"}
+                            </td>
                             <td className="px-5 py-3.5 font-medium text-primary whitespace-nowrap">
                               {item.unit_price != null ? formatJpy(item.unit_price) : "-"}
                             </td>
@@ -764,7 +829,7 @@ export default function MenuItemsClient() {
                       </tr>
                       {packagesOpen.has(item.id) && (
                         <tr className="bg-inset">
-                          <td colSpan={8} className="px-5 py-3">
+                          <td colSpan={9} className="px-5 py-3">
                             <div className="text-[10px] font-semibold tracking-[0.18em] text-muted">
                               この品目を使うパッケージ
                             </div>
@@ -778,7 +843,7 @@ export default function MenuItemsClient() {
                   ))}
                   {(data.items ?? []).length === 0 && (
                     <tr>
-                      <td colSpan={8} className="px-5 py-8 text-center text-muted">
+                      <td colSpan={9} className="px-5 py-8 text-center text-muted">
                         品目が登録されていません
                       </td>
                     </tr>
