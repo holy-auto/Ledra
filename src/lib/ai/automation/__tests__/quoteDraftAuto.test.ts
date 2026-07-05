@@ -124,12 +124,43 @@ describe("maybeAutoDraftQuoteFromInbound", () => {
     expect(mocks.generateQuoteFromVehicle).not.toHaveBeenCalled();
   });
 
+  it("still drafts from the deterministic fallback when AI is unavailable", async () => {
+    mocks.generateQuoteFromVehicle.mockResolvedValue({
+      items: [{ description: "コーティング 一式", quantity: 1, unit_price: 80000 }],
+      total: 80000,
+      validity_days: 30,
+      terms: null,
+      ai: false,
+      confidence: 0.3,
+    });
+
+    await maybeAutoDraftQuoteFromInbound(baseParams());
+
+    const doc = mocks.store.inserts.find((i) => i.table === "documents")?.payload;
+    expect(doc).toMatchObject({ doc_type: "estimate", status: "draft", subtotal: 80000 });
+    expect(doc.note).toContain("AI 未使用");
+  });
+
+  it("skips when the generator returns no items at all", async () => {
+    mocks.generateQuoteFromVehicle.mockResolvedValue({
+      items: [],
+      total: 0,
+      validity_days: 30,
+      terms: null,
+      ai: false,
+      confidence: 0,
+    });
+
+    await maybeAutoDraftQuoteFromInbound(baseParams());
+    expect(mocks.store.inserts).toHaveLength(0);
+  });
+
   it("skips duplicate drafts within the dedup window", async () => {
     mocks.store.tables.documents.push({
       tenant_id: TENANT,
       customer_id: CUSTOMER,
       doc_type: "estimate",
-      status: "draft",
+      status: "sent", // 確定済みでも 24h 以内なら再起票しない (widened guard)
       created_at: new Date().toISOString(),
       meta_json: { ai_inbound_draft: true },
     });

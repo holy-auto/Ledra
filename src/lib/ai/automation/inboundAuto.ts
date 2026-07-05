@@ -165,6 +165,8 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
       vehicleText: result.vehicle,
       messageId,
       channel: params.channel ?? "line",
+      settings,
+      tenant,
     });
 
     usage.record({
