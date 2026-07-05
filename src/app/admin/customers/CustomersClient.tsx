@@ -24,6 +24,9 @@ type Customer = {
   postal_code: string | null;
   address: string | null;
   note: string | null;
+  customer_type: "individual" | "corporate" | null;
+  billing_cycle: "per_job" | "consolidated" | null;
+  billing_terms_note: string | null;
   certificates_count: number;
   invoices_count: number;
   created_at: string;
@@ -56,6 +59,9 @@ const emptyForm = {
   postal_code: "",
   address: "",
   note: "",
+  customer_type: "individual" as "individual" | "corporate",
+  billing_cycle: "" as "" | "per_job" | "consolidated",
+  billing_terms_note: "",
 };
 
 export default function CustomersClient() {
@@ -137,10 +143,12 @@ export default function CustomersClient() {
     setSaving(true);
     setSaveMsg(null);
     try {
+      // 個人ならサイクルは常に null、法人でも未選択は null に寄せる ("" は enum 不一致)。
+      const billing_cycle = form.customer_type === "corporate" && form.billing_cycle ? form.billing_cycle : null;
       const res = await fetch("/api/admin/customers", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, billing_cycle }),
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
@@ -165,6 +173,9 @@ export default function CustomersClient() {
       postal_code: c.postal_code ?? "",
       address: c.address ?? "",
       note: c.note ?? "",
+      customer_type: c.customer_type ?? "individual",
+      billing_cycle: c.billing_cycle ?? "",
+      billing_terms_note: c.billing_terms_note ?? "",
     });
   };
 
@@ -172,10 +183,13 @@ export default function CustomersClient() {
     if (!editingId || !editForm.name.trim()) return;
     setEditSaving(true);
     try {
+      // 個人ならサイクルは常に null、法人でも未選択は null に寄せる ("" は enum 不一致)。
+      const billing_cycle =
+        editForm.customer_type === "corporate" && editForm.billing_cycle ? editForm.billing_cycle : null;
       const res = await fetch("/api/admin/customers", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: editingId, ...editForm }),
+        body: JSON.stringify({ id: editingId, ...editForm, billing_cycle }),
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
@@ -427,6 +441,52 @@ export default function CustomersClient() {
                       {postalHint && <p className="text-xs text-muted">{postalHint}</p>}
                     </div>
                   </div>
+                  {/* 顧客区分 + 法人の支払い条件 */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted">顧客区分</label>
+                      <select
+                        value={form.customer_type}
+                        onChange={(e) =>
+                          setForm({ ...form, customer_type: e.target.value as "individual" | "corporate" })
+                        }
+                        className="input-field"
+                      >
+                        <option value="individual">個人 (BtoC)</option>
+                        <option value="corporate">法人 (BtoB)</option>
+                      </select>
+                    </div>
+                    {form.customer_type === "corporate" && (
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted">
+                          支払いサイクル <span className="text-danger">*</span>
+                        </label>
+                        <select
+                          value={form.billing_cycle}
+                          onChange={(e) =>
+                            setForm({ ...form, billing_cycle: e.target.value as "" | "per_job" | "consolidated" })
+                          }
+                          className="input-field"
+                        >
+                          <option value="">— 選択してください —</option>
+                          <option value="per_job">都度払い (案件ごとに会計)</option>
+                          <option value="consolidated">合算・締め払い (後日まとめて請求)</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                  {form.customer_type === "corporate" && (
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted">支払い条件メモ (締め日・支払いサイト等)</label>
+                      <input
+                        type="text"
+                        value={form.billing_terms_note}
+                        onChange={(e) => setForm({ ...form, billing_terms_note: e.target.value })}
+                        className="input-field"
+                        placeholder="例: 月末締め翌月末払い"
+                      />
+                    </div>
+                  )}
                   <div className="space-y-1">
                     <label className="text-xs text-muted">備考</label>
                     <textarea
@@ -440,7 +500,9 @@ export default function CustomersClient() {
                     <button
                       type="button"
                       className="btn-primary"
-                      disabled={saving || !form.name.trim()}
+                      disabled={
+                        saving || !form.name.trim() || (form.customer_type === "corporate" && !form.billing_cycle)
+                      }
                       onClick={handleAdd}
                     >
                       {saving ? "保存中…" : "登録"}
@@ -532,6 +594,55 @@ export default function CustomersClient() {
                       {editPostalHint && <p className="text-xs text-muted">{editPostalHint}</p>}
                     </div>
                   </div>
+                  {/* 顧客区分 + 法人の支払い条件 */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted">顧客区分</label>
+                      <select
+                        value={editForm.customer_type}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, customer_type: e.target.value as "individual" | "corporate" })
+                        }
+                        className="input-field"
+                      >
+                        <option value="individual">個人 (BtoC)</option>
+                        <option value="corporate">法人 (BtoB)</option>
+                      </select>
+                    </div>
+                    {editForm.customer_type === "corporate" && (
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted">
+                          支払いサイクル <span className="text-danger">*</span>
+                        </label>
+                        <select
+                          value={editForm.billing_cycle}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              billing_cycle: e.target.value as "" | "per_job" | "consolidated",
+                            })
+                          }
+                          className="input-field"
+                        >
+                          <option value="">— 選択してください —</option>
+                          <option value="per_job">都度払い (案件ごとに会計)</option>
+                          <option value="consolidated">合算・締め払い (後日まとめて請求)</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                  {editForm.customer_type === "corporate" && (
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted">支払い条件メモ (締め日・支払いサイト等)</label>
+                      <input
+                        type="text"
+                        value={editForm.billing_terms_note}
+                        onChange={(e) => setEditForm({ ...editForm, billing_terms_note: e.target.value })}
+                        className="input-field"
+                        placeholder="例: 月末締め翌月末払い"
+                      />
+                    </div>
+                  )}
                   <div className="space-y-1">
                     <label className="text-xs text-muted">備考</label>
                     <textarea
@@ -545,7 +656,11 @@ export default function CustomersClient() {
                     <button
                       type="button"
                       className="btn-primary"
-                      disabled={editSaving || !editForm.name.trim()}
+                      disabled={
+                        editSaving ||
+                        !editForm.name.trim() ||
+                        (editForm.customer_type === "corporate" && !editForm.billing_cycle)
+                      }
                       onClick={handleUpdate}
                     >
                       {editSaving ? "更新中…" : "更新"}
