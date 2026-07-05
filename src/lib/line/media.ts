@@ -29,8 +29,14 @@ export async function fetchAndStoreLineMedia(params: {
   accessToken: string;
   messageId: string;
 }): Promise<{ path: string; contentType: string } | null> {
+  // messageId は webhook ペイロード由来 (信頼境界の外)。URL・Storage パスに
+  // 埋め込む前に形式を検証し、パストラバーサル/リクエスト改変を防ぐ。
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(params.messageId)) {
+    logger.warn("[line.media] rejected malformed messageId", { messageId: params.messageId.slice(0, 80) });
+    return null;
+  }
   try {
-    const res = await fetch(`https://api-data.line.me/v2/bot/message/${params.messageId}/content`, {
+    const res = await fetch(`https://api-data.line.me/v2/bot/message/${encodeURIComponent(params.messageId)}/content`, {
       headers: { Authorization: `Bearer ${params.accessToken}` },
     });
     if (!res.ok) {
