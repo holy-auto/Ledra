@@ -6,6 +6,7 @@ import { fetcher } from "@/lib/swr";
 import MessageAiExtractButton, { ExtractedCandidateCard, type ExtractedResult } from "./MessageAiExtractButton";
 import LinkCodeButton from "./LinkCodeButton";
 import { parseJsonSafe } from "@/lib/api/safeJson";
+import MessageBubbleBody from "@/app/admin/messages/MessageBubbleBody";
 
 /**
  * 顧客 360° ビューの「メッセージ」タブ。
@@ -75,6 +76,7 @@ export default function CustomerMessagesTab({
   const [sendMsg, setSendMsg] = useState<string | null>(null);
   const [dismissingId, setDismissingId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const handleDismissCandidate = useCallback(
     async (messageId: string) => {
@@ -127,6 +129,33 @@ export default function CustomerMessagesTab({
     }
   }, [canSend, draft, sendBusy, swrKey, mutate]);
 
+  const handleSendImage = useCallback(
+    async (file: File) => {
+      if (!canSend || sendBusy) return;
+      setSendBusy(true);
+      setSendMsg(null);
+      try {
+        const form = new FormData();
+        form.append("image", file);
+        const res = await fetch(swrKey, { method: "POST", body: form });
+        const j = (await parseJsonSafe(res)) as { ok?: boolean; delivered?: boolean; message?: string } | null;
+        if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
+        if (j?.delivered === false) {
+          setSendMsg(
+            "送信は試みましたが LINE 配信に失敗しました。履歴には残しています (LINE 設定を確認してください)。",
+          );
+        }
+        await mutate();
+      } catch (e) {
+        setSendMsg("画像の送信に失敗しました: " + (e instanceof Error ? e.message : String(e)));
+      } finally {
+        setSendBusy(false);
+        if (imageInputRef.current) imageInputRef.current.value = "";
+      }
+    },
+    [canSend, sendBusy, swrKey, mutate],
+  );
+
   return (
     <section className="glass-card overflow-hidden">
       <div className="border-b border-border-subtle p-5">
@@ -169,19 +198,11 @@ export default function CustomerMessagesTab({
                     : "bg-surface-hover text-primary rounded-tl-sm border border-border-subtle"
                 }`}
               >
-                {m.attachment_url && m.attachment_content_type?.startsWith("image/") ? (
-                  <a href={m.attachment_url} target="_blank" rel="noopener noreferrer" title="クリックで原寸表示">
-                    {/* eslint-disable-next-line @next/next/no-img-element -- 署名付きURL (短命) のため next/image の最適化対象外 */}
-                    <img
-                      src={m.attachment_url}
-                      alt="受信画像"
-                      loading="lazy"
-                      className="max-h-64 max-w-full rounded-lg"
-                    />
-                  </a>
-                ) : (
-                  <div>{m.body}</div>
-                )}
+                <MessageBubbleBody
+                  body={m.body}
+                  attachmentUrl={m.attachment_url}
+                  attachmentContentType={m.attachment_content_type}
+                />
                 <div
                   className={`mt-1 text-[10px] ${isOutbound ? "text-white/70" : "text-muted"} flex items-center gap-1.5`}
                 >
@@ -241,6 +262,25 @@ export default function CustomerMessagesTab({
               }
             }}
           />
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/jpeg,image/png"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void handleSendImage(f);
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => imageInputRef.current?.click()}
+            disabled={!canSend || sendBusy}
+            className="btn-secondary text-sm self-end px-3 py-2 disabled:opacity-50"
+            title="JPEG / PNG (10MBまで) をLINEで送信"
+          >
+            📷 画像
+          </button>
           <button
             type="button"
             onClick={handleSend}

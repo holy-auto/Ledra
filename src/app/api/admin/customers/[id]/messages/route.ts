@@ -13,6 +13,7 @@ import {
 } from "@/lib/api/response";
 import { sendCustomerLineText } from "@/lib/line/client";
 import { withAttachmentUrls } from "@/lib/messages/attachments";
+import { sendLineImageFromForm } from "@/lib/messages/sendImage";
 
 export const dynamic = "force-dynamic";
 
@@ -109,9 +110,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     if (!caller) return apiUnauthorized();
     if (!requireMinRole(caller, "staff")) return apiForbidden();
 
-    const parsed = sendSchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
-
     const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data: customer, error: custErr } = await admin
       .from("customers")
@@ -124,6 +122,22 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     if (!customer.line_user_id) {
       return apiValidationError("この顧客には LINE ユーザがまだ紐付いていません。");
     }
+
+    // multipart は画像送信、JSON はテキスト送信
+    if ((req.headers.get("content-type") ?? "").includes("multipart/form-data")) {
+      const out = await sendLineImageFromForm({
+        form: await req.formData(),
+        tenantId: caller.tenantId,
+        customerId: customer.id,
+        lineUserId: customer.line_user_id,
+        sentByUserId: caller.userId,
+      });
+      if (!out.ok) return apiValidationError(out.message);
+      return apiJson({ ok: true, delivered: out.delivered });
+    }
+
+    const parsed = sendSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
 
     const delivered = await sendCustomerLineText({
       tenantId: caller.tenantId,

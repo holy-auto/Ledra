@@ -31,6 +31,9 @@ export interface OutboundLineMessage {
   /** false の場合 failed_at を埋めて failure_reason を保持する */
   delivered?: boolean;
   failureReason?: string | null;
+  /** line-media バケット内の添付保存パス (画像送信時) */
+  attachmentPath?: string | null;
+  attachmentContentType?: string | null;
 }
 
 /**
@@ -129,6 +132,8 @@ export async function recordOutboundLineMessage(input: OutboundLineMessage): Pro
         body: input.body,
         sent_by: input.sentByUserId ?? null,
         line_message_id: input.lineMessageId ?? null,
+        attachment_path: input.attachmentPath ?? null,
+        attachment_content_type: input.attachmentContentType ?? null,
         delivered_at: input.delivered === false ? null : now,
         failed_at: input.delivered === false ? now : null,
         failure_reason: input.delivered === false ? (input.failureReason ?? null) : null,

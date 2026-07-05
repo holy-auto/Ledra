@@ -248,7 +248,17 @@ export async function handleWebhookEvents(
     replyToken?: string;
     timestamp?: number;
     source?: { userId?: string; type?: string };
-    message?: { type: string; id?: string; text?: string };
+    message?: {
+      type: string;
+      id?: string;
+      text?: string;
+      stickerId?: string;
+      fileName?: string;
+      latitude?: number;
+      longitude?: number;
+      address?: string;
+      title?: string;
+    };
     postback?: { data?: string; params?: Record<string, string> };
   }>,
 ): Promise<void> {
@@ -293,27 +303,45 @@ export async function handleWebhookEvents(
       });
     }
 
-    // スタンプ・画像などテキスト以外のメッセージもプレースホルダで記録する
+    // スタンプ・画像などテキスト以外のメッセージも記録する。
+    // 実データを取得できるものは Storage に保存して受信箱で表示/再生できるようにし、
+    // 失敗時は attachment なしのプレースホルダのみ (fail-soft)。
     if (event.type === "message" && event.message && event.message.type !== "text" && event.source?.userId) {
-      // 画像は content API から取得して Storage に保存し、受信箱で表示できるようにする。
-      // 失敗時は attachment なしのプレースホルダのみ (fail-soft)。
-      // ponytail: 動画/音声/ファイルはプレースホルダのまま。必要になったら
-      // fetchAndStoreLineMedia は type 非依存なので対象 type を足すだけでよい。
+      const msg = event.message;
       let attachment: { path: string; contentType: string } | null = null;
-      if (event.message.type === "image" && event.message.id) {
+      let body = NON_TEXT_MESSAGE_LABELS[msg.type] ?? `[${msg.type}]`;
+
+      if (["image", "video", "audio", "file"].includes(msg.type) && msg.id) {
+        // content API から実データを取得して保存
         const { fetchAndStoreLineMedia } = await import("@/lib/line/media");
         attachment = await fetchAndStoreLineMedia({
           tenantId,
           accessToken: config.channelAccessToken,
-          messageId: event.message.id,
+          messageId: msg.id,
         });
+        if (msg.type === "file" && msg.fileName) body = `[ファイル] ${msg.fileName}`;
+      } else if (msg.type === "sticker" && msg.stickerId) {
+        // スタンプは公開 CDN の静止画を保存して表示
+        const { fetchAndStoreLineSticker } = await import("@/lib/line/media");
+        attachment = await fetchAndStoreLineSticker({ tenantId, stickerId: msg.stickerId });
+      } else if (msg.type === "location") {
+        // 位置情報は住所 + 地図リンクを本文に展開
+        body = [
+          `[位置情報]${msg.title ? ` ${msg.title}` : ""}${msg.address ? ` ${msg.address}` : ""}`,
+          msg.latitude != null && msg.longitude != null
+            ? `https://www.google.com/maps?q=${msg.latitude},${msg.longitude}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join("\n");
       }
+
       const stored = await recordInboundLineMessage({
         tenantId,
         lineUserId: event.source.userId,
-        body: NON_TEXT_MESSAGE_LABELS[event.message.type] ?? `[${event.message.type}]`,
+        body,
         rawEvent: event,
-        lineMessageId: event.message.id ?? null,
+        lineMessageId: msg.id ?? null,
         lineTimestampMs: event.timestamp ?? null,
         attachmentPath: attachment?.path ?? null,
         attachmentContentType: attachment?.contentType ?? null,
@@ -486,6 +514,55 @@ export async function sendCustomerLineText(params: {
       delivered: false,
       failureReason: err instanceof Error ? err.message : String(err),
     });
+    return false;
+  }
+}
+
+/**
+ * 管理画面から顧客へ画像を LINE Push 送信し、customer_messages に outbound
+ * (body "[画像]" + attachment) として記録する。
+ *
+ * 画像は事前に storeOutboundImage で Storage 保存 + 長期署名 URL 発行済みの前提。
+ * LINE の image message は JPEG/PNG のみ・https URL 必須 (検証は API 層で行う)。
+ */
+export async function sendCustomerLineImage(params: {
+  tenantId: string;
+  customerId?: string | null;
+  lineUserId: string;
+  imageUrl: string;
+  attachmentPath: string;
+  attachmentContentType: string;
+  sentByUserId?: string | null;
+}): Promise<boolean> {
+  const config = await getLineConfig(params.tenantId);
+  const record = (delivered: boolean, failureReason?: string) =>
+    recordOutboundLineMessage({
+      tenantId: params.tenantId,
+      customerId: params.customerId ?? null,
+      lineUserId: params.lineUserId,
+      body: "[画像]",
+      sentByUserId: params.sentByUserId ?? null,
+      attachmentPath: params.attachmentPath,
+      attachmentContentType: params.attachmentContentType,
+      delivered,
+      failureReason: failureReason ?? null,
+    });
+
+  if (!config) {
+    await record(false, "LINE integration not configured for this tenant");
+    return false;
+  }
+
+  try {
+    // ponytail: preview にも原本 URL を使う (LINE 仕様上プレビューは 1MB 推奨)。
+    // 表示が重い場合はサムネイル生成を挟むのが upgrade path。
+    await sendMessage(config.channelAccessToken, params.lineUserId, [
+      { type: "image", originalContentUrl: params.imageUrl, previewImageUrl: params.imageUrl },
+    ]);
+    await record(true);
+    return true;
+  } catch (err) {
+    await record(false, err instanceof Error ? err.message : String(err));
     return false;
   }
 }
