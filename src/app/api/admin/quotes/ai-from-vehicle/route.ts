@@ -17,7 +17,7 @@ import { apiOk, apiUnauthorized, apiNotFound, apiInternalError, apiPlanLimit } f
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
-import { generateQuoteFromVehicle } from "@/lib/ai/quoteFromVehicle";
+import { generateQuoteFromVehicle, extractInvoiceLines } from "@/lib/ai/quoteFromVehicle";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
@@ -130,22 +130,4 @@ export async function POST(req: NextRequest) {
     usage.record({ outcome: "error" });
     return apiInternalError(e, "quote ai-from-vehicle");
   }
-}
-
-function extractInvoiceLines(
-  rawItems: unknown,
-  total: number | null,
-): { items: Array<{ description: string; unit_price: number; quantity: number }>; total: number } {
-  const lines: Array<{ description: string; unit_price: number; quantity: number }> = [];
-  if (Array.isArray(rawItems)) {
-    for (const it of rawItems) {
-      if (!it || typeof it !== "object") continue;
-      const rec = it as Record<string, unknown>;
-      const description = typeof rec.description === "string" ? rec.description : "";
-      const unitPrice = typeof rec.unit_price === "number" ? rec.unit_price : 0;
-      const quantity = typeof rec.quantity === "number" ? rec.quantity : 1;
-      if (description && unitPrice > 0) lines.push({ description, unit_price: unitPrice, quantity });
-    }
-  }
-  return { items: lines, total: total ?? lines.reduce((s, l) => s + l.unit_price * l.quantity, 0) };
 }

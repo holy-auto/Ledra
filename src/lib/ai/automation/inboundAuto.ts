@@ -20,6 +20,7 @@ import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { loadAiAutomationSettings } from "./policy";
+import { maybeAutoDraftQuoteFromInbound } from "./quoteDraftAuto";
 import { shouldAutoExtractInbound, decideInboundCommit } from "./orchestrator";
 
 const AUTO_EXTRACT_ENDPOINT = "/api/line/webhook#auto-extract";
@@ -154,6 +155,19 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
         }
       }
     }
+
+    // 価格問い合わせ → 見積ドラフト自動起票 (opt-in / 既知顧客のみ / 内部で fail-soft)。
+    await maybeAutoDraftQuoteFromInbound({
+      tenantId,
+      customerId: resolvedCustomerId,
+      intent: result.intent,
+      service: result.service,
+      vehicleText: result.vehicle,
+      messageId,
+      channel: params.channel ?? "line",
+      settings,
+      tenant,
+    });
 
     usage.record({
       tenantId,
