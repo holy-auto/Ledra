@@ -33,9 +33,12 @@ export default function LineConnectSection() {
         setStatus(j);
         if (j.channel_id) setChannelId(j.channel_id);
         if (j.liff_id) setLiffId(j.liff_id);
+      } else {
+        // 状態取得の失敗を握りつぶすと「保存できたのに未連携表示」になるため必ず見せる
+        setErr(j?.message ?? j?.error ?? `連携状態の取得に失敗しました (HTTP ${res.status})`);
       }
     } catch {
-      // silently ignore
+      setErr("連携状態の取得に失敗しました。ネットワークを確認して再読み込みしてください。");
     }
   }, []);
 
@@ -64,12 +67,24 @@ export default function LineConnectSection() {
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
-      setSuccessMsg("LINE連携が完了しました");
+      setSuccessMsg(
+        "LINE連携が完了しました。仕上げに、下に表示された Webhook URL を LINE Developers Console に設定してください。",
+      );
       setEditing(false);
       setChannelSecret("");
       setAccessToken("");
+      // 直後の再取得が万一失敗しても Webhook URL は見せられるよう、POST の応答で即時反映する
+      if (j?.webhook_url) {
+        setStatus((s) => ({
+          enabled: true,
+          channel_id: channelId,
+          liff_id: liffId || null,
+          webhook_url: j.webhook_url,
+          link_prompt_enabled: s?.link_prompt_enabled ?? false,
+        }));
+      }
       await fetchStatus();
-      setTimeout(() => setSuccessMsg(null), 5000);
+      setTimeout(() => setSuccessMsg(null), 15000);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -226,7 +241,18 @@ export default function LineConnectSection() {
           {status?.liff_id && <div className="text-xs text-muted font-mono">LIFF ID: {status.liff_id}</div>}
           {status?.webhook_url && (
             <div>
-              <div className="text-xs text-muted mb-1">Webhook URL（LINE Developers Consoleに設定）:</div>
+              <div className="text-xs text-muted mb-1">
+                Webhook URL（
+                <a
+                  href="https://developers.line.biz/console/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent underline hover:no-underline"
+                >
+                  LINE Developers Console
+                </a>
+                の「Messaging API設定」→「Webhook URL」に貼り付けて「Webhookの利用」をON）:
+              </div>
               <div className="flex items-center gap-2">
                 <code className="flex-1 text-xs font-mono bg-[var(--bg-inset)] border border-border-subtle rounded-lg px-3 py-2 text-secondary break-all">
                   {status.webhook_url}
@@ -298,12 +324,38 @@ export default function LineConnectSection() {
           <details className="text-xs text-muted">
             <summary className="cursor-pointer hover:text-secondary transition-colors">設定手順を確認</summary>
             <ol className="mt-2 ml-4 space-y-1 list-decimal">
-              <li>LINE Developers Console でMessaging APIチャネルを作成</li>
-              <li>チャネル基本設定から Channel ID と Channel Secret を取得</li>
-              <li>Messaging API設定から「チャネルアクセストークン（長期）」を発行</li>
-              <li>上記の値をこのフォームに入力して「連携する」をクリック</li>
-              <li>連携後に表示される Webhook URL を LINE Developers Console の Webhook設定に貼り付け</li>
-              <li>Webhookの利用をONに切り替え</li>
+              <li>
+                LINE公式アカウントがまだ無い場合は{" "}
+                <a
+                  href="https://manager.line.biz/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent underline hover:no-underline"
+                >
+                  LINE公式アカウント管理画面
+                </a>{" "}
+                から無料で開設
+              </li>
+              <li>
+                <a
+                  href="https://developers.line.biz/console/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent underline hover:no-underline"
+                >
+                  LINE Developers Console
+                </a>{" "}
+                を開き、公式アカウントに紐づく Messaging API チャネルを作成（無い場合は「新規チャネル作成 → Messaging
+                API」）
+              </li>
+              <li>「チャネル基本設定」タブから Channel ID と Channel Secret をコピー</li>
+              <li>「Messaging API設定」タブの一番下で「チャネルアクセストークン（長期）」を発行してコピー</li>
+              <li>コピーした3つの値をこのフォームに貼り付けて「連携する」をクリック</li>
+              <li>
+                連携後に表示される Webhook URL をコピーし、LINE Developers Console の「Messaging API設定」→ 「Webhook
+                URL」に貼り付けて「Webhookの利用」をON
+              </li>
+              <li>同じ画面で「応答メッセージ」はOFF推奨（Ledraからの自動返信と二重になるため）</li>
             </ol>
           </details>
         </div>
