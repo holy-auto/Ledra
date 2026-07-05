@@ -45,6 +45,8 @@ type MessageRow = {
   read_at: string | null;
   delivered_at: string | null;
   failed_at: string | null;
+  attachment_url?: string | null;
+  attachment_content_type?: string | null;
   failure_reason: string | null;
   created_at: string;
 };
@@ -331,7 +333,24 @@ export default function MessagesInboxClient() {
                             : "bg-surface-hover text-primary rounded-tl-sm border border-border-subtle"
                         }`}
                       >
-                        <div>{m.body}</div>
+                        {m.attachment_url && m.attachment_content_type?.startsWith("image/") ? (
+                          <a
+                            href={m.attachment_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="クリックで原寸表示"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element -- 署名付きURL (短命) のため next/image の最適化対象外 */}
+                            <img
+                              src={m.attachment_url}
+                              alt="受信画像"
+                              loading="lazy"
+                              className="max-h-64 max-w-full rounded-lg"
+                            />
+                          </a>
+                        ) : (
+                          <div>{m.body}</div>
+                        )}
                         <div
                           className={`mt-1 flex items-center gap-1.5 text-[10px] ${
                             isOutbound ? "text-white/70" : "text-muted"

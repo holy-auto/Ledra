@@ -13,6 +13,7 @@ import {
 } from "@/lib/api/response";
 import { sendCustomerLineText } from "@/lib/line/client";
 import { parseThreadKey, type ThreadRef } from "@/lib/messages/threadKey";
+import { withAttachmentUrls } from "@/lib/messages/attachments";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,7 @@ const sendSchema = z.object({
 });
 
 const MSG_COLS =
-  "id, customer_id, line_user_id, channel, direction, body, sent_by, read_at, delivered_at, failed_at, failure_reason, line_message_id, line_timestamp_ms, created_at";
+  "id, customer_id, line_user_id, channel, direction, body, sent_by, read_at, delivered_at, failed_at, failure_reason, line_message_id, line_timestamp_ms, created_at, attachment_path, attachment_content_type";
 
 function isMissingColumnError(err: { message?: string; code?: string } | null | undefined): boolean {
   if (!err) return false;
@@ -141,7 +142,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ key: string
     const resolved = await resolveThread(admin, caller.tenantId, ref);
     if (!resolved) return apiNotFound("thread not found");
 
-    const messages = await fetchThreadMessages(admin, caller.tenantId, resolved.customerId, resolved.lineUserId);
+    const messages = await withAttachmentUrls(
+      await fetchThreadMessages(admin, caller.tenantId, resolved.customerId, resolved.lineUserId),
+    );
 
     return apiJson({
       thread: {

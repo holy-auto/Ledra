@@ -16,6 +16,9 @@ export interface InboundLineMessage {
   rawEvent?: unknown;
   lineMessageId?: string | null;
   lineTimestampMs?: number | null;
+  /** line-media バケット内の添付保存パス (画像受信時) */
+  attachmentPath?: string | null;
+  attachmentContentType?: string | null;
 }
 
 export interface OutboundLineMessage {
@@ -85,6 +88,8 @@ export async function recordInboundLineMessage(
         raw_event: input.rawEvent ?? null,
         line_message_id: input.lineMessageId ?? null,
         line_timestamp_ms: input.lineTimestampMs ?? null,
+        attachment_path: input.attachmentPath ?? null,
+        attachment_content_type: input.attachmentContentType ?? null,
       })
       .select("id")
       .single();

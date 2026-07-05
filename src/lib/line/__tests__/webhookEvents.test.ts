@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   maybeAutoProcessInboundMessage: vi.fn(),
   tryConsumeLineLinkCode: vi.fn(),
   buildLineLinkPrompt: vi.fn(),
+  fetchAndStoreLineMedia: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
@@ -44,6 +45,10 @@ vi.mock("@/lib/ai/automation/inboundAuto", () => ({
 }));
 vi.mock("@/lib/line/linkCode", () => ({ tryConsumeLineLinkCode: mocks.tryConsumeLineLinkCode }));
 vi.mock("@/lib/line/linkPrompt", () => ({ buildLineLinkPrompt: mocks.buildLineLinkPrompt }));
+vi.mock("@/lib/line/media", () => ({
+  fetchAndStoreLineMedia: mocks.fetchAndStoreLineMedia,
+  LINE_MEDIA_BUCKET: "line-media",
+}));
 vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({}) },
 }));
@@ -77,6 +82,37 @@ describe("handleWebhookEvents", () => {
       expect.objectContaining({ tenantId: TENANT, lineUserId: USER, body: "[メニュー操作] action=reserve" }),
     );
     expect(mocks.maybeNotifyInboundMessage).toHaveBeenCalled();
+  });
+
+  it("stores inbound images and records the attachment path", async () => {
+    mocks.fetchAndStoreLineMedia.mockResolvedValue({ path: `${TENANT}/img1.jpg`, contentType: "image/jpeg" });
+
+    await handleWebhookEvents(TENANT, [
+      { type: "message", source: { userId: USER, type: "user" }, message: { type: "image", id: "img1" } },
+    ]);
+
+    expect(mocks.fetchAndStoreLineMedia).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: TENANT, messageId: "img1" }),
+    );
+    expect(mocks.recordInboundLineMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: "[画像]",
+        attachmentPath: `${TENANT}/img1.jpg`,
+        attachmentContentType: "image/jpeg",
+      }),
+    );
+  });
+
+  it("still records a placeholder when image download fails", async () => {
+    mocks.fetchAndStoreLineMedia.mockResolvedValue(null);
+
+    await handleWebhookEvents(TENANT, [
+      { type: "message", source: { userId: USER, type: "user" }, message: { type: "image", id: "img2" } },
+    ]);
+
+    expect(mocks.recordInboundLineMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ body: "[画像]", attachmentPath: null }),
+    );
   });
 
   it("records non-text messages (sticker) with a placeholder body", async () => {

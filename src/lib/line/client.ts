@@ -295,6 +295,19 @@ export async function handleWebhookEvents(
 
     // スタンプ・画像などテキスト以外のメッセージもプレースホルダで記録する
     if (event.type === "message" && event.message && event.message.type !== "text" && event.source?.userId) {
+      // 画像は content API から取得して Storage に保存し、受信箱で表示できるようにする。
+      // 失敗時は attachment なしのプレースホルダのみ (fail-soft)。
+      // ponytail: 動画/音声/ファイルはプレースホルダのまま。必要になったら
+      // fetchAndStoreLineMedia は type 非依存なので対象 type を足すだけでよい。
+      let attachment: { path: string; contentType: string } | null = null;
+      if (event.message.type === "image" && event.message.id) {
+        const { fetchAndStoreLineMedia } = await import("@/lib/line/media");
+        attachment = await fetchAndStoreLineMedia({
+          tenantId,
+          accessToken: config.channelAccessToken,
+          messageId: event.message.id,
+        });
+      }
       const stored = await recordInboundLineMessage({
         tenantId,
         lineUserId: event.source.userId,
@@ -302,6 +315,8 @@ export async function handleWebhookEvents(
         rawEvent: event,
         lineMessageId: event.message.id ?? null,
         lineTimestampMs: event.timestamp ?? null,
+        attachmentPath: attachment?.path ?? null,
+        attachmentContentType: attachment?.contentType ?? null,
       });
       await maybeNotifyInboundMessage({
         tenantId,

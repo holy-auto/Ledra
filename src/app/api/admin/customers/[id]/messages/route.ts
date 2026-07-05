@@ -12,6 +12,7 @@ import {
   apiInternalError,
 } from "@/lib/api/response";
 import { sendCustomerLineText } from "@/lib/line/client";
+import { withAttachmentUrls } from "@/lib/messages/attachments";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +51,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     const { data: byCustomer, error: msgErr } = await admin
       .from("customer_messages")
       .select(
-        "id, customer_id, line_user_id, channel, direction, body, sent_by, delivered_at, failed_at, failure_reason, line_message_id, line_timestamp_ms, created_at, ai_extracted",
+        "id, customer_id, line_user_id, channel, direction, body, sent_by, delivered_at, failed_at, failure_reason, line_message_id, line_timestamp_ms, created_at, ai_extracted, attachment_path, attachment_content_type",
       )
       .eq("tenant_id", caller.tenantId)
       .eq("customer_id", customerId)
@@ -64,7 +65,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       const { data: extras, error: extraErr } = await admin
         .from("customer_messages")
         .select(
-          "id, customer_id, line_user_id, channel, direction, body, sent_by, delivered_at, failed_at, failure_reason, line_message_id, line_timestamp_ms, created_at, ai_extracted",
+          "id, customer_id, line_user_id, channel, direction, body, sent_by, delivered_at, failed_at, failure_reason, line_message_id, line_timestamp_ms, created_at, ai_extracted, attachment_path, attachment_content_type",
         )
         .eq("tenant_id", caller.tenantId)
         .eq("line_user_id", customer.line_user_id)
@@ -75,8 +76,10 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       byLineUser = extras ?? [];
     }
 
-    const merged = [...(byCustomer ?? []), ...byLineUser].sort(
-      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    const merged = await withAttachmentUrls(
+      [...(byCustomer ?? []), ...byLineUser].sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      ),
     );
 
     return apiJson({
