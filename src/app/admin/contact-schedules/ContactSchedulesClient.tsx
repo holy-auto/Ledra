@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import PageHeader from "@/components/ui/PageHeader";
 
 // ─── 型定義 ──────────────────────────────────────────────────────
 type ContactType = "call" | "visit" | "email" | "sms" | "line";
@@ -231,37 +232,31 @@ export default function ContactSchedulesClient() {
   // ─── レンダリング ─────────────────────────────────────────────
   return (
     <div className="max-w-4xl mx-auto pb-20">
-      {/* ヘッダー */}
-      <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-primary">コンタクトスケジュール</h1>
-          <p className="text-sm text-secondary mt-1">架電・訪問・フォローの予定と実績を管理します</p>
-        </div>
-        <button
-          onClick={() => setDialogOpen(true)}
-          className="flex items-center gap-2 px-5 py-2 bg-accent text-white rounded-lg font-medium hover:bg-accent/90 transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-          架電予定を追加
-        </button>
-      </div>
-
-      {/* タブ */}
-      <div className="flex border-b border-border-default mb-6">
-        {(["today", "week", "future"] as TabKey[]).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === tab ? "border-accent text-accent" : "border-transparent text-secondary hover:text-primary"
-            }`}
-          >
-            {TAB_META[tab].label}
-            <span className="ml-1.5 text-xs text-muted">({TAB_META[tab].count})</span>
-          </button>
-        ))}
+      {/* ヘッダー + タブ（L字シェルのページバー） */}
+      <div className="mb-6">
+        <PageHeader
+          tag="コンタクト"
+          title="コンタクトスケジュール"
+          description="架電・訪問・フォローの予定と実績を管理します"
+          actions={
+            <button
+              onClick={() => setDialogOpen(true)}
+              className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2 font-medium text-white transition-colors hover:bg-accent/90"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              架電予定を追加
+            </button>
+          }
+          tabs={(["today", "week", "future"] as TabKey[]).map((tab) => ({
+            key: tab,
+            label: TAB_META[tab].label,
+            badge: TAB_META[tab].count,
+          }))}
+          activeTab={activeTab}
+          onTabSelect={(k) => setActiveTab(k as TabKey)}
+        />
       </div>
 
       {/* 一覧 */}
