@@ -108,6 +108,11 @@ type NavItem = {
    * 何も見えない。本社向け画面 (横断ビュー・組織管理) のみ true にする。
    */
   orgUserVisible?: boolean;
+  /**
+   * L字シェルのゴールドアクセント項目 (証明書など上位機能)。アクティブ時の
+   * アイコン/ドットをブルーではなくゴールドで表現し、格を一段上げて見せる。
+   */
+  gold?: boolean;
 };
 
 type NavGroup = {
@@ -298,6 +303,7 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/certificates",
         label: "証明書",
         requiredPermission: "certificates:view",
+        gold: true,
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path
@@ -1456,17 +1462,30 @@ export default function Sidebar() {
 
     const badgeCount = item.badgeKey ? (badges[item.badgeKey] ?? 0) : 0;
 
+    // L字シェル: アクティブ項目は面 (サイドバー) から一段沈めたピルで表す
+    // (bg-base + インセットリング)。アクセントはアイコンと右端ドットに集約し、
+    // 証明書などゴールド項目のみ格上げしてゴールドで見せる。
+    const accentText = item.gold ? "text-accent-gold" : "text-accent";
+    const dotBg = item.gold ? "bg-accent-gold" : "bg-accent";
+
     return (
       <li key={item.href}>
         <Link
           href={item.href}
-          className={`flex items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-2 text-[13px] font-medium transition-all duration-150 ${
-            isActive ? "bg-accent-dim text-accent" : "text-secondary hover:bg-surface-hover hover:text-primary"
+          aria-current={isActive ? "page" : undefined}
+          className={`flex items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-2 text-[13px] transition-all duration-150 ${
+            isActive
+              ? "bg-base font-medium text-primary shadow-[inset_0_0_0_1px_var(--border-default)]"
+              : "font-normal text-secondary hover:bg-surface-hover hover:text-primary"
           }`}
         >
-          <span className={isActive ? "text-accent" : "text-muted"}>{item.icon}</span>
-          {item.label}
-          {badgeCount > 0 && <NavBadge count={badgeCount} />}
+          <span className={isActive ? accentText : "text-muted"}>{item.icon}</span>
+          <span className="flex-1 truncate">{item.label}</span>
+          {badgeCount > 0 ? (
+            <NavBadge count={badgeCount} />
+          ) : isActive ? (
+            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotBg}`} />
+          ) : null}
         </Link>
       </li>
     );
@@ -1528,9 +1547,10 @@ export default function Sidebar() {
       <div className="border-t border-border-subtle px-3 py-3">
         <Link
           href="/admin/support"
+          aria-current={pathname === "/admin/support" ? "page" : undefined}
           className={`flex items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-2 text-[13px] font-medium transition-all duration-150 mb-1 ${
             pathname === "/admin/support"
-              ? "bg-accent-dim text-accent"
+              ? "bg-base text-primary shadow-[inset_0_0_0_1px_var(--border-default)]"
               : "text-muted hover:bg-surface-hover hover:text-primary"
           }`}
         >
@@ -1545,9 +1565,10 @@ export default function Sidebar() {
         </Link>
         <Link
           href="/admin/settings/features"
+          aria-current={pathname === "/admin/settings/features" ? "page" : undefined}
           className={`flex items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-2 text-[13px] font-medium transition-all duration-150 mb-1 ${
             pathname === "/admin/settings/features"
-              ? "bg-accent-dim text-accent"
+              ? "bg-base text-primary shadow-[inset_0_0_0_1px_var(--border-default)]"
               : "text-muted hover:bg-surface-hover hover:text-primary"
           }`}
         >
