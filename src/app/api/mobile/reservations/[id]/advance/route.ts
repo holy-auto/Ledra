@@ -183,11 +183,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       await caller.supabase.from("vehicle_histories").insert({
         tenant_id: caller.tenantId,
         vehicle_id: reservation.vehicle_id,
-        reservation_id: id,
-        label: historyLabel,
-        note,
-        is_public: true,
-        created_by: caller.userId,
+        type: "progress_update",
+        title: historyLabel,
+        description: note ?? null,
+        performed_at: new Date().toISOString(),
       });
 
       if (reservation.customer_id) {

@@ -13,7 +13,6 @@ import { withCache } from "@/lib/cache";
  * - expiring_certs_7d: certificates expiring within 7 days
  * - draft_certs: certificates in draft status
  * - overdue_invoices: invoices past due date and not paid
- * - pending_orders: orders with status pending or in_progress
  */
 export async function GET() {
   try {
@@ -70,7 +69,7 @@ export async function GET() {
             .eq("tenant_id", caller.tenantId)
             .gte("expiry_date", today)
             .lte("expiry_date", sevenDaysLaterStr)
-            .neq("status", "voided");
+            .neq("status", "void");
           return count ?? 0;
         } catch {
           return 0;
@@ -107,20 +106,6 @@ export async function GET() {
         }
       })();
 
-      // Count pending orders (pending or in_progress)
-      const pendingOrdersPromise = (async () => {
-        try {
-          const { count } = await admin
-            .from("orders")
-            .select("id", { count: "exact", head: true })
-            .eq("tenant_id", caller.tenantId)
-            .in("status", ["pending", "in_progress"]);
-          return count ?? 0;
-        } catch {
-          return 0;
-        }
-      })();
-
       // Count unread inbound customer messages (LINE inbox)
       const unreadMessagesPromise = (async () => {
         try {
@@ -137,16 +122,14 @@ export async function GET() {
         }
       })();
 
-      const [reservations, square, expiringCerts, draftCerts, overdueInvoices, pendingOrders, unreadMessages] =
-        await Promise.all([
-          reservationsPromise,
-          squareUnlinkedPromise,
-          expiringCertsPromise,
-          draftCertsPromise,
-          overdueInvoicesPromise,
-          pendingOrdersPromise,
-          unreadMessagesPromise,
-        ]);
+      const [reservations, square, expiringCerts, draftCerts, overdueInvoices, unreadMessages] = await Promise.all([
+        reservationsPromise,
+        squareUnlinkedPromise,
+        expiringCertsPromise,
+        draftCertsPromise,
+        overdueInvoicesPromise,
+        unreadMessagesPromise,
+      ]);
 
       return {
         reservations_today: reservations,
@@ -154,7 +137,6 @@ export async function GET() {
         expiring_certs_7d: expiringCerts,
         draft_certs: draftCerts,
         overdue_invoices: overdueInvoices,
-        pending_orders: pendingOrders,
         messages_unread: unreadMessages,
       };
     });

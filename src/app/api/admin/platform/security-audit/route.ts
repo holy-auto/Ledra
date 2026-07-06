@@ -42,10 +42,9 @@ export async function GET(req: NextRequest) {
     type StripeEventRow = { id: number; event_type: string | null; created_at: string | null };
     type PiiLogRow = {
       id: string;
-      tenant_id: string | null;
-      user_id: string | null;
-      action: string | null;
-      target_type: string | null;
+      certificate_id: string | null;
+      insurer_id: string | null;
+      is_active: boolean | null;
       created_at: string | null;
     };
 
@@ -66,10 +65,10 @@ export async function GET(req: NextRequest) {
         .order("created_at", { ascending: false })
         .limit(200)
         .returns<StripeEventRow[]>(),
-      // PII disclosure logs
+      // PII disclosure consents (開示申請/同意の記録テーブル。専用ログテーブルは存在しない)
       admin
-        .from("pii_disclosure_logs")
-        .select("id, tenant_id, user_id, action, target_type, created_at")
+        .from("pii_disclosure_consents")
+        .select("id, certificate_id, insurer_id, is_active, created_at")
         .gte("created_at", since)
         .order("created_at", { ascending: false })
         .limit(200)

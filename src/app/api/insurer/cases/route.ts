@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
     if (tenantId) {
       // Verify insurer has an active contract with this tenant before filtering
       const { data: contract } = await admin
-        .from("insurer_contracts")
+        .from("insurer_tenant_contracts")
         .select("id")
         .eq("insurer_id", caller.insurerId)
         .eq("tenant_id", tenantId)
@@ -150,7 +150,7 @@ export async function POST(req: NextRequest) {
     // Verify insurer has a contract with the resolved tenant
     if (tenant_id) {
       const { data: contract } = await admin
-        .from("insurer_contracts")
+        .from("insurer_tenant_contracts")
         .select("id")
         .eq("insurer_id", caller.insurerId)
         .eq("tenant_id", tenant_id)

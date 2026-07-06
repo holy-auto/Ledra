@@ -26,10 +26,18 @@ export async function resolveDefaultRedirect(userId: string, activeContext: stri
 
   const hasShop = !!membership?.tenant_id;
 
-  // 代理店確認
-  const { data: agentRecord } = await admin.from("agents").select("id, status").eq("user_id", userId).maybeSingle();
+  // 代理店確認 (agents に user_id は無く、agent_users(agent_id, user_id) で紐付く)
+  const { data: agentUser } = await admin
+    .from("agent_users")
+    .select("agent_id, is_active, agents!inner(status)")
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
 
-  const hasAgent = !!agentRecord?.id && agentRecord.status === "active";
+  const agentStatus = (agentUser?.agents as { status?: string } | { status?: string }[] | null | undefined) ?? null;
+  const status = Array.isArray(agentStatus) ? agentStatus[0]?.status : agentStatus?.status;
+  const hasAgent = !!agentUser?.agent_id && status === "active";
 
   if (hasShop && hasAgent) {
     // 両方持っている: 前回のコンテキストまたはデフォルト施工店
