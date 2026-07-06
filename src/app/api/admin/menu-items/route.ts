@@ -194,21 +194,23 @@ export async function DELETE(req: NextRequest) {
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-    const { id } = parsed.data;
+    // 単一(id)・複数(ids)どちらも id 配列に正規化して一括論理削除
+    const ids = parsed.data.ids ?? [parsed.data.id!];
 
     // RLS をバイパスしてサービスロールで論理削除（tenant_id で必ずスコープ限定）
     const { admin } = createTenantScopedAdmin(caller.tenantId);
-    const { error } = await admin
+    const { data, error } = await admin
       .from("menu_items")
       .update({ is_active: false })
-      .eq("id", id)
-      .eq("tenant_id", caller.tenantId);
+      .in("id", ids)
+      .eq("tenant_id", caller.tenantId)
+      .select("id");
 
     if (error) {
       return apiInternalError(error, "menu-items delete");
     }
 
-    return apiJson({ ok: true });
+    return apiJson({ ok: true, disabled: data?.length ?? 0 });
   } catch (e: unknown) {
     return apiInternalError(e, "menu-items DELETE");
   }

@@ -46,9 +46,15 @@ export const menuItemUpdateSchema = z.object({
   is_active: z.boolean().optional(),
 });
 
-export const menuItemDeleteSchema = z.object({
-  id: z.string().uuid("無効なIDです。"),
-});
+export const menuItemDeleteSchema = z
+  .object({
+    // 単一無効化（従来）／複数一括無効化（ids）の両対応。どちらか一方を指定する。
+    id: z.string().uuid("無効なIDです。").optional(),
+    ids: z.array(z.string().uuid("無効なIDです。")).min(1).max(500).optional(),
+  })
+  .refine((v) => Boolean(v.id) || Boolean(v.ids?.length), {
+    message: "無効化する品目が指定されていません。",
+  });
 
 export const menuItemCsvImportSchema = z.object({
   action: z.literal("csv_import"),

@@ -82,6 +82,17 @@ export default function MenuItemsClient() {
   // Delete
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // 一括無効化: チェックで複数選択
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDisabling, setBulkDisabling] = useState(false);
+  const toggleSelected = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
   // 「このメニューを使うパッケージ」逆引きの展開状態
   const [packagesOpen, setPackagesOpen] = useState<Set<string>>(new Set());
   const togglePackages = (id: string) =>
@@ -265,6 +276,31 @@ export default function MenuItemsClient() {
       alert("無効化に失敗しました: " + (e?.message ?? String(e)));
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  /* ---------- Bulk Disable (logical) ---------- */
+
+  const handleBulkDisable = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (!confirm(`選択した ${ids.length} 件の品目を無効化しますか？`)) return;
+    setBulkDisabling(true);
+    try {
+      const res = await fetch("/api/admin/menu-items", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      setSaveMsg({ text: `${j.disabled ?? ids.length} 件の品目を無効化しました`, ok: true });
+      setSelectedIds(new Set());
+      mutate();
+    } catch (e: any) {
+      alert("一括無効化に失敗しました: " + (e?.message ?? String(e)));
+    } finally {
+      setBulkDisabling(false);
     }
   };
 
@@ -626,14 +662,54 @@ export default function MenuItemsClient() {
 
           {/* Items List */}
           <section className="glass-card overflow-hidden">
-            <div className="border-b border-border-subtle p-5">
-              <div className="text-xs font-semibold tracking-[0.18em] text-muted">品目一覧</div>
-              <div className="mt-1 text-base font-semibold text-primary">品目一覧</div>
+            <div className="border-b border-border-subtle p-5 flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <div className="text-xs font-semibold tracking-[0.18em] text-muted">品目一覧</div>
+                <div className="mt-1 text-base font-semibold text-primary">品目一覧</div>
+              </div>
+              {selectedIds.size > 0 && (
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-secondary">{selectedIds.size} 件選択中</span>
+                  <button
+                    type="button"
+                    className="btn-ghost px-3 py-1 text-xs"
+                    onClick={() => setSelectedIds(new Set())}
+                  >
+                    選択解除
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-danger px-3 py-1 text-xs"
+                    disabled={bulkDisabling}
+                    onClick={handleBulkDisable}
+                  >
+                    {bulkDisabling ? "無効化中…" : "選択した品目を無効化"}
+                  </button>
+                </div>
+              )}
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="bg-surface-hover">
                   <tr>
+                    <th className="w-10 px-5 py-3">
+                      {(() => {
+                        const activeItems = (data.items ?? []).filter((i) => i.is_active);
+                        const allSelected = activeItems.length > 0 && activeItems.every((i) => selectedIds.has(i.id));
+                        return (
+                          <input
+                            type="checkbox"
+                            aria-label="全ての有効な品目を選択"
+                            className="h-4 w-4 accent-[var(--accent-blue)] cursor-pointer"
+                            disabled={activeItems.length === 0}
+                            checked={allSelected}
+                            onChange={(e) =>
+                              setSelectedIds(e.target.checked ? new Set(activeItems.map((i) => i.id)) : new Set())
+                            }
+                          />
+                        );
+                      })()}
+                    </th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">品目名</th>
                     <th className="hidden md:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
                       説明
@@ -661,6 +737,17 @@ export default function MenuItemsClient() {
                   {(data.items ?? []).map((item) => (
                     <Fragment key={item.id}>
                       <tr className="hover:bg-surface-hover/60">
+                        <td className="w-10 px-5 py-3 align-middle">
+                          {item.is_active && (
+                            <input
+                              type="checkbox"
+                              aria-label={`${item.name} を選択`}
+                              className="h-4 w-4 accent-[var(--accent-blue)] cursor-pointer"
+                              checked={selectedIds.has(item.id)}
+                              onChange={() => toggleSelected(item.id)}
+                            />
+                          )}
+                        </td>
                         {editingId === item.id ? (
                           /* Inline Edit Row */
                           <>
@@ -829,7 +916,7 @@ export default function MenuItemsClient() {
                       </tr>
                       {packagesOpen.has(item.id) && (
                         <tr className="bg-inset">
-                          <td colSpan={9} className="px-5 py-3">
+                          <td colSpan={10} className="px-5 py-3">
                             <div className="text-[10px] font-semibold tracking-[0.18em] text-muted">
                               この品目を使うパッケージ
                             </div>
@@ -843,7 +930,7 @@ export default function MenuItemsClient() {
                   ))}
                   {(data.items ?? []).length === 0 && (
                     <tr>
-                      <td colSpan={9} className="px-5 py-8 text-center text-muted">
+                      <td colSpan={10} className="px-5 py-8 text-center text-muted">
                         品目が登録されていません
                       </td>
                     </tr>
