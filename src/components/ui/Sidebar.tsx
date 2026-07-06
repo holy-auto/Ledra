@@ -12,7 +12,6 @@ import { useFeaturePrefs } from "@/lib/features/useFeaturePrefs";
 import StoreSelector from "@/components/ui/StoreSelector";
 import ThemeToggle from "@/lib/theme/ThemeToggle";
 import SidebarShell from "@/components/ui/SidebarShell";
-import NotificationBell from "@/components/ui/NotificationBell";
 import ContextSwitcher from "@/components/ui/ContextSwitcher";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
 
@@ -75,11 +74,16 @@ function useSidebarBadges(intervalMs = 60_000): BadgeCounts {
 /* ------------------------------------------------------------------ */
 /*  Badge component                                                    */
 /* ------------------------------------------------------------------ */
-function NavBadge({ count }: { count: number }) {
+function NavBadge({ count, gold = false }: { count: number; gold?: boolean }) {
   if (count <= 0) return null;
   const label = count > 99 ? "99+" : String(count);
+  // 通常はアラート性を示す赤。ゴールド項目（証明書など上位機能）は格上げのゴールド。
   return (
-    <span className="ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+    <span
+      className={`ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] leading-none font-bold text-white ${
+        gold ? "bg-accent-gold" : "bg-red-500"
+      }`}
+    >
       {label}
     </span>
   );
@@ -1402,7 +1406,9 @@ function CollapsibleGroup({
 /* ------------------------------------------------------------------ */
 export default function Sidebar() {
   const pathname = usePathname();
-  const { role, can, loading, isPlatformAdmin, isOrgUser } = useCurrentRole();
+  const { data, role, can, loading, isPlatformAdmin, isOrgUser } = useCurrentRole();
+  // ワークスペースカードのアバター用イニシャル（テナント名の先頭最大2文字）。
+  const workspaceInitials = (data?.tenant_name || "").replace(/\s+/g, "").slice(0, 2).toUpperCase();
   const { tenantDisabled, userVisible, loading: prefsLoading } = useFeaturePrefs();
   const tenantDisabledSet = useMemo(() => new Set(tenantDisabled), [tenantDisabled]);
   const userVisibleSet = useMemo(() => new Set(userVisible), [userVisible]);
@@ -1507,7 +1513,7 @@ export default function Sidebar() {
           <span className={isActive ? accentText : "text-muted"}>{item.icon}</span>
           <span className="flex-1 truncate">{item.label}</span>
           {badgeCount > 0 ? (
-            <NavBadge count={badgeCount} />
+            <NavBadge count={badgeCount} gold={item.gold} />
           ) : isActive ? (
             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotBg}`} />
           ) : null}
@@ -1525,9 +1531,21 @@ export default function Sidebar() {
         <div className="ml-auto flex items-center gap-2">
           {/* 施工店・代理店 両方の権限を持つ場合のみ表示されるモード切替 */}
           <ContextSwitcher />
-          <NotificationBell />
         </div>
       </div>
+
+      {/* ワークスペースカード（現在のテナント / 役割）— L字シェル意匠 */}
+      {data?.tenant_name && (
+        <div className="mx-3 mt-3 flex items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-2 shadow-[inset_0_0_0_1px_var(--border-default)]">
+          <span className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-primary font-mono text-[11px] font-semibold text-inverse">
+            {workspaceInitials}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[12.5px] font-semibold text-primary">{data.tenant_name}</span>
+            {role && <span className="block truncate text-[10.5px] text-muted">{ROLE_LABELS[role]}</span>}
+          </span>
+        </div>
+      )}
 
       {/* View Mode Toggle (店頭 / 管理) */}
       <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-4 py-2">
@@ -1609,59 +1627,72 @@ export default function Sidebar() {
         <div className="mb-2 px-2.5">
           <ThemeToggle />
         </div>
-        {role && (
-          <div className="mb-2 flex items-center gap-2 px-2.5">
-            <span className="inline-flex items-center rounded-md bg-accent-dim px-2 py-0.5 text-[11px] font-medium text-accent">
-              {ROLE_LABELS[role]}
-            </span>
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={async () => {
-            try {
-              const { createClient } = await import("@/lib/supabase/client");
-              const supabase = createClient();
-              await supabase.auth.signOut();
+        {/* ユーザーカード（アバター + メール + 役割 + 設定 / ログアウト）— L字シェル意匠 */}
+        <div className="mt-1 flex items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-2 shadow-[inset_0_0_0_1px_var(--border-default)]">
+          <span className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-accent text-[12px] font-semibold text-inverse">
+            {(data?.email || "?").trim().charAt(0).toUpperCase() || "?"}
+          </span>
+          <span className="min-w-0 flex-1 leading-tight">
+            <span className="block truncate text-[12px] font-medium text-primary">{data?.email ?? "—"}</span>
+            {role && <span className="block truncate text-[10.5px] text-muted">{ROLE_LABELS[role]}</span>}
+          </span>
+          <Link
+            href="/admin/settings"
+            aria-label="設定"
+            className="inline-flex flex-shrink-0 rounded-[var(--radius-sm)] p-1 text-muted transition-colors hover:bg-surface-hover hover:text-primary"
+          >
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </Link>
+          <button
+            type="button"
+            aria-label="ログアウト"
+            onClick={async () => {
               try {
-                sessionStorage.clear();
+                const { createClient } = await import("@/lib/supabase/client");
+                const supabase = createClient();
+                await supabase.auth.signOut();
+                try {
+                  sessionStorage.clear();
+                } catch {
+                  /* ignore */
+                }
+                // 同一ブラウザでユーザ切替する運用に備え、SW のオフライン読み取り
+                // キャッシュ (HTML / API) を破棄する。失敗してもログアウト自体は続行。
+                try {
+                  const { clearOfflineReadCache } = await import("@/lib/offline-cache/client");
+                  await clearOfflineReadCache();
+                } catch {
+                  /* ignore */
+                }
+                // 未送信の Outbox (IndexedDB) もログアウト時に必ず破棄する。
+                // 残しておくと A → ログアウト → B が同一ブラウザに入り直したとき
+                // A の queued ジョブが B のセッション cookie で flush され、
+                // 別テナントに書き込みが入る (クロステナント情報リーク) 危険がある。
+                try {
+                  const { clearOutbox } = await import("@/lib/outbox/queue");
+                  await clearOutbox();
+                } catch {
+                  /* ignore */
+                }
               } catch {
                 /* ignore */
               }
-              // 同一ブラウザでユーザ切替する運用に備え、SW のオフライン読み取り
-              // キャッシュ (HTML / API) を破棄する。失敗してもログアウト自体は続行。
-              try {
-                const { clearOfflineReadCache } = await import("@/lib/offline-cache/client");
-                await clearOfflineReadCache();
-              } catch {
-                /* ignore */
-              }
-              // 未送信の Outbox (IndexedDB) もログアウト時に必ず破棄する。
-              // 残しておくと A → ログアウト → B が同一ブラウザに入り直したとき
-              // A の queued ジョブが B のセッション cookie で flush され、
-              // 別テナントに書き込みが入る (クロステナント情報リーク) 危険がある。
-              try {
-                const { clearOutbox } = await import("@/lib/outbox/queue");
-                await clearOutbox();
-              } catch {
-                /* ignore */
-              }
-            } catch {
-              /* ignore */
-            }
-            window.location.replace("/login");
-          }}
-          className="flex w-full items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-2 text-[13px] font-medium text-muted transition-all duration-150 hover:bg-surface-hover hover:text-primary"
-        >
-          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9"
-            />
-          </svg>
-          ログアウト
-        </button>
+              window.location.replace("/login");
+            }}
+            className="inline-flex flex-shrink-0 rounded-[var(--radius-sm)] p-1 text-muted transition-colors hover:bg-surface-hover hover:text-primary"
+          >
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
     </SidebarShell>
   );
