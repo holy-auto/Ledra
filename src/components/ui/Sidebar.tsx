@@ -1291,6 +1291,31 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+/**
+ * href → ラベル の逆引き表。NAV_GROUPS を単一の出典とし、グローバルバーの
+ * パンくずなどが同じラベルを共有できるようにする（ラベルの二重管理を避ける）。
+ */
+export const ADMIN_NAV_LABELS: Record<string, string> = Object.fromEntries(
+  NAV_GROUPS.flatMap((group) => group.items.map((item) => [item.href, item.label] as const)),
+);
+
+/**
+ * パスに対応するセクションラベルを、最長 href 前方一致で解決する。
+ * 例: /admin/certificates/123 → "証明書"。未登録の深いルートは undefined。
+ */
+export function adminSectionLabel(pathname: string): string | undefined {
+  let best: string | undefined;
+  let bestLen = -1;
+  for (const [href, label] of Object.entries(ADMIN_NAV_LABELS)) {
+    if (href === "/admin") continue; // ルートは別途「管理」として扱う
+    if ((pathname === href || pathname.startsWith(href + "/")) && href.length > bestLen) {
+      best = label;
+      bestLen = href.length;
+    }
+  }
+  return best;
+}
+
 /** Detect mobile viewport (matches lg breakpoint) */
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(false);
