@@ -354,7 +354,15 @@ export default function OrdersClient() {
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
       setShowForm(false);
-      setFormData({ title: "", description: "", category: "", budget: "", deadline: "", requester_email: "", requester_company: "" });
+      setFormData({
+        title: "",
+        description: "",
+        category: "",
+        budget: "",
+        deadline: "",
+        requester_email: "",
+        requester_company: "",
+      });
       setSelectedTenant(null);
       setTenantQuery("");
       await fetchOrders(typeFilter, statusFilter);
@@ -405,6 +413,13 @@ export default function OrdersClient() {
             {showForm ? "閉じる" : "新規発注"}
           </button>
         }
+        tabs={[
+          { key: "my", label: "自社の受発注" },
+          { key: "browse", label: "公開案件を探す" },
+          { key: "csv", label: "CSVインポート" },
+        ]}
+        activeTab={activeTab}
+        onTabSelect={(k) => setActiveTab(k as "my" | "browse" | "csv")}
       />
 
       {/* Platform fee banner */}
@@ -418,7 +433,9 @@ export default function OrdersClient() {
         </svg>
         <div>
           <span className="text-blue-300 font-medium">プラットフォーム手数料 10%</span>
-          <span className="text-secondary ml-2">— 決済自動化・証明書発行・進捗管理が全て込みです。受注金額の90%が施工店に自動送金されます。</span>
+          <span className="text-secondary ml-2">
+            — 決済自動化・証明書発行・進捗管理が全て込みです。受注金額の90%が施工店に自動送金されます。
+          </span>
         </div>
       </div>
 
@@ -655,7 +672,9 @@ export default function OrdersClient() {
             {/* 請求書送付先 */}
             <div className="rounded-lg border border-border bg-surface-hover p-4 space-y-3">
               <p className="text-xs font-semibold text-secondary">請求書の自動送付先（任意）</p>
-              <p className="text-[11px] text-muted">入力すると検収承認時に請求書PDFをメールで自動送付します。プラットフォーム手数料10%を差し引いた金額が施工店に自動送金されます。</p>
+              <p className="text-[11px] text-muted">
+                入力すると検収承認時に請求書PDFをメールで自動送付します。プラットフォーム手数料10%を差し引いた金額が施工店に自動送金されます。
+              </p>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-xs text-muted">請求書送付先メール</label>
@@ -696,41 +715,7 @@ export default function OrdersClient() {
 
       {!loading && (
         <>
-          {/* Tab switcher */}
-          <div className="flex border-b border-border">
-            <button
-              type="button"
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === "my" ? "border-accent text-accent" : "border-transparent text-muted hover:text-primary"
-              }`}
-              onClick={() => setActiveTab("my")}
-            >
-              自社の受発注
-            </button>
-            <button
-              type="button"
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === "browse"
-                  ? "border-accent text-accent"
-                  : "border-transparent text-muted hover:text-primary"
-              }`}
-              onClick={() => setActiveTab("browse")}
-            >
-              公開案件を探す
-            </button>
-            <button
-              type="button"
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === "csv"
-                  ? "border-accent text-accent"
-                  : "border-transparent text-muted hover:text-primary"
-              }`}
-              onClick={() => setActiveTab("csv")}
-            >
-              CSVインポート
-            </button>
-          </div>
-
+          {/* タブ切替は PageHeader (下線タブ帯) に集約 */}
           {/* ─── My orders tab ─── */}
           {activeTab === "my" && (
             <>
@@ -932,7 +917,12 @@ export default function OrdersClient() {
 
           {/* ─── CSV import tab ─── */}
           {activeTab === "csv" && (
-            <OrderCsvImport onImported={() => { fetchOrders(typeFilter, statusFilter); setActiveTab("my"); }} />
+            <OrderCsvImport
+              onImported={() => {
+                fetchOrders(typeFilter, statusFilter);
+                setActiveTab("my");
+              }}
+            />
           )}
         </>
       )}
