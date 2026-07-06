@@ -286,11 +286,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       await supabase.from("vehicle_histories").insert({
         tenant_id: caller.tenantId,
         vehicle_id: reservation.vehicle_id,
-        reservation_id: id,
-        label: historyLabel,
-        note: note,
-        is_public: true,
-        created_by: caller.userId,
+        type: "progress_update",
+        title: historyLabel,
+        description: note ?? null,
+        performed_at: new Date().toISOString(),
       });
 
       // LINE通知（顧客にline_user_idがあれば送信）

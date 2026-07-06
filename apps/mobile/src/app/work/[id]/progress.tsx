@@ -54,12 +54,10 @@ export default function WorkProgressScreen() {
       const { error } = await supabase.from("vehicle_histories").insert({
         tenant_id: user!.tenantId,
         vehicle_id: reservation.vehicle_id,
-        reservation_id: id,
-        event_type: "progress_update",
+        type: "progress_update",
         title: selectedLabel,
         description: note || null,
-        is_public: true,
-        created_by: user!.id,
+        performed_at: new Date().toISOString(),
       });
 
       if (error) throw error;

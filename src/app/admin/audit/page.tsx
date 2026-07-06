@@ -27,6 +27,8 @@ const TYPE_LABELS: Record<string, { label: string; color: string }> = {
   invoice_created: { label: "請求書作成", color: "text-accent-text bg-accent-dim border-accent/30" },
   invoice_paid: { label: "入金記録", color: "text-success-text bg-success-dim border-success/30" },
   note: { label: "メモ", color: "text-secondary bg-surface-hover border-border-default" },
+  progress_update: { label: "進捗公開", color: "text-accent-text bg-accent-dim border-accent/30" },
+  thickness_measurement: { label: "膜厚測定", color: "text-accent-text bg-accent-dim border-accent/15" },
   // AI 自動化の監査 (logAiAuditEvent / logAutoActionExecuted 由来)。
   ai_auto_action_executed: { label: "AI自動実行", color: "text-violet-text bg-violet-dim border-violet/30" },
   ai_settings_changed: { label: "AI設定変更", color: "text-secondary bg-surface-hover border-border-default" },

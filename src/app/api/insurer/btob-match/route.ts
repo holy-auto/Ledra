@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
 
     // 3. 有効な契約テナント
     const { data: contracts } = await admin
-      .from("insurer_contracts")
+      .from("insurer_tenant_contracts")
       .select("tenant_id")
       .eq("insurer_id", caller.insurerId)
       .eq("status", "active");
