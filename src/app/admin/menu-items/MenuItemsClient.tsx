@@ -27,6 +27,9 @@ type MenuItem = {
   tax_category: number | null;
   estimated_minutes: number | null;
   labor_hours: number | null;
+  category_large: string | null;
+  category_medium: string | null;
+  category_small: string | null;
   is_active: boolean;
   created_at: string;
 };
@@ -64,6 +67,9 @@ export default function MenuItemsClient() {
   const [formTaxCategory, setFormTaxCategory] = useState("10");
   const [formEstimatedMinutes, setFormEstimatedMinutes] = useState("");
   const [formLaborHours, setFormLaborHours] = useState("");
+  const [formCategoryLarge, setFormCategoryLarge] = useState("");
+  const [formCategoryMedium, setFormCategoryMedium] = useState("");
+  const [formCategorySmall, setFormCategorySmall] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
@@ -77,10 +83,29 @@ export default function MenuItemsClient() {
   const [editTaxCategory, setEditTaxCategory] = useState("10");
   const [editEstimatedMinutes, setEditEstimatedMinutes] = useState("");
   const [editLaborHours, setEditLaborHours] = useState("");
+  const [editCategoryLarge, setEditCategoryLarge] = useState("");
+  const [editCategoryMedium, setEditCategoryMedium] = useState("");
+  const [editCategorySmall, setEditCategorySmall] = useState("");
   const [editSaving, setEditSaving] = useState(false);
+
+  // カテゴリ絞り込み（大→中→小）
+  const [filterLarge, setFilterLarge] = useState("");
+  const [filterMedium, setFilterMedium] = useState("");
+  const [filterSmall, setFilterSmall] = useState("");
 
   // Delete
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // 一括無効化: チェックで複数選択
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDisabling, setBulkDisabling] = useState(false);
+  const toggleSelected = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   // 「このメニューを使うパッケージ」逆引きの展開状態
   const [packagesOpen, setPackagesOpen] = useState<Set<string>>(new Set());
@@ -118,6 +143,9 @@ export default function MenuItemsClient() {
           tax_category: parseInt(formTaxCategory, 10),
           estimated_minutes: formEstimatedMinutes === "" ? null : parseInt(formEstimatedMinutes, 10),
           labor_hours: formLaborHours === "" ? null : parseFloat(formLaborHours),
+          category_large: formCategoryLarge.trim() || null,
+          category_medium: formCategoryMedium.trim() || null,
+          category_small: formCategorySmall.trim() || null,
         }),
       });
       const j = await parseJsonSafe(res);
@@ -131,6 +159,9 @@ export default function MenuItemsClient() {
       setFormTaxCategory("10");
       setFormEstimatedMinutes("");
       setFormLaborHours("");
+      setFormCategoryLarge("");
+      setFormCategoryMedium("");
+      setFormCategorySmall("");
       setSaveMsg({ text: `品目「${j.item?.name ?? formName}」を登録しました`, ok: true });
       mutate();
     } catch (e: any) {
@@ -201,6 +232,9 @@ export default function MenuItemsClient() {
     setEditTaxCategory(item.tax_category != null ? String(item.tax_category) : "10");
     setEditEstimatedMinutes(item.estimated_minutes != null ? String(item.estimated_minutes) : "");
     setEditLaborHours(item.labor_hours != null ? String(item.labor_hours) : "");
+    setEditCategoryLarge(item.category_large ?? "");
+    setEditCategoryMedium(item.category_medium ?? "");
+    setEditCategorySmall(item.category_small ?? "");
   };
 
   const cancelEdit = () => {
@@ -224,6 +258,9 @@ export default function MenuItemsClient() {
           tax_category: parseInt(editTaxCategory, 10),
           estimated_minutes: editEstimatedMinutes === "" ? null : parseInt(editEstimatedMinutes, 10),
           labor_hours: editLaborHours === "" ? null : parseFloat(editLaborHours),
+          category_large: editCategoryLarge.trim() || null,
+          category_medium: editCategoryMedium.trim() || null,
+          category_small: editCategorySmall.trim() || null,
         },
         label: `品目編集: ${editName.trim()}`,
         kind: "other",
@@ -268,6 +305,31 @@ export default function MenuItemsClient() {
     }
   };
 
+  /* ---------- Bulk Disable (logical) ---------- */
+
+  const handleBulkDisable = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (!confirm(`選択した ${ids.length} 件の品目を無効化しますか？`)) return;
+    setBulkDisabling(true);
+    try {
+      const res = await fetch("/api/admin/menu-items", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      setSaveMsg({ text: `${j.disabled ?? ids.length} 件の品目を無効化しました`, ok: true });
+      setSelectedIds(new Set());
+      mutate();
+    } catch (e: any) {
+      alert("一括無効化に失敗しました: " + (e?.message ?? String(e)));
+    } finally {
+      setBulkDisabling(false);
+    }
+  };
+
   /* ---------- CSV Import ---------- */
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -303,6 +365,35 @@ export default function MenuItemsClient() {
       setCsvImporting(false);
     }
   };
+
+  /* ---------- Derived: カテゴリ絞り込み & サジェスト候補 ---------- */
+
+  const allItems = data?.items ?? [];
+
+  // 一覧に表示する品目（大→中→小の絞り込みを順に適用）
+  const visibleItems = allItems.filter(
+    (i) =>
+      (!filterLarge || i.category_large === filterLarge) &&
+      (!filterMedium || i.category_medium === filterMedium) &&
+      (!filterSmall || i.category_small === filterSmall),
+  );
+
+  // datalist / 絞り込みプルダウン用の重複なし候補（上位の絞り込みに連動して段階的に絞る）
+  const uniqSorted = (values: (string | null)[]) =>
+    Array.from(new Set(values.filter((v): v is string => Boolean(v)))).sort((a, b) => a.localeCompare(b, "ja"));
+  const largeOptions = uniqSorted(allItems.map((i) => i.category_large));
+  const mediumOptions = uniqSorted(
+    allItems.filter((i) => !filterLarge || i.category_large === filterLarge).map((i) => i.category_medium),
+  );
+  const smallOptions = uniqSorted(
+    allItems
+      .filter(
+        (i) =>
+          (!filterLarge || i.category_large === filterLarge) && (!filterMedium || i.category_medium === filterMedium),
+      )
+      .map((i) => i.category_small),
+  );
+  const hasAnyCategory = largeOptions.length > 0 || mediumOptions.length > 0 || smallOptions.length > 0;
 
   /* ---------- Render ---------- */
 
@@ -416,9 +507,12 @@ export default function MenuItemsClient() {
               </div>
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="text-xs text-muted">
-                  形式: <code className="text-secondary">品目名,説明,単価,税率区分(10/8),標準工数(h)</code>
+                  形式:{" "}
+                  <code className="text-secondary">
+                    品目名,説明,単価,税率区分(10/8),標準工数(h),大カテゴリ,中カテゴリ,小カテゴリ
+                  </code>
                   <span className="ml-1">
-                    ※工数は任意。単価が空欄/0 かつレバーレート設定済みなら 工数×レバーレートで単価を自動算出
+                    ※工数・カテゴリは任意。単価が空欄/0 かつレバーレート設定済みなら 工数×レバーレートで単価を自動算出
                   </span>
                 </div>
                 <button
@@ -426,7 +520,7 @@ export default function MenuItemsClient() {
                   className="btn-ghost text-xs px-3 py-1"
                   onClick={() => {
                     const sample =
-                      "品目名,説明,単価,税率区分,標準工数\nガラスコーティング,ボディ全面ガラスコーティング施工,55000,10,\nPPFフィルム施工,フロントバンパーPPF貼付,88000,10,\nヘッドライトコーティング,ヘッドライト黄ばみ除去+コーティング,15000,10,\nインテリアコーティング,本革シートコーティング,35000,10,\nホイールコーティング,4本セット,12000,10,\nウィンドウフィルム施工,フロント3面,25000,10,\n鈑金塗装,バンパー修理塗装,45000,10,\nエンジンオイル交換,工数×レバーレートで単価自動算出の例,0,10,0.3\nブレーキパッド交換(フロント),工数×レバーレートで単価自動算出の例,0,10,1.2\n証明書発行手数料,施工証明書の発行,3300,10,\nNFCタグ取付,NFCタグ1枚取付,1100,10,\n消耗品,コーティング剤等消耗品,2200,10,";
+                      "品目名,説明,単価,税率区分,標準工数,大カテゴリ,中カテゴリ,小カテゴリ\nガラスコーティング,ボディ全面ガラスコーティング施工,55000,10,,コーティング,ボディ,ガラス系\nPPFフィルム施工,フロントバンパーPPF貼付,88000,10,,コーティング,ボディ,PPF\nヘッドライトコーティング,ヘッドライト黄ばみ除去+コーティング,15000,10,,コーティング,パーツ,ヘッドライト\nインテリアコーティング,本革シートコーティング,35000,10,,コーティング,内装,レザー\nホイールコーティング,4本セット,12000,10,,コーティング,パーツ,ホイール\nウィンドウフィルム施工,フロント3面,25000,10,,フィルム,ウィンドウ,\n鈑金塗装,バンパー修理塗装,45000,10,,整備,鈑金塗装,\nエンジンオイル交換,工数×レバーレートで単価自動算出の例,0,10,0.3,整備,一般整備,オイル\nブレーキパッド交換(フロント),工数×レバーレートで単価自動算出の例,0,10,1.2,整備,一般整備,ブレーキ\n証明書発行手数料,施工証明書の発行,3300,10,,その他,手数料,\nNFCタグ取付,NFCタグ1枚取付,1100,10,,その他,オプション,\n消耗品,コーティング剤等消耗品,2200,10,,その他,消耗品,";
                     const blob = new Blob(["\uFEFF" + sample], { type: "text/csv;charset=utf-8" });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement("a");
@@ -516,6 +610,36 @@ export default function MenuItemsClient() {
                     value={formDescription}
                     onChange={(e) => setFormDescription(e.target.value)}
                   />
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="text-xs text-muted">カテゴリ（大 / 中 / 小・任意）</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <input
+                      type="text"
+                      className="input-field"
+                      list="menu-cat-large"
+                      placeholder="大カテゴリ 例: コーティング"
+                      value={formCategoryLarge}
+                      onChange={(e) => setFormCategoryLarge(e.target.value)}
+                    />
+                    <input
+                      type="text"
+                      className="input-field"
+                      list="menu-cat-medium"
+                      placeholder="中カテゴリ 例: ボディ"
+                      value={formCategoryMedium}
+                      onChange={(e) => setFormCategoryMedium(e.target.value)}
+                    />
+                    <input
+                      type="text"
+                      className="input-field"
+                      list="menu-cat-small"
+                      placeholder="小カテゴリ 例: ガラス系"
+                      value={formCategorySmall}
+                      onChange={(e) => setFormCategorySmall(e.target.value)}
+                    />
+                  </div>
+                  <p className="text-[10px] text-muted">既存のカテゴリから選択、または新しく入力して作成できます</p>
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs text-muted">原価</label>
@@ -626,15 +750,123 @@ export default function MenuItemsClient() {
 
           {/* Items List */}
           <section className="glass-card overflow-hidden">
-            <div className="border-b border-border-subtle p-5">
-              <div className="text-xs font-semibold tracking-[0.18em] text-muted">品目一覧</div>
-              <div className="mt-1 text-base font-semibold text-primary">品目一覧</div>
+            <div className="border-b border-border-subtle p-5 flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <div className="text-xs font-semibold tracking-[0.18em] text-muted">品目一覧</div>
+                <div className="mt-1 text-base font-semibold text-primary">品目一覧</div>
+              </div>
+              {selectedIds.size > 0 && (
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-secondary">{selectedIds.size} 件選択中</span>
+                  <button
+                    type="button"
+                    className="btn-ghost px-3 py-1 text-xs"
+                    onClick={() => setSelectedIds(new Set())}
+                  >
+                    選択解除
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-danger px-3 py-1 text-xs"
+                    disabled={bulkDisabling}
+                    onClick={handleBulkDisable}
+                  >
+                    {bulkDisabling ? "無効化中…" : "選択した品目を無効化"}
+                  </button>
+                </div>
+              )}
             </div>
+            {hasAnyCategory && (
+              <div className="border-b border-border-subtle px-5 py-3 flex flex-wrap items-center gap-2">
+                <span className="text-xs text-muted">カテゴリで絞り込み:</span>
+                <select
+                  className="select-field py-1 text-sm"
+                  value={filterLarge}
+                  onChange={(e) => {
+                    setFilterLarge(e.target.value);
+                    setFilterMedium("");
+                    setFilterSmall("");
+                  }}
+                >
+                  <option value="">大カテゴリ（すべて）</option>
+                  {largeOptions.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="select-field py-1 text-sm"
+                  value={filterMedium}
+                  onChange={(e) => {
+                    setFilterMedium(e.target.value);
+                    setFilterSmall("");
+                  }}
+                >
+                  <option value="">中カテゴリ（すべて）</option>
+                  {mediumOptions.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="select-field py-1 text-sm"
+                  value={filterSmall}
+                  onChange={(e) => setFilterSmall(e.target.value)}
+                >
+                  <option value="">小カテゴリ（すべて）</option>
+                  {smallOptions.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+                {(filterLarge || filterMedium || filterSmall) && (
+                  <>
+                    <button
+                      type="button"
+                      className="btn-ghost px-3 py-1 text-xs"
+                      onClick={() => {
+                        setFilterLarge("");
+                        setFilterMedium("");
+                        setFilterSmall("");
+                      }}
+                    >
+                      絞り込み解除
+                    </button>
+                    <span className="text-xs text-muted">{visibleItems.length} 件表示中</span>
+                  </>
+                )}
+              </div>
+            )}
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="bg-surface-hover">
                   <tr>
+                    <th className="w-10 px-5 py-3">
+                      {(() => {
+                        // 絞り込み表示中の有効な品目のみを全選択対象にする
+                        const activeItems = visibleItems.filter((i) => i.is_active);
+                        const allSelected = activeItems.length > 0 && activeItems.every((i) => selectedIds.has(i.id));
+                        return (
+                          <input
+                            type="checkbox"
+                            aria-label="表示中の全ての有効な品目を選択"
+                            className="h-4 w-4 accent-[var(--accent-blue)] cursor-pointer"
+                            disabled={activeItems.length === 0}
+                            checked={allSelected}
+                            onChange={(e) =>
+                              setSelectedIds(e.target.checked ? new Set(activeItems.map((i) => i.id)) : new Set())
+                            }
+                          />
+                        );
+                      })()}
+                    </th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">品目名</th>
+                    <th className="hidden lg:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      カテゴリ
+                    </th>
                     <th className="hidden md:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
                       説明
                     </th>
@@ -658,9 +890,20 @@ export default function MenuItemsClient() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border-subtle">
-                  {(data.items ?? []).map((item) => (
+                  {visibleItems.map((item) => (
                     <Fragment key={item.id}>
                       <tr className="hover:bg-surface-hover/60">
+                        <td className="w-10 px-5 py-3 align-middle">
+                          {item.is_active && (
+                            <input
+                              type="checkbox"
+                              aria-label={`${item.name} を選択`}
+                              className="h-4 w-4 accent-[var(--accent-blue)] cursor-pointer"
+                              checked={selectedIds.has(item.id)}
+                              onChange={() => toggleSelected(item.id)}
+                            />
+                          )}
+                        </td>
                         {editingId === item.id ? (
                           /* Inline Edit Row */
                           <>
@@ -671,6 +914,34 @@ export default function MenuItemsClient() {
                                 value={editName}
                                 onChange={(e) => setEditName(e.target.value)}
                               />
+                            </td>
+                            <td className="hidden lg:table-cell px-5 py-3">
+                              <div className="flex flex-col gap-1">
+                                <input
+                                  type="text"
+                                  className="input-field py-1 text-sm"
+                                  list="menu-cat-large"
+                                  placeholder="大カテゴリ"
+                                  value={editCategoryLarge}
+                                  onChange={(e) => setEditCategoryLarge(e.target.value)}
+                                />
+                                <input
+                                  type="text"
+                                  className="input-field py-1 text-sm"
+                                  list="menu-cat-medium"
+                                  placeholder="中カテゴリ"
+                                  value={editCategoryMedium}
+                                  onChange={(e) => setEditCategoryMedium(e.target.value)}
+                                />
+                                <input
+                                  type="text"
+                                  className="input-field py-1 text-sm"
+                                  list="menu-cat-small"
+                                  placeholder="小カテゴリ"
+                                  value={editCategorySmall}
+                                  onChange={(e) => setEditCategorySmall(e.target.value)}
+                                />
+                              </div>
                             </td>
                             <td className="hidden md:table-cell px-5 py-3">
                               <input
@@ -771,6 +1042,17 @@ export default function MenuItemsClient() {
                           /* Display Row */
                           <>
                             <td className="px-5 py-3.5 font-medium text-primary">{item.name}</td>
+                            <td className="hidden lg:table-cell px-5 py-3.5 text-secondary">
+                              {[item.category_large, item.category_medium, item.category_small].some(Boolean) ? (
+                                <span className="whitespace-nowrap">
+                                  {[item.category_large, item.category_medium, item.category_small]
+                                    .filter(Boolean)
+                                    .join(" › ")}
+                                </span>
+                              ) : (
+                                "-"
+                              )}
+                            </td>
                             <td className="hidden md:table-cell px-5 py-3.5 text-secondary">
                               {item.description ?? "-"}
                             </td>
@@ -829,7 +1111,7 @@ export default function MenuItemsClient() {
                       </tr>
                       {packagesOpen.has(item.id) && (
                         <tr className="bg-inset">
-                          <td colSpan={9} className="px-5 py-3">
+                          <td colSpan={11} className="px-5 py-3">
                             <div className="text-[10px] font-semibold tracking-[0.18em] text-muted">
                               この品目を使うパッケージ
                             </div>
@@ -841,10 +1123,12 @@ export default function MenuItemsClient() {
                       )}
                     </Fragment>
                   ))}
-                  {(data.items ?? []).length === 0 && (
+                  {visibleItems.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="px-5 py-8 text-center text-muted">
-                        品目が登録されていません
+                      <td colSpan={11} className="px-5 py-8 text-center text-muted">
+                        {allItems.length === 0
+                          ? "品目が登録されていません"
+                          : "この絞り込み条件に一致する品目はありません"}
                       </td>
                     </tr>
                   )}
@@ -852,6 +1136,23 @@ export default function MenuItemsClient() {
               </table>
             </div>
           </section>
+
+          {/* カテゴリ入力のサジェスト候補（登録/編集フォーム共用）。既存値から選べつつ新規入力も可 */}
+          <datalist id="menu-cat-large">
+            {largeOptions.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+          <datalist id="menu-cat-medium">
+            {mediumOptions.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+          <datalist id="menu-cat-small">
+            {smallOptions.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
         </>
       )}
     </div>

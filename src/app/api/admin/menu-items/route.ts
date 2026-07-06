@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
     let query = supabase
       .from("menu_items")
       .select(
-        "id, name, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, estimated_minutes, labor_hours, created_at",
+        "id, name, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, estimated_minutes, labor_hours, category_large, category_medium, category_small, created_at",
       )
       .eq("tenant_id", caller.tenantId)
       .order("sort_order", { ascending: true })
@@ -99,6 +99,10 @@ export async function POST(req: NextRequest) {
             unit_price: laborPrice ?? unitPrice,
             tax_category: parseInt(parts[3] || "10", 10) === 8 ? 8 : 10,
             labor_hours: hasLaborHours ? laborHours : null,
+            // 大／中／小カテゴリは任意の末尾列（6〜8列目）。空欄は null
+            category_large: parts[5] || null,
+            category_medium: parts[6] || null,
+            category_small: parts[7] || null,
           };
         })
         .filter((r) => r.name);
@@ -134,7 +138,7 @@ export async function POST(req: NextRequest) {
       .from("menu_items")
       .insert(row)
       .select(
-        "id, name, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, estimated_minutes, labor_hours, created_at, updated_at",
+        "id, name, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, estimated_minutes, labor_hours, category_large, category_medium, category_small, created_at, updated_at",
       )
       .single();
     if (error) {
@@ -169,7 +173,7 @@ export async function PUT(req: NextRequest) {
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .select(
-        "id, name, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, estimated_minutes, labor_hours, created_at, updated_at",
+        "id, name, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, estimated_minutes, labor_hours, category_large, category_medium, category_small, created_at, updated_at",
       )
       .single();
 
@@ -194,21 +198,23 @@ export async function DELETE(req: NextRequest) {
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-    const { id } = parsed.data;
+    // 単一(id)・複数(ids)どちらも id 配列に正規化して一括論理削除
+    const ids = parsed.data.ids ?? [parsed.data.id!];
 
     // RLS をバイパスしてサービスロールで論理削除（tenant_id で必ずスコープ限定）
     const { admin } = createTenantScopedAdmin(caller.tenantId);
-    const { error } = await admin
+    const { data, error } = await admin
       .from("menu_items")
       .update({ is_active: false })
-      .eq("id", id)
-      .eq("tenant_id", caller.tenantId);
+      .in("id", ids)
+      .eq("tenant_id", caller.tenantId)
+      .select("id");
 
     if (error) {
       return apiInternalError(error, "menu-items delete");
     }
 
-    return apiJson({ ok: true });
+    return apiJson({ ok: true, disabled: data?.length ?? 0 });
   } catch (e: unknown) {
     return apiInternalError(e, "menu-items DELETE");
   }
