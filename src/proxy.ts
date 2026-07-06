@@ -29,6 +29,9 @@ const PUBLIC_PREFIXES = [
   "/api/",
   "/probe",
   "/agent/apply",
+  // Admin design-system prototype (fictional data, noindex). Public so it can
+  // be reviewed on preview/production without an admin login.
+  "/admin-prototype",
 ];
 
 const MARKETING_PATHS = [
