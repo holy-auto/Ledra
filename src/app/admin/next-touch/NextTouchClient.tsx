@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import PageHeader from "@/components/ui/PageHeader";
 
 /* ─── 型 (API レスポンス) ─── */
 type TouchReason = "service" | "inspection" | "warranty" | "birthday";
@@ -98,10 +99,18 @@ export default function NextTouchClient() {
   return (
     <div className="mx-auto max-w-4xl pb-20">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-primary">次の接触</h1>
-        <p className="mt-1 text-sm text-secondary">
-          点検・交換 / 車検満了 / 保証満了 / 誕生日 を横断し、近々連絡すべきお客様をまとめます。
-        </p>
+        <PageHeader
+          tag="フォロー"
+          title="次の接触"
+          description="点検・交換 / 車検満了 / 保証満了 / 誕生日 を横断し、近々連絡すべきお客様をまとめます。"
+          tabs={(["all", "overdue", "today", "soon"] as TabKey[]).map((t) => ({
+            key: t,
+            label: TAB_META[t].label,
+            badge: TAB_META[t].count,
+          }))}
+          activeTab={tab}
+          onTabSelect={(k) => setTab(k as TabKey)}
+        />
       </div>
 
       {summary && (
@@ -112,21 +121,6 @@ export default function NextTouchClient() {
           <StatCard label="連絡可能" value={`${summary.reachable}/${summary.total}`} tone="muted" />
         </div>
       )}
-
-      <div className="mb-6 flex border-b border-border-default">
-        {(["all", "overdue", "today", "soon"] as TabKey[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`border-b-2 px-5 py-2.5 text-sm font-medium transition-colors ${
-              tab === t ? "border-accent text-accent" : "border-transparent text-secondary hover:text-primary"
-            }`}
-          >
-            {TAB_META[t].label}
-            <span className="ml-1.5 text-xs text-muted">({TAB_META[t].count})</span>
-          </button>
-        ))}
-      </div>
 
       {loading ? (
         <div className="flex min-h-[240px] items-center justify-center">

@@ -112,6 +112,12 @@ export default async function PartsIntegrityDashboard({
         tag="部品インテグリティ"
         title="装着監査ダッシュボード"
         description="AIとルールが自動検知した、部品交換の矛盾・改ざん疑いの一覧です。重大度の高い順に表示します。"
+        tabs={tabs.map((tab) => ({
+          key: tab.key,
+          label: tab.label,
+          href: `/admin/parts-integrity?status=${tab.key}`,
+        }))}
+        activeTab={status}
       />
 
       {status === "open" && (
@@ -124,22 +130,6 @@ export default async function PartsIntegrityDashboard({
           ))}
         </div>
       )}
-
-      <div className="flex gap-1 border-b border-border-default">
-        {tabs.map((tab) => (
-          <a
-            key={tab.key}
-            href={`/admin/parts-integrity?status=${tab.key}`}
-            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-              status === tab.key
-                ? "border-blue-600 text-blue-700"
-                : "border-transparent text-secondary hover:text-primary"
-            }`}
-          >
-            {tab.label}
-          </a>
-        ))}
-      </div>
 
       {findings.length === 0 ? (
         <p className="rounded-lg border border-border-default bg-surface-muted p-8 text-center text-secondary">

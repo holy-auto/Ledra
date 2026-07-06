@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import PageHeader from "@/components/ui/PageHeader";
 
 interface Lesson {
   id: string;
@@ -86,7 +87,9 @@ function RankingSection({ category }: { category: string }) {
         if (!canceled) setLoading(false);
       }
     })();
-    return () => { canceled = true; };
+    return () => {
+      canceled = true;
+    };
   }, [category]);
 
   if (loading) {
@@ -119,9 +122,7 @@ function RankingSection({ category }: { category: string }) {
           >
             <div className="flex items-start justify-between gap-1 mb-1.5">
               <span className="text-lg">{RANK_MEDAL[idx] ?? `#${idx + 1}`}</span>
-              <span
-                className={`text-xs px-1.5 py-0.5 border rounded-full ${LEVEL_BADGE[l.level] ?? ""}`}
-              >
+              <span className={`text-xs px-1.5 py-0.5 border rounded-full ${LEVEL_BADGE[l.level] ?? ""}`}>
                 {LEVEL_LABEL[l.level] ?? l.level}
               </span>
             </div>
@@ -129,9 +130,7 @@ function RankingSection({ category }: { category: string }) {
             <div className="flex items-center gap-2 text-xs text-muted">
               <StarRating value={l.rating_avg} />
               <span>({l.rating_count})</span>
-              <span className="ml-auto text-accent font-medium">
-                {l.score.toFixed(1)} pt
-              </span>
+              <span className="ml-auto text-accent font-medium">{l.score.toFixed(1)} pt</span>
             </div>
           </Link>
         ))}
@@ -186,23 +185,31 @@ export default function AcademyLearnPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
-      {/* ヘッダー */}
-      <div className="mb-6 flex items-start justify-between gap-3">
-        <div>
-          <Link href="/admin/academy" className="text-sm text-accent hover:underline">
-            ← Academy
-          </Link>
-          <h1 className="text-xl font-bold text-primary mt-2 flex items-center gap-2">
-            <span>📖</span> オンライン学習
-          </h1>
-          <p className="text-sm text-muted mt-1">運営・先輩加盟店のレッスンで知識を深めよう。良いレッスンへの評価は投稿者の報酬・割引につながります。</p>
-        </div>
-        <Link
-          href="/admin/academy/learn/new"
-          className="shrink-0 text-sm px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors"
-        >
-          + レッスン投稿
-        </Link>
+      {/* ヘッダー + タブ（L字シェルのページバー） */}
+      <Link href="/admin/academy" className="text-sm text-accent hover:underline">
+        ← Academy
+      </Link>
+      <div className="mt-2 mb-6">
+        <PageHeader
+          tag="アカデミー"
+          title="📖 オンライン学習"
+          description="運営・先輩加盟店のレッスンで知識を深めよう。良いレッスンへの評価は投稿者の報酬・割引につながります。"
+          actions={
+            <Link
+              href="/admin/academy/learn/new"
+              className="shrink-0 text-sm px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors"
+            >
+              + レッスン投稿
+            </Link>
+          }
+          tabs={[
+            { key: "published", label: "📚 公開レッスン" },
+            { key: "drafts", label: "✏️ 下書き" },
+            { key: "mine", label: "👤 自分の投稿" },
+          ]}
+          activeTab={tab}
+          onTabSelect={(k) => setTab(k as "published" | "drafts" | "mine")}
+        />
       </div>
 
       {/* ランキングセクション: published タブのみ */}
@@ -215,58 +222,38 @@ export default function AcademyLearnPage() {
           <div>
             <p className="font-medium">入門レッスンのみ表示中</p>
             <p className="text-warning/70 mt-0.5">
-              基礎以上のレッスンは Starter プラン以上で閲覧できます。先輩加盟店が積み上げた知見を尊重するための制限です。
+              基礎以上のレッスンは Starter
+              プラン以上で閲覧できます。先輩加盟店が積み上げた知見を尊重するための制限です。
             </p>
           </div>
         </div>
       )}
 
-      {/* タブ */}
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <div className="flex gap-1 bg-inset rounded-lg p-1">
-          {(
-            [
-              { v: "published", label: "📚 公開レッスン" },
-              { v: "drafts", label: "✏️ 下書き" },
-              { v: "mine", label: "👤 自分の投稿" },
-            ] as const
-          ).map((t) => (
-            <button
-              key={t.v}
-              onClick={() => setTab(t.v)}
-              className={`px-4 py-1.5 text-sm rounded-md transition-colors ${
-                tab === t.v ? "bg-surface text-primary font-medium shadow-sm" : "text-muted hover:text-secondary"
-              }`}
-            >
-              {t.label}
-            </button>
+      {/* フィルター */}
+      <div className="flex items-center justify-end mb-4 flex-wrap gap-2">
+        <select
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          className="text-sm bg-inset border border-border-subtle rounded-lg px-3 py-1.5 text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+        >
+          {CATEGORIES.map((c) => (
+            <option key={c.value} value={c.value}>
+              {c.label}
+            </option>
           ))}
-        </div>
-        <div className="flex items-center gap-2">
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="text-sm bg-inset border border-border-subtle rounded-lg px-3 py-1.5 text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
-          >
-            {CATEGORIES.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-          <select
-            value={level}
-            onChange={(e) => setLevel(e.target.value)}
-            disabled={tab === "published" && introOnly}
-            className="text-sm bg-inset border border-border-subtle rounded-lg px-3 py-1.5 text-primary focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:opacity-50"
-          >
-            {LEVELS.map((l) => (
-              <option key={l.value} value={l.value}>
-                {l.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        </select>
+        <select
+          value={level}
+          onChange={(e) => setLevel(e.target.value)}
+          disabled={tab === "published" && introOnly}
+          className="text-sm bg-inset border border-border-subtle rounded-lg px-3 py-1.5 text-primary focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:opacity-50"
+        >
+          {LEVELS.map((l) => (
+            <option key={l.value} value={l.value}>
+              {l.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* レッスン一覧 */}
@@ -295,9 +282,7 @@ export default function AcademyLearnPage() {
             >
               <div className="flex items-start justify-between gap-3 mb-2">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span
-                    className={`text-xs px-2 py-0.5 border rounded-full ${LEVEL_BADGE[l.level] ?? ""}`}
-                  >
+                  <span className={`text-xs px-2 py-0.5 border rounded-full ${LEVEL_BADGE[l.level] ?? ""}`}>
                     {LEVEL_LABEL[l.level] ?? l.level}
                   </span>
                   <span className="text-xs px-2 py-0.5 bg-inset border border-border-subtle rounded-full text-secondary">

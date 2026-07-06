@@ -115,25 +115,10 @@ export default function PartsOrdersClient() {
             + 部品を発注
           </button>
         }
+        tabs={FILTER_TABS}
+        activeTab={tab}
+        onTabSelect={(k) => setTab(k as FilterTab)}
       />
-
-      {/* フィルタタブ */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        {FILTER_TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-              tab === t.key
-                ? "border-accent bg-accent-dim text-accent-text"
-                : "border-border-default text-secondary hover:bg-surface-hover"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
 
       {errorMsg && <div className="glass-card border-l-4 border-danger p-3 text-xs text-danger-text">{errorMsg}</div>}
 
