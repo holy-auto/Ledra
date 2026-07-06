@@ -1,7 +1,19 @@
 import { z } from "zod";
 
+// 大／中／小カテゴリ（自由入力・任意）。空文字は null に正規化する。
+const categoryField = z
+  .string()
+  .trim()
+  .max(60)
+  .nullable()
+  .optional()
+  .transform((v) => v || null);
+
 export const menuItemCreateSchema = z.object({
   name: z.string().trim().min(1, "品目名は必須です。").max(100),
+  category_large: categoryField,
+  category_medium: categoryField,
+  category_small: categoryField,
   description: z
     .string()
     .trim()
@@ -25,6 +37,9 @@ export const menuItemCreateSchema = z.object({
 export const menuItemUpdateSchema = z.object({
   id: z.string().uuid("無効なIDです。"),
   name: z.string().trim().min(1).max(100).optional(),
+  category_large: categoryField,
+  category_medium: categoryField,
+  category_small: categoryField,
   description: z
     .string()
     .trim()
