@@ -24,6 +24,17 @@ type Customer = {
   postal_code: string | null;
   address: string | null;
   note: string | null;
+  customer_type: "individual" | "corporate" | null;
+  billing_cycle: "per_job" | "consolidated" | null;
+  billing_terms_note: string | null;
+  corporate_number: string | null;
+  invoice_registration_number: string | null;
+  short_name: string | null;
+  honorific: "御中" | "様" | "" | null;
+  transfer_fee_payer: "customer" | "company" | null;
+  document_delivery_method: "download" | "email" | null;
+  nda_status: "signed" | "unsigned" | null;
+  basic_contract_status: "signed" | "unsigned" | null;
   certificates_count: number;
   invoices_count: number;
   created_at: string;
@@ -56,6 +67,17 @@ const emptyForm = {
   postal_code: "",
   address: "",
   note: "",
+  customer_type: "individual" as "individual" | "corporate",
+  billing_cycle: "" as "" | "per_job" | "consolidated",
+  billing_terms_note: "",
+  corporate_number: "",
+  invoice_registration_number: "",
+  short_name: "",
+  honorific: "" as "" | "御中" | "様",
+  transfer_fee_payer: "" as "" | "customer" | "company",
+  document_delivery_method: "" as "" | "download" | "email",
+  nda_status: "unsigned" as "signed" | "unsigned",
+  basic_contract_status: "unsigned" as "signed" | "unsigned",
 };
 
 export default function CustomersClient() {
@@ -137,10 +159,21 @@ export default function CustomersClient() {
     setSaving(true);
     setSaveMsg(null);
     try {
+      // 個人ならサイクルは常に null、法人でも未選択は null に寄せる ("" は enum 不一致)。
+      const billing_cycle = form.customer_type === "corporate" && form.billing_cycle ? form.billing_cycle : null;
+      const honorific = form.honorific || null;
+      const transfer_fee_payer = form.transfer_fee_payer || null;
+      const document_delivery_method = form.document_delivery_method || null;
       const res = await fetch("/api/admin/customers", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          billing_cycle,
+          honorific,
+          transfer_fee_payer,
+          document_delivery_method,
+        }),
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
@@ -165,6 +198,17 @@ export default function CustomersClient() {
       postal_code: c.postal_code ?? "",
       address: c.address ?? "",
       note: c.note ?? "",
+      customer_type: c.customer_type ?? "individual",
+      billing_cycle: c.billing_cycle ?? "",
+      billing_terms_note: c.billing_terms_note ?? "",
+      corporate_number: c.corporate_number ?? "",
+      invoice_registration_number: c.invoice_registration_number ?? "",
+      short_name: c.short_name ?? "",
+      honorific: c.honorific ?? "",
+      transfer_fee_payer: c.transfer_fee_payer ?? "",
+      document_delivery_method: c.document_delivery_method ?? "",
+      nda_status: c.nda_status ?? "unsigned",
+      basic_contract_status: c.basic_contract_status ?? "unsigned",
     });
   };
 
@@ -172,10 +216,23 @@ export default function CustomersClient() {
     if (!editingId || !editForm.name.trim()) return;
     setEditSaving(true);
     try {
+      // 個人ならサイクルは常に null、法人でも未選択は null に寄せる ("" は enum 不一致)。
+      const billing_cycle =
+        editForm.customer_type === "corporate" && editForm.billing_cycle ? editForm.billing_cycle : null;
+      const honorific = editForm.honorific || null;
+      const transfer_fee_payer = editForm.transfer_fee_payer || null;
+      const document_delivery_method = editForm.document_delivery_method || null;
       const res = await fetch("/api/admin/customers", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: editingId, ...editForm }),
+        body: JSON.stringify({
+          id: editingId,
+          ...editForm,
+          billing_cycle,
+          honorific,
+          transfer_fee_payer,
+          document_delivery_method,
+        }),
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
@@ -426,7 +483,153 @@ export default function CustomersClient() {
                       />
                       {postalHint && <p className="text-xs text-muted">{postalHint}</p>}
                     </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted">顧客略称名</label>
+                      <input
+                        type="text"
+                        value={form.short_name}
+                        onChange={(e) => setForm({ ...form, short_name: e.target.value })}
+                        className="input-field"
+                        placeholder="画面表示用の略称 (書類は顧客名を使用)"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted">敬称</label>
+                      <select
+                        value={form.honorific}
+                        onChange={(e) => setForm({ ...form, honorific: e.target.value as "" | "御中" | "様" })}
+                        className="input-field"
+                      >
+                        <option value="">未設定</option>
+                        <option value="御中">御中</option>
+                        <option value="様">様</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted">振込手数料負担</label>
+                      <select
+                        value={form.transfer_fee_payer}
+                        onChange={(e) =>
+                          setForm({ ...form, transfer_fee_payer: e.target.value as "" | "customer" | "company" })
+                        }
+                        className="input-field"
+                      >
+                        <option value="">未設定</option>
+                        <option value="customer">先方負担</option>
+                        <option value="company">当方負担</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted">書類送付方法</label>
+                      <select
+                        value={form.document_delivery_method}
+                        onChange={(e) =>
+                          setForm({ ...form, document_delivery_method: e.target.value as "" | "download" | "email" })
+                        }
+                        className="input-field"
+                      >
+                        <option value="">未設定</option>
+                        <option value="download">DLページ方式</option>
+                        <option value="email">メール添付方式</option>
+                      </select>
+                    </div>
                   </div>
+                  {/* 顧客区分 + 法人の支払い条件 */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted">顧客区分</label>
+                      <select
+                        value={form.customer_type}
+                        onChange={(e) =>
+                          setForm({ ...form, customer_type: e.target.value as "individual" | "corporate" })
+                        }
+                        className="input-field"
+                      >
+                        <option value="individual">個人 (BtoC)</option>
+                        <option value="corporate">法人 (BtoB)</option>
+                      </select>
+                    </div>
+                    {form.customer_type === "corporate" && (
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted">
+                          支払いサイクル <span className="text-danger">*</span>
+                        </label>
+                        <select
+                          value={form.billing_cycle}
+                          onChange={(e) =>
+                            setForm({ ...form, billing_cycle: e.target.value as "" | "per_job" | "consolidated" })
+                          }
+                          className="input-field"
+                        >
+                          <option value="">— 選択してください —</option>
+                          <option value="per_job">都度払い (案件ごとに会計)</option>
+                          <option value="consolidated">合算・締め払い (後日まとめて請求)</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                  {form.customer_type === "corporate" && (
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted">支払い条件メモ (締め日・支払いサイト等)</label>
+                      <input
+                        type="text"
+                        value={form.billing_terms_note}
+                        onChange={(e) => setForm({ ...form, billing_terms_note: e.target.value })}
+                        className="input-field"
+                        placeholder="例: 月末締め翌月末払い"
+                      />
+                    </div>
+                  )}
+                  {form.customer_type === "corporate" && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted">法人番号</label>
+                        <input
+                          type="text"
+                          value={form.corporate_number}
+                          onChange={(e) => setForm({ ...form, corporate_number: e.target.value })}
+                          className="input-field"
+                          placeholder="13桁の数字"
+                          maxLength={13}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted">インボイス登録番号</label>
+                        <input
+                          type="text"
+                          value={form.invoice_registration_number}
+                          onChange={(e) => setForm({ ...form, invoice_registration_number: e.target.value })}
+                          className="input-field"
+                          placeholder="T + 13桁の数字"
+                          maxLength={14}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted">NDA締結</label>
+                        <select
+                          value={form.nda_status}
+                          onChange={(e) => setForm({ ...form, nda_status: e.target.value as "signed" | "unsigned" })}
+                          className="input-field"
+                        >
+                          <option value="unsigned">未</option>
+                          <option value="signed">済</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted">基本契約書締結</label>
+                        <select
+                          value={form.basic_contract_status}
+                          onChange={(e) =>
+                            setForm({ ...form, basic_contract_status: e.target.value as "signed" | "unsigned" })
+                          }
+                          className="input-field"
+                        >
+                          <option value="unsigned">未</option>
+                          <option value="signed">済</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
                   <div className="space-y-1">
                     <label className="text-xs text-muted">備考</label>
                     <textarea
@@ -440,7 +643,9 @@ export default function CustomersClient() {
                     <button
                       type="button"
                       className="btn-primary"
-                      disabled={saving || !form.name.trim()}
+                      disabled={
+                        saving || !form.name.trim() || (form.customer_type === "corporate" && !form.billing_cycle)
+                      }
                       onClick={handleAdd}
                     >
                       {saving ? "保存中…" : "登録"}
@@ -531,7 +736,167 @@ export default function CustomersClient() {
                       />
                       {editPostalHint && <p className="text-xs text-muted">{editPostalHint}</p>}
                     </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted">顧客略称名</label>
+                      <input
+                        type="text"
+                        value={editForm.short_name}
+                        onChange={(e) => setEditForm({ ...editForm, short_name: e.target.value })}
+                        className="input-field"
+                        placeholder="画面表示用の略称 (書類は顧客名を使用)"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted">敬称</label>
+                      <select
+                        value={editForm.honorific}
+                        onChange={(e) => setEditForm({ ...editForm, honorific: e.target.value as "" | "御中" | "様" })}
+                        className="input-field"
+                      >
+                        <option value="">未設定</option>
+                        <option value="御中">御中</option>
+                        <option value="様">様</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted">振込手数料負担</label>
+                      <select
+                        value={editForm.transfer_fee_payer}
+                        onChange={(e) =>
+                          setEditForm({
+                            ...editForm,
+                            transfer_fee_payer: e.target.value as "" | "customer" | "company",
+                          })
+                        }
+                        className="input-field"
+                      >
+                        <option value="">未設定</option>
+                        <option value="customer">先方負担</option>
+                        <option value="company">当方負担</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted">書類送付方法</label>
+                      <select
+                        value={editForm.document_delivery_method}
+                        onChange={(e) =>
+                          setEditForm({
+                            ...editForm,
+                            document_delivery_method: e.target.value as "" | "download" | "email",
+                          })
+                        }
+                        className="input-field"
+                      >
+                        <option value="">未設定</option>
+                        <option value="download">DLページ方式</option>
+                        <option value="email">メール添付方式</option>
+                      </select>
+                    </div>
                   </div>
+                  {/* 顧客区分 + 法人の支払い条件 */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted">顧客区分</label>
+                      <select
+                        value={editForm.customer_type}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, customer_type: e.target.value as "individual" | "corporate" })
+                        }
+                        className="input-field"
+                      >
+                        <option value="individual">個人 (BtoC)</option>
+                        <option value="corporate">法人 (BtoB)</option>
+                      </select>
+                    </div>
+                    {editForm.customer_type === "corporate" && (
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted">
+                          支払いサイクル <span className="text-danger">*</span>
+                        </label>
+                        <select
+                          value={editForm.billing_cycle}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              billing_cycle: e.target.value as "" | "per_job" | "consolidated",
+                            })
+                          }
+                          className="input-field"
+                        >
+                          <option value="">— 選択してください —</option>
+                          <option value="per_job">都度払い (案件ごとに会計)</option>
+                          <option value="consolidated">合算・締め払い (後日まとめて請求)</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                  {editForm.customer_type === "corporate" && (
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted">支払い条件メモ (締め日・支払いサイト等)</label>
+                      <input
+                        type="text"
+                        value={editForm.billing_terms_note}
+                        onChange={(e) => setEditForm({ ...editForm, billing_terms_note: e.target.value })}
+                        className="input-field"
+                        placeholder="例: 月末締め翌月末払い"
+                      />
+                    </div>
+                  )}
+                  {editForm.customer_type === "corporate" && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted">法人番号</label>
+                        <input
+                          type="text"
+                          value={editForm.corporate_number}
+                          onChange={(e) => setEditForm({ ...editForm, corporate_number: e.target.value })}
+                          className="input-field"
+                          placeholder="13桁の数字"
+                          maxLength={13}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted">インボイス登録番号</label>
+                        <input
+                          type="text"
+                          value={editForm.invoice_registration_number}
+                          onChange={(e) => setEditForm({ ...editForm, invoice_registration_number: e.target.value })}
+                          className="input-field"
+                          placeholder="T + 13桁の数字"
+                          maxLength={14}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted">NDA締結</label>
+                        <select
+                          value={editForm.nda_status}
+                          onChange={(e) =>
+                            setEditForm({ ...editForm, nda_status: e.target.value as "signed" | "unsigned" })
+                          }
+                          className="input-field"
+                        >
+                          <option value="unsigned">未</option>
+                          <option value="signed">済</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted">基本契約書締結</label>
+                        <select
+                          value={editForm.basic_contract_status}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              basic_contract_status: e.target.value as "signed" | "unsigned",
+                            })
+                          }
+                          className="input-field"
+                        >
+                          <option value="unsigned">未</option>
+                          <option value="signed">済</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
                   <div className="space-y-1">
                     <label className="text-xs text-muted">備考</label>
                     <textarea
@@ -545,7 +910,11 @@ export default function CustomersClient() {
                     <button
                       type="button"
                       className="btn-primary"
-                      disabled={editSaving || !editForm.name.trim()}
+                      disabled={
+                        editSaving ||
+                        !editForm.name.trim() ||
+                        (editForm.customer_type === "corporate" && !editForm.billing_cycle)
+                      }
                       onClick={handleUpdate}
                     >
                       {editSaving ? "更新中…" : "更新"}
