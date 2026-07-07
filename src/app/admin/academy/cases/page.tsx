@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import PageHeader from "@/components/ui/PageHeader";
 
 interface AcademyCase {
   id: string;
@@ -83,48 +84,35 @@ export default function AcademyCasesPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      {/* ヘッダー */}
-      <div className="mb-6">
-        <a href="/admin/academy" className="text-sm text-accent hover:underline">
-          ← Academy
-        </a>
-        <h1 className="text-xl font-bold text-primary mt-2 flex items-center gap-2">
-          <span>📚</span> 施工事例ライブラリ
-        </h1>
-        <p className="text-sm text-muted mt-1">優良施工事例から学習。自テナントの候補事例をAcademyに登録できます。</p>
-      </div>
-
-      {/* タブ + フィルター */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex gap-1 bg-inset rounded-lg p-1">
-          <button
-            onClick={() => setTab("published")}
-            className={`px-4 py-1.5 text-sm rounded-md transition-colors ${
-              tab === "published" ? "bg-surface text-primary font-medium shadow-sm" : "text-muted hover:text-secondary"
-            }`}
-          >
-            📖 公開事例
-          </button>
-          <button
-            onClick={() => setTab("candidates")}
-            className={`px-4 py-1.5 text-sm rounded-md transition-colors ${
-              tab === "candidates" ? "bg-surface text-primary font-medium shadow-sm" : "text-muted hover:text-secondary"
-            }`}
-          >
-            🌟 候補事例
-          </button>
-        </div>
-        <select
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          className="text-sm bg-inset border border-border-subtle rounded-lg px-3 py-1.5 text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
-        >
-          {CATEGORIES.map((c) => (
-            <option key={c.value} value={c.value}>
-              {c.label}
-            </option>
-          ))}
-        </select>
+      {/* ヘッダー + タブ（L字シェルのページバー） */}
+      <a href="/admin/academy" className="text-sm text-accent hover:underline">
+        ← Academy
+      </a>
+      <div className="mt-2 mb-4">
+        <PageHeader
+          tag="アカデミー"
+          title="📚 施工事例ライブラリ"
+          description="優良施工事例から学習。自テナントの候補事例をAcademyに登録できます。"
+          actions={
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="text-sm bg-inset border border-border-subtle rounded-lg px-3 py-1.5 text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+            >
+              {CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          }
+          tabs={[
+            { key: "published", label: "📖 公開事例" },
+            { key: "candidates", label: "🌟 候補事例" },
+          ]}
+          activeTab={tab}
+          onTabSelect={(k) => setTab(k as "published" | "candidates")}
+        />
       </div>
 
       {/* 候補バナー */}

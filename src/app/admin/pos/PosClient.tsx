@@ -570,7 +570,18 @@ export default function PosClient() {
   // ── Render ──
   return (
     <div className="space-y-6">
-      <PageHeader title="POS 会計" tag="POS" description="予約の会計処理・ウォークイン会計を行います" />
+      <PageHeader
+        title="POS 会計"
+        tag="POS"
+        description="予約の会計処理・ウォークイン会計を行います"
+        tabs={[
+          { key: "reservation", label: "予約から会計" },
+          { key: "walkin", label: "予約なし会計" },
+          { key: "invoice", label: "請求書から会計" },
+        ]}
+        activeTab={mode}
+        onTabSelect={(k) => handleModeSwitch(k as PosMode)}
+      />
 
       <FirstUseInlineGuide
         storageKey="pos"
@@ -600,37 +611,6 @@ export default function PosClient() {
           label="本日売上"
           value={formatJpy(paidReservations.reduce((s, r) => s + (r.estimated_amount ?? 0), 0))}
         />
-      </div>
-
-      {/* Mode tabs */}
-      <div className="flex gap-1 rounded-xl bg-surface-hover p-1">
-        <button
-          type="button"
-          onClick={() => handleModeSwitch("reservation")}
-          className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
-            mode === "reservation" ? "bg-surface text-primary shadow-sm" : "text-secondary hover:text-primary"
-          }`}
-        >
-          {"予約から会計"}
-        </button>
-        <button
-          type="button"
-          onClick={() => handleModeSwitch("walkin")}
-          className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
-            mode === "walkin" ? "bg-surface text-primary shadow-sm" : "text-secondary hover:text-primary"
-          }`}
-        >
-          {"予約なし会計"}
-        </button>
-        <button
-          type="button"
-          onClick={() => handleModeSwitch("invoice")}
-          className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
-            mode === "invoice" ? "bg-surface text-primary shadow-sm" : "text-secondary hover:text-primary"
-          }`}
-        >
-          {"請求書から会計"}
-        </button>
       </div>
 
       <div className="flex flex-col gap-6 lg:flex-row">

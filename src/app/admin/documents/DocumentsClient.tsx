@@ -2,7 +2,7 @@
 import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import useSWR from "swr";
 import PageHeader from "@/components/ui/PageHeader";
@@ -24,6 +24,7 @@ type Stats = { total: number; unpaid_amount: number };
 type DocumentsData = { documents: DocumentRow[]; stats: Stats };
 
 export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilter?: string } = {}) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const prefillCustomerId = searchParams.get("customer_id") ?? "";
   const autoOpenForm = searchParams.get("create") === "1";
@@ -176,10 +177,11 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
               defaultDocType={defaultDocType}
               prefillCustomerId={prefillCustomerId}
               onSaved={(created) => {
+                // 作成後はそのまま書類詳細へ遷移し、確認・編集・PDF出力へ繋げる。
+                // （どの書類作成画面から来ても、作成→詳細の導線を揃える）
                 setShowForm(false);
-                const docLabel = DOC_TYPES[created.doc_type as DocType]?.label ?? created.doc_type;
-                setSaveMsg({ text: `${docLabel} ${created.doc_number} を作成しました`, ok: true });
                 mutate();
+                router.push(`/admin/documents/${created.id}`);
               }}
               onCancel={() => setShowForm(false)}
             />

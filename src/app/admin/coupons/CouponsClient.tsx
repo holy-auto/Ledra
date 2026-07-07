@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import PageHeader from "@/components/ui/PageHeader";
 import { couponDiscountTypes, couponIssueChannels, type CouponDiscountType } from "@/lib/validations/coupon";
 
 // ─── 型定義 ──────────────────────────────────────────────────────
@@ -59,7 +60,8 @@ function formatDateRange(from: string | null, until: string | null): string {
 export default function CouponsClient() {
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeOnly, setActiveOnly] = useState(true);
+  // ステータスタブ: 有効 / 停止中 / すべて。全件取得しクライアント側で振り分ける。
+  const [couponTab, setCouponTab] = useState<"active" | "inactive" | "all">("active");
   const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [issueTarget, setIssueTarget] = useState<Coupon | null>(null);
@@ -74,7 +76,7 @@ export default function CouponsClient() {
   const fetchCoupons = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/coupons?active_only=${activeOnly ? "true" : "false"}`);
+      const res = await fetch(`/api/admin/coupons?active_only=false`);
       if (!res.ok) throw new Error("fetch failed");
       const data = await res.json();
       setCoupons(Array.isArray(data.coupons) ? data.coupons : []);
@@ -84,7 +86,7 @@ export default function CouponsClient() {
     } finally {
       setLoading(false);
     }
-  }, [activeOnly, showToast]);
+  }, [showToast]);
 
   useEffect(() => {
     fetchCoupons();
@@ -131,64 +133,63 @@ export default function CouponsClient() {
     const active = coupons.filter((c) => c.is_active).length;
     const totalIssued = coupons.reduce((sum, c) => sum + c.issued_count, 0);
     const totalUsed = coupons.reduce((sum, c) => sum + c.used_count, 0);
-    return { active, totalIssued, totalUsed };
+    return { active, totalIssued, totalUsed, inactive: coupons.length - active };
   }, [coupons]);
+
+  const visibleCoupons = useMemo(() => {
+    if (couponTab === "active") return coupons.filter((c) => c.is_active);
+    if (couponTab === "inactive") return coupons.filter((c) => !c.is_active);
+    return coupons;
+  }, [coupons, couponTab]);
 
   return (
     <div className="mx-auto max-w-5xl pb-20">
-      {/* ヘッダー */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-primary">クーポン管理</h1>
-          <p className="mt-1 text-sm text-secondary">割引クーポンの発行・配信・利用状況を管理します</p>
-        </div>
-        <button
-          onClick={() => setCreateOpen(true)}
-          className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2 font-medium text-white transition-colors hover:bg-accent/90"
-        >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-          新規クーポン
-        </button>
-      </div>
-
-      {/* 統計 + フィルタ */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-4 text-xs text-muted">
-          <span>
-            有効 <span className="font-semibold text-primary">{stats.active}</span> 件
+      {/* ヘッダー + ステータスタブ（L3 ページバー） */}
+      <PageHeader
+        tag="販促"
+        title="クーポン管理"
+        meta={
+          <span className="text-xs text-muted">
+            発行 <span className="font-semibold text-primary">{stats.totalIssued}</span> ・ 利用{" "}
+            <span className="font-semibold text-primary">{stats.totalUsed}</span>
           </span>
-          <span>
-            発行 <span className="font-semibold text-primary">{stats.totalIssued}</span> 件
-          </span>
-          <span>
-            利用 <span className="font-semibold text-primary">{stats.totalUsed}</span> 回
-          </span>
-        </div>
-        <label className="flex items-center gap-2 text-xs text-secondary">
-          <input
-            type="checkbox"
-            className="h-4 w-4"
-            checked={!activeOnly}
-            onChange={(e) => setActiveOnly(!e.target.checked)}
-          />
-          停止中も表示
-        </label>
-      </div>
+        }
+        actions={
+          <button
+            onClick={() => setCreateOpen(true)}
+            className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2 font-medium text-white transition-colors hover:bg-accent/90"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+            新規クーポン
+          </button>
+        }
+        tabs={[
+          { key: "active", label: "有効", badge: stats.active },
+          { key: "inactive", label: "停止中", badge: stats.inactive },
+          { key: "all", label: "すべて", badge: coupons.length },
+        ]}
+        activeTab={couponTab}
+        onTabSelect={(k) => setCouponTab(k as "active" | "inactive" | "all")}
+      />
 
       {/* 一覧 */}
       {loading ? (
         <div className="flex min-h-[240px] items-center justify-center">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-accent border-t-transparent" />
         </div>
-      ) : coupons.length === 0 ? (
+      ) : visibleCoupons.length === 0 ? (
         <div className="glass-card rounded-xl p-10 text-center text-muted">
-          <p className="text-sm">クーポンがまだありません。「新規クーポン」から作成してください。</p>
+          <p className="text-sm">
+            {coupons.length === 0
+              ? "クーポンがまだありません。「新規クーポン」から作成してください。"
+              : "この条件のクーポンはありません。"}
+          </p>
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
-          {coupons.map((c) => {
+          {visibleCoupons.map((c) => {
             const isBusy = busyId === c.id;
             const usageLabel =
               c.max_uses != null ? `${c.used_count}回使用 / 上限${c.max_uses}回` : `${c.used_count}回使用`;

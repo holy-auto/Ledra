@@ -173,31 +173,19 @@ export default function PaymentLedgerClient() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <PageHeader tag="経理" title="売掛元帳" description="帳票ごとの売掛残高の確認と入金登録を行います。" />
+      <PageHeader
+        tag="経理"
+        title="売掛元帳"
+        description="帳票ごとの売掛残高の確認と入金登録を行います。"
+        tabs={[
+          { key: "ledger", label: "売掛元帳" },
+          { key: "history", label: "入金履歴" },
+        ]}
+        activeTab={tab}
+        onTabSelect={(key) => setTab(key as "ledger" | "history")}
+      />
 
       {msg && <div className={`text-sm ${msg.ok ? "text-success" : "text-danger"}`}>{msg.text}</div>}
-
-      {/* Tabs */}
-      <div className="flex gap-2 border-b border-border-default">
-        <button
-          type="button"
-          onClick={() => setTab("ledger")}
-          className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-            tab === "ledger" ? "border-accent text-accent" : "border-transparent text-muted hover:text-secondary"
-          }`}
-        >
-          売掛元帳
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("history")}
-          className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-            tab === "history" ? "border-accent text-accent" : "border-transparent text-muted hover:text-secondary"
-          }`}
-        >
-          入金履歴
-        </button>
-      </div>
 
       {/* ─── 売掛元帳タブ ─── */}
       {tab === "ledger" && (

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import PageHeader from "@/components/ui/PageHeader";
 
 interface Badge {
   id: string;
@@ -130,7 +131,9 @@ export default function AcademyProgressPage() {
         // noop
       }
     })();
-    return () => { canceled = true; };
+    return () => {
+      canceled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -149,7 +152,9 @@ export default function AcademyProgressPage() {
         if (!canceled) setLoadingProgress(false);
       }
     })();
-    return () => { canceled = true; };
+    return () => {
+      canceled = true;
+    };
   }, []);
 
   async function fetchRewards() {
@@ -257,9 +262,7 @@ export default function AcademyProgressPage() {
 
   if (!progress) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-12 text-center text-sm text-muted">
-        進捗データの取得に失敗しました
-      </div>
+      <div className="max-w-4xl mx-auto px-4 py-12 text-center text-sm text-muted">進捗データの取得に失敗しました</div>
     );
   }
 
@@ -270,34 +273,25 @@ export default function AcademyProgressPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <div className="mb-6">
-        <Link href="/admin/academy" className="text-sm text-accent hover:underline">
-          ← Academy
-        </Link>
-        <h1 className="text-xl font-bold text-primary mt-2 flex items-center gap-2">
-          <span>📈</span> 学習進捗
-        </h1>
-        <p className="text-sm text-muted mt-1">
-          完了したレッスン・施工事例提供で獲得したスコアと、バッジ・報酬を確認できます。
-        </p>
-      </div>
+      <PageHeader
+        tag="アカデミー"
+        title="学習進捗"
+        description="完了したレッスン・施工事例提供で獲得したスコアと、バッジ・報酬を確認できます。"
+        actions={
+          <Link href="/admin/academy" className="text-sm text-accent hover:underline">
+            ← Academy
+          </Link>
+        }
+        tabs={[
+          { key: "progress", label: "📊 進捗・バッジ" },
+          { key: "certificates", label: "📜 修了証" },
+          { key: "rewards", label: "💰 報酬履歴" },
+        ]}
+        activeTab={activeTab}
+        onTabSelect={(key) => handleTabChange(key as Tab)}
+      />
 
-      {/* タブ */}
-      <div className="flex gap-1 mb-6 border-b border-border-subtle">
-        {(["progress", "certificates", "rewards"] as Tab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => handleTabChange(t)}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
-              activeTab === t
-                ? "border-accent text-accent"
-                : "border-transparent text-muted hover:text-secondary"
-            }`}
-          >
-            {t === "progress" ? "📊 進捗・バッジ" : t === "certificates" ? "📜 修了証" : "💰 報酬履歴"}
-          </button>
-        ))}
-      </div>
+      <div className="mt-6" />
 
       {activeTab === "progress" && (
         <>
@@ -314,10 +308,7 @@ export default function AcademyProgressPage() {
               </div>
             </div>
             <div className="bg-inset rounded-full h-3 overflow-hidden">
-              <div
-                className="bg-accent h-3 rounded-full transition-all"
-                style={{ width: `${pct}%` }}
-              />
+              <div className="bg-accent h-3 rounded-full transition-all" style={{ width: `${pct}%` }} />
             </div>
             <div className="text-xs text-muted mt-2">
               次のレベルまで あと {Math.max(0, nextLevelAt - progress.total_score)} pt
@@ -348,16 +339,12 @@ export default function AcademyProgressPage() {
               <h2 className="font-semibold text-primary mb-3 flex items-center gap-2">
                 <span>👑</span> 月間 MVP 投稿者
                 {mvpPeriod && (
-                  <span className="text-xs text-muted font-normal">
-                    {mvpPeriod.slice(0, 7).replace("-", "年")}月
-                  </span>
+                  <span className="text-xs text-muted font-normal">{mvpPeriod.slice(0, 7).replace("-", "年")}月</span>
                 )}
               </h2>
               <div className="flex items-start gap-4 flex-wrap">
                 <div className="flex-1 min-w-0">
-                  <div className="text-lg font-bold text-yellow-400 flex items-center gap-2">
-                    🥇 {mvp.tenant_name}
-                  </div>
+                  <div className="text-lg font-bold text-yellow-400 flex items-center gap-2">🥇 {mvp.tenant_name}</div>
                   <div className="text-sm text-secondary mt-1">
                     高評価レッスン {mvp.lesson_count} 件・報酬 ¥{mvp.total_amount_jpy.toLocaleString()}
                   </div>
@@ -394,9 +381,7 @@ export default function AcademyProgressPage() {
               <span>🎖</span> 獲得バッジ
             </h2>
             {badges.length === 0 ? (
-              <p className="text-sm text-muted">
-                まだバッジがありません。レッスン完了や事例公開で獲得できます。
-              </p>
+              <p className="text-sm text-muted">まだバッジがありません。レッスン完了や事例公開で獲得できます。</p>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {badges.map((b) => (
@@ -522,8 +507,8 @@ export default function AcademyProgressPage() {
             <div>
               <p className="text-sm text-primary font-medium">高評価レッスンへの報酬制度</p>
               <p className="text-sm text-muted mt-1">
-                公開レッスンの平均評価 ★4.0 以上 かつ 評価件数 5件以上 を満たすと、
-                翌月の請求から <strong>¥500 / レッスン</strong> が減額されます。
+                公開レッスンの平均評価 ★4.0 以上 かつ 評価件数 5件以上 を満たすと、 翌月の請求から{" "}
+                <strong>¥500 / レッスン</strong> が減額されます。
               </p>
             </div>
           </div>
@@ -552,9 +537,7 @@ export default function AcademyProgressPage() {
                   {calculating ? "集計中…" : "集計実行"}
                 </button>
               </div>
-              <p className="text-xs text-muted mt-2">
-                同じ月を再実行しても既存レコードはスキップされます（冪等）。
-              </p>
+              <p className="text-xs text-muted mt-2">同じ月を再実行しても既存レコードはスキップされます（冪等）。</p>
             </div>
           )}
 
@@ -581,18 +564,14 @@ export default function AcademyProgressPage() {
                           <span className="text-sm font-semibold text-primary">
                             {year}年{month}月
                           </span>
-                          <span
-                            className={`text-xs px-2 py-0.5 rounded border font-medium ${badge.cls}`}
-                          >
+                          <span className={`text-xs px-2 py-0.5 rounded border font-medium ${badge.cls}`}>
                             {badge.label}
                           </span>
                         </div>
                         <div className="text-xs text-muted">
                           対象 {r.lesson_count} レッスン × ¥{r.reward_per_lesson.toLocaleString()}
                         </div>
-                        {r.notes && (
-                          <div className="text-xs text-muted mt-1">{r.notes}</div>
-                        )}
+                        {r.notes && <div className="text-xs text-muted mt-1">{r.notes}</div>}
                         {r.applied_at && (
                           <div className="text-xs text-muted mt-1">
                             適用日: {new Date(r.applied_at).toLocaleDateString()}
@@ -600,9 +579,7 @@ export default function AcademyProgressPage() {
                         )}
                       </div>
                       <div className="text-right">
-                        <div className="text-xl font-bold text-accent">
-                          ¥{r.total_amount_jpy.toLocaleString()}
-                        </div>
+                        <div className="text-xl font-bold text-accent">¥{r.total_amount_jpy.toLocaleString()}</div>
                         {isAdmin && r.status === "pending" && (
                           <button
                             onClick={() => handleApply(r.id)}
