@@ -12,17 +12,16 @@ export interface PageHeaderTab {
 }
 
 interface PageHeaderProps {
-  tag: string;
+  /** アイブロウ相当。現在はグローバルバーのパンくずと重複するため非表示（互換のため受け取る）。 */
+  tag?: string;
   title: string;
-  /**
-   * タイトル右に密着させる補助情報（StatusBadge・件数・所属・納期など）。任意。
-   */
+  /** タイトル右に密着させる補助情報（StatusBadge・件数・所属・納期など）。任意。 */
   meta?: ReactNode;
   description?: string;
   actions?: ReactNode;
   /**
-   * L字シェルのページバー相当。見出しと同じバー上に、プロト風の下線タブを
-   * 横並びで出す。省略時はタブ無し（従来どおり）。
+   * L字シェルのページバー。見出しと同じ罫線バー上に、プロト風の下線タブを
+   * 横並びで出す。省略時はタブ無し。
    */
   tabs?: PageHeaderTab[];
   /** 現在アクティブなタブの key。 */
@@ -32,8 +31,7 @@ interface PageHeaderProps {
 }
 
 /**
- * 下線タブ 1 個分の見た目。バー高さいっぱいに伸ばし、下線をバー下端の罫線に
- * 揃える（L3 ページバー）。
+ * 下線タブ 1 個分。バー高さいっぱいに伸ばし、下線をバー下端の罫線に揃える。
  */
 function tabClassName(isActive: boolean): string {
   return [
@@ -57,7 +55,6 @@ function TabBadge({ count, active }: { count: number; active: boolean }) {
 }
 
 export default function PageHeader({
-  tag,
   title,
   meta,
   description,
@@ -69,15 +66,17 @@ export default function PageHeader({
   const hasTabs = !!(tabs && tabs.length > 0);
 
   return (
-    <div className="mb-5">
-      {/* L3 ページバー: 見出し + タブ + アクションを 1 本の罫線バーに横並び */}
-      <div className="flex min-h-[3.25rem] flex-wrap items-center gap-x-5 gap-y-1 border-b border-border-default">
-        <div className="flex shrink-0 flex-col justify-center py-1.5">
-          <span className="text-[10px] leading-none font-medium tracking-[0.14em] text-muted uppercase">{tag}</span>
-          <div className="mt-1 flex flex-wrap items-center gap-2.5">
+    // L3 ページバー: 見出し + タブ + アクションを 1 本の罫線バーに横並び。
+    // 全幅ブレイクアウトは各ページの max-w ラッパと相性が悪いため使わず、
+    // コンテンツ幅に沿う罫線バーとして一貫させる。
+    <div className="mb-6 border-b border-border-default">
+      <div className="flex min-h-[3.5rem] flex-wrap items-center gap-x-5 gap-y-1">
+        <div className="flex shrink-0 flex-col justify-center gap-0.5 py-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="text-[19px] leading-tight font-semibold tracking-tight text-primary">{title}</h1>
             {meta != null && <div className="flex items-center gap-2">{meta}</div>}
           </div>
+          {description && <p className="text-[12px] leading-tight text-muted">{description}</p>}
         </div>
 
         {hasTabs && (
@@ -116,10 +115,8 @@ export default function PageHeader({
           </nav>
         )}
 
-        {actions && <div className="ml-auto flex shrink-0 items-center gap-2 py-1.5">{actions}</div>}
+        {actions && <div className="ml-auto flex shrink-0 items-center gap-2 py-2">{actions}</div>}
       </div>
-
-      {description && <p className="mt-2 text-[13px] leading-relaxed text-secondary">{description}</p>}
     </div>
   );
 }

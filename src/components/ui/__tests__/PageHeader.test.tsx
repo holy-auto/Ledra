@@ -4,9 +4,9 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import PageHeader from "../PageHeader";
 
 describe("PageHeader", () => {
-  it("renders the tag text", () => {
+  it("does not render the eyebrow tag (redundant with the global breadcrumb)", () => {
     render(<PageHeader tag="DASHBOARD" title="Overview" />);
-    expect(screen.getByText("DASHBOARD")).toBeDefined();
+    expect(screen.queryByText("DASHBOARD")).toBeNull();
   });
 
   it("renders the title as an h1", () => {
