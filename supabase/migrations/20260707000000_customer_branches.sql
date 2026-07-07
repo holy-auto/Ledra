@@ -44,16 +44,33 @@ CREATE POLICY customer_branches_tenant_select ON customer_branches
     tenant_id IN (SELECT tenant_id FROM tenant_memberships WHERE user_id = auth.uid())
   );
 
+-- INSERT/UPDATE では tenant メンバーであることに加え、親顧客 (customer_id) が
+-- 同じ tenant に属することも要求する。customer_id は customers(id) のみを参照する
+-- ため、これがないと他テナントの顧客UUIDを知るメンバーが自テナント配下に
+-- 越境した支店行を差し込めてしまう (Supabase クライアント直叩き経路)。
 DROP POLICY IF EXISTS customer_branches_tenant_insert ON customer_branches;
 CREATE POLICY customer_branches_tenant_insert ON customer_branches
   FOR INSERT WITH CHECK (
     tenant_id IN (SELECT tenant_id FROM tenant_memberships WHERE user_id = auth.uid())
+    AND EXISTS (
+      SELECT 1 FROM customers c
+      WHERE c.id = customer_branches.customer_id
+        AND c.tenant_id = customer_branches.tenant_id
+    )
   );
 
 DROP POLICY IF EXISTS customer_branches_tenant_update ON customer_branches;
 CREATE POLICY customer_branches_tenant_update ON customer_branches
   FOR UPDATE USING (
     tenant_id IN (SELECT tenant_id FROM tenant_memberships WHERE user_id = auth.uid())
+  )
+  WITH CHECK (
+    tenant_id IN (SELECT tenant_id FROM tenant_memberships WHERE user_id = auth.uid())
+    AND EXISTS (
+      SELECT 1 FROM customers c
+      WHERE c.id = customer_branches.customer_id
+        AND c.tenant_id = customer_branches.tenant_id
+    )
   );
 
 DROP POLICY IF EXISTS customer_branches_tenant_delete ON customer_branches;

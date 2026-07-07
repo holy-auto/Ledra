@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { enforceBilling } from "@/lib/billing/guard";
-import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { branchCreateSchema, branchUpdateSchema, branchDeleteSchema } from "@/lib/validations/customerBranch";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "customers:view")) return apiForbidden();
 
     const customerId = (new URL(req.url).searchParams.get("customer_id") ?? "").trim();
     if (!customerId) return apiValidationError("customer_id は必須です。");
@@ -41,6 +42,7 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "customers:edit")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "free",
@@ -57,14 +59,19 @@ export async function POST(req: NextRequest) {
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     // 支店は親顧客に紐付く。渡された customer_id が自テナントの顧客か検証する
-    // (他テナントの顧客IDにぶら下げられるのを防ぐ)。
+    // (他テナントの顧客IDにぶら下げられるのを防ぐ)。支店は法人 (corporate) 専用
+    // 機能なので、個人 (individual) 顧客への紐付けは弾く (UI で描画されない
+    // 孤立レコードの発生を防ぐ)。
     const { data: parent } = await admin
       .from("customers")
-      .select("id")
+      .select("id, customer_type")
       .eq("id", parsed.data.customer_id)
       .eq("tenant_id", caller.tenantId)
       .maybeSingle();
     if (!parent) return apiValidationError("対象の顧客が見つかりません。");
+    if (parent.customer_type !== "corporate") {
+      return apiValidationError("支店は法人 (BtoB) 顧客にのみ登録できます。");
+    }
 
     const { data, error } = await admin
       .from("customer_branches")
@@ -85,6 +92,7 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "customers:edit")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "free",
@@ -121,6 +129,7 @@ export async function DELETE(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "customers:edit")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "free",

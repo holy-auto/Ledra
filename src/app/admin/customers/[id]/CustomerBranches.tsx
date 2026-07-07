@@ -106,6 +106,8 @@ export default function CustomerBranches({ customerId }: { customerId: string })
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      // 編集中の支店を削除したら、開いたままのフォームは存在しない行を指すので閉じる。
+      if (editingId === id) resetForm();
       mutate();
     } catch (e: any) {
       alert("削除に失敗しました: " + (e?.message ?? String(e)));
@@ -247,7 +249,7 @@ export default function CustomerBranches({ customerId }: { customerId: string })
               <div className="min-w-0">
                 <div className="font-medium text-primary">{b.name}</div>
                 <div className="mt-1 space-y-0.5 text-xs text-secondary">
-                  {b.address && (
+                  {(b.postal_code || b.address) && (
                     <div>{[b.postal_code && `〒${b.postal_code}`, b.address].filter(Boolean).join(" ")}</div>
                   )}
                   {(b.phone || b.contact_person) && (
