@@ -545,6 +545,9 @@ export default function InvoicesClient() {
             {showForm ? "閉じる" : "新規作成"}
           </button>
         }
+        tabs={STATUS_OPTIONS.map((o) => ({ key: o.value, label: o.label }))}
+        activeTab={statusFilter}
+        onTabSelect={handleFilterChange}
       />
 
       {loading && <div className="text-sm text-muted">読み込み中…</div>}
@@ -651,26 +654,6 @@ export default function InvoicesClient() {
               </section>
             );
           })()}
-
-          {/* Filter */}
-          <section className="glass-card p-5">
-            <div className="flex gap-3 items-end flex-wrap">
-              <div className="space-y-1">
-                <label className="text-xs text-muted">ステータスで絞り込み</label>
-                <select
-                  className="select-field"
-                  value={statusFilter}
-                  onChange={(e) => handleFilterChange(e.target.value)}
-                >
-                  {STATUS_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </section>
 
           {saveMsg && <div className={`text-sm ${saveMsg.ok ? "text-success" : "text-red-500"}`}>{saveMsg.text}</div>}
 
