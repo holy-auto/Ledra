@@ -91,13 +91,6 @@
   .beat p{color:var(--muted); font-size:clamp(13px,1.2vw,16px); line-height:1.55}
   .beat.g{border-color:rgba(245,158,11,.4)}
   .beat.g .step{color:var(--gold)}
-  /* stakeholder table */
-  .who{width:100%; border-collapse:collapse; margin-top:22px; font-size:clamp(13px,1.25vw,18px)}
-  .who th,.who td{text-align:left; padding:12px 14px; border-bottom:1px solid var(--line); vertical-align:top}
-  .who th{color:var(--accent2); font:800 clamp(12px,1.1vw,15px) "Inter"; letter-spacing:.06em}
-  .who td:first-child{font-weight:800; color:var(--ink); white-space:nowrap}
-  .who .m{color:#bfe9d6}
-  .who .d{color:#e9c7bf}
   .logo{display:flex; align-items:center; gap:14px}
   .logo .mark{width:46px; height:46px; border-radius:12px; background:linear-gradient(135deg,var(--accent),#00d2ff); display:grid; place-items:center; font:900 24px "Inter"; color:#fff}
   .logo .name{font:900 30px "Inter"; letter-spacing:.02em}
@@ -223,21 +216,28 @@
     <div class="footer"><span>End-to-end SaaS — cost ↓ / resource ↑ / asset ↑</span><span class="time">2:55</span></div>
   </section>
 
-  <!-- 7 誰がどう得するか＋実ハードル（利用者別・率直） -->
-  <section class="slide" data-time="3:25–4:00" data-note="正直に、利用者ごとの損得を言います。施工店は事務が消え証明が武器になる──ただ最初の設定と、現場の入力習慣づけは要ります。お客様は無くさない保証と売却時の価値──デジタルに不慣れな方には説明が要る。保険会社は不正検知とコスト減──既存フローとの接続がハードル。中古車・OEMは履歴の裏付けで値付け精度が上がる──ただ普及して母数が増えるまで網羅性は育っていく。誰にとっても、早く入るほど得をする設計です。">
+  <!-- 7 誰がどう得するか＋実ハードル（施工店・お客様を主役に、上流は脇役） -->
+  <section class="slide" data-time="3:25–4:00" data-note="損得を正直に言います。まず主役は施工店とお客様。施工店は事務が消え、証明が“営業の武器”になる──ただ初期設定と、現場の入力習慣づけは要ります。お客様は無くさない保証と売却時の価値──デジタルに不慣れな方には最初の説明が要る。そして上流の保険会社と中古車・OEMも、不正検知や値付け精度で得をする──母数が育つほど効いてきます。誰にとっても、早く入るほど得をする設計です。">
     <div class="eyebrow">誰がどう得するか（正直な損得）</div>
-    <h2>全員にメリット。<span class="hl">ハードルも隠さない。</span></h2>
-    <table class="who">
-      <thead><tr><th>利用者</th><th>メリット</th><th>正直なハードル</th></tr></thead>
-      <tbody>
-        <tr><td>施工店<br>（店・職人）</td><td class="m">事務が消え、証明が"営業の武器"に。時間が戻る。</td><td class="d">初期設定と、現場の入力習慣づけは必要。</td></tr>
-        <tr><td>お客様</td><td class="m">無くさない・改ざんされない保証。売却時に価値。</td><td class="d">デジタルに不慣れな層には最初の説明が要る。</td></tr>
-        <tr><td>保険会社</td><td class="m">不正検知・査定コスト減。検証可能な証拠が届く。</td><td class="d">既存の請求フローとの接続がハードル。</td></tr>
-        <tr><td>中古車 / OEM</td><td class="m">履歴の裏付けで値付け精度・透明性が上がる。</td><td class="d">普及して母数が増えるまで網羅性は育つ段階。</td></tr>
-      </tbody>
-    </table>
-    <div class="row" style="margin-top:18px"><span class="pill gold">共通 ＝ 早く入るほど得をする設計</span></div>
-    <div class="footer"><span>Who wins — merits & honest hurdles</span><span class="time">3:25</span></div>
+    <h2>まず得するのは <span class="hl">施工店とお客様。</span><br>全員にメリット、<span class="gold">ハードルも隠さない。</span></h2>
+    <div class="grid g2" style="margin-top:22px">
+      <div class="card" style="border-color:rgba(59,155,255,.45)">
+        <div class="tag" style="color:var(--accent2)">主役 ① 施工店（店・職人）</div>
+        <p style="margin-top:12px; font-size:clamp(15px,1.55vw,21px); color:#bfe9d6"><b style="color:var(--good)">◎ メリット</b>　事務が消え、証明が "営業の武器" に。時間が戻る。</p>
+        <p style="margin-top:10px; font-size:clamp(13px,1.3vw,18px); color:#e9c7bf"><b style="color:var(--gold)">△ 正直なハードル</b>　初期設定と、現場の入力習慣づけは必要。</p>
+      </div>
+      <div class="card after">
+        <div class="tag" style="color:var(--good)">主役 ② お客様</div>
+        <p style="margin-top:12px; font-size:clamp(15px,1.55vw,21px); color:#bfe9d6"><b style="color:var(--good)">◎ メリット</b>　無くさない・改ざんされない保証。売却時に価値。</p>
+        <p style="margin-top:10px; font-size:clamp(13px,1.3vw,18px); color:#e9c7bf"><b style="color:var(--gold)">△ 正直なハードル</b>　デジタルに不慣れな層には最初の説明が要る。</p>
+      </div>
+    </div>
+    <div class="grid g2" style="margin-top:14px; gap:14px">
+      <div class="card" style="opacity:.72; padding:13px 18px"><span class="tag">上流も得する ／ 保険会社</span><br><span style="color:var(--muted); font-size:clamp(12px,1.15vw,15px)">不正検知・査定コスト減（ハードル：既存フロー接続）</span></div>
+      <div class="card" style="opacity:.72; padding:13px 18px"><span class="tag">上流も得する ／ 中古車・OEM</span><br><span style="color:var(--muted); font-size:clamp(12px,1.15vw,15px)">履歴で値付け精度↑（ハードル：母数が育つまで）</span></div>
+    </div>
+    <div class="row" style="margin-top:16px"><span class="pill gold">共通 ＝ 早く入るほど得をする設計</span></div>
+    <div class="footer"><span>Who wins — 施工店・顧客が主役 / 上流も得する</span><span class="time">3:25</span></div>
   </section>
 
   <!-- 8 なぜ今・なぜ広がる（Why Now＋軽ネットワーク） -->
