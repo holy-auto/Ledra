@@ -165,6 +165,7 @@ export default function MarketVehiclesClient() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
+      {/* ステータスタブ（L3 ページバー）。件数は絞り込みで変動するためバッジ無し。 */}
       <PageHeader
         tag="マーケット"
         title="BtoB在庫管理"
@@ -174,6 +175,9 @@ export default function MarketVehiclesClient() {
             新規登録
           </Link>
         }
+        tabs={STATUS_OPTIONS.map((o) => ({ key: o.value, label: o.label }))}
+        activeTab={statusFilter}
+        onTabSelect={(k) => applyFilters(k, makerFilter, bodyTypeFilter)}
       />
 
       {loading && <div className="text-sm text-muted">読み込み中...</div>}
@@ -271,20 +275,6 @@ export default function MarketVehiclesClient() {
           {/* Filters */}
           <section className="glass-card p-5">
             <div className="flex gap-4 items-end flex-wrap">
-              <div className="space-y-1">
-                <label className="text-xs text-muted">ステータス</label>
-                <select
-                  className="select-field"
-                  value={statusFilter}
-                  onChange={(e) => applyFilters(e.target.value, makerFilter, bodyTypeFilter)}
-                >
-                  {STATUS_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
               <div className="space-y-1">
                 <label className="text-xs text-muted">メーカー</label>
                 <input
