@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
+import PageHeader from "@/components/ui/PageHeader";
 import { fetcher } from "@/lib/swr";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import MessageBubbleBody from "@/app/admin/messages/MessageBubbleBody";
@@ -220,28 +221,17 @@ export default function MessagesInboxClient() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-primary">メッセージ受信箱</h1>
-          <p className="mt-1 text-xs text-muted">
-            LINE で届いた全顧客のメッセージを一覧し、その場で返信できます。
-            {typeof listData?.total_unread === "number" && listData.total_unread > 0 && (
-              <span className="ml-2 rounded-full bg-danger px-2 py-0.5 text-[10px] font-semibold text-white">
-                未読 {listData.total_unread}
-              </span>
-            )}
-          </p>
-        </div>
-        <label className="flex items-center gap-2 text-xs text-secondary">
-          <input
-            type="checkbox"
-            checked={unreadOnly}
-            onChange={(e) => setUnreadOnly(e.target.checked)}
-            className="h-4 w-4 accent-[var(--accent)]"
-          />
-          未読のみ表示
-        </label>
-      </div>
+      <PageHeader
+        tag="メッセージ"
+        title="メッセージ受信箱"
+        description="LINE で届いた全顧客のメッセージを一覧し、その場で返信できます。"
+        tabs={[
+          { key: "all", label: "すべて" },
+          { key: "unread", label: "未読", badge: listData?.total_unread ?? 0 },
+        ]}
+        activeTab={unreadOnly ? "unread" : "all"}
+        onTabSelect={(k) => setUnreadOnly(k === "unread")}
+      />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-[320px_1fr]">
         {/* ── 左: スレッド一覧 ── */}
