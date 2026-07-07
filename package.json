@@ -50,7 +50,6 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.2",
-    "@contentauth/c2pa-node": "^0.5.5",
     "@googleapis/calendar": "^14.2.0",
     "@openzeppelin/merkle-tree": "^1.0.8",
     "@peculiar/webcrypto": "^1.7.1",
@@ -93,6 +92,9 @@
     "swr": "^2.4.1",
     "viem": "^2.52.2",
     "zod": "^4.4.3"
+  },
+  "optionalDependencies": {
+    "@contentauth/c2pa-node": "^0.5.5"
   },
   "devDependencies": {
     "@next/bundle-analyzer": "^16.2.9",
