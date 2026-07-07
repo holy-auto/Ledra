@@ -3,6 +3,7 @@ import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useEffect, useState, useCallback } from "react";
 import Badge from "@/components/ui/Badge";
+import PageHeader from "@/components/ui/PageHeader";
 import type { BadgeVariant } from "@/lib/statusMaps";
 import { formatDateTime } from "@/lib/format";
 
@@ -182,6 +183,8 @@ export default function AdminSupportClient() {
 
     return (
       <div className="space-y-4">
+        <PageHeader tag="SUPPORT" title="サポートチケット" description="代理店からの問い合わせ対応" />
+
         {/* Back button */}
         <button
           onClick={() => {
@@ -290,24 +293,15 @@ export default function AdminSupportClient() {
   /* ── List View ── */
   return (
     <div className="space-y-4">
-      {/* Status filter tabs */}
-      <div className="flex flex-wrap gap-2">
-        {STATUS_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            onClick={() => setFilter(tab.value)}
-            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
-              filter === tab.value
-                ? "bg-accent text-white shadow-sm"
-                : "bg-surface-solid text-secondary border border-default hover:bg-surface-hover"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      <span className="text-sm text-muted">{tickets.length} 件</span>
+      <PageHeader
+        tag="SUPPORT"
+        title="サポートチケット"
+        description="代理店からの問い合わせ対応"
+        meta={<span className="text-sm text-muted">{tickets.length} 件</span>}
+        tabs={STATUS_TABS.map((tab) => ({ key: tab.value || "all", label: tab.label }))}
+        activeTab={filter || "all"}
+        onTabSelect={(k) => setFilter(k === "all" ? "" : k)}
+      />
 
       {/* Ticket list */}
       {loading ? (
