@@ -86,22 +86,22 @@ function tabClassName(isActive: boolean): string {
 export default function AdminPageBar() {
   const bar = useContext(ValueContext);
   if (!bar) return null;
-  const { title, meta, description, actions, tabs, activeTab, onTabSelect } = bar;
+  const { title, meta, actions, tabs, activeTab, onTabSelect } = bar;
   const hasTabs = !!(tabs && tabs.length > 0);
 
   return (
     <div className="sticky top-11 z-10 border-b border-border-default bg-surface px-4 sm:px-6">
       <div className="flex min-h-[3.25rem] flex-wrap items-center gap-x-5 gap-y-1">
-        <div className="flex shrink-0 flex-col justify-center gap-0.5 py-2">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-[19px] leading-tight font-semibold tracking-tight text-primary">{title}</h1>
-            {meta != null && <div className="flex items-center gap-2">{meta}</div>}
-          </div>
-          {description && <p className="text-[12px] leading-tight text-muted">{description}</p>}
+        <div className="flex shrink-0 items-center gap-2.5 py-2">
+          <h1 className="text-[19px] leading-tight font-semibold tracking-tight text-primary">{title}</h1>
+          {meta != null && <div className="flex items-center gap-2">{meta}</div>}
         </div>
 
         {hasTabs && (
-          <nav role="tablist" className="flex items-stretch gap-1 self-stretch overflow-x-auto">
+          <nav
+            role="tablist"
+            className="flex items-stretch gap-1 self-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
             {tabs!.map((tab) => {
               const isActive = tab.key === activeTab;
               const inner = (

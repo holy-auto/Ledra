@@ -34,9 +34,9 @@ describe("PageHeader → AdminPageBar", () => {
     expect(screen.queryByText("DASHBOARD")).toBeNull();
   });
 
-  it("renders description when provided", () => {
+  it("does not render description in the bar (kept minimal like the L3 prototype)", () => {
     renderBar({ tag: "Settings", title: "Preferences", description: "Manage your account settings" });
-    expect(screen.getByText("Manage your account settings")).toBeDefined();
+    expect(screen.queryByText("Manage your account settings")).toBeNull();
   });
 
   it("renders actions when provided", () => {
