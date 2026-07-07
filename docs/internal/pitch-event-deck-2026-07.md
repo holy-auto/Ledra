@@ -38,7 +38,9 @@
 | 11 | （予備）ライブデモ | 質疑 | `/c/[public_id]` 実物 + AI 自動化設定画面 |
 
 > ブランド: 背景 `#060a12` / アクセント `#0071e3` / セカンダリ `#f59e0b` / フォント Noto Sans JP。
-> `docs/internal/jafco-pitch-deck.html` の CSS をそのまま流用すれば HTML デック化できる。
+> **HTML デック（本番投影用・11 枚）: `docs/internal/pitch-event-deck-2026-07.html`**
+> （→/← ページ送り・`N` 台本ノート・`T` 5:00 カウントダウン・`F` 全画面・印刷で 1 枚 = 1 ページ PDF 化）。
+> CSS は `docs/internal/jafco-pitch-deck.html` から流用。
 
 ---
 
