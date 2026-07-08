@@ -226,6 +226,24 @@ describe("proposeCandidates", () => {
     expect(r[0].staff_free).toBe(1);
   });
 
+  it("counts staff conflicts only within the proposed work window", () => {
+    // 09:00-12:00 枠(定員2)。既存予約 10:00-12:00。60分作業を 09:00 に。スタッフ 09:00-10:00。
+    const slots = [{ day_of_week: 1, start_time: "09:00:00", end_time: "12:00:00", max_bookings: 2 }];
+    const r = proposeCandidates({
+      dates: ["2026-07-13"],
+      slots,
+      closedDays: [],
+      reservations: [{ scheduled_date: "2026-07-13", start_time: "10:00:00", end_time: "12:00:00" }],
+      estimatedMinutes: 60,
+      considerStaff: true,
+      staffShiftsByDate: { "2026-07-13": [{ staffId: "a", start: 540, end: 600 }] },
+    });
+    // 実作業 09:00-10:00 は既存予約(10-12)と重ならない → 人手が付き提案される
+    expect(r).toHaveLength(1);
+    expect(r[0].end_time).toBe("10:00");
+    expect(r[0].staff_free).toBe(1);
+  });
+
   it("excludes restricted slots when category is unknown and excludeRestricted is set", () => {
     const slots = [
       { day_of_week: 1, start_time: "09:00:00", end_time: "10:00:00", max_bookings: 1, accepted_categories: ["洗車"] },

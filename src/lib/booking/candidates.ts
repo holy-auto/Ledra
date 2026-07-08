@@ -173,12 +173,16 @@ export function proposeCandidates(opts: ProposeCandidatesOptions): Candidate[] {
       // 候補の実際の終了時刻（所要時間ぶん）。人手判定もこの実作業時間帯で見る。
       const endMin = estimatedMinutes == null ? slotEnd : Math.min(slotStart + estimatedMinutes, slotEnd);
 
-      // 人手の余り: 実作業時間帯 [slotStart, endMin) をカバーする在籍スタッフ数 − 同時間帯の予約数。
-      // 0以下なら受入不可。シフト未登録の日（エントリ無し）は人手フィルタをかけない。
-      // スロット全体でなく実作業時間で見るため、短時間作業が長い枠でも人手が付けば提案できる。
+      // 人手の余り: 実作業時間帯 [slotStart, endMin) をカバーする在籍スタッフ数 −
+      // その時間帯に重なる予約数。0以下なら受入不可。シフト未登録の日は人手フィルタをかけない。
+      // 予約数もスロット全体でなく実作業時間で数える（例: 短時間作業が長い枠でも、実作業時間に
+      // 重ならない既存予約は人手を消費しない）。
       let staffFree: number | null = null;
       if (considerStaff && date in staffShiftsByDate) {
-        staffFree = staffCoveringSlot(date, slotStart, endMin) - booked;
+        const bookedInWindow = dayResv.filter(
+          (r) => timeToMinutes(r.start_time) < endMin && timeToMinutes(r.end_time) > slotStart,
+        ).length;
+        staffFree = staffCoveringSlot(date, slotStart, endMin) - bookedInWindow;
         if (staffFree <= 0) continue;
         remaining = Math.min(remaining, staffFree);
       }

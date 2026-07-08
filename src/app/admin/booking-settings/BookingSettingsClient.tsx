@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import PageHeader from "@/components/ui/PageHeader";
 import SlotCalendarGrid, { type GridSlot } from "./SlotCalendarGrid";
 import { generateIntervalSlots } from "@/lib/booking/slots";
@@ -82,7 +82,7 @@ export default function BookingSettingsClient() {
   // 受付時間スロットの編集方法: カレンダー(grid) / 一覧(list)
   const [slotView, setSlotView] = useState<"grid" | "list">("grid");
   // 受入可否で使う作業の大カテゴリ候補（品目マスタから収集）
-  const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
+  const [menuCategories, setMenuCategories] = useState<string[]>([]);
 
   // 追加フォーム用 state
   const [newSlot, setNewSlot] = useState<Partial<BookingSlot>>({
@@ -150,7 +150,7 @@ export default function BookingSettingsClient() {
               .filter((c: string) => c.length > 0),
           ),
         ).sort() as string[];
-        if (!cancelled) setCategoryOptions(cats);
+        if (!cancelled) setMenuCategories(cats);
       } catch {
         /* 候補取得失敗は致命的でない（受入可否UIを出さないだけ） */
       }
@@ -164,6 +164,16 @@ export default function BookingSettingsClient() {
     setToast({ type, msg });
     setTimeout(() => setToast(null), 3500);
   }
+
+  // 受入カテゴリの選択肢: 品目マスタの大カテゴリ ＋ 既存スロットに既に付いているカテゴリ。
+  // 無効化/削除済み品目由来のカテゴリでも、保存済みスロットに残っていれば表示・解除できるようにする。
+  const categoryOptions = useMemo(() => {
+    const set = new Set(menuCategories);
+    slots.forEach((s) => {
+      if (!s._deleted) (s.accepted_categories ?? []).forEach((c) => c && set.add(c));
+    });
+    return [...set].sort();
+  }, [menuCategories, slots]);
 
   // ─── スロット操作 ───
   function handleSlotChange(tempId: string, key: keyof BookingSlot, value: unknown) {

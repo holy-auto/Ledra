@@ -102,7 +102,7 @@ export async function GET(req: NextRequest) {
     const to = dates[dates.length - 1];
 
     // ── 並列取得: 品目 / スロット / 定休日 / 予約 / 代車 / 貸出 ──
-    const [menuRes, slotsRes, closedRes, resvRes, loanersRes, loansRes, shiftsRes] = await Promise.all([
+    const [menuRes, slotsRes, closedRes, resvRes, loanersRes, loansRes, shiftsRes, activeStaffRes] = await Promise.all([
       menuItemIds.length > 0
         ? supabase
             .from("menu_items")
@@ -137,9 +137,17 @@ export async function GET(req: NextRequest) {
             .gte("work_date", from)
             .lte("work_date", to)
         : Promise.resolve({ data: [], error: null }),
+      // 在籍中(is_active)スタッフのみを人手にカウントする（停止中スタッフのシフトを除外）。
+      considerStaff
+        ? createTenantScopedAdmin(tenantId)
+            .admin.from("staff_members")
+            .select("id")
+            .eq("tenant_id", tenantId)
+            .eq("is_active", true)
+        : Promise.resolve({ data: [], error: null }),
     ]);
 
-    for (const r of [menuRes, slotsRes, closedRes, resvRes, loanersRes, loansRes, shiftsRes]) {
+    for (const r of [menuRes, slotsRes, closedRes, resvRes, loanersRes, loansRes, shiftsRes, activeStaffRes]) {
       if (r.error) {
         console.error("[booking-candidates] query error:", r.error.message);
         return apiInternalError(r.error, "booking-candidates");
@@ -180,6 +188,7 @@ export async function GET(req: NextRequest) {
         const [h, m] = t.slice(0, 5).split(":").map(Number);
         return (h || 0) * 60 + (m || 0);
       };
+      const activeStaffIds = new Set(((activeStaffRes.data ?? []) as { id: string }[]).map((r) => r.id));
       staffShiftsByDate = {};
       for (const s of (shiftsRes.data ?? []) as {
         staff_id: string;
@@ -187,6 +196,7 @@ export async function GET(req: NextRequest) {
         start_time: string | null;
         end_time: string | null;
       }[]) {
+        if (!activeStaffIds.has(s.staff_id)) continue; // 停止中スタッフのシフトは除外
         const key = s.work_date.slice(0, 10);
         (staffShiftsByDate[key] ??= []).push({
           staffId: s.staff_id,
