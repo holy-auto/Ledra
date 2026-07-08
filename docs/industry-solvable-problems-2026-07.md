@@ -166,7 +166,7 @@ CMS トークン保管) と Polygon アンカリングの **改ざん耐性基�
 | ② 倒産・廃業・承継 | ⚠️ 多角化・履歴の資産化(承継 UI は未整備) | `vehicle_histories`、`vehicle_passports`、coating/PPF/thickness 系 | ○ |
 | ③ 透明性・不正対策 | ✅ 写真ゲート・保険ポータル ／ ⚠️ 改ざん耐性アンカリングは既定オフ・要有効化 | `src/lib/anchoring/`、`src/lib/certificates/photoRequirement.ts`、`src/app/insurer/` | ◎ |
 | ④ 記録簿電子化 | ⚠️ TSA/アンカリング基盤は保有(現状は部品確認に結線、記録簿封緘は要転用) | `src/lib/parts/tsa.ts`、`src/lib/parts/rfc3161.ts`、`inspection_records` | ◎ |
-| ⑤ 中古トレーサビリティ | ✅ Vehicle Passport・検証 API | `src/app/passport/`、`passport_ownership_transfers`、`src/app/market/` | ○ |
+| ⑤ 中古トレーサビリティ | ✅ Vehicle Passport(施工証明履歴の集約) ／ ⚠️ 走行距離・所有権移転は未連結 | `src/app/passport/`、`getPassportData`、`src/app/market/` | ○ |
 | ⑥ EV/ADAS 整備スキル | ❌ Ledra 外(部品インテグリティ/LMS のみ関連) | `src/lib/parts/`、academy | △ |
 
 凡例: ✅ = 現状コードが直接解く / ⚠️ = 一部は再利用可だが専用フロー未整備 / ❌ = スコープ外
