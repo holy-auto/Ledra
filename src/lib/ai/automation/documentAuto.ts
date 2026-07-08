@@ -23,6 +23,7 @@ import { sendDocumentLink } from "@/lib/line/client";
 import { getStripeClient } from "@/lib/stripe/client";
 import { createInvoicePaymentLink } from "@/lib/stripe/invoicePaymentLink";
 import { logger } from "@/lib/logger";
+import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { loadAiAutomationSettings } from "./policy";
 import { shouldAutoSendDocumentOnConfirm } from "./orchestrator";
 
@@ -264,6 +265,15 @@ export async function maybeAutoSendDocumentOnConfirm(params: MaybeAutoSendDocume
       delivered,
       payment_link: Boolean(paymentUrl),
     });
+    if (delivered) {
+      // 人の確認なしで書類を外部送付した事実を監査ログに残す (外向きアクションのため特に重要)。
+      await logAutoActionExecuted({
+        tenantId,
+        actionKey: "invoice.auto_send_on_confirm",
+        resource: { kind: "document", id: documentId },
+        detail: { doc_type: docType, channel: usedChannel, payment_link: Boolean(paymentUrl) },
+      });
+    }
   } catch (e) {
     logger.warn("auto_send_document_failed", {
       tenantId: params.tenantId,

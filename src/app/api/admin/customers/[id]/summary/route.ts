@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiForbidden, apiInternalError, apiNotFound } from "@/lib/api/response";
@@ -33,65 +33,34 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       return apiNotFound("顧客が見つかりません。");
     }
 
-    // Fetch stats in parallel
-    const [
-      { count: totalCertificates },
-      { count: activeCertificates },
-      { count: totalVehicles },
-      { data: invoiceData },
-      { data: lastCertRow },
-    ] = await Promise.all([
-      // Total certificates
-      supabase
-        .from("certificates")
-        .select("id", { count: "exact", head: true })
-        .eq("tenant_id", caller.tenantId)
-        .eq("customer_id", customerId),
-      // Active certificates
-      supabase
-        .from("certificates")
-        .select("id", { count: "exact", head: true })
-        .eq("tenant_id", caller.tenantId)
-        .eq("customer_id", customerId)
-        .eq("status", "active"),
-      // Total vehicles
-      supabase
-        .from("vehicles")
-        .select("id", { count: "exact", head: true })
-        .eq("tenant_id", caller.tenantId)
-        .eq("customer_id", customerId),
-      // Invoices: count and sum
-      supabase
-        .from("documents")
-        .select("id, total_amount")
-        .eq("tenant_id", caller.tenantId)
-        .eq("customer_id", customerId)
-        .in("doc_type", ["invoice", "consolidated_invoice"]),
-      // Last visit (most recent certificate)
-      supabase
-        .from("certificates")
-        .select("created_at")
-        .eq("tenant_id", caller.tenantId)
-        .eq("customer_id", customerId)
-        .order("created_at", { ascending: false })
-        .limit(1),
-    ]);
-
-    const invoices = invoiceData ?? [];
-    const totalSpent = invoices.reduce(
-      (sum, inv) => sum + (typeof inv.total_amount === "number" ? inv.total_amount : 0),
-      0,
-    );
+    // 集計は RPC に集約 (5 本の往復→1 本)。請求書合計は正しい列 documents.total を使う
+    // (旧実装は存在しない total_amount を select しており total_invoices/total_spent が
+    // 常に 0 になる潜在バグがあった)。
+    const { data: statsRows, error: statsErr } = await supabase.rpc("customer_summary_stats", {
+      p_tenant_id: caller.tenantId,
+      p_customer_id: customerId,
+    });
+    if (statsErr) {
+      return apiInternalError(statsErr, "customer-summary stats");
+    }
+    const s = (Array.isArray(statsRows) ? statsRows[0] : statsRows) as {
+      total_certificates: number | null;
+      active_certificates: number | null;
+      total_vehicles: number | null;
+      total_invoices: number | null;
+      total_spent: number | null;
+      last_visit: string | null;
+    } | null;
 
     return apiJson({
       customer,
       stats: {
-        total_certificates: totalCertificates ?? 0,
-        active_certificates: activeCertificates ?? 0,
-        total_vehicles: totalVehicles ?? 0,
-        total_invoices: invoices.length,
-        total_spent: totalSpent,
-        last_visit: lastCertRow?.[0]?.created_at ?? null,
+        total_certificates: Number(s?.total_certificates ?? 0),
+        active_certificates: Number(s?.active_certificates ?? 0),
+        total_vehicles: Number(s?.total_vehicles ?? 0),
+        total_invoices: Number(s?.total_invoices ?? 0),
+        total_spent: Number(s?.total_spent ?? 0),
+        last_visit: s?.last_visit ?? null,
       },
     });
   } catch (e) {

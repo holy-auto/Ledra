@@ -34,11 +34,40 @@ const FILTER_TABS = [
 
 const CASE_TEMPLATES = [
   { key: "", label: "テンプレートなし", title: "", category: "", description: "" },
-  { key: "construction_check", label: "施工確認依頼", title: "施工確認依頼", category: "施工確認", description: "施工状態の確認をお願いします。対象車両の施工内容と現在の状態についてご報告ください。" },
-  { key: "pii_disclosure", label: "PII開示確認", title: "個人情報開示確認", category: "PII開示", description: "保険事故調査のため、個人情報の開示確認を依頼します。双方の同意が必要です。" },
-  { key: "claim_investigation", label: "保険金請求調査", title: "保険金請求調査", category: "保険金請求", description: "保険金請求に関する調査を依頼します。施工内容と証明書の整合性を確認してください。" },
-  { key: "vehicle_condition", label: "車両状態確認", title: "車両状態確認依頼", category: "車両確認", description: "車両の現在の状態確認を依頼します。施工後の車両状態をご報告ください。" },
+  {
+    key: "construction_check",
+    label: "施工確認依頼",
+    title: "施工確認依頼",
+    category: "施工確認",
+    description: "施工状態の確認をお願いします。対象車両の施工内容と現在の状態についてご報告ください。",
+  },
+  {
+    key: "pii_disclosure",
+    label: "PII開示確認",
+    title: "個人情報開示確認",
+    category: "PII開示",
+    description: "保険事故調査のため、個人情報の開示確認を依頼します。双方の同意が必要です。",
+  },
+  {
+    key: "claim_investigation",
+    label: "保険金請求調査",
+    title: "保険金請求調査",
+    category: "保険金請求",
+    description: "保険金請求に関する調査を依頼します。施工内容と証明書の整合性を確認してください。",
+  },
+  {
+    key: "vehicle_condition",
+    label: "車両状態確認",
+    title: "車両状態確認依頼",
+    category: "車両確認",
+    description: "車両の現在の状態確認を依頼します。施工後の車両状態をご報告ください。",
+  },
 ];
+
+// カテゴリは自動振り分けルール (condition_type: category) の条件値・分析軸として使われるため、
+// 表記ゆれを防ぐ目的で select 選択を基本とし、「その他」のみ自由入力を許可する
+const CASE_CATEGORIES = ["施工確認", "PII開示", "保険金請求", "車両確認", "店舗問い合わせ"];
+const CATEGORY_CUSTOM = "__custom__";
 
 /* -- badge color helpers -- */
 
@@ -101,6 +130,7 @@ function InsurerCasesInner() {
   const [formDesc, setFormDesc] = useState("");
   const [formPriority, setFormPriority] = useState("normal");
   const [formCategory, setFormCategory] = useState("");
+  const [categoryCustom, setCategoryCustom] = useState(false);
   const [formCertId, setFormCertId] = useState(searchParams.get("certificate_id") ?? "");
   const [formVehicleId, setFormVehicleId] = useState(searchParams.get("vehicle_id") ?? "");
   const [formTenantId, setFormTenantId] = useState(searchParams.get("tenant_id") ?? "");
@@ -170,6 +200,7 @@ function InsurerCasesInner() {
     if (tpl && tpl.key) {
       setFormTitle(tpl.title);
       setFormCategory(tpl.category);
+      setCategoryCustom(false);
       setFormDesc(tpl.description);
     }
   }
@@ -267,39 +298,31 @@ function InsurerCasesInner() {
           <div className="inline-flex rounded-full border border-border-default bg-surface px-3 py-1 text-[11px] font-semibold tracking-[0.18em] text-secondary">
             案件管理
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary">
-            案件管理
-          </h1>
+          <h1 className="text-3xl font-bold tracking-tight text-primary">案件管理</h1>
         </div>
-        <button
-          onClick={() => setShowForm((v) => !v)}
-          className="btn-primary self-start"
-        >
+        <button onClick={() => setShowForm((v) => !v)} className="btn-primary self-start">
           {showForm ? "キャンセル" : "新規案件"}
         </button>
       </header>
 
       {/* create form */}
       {showForm && (
-        <form
-          onSubmit={handleCreate}
-          className="rounded-2xl border border-border-default bg-surface p-6 space-y-4"
-        >
+        <form onSubmit={handleCreate} className="rounded-2xl border border-border-default bg-surface p-6 space-y-4">
           <h2 className="text-lg font-bold text-primary">新規案件作成</h2>
 
           <div className="grid gap-4 sm:grid-cols-2">
             {/* template selector */}
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-sm font-medium text-secondary">
-                テンプレート
-              </label>
+              <label className="mb-1 block text-sm font-medium text-secondary">テンプレート</label>
               <select
                 value={formTemplate}
                 onChange={(e) => applyTemplate(e.target.value)}
                 className="w-full rounded-xl border border-border-default px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
               >
                 {CASE_TEMPLATES.map((t) => (
-                  <option key={t.key} value={t.key}>{t.label}</option>
+                  <option key={t.key} value={t.key}>
+                    {t.label}
+                  </option>
                 ))}
               </select>
             </div>
@@ -319,9 +342,7 @@ function InsurerCasesInner() {
             </div>
 
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-sm font-medium text-secondary">
-                説明
-              </label>
+              <label className="mb-1 block text-sm font-medium text-secondary">説明</label>
               <textarea
                 value={formDesc}
                 onChange={(e) => setFormDesc(e.target.value)}
@@ -332,9 +353,7 @@ function InsurerCasesInner() {
             </div>
 
             <div>
-              <label className="mb-1 block text-sm font-medium text-secondary">
-                優先度
-              </label>
+              <label className="mb-1 block text-sm font-medium text-secondary">優先度</label>
               <select
                 value={formPriority}
                 onChange={(e) => setFormPriority(e.target.value)}
@@ -348,23 +367,42 @@ function InsurerCasesInner() {
             </div>
 
             <div>
-              <label className="mb-1 block text-sm font-medium text-secondary">
-                カテゴリ
-              </label>
-              <input
-                type="text"
-                value={formCategory}
-                onChange={(e) => setFormCategory(e.target.value)}
+              <label className="mb-1 block text-sm font-medium text-secondary">カテゴリ</label>
+              <select
+                value={categoryCustom ? CATEGORY_CUSTOM : formCategory}
+                onChange={(e) => {
+                  if (e.target.value === CATEGORY_CUSTOM) {
+                    setCategoryCustom(true);
+                    setFormCategory("");
+                  } else {
+                    setCategoryCustom(false);
+                    setFormCategory(e.target.value);
+                  }
+                }}
                 className="w-full rounded-xl border border-border-default px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                placeholder="カテゴリ"
-              />
+              >
+                <option value="">カテゴリなし</option>
+                {CASE_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+                <option value={CATEGORY_CUSTOM}>その他（自由入力）</option>
+              </select>
+              {categoryCustom && (
+                <input
+                  type="text"
+                  value={formCategory}
+                  onChange={(e) => setFormCategory(e.target.value)}
+                  className="mt-2 w-full rounded-xl border border-border-default px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  placeholder="カテゴリを入力"
+                />
+              )}
             </div>
 
             {formCertId && (
               <div>
-                <label className="mb-1 block text-sm font-medium text-secondary">
-                  証明書ID
-                </label>
+                <label className="mb-1 block text-sm font-medium text-secondary">証明書ID</label>
                 <input
                   type="text"
                   value={formCertId}
@@ -376,9 +414,7 @@ function InsurerCasesInner() {
 
             {formVehicleId && (
               <div>
-                <label className="mb-1 block text-sm font-medium text-secondary">
-                  車両ID
-                </label>
+                <label className="mb-1 block text-sm font-medium text-secondary">車両ID</label>
                 <input
                   type="text"
                   value={formVehicleId}
@@ -430,9 +466,7 @@ function InsurerCasesInner() {
         <div className="rounded-2xl border border-border-default bg-surface p-4 space-y-3">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted">
-                キーワード検索
-              </label>
+              <label className="mb-1 block text-xs font-medium text-muted">キーワード検索</label>
               <input
                 type="text"
                 value={filterQuery}
@@ -442,9 +476,7 @@ function InsurerCasesInner() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted">
-                優先度
-              </label>
+              <label className="mb-1 block text-xs font-medium text-muted">優先度</label>
               <select
                 value={filterPriority}
                 onChange={(e) => setFilterPriority(e.target.value)}
@@ -458,9 +490,7 @@ function InsurerCasesInner() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted">
-                作成日（から）
-              </label>
+              <label className="mb-1 block text-xs font-medium text-muted">作成日（から）</label>
               <input
                 type="date"
                 value={filterDateFrom}
@@ -469,9 +499,7 @@ function InsurerCasesInner() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted">
-                作成日（まで）
-              </label>
+              <label className="mb-1 block text-xs font-medium text-muted">作成日（まで）</label>
               <input
                 type="date"
                 value={filterDateTo}
@@ -480,16 +508,20 @@ function InsurerCasesInner() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted">
-                カテゴリ
-              </label>
+              <label className="mb-1 block text-xs font-medium text-muted">カテゴリ</label>
               <input
                 type="text"
+                list="case-category-presets"
                 value={filterCategory}
                 onChange={(e) => setFilterCategory(e.target.value)}
                 placeholder="カテゴリで絞り込み"
                 className="w-full rounded-xl border border-border-default px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
               />
+              <datalist id="case-category-presets">
+                {CASE_CATEGORIES.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -510,18 +542,12 @@ function InsurerCasesInner() {
       )}
 
       {/* error */}
-      {err && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {err}
-        </div>
-      )}
+      {err && <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>}
 
       {/* bulk action bar */}
       {selectedIds.size > 0 && (
         <div className="sticky bottom-4 z-10 flex items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-3 shadow-lg">
-          <span className="text-sm font-medium text-blue-800">
-            {selectedIds.size}件選択中
-          </span>
+          <span className="text-sm font-medium text-blue-800">{selectedIds.size}件選択中</span>
           <div className="flex-1" />
           <button
             onClick={() => handleBulk("resolved")}
@@ -537,10 +563,7 @@ function InsurerCasesInner() {
           >
             クローズする
           </button>
-          <button
-            onClick={() => setSelectedIds(new Set())}
-            className="text-sm text-muted hover:text-secondary"
-          >
+          <button onClick={() => setSelectedIds(new Set())} className="text-sm text-muted hover:text-secondary">
             選択解除
           </button>
         </div>
@@ -590,25 +613,23 @@ function InsurerCasesInner() {
                       className="rounded border-border-default"
                     />
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-muted">
-                    {c.case_number}
-                  </td>
-                  <td className="px-4 py-3 font-medium text-primary">
-                    {c.title}
-                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-muted">{c.case_number}</td>
+                  <td className="px-4 py-3 font-medium text-primary">{c.title}</td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClasses(c.status)}`}>
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClasses(c.status)}`}
+                    >
                       {STATUS_MAP[c.status]?.label ?? c.status}
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${priorityClasses(c.priority)}`}>
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${priorityClasses(c.priority)}`}
+                    >
                       {PRIORITY_MAP[c.priority]?.label ?? c.priority}
                     </span>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-muted">
-                    {formatDateTime(c.created_at)}
-                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-muted">{formatDateTime(c.created_at)}</td>
                   <td className="px-4 py-3">
                     <Link
                       href={`/insurer/cases/${c.id}`}
@@ -629,7 +650,13 @@ function InsurerCasesInner() {
 
 export default function InsurerCasesPage() {
   return (
-    <Suspense fallback={<div className="flex min-h-[60vh] items-center justify-center"><p className="text-sm text-muted">読み込み中…</p></div>}>
+    <Suspense
+      fallback={
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <p className="text-sm text-muted">読み込み中…</p>
+        </div>
+      }
+    >
       <InsurerCasesInner />
     </Suspense>
   );

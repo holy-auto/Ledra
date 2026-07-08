@@ -7,6 +7,8 @@ import DemoTenantBanner from "./DemoTenantBanner";
 import IdleAutoLogout from "./IdleAutoLogout";
 import HelpFab from "./HelpFab";
 import CommandPalette from "@/components/ui/CommandPalette";
+import AdminTopBar from "@/components/ui/AdminTopBar";
+import AdminPageBar, { PageBarProvider } from "@/components/ui/PageBar";
 import NavigationProgress from "@/components/ui/NavigationProgress";
 import { ViewModeProvider } from "@/lib/view-mode/ViewModeContext";
 import { ViewerModeProvider } from "@/components/ui/ViewerModeProvider";
@@ -41,10 +43,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <OfflineBanner />
         <div className="flex min-h-screen">
           <Sidebar />
-          <main id="main-content" className="flex-1 p-4 sm:p-6 pt-16 lg:ml-60 lg:pt-6">
-            <Suspense fallback={null}>
-              <AdminRouteGuard>{children}</AdminRouteGuard>
-            </Suspense>
+          <main className="flex min-h-screen flex-1 flex-col lg:ml-60">
+            <PageBarProvider>
+              <AdminTopBar />
+              <AdminPageBar />
+              <div id="main-content" className="flex-1 p-4 pt-6 sm:p-6">
+                <Suspense fallback={null}>
+                  <AdminRouteGuard>{children}</AdminRouteGuard>
+                </Suspense>
+              </div>
+            </PageBarProvider>
           </main>
         </div>
       </ViewerModeProvider>

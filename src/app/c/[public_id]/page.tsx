@@ -18,6 +18,7 @@ import {
   getPaintTypeLabel,
   getRepairMethodLabel,
 } from "@/lib/bodyRepair/constants";
+import { getAccessoryTypeLabel, getInstallLocationLabel } from "@/lib/accessory/constants";
 import type { ResolvedCertificateMedia } from "@/lib/certificateMedia";
 
 type PageProps = {
@@ -52,6 +53,7 @@ type PublicStatusResponse = {
     warranty_exclusions?: string | null;
     maintenance_json?: Record<string, any> | null;
     body_repair_json?: Record<string, any> | null;
+    accessory_json?: Record<string, any> | null;
     /* eslint-enable @typescript-eslint/no-explicit-any */
     craftsman_name?: string | null;
   };
@@ -589,6 +591,70 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
                     <div className="mt-2 rounded-lg bg-base px-3 py-2 text-secondary">
                       <div className="font-medium text-primary mb-1">修理保証</div>
                       <div className="whitespace-pre-wrap">{br.warranty_info}</div>
+                    </div>
+                  ) : null}
+                </section>
+              );
+            })()
+          : null}
+
+        {/* 用品取付内容 */}
+        {data.certificate.service_type === "accessory" &&
+        data.certificate.accessory_json &&
+        typeof data.certificate.accessory_json === "object" &&
+        Object.keys(data.certificate.accessory_json).length > 0
+          ? (() => {
+              const ac = data.certificate.accessory_json;
+              return (
+                <section className="glass-card p-4">
+                  <div className="mb-3 font-bold text-primary">用品取付内容</div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {ac.product_name ? (
+                      <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+                        製品名: <span className="text-primary font-medium">{ac.product_name}</span>
+                      </div>
+                    ) : null}
+                    {ac.maker_name ? (
+                      <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+                        メーカー: <span className="text-primary">{ac.maker_name}</span>
+                      </div>
+                    ) : null}
+                    {ac.install_location ? (
+                      <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+                        取付位置: <span className="text-primary">{getInstallLocationLabel(ac.install_location)}</span>
+                      </div>
+                    ) : null}
+                    {ac.installer_name ? (
+                      <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+                        取付担当者: <span className="text-primary">{ac.installer_name}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                  {Array.isArray(ac.accessory_types) && ac.accessory_types.length > 0 ? (
+                    <div className="mt-2 rounded-lg bg-base px-3 py-2 text-secondary">
+                      <div className="font-medium text-primary mb-1">用品カテゴリ</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {ac.accessory_types.map((t: string, idx: number) => (
+                          <span
+                            key={idx}
+                            className="rounded-md bg-surface px-2 py-0.5 text-xs text-primary border border-border-default"
+                          >
+                            {getAccessoryTypeLabel(t)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {ac.install_notes ? (
+                    <div className="mt-2 rounded-lg bg-base px-3 py-2 text-secondary">
+                      <div className="font-medium text-primary mb-1">取付内容・備考</div>
+                      <div className="whitespace-pre-wrap">{ac.install_notes}</div>
+                    </div>
+                  ) : null}
+                  {ac.warranty_info ? (
+                    <div className="mt-2 rounded-lg bg-base px-3 py-2 text-secondary">
+                      <div className="font-medium text-primary mb-1">取付保証</div>
+                      <div className="whitespace-pre-wrap">{ac.warranty_info}</div>
                     </div>
                   ) : null}
                 </section>

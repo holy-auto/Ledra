@@ -60,17 +60,28 @@ const labelTextCls = "text-sm font-medium text-secondary";
 
 export default function VehiclePickerSection({
   vehicles: initialVehicles,
+  customers: initialCustomers = [],
   defaultVehicleId,
+  defaultCustomerId,
   onVehicleChange,
 }: {
   vehicles: Vehicle[];
+  customers?: Customer[];
   defaultVehicleId?: string;
+  defaultCustomerId?: string;
   onVehicleChange?: (vehicleId: string | undefined) => void;
 }) {
   const [vehicles] = useState<Vehicle[]>(initialVehicles);
+  const [customers] = useState<Customer[]>(initialCustomers);
   const [selectedId, setSelectedId] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerId, setCustomerId] = useState("");
+  // 車検証OCR の所有者氏名から名寄せした連携候補 (confidence 0.85 未満で提示)。
+  const [customerSuggestion, setCustomerSuggestion] = useState<{
+    id: string;
+    name: string;
+    confidence: number;
+  } | null>(null);
   const [model, setModel] = useState("");
   const [plate, setPlate] = useState("");
   const [maker, setMaker] = useState("");
@@ -112,6 +123,23 @@ export default function VehiclePickerSection({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultVehicleId]);
+
+  // Pre-select customer when defaultCustomerId is provided (e.g. opened from a
+  // customer/reservation flow). A pre-selected vehicle that carries its own
+  // linked customer wins (that master link is more specific); otherwise seed
+  // from defaultCustomerId so the submitted customer_id is not lost.
+  useEffect(() => {
+    if (!defaultCustomerId) return;
+    const dv = defaultVehicleId ? vehicles.find((v) => v.id === defaultVehicleId) : null;
+    if (dv?.customer) return;
+    setCustomerId(defaultCustomerId);
+    const c = customers.find((x) => x.id === defaultCustomerId);
+    if (c) {
+      setCustomerName(c.name);
+      setCustomerPhone(c.phone ?? null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultCustomerId]);
 
   // Customer search debounce
   useEffect(() => {
@@ -282,10 +310,27 @@ export default function VehiclePickerSection({
         return;
       }
       applyExtracted(json.extracted as Extracted);
+      applyCustomerSuggestion(json.customer_suggestion);
     } catch {
       setOcrMsg({ type: "error", text: "通信エラーが発生しました" });
     } finally {
       setOcrLoading(false);
+    }
+  };
+
+  // 車検証OCR が返した顧客連携候補を反映する。
+  // confidence >= 0.85 は自動連携、未満は候補チップで確認を促す。
+  // 既に顧客が選択済みのときは上書きしない。
+  const applyCustomerSuggestion = (sug: { id: string; name: string; confidence: number } | null | undefined) => {
+    if (!sug || customerId) return;
+    if (sug.confidence >= 0.85) {
+      setCustomerName(sug.name);
+      setCustomerId(sug.id);
+      setCustomerSuggestion(null);
+      setOcrMsg({ type: "success", text: `所有者「${sug.name}」を自動連携しました` });
+      setTimeout(() => setOcrMsg(null), 5000);
+    } else {
+      setCustomerSuggestion(sug);
     }
   };
 
@@ -418,6 +463,33 @@ export default function VehiclePickerSection({
         <input type="hidden" name="size_class" value={sizeClass ?? ""} />
 
         <div className="space-y-4">
+          {/* 登録済み車両から選択（プルダウン）— DB連携内容を一覧から確認・選択できる */}
+          {vehicles.length > 0 && (
+            <label className={labelCls}>
+              <span className={labelTextCls}>登録済み車両から選択（プルダウン）</span>
+              <select
+                value={selectedId}
+                onChange={(e) => {
+                  const v = vehicles.find((x) => x.id === e.target.value);
+                  if (v) handleVehicleSelect(v);
+                  else handleVehicleClear();
+                }}
+                className={inputCls}
+              >
+                <option value="">― 手入力 / 未選択 ―</option>
+                {vehicles.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {vehicleLabel(v)}
+                    {v.customer ? ` / ${v.customer.name}` : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-muted">
+                車両マスタから選ぶと連携内容を確認できます。未登録の車両は下の欄に手入力してください。
+              </p>
+            </label>
+          )}
+
           {/* Maker — combobox: type to search or manual entry */}
           <div className={labelCls}>
             <span className={labelTextCls}>
@@ -511,6 +583,38 @@ export default function VehiclePickerSection({
         </div>
 
         <div className="space-y-4">
+          {/* 登録済み顧客から選択（プルダウン）— DB連携内容を一覧から確認・選択できる */}
+          {customers.length > 0 && (
+            <label className={labelCls}>
+              <span className={labelTextCls}>登録済み顧客から選択（プルダウン）</span>
+              <select
+                value={customerId}
+                onChange={(e) => {
+                  const c = customers.find((x) => x.id === e.target.value);
+                  if (c) {
+                    handleCustomerSelect(c);
+                  } else {
+                    setCustomerId("");
+                    setCustomerName("");
+                    setCustomerPhone(null);
+                  }
+                }}
+                className={inputCls}
+              >
+                <option value="">― 手入力 / 未選択 ―</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                    {c.phone ? ` (${c.phone})` : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-muted">
+                顧客マスタから選ぶと連携内容を確認できます。未登録の顧客は下の欄に手入力してください。
+              </p>
+            </label>
+          )}
+
           {/* Customer name — combobox: type to search or manual entry */}
           <div className={labelCls}>
             <span className={labelTextCls}>
@@ -561,6 +665,32 @@ export default function VehiclePickerSection({
                     </li>
                   ))}
                 </ul>
+              )}
+              {customerSuggestion && !customerId && (
+                <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-accent/30 bg-accent-dim px-3 py-2 text-xs text-primary">
+                  <span>
+                    車検証の所有者候補: <span className="font-semibold">{customerSuggestion.name}</span>（一致度
+                    {Math.round(customerSuggestion.confidence * 100)}%）
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomerName(customerSuggestion.name);
+                      setCustomerId(customerSuggestion.id);
+                      setCustomerSuggestion(null);
+                    }}
+                    className="ml-auto rounded-md bg-accent px-2 py-1 font-medium text-white hover:opacity-90"
+                  >
+                    連携する
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCustomerSuggestion(null)}
+                    className="rounded-md border border-border-default px-2 py-1 text-muted hover:bg-surface-hover"
+                  >
+                    閉じる
+                  </button>
+                </div>
               )}
               {customerPhone ? (
                 <p className="mt-1 text-[11px] text-muted">

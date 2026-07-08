@@ -5,6 +5,8 @@
  * 静止画 (certificate_images) は @/lib/certificateImages 側で管理する。
  */
 
+import { detectMagicByteMime } from "@/lib/media/magicBytes";
+
 export const CERTIFICATE_MEDIA_BUCKET = "assets";
 
 /** Storage 内の prefix。 certificate-images とパスを衝突させないため `media/` を使う。 */
@@ -34,35 +36,11 @@ export const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // 20 MB
  *   それ以外は null。
  */
 export function detectMediaMime(buffer: Buffer): string | null {
-  if (buffer.length < 12) return null;
-
-  // JPEG: FF D8 FF
-  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
-    return "image/jpeg";
-  }
-  // PNG: 89 50 4E 47 0D 0A 1A 0A
-  if (
-    buffer[0] === 0x89 &&
-    buffer[1] === 0x50 &&
-    buffer[2] === 0x4e &&
-    buffer[3] === 0x47 &&
-    buffer[4] === 0x0d &&
-    buffer[5] === 0x0a &&
-    buffer[6] === 0x1a &&
-    buffer[7] === 0x0a
-  ) {
-    return "image/png";
-  }
-  // ISO BMFF (mp4 / mov / 3gp): 'ftyp' box at offset 4
-  if (buffer[4] === 0x66 && buffer[5] === 0x74 && buffer[6] === 0x79 && buffer[7] === 0x70) {
-    const brand = buffer.toString("ascii", 8, 12);
-    // QuickTime
-    if (brand === "qt  ") return "video/quicktime";
-    // MP4 family. Major brands actually seen in iPhone / Android / desktop captures.
-    const mp4Brands = new Set(["isom", "mp42", "mp41", "avc1", "iso2", "iso4", "iso5", "iso6", "M4V ", "dash"]);
-    if (mp4Brands.has(brand)) return "video/mp4";
-  }
-  return null;
+  const mime = detectMagicByteMime(buffer);
+  // certificate メディアは JPEG / PNG 静止画と mp4 / quicktime 動画のみ許可。
+  return mime === "image/jpeg" || mime === "image/png" || mime === "video/mp4" || mime === "video/quicktime"
+    ? mime
+    : null;
 }
 
 /** 拡張子を MIME から決定する (Storage パス組み立て用)。 */

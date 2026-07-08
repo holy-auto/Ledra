@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import PageHeader from "@/components/ui/PageHeader";
+
 // ─── 型定義 ──────────────────────────────────────────────────────
 interface CurrentLoan {
   customer_name: string | null;
@@ -183,36 +185,29 @@ export default function LoanerCarsClient() {
 
   return (
     <div className="mx-auto max-w-5xl pb-20">
-      {/* ヘッダー */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-primary">代車管理</h1>
-          <p className="mt-1 text-sm text-secondary">代車の貸出状況と返却予定を管理します</p>
-        </div>
-        <button
-          onClick={() => setRegisterOpen(true)}
-          className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2 font-medium text-white transition-colors hover:bg-accent/90"
-        >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-          代車を登録
-        </button>
-      </div>
-
-      {/* タブ */}
-      <div className="mb-6 flex border-b border-border-default">
-        {(["cars", "history"] as TabKey[]).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`border-b-2 px-5 py-2.5 text-sm font-medium transition-colors ${
-              activeTab === tab ? "border-accent text-accent" : "border-transparent text-secondary hover:text-primary"
-            }`}
-          >
-            {tab === "cars" ? "代車一覧" : "貸出履歴"}
-          </button>
-        ))}
+      <div className="mb-6">
+        <PageHeader
+          tag="車両管理"
+          title="代車管理"
+          description="代車の貸出状況と返却予定を管理します"
+          actions={
+            <button
+              onClick={() => setRegisterOpen(true)}
+              className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2 font-medium text-white transition-colors hover:bg-accent/90"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              代車を登録
+            </button>
+          }
+          tabs={(["cars", "history"] as TabKey[]).map((tab) => ({
+            key: tab,
+            label: tab === "cars" ? "代車一覧" : "貸出履歴",
+          }))}
+          activeTab={activeTab}
+          onTabSelect={(key) => setActiveTab(key as TabKey)}
+        />
       </div>
 
       {activeTab === "cars" ? (

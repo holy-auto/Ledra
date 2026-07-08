@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripe/client";
-import { createMobileClient, resolveMobileCaller } from "@/lib/supabase/mobile";
+import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
@@ -30,12 +30,7 @@ export async function POST(req: NextRequest) {
   if (limited) return limited;
 
   try {
-    const { client, accessToken } = createMobileClient(req);
-    if (!client) {
-      return apiUnauthorized();
-    }
-
-    const caller = await resolveMobileCaller(client, accessToken);
+    const caller = await resolveMobileCaller(req);
     if (!caller) {
       return apiUnauthorized();
     }

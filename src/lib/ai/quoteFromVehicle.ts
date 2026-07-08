@@ -54,6 +54,30 @@ export interface QuoteFromVehicleResult {
   ai: boolean;
 }
 
+/**
+ * invoices.items_json から明細行を寛容にパースする共有ヘルパー。
+ * (ai-from-vehicle ルートと quoteDraftAuto の 2 呼び出し元で共用)
+ * 見出し/小計行と ¥0 明細は価格統計を歪めるため除外する。
+ */
+export function extractInvoiceLines(
+  rawItems: unknown,
+  total: number | null,
+): { items: PastInvoiceLine[]; total: number } {
+  const lines: PastInvoiceLine[] = [];
+  if (Array.isArray(rawItems)) {
+    for (const it of rawItems) {
+      if (!it || typeof it !== "object") continue;
+      const rec = it as Record<string, unknown>;
+      if (rec.item_type && rec.item_type !== "item") continue;
+      const description = typeof rec.description === "string" ? rec.description.trim() : "";
+      const unitPrice = typeof rec.unit_price === "number" ? rec.unit_price : 0;
+      const quantity = typeof rec.quantity === "number" ? rec.quantity : 1;
+      if (description && unitPrice > 0) lines.push({ description, unit_price: unitPrice, quantity });
+    }
+  }
+  return { items: lines, total: total ?? lines.reduce((s, l) => s + l.unit_price * l.quantity, 0) };
+}
+
 export function buildDeterministicQuote(input: QuoteFromVehicleInput): QuoteFromVehicleResult {
   const items: QuoteFromVehicleResult["items"] = [];
   // 同カテゴリ過去請求書の中央値を採用 (外れ値耐性)

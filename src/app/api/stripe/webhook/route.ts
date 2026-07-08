@@ -784,49 +784,6 @@ export async function POST(req: NextRequest) {
         break;
       }
 
-      // ─── サブスク請求の支払い完了 → 代理店コミッションを生成 ───
-      // 紹介代理店経由テナントの「実際の決済額 × 料率」で pending コミッションを
-      // 起票する（送信=送金は壁3に従い管理者承認後）。冪等キーは invoice.id。
-      case "invoice.paid":
-      case "invoice.payment_succeeded": {
-        const invoice = event.data.object as Stripe.Invoice;
-        const inv = invoice as unknown as Record<string, unknown>;
-        const subscriptionId = asStringId(inv.subscription);
-        if (!subscriptionId) break; // サブスク以外（単発決済等）は対象外
-        if (invoice.metadata?.type === "insurer") break; // 保険会社サブスクは対象外
-
-        try {
-          const customerId = asStringId(invoice.customer);
-          const selector = await resolveTenantSelector({ supabase, customerId, subscriptionId });
-          // テナントが特定できない（保険会社サブスク等）場合はスキップ
-          if (selector && selector.by === "id") {
-            const result = await recordSubscriptionCommission(supabase, {
-              tenantId: selector.value,
-              subscriptionId,
-              invoiceId: invoice.id as string,
-              amountPaid: (invoice.amount_paid as number) ?? 0,
-              currency: invoice.currency,
-              periodStart: (inv.period_start as number | undefined) ?? null,
-              periodEnd: (inv.period_end as number | undefined) ?? null,
-            });
-            if (result.status === "created") {
-              console.info("webhook: agent commission generated", {
-                tenantId: selector.value,
-                invoiceId: invoice.id,
-                amount: result.amount,
-              });
-            }
-          }
-        } catch (e) {
-          // コミッション生成の失敗で課金 webhook 本体を失敗させない
-          console.error("webhook: agent commission generation failed", {
-            invoiceId: invoice.id,
-            error: e instanceof Error ? e.message : String(e),
-          });
-        }
-        break;
-      }
-
       case "customer.subscription.created":
       case "customer.subscription.updated":
       case "customer.subscription.deleted": {
@@ -946,7 +903,9 @@ export async function POST(req: NextRequest) {
       }
 
       // ✅ Portal操作後の支払い・失敗でも同期（invoice自体にmetadataが無いので subscription を取得）
+      // 支払い完了 (paid / payment_succeeded) では代理店コミッションも起票する
       case "invoice.paid":
+      case "invoice.payment_succeeded":
       case "invoice.payment_failed": {
         const inv = event.data.object as Stripe.Invoice & Record<string, unknown>;
         // Stripe API v2025+ moved subscription reference:
@@ -961,9 +920,51 @@ export async function POST(req: NextRequest) {
           inv.lines?.data?.[0]?.subscription;
         const subscriptionId = asStringId(rawSubId);
         if (!subscriptionId) {
+          // サブスク以外（単発決済等）は対象外
           console.warn("webhook: invoice has no subscription ID, skipping", { eventType: event.type, invId: inv.id });
           break;
         }
+
+        // ─── サブスク請求の支払い完了 → 代理店コミッションを生成 ───
+        // 紹介代理店経由テナントの「実際の決済額 × 料率」で pending コミッションを
+        // 起票する（送信=送金は壁3に従い管理者承認後）。冪等キーは invoice.id。
+        // 保険会社サブスク（invoice metadata で判別できる場合）は対象外。
+        if (event.type !== "invoice.payment_failed" && inv.metadata?.type !== "insurer") {
+          try {
+            const customerId = asStringId(inv.customer);
+            const selector = await resolveTenantSelector({ supabase, customerId, subscriptionId });
+            // テナントが特定できない（保険会社サブスク等）場合はスキップ
+            if (selector && selector.by === "id") {
+              const result = await recordSubscriptionCommission(supabase, {
+                tenantId: selector.value,
+                subscriptionId,
+                invoiceId: inv.id as string,
+                amountPaid: (inv.amount_paid as number) ?? 0,
+                currency: inv.currency,
+                periodStart: (inv.period_start as number | undefined) ?? null,
+                periodEnd: (inv.period_end as number | undefined) ?? null,
+              });
+              if (result.status === "created") {
+                console.info("webhook: agent commission generated", {
+                  tenantId: selector.value,
+                  invoiceId: inv.id,
+                  amount: result.amount,
+                });
+              }
+            }
+          } catch (e) {
+            // コミッション生成の失敗で課金 webhook 本体を失敗させない
+            console.error("webhook: agent commission generation failed", {
+              invoiceId: inv.id,
+              error: e instanceof Error ? e.message : String(e),
+            });
+          }
+        }
+
+        // payment_succeeded は同一請求で invoice.paid と重複して届くため、
+        // 以降の同期系（テンプレオプション更新・キャンペーン確定・失敗メール・サブスク同期）は
+        // paid / payment_failed 側でのみ実施する
+        if (event.type === "invoice.payment_succeeded") break;
 
         const sub = (await stripe.subscriptions.retrieve(subscriptionId)) as unknown as Stripe.Subscription &
           Record<string, unknown>;

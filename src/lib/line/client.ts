@@ -231,6 +231,16 @@ export async function sendBookingCancellation(
  * 顧客発のテキストメッセージは customer_messages に inbound として記録する
  * (auto-reply の有無に関わらず常に記録)。失敗してもメイン処理は止めない。
  */
+/** テキスト以外のメッセージ種別の受信箱向けプレースホルダ表記 */
+const NON_TEXT_MESSAGE_LABELS: Record<string, string> = {
+  image: "[画像]",
+  video: "[動画]",
+  audio: "[音声]",
+  sticker: "[スタンプ]",
+  location: "[位置情報]",
+  file: "[ファイル]",
+};
+
 export async function handleWebhookEvents(
   tenantId: string,
   events: Array<{
@@ -238,7 +248,18 @@ export async function handleWebhookEvents(
     replyToken?: string;
     timestamp?: number;
     source?: { userId?: string; type?: string };
-    message?: { type: string; id?: string; text?: string };
+    message?: {
+      type: string;
+      id?: string;
+      text?: string;
+      stickerId?: string;
+      fileName?: string;
+      latitude?: number;
+      longitude?: number;
+      address?: string;
+      title?: string;
+    };
+    postback?: { data?: string; params?: Record<string, string> };
   }>,
 ): Promise<void> {
   const config = await getLineConfig(tenantId);
@@ -248,13 +269,88 @@ export async function handleWebhookEvents(
     if (event.type === "follow" && event.source?.userId) {
       // 友だち追加時: ウェルカムメッセージ
       if (event.replyToken) {
-        await replyMessage(config.channelAccessToken, event.replyToken, [
-          {
-            type: "text",
-            text: "友だち追加ありがとうございます！\nこのアカウントから予約の確認・リマインダーをお送りします。",
-          },
-        ]);
+        const welcomeText =
+          "友だち追加ありがとうございます！\nこのアカウントから予約の確認・リマインダーをお送りします。";
+        try {
+          await replyMessage(config.channelAccessToken, event.replyToken, [{ type: "text", text: welcomeText }]);
+          // 店側の自動返信も受信箱スレッドに残す (顧客のLINEにだけ見えて店側から見えない状態を防ぐ)
+          await recordOutboundLineMessage({
+            tenantId,
+            lineUserId: event.source.userId,
+            body: welcomeText,
+            delivered: true,
+          });
+        } catch (e) {
+          console.error("[LINE webhook] welcome reply failed:", e);
+        }
       }
+    }
+
+    // リッチメニュー等の postback アクション: テキストが無いイベントも受信箱に記録して
+    // スタッフが気付けるようにする (webhook には displayText は含まれず data のみ届く)。
+    if (event.type === "postback" && event.source?.userId) {
+      const stored = await recordInboundLineMessage({
+        tenantId,
+        lineUserId: event.source.userId,
+        body: `[メニュー操作] ${event.postback?.data ?? ""}`.trim(),
+        rawEvent: event,
+        lineTimestampMs: event.timestamp ?? null,
+      });
+      await maybeNotifyInboundMessage({
+        tenantId,
+        lineUserId: event.source.userId,
+        customerId: stored.customerId ?? null,
+      });
+    }
+
+    // スタンプ・画像などテキスト以外のメッセージも記録する。
+    // 実データを取得できるものは Storage に保存して受信箱で表示/再生できるようにし、
+    // 失敗時は attachment なしのプレースホルダのみ (fail-soft)。
+    if (event.type === "message" && event.message && event.message.type !== "text" && event.source?.userId) {
+      const msg = event.message;
+      let attachment: { path: string; contentType: string } | null = null;
+      let body = NON_TEXT_MESSAGE_LABELS[msg.type] ?? `[${msg.type}]`;
+
+      if (["image", "video", "audio", "file"].includes(msg.type) && msg.id) {
+        // content API から実データを取得して保存
+        const { fetchAndStoreLineMedia } = await import("@/lib/line/media");
+        attachment = await fetchAndStoreLineMedia({
+          tenantId,
+          accessToken: config.channelAccessToken,
+          messageId: msg.id,
+        });
+        if (msg.type === "file" && msg.fileName) body = `[ファイル] ${msg.fileName}`;
+      } else if (msg.type === "sticker" && msg.stickerId) {
+        // スタンプは公開 CDN の静止画を保存して表示
+        const { fetchAndStoreLineSticker } = await import("@/lib/line/media");
+        attachment = await fetchAndStoreLineSticker({ tenantId, stickerId: msg.stickerId });
+      } else if (msg.type === "location") {
+        // 位置情報は住所 + 地図リンクを本文に展開
+        body = [
+          `[位置情報]${msg.title ? ` ${msg.title}` : ""}${msg.address ? ` ${msg.address}` : ""}`,
+          msg.latitude != null && msg.longitude != null
+            ? `https://www.google.com/maps?q=${msg.latitude},${msg.longitude}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join("\n");
+      }
+
+      const stored = await recordInboundLineMessage({
+        tenantId,
+        lineUserId: event.source.userId,
+        body,
+        rawEvent: event,
+        lineMessageId: msg.id ?? null,
+        lineTimestampMs: event.timestamp ?? null,
+        attachmentPath: attachment?.path ?? null,
+        attachmentContentType: attachment?.contentType ?? null,
+      });
+      await maybeNotifyInboundMessage({
+        tenantId,
+        lineUserId: event.source.userId,
+        customerId: stored.customerId ?? null,
+      });
     }
 
     if (event.type === "message" && event.message?.type === "text" && event.source?.userId) {
@@ -266,9 +362,14 @@ export async function handleWebhookEvents(
         const link = await tryConsumeLineLinkCode(tenantId, event.source.userId, rawText);
         if (link.linked) {
           if (event.replyToken) {
-            await replyMessage(config.channelAccessToken, event.replyToken, [
-              { type: "text", text: "LINE連携が完了しました。今後の確認はこちらにお送りします。" },
-            ]);
+            const linkedText = "LINE連携が完了しました。今後の確認はこちらにお送りします。";
+            await replyMessage(config.channelAccessToken, event.replyToken, [{ type: "text", text: linkedText }]);
+            await recordOutboundLineMessage({
+              tenantId,
+              lineUserId: event.source.userId,
+              body: linkedText,
+              delivered: true,
+            });
           }
           continue;
         }
@@ -291,7 +392,8 @@ export async function handleWebhookEvents(
       const replyMessages: Array<{ type: string; text?: string; [key: string]: unknown }> = [];
 
       const text = rawText.trim().toLowerCase();
-      if (text === "予約" || text === "booking") {
+      // リッチメニューの定型テキスト (来店予約 等) も拾う
+      if (text === "予約" || text === "来店予約" || text === "booking") {
         // LIFF URL で予約画面へ誘導
         const liffUrl = config.liffId ? `https://liff.line.me/${config.liffId}` : null;
         replyMessages.push({
@@ -304,7 +406,6 @@ export async function handleWebhookEvents(
       // 課金されるプッシュではなく、この受信メッセージへの**リプライ (無料)** で返す。
       // 招待 URL を含むため、参加者全員に届くグループ/ルームでは送らず、1:1 トークのみ
       // (source.type === "user")。replyToken が無い回はスキップし、次の受信で返す。
-      let linkPromptText: string | null = null;
       if (event.source.type === "user" && event.replyToken) {
         const { buildLineLinkPrompt } = await import("@/lib/line/linkPrompt");
         const prompt = await buildLineLinkPrompt({
@@ -313,22 +414,25 @@ export async function handleWebhookEvents(
           customerId: stored.customerId ?? null,
         });
         if (prompt) {
-          linkPromptText = prompt.text;
           replyMessages.push({ type: "text", text: prompt.text });
         }
       }
 
-      // まとめて 1 回のリプライで送信 (最大 5)。送れたら案内は履歴に残す (クールダウン用)。
+      // まとめて 1 回のリプライで送信 (最大 5)。送れた自動返信はすべて受信箱に
+      // outbound として残す (連携案内はクールダウン判定にも使われる)。
       if (event.replyToken && replyMessages.length > 0) {
         try {
-          await replyMessage(config.channelAccessToken, event.replyToken, replyMessages.slice(0, 5));
-          if (linkPromptText) {
-            await recordOutboundLineMessage({
-              tenantId,
-              lineUserId: event.source.userId,
-              body: linkPromptText,
-              delivered: true,
-            });
+          const sent = replyMessages.slice(0, 5);
+          await replyMessage(config.channelAccessToken, event.replyToken, sent);
+          for (const m of sent) {
+            if (m.type === "text" && m.text) {
+              await recordOutboundLineMessage({
+                tenantId,
+                lineUserId: event.source.userId,
+                body: m.text,
+                delivered: true,
+              });
+            }
           }
         } catch (e) {
           console.error("[LINE webhook] reply failed:", e);
@@ -410,6 +514,55 @@ export async function sendCustomerLineText(params: {
       delivered: false,
       failureReason: err instanceof Error ? err.message : String(err),
     });
+    return false;
+  }
+}
+
+/**
+ * 管理画面から顧客へ画像を LINE Push 送信し、customer_messages に outbound
+ * (body "[画像]" + attachment) として記録する。
+ *
+ * 画像は事前に storeOutboundImage で Storage 保存 + 長期署名 URL 発行済みの前提。
+ * LINE の image message は JPEG/PNG のみ・https URL 必須 (検証は API 層で行う)。
+ */
+export async function sendCustomerLineImage(params: {
+  tenantId: string;
+  customerId?: string | null;
+  lineUserId: string;
+  imageUrl: string;
+  attachmentPath: string;
+  attachmentContentType: string;
+  sentByUserId?: string | null;
+}): Promise<boolean> {
+  const config = await getLineConfig(params.tenantId);
+  const record = (delivered: boolean, failureReason?: string) =>
+    recordOutboundLineMessage({
+      tenantId: params.tenantId,
+      customerId: params.customerId ?? null,
+      lineUserId: params.lineUserId,
+      body: "[画像]",
+      sentByUserId: params.sentByUserId ?? null,
+      attachmentPath: params.attachmentPath,
+      attachmentContentType: params.attachmentContentType,
+      delivered,
+      failureReason: failureReason ?? null,
+    });
+
+  if (!config) {
+    await record(false, "LINE integration not configured for this tenant");
+    return false;
+  }
+
+  try {
+    // ponytail: preview にも原本 URL を使う (LINE 仕様上プレビューは 1MB 推奨)。
+    // 表示が重い場合はサムネイル生成を挟むのが upgrade path。
+    await sendMessage(config.channelAccessToken, params.lineUserId, [
+      { type: "image", originalContentUrl: params.imageUrl, previewImageUrl: params.imageUrl },
+    ]);
+    await record(true);
+    return true;
+  } catch (err) {
+    await record(false, err instanceof Error ? err.message : String(err));
     return false;
   }
 }

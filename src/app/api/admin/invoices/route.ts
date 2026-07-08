@@ -15,36 +15,9 @@ import {
 import { invoiceCreateSchema, invoiceUpdateSchema, invoiceDeleteSchema } from "@/lib/validations/invoice";
 import { buildTaxBreakdown, totalTax, isValidRegistrationNumber } from "@/lib/invoice/taxBreakdown";
 import { recordInvoicePaymentBalance } from "@/lib/invoice/recordPayment";
+import { insertInvoiceWithRetry } from "@/lib/invoice/invoiceNumber";
 
 export const dynamic = "force-dynamic";
-
-/** 次の請求書番号を生成: INV-YYYYMM-NNN */
-async function generateInvoiceNumber(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
-  tenantId: string,
-): Promise<string> {
-  const now = new Date();
-  const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const prefix = `INV-${ym}-`;
-
-  const { data } = await supabase
-    .from("documents")
-    .select("doc_number")
-    .eq("tenant_id", tenantId)
-    .eq("doc_type", "invoice")
-    .like("doc_number", `${prefix}%`)
-    .order("doc_number", { ascending: false })
-    .limit(1);
-
-  let seq = 1;
-  if (data && data.length > 0) {
-    const last = data[0].doc_number as string;
-    const num = parseInt(last.replace(prefix, ""), 10);
-    if (!isNaN(num)) seq = num + 1;
-  }
-
-  return `${prefix}${String(seq).padStart(3, "0")}`;
-}
 
 // ─── GET: 請求書一覧 ───
 export async function GET(req: NextRequest) {
@@ -139,21 +112,28 @@ export async function GET(req: NextRequest) {
       customer_name: inv.customer_id ? (customerNames[inv.customer_id] ?? null) : null,
     }));
 
-    // 統計
+    // 統計はテナント全体で集計する（ページ内 enriched から出すと、ページングで
+    // 未回収額/当月発行数が実態とずれるため）。未回収額は既存の集計 RPC を再利用。
     const now = new Date();
     const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-    const allInvoices = enriched;
-    const unpaidAmount = allInvoices
-      .filter((i) => i.status === "sent" || i.status === "overdue")
-      .reduce((sum, i) => sum + (i.total ?? 0), 0);
-    const thisMonthIssued = allInvoices.filter((i) => i.issued_at && i.issued_at >= thisMonthStart).length;
+    const [unpaidRes, monthRes] = await Promise.all([
+      supabase.rpc("dashboard_unpaid_invoice_totals", { p_tenant_id: caller.tenantId }),
+      supabase
+        .from("documents")
+        .select("*", { count: "exact", head: true })
+        .eq("tenant_id", caller.tenantId)
+        .eq("doc_type", "invoice")
+        .gte("issued_at", thisMonthStart),
+    ]);
+    const unpaidAmount = Number(unpaidRes.data?.[0]?.unpaid_amount ?? 0);
+    const thisMonthIssued = monthRes.count ?? 0;
 
     const headers = { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" };
     return apiJson(
       {
         invoices: enriched,
         stats: {
-          total: totalCount ?? allInvoices.length,
+          total: totalCount ?? enriched.length,
           unpaid_amount: unpaidAmount,
           this_month_issued: thisMonthIssued,
         },
@@ -161,8 +141,8 @@ export async function GET(req: NextRequest) {
           pagination: {
             page,
             per_page: perPage,
-            total: totalCount ?? allInvoices.length,
-            total_pages: Math.ceil((totalCount ?? allInvoices.length) / perPage),
+            total: totalCount ?? enriched.length,
+            total_pages: Math.ceil((totalCount ?? enriched.length) / perPage),
           },
         }),
       },
@@ -189,7 +169,6 @@ export async function POST(req: NextRequest) {
     }
     const input = parsed.data;
 
-    const docNumber = input.invoice_number || (await generateInvoiceNumber(supabase, caller.tenantId));
     const customerId = input.customer_id || null;
     const issuedAt = input.issued_at || new Date().toISOString().slice(0, 10);
     const dueDate = input.due_date || null;
@@ -257,7 +236,6 @@ export async function POST(req: NextRequest) {
       tenant_id: caller.tenantId,
       customer_id: customerId,
       doc_type: "invoice" as const,
-      doc_number: docNumber,
       issued_at: issuedAt,
       due_date: dueDate,
       status,
@@ -278,14 +256,22 @@ export async function POST(req: NextRequest) {
       vehicle_info_json: vehicleInfo ?? {},
     };
 
-    const { data, error } = await admin
-      .from("documents")
-      .insert(row)
-      .select(
-        "id, tenant_id, customer_id, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, tax_breakdown, note, items_json, is_invoice_compliant, show_seal, show_logo, show_bank_info, recipient_name, vehicle_id, vehicle_info_json, created_at, updated_at",
-      )
-      .single();
-    if (error) {
+    // doc_number は採番→INSERT の間に競合し得る。UNIQUE 索引 + 23505 リトライで
+    // 二重採番を防ぐ（ユーザが番号を明示した場合はリトライせず 1 回のみ）。
+    const { data, error } = await insertInvoiceWithRetry(
+      admin,
+      caller.tenantId,
+      (docNumber) =>
+        admin
+          .from("documents")
+          .insert({ ...row, doc_number: docNumber })
+          .select(
+            "id, tenant_id, customer_id, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, tax_breakdown, note, items_json, is_invoice_compliant, show_seal, show_logo, show_bank_info, recipient_name, vehicle_id, vehicle_info_json, created_at, updated_at",
+          )
+          .single(),
+      { fixedNumber: input.invoice_number || null },
+    );
+    if (error || !data) {
       return apiInternalError(error, "invoices insert");
     }
 
@@ -410,6 +396,9 @@ export async function PUT(req: NextRequest) {
           customerId: (data.customer_id as string | null) ?? null,
           paymentMethod: "cash",
           paymentDate: (data.payment_date as string | null) ?? new Date().toISOString().slice(0, 10),
+          // 手動「入金済」更新は referenceNo が無く、連打で二重記帳し得る。
+          // document + 金額で決まる安定キーを渡し、recordPayment 側の重複ガードに拾わせる。
+          referenceNo: `manual:${data.id}:${Math.round(Number(data.total ?? 0))}`,
           recordedBy: caller.userId,
           notes: "請求書を入金済に更新 (自動記帳)",
         });

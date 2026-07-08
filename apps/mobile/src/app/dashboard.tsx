@@ -82,19 +82,30 @@ export default function StoreDashboardScreen() {
       if (payErr) throw payErr;
       const payments = (payRows ?? []) as PaymentRow[];
 
-      // 3) reservation_items を期間内決済分だけ取得 (人気メニュー集計用)
+      // 3) 決済済み予約の menu_items_json を取得 (人気メニュー集計用)。
+      //    明細は reservations.menu_items_json ({ menu_item_id, name, price }) に保存されている。
       const reservationIds = Array.from(
         new Set(payments.map((p) => p.reservation_id).filter(Boolean))
       );
       let items: ReservationItemRow[] = [];
       if (reservationIds.length > 0) {
-        const { data: itemRows } = await supabase
-          .from("reservation_items")
-          .select(
-            "reservation_id, unit_price, quantity, menu_item:menu_items(name)"
-          )
-          .in("reservation_id", reservationIds);
-        items = (itemRows ?? []) as unknown as ReservationItemRow[];
+        const { data: resvRows } = await supabase
+          .from("reservations")
+          .select("id, menu_items_json")
+          .in("id", reservationIds);
+        items = (resvRows ?? []).flatMap(
+          (r: { id: string; menu_items_json: unknown }) =>
+            Array.isArray(r.menu_items_json)
+              ? (r.menu_items_json as { name?: string; price?: number }[]).map(
+                  (mi) => ({
+                    reservation_id: r.id,
+                    unit_price: typeof mi.price === "number" ? mi.price : 0,
+                    quantity: 1,
+                    menu_item: { name: mi.name ?? "未設定" },
+                  })
+                )
+              : []
+        );
       }
 
       // 4) 店舗ごとに集計

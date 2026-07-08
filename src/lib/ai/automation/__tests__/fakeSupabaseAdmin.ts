@@ -53,6 +53,7 @@ export function makeFakeAdmin(store: FakeStore): any {
       not: () => builder,
       in: () => builder,
       gte: () => builder,
+      contains: () => builder,
       lte: () => builder,
       order: () => builder,
       limit: () => builder,
@@ -79,7 +80,7 @@ export function makeFakeAdmin(store: FakeStore): any {
         } else if (op === "insert") {
           resolve({ data: null, error: null });
         } else {
-          resolve({ data: matched(), error: null });
+          resolve({ data: matched(), error: null, count: matched().length });
         }
       },
     };

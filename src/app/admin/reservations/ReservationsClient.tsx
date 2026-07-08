@@ -200,6 +200,21 @@ export default function ReservationsClient() {
   const [gcalCalendarId, setGcalCalendarId] = useState<string | null>(null);
   const [gcalCalendarSaving, setGcalCalendarSaving] = useState(false);
   const [showGcalPanel, setShowGcalPanel] = useState(false);
+  const [gcalFeedback, setGcalFeedback] = useState<"connected" | "error" | null>(null);
+
+  // ?gcal=... のフィードバックはマウント時に一度だけ処理する（レンダー中の setState/replaceState を避ける）
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const gcalResult = params.get("gcal");
+    if (gcalResult === "connected") {
+      setGcalFeedback("connected");
+      setGcalConnected(true);
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (gcalResult === "error" || gcalResult === "auth_error") {
+      setGcalFeedback("error");
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
 
   // Booking URL
   const [tenantSlug, setTenantSlug] = useState<string | null>(null);
@@ -604,29 +619,16 @@ export default function ReservationsClient() {
       />
 
       {/* ── Gcal feedback ── */}
-      {typeof window !== "undefined" &&
-        (() => {
-          const params = new URLSearchParams(window.location.search);
-          const gcalResult = params.get("gcal");
-          if (gcalResult === "connected") {
-            window.history.replaceState({}, "", window.location.pathname);
-            if (!gcalConnected) setGcalConnected(true);
-            return (
-              <div className="rounded-xl border border-accent/30 bg-accent-dim p-3 text-sm text-accent-text">
-                ✅ Googleカレンダーとの連携が完了しました！
-              </div>
-            );
-          }
-          if (gcalResult === "error" || gcalResult === "auth_error") {
-            window.history.replaceState({}, "", window.location.pathname);
-            return (
-              <div className="rounded-xl border border-danger/20 bg-danger-dim p-3 text-sm text-danger-text">
-                ❌ Googleカレンダーの連携に失敗しました。再度お試しください。
-              </div>
-            );
-          }
-          return null;
-        })()}
+      {gcalFeedback === "connected" && (
+        <div className="rounded-xl border border-accent/30 bg-accent-dim p-3 text-sm text-accent-text">
+          ✅ Googleカレンダーとの連携が完了しました！
+        </div>
+      )}
+      {gcalFeedback === "error" && (
+        <div className="rounded-xl border border-danger/20 bg-danger-dim p-3 text-sm text-danger-text">
+          ❌ Googleカレンダーの連携に失敗しました。再度お試しください。
+        </div>
+      )}
 
       {err && (
         <div className="rounded-xl border border-danger/20 bg-danger-dim p-3 text-sm text-danger-text">{err}</div>

@@ -3,6 +3,7 @@ import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useCallback, useEffect, useState } from "react";
 import Badge from "@/components/ui/Badge";
+import PageHeader from "@/components/ui/PageHeader";
 import { formatJpy } from "@/lib/format";
 import { AGENT_COMMISSION_STATUS_MAP } from "@/lib/statusMaps";
 
@@ -84,20 +85,14 @@ export default function AdminCommissionsClient() {
 
   return (
     <div className="space-y-4">
-      {/* Filter tabs */}
-      <div className="flex flex-wrap gap-2">
-        {FILTERS.map((f) => (
-          <button
-            key={f.key || "all"}
-            onClick={() => setFilter(f.key)}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
-              filter === f.key ? "bg-primary text-white" : "bg-border-subtle text-muted hover:text-primary"
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+      <PageHeader
+        tag="COMMISSIONS"
+        title="代理店コミッション"
+        description="紹介経由の有料化で自動計上されたコミッションの承認・送金（Stripe Connect）"
+        tabs={FILTERS.map((f) => ({ key: f.key || "all", label: f.label }))}
+        activeTab={filter || "all"}
+        onTabSelect={(k) => setFilter(k === "all" ? "" : k)}
+      />
 
       {msg && <div className="rounded-xl bg-accent/10 px-4 py-2 text-sm text-primary">{msg}</div>}
 

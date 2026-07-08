@@ -3,7 +3,7 @@ import { z } from "zod";
 import { apiJson } from "@/lib/api/response";
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { Client } from "@upstash/qstash";
+import { enqueueSquareSyncNextPage } from "@/lib/qstash/publish";
 import { buildSecretWrite, readSecret } from "@/lib/crypto/tenantSecrets";
 import type { SquareApiOrder, SquareSearchOrdersResponse } from "@/types/square";
 
@@ -11,23 +11,14 @@ const squareSyncSchema = z.object({
   job_id: z.string().uuid(),
   tenant_id: z.string().uuid(),
   cursor: z.string().trim().max(1000).optional(),
+  // 自己再キューイングで増える ページ番号（deduplication キー用。初回は 1）
+  page: z.number().int().min(1).default(1),
 });
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 const PAGE_SIZE = 100;
-
-function getBaseUrl(): string {
-  const url = [
-    process.env.NEXT_PUBLIC_APP_URL,
-    process.env.APP_URL,
-    process.env.NEXT_PUBLIC_BASE_URL,
-    process.env.VERCEL_URL,
-  ].find(Boolean);
-  if (!url) throw new Error("Base URL not set");
-  return url.startsWith("http") ? url : `https://${url}`;
-}
 
 async function refreshSquareToken(
   connectionId: string,
@@ -76,7 +67,7 @@ async function handler(req: NextRequest) {
   if (!parsed.success) {
     return apiJson({ error: "invalid payload" }, { status: 400 });
   }
-  const { job_id, tenant_id, cursor: resumeCursor } = parsed.data;
+  const { job_id, tenant_id, cursor: resumeCursor, page } = parsed.data;
 
   const { admin } = createTenantScopedAdmin(tenant_id);
 
@@ -268,17 +259,9 @@ async function handler(req: NextRequest) {
     const prevProcessed = (syncRun?.processed_count as number) ?? 0;
 
     if (nextCursor) {
-      // 次ページがあれば自己再キューイング（2秒後、Square レートリミット対策）
-      const qstash = new Client({ token: process.env.QSTASH_TOKEN! });
-      await qstash.publishJSON({
-        url: `${getBaseUrl()}/api/qstash/square-sync`,
-        body: { job_id, tenant_id, cursor: nextCursor },
-        retries: 2,
-        delay: 2,
-        // (job_id, cursor) 単位でユニークになるので、同じカーソルでの再キュー要求は
-        // ネットワーク再試行扱いで deduplication される。
-        deduplicationId: `square-sync:${job_id}:${nextCursor}`,
-      });
+      // 次ページがあれば自己再キューイング。deduplication は (job_id, page) 単位
+      // （Square の cursor は不透明で長大なのでキーには使わない）。
+      await enqueueSquareSyncNextPage({ job_id, tenant_id, cursor: nextCursor, page: page + 1 });
 
       await admin
         .from("square_sync_runs")

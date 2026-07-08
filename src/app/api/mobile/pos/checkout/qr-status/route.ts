@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripe/client";
-import { createMobileClient, resolveMobileCaller } from "@/lib/supabase/mobile";
+import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import {
@@ -27,12 +27,7 @@ export const dynamic = "force-dynamic";
  *   { status: "pending" | "paid" | "expired" | "cancelled" }
  */
 export async function GET(req: NextRequest) {
-  const { client, accessToken } = createMobileClient(req);
-  if (!client) {
-    return apiUnauthorized();
-  }
-
-  const caller = await resolveMobileCaller(client, accessToken);
+  const caller = await resolveMobileCaller(req);
   if (!caller) {
     return apiUnauthorized();
   }

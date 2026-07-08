@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
@@ -25,9 +24,15 @@ export default async function AdminNfcPage() {
   }
 
   const nfcRows = (rows ?? []) as Array<{
-    id: string; tag_code: string | null; uid: string | null; vehicle_id: string | null;
-    certificate_id: string | null; status: string | null; written_at: string | null;
-    attached_at: string | null; created_at: string | null;
+    id: string;
+    tag_code: string | null;
+    uid: string | null;
+    vehicle_id: string | null;
+    certificate_id: string | null;
+    status: string | null;
+    written_at: string | null;
+    attached_at: string | null;
+    created_at: string | null;
   }>;
 
   const vehicleIds = [...new Set(nfcRows.map((r) => r.vehicle_id).filter(Boolean))] as string[];
@@ -37,45 +42,16 @@ export default async function AdminNfcPage() {
   const certMap: Record<string, any> = {};
 
   if (vehicleIds.length > 0) {
-    const { data: vs } = await supabase.from("vehicles")
-      .select("id,maker,model,year,plate_display,customer_name").in("id", vehicleIds);
+    const { data: vs } = await supabase
+      .from("vehicles")
+      .select("id,maker,model,year,plate_display,customer_name")
+      .in("id", vehicleIds);
     for (const v of vs ?? []) vehicleMap[v.id] = v;
   }
   if (certIds.length > 0) {
-    const { data: cs } = await supabase.from("certificates")
-      .select("id,public_id,status").in("id", certIds);
+    const { data: cs } = await supabase.from("certificates").select("id,public_id,status").in("id", certIds);
     for (const c of cs ?? []) certMap[c.id] = c;
   }
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-3">
-          <div className="inline-flex rounded-full border border-border-default bg-surface px-3 py-1 text-[11px] font-semibold tracking-[0.22em] text-secondary">
-            NFCタグ
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-primary">NFCタグ管理</h1>
-            <p className="mt-2 text-sm text-secondary">
-              NFCタグの台帳・状態・証明書／車両との紐付けを確認します。
-            </p>
-          </div>
-        </div>
-        <Link
-          href="/admin"
-          className="rounded-xl border border-border-default bg-surface px-4 py-2 text-sm font-medium text-primary hover:bg-surface-hover"
-        >
-          ダッシュボード
-        </Link>
-      </header>
-
-      <NfcClient
-        initialRows={nfcRows}
-        vehicleMap={vehicleMap}
-        certMap={certMap}
-        isAdmin={isAdmin}
-      />
-    </div>
-  );
+  return <NfcClient initialRows={nfcRows} vehicleMap={vehicleMap} certMap={certMap} isAdmin={isAdmin} />;
 }

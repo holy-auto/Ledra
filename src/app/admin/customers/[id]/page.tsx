@@ -3,13 +3,13 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import PageHeader from "@/components/ui/PageHeader";
 import CustomerDetailClient from "./CustomerDetailClient";
 import CustomerNextActionPanel from "./CustomerNextActionPanel";
 import CustomerTabs from "./CustomerTabs";
 import { deriveSignals, type CustomerSignals } from "@/lib/customers/signals";
 import { getOrCreateCustomerSummary } from "@/lib/customers/getOrCreateAiSummary";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 
 /**
  * 顧客詳細 (360° ビュー)

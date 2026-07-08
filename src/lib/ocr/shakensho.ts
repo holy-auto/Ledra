@@ -8,6 +8,7 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { withRetry } from "@/lib/http/withRetry";
 import { getAnthropicClient, AI_MODEL_VISION } from "@/lib/ai/client";
+import { detectMagicByteMime } from "@/lib/media/magicBytes";
 
 export interface ShakenshoData {
   /** 車名 (例: トヨタ) */
@@ -95,30 +96,13 @@ export function calcSizeClass(length_mm: number, width_mm: number, height_mm: nu
 
 type SupportedMediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 
+// Claude Vision が受け付ける 4 形式のみ。判定不能は従来どおり jpeg として渡す
+// (Vision 側が最終的に弾く)。マジックバイト判定は共有ヘルパーに集約済み。
 function detectMediaType(buf: Buffer): SupportedMediaType {
-  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
-    return "image/jpeg";
-  }
-  if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
-    return "image/png";
-  }
-  if (buf.length >= 6 && buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38) {
-    return "image/gif";
-  }
-  if (
-    buf.length >= 12 &&
-    buf[0] === 0x52 &&
-    buf[1] === 0x49 &&
-    buf[2] === 0x46 &&
-    buf[3] === 0x46 &&
-    buf[8] === 0x57 &&
-    buf[9] === 0x45 &&
-    buf[10] === 0x42 &&
-    buf[11] === 0x50
-  ) {
-    return "image/webp";
-  }
-  return "image/jpeg";
+  const mime = detectMagicByteMime(buf);
+  return mime === "image/jpeg" || mime === "image/png" || mime === "image/gif" || mime === "image/webp"
+    ? mime
+    : "image/jpeg";
 }
 
 const SYSTEM_PROMPT = `あなたは日本の自動車車検証（自動車検査証）から情報を抽出する専門家です。

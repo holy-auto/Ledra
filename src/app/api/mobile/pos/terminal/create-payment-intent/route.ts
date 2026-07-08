@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripe/client";
-import { createMobileClient, resolveMobileCaller } from "@/lib/supabase/mobile";
+import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/api/rateLimit";
@@ -24,12 +24,7 @@ export async function POST(req: NextRequest) {
     const limited = await checkRateLimit(req, "mobile_terminal");
     if (limited) return limited;
 
-    const { client, accessToken } = createMobileClient(req);
-    if (!client) {
-      return apiUnauthorized();
-    }
-
-    const caller = await resolveMobileCaller(client, accessToken);
+    const caller = await resolveMobileCaller(req);
     if (!caller) {
       return apiUnauthorized();
     }
@@ -88,12 +83,7 @@ export async function POST(req: NextRequest) {
 // ─── GET: PaymentIntent ステ���タス確認（ポーリング用） ───
 export async function GET(req: NextRequest) {
   try {
-    const { client, accessToken } = createMobileClient(req);
-    if (!client) {
-      return apiUnauthorized();
-    }
-
-    const caller = await resolveMobileCaller(client, accessToken);
+    const caller = await resolveMobileCaller(req);
     if (!caller) {
       return apiUnauthorized();
     }

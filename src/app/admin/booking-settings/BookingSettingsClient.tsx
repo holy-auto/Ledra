@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import PageHeader from "@/components/ui/PageHeader";
 import SlotCalendarGrid, { type GridSlot } from "./SlotCalendarGrid";
 
 // ─── 型定義 ──────────────────────────────────────────────────────
@@ -308,6 +309,12 @@ export default function BookingSettingsClient() {
 
   // ─── 保存 ───
   async function handleSave() {
+    // 編集済みスロットも含め、開始 >= 終了の不正な時間帯を弾く
+    const invalid = slots.some((s) => !s._deleted && toMinutes(s.start_time) >= toMinutes(s.end_time));
+    if (invalid) {
+      showToast("error", "終了時刻は開始時刻より後にしてください");
+      return;
+    }
     setSaving(true);
     try {
       const slotsToSave = slots
@@ -366,43 +373,37 @@ export default function BookingSettingsClient() {
   return (
     <div className="max-w-4xl mx-auto pb-20">
       {/* ヘッダー */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-primary">外部予約受付設定</h1>
-          <p className="text-sm text-secondary mt-1">お客様向け予約ページの受付時間・定休日を管理します</p>
-        </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex items-center gap-2 px-5 py-2 bg-accent text-white rounded-lg font-medium hover:bg-accent/90 disabled:opacity-50 transition-colors"
-        >
-          {saving ? (
-            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-            </svg>
-          ) : (
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-          )}
-          {saving ? "保存中..." : "保存する"}
-        </button>
-      </div>
-
-      {/* タブ */}
-      <div className="flex border-b border-border-default mb-6">
-        {(["slots", "closed"] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === tab ? "border-accent text-accent" : "border-transparent text-secondary hover:text-primary"
-            }`}
-          >
-            {tab === "slots" ? "受付時間スロット" : "定休日設定"}
-          </button>
-        ))}
+      <div className="mb-6">
+        <PageHeader
+          tag="予約設定"
+          title="外部予約受付設定"
+          description="お客様向け予約ページの受付時間・定休日を管理します"
+          actions={
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-2 px-5 py-2 bg-accent text-white rounded-lg font-medium hover:bg-accent/90 disabled:opacity-50 transition-colors"
+            >
+              {saving ? (
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+              {saving ? "保存中..." : "保存する"}
+            </button>
+          }
+          tabs={(["slots", "closed"] as const).map((tab) => ({
+            key: tab,
+            label: tab === "slots" ? "受付時間スロット" : "定休日設定",
+          }))}
+          activeTab={activeTab}
+          onTabSelect={(k) => setActiveTab(k as "slots" | "closed")}
+        />
       </div>
 
       {/* ─── タブ: 受付時間スロット ─── */}

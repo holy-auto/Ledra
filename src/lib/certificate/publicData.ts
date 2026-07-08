@@ -4,6 +4,7 @@ import {
   type CertificateMediaRow,
   type ResolvedCertificateMedia,
 } from "@/lib/certificateMedia";
+import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages";
 
 /**
  * scheduled_date (YYYY-MM-DD) と start_time (HH:MM[:SS]) を ISO 8601 文字列に
@@ -46,6 +47,7 @@ type CertRow = {
   warranty_exclusions: string | null;
   maintenance_json: Json | null;
   body_repair_json: Json | null;
+  accessory_json: Json | null;
   manufacturer_id: string | null;
   manufacturer_template_id: string | null;
   craftsman_name: string | null;
@@ -196,7 +198,7 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
         "vehicle_info_json, content_free_text, content_preset_json, expiry_type, expiry_value, " +
         "logo_asset_path, footer_variant, current_version, service_type, ppf_coverage_json, " +
         "coating_products_json, warranty_period_end, warranty_exclusions, " +
-        "maintenance_json, body_repair_json, manufacturer_id, manufacturer_template_id, craftsman_name",
+        "maintenance_json, body_repair_json, accessory_json, manufacturer_id, manufacturer_template_id, craftsman_name",
     )
     .eq("public_id", pid)
     .limit(1)
@@ -323,12 +325,12 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
   ).map((img) => {
     let url: string | null = null;
     if (img.storage_path) {
-      const { data: signedData } = supabase.storage.from("certificate-images").getPublicUrl(img.storage_path);
+      const { data: signedData } = supabase.storage.from(CERTIFICATE_IMAGE_BUCKET).getPublicUrl(img.storage_path);
       url = signedData?.publicUrl ?? null;
     }
     let renderedUrl: string | null = null;
     if (img.rendered_storage_path) {
-      const { data: signedData } = supabase.storage.from("certificate-images").getPublicUrl(img.rendered_storage_path);
+      const { data: signedData } = supabase.storage.from(CERTIFICATE_IMAGE_BUCKET).getPublicUrl(img.rendered_storage_path);
       renderedUrl = signedData?.publicUrl ?? null;
     }
     return { ...img, url, rendered_url: renderedUrl };

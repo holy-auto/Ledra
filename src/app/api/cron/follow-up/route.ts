@@ -16,6 +16,7 @@ import {
   processSeasonalProposals,
   processMaintenanceReminders,
 } from "@/lib/cron/followUp";
+import { todayJst } from "@/lib/gantt/board";
 import { processInspectionReminders } from "@/lib/cron/inspectionReminders";
 import { processServiceReminders } from "@/lib/cron/serviceReminders";
 import { processBirthdayGreetings } from "@/lib/cron/birthdayGreetings";
@@ -35,8 +36,11 @@ export async function GET(req: NextRequest) {
 
   try {
     const supabase = createServiceRoleAdmin("cron:follow-up — iterates every tenant's follow_up_settings");
-    const today = new Date();
-    const todayStr = today.toISOString().slice(0, 10);
+    // 「今日」は JST の暦日で統一する。Vercel (UTC) では JST 深夜の実行時に
+    // toISOString() ベースの日付計算が前日にずれるため、JST の今日を UTC 0 時に
+    // 固定した Date を全サブジョブへ渡す (各サブジョブは getUTC* / toISOString で読む)。
+    const todayStr = todayJst();
+    const today = new Date(`${todayStr}T00:00:00Z`);
 
     const lock = await withCronLock(supabase, "follow-up", 600, async () => {
       let remindersSent = 0;

@@ -17,12 +17,13 @@ describe("normalizeRole", () => {
     expect(normalizeRole("Viewer")).toBe("viewer");
   });
 
-  it("不正な値はadminにフォールバック", () => {
-    expect(normalizeRole("")).toBe("admin");
-    expect(normalizeRole(null)).toBe("admin");
-    expect(normalizeRole(undefined)).toBe("admin");
+  it("不正な値は最小権限のviewerにフォールバック (fail-closed)", () => {
+    expect(normalizeRole("")).toBe("viewer");
+    expect(normalizeRole(null)).toBe("viewer");
+    expect(normalizeRole(undefined)).toBe("viewer");
     expect(normalizeRole("superadmin")).toBe("super_admin");
-    expect(normalizeRole(123)).toBe("admin");
+    expect(normalizeRole(123)).toBe("viewer");
+    expect(normalizeRole("garbage")).toBe("viewer");
   });
 });
 

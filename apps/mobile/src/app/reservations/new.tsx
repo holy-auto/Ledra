@@ -127,19 +127,17 @@ export default function ReservationNewScreen() {
         ? now.toTimeString().slice(0, 5)
         : selectedDate.toTimeString().slice(0, 5);
 
+      // reservations.menu_items_json (Web 側と同じ shape: { menu_item_id, name, price })
       const items = selectedMenuItems.map((menuItemId) => {
         const mi = menuItems.find((m) => m.id === menuItemId);
         return {
           menu_item_id: menuItemId,
-          quantity: 1,
-          unit_price: mi?.unit_price ?? 0,
+          name: mi?.name ?? "メニュー",
+          price: mi?.unit_price ?? 0,
         };
       });
 
-      const estimatedAmount = items.reduce(
-        (sum, item) => sum + item.quantity * item.unit_price,
-        0,
-      );
+      const estimatedAmount = items.reduce((sum, item) => sum + item.price, 0);
 
       const { data, error } = await supabase
         .from("reservations")
@@ -148,29 +146,19 @@ export default function ReservationNewScreen() {
           store_id: selectedStore!.id,
           customer_id: selectedCustomer?.id ?? null,
           vehicle_id: selectedVehicle?.id ?? null,
+          title: items[0]?.name ?? "予約",
           scheduled_date: scheduledDate,
-          scheduled_time: scheduledTime,
+          start_time: scheduledTime,
           status: isWalkIn ? "arrived" : "confirmed",
           payment_status: "unpaid",
-          notes: notes || null,
+          note: notes || null,
           estimated_amount: estimatedAmount,
+          menu_items_json: items,
         })
         .select("id")
         .single();
 
       if (error) throw error;
-
-      if (items.length > 0) {
-        const { error: itemsError } = await supabase
-          .from("reservation_items")
-          .insert(
-            items.map((item) => ({
-              reservation_id: data.id,
-              ...item,
-            })),
-          );
-        if (itemsError) throw itemsError;
-      }
 
       return data;
     },

@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mocks = vi.hoisted(() => ({
   resolveCaller: vi.fn(),
   hasPhotos: vi.fn(),
+  hasBeforeAfter: vi.fn(),
   issued: vi.fn(),
   enqueue: vi.fn(),
   update: vi.fn(),
@@ -46,7 +47,11 @@ vi.mock("@/lib/auth/checkRole", () => ({
 }));
 vi.mock("@/lib/certificates/photoRequirement", async (orig) => {
   const real = (await orig()) as Record<string, unknown>;
-  return { ...real, certificateHasRequiredPhotos: mocks.hasPhotos };
+  return {
+    ...real,
+    certificateHasRequiredPhotos: mocks.hasPhotos,
+    certificateHasRequiredBeforeAfterMedia: mocks.hasBeforeAfter,
+  };
 });
 vi.mock("@/lib/certificates/issueHooks", () => ({ triggerCertificateIssued: mocks.issued }));
 vi.mock("@/lib/anchoring/certificateAnchorService", () => ({ enqueueCertificateAnchor: mocks.enqueue }));
@@ -82,6 +87,7 @@ const CERT = {
 beforeEach(() => {
   mocks.resolveCaller.mockReset();
   mocks.hasPhotos.mockReset();
+  mocks.hasBeforeAfter.mockReset().mockResolvedValue(true);
   mocks.issued.mockReset().mockResolvedValue(undefined);
   mocks.enqueue.mockReset().mockResolvedValue({ queued: false, reason: "disabled" });
   mocks.update.mockReset();
@@ -130,5 +136,16 @@ describe("PUT /api/admin/certificates/status — photo gate", () => {
     // draft→active 以外 (再発行/void 等) は証明書レコードアンカーを直接 queue する
     expect(mocks.enqueue).toHaveBeenCalledTimes(1);
     expect(mocks.enqueue.mock.calls[0][0]).toMatchObject({ tenantId: "tenant-1", certificateId: "c1" });
+  });
+
+  it("coating で Before/After 写真が無いと 400 でブロックする", async () => {
+    mocks.fetchResult = { data: { ...CERT, status: "draft" }, error: null };
+    mocks.hasPhotos.mockResolvedValue(true);
+    mocks.hasBeforeAfter.mockResolvedValue(false);
+
+    const res = (await PUT(req({ public_id: "P-1", status: "active" }))) as Response;
+    expect(res.status).toBe(400);
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.issued).not.toHaveBeenCalled();
   });
 });

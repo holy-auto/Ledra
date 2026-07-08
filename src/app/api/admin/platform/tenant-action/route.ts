@@ -28,7 +28,8 @@ const tenantActionSchema = z
     ),
     params: z
       .object({
-        plan_tier: z.enum(["free", "starter", "pro", "enterprise"]).optional(),
+        // canonical PlanTier (src/types/billing.ts) に合わせる
+        plan_tier: z.enum(["free", "starter", "standard", "pro"]).optional(),
         message: z.string().trim().max(2000).optional(),
         addon_key: z.enum(ADDON_KEY_VALUES).optional(),
         notes: z.string().trim().max(500).optional(),

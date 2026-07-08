@@ -45,13 +45,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .insert({
         tenant_id: caller.tenantId,
         vehicle_id: reservation.vehicle_id,
-        reservation_id: reservationId,
-        label: body.progress_label,
-        note: body.note ?? null,
-        is_public: true,
-        created_by: caller.userId,
+        type: "progress_update",
+        title: body.progress_label,
+        description: body.note ?? null,
+        performed_at: new Date().toISOString(),
       })
-      .select("id, vehicle_id, reservation_id, label, note, is_public, created_at")
+      .select("id, vehicle_id, type, title, description, created_at")
       .single();
 
     if (error) return apiInternalError(error, "progress.create");

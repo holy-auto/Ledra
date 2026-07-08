@@ -16,12 +16,12 @@ describe("normalizeRole", () => {
     expect(normalizeRole("viewer")).toBe("viewer");
   });
 
-  it("defaults to 'admin' for unrecognized input", () => {
+  it("defaults to 'viewer' (least privilege) for unrecognized input", () => {
     expect(normalizeRole("admin")).toBe("admin");
-    expect(normalizeRole("unknown")).toBe("admin");
-    expect(normalizeRole(null)).toBe("admin");
-    expect(normalizeRole(undefined)).toBe("admin");
-    expect(normalizeRole("")).toBe("admin");
+    expect(normalizeRole("unknown")).toBe("viewer");
+    expect(normalizeRole(null)).toBe("viewer");
+    expect(normalizeRole(undefined)).toBe("viewer");
+    expect(normalizeRole("")).toBe("viewer");
   });
 });
 

@@ -3,6 +3,7 @@ import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useEffect, useState } from "react";
 import Badge from "@/components/ui/Badge";
+import PageHeader from "@/components/ui/PageHeader";
 import {
   AGENT_STATUS_MAP,
   AGENT_APPLICATION_STATUS_MAP,
@@ -63,20 +64,14 @@ export default function AgentReviewClient() {
 
   return (
     <div className="space-y-4">
-      {/* Tab Bar */}
-      <div className="flex gap-1 rounded-xl bg-inset p-1 w-fit">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-              tab === t.key ? "bg-surface-solid text-primary shadow-sm" : "text-secondary hover:text-primary"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <PageHeader
+        tag="AGENTS"
+        title="代理店管理"
+        description="代理店パートナーの一覧・審査・コミッション設定"
+        tabs={TABS}
+        activeTab={tab}
+        onTabSelect={(k) => setTab(k as Tab)}
+      />
 
       {tab === "agents" && <AgentsTab />}
       {tab === "applications" && <ApplicationsTab />}

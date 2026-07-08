@@ -1,7 +1,19 @@
 import { z } from "zod";
 
+// 大／中／小カテゴリ（自由入力・任意）。空文字は null に正規化する。
+const categoryField = z
+  .string()
+  .trim()
+  .max(60)
+  .nullable()
+  .optional()
+  .transform((v) => v || null);
+
 export const menuItemCreateSchema = z.object({
   name: z.string().trim().min(1, "品目名は必須です。").max(100),
+  category_large: categoryField,
+  category_medium: categoryField,
+  category_small: categoryField,
   description: z
     .string()
     .trim()
@@ -19,11 +31,15 @@ export const menuItemCreateSchema = z.object({
     .default(10),
   sort_order: z.coerce.number().int().min(0).default(0),
   estimated_minutes: z.coerce.number().int().min(0).max(100000).nullable().optional(),
+  labor_hours: z.coerce.number().min(0, "標準工数は0以上で入力してください。").max(1000).nullable().optional(),
 });
 
 export const menuItemUpdateSchema = z.object({
   id: z.string().uuid("無効なIDです。"),
   name: z.string().trim().min(1).max(100).optional(),
+  category_large: categoryField,
+  category_medium: categoryField,
+  category_small: categoryField,
   description: z
     .string()
     .trim()
@@ -41,12 +57,19 @@ export const menuItemUpdateSchema = z.object({
     .optional(),
   sort_order: z.coerce.number().int().min(0).optional(),
   estimated_minutes: z.coerce.number().int().min(0).max(100000).nullable().optional(),
+  labor_hours: z.coerce.number().min(0).max(1000).nullable().optional(),
   is_active: z.boolean().optional(),
 });
 
-export const menuItemDeleteSchema = z.object({
-  id: z.string().uuid("無効なIDです。"),
-});
+export const menuItemDeleteSchema = z
+  .object({
+    // 単一無効化（従来）／複数一括無効化（ids）の両対応。どちらか一方を指定する。
+    id: z.string().uuid("無効なIDです。").optional(),
+    ids: z.array(z.string().uuid("無効なIDです。")).min(1).max(500).optional(),
+  })
+  .refine((v) => Boolean(v.id) || Boolean(v.ids?.length), {
+    message: "無効化する品目が指定されていません。",
+  });
 
 export const menuItemCsvImportSchema = z.object({
   action: z.literal("csv_import"),

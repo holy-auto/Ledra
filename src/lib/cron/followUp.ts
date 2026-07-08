@@ -76,47 +76,62 @@ async function sendNotification(
 ): Promise<boolean> {
   const useAI = isAiPlan(params.planTier);
   let sent = false;
+  let channel: "line" | "email" = "email";
+  let recipientLineUserId: string | null = null;
 
   try {
-    if (useAI) {
-      await generateFollowUpContent(
-        {
-          trigger: params.trigger,
-          customer: { name: params.customerName },
-          certificate: {
-            label: params.serviceName,
-            issued_at: params.issuedAt,
-            warranty_period: params.warrantyPeriod ?? undefined,
+    // AI プランでは文面をパーソナライズ。生成失敗時は generateFollowUpContent
+    // 内部でテンプレートにフォールバックするため content は常に得られる。
+    const content = useAI
+      ? await generateFollowUpContent(
+          {
+            trigger: params.trigger,
+            customer: { name: params.customerName },
+            certificate: {
+              label: params.serviceName,
+              issued_at: params.issuedAt,
+              warranty_period: params.warrantyPeriod ?? undefined,
+            },
+            vehicle: {
+              maker: params.vehicleMaker ?? undefined,
+              model: params.vehicleModel ?? undefined,
+              color: params.vehicleColor ?? undefined,
+            },
+            shop: { name: params.shopName, phone: params.shopPhone ?? undefined },
           },
-          vehicle: {
-            maker: params.vehicleMaker ?? undefined,
-            model: params.vehicleModel ?? undefined,
-            color: params.vehicleColor ?? undefined,
-          },
-          shop: { name: params.shopName, phone: params.shopPhone ?? undefined },
-        },
-        { model: fastModelForPlanTier(params.planTier) },
-      );
+          { model: fastModelForPlanTier(params.planTier) },
+        )
+      : null;
 
-      if (params.customerEmail) {
-        sent = await sendFollowUpEmail({
-          shopName: params.shopName,
-          customerEmail: params.customerEmail,
-          customerName: params.customerName,
-          certificateLabel: params.serviceName,
-          daysSince: 0,
-        });
+    // ── 配信: LINE 優先、失敗時は email にフォールバック (processMaintenanceReminders と同方針) ──
+    // AI プラン以外 (content なし) でも LINE 連携済み顧客には定型文で送る
+    // (email が null の LINE-only 顧客がどのプランでも取り残されないように)
+    if (params.lineUserId) {
+      const lineOk = await sendMaintenanceLineMessage({
+        tenantId: params.tenantId,
+        lineUserId: params.lineUserId,
+        lineMessage:
+          content?.lineMessage ??
+          `【${params.shopName}】${params.customerName}様、「${params.serviceName}」の施工後フォローのご連絡です。状態にお変わりないでしょうか？ご不明な点はお気軽にお問い合わせください。`,
+      });
+      if (lineOk) {
+        sent = true;
+        channel = "line";
+        recipientLineUserId = params.lineUserId;
       }
-    } else {
-      if (params.customerEmail) {
-        sent = await sendFollowUpEmail({
-          shopName: params.shopName,
-          customerEmail: params.customerEmail,
-          customerName: params.customerName,
-          certificateLabel: params.serviceName,
-          daysSince: 30,
-        });
-      }
+    }
+
+    if (!sent && params.customerEmail) {
+      sent = await sendFollowUpEmail({
+        shopName: params.shopName,
+        customerEmail: params.customerEmail,
+        customerName: params.customerName,
+        certificateLabel: params.serviceName,
+        daysSince: useAI ? 0 : 30,
+        // AI 生成文面があれば件名・本文を上書き。無ければテンプレート文面。
+        subject: content?.emailSubject,
+        bodyHtml: content?.emailBody,
+      });
     }
   } catch (err) {
     console.error(`[follow-up] notification error (${params.notifType}):`, err);
@@ -127,7 +142,9 @@ async function sendNotification(
     type: params.notifType,
     target_type: "certificate",
     target_id: params.certId,
-    recipient_email: params.customerEmail ?? null,
+    recipient_email: channel === "email" ? (params.customerEmail ?? null) : null,
+    recipient_line_user_id: recipientLineUserId,
+    channel,
     status: sent ? "sent" : "failed",
   });
 
@@ -264,7 +281,8 @@ export async function processRegularFollowUps(
       if (alreadyNotifiedIds.has(cert.id)) continue;
 
       const customer = customerMap.get(cert.customer_id);
-      if (!customer?.email) continue;
+      // LINE 連携のみの顧客 (email null) も sendNotification 側の LINE 経路で送れる
+      if (!customer?.email && !customer?.line_user_id) continue;
 
       const trigger: FollowUpTriggerType = days <= 90 ? "mid_followup" : "recoat_proposal";
       const ok = await sendNotification(supabase, {
@@ -328,11 +346,14 @@ export async function processPostIssueFollowUps(
   }
 
   const customerIds = [...new Set(newCertList.map((c) => c.customer_id).filter(Boolean))] as string[];
-  const customerMap = new Map<string, { name: string | null; email: string | null }>();
+  const customerMap = new Map<string, { name: string | null; email: string | null; line_user_id: string | null }>();
   if (customerIds.length) {
-    const { data: customers } = await supabase.from("customers").select("id, name, email").in("id", customerIds);
+    const { data: customers } = await supabase
+      .from("customers")
+      .select("id, name, email, line_user_id")
+      .in("id", customerIds);
     for (const c of customers ?? []) {
-      customerMap.set(c.id, { name: c.name, email: c.email });
+      customerMap.set(c.id, { name: c.name, email: c.email, line_user_id: c.line_user_id });
     }
   }
 
@@ -341,7 +362,8 @@ export async function processPostIssueFollowUps(
     if (postIssueNotifiedIds.has(cert.id)) continue;
 
     const customer = customerMap.get(cert.customer_id);
-    if (!customer?.email) continue;
+    // LINE 連携のみの顧客 (email null) も sendNotification 側の LINE 経路で送れる
+    if (!customer?.email && !customer?.line_user_id) continue;
 
     const ok = await sendNotification(supabase, {
       tenantId: setting.tenant_id,
@@ -349,6 +371,7 @@ export async function processPostIssueFollowUps(
       customerId: cert.customer_id,
       customerName: customer.name ?? cert.customer_name ?? "お客様",
       customerEmail: customer.email,
+      lineUserId: customer.line_user_id,
       serviceName: cert.service_name ?? "施工証明書",
       issuedAt: cert.created_at,
       warrantyPeriod: cert.warranty_period,
@@ -407,11 +430,14 @@ export async function processFirstReminderFollowUps(
   }
 
   const customerIds = [...new Set(certList.map((c) => c.customer_id).filter(Boolean))] as string[];
-  const customerMap = new Map<string, { name: string | null; email: string | null }>();
+  const customerMap = new Map<string, { name: string | null; email: string | null; line_user_id: string | null }>();
   if (customerIds.length) {
-    const { data: customers } = await supabase.from("customers").select("id, name, email").in("id", customerIds);
+    const { data: customers } = await supabase
+      .from("customers")
+      .select("id, name, email, line_user_id")
+      .in("id", customerIds);
     for (const c of customers ?? []) {
-      customerMap.set(c.id, { name: c.name, email: c.email });
+      customerMap.set(c.id, { name: c.name, email: c.email, line_user_id: c.line_user_id });
     }
   }
 
@@ -420,7 +446,8 @@ export async function processFirstReminderFollowUps(
     if (notifiedIds.has(cert.id)) continue;
 
     const customer = customerMap.get(cert.customer_id);
-    if (!customer?.email) continue;
+    // LINE 連携のみの顧客 (email null) も sendNotification 側の LINE 経路で送れる
+    if (!customer?.email && !customer?.line_user_id) continue;
 
     const ok = await sendNotification(supabase, {
       tenantId: setting.tenant_id,
@@ -428,6 +455,7 @@ export async function processFirstReminderFollowUps(
       customerId: cert.customer_id,
       customerName: customer.name ?? cert.customer_name ?? "お客様",
       customerEmail: customer.email,
+      lineUserId: customer.line_user_id,
       serviceName: cert.service_name ?? "施工証明書",
       issuedAt: cert.created_at,
       warrantyPeriod: cert.warranty_period,
@@ -490,11 +518,14 @@ export async function processWarrantyEndFollowUps(
   }
 
   const customerIds = [...new Set(filtered.map((c) => c.customer_id).filter(Boolean))] as string[];
-  const customerMap = new Map<string, { name: string | null; email: string | null }>();
+  const customerMap = new Map<string, { name: string | null; email: string | null; line_user_id: string | null }>();
   if (customerIds.length) {
-    const { data: customers } = await supabase.from("customers").select("id, name, email").in("id", customerIds);
+    const { data: customers } = await supabase
+      .from("customers")
+      .select("id, name, email, line_user_id")
+      .in("id", customerIds);
     for (const c of customers ?? []) {
-      customerMap.set(c.id, { name: c.name, email: c.email });
+      customerMap.set(c.id, { name: c.name, email: c.email, line_user_id: c.line_user_id });
     }
   }
 
@@ -502,7 +533,8 @@ export async function processWarrantyEndFollowUps(
     if (notifiedIds.has(cert.id)) continue;
 
     const customer = customerMap.get(cert.customer_id!);
-    if (!customer?.email) continue;
+    // LINE 連携のみの顧客 (email null) も sendNotification 側の LINE 経路で送れる
+    if (!customer?.email && !customer?.line_user_id) continue;
 
     const ok = await sendNotification(supabase, {
       tenantId: setting.tenant_id,
@@ -510,6 +542,7 @@ export async function processWarrantyEndFollowUps(
       customerId: cert.customer_id!,
       customerName: customer.name ?? cert.customer_name ?? "お客様",
       customerEmail: customer.email,
+      lineUserId: customer.line_user_id,
       serviceName: cert.service_name ?? "施工証明書",
       issuedAt: cert.created_at,
       warrantyPeriod: cert.warranty_period,
@@ -537,22 +570,16 @@ export async function processSeasonalProposals(
 ): Promise<number> {
   if (!setting.seasonal_enabled) return 0;
 
-  const currentMonth = today.getMonth() + 1;
+  // today は「JST の今日」を UTC 0 時に固定した Date (route 側で生成) なので getUTC* で読む
+  const currentMonth = today.getUTCMonth() + 1;
   const seasonalTrigger = getSeasonalTrigger(currentMonth);
   if (!seasonalTrigger) return 0;
-  if (today.getDate() !== 1) return 0;
+  if (today.getUTCDate() !== 1) return 0;
 
   let sent = 0;
   const todayStr = today.toISOString().slice(0, 10);
 
-  const { data: allCustomers } = await supabase
-    .from("customers")
-    .select("id, name, email")
-    .eq("tenant_id", setting.tenant_id)
-    .not("email", "is", null)
-    .limit(100);
-
-  const notifType = `seasonal_${currentMonth}_${today.getFullYear()}`;
+  const notifType = `seasonal_${currentMonth}_${today.getUTCFullYear()}`;
   const { data: existingLogs } = await supabase
     .from("notification_logs")
     .select("target_id")
@@ -560,31 +587,56 @@ export async function processSeasonalProposals(
     .eq("type", notifType);
   const alreadySentIds = new Set((existingLogs ?? []).map((l) => l.target_id));
 
-  for (const customer of allCustomers ?? []) {
-    if (alreadySentIds.has(customer.id)) continue;
-    await generateFollowUpContent({
-      trigger: seasonalTrigger,
-      customer: { name: customer.name ?? "お客様" },
-      certificate: { label: "季節メンテナンス", issued_at: todayStr },
-      vehicle: {},
-      shop: { name: shopName },
-    });
-    const ok = await sendFollowUpEmail({
-      shopName,
-      customerEmail: customer.email!,
-      customerName: customer.name ?? "お客様",
-      certificateLabel: "季節メンテナンスのご案内",
-      daysSince: 0,
-    });
-    await supabase.from("notification_logs").insert({
-      tenant_id: setting.tenant_id,
-      type: notifType,
-      target_type: "customer",
-      target_id: customer.id,
-      recipient_email: customer.email,
-      status: ok ? "sent" : "failed",
-    });
-    if (ok) sent++;
+  // ponytail: keyset ページネーション (id 昇順 100 件ずつ)。以前は .limit(100) 固定で
+  // 100 人超のテナントが黙って打ち切られていた。1 回の cron 実行で全件回す前提 —
+  // 顧客数が数万件規模になったら maxDuration に当たるので、その時はテナント毎の
+  // ジョブ分割 + カーソル永続化に切り替える。
+  const PAGE_SIZE = 100;
+  let lastId: string | null = null;
+  for (;;) {
+    let query = supabase
+      .from("customers")
+      .select("id, name, email")
+      .eq("tenant_id", setting.tenant_id)
+      .not("email", "is", null)
+      .order("id")
+      .limit(PAGE_SIZE);
+    if (lastId) query = query.gt("id", lastId);
+    const { data: pageCustomers } = await query;
+    const page = pageCustomers ?? [];
+
+    for (const customer of page) {
+      if (alreadySentIds.has(customer.id)) continue;
+      const content = await generateFollowUpContent({
+        trigger: seasonalTrigger,
+        customer: { name: customer.name ?? "お客様" },
+        certificate: { label: "季節メンテナンス", issued_at: todayStr },
+        vehicle: {},
+        shop: { name: shopName },
+      });
+      const ok = await sendFollowUpEmail({
+        shopName,
+        customerEmail: customer.email!,
+        customerName: customer.name ?? "お客様",
+        certificateLabel: "季節メンテナンスのご案内",
+        daysSince: 0,
+        // AI 生成文面で件名・本文を上書き (生成失敗時は内部フォールバック文面)
+        subject: content.emailSubject,
+        bodyHtml: content.emailBody,
+      });
+      await supabase.from("notification_logs").insert({
+        tenant_id: setting.tenant_id,
+        type: notifType,
+        target_type: "customer",
+        target_id: customer.id,
+        recipient_email: customer.email,
+        status: ok ? "sent" : "failed",
+      });
+      if (ok) sent++;
+    }
+
+    if (page.length < PAGE_SIZE) break;
+    lastId = page[page.length - 1].id;
   }
 
   return sent;

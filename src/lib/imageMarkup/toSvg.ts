@@ -154,7 +154,12 @@ export function annotationsToSvg(doc: AnnotationDocument): string {
   const w = Math.max(1, Math.round(doc.imageWidth));
   const h = Math.max(1, Math.round(doc.imageHeight));
   return (
+    // preserveAspectRatio=slice: <img object-cover> に重ねる公開ビューで、
+    // ボックスへ伸ばしても注釈がトリミング位置とズレないようにする。
+    // render.ts (sharp 焼き込み) は外側 <svg> を剥がして自前の viewBox を
+    // 付け直すため、この属性の影響を受けない。
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" ` +
+    `preserveAspectRatio="xMidYMid slice" ` +
     `width="${w}" height="${h}">` +
     (markers ? `<defs>${markers}</defs>` : "") +
     body +

@@ -1,12 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { escapeHtml, escapeIlike, escapePostgrestValue } from "../sanitize";
+import { escapeHtml, escapeIlike, escapePostgrestValue, sanitizeEmailHtml } from "../sanitize";
 
 // ─── escapeHtml ───
 describe("escapeHtml", () => {
   it("escapes all HTML special characters", () => {
-    expect(escapeHtml("<script>alert('xss')</script>")).toBe(
-      "&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;"
-    );
+    expect(escapeHtml("<script>alert('xss')</script>")).toBe("&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;");
   });
 
   it("escapes ampersands", () => {
@@ -42,7 +40,7 @@ describe("escapeHtml", () => {
 
   it("handles mixed HTML entities in realistic content", () => {
     expect(escapeHtml('<img src="x" onerror="alert(1)">')).toBe(
-      "&lt;img src=&quot;x&quot; onerror=&quot;alert(1)&quot;&gt;"
+      "&lt;img src=&quot;x&quot; onerror=&quot;alert(1)&quot;&gt;",
     );
   });
 
@@ -160,5 +158,28 @@ describe("escapePostgrestValue", () => {
 
   it("handles nested parentheses", () => {
     expect(escapePostgrestValue("((nested))")).toBe("nested");
+  });
+});
+
+// ─── sanitizeEmailHtml ───
+describe("sanitizeEmailHtml", () => {
+  it("keeps allowlisted formatting tags (attributes stripped)", () => {
+    expect(sanitizeEmailHtml('<p style="color:red">こんにちは<br/></p>')).toBe("<p>こんにちは<br></p>");
+    expect(sanitizeEmailHtml("<strong>大事</strong><em>強調</em>")).toBe("<strong>大事</strong><em>強調</em>");
+  });
+
+  it("escapes script and event-handler vectors", () => {
+    expect(sanitizeEmailHtml("<script>alert(1)</script>")).toBe("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(sanitizeEmailHtml('<img src=x onerror="alert(1)">')).toBe("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
+  });
+
+  it("escapes links and tracking pixels (not on allowlist)", () => {
+    const out = sanitizeEmailHtml('<a href="https://evil.example/track">click</a>');
+    expect(out).not.toContain("<a");
+    expect(out).toContain("click");
+  });
+
+  it("leaves plain text untouched", () => {
+    expect(sanitizeEmailHtml("施工から30日が経過しました。")).toBe("施工から30日が経過しました。");
   });
 });

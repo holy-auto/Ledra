@@ -1,15 +1,15 @@
 ﻿import React from "react";
 import { Document, Page, Text, View, Image, StyleSheet, Font } from "@react-pdf/renderer";
 import { renderToBuffer } from "@react-pdf/renderer";
+import { notoSansJpDataUrl } from "@/lib/marketing/pdfFonts";
 
-const NOTO_SANS_JP = "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-400-normal.ttf";
-const NOTO_SANS_JP_BOLD = "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-700-normal.ttf";
-
+// バンドル済み Noto Sans JP (public/fonts) を data URL として登録する。
+// 外部 CDN (@latest) への実行時フェッチを排し、供給元の改変・停止リスクを断つ。
 Font.register({
   family: "NotoSansJP",
   fonts: [
-    { src: NOTO_SANS_JP, fontWeight: 400 },
-    { src: NOTO_SANS_JP_BOLD, fontWeight: 700 },
+    { src: notoSansJpDataUrl(400), fontWeight: 400 },
+    { src: notoSansJpDataUrl(700), fontWeight: 700 },
   ],
 });
 import { createSignedAssetUrl } from "@/lib/signedUrl";
@@ -22,6 +22,7 @@ import {
   getPaintTypeLabel,
   getRepairMethodLabel,
 } from "@/lib/bodyRepair/constants";
+import { getAccessoryTypeLabel, getInstallLocationLabel } from "@/lib/accessory/constants";
 
 type FieldType = "text" | "textarea" | "number" | "date" | "select" | "multiselect" | "checkbox";
 
@@ -45,6 +46,7 @@ export type CertRow = {
   ppf_coverage_json?: Record<string, any>[] | null;
   maintenance_json?: Record<string, any> | null;
   body_repair_json?: Record<string, any> | null;
+  accessory_json?: Record<string, any> | null;
   /* eslint-enable @typescript-eslint/no-explicit-any */
   service_type?: string | null;
   expiry_type: string | null;
@@ -669,11 +671,14 @@ export async function renderCertificatePdf(
   const isPpf = row.service_type === "ppf";
   const isMaintenance = row.service_type === "maintenance";
   const isBodyRepair = row.service_type === "body_repair";
+  const isAccessory = row.service_type === "accessory";
   const ppfCoverage: Record<string, any>[] = Array.isArray(row.ppf_coverage_json) ? row.ppf_coverage_json : [];
   const maintenanceData: Record<string, any> =
     typeof row.maintenance_json === "object" && row.maintenance_json ? row.maintenance_json : {};
   const bodyRepairData: Record<string, any> =
     typeof row.body_repair_json === "object" && row.body_repair_json ? row.body_repair_json : {};
+  const accessoryData: Record<string, any> =
+    typeof row.accessory_json === "object" && row.accessory_json ? row.accessory_json : {};
 
   const presetLines = buildPresetLines(schema, values);
 
@@ -697,13 +702,17 @@ export async function renderCertificatePdf(
       ? "整備証明書"
       : isBodyRepair
         ? "鈑金塗装証明書"
-        : "施工証明書";
+        : isAccessory
+          ? "用品取付証明書"
+          : "施工証明書";
   const productsTitle = isPpf ? "使用フィルム" : "コーティング剤";
 
   const issueDate = new Date(row.created_at).toLocaleDateString("ja-JP", {
     year: "numeric",
     month: "long",
     day: "numeric",
+    // サーバTZ (UTC) ではなく JST で日付を確定させる (日付が1日ずれるのを防ぐ)。
+    timeZone: "Asia/Tokyo",
   });
 
   const serviceStatement = isPpf
@@ -712,7 +721,9 @@ export async function renderCertificatePdf(
       ? "本証明書は、下記車両に対して整備作業が実施された事実を、Polygon ブロックチェーンに刻印された改ざん不可能な記録として証明するものです。"
       : isBodyRepair
         ? "本証明書は、下記車両に対して鈑金塗装作業が実施された事実を、Polygon ブロックチェーンに刻印された改ざん不可能な記録として証明するものです。"
-        : "本証明書は、下記車両に対して施工作業が完了した事実を、Polygon ブロックチェーンに刻印された改ざん不可能な記録として証明するものです。";
+        : isAccessory
+          ? "本証明書は、下記車両に対して用品取付作業が実施された事実を、Polygon ブロックチェーンに刻印された改ざん不可能な記録として証明するものです。"
+          : "本証明書は、下記車両に対して施工作業が完了した事実を、Polygon ブロックチェーンに刻印された改ざん不可能な記録として証明するものです。";
 
   const networkLabel = (network: "polygon" | "amoy") =>
     network === "amoy" ? "Polygon Amoy testnet" : "Polygon mainnet";
@@ -1012,6 +1023,57 @@ export async function renderCertificatePdf(
           </View>
         ) : null}
 
+        {/* 用品取付内容 */}
+        {isAccessory && Object.keys(accessoryData).length > 0 ? (
+          <View style={styles.card}>
+            <Text style={styles.cardEyebrow}>用品取付内容 · Accessory</Text>
+            {Array.isArray(accessoryData.accessory_types) && accessoryData.accessory_types.length > 0 ? (
+              <View style={[styles.row, styles.rowFirst]}>
+                <Text style={styles.rowLabel}>用品カテゴリ</Text>
+                <Text style={styles.rowValue}>
+                  {accessoryData.accessory_types.map((t: string) => getAccessoryTypeLabel(t)).join("、")}
+                </Text>
+              </View>
+            ) : null}
+            {accessoryData.product_name ? (
+              <View style={styles.row}>
+                <Text style={styles.rowLabel}>製品名・型番</Text>
+                <Text style={styles.rowValue}>{accessoryData.product_name}</Text>
+              </View>
+            ) : null}
+            {accessoryData.maker_name ? (
+              <View style={styles.row}>
+                <Text style={styles.rowLabel}>メーカー</Text>
+                <Text style={styles.rowValue}>{accessoryData.maker_name}</Text>
+              </View>
+            ) : null}
+            {accessoryData.install_location ? (
+              <View style={styles.row}>
+                <Text style={styles.rowLabel}>取付位置</Text>
+                <Text style={styles.rowValue}>{getInstallLocationLabel(accessoryData.install_location)}</Text>
+              </View>
+            ) : null}
+            {accessoryData.serial_no ? (
+              <View style={styles.row}>
+                <Text style={styles.rowLabel}>製造番号</Text>
+                <Text style={styles.rowValue}>{accessoryData.serial_no}</Text>
+              </View>
+            ) : null}
+            {accessoryData.install_notes ? (
+              <View style={styles.row}>
+                <Text style={styles.rowLabel}>取付内容・備考</Text>
+                <Text style={styles.rowValue}>{accessoryData.install_notes}</Text>
+              </View>
+            ) : null}
+            {accessoryData.installer_name ? (
+              <View style={styles.row}>
+                <Text style={styles.rowLabel}>取付担当者</Text>
+                <Text style={styles.rowValue}>{accessoryData.installer_name}</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
         {/* Preset (generic schema) */}
         {presetLines.length > 0 ? (
           <View style={styles.card}>
@@ -1050,7 +1112,7 @@ export async function renderCertificatePdf(
       </Page>
 
       {/* ── ページ2: 保証・注意事項（サービス別の情報がある場合のみ表示） ── */}
-      {(isPpf || isMaintenance || isBodyRepair) && (
+      {(isPpf || isMaintenance || isBodyRepair || isAccessory) && (
         <Page size="A4" style={styles.page}>
           <Text style={styles.page2Eyebrow}>Certificate No. {row.public_id}</Text>
           <Text style={styles.page2Title}>{certTitle}</Text>
@@ -1072,6 +1134,14 @@ export async function renderCertificatePdf(
             <View style={styles.card}>
               <Text style={styles.cardEyebrow}>修理保証内容 · Repair Warranty</Text>
               <Text style={styles.cardBody}>{bodyRepairData.warranty_info}</Text>
+            </View>
+          )}
+
+          {/* 用品取付の保証内容 */}
+          {isAccessory && accessoryData.warranty_info && (
+            <View style={styles.card}>
+              <Text style={styles.cardEyebrow}>取付保証内容 · Installation Warranty</Text>
+              <Text style={styles.cardBody}>{accessoryData.warranty_info}</Text>
             </View>
           )}
 
@@ -1136,8 +1206,25 @@ export async function renderCertificatePdf(
             </View>
           )}
 
+          {isAccessory && (
+            <View style={styles.card}>
+              <Text style={styles.cardEyebrow}>取付後のご注意 · Aftercare</Text>
+              {[
+                "取付直後は配線や取付部の緩みがないかご確認ください。",
+                "異音、誤作動、警告灯の点灯等の異常が発生した場合は速やかにご連絡ください。",
+                "取付部の脱着・改造はご自身で行わず、施工店にご相談ください。",
+                "電装品は車両バッテリーの状態により動作が不安定になる場合があります。",
+                "保証の適用には本証明書と取付時の状態確認が必要となる場合があります。",
+              ].map((line, i) => (
+                <Text key={i} style={styles.bullet}>
+                  ・{line}
+                </Text>
+              ))}
+            </View>
+          )}
+
           {/* 免責事項 — 共通 */}
-          {(isPpf || isMaintenance || isBodyRepair) && (
+          {(isPpf || isMaintenance || isBodyRepair || isAccessory) && (
             <View style={styles.card}>
               <Text style={styles.cardEyebrow}>免責事項 · Disclaimer</Text>
               <Text style={[styles.cardBody, { marginBottom: 6 }]}>

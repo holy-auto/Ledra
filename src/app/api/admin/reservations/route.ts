@@ -23,6 +23,7 @@ import { maybeAutoDraftCertificateForReservation } from "@/lib/ai/automation/cer
 import { maybeAutoCreateDraftCertificateForReservation } from "@/lib/ai/automation/certificateRecordAuto";
 import { maybeAutoCreateDraftInvoiceForReservation } from "@/lib/ai/automation/invoiceRecordAuto";
 import { maybeAutoCategorizeReservationOnIntake } from "@/lib/ai/automation/accountingAuto";
+import { maybeAutoProposeWorkflowForReservation } from "@/lib/ai/automation/workflowAuto";
 
 export const dynamic = "force-dynamic";
 
@@ -233,6 +234,12 @@ export async function POST(req: NextRequest) {
     // 案件登録時: 勘定科目を自動推定して提案保存 (accounting.auto_categorize_on_intake が opt-in のテナントのみ).
     // 帳簿への計上 (確定) はしない — 科目の確定は必ず人 (壁3). レスポンスを遅らせないよう fire-and-forget.
     void maybeAutoCategorizeReservationOnIntake({ tenantId: caller.tenantId, reservationId: reservation.id as string });
+
+    // 案件登録時: 最適ワークフローを AI 提案して reservations.ai_workflow_proposal に保存
+    // (workflow.auto_propose_on_intake が opt-in のテナントのみ). 提案の保存のみで、適用 (進行開始) は
+    // workflow.auto_apply_on_intake が別途 opt-in の場合だけ最有力テンプレートを割り当てる。いずれも
+    // 各工程の進行・確定は人 (壁3). 業種を問わず案件起票の起点で効くよう fire-and-forget で呼ぶ。
+    void maybeAutoProposeWorkflowForReservation({ tenantId: caller.tenantId, reservationId: reservation.id as string });
 
     return apiJson({ ok: true, reservation });
   } catch (e: unknown) {

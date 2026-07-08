@@ -91,6 +91,16 @@ export async function processOutboxBatch(
   const batchSize = opts.batchSize ?? 50;
   const maxAttempts = opts.maxAttempts ?? 8;
 
+  // ponytail: worker クラッシュ等で in_flight のまま残った行を pending に戻す簡易リーパー。
+  // TTL 15 分は「1 バッチの dispatch 所要時間より十分長い」決め打ち
+  // （updated_at は claim 時に trigger で更新される）。upgrade path: claimed_at +
+  // worker id での正確な lease 管理。
+  await admin
+    .from("outbox_events")
+    .update({ status: "pending" })
+    .eq("status", "in_flight")
+    .lte("updated_at", new Date(Date.now() - STALE_IN_FLIGHT_MS).toISOString());
+
   const { data: rows, error } = await admin
     .from("outbox_events")
     .select("id, tenant_id, topic, payload, aggregate_id, attempts, status, next_attempt_at")
@@ -116,9 +126,23 @@ export async function processOutboxBatch(
     }
 
     // Mark in_flight to prevent double-processing if the worker overlaps.
-    await admin.from("outbox_events").update({ status: "in_flight" }).eq("id", row.id).eq("status", "pending");
+    // 条件付き update が 0 行なら別 worker が先に claim 済みなのでスキップ。
+    const { data: claimed } = await admin
+      .from("outbox_events")
+      .update({ status: "in_flight" })
+      .eq("id", row.id)
+      .eq("status", "pending")
+      .select("id");
+    if (!claimed || claimed.length === 0) continue;
 
-    const result = await dispatcher(row);
+    // dispatcher の throw は {ok:false} と同じ扱いにして backoff / dead_letter に乗せる
+    // （放置すると in_flight のまま固まり、バッチの残りも中断されるため）。
+    let result: Awaited<ReturnType<Dispatcher>>;
+    try {
+      result = await dispatcher(row);
+    } catch (e) {
+      result = { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
     const nextAttempts = row.attempts + 1;
 
     if (result.ok) {
@@ -160,6 +184,8 @@ export async function processOutboxBatch(
 
   return { processed: rows?.length ?? 0, delivered, errored, dead };
 }
+
+const STALE_IN_FLIGHT_MS = 15 * 60 * 1000;
 
 const BACKOFF_TABLE = [30, 120, 600, 1800, 3600, 7200, 14400, 28800];
 

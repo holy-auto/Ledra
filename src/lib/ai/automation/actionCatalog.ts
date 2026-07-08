@@ -38,6 +38,7 @@ export type AutomationActionKey =
   | "invoice.auto_finalize"
   | "quote.auto_send_on_confirm"
   | "quote.auto_send"
+  | "quote.auto_draft_from_inbound"
   | "accounting.auto_categorize_on_intake"
   | "invoice.auto_draft_on_billing_step"
   | "invoice.auto_draft_on_completion"
@@ -139,6 +140,16 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
       "下書きの請求書を人が「確定 (送付済みに変更)」した時点で、顧客に自動送付する。LINE 連携があれば LINE、無ければメールを自動選択し、決済リンク (Stripe Connect) と書類の両方を届ける。金額の確定そのものは必ず人が行う (壁3)。",
     defaultEnabled: false,
     guard: "AI 有効 + Standard プラン以上 + 人が draft→sent に確定 + 顧客に LINE もしくはメールあり",
+  },
+  {
+    key: "quote.auto_draft_from_inbound",
+    workflow: "quote",
+    label: "受信メッセージから見積ドラフトを自動起票",
+    description:
+      "「ヴェルファイアのコーティングいくら？」のような価格問い合わせを受信した時点で、車両・過去の請求実績から見積書の下書きを自動生成する。送付はしない — 金額の確定・送付は必ず人が行う (下の「確定したら自動送付」と組み合わせると確定1タップで送付まで完了)。",
+    defaultEnabled: false,
+    guard:
+      "AI 有効 + Standard プラン以上 + 既知顧客 + 施工内容と車両が読み取れた場合のみ / 24時間以内の重複起票はスキップ",
   },
   {
     key: "quote.auto_send_on_confirm",
@@ -384,6 +395,7 @@ export const RECOMMENDED_AUTOMATION_ACTION_KEYS: ReadonlySet<string> = new Set<s
   "translation.auto_translate",
   "invoice.auto_send_on_confirm",
   "quote.auto_send_on_confirm",
+  "quote.auto_draft_from_inbound",
   "accounting.auto_categorize_on_intake",
   "invoice.auto_draft_on_billing_step",
   "thickness.auto_detect",

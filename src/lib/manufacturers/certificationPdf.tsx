@@ -1,15 +1,15 @@
 import React from "react";
 import { Document, Page, Text, View, Image, StyleSheet, Font } from "@react-pdf/renderer";
 import { renderToBuffer } from "@react-pdf/renderer";
+import { notoSansJpDataUrl } from "@/lib/marketing/pdfFonts";
 
-const NOTO_SANS_JP = "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-400-normal.ttf";
-const NOTO_SANS_JP_BOLD = "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-700-normal.ttf";
-
+// バンドル済み Noto Sans JP (public/fonts) を data URL として登録する。
+// 外部 CDN (@latest) への実行時フェッチを排し、供給元の改変・停止リスクを断つ。
 Font.register({
   family: "NotoSansJP",
   fonts: [
-    { src: NOTO_SANS_JP, fontWeight: 400 },
-    { src: NOTO_SANS_JP_BOLD, fontWeight: 700 },
+    { src: notoSansJpDataUrl(400), fontWeight: 400 },
+    { src: notoSansJpDataUrl(700), fontWeight: 700 },
   ],
 });
 
@@ -140,7 +140,8 @@ const styles = StyleSheet.create({
 function formatJaDate(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric" });
+  // サーバTZ (UTC) ではなく JST で日付を確定させる (日付が1日ずれるのを防ぐ)。
+  return d.toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", timeZone: "Asia/Tokyo" });
 }
 
 /**

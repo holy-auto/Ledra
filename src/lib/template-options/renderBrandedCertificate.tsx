@@ -6,25 +6,27 @@ import QRCode from "qrcode";
 import type { TemplateConfig } from "@/types/templateOption";
 import type { CertRow } from "@/lib/pdfCertificate";
 import { getPanelLabel, getCoverageLabel, getFilmTypeLabel } from "@/lib/ppf/constants";
+import { notoSansJpDataUrl } from "@/lib/marketing/pdfFonts";
 
-const NOTO_SANS_JP = "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-400-normal.ttf";
-const NOTO_SANS_JP_BOLD = "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-700-normal.ttf";
-const NOTO_SERIF_JP = "https://cdn.jsdelivr.net/fontsource/fonts/noto-serif-jp@latest/japanese-400-normal.ttf";
-const NOTO_SERIF_JP_BOLD = "https://cdn.jsdelivr.net/fontsource/fonts/noto-serif-jp@latest/japanese-700-normal.ttf";
-
+// バンドル済み Noto Sans JP (public/fonts) を data URL として登録する。
+// 外部 CDN (@latest) への実行時フェッチを排し、供給元の改変・停止リスクを断つ。
 Font.register({
   family: "NotoSansJP",
   fonts: [
-    { src: NOTO_SANS_JP, fontWeight: 400 },
-    { src: NOTO_SANS_JP_BOLD, fontWeight: 700 },
+    { src: notoSansJpDataUrl(400), fontWeight: 400 },
+    { src: notoSansJpDataUrl(700), fontWeight: 700 },
   ],
 });
 
+// ponytail: 明朝 (Noto Serif JP) はバンドルしていないため、CDN 依存を断つ目的で
+// 暫定的にゴシック (Sans) の実体にフォールバックさせる。font_family="noto-serif-jp"
+// 指定時も Sans で描画される。真の明朝が必要になったら public/fonts に Serif サブセットを
+// 追加し notoSerifJpDataUrl を用意して差し替える。
 Font.register({
   family: "NotoSerifJP",
   fonts: [
-    { src: NOTO_SERIF_JP, fontWeight: 400 },
-    { src: NOTO_SERIF_JP_BOLD, fontWeight: 700 },
+    { src: notoSansJpDataUrl(400), fontWeight: 400 },
+    { src: notoSansJpDataUrl(700), fontWeight: 700 },
   ],
 });
 
@@ -283,7 +285,10 @@ export async function renderBrandedCertificatePdf(row: CertRow, publicUrl: strin
             {headerConfig.subtitle && <Text style={s.subtitle}>{headerConfig.subtitle}</Text>}
             {headerConfig.show_certificate_no !== false && <Text style={s.meta}>証明書ID: {row.public_id}</Text>}
             {headerConfig.show_issue_date !== false && (
-              <Text style={s.meta}>発行日: {new Date(row.created_at).toLocaleDateString("ja-JP")}</Text>
+              <Text style={s.meta}>
+                {/* サーバTZ (UTC) ではなく JST で日付を確定させる (日付が1日ずれるのを防ぐ)。 */}
+                発行日: {new Date(row.created_at).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" })}
+              </Text>
             )}
             {(row.current_version ?? 1) > 1 && (
               <Text style={[s.meta, { color: "#c00" }]}>再発行版（第{row.current_version}版）</Text>

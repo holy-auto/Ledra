@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import StatTile from "@/components/analytics/StatTile";
+import PageHeader from "@/components/ui/PageHeader";
 import {
   ANALYTICS_WINDOW_LABEL,
   authenticityGradeLabel,
@@ -90,34 +91,16 @@ export default function StaffPerformanceClient({ initial }: Props) {
 
   return (
     <main className="mx-auto max-w-7xl space-y-6 px-4 py-8 text-zinc-900">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Analytics</p>
-          <h1 className="text-2xl font-bold">スタッフ別パフォーマンス</h1>
-          <p className="mt-1 text-sm text-zinc-600">
-            証明書発行・予約・お客様レビュー・写真品質を担当者別に集計します。
-          </p>
-        </div>
-        <div className="flex items-center gap-2" role="tablist" aria-label="期間">
-          {WINDOWS.map((w) => (
-            <button
-              key={w}
-              type="button"
-              role="tab"
-              aria-selected={w === window}
-              onClick={() => changeWindow(w)}
-              disabled={pending}
-              className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition disabled:opacity-50 ${
-                w === window
-                  ? "border-zinc-900 bg-zinc-900 text-white"
-                  : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"
-              }`}
-            >
-              {ANALYTICS_WINDOW_LABEL[w]}
-            </button>
-          ))}
-        </div>
-      </header>
+      <PageHeader
+        tag="Analytics"
+        title="スタッフ別パフォーマンス"
+        description="証明書発行・予約・お客様レビュー・写真品質を担当者別に集計します。"
+        tabs={WINDOWS.map((w) => ({ key: w, label: ANALYTICS_WINDOW_LABEL[w] }))}
+        activeTab={window}
+        onTabSelect={(k) => {
+          if (!pending) changeWindow(k as AnalyticsWindow);
+        }}
+      />
 
       {error ? (
         <div role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">

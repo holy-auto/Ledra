@@ -19,6 +19,7 @@ import { proposeWorkflow, type WorkflowTemplateLite } from "@/lib/ai/workflowPro
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
+import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { loadAiAutomationSettings } from "./policy";
 import { shouldAutoProposeWorkflowOnIntake, shouldAutoApplyWorkflowOnIntake } from "./orchestrator";
 
@@ -164,6 +165,13 @@ export async function maybeAutoProposeWorkflowForReservation(params: MaybeAutoPr
           tenantId,
           reservationId,
           templateId: proposal.suggestedTemplateId,
+        });
+        // 人の確認なしでワークフローを自動適用した事実を監査ログに残す (失敗しても適用は成立)。
+        await logAutoActionExecuted({
+          tenantId,
+          actionKey: "workflow.auto_apply_on_intake",
+          resource: { kind: "reservation", id: reservationId },
+          detail: { template_id: proposal.suggestedTemplateId, confidence: proposal.confidence },
         });
       }
     }
