@@ -56,9 +56,12 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
     .single();
 
   // ロゴ・角印は Storage パスで保存されているため、プレビュー表示用に署名付きURLへ変換する。
+  // 非表示 (show_logo / show_seal が false) の資産は署名しない — 署名付きURLは
+  // client component の props としてブラウザへ渡るため、意図的に隠した角印等が
+  // ダウンロード可能になるのを防ぐ (PDF レンダラと同じゲート条件)。
   const [logoUrl, sealUrl] = await Promise.all([
-    tenant?.logo_asset_path ? createSignedAssetUrl(tenant.logo_asset_path, 3600) : null,
-    tenant?.company_seal_path ? createSignedAssetUrl(tenant.company_seal_path, 3600) : null,
+    doc.show_logo && tenant?.logo_asset_path ? createSignedAssetUrl(tenant.logo_asset_path, 3600) : null,
+    doc.show_seal && tenant?.company_seal_path ? createSignedAssetUrl(tenant.company_seal_path, 3600) : null,
   ]);
 
   const docLabel = DOC_TYPES[doc.doc_type as DocType]?.label ?? doc.doc_type;
