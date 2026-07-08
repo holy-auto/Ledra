@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { estimateReservationMinutes } from "@/lib/booths/duration";
@@ -120,9 +121,11 @@ export async function GET(req: NextRequest) {
       needsLoaner
         ? supabase.from("loaner_car_loans").select("return_due_at").eq("tenant_id", tenantId).is("returned_at", null)
         : Promise.resolve({ data: [], error: null }),
+      // staff_shifts の SELECT は RLS で管理ロール限定のため、staff ロールでも人手判定が
+      // 効くようテナント限定のサービスロールで読む（RLS で空になり黙って無効化されるのを防ぐ）。
       considerStaff
-        ? supabase
-            .from("staff_shifts")
+        ? createTenantScopedAdmin(tenantId)
+            .admin.from("staff_shifts")
             .select("staff_id, work_date, start_time, end_time")
             .eq("tenant_id", tenantId)
             .gte("work_date", from)

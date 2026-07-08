@@ -68,7 +68,8 @@ export async function POST(req: NextRequest) {
     const body = parsed.data;
     const tenantSlug = body.tenant_slug;
     const customerName = body.customer_name;
-    const title = body.title || "Web予約";
+    // 希望作業カテゴリが選ばれていればタイトルに反映し、店舗側でどの作業の予約か分かるようにする。
+    const title = body.title || body.category || "Web予約";
     const scheduledDate = body.scheduled_date;
     const startTime = body.start_time;
     const endTime = body.end_time;
@@ -143,12 +144,13 @@ export async function POST(req: NextRequest) {
     if (slots && slots.length > 0) {
       const maxBookings = slots[0].max_bookings;
 
-      // 受入可否: 希望作業カテゴリ指定時、その枠が受け入れなければ拒否（受入未設定=すべて受入）。
+      // 受入可否: 受入カテゴリが設定された枠は、一致する希望作業カテゴリの指定を必須にする。
+      // 指定なし/不一致はいずれも拒否（受入未設定=すべて受入）。
       const accepted = slots[0].accepted_categories as string[] | null;
-      if (body.category && accepted && accepted.length > 0 && !accepted.includes(body.category)) {
+      if (accepted && accepted.length > 0 && (!body.category || !accepted.includes(body.category))) {
         return apiError({
           code: "conflict",
-          message: "ご希望の作業内容はこの時間帯では受け付けていません。別の時間帯をお選びください。",
+          message: `この時間帯は「${accepted.join("・")}」のみ受け付けています。ご希望の作業をお選びください。`,
           status: 422,
         });
       }

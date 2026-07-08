@@ -207,6 +207,8 @@ export default function ReservationsClient() {
 
   // 工程テンプレート選択（"" = 品目から自動）。作業タスク分解の展開元＆予約への紐付け。
   const [taskTemplateId, setTaskTemplateId] = useState("");
+  // 編集中予約のワークフローが開始済みか（開始後はテンプレート変更不可）。
+  const [formWorkflowStarted, setFormWorkflowStarted] = useState(false);
   // 日程候補の提案（受けられる日程）
   const [needsLoaner, setNeedsLoaner] = useState(false);
   const [considerStaff, setConsiderStaff] = useState(true);
@@ -484,6 +486,7 @@ export default function ReservationsClient() {
     setCandidates(null);
     setCandidatesErr(null);
     setTaskTemplateId("");
+    setFormWorkflowStarted(false);
   };
 
   const openCreateForm = () => {
@@ -507,6 +510,7 @@ export default function ReservationsClient() {
       setFormMenuItems(r.menu_items_json ?? []);
       setFormAmount(r.estimated_amount ?? 0);
       setTaskTemplateId(r.workflow_template_id ?? "");
+      setFormWorkflowStarted(!!r.current_step_key || r.current_step_order > 0 || r.progress_pct > 0);
       setSaveMsg(null);
       setFormStep(1);
       setShowForm(true);
@@ -569,6 +573,10 @@ export default function ReservationsClient() {
       const params = new URLSearchParams();
       const ids = formMenuItems.map((m) => m.menu_item_id).join(",");
       if (ids) params.set("menu_item_ids", ids);
+      // 工程テンプレート選択時はその工程合計時間を所要時間として明示（品目由来より優先）。
+      if (selectedTemplate && taskPlan.totalMinutes > 0) {
+        params.set("estimated_minutes", String(taskPlan.totalMinutes));
+      }
       if (needsLoaner) params.set("needs_loaner", "1");
       if (!considerStaff) params.set("consider_staff", "0");
       params.set("days", "21");
@@ -1510,163 +1518,171 @@ export default function ReservationsClient() {
                             <span className="text-base font-bold text-accent-text">{formatJpy(formAmount)}</span>
                           </div>
                         )}
-                        {selectedEstMinutes != null && (
-                          <div className="mt-2 flex items-center justify-between gap-3 bg-inset border border-border-default rounded-xl px-4 py-2.5">
-                            <div className="min-w-0">
-                              <span className="text-xs text-secondary">推定作業時間（品目マスタ）</span>
-                              <div className="text-sm font-bold text-primary">{formatMinutes(selectedEstMinutes)}</div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={applyEstimatedDuration}
-                              className="shrink-0 rounded-lg border border-accent bg-surface px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent-dim transition-colors"
-                            >
-                              終了時刻に反映
-                            </button>
-                          </div>
-                        )}
-
-                        {/* 作業タスクの分解と日程目安（工程テンプレート展開） */}
-                        {(templates.length > 0 || taskPlan.tasks.length > 0) && (
-                          <div className="mt-2 rounded-xl border border-border-default bg-inset p-3">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-xs font-semibold text-primary">作業タスクと日程目安</span>
-                              {taskPlan.tasks.length > 0 && (
-                                <span className="text-[11px] text-secondary">
-                                  合計 {formatMinutes(taskPlan.totalMinutes)}
-                                  {taskPlan.dayCount > 1 && ` ・ 約${taskPlan.dayCount}日`}
-                                </span>
-                              )}
-                            </div>
-                            {templates.length > 0 && (
-                              <div className="mt-2 flex items-center gap-2">
-                                <span className="text-[11px] text-secondary shrink-0">工程テンプレート</span>
-                                <select
-                                  value={taskTemplateId}
-                                  onChange={(e) => setTaskTemplateId(e.target.value)}
-                                  className={`${inputCls} py-1 text-xs`}
-                                >
-                                  <option value="">品目から自動</option>
-                                  {templates.map((t) => (
-                                    <option key={t.id} value={t.id}>
-                                      {t.name}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                            )}
-                            {taskPlan.tasks.length === 0 ? (
-                              <p className="mt-2 text-[11px] text-muted">
-                                品目を選ぶか工程テンプレートを指定すると、作業タスクと日程目安が表示されます。
-                              </p>
-                            ) : (
-                              <>
-                                <ul className="mt-2 space-y-1">
-                                  {taskPlan.tasks.map((t, i) => (
-                                    <li
-                                      key={`${t.name}-${i}`}
-                                      className="flex items-center justify-between gap-2 text-xs text-secondary"
-                                    >
-                                      <span className="flex items-center gap-1.5 min-w-0">
-                                        <span className="shrink-0 text-[10px] text-accent-text bg-accent-dim rounded px-1.5 py-0.5">
-                                          {taskPlan.dayCount > 1 ? `${t.day}日目` : "当日"}
-                                        </span>
-                                        <span className="truncate text-primary">{t.name}</span>
-                                      </span>
-                                      <span className="shrink-0 text-muted">{formatMinutes(t.minutes)}</span>
-                                    </li>
-                                  ))}
-                                </ul>
-                                {taskPlan.dayCount > 1 && (
-                                  <p className="mt-2 text-[11px] text-muted">
-                                    1日8時間を目安に分割した概算です。下の「受けられる日程を提案」で連続した空き日を確認できます。
-                                  </p>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        )}
-
-                        {/* 受けられる日程候補の提案 */}
-                        <div className="mt-3 rounded-xl border border-border-default bg-surface p-3">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="text-xs font-semibold text-primary">受けられる日程を提案</span>
-                            <div className="flex items-center gap-3">
-                              <label className="flex items-center gap-1.5 text-xs text-secondary cursor-pointer select-none">
-                                <input
-                                  type="checkbox"
-                                  checked={considerStaff}
-                                  onChange={(e) => setConsiderStaff(e.target.checked)}
-                                  className="rounded border-border-default text-accent focus:ring-accent/30"
-                                />
-                                人手の空きを考慮
-                              </label>
-                              <label className="flex items-center gap-1.5 text-xs text-secondary cursor-pointer select-none">
-                                <input
-                                  type="checkbox"
-                                  checked={needsLoaner}
-                                  onChange={(e) => setNeedsLoaner(e.target.checked)}
-                                  className="rounded border-border-default text-accent focus:ring-accent/30"
-                                />
-                                代車が必要
-                              </label>
-                              <button
-                                type="button"
-                                onClick={fetchCandidates}
-                                disabled={candidatesLoading}
-                                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-accent/90 transition-colors disabled:opacity-50"
-                              >
-                                {candidatesLoading ? "検索中…" : "候補を探す"}
-                              </button>
-                            </div>
-                          </div>
-                          <p className="mt-1 text-[11px] text-muted">
-                            作業内容の所要時間・受付枠の空き・定休日{needsLoaner ? "・代車の空き" : ""}を加味して、
-                            今日から3週間ぶんの受けられる日時を提案します。
-                          </p>
-                          {candidatesErr && <p className="mt-2 text-xs text-danger">{candidatesErr}</p>}
-                          {candidates != null && candidates.length === 0 && !candidatesErr && (
-                            <p className="mt-2 text-xs text-muted">条件に合う空き日程が見つかりませんでした。</p>
-                          )}
-                          {candidates != null && candidates.length > 0 && (
-                            <div className="mt-2 flex flex-col gap-1.5 max-h-56 overflow-y-auto">
-                              {candidates.map((c, i) => (
-                                <button
-                                  key={`${c.date}-${c.start_time}-${i}`}
-                                  type="button"
-                                  onClick={() => pickCandidate(c)}
-                                  className="flex items-center justify-between gap-2 rounded-lg border border-border-default bg-inset px-3 py-2 text-left hover:border-accent hover:bg-accent-dim transition-colors"
-                                >
-                                  <span className="text-sm font-medium text-primary">
-                                    {c.date.slice(5).replace("-", "/")}（{WEEKDAY_JA[c.day_of_week]}） {c.start_time}〜
-                                    {c.end_time}
-                                  </span>
-                                  <span className="flex items-center gap-1.5 shrink-0">
-                                    {c.accepted_categories && c.accepted_categories.length > 0 && (
-                                      <span className="text-[10px] text-accent-text bg-accent-dim rounded px-1.5 py-0.5">
-                                        {c.accepted_categories.join("・")}
-                                      </span>
-                                    )}
-                                    {!c.fits && (
-                                      <span className="text-[10px] font-medium text-warning bg-warning-dim rounded px-1.5 py-0.5">
-                                        枠超過
-                                      </span>
-                                    )}
-                                    {c.staff_free != null && (
-                                      <span className="text-[10px] text-secondary">人手{c.staff_free}</span>
-                                    )}
-                                    {c.loaner_free != null && (
-                                      <span className="text-[10px] text-secondary">代車{c.loaner_free}台</span>
-                                    )}
-                                    <span className="text-[10px] text-muted">残{c.remaining}</span>
-                                  </span>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
                       </div>
                     )}
+
+                    {/* 所要時間・タスク分解・日程候補（品目が無くても工程テンプレートから利用可能） */}
+                    <div>
+                      {selectedEstMinutes != null && (
+                        <div className="mt-2 flex items-center justify-between gap-3 bg-inset border border-border-default rounded-xl px-4 py-2.5">
+                          <div className="min-w-0">
+                            <span className="text-xs text-secondary">推定作業時間（品目マスタ）</span>
+                            <div className="text-sm font-bold text-primary">{formatMinutes(selectedEstMinutes)}</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={applyEstimatedDuration}
+                            className="shrink-0 rounded-lg border border-accent bg-surface px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent-dim transition-colors"
+                          >
+                            終了時刻に反映
+                          </button>
+                        </div>
+                      )}
+
+                      {/* 作業タスクの分解と日程目安（工程テンプレート展開） */}
+                      {(templates.length > 0 || taskPlan.tasks.length > 0) && (
+                        <div className="mt-2 rounded-xl border border-border-default bg-inset p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-semibold text-primary">作業タスクと日程目安</span>
+                            {taskPlan.tasks.length > 0 && (
+                              <span className="text-[11px] text-secondary">
+                                合計 {formatMinutes(taskPlan.totalMinutes)}
+                                {taskPlan.dayCount > 1 && ` ・ 約${taskPlan.dayCount}日`}
+                              </span>
+                            )}
+                          </div>
+                          {templates.length > 0 && (
+                            <div className="mt-2 flex items-center gap-2">
+                              <span className="text-[11px] text-secondary shrink-0">工程テンプレート</span>
+                              <select
+                                value={taskTemplateId}
+                                onChange={(e) => setTaskTemplateId(e.target.value)}
+                                disabled={formWorkflowStarted}
+                                className={`${inputCls} py-1 text-xs disabled:opacity-60`}
+                              >
+                                <option value="">品目から自動</option>
+                                {templates.map((t) => (
+                                  <option key={t.id} value={t.id}>
+                                    {t.name}
+                                  </option>
+                                ))}
+                              </select>
+                              {formWorkflowStarted && (
+                                <span className="text-[10px] text-muted shrink-0">開始後は変更不可</span>
+                              )}
+                            </div>
+                          )}
+                          {taskPlan.tasks.length === 0 ? (
+                            <p className="mt-2 text-[11px] text-muted">
+                              品目を選ぶか工程テンプレートを指定すると、作業タスクと日程目安が表示されます。
+                            </p>
+                          ) : (
+                            <>
+                              <ul className="mt-2 space-y-1">
+                                {taskPlan.tasks.map((t, i) => (
+                                  <li
+                                    key={`${t.name}-${i}`}
+                                    className="flex items-center justify-between gap-2 text-xs text-secondary"
+                                  >
+                                    <span className="flex items-center gap-1.5 min-w-0">
+                                      <span className="shrink-0 text-[10px] text-accent-text bg-accent-dim rounded px-1.5 py-0.5">
+                                        {taskPlan.dayCount > 1 ? `${t.day}日目` : "当日"}
+                                      </span>
+                                      <span className="truncate text-primary">{t.name}</span>
+                                    </span>
+                                    <span className="shrink-0 text-muted">{formatMinutes(t.minutes)}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                              {taskPlan.dayCount > 1 && (
+                                <p className="mt-2 text-[11px] text-muted">
+                                  1日8時間を目安に分割した概算です。下の「受けられる日程を提案」で連続した空き日を確認できます。
+                                </p>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+
+                      {/* 受けられる日程候補の提案 */}
+                      <div className="mt-3 rounded-xl border border-border-default bg-surface p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-xs font-semibold text-primary">受けられる日程を提案</span>
+                          <div className="flex items-center gap-3">
+                            <label className="flex items-center gap-1.5 text-xs text-secondary cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={considerStaff}
+                                onChange={(e) => setConsiderStaff(e.target.checked)}
+                                className="rounded border-border-default text-accent focus:ring-accent/30"
+                              />
+                              人手の空きを考慮
+                            </label>
+                            <label className="flex items-center gap-1.5 text-xs text-secondary cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={needsLoaner}
+                                onChange={(e) => setNeedsLoaner(e.target.checked)}
+                                className="rounded border-border-default text-accent focus:ring-accent/30"
+                              />
+                              代車が必要
+                            </label>
+                            <button
+                              type="button"
+                              onClick={fetchCandidates}
+                              disabled={candidatesLoading}
+                              className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-accent/90 transition-colors disabled:opacity-50"
+                            >
+                              {candidatesLoading ? "検索中…" : "候補を探す"}
+                            </button>
+                          </div>
+                        </div>
+                        <p className="mt-1 text-[11px] text-muted">
+                          作業内容の所要時間・受付枠の空き・定休日{needsLoaner ? "・代車の空き" : ""}を加味して、
+                          今日から3週間ぶんの受けられる日時を提案します。
+                        </p>
+                        {candidatesErr && <p className="mt-2 text-xs text-danger">{candidatesErr}</p>}
+                        {candidates != null && candidates.length === 0 && !candidatesErr && (
+                          <p className="mt-2 text-xs text-muted">条件に合う空き日程が見つかりませんでした。</p>
+                        )}
+                        {candidates != null && candidates.length > 0 && (
+                          <div className="mt-2 flex flex-col gap-1.5 max-h-56 overflow-y-auto">
+                            {candidates.map((c, i) => (
+                              <button
+                                key={`${c.date}-${c.start_time}-${i}`}
+                                type="button"
+                                onClick={() => pickCandidate(c)}
+                                className="flex items-center justify-between gap-2 rounded-lg border border-border-default bg-inset px-3 py-2 text-left hover:border-accent hover:bg-accent-dim transition-colors"
+                              >
+                                <span className="text-sm font-medium text-primary">
+                                  {c.date.slice(5).replace("-", "/")}（{WEEKDAY_JA[c.day_of_week]}） {c.start_time}〜
+                                  {c.end_time}
+                                </span>
+                                <span className="flex items-center gap-1.5 shrink-0">
+                                  {c.accepted_categories && c.accepted_categories.length > 0 && (
+                                    <span className="text-[10px] text-accent-text bg-accent-dim rounded px-1.5 py-0.5">
+                                      {c.accepted_categories.join("・")}
+                                    </span>
+                                  )}
+                                  {!c.fits && (
+                                    <span className="text-[10px] font-medium text-warning bg-warning-dim rounded px-1.5 py-0.5">
+                                      枠超過
+                                    </span>
+                                  )}
+                                  {c.staff_free != null && (
+                                    <span className="text-[10px] text-secondary">人手{c.staff_free}</span>
+                                  )}
+                                  {c.loaner_free != null && (
+                                    <span className="text-[10px] text-secondary">代車{c.loaner_free}台</span>
+                                  )}
+                                  <span className="text-[10px] text-muted">残{c.remaining}</span>
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
 
                     {/* Note */}
                     <label className={labelCls}>

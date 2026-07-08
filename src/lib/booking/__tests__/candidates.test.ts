@@ -122,6 +122,37 @@ describe("proposeCandidates", () => {
     expect(nofilter).toHaveLength(2);
   });
 
+  it("requires a slot to accept ALL requested categories for composite work", () => {
+    const catSlots = [
+      // 洗車のみ受入 / コーティングのみ受入 / 両方受入
+      { day_of_week: 1, start_time: "09:00:00", end_time: "10:00:00", max_bookings: 1, accepted_categories: ["洗車"] },
+      {
+        day_of_week: 1,
+        start_time: "10:00:00",
+        end_time: "11:00:00",
+        max_bookings: 1,
+        accepted_categories: ["コーティング"],
+      },
+      {
+        day_of_week: 1,
+        start_time: "11:00:00",
+        end_time: "12:00:00",
+        max_bookings: 1,
+        accepted_categories: ["洗車", "コーティング"],
+      },
+    ];
+    // 洗車+コーティングの複合作業 → 両方受け入れる 11:00 枠のみ
+    const composite = proposeCandidates({
+      dates: ["2026-07-13"],
+      slots: catSlots,
+      closedDays: [],
+      reservations: [],
+      estimatedMinutes: null,
+      workCategories: ["洗車", "コーティング"],
+    });
+    expect(composite.map((x) => x.start_time)).toEqual(["11:00"]);
+  });
+
   it("accounts for staff headroom (人手の余り) using shift time windows", () => {
     // 月 09-12(定員2)。既存予約1件(09-12) → booked=1。
     const staffSlots = [{ day_of_week: 1, start_time: "09:00:00", end_time: "12:00:00", max_bookings: 2 }];

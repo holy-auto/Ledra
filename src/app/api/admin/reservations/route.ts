@@ -311,6 +311,28 @@ export async function PUT(req: NextRequest) {
     );
     if (putRefErr) return apiValidationError(putRefErr);
 
+    // ワークフロー開始後の工程テンプレート変更を禁止する。
+    // current_step_* / progress_pct / reservation_step_logs が旧テンプレのまま残り
+    // 状態が不整合になるのを防ぐ（変更したい場合は先にワークフローを開始し直す運用）。
+    if (sentKeys.has("workflow_template_id")) {
+      const { data: cur } = await supabase
+        .from("reservations")
+        .select("workflow_template_id, current_step_key, current_step_order, progress_pct")
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
+      const started =
+        !!cur &&
+        ((cur as { current_step_key: string | null }).current_step_key != null ||
+          ((cur as { current_step_order: number | null }).current_step_order ?? 0) > 0 ||
+          ((cur as { progress_pct: number | null }).progress_pct ?? 0) > 0);
+      const changing =
+        !!cur && (cur as { workflow_template_id: string | null }).workflow_template_id !== updates.workflow_template_id;
+      if (started && changing) {
+        return apiValidationError("ワークフロー開始後は工程テンプレートを変更できません。");
+      }
+    }
+
     // キャンセル時はタイムスタンプと理由を追記
     if (rest.status === "cancelled") {
       updates.cancelled_at = new Date().toISOString();

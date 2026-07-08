@@ -257,6 +257,7 @@ export default function BookingSettingsClient() {
                 max_bookings: s.max_bookings,
                 is_active: s.is_active,
                 label: s.label,
+                accepted_categories: s.accepted_categories,
               });
             }
             if (sEnd > endMin) {
@@ -269,6 +270,7 @@ export default function BookingSettingsClient() {
                 max_bookings: s.max_bookings,
                 is_active: s.is_active,
                 label: s.label,
+                accepted_categories: s.accepted_categories,
               });
             }
             continue;
@@ -368,6 +370,7 @@ export default function BookingSettingsClient() {
                 max_bookings: s.max_bookings,
                 is_active: s.is_active,
                 label: s.label,
+                accepted_categories: s.accepted_categories,
               });
             }
             // 右側の残り
@@ -381,6 +384,7 @@ export default function BookingSettingsClient() {
                 max_bookings: s.max_bookings,
                 is_active: s.is_active,
                 label: s.label,
+                accepted_categories: s.accepted_categories,
               });
             }
             continue;

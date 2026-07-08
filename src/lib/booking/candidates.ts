@@ -105,10 +105,13 @@ export function proposeCandidates(opts: ProposeCandidatesOptions): Candidate[] {
   const workCategories = new Set((opts.workCategories ?? []).filter((c) => c));
 
   // スロットが対象作業を受け入れるか。受入カテゴリ未設定=すべて受入。作業カテゴリ未指定=絞らない。
+  // 複数カテゴリの作業（例: 洗車+コーティング）は、その全カテゴリを受け入れる枠のみ可
+  // （1つでも受け入れない枠だと作業一式を完了できないため）。
   const slotAccepts = (accepted: string[] | null | undefined): boolean => {
     if (!accepted || accepted.length === 0) return true;
     if (workCategories.size === 0) return true;
-    return accepted.some((c) => workCategories.has(c));
+    const acceptedSet = new Set(accepted);
+    return [...workCategories].every((c) => acceptedSet.has(c));
   };
 
   const weeklyClosed = new Set<number>();
