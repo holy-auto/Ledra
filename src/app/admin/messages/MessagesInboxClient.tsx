@@ -7,6 +7,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import { fetcher } from "@/lib/swr";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import MessageBubbleBody from "@/app/admin/messages/MessageBubbleBody";
+import { ExtractedCandidateCard, type ExtractedResult } from "@/components/messages/ExtractedCandidateCard";
 
 /**
  * 横断的な LINE 会話受信箱 (/admin/messages)。
@@ -52,6 +53,7 @@ type MessageRow = {
   attachment_content_type?: string | null;
   failure_reason: string | null;
   created_at: string;
+  ai_extracted?: ExtractedResult | null;
 };
 
 type ThreadDetail = {
@@ -149,6 +151,27 @@ export default function MessagesInboxClient() {
     const t = threads.find((x) => x.thread_key === activeKey);
     if (t && t.unread_count > 0) void markRead(activeKey);
   }, [activeKey, threads, markRead]);
+
+  // AI 抽出候補を「対応済み」にする (候補バッジ/CTA を収束)。
+  const [dismissingId, setDismissingId] = useState<string | null>(null);
+  const dismissCandidate = useCallback(
+    async (messageId: string) => {
+      setDismissingId(messageId);
+      try {
+        await fetch(`/api/admin/customer-messages/${encodeURIComponent(messageId)}/candidate-dismiss`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ handled: true }),
+        });
+        await Promise.all([mutateDetail(), mutateList()]);
+      } catch {
+        // 収束失敗は致命的でないので無視
+      } finally {
+        setDismissingId(null);
+      }
+    },
+    [mutateDetail, mutateList],
+  );
 
   const handleSend = useCallback(async () => {
     if (!activeKey || !canSend || !draft.trim() || sendBusy) return;
@@ -392,6 +415,14 @@ export default function MessagesInboxClient() {
                           )}
                           {isOutbound && m.delivered_at && <span aria-label="配信済">✓</span>}
                         </div>
+                        {!isOutbound && m.ai_extracted && (
+                          <ExtractedCandidateCard
+                            result={m.ai_extracted as ExtractedResult}
+                            customerId={detail?.thread.customer_id ?? undefined}
+                            onDismiss={() => void dismissCandidate(m.id)}
+                            dismissing={dismissingId === m.id}
+                          />
+                        )}
                       </div>
                     </div>
                   );
