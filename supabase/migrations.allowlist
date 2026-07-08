@@ -196,3 +196,18 @@
 # inside a transaction). The one-time write lock to build the index is bounded
 # and was accepted at ship time. Rationale: docs/operations/zero-downtime-migrations.md.
 20260619000000_certificates_hidden.sql
+
+# Allowlisted for create-index-without-concurrently. idx_tenants_email_inbound_token
+# is a partial UNIQUE index on the EXISTING `tenants` table (メール予約取り込みの
+# 受信トークンをクロステナントで一意に保つため)。new-empty-table exception is not
+# applicable; CONCURRENTLY cannot run inside Supabase's per-file transaction. `tenants`
+# is a small table, so the one-time write lock to build the index is bounded and
+# accepted at ship time. Rationale: docs/operations/zero-downtime-migrations.md.
+20260708000000_email_inbound.sql
+
+# Allowlisted for create-index-without-concurrently. idx_customer_messages_thread_by_email
+# is a partial index on the EXISTING `customer_messages` table (メール受信のスレッドキー
+# email_from で受信箱グルーピングするため)。new-empty-table exception is not applicable;
+# CONCURRENTLY cannot run inside Supabase's per-file transaction. Bounded one-time write
+# lock, accepted at ship time. Rationale: docs/operations/zero-downtime-migrations.md.
+20260708000001_customer_messages_email_from.sql
