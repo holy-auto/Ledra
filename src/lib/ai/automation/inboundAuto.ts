@@ -68,7 +68,7 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
     const history = await fetchRecentConversation(
       tenantId,
       { customerId, lineUserId: params.lineUserId },
-      { excludeMessageId: messageId },
+      { currentMessageId: messageId },
     );
 
     const usage = startAiRouteUsage(AUTO_EXTRACT_ENDPOINT);
@@ -215,6 +215,26 @@ async function autoCreateReservation(
   input: AutoReservationInput,
 ): Promise<string | null> {
   try {
+    // 複合認識の副作用対策: 履歴に前回の予約情報が残るため、「ありがとう」等の
+    // フォローアップが同じ scheduled_date で再抽出され得る。同一顧客・同一日に
+    // 未キャンセルの予約が既にあれば重複起票しない (P2: 二重予約防止)。
+    const { data: dup } = await admin
+      .from("reservations")
+      .select("id")
+      .eq("tenant_id", input.tenantId)
+      .eq("customer_id", input.customerId)
+      .eq("scheduled_date", input.scheduledDate)
+      .neq("status", "cancelled")
+      .limit(1)
+      .maybeSingle();
+    if (dup?.id) {
+      logger.info("[inboundAuto] skip duplicate auto reservation (same customer/date exists)", {
+        tenantId: input.tenantId,
+        existing: dup.id,
+      });
+      return null;
+    }
+
     const id = crypto.randomUUID();
     const title = `【要確認】${(input.service || "AI受付予約").slice(0, 40)}`;
     const note = [

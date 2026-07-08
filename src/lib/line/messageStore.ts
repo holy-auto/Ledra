@@ -110,41 +110,84 @@ export async function recordInboundLineMessage(
   }
 }
 
+export interface ConversationTurn {
+  direction: "inbound" | "outbound";
+  text: string;
+  /** 受信日 (Asia/Tokyo, YYYY-MM-DD)。相対日付をターンごとに正しく解釈させる。 */
+  date: string;
+}
+
+/** timestamptz → Asia/Tokyo の YYYY-MM-DD。相対日付("明日")の基準日として使う。 */
+function toJstDate(createdAt: string | null | undefined): string {
+  if (!createdAt) return "";
+  const d = new Date(createdAt);
+  if (Number.isNaN(d.getTime())) return "";
+  // en-CA ロケールは ISO 風 (YYYY-MM-DD) で返す。
+  return d.toLocaleDateString("en-CA", { timeZone: "Asia/Tokyo" });
+}
+
 /**
  * 複合認識 (会話文脈) 用に、同一スレッドの直近メッセージを古い順で返す。
  *
- * customer_id が分かればそれで、無ければ line_user_id でスレッドを特定する。
- * `excludeMessageId` に「今処理中のメッセージ」を渡すと、それを除いた過去分だけ返す
- * (呼び出し元は最新メッセージを別途 `text` として渡すため)。fail-soft: 失敗時は空配列。
+ * - スレッド特定は customer_id **と** line_user_id の両方でマッチ (OR)。リンク前に
+ *   customer_id=NULL で溜まった同一 LINE ユーザーの過去メッセージも文脈に含める。
+ * - `currentMessageId` の行を基準に、それと同時刻以降 (= 現在処理中メッセージ本体と、
+ *   その受信後に送られた自動返信) は履歴から除外する。呼び出し元が「最新メッセージ」を
+ *   別途 `text` として渡すため、履歴には**それより前**のやり取りだけを載せる。
+ * - 配信失敗した outbound (failed_at) は顧客に届いていないため文脈から除く。
+ *
+ * fail-soft: 失敗時は空配列。
  */
 export async function fetchRecentConversation(
   tenantId: string,
   key: { customerId?: string | null; lineUserId?: string | null },
-  opts?: { limit?: number; excludeMessageId?: string | null },
-): Promise<Array<{ direction: "inbound" | "outbound"; text: string }>> {
+  opts?: { limit?: number; currentMessageId?: string | null },
+): Promise<ConversationTurn[]> {
   const limit = opts?.limit ?? 8;
   if (!key.customerId && !key.lineUserId) return [];
   try {
     const admin = createServiceRoleAdmin("AI 複合認識の会話文脈取得 — webhook には auth セッションが無い");
-    let query = admin
+    // customer_id / line_user_id のどちらか一致でスレッドを束ねる (tenant_id は AND で担保)。
+    const orParts: string[] = [];
+    if (key.customerId) orParts.push(`customer_id.eq.${key.customerId}`);
+    if (key.lineUserId) orParts.push(`line_user_id.eq.${key.lineUserId}`);
+
+    // 現在メッセージ本体・その後の返信・配信失敗行を差し引いても足りるよう多めに取得。
+    const { data, error } = await admin
       .from("customer_messages")
-      .select("id, direction, body, created_at")
+      .select("id, direction, body, created_at, failed_at")
       .eq("tenant_id", tenantId)
-      // 除外 ID を差し引いても十分な件数が残るよう 1 件多めに取得する
+      .or(orParts.join(","))
       .order("created_at", { ascending: false })
-      .limit(limit + 1);
-    // customer_id 優先。未リンク顧客は line_user_id でスレッドを特定する。
-    query = key.customerId ? query.eq("customer_id", key.customerId) : query.eq("line_user_id", key.lineUserId!);
-    const { data, error } = await query;
+      .limit(limit + 12);
     if (error || !data) {
       if (error) logger.warn("[messageStore] fetchRecentConversation failed", { tenantId, err: error.message });
       return [];
     }
+
+    // 現在処理中メッセージの受信時刻。これ以降 (返信含む) は「過去のやり取り」ではない。
+    const current = opts?.currentMessageId ? data.find((r) => r.id === opts.currentMessageId) : null;
+    const cutoff = current?.created_at ? new Date(current.created_at as string).getTime() : null;
+
     return data
-      .filter((r) => r.id !== opts?.excludeMessageId && typeof r.body === "string" && r.body.trim())
+      .filter((r) => {
+        if (r.id === opts?.currentMessageId) return false;
+        if (typeof r.body !== "string" || !r.body.trim()) return false;
+        // 配信失敗した店舗発は届いていないので文脈にしない。
+        if (r.direction === "outbound" && r.failed_at) return false;
+        // 現在メッセージと同時刻以降 (= その後の自動返信など) を除外。
+        if (cutoff != null && r.created_at) {
+          if (new Date(r.created_at as string).getTime() >= cutoff) return false;
+        }
+        return true;
+      })
       .slice(0, limit)
       .reverse() // 古い順に並べ替え
-      .map((r) => ({ direction: r.direction === "outbound" ? "outbound" : "inbound", text: r.body as string }));
+      .map((r) => ({
+        direction: r.direction === "outbound" ? "outbound" : "inbound",
+        text: r.body as string,
+        date: toJstDate(r.created_at as string | null),
+      }));
   } catch (e) {
     logger.warn("[messageStore] fetchRecentConversation threw", {
       tenantId,

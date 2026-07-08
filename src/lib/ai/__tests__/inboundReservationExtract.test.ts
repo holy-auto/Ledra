@@ -43,7 +43,17 @@ describe("renderHistory (composite recognition context)", () => {
     expect(out.indexOf("プリウス")).toBeLessThan(out.indexOf("ご希望"));
     expect(out.indexOf("ご希望")).toBeLessThan(out.indexOf("明日の14時"));
     expect(out).toContain("顧客: ");
-    expect(out).toContain("店舗: ");
+    // 店舗発は「参考」ラベル付き (顧客情報の抽出元にしない旨を明示)
+    expect(out).toContain("店舗(参考): ");
+  });
+
+  it("prefixes each turn with its received date so relative terms resolve per-turn", () => {
+    const out = renderHistory([
+      { direction: "inbound", text: "明日14時で", date: "2026-07-07" },
+      { direction: "inbound", text: "プリウスです", date: "2026-07-08" },
+    ]);
+    expect(out).toContain("[2026-07-07] 顧客: ");
+    expect(out).toContain("[2026-07-08] 顧客: ");
   });
 
   it("keeps only the most recent 8 turns", () => {

@@ -20,6 +20,8 @@ import { wrapUntrusted } from "@/lib/ai/promptSafety";
 export interface InboundHistoryTurn {
   direction: "inbound" | "outbound";
   text: string;
+  /** その発言の受信日 (YYYY-MM-DD)。相対表現をターンごとの基準日で解釈させる。 */
+  date?: string;
 }
 
 export interface InboundExtractInput {
@@ -85,7 +87,13 @@ confidence: 0.0〜1.0 で自己評価。曖昧 / 情報が薄ければ低め。
 
 会話文脈 (複合認識):
 - 「これまでのやり取り」が与えられた場合、会話全体を踏まえて予約情報を統合して抽出する。
-  1 メッセージに情報が揃っていなくても、過去のやり取りから車種・希望日・施工内容などを補完してよい。
+  1 メッセージに情報が揃っていなくても、過去の顧客発言から車種・希望日・施工内容などを補完してよい。
+- 各行頭の [YYYY-MM-DD] はその発言の受信日。"明日" "来週末" 等の相対表現は、その行の日付を
+  基準に解釈する (最新メッセージの相対表現は「受信日」基準)。過去の相対表現を今日基準で
+  解釈し直してはならない。
+- 「店舗(参考)」の行は店舗からの返信で、文脈把握のためだけに使う。customer_name / phone /
+  email / vehicle など顧客情報は「店舗(参考)」行から抽出してはならない (顧客の発言と
+  「最新の受信メッセージ」だけが顧客情報の情報源)。
 - 「最新の受信メッセージ」を最優先で解釈する。日時変更・キャンセルの意思は常に最新を優先する。
 - 履歴が無い (単発) 場合は、そのメッセージ単体から抽出する。
 
@@ -107,8 +115,10 @@ export function renderHistory(history?: InboundHistoryTurn[]): string {
     .slice(-8)
     .filter((h) => h.text?.trim())
     .map((h) => {
-      const who = h.direction === "outbound" ? "店舗" : "顧客";
-      return `${who}: ${wrapUntrusted(h.text, { tag: "受信本文", maxLen: 500 })}`;
+      // 「店舗」返信は文脈専用 (顧客情報の抽出元にしない旨をラベルでも明示)。
+      const who = h.direction === "outbound" ? "店舗(参考)" : "顧客";
+      const date = h.date ? `[${h.date}] ` : "";
+      return `${date}${who}: ${wrapUntrusted(h.text, { tag: "受信本文", maxLen: 500 })}`;
     });
   return lines.length ? `これまでのやり取り (古い順):\n${lines.join("\n")}\n\n` : "";
 }
