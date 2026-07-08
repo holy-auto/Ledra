@@ -129,7 +129,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         }
       }
 
-      return apiOk({ public_id: result.public_id });
+      return apiOk({ public_id: result.public_id, capture_nonce: result.capture_nonce });
     } catch (e: unknown) {
       return apiInternalError(e, "admin/certificates POST");
     }

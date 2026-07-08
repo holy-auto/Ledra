@@ -10,7 +10,6 @@
  */
 
 import type { C2paMode } from "./c2pa";
-import { isPhotoTsaEnabled } from "./photoTsa";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type LocalSignerInstance = any;
@@ -87,14 +86,13 @@ export async function createC2paSigner(mode: C2paMode): Promise<LocalSignerInsta
       }
     }
 
-    // In production, timestamp the C2PA manifest itself via an RFC3161 TSA
-    // (reuses the photo-scoped PHOTO_TSA config). Dev-signed manifests skip it —
-    // they have no trust chain anyway and must stay out of the guaranteed tier.
-    // Gated on the same enable flag as photoTsa so PHOTO_TSA_ENABLED=false
-    // disables photo timestamping everywhere, not just the standalone token.
-    const tsaUrl = mode === "production" && isPhotoTsaEnabled() ? process.env.PHOTO_TSA_URL : undefined;
-
-    const signer = LocalSigner.newSigner(Buffer.from(certPem), Buffer.from(keyPem), "es256", tsaUrl);
+    // Do NOT wire the photo TSA into the C2PA signer: a slow/unreachable TSA
+    // during `builder.sign` would make signing throw and drop the whole manifest,
+    // coupling fail-open photo timestamping to C2PA availability. The capture-time
+    // seal is provided independently by the standalone RFC3161 token stored in
+    // certificate_images.tsa_token (see photoTsa.requestPhotoTimestamp), which
+    // already satisfies captureTimeSealOk. Keep C2PA signing self-contained.
+    const signer = LocalSigner.newSigner(Buffer.from(certPem), Buffer.from(keyPem), "es256", undefined);
 
     cached = { mode, signer };
     return signer;

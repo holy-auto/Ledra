@@ -292,7 +292,9 @@ export async function POST(req: NextRequest) {
           exif_gps_stripped: exif.gpsStripped,
           capture_nonce: captureNonce ?? null,
           device_attestation_token_hash: deviceToken ? hashSha256(Buffer.from(deviceToken)) : null,
-          tsa_token: tsa?.token ?? null,
+          // bytea は PostgREST 経由の JSON では `\x<hex>` リテラルで渡す（Buffer を
+          // そのまま入れると object にシリアライズされ insert が失敗する）。
+          tsa_token: tsa?.token ? `\\x${tsa.token.toString("hex")}` : null,
           tsa_authority: tsa?.authority ?? null,
           tsa_timestamp_at: tsa?.timestampAt ?? null,
           capture_binding_reason: captureBindingReason,
