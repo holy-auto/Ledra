@@ -31,6 +31,8 @@ interface ClosedDay {
 }
 
 const DAY_NAMES = ["日", "月", "火", "水", "木", "金", "土"] as const;
+// 1テナントあたりのスロット保存上限。bookingSettingsPutSchema.slots.max と揃える。
+const SLOT_SAVE_LIMIT = 500;
 
 // ─── ユーティリティ ───────────────────────────────────────────────
 function generateTimeOptions(): string[] {
@@ -192,32 +194,73 @@ export default function BookingSettingsClient() {
       return;
     }
     const daySet = new Set(days);
-    setSlots((prev) => {
-      let next = prev;
-      // 置き換えモード: 対象曜日の既存枠のうち、生成レンジと重なるものを消す
-      if (bulkReplace) {
-        next = next.map((s) => {
-          if (s._deleted || !daySet.has(s.day_of_week)) return s;
+
+    // 置き換えモード: 対象曜日の生成レンジに重なる既存枠を消す。ただし範囲外にはみ出す
+    // 部分は分割して残す（09:00–18:00 に 10:00–12:00 を生成しても 09–10 / 12–18 は保持）。
+    let base: (BookingSlot & { _tempId: string })[] = slots;
+    if (bulkReplace) {
+      const result: (BookingSlot & { _tempId: string })[] = [];
+      for (const s of slots) {
+        const isActiveRow = !s._deleted && daySet.has(s.day_of_week);
+        if (isActiveRow) {
           const sStart = toMinutes(s.start_time);
           const sEnd = toMinutes(s.end_time);
-          const overlaps = sStart < endMin && sEnd > startMin;
-          return overlaps ? { ...s, _deleted: true } : s;
-        });
-        // 未保存(_new)で消したものは配列から除外して肥大化を防ぐ
-        next = next.filter((s) => !(s._deleted && s._new));
+          if (sStart < endMin && sEnd > startMin) {
+            if (s.id) result.push({ ...s, _deleted: true }); // 未保存(_new)は破棄
+            if (sStart < startMin) {
+              result.push({
+                _tempId: newSlotId(),
+                _new: true,
+                day_of_week: s.day_of_week,
+                start_time: minutesToTime(sStart),
+                end_time: minutesToTime(startMin),
+                max_bookings: s.max_bookings,
+                is_active: s.is_active,
+                label: s.label,
+              });
+            }
+            if (sEnd > endMin) {
+              result.push({
+                _tempId: newSlotId(),
+                _new: true,
+                day_of_week: s.day_of_week,
+                start_time: minutesToTime(endMin),
+                end_time: minutesToTime(sEnd),
+                max_bookings: s.max_bookings,
+                is_active: s.is_active,
+                label: s.label,
+              });
+            }
+            continue;
+          }
+        }
+        result.push(s);
       }
-      const added: (BookingSlot & { _tempId: string })[] = generated.map((g) => ({
-        _tempId: newSlotId(),
-        _new: true,
-        day_of_week: g.day_of_week as DayOfWeek,
-        start_time: g.start_time,
-        end_time: g.end_time,
-        max_bookings: g.max_bookings,
-        is_active: g.is_active,
-        label: g.label ?? undefined,
-      }));
-      return [...next, ...added];
-    });
+      base = result;
+    }
+
+    const added: (BookingSlot & { _tempId: string })[] = generated.map((g) => ({
+      _tempId: newSlotId(),
+      _new: true,
+      day_of_week: g.day_of_week as DayOfWeek,
+      start_time: g.start_time,
+      end_time: g.end_time,
+      max_bookings: g.max_bookings,
+      is_active: g.is_active,
+      label: g.label ?? undefined,
+    }));
+
+    // 保存 API の上限（slots ≤ SLOT_SAVE_LIMIT）を超える生成は弾く。
+    const nextActiveCount = [...base, ...added].filter((s) => !s._deleted).length;
+    if (nextActiveCount > SLOT_SAVE_LIMIT) {
+      showToast(
+        "error",
+        `枠が多すぎます（${nextActiveCount}件）。上限${SLOT_SAVE_LIMIT}件以内になるよう曜日・間隔・時間帯を絞ってください`,
+      );
+      return;
+    }
+
+    setSlots([...base, ...added]);
     showToast("success", `${days.length}曜日に${generated.length / days.length}枠ずつ生成しました（保存で確定）`);
   }
 

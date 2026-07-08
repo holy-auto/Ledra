@@ -85,30 +85,31 @@ export async function PUT(req: NextRequest) {
     }
     const { slots, closed_days: closedDays, deleted_closed_day_ids: deletedClosedDayIds } = parsed.data;
 
-    // ── スロット削除（サーバ側で差分を確定） ──
-    // 「今 UI に出ているスロット一式」を desired set として受け取り、DB 上に
-    // 残っている id のうち desired set に無いものを削除する。クライアントの
-    // deleted_slot_ids に依存すると、取りこぼしで「保存しても反映されない」状態に
-    // なり得たため、削除対象はサーバが権威的に算出する。
-    const desiredSlotIds = new Set(slots.map((s) => s.id).filter((id): id is string => !!id));
-    const { data: existingSlots, error: existingErr } = await supabase
-      .from("external_booking_slots")
-      .select("id")
-      .eq("tenant_id", caller.tenantId);
-    if (existingErr) {
-      console.error("[booking-settings] list slots error:", existingErr.message);
-      return apiInternalError(existingErr, "booking-settings");
-    }
-    const slotIdsToDelete = (existingSlots ?? []).map((r) => r.id).filter((id) => !desiredSlotIds.has(id));
-    if (slotIdsToDelete.length > 0) {
-      const { error } = await supabase
+    // ── スロット差分削除（サーバ側で権威的に算出） ──
+    // slots は full-replace の desired set。省略時 (undefined) はスロットに一切触れず、
+    // 定休日のみ更新できるようにする（省略を「全消し」と誤解して全スロットを削除する
+    // 事故を防ぐ）。明示的な空配列 [] のときだけ全削除になる。
+    if (slots !== undefined) {
+      const desiredSlotIds = new Set(slots.map((s) => s.id).filter((id): id is string => !!id));
+      const { data: existingSlots, error: existingErr } = await supabase
         .from("external_booking_slots")
-        .delete()
-        .in("id", slotIdsToDelete)
+        .select("id")
         .eq("tenant_id", caller.tenantId);
-      if (error) {
-        console.error("[booking-settings] delete slots error:", error.message);
-        return apiInternalError(error, "booking-settings");
+      if (existingErr) {
+        console.error("[booking-settings] list slots error:", existingErr.message);
+        return apiInternalError(existingErr, "booking-settings");
+      }
+      const slotIdsToDelete = (existingSlots ?? []).map((r) => r.id).filter((id) => !desiredSlotIds.has(id));
+      if (slotIdsToDelete.length > 0) {
+        const { error } = await supabase
+          .from("external_booking_slots")
+          .delete()
+          .in("id", slotIdsToDelete)
+          .eq("tenant_id", caller.tenantId);
+        if (error) {
+          console.error("[booking-settings] delete slots error:", error.message);
+          return apiInternalError(error, "booking-settings");
+        }
       }
     }
 
@@ -126,7 +127,7 @@ export async function PUT(req: NextRequest) {
     }
 
     // ── スロット upsert ──
-    for (const slot of slots) {
+    for (const slot of slots ?? []) {
       const payload = {
         tenant_id: caller.tenantId,
         day_of_week: slot.day_of_week,
