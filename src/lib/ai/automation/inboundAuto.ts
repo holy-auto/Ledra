@@ -97,31 +97,33 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
     }
 
     // 予約の自動起票。
-    const decision = decideInboundCommit(settings, result, { knownCustomerId: customerId });
-    let committedReservationId: string | null = null;
+    // 決定の**前に** AI 抽出した連絡先 (email/phone) で既存顧客を解決する。特にメールは
+    // 受信時に customer_id を付けないため、これが無いと (a) customer.auto_create を切った
+    // 安全構成ではリピート顧客のメール予約が起票されず、(b) 重複顧客・同日重複予約ガードの
+    // すり抜けが起きる。既知顧客として decideInboundCommit に渡す。
     let resolvedCustomerId = customerId;
-
-    if (decision.create && result.scheduled_date) {
-      // 未知顧客の場合は自動作成 (customer.auto_create が有効な場合のみここに到達する)
-      if (!resolvedCustomerId && decision.reason === "ok_with_new_customer") {
-        // 新規作成の前に、AI 抽出した連絡先で既存顧客を探す。特にメールは受信時に
-        // customer_id を付けないため、これが無いとリピート顧客ごとに重複レコードが
-        // 生まれ、同日重複予約ガード (顧客ID キー) も効かなくなる。
-        const existingId = await resolveExistingCustomerByContact(admin, tenantId, {
-          email: result.email,
-          phone: result.phone,
-        });
-        if (existingId) {
-          resolvedCustomerId = existingId;
-          if (messageId) {
-            await admin
-              .from("customer_messages")
-              .update({ customer_id: existingId })
-              .eq("id", messageId)
-              .eq("tenant_id", tenantId);
-          }
+    if (!resolvedCustomerId && (result.email?.trim() || result.phone?.trim())) {
+      const existingId = await resolveExistingCustomerByContact(admin, tenantId, {
+        email: result.email,
+        phone: result.phone,
+      });
+      if (existingId) {
+        resolvedCustomerId = existingId;
+        if (messageId) {
+          await admin
+            .from("customer_messages")
+            .update({ customer_id: existingId })
+            .eq("id", messageId)
+            .eq("tenant_id", tenantId);
         }
       }
+    }
+
+    const decision = decideInboundCommit(settings, result, { knownCustomerId: resolvedCustomerId });
+    let committedReservationId: string | null = null;
+
+    if (decision.create && result.scheduled_date) {
+      // 既存顧客に解決できず新規作成が必要な場合 (customer.auto_create=Pro のみ到達)。
       if (!resolvedCustomerId && decision.reason === "ok_with_new_customer") {
         // customer.auto_create requires Pro plan
         const planTier = normalizePlanTier(tenant.plan_tier);
@@ -130,11 +132,14 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
         } else {
           resolvedCustomerId = await autoCreateCustomer(admin, {
             tenantId,
-            // 顧客名/メールは AI 抽出結果のみを使う (SMTP From は顧客本人とは限らないため)。
+            // 顧客名/連絡先は AI 抽出結果のみを使う (SMTP From は顧客本人とは限らないため)。
             name: result.customer_name?.trim() || "自動登録顧客",
             channel: params.channel,
             lineUserId: params.lineUserId,
             email: result.email?.trim() || undefined,
+            // phone も保存しないと、後続メールを resolveExistingCustomerByContact で
+            // 突き合わせられず重複顧客/重複予約になる。
+            phone: result.phone?.trim() || undefined,
           });
           if (resolvedCustomerId && messageId) {
             await admin
@@ -379,6 +384,7 @@ interface AutoCreateCustomerInput {
   channel?: "line" | "email" | "form";
   lineUserId?: string;
   email?: string;
+  phone?: string;
 }
 
 /** 顧客レコードを service-role で自動作成する。失敗時は null を返す (投げない)。 */
@@ -399,6 +405,9 @@ async function autoCreateCustomer(
     }
     if (input.email) {
       row.email = input.email;
+    }
+    if (input.phone) {
+      row.phone = input.phone;
     }
     const { error } = await admin.from("customers").insert(row);
     if (error) {

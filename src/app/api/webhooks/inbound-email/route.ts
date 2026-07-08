@@ -45,22 +45,46 @@ const HTML_ENTITIES: Record<string, string> = {
 /**
  * HTML しか無い場合の素朴なテキスト化 (フォールバック)。
  *
- * - タグ除去は `<[^>]*>` (バウンド量指定子) で線形。攻撃者由来 HTML でも ReDoS に
- *   ならないよう、隣接曖昧量指定子やバックトラッキング (script/style 本文の除去等) は使わない。
- * - エンティティ復元は**単一パス**。`&amp;` を先に個別 replace すると `&amp;lt;` が
- *   `&lt;` → `<` と二重復元される。1 回の走査で置換結果を再走査しないことで防ぐ。
+ * タグ除去は**1 文字ずつの単一走査 (O(n))**。`<[^>]*>` のような正規表現は、閉じない
+ * 大量の '<' を含む送信者制御 HTML で各 '<' から末尾まで再走査され超線形になり、
+ * webhook ワーカーを数秒ブロックして再送を誘発しうる。ここでは状態機械で走査するため
+ * その病的ケースでも線形。エンティティ復元は単一パスで二重復元を避ける。
  * html は text/plain が無い場合のフォールバックであり、多少のノイズは実害なし。
  */
 function htmlToText(html: string | null): string {
   if (!html) return "";
-  // 上限で切り詰め。タグ除去の全体走査が病的入力 (閉じない大量 '<') で超線形に
-  // ならないよう長さを制限する。抽出には十分な冒頭のみで足りる。
-  return html
-    .slice(0, 100_000)
-    .replace(/<[^>]*>/g, " ")
+  const src = html.slice(0, 100_000); // 冒頭のみで抽出には十分。
+  let out = "";
+  let inTag = false;
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (inTag) {
+      if (ch === ">") inTag = false; // タグ終端。中身は捨てる。
+    } else if (ch === "<") {
+      inTag = true;
+      out += " ";
+    } else {
+      out += ch;
+    }
+  }
+  return out
     .replace(/&(nbsp|amp|lt|gt|quot|apos|#39);/gi, (m, e: string) => HTML_ENTITIES[e.toLowerCase()] ?? m)
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/**
+ * 受信メールの Date ヘッダ (無ければ envelope) から JST の受信日 (YYYY-MM-DD) を得る。
+ * 相対日付 ("明日") はこの日付基準で解釈する。再送/遅延/古いメール転送でも、処理日では
+ * なくメール本来の日付を使う。解釈できなければ null。
+ */
+function parseEmailDateJst(rawHeaders: string | null | undefined): string | null {
+  if (!rawHeaders) return null;
+  const m = rawHeaders.match(/^date:\s*(.+)$/im);
+  if (!m) return null;
+  const d = new Date(m[1].trim());
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString("en-CA", { timeZone: "Asia/Tokyo" });
 }
 
 /** Asia/Tokyo の今日 (YYYY-MM-DD)。相対日付の基準。 */
@@ -104,11 +128,16 @@ export async function POST(req: NextRequest) {
 
     // token → tenant。有効化済み & アクティブのみ受理。
     const admin = createServiceRoleAdmin("Inbound email webhook — no auth session");
-    const { data: tenant } = await admin
+    const { data: tenant, error: tenantErr } = await admin
       .from("tenants")
       .select("id, is_active, email_inbound_enabled")
       .eq("email_inbound_token", token)
       .maybeSingle();
+    if (tenantErr) {
+      // DB 一時障害等。200 で「無効テナント」と誤判定するとメールが恒久的に失われるため、
+      // 5xx を返してプロバイダに再送させる。
+      return apiError({ code: "internal_error", message: "一時的に処理できません。再送してください。", status: 503 });
+    }
     if (!tenant || tenant.is_active === false || !tenant.email_inbound_enabled) {
       return apiOk({ ignored: "tenant_not_enabled" });
     }
@@ -168,7 +197,8 @@ export async function POST(req: NextRequest) {
       customerId: null,
       text: `${subject ? `件名: ${subject}\n` : ""}${bodyText}`,
       channel: "email",
-      receivedDate: todayJst(),
+      // 相対日付はメール本来の Date 基準 (再送/遅延/古いメール転送での取り違え防止)。
+      receivedDate: parseEmailDateJst(getStr("headers")) ?? todayJst(),
     });
 
     logger.info("[inbound-email] processed", {
