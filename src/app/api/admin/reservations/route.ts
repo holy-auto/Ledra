@@ -41,6 +41,7 @@ async function validateReservationRefs(
   assignedStaffId: string | null | undefined,
   boothId: string | null | undefined,
   workflowTemplateId?: string | null | undefined,
+  loanerCarId?: string | null | undefined,
 ): Promise<string | null> {
   const { admin } = createTenantScopedAdmin(tenantId);
   if (assignedStaffId) {
@@ -66,6 +67,15 @@ async function validateReservationRefs(
       .maybeSingle();
     if (!data) return "workflow_template_not_found";
   }
+  if (loanerCarId) {
+    const { data } = await admin
+      .from("loaner_cars")
+      .select("id")
+      .eq("id", loanerCarId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (!data) return "loaner_car_not_found";
+  }
   return null;
 }
 
@@ -86,7 +96,7 @@ export async function GET(req: NextRequest) {
     let query = supabase
       .from("reservations")
       .select(
-        "id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, assigned_staff_id, booth_id, status, estimated_amount, created_at, workflow_template_id, current_step_key, current_step_order, progress_pct",
+        "id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, assigned_staff_id, booth_id, loaner_car_id, status, estimated_amount, created_at, workflow_template_id, current_step_key, current_step_order, progress_pct",
         { count: "exact" },
       )
       .eq("tenant_id", caller.tenantId)
@@ -197,6 +207,7 @@ export async function POST(req: NextRequest) {
       input.assigned_staff_id,
       input.booth_id,
       input.workflow_template_id,
+      input.loaner_car_id,
     );
     if (refErr) return apiValidationError(refErr);
 
@@ -215,6 +226,7 @@ export async function POST(req: NextRequest) {
       assigned_staff_id: input.assigned_staff_id,
       booth_id: input.booth_id,
       workflow_template_id: input.workflow_template_id,
+      loaner_car_id: input.loaner_car_id,
       status: input.status,
       estimated_amount: input.estimated_amount ?? 0,
     };
@@ -308,6 +320,7 @@ export async function PUT(req: NextRequest) {
       sentKeys.has("assigned_staff_id") ? (updates.assigned_staff_id as string | null) : undefined,
       sentKeys.has("booth_id") ? (updates.booth_id as string | null) : undefined,
       sentKeys.has("workflow_template_id") ? (updates.workflow_template_id as string | null) : undefined,
+      sentKeys.has("loaner_car_id") ? (updates.loaner_car_id as string | null) : undefined,
     );
     if (putRefErr) return apiValidationError(putRefErr);
 
