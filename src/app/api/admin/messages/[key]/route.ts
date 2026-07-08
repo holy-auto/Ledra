@@ -34,7 +34,7 @@ const sendSchema = z.object({
 });
 
 const MSG_COLS =
-  "id, customer_id, line_user_id, channel, direction, body, sent_by, read_at, delivered_at, failed_at, failure_reason, line_message_id, line_timestamp_ms, created_at, attachment_path, attachment_content_type";
+  "id, customer_id, line_user_id, channel, direction, body, sent_by, read_at, delivered_at, failed_at, failure_reason, line_message_id, line_timestamp_ms, created_at, attachment_path, attachment_content_type, ai_extracted";
 
 function isMissingColumnError(err: { message?: string; code?: string } | null | undefined): boolean {
   if (!err) return false;
