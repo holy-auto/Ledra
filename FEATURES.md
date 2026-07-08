@@ -500,6 +500,7 @@ Ledraは自動車施工（コーティング・フィルム・ラッピング等
 
 ### 7.3 LINE
 - **LINE Webhook**: LINEメッセージ受信・処理
+- **概算見積りの自動返信** (`quote.auto_reply_rough_estimate`, 既定 OFF): LINE で価格問い合わせ（例:「ヴェルファイアのコーティングいくら？」）を受信すると、車両＋過去実績から概算金額をレンジ（税込 ±15%）で顧客へ即返信し、正式・詳細な見積りは来店へ誘導する。未紐付けの新規客にも返信。詳細は `docs/ai-automation-guide.md`
 
 ### 7.4 Google Calendar
 - **予約連携**: 予約データをGoogleカレンダーに同期
