@@ -48,6 +48,15 @@ export function shouldAutoDraftQuoteFromInbound(settings: AiAutomationSettings):
   return resolveAutoAction(settings, "quote.auto_draft_from_inbound");
 }
 
+/**
+ * 受信メッセージ (価格問い合わせ) に概算見積りを LINE で自動返信してよいか。
+ * 顧客へ外向きに金額を送るが、送るのは「概算・要来店」の但し書き付きレンジのみ。
+ * 正式・詳細な見積りは案内文で来店に誘導する (quote.auto_reply_rough_estimate)。
+ */
+export function shouldAutoReplyRoughEstimate(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "quote.auto_reply_rough_estimate");
+}
+
 export interface InboundExtractionLike {
   intent?: string | null;
   confidence?: number | null;

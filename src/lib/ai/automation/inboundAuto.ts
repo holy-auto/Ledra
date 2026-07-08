@@ -21,6 +21,7 @@ import { logger } from "@/lib/logger";
 import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { loadAiAutomationSettings } from "./policy";
 import { maybeAutoDraftQuoteFromInbound } from "./quoteDraftAuto";
+import { maybeAutoReplyRoughEstimate } from "./quoteReplyAuto";
 import { shouldAutoExtractInbound, decideInboundCommit } from "./orchestrator";
 
 const AUTO_EXTRACT_ENDPOINT = "/api/line/webhook#auto-extract";
@@ -160,6 +161,21 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
     await maybeAutoDraftQuoteFromInbound({
       tenantId,
       customerId: resolvedCustomerId,
+      intent: result.intent,
+      service: result.service,
+      vehicleText: result.vehicle,
+      messageId,
+      channel: params.channel ?? "line",
+      settings,
+      tenant,
+    });
+
+    // 価格問い合わせ → 概算見積りを LINE で完全自動返信 (opt-in / 未紐付け客も対象 /
+    // 内部で fail-soft)。上のドラフト起票とは独立した opt-in。詳細見積りは来店対応。
+    await maybeAutoReplyRoughEstimate({
+      tenantId,
+      customerId: resolvedCustomerId,
+      lineUserId: params.lineUserId,
       intent: result.intent,
       service: result.service,
       vehicleText: result.vehicle,
