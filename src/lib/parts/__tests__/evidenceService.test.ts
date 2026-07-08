@@ -7,26 +7,35 @@ vi.mock("@/lib/anchoring/imageHashing", () => ({
   computePerceptualHash: vi.fn(async () => "deadbeefdeadbeef"),
 }));
 vi.mock("@/lib/ai/photoTamperingCheck", () => ({ extractExifMeta: vi.fn(), detectExifFlags: vi.fn() }));
+vi.mock("@/lib/anchoring/imageExif", () => ({ stripGpsAndReadExif: vi.fn() }));
 
 import { stageInstallationPhoto } from "@/lib/parts/evidenceService";
 import { extractExifMeta, detectExifFlags } from "@/lib/ai/photoTamperingCheck";
+import { hashSha256 } from "@/lib/anchoring/imageHashing";
+import { stripGpsAndReadExif } from "@/lib/anchoring/imageExif";
 
 const exifMock = vi.mocked(extractExifMeta);
 const flagsMock = vi.mocked(detectExifFlags);
+const stripMock = vi.mocked(stripGpsAndReadExif);
+const hashMock = vi.mocked(hashSha256);
+
+const STRIPPED = Buffer.from("gps-removed-bytes");
 
 function makeAdmin(opts: { uploadError?: { message: string } } = {}) {
   const uploaded: string[] = [];
+  const uploadedBuffers: unknown[] = [];
   const admin = {
     storage: {
       from: () => ({
-        upload: (path: string) => {
+        upload: (path: string, body: unknown) => {
           uploaded.push(path);
+          uploadedBuffers.push(body);
           return Promise.resolve({ error: opts.uploadError ?? null });
         },
       }),
     },
   };
-  return { admin: admin as any, uploaded };
+  return { admin: admin as any, uploaded, uploadedBuffers };
 }
 
 const baseArgs = () => ({
@@ -52,6 +61,15 @@ describe("stageInstallationPhoto", () => {
     exifMock.mockReset();
     flagsMock.mockReset();
     flagsMock.mockReturnValue([]);
+    stripMock.mockReset();
+    // Default: strip succeeds and returns GPS-removed bytes.
+    stripMock.mockResolvedValue({
+      strippedBuffer: STRIPPED,
+      capturedAt: null,
+      deviceModel: null,
+      gpsStripped: true,
+    });
+    hashMock.mockClear();
   });
 
   it("hashes, extracts EXIF, uploads to staging and returns metadata (grade basic when clean EXIF)", async () => {
@@ -91,6 +109,20 @@ describe("stageInstallationPhoto", () => {
     // EXIF はあるが改ざん疑い flag があるので basic に上げない。
     expect(res.authenticity_grade).toBe("unverified");
     expect(res.integrity_flags).toEqual(["software_edited"]);
+  });
+
+  it("strips GPS before storage and hashes the stored (stripped) bytes, not the original", async () => {
+    exifMock.mockResolvedValue(exif({ hasExif: true, latitude: 0, longitude: 0 }) as any);
+    const { admin, uploadedBuffers } = makeAdmin();
+
+    await stageInstallationPhoto({ admin, ...baseArgs() });
+
+    // Tampering detection still runs on the ORIGINAL arrayBuffer (GPS visible).
+    expect(exifMock).toHaveBeenCalledOnce();
+    // The bytes written to storage are the GPS-removed ones, never the raw buffer.
+    expect(uploadedBuffers[0]).toBe(STRIPPED);
+    // sha256 is computed over the stored (stripped) bytes so content_hash matches the file.
+    expect(hashMock).toHaveBeenCalledWith(STRIPPED);
   });
 
   it("throws when the storage upload fails", async () => {

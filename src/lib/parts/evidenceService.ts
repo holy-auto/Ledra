@@ -15,7 +15,8 @@
  *  2. 知覚ハッシュ（aHash。再圧縮・微編集に耐え、使い回しを検出）。
  *  3. EXIF 撮影日時 (DateTimeOriginal) と改ざん疑い flag（編集ソフト痕跡・撮影時刻異常等）。
  *  4. EXIF の有無・flag で真正性グレードを付与。
- *  5. assets バケットへ保存し storage_path を返す。
+ *  5. GPS/EXIF を除去した上で assets バケットへ保存し storage_path を返す
+ *     （ハッシュは保存する除去後バイトで算出する）。
  *
  * 重複・シリアル使い回し・flag→finding の記録は作成 API (createInstallation) 側で、
  * content_hash 確定と同じトランザクション文脈で行う（本サービスは DB 行を作らない）。
@@ -24,6 +25,7 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages"; // 共有 "assets" バケット
 import { hashSha256, computePerceptualHash } from "@/lib/anchoring/imageHashing";
+import { stripGpsAndReadExif } from "@/lib/anchoring/imageExif";
 import { extractExifMeta, detectExifFlags, type TamperingFlag } from "@/lib/ai/photoTamperingCheck";
 
 type Admin = ReturnType<typeof createTenantScopedAdmin>["admin"];
@@ -63,9 +65,7 @@ export async function stageInstallationPhoto(opts: {
 }): Promise<StagedPhoto> {
   const { admin, tenantId, kind, buffer, arrayBuffer, mime } = opts;
 
-  // 1) ハッシュ・EXIF・flag（クライアント値は信用せずサーバ側で算出）。
-  const sha256 = hashSha256(buffer);
-  const perceptualHash = await computePerceptualHash(buffer);
+  // 1) 改ざん判定は「元画像」の EXIF（GPS 含む）で行う。gps_extreme 等は除去前でしか見えない。
   const exif = await extractExifMeta(arrayBuffer);
   const integrityFlags = detectExifFlags(exif, new Date(), [exif], 0);
   const exifCapturedAt = exif.takenAt ? new Date(exif.takenAt).toISOString() : null;
@@ -73,12 +73,20 @@ export async function stageInstallationPhoto(opts: {
   const authenticityGrade: "unverified" | "basic" =
     exif.hasExif && integrityFlags.length === 0 ? "basic" : "unverified";
 
-  // 2) 保存（assets バケットの staging 配下。作成時に evidence.storage_path として参照される）。
+  // 2) 保存する前に GPS/EXIF を除去する。装着写真も顧客の自宅駐車場等で撮られ得るため、
+  //    証明書写真経路 (imageExif.stripGpsAndReadExif) と同一のプライバシー保護を適用する
+  //    （同じ assets バケットへ生 GPS を残さない）。ハッシュは「実際に保存するバイト」で
+  //    算出しないと content_hash と保存ファイルが食い違うため、除去後バッファを対象にする。
+  const stripped = await stripGpsAndReadExif(buffer);
+  const uploadBuffer = stripped.strippedBuffer;
+  const sha256 = hashSha256(uploadBuffer);
+  const perceptualHash = await computePerceptualHash(uploadBuffer);
+
   const ext = mime.split("/")[1]?.replace("jpeg", "jpg") ?? "jpg";
   const storagePath = `parts/${tenantId}/staging/${kind}-${Date.now()}-${sha256.slice(0, 8)}.${ext}`;
   const { error: upErr } = await admin.storage
     .from(CERTIFICATE_IMAGE_BUCKET)
-    .upload(storagePath, buffer, { contentType: mime, upsert: false });
+    .upload(storagePath, uploadBuffer, { contentType: mime, upsert: false });
   if (upErr) throw new Error(`storage upload failed: ${upErr.message}`);
 
   return {
