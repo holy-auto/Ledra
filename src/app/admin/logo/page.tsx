@@ -3,6 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerFull } from "@/lib/api/auth";
 import { hasPermission } from "@/lib/auth/permissions";
+import { canUseFeature } from "@/lib/billing/planFeatures";
 import AdminFeatureGuard from "@/app/admin/AdminFeatureGuard";
 import { FEATURES } from "@/lib/billing/featureKeys";
 
@@ -39,14 +40,19 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
   // service-role は RLS を丸ごとバイパスするため、これまで `tenants` の
   // owner-only RLS が担保していた権限チェックが失われる。UI ガードは
   // クライアント側のみなので、admin クライアントを作る前に必ず
-  // サーバー側で `logo:manage` 権限を検証する。テナントは
-  // resolveCallerFull 経由で active_tenant_id クッキーを尊重して解決し、
-  // 複数テナント所属ユーザーが別テナントへ書き込むのを防ぐ。
+  // サーバー側で権限とプランを検証する。テナントは resolveCallerFull 経由で
+  // active_tenant_id クッキーを尊重して解決し、複数テナント所属ユーザーが
+  // 別テナントへ書き込むのを防ぐ。
+  //
+  // - `logo:manage` 権限: ロール権限マトリクスに従う。
+  // - `upload_logo` プラン機能: AdminFeatureGuard は client-side のみなので、
+  //   Server Action へ直接 POST された場合の課金バイパスをサーバー側で塞ぐ。
   async function resolveAuthorizedTenantId(): Promise<string> {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerFull(supabase);
     if (!caller) redirect("/login?next=/admin/logo");
     if (!hasPermission(caller.role, "logo:manage")) redirect("/admin/logo?e=forbidden");
+    if (!canUseFeature(caller.planTier, FEATURES.upload_logo)) redirect("/admin/logo?e=forbidden");
     return caller.tenantId;
   }
 
@@ -66,9 +72,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
     const bytes = new Uint8Array(await file.arrayBuffer());
     if (!isPngSignature(bytes)) redirect("/admin/logo?e=png");
 
-    const up = await admin.storage
-      .from("assets")
-      .upload(objectPath, bytes, { contentType: "image/png", upsert: true });
+    const up = await admin.storage.from("assets").upload(objectPath, bytes, { contentType: "image/png", upsert: true });
 
     if (up.error) redirect("/admin/logo?e=2");
 
@@ -95,9 +99,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
     const bytes = new Uint8Array(await file.arrayBuffer());
     if (!isPngSignature(bytes)) redirect("/admin/logo?e=seal_png");
 
-    const up = await admin.storage
-      .from("assets")
-      .upload(objectPath, bytes, { contentType: "image/png", upsert: true });
+    const up = await admin.storage.from("assets").upload(objectPath, bytes, { contentType: "image/png", upsert: true });
 
     if (up.error) redirect("/admin/logo?e=seal_upload");
 
