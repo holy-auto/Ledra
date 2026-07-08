@@ -39,6 +39,8 @@ const externalBookingSchema = z.object({
   start_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "start_time / end_time は HH:MM 形式です"),
   end_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "start_time / end_time は HH:MM 形式です"),
   note: z.string().trim().max(2000).optional(),
+  // 希望作業の大カテゴリ。受入カテゴリが設定された枠では一致が必須。
+  category: z.string().trim().max(80).optional(),
   source: z.enum(["google_maps", "line", "web"]).optional(),
 });
 
@@ -159,7 +161,7 @@ export async function POST(req: NextRequest) {
     // ── スロット空き状況チェック ──
     const { data: slots } = await admin
       .from("external_booking_slots")
-      .select("max_bookings")
+      .select("max_bookings, accepted_categories")
       .eq("tenant_id", tenant.id)
       .eq("day_of_week", dayOfWeek)
       .eq("is_active", true)
@@ -170,6 +172,17 @@ export async function POST(req: NextRequest) {
     // スロットが定義されていない場合はデフォルトで受付可能（ただし重複チェックはする）
     if (slots && slots.length > 0) {
       const maxBookings = slots[0].max_bookings;
+
+      // 受入可否: 受入カテゴリが設定された枠は、一致する category 指定を必須とする
+      // （指定なし/不一致は拒否）。API キー経由でも per-slot 制限を回避できないようにする。
+      const accepted = slots[0].accepted_categories as string[] | null;
+      if (accepted && accepted.length > 0 && (!body.category || !accepted.includes(body.category))) {
+        return apiError({
+          code: "conflict",
+          message: `この時間帯は「${accepted.join("・")}」のみ受け付けています。`,
+          status: 422,
+        });
+      }
 
       // 同時間帯の既存予約数。境界は排他（開始=前枠の終了 は重複としない）で数える。
       // 空き状況 GET の重複判定 (start < end && end > start) と揃え、隣接枠を独立して
@@ -345,15 +358,18 @@ export async function GET(req: NextRequest) {
       .object({
         tenant_slug: z.string().trim().min(1, "tenant_slug と date (YYYY-MM-DD) が必要です").max(100),
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date は YYYY-MM-DD 形式です"),
+        // 希望作業の大カテゴリ。指定時は受け入れるスロットのみ返す。
+        category: z.string().trim().max(80).optional(),
       })
       .safeParse({
         tenant_slug: url.searchParams.get("tenant_slug") ?? "",
         date: url.searchParams.get("date") ?? "",
+        category: url.searchParams.get("category") ?? undefined,
       });
     if (!queryParsed.success) {
       return apiValidationError(queryParsed.error.issues[0]?.message ?? "invalid query");
     }
-    const { tenant_slug: tenantSlug, date } = queryParsed.data;
+    const { tenant_slug: tenantSlug, date, category } = queryParsed.data;
 
     const admin = createServiceRoleAdmin("public booking — looks up tenant from slug, no caller context");
 
@@ -407,13 +423,21 @@ export async function GET(req: NextRequest) {
     }
 
     // ── スロット定義を取得 ──────────────────────────────────
-    const { data: slots } = await admin
+    const { data: allSlots } = await admin
       .from("external_booking_slots")
-      .select("start_time, end_time, max_bookings, label")
+      .select("start_time, end_time, max_bookings, label, accepted_categories")
       .eq("tenant_id", tenant.id)
       .eq("day_of_week", dayOfWeek)
       .eq("is_active", true)
       .order("start_time");
+
+    // 希望作業カテゴリ指定時は、受け入れるスロットのみ（受入未設定=すべて受入）。
+    const slots = category
+      ? (allSlots ?? []).filter(
+          (s: { accepted_categories: string[] | null }) =>
+            !s.accepted_categories || s.accepted_categories.length === 0 || s.accepted_categories.includes(category),
+        )
+      : allSlots;
 
     if (!slots || slots.length === 0) {
       return apiOk({
@@ -444,6 +468,7 @@ export async function GET(req: NextRequest) {
         available: Math.max(0, slot.max_bookings - booked),
         max: slot.max_bookings,
         label: slot.label ?? null,
+        accepted_categories: slot.accepted_categories ?? null,
       };
     });
 

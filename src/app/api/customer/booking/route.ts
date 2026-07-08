@@ -22,6 +22,8 @@ const customerBookingSchema = z.object({
     .or(z.literal("").transform(() => undefined)),
   customer_phone: z.string().trim().max(40).optional(),
   title: z.string().trim().max(200).optional(),
+  // 希望作業の大カテゴリ。指定時、その枠が受け入れるか検証する。
+  category: z.string().trim().max(80).optional(),
   scheduled_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "scheduled_date は YYYY-MM-DD 形式です"),
   start_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "start_time / end_time は HH:MM 形式です"),
   end_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "start_time / end_time は HH:MM 形式です"),
@@ -66,7 +68,8 @@ export async function POST(req: NextRequest) {
     const body = parsed.data;
     const tenantSlug = body.tenant_slug;
     const customerName = body.customer_name;
-    const title = body.title || "Web予約";
+    // 希望作業カテゴリが選ばれていればタイトルに反映し、店舗側でどの作業の予約か分かるようにする。
+    const title = body.title || body.category || "Web予約";
     const scheduledDate = body.scheduled_date;
     const startTime = body.start_time;
     const endTime = body.end_time;
@@ -130,7 +133,7 @@ export async function POST(req: NextRequest) {
     // ── スロット空き状況チェック ──
     const { data: slots } = await admin
       .from("external_booking_slots")
-      .select("max_bookings")
+      .select("max_bookings, accepted_categories")
       .eq("tenant_id", tenant.id)
       .eq("day_of_week", dayOfWeek)
       .eq("is_active", true)
@@ -140,6 +143,17 @@ export async function POST(req: NextRequest) {
 
     if (slots && slots.length > 0) {
       const maxBookings = slots[0].max_bookings;
+
+      // 受入可否: 受入カテゴリが設定された枠は、一致する希望作業カテゴリの指定を必須にする。
+      // 指定なし/不一致はいずれも拒否（受入未設定=すべて受入）。
+      const accepted = slots[0].accepted_categories as string[] | null;
+      if (accepted && accepted.length > 0 && (!body.category || !accepted.includes(body.category))) {
+        return apiError({
+          code: "conflict",
+          message: `この時間帯は「${accepted.join("・")}」のみ受け付けています。ご希望の作業をお選びください。`,
+          status: 422,
+        });
+      }
 
       // 境界は排他（開始=前枠の終了 は重複としない）。空き状況 GET と揃え、隣接枠を
       // 独立して予約可能にする。

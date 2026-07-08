@@ -12,6 +12,7 @@ type SlotInfo = {
   end_time: string;
   available: number;
   max: number;
+  accepted_categories?: string[] | null;
 };
 
 type DaySlots = {
@@ -116,6 +117,8 @@ export default function BookingPage() {
   // ── selection ──
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<SlotInfo | null>(null);
+  // ご希望の作業（大カテゴリ）。受入可否で空き枠を絞り込む。null=指定なし。
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   // ── slots cache: date → DaySlots ──
   const [slotsCache, setSlotsCache] = useState<Record<string, DaySlots>>({});
@@ -156,6 +159,7 @@ export default function BookingPage() {
           end_time: s.end_time,
           available: s.available ?? 0,
           max: s.max ?? 1,
+          accepted_categories: s.accepted_categories ?? null,
         }));
         // テナント名取得
         if (j.tenant_name) setTenantName(j.tenant_name);
@@ -261,6 +265,7 @@ export default function BookingPage() {
           scheduled_date: selectedDate,
           start_time: selectedSlot.start_time.slice(0, 5),
           end_time: selectedSlot.end_time.slice(0, 5),
+          category: selectedCategory || undefined,
           note: formNote || undefined,
           // 来店前の事前カルテ用 intake invitation を併発してもらう
           request_intake: true,
@@ -292,14 +297,43 @@ export default function BookingPage() {
 
   // ─── Slot status helper ───────────────────────────────────
 
+  // 選択中カテゴリを受け入れるスロットか。
+  // 受入制限のある枠は、希望作業が未選択の間は表示しない（送信時に弾かれるのを防ぐ）。
+  // 希望作業を選んだら、その作業を受け入れる枠のみ表示。受入未設定の枠は常に対象。
+  const slotMatchesCategory = useCallback(
+    (s: SlotInfo) => {
+      const restricted = !!s.accepted_categories && s.accepted_categories.length > 0;
+      if (!restricted) return true;
+      if (!selectedCategory) return false;
+      return s.accepted_categories!.includes(selectedCategory);
+    },
+    [selectedCategory],
+  );
+
+  // 指定カテゴリで絞った、その日の表示対象スロット。
+  const visibleSlots = useCallback(
+    (d: DaySlots | undefined) => (d ? d.slots.filter(slotMatchesCategory) : []),
+    [slotMatchesCategory],
+  );
+
+  // 店舗が受入カテゴリを設定していれば、その候補を「ご希望の作業」ピッカーに出す。
+  const categoryOptions = useMemo(() => {
+    const set = new Set<string>();
+    Object.values(slotsCache).forEach((d) =>
+      d.slots.forEach((s) => (s.accepted_categories ?? []).forEach((c) => set.add(c))),
+    );
+    return Array.from(set).sort();
+  }, [slotsCache]);
+
   const dayStatus = (date: string): "available" | "full" | "closed" | "loading" | "past" => {
     if (date < todayStr) return "past";
     if (loadingDates.has(date)) return "loading";
     const d = slotsCache[date];
     if (!d) return "loading"; // まだ取得していない → ローディング扱い
     if (d.closed) return "closed"; // 定休日
-    if (d.slots.length === 0) return "closed"; // スロット未設定
-    return d.hasAvailable ? "available" : "full";
+    const vis = visibleSlots(d);
+    if (vis.length === 0) return "closed"; // スロット未設定 / 希望作業を受け入れる枠なし
+    return vis.some((s) => s.available > 0) ? "available" : "full";
   };
 
   // ─── Week grid time slots ─────────────────────────────────
@@ -309,10 +343,10 @@ export default function BookingPage() {
   const allTimes = useMemo(() => {
     const set = new Set<string>();
     weekDates.forEach((d) => {
-      (slotsCache[d]?.slots ?? []).forEach((s) => set.add(s.start_time.slice(0, 5)));
+      (slotsCache[d]?.slots ?? []).filter(slotMatchesCategory).forEach((s) => set.add(s.start_time.slice(0, 5)));
     });
     return Array.from(set).sort();
-  }, [weekDates, slotsCache]);
+  }, [weekDates, slotsCache, slotMatchesCategory]);
 
   // ─── Render ───────────────────────────────────────────────
 
@@ -565,10 +599,14 @@ export default function BookingPage() {
                   別の日を選ぶ
                 </button>
               </div>
-            ) : !dayData || dayData.slots.length === 0 ? (
+            ) : !dayData || visibleSlots(dayData).length === 0 ? (
               <div className="py-12 text-center">
                 <div className="text-4xl mb-3">📅</div>
-                <p className="text-sm text-secondary">この日は予約枠が設定されていません。</p>
+                <p className="text-sm text-secondary">
+                  {selectedCategory
+                    ? `この日は「${selectedCategory}」を受け付ける枠がありません。`
+                    : "この日は予約枠が設定されていません。"}
+                </p>
                 <button onClick={() => setStep("calendar")} className="mt-4 text-sm text-accent font-medium underline">
                   別の日を選ぶ
                 </button>
@@ -577,7 +615,7 @@ export default function BookingPage() {
               <>
                 <p className="text-sm text-secondary mb-4">ご希望の時間帯をお選びください</p>
                 <div className="grid grid-cols-2 gap-2.5">
-                  {dayData.slots.map((slot) => {
+                  {visibleSlots(dayData).map((slot) => {
                     const avail = slot.available > 0;
                     return (
                       <button
@@ -701,6 +739,41 @@ export default function BookingPage() {
           </div>
         )}
       </div>
+
+      {/* ── ご希望の作業（受入可否）ピッカー ── */}
+      {categoryOptions.length > 0 && (
+        <div className="bg-surface border-b border-border-subtle px-4 py-3">
+          <p className="text-xs font-medium text-secondary mb-2">ご希望の作業（任意）</p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setSelectedCategory(null)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                selectedCategory === null
+                  ? "border-accent bg-accent text-white"
+                  : "border-border-default bg-surface text-secondary hover:border-border-strong"
+              }`}
+            >
+              指定なし
+            </button>
+            {categoryOptions.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                  selectedCategory === cat
+                    ? "border-accent bg-accent text-white"
+                    : "border-border-default bg-surface text-secondary hover:border-border-strong"
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+          {selectedCategory && (
+            <p className="mt-2 text-[11px] text-muted">「{selectedCategory}」を受け付ける時間帯のみ表示しています。</p>
+          )}
+        </div>
+      )}
 
       {/* ── Month Calendar view ── */}
       {viewMode === "month" && (
@@ -846,7 +919,9 @@ export default function BookingPage() {
                       const dayData = slotsCache[date];
                       const isLoading = loadingDates.has(date);
                       const isPast = date < todayStr;
-                      const slot = dayData?.slots.find((s) => s.start_time.slice(0, 5) === time);
+                      const slot = dayData?.slots.find(
+                        (s) => s.start_time.slice(0, 5) === time && slotMatchesCategory(s),
+                      );
 
                       let cellContent: React.ReactNode;
                       if (isPast) {

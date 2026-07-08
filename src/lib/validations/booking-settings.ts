@@ -17,6 +17,13 @@ export const bookingSlotSchema = z.object({
     .nullable()
     .optional()
     .transform((v) => v || null),
+  // 受入対象の大カテゴリ（menu_items.category_large）。空/未指定=すべて受入。
+  accepted_categories: z
+    .array(z.string().trim().min(1).max(80))
+    .max(50)
+    .nullable()
+    .optional()
+    .transform((v) => (v && v.length > 0 ? Array.from(new Set(v)) : null)),
 });
 
 export const closedDaySchema = z

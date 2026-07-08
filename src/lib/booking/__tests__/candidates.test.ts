@@ -84,6 +84,183 @@ describe("proposeCandidates", () => {
     expect(some[0].loaner_free).toBe(1);
   });
 
+  it("filters slots by accepted work categories (受入可否)", () => {
+    const catSlots = [
+      // 午前は洗車のみ受入、午後はすべて受入
+      { day_of_week: 1, start_time: "09:00:00", end_time: "12:00:00", max_bookings: 1, accepted_categories: ["洗車"] },
+      { day_of_week: 1, start_time: "13:00:00", end_time: "15:00:00", max_bookings: 1, accepted_categories: null },
+    ];
+    // コーティングの予約 → 午前(洗車のみ)は除外、午後のみ
+    const coating = proposeCandidates({
+      dates: ["2026-07-13"],
+      slots: catSlots,
+      closedDays: [],
+      reservations: [],
+      estimatedMinutes: null,
+      workCategories: ["コーティング"],
+    });
+    expect(coating.map((x) => x.start_time)).toEqual(["13:00"]);
+    // 洗車の予約 → 両方受入
+    const wash = proposeCandidates({
+      dates: ["2026-07-13"],
+      slots: catSlots,
+      closedDays: [],
+      reservations: [],
+      estimatedMinutes: null,
+      workCategories: ["洗車"],
+    });
+    expect(wash.map((x) => x.start_time)).toEqual(["09:00", "13:00"]);
+    expect(wash[0].accepted_categories).toEqual(["洗車"]);
+    // 作業カテゴリ未指定 → 絞り込みなし（両方）
+    const nofilter = proposeCandidates({
+      dates: ["2026-07-13"],
+      slots: catSlots,
+      closedDays: [],
+      reservations: [],
+      estimatedMinutes: null,
+    });
+    expect(nofilter).toHaveLength(2);
+  });
+
+  it("requires a slot to accept ALL requested categories for composite work", () => {
+    const catSlots = [
+      // 洗車のみ受入 / コーティングのみ受入 / 両方受入
+      { day_of_week: 1, start_time: "09:00:00", end_time: "10:00:00", max_bookings: 1, accepted_categories: ["洗車"] },
+      {
+        day_of_week: 1,
+        start_time: "10:00:00",
+        end_time: "11:00:00",
+        max_bookings: 1,
+        accepted_categories: ["コーティング"],
+      },
+      {
+        day_of_week: 1,
+        start_time: "11:00:00",
+        end_time: "12:00:00",
+        max_bookings: 1,
+        accepted_categories: ["洗車", "コーティング"],
+      },
+    ];
+    // 洗車+コーティングの複合作業 → 両方受け入れる 11:00 枠のみ
+    const composite = proposeCandidates({
+      dates: ["2026-07-13"],
+      slots: catSlots,
+      closedDays: [],
+      reservations: [],
+      estimatedMinutes: null,
+      workCategories: ["洗車", "コーティング"],
+    });
+    expect(composite.map((x) => x.start_time)).toEqual(["11:00"]);
+  });
+
+  it("accounts for staff headroom (人手の余り) using shift time windows", () => {
+    // 月 09-12(定員2)。既存予約1件(09-12) → booked=1。
+    const staffSlots = [{ day_of_week: 1, start_time: "09:00:00", end_time: "12:00:00", max_bookings: 2 }];
+    const resv = [{ scheduled_date: "2026-07-13", start_time: "09:00:00", end_time: "12:00:00" }];
+    const base = {
+      dates: ["2026-07-13"],
+      slots: staffSlots,
+      closedDays: [],
+      reservations: resv,
+      estimatedMinutes: null,
+      considerStaff: true,
+    };
+    // 終日勤務1名(null/null) → 空き人手 1-1=0 → 除外
+    const noStaff = proposeCandidates({
+      ...base,
+      staffShiftsByDate: { "2026-07-13": [{ staffId: "a", start: null, end: null }] },
+    });
+    expect(noStaff).toHaveLength(0);
+    // 3名が枠をカバー → 空き人手 3-1=2、残枠 min(2-1,2)=1
+    const withStaff = proposeCandidates({
+      ...base,
+      staffShiftsByDate: {
+        "2026-07-13": [
+          { staffId: "a", start: 540, end: 720 },
+          { staffId: "b", start: null, end: null },
+          { staffId: "c", start: 480, end: 1080 },
+        ],
+      },
+    });
+    expect(withStaff).toHaveLength(1);
+    expect(withStaff[0].staff_free).toBe(2);
+    expect(withStaff[0].remaining).toBe(1);
+    // 午後シフトのみ(13:00-)は 09-12 枠をカバーしない → カバー0、除外
+    const afternoonOnly = proposeCandidates({
+      ...base,
+      staffShiftsByDate: { "2026-07-13": [{ staffId: "a", start: 780, end: 1080 }] },
+    });
+    expect(afternoonOnly).toHaveLength(0);
+    // 同一スタッフの重複シフトは実人数として1カウント（booked=1 → 空き0 → 除外）
+    const dupSameStaff = proposeCandidates({
+      ...base,
+      staffShiftsByDate: {
+        "2026-07-13": [
+          { staffId: "a", start: 540, end: 720 },
+          { staffId: "a", start: 540, end: 720 },
+        ],
+      },
+    });
+    expect(dupSameStaff).toHaveLength(0);
+    // シフト未登録の日は人手フィルタをかけない（staff_free=null）
+    const unknown = proposeCandidates({ ...base, staffShiftsByDate: {} });
+    expect(unknown).toHaveLength(1);
+    expect(unknown[0].staff_free).toBeNull();
+    // シフト行はあるが在籍0（空配列）の日は「判定対象・在籍0」として除外する
+    const zeroActive = proposeCandidates({ ...base, staffShiftsByDate: { "2026-07-13": [] } });
+    expect(zeroActive).toHaveLength(0);
+  });
+
+  it("checks staffing against the actual work duration, not the whole slot", () => {
+    // 09:00-12:00 枠、60分作業。スタッフは 09:00-10:00 のみ在籍。
+    const slots = [{ day_of_week: 1, start_time: "09:00:00", end_time: "12:00:00", max_bookings: 1 }];
+    const r = proposeCandidates({
+      dates: ["2026-07-13"],
+      slots,
+      closedDays: [],
+      reservations: [],
+      estimatedMinutes: 60,
+      considerStaff: true,
+      staffShiftsByDate: { "2026-07-13": [{ staffId: "a", start: 540, end: 600 }] },
+    });
+    // 実作業は 09:00-10:00 なので在籍が付く → 提案される
+    expect(r).toHaveLength(1);
+    expect(r[0].end_time).toBe("10:00");
+    expect(r[0].staff_free).toBe(1);
+  });
+
+  it("counts staff conflicts only within the proposed work window", () => {
+    // 09:00-12:00 枠(定員2)。既存予約 10:00-12:00。60分作業を 09:00 に。スタッフ 09:00-10:00。
+    const slots = [{ day_of_week: 1, start_time: "09:00:00", end_time: "12:00:00", max_bookings: 2 }];
+    const r = proposeCandidates({
+      dates: ["2026-07-13"],
+      slots,
+      closedDays: [],
+      reservations: [{ scheduled_date: "2026-07-13", start_time: "10:00:00", end_time: "12:00:00" }],
+      estimatedMinutes: 60,
+      considerStaff: true,
+      staffShiftsByDate: { "2026-07-13": [{ staffId: "a", start: 540, end: 600 }] },
+    });
+    // 実作業 09:00-10:00 は既存予約(10-12)と重ならない → 人手が付き提案される
+    expect(r).toHaveLength(1);
+    expect(r[0].end_time).toBe("10:00");
+    expect(r[0].staff_free).toBe(1);
+  });
+
+  it("excludes restricted slots when category is unknown and excludeRestricted is set", () => {
+    const slots = [
+      { day_of_week: 1, start_time: "09:00:00", end_time: "10:00:00", max_bookings: 1, accepted_categories: ["洗車"] },
+      { day_of_week: 1, start_time: "10:00:00", end_time: "11:00:00", max_bookings: 1, accepted_categories: null },
+    ];
+    const base = { dates: ["2026-07-13"], slots, closedDays: [], reservations: [], estimatedMinutes: null };
+    // カテゴリ不明 + excludeRestricted → 制限枠(洗車のみ)を除外、無制限枠のみ
+    const strict = proposeCandidates({ ...base, excludeRestricted: true });
+    expect(strict.map((x) => x.start_time)).toEqual(["10:00"]);
+    // 既定（excludeRestricted 無し）は従来どおり両方
+    const loose = proposeCandidates({ ...base });
+    expect(loose).toHaveLength(2);
+  });
+
   it("respects the limit", () => {
     const c = proposeCandidates({
       dates: ["2026-07-13", "2026-07-14"],

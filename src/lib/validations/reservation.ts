@@ -37,6 +37,8 @@ export const reservationCreateSchema = z.object({
   assigned_user_id: nullableUuid,
   assigned_staff_id: nullableUuid,
   booth_id: nullableUuid,
+  // 工程テンプレート（作業のタスク分解）。設定するとワークフロー開始で reservation_step_logs に展開される。
+  workflow_template_id: nullableUuid,
   note: z
     .string()
     .trim()
@@ -71,6 +73,8 @@ export const reservationUpdateSchema = z.object({
   assigned_user_id: nullableUuid,
   assigned_staff_id: nullableUuid,
   booth_id: nullableUuid,
+  // 工程テンプレート（作業のタスク分解）。設定するとワークフロー開始で reservation_step_logs に展開される。
+  workflow_template_id: nullableUuid,
   note: z
     .string()
     .trim()

@@ -17,6 +17,8 @@ export type CandidateWeeklySlot = {
   start_time: string;
   end_time: string;
   max_bookings: number;
+  /** 受け入れる作業の大カテゴリ。null/空=すべて受入。 */
+  accepted_categories?: string[] | null;
 };
 
 export type CandidateClosedDay = {
@@ -45,6 +47,10 @@ export type Candidate = {
   fits: boolean;
   /** その日に空いている代車台数。needsLoaner でないときは null。 */
   loaner_free: number | null;
+  /** このスロットが受け入れる作業の大カテゴリ。null=すべて受入。 */
+  accepted_categories: string[] | null;
+  /** その時間帯の空き人手（在籍スタッフ数 − 同時間帯の予約数）。考慮しないときは null。 */
+  staff_free: number | null;
 };
 
 export interface ProposeCandidatesOptions {
@@ -55,10 +61,25 @@ export interface ProposeCandidatesOptions {
   reservations: CandidateReservation[];
   /** 作業所要時間（分）。null なら所要時間フィルタはかけず fits=true 扱い。 */
   estimatedMinutes: number | null;
+  /** 予約する作業の大カテゴリ。指定時、受け入れないスロットは候補から除外する。空=絞らない。 */
+  workCategories?: string[];
+  /**
+   * 作業カテゴリが不明（workCategories 空）なとき、受入制限のある枠を除外するか。
+   * 工程テンプレのみ指定で品目カテゴリが取れない場合など、無関係な制限枠を推薦しないために使う。
+   */
+  excludeRestricted?: boolean;
   /** 代車必須か。true なら空き代車0の日は候補にしない。 */
   needsLoaner?: boolean;
   /** 日付ごとの空き代車台数（needsLoaner 時に参照）。 */
   freeLoanersByDate?: Record<string, number>;
+  /** 人手の余りを考慮するか。true かつ その日のシフトが判る場合、空き人手0以下の枠を除外。 */
+  considerStaff?: boolean;
+  /**
+   * 日付ごとの勤務シフト（分単位。start/end が null なら終日勤務扱い）。
+   * considerStaff 時に参照。エントリの無い日は「不明」として人手フィルタをかけない。
+   * スロット時間帯を実際にカバーするスタッフのみを在籍としてカウントする。
+   */
+  staffShiftsByDate?: Record<string, Array<{ staffId: string; start: number | null; end: number | null }>>;
   /** 返す候補数の上限（既定 20）。 */
   limit?: number;
 }
@@ -73,7 +94,31 @@ export function proposeCandidates(opts: ProposeCandidatesOptions): Candidate[] {
   const { dates, slots, closedDays, reservations, estimatedMinutes } = opts;
   const needsLoaner = opts.needsLoaner ?? false;
   const freeLoanersByDate = opts.freeLoanersByDate ?? {};
+  const considerStaff = opts.considerStaff ?? false;
+  const staffShiftsByDate = opts.staffShiftsByDate ?? {};
+  const excludeRestricted = opts.excludeRestricted ?? false;
   const limit = opts.limit ?? 20;
+
+  // 指定スロット [start,end) をカバーするシフトの、在籍スタッフ実人数（重複除去）。
+  const staffCoveringSlot = (date: string, slotStart: number, slotEnd: number): number => {
+    const ids = new Set<string>();
+    for (const sh of staffShiftsByDate[date] ?? []) {
+      const covers = (sh.start == null || sh.start <= slotStart) && (sh.end == null || sh.end >= slotEnd);
+      if (covers) ids.add(sh.staffId);
+    }
+    return ids.size;
+  };
+  const workCategories = new Set((opts.workCategories ?? []).filter((c) => c));
+
+  // スロットが対象作業を受け入れるか。受入カテゴリ未設定=すべて受入。作業カテゴリ未指定=絞らない。
+  // 複数カテゴリの作業（例: 洗車+コーティング）は、その全カテゴリを受け入れる枠のみ可
+  // （1つでも受け入れない枠だと作業一式を完了できないため）。
+  const slotAccepts = (accepted: string[] | null | undefined): boolean => {
+    if (!accepted || accepted.length === 0) return true; // 受入制限なしは常に可
+    if (workCategories.size === 0) return !excludeRestricted; // カテゴリ不明: 制限枠を出すか
+    const acceptedSet = new Set(accepted);
+    return [...workCategories].every((c) => acceptedSet.has(c));
+  };
 
   const weeklyClosed = new Set<number>();
   const specificClosed = new Set<string>();
@@ -114,17 +159,33 @@ export function proposeCandidates(opts: ProposeCandidatesOptions): Candidate[] {
     const dayResv = resvByDate[date] ?? [];
     for (const slot of daySlots) {
       if (out.length >= limit) break;
+      if (!slotAccepts(slot.accepted_categories)) continue;
       const slotStart = timeToMinutes(slot.start_time);
       const slotEnd = timeToMinutes(slot.end_time);
       // 排他境界で重なる予約数（空き状況 GET / 満席判定と同じ規則）
       const booked = dayResv.filter(
         (r) => timeToMinutes(r.start_time) < slotEnd && timeToMinutes(r.end_time) > slotStart,
       ).length;
-      const remaining = slot.max_bookings - booked;
+      let remaining = slot.max_bookings - booked;
       if (remaining <= 0) continue;
 
       const fits = estimatedMinutes == null ? true : slotEnd - slotStart >= estimatedMinutes;
+      // 候補の実際の終了時刻（所要時間ぶん）。人手判定もこの実作業時間帯で見る。
       const endMin = estimatedMinutes == null ? slotEnd : Math.min(slotStart + estimatedMinutes, slotEnd);
+
+      // 人手の余り: 実作業時間帯 [slotStart, endMin) をカバーする在籍スタッフ数 −
+      // その時間帯に重なる予約数。0以下なら受入不可。シフト未登録の日は人手フィルタをかけない。
+      // 予約数もスロット全体でなく実作業時間で数える（例: 短時間作業が長い枠でも、実作業時間に
+      // 重ならない既存予約は人手を消費しない）。
+      let staffFree: number | null = null;
+      if (considerStaff && date in staffShiftsByDate) {
+        const bookedInWindow = dayResv.filter(
+          (r) => timeToMinutes(r.start_time) < endMin && timeToMinutes(r.end_time) > slotStart,
+        ).length;
+        staffFree = staffCoveringSlot(date, slotStart, endMin) - bookedInWindow;
+        if (staffFree <= 0) continue;
+        remaining = Math.min(remaining, staffFree);
+      }
 
       out.push({
         date,
@@ -135,6 +196,8 @@ export function proposeCandidates(opts: ProposeCandidatesOptions): Candidate[] {
         remaining,
         fits,
         loaner_free: loanerFree,
+        accepted_categories: slot.accepted_categories ?? null,
+        staff_free: staffFree,
       });
     }
   }

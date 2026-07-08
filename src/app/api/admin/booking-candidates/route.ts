@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { estimateReservationMinutes } from "@/lib/booths/duration";
 import { proposeCandidates } from "@/lib/booking/candidates";
@@ -32,6 +33,16 @@ const querySchema = z.object({
     .optional(),
   days: z.coerce.number().int().min(1).max(60).default(14),
   needs_loaner: z
+    .enum(["0", "1", "true", "false"])
+    .optional()
+    .transform((v) => v === "1" || v === "true"),
+  // 人手の余りを考慮するか（既定 true）。"0"/"false" で無効化。
+  consider_staff: z
+    .enum(["0", "1", "true", "false"])
+    .optional()
+    .transform((v) => v !== "0" && v !== "false"),
+  // 作業カテゴリ不明時に受入制限枠を除外するか（工程テンプレのみ指定時などに使う）。
+  exclude_restricted: z
     .enum(["0", "1", "true", "false"])
     .optional()
     .transform((v) => v === "1" || v === "true"),
@@ -76,9 +87,16 @@ export async function GET(req: NextRequest) {
       estimated_minutes: estimatedOverride,
       days,
       needs_loaner: needsLoaner,
+      consider_staff: considerStaffParam,
+      exclude_restricted: excludeRestrictedParam,
       limit,
     } = parsed.data;
     const tenantId = caller.tenantId;
+
+    // 人手判定はスタッフ名簿(members:view)を見られるロールに限定する。
+    // サービスロールで staff_shifts を読むため、権限の無い viewer 等に staff_free から
+    // シフト状況が漏れないようゲートする（名簿APIと同じ権限境界に揃える）。
+    const considerStaff = considerStaffParam && requirePermission(caller, "members:view");
 
     // 起点日（既定: 今日 / サーバTZ）。走査対象日を配列化。
     const today = new Date();
@@ -89,13 +107,17 @@ export async function GET(req: NextRequest) {
     const to = dates[dates.length - 1];
 
     // ── 並列取得: 品目 / スロット / 定休日 / 予約 / 代車 / 貸出 ──
-    const [menuRes, slotsRes, closedRes, resvRes, loanersRes, loansRes] = await Promise.all([
+    const [menuRes, slotsRes, closedRes, resvRes, loanersRes, loansRes, shiftsRes, activeStaffRes] = await Promise.all([
       menuItemIds.length > 0
-        ? supabase.from("menu_items").select("estimated_minutes").eq("tenant_id", tenantId).in("id", menuItemIds)
+        ? supabase
+            .from("menu_items")
+            .select("estimated_minutes, category_large")
+            .eq("tenant_id", tenantId)
+            .in("id", menuItemIds)
         : Promise.resolve({ data: [], error: null }),
       supabase
         .from("external_booking_slots")
-        .select("day_of_week, start_time, end_time, max_bookings")
+        .select("day_of_week, start_time, end_time, max_bookings, accepted_categories")
         .eq("tenant_id", tenantId)
         .eq("is_active", true),
       supabase.from("closed_days").select("type, day_of_week, closed_date").eq("tenant_id", tenantId),
@@ -110,9 +132,27 @@ export async function GET(req: NextRequest) {
       needsLoaner
         ? supabase.from("loaner_car_loans").select("return_due_at").eq("tenant_id", tenantId).is("returned_at", null)
         : Promise.resolve({ data: [], error: null }),
+      // staff_shifts の SELECT は RLS で管理ロール限定のため、staff ロールでも人手判定が
+      // 効くようテナント限定のサービスロールで読む（RLS で空になり黙って無効化されるのを防ぐ）。
+      considerStaff
+        ? createTenantScopedAdmin(tenantId)
+            .admin.from("staff_shifts")
+            .select("staff_id, work_date, start_time, end_time")
+            .eq("tenant_id", tenantId)
+            .gte("work_date", from)
+            .lte("work_date", to)
+        : Promise.resolve({ data: [], error: null }),
+      // 在籍中(is_active)スタッフのみを人手にカウントする（停止中スタッフのシフトを除外）。
+      considerStaff
+        ? createTenantScopedAdmin(tenantId)
+            .admin.from("staff_members")
+            .select("id")
+            .eq("tenant_id", tenantId)
+            .eq("is_active", true)
+        : Promise.resolve({ data: [], error: null }),
     ]);
 
-    for (const r of [menuRes, slotsRes, closedRes, resvRes, loanersRes, loansRes]) {
+    for (const r of [menuRes, slotsRes, closedRes, resvRes, loanersRes, loansRes, shiftsRes, activeStaffRes]) {
       if (r.error) {
         console.error("[booking-candidates] query error:", r.error.message);
         return apiInternalError(r.error, "booking-candidates");
@@ -120,8 +160,16 @@ export async function GET(req: NextRequest) {
     }
 
     // 所要時間: estimated_minutes 直接指定 > 品目合計。
-    const estimatedMinutes =
-      estimatedOverride ?? estimateReservationMinutes((menuRes.data ?? []) as { estimated_minutes: number | null }[]);
+    const menuRows = (menuRes.data ?? []) as { estimated_minutes: number | null; category_large: string | null }[];
+    const estimatedMinutes = estimatedOverride ?? estimateReservationMinutes(menuRows);
+    // 作業の大カテゴリ（受入可否フィルタ用）。品目に紐づく大カテゴリを重複排除。
+    const workCategories = Array.from(
+      new Set(menuRows.map((m) => m.category_large).filter((c): c is string => !!c && c.trim().length > 0)),
+    );
+    // 作業（品目/テンプレ/所要時間）が指定されているのに大カテゴリが取れない場合も、
+    // 受入制限枠は推薦しない（未分類品目でも「洗車のみ」枠等を誤って提案しないため）。
+    const workSpecified = menuItemIds.length > 0 || estimatedOverride != null;
+    const excludeRestricted = excludeRestrictedParam || (workSpecified && workCategories.length === 0);
 
     // 代車の空き台数（日別）。貸出中で返却予定日が対象日以降（または無期限）なら不在扱い。
     // ponytail: 将来日の代車予約は別モデル化されていないため、現在の未返却貸出の返却予定で近似。
@@ -138,6 +186,34 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // 日付ごとの勤務シフト（分単位。start/end 未設定は終日勤務）。スロット時間帯を
+    // カバーするスタッフのみを在籍としてカウントするため、時間帯まで持たせる。
+    let staffShiftsByDate:
+      | Record<string, Array<{ staffId: string; start: number | null; end: number | null }>>
+      | undefined;
+    if (considerStaff) {
+      const toMin = (t: string | null): number | null => {
+        if (!t) return null;
+        const [h, m] = t.slice(0, 5).split(":").map(Number);
+        return (h || 0) * 60 + (m || 0);
+      };
+      const activeStaffIds = new Set(((activeStaffRes.data ?? []) as { id: string }[]).map((r) => r.id));
+      staffShiftsByDate = {};
+      for (const s of (shiftsRes.data ?? []) as {
+        staff_id: string;
+        work_date: string;
+        start_time: string | null;
+        end_time: string | null;
+      }[]) {
+        const key = s.work_date.slice(0, 10);
+        // シフトが存在する日は「判定対象日」として必ずキーを作る（全員停止中なら空配列＝在籍0）。
+        // キーを作らないと proposeCandidates が「シフト未登録＝不問」と誤解し人手判定をスキップする。
+        const list = (staffShiftsByDate[key] ??= []);
+        if (!activeStaffIds.has(s.staff_id)) continue; // 停止中スタッフは在籍にカウントしない
+        list.push({ staffId: s.staff_id, start: toMin(s.start_time), end: toMin(s.end_time) });
+      }
+    }
+
     const candidates = proposeCandidates({
       dates,
       slots: (slotsRes.data ?? []) as {
@@ -145,6 +221,7 @@ export async function GET(req: NextRequest) {
         start_time: string;
         end_time: string;
         max_bookings: number;
+        accepted_categories: string[] | null;
       }[],
       closedDays: (closedRes.data ?? []) as {
         type: "weekly" | "specific";
@@ -157,8 +234,12 @@ export async function GET(req: NextRequest) {
         end_time: string;
       }[],
       estimatedMinutes,
+      workCategories,
+      excludeRestricted,
       needsLoaner,
       freeLoanersByDate,
+      considerStaff,
+      staffShiftsByDate,
       limit,
     });
 

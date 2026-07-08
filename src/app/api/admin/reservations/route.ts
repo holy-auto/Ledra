@@ -40,6 +40,7 @@ async function validateReservationRefs(
   tenantId: string,
   assignedStaffId: string | null | undefined,
   boothId: string | null | undefined,
+  workflowTemplateId?: string | null | undefined,
 ): Promise<string | null> {
   const { admin } = createTenantScopedAdmin(tenantId);
   if (assignedStaffId) {
@@ -54,6 +55,16 @@ async function validateReservationRefs(
   if (boothId) {
     const { data } = await admin.from("booths").select("id").eq("id", boothId).eq("tenant_id", tenantId).maybeSingle();
     if (!data) return "booth_not_found";
+  }
+  if (workflowTemplateId) {
+    // workflow_templates は自テナントに加えプラットフォーム共通(is_platform)も選択可。
+    const { data } = await admin
+      .from("workflow_templates")
+      .select("id")
+      .eq("id", workflowTemplateId)
+      .or(`tenant_id.eq.${tenantId},is_platform.eq.true`)
+      .maybeSingle();
+    if (!data) return "workflow_template_not_found";
   }
   return null;
 }
@@ -181,7 +192,12 @@ export async function POST(req: NextRequest) {
     }
     const input = parsed.data;
 
-    const refErr = await validateReservationRefs(caller.tenantId, input.assigned_staff_id, input.booth_id);
+    const refErr = await validateReservationRefs(
+      caller.tenantId,
+      input.assigned_staff_id,
+      input.booth_id,
+      input.workflow_template_id,
+    );
     if (refErr) return apiValidationError(refErr);
 
     const row = {
@@ -198,6 +214,7 @@ export async function POST(req: NextRequest) {
       assigned_user_id: input.assigned_user_id,
       assigned_staff_id: input.assigned_staff_id,
       booth_id: input.booth_id,
+      workflow_template_id: input.workflow_template_id,
       status: input.status,
       estimated_amount: input.estimated_amount ?? 0,
     };
@@ -290,8 +307,31 @@ export async function PUT(req: NextRequest) {
       caller.tenantId,
       sentKeys.has("assigned_staff_id") ? (updates.assigned_staff_id as string | null) : undefined,
       sentKeys.has("booth_id") ? (updates.booth_id as string | null) : undefined,
+      sentKeys.has("workflow_template_id") ? (updates.workflow_template_id as string | null) : undefined,
     );
     if (putRefErr) return apiValidationError(putRefErr);
+
+    // ワークフロー開始後の工程テンプレート変更を禁止する。
+    // current_step_* / progress_pct / reservation_step_logs が旧テンプレのまま残り
+    // 状態が不整合になるのを防ぐ（変更したい場合は先にワークフローを開始し直す運用）。
+    if (sentKeys.has("workflow_template_id")) {
+      const { data: cur } = await supabase
+        .from("reservations")
+        .select("workflow_template_id, current_step_key, current_step_order, progress_pct")
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
+      const started =
+        !!cur &&
+        ((cur as { current_step_key: string | null }).current_step_key != null ||
+          ((cur as { current_step_order: number | null }).current_step_order ?? 0) > 0 ||
+          ((cur as { progress_pct: number | null }).progress_pct ?? 0) > 0);
+      const changing =
+        !!cur && (cur as { workflow_template_id: string | null }).workflow_template_id !== updates.workflow_template_id;
+      if (started && changing) {
+        return apiValidationError("ワークフロー開始後は工程テンプレートを変更できません。");
+      }
+    }
 
     // キャンセル時はタイムスタンプと理由を追記
     if (rest.status === "cancelled") {
