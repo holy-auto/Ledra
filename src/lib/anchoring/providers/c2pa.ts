@@ -41,10 +41,7 @@ async function pinToPinata(signedBuffer: Buffer): Promise<string | null> {
     const blob = new Blob([new Uint8Array(signedBuffer)]);
     const form = new FormData();
     form.append("file", blob, "c2pa-manifest.bin");
-    form.append(
-      "pinataMetadata",
-      JSON.stringify({ name: `ledra-c2pa-${Date.now()}` }),
-    );
+    form.append("pinataMetadata", JSON.stringify({ name: `ledra-c2pa-${Date.now()}` }));
 
     const res = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
       method: "POST",
@@ -94,8 +91,28 @@ export async function signC2pa(buffer: Buffer, mime: string): Promise<C2paResult
       title: "Certificate Photo",
     });
 
+    // Record the real provenance, not a bare `c2pa.created`. Ledra is not the
+    // capture device: by the time we sign, the upload pipeline
+    // (imageExif.stripGpsAndReadExif) has opened the device-captured photo,
+    // baked in its orientation, re-encoded it, and removed ALL EXIF/GPS
+    // metadata. Declaring only `c2pa.created` would misrepresent that history
+    // to any C2PA validator — and silently drop the fact that location data
+    // was stripped. Assert the actual sequence instead, including the metadata
+    // removal, so the manifest is an honest ledger of what happened.
+    //
+    // ponytail: unconditional — signC2pa doesn't know whether the strip/re-encode
+    // actually ran (it receives the post-strip buffer). In the rare fallback where
+    // sharp failed and the original buffer was signed as-is, `c2pa.converted`/
+    // the removal action slightly over-claim. Upgrade path: thread the transform
+    // outcome from the upload route through invokeAllUploadProviders → signC2pa.
     builder.addAssertion("c2pa.actions", {
-      actions: [{ action: "c2pa.created" }],
+      actions: [
+        { action: "c2pa.opened", softwareAgent: "Ledra/1.0" },
+        { action: "c2pa.orientation", softwareAgent: "sharp" },
+        { action: "c2pa.converted", softwareAgent: "sharp" },
+        // EXIF/GPS metadata removed for privacy before signing.
+        { action: "c2pa.edited", parameters: { name: "exif_gps_metadata_removed" } },
+      ],
     });
 
     const input = { buffer, mimeType: mime };

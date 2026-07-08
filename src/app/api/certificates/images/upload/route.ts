@@ -229,7 +229,6 @@ export async function POST(req: NextRequest) {
       const c2paMode = (process.env.C2PA_MODE ?? "disabled") as "disabled" | "dev-signed" | "production";
       const grade = computeAuthenticityGrade({
         hasSha256: true,
-        hasExif: exif.gpsStripped,
         hasC2pa: providers.c2pa.verified,
         c2paKind: c2paMode === "disabled" ? "none" : c2paMode,
         deviceOk: providers.deviceAttestation.verified,

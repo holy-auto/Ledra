@@ -16,8 +16,6 @@ export type C2paKind = "dev-signed" | "production" | "none";
 export interface GradeFlags {
   /** SHA-256 hash computed server-side. */
   hasSha256: boolean;
-  /** EXIF metadata parsed and GPS stripped. */
-  hasExif: boolean;
   /** C2PA manifest signed and embedded. */
   hasC2pa: boolean;
   /**

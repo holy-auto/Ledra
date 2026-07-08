@@ -4,23 +4,28 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { partitionImageFetchUrls } from "@/lib/security/urlAllowlist";
-import { auditPhotoTampering } from "@/lib/ai/photoTamperingCheck";
-import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
-import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
+import { aggregateCertificateImageIntegrity, type CertImageIntegrityInput } from "@/lib/ai/certificatePhotoIntegrity";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 30;
 
 /**
  * POST /api/admin/certificates/photo-tampering
  *
- * 証明書に添付された写真の改ざん有無を EXIF + Vision ハイブリッドで審査する。
+ * 証明書写真の改ざんスクリーニングを **オンデマンド** で実行する。
  *
- * Body: multipart/form-data
- *   - certificate_id: string (DB から photo URLs を取得するために使う)
+ * Body: JSON { certificate_id: string }
  *
- * または JSON { photo_urls: string[] } で直接 URL を渡すことも可能。
+ * 重要: 保存済みの証明書写真はアップロード時に EXIF/GPS を除去・再エンコード済みで
+ * （src/lib/anchoring/imageExif.ts）、保存後の画像から EXIF を再解析しても劣化するだけ。
+ * そのため本経路は、アップロード時に certificate_images へ確定済みのシグナル
+ * （sha256 / perceptual_hash / exif_captured_at / exif_device_model / deepfake_verdict）を
+ * 集約する自動スクリーニング (certificatePhotoIntegrity) と **同じ一次判定** を使う。
+ * これで自動経路と手動経路の判定基準が一致し、除去済み画像の再 EXIF 解析に依存した
+ * 「常に exif_stripped で判定不能」という誤検知が解消される。
+ *
+ * Vision エスカレーションはアップロード時の自動スクリーニング (photoTamperingAuto) が
+ * 担うため、本オンデマンド経路は追加課金なしの決定的な一次判定のみを返す。
  */
 export async function POST(req: NextRequest) {
   const limited = await checkRateLimit(req, "ai");
@@ -31,119 +36,101 @@ export async function POST(req: NextRequest) {
   if (!caller) return apiUnauthorized();
 
   const contentType = req.headers.get("content-type") ?? "";
-
-  let photoUrls: string[] = [];
-  let certificateId: string | null = null;
-
-  if (contentType.includes("application/json")) {
-    const body = await req.json().catch(() => ({}));
-    photoUrls = Array.isArray(body.photo_urls) ? body.photo_urls : [];
-    certificateId = body.certificate_id ?? null;
-  } else {
+  if (!contentType.includes("application/json")) {
     return apiValidationError("Content-Type は application/json を使用してください");
   }
 
-  // certificate_id が渡された場合は DB から photo URLs を補完
-  if (certificateId && photoUrls.length === 0) {
+  const body = await req.json().catch(() => ({}));
+  const certificateId: string | null = typeof body.certificate_id === "string" ? body.certificate_id : null;
+  if (!certificateId) {
+    return apiValidationError("certificate_id が必要です");
+  }
+
+  try {
     const { admin } = createTenantScopedAdmin(caller.tenantId);
+
+    // certificate 存在確認（テナント越境防止）。
     const { data: cert } = await admin
       .from("certificates")
-      .select("photo_urls")
+      .select("id, meta")
       .eq("id", certificateId)
       .eq("tenant_id", caller.tenantId)
       .maybeSingle();
     if (!cert) return apiValidationError("証明書が見つかりません");
-    photoUrls = Array.isArray(cert.photo_urls) ? cert.photo_urls : [];
-  }
 
-  if (photoUrls.length === 0) {
-    return apiJson({ results: [], anyFlagged: false, summary: "写真なし" });
-  }
+    // アップロード時に確定済みのシグナルだけを読む（画像バイトは取得しない）。
+    const { data: rows } = await admin
+      .from("certificate_images")
+      .select(
+        "id, sha256, perceptual_hash, exif_captured_at, exif_device_model, deepfake_verdict, authenticity_grade, created_at",
+      )
+      .eq("certificate_id", certificateId)
+      .eq("tenant_id", caller.tenantId)
+      .order("sort_order", { ascending: true });
 
-  if (photoUrls.length > 20) {
-    return apiValidationError("一度にチェックできる写真は最大 20 枚です");
-  }
+    const images: CertImageIntegrityInput[] = (rows ?? []).map((r) => ({
+      id: r.id as string,
+      sha256: (r.sha256 as string | null) ?? null,
+      perceptualHash: (r.perceptual_hash as string | null) ?? null,
+      capturedAt: (r.exif_captured_at as string | null) ?? null,
+      uploadedAt: (r.created_at as string | null) ?? null,
+      deviceModel: (r.exif_device_model as string | null) ?? null,
+      deepfakeVerdict: (r.deepfake_verdict as string | null) ?? null,
+      authenticityGrade: (r.authenticity_grade as string | null) ?? null,
+    }));
 
-  // SSRF ガード: サーバ側 fetch する URL は許可ホスト (Supabase Storage 等) のみ。
-  // 認証済みでも内部アドレス (169.254.169.254 / localhost / 内部サービス) への
-  // 代理取得を成立させないため、許可外が 1 件でもあればフェイルクローズする。
-  const { blocked } = partitionImageFetchUrls(photoUrls);
-  if (blocked.length > 0) {
-    return apiValidationError("許可されていない画像 URL が含まれています", {
-      blocked: blocked.map((b) => b.url),
-    });
-  }
-
-  const usage = startAiRouteUsage("/api/admin/certificates/photo-tampering");
-  try {
-    // AI マスタースイッチ OFF / 月次コストキャップ超過時は Vision (Opus) を呼ばず
-    // EXIF 解析だけで判定する (無料の改ざんシグナルは維持しつつ AI 課金を止める)。
-    const aiSettings = await loadAiAutomationSettings(caller.tenantId);
-    const useVision = aiSettings.enabled;
-
-    // 写真を並列ダウンロード → ArrayBuffer に変換
-    const downloads = await Promise.allSettled(
-      photoUrls.map(async (url) => {
-        // redirect: "error" — an allowlisted host must not be able to 302 us to
-        // an internal address after the SSRF pre-check has already passed.
-        const res = await fetch(url, { signal: AbortSignal.timeout(10_000), redirect: "error" });
-        if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
-        const buffer = await res.arrayBuffer();
-        const contentType = res.headers.get("content-type") ?? "image/jpeg";
-        return { buffer, contentType };
-      }),
-    );
-
-    const photoBuffers = downloads
-      .map((r) => (r.status === "fulfilled" ? r.value : null))
-      .filter((v): v is { buffer: ArrayBuffer; contentType: string } => v !== null);
-
-    const audit = await auditPhotoTampering(photoBuffers, new Date(), { useVision });
-
-    // 実際に Vision を呼んだ (= トークン捕捉あり) 場合だけ月次キャップに課金される。
-    usage.record({
-      tenantId: caller.tenantId,
-      userId: caller.userId,
-      outcome: useVision ? "ok" : "ai_disabled",
-      meta: { photos: photoBuffers.length, flagged: audit.anyFlagged, vision: useVision },
-    });
-
-    // 監査結果を certificates テーブルの meta に保存 (非同期、失敗しても続ける)
-    if (certificateId) {
-      const { admin } = createTenantScopedAdmin(caller.tenantId);
-      await admin
-        .from("certificates")
-        .update({
-          meta: {
-            tampering_check: {
-              checked_at: new Date().toISOString(),
-              any_flagged: audit.anyFlagged,
-              summary: audit.summary,
-              flagged_count: audit.results.filter((r) => r.verdict === "suspicious").length,
-            },
-          },
-        })
-        .eq("id", certificateId)
-        .eq("tenant_id", caller.tenantId)
-        .then(() => {});
+    if (images.length === 0) {
+      return apiJson({ any_flagged: false, summary: "写真なし", results: [] });
     }
 
-    return apiJson({
-      any_flagged: audit.anyFlagged,
-      summary: audit.summary,
-      results: audit.results.map((r) => ({
-        photo_index: r.photoIndex,
-        verdict: r.verdict,
-        flags: r.flags,
-        taken_at: r.exifMeta.takenAt?.toISOString() ?? null,
-        device: r.exifMeta.deviceModel,
-        software: r.exifMeta.software,
-        gps: r.exifMeta.latitude != null ? { lat: r.exifMeta.latitude, lng: r.exifMeta.longitude } : null,
-        vision_reason: r.visionReason,
-      })),
+    const summary = aggregateCertificateImageIntegrity(images);
+
+    // per-image をパネル表示用に整形（撮影メタは DB 列由来。GPS/ソフトは除去済みのため無し）。
+    const byId = new Map(images.map((im) => [im.id, im]));
+    const results = summary.perImage.map((p, index) => {
+      const im = byId.get(p.imageId);
+      return {
+        photo_index: index,
+        verdict: p.verdict,
+        flags: p.flags,
+        taken_at: im?.capturedAt ?? null,
+        device: im?.deviceModel ?? null,
+        software: null,
+        gps: null,
+        vision_reason: null,
+      };
     });
+
+    // meta.tampering_check を確定判定で更新（既存 meta を保持してマージ）。
+    // source:"auto" 相当の決定的判定なので、以後の自動スクリーニングも上書き可能。
+    const existingMeta =
+      cert.meta && typeof cert.meta === "object" && !Array.isArray(cert.meta)
+        ? (cert.meta as Record<string, unknown>)
+        : {};
+    await admin
+      .from("certificates")
+      .update({
+        meta: {
+          ...existingMeta,
+          tampering_check: {
+            checked_at: new Date().toISOString(),
+            source: "auto" as const,
+            verdict: summary.verdict,
+            any_flagged: summary.anyFlagged,
+            summary: summary.summary,
+            flagged_count: summary.suspiciousCount,
+            image_count: summary.imageCount,
+            flags: summary.flags,
+            signature: summary.signature,
+          },
+        },
+      })
+      .eq("id", certificateId)
+      .eq("tenant_id", caller.tenantId)
+      .then(() => {});
+
+    return apiJson({ any_flagged: summary.anyFlagged, summary: summary.summary, results });
   } catch (err) {
-    usage.record({ outcome: "error" });
     return apiInternalError(err, "POST /api/admin/certificates/photo-tampering");
   }
 }
