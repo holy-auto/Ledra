@@ -37,9 +37,9 @@ export default function CommandPalette() {
 
   // Filter commands based on query
   const filtered = query
-    ? COMMANDS.filter((cmd) =>
-        cmd.label.toLowerCase().includes(query.toLowerCase()) ||
-        cmd.href.toLowerCase().includes(query.toLowerCase())
+    ? COMMANDS.filter(
+        (cmd) =>
+          cmd.label.toLowerCase().includes(query.toLowerCase()) || cmd.href.toLowerCase().includes(query.toLowerCase()),
       )
     : COMMANDS;
 
@@ -61,8 +61,14 @@ export default function CommandPalette() {
         setOpen((prev) => !prev);
       }
     };
+    // グローバルバーの検索ボタンなど、UI からの起動用イベント。
+    const handleOpen = () => setOpen(true);
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("open-command-palette", handleOpen);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("open-command-palette", handleOpen);
+    };
   }, []);
 
   // Focus input when opened
@@ -92,7 +98,7 @@ export default function CommandPalette() {
       setOpen(false);
       router.push(href);
     },
-    [router]
+    [router],
   );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -134,12 +140,7 @@ export default function CommandPalette() {
       >
         {/* Search input */}
         <div className="flex items-center gap-3 border-b border-border-subtle px-4 py-3">
-          <svg
-            className="h-5 w-5 shrink-0 text-muted"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
+          <svg className="h-5 w-5 shrink-0 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -163,15 +164,11 @@ export default function CommandPalette() {
         {/* Results */}
         <div ref={listRef} className="max-h-[50vh] overflow-y-auto p-2">
           {flatList.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-muted">
-              該当する項目がありません
-            </div>
+            <div className="px-4 py-8 text-center text-sm text-muted">該当する項目がありません</div>
           ) : (
             Object.entries(grouped).map(([section, items]) => (
               <div key={section} className="mb-2 last:mb-0">
-                <div className="px-3 py-1.5 text-[11px] font-medium text-muted uppercase tracking-wider">
-                  {section}
-                </div>
+                <div className="px-3 py-1.5 text-[11px] font-medium text-muted uppercase tracking-wider">{section}</div>
                 {items.map((cmd) => {
                   const index = itemCounter++;
                   const isActive = index === activeIndex;
@@ -180,17 +177,13 @@ export default function CommandPalette() {
                       key={cmd.href}
                       data-active={isActive}
                       className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-left transition-colors ${
-                        isActive
-                          ? "bg-surface-hover text-primary"
-                          : "text-secondary hover:bg-surface-hover/50"
+                        isActive ? "bg-surface-hover text-primary" : "text-secondary hover:bg-surface-hover/50"
                       }`}
                       onClick={() => navigate(cmd.href)}
                       onMouseEnter={() => setActiveIndex(index)}
                     >
                       <span className="flex-1">{cmd.label}</span>
-                      {isActive && (
-                        <span className="text-[11px] text-muted">↵</span>
-                      )}
+                      {isActive && <span className="text-[11px] text-muted">↵</span>}
                     </button>
                   );
                 })}

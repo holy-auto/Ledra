@@ -117,28 +117,14 @@ export default async function ThicknessReportsListPage({
             車両一覧へ
           </Link>
         }
+        tabs={TAB_ORDER.map((tab) => ({
+          key: tab,
+          label: TAB_LABEL[tab],
+          badge: counts[tab],
+          href: `/admin/thickness-reports?status=${tab}`,
+        }))}
+        activeTab={status}
       />
-
-      {/* タブ */}
-      <div className="flex gap-1 border-b border-border-default">
-        {TAB_ORDER.map((tab) => {
-          const isActive = status === tab;
-          return (
-            <Link
-              key={tab}
-              href={`/admin/thickness-reports?status=${tab}`}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                isActive ? "border-accent text-primary" : "border-transparent text-muted hover:text-secondary"
-              }`}
-            >
-              {TAB_LABEL[tab]}
-              <span className="ml-2 inline-flex items-center justify-center rounded-full bg-inset px-2 py-0.5 text-[11px] font-mono text-secondary">
-                {counts[tab]}
-              </span>
-            </Link>
-          );
-        })}
-      </div>
 
       {/* リスト */}
       <section className="glass-card p-0 overflow-hidden">

@@ -34,7 +34,7 @@ const sendSchema = z.object({
 });
 
 const MSG_COLS =
-  "id, customer_id, line_user_id, channel, direction, body, sent_by, read_at, delivered_at, failed_at, failure_reason, line_message_id, line_timestamp_ms, created_at, attachment_path, attachment_content_type";
+  "id, customer_id, line_user_id, channel, direction, body, sent_by, read_at, delivered_at, failed_at, failure_reason, line_message_id, line_timestamp_ms, created_at, attachment_path, attachment_content_type, ai_extracted";
 
 function isMissingColumnError(err: { message?: string; code?: string } | null | undefined): boolean {
   if (!err) return false;
@@ -52,7 +52,12 @@ async function resolveThread(
   admin: ReturnType<typeof createTenantScopedAdmin>["admin"],
   tenantId: string,
   ref: Exclude<ThreadRef, { kind: "invalid" }>,
-): Promise<{ customerId: string | null; lineUserId: string | null; name: string | null } | null> {
+): Promise<{
+  customerId: string | null;
+  lineUserId: string | null;
+  emailFrom: string | null;
+  name: string | null;
+} | null> {
   if (ref.kind === "customer") {
     const { data } = await admin
       .from("customers")
@@ -64,8 +69,13 @@ async function resolveThread(
     return {
       customerId: data.id as string,
       lineUserId: (data.line_user_id as string | null) ?? null,
+      emailFrom: null,
       name: (data.name as string | null) ?? null,
     };
+  }
+  // メールスレッド: 送信元アドレスで束ねた未紐付け行。表示名は送信元アドレス。
+  if (ref.kind === "email") {
+    return { customerId: null, lineUserId: null, emailFrom: ref.emailFrom, name: ref.emailFrom };
   }
   // line スレッド: 既に同 line_user_id の customer がいれば紐付けて扱う。
   const { data: matched } = await admin
@@ -79,18 +89,20 @@ async function resolveThread(
     return {
       customerId: matched.id as string,
       lineUserId: ref.lineUserId,
+      emailFrom: null,
       name: (matched.name as string | null) ?? null,
     };
   }
-  return { customerId: null, lineUserId: ref.lineUserId, name: null };
+  return { customerId: null, lineUserId: ref.lineUserId, emailFrom: null, name: null };
 }
 
-/** スレッドのメッセージを customer_id / line_user_id 両面で集める。 */
+/** スレッドのメッセージを customer_id / line_user_id / email_from 各面で集める。 */
 async function fetchThreadMessages(
   admin: ReturnType<typeof createTenantScopedAdmin>["admin"],
   tenantId: string,
   customerId: string | null,
   lineUserId: string | null,
+  emailFrom: string | null,
 ) {
   const out: Record<string, unknown>[] = [];
   if (customerId) {
@@ -99,6 +111,17 @@ async function fetchThreadMessages(
       .select(MSG_COLS)
       .eq("tenant_id", tenantId)
       .eq("customer_id", customerId)
+      .order("created_at", { ascending: true })
+      .limit(500);
+    out.push(...((data ?? []) as Record<string, unknown>[]));
+  }
+  if (emailFrom) {
+    // email_from 列が未作成の環境ではエラーを黙って空に (受信箱自体は動く)。
+    const { data } = await admin
+      .from("customer_messages")
+      .select(MSG_COLS)
+      .eq("tenant_id", tenantId)
+      .eq("email_from", emailFrom)
       .order("created_at", { ascending: true })
       .limit(500);
     out.push(...((data ?? []) as Record<string, unknown>[]));
@@ -144,7 +167,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ key: string
     if (!resolved) return apiNotFound("thread not found");
 
     const messages = await withAttachmentUrls(
-      await fetchThreadMessages(admin, caller.tenantId, resolved.customerId, resolved.lineUserId),
+      await fetchThreadMessages(admin, caller.tenantId, resolved.customerId, resolved.lineUserId, resolved.emailFrom),
     );
 
     return apiJson({
@@ -152,9 +175,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ key: string
         key,
         customer_id: resolved.customerId,
         line_user_id: resolved.lineUserId,
+        email_from: resolved.emailFrom,
         name: resolved.name,
       },
       messages,
+      // 返信送信は LINE のみ (メールは受信取り込み専用)。
       can_send: !!resolved.lineUserId,
     });
   } catch (e) {
@@ -177,7 +202,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ key: strin
     const resolved = await resolveThread(admin, caller.tenantId, ref);
     if (!resolved) return apiNotFound("thread not found");
     if (!resolved.lineUserId) {
-      return apiValidationError("このスレッドには LINE ユーザがまだ紐付いていません。");
+      return apiValidationError(
+        resolved.emailFrom
+          ? "メールスレッドには返信を送信できません（受信取り込み専用です）。"
+          : "このスレッドには LINE ユーザがまだ紐付いていません。",
+      );
     }
 
     // multipart は画像送信、JSON はテキスト送信
@@ -258,10 +287,23 @@ export async function PATCH(_req: NextRequest, ctx: { params: Promise<{ key: str
       if (!error) updated += count ?? 0;
       else if (!isMissingColumnError(error)) throw error;
     };
+    const markByEmail = async () => {
+      if (!resolved.emailFrom) return;
+      const { error, count } = await admin
+        .from("customer_messages")
+        .update({ read_at: nowIso }, { count: "exact" })
+        .eq("tenant_id", caller.tenantId)
+        .eq("email_from", resolved.emailFrom)
+        .eq("direction", "inbound")
+        .is("read_at", null);
+      if (!error) updated += count ?? 0;
+      else if (!isMissingColumnError(error)) throw error;
+    };
 
     try {
       await markByCustomer();
       await markByLineUser();
+      await markByEmail();
     } catch (e) {
       // read_at 列が無い環境では既読化はノーオペにする (受信箱自体は動く)。
       if (!isMissingColumnError(e as { code?: string; message?: string })) {

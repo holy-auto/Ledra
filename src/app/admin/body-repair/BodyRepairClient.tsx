@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import nextDynamic from "next/dynamic";
 import MutationGuard from "@/components/ui/MutationGuard";
+import PageHeader from "@/components/ui/PageHeader";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import {
   BODY_REPAIR_STAGES,
@@ -151,6 +152,8 @@ export default function BodyRepairClient() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editJob, setEditJob] = useState<BodyRepairJob | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // 工程タブ: "all" = 全工程をカンバン表示 / 各工程 = その工程の案件のみ
+  const [activeStage, setActiveStage] = useState<"all" | BodyRepairStage>("all");
   // 音声→備考 (ai_draft) / AI 見積 (ai_invoice_quote)。current tenant の plan_tier から判定。
   const [canAiNote, setCanAiNote] = useState(false);
   const [canAiQuote, setCanAiQuote] = useState(false);
@@ -262,33 +265,41 @@ export default function BodyRepairClient() {
 
   return (
     <div className="mx-auto max-w-[1600px] pb-20">
-      {/* ヘッダー */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-primary">鈑金工程管理</h1>
-          <p className="mt-1 text-sm text-secondary">
-            受付 → 協定 → 鈑金 → 塗装 → 完成 → 出庫 の工程を案件ごとに管理します
-          </p>
-        </div>
-        <MutationGuard>
-          <button
-            onClick={() => setCreateOpen(true)}
-            className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2 font-medium text-white transition-colors hover:bg-accent/90"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
-            新規案件
-          </button>
-        </MutationGuard>
-      </div>
+      {/* ヘッダー + 工程タブ（L3 ページバー） */}
+      <PageHeader
+        tag="鈑金"
+        title="鈑金工程管理"
+        actions={
+          <MutationGuard>
+            <button
+              onClick={() => setCreateOpen(true)}
+              className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2 font-medium text-white transition-colors hover:bg-accent/90"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              新規案件
+            </button>
+          </MutationGuard>
+        }
+        tabs={[
+          { key: "all", label: "すべて", badge: jobs.length },
+          ...BODY_REPAIR_STAGES.map((stage) => ({
+            key: stage,
+            label: BODY_REPAIR_STAGE_LABEL[stage],
+            badge: (byStage.get(stage) ?? []).length,
+          })),
+        ]}
+        activeTab={activeStage}
+        onTabSelect={(k) => setActiveStage(k as "all" | BodyRepairStage)}
+      />
 
-      {/* Kanban ボード */}
+      {/* 工程ビュー: すべて=カンバン / 単一工程=カード一覧 */}
       {loading ? (
         <div className="flex min-h-[240px] items-center justify-center">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-accent border-t-transparent" />
         </div>
-      ) : (
+      ) : activeStage === "all" ? (
         <div className="flex gap-3 overflow-x-auto pb-4">
           {BODY_REPAIR_STAGES.map((stage) => {
             const list = byStage.get(stage) ?? [];
@@ -318,6 +329,22 @@ export default function BodyRepairClient() {
               </div>
             );
           })}
+        </div>
+      ) : (byStage.get(activeStage) ?? []).length === 0 ? (
+        <p className="glass-card rounded-xl px-4 py-16 text-center text-sm text-muted">
+          「{BODY_REPAIR_STAGE_LABEL[activeStage]}」の案件はありません
+        </p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {(byStage.get(activeStage) ?? []).map((job) => (
+            <JobCard
+              key={job.id}
+              job={job}
+              busy={busyId === job.id}
+              onAdvance={() => advanceStage(job)}
+              onEdit={() => setEditJob(job)}
+            />
+          ))}
         </div>
       )}
 

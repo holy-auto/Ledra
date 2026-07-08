@@ -3,6 +3,7 @@ import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { formatDate } from "@/lib/format";
 
 type Customer = {
@@ -36,6 +37,7 @@ const DOCUMENT_DELIVERY_METHOD_LABEL: Record<string, string> = { download: "DL�
 const CONTRACT_STATUS_LABEL: Record<string, string> = { signed: "済", unsigned: "未" };
 
 export default function CustomerDetailClient({ customer: initial }: { customer: Customer }) {
+  const router = useRouter();
   const [customer, setCustomer] = useState(initial);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
@@ -88,6 +90,9 @@ export default function CustomerDetailClient({ customer: initial }: { customer: 
       setCustomer(j.customer);
       setEditing(false);
       setMsg({ text: "更新しました", ok: true });
+      // 顧客区分 (個人⇄法人) が変わると支店パネルの表示要否 (サーバ側で判定)
+      // も変わるため、サーバコンポーネントを再取得して同期する。
+      router.refresh();
     } catch (e: any) {
       setMsg({ text: e?.message ?? String(e), ok: false });
     } finally {

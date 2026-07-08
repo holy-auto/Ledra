@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
+import PageHeader from "@/components/ui/PageHeader";
 import { fetcher } from "@/lib/swr";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import MessageBubbleBody from "@/app/admin/messages/MessageBubbleBody";
+import { ExtractedCandidateCard, type ExtractedResult } from "@/components/messages/ExtractedCandidateCard";
 
 /**
  * 横断的な LINE 会話受信箱 (/admin/messages)。
@@ -21,6 +23,7 @@ type ThreadSummary = {
   thread_key: string;
   customer_id: string | null;
   line_user_id: string | null;
+  email_from: string | null;
   customer_name: string | null;
   channel: string;
   last_body: string;
@@ -50,10 +53,17 @@ type MessageRow = {
   attachment_content_type?: string | null;
   failure_reason: string | null;
   created_at: string;
+  ai_extracted?: ExtractedResult | null;
 };
 
 type ThreadDetail = {
-  thread: { key: string; customer_id: string | null; line_user_id: string | null; name: string | null };
+  thread: {
+    key: string;
+    customer_id: string | null;
+    line_user_id: string | null;
+    email_from: string | null;
+    name: string | null;
+  };
   messages: MessageRow[];
   can_send: boolean;
 };
@@ -74,6 +84,7 @@ function formatTime(iso: string): string {
 function threadLabel(t: ThreadSummary): string {
   if (t.customer_name) return t.customer_name;
   if (t.customer_id) return "(名前未設定の顧客)";
+  if (t.email_from) return t.email_from;
   return `LINEユーザー ${t.line_user_id ? t.line_user_id.slice(0, 8) + "…" : "(不明)"}`;
 }
 
@@ -140,6 +151,27 @@ export default function MessagesInboxClient() {
     const t = threads.find((x) => x.thread_key === activeKey);
     if (t && t.unread_count > 0) void markRead(activeKey);
   }, [activeKey, threads, markRead]);
+
+  // AI 抽出候補を「対応済み」にする (候補バッジ/CTA を収束)。
+  const [dismissingId, setDismissingId] = useState<string | null>(null);
+  const dismissCandidate = useCallback(
+    async (messageId: string) => {
+      setDismissingId(messageId);
+      try {
+        await fetch(`/api/admin/customer-messages/${encodeURIComponent(messageId)}/candidate-dismiss`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ handled: true }),
+        });
+        await Promise.all([mutateDetail(), mutateList()]);
+      } catch {
+        // 収束失敗は致命的でないので無視
+      } finally {
+        setDismissingId(null);
+      }
+    },
+    [mutateDetail, mutateList],
+  );
 
   const handleSend = useCallback(async () => {
     if (!activeKey || !canSend || !draft.trim() || sendBusy) return;
@@ -220,28 +252,17 @@ export default function MessagesInboxClient() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-primary">メッセージ受信箱</h1>
-          <p className="mt-1 text-xs text-muted">
-            LINE で届いた全顧客のメッセージを一覧し、その場で返信できます。
-            {typeof listData?.total_unread === "number" && listData.total_unread > 0 && (
-              <span className="ml-2 rounded-full bg-danger px-2 py-0.5 text-[10px] font-semibold text-white">
-                未読 {listData.total_unread}
-              </span>
-            )}
-          </p>
-        </div>
-        <label className="flex items-center gap-2 text-xs text-secondary">
-          <input
-            type="checkbox"
-            checked={unreadOnly}
-            onChange={(e) => setUnreadOnly(e.target.checked)}
-            className="h-4 w-4 accent-[var(--accent)]"
-          />
-          未読のみ表示
-        </label>
-      </div>
+      <PageHeader
+        tag="メッセージ"
+        title="メッセージ受信箱"
+        description="LINE で届いた全顧客のメッセージを一覧し、その場で返信できます。"
+        tabs={[
+          { key: "all", label: "すべて" },
+          { key: "unread", label: "未読", badge: listData?.total_unread ?? 0 },
+        ]}
+        activeTab={unreadOnly ? "unread" : "all"}
+        onTabSelect={(k) => setUnreadOnly(k === "unread")}
+      />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-[320px_1fr]">
         {/* ── 左: スレッド一覧 ── */}
@@ -314,10 +335,18 @@ export default function MessagesInboxClient() {
               <div className="relative border-b border-border-subtle px-5 py-3 flex items-center justify-between">
                 <div className="min-w-0">
                   <div className="truncate text-base font-semibold text-primary">
-                    {detail?.thread.name ?? (detail?.thread.customer_id ? "(名前未設定の顧客)" : "LINEユーザー")}
+                    {detail?.thread.name ??
+                      (detail?.thread.customer_id
+                        ? "(名前未設定の顧客)"
+                        : detail?.thread.email_from
+                          ? detail.thread.email_from
+                          : "LINEユーザー")}
                   </div>
                   {detail?.thread.line_user_id && (
                     <div className="truncate text-[10px] text-muted">LINE: {detail.thread.line_user_id}</div>
+                  )}
+                  {detail?.thread.email_from && !detail?.thread.line_user_id && (
+                    <div className="truncate text-[10px] text-muted">メール: {detail.thread.email_from}</div>
                   )}
                 </div>
                 {detail?.thread.customer_id ? (
@@ -386,6 +415,14 @@ export default function MessagesInboxClient() {
                           )}
                           {isOutbound && m.delivered_at && <span aria-label="配信済">✓</span>}
                         </div>
+                        {!isOutbound && m.ai_extracted && (
+                          <ExtractedCandidateCard
+                            result={m.ai_extracted as ExtractedResult}
+                            customerId={detail?.thread.customer_id ?? undefined}
+                            onDismiss={() => void dismissCandidate(m.id)}
+                            dismissing={dismissingId === m.id}
+                          />
+                        )}
                       </div>
                     </div>
                   );

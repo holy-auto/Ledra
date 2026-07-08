@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import PageHeader from "@/components/ui/PageHeader";
 import {
   LINE_BROADCAST_STATUS_LABEL,
   LINE_SEGMENT_TYPES,
@@ -69,6 +70,8 @@ export default function LineBroadcastsClient() {
   const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // ステータスタブ: すべて / 下書き / 予約 / 送信済み / 失敗。全件取得しクライアント側で振り分ける。
+  const [statusTab, setStatusTab] = useState<"all" | "draft" | "scheduled" | "sent" | "failed">("all");
 
   const showToast = useCallback((type: "success" | "error", msg: string) => {
     setToast({ type, msg });
@@ -140,37 +143,67 @@ export default function LineBroadcastsClient() {
     [fetchBroadcasts, showToast],
   );
 
+  const counts = useMemo(
+    () => ({
+      all: broadcasts.length,
+      draft: broadcasts.filter((b) => b.status === "draft").length,
+      scheduled: broadcasts.filter((b) => b.status === "scheduled").length,
+      sent: broadcasts.filter((b) => b.status === "sent").length,
+      failed: broadcasts.filter((b) => b.status === "failed").length,
+    }),
+    [broadcasts],
+  );
+
+  const visibleBroadcasts = useMemo(
+    () => (statusTab === "all" ? broadcasts : broadcasts.filter((b) => b.status === statusTab)),
+    [broadcasts, statusTab],
+  );
+
   return (
     <div className="mx-auto max-w-4xl pb-20">
-      {/* ヘッダー */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-primary">LINE一斉配信</h1>
-          <p className="mt-1 text-sm text-secondary">セグメント条件で絞った顧客へ LINE メッセージを一斉配信します</p>
-        </div>
-        <button
-          onClick={() => setCreateOpen(true)}
-          className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2 font-medium text-white transition-colors hover:bg-accent/90"
-        >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-          新規配信
-        </button>
-      </div>
+      {/* ヘッダー + ステータスタブ（L3 ページバー） */}
+      <PageHeader
+        tag="配信"
+        title="LINE一斉配信"
+        description="セグメント条件で絞った顧客へ LINE メッセージを一斉配信します"
+        actions={
+          <button
+            onClick={() => setCreateOpen(true)}
+            className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2 font-medium text-white transition-colors hover:bg-accent/90"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+            新規配信
+          </button>
+        }
+        tabs={[
+          { key: "all", label: "すべて", badge: counts.all },
+          { key: "draft", label: "下書き", badge: counts.draft },
+          { key: "scheduled", label: "予約", badge: counts.scheduled },
+          { key: "sent", label: "送信済み", badge: counts.sent },
+          { key: "failed", label: "失敗", badge: counts.failed },
+        ]}
+        activeTab={statusTab}
+        onTabSelect={(k) => setStatusTab(k as typeof statusTab)}
+      />
 
       {/* 一覧 */}
       {loading ? (
         <div className="flex min-h-[240px] items-center justify-center">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-accent border-t-transparent" />
         </div>
-      ) : broadcasts.length === 0 ? (
+      ) : visibleBroadcasts.length === 0 ? (
         <div className="glass-card rounded-xl p-10 text-center text-muted">
-          <p className="text-sm">配信がまだありません。「新規配信」から作成してください。</p>
+          <p className="text-sm">
+            {broadcasts.length === 0
+              ? "配信がまだありません。「新規配信」から作成してください。"
+              : "この条件の配信はありません。"}
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
-          {broadcasts.map((b) => {
+          {visibleBroadcasts.map((b) => {
             const isBusy = busyId === b.id;
             const canSend = b.status === "draft" || b.status === "scheduled";
             const canCancel = b.status === "draft" || b.status === "scheduled";
