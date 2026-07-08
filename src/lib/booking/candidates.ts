@@ -49,6 +49,8 @@ export type Candidate = {
   loaner_free: number | null;
   /** このスロットが受け入れる作業の大カテゴリ。null=すべて受入。 */
   accepted_categories: string[] | null;
+  /** その時間帯の空き人手（在籍スタッフ数 − 同時間帯の予約数）。考慮しないときは null。 */
+  staff_free: number | null;
 };
 
 export interface ProposeCandidatesOptions {
@@ -65,6 +67,13 @@ export interface ProposeCandidatesOptions {
   needsLoaner?: boolean;
   /** 日付ごとの空き代車台数（needsLoaner 時に参照）。 */
   freeLoanersByDate?: Record<string, number>;
+  /** 人手の余りを考慮するか。true かつ その日のスタッフ数が判る場合、空き人手0以下の枠を除外。 */
+  considerStaff?: boolean;
+  /**
+   * 日付ごとの在籍スタッフ数（勤務シフトのある人数）。
+   * considerStaff 時に参照。エントリの無い日は「不明」として人手フィルタをかけない。
+   */
+  staffCountByDate?: Record<string, number>;
   /** 返す候補数の上限（既定 20）。 */
   limit?: number;
 }
@@ -79,6 +88,8 @@ export function proposeCandidates(opts: ProposeCandidatesOptions): Candidate[] {
   const { dates, slots, closedDays, reservations, estimatedMinutes } = opts;
   const needsLoaner = opts.needsLoaner ?? false;
   const freeLoanersByDate = opts.freeLoanersByDate ?? {};
+  const considerStaff = opts.considerStaff ?? false;
+  const staffCountByDate = opts.staffCountByDate ?? {};
   const limit = opts.limit ?? 20;
   const workCategories = new Set((opts.workCategories ?? []).filter((c) => c));
 
@@ -135,8 +146,17 @@ export function proposeCandidates(opts: ProposeCandidatesOptions): Candidate[] {
       const booked = dayResv.filter(
         (r) => timeToMinutes(r.start_time) < slotEnd && timeToMinutes(r.end_time) > slotStart,
       ).length;
-      const remaining = slot.max_bookings - booked;
+      let remaining = slot.max_bookings - booked;
       if (remaining <= 0) continue;
+
+      // 人手の余り: その日の在籍スタッフ数 − 同時間帯の予約数。0以下なら受入不可。
+      // 在籍数が不明な日（シフト未登録）は人手フィルタをかけない。
+      let staffFree: number | null = null;
+      if (considerStaff && date in staffCountByDate) {
+        staffFree = staffCountByDate[date] - booked;
+        if (staffFree <= 0) continue;
+        remaining = Math.min(remaining, staffFree);
+      }
 
       const fits = estimatedMinutes == null ? true : slotEnd - slotStart >= estimatedMinutes;
       const endMin = estimatedMinutes == null ? slotEnd : Math.min(slotStart + estimatedMinutes, slotEnd);
@@ -151,6 +171,7 @@ export function proposeCandidates(opts: ProposeCandidatesOptions): Candidate[] {
         fits,
         loaner_free: loanerFree,
         accepted_categories: slot.accepted_categories ?? null,
+        staff_free: staffFree,
       });
     }
   }

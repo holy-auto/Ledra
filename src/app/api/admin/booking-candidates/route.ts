@@ -35,6 +35,11 @@ const querySchema = z.object({
     .enum(["0", "1", "true", "false"])
     .optional()
     .transform((v) => v === "1" || v === "true"),
+  // 人手の余りを考慮するか（既定 true）。"0"/"false" で無効化。
+  consider_staff: z
+    .enum(["0", "1", "true", "false"])
+    .optional()
+    .transform((v) => v !== "0" && v !== "false"),
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
@@ -76,6 +81,7 @@ export async function GET(req: NextRequest) {
       estimated_minutes: estimatedOverride,
       days,
       needs_loaner: needsLoaner,
+      consider_staff: considerStaff,
       limit,
     } = parsed.data;
     const tenantId = caller.tenantId;
@@ -89,7 +95,7 @@ export async function GET(req: NextRequest) {
     const to = dates[dates.length - 1];
 
     // ── 並列取得: 品目 / スロット / 定休日 / 予約 / 代車 / 貸出 ──
-    const [menuRes, slotsRes, closedRes, resvRes, loanersRes, loansRes] = await Promise.all([
+    const [menuRes, slotsRes, closedRes, resvRes, loanersRes, loansRes, shiftsRes] = await Promise.all([
       menuItemIds.length > 0
         ? supabase
             .from("menu_items")
@@ -114,9 +120,17 @@ export async function GET(req: NextRequest) {
       needsLoaner
         ? supabase.from("loaner_car_loans").select("return_due_at").eq("tenant_id", tenantId).is("returned_at", null)
         : Promise.resolve({ data: [], error: null }),
+      considerStaff
+        ? supabase
+            .from("staff_shifts")
+            .select("staff_id, work_date")
+            .eq("tenant_id", tenantId)
+            .gte("work_date", from)
+            .lte("work_date", to)
+        : Promise.resolve({ data: [], error: null }),
     ]);
 
-    for (const r of [menuRes, slotsRes, closedRes, resvRes, loanersRes, loansRes]) {
+    for (const r of [menuRes, slotsRes, closedRes, resvRes, loanersRes, loansRes, shiftsRes]) {
       if (r.error) {
         console.error("[booking-candidates] query error:", r.error.message);
         return apiInternalError(r.error, "booking-candidates");
@@ -146,6 +160,18 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // 日付ごとの在籍スタッフ数（同日に複数シフトがあっても人数として重複排除）。
+    let staffCountByDate: Record<string, number> | undefined;
+    if (considerStaff) {
+      const byDate = new Map<string, Set<string>>();
+      for (const s of (shiftsRes.data ?? []) as { staff_id: string; work_date: string }[]) {
+        const key = s.work_date.slice(0, 10);
+        (byDate.get(key) ?? byDate.set(key, new Set()).get(key)!).add(s.staff_id);
+      }
+      staffCountByDate = {};
+      for (const [date, ids] of byDate) staffCountByDate[date] = ids.size;
+    }
+
     const candidates = proposeCandidates({
       dates,
       slots: (slotsRes.data ?? []) as {
@@ -169,6 +195,8 @@ export async function GET(req: NextRequest) {
       workCategories,
       needsLoaner,
       freeLoanersByDate,
+      considerStaff,
+      staffCountByDate,
       limit,
     });
 

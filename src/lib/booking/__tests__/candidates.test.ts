@@ -122,6 +122,48 @@ describe("proposeCandidates", () => {
     expect(nofilter).toHaveLength(2);
   });
 
+  it("accounts for staff headroom (人手の余り) when considerStaff is set", () => {
+    // 月 09-12(定員2)。既存予約1件(09-12) → booked=1。
+    const staffSlots = [{ day_of_week: 1, start_time: "09:00:00", end_time: "12:00:00", max_bookings: 2 }];
+    const resv = [{ scheduled_date: "2026-07-13", start_time: "09:00:00", end_time: "12:00:00" }];
+    // スタッフ1名 → 空き人手 1-1=0 → 除外
+    const noStaff = proposeCandidates({
+      dates: ["2026-07-13"],
+      slots: staffSlots,
+      closedDays: [],
+      reservations: resv,
+      estimatedMinutes: null,
+      considerStaff: true,
+      staffCountByDate: { "2026-07-13": 1 },
+    });
+    expect(noStaff).toHaveLength(0);
+    // スタッフ3名 → 空き人手 3-1=2、残枠 min(2-1, 2)=1、staff_free=2
+    const withStaff = proposeCandidates({
+      dates: ["2026-07-13"],
+      slots: staffSlots,
+      closedDays: [],
+      reservations: resv,
+      estimatedMinutes: null,
+      considerStaff: true,
+      staffCountByDate: { "2026-07-13": 3 },
+    });
+    expect(withStaff).toHaveLength(1);
+    expect(withStaff[0].staff_free).toBe(2);
+    expect(withStaff[0].remaining).toBe(1);
+    // シフト未登録の日は人手フィルタをかけない（staff_free=null）
+    const unknown = proposeCandidates({
+      dates: ["2026-07-13"],
+      slots: staffSlots,
+      closedDays: [],
+      reservations: resv,
+      estimatedMinutes: null,
+      considerStaff: true,
+      staffCountByDate: {},
+    });
+    expect(unknown).toHaveLength(1);
+    expect(unknown[0].staff_free).toBeNull();
+  });
+
   it("respects the limit", () => {
     const c = proposeCandidates({
       dates: ["2026-07-13", "2026-07-14"],

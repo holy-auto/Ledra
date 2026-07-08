@@ -9,6 +9,7 @@ import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import EmptyStateGuide from "@/components/ui/EmptyStateGuide";
 import { estimateReservationMinutes, formatMinutes } from "@/lib/booths/duration";
+import { decomposeTasks } from "@/lib/booking/tasks";
 import dynamic from "next/dynamic";
 
 const CalendarView = dynamic(() => import("./CalendarView"), {
@@ -63,6 +64,7 @@ type BookingCandidate = {
   fits: boolean;
   loaner_free: number | null;
   accepted_categories: string[] | null;
+  staff_free: number | null;
 };
 
 const WEEKDAY_JA = ["日", "月", "火", "水", "木", "金", "土"] as const;
@@ -203,6 +205,7 @@ export default function ReservationsClient() {
 
   // 日程候補の提案（受けられる日程）
   const [needsLoaner, setNeedsLoaner] = useState(false);
+  const [considerStaff, setConsiderStaff] = useState(true);
   const [candidates, setCandidates] = useState<BookingCandidate[] | null>(null);
   const [candidatesLoading, setCandidatesLoading] = useState(false);
   const [candidatesErr, setCandidatesErr] = useState<string | null>(null);
@@ -470,6 +473,7 @@ export default function ReservationsClient() {
     setSaveMsg(null);
     setFormStep(1);
     setNeedsLoaner(false);
+    setConsiderStaff(true);
     setCandidates(null);
     setCandidatesErr(null);
   };
@@ -520,6 +524,15 @@ export default function ReservationsClient() {
     return estimateReservationMinutes(items);
   }, [formMenuItems, menuItems]);
 
+  // 選択メニューをタスク分解し、1日あたり作業上限に収まるかの日程目安を出す。
+  const taskPlan = useMemo(() => {
+    const items = formMenuItems.map((m) => ({
+      name: m.name,
+      minutes: menuItems.find((mi) => mi.id === m.menu_item_id)?.estimated_minutes ?? null,
+    }));
+    return decomposeTasks(items);
+  }, [formMenuItems, menuItems]);
+
   // 推定作業時間を開始時刻に足して終了時刻へ反映する。開始未設定なら 09:00 を既定に。
   function applyEstimatedDuration() {
     if (selectedEstMinutes == null) return;
@@ -540,6 +553,7 @@ export default function ReservationsClient() {
       const ids = formMenuItems.map((m) => m.menu_item_id).join(",");
       if (ids) params.set("menu_item_ids", ids);
       if (needsLoaner) params.set("needs_loaner", "1");
+      if (!considerStaff) params.set("consider_staff", "0");
       params.set("days", "21");
       const res = await fetch(`/api/admin/booking-candidates?${params.toString()}`);
       const j = await parseJsonSafe(res);
@@ -1494,11 +1508,54 @@ export default function ReservationsClient() {
                           </div>
                         )}
 
+                        {/* 作業タスクの分解と日程目安 */}
+                        {taskPlan.tasks.length > 0 && (
+                          <div className="mt-2 rounded-xl border border-border-default bg-inset p-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-semibold text-primary">作業タスクと日程目安</span>
+                              <span className="text-[11px] text-secondary">
+                                合計 {formatMinutes(taskPlan.totalMinutes)}
+                                {taskPlan.dayCount > 1 && ` ・ 約${taskPlan.dayCount}日`}
+                              </span>
+                            </div>
+                            <ul className="mt-2 space-y-1">
+                              {taskPlan.tasks.map((t, i) => (
+                                <li
+                                  key={`${t.name}-${i}`}
+                                  className="flex items-center justify-between gap-2 text-xs text-secondary"
+                                >
+                                  <span className="flex items-center gap-1.5 min-w-0">
+                                    <span className="shrink-0 text-[10px] text-accent-text bg-accent-dim rounded px-1.5 py-0.5">
+                                      {taskPlan.dayCount > 1 ? `${t.day}日目` : "当日"}
+                                    </span>
+                                    <span className="truncate text-primary">{t.name}</span>
+                                  </span>
+                                  <span className="shrink-0 text-muted">{formatMinutes(t.minutes)}</span>
+                                </li>
+                              ))}
+                            </ul>
+                            {taskPlan.dayCount > 1 && (
+                              <p className="mt-2 text-[11px] text-muted">
+                                1日8時間を目安に分割した概算です。下の「受けられる日程を提案」で連続した空き日を確認できます。
+                              </p>
+                            )}
+                          </div>
+                        )}
+
                         {/* 受けられる日程候補の提案 */}
                         <div className="mt-3 rounded-xl border border-border-default bg-surface p-3">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <span className="text-xs font-semibold text-primary">受けられる日程を提案</span>
                             <div className="flex items-center gap-3">
+                              <label className="flex items-center gap-1.5 text-xs text-secondary cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={considerStaff}
+                                  onChange={(e) => setConsiderStaff(e.target.checked)}
+                                  className="rounded border-border-default text-accent focus:ring-accent/30"
+                                />
+                                人手の空きを考慮
+                              </label>
                               <label className="flex items-center gap-1.5 text-xs text-secondary cursor-pointer select-none">
                                 <input
                                   type="checkbox"
@@ -1549,6 +1606,9 @@ export default function ReservationsClient() {
                                       <span className="text-[10px] font-medium text-warning bg-warning-dim rounded px-1.5 py-0.5">
                                         枠超過
                                       </span>
+                                    )}
+                                    {c.staff_free != null && (
+                                      <span className="text-[10px] text-secondary">人手{c.staff_free}</span>
                                     )}
                                     {c.loaner_free != null && (
                                       <span className="text-[10px] text-secondary">代車{c.loaner_free}台</span>

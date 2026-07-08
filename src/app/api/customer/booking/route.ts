@@ -22,6 +22,8 @@ const customerBookingSchema = z.object({
     .or(z.literal("").transform(() => undefined)),
   customer_phone: z.string().trim().max(40).optional(),
   title: z.string().trim().max(200).optional(),
+  // 希望作業の大カテゴリ。指定時、その枠が受け入れるか検証する。
+  category: z.string().trim().max(80).optional(),
   scheduled_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "scheduled_date は YYYY-MM-DD 形式です"),
   start_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "start_time / end_time は HH:MM 形式です"),
   end_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "start_time / end_time は HH:MM 形式です"),
@@ -130,7 +132,7 @@ export async function POST(req: NextRequest) {
     // ── スロット空き状況チェック ──
     const { data: slots } = await admin
       .from("external_booking_slots")
-      .select("max_bookings")
+      .select("max_bookings, accepted_categories")
       .eq("tenant_id", tenant.id)
       .eq("day_of_week", dayOfWeek)
       .eq("is_active", true)
@@ -140,6 +142,16 @@ export async function POST(req: NextRequest) {
 
     if (slots && slots.length > 0) {
       const maxBookings = slots[0].max_bookings;
+
+      // 受入可否: 希望作業カテゴリ指定時、その枠が受け入れなければ拒否（受入未設定=すべて受入）。
+      const accepted = slots[0].accepted_categories as string[] | null;
+      if (body.category && accepted && accepted.length > 0 && !accepted.includes(body.category)) {
+        return apiError({
+          code: "conflict",
+          message: "ご希望の作業内容はこの時間帯では受け付けていません。別の時間帯をお選びください。",
+          status: 422,
+        });
+      }
 
       // 境界は排他（開始=前枠の終了 は重複としない）。空き状況 GET と揃え、隣接枠を
       // 独立して予約可能にする。
