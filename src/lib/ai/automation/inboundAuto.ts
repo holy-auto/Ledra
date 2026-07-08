@@ -38,10 +38,11 @@ export interface MaybeAutoProcessParams {
   receivedDate?: string;
   /** LINE ユーザー ID。顧客自動作成時に line_user_id を紐付けるために使う。 */
   lineUserId?: string;
-  /** メール受信時の送信元アドレス。顧客自動作成時に email を紐付ける。 */
-  email?: string;
-  /** 送信者の表示名など。AI が氏名を取れなかった場合の顧客名フォールバック。 */
-  customerName?: string;
+  /**
+   * メール送信元アドレス。**顧客同定には使わない** (転送 From は no-reply のことが多い)。
+   * 複合認識のスレッドキー (email_from) としてのみ使う。
+   */
+  emailFrom?: string;
 }
 
 function isMissingColumnError(err: { message?: string; code?: string } | null | undefined): boolean {
@@ -71,7 +72,7 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
     // 複合認識: 同一スレッドの直近やり取りを文脈として渡し、会話全体から予約情報を統合抽出する。
     const history = await fetchRecentConversation(
       tenantId,
-      { customerId, lineUserId: params.lineUserId },
+      { customerId, lineUserId: params.lineUserId, emailFrom: params.emailFrom },
       { currentMessageId: messageId },
     );
 
@@ -115,10 +116,11 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
         } else {
           resolvedCustomerId = await autoCreateCustomer(admin, {
             tenantId,
-            name: result.customer_name?.trim() || params.customerName?.trim() || "自動登録顧客",
+            // 顧客名/メールは AI 抽出結果のみを使う (SMTP From は顧客本人とは限らないため)。
+            name: result.customer_name?.trim() || "自動登録顧客",
             channel: params.channel,
             lineUserId: params.lineUserId,
-            email: result.email?.trim() || params.email?.trim() || undefined,
+            email: result.email?.trim() || undefined,
           });
           if (resolvedCustomerId && messageId) {
             await admin

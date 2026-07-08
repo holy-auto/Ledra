@@ -140,17 +140,21 @@ function toJstDate(createdAt: string | null | undefined): string {
  */
 export async function fetchRecentConversation(
   tenantId: string,
-  key: { customerId?: string | null; lineUserId?: string | null },
+  key: { customerId?: string | null; lineUserId?: string | null; emailFrom?: string | null },
   opts?: { limit?: number; currentMessageId?: string | null },
 ): Promise<ConversationTurn[]> {
   const limit = opts?.limit ?? 8;
-  if (!key.customerId && !key.lineUserId) return [];
+  if (!key.customerId && !key.lineUserId && !key.emailFrom) return [];
   try {
     const admin = createServiceRoleAdmin("AI 複合認識の会話文脈取得 — webhook には auth セッションが無い");
-    // customer_id / line_user_id のどちらか一致でスレッドを束ねる (tenant_id は AND で担保)。
+    // customer_id / line_user_id / email_from のいずれか一致でスレッドを束ねる
+    // (tenant_id は AND で担保)。PostgREST の or 値はカンマ/括弧が区切りになるため、
+    // それらを含む値 (email 等) はマッチ対象から外して式破壊を防ぐ。
     const orParts: string[] = [];
     if (key.customerId) orParts.push(`customer_id.eq.${key.customerId}`);
-    if (key.lineUserId) orParts.push(`line_user_id.eq.${key.lineUserId}`);
+    if (key.lineUserId && !/[(),]/.test(key.lineUserId)) orParts.push(`line_user_id.eq.${key.lineUserId}`);
+    if (key.emailFrom && !/[(),]/.test(key.emailFrom)) orParts.push(`email_from.eq.${key.emailFrom}`);
+    if (orParts.length === 0) return [];
 
     // 現在メッセージ本体・その後の返信・配信失敗行を差し引いても足りるよう多めに取得。
     const { data, error } = await admin
@@ -197,64 +201,40 @@ export async function fetchRecentConversation(
   }
 }
 
-/** PostgREST の ilike パターンで特別扱いされる文字をエスケープする。 */
-function escapeLike(value: string): string {
-  return value.replace(/([\\%_])/g, "\\$1");
-}
-
-/** 送信元メールアドレスで顧客を1件解決する (完全一致・大小無視)。 */
-async function resolveCustomerIdByEmail(tenantId: string, email: string | null): Promise<string | null> {
-  if (!email) return null;
-  const { admin } = createTenantScopedAdmin(tenantId);
-  try {
-    const { data } = await admin
-      .from("customers")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .ilike("email", escapeLike(email.trim()))
-      .limit(1)
-      .maybeSingle();
-    return (data?.id as string | undefined) ?? null;
-  } catch (e) {
-    logger.warn("[messageStore] resolveCustomerIdByEmail failed", {
-      tenantId,
-      err: e instanceof Error ? e.message : String(e),
-    });
-    return null;
-  }
-}
-
 export interface InboundEmailMessage {
   tenantId: string;
-  /** 送信元メールアドレス (顧客解決 & 表示用)。 */
+  /**
+   * SMTP 送信元アドレス。**顧客同定には使わない** (転送された予約サイト通知の From は
+   * no-reply 等で顧客本人とは限らないため)。スレッドキー兼メタデータとしてのみ保存する。
+   */
   fromEmail: string | null;
   subject?: string | null;
   body: string;
   /** RFC822 Message-ID (冪等化・デバッグ用)。 */
   messageId?: string | null;
-  /** デバッグ用に残す元メタ (from/subject/headers 抜粋など)。 */
+  /** デバッグ用に残す元メタ (headers 抜粋など)。 */
   rawMeta?: unknown;
 }
 
 /**
  * 受信メール (顧客発) を customer_messages に inbound / channel="email" で書き込む。
- * 顧客は送信元アドレスで解決を試み、無ければ NULL のまま保存 (受信箱の未紐付け行)。
+ *
+ * customer_id は付けず (From を顧客同定に使わない方針)、送信元を email_from に保存する。
+ * email_from は横断受信箱のスレッドキーになり、未紐付けメールもスタッフに見える。
+ * 顧客への紐付けは後段の AI 抽出結果 (実在する顧客氏名/メール) に委ねる。
  * 失敗時は呼び出し元 (webhook) を止めない。
  */
-export async function recordInboundEmailMessage(
-  input: InboundEmailMessage,
-): Promise<{ ok: boolean; id?: string; customerId?: string | null }> {
+export async function recordInboundEmailMessage(input: InboundEmailMessage): Promise<{ ok: boolean; id?: string }> {
   try {
-    const customerId = await resolveCustomerIdByEmail(input.tenantId, input.fromEmail);
     const admin = createServiceRoleAdmin("Inbound email logging — webhook lacks auth session");
     const { data, error } = await admin
       .from("customer_messages")
       .insert({
         tenant_id: input.tenantId,
-        customer_id: customerId,
         channel: "email",
         direction: "inbound",
         body: input.body,
+        email_from: input.fromEmail,
         raw_event: {
           from: input.fromEmail,
           subject: input.subject ?? null,
@@ -266,9 +246,9 @@ export async function recordInboundEmailMessage(
       .single();
     if (error) {
       logger.warn("[messageStore] inbound email insert failed", { tenantId: input.tenantId, err: error.message });
-      return { ok: false, customerId };
+      return { ok: false };
     }
-    return { ok: true, id: data?.id as string | undefined, customerId };
+    return { ok: true, id: data?.id as string | undefined };
   } catch (e) {
     logger.warn("[messageStore] recordInboundEmailMessage threw", {
       tenantId: input.tenantId,

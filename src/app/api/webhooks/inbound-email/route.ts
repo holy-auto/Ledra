@@ -5,7 +5,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { claimWebhookEvent } from "@/lib/webhooks/idempotency";
 import { recordInboundEmailMessage } from "@/lib/line/messageStore";
 import { maybeAutoProcessInboundMessage } from "@/lib/ai/automation/inboundAuto";
-import { parseInboundToken, parseMessageId, firstAddress, displayName } from "@/lib/email/inboundAddress";
+import { parseInboundToken, parseMessageId, firstAddress } from "@/lib/email/inboundAddress";
 import { logger, maskEmail } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -121,15 +121,17 @@ export async function POST(req: NextRequest) {
     const bodyText = (getStr("text") || htmlToText(getStr("html")) || "").trim();
     if (!bodyText) return apiOk({ ignored: "empty_body" });
 
-    // 冪等化: Message-ID (ヘッダ / フィールド)。無ければ内容ハッシュで代替。
+    // 冪等化キーは **テナント単位** にスコープする。同一 Message-ID が複数テナントの
+    // エイリアス宛に届いた場合でも、2 番目以降を重複として落とさないため。
     const messageId = parseMessageId(getStr("headers")) ?? getStr("Message-Id") ?? getStr("message-id");
     const eventId =
-      messageId ??
-      "sha256:" +
-        crypto
-          .createHash("sha256")
-          .update(`${tenantId}\n${fromEmail ?? ""}\n${subject ?? ""}\n${bodyText.slice(0, 2000)}`)
-          .digest("hex");
+      `${tenantId}:` +
+      (messageId ??
+        "sha256:" +
+          crypto
+            .createHash("sha256")
+            .update(`${fromEmail ?? ""}\n${subject ?? ""}\n${bodyText.slice(0, 2000)}`)
+            .digest("hex"));
     const claim = await claimWebhookEvent(admin, "inbound-email", eventId, "inbound");
     if (claim === "duplicate") return apiOk({ duplicate: true });
     if (claim === "error") {
@@ -145,23 +147,34 @@ export async function POST(req: NextRequest) {
       body: `${subject ? `件名: ${subject}\n\n` : ""}${bodyText}`.slice(0, 20000),
       messageId,
     });
+    // 受信箱への保存に失敗したら、既に取得した冪等 claim を解放してから 5xx を返す。
+    // 解放しないと再送が「重複」で握り潰され、メッセージが恒久的に失われる。
+    if (!stored.ok) {
+      await admin
+        .from("webhook_processed_events")
+        .delete()
+        .eq("provider", "inbound-email")
+        .eq("event_id", eventId)
+        .then(undefined, () => undefined);
+      return apiError({ code: "internal_error", message: "保存に失敗しました。再送してください。", status: 503 });
+    }
 
     // LINE と同じ抽出→自動起票パスに合流 (複合認識・自動起票はテナント設定次第)。
+    // From (送信元) は顧客同定に使わず、スレッドキー (emailFrom) としてのみ渡す。
     await maybeAutoProcessInboundMessage({
       tenantId,
       messageId: stored.id ?? null,
-      customerId: stored.customerId ?? null,
+      customerId: null,
       text: `${subject ? `件名: ${subject}\n` : ""}${bodyText}`,
       channel: "email",
       receivedDate: todayJst(),
-      email: fromEmail ?? undefined,
-      customerName: displayName(fromField) ?? undefined,
+      emailFrom: fromEmail ?? undefined,
     });
 
     logger.info("[inbound-email] processed", {
       tenantId,
       from: fromEmail ? maskEmail(fromEmail) : null,
-      matched_customer: stored.customerId != null,
+      message_id: messageId ?? null,
     });
     return apiOk({ ok: true });
   } catch (e) {

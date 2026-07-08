@@ -106,7 +106,12 @@ export default function EmailInboundSection() {
           </summary>
           <ol className="mt-2 ml-4 space-y-1 list-decimal">
             <li>Gmail の「設定」→「メール転送とPOP/IMAP」→「転送先アドレスを追加」で上記アドレスを追加</li>
-            <li>確認メールが上記アドレス宛に届き、Ledra 側で自動承認されます（数分で有効化）</li>
+            <li>
+              Gmail から確認コード／リンクが上記アドレス宛に送られます。届いた確認メールは
+              <span className="font-medium text-primary">Ledra の「メッセージ受信箱」</span>
+              に表示されるので、記載のコードを Gmail
+              の設定画面に入力（またはリンクをクリック）して転送を有効化してください
+            </li>
             <li>
               予約サイト等からのメールだけを転送したい場合は、Gmail の「フィルタ」で条件を付けて
               「転送する」を選ぶと便利です
