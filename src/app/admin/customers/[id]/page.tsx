@@ -6,6 +6,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import PageHeader from "@/components/ui/PageHeader";
 import CustomerDetailClient from "./CustomerDetailClient";
+import CustomerBranches from "./CustomerBranches";
 import CustomerNextActionPanel from "./CustomerNextActionPanel";
 import CustomerTabs from "./CustomerTabs";
 import { deriveSignals, type CustomerSignals } from "@/lib/customers/signals";
@@ -127,6 +128,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
       {/* Customer Info + Edit */}
       <CustomerDetailClient customer={customer} />
+
+      {/* 法人 (BtoB) 顧客のみ支店・営業所を管理できる */}
+      {customer.customer_type === "corporate" && <CustomerBranches customerId={id} />}
 
       {/* 次のアクション。signals はサーバ側で確定済みなので即時表示。
           AI サマリは Suspense で並行ストリーム (失敗 / 未生成でも signals だけで動く)。 */}

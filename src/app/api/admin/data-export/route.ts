@@ -92,32 +92,44 @@ export async function GET(req: NextRequest) {
       .eq("id", tenantId)
       .maybeSingle();
 
-    const [certificates, customers, vehicles, invoices, reservations, vehicleHistories, memberships, aiSettings, aiUsageRecent] =
-      await Promise.all([
-        fetchAll(admin, tenantId, "certificates"),
-        fetchAll(admin, tenantId, "customers"),
-        fetchAll(admin, tenantId, "vehicles"),
-        fetchAll(admin, tenantId, "invoices"),
-        fetchAll(admin, tenantId, "reservations"),
-        fetchAll(admin, tenantId, "vehicle_histories", "*", 50_000),
-        // memberships: don't leak password hashes; only ids + roles.
-        fetchAll(admin, tenantId, "tenant_memberships", "id, tenant_id, user_id, role, created_at, revoked_at"),
-        // GDPR: AI 自動入力設定のスナップショット (どんなポリシーで AI が動いていたか)
-        fetchAll(
-          admin,
-          tenantId,
-          "tenant_ai_automation_settings",
-          "enabled, field_policies, confidence_threshold, source_policies, updated_at, updated_by",
-        ),
-        // GDPR: AI 利用ログ (直近 1000 件、トークン数 / outcome / confidence)
-        fetchAll(
-          admin,
-          tenantId,
-          "ai_usage_logs",
-          "endpoint, model, outcome, input_tokens, output_tokens, confidence, latency_ms, created_at",
-          1000,
-        ),
-      ]);
+    const [
+      certificates,
+      customers,
+      customerBranches,
+      vehicles,
+      invoices,
+      reservations,
+      vehicleHistories,
+      memberships,
+      aiSettings,
+      aiUsageRecent,
+    ] = await Promise.all([
+      fetchAll(admin, tenantId, "certificates"),
+      fetchAll(admin, tenantId, "customers"),
+      // 法人顧客の支店 (住所・電話・担当者などの PII を含む)
+      fetchAll(admin, tenantId, "customer_branches"),
+      fetchAll(admin, tenantId, "vehicles"),
+      fetchAll(admin, tenantId, "invoices"),
+      fetchAll(admin, tenantId, "reservations"),
+      fetchAll(admin, tenantId, "vehicle_histories", "*", 50_000),
+      // memberships: don't leak password hashes; only ids + roles.
+      fetchAll(admin, tenantId, "tenant_memberships", "id, tenant_id, user_id, role, created_at, revoked_at"),
+      // GDPR: AI 自動入力設定のスナップショット (どんなポリシーで AI が動いていたか)
+      fetchAll(
+        admin,
+        tenantId,
+        "tenant_ai_automation_settings",
+        "enabled, field_policies, confidence_threshold, source_policies, updated_at, updated_by",
+      ),
+      // GDPR: AI 利用ログ (直近 1000 件、トークン数 / outcome / confidence)
+      fetchAll(
+        admin,
+        tenantId,
+        "ai_usage_logs",
+        "endpoint, model, outcome, input_tokens, output_tokens, confidence, latency_ms, created_at",
+        1000,
+      ),
+    ]);
 
     const generatedAt = new Date().toISOString();
     const filename = `ledra-tenant-export-${tenantId.slice(0, 8)}-${generatedAt.slice(0, 10)}.json`;
@@ -145,6 +157,7 @@ export async function GET(req: NextRequest) {
       sections: {
         certificates,
         customers,
+        customer_branches: customerBranches,
         vehicles,
         invoices,
         reservations,
