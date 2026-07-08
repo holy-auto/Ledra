@@ -39,7 +39,7 @@ async function handler(req: NextRequest) {
     const { data: candidates, error: fetchErr } = await admin
       .from("certificate_images")
       .select(
-        "id, certificate_id, sha256, authenticity_grade, c2pa_verified, device_attestation_verified, deepfake_verdict, exif_gps_stripped, certificates!inner(tenant_id)",
+        "id, certificate_id, sha256, authenticity_grade, c2pa_verified, device_attestation_verified, deepfake_verdict, certificates!inner(tenant_id)",
       )
       .eq("certificates.tenant_id", tenant_id)
       .not("sha256", "is", null)
@@ -63,7 +63,6 @@ async function handler(req: NextRequest) {
       const deepfakeOk = deepfakeVerdict === "likely_real" ? true : deepfakeVerdict === "likely_fake" ? false : null;
       const gradeAfter = computeAuthenticityGrade({
         hasSha256: true,
-        hasExif: Boolean((img as { exif_gps_stripped?: boolean }).exif_gps_stripped),
         hasC2pa: Boolean((img as { c2pa_verified?: boolean }).c2pa_verified),
         c2paKind: (c2paMode === "disabled" ? "none" : c2paMode) as C2paKind,
         deviceOk: Boolean((img as { device_attestation_verified?: boolean }).device_attestation_verified),
