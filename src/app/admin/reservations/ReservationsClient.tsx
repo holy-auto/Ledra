@@ -8,6 +8,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import EmptyStateGuide from "@/components/ui/EmptyStateGuide";
+import { estimateReservationMinutes, formatMinutes } from "@/lib/booths/duration";
 import dynamic from "next/dynamic";
 
 const CalendarView = dynamic(() => import("./CalendarView"), {
@@ -51,7 +52,7 @@ type Reservation = {
 
 type Customer = { id: string; name: string };
 type Vehicle = { id: string; maker: string; model: string; year: number | null; plate_display: string | null };
-type MenuItemMaster = { id: string; name: string; unit_price: number };
+type MenuItemMaster = { id: string; name: string; unit_price: number; estimated_minutes: number | null };
 type Stats = { total: number; today_count: number; active_count: number };
 type ReservationsData = { reservations: Reservation[]; stats: Stats };
 
@@ -253,7 +254,14 @@ export default function ReservationsClient() {
       if (custRes.ok && custJ?.customers) setCustomers(custJ.customers.map((c: any) => ({ id: c.id, name: c.name })));
       const menuJ = await parseJsonSafe(menuRes);
       if (menuRes.ok && menuJ?.items)
-        setMenuItems(menuJ.items.map((m: any) => ({ id: m.id, name: m.name, unit_price: m.unit_price })));
+        setMenuItems(
+          menuJ.items.map((m: any) => ({
+            id: m.id,
+            name: m.name,
+            unit_price: m.unit_price,
+            estimated_minutes: m.estimated_minutes ?? null,
+          })),
+        );
 
       try {
         const gcRes = await fetch("/api/admin/gcal");
@@ -480,6 +488,26 @@ export default function ReservationsClient() {
     setFormMenuItems(next);
     setFormAmount(next.reduce((sum, m) => sum + m.price, 0));
   };
+
+  // 選択メニューの推定作業時間（品目マスタ estimated_minutes の合計）。無ければ null。
+  const selectedEstMinutes = useMemo(() => {
+    const items = formMenuItems
+      .map((m) => menuItems.find((mi) => mi.id === m.menu_item_id))
+      .filter((mi): mi is MenuItemMaster => !!mi)
+      .map((mi) => ({ estimated_minutes: mi.estimated_minutes }));
+    return estimateReservationMinutes(items);
+  }, [formMenuItems, menuItems]);
+
+  // 推定作業時間を開始時刻に足して終了時刻へ反映する。開始未設定なら 09:00 を既定に。
+  function applyEstimatedDuration() {
+    if (selectedEstMinutes == null) return;
+    const start = formStartTime || "09:00";
+    const [h, m] = start.split(":").map(Number);
+    // ponytail: 日跨ぎ枠は想定外のため 23:59 で頭打ち（当日内作業の前提）。
+    const endMin = Math.min((h || 0) * 60 + (m || 0) + selectedEstMinutes, 24 * 60 - 1);
+    if (!formStartTime) setFormStartTime(start);
+    setFormEndTime(`${String(Math.floor(endMin / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`);
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1396,6 +1424,21 @@ export default function ReservationsClient() {
                           <div className="mt-3 flex items-center justify-between bg-accent-dim border border-accent/20 rounded-xl px-4 py-2.5">
                             <span className="text-xs text-accent-text font-medium">見積金額</span>
                             <span className="text-base font-bold text-accent-text">{formatJpy(formAmount)}</span>
+                          </div>
+                        )}
+                        {selectedEstMinutes != null && (
+                          <div className="mt-2 flex items-center justify-between gap-3 bg-inset border border-border-default rounded-xl px-4 py-2.5">
+                            <div className="min-w-0">
+                              <span className="text-xs text-secondary">推定作業時間（品目マスタ）</span>
+                              <div className="text-sm font-bold text-primary">{formatMinutes(selectedEstMinutes)}</div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={applyEstimatedDuration}
+                              className="shrink-0 rounded-lg border border-accent bg-surface px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent-dim transition-colors"
+                            >
+                              終了時刻に反映
+                            </button>
                           </div>
                         )}
                       </div>

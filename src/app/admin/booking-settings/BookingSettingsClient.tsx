@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import PageHeader from "@/components/ui/PageHeader";
 import SlotCalendarGrid, { type GridSlot } from "./SlotCalendarGrid";
+import { generateIntervalSlots } from "@/lib/booking/slots";
 
 // ─── 型定義 ──────────────────────────────────────────────────────
 type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -91,6 +92,14 @@ export default function BookingSettingsClient() {
   const [newSpecificNote, setNewSpecificNote] = useState("");
   const [weeklyClosedDows, setWeeklyClosedDows] = useState<Set<number>>(new Set());
 
+  // ─── 一括登録フォーム（〇分毎／〇時間ごとに枠を分割生成） ───
+  const [bulkDays, setBulkDays] = useState<Set<number>>(new Set([1, 2, 3, 4, 5]));
+  const [bulkStart, setBulkStart] = useState("09:00");
+  const [bulkEnd, setBulkEnd] = useState("18:00");
+  const [bulkInterval, setBulkInterval] = useState(60); // 分
+  const [bulkMax, setBulkMax] = useState(1);
+  const [bulkReplace, setBulkReplace] = useState(true);
+
   // ─── データ取得 ───
   const fetchSettings = useCallback(async () => {
     setLoading(true);
@@ -156,6 +165,60 @@ export default function BookingSettingsClient() {
       },
     ]);
     setNewSlot((prev) => ({ ...prev, label: "" }));
+  }
+
+  // ─── 一括登録: 選択曜日に開始〜終了を interval 分刻みで枠を生成 ───
+  function handleBulkGenerate() {
+    const startMin = toMinutes(bulkStart);
+    const endMin = toMinutes(bulkEnd);
+    if (startMin >= endMin) {
+      showToast("error", "終了時刻は開始時刻より後にしてください");
+      return;
+    }
+    const days = [...bulkDays];
+    if (days.length === 0) {
+      showToast("error", "曜日を1つ以上選択してください");
+      return;
+    }
+    const generated = generateIntervalSlots({
+      days,
+      startMin,
+      endMin,
+      intervalMin: bulkInterval,
+      maxBookings: bulkMax,
+    });
+    if (generated.length === 0) {
+      showToast("error", "枠を生成できませんでした。時間・間隔を確認してください");
+      return;
+    }
+    const daySet = new Set(days);
+    setSlots((prev) => {
+      let next = prev;
+      // 置き換えモード: 対象曜日の既存枠のうち、生成レンジと重なるものを消す
+      if (bulkReplace) {
+        next = next.map((s) => {
+          if (s._deleted || !daySet.has(s.day_of_week)) return s;
+          const sStart = toMinutes(s.start_time);
+          const sEnd = toMinutes(s.end_time);
+          const overlaps = sStart < endMin && sEnd > startMin;
+          return overlaps ? { ...s, _deleted: true } : s;
+        });
+        // 未保存(_new)で消したものは配列から除外して肥大化を防ぐ
+        next = next.filter((s) => !(s._deleted && s._new));
+      }
+      const added: (BookingSlot & { _tempId: string })[] = generated.map((g) => ({
+        _tempId: newSlotId(),
+        _new: true,
+        day_of_week: g.day_of_week as DayOfWeek,
+        start_time: g.start_time,
+        end_time: g.end_time,
+        max_bookings: g.max_bookings,
+        is_active: g.is_active,
+        label: g.label ?? undefined,
+      }));
+      return [...next, ...added];
+    });
+    showToast("success", `${days.length}曜日に${generated.length / days.length}枠ずつ生成しました（保存で確定）`);
   }
 
   // ─── カレンダー塗り操作（ミツモア風ドラッグ選択） ───
@@ -317,13 +380,9 @@ export default function BookingSettingsClient() {
     }
     setSaving(true);
     try {
-      const slotsToSave = slots
-        .filter((s) => !s._deleted && !s._new)
-        .map(({ _tempId, _deleted, _new, ...rest }) => rest);
-      const newSlots = slots
-        .filter((s) => s._new && !s._deleted)
-        .map(({ _tempId, _deleted, _new, id, ...rest }) => rest);
-      const deletedSlotIds = slots.filter((s) => s._deleted && s.id).map((s) => s.id!);
+      // スロットは「今画面に出ている一式」をそのまま送る（id 付きは更新／id 無しは新規）。
+      // 削除はサーバが desired set との差分で確定するため、クライアント側の削除ID送信は不要。
+      const slotsPayload = slots.filter((s) => !s._deleted).map(({ _tempId, _deleted, _new, ...rest }) => rest);
 
       const closedToSave = closedDays
         .filter((c) => !c._deleted && !c._new)
@@ -334,9 +393,8 @@ export default function BookingSettingsClient() {
       const deletedClosedIds = closedDays.filter((c) => c._deleted && c.id).map((c) => c.id!);
 
       const body = {
-        slots: [...slotsToSave, ...newSlots],
+        slots: slotsPayload,
         closed_days: [...closedToSave, ...newClosed],
-        deleted_slot_ids: deletedSlotIds,
         deleted_closed_day_ids: deletedClosedIds,
       };
 
@@ -409,6 +467,143 @@ export default function BookingSettingsClient() {
       {/* ─── タブ: 受付時間スロット ─── */}
       {activeTab === "slots" && (
         <div className="space-y-4">
+          {/* ── 一括登録（〇分毎／〇時間ごとに枠を分割生成） ── */}
+          <div className="bg-surface rounded-xl border border-border-default shadow-sm p-5">
+            <h3 className="text-sm font-semibold text-primary mb-1">一括登録（枠を分割生成）</h3>
+            <p className="text-xs text-secondary mb-4">
+              曜日と時間帯・間隔を指定して、受付枠を<strong className="text-primary">〇分毎／〇時間ごと</strong>
+              に一括生成します。生成後はグリッド／一覧で微調整できます。
+            </p>
+
+            {/* 曜日選択 */}
+            <div className="mb-3">
+              <label className="block text-xs text-secondary mb-1.5">曜日（複数選択可）</label>
+              <div className="flex gap-1.5 flex-wrap">
+                {DAY_NAMES.map((name, dow) => {
+                  const on = bulkDays.has(dow);
+                  return (
+                    <button
+                      key={dow}
+                      type="button"
+                      onClick={() =>
+                        setBulkDays((prev) => {
+                          const n = new Set(prev);
+                          if (n.has(dow)) n.delete(dow);
+                          else n.add(dow);
+                          return n;
+                        })
+                      }
+                      className={`w-9 h-9 rounded-full text-sm font-bold transition-colors ${
+                        on
+                          ? dow === 0
+                            ? "bg-danger text-white"
+                            : dow === 6
+                              ? "bg-accent text-white"
+                              : "bg-primary text-inverse"
+                          : "bg-inset text-secondary hover:bg-surface-active"
+                      }`}
+                    >
+                      {name}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => setBulkDays(new Set([1, 2, 3, 4, 5]))}
+                  className="ml-2 px-2.5 h-9 rounded-lg text-xs font-medium text-accent hover:bg-accent-dim transition-colors"
+                >
+                  平日
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBulkDays(new Set([0, 1, 2, 3, 4, 5, 6]))}
+                  className="px-2.5 h-9 rounded-lg text-xs font-medium text-accent hover:bg-accent-dim transition-colors"
+                >
+                  毎日
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="block text-xs text-secondary mb-1">開始</label>
+                <select value={bulkStart} onChange={(e) => setBulkStart(e.target.value)} className={selectCls}>
+                  {TIME_OPTIONS.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-secondary mb-1">終了</label>
+                <select value={bulkEnd} onChange={(e) => setBulkEnd(e.target.value)} className={selectCls}>
+                  {TIME_OPTIONS.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-secondary mb-1">枠の間隔</label>
+                <select
+                  value={bulkInterval}
+                  onChange={(e) => setBulkInterval(Number(e.target.value))}
+                  className={selectCls}
+                >
+                  <option value={15}>15分毎</option>
+                  <option value={30}>30分毎</option>
+                  <option value={45}>45分毎</option>
+                  <option value={60}>1時間ごと</option>
+                  <option value={90}>1時間30分ごと</option>
+                  <option value={120}>2時間ごと</option>
+                  <option value={180}>3時間ごと</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-secondary mb-1">同時受付数</label>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setBulkMax((v) => Math.max(1, v - 1))}
+                    className="w-7 h-7 rounded bg-surface border border-border-default hover:bg-surface-hover flex items-center justify-center text-sm font-bold text-primary"
+                  >
+                    −
+                  </button>
+                  <span className="w-7 text-center text-sm font-medium text-primary">{bulkMax}</span>
+                  <button
+                    type="button"
+                    onClick={() => setBulkMax((v) => Math.min(99, v + 1))}
+                    className="w-7 h-7 rounded bg-surface border border-border-default hover:bg-surface-hover flex items-center justify-center text-sm font-bold text-primary"
+                  >
+                    ＋
+                  </button>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleBulkGenerate}
+                className="flex items-center gap-1 px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent/90 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
+                一括生成
+              </button>
+            </div>
+
+            <label className="mt-3 flex items-center gap-2 text-xs text-secondary cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={bulkReplace}
+                onChange={(e) => setBulkReplace(e.target.checked)}
+                className="rounded border-border-default text-accent focus:ring-accent/30"
+              />
+              対象曜日の同じ時間帯にある既存の枠を置き換える
+            </label>
+          </div>
+
           {/* 編集方法トグル: カレンダー / 一覧 */}
           <div className="flex items-center gap-1 rounded-lg border border-border-default bg-inset p-0.5 w-fit">
             {(["grid", "list"] as const).map((v) => (
