@@ -46,6 +46,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ key: strin
     const { key } = await ctx.params;
     const ref = parseThreadKey(key);
     if (ref.kind === "invalid") return apiValidationError("invalid thread key");
+    // メールは返信送信できないため AI 返信ドラフトも未対応 (LINE 前提の導線)。
+    if (ref.kind === "email") return apiValidationError("メールスレッドはAI返信ドラフトに未対応です。");
 
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);

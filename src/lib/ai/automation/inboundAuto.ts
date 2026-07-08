@@ -38,11 +38,6 @@ export interface MaybeAutoProcessParams {
   receivedDate?: string;
   /** LINE ユーザー ID。顧客自動作成時に line_user_id を紐付けるために使う。 */
   lineUserId?: string;
-  /**
-   * メール送信元アドレス。**顧客同定には使わない** (転送 From は no-reply のことが多い)。
-   * 複合認識のスレッドキー (email_from) としてのみ使う。
-   */
-  emailFrom?: string;
 }
 
 function isMissingColumnError(err: { message?: string; code?: string } | null | undefined): boolean {
@@ -72,7 +67,7 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
     // 複合認識: 同一スレッドの直近やり取りを文脈として渡し、会話全体から予約情報を統合抽出する。
     const history = await fetchRecentConversation(
       tenantId,
-      { customerId, lineUserId: params.lineUserId, emailFrom: params.emailFrom },
+      { customerId, lineUserId: params.lineUserId },
       { currentMessageId: messageId },
     );
 
@@ -108,6 +103,25 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
 
     if (decision.create && result.scheduled_date) {
       // 未知顧客の場合は自動作成 (customer.auto_create が有効な場合のみここに到達する)
+      if (!resolvedCustomerId && decision.reason === "ok_with_new_customer") {
+        // 新規作成の前に、AI 抽出した連絡先で既存顧客を探す。特にメールは受信時に
+        // customer_id を付けないため、これが無いとリピート顧客ごとに重複レコードが
+        // 生まれ、同日重複予約ガード (顧客ID キー) も効かなくなる。
+        const existingId = await resolveExistingCustomerByContact(admin, tenantId, {
+          email: result.email,
+          phone: result.phone,
+        });
+        if (existingId) {
+          resolvedCustomerId = existingId;
+          if (messageId) {
+            await admin
+              .from("customer_messages")
+              .update({ customer_id: existingId })
+              .eq("id", messageId)
+              .eq("tenant_id", tenantId);
+          }
+        }
+      }
       if (!resolvedCustomerId && decision.reason === "ok_with_new_customer") {
         // customer.auto_create requires Pro plan
         const planTier = normalizePlanTier(tenant.plan_tier);
@@ -311,6 +325,52 @@ async function autoCreateReservation(
     });
     return null;
   }
+}
+
+/** PostgREST の ilike パターンで特別扱いされる文字をエスケープする。 */
+function escapeLike(value: string): string {
+  return value.replace(/([\\%_])/g, "\\$1");
+}
+
+/**
+ * AI 抽出した連絡先 (email / phone) で既存顧客を1件解決する。重複顧客の作成を防ぐ。
+ * email を優先し、無ければ phone。見つからなければ null。失敗時も null (投げない)。
+ */
+async function resolveExistingCustomerByContact(
+  admin: ReturnType<typeof createServiceRoleAdmin>,
+  tenantId: string,
+  contact: { email?: string; phone?: string },
+): Promise<string | null> {
+  const email = contact.email?.trim();
+  const phone = contact.phone?.trim();
+  try {
+    if (email) {
+      const { data } = await admin
+        .from("customers")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .ilike("email", escapeLike(email))
+        .limit(1)
+        .maybeSingle();
+      if (data?.id) return data.id as string;
+    }
+    if (phone) {
+      const { data } = await admin
+        .from("customers")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("phone", phone)
+        .limit(1)
+        .maybeSingle();
+      if (data?.id) return data.id as string;
+    }
+  } catch (e) {
+    logger.warn("[inboundAuto] resolveExistingCustomerByContact failed", {
+      tenantId,
+      err: e instanceof Error ? e.message : String(e),
+    });
+  }
+  return null;
 }
 
 interface AutoCreateCustomerInput {

@@ -131,6 +131,8 @@ function toJstDate(createdAt: string | null | undefined): string {
  *
  * - スレッド特定は customer_id **と** line_user_id の両方でマッチ (OR)。リンク前に
  *   customer_id=NULL で溜まった同一 LINE ユーザーの過去メッセージも文脈に含める。
+ *   メールは送信元 (email_from) を文脈キーにしない: 転送された予約サイト通知は共通の
+ *   no-reply を送信元に持ち、別顧客の予約が履歴に混入して誤起票を招くため。
  * - `currentMessageId` の行を基準に、それと同時刻以降 (= 現在処理中メッセージ本体と、
  *   その受信後に送られた自動返信) は履歴から除外する。呼び出し元が「最新メッセージ」を
  *   別途 `text` として渡すため、履歴には**それより前**のやり取りだけを載せる。
@@ -140,20 +142,18 @@ function toJstDate(createdAt: string | null | undefined): string {
  */
 export async function fetchRecentConversation(
   tenantId: string,
-  key: { customerId?: string | null; lineUserId?: string | null; emailFrom?: string | null },
+  key: { customerId?: string | null; lineUserId?: string | null },
   opts?: { limit?: number; currentMessageId?: string | null },
 ): Promise<ConversationTurn[]> {
   const limit = opts?.limit ?? 8;
-  if (!key.customerId && !key.lineUserId && !key.emailFrom) return [];
+  if (!key.customerId && !key.lineUserId) return [];
   try {
     const admin = createServiceRoleAdmin("AI 複合認識の会話文脈取得 — webhook には auth セッションが無い");
-    // customer_id / line_user_id / email_from のいずれか一致でスレッドを束ねる
-    // (tenant_id は AND で担保)。PostgREST の or 値はカンマ/括弧が区切りになるため、
-    // それらを含む値 (email 等) はマッチ対象から外して式破壊を防ぐ。
+    // customer_id / line_user_id のいずれか一致でスレッドを束ねる (tenant_id は AND で担保)。
+    // PostgREST の or 値はカンマ/括弧が区切りになるため、それらを含む値はマッチ対象から外す。
     const orParts: string[] = [];
     if (key.customerId) orParts.push(`customer_id.eq.${key.customerId}`);
     if (key.lineUserId && !/[(),]/.test(key.lineUserId)) orParts.push(`line_user_id.eq.${key.lineUserId}`);
-    if (key.emailFrom && !/[(),]/.test(key.emailFrom)) orParts.push(`email_from.eq.${key.emailFrom}`);
     if (orParts.length === 0) return [];
 
     // 現在メッセージ本体・その後の返信・配信失敗行を差し引いても足りるよう多めに取得。

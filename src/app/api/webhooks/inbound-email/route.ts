@@ -160,7 +160,8 @@ export async function POST(req: NextRequest) {
     }
 
     // LINE と同じ抽出→自動起票パスに合流 (複合認識・自動起票はテナント設定次第)。
-    // From (送信元) は顧客同定に使わず、スレッドキー (emailFrom) としてのみ渡す。
+    // From (送信元) は顧客同定にも文脈キーにも使わない (転送 From は no-reply が多く、
+    // 別顧客の履歴混入や重複顧客を招くため)。顧客同定は AI 抽出結果に委ねる。
     await maybeAutoProcessInboundMessage({
       tenantId,
       messageId: stored.id ?? null,
@@ -168,7 +169,6 @@ export async function POST(req: NextRequest) {
       text: `${subject ? `件名: ${subject}\n` : ""}${bodyText}`,
       channel: "email",
       receivedDate: todayJst(),
-      emailFrom: fromEmail ?? undefined,
     });
 
     logger.info("[inbound-email] processed", {

@@ -22,6 +22,7 @@ type ThreadSummary = {
   thread_key: string;
   customer_id: string | null;
   line_user_id: string | null;
+  email_from: string | null;
   customer_name: string | null;
   channel: string;
   last_body: string;
@@ -54,7 +55,13 @@ type MessageRow = {
 };
 
 type ThreadDetail = {
-  thread: { key: string; customer_id: string | null; line_user_id: string | null; name: string | null };
+  thread: {
+    key: string;
+    customer_id: string | null;
+    line_user_id: string | null;
+    email_from: string | null;
+    name: string | null;
+  };
   messages: MessageRow[];
   can_send: boolean;
 };
@@ -75,6 +82,7 @@ function formatTime(iso: string): string {
 function threadLabel(t: ThreadSummary): string {
   if (t.customer_name) return t.customer_name;
   if (t.customer_id) return "(名前未設定の顧客)";
+  if (t.email_from) return t.email_from;
   return `LINEユーザー ${t.line_user_id ? t.line_user_id.slice(0, 8) + "…" : "(不明)"}`;
 }
 
@@ -304,10 +312,18 @@ export default function MessagesInboxClient() {
               <div className="relative border-b border-border-subtle px-5 py-3 flex items-center justify-between">
                 <div className="min-w-0">
                   <div className="truncate text-base font-semibold text-primary">
-                    {detail?.thread.name ?? (detail?.thread.customer_id ? "(名前未設定の顧客)" : "LINEユーザー")}
+                    {detail?.thread.name ??
+                      (detail?.thread.customer_id
+                        ? "(名前未設定の顧客)"
+                        : detail?.thread.email_from
+                          ? detail.thread.email_from
+                          : "LINEユーザー")}
                   </div>
                   {detail?.thread.line_user_id && (
                     <div className="truncate text-[10px] text-muted">LINE: {detail.thread.line_user_id}</div>
+                  )}
+                  {detail?.thread.email_from && !detail?.thread.line_user_id && (
+                    <div className="truncate text-[10px] text-muted">メール: {detail.thread.email_from}</div>
                   )}
                 </div>
                 {detail?.thread.customer_id ? (
