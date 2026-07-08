@@ -111,6 +111,50 @@ export async function recordInboundLineMessage(
 }
 
 /**
+ * 複合認識 (会話文脈) 用に、同一スレッドの直近メッセージを古い順で返す。
+ *
+ * customer_id が分かればそれで、無ければ line_user_id でスレッドを特定する。
+ * `excludeMessageId` に「今処理中のメッセージ」を渡すと、それを除いた過去分だけ返す
+ * (呼び出し元は最新メッセージを別途 `text` として渡すため)。fail-soft: 失敗時は空配列。
+ */
+export async function fetchRecentConversation(
+  tenantId: string,
+  key: { customerId?: string | null; lineUserId?: string | null },
+  opts?: { limit?: number; excludeMessageId?: string | null },
+): Promise<Array<{ direction: "inbound" | "outbound"; text: string }>> {
+  const limit = opts?.limit ?? 8;
+  if (!key.customerId && !key.lineUserId) return [];
+  try {
+    const admin = createServiceRoleAdmin("AI 複合認識の会話文脈取得 — webhook には auth セッションが無い");
+    let query = admin
+      .from("customer_messages")
+      .select("id, direction, body, created_at")
+      .eq("tenant_id", tenantId)
+      // 除外 ID を差し引いても十分な件数が残るよう 1 件多めに取得する
+      .order("created_at", { ascending: false })
+      .limit(limit + 1);
+    // customer_id 優先。未リンク顧客は line_user_id でスレッドを特定する。
+    query = key.customerId ? query.eq("customer_id", key.customerId) : query.eq("line_user_id", key.lineUserId!);
+    const { data, error } = await query;
+    if (error || !data) {
+      if (error) logger.warn("[messageStore] fetchRecentConversation failed", { tenantId, err: error.message });
+      return [];
+    }
+    return data
+      .filter((r) => r.id !== opts?.excludeMessageId && typeof r.body === "string" && r.body.trim())
+      .slice(0, limit)
+      .reverse() // 古い順に並べ替え
+      .map((r) => ({ direction: r.direction === "outbound" ? "outbound" : "inbound", text: r.body as string }));
+  } catch (e) {
+    logger.warn("[messageStore] fetchRecentConversation threw", {
+      tenantId,
+      err: e instanceof Error ? e.message : String(e),
+    });
+    return [];
+  }
+}
+
+/**
  * 店舗 → 顧客の Push 送信ログを customer_messages に書き込む。
  *
  * 配信成功時は `delivered=true` を、失敗時は `delivered=false` + `failureReason`

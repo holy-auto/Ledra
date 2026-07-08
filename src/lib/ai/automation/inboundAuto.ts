@@ -15,6 +15,7 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { extractInboundReservation } from "@/lib/ai/inboundReservationExtract";
+import { fetchRecentConversation } from "@/lib/line/messageStore";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
@@ -63,12 +64,20 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
     if (!tenant || tenant.is_active === false) return;
     if (!canUseFeature(normalizePlanTier(tenant.plan_tier), "ai_inbound_extract")) return;
 
+    // 複合認識: 同一スレッドの直近やり取りを文脈として渡し、会話全体から予約情報を統合抽出する。
+    const history = await fetchRecentConversation(
+      tenantId,
+      { customerId, lineUserId: params.lineUserId },
+      { excludeMessageId: messageId },
+    );
+
     const usage = startAiRouteUsage(AUTO_EXTRACT_ENDPOINT);
     const result = await extractInboundReservation(
       {
         text,
         channel: params.channel,
         receivedDate: params.receivedDate,
+        history,
       },
       { model: fastModelForPlanTier(tenant.plan_tier) },
     );
