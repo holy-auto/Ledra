@@ -38,8 +38,8 @@ Ledra の中核資産は **改ざんできない施工証明** — SHA-256 → M
 
 需要は過去最高水準なのに、担い手の供給が構造的に崩れている。
 
-- **有効求人倍率 5.45倍**(令和6年度) — 全産業平均 **1.25倍** の約4倍。
-- 整備士の **平均年齢 47.4歳**、民間整備工場では **51.9歳**。
+- **有効求人倍率 5.28倍**(令和6年度・除パート) — 全職業平均 **1.25倍** の約4倍(厚労省 一般職業紹介状況)。
+- 整備士の **平均年齢 47.7歳**、専業整備工場では **53.0歳**(令和7年版・自動車整備白書／JASPA 令和7年度実態調査)。
 - 養成校入学者は **2003年度 約12,000人 → 2023年度 約6,800人(半減)**。10年で整備士 約9,439人減。
 - 一方で保有台数は **約8,270万台**。乗用車の **平均車齢は29年連続で上昇し過去最高齢**(フリート平均年齢)、加えて廃車(引取車)時の **平均使用年数も17.0年(2024年度)** に延伸 → 整備需要は高止まり。※17.0年は「廃車時点の使用年数」であり、現存フリートの平均車齢そのものではない点に注意。
 
@@ -128,10 +128,11 @@ CMS トークン保管) と Polygon アンカリングの **改ざん耐性基�
   **輸出・オートオークション間の移動で履歴の連続性が切れやすい**(海外経由車で顕著)。
 - 日本オートオークション協議会の「走行メーター管理システム」は AA 出品車の距離を集中管理するが、**国際取引・輸出段のトレーサビリティは課題として残存**。
 
-**Ledra の解**: **Vehicle Passport** (`src/app/passport/`、`passport_ownership_transfers`
-= `supabase/migrations/20260522000000_passport_ownership_transfers.sql`、従量課金の検証 API)
-で VIN 単位に整備・施工履歴と所有権移転を連結し、改ざん耐性のある“連続した履歴”を担保。
-中古車マーケット (`src/app/market/`) と接続すれば流通面の価値になる。
+**Ledra の解**: **Vehicle Passport** (`src/app/passport/`、従量課金の検証 API `getPassportData`)
+で VIN 単位に **アンカー済みの施工証明履歴**(施工種別・日付・施工店・Tx ハッシュ)を集約し、
+改ざん耐性のある“連続した施工履歴”を担保。※現状の公開パスポート/検証 API は **走行距離
+(オドメーター)履歴や所有権移転を出力しない**(`passport_ownership_transfers` テーブルは在るが
+未連結)。中古車マーケット (`src/app/market/`) と接続すれば流通面の価値になる。
 
 出典: [走行メーター管理システム(自動車公正取引協議会)](https://www.aftc.or.jp/sp/am/meter/meter_1.html) /
 [メーター改ざんとデジタルフォレンジック(MotorFan)](https://motor-fan.jp/article/784261/)
@@ -163,7 +164,7 @@ CMS トークン保管) と Polygon アンカリングの **改ざん耐性基�
 |---|---|---|---|
 | ① 整備士不足・省力化 | ✅ AI 入力自動化・業務一元化 | `src/lib/ai/`、`src/app/admin/jobs/` | ○ |
 | ② 倒産・廃業・承継 | ⚠️ 多角化・履歴の資産化(承継 UI は未整備) | `vehicle_histories`、`vehicle_passports`、coating/PPF/thickness 系 | ○ |
-| ③ 透明性・不正対策 | ✅ 改ざん不能証明・写真ゲート・保険ポータル | `src/lib/anchoring/`、`src/lib/certificates/photoRequirement.ts`、`src/app/insurer/` | ◎ |
+| ③ 透明性・不正対策 | ✅ 写真ゲート・保険ポータル ／ ⚠️ 改ざん耐性アンカリングは既定オフ・要有効化 | `src/lib/anchoring/`、`src/lib/certificates/photoRequirement.ts`、`src/app/insurer/` | ◎ |
 | ④ 記録簿電子化 | ⚠️ TSA/アンカリング基盤は保有(現状は部品確認に結線、記録簿封緘は要転用) | `src/lib/parts/tsa.ts`、`src/lib/parts/rfc3161.ts`、`inspection_records` | ◎ |
 | ⑤ 中古トレーサビリティ | ✅ Vehicle Passport・検証 API | `src/app/passport/`、`passport_ownership_transfers`、`src/app/market/` | ○ |
 | ⑥ EV/ADAS 整備スキル | ❌ Ledra 外(部品インテグリティ/LMS のみ関連) | `src/lib/parts/`、academy | △ |
@@ -187,7 +188,7 @@ CMS トークン保管) と Polygon アンカリングの **改ざん耐性基�
 - **言語化**: 査定に「**施工品質という判断軸**」と改ざん耐性データが加わり、真偽確認の往復が減る。
 
 ### ③ 事務工数 — 手入力 → AI が消す 〔実装済／物理整備は不変〕
-- **Before**: 整備士は有効求人倍率5.45倍・平均年齢47.4歳で不足。事務が現場を圧迫。
+- **Before**: 整備士は有効求人倍率5.28倍・平均年齢47.7歳で不足。事務が現場を圧迫。
 - **After（実装事実）**: AI 自動入力(`src/lib/ai/`、40+タスク)で証明書・記録・請求の入力を削減。
 - **削減効果の注記**: 「1件20分×50件/月＝月17時間削減」は **Ledra 自社の想定値(未検証・外部出典なし)** であり、実測値ではない。外部資料では実測として扱わないこと。
 - **言語化**: 同じ人員で回せる工数が増える。ただし**物理的な整備そのものは代替不可**(ここは変わらない)。
@@ -218,7 +219,7 @@ ROI は自社想定(未検証)、④は施工証明履歴のみ連続(走行距�
 
 ## 出典一覧
 
-- 整備士不足・求人倍率: https://seibishi.me/blog/mechanic-husoku/ , https://automotive.and-pro.jp/mechanic/articles/13/
+- 整備士不足・求人倍率・平均年齢(一次出典): https://www.mhlw.go.jp/stf/newpage_57261.html (厚労省 一般職業紹介状況 令和6年度) , https://www.mlit.go.jp/jidosha/content/001877732.pdf (MLIT 整備士の確保・育成) , https://www.jaspa.or.jp/Portals/0/resources/jaspahp/member/data/pdf/R07jittaityousa.pdf (JASPA 令和7年度実態調査) , https://seibishi.me/blog/mechanic-husoku/ , https://automotive.and-pro.jp/mechanic/articles/13/
 - 養成校入学者・NRI: https://www.nri.com/jp/media/column/scs_blog/20250530.html
 - 国交省(人材確保/省力化/数字でみる自動車2025): https://www.mlit.go.jp/koku/content/001729973.pdf , https://www.cas.go.jp/jp/seisaku/atarashii_sihonsyugi/shouryokukatousi/05-1.pdf , https://www.mlit.go.jp/jidosha/jidosha_fr1_000096.html
 - 倒産・廃業(TDB/Response): https://www.tdb.co.jp/report/industry/250504_seibi25fy/ , https://response.jp/article/2025/05/05/395323.html , https://prtimes.jp/main/html/rd/p/000000914.000043465.html
