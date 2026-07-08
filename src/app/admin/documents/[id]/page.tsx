@@ -4,14 +4,11 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import PageHeader from "@/components/ui/PageHeader";
 import DocumentDetailClient from "./DocumentDetailClient";
 import { DOC_TYPES, type DocType } from "@/types/document";
+import { createSignedAssetUrl } from "@/lib/signedUrl";
 
 export const dynamic = "force-dynamic";
 
-export default async function DocumentDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function DocumentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createSupabaseServerClient();
   const { data: userRes } = await supabase.auth.getUser();
@@ -52,9 +49,17 @@ export default async function DocumentDetailPage({
   // テナント情報（インボイス・口座情報用）
   const { data: tenant } = await supabase
     .from("tenants")
-    .select("name, address, contact_email, contact_phone, registration_number, logo_asset_path, company_seal_path, bank_info")
+    .select(
+      "name, address, contact_email, contact_phone, registration_number, logo_asset_path, company_seal_path, bank_info",
+    )
     .eq("id", mem.tenant_id)
     .single();
+
+  // ロゴ・角印は Storage パスで保存されているため、プレビュー表示用に署名付きURLへ変換する。
+  const [logoUrl, sealUrl] = await Promise.all([
+    tenant?.logo_asset_path ? createSignedAssetUrl(tenant.logo_asset_path, 3600) : null,
+    tenant?.company_seal_path ? createSignedAssetUrl(tenant.company_seal_path, 3600) : null,
+  ]);
 
   const docLabel = DOC_TYPES[doc.doc_type as DocType]?.label ?? doc.doc_type;
 
@@ -75,6 +80,8 @@ export default async function DocumentDetailPage({
         customerEmail={customerEmail}
         customerPhone={customerPhone}
         tenant={tenant}
+        logoUrl={logoUrl}
+        sealUrl={sealUrl}
       />
     </div>
   );
