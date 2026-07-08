@@ -28,7 +28,7 @@ src/
 │   ├── parts/                 部品装着インテグリティ (納車時の顧客確認 UI)
 │   ├── customer/, c/, my/     顧客ポータル
 │   ├── sign/, agent-sign/     電子署名フロー
-│   └── api/                   490+ Route Handlers (35 トップレベルグループ)
+│   └── api/                   560+ Route Handlers (37 トップレベルグループ)
 │       ├── cron/              Vercel Cron (billing, follow-up, monitor, news, etc.)
 │       ├── qstash/            非同期ジョブ (batch-pdf, polygon-backfill, 等)
 │       ├── parts/             装着インジェスト / 監査 findings / 確定 / LINE 連携コード
@@ -199,7 +199,7 @@ npm run dev                       # http://localhost:3000
 
 ## テスト戦略
 
-- **Unit (`vitest`)**: `src/**/__tests__/*.test.ts`・2200+ cases (200+ ファイル)。
+- **Unit (`vitest`)**: `src/**/__tests__/*.test.ts`・2300+ cases (220+ ファイル)。
   billing / stripe webhook / signature / anchoring / rate limit / withRetry /
   sendEmail / cron failureTracker / customer portal / logger / safeJson /
   parts integrity (TSA / 照合 / 確定署名) / AI automation policy / permissions など。
@@ -211,7 +211,7 @@ npm run dev                       # http://localhost:3000
 ## マイグレーション
 
 Supabase 用の SQL は `supabase/migrations/` にタイムスタンプ順で入っています
-(250+ 本)。追加時は以下を意識:
+(300+ 本)。追加時は以下を意識:
 
 - **zero-downtime**: `ADD COLUMN NOT NULL DEFAULT` は避け、`ADD (nullable)`
   → `UPDATE` → `SET NOT NULL` の 3 段にする
