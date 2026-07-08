@@ -37,31 +37,6 @@ describe("ingestCustomersSchema", () => {
     const r = ingestCustomersSchema.safeParse({ source_system: "x", records });
     expect(r.success).toBe(false);
   });
-
-  it("accepts corporate fields", () => {
-    const r = ingestCustomersSchema.safeParse({
-      source_system: "erp",
-      records: [
-        {
-          external_ref: "C-1",
-          name: "株式会社サンプル",
-          customer_type: "corporate",
-          corporate_number: "1234567890123",
-          invoice_registration_number: "T1234567890123",
-          billing_cycle: "consolidated",
-        },
-      ],
-    });
-    expect(r.success).toBe(true);
-  });
-
-  it("rejects a corporate_number that is not 13 digits", () => {
-    const r = ingestCustomersSchema.safeParse({
-      source_system: "erp",
-      records: [{ external_ref: "C-1", name: "n", corporate_number: "12345" }],
-    });
-    expect(r.success).toBe(false);
-  });
 });
 
 describe("ingestVehiclesSchema", () => {

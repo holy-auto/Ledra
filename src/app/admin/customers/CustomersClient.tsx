@@ -143,7 +143,9 @@ export default function CustomersClient() {
       const { inserted = 0, updated = 0, skipped = 0, errors = [] } = j ?? {};
       const parts = [`新規${inserted}件`, `更新${updated}件`];
       if (skipped > 0) parts.push(`スキップ${skipped}件`);
-      const detail = errors.length > 0 ? `（例: ${errors[0].row_index + 1}行目 ${errors[0].error}）` : "";
+      // row_index はデータ行 (ヘッダ除く) の 0 始まり。CSV ファイル上の行番号は
+      // ヘッダ 1 行 + 1 始まりで +2。ユーザーが実ファイルの行に辿れるようにする。
+      const detail = errors.length > 0 ? `（例: ${errors[0].row_index + 2}行目 ${errors[0].error}）` : "";
       setSaveMsg({ text: `CSV取込完了: ${parts.join(" / ")}${detail}`, ok: skipped === 0 });
       mutate();
     } catch (e: any) {
@@ -194,14 +196,21 @@ export default function CustomersClient() {
       }
       const j = await res.json();
       const setState = target === "create" ? setForm : setEditForm;
-      setState((prev) => ({
-        ...prev,
-        // 会社名・住所は未入力のときだけ補完 (入力済みは尊重)。法人区分にも寄せる。
-        name: prev.name.trim() ? prev.name : (j.company_name ?? prev.name),
-        address: prev.address.trim() ? prev.address : (j.address ?? prev.address),
-        customer_type: "corporate",
-      }));
-      setCorpLookup({ status: "done", target });
+      let applied = false;
+      setState((prev) => {
+        // 照会中に法人番号が書き換わっていたら、古いレスポンス (別会社) で
+        // 上書きしない (stale-request ガード)。法人番号フィールドは法人区分の
+        // ときだけ表示されるため、customer_type の変更は不要。
+        if (prev.corporate_number.replace(/[-\s]/g, "") !== cleaned) return prev;
+        applied = true;
+        // 会社名・住所は未入力のときだけ補完 (入力済みは尊重)。
+        return {
+          ...prev,
+          name: prev.name.trim() ? prev.name : (j.company_name ?? prev.name),
+          address: prev.address.trim() ? prev.address : (j.address ?? prev.address),
+        };
+      });
+      if (applied) setCorpLookup({ status: "done", target });
     } catch {
       setCorpLookup({ status: "notfound", target });
     }

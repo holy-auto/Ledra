@@ -52,10 +52,6 @@ export async function POST(req: NextRequest) {
         postal_code: r.postal_code ?? null,
         address: r.address ?? null,
         note: r.note ?? null,
-        customer_type: r.customer_type ?? "individual",
-        corporate_number: r.corporate_number ?? null,
-        invoice_registration_number: r.invoice_registration_number ?? null,
-        billing_cycle: r.billing_cycle ?? null,
         last_synced_at: now,
       })),
     );
