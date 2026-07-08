@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ledra — ピッチイベント登壇パッケージ（汎用・5分 / 12枚）</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#060a12; --bg2:#0a1322; --ink:#eef3fb; --muted:#9fb2cc;
+    --accent:#0071e3; --accent2:#3b9bff; --gold:#f59e0b; --line:#1c2940;
+    --good:#34d399; --bad:#f87171;
+    --pad: clamp(28px, 4.2vw, 80px);
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:"Noto Sans JP","Inter",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased; overflow:hidden;
+  }
+  /* ---- deck ---- */
+  .deck{position:fixed; inset:0}
+  .slide{
+    position:absolute; inset:0; display:none;
+    padding:var(--pad);
+    flex-direction:column; justify-content:center;
+    background:radial-gradient(120% 120% at 85% -10%, #0e1c33 0%, var(--bg) 55%);
+    animation:fade .35s ease;
+  }
+  .slide.active{display:flex}
+  @keyframes fade{from{opacity:0; transform:translateY(8px)}to{opacity:1; transform:none}}
+  .eyebrow{
+    font:700 clamp(12px,1.1vw,15px)/1.4 "Inter";
+    letter-spacing:.18em; text-transform:uppercase; color:var(--accent2);
+    margin-bottom:18px; display:flex; gap:12px; align-items:center;
+  }
+  .eyebrow::before{content:""; width:34px; height:2px; background:var(--accent); display:inline-block}
+  h1{font:900 clamp(34px,5.6vw,82px)/1.05 "Noto Sans JP"; letter-spacing:-.01em}
+  h2{font:900 clamp(28px,3.8vw,52px)/1.12 "Noto Sans JP"; letter-spacing:-.01em}
+  h2 .hl{color:var(--accent2)}
+  h2 .gold{color:var(--gold)}
+  .lead{font:500 clamp(16px,1.7vw,24px)/1.6 "Noto Sans JP"; color:var(--muted); margin-top:18px; max-width:62ch}
+  .big{font:900 clamp(40px,6vw,92px)/1 "Inter"; color:var(--gold)}
+  .sub{color:var(--muted); font-size:clamp(14px,1.3vw,18px); margin-top:6px}
+  .grid{display:grid; gap:clamp(14px,1.6vw,26px); margin-top:clamp(22px,3vw,40px)}
+  .g2{grid-template-columns:repeat(2,1fr)} .g3{grid-template-columns:repeat(3,1fr)} .g4{grid-template-columns:repeat(4,1fr)}
+  .card{
+    background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.015));
+    border:1px solid var(--line); border-radius:18px; padding:clamp(16px,1.8vw,28px);
+  }
+  .card h3{font:700 clamp(16px,1.6vw,22px)/1.3 "Noto Sans JP"; margin-bottom:8px}
+  .card p{color:var(--muted); font-size:clamp(13px,1.2vw,17px); line-height:1.6}
+  .card.after{border-color:rgba(52,211,153,.35); background:linear-gradient(180deg,rgba(52,211,153,.08),rgba(52,211,153,.02))}
+  .pill{display:inline-block; padding:5px 13px; border-radius:999px; font:700 13px "Inter";
+    background:rgba(0,113,227,.16); color:var(--accent2); border:1px solid rgba(59,155,255,.3); margin:3px 4px 0 0}
+  .pill.gold{background:rgba(245,158,11,.14); color:var(--gold); border-color:rgba(245,158,11,.35)}
+  .pill.good{background:rgba(52,211,153,.14); color:var(--good); border-color:rgba(52,211,153,.35)}
+  .tag{font:700 12px "Inter"; letter-spacing:.12em; color:var(--gold); text-transform:uppercase}
+  .num{font:900 clamp(30px,3.4vw,52px)/1 "Inter"; color:var(--ink)}
+  .num .u{font-size:.42em; color:var(--muted); margin-left:4px; font-weight:700}
+  .row{display:flex; gap:14px; align-items:center; flex-wrap:wrap}
+  ul.clean{list-style:none; margin-top:18px; display:grid; gap:12px}
+  ul.clean li{position:relative; padding-left:30px; font-size:clamp(15px,1.5vw,21px); line-height:1.5}
+  ul.clean li::before{content:"▶"; position:absolute; left:0; top:.15em; color:var(--accent); font-size:.7em}
+  .star{color:var(--gold)}
+  .flow{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:8px}
+  .chip{background:#0c1626; border:1px solid var(--line); border-radius:12px; padding:10px 14px; font-size:clamp(12px,1.1vw,16px)}
+  .chip.bad{border-color:rgba(248,113,113,.4); color:#f9b4b4}
+  .chip.good{border-color:rgba(52,211,153,.4); color:#9ff0d1}
+  .arrow{color:var(--accent2); font-weight:800}
+  .layer{display:flex; gap:14px; align-items:flex-start; padding:14px 0; border-bottom:1px dashed var(--line)}
+  .layer:last-child{border-bottom:0}
+  .layer .n{flex:0 0 auto; width:38px; height:38px; border-radius:10px; background:var(--accent);
+    display:grid; place-items:center; font:900 18px "Inter"; color:#fff}
+  .layer .n.g{background:var(--gold); color:#1a1205}
+  .strike{color:var(--muted); text-decoration:line-through; text-decoration-color:var(--bad); opacity:.8}
+  .stack3{display:grid; gap:0}
+  .barwrap{height:clamp(220px,30vh,360px); display:flex; align-items:flex-end; gap:18px; margin-top:20px}
+  .bar{flex:1; border-radius:12px 12px 0 0; background:linear-gradient(180deg,var(--accent2),var(--accent)); position:relative; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; padding-bottom:10px}
+  .bar.alt{background:linear-gradient(180deg,#f7c25a,var(--gold))}
+  .bar b{font:900 clamp(14px,1.4vw,20px) "Inter"; color:#fff}
+  .bar .yr{position:absolute; bottom:-26px; color:var(--muted); font-size:13px; width:100%; text-align:center}
+  /* three-beat ladder */
+  .ladder{display:flex; gap:14px; align-items:stretch; margin-top:26px; flex-wrap:wrap}
+  .beat{flex:1 1 0; min-width:200px; background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.015)); border:1px solid var(--line); border-radius:18px; padding:clamp(16px,1.8vw,26px); position:relative}
+  .beat .step{font:900 13px "Inter"; letter-spacing:.14em; color:var(--accent2); text-transform:uppercase}
+  .beat h3{font:800 clamp(17px,1.8vw,24px)/1.25 "Noto Sans JP"; margin:8px 0}
+  .beat p{color:var(--muted); font-size:clamp(13px,1.2vw,16px); line-height:1.55}
+  .beat.g{border-color:rgba(245,158,11,.4)}
+  .beat.g .step{color:var(--gold)}
+  .logo{display:flex; align-items:center; gap:14px}
+  .logo .mark{width:46px; height:46px; border-radius:12px; background:linear-gradient(135deg,var(--accent),#00d2ff); display:grid; place-items:center; font:900 24px "Inter"; color:#fff}
+  .logo .name{font:900 30px "Inter"; letter-spacing:.02em}
+  .footer{position:absolute; left:var(--pad); right:var(--pad); bottom:22px; display:flex; justify-content:space-between; align-items:center; color:var(--muted); font:600 12px "Inter"; opacity:.7}
+  .time{color:var(--gold)}
+  /* progress + ui */
+  .progress{position:fixed; top:0; left:0; height:3px; background:var(--accent); z-index:50; transition:width .3s}
+  .counter{position:fixed; right:16px; bottom:14px; z-index:50; font:700 12px "Inter"; color:var(--muted); background:rgba(0,0,0,.4); padding:6px 12px; border-radius:999px; border:1px solid var(--line)}
+  .timer{position:fixed; left:16px; bottom:14px; z-index:50; font:800 14px "Inter"; color:var(--gold); background:rgba(0,0,0,.45); padding:6px 14px; border-radius:999px; border:1px solid rgba(245,158,11,.3)}
+  .timer.over{color:var(--bad); border-color:var(--bad)}
+  .notes{position:fixed; left:0; right:0; bottom:0; z-index:40; background:rgba(4,8,16,.96); border-top:2px solid var(--accent);
+    padding:18px 22px; display:none; max-height:34vh; overflow:auto}
+  .notes.show{display:block}
+  .notes .t{color:var(--gold); font:800 12px "Inter"; letter-spacing:.14em; text-transform:uppercase; margin-bottom:8px}
+  .notes p{color:#cdd9ec; font-size:15px; line-height:1.65; white-space:pre-line}
+  .help{position:fixed; right:16px; top:14px; z-index:50; color:var(--muted); font:600 11px "Inter"; opacity:.6}
+  /* print: 1 slide per page, no chrome */
+  @media print{
+    @page{size:1280px 720px; margin:0}
+    body{overflow:visible}
+    .deck{position:static}
+    .slide{display:flex !important; position:relative; inset:auto; width:1280px; height:720px; page-break-after:always; animation:none}
+    .progress,.counter,.timer,.help,.notes{display:none !important}
+  }
+</style>
+</head>
+<body>
+<div class="progress" id="prog"></div>
+<div class="help">→/Space 次 ・ ← 前 ・ N ノート ・ T タイマー ・ F 全画面</div>
+<div class="timer" id="timer">5:00</div>
+<div class="counter" id="counter">1 / 12</div>
+
+<div class="deck" id="deck">
+
+  <!-- 1 表紙 + Hook（問い＝自分ごと化） -->
+  <section class="slide active" data-time="0:00–0:20" data-note="みなさん、車のコーティングやフィルムを頼んだこと、ありますか。あの“手書きの保証書”、今どこにあるか思い出せますか。──株式会社HOLYの堀越友輔です。私はコーティング・PPF施工店のオーナーで、今も現場に立っています。その“どこかにいってしまう証明”を、AIとブロックチェーンで作り直しているのがLedraです。">
+    <div class="logo"><div class="mark">L</div><div class="name">Ledra</div></div>
+    <h1 style="margin-top:32px">その保証書、<br><span style="color:var(--accent2)">いま、どこにありますか？</span></h1>
+    <p class="lead">車の施工を、デジタルで証明する。施工店 SaaS × 改ざんできない施工証明書ネットワーク。<br><b style="color:var(--ink)">入力は AI が消す。証明書は改ざんできない。</b></p>
+    <div class="row" style="margin-top:36px">
+      <span class="pill">施工店オーナー出身 ＝ 一次情報</span>
+      <span class="pill">株式会社HOLY</span>
+      <span class="pill">堀越 友輔</span>
+    </div>
+    <div class="footer"><span>Ledra / 株式会社HOLY</span><span class="time">表紙 0:00</span></div>
+  </section>
+
+  <!-- 2 課題＝あなたの1日 / 体験（身近・当事者意識） -->
+  <section class="slide" data-time="0:20–1:00" data-note="まず現場。真面目な店ほど、1件終わるたびに紙の保証書を書き、LINEで写真を送り、Excelに売上を入れ、保険用に別書式を作る。1件20分、月50件なら17時間、事務だけで消えます。そして受け取ったお客様側は──その保証書、たいてい無くします。中古車で売るとき“本当に施工したか”を誰も証明できない。つまり現場も、お客様も、次の買い手も、全員が同じ“証明が残らない”問題で困っているんです。">
+    <div class="eyebrow">課題 — これ、心当たりありませんか</div>
+    <h2>現場も、お客様も、次の買い手も。<br>みんな <span class="gold">同じ一点</span> で困っている。</h2>
+    <div class="grid g3">
+      <div class="card"><div class="tag">施工店</div><h3>閉店後の事務地獄</h3><p>紙の保証書・LINE写真・Excel・保険書式。1件20分 × 月50件 ＝ <b>月17時間</b>が消える。</p></div>
+      <div class="card"><div class="tag">お客様</div><h3>その保証書、無くす</h3><p>手渡しの紙とLINEの写真。数年後に「どこ行った？」。証明が手元に残らない。</p></div>
+      <div class="card"><div class="tag">次の買い手</div><h3>本当に施工済み？</h3><p>中古車で売買するとき「いつ・誰が・何を」を後から検証できず、価値が値付けされない。</p></div>
+    </div>
+    <div class="row" style="margin-top:30px"><span class="pill">共通点 ＝ <b>&nbsp;“施工した事実”が信頼できる形で残らない</b></span></div>
+    <div class="footer"><span>Problem — 自分ごと</span><span class="time">0:20</span></div>
+  </section>
+
+  <!-- 3 Ledra のある1日（After＝付加価値を先出し） -->
+  <section class="slide" data-time="1:00–1:35" data-note="Ledraがあると、この1日がこう変わります。予約はLINEから自動で入り、車検証をかざせば車両情報が入り、話せば作業記録になる。閉店後の事務はほぼゼロ。そしてお客様には、無くさない・改ざんされない“デジタル証明”が自動で残る。同じ仕事をしているのに、時間が戻ってきて、証明が資産として積み上がる。この“After”をどう実現するかを、次に話します。">
+    <div class="eyebrow">Ledra のある1日（AFTER）</div>
+    <h2>同じ仕事なのに、<span class="hl">時間が戻り</span>、<span class="gold">証明が積み上がる。</span></h2>
+    <div class="grid g2" style="margin-top:26px">
+      <div class="card"><div class="tag" style="color:var(--bad)">BEFORE</div>
+        <ul class="clean" style="margin-top:8px">
+          <li class="strike">手書き保証書・LINE・Excel・保険書式</li>
+          <li class="strike">閉店後に事務、月17時間</li>
+          <li class="strike">証明は紙とLINEに散逸・紛失</li>
+        </ul>
+      </div>
+      <div class="card after"><div class="tag" style="color:var(--good)">AFTER — Ledra</div>
+        <ul class="clean" style="margin-top:8px">
+          <li>予約・車両・作業記録・請求まで<b>AIが自動</b></li>
+          <li>閉店後の事務は<b>ほぼゼロ</b></li>
+          <li>無くさない・<b>改ざんできない証明</b>が自動で残る</li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer"><span>The After — 付加価値</span><span class="time">1:00</span></div>
+  </section>
+
+  <!-- 4 ★AIが事務を消す（主役1） -->
+  <section class="slide" data-time="1:35–2:15" data-note="どう実現するか。ひとつ目の柱は、面倒な業務をAIが“消す”こと。LINEやメールの予約はAIが日時・車種・要望を読み取り予約表に自動起票。車検証QRで車両を一発入力。音声メモは作業記録に整形、案件が終われば請求書まで自動生成。しかもフィールド単位で“AIに任せる／提案だけ／手動”を切替えられ、金額の確定・本人確認・証明書の発行という重要操作だけは必ず人が承認します。ポイントは、特別な入力作業を足していないこと。普段の業務が、そのままデータになるんです。">
+    <div class="eyebrow"><span class="star">★ 主役 ①</span> &nbsp; 入力は AI が消す</div>
+    <h2>面倒な入力は <span class="gold">AI が消す。</span><br>普段の業務が、そのままデータになる。</h2>
+    <div class="grid g4">
+      <div class="card"><div class="tag">受信→予約</div><h3>LINE / メール</h3><p>日時・車種・要望をAIが抽出し予約表に自動起票</p></div>
+      <div class="card"><div class="tag">車検証→車両</div><h3>QR 読取</h3><p>車検証QR・身分証OCRで車両/顧客を一発入力</p></div>
+      <div class="card"><div class="tag">音声→記録</div><h3>音声メモ</h3><p>話すだけで作業記録の文章に自動整形</p></div>
+      <div class="card"><div class="tag">案件→請求</div><h3>請求書生成</h3><p>完了案件から請求書を自動ドラフト</p></div>
+    </div>
+    <div class="row" style="margin-top:24px; gap:10px">
+      <span class="pill">フィールド単位 auto / suggest / manual の 3-way 切替</span>
+      <span class="pill gold">金額・本人確認・証明書"発行" は必ず人が承認</span>
+    </div>
+    <div class="footer"><span>Pillar ① — AI Automation（実装済 / 本番稼働）</span><span class="time">1:35</span></div>
+  </section>
+
+  <!-- 5 ★普段の業務から“改ざんできない証明”が出来上がる（主役2・副産物） -->
+  <section class="slide" data-time="2:15–2:55" data-note="ここが肝です。証明書を“わざわざ作る”のではありません。いまの業務でAIが処理したデータが、そのまま正規化されSHA-256でハッシュ化され、Polygonに刻まれる。写真はAIが改ざんを検知し、C2PAやディープフェイク検知で4段階の真正性グレードが付く。1文字でも書き換えればすぐ分かる。──つまり、普段どおり働くだけで、第三者が検証できる証拠が“副産物”として出来上がる。これが保険会社と中古車市場が本当に欲しかったものです。">
+    <div class="eyebrow"><span class="star">★ 主役 ②</span> &nbsp; 証明書は改ざんできない</div>
+    <h2>証明書は "作る" のではない。<br>業務から <span class="hl">"出来上がる"。</span></h2>
+    <div class="stack3" style="margin-top:18px">
+      <div class="layer"><div class="n g">1</div><div><h3 style="font-size:clamp(16px,1.7vw,23px)">写真の改ざんを AI が弾く</h3><p style="color:var(--muted)">Photoshop加工痕 / 撮影日時が未来 / 使い回し（重複ハッシュ）/ GPS矛盾 を自動検知</p></div></div>
+      <div class="layer"><div class="n">2</div><div><h3 style="font-size:clamp(16px,1.7vw,23px)">内容をブロックチェーンに刻む</h3><p style="color:var(--muted)">正規化 → SHA-256 → Polygon on-chain。1文字でも書き換えるとハッシュ不一致で検知</p></div></div>
+      <div class="layer"><div class="n">3</div><div><h3 style="font-size:clamp(16px,1.7vw,23px)">写真の真正性を4段階で評価</h3><p style="color:var(--muted)">C2PA（カメラ署名）+ ディープフェイク検知 + 端末認証 ＝ unverified→basic→verified→premium</p></div></div>
+    </div>
+    <div class="row" style="margin-top:18px"><span class="pill gold">誰でも /c/[public_id] でブラウザ検証できる</span><span class="pill">"誰でも撮れる写真" を "検証できる証拠" へ</span></div>
+    <div class="footer"><span>Pillar ② — Tamper-proof Certificate（副産物）</span><span class="time">2:15</span></div>
+  </section>
+
+  <!-- 6 一気通貫だから効く（③のコア・新設） -->
+  <section class="slide" data-time="2:55–3:25" data-note="一気通貫のSaaSだから、効き方が3段です。1段、固定費が下がる──紙・LINE・Excel・保険書式・予約とバラバラだったものを1本に束ね、月17時間の事務が消える。2段、その浮いた時間を施工・接客・集客という“売上を生む仕事”に回せる。3段、しかもその過程で証明が資産として溜まり、後で保険・中古車の価値になる。削るだけのSaaSではなく、削った上に新しい資産が積み上がるんです。">
+    <div class="eyebrow">なぜ一気通貫か — 削って、増やして、積み上がる</div>
+    <h2>一本化したから、<span class="gold">3段で効く。</span></h2>
+    <div class="ladder">
+      <div class="beat"><div class="step">STEP 1 — 削る</div><h3>固定費が下がる</h3><p>紙・LINE・Excel・保険書式・予約を1本化。月17時間の事務が消える。ツールも人手も減らせる。</p></div>
+      <div class="beat"><div class="step">STEP 2 — 増やす</div><h3>時間を再配分</h3><p>浮いた時間を施工・接客・集客へ。“売上を生む仕事”にリソースを回せる。</p></div>
+      <div class="beat g"><div class="step">STEP 3 — 積み上がる</div><h3>証明が資産化</h3><p>その業務の副産物として証明が溜まり、後で保険・中古車の価値になる。削るだけで終わらない。</p></div>
+    </div>
+    <div class="footer"><span>End-to-end SaaS — cost ↓ / resource ↑ / asset ↑</span><span class="time">2:55</span></div>
+  </section>
+
+  <!-- 7 誰がどう得するか＋実ハードル（施工店・お客様を主役に、上流は脇役） -->
+  <section class="slide" data-time="3:25–4:00" data-note="損得を正直に言います。まず主役は施工店とお客様。施工店は事務が消え、証明が“営業の武器”になる──ただ初期設定と、現場の入力習慣づけは要ります。お客様は無くさない保証と売却時の価値──デジタルに不慣れな方には最初の説明が要る。そして上流の保険会社と中古車・OEMも、不正検知や値付け精度で得をする──母数が育つほど効いてきます。誰にとっても、早く入るほど得をする設計です。">
+    <div class="eyebrow">誰がどう得するか（正直な損得）</div>
+    <h2>まず得するのは <span class="hl">施工店とお客様。</span><br>全員にメリット、<span class="gold">ハードルも隠さない。</span></h2>
+    <div class="grid g2" style="margin-top:22px">
+      <div class="card" style="border-color:rgba(59,155,255,.45)">
+        <div class="tag" style="color:var(--accent2)">主役 ① 施工店（店・職人）</div>
+        <p style="margin-top:12px; font-size:clamp(15px,1.55vw,21px); color:#bfe9d6"><b style="color:var(--good)">◎ メリット</b>　事務が消え、証明が "営業の武器" に。時間が戻る。</p>
+        <p style="margin-top:10px; font-size:clamp(13px,1.3vw,18px); color:#e9c7bf"><b style="color:var(--gold)">△ 正直なハードル</b>　初期設定と、現場の入力習慣づけは必要。</p>
+      </div>
+      <div class="card after">
+        <div class="tag" style="color:var(--good)">主役 ② お客様</div>
+        <p style="margin-top:12px; font-size:clamp(15px,1.55vw,21px); color:#bfe9d6"><b style="color:var(--good)">◎ メリット</b>　無くさない・改ざんされない保証。売却時に価値。</p>
+        <p style="margin-top:10px; font-size:clamp(13px,1.3vw,18px); color:#e9c7bf"><b style="color:var(--gold)">△ 正直なハードル</b>　デジタルに不慣れな層には最初の説明が要る。</p>
+      </div>
+    </div>
+    <div class="grid g2" style="margin-top:14px; gap:14px">
+      <div class="card" style="opacity:.72; padding:13px 18px"><span class="tag">上流も得する ／ 保険会社</span><br><span style="color:var(--muted); font-size:clamp(12px,1.15vw,15px)">不正検知・査定コスト減（ハードル：既存フロー接続）</span></div>
+      <div class="card" style="opacity:.72; padding:13px 18px"><span class="tag">上流も得する ／ 中古車・OEM</span><br><span style="color:var(--muted); font-size:clamp(12px,1.15vw,15px)">履歴で値付け精度↑（ハードル：母数が育つまで）</span></div>
+    </div>
+    <div class="row" style="margin-top:16px"><span class="pill gold">共通 ＝ 早く入るほど得をする設計</span></div>
+    <div class="footer"><span>Who wins — 施工店・顧客が主役 / 上流も得する</span><span class="time">3:25</span></div>
+  </section>
+
+  <!-- 8 なぜ今・なぜ広がる（Why Now＋軽ネットワーク） -->
+  <section class="slide" data-time="4:00–4:20" data-note="なぜ今か。SDV化、損保の不正請求対策、中古車流通の透明化──“車の履歴をデジタルで残す”必然性が同時に立ち上がっています。しかも店舗が増えるほど証明が溜まり、AIも不正検知も賢くなり、上流の参照価値が上がって新しい店舗を呼ぶ。放っておいても濃くなる構造です。">
+    <div class="eyebrow">なぜ今・なぜ広がるか</div>
+    <div class="grid g3">
+      <div class="card"><h3>SDV 化</h3><p>ソフトウェア定義車両。整備履歴のデジタル化が前提に。</p></div>
+      <div class="card"><h3>損保の不正請求対策</h3><p>AI偽造時代に、検証可能な施工証拠の需要が急増。</p></div>
+      <div class="card"><h3>中古車流通の透明化</h3><p>履歴の裏付けが価値に直結する潮流。</p></div>
+    </div>
+    <div class="flow" style="margin-top:26px; gap:12px">
+      <span class="chip">店舗↑</span><span class="arrow">→</span>
+      <span class="chip">証明が溜まる</span><span class="arrow">→</span>
+      <span class="chip">AI・不正検知↑</span><span class="arrow">→</span>
+      <span class="chip">上流の参照価値↑</span><span class="arrow">↺</span>
+      <span class="chip">新店舗を呼ぶ</span>
+    </div>
+    <div class="footer"><span>Why Now — 10年に一度 / 放っても濃くなる構造</span><span class="time">4:00</span></div>
+  </section>
+
+  <!-- 9 もう動いている（トラクション） -->
+  <section class="slide" data-time="4:20–4:40" data-note="これは構想ではありません。482のAPI、239のDBマイグレーション、2,100件超のテストで、すでに本番稼働。5つのポータルとモバイルアプリも公開済み。私の店を含む実店舗で毎日使われている。今は損保ジャパンをライトハウス顧客の標的に、保険会社の本番接続を狙うフェーズです。">
+    <div class="eyebrow">トラクション</div>
+    <h2>構想ではなく、<span class="hl">すでに本番で動いている。</span></h2>
+    <div class="grid g4" style="margin-top:24px">
+      <div class="card"><div class="num">482<span class="u">API</span></div></div>
+      <div class="card"><div class="num">239<span class="u">migration</span></div></div>
+      <div class="card"><div class="num">2,100<span class="u">+ test</span></div></div>
+      <div class="card"><div class="num">5<span class="u">ポータル</span></div></div>
+    </div>
+    <ul class="clean" style="margin-top:20px">
+      <li>Admin / Agent / Insurer / Manufacturer / Customer + モバイル（iOS / Android）公開済み</li>
+      <li>私の店を含む実店舗で毎日稼働（<b>導入 ＿＿ 店 / 証明書 ＿＿ 件 / MRR ¥＿＿万</b> ※登壇前に実数）</li>
+    </ul>
+    <div class="row" style="margin-top:18px"><span class="pill gold">ライトハウス標的：損保ジャパン（保険会社 本番接続フェーズ）</span></div>
+    <div class="footer"><span>Traction　※店舗数/証明書/MRR は実数で更新</span><span class="time">4:20</span></div>
+  </section>
+
+  <!-- 10 事業性（市場＋3階建てARR・投資家向けに温存 / 調達額は無し） -->
+  <section class="slide" data-time="4:40–4:55" data-note="事業としても大きい。市場は国内の整備・コーティング・PPF・板金で5.5兆円、施工店は数万社、ほぼ全店が紙とExcel。収益は3階建て──店舗サブスクを土台に、保険会社課金、流通・OEM課金を積みます。店舗SaaS単独の天井を、上流で越える設計です。">
+    <div class="eyebrow">事業としての大きさ</div>
+    <div class="grid g2" style="align-items:center; margin-top:8px">
+      <div>
+        <div class="big">5.5<span style="font-size:.4em">兆円</span></div>
+        <div class="sub">国内 整備・コーティング・PPF・板金（TAM）／ 施工店 数万社・ほぼ全店が紙+Excel</div>
+        <ul class="clean" style="margin-top:18px">
+          <li><b>1F 店舗サブスク</b> ¥9,800〜49,800/月 ＝ 土台</li>
+          <li><b>2F 保険会社課金</b> 高単価（不正検知・案件連携）</li>
+          <li><b>3F 流通 / OEM</b> 中古車査定・車両パスポート従量</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="tag">上流で天井を越える</div>
+        <div class="num" style="margin-top:10px">3 階建て<span class="u">ARR</span></div>
+        <div class="row" style="margin-top:14px; gap:8px">
+          <span class="pill">店舗</span><span class="pill">保険</span><span class="pill gold">流通 / OEM</span>
+        </div>
+        <p style="margin-top:12px">店舗SaaS単独の天井を、上流の保険・流通課金で越える。</p>
+      </div>
+    </div>
+    <div class="footer"><span>Business — 市場 × 3階建てモデル</span><span class="time">4:40</span></div>
+  </section>
+
+  <!-- 11 締め＝非数字CTA -->
+  <section class="slide" data-time="4:55–5:00" data-note="プロダクトはもうあります。普段の仕事から、無くさない・改ざんできない証明が積み上がる世界を、狭く深く作っていきます。資金でも、保険・OEMのPoCでも、加盟施工店の紹介でも──この“車の履歴レイヤ”を一緒に作りたい方、ぜひ声をかけてください。入力はAIが消す。証明書は改ざんできない。">
+    <div class="logo"><div class="mark">L</div><div class="name">Ledra</div></div>
+    <h1 style="margin-top:26px; font-size:clamp(28px,4.6vw,66px)">入力は AI が消す。<br><span style="color:var(--accent2)">証明書は改ざんできない。</span></h1>
+    <p class="lead">普段の仕事から、無くさない・改ざんできない証明が積み上がる。<br>この "車の履歴レイヤ" を、狭く深く一緒に作りませんか。</p>
+    <div class="row" style="margin-top:26px; gap:10px">
+      <span class="pill good">出資検討</span>
+      <span class="pill good">保険 / OEM の PoC</span>
+      <span class="pill good">加盟施工店の紹介</span>
+      <span class="pill good">採用</span>
+      <span style="color:var(--muted); font-size:14px">— いずれも歓迎です</span>
+    </div>
+    <div class="row" style="margin-top:22px; gap:10px">
+      <span class="pill">株式会社HOLY ／ 堀越 友輔</span>
+      <span class="pill">info@holy-auto.com</span>
+      <span class="pill">https://x.com/detailing_holy</span>
+    </div>
+    <div class="footer"><span>The Ask — 一緒に作りたい仲間へ（数字は面談で）</span><span class="time">5:00</span></div>
+  </section>
+
+  <!-- 12 予備：ライブデモ / バックアップ -->
+  <section class="slide" data-time="質疑 / 予備" data-note="予備スライド。ライブデモ用：公開検証 /c/[public_id] のQRをその場でスキャンして真正性グレードとon-chainアンカーを見せる。AI自動化設定の 3-way 切替 UI、車検証QRスキャン→車両自動入力の一連も実物で。投資家質疑では、ユニットエコノミクス・海外ベンチ（米保険詐欺$308.6B等は“参考”と前置き）・ARR内訳・調達額の目線は md（数字カンペ）を参照して口頭で。">
+    <div class="eyebrow">予備 — ライブデモ / 質疑バックアップ</div>
+    <h2>動く現物で、<span class="gold">その場で検証。</span></h2>
+    <div class="grid g3" style="margin-top:24px">
+      <div class="card"><div class="tag">Live Demo 1</div><h3>公開検証 /c/[public_id]</h3><p>QR → ブラウザで真正性・on-chain アンカーを表示</p></div>
+      <div class="card"><div class="tag">Live Demo 2</div><h3>AI 自動化設定</h3><p>auto / suggest / manual の 3-way 切替 UI</p></div>
+      <div class="card"><div class="tag">Live Demo 3</div><h3>車検証 QR スキャン</h3><p>QR → 車両情報の自動入力の一連</p></div>
+    </div>
+    <div class="row" style="margin-top:22px"><span class="pill">投資家質疑用：ユニットエコ・海外ベンチ（"参考"前置き）・調達目線は md 参照で口頭</span></div>
+    <div class="footer"><span>Backup — Live Demo / Q&A</span><span class="time">質疑</span></div>
+  </section>
+
+</div>
+
+<div class="notes" id="notes"><div class="t" id="notesTime">登壇者ノート</div><p id="notesBody"></p></div>
+
+<script>
+  const slides=[...document.querySelectorAll('.slide')];
+  let i=0;
+  const prog=document.getElementById('prog');
+  const counter=document.getElementById('counter');
+  const notes=document.getElementById('notes');
+  const notesBody=document.getElementById('notesBody');
+  const notesTime=document.getElementById('notesTime');
+  function render(){
+    slides.forEach((s,k)=>s.classList.toggle('active',k===i));
+    prog.style.width=((i+1)/slides.length*100)+'%';
+    counter.textContent=(i+1)+' / '+slides.length;
+    const s=slides[i];
+    notesTime.textContent='登壇者ノート　'+(s.dataset.time||'');
+    notesBody.textContent=s.dataset.note||'';
+  }
+  function go(d){i=Math.max(0,Math.min(slides.length-1,i+d)); render();}
+  // ---- 5:00 countdown ----
+  const timerEl=document.getElementById('timer');
+  let remain=300, tid=null;
+  function fmt(s){const m=Math.floor(Math.abs(s)/60),x=Math.abs(s)%60;return (s<0?'-':'')+m+':'+String(x).padStart(2,'0');}
+  function tick(){remain--; timerEl.textContent=fmt(remain); timerEl.classList.toggle('over',remain<0);}
+  function toggleTimer(){ if(tid){clearInterval(tid);tid=null;} else {tid=setInterval(tick,1000);} }
+  function resetTimer(){clearInterval(tid);tid=null;remain=300;timerEl.textContent='5:00';timerEl.classList.remove('over');}
+  document.addEventListener('keydown',e=>{
+    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){e.preventDefault();go(1);}
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();go(-1);}
+    else if(e.key==='Home'){i=0;render();}
+    else if(e.key==='End'){i=slides.length-1;render();}
+    else if(e.key.toLowerCase()==='n'||e.key.toLowerCase()==='s'){notes.classList.toggle('show');}
+    else if(e.key.toLowerCase()==='t'){toggleTimer();}
+    else if(e.key.toLowerCase()==='r'){resetTimer();}
+    else if(e.key.toLowerCase()==='f'){if(!document.fullscreenElement)document.documentElement.requestFullscreen();else document.exitFullscreen();}
+  });
+  document.addEventListener('click',e=>{ if(e.clientX < window.innerWidth*0.25) go(-1); else go(1); });
+  render();
+</script>
+</body>
+</html>
