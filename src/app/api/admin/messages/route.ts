@@ -25,6 +25,7 @@ type Row = {
   id: string;
   customer_id: string | null;
   line_user_id: string | null;
+  email_from: string | null;
   channel: string;
   direction: "inbound" | "outbound";
   body: string;
@@ -32,18 +33,28 @@ type Row = {
   delivered_at: string | null;
   failed_at: string | null;
   created_at: string;
+  ai_extracted: { intent?: string; handled_at?: string | null } | null;
 };
 
 interface ThreadAccum {
   thread_key: string;
   customer_id: string | null;
   line_user_id: string | null;
+  email_from: string | null;
   channel: string;
   last_body: string;
   last_direction: "inbound" | "outbound";
   last_created_at: string;
   unread_count: number;
   message_count: number;
+  /** 予約系 intent の AI 抽出候補 (ai_extracted) が付いた未確認メッセージ数。 */
+  candidate_count: number;
+}
+
+/** ai_extracted が予約系 (予約候補) かつ未対応かどうか。 */
+function isReservationCandidate(ai: { intent?: string; handled_at?: string | null } | null): boolean {
+  if (!ai || ai.handled_at) return false; // 対応済みはバッジに数えない
+  return ai.intent === "new_reservation" || ai.intent === "change_reservation";
 }
 
 function isMissingColumnError(err: { message?: string; code?: string } | null | undefined): boolean {
@@ -64,37 +75,63 @@ export async function GET(req: NextRequest) {
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
-    const cols =
-      "id, customer_id, line_user_id, channel, direction, body, read_at, delivered_at, failed_at, created_at";
-    // read_at 列が未作成 (マイグレーション未適用) なら外して取得する。
-    let rows: Row[] = [];
-    {
-      const sel = await admin
+    const BASE_COLS = "id, customer_id, line_user_id, channel, direction, body, delivered_at, failed_at, created_at";
+    const colsFull = `${BASE_COLS}, email_from, read_at, ai_extracted`;
+    const colsNoAi = `${BASE_COLS}, email_from, read_at`; // ai_extracted だけ未作成なら read_at/email_from は残す
+
+    const scan = (cols: string) =>
+      admin
         .from("customer_messages")
         .select(cols)
         .eq("tenant_id", caller.tenantId)
         .order("created_at", { ascending: false })
         .limit(MAX_SCAN);
-      if (sel.error && isMissingColumnError(sel.error)) {
-        const retry = await admin
-          .from("customer_messages")
-          .select("id, customer_id, line_user_id, channel, direction, body, delivered_at, failed_at, created_at")
-          .eq("tenant_id", caller.tenantId)
-          .order("created_at", { ascending: false })
-          .limit(MAX_SCAN);
-        if (retry.error) return apiInternalError(retry.error, "messages list (fallback)");
-        rows = ((retry.data ?? []) as Omit<Row, "read_at">[]).map((r) => ({ ...r, read_at: null }));
-      } else if (sel.error) {
-        return apiInternalError(sel.error, "messages list");
+
+    // read_at / ai_extracted 列が未作成 (マイグレーション未適用) でも段階的に縮退する。
+    // 実在する列はできるだけ残すため、欠けている列だけを外して再取得する。
+    let rows: Row[] = [];
+    {
+      const sel = await scan(colsFull);
+      if (!sel.error) {
+        rows = (sel.data ?? []) as unknown as Row[];
+      } else if (isMissingColumnError(sel.error)) {
+        // まず ai_extracted だけ外す (read_at は維持して未読判定を壊さない)。
+        const noAi = await scan(colsNoAi);
+        if (!noAi.error) {
+          rows = ((noAi.data ?? []) as unknown as Omit<Row, "ai_extracted">[]).map((r) => ({
+            ...r,
+            ai_extracted: null,
+          }));
+        } else if (isMissingColumnError(noAi.error)) {
+          // read_at / email_from も無い更に古いスキーマ: まとめて外す。
+          const bare = await scan(BASE_COLS);
+          if (bare.error) return apiInternalError(bare.error, "messages list (fallback)");
+          rows = ((bare.data ?? []) as unknown as Omit<Row, "read_at" | "ai_extracted" | "email_from">[]).map((r) => ({
+            ...r,
+            email_from: null,
+            read_at: null,
+            ai_extracted: null,
+          }));
+        } else {
+          return apiInternalError(noAi.error, "messages list (fallback)");
+        }
       } else {
-        rows = (sel.data ?? []) as Row[];
+        return apiInternalError(sel.error, "messages list");
       }
     }
 
     // スレッドへ畳む (rows は created_at 降順なので、各スレッド最初に見たものが最新)。
     const threads = new Map<string, ThreadAccum>();
     for (const r of rows) {
-      const key = r.customer_id ? `c:${r.customer_id}` : r.line_user_id ? `l:${r.line_user_id}` : null;
+      // スレッドキー: customer_id > line_user_id > email_from。メール未紐付け行も
+      // email_from で束ねて受信箱に表示する (どれも無い行のみ除外)。
+      const key = r.customer_id
+        ? `c:${r.customer_id}`
+        : r.line_user_id
+          ? `l:${r.line_user_id}`
+          : r.email_from
+            ? `e:${r.email_from}`
+            : null;
       if (!key) continue;
       let t = threads.get(key);
       if (!t) {
@@ -102,12 +139,14 @@ export async function GET(req: NextRequest) {
           thread_key: key,
           customer_id: r.customer_id,
           line_user_id: r.line_user_id,
+          email_from: r.email_from,
           channel: r.channel,
           last_body: r.body,
           last_direction: r.direction,
           last_created_at: r.created_at,
           unread_count: 0,
           message_count: 0,
+          candidate_count: 0,
         };
         threads.set(key, t);
       }
@@ -115,7 +154,9 @@ export async function GET(req: NextRequest) {
       // customer_id が後から判明した行で thread のラベルを補完する。
       if (!t.customer_id && r.customer_id) t.customer_id = r.customer_id;
       if (!t.line_user_id && r.line_user_id) t.line_user_id = r.line_user_id;
+      if (!t.email_from && r.email_from) t.email_from = r.email_from;
       if (r.direction === "inbound" && !r.read_at) t.unread_count += 1;
+      if (r.direction === "inbound" && isReservationCandidate(r.ai_extracted)) t.candidate_count += 1;
     }
 
     let list = Array.from(threads.values());

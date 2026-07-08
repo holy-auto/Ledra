@@ -130,10 +130,18 @@ function isAnnotation(value: unknown): value is Annotation {
         typeof a.x === "number" &&
         typeof a.y === "number" &&
         typeof a.text === "string" &&
+        a.text.length <= 500 &&
         typeof a.fontSize === "number"
       );
     case "path":
-      return Array.isArray(a.points) && a.points.length >= 4 && a.points.every((n) => typeof n === "number");
+      // points は [x0,y0,x1,y1,...] のフラット配列。DoS 防止に上限を設ける
+      // (10000 要素 = 5000 点で、手描き線としては十分)。
+      return (
+        Array.isArray(a.points) &&
+        a.points.length >= 4 &&
+        a.points.length <= 10000 &&
+        a.points.every((n) => typeof n === "number")
+      );
     default:
       return false;
   }

@@ -12,7 +12,6 @@ import { useFeaturePrefs } from "@/lib/features/useFeaturePrefs";
 import StoreSelector from "@/components/ui/StoreSelector";
 import ThemeToggle from "@/lib/theme/ThemeToggle";
 import SidebarShell from "@/components/ui/SidebarShell";
-import NotificationBell from "@/components/ui/NotificationBell";
 import ContextSwitcher from "@/components/ui/ContextSwitcher";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
 
@@ -75,11 +74,16 @@ function useSidebarBadges(intervalMs = 60_000): BadgeCounts {
 /* ------------------------------------------------------------------ */
 /*  Badge component                                                    */
 /* ------------------------------------------------------------------ */
-function NavBadge({ count }: { count: number }) {
+function NavBadge({ count, gold = false }: { count: number; gold?: boolean }) {
   if (count <= 0) return null;
   const label = count > 99 ? "99+" : String(count);
+  // 通常はアラート性を示す赤。ゴールド項目（証明書など上位機能）は格上げのゴールド。
   return (
-    <span className="ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+    <span
+      className={`ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] leading-none font-bold text-white ${
+        gold ? "bg-accent-gold" : "bg-red-500"
+      }`}
+    >
       {label}
     </span>
   );
@@ -108,6 +112,11 @@ type NavItem = {
    * 何も見えない。本社向け画面 (横断ビュー・組織管理) のみ true にする。
    */
   orgUserVisible?: boolean;
+  /**
+   * L字シェルのゴールドアクセント項目 (証明書など上位機能)。アクティブ時の
+   * アイコン/ドットをブルーではなくゴールドで表現し、格を一段上げて見せる。
+   */
+  gold?: boolean;
 };
 
 type NavGroup = {
@@ -239,6 +248,34 @@ const NAV_GROUPS: NavGroup[] = [
         ),
       },
       {
+        href: "/admin/next-touch",
+        label: "次の接触",
+        requiredPermission: "menu_items:manage",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z"
+            />
+          </svg>
+        ),
+      },
+      {
+        href: "/admin/notification-logs",
+        label: "通知配信状況",
+        requiredPermission: "menu_items:manage",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0"
+            />
+          </svg>
+        ),
+      },
+      {
         href: "/admin/quick-quote",
         label: "概算見積",
         requiredPermission: "reservations:view",
@@ -270,6 +307,7 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/certificates",
         label: "証明書",
         requiredPermission: "certificates:view",
+        gold: true,
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path
@@ -441,6 +479,21 @@ const NAV_GROUPS: NavGroup[] = [
               strokeLinejoin="round"
               d="m7.5 4.27 9 5.15M21 8.25v7.5a.75.75 0 0 1-.38.65l-7.5 4.286a.75.75 0 0 1-.74 0l-7.5-4.286A.75.75 0 0 1 3 15.75v-7.5a.75.75 0 0 1 .38-.65l7.5-4.286a.75.75 0 0 1 .74 0l7.5 4.286a.75.75 0 0 1 .38.65Zm0 0L12 12m0 0L3 8.25M12 12v9"
             />
+          </svg>
+        ),
+      },
+      {
+        href: "/admin/parts-install/new",
+        label: "装着記録",
+        requiredPermission: "reservations:edit",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z"
+            />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Z" />
           </svg>
         ),
       },
@@ -1242,6 +1295,31 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+/**
+ * href → ラベル の逆引き表。NAV_GROUPS を単一の出典とし、グローバルバーの
+ * パンくずなどが同じラベルを共有できるようにする（ラベルの二重管理を避ける）。
+ */
+export const ADMIN_NAV_LABELS: Record<string, string> = Object.fromEntries(
+  NAV_GROUPS.flatMap((group) => group.items.map((item) => [item.href, item.label] as const)),
+);
+
+/**
+ * パスに対応するセクションラベルを、最長 href 前方一致で解決する。
+ * 例: /admin/certificates/123 → "証明書"。未登録の深いルートは undefined。
+ */
+export function adminSectionLabel(pathname: string): string | undefined {
+  let best: string | undefined;
+  let bestLen = -1;
+  for (const [href, label] of Object.entries(ADMIN_NAV_LABELS)) {
+    if (href === "/admin") continue; // ルートは別途「管理」として扱う
+    if ((pathname === href || pathname.startsWith(href + "/")) && href.length > bestLen) {
+      best = label;
+      bestLen = href.length;
+    }
+  }
+  return best;
+}
+
 /** Detect mobile viewport (matches lg breakpoint) */
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(false);
@@ -1328,7 +1406,9 @@ function CollapsibleGroup({
 /* ------------------------------------------------------------------ */
 export default function Sidebar() {
   const pathname = usePathname();
-  const { role, can, loading, isPlatformAdmin, isOrgUser } = useCurrentRole();
+  const { data, role, can, loading, isPlatformAdmin, isOrgUser } = useCurrentRole();
+  // ワークスペースカードのアバター用イニシャル（テナント名の先頭最大2文字）。
+  const workspaceInitials = (data?.tenant_name || "").replace(/\s+/g, "").slice(0, 2).toUpperCase();
   const { tenantDisabled, userVisible, loading: prefsLoading } = useFeaturePrefs();
   const tenantDisabledSet = useMemo(() => new Set(tenantDisabled), [tenantDisabled]);
   const userVisibleSet = useMemo(() => new Set(userVisible), [userVisible]);
@@ -1413,17 +1493,30 @@ export default function Sidebar() {
 
     const badgeCount = item.badgeKey ? (badges[item.badgeKey] ?? 0) : 0;
 
+    // L字シェル: アクティブ項目は面 (サイドバー) から一段沈めたピルで表す
+    // (bg-base + インセットリング)。アクセントはアイコンと右端ドットに集約し、
+    // 証明書などゴールド項目のみ格上げしてゴールドで見せる。
+    const accentText = item.gold ? "text-accent-gold" : "text-accent";
+    const dotBg = item.gold ? "bg-accent-gold" : "bg-accent";
+
     return (
       <li key={item.href}>
         <Link
           href={item.href}
-          className={`flex items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-2 text-[13px] font-medium transition-all duration-150 ${
-            isActive ? "bg-accent-dim text-accent" : "text-secondary hover:bg-surface-hover hover:text-primary"
+          aria-current={isActive ? "page" : undefined}
+          className={`flex items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-2 text-[13px] transition-all duration-150 ${
+            isActive
+              ? "bg-base font-medium text-primary shadow-[inset_0_0_0_1px_var(--border-default)]"
+              : "font-normal text-secondary hover:bg-surface-hover hover:text-primary"
           }`}
         >
-          <span className={isActive ? "text-accent" : "text-muted"}>{item.icon}</span>
-          {item.label}
-          {badgeCount > 0 && <NavBadge count={badgeCount} />}
+          <span className={isActive ? accentText : "text-muted"}>{item.icon}</span>
+          <span className="flex-1 truncate">{item.label}</span>
+          {badgeCount > 0 ? (
+            <NavBadge count={badgeCount} gold={item.gold} />
+          ) : isActive ? (
+            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotBg}`} />
+          ) : null}
         </Link>
       </li>
     );
@@ -1438,9 +1531,21 @@ export default function Sidebar() {
         <div className="ml-auto flex items-center gap-2">
           {/* 施工店・代理店 両方の権限を持つ場合のみ表示されるモード切替 */}
           <ContextSwitcher />
-          <NotificationBell />
         </div>
       </div>
+
+      {/* ワークスペースカード（現在のテナント / 役割）— L字シェル意匠 */}
+      {data?.tenant_name && (
+        <div className="mx-3 mt-3 flex items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-2 shadow-[inset_0_0_0_1px_var(--border-default)]">
+          <span className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-primary font-mono text-[11px] font-semibold text-inverse">
+            {workspaceInitials}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[12.5px] font-semibold text-primary">{data.tenant_name}</span>
+            {role && <span className="block truncate text-[10.5px] text-muted">{ROLE_LABELS[role]}</span>}
+          </span>
+        </div>
+      )}
 
       {/* View Mode Toggle (店頭 / 管理) */}
       <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-4 py-2">
@@ -1485,9 +1590,10 @@ export default function Sidebar() {
       <div className="border-t border-border-subtle px-3 py-3">
         <Link
           href="/admin/support"
+          aria-current={pathname === "/admin/support" ? "page" : undefined}
           className={`flex items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-2 text-[13px] font-medium transition-all duration-150 mb-1 ${
             pathname === "/admin/support"
-              ? "bg-accent-dim text-accent"
+              ? "bg-base text-primary shadow-[inset_0_0_0_1px_var(--border-default)]"
               : "text-muted hover:bg-surface-hover hover:text-primary"
           }`}
         >
@@ -1502,9 +1608,10 @@ export default function Sidebar() {
         </Link>
         <Link
           href="/admin/settings/features"
+          aria-current={pathname === "/admin/settings/features" ? "page" : undefined}
           className={`flex items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-2 text-[13px] font-medium transition-all duration-150 mb-1 ${
             pathname === "/admin/settings/features"
-              ? "bg-accent-dim text-accent"
+              ? "bg-base text-primary shadow-[inset_0_0_0_1px_var(--border-default)]"
               : "text-muted hover:bg-surface-hover hover:text-primary"
           }`}
         >
@@ -1520,59 +1627,72 @@ export default function Sidebar() {
         <div className="mb-2 px-2.5">
           <ThemeToggle />
         </div>
-        {role && (
-          <div className="mb-2 flex items-center gap-2 px-2.5">
-            <span className="inline-flex items-center rounded-md bg-accent-dim px-2 py-0.5 text-[11px] font-medium text-accent">
-              {ROLE_LABELS[role]}
-            </span>
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={async () => {
-            try {
-              const { createClient } = await import("@/lib/supabase/client");
-              const supabase = createClient();
-              await supabase.auth.signOut();
+        {/* ユーザーカード（アバター + メール + 役割 + 設定 / ログアウト）— L字シェル意匠 */}
+        <div className="mt-1 flex items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-2 shadow-[inset_0_0_0_1px_var(--border-default)]">
+          <span className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-accent text-[12px] font-semibold text-inverse">
+            {(data?.email || "?").trim().charAt(0).toUpperCase() || "?"}
+          </span>
+          <span className="min-w-0 flex-1 leading-tight">
+            <span className="block truncate text-[12px] font-medium text-primary">{data?.email ?? "—"}</span>
+            {role && <span className="block truncate text-[10.5px] text-muted">{ROLE_LABELS[role]}</span>}
+          </span>
+          <Link
+            href="/admin/settings"
+            aria-label="設定"
+            className="inline-flex flex-shrink-0 rounded-[var(--radius-sm)] p-1 text-muted transition-colors hover:bg-surface-hover hover:text-primary"
+          >
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </Link>
+          <button
+            type="button"
+            aria-label="ログアウト"
+            onClick={async () => {
               try {
-                sessionStorage.clear();
+                const { createClient } = await import("@/lib/supabase/client");
+                const supabase = createClient();
+                await supabase.auth.signOut();
+                try {
+                  sessionStorage.clear();
+                } catch {
+                  /* ignore */
+                }
+                // 同一ブラウザでユーザ切替する運用に備え、SW のオフライン読み取り
+                // キャッシュ (HTML / API) を破棄する。失敗してもログアウト自体は続行。
+                try {
+                  const { clearOfflineReadCache } = await import("@/lib/offline-cache/client");
+                  await clearOfflineReadCache();
+                } catch {
+                  /* ignore */
+                }
+                // 未送信の Outbox (IndexedDB) もログアウト時に必ず破棄する。
+                // 残しておくと A → ログアウト → B が同一ブラウザに入り直したとき
+                // A の queued ジョブが B のセッション cookie で flush され、
+                // 別テナントに書き込みが入る (クロステナント情報リーク) 危険がある。
+                try {
+                  const { clearOutbox } = await import("@/lib/outbox/queue");
+                  await clearOutbox();
+                } catch {
+                  /* ignore */
+                }
               } catch {
                 /* ignore */
               }
-              // 同一ブラウザでユーザ切替する運用に備え、SW のオフライン読み取り
-              // キャッシュ (HTML / API) を破棄する。失敗してもログアウト自体は続行。
-              try {
-                const { clearOfflineReadCache } = await import("@/lib/offline-cache/client");
-                await clearOfflineReadCache();
-              } catch {
-                /* ignore */
-              }
-              // 未送信の Outbox (IndexedDB) もログアウト時に必ず破棄する。
-              // 残しておくと A → ログアウト → B が同一ブラウザに入り直したとき
-              // A の queued ジョブが B のセッション cookie で flush され、
-              // 別テナントに書き込みが入る (クロステナント情報リーク) 危険がある。
-              try {
-                const { clearOutbox } = await import("@/lib/outbox/queue");
-                await clearOutbox();
-              } catch {
-                /* ignore */
-              }
-            } catch {
-              /* ignore */
-            }
-            window.location.replace("/login");
-          }}
-          className="flex w-full items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-2 text-[13px] font-medium text-muted transition-all duration-150 hover:bg-surface-hover hover:text-primary"
-        >
-          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9"
-            />
-          </svg>
-          ログアウト
-        </button>
+              window.location.replace("/login");
+            }}
+            className="inline-flex flex-shrink-0 rounded-[var(--radius-sm)] p-1 text-muted transition-colors hover:bg-surface-hover hover:text-primary"
+          >
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
     </SidebarShell>
   );

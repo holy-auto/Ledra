@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/swr";
-import MessageAiExtractButton from "./MessageAiExtractButton";
+import MessageAiExtractButton, { ExtractedCandidateCard, type ExtractedResult } from "./MessageAiExtractButton";
+import LinkCodeButton from "./LinkCodeButton";
 import { parseJsonSafe } from "@/lib/api/safeJson";
+import MessageBubbleBody from "@/app/admin/messages/MessageBubbleBody";
 
 /**
  * 顧客 360° ビューの「メッセージ」タブ。
@@ -25,10 +27,14 @@ type MessageRow = {
   sent_by: string | null;
   delivered_at: string | null;
   failed_at: string | null;
+  attachment_url?: string | null;
+  attachment_content_type?: string | null;
   failure_reason: string | null;
   line_message_id: string | null;
   line_timestamp_ms: number | null;
   created_at: string;
+  /** 紐づけ時の履歴一括取り込み等で保存された予約候補スナップショット (未抽出は null)。 */
+  ai_extracted: ExtractedResult | null;
 };
 
 type ThreadResponse = {
@@ -52,7 +58,13 @@ function formatTime(iso: string): string {
   }
 }
 
-export default function CustomerMessagesTab({ customerId }: { customerId: string }) {
+export default function CustomerMessagesTab({
+  customerId,
+  canIssueLinkCode = false,
+}: {
+  customerId: string;
+  canIssueLinkCode?: boolean;
+}) {
   const swrKey = `/api/admin/customers/${customerId}/messages`;
   const { data, error, isLoading, mutate } = useSWR<ThreadResponse>(swrKey, fetcher, {
     revalidateOnFocus: true,
@@ -62,7 +74,24 @@ export default function CustomerMessagesTab({ customerId }: { customerId: string
   const [draft, setDraft] = useState("");
   const [sendBusy, setSendBusy] = useState(false);
   const [sendMsg, setSendMsg] = useState<string | null>(null);
+  const [dismissingId, setDismissingId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDismissCandidate = useCallback(
+    async (messageId: string) => {
+      setDismissingId(messageId);
+      try {
+        const res = await fetch(`/api/admin/customer-messages/${messageId}/candidate-dismiss`, { method: "POST" });
+        if (res.ok) await mutate();
+      } catch {
+        /* fail-soft: 失敗時は次回再表示される */
+      } finally {
+        setDismissingId(null);
+      }
+    },
+    [mutate],
+  );
 
   const messages = useMemo(() => data?.messages ?? [], [data]);
   const canSend = data?.can_send === true;
@@ -99,6 +128,33 @@ export default function CustomerMessagesTab({ customerId }: { customerId: string
       setSendBusy(false);
     }
   }, [canSend, draft, sendBusy, swrKey, mutate]);
+
+  const handleSendImage = useCallback(
+    async (file: File) => {
+      if (!canSend || sendBusy) return;
+      setSendBusy(true);
+      setSendMsg(null);
+      try {
+        const form = new FormData();
+        form.append("image", file);
+        const res = await fetch(swrKey, { method: "POST", body: form });
+        const j = (await parseJsonSafe(res)) as { ok?: boolean; delivered?: boolean; message?: string } | null;
+        if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
+        if (j?.delivered === false) {
+          setSendMsg(
+            "送信は試みましたが LINE 配信に失敗しました。履歴には残しています (LINE 設定を確認してください)。",
+          );
+        }
+        await mutate();
+      } catch (e) {
+        setSendMsg("画像の送信に失敗しました: " + (e instanceof Error ? e.message : String(e)));
+      } finally {
+        setSendBusy(false);
+        if (imageInputRef.current) imageInputRef.current.value = "";
+      }
+    },
+    [canSend, sendBusy, swrKey, mutate],
+  );
 
   return (
     <section className="glass-card overflow-hidden">
@@ -142,7 +198,11 @@ export default function CustomerMessagesTab({ customerId }: { customerId: string
                     : "bg-surface-hover text-primary rounded-tl-sm border border-border-subtle"
                 }`}
               >
-                <div>{m.body}</div>
+                <MessageBubbleBody
+                  body={m.body}
+                  attachmentUrl={m.attachment_url}
+                  attachmentContentType={m.attachment_content_type}
+                />
                 <div
                   className={`mt-1 text-[10px] ${isOutbound ? "text-white/70" : "text-muted"} flex items-center gap-1.5`}
                 >
@@ -161,7 +221,17 @@ export default function CustomerMessagesTab({ customerId }: { customerId: string
                     </span>
                   )}
                 </div>
-                {!isOutbound && <MessageAiExtractButton messageId={m.id} />}
+                {!isOutbound &&
+                  (m.ai_extracted ? (
+                    <ExtractedCandidateCard
+                      result={m.ai_extracted}
+                      customerId={customerId}
+                      onDismiss={() => handleDismissCandidate(m.id)}
+                      dismissing={dismissingId === m.id}
+                    />
+                  ) : (
+                    <MessageAiExtractButton messageId={m.id} customerId={customerId} />
+                  ))}
               </div>
             </div>
           );
@@ -174,6 +244,7 @@ export default function CustomerMessagesTab({ customerId }: { customerId: string
             この顧客にはまだ LINE ユーザが紐付いていません (`customers.line_user_id` が空)。 送信するには、顧客が LINE
             公式アカウントを友だち追加して 1 度メッセージを送るか、 予約フォームの LIFF
             経由で紐付けてもらう必要があります。
+            {canIssueLinkCode && <LinkCodeButton customerId={customerId} />}
           </div>
         )}
         <div className="flex gap-2">
@@ -191,6 +262,25 @@ export default function CustomerMessagesTab({ customerId }: { customerId: string
               }
             }}
           />
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/jpeg,image/png"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void handleSendImage(f);
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => imageInputRef.current?.click()}
+            disabled={!canSend || sendBusy}
+            className="btn-secondary text-sm self-end px-3 py-2 disabled:opacity-50"
+            title="JPEG / PNG (10MBまで) をLINEで送信"
+          >
+            📷 画像
+          </button>
           <button
             type="button"
             onClick={handleSend}

@@ -1,29 +1,48 @@
+"use client";
+
 import type { ReactNode } from "react";
+import { usePublishPageBar } from "@/components/ui/PageBar";
+
+export interface PageHeaderTab {
+  /** 一意キー。activeTab と照合する。 */
+  key: string;
+  label: string;
+  /** 件数などのバッジ（任意）。 */
+  badge?: number;
+  /** ルート型タブはこれを渡すと <Link> になる。省略時は onTabSelect のボタン。 */
+  href?: string;
+}
 
 interface PageHeaderProps {
-  tag: string;
+  /** アイブロウ相当。現在はグローバルバーのパンくずと重複するため非表示（互換のため受け取る）。 */
+  tag?: string;
   title: string;
-  /**
-   * タイトル右に密着させる補助情報（StatusBadge・件数・所属・納期など）。任意。
-   * title + meta は `inline-flex { gap: 10px }` のクラスタにまとめる（負マージン禁止）。
-   */
+  /** タイトル右に密着させる補助情報（StatusBadge・件数・所属・納期など）。任意。 */
   meta?: ReactNode;
   description?: string;
   actions?: ReactNode;
+  /** L字シェルのページバーの下線タブ。省略時はタブ無し。 */
+  tabs?: PageHeaderTab[];
+  /** 現在アクティブなタブの key。 */
+  activeTab?: string;
+  /** ボタン型タブの選択ハンドラ（href が無いタブで使用）。 */
+  onTabSelect?: (key: string) => void;
 }
 
-export default function PageHeader({ tag, title, meta, description, actions }: PageHeaderProps) {
-  return (
-    <div className="flex flex-wrap items-end justify-between gap-4 pb-2">
-      <div className="space-y-1">
-        <span className="text-[11px] font-medium tracking-[0.12em] text-secondary uppercase">{tag}</span>
-        <div className="inline-flex flex-wrap items-center gap-2.5">
-          <h1 className="text-[28px] font-semibold tracking-tight text-primary leading-tight">{title}</h1>
-          {meta != null && <div className="inline-flex items-center gap-2">{meta}</div>}
-        </div>
-        {description && <p className="text-[14px] text-secondary leading-relaxed">{description}</p>}
-      </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
-    </div>
-  );
+/**
+ * L3 ページバーへ内容を publish するだけのコンポーネント（見た目は持たない）。
+ * 実際のバーはレイアウト直下の <AdminPageBar>（PageBar.tsx）が全幅サーフェス帯
+ * として描画する。呼び出し側の API は従来どおり。
+ */
+export default function PageHeader({
+  title,
+  meta,
+  description,
+  actions,
+  tabs,
+  activeTab,
+  onTabSelect,
+}: PageHeaderProps) {
+  usePublishPageBar({ title, meta, description, actions, tabs, activeTab, onTabSelect });
+  return null;
 }

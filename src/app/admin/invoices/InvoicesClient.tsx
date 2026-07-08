@@ -203,6 +203,7 @@ export default function InvoicesClient() {
   // Payment recording
   const [paymentTarget, setPaymentTarget] = useState<string | null>(null);
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [recordingPayment, setRecordingPayment] = useState(false);
 
   // Reference data: customers (one-time fetch)
   const fetchCustomers = useCallback(async () => {
@@ -398,15 +399,18 @@ export default function InvoicesClient() {
 
   // Item management
   const updateItem = (index: number, field: keyof InvoiceItem, value: string | number) => {
-    const newItems = [...formItems];
-    const item = { ...newItems[index] };
-    if (field === "description") item.description = value as string;
-    if (field === "quantity") item.quantity = parseInt(String(value), 10) || 0;
-    if (field === "unit") item.unit = value as string;
-    if (field === "unit_price") item.unit_price = parseInt(String(value), 10) || 0;
-    item.amount = item.quantity * item.unit_price;
-    newItems[index] = item;
-    setFormItems(newItems);
+    // 同一レンダー内で updateItem が連続呼び出しされても取りこぼさないよう関数型更新にする
+    setFormItems((prev) => {
+      const newItems = [...prev];
+      const item = { ...newItems[index] };
+      if (field === "description") item.description = value as string;
+      if (field === "quantity") item.quantity = parseInt(String(value), 10) || 0;
+      if (field === "unit") item.unit = value as string;
+      if (field === "unit_price") item.unit_price = parseInt(String(value), 10) || 0;
+      item.amount = item.quantity * item.unit_price;
+      newItems[index] = item;
+      return newItems;
+    });
   };
 
   const handleMenuItemSelect = (menuItemId: string, itemIndex: number) => {
@@ -541,6 +545,9 @@ export default function InvoicesClient() {
             {showForm ? "閉じる" : "新規作成"}
           </button>
         }
+        tabs={STATUS_OPTIONS.map((o) => ({ key: o.value, label: o.label }))}
+        activeTab={statusFilter}
+        onTabSelect={handleFilterChange}
       />
 
       {loading && <div className="text-sm text-muted">読み込み中…</div>}
@@ -647,26 +654,6 @@ export default function InvoicesClient() {
               </section>
             );
           })()}
-
-          {/* Filter */}
-          <section className="glass-card p-5">
-            <div className="flex gap-3 items-end flex-wrap">
-              <div className="space-y-1">
-                <label className="text-xs text-muted">ステータスで絞り込み</label>
-                <select
-                  className="select-field"
-                  value={statusFilter}
-                  onChange={(e) => handleFilterChange(e.target.value)}
-                >
-                  {STATUS_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </section>
 
           {saveMsg && <div className={`text-sm ${saveMsg.ok ? "text-success" : "text-red-500"}`}>{saveMsg.text}</div>}
 
@@ -1034,7 +1021,10 @@ export default function InvoicesClient() {
                   <button
                     type="button"
                     className="btn-primary px-4 py-2 text-sm"
+                    disabled={recordingPayment}
                     onClick={async () => {
+                      if (recordingPayment) return;
+                      setRecordingPayment(true);
                       try {
                         const res = await fetch("/api/admin/invoices", {
                           method: "PUT",
@@ -1046,10 +1036,12 @@ export default function InvoicesClient() {
                         mutate();
                       } catch (e: any) {
                         alert("入金記録に失敗しました: " + (e?.message ?? String(e)));
+                      } finally {
+                        setRecordingPayment(false);
                       }
                     }}
                   >
-                    入金確定
+                    {recordingPayment ? "処理中…" : "入金確定"}
                   </button>
                 </div>
               </div>

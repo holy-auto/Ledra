@@ -11,6 +11,8 @@
  */
 
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { verifyAnchor } from "@/lib/anchoring/providers/polygon";
+import type { PolygonNetwork } from "@/lib/anchoring/providers/types";
 import { verifyMerklePath, buildMerkleLeaves } from "./merkleTree";
 import type { ZkpClaim, ZkpClaimKey, ZkpVerifyResult } from "./types";
 
@@ -25,7 +27,7 @@ export interface VerifyInput {
 /**
  * 指定クレームを Merkle 証明で検証し、開示可能な値を返す。
  * 検証はオフチェーン（Merkle 数学）で実施し、
- * Polygon への記録確認はアンカー済みフラグで判定する。
+ * Polygon への記録確認はコントラクトのオンチェーン読み取りで判定する。
  */
 export async function verifyZkpClaims(input: VerifyInput): Promise<ZkpVerifyResult> {
   const admin = createServiceRoleAdmin("zkpVerifier — read zkp_commitments for insurer verification");
@@ -75,8 +77,12 @@ export async function verifyZkpClaims(input: VerifyInput): Promise<ZkpVerifyResu
     verifiedClaims[key] = { verified: true, value: claim.value };
   }
 
-  // Polygon 記録確認
-  const isAnchored = !!data.polygon_tx_hash;
+  // Polygon 記録確認: DB 行（tx hash 列）は改ざんされうるため、DB の null チェックではなく
+  // merkle_root がコントラクトに実在するかをオンチェーンで読む。commitment.ts は
+  // anchorToPolygon（単発 anchor）で記録するので、対になる verifyAnchor で照合する。
+  // RPC 不達時は false = 未アンカー扱い（fail-closed）。証明書検証フロー
+  // （cert-verify が verifyBatchAnchor でオンチェーン確認する）と同じ方針。
+  const isAnchored = await verifyAnchor(merkleRoot, (data.polygon_network as PolygonNetwork | null) ?? null);
   if (!isAnchored) allValid = false;
 
   return {

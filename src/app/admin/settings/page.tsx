@@ -8,6 +8,7 @@ import SettingsProgressCard from "./SettingsProgressCard";
 import FollowUpSettings from "./FollowUpSettings";
 import SquareConnectSection from "./SquareConnectSection";
 import LineConnectSection from "./LineConnectSection";
+import EmailInboundSection from "./EmailInboundSection";
 import NexPTGConnectSection from "./NexPTGConnectSection";
 import RestartTourButton from "./RestartTourButton";
 import BillingTimingSection from "./BillingTimingSection";
@@ -34,6 +35,7 @@ type TenantExtended = {
   bank_info: BankInfoShape;
   stripe_connect_account_id: string | null;
   stripe_connect_onboarded: boolean;
+  labor_rate_per_hour: number | null;
 };
 
 const EMPTY_TENANT_EXTENDED: TenantExtended = {
@@ -45,6 +47,7 @@ const EMPTY_TENANT_EXTENDED: TenantExtended = {
   bank_info: null,
   stripe_connect_account_id: null,
   stripe_connect_onboarded: false,
+  labor_rate_per_hour: null,
 };
 
 /** Attempt to fetch extended tenant columns added via migration.
@@ -55,7 +58,7 @@ async function fetchTenantExtended(tenantId: string): Promise<TenantExtended> {
     const { data, error } = await admin
       .from("tenants")
       .select(
-        "contact_email,contact_phone,address,website_url,registration_number,bank_info,stripe_connect_account_id,stripe_connect_onboarded",
+        "contact_email,contact_phone,address,website_url,registration_number,bank_info,stripe_connect_account_id,stripe_connect_onboarded,labor_rate_per_hour",
       )
       .eq("id", tenantId)
       .single();
@@ -70,6 +73,7 @@ async function fetchTenantExtended(tenantId: string): Promise<TenantExtended> {
       bank_info: row.bank_info ?? null,
       stripe_connect_account_id: row.stripe_connect_account_id ?? null,
       stripe_connect_onboarded: row.stripe_connect_onboarded ?? false,
+      labor_rate_per_hour: row.labor_rate_per_hour ?? null,
     };
   } catch {
     return { ...EMPTY_TENANT_EXTENDED };
@@ -248,6 +252,7 @@ export default async function AdminSettingsPage() {
           websiteUrl={columnsExist ? ext.website_url : null}
           registrationNumber={columnsExist ? ext.registration_number : null}
           bankInfo={columnsExist ? ext.bank_info : null}
+          laborRatePerHour={columnsExist ? ext.labor_rate_per_hour : null}
           columnsExist={columnsExist}
           connectStatus={
             columnsExist
@@ -297,6 +302,24 @@ export default async function AdminSettingsPage() {
           </p>
         </div>
         <LineConnectSection />
+      </section>
+
+      {/* メール予約取り込み */}
+      <section className="glass-card p-5">
+        <div className="mb-5">
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">外部連携</div>
+          <div className="mt-1 text-base font-semibold text-primary inline-flex items-center gap-1.5">
+            メール予約取り込み
+            <HelpTooltip>
+              予約メールを専用アドレスへ自動転送すると、AI が日程・車両・内容を読み取り、確認付きで予約・ Google
+              カレンダーに取り込みます。LINE と同じ抽出・複合認識の仕組みを使います。
+            </HelpTooltip>
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            予約メールを専用アドレスへ自動転送するだけで、AIが予約内容を読み取りカレンダーに取り込みます。
+          </p>
+        </div>
+        <EmailInboundSection />
       </section>
 
       {/* NexPTG（膜厚計）連携 */}
@@ -353,11 +376,14 @@ export default async function AdminSettingsPage() {
           <div className="mt-1 text-base font-semibold text-primary inline-flex items-center gap-1.5">
             AI 自動入力の設定
             <HelpTooltip>
-              施工証明書・車両登録・顧客 intake・案件ワークフローの各フィールドを「AI 自動入力 / AI 提案 / 手動」のどれにするか、テナント単位で設定します。情報ソース (写真 / ヒアリング / 過去事例 等) の参照可否も切替可能。
+              施工証明書・車両登録・顧客 intake・案件ワークフローの各フィールドを「AI 自動入力 / AI 提案 /
+              手動」のどれにするか、テナント単位で設定します。情報ソース (写真 / ヒアリング / 過去事例 等)
+              の参照可否も切替可能。
             </HelpTooltip>
           </div>
           <p className="mt-1 text-xs text-muted">
-            ワークフロー全体の入力工数を AI で削減しつつ、フィールド単位で「人が見てから反映」「AI には触らせない」を細かく指定できます。
+            ワークフロー全体の入力工数を AI で削減しつつ、フィールド単位で「人が見てから反映」「AI
+            には触らせない」を細かく指定できます。
           </p>
         </div>
         <Link href="/admin/settings/ai-automation" className="btn-secondary">

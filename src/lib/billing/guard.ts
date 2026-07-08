@@ -1,25 +1,13 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripe/client";
 import { type PlanTier, PLAN_RANK as RANK } from "@/types/billing";
+import { normalizePlanTier } from "@/lib/billing/planFeatures";
 import { isPlatformTenantId } from "@/lib/auth/platformAdmin";
-import { withCache, invalidateCache } from "@/lib/cache";
+import { getCachedTenantBilling } from "./tenantBillingCache";
 
-/**
- * Cache key for the billing-guard tenant lookup. Exposed so the Stripe
- * webhook can bust it on subscription changes (see `invalidateTenantBillingCache`).
- */
-function tenantBillingCacheKey(tenantId: string) {
-  return `tenant-billing:${tenantId}`;
-}
-
-/**
- * Drop the cached billing row for a tenant. Idempotent — safe to call from
- * webhook handlers that may not yet know whether the cache existed.
- */
-export async function invalidateTenantBillingCache(tenantId: string): Promise<void> {
-  await invalidateCache(tenantBillingCacheKey(tenantId));
-}
+// 課金キャッシュ (plan_tier/is_active) は tenantBillingCache に集約した。既存の import 元
+// (Stripe webhook 等) を壊さないよう invalidateTenantBillingCache を re-export する。
+export { invalidateTenantBillingCache } from "./tenantBillingCache";
 
 const DEFAULT_GRACE_DAYS = 14;
 
@@ -201,17 +189,9 @@ export async function enforceBilling(
   const action = opts.action ?? null;
 
   // tenantId が caller から直接渡された場合（admin API など認証済みルート）は
-  // 既に resolveCallerWithRole() で認証・テナント確認済みのため billing チェックをスキップ
-  if (opts.tenantId) {
-    const tenant_id = opts.tenantId;
-    // Platform admin は常に通過
-    if (isPlatformTenantId(tenant_id)) return null;
-    // 通常テナントもアクティブ前提で通過（billing は別途 BillingGate で管理）
-    return null;
-  }
-
-  // tenantId が渡されていない場合（公開 API など）はリクエストから抽出して検証
-  const tenant_id = await extractTenantId(req);
+  // 既に resolveCallerWithRole() で認証・テナント確認済みのため、リクエストからの
+  // 抽出 (extractTenantId) だけをスキップする。is_active / プラン検証は共通で行う。
+  const tenant_id = opts.tenantId ?? (await extractTenantId(req));
 
   if (!tenant_id) {
     console.warn("[billing guard] tenant_id could not be resolved", {
@@ -232,40 +212,23 @@ export async function enforceBilling(
     return null;
   }
 
-  const supabase = getBillingLookupAdmin();
-  // Cache the billing-relevant tenant row for 60s. Bust the cache via
-  // `invalidateTenantBillingCache(tenantId)` from the Stripe webhook on
-  // subscription updates so plan changes propagate within the request that
-  // ran the upgrade. Cache key is collapsed by tenant for prefix bust.
-  const data = await withCache<{
-    plan_tier: string | null;
-    is_active: boolean | null;
-    stripe_subscription_id: string | null;
-  } | null>(tenantBillingCacheKey(tenant_id), 60, async () => {
-    const { data: row, error } = await supabase
-      .from("tenants")
-      .select("plan_tier, is_active, stripe_subscription_id")
-      .eq("id", tenant_id)
-      .limit(1)
-      .maybeSingle();
-    if (error || !row) return null;
-    return row as { plan_tier: string | null; is_active: boolean | null; stripe_subscription_id: string | null };
-  });
+  // 課金行 (plan_tier/is_active) は tenantBillingCache の 60 秒キャッシュから取得する。
+  // plan 変更時は invalidateTenantBillingCache で破棄され、次リクエストに即反映される。
+  const data = await getCachedTenantBilling(tenant_id);
 
   if (!data) {
     return json(404, { error: "Tenant not found (billing guard)" }, { "x-billing-url": "/admin/billing" });
   }
 
-  const plan = (data.plan_tier ?? "free") as PlanTier;
+  // 旧名 "mini" や不正値も canonical な PlanTier に正規化してから比較する
+  const plan = normalizePlanTier(data.plan_tier);
   const active = !!data.is_active;
 
   // ---- inactive handling with grace for public_pdf ----
   if (!active) {
     // public_pdf は「猶予期間中だけ許可」
     if (action === "public_pdf") {
-      const g = await graceInfoForTenant(
-        ((data as Record<string, unknown>).stripe_subscription_id as string | null) ?? null,
-      );
+      const g = await graceInfoForTenant(data.stripe_subscription_id ?? null);
       const now = Date.now();
 
       if (g.ok && g.grace_until) {

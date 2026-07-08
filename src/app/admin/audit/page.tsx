@@ -27,7 +27,60 @@ const TYPE_LABELS: Record<string, { label: string; color: string }> = {
   invoice_created: { label: "請求書作成", color: "text-accent-text bg-accent-dim border-accent/30" },
   invoice_paid: { label: "入金記録", color: "text-success-text bg-success-dim border-success/30" },
   note: { label: "メモ", color: "text-secondary bg-surface-hover border-border-default" },
+  progress_update: { label: "進捗公開", color: "text-accent-text bg-accent-dim border-accent/30" },
+  thickness_measurement: { label: "膜厚測定", color: "text-accent-text bg-accent-dim border-accent/15" },
+  // AI 自動化の監査 (logAiAuditEvent / logAutoActionExecuted 由来)。
+  ai_auto_action_executed: { label: "AI自動実行", color: "text-violet-text bg-violet-dim border-violet/30" },
+  ai_settings_changed: { label: "AI設定変更", color: "text-secondary bg-surface-hover border-border-default" },
+  ai_suggestion_generated: { label: "AI提案生成", color: "text-accent-text bg-accent-dim border-accent/15" },
+  ai_suggestion_applied: { label: "AI提案反映", color: "text-success-text bg-success-dim border-success/30" },
+  ai_suggestion_rejected: { label: "AI提案却下", color: "text-secondary bg-surface-hover border-border-default" },
 };
+
+/** ai_auto_action_executed の detail.action_key → 日本語ラベル。 */
+const AUTO_ACTION_LABELS: Record<string, string> = {
+  "customer.auto_create": "顧客を自動作成",
+  "inbound_message.auto_create_reservation": "予約を自動起票",
+  "invoice.auto_draft_on_billing_step": "請求書下書きを自動作成（会計工程）",
+  "invoice.auto_draft_on_completion": "請求書下書きを自動作成（案件完了）",
+  "certificate.auto_create_draft_record": "証明書下書きを自動作成",
+  "certificate.auto_issue": "証明書を自動発行",
+  "invoice.auto_send_on_confirm": "書類を自動送付",
+  "body_repair.auto_notify_on_stage_advance": "進捗を自動通知",
+  "purchase_order.auto_draft_on_low_stock": "発注書下書きを自動作成（在庫低下）",
+  "workflow.auto_apply_on_intake": "ワークフローを自動適用（案件登録）",
+};
+
+/**
+ * AI 監査イベント (type が "ai_" 始まり) の description は JSON
+ * ({ user_id, resource, detail }) で保存される。人が読める 1 行に整形する。
+ * JSON でない/AI 以外はそのまま返す。
+ */
+function formatAuditDescription(type: string, description: string | null): string | null {
+  if (!description) return null;
+  if (!type.startsWith("ai_")) return description;
+  try {
+    const parsed = JSON.parse(description) as {
+      resource?: { kind?: string; id?: string | null } | null;
+      detail?: Record<string, unknown> | null;
+    };
+    const parts: string[] = [];
+    const detail = parsed.detail ?? {};
+    const actionKey = detail.action_key;
+    if (typeof actionKey === "string") parts.push(AUTO_ACTION_LABELS[actionKey] ?? actionKey);
+    if (parsed.resource?.kind) {
+      const id = parsed.resource.id ? `${String(parsed.resource.id).slice(0, 8)}…` : null;
+      parts.push(id ? `${parsed.resource.kind}: ${id}` : parsed.resource.kind);
+    }
+    // 主要な detail を数点だけ補足として拾う (action_key は上で表示済みなので除外)。
+    for (const k of ["doc_number", "channel", "created", "auto_issued", "stage", "commit_reason"]) {
+      if (detail[k] != null) parts.push(`${k}=${String(detail[k])}`);
+    }
+    return parts.length > 0 ? parts.join(" ・ ") : description;
+  } catch {
+    return description;
+  }
+}
 
 function TypeBadge({ type }: { type: string }) {
   const meta = TYPE_LABELS[type] ?? { label: type, color: "text-secondary bg-surface-hover border-border-default" };
@@ -147,7 +200,7 @@ export default async function AdminAuditPage({
       />
 
       {/* Stats */}
-      <section className="grid gap-4 sm:grid-cols-2">
+      <section className="grid gap-4 sm:grid-cols-3">
         <div className="glass-card p-5">
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">合計イベント</div>
           <div className="mt-2 text-2xl font-bold text-primary">{rows.length}</div>
@@ -159,6 +212,13 @@ export default async function AdminAuditPage({
             {rows.filter((r) => r.type === "certificate_issued").length}
           </div>
           <div className="mt-1 text-xs text-muted">証明書発行イベント数</div>
+        </div>
+        <div className="glass-card p-5">
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">AI自動実行</div>
+          <div className="mt-2 text-2xl font-bold text-primary">
+            {rows.filter((r) => r.type === "ai_auto_action_executed").length}
+          </div>
+          <div className="mt-1 text-xs text-muted">人の確認を挟まず実行された件数</div>
         </div>
       </section>
 
@@ -226,7 +286,10 @@ export default async function AdminAuditPage({
                         <span className="text-xs text-muted">cert: {String(h.certificate_id).slice(0, 8)}…</span>
                       )}
                     </div>
-                    {h.description && <p className="mt-1 text-xs text-muted break-all">{h.description}</p>}
+                    {(() => {
+                      const desc = formatAuditDescription(h.type ?? "", h.description);
+                      return desc ? <p className="mt-1 text-xs text-muted break-all">{desc}</p> : null;
+                    })()}
                     <p className="mt-1 text-[11px] text-muted">{formatDateTime(h.performed_at ?? h.created_at)}</p>
                   </div>
                 </div>

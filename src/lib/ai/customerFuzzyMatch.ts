@@ -66,14 +66,17 @@ const RankedSchema = z.object({
   confidence: z.number().min(0).max(1),
 });
 
-export async function fuzzyMatchCustomer(input: FuzzyMatchInput): Promise<FuzzyMatchResult> {
+export async function fuzzyMatchCustomer(
+  input: FuzzyMatchInput,
+  opts?: { model?: string; ai?: boolean },
+): Promise<FuzzyMatchResult> {
+  // バルク取込 (ingest / CSV) では 1 バッチ数百件になり得るため、AI 判定を
+  // 明示的に無効化して決定的マッチ (電話/メール完全一致 + Dice 類似度) のみで
+  // 判断できるようにする。既定は AI 併用 (Square 単発リンク等)。
+  const useAi = opts?.ai !== false;
   // 1. exact match (name + phone or email)
   for (const c of input.candidates) {
-    if (
-      input.query.phone &&
-      c.phone &&
-      stripPhone(c.phone) === stripPhone(input.query.phone)
-    ) {
+    if (input.query.phone && c.phone && stripPhone(c.phone) === stripPhone(input.query.phone)) {
       return {
         best: { candidate: c, score: 1, reasons: ["電話番号完全一致"] },
         alternatives: [],
@@ -97,8 +100,7 @@ export async function fuzzyMatchCustomer(input: FuzzyMatchInput): Promise<FuzzyM
   const scored: FuzzyMatchScored[] = [];
   for (const c of input.candidates) {
     const nameSim = input.query.name ? diceSimilarity(input.query.name, c.name) : 0;
-    const kanaSim =
-      input.query.name && c.name_kana ? diceSimilarity(input.query.name, c.name_kana) : 0;
+    const kanaSim = input.query.name && c.name_kana ? diceSimilarity(input.query.name, c.name_kana) : 0;
     const score = Math.max(nameSim, kanaSim * 0.95);
     const reasons: string[] = [];
     if (nameSim > 0.5) reasons.push(`氏名類似度 ${Math.round(nameSim * 100)}%`);
@@ -123,7 +125,7 @@ export async function fuzzyMatchCustomer(input: FuzzyMatchInput): Promise<FuzzyM
     };
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!useAi || !process.env.ANTHROPIC_API_KEY) {
     return {
       best: top,
       alternatives: scored.slice(1, 4),
@@ -135,13 +137,16 @@ export async function fuzzyMatchCustomer(input: FuzzyMatchInput): Promise<FuzzyM
 
   // 4. AI に絞り込ませる
   const client = getAnthropicClient();
-  const facts = scored.slice(0, 5).map(
-    (s) => `- id=${s.candidate.id} name=${s.candidate.name} kana=${s.candidate.name_kana ?? ""} phone=${s.candidate.phone ?? ""} email=${s.candidate.email ?? ""} score=${s.score.toFixed(2)}`,
-  );
+  const facts = scored
+    .slice(0, 5)
+    .map(
+      (s) =>
+        `- id=${s.candidate.id} name=${s.candidate.name} kana=${s.candidate.name_kana ?? ""} phone=${s.candidate.phone ?? ""} email=${s.candidate.email ?? ""} score=${s.score.toFixed(2)}`,
+    );
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 384,
         system: SYSTEM_PROMPT,
         messages: [
@@ -154,10 +159,17 @@ export async function fuzzyMatchCustomer(input: FuzzyMatchInput): Promise<FuzzyM
       }),
     );
     const parsed = msg.parsed_output;
-    if (!parsed) return { best: top, alternatives: scored.slice(1, 4), confidence: top.score, method: "fuzzy", ai: false };
+    if (!parsed)
+      return { best: top, alternatives: scored.slice(1, 4), confidence: top.score, method: "fuzzy", ai: false };
     const bestMatch = parsed.best_id ? scored.find((s) => s.candidate.id === parsed.best_id) : undefined;
     if (!bestMatch) {
-      return { best: undefined, alternatives: scored.slice(0, 4), confidence: parsed.confidence, method: "ai", ai: true };
+      return {
+        best: undefined,
+        alternatives: scored.slice(0, 4),
+        confidence: parsed.confidence,
+        method: "ai",
+        ai: true,
+      };
     }
     return {
       best: { ...bestMatch, reasons: [...bestMatch.reasons, parsed.reason] },

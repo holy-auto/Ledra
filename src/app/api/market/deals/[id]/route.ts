@@ -100,7 +100,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const { data: fullDeal } = await admin
         .from("market_deals")
         .select(
-          "buyer_email, buyer_name, vehicle_id, seller_tenant_id, market_vehicles(maker, model, tenants(name, contact_email))",
+          // market_deals は market_vehicles への FK を2本持つ (vehicle_id / trade_in_vehicle_id)
+          // ため、販売車両の embed は FK 列名で明示して曖昧さを避ける。
+          "buyer_email, buyer_name, vehicle_id, seller_tenant_id, market_vehicles!vehicle_id(maker, model, tenants(name, contact_email))",
         )
         .eq("id", dealId)
         .single<DealWithRelations>();

@@ -15,7 +15,12 @@
  */
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
-import { generateCertificateDraft } from "@/lib/ai/draftCertificate";
+import {
+  generateCertificateDraft,
+  generateCategorizedCertificateDrafts,
+  type DraftCertificateResult,
+} from "@/lib/ai/draftCertificate";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings, filterDraftByPolicy, isSourceAllowed } from "./policy";
@@ -28,9 +33,23 @@ export interface MaybeAutoDraftCertificateParams {
   reservationId: string;
 }
 
+interface MenuItemJson {
+  name?: string;
+}
+
 interface ReservationRow {
   vehicle_id: string | null;
+  menu_items_json?: unknown;
   ai_certificate_draft?: unknown;
+}
+
+/** menu_items_json (jsonb 配列) から作業依頼名を取り出す。非配列は空扱い。 */
+function extractWorkRequestNames(menuItemsJson: unknown): string[] {
+  if (!Array.isArray(menuItemsJson)) return [];
+  return menuItemsJson
+    .map((m) => (m as MenuItemJson | null)?.name)
+    .filter((n): n is string => typeof n === "string" && n.trim().length > 0)
+    .map((n) => n.trim());
 }
 
 function isMissingColumnError(err: { message?: string; code?: string } | null | undefined): boolean {
@@ -61,14 +80,14 @@ export async function maybeAutoDraftCertificateForReservation(params: MaybeAutoD
     {
       const sel = await admin
         .from("reservations")
-        .select("vehicle_id, ai_certificate_draft")
+        .select("vehicle_id, menu_items_json, ai_certificate_draft")
         .eq("id", reservationId)
         .eq("tenant_id", tenantId)
         .maybeSingle();
       if (sel.error && isMissingColumnError(sel.error)) {
         const retry = await admin
           .from("reservations")
-          .select("vehicle_id")
+          .select("vehicle_id, menu_items_json")
           .eq("id", reservationId)
           .eq("tenant_id", tenantId)
           .maybeSingle();
@@ -100,41 +119,87 @@ export async function maybeAutoDraftCertificateForReservation(params: MaybeAutoD
           .limit(5)
       : { data: [] as Array<Record<string, unknown>> };
 
+    const vehicleInput = {
+      maker: vehicle.maker as string | undefined,
+      model: vehicle.model as string | undefined,
+      year: vehicle.year as number | undefined,
+      color: vehicle.color as string | undefined,
+      vin: vehicle.vin as string | undefined,
+    };
+    const similarInput = (similar ?? []).map((s) => ({
+      service_name: (s.service_name as string | null) ?? "",
+      description: (s.description as string | null) ?? undefined,
+      material_info: (s.material_info as string | null) ?? undefined,
+      warranty_period: (s.warranty_period as string | null) ?? undefined,
+    }));
+    const model = fastModelForPlanTier(tenant.plan_tier);
+
+    // 複数種類の作業依頼は大カテゴリー単位で 1 枚ずつ下書きを作る。
+    // 作業依頼が無い / 分類に失敗した場合は従来どおり単一下書きにフォールバックする。
+    const workRequests = extractWorkRequestNames(reservation.menu_items_json);
+
     const usage = startAiRouteUsage(AUTO_DRAFT_ENDPOINT);
-    const draft = await generateCertificateDraft({
-      vehicle: {
-        maker: vehicle.maker as string | undefined,
-        model: vehicle.model as string | undefined,
-        year: vehicle.year as number | undefined,
-        color: vehicle.color as string | undefined,
-        vin: vehicle.vin as string | undefined,
-      },
-      similarCertificates: (similar ?? []).map((s) => ({
-        service_name: (s.service_name as string | null) ?? "",
-        description: (s.description as string | null) ?? undefined,
-        material_info: (s.material_info as string | null) ?? undefined,
-        warranty_period: (s.warranty_period as string | null) ?? undefined,
-      })),
+
+    let categorized: Awaited<ReturnType<typeof generateCategorizedCertificateDrafts>> = [];
+    if (workRequests.length > 0) {
+      categorized = await generateCategorizedCertificateDrafts(
+        { vehicle: vehicleInput, workRequests, similarCertificates: similarInput },
+        { model },
+      );
+    }
+
+    // カテゴリー別に policy を適用。primary (先頭) は後方互換のため snapshot.draft にも入れる。
+    const drafts = categorized.map((c) => {
+      const filtered = filterDraftByPolicy(c.draft, settings);
+      return {
+        category: c.category,
+        categoryLabel: c.categoryLabel,
+        workItems: c.workItems,
+        draft: filtered.draft,
+        policies: filtered.policies,
+      };
     });
 
+    let snapshot: Record<string, unknown> | null = null;
+    let primaryDraft: DraftCertificateResult | null = null;
+
+    if (drafts.length > 0) {
+      primaryDraft = drafts[0].draft;
+      snapshot = {
+        draft: drafts[0].draft,
+        policies: drafts[0].policies,
+        drafts,
+        auto: true,
+        generated_at: new Date().toISOString(),
+      };
+    } else {
+      // 単一下書き (作業依頼なし or 分類フォールバック)。
+      const draft = await generateCertificateDraft(
+        { vehicle: vehicleInput, similarCertificates: similarInput },
+        { model },
+      );
+      if (draft.title) {
+        const filtered = filterDraftByPolicy(draft, settings);
+        primaryDraft = filtered.draft;
+        snapshot = {
+          draft: filtered.draft,
+          policies: filtered.policies,
+          auto: true,
+          generated_at: new Date().toISOString(),
+        };
+      }
+    }
+
     // 生成に失敗 (空ドラフト) なら保存しない。
-    if (!draft.title) {
+    if (!snapshot || !primaryDraft) {
       usage.record({
         tenantId,
         outcome: "error",
-        confidence: draft.confidence ?? null,
+        confidence: null,
         meta: { auto: true, empty: true },
       });
       return;
     }
-
-    const filtered = filterDraftByPolicy(draft, settings);
-    const snapshot = {
-      draft: filtered.draft,
-      policies: filtered.policies,
-      auto: true,
-      generated_at: new Date().toISOString(),
-    };
 
     const { error: upErr } = await admin
       .from("reservations")
@@ -148,8 +213,8 @@ export async function maybeAutoDraftCertificateForReservation(params: MaybeAutoD
     usage.record({
       tenantId,
       outcome: "ok",
-      confidence: typeof draft.confidence === "number" ? draft.confidence : null,
-      meta: { auto: true, similar_used: similar?.length ?? 0 },
+      confidence: typeof primaryDraft.confidence === "number" ? primaryDraft.confidence : null,
+      meta: { auto: true, similar_used: similar?.length ?? 0, categories: drafts.length },
     });
   } catch (e) {
     logger.warn("[certificateAuto] maybeAutoDraftCertificateForReservation threw", {

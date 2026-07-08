@@ -84,26 +84,9 @@ export default async function SiteContentListPage(props: { searchParams?: Promis
             新規作成
           </Link>
         }
+        tabs={tabs}
+        activeTab={activeKey}
       />
-
-      <div className="flex flex-wrap gap-2">
-        {tabs.map((t) => {
-          const isActive = activeKey === t.key;
-          return (
-            <Link
-              key={t.key}
-              href={t.href}
-              className={
-                isActive
-                  ? "inline-flex items-center rounded-full border border-accent/40 bg-accent-dim px-3 py-1 text-xs font-medium text-accent-text"
-                  : "inline-flex items-center rounded-full border border-border-default bg-surface-hover px-3 py-1 text-xs font-medium text-secondary hover:text-primary"
-              }
-            >
-              {t.label}
-            </Link>
-          );
-        })}
-      </div>
 
       {error ? (
         <div className="glass-card p-4 text-sm text-danger-text">読み込みに失敗しました: {error.message}</div>

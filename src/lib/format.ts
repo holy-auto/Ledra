@@ -16,7 +16,7 @@ export function formatDateTime(v?: string | null): string {
 
 /** Unix timestamp → ja-JP datetime */
 export function formatUnix(ts?: number | null): string {
-  if (ts == null) return "-";
+  if (ts == null || !Number.isFinite(ts)) return "-";
   return new Date(ts * 1000).toLocaleString("ja-JP");
 }
 

@@ -5,9 +5,11 @@ vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({}) },
 }));
 
-function makeAdmin(rows: Array<Record<string, unknown>>) {
+function makeAdmin(rows: Array<Record<string, unknown>>, opts: { claim?: Array<{ id: string }> } = {}) {
   const updates: Array<{ id: string; patch: Record<string, unknown> }> = [];
   let inserted: Record<string, unknown> | null = null;
+  // in_flight claim (`.update().eq("id").eq("status").select("id")`) の戻り行
+  const claimRows = opts.claim ?? [{ id: "claimed" }];
 
   const builder = (table: string) => {
     const state = { selectCols: "", filters: [] as Array<[string, unknown]>, orderField: "", limit: 0 };
@@ -38,14 +40,17 @@ function makeAdmin(rows: Array<Record<string, unknown>>) {
         };
       },
       update(patch: Record<string, unknown>) {
-        return {
-          eq(_col: string, val: unknown) {
-            updates.push({ id: String(val), patch });
-            return {
-              eq: () => Promise.resolve({ error: null }),
-            };
+        // eq("id", ...) の update だけ記録する（stale-in_flight リセットは
+        // eq("status", "in_flight").lte(...) なので対象外）。
+        const updateChain: Record<string, unknown> = {
+          eq(col: string, val: unknown) {
+            if (col === "id") updates.push({ id: String(val), patch });
+            return updateChain;
           },
+          lte: () => Promise.resolve({ error: null }),
+          select: () => Promise.resolve({ data: claimRows, error: null }),
         };
+        return updateChain;
       },
     };
     return chain;
@@ -133,6 +138,34 @@ describe("processOutboxBatch", () => {
     expect(result).toEqual({ processed: 1, delivered: 0, errored: 0, dead: 1 });
     const last = updates[updates.length - 1].patch as { status: string };
     expect(last.status).toBe("dead_letter");
+  });
+
+  it("treats a dispatcher throw like a failure and schedules a retry", async () => {
+    const rows = [
+      { id: "e5", tenant_id: "t", topic: "demo", payload: {}, aggregate_id: null, attempts: 0, status: "pending" },
+    ];
+    const { admin, updates } = makeAdmin(rows);
+    const dispatcher = vi.fn().mockRejectedValue(new Error("boom"));
+
+    const result = await processOutboxBatch(admin, { demo: dispatcher });
+    expect(result).toEqual({ processed: 1, delivered: 0, errored: 1, dead: 0 });
+    const last = updates[updates.length - 1].patch as { status: string; last_error: string };
+    expect(last.status).toBe("pending");
+    expect(last.last_error).toBe("boom");
+  });
+
+  it("skips the row when another worker already claimed it", async () => {
+    const rows = [
+      { id: "e6", tenant_id: "t", topic: "demo", payload: {}, aggregate_id: null, attempts: 0, status: "pending" },
+    ];
+    const { admin, updates } = makeAdmin(rows, { claim: [] });
+    const dispatcher = vi.fn().mockResolvedValue({ ok: true });
+
+    const result = await processOutboxBatch(admin, { demo: dispatcher });
+    expect(dispatcher).not.toHaveBeenCalled();
+    expect(result).toEqual({ processed: 1, delivered: 0, errored: 0, dead: 0 });
+    // claim を試みた update だけが記録され、delivered 等は走らない
+    expect(updates.map((u) => u.patch.status)).toEqual(["in_flight"]);
   });
 
   it("warns and skips events whose topic has no dispatcher", async () => {

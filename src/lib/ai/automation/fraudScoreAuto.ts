@@ -16,6 +16,7 @@
  */
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { checkFraudPatterns } from "@/lib/ai/fraudPatternDetect";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "./policy";
@@ -47,7 +48,7 @@ export async function maybeAutoFraudScoreForCase(params: MaybeAutoFraudScorePara
 
     const admin = createServiceRoleAdmin("AI auto fraud score — insurer case create after() lacks auth session");
 
-    const { data: tenant } = await admin.from("tenants").select("is_active").eq("id", tenantId).single();
+    const { data: tenant } = await admin.from("tenants").select("plan_tier, is_active").eq("id", tenantId).single();
     if (!tenant || tenant.is_active === false) return;
 
     // 案件を取得 (insurer_id で明示スコープ)。
@@ -113,13 +114,16 @@ export async function maybeAutoFraudScoreForCase(params: MaybeAutoFraudScorePara
     }
 
     const usage = startAiRouteUsage(AUTO_FRAUD_ENDPOINT);
-    const result = await checkFraudPatterns({
-      claimAmount: null, // insurer_cases に金額列が無いため未使用 (上記コメント参照)
-      certificateStatus: certStatus,
-      existingClaimsForCertificate,
-      claimsLast7Days: last7 ?? 1,
-      sameDaySameVehicle,
-    });
+    const result = await checkFraudPatterns(
+      {
+        claimAmount: null, // insurer_cases に金額列が無いため未使用 (上記コメント参照)
+        certificateStatus: certStatus,
+        existingClaimsForCertificate,
+        claimsLast7Days: last7 ?? 1,
+        sameDaySameVehicle,
+      },
+      { model: fastModelForPlanTier(tenant.plan_tier) },
+    );
 
     usage.record({
       tenantId,

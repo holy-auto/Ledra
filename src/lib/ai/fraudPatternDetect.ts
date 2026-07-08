@@ -131,6 +131,7 @@ export function deriveRiskLevel(flags: FraudFlag[]): FraudRisk {
 async function llmFraudEvaluation(
   input: FraudRuleInput,
   flags: FraudFlag[],
+  opts?: { model?: string },
 ): Promise<{ riskLevel: FraudRisk; reason: string }> {
   try {
     const client = getAnthropicClient();
@@ -138,7 +139,7 @@ async function llmFraudEvaluation(
 
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 256,
         system: `あなたは自動車施工業界の保険請求不正検出の専門家です。
 以下のルールベースフラグが検出されました:
@@ -178,7 +179,7 @@ JSONで回答してください:
  * - flags に high-risk フラグ → "high" (LLM 呼ばず、ルールベースで確定)
  * - flags に low/medium のみ → LLM でグレーゾーン判定
  */
-export async function checkFraudPatterns(input: FraudRuleInput): Promise<FraudCheckResult> {
+export async function checkFraudPatterns(input: FraudRuleInput, opts?: { model?: string }): Promise<FraudCheckResult> {
   const flags = detectFraudRuleFlags(input);
   const ruleRisk = deriveRiskLevel(flags);
 
@@ -188,7 +189,7 @@ export async function checkFraudPatterns(input: FraudRuleInput): Promise<FraudCh
   }
 
   // グレーゾーン → LLM で判定
-  const llm = await llmFraudEvaluation(input, flags);
+  const llm = await llmFraudEvaluation(input, flags, opts);
   return {
     flags,
     riskLevel: llm.riskLevel,

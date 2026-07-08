@@ -3,6 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { formatDate, formatDateTime } from "@/lib/format";
 import PageHeader from "@/components/ui/PageHeader";
 import ThicknessAiAnomalyPanel from "./ThicknessAiAnomalyPanel";
+import LinkVehiclePanel from "./LinkVehiclePanel";
 import {
   ExteriorDiagram,
   InteriorDiagram,
@@ -267,8 +268,9 @@ export default async function StandaloneThicknessReportDetailPage({
 
       {/* 車両連携ステータス */}
       <section className={`glass-card p-5 ${linkedVehicle ? "" : "border border-warning/30"}`}>
-        <div className="mb-3">
+        <div className="mb-3 flex items-center justify-between gap-2">
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">車両連携</div>
+          <LinkVehiclePanel reportId={reportId} reportVin={report.vin ?? null} isLinked={!!linkedVehicle} />
         </div>
         {linkedVehicle ? (
           <div className="flex items-center gap-3 text-sm">

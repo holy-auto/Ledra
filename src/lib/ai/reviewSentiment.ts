@@ -84,7 +84,10 @@ const SYSTEM_PROMPT = `あなたは自動車施工店の品質改善担当です
   単なる称賛や個人的事情なら false
 - confidence: 0.0〜1.0 (短文 / 内容が薄ければ低め)`.trim();
 
-export async function analyzeReviewSentiment(input: ReviewSentimentInput): Promise<ReviewSentimentResult> {
+export async function analyzeReviewSentiment(
+  input: ReviewSentimentInput,
+  opts?: { model?: string },
+): Promise<ReviewSentimentResult> {
   const baseline = buildDeterministicSentiment(input);
   if (!process.env.ANTHROPIC_API_KEY) return baseline;
   if (!input.text.trim()) return baseline;
@@ -97,7 +100,7 @@ export async function analyzeReviewSentiment(input: ReviewSentimentInput): Promi
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 512,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: facts.join("\n\n") }],

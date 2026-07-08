@@ -20,6 +20,7 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { generateJobNextAction, type JobStatus } from "@/lib/ai/jobNextAction";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings, resolveFieldPolicy } from "./policy";
@@ -127,16 +128,19 @@ export async function maybeAutoNextActionForReservation(params: MaybeAutoNextAct
     );
 
     const usage = startAiRouteUsage(NEXT_ACTION_ENDPOINT);
-    const result = await generateJobNextAction({
-      status,
-      hasCustomer: !!reservation.customer_id,
-      hasVehicle: !!reservation.vehicle_id,
-      hasActiveCertificate,
-      hasUnpaidInvoice,
-      hasOverdueInvoice,
-      minutesSinceStatusChange,
-      estimatedDurationMin,
-    });
+    const result = await generateJobNextAction(
+      {
+        status,
+        hasCustomer: !!reservation.customer_id,
+        hasVehicle: !!reservation.vehicle_id,
+        hasActiveCertificate,
+        hasUnpaidInvoice,
+        hasOverdueInvoice,
+        minutesSinceStatusChange,
+        estimatedDurationMin,
+      },
+      { model: fastModelForPlanTier(tenant.plan_tier) },
+    );
 
     usage.record({
       tenantId,

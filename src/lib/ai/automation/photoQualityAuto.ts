@@ -21,6 +21,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages";
 import { auditCertificatePhotos, type StandardRule } from "@/lib/ai/photoQualityCheck";
+import { visionModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "./policy";
@@ -148,6 +149,7 @@ export async function maybeAutoQualityCheckForCertificate(params: MaybeAutoQuali
       fieldValues,
       standardRule: rule as StandardRule,
       checkPhotosWithAI: useVision && hasRealUrls,
+      model: visionModelForPlanTier(tenant.plan_tier),
     });
 
     usage.record({

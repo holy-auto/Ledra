@@ -16,8 +16,10 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { proposeWorkflow, type WorkflowTemplateLite } from "@/lib/ai/workflowProposal";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
+import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { loadAiAutomationSettings } from "./policy";
 import { shouldAutoProposeWorkflowOnIntake, shouldAutoApplyWorkflowOnIntake } from "./orchestrator";
 
@@ -109,13 +111,16 @@ export async function maybeAutoProposeWorkflowForReservation(params: MaybeAutoPr
     const vehicleLabel = await loadVehicleLabel(admin, reservation.vehicle_id);
 
     const usage = startAiRouteUsage(AUTO_PROPOSE_ENDPOINT);
-    const proposal = await proposeWorkflow({
-      title: reservation.title,
-      menuItemNames,
-      vehicleLabel,
-      pastServiceTypes,
-      templates,
-    });
+    const proposal = await proposeWorkflow(
+      {
+        title: reservation.title,
+        menuItemNames,
+        vehicleLabel,
+        pastServiceTypes,
+        templates,
+      },
+      { model: fastModelForPlanTier(tenant.plan_tier) },
+    );
 
     const snapshot = {
       suggested_template_id: proposal.suggestedTemplateId,
@@ -160,6 +165,13 @@ export async function maybeAutoProposeWorkflowForReservation(params: MaybeAutoPr
           tenantId,
           reservationId,
           templateId: proposal.suggestedTemplateId,
+        });
+        // 人の確認なしでワークフローを自動適用した事実を監査ログに残す (失敗しても適用は成立)。
+        await logAutoActionExecuted({
+          tenantId,
+          actionKey: "workflow.auto_apply_on_intake",
+          resource: { kind: "reservation", id: reservationId },
+          detail: { template_id: proposal.suggestedTemplateId, confidence: proposal.confidence },
         });
       }
     }

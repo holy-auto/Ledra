@@ -47,8 +47,9 @@ export const closedDaySchema = z
   });
 
 export const bookingSettingsPutSchema = z.object({
-  slots: z.array(bookingSlotSchema).max(100).default([]),
+  // slots は「full replace」の desired set。省略 (undefined) 時はスロットに触れない。
+  // 明示的な [] のみ「全スロット削除」を意味する（定休日のみ更新時に全消しする事故を防ぐ）。
+  slots: z.array(bookingSlotSchema).max(500).optional(),
   closed_days: z.array(closedDaySchema).max(500).default([]),
-  deleted_slot_ids: z.array(z.string().uuid()).max(100).default([]),
   deleted_closed_day_ids: z.array(z.string().uuid()).max(500).default([]),
 });

@@ -42,12 +42,16 @@ export default function DocumentDetailClient({
   customerEmail,
   customerPhone,
   tenant,
+  logoUrl,
+  sealUrl,
 }: {
   document: DocumentRow;
   customerName: string | null;
   customerEmail?: string | null;
   customerPhone?: string | null;
   tenant: TenantInfo;
+  logoUrl?: string | null;
+  sealUrl?: string | null;
 }) {
   const [doc, setDoc] = useState(initial);
   const [updating, setUpdating] = useState(false);
@@ -86,6 +90,14 @@ export default function DocumentDetailClient({
         body: JSON.stringify({
           doc_type: "invoice",
           customer_id: doc.customer_id,
+          // 顧客未紐付け (recipient_* を直接持つ) の伝票でも宛先を失わないよう引き継ぐ。
+          // 例: 中古車商談から作成した見積 (customer_id なし・宛名は buyer)。
+          recipient_name: doc.recipient_name,
+          recipient_honorific: doc.recipient_honorific,
+          recipient_postal_code: doc.recipient_postal_code,
+          recipient_address: doc.recipient_address,
+          recipient_phone: doc.recipient_phone,
+          subject: doc.subject,
           issued_at: new Date().toISOString().slice(0, 10),
           items: doc.items_json,
           tax_rate: doc.tax_rate,
@@ -346,18 +358,26 @@ export default function DocumentDetailClient({
               <div className="flex justify-end gap-6 pt-4">
                 {doc.show_logo && (
                   <div className="text-xs text-muted print:text-gray-500 text-center">
-                    {/* Logo placeholder — rendered from tenant.logo_asset_path when available */}
-                    <div className="w-16 h-16 border border-border-subtle rounded-lg flex items-center justify-center text-muted print:border-gray-300">
-                      LOGO
-                    </div>
+                    {logoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={logoUrl} alt="会社ロゴ" className="w-16 h-16 object-contain" />
+                    ) : (
+                      <div className="w-16 h-16 border border-border-subtle rounded-lg flex items-center justify-center text-muted print:border-gray-300">
+                        LOGO
+                      </div>
+                    )}
                   </div>
                 )}
                 {doc.show_seal && (
                   <div className="text-xs text-muted print:text-gray-500 text-center">
-                    {/* Seal placeholder — rendered from tenant.company_seal_path when available */}
-                    <div className="w-16 h-16 border border-dashed border-red-300 rounded-full flex items-center justify-center text-red-400 print:border-red-400">
-                      印
-                    </div>
+                    {sealUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={sealUrl} alt="角印" className="w-16 h-16 object-contain" />
+                    ) : (
+                      <div className="w-16 h-16 border border-dashed border-red-300 rounded-full flex items-center justify-center text-red-400 print:border-red-400">
+                        印
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

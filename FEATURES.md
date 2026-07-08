@@ -1,7 +1,12 @@
 # Ledra — 全機能一覧 & ワークフロー
 
 > WEB施工証明書SaaS プラットフォーム
-> 最終更新: 2026-05-09
+> 最終更新: 2026-07-03
+>
+> ※ セクション 13「2026-05〜06 追加機能」に、本リスト前回更新 (2026-05-09) 以降に実装された
+> 機能群 (メーカーポータル / 車両パスポート / 部品インテグリティ / 供給チェーン 等) をまとめています。
+> ※ 2026-07: 作業完了サインオフ・パイプライン (§2.5b) — 完了報告→証明書 (施工前後写真ゲート)→
+> お客様サイン (必須/24h)→お会計 (顧客区分×サイクル自動判定)→オンチェーン の全業種共通フローを追加。
 
 ---
 
@@ -19,6 +24,7 @@
 10. [主要ワークフロー](#10-主要ワークフロー)
 11. [技術スタック](#11-技術スタック)
 12. [ロードマップ & UX改善方針](#12-ロードマップ--ux改善方針)
+13. [2026-05〜06 追加機能](#13-2026-0506-追加機能)
 
 ---
 
@@ -26,14 +32,18 @@
 
 Ledraは自動車施工（コーティング・フィルム・ラッピング等）の記録をデジタル証明書として発行・管理するマルチテナントSaaSです。
 
-### 3つのポータル + 顧客ビュー
+### 4つのポータル + 顧客ビュー + 外部API
 
 | ポータル | 対象ユーザー | 主な役割 |
 |---|---|---|
 | **Admin（施工店）** | 施工店スタッフ | 証明書発行、車両・顧客管理、請求書、予約、BtoB受発注 |
 | **Agent（代理店）** | パートナー代理店 | 施工店紹介、コミッション管理、レポート |
-| **Insurer（保険会社）** | 保険会社査定担当 | 証明書検索・照会、案件管理、分析 |
-| **Customer（顧客）** | エンドユーザー | 自分の証明書閲覧 |
+| **Insurer（保険会社）** | 保険会社査定担当 | 証明書検索・照会、案件管理、分析、アンカー検証 |
+| **Manufacturer（メーカー）** ★新規 | 部品/コーティング剤メーカー | 認定施工店ネットワーク監視、品質チェック、指定デザイン証明書の発行統計 |
+| **Customer（顧客）** | エンドユーザー | 自分の証明書閲覧、受領サイン、パスポート移転受諾 |
+
+加えて、第三者 (中古車店・買取業者・基幹システム) 向けの **外部API (Passport API / v1 Ingest API)** と
+**有料の公開車両履歴レポート** を提供 (詳細はセクション 13)。
 
 ---
 
@@ -79,6 +89,7 @@ Ledraは自動車施工（コーティング・フィルム・ラッピング等
 - **一覧**: 顧客検索・フィルタ
 - **詳細 (360° ビュー)** `/admin/customers/[id]`: 顧客基本情報 + タブで**車両 / 証明書 / 予約・案件 / 請求**を横断表示
   - 基本情報カード (インライン編集可)
+  - **顧客区分 (個人 / 法人) と支払い条件**: 法人 (BtoB) は支払いサイクル (**都度払い / 合算 = 締め払い**) を必須入力。締め日・支払いサイトの自由記述メモも保持。案件サインオフ・パイプラインの会計ステップ判定に連動 (合算契約はこの案件での会計をスキップし後日合算請求へ)。列は `customers.customer_type` / `billing_cycle` / `billing_terms_note`
   - タブ内から各詳細ページ・案件ワークフロー (`/admin/jobs/[id]`) へワンクリック遷移
   - 「+ 車両登録」「🪪 証明書発行」「🏃 飛び込み案件」「💰 請求書作成」をタブ右上に常時配置し、
     顧客コンテキストを維持したまま次アクションへ進める
@@ -103,6 +114,16 @@ Ledraは自動車施工（コーティング・フィルム・ラッピング等
   - **請求・見積**: `documents` テーブルから請求書・見積書・領収書・納品書を集約表示
 - **重複検知**: 有効な証明書がある場合、請求書が入金済みの場合はボタンに `(発行済)` / `(入金済あり)` を表示し過剰発行を抑止
 - **データソース**: `reservations` をハブに `customers` / `vehicles` / `certificates` / `documents` を横断取得 (サーバーコンポーネントで並列 fetch)
+
+#### 作業完了サインオフ・パイプライン (`JobSignoffPanel`) ★全業種共通
+作業完了後に「作業前後の傷などで後から揉める」トラブルを潰すため、**完了報告 → 証明書発行 (施工前後写真) → お客様サイン → お会計 → オンチェーン** を **1 本の順序付きパイプライン** として案件画面に常設。状態計算はサーバ (`GET /api/admin/reservations/[id]/signoff-state`) の純関数 `computeSignoffState` (`src/lib/signoff/state.ts`) に集約し、UI は結果を描画してサイン依頼を叩くだけに徹する。既存の受領サイン・Polygon アンカー・POS 会計を再利用し、足りない「繋ぎ」だけを追加している。
+
+- **施工前後写真ゲート**: 案件由来のサイン依頼は、施工前 (入庫時 = `certificate_images.stage='intake_before'`) と施工後 (`after`) の写真が **両方揃うまで発行不可**。傷の Before/After を証拠として固定する起点 (`certificateBeforeAfterState`)
+- **お客様サイン (必須 / 不在時 24h)**: 既存の受領サイン (`delivery_receipts` / `signature_sessions`) を予約に結線 (`reservation_id`)。不在時はメール/リンクで **24 時間以内** のリモート署名 (SLA)、期限超過は overdue 警告。署名完了で予約が `signoff_status='signed'` へ自動遷移
+- **お会計 (顧客区分 × 支払いサイクルで自動判定)**: 法人×合算 = この案件では会計スキップ (後日合算請求) / 法人×都度払い = 会計を挟む / 個人×事前決済 (paid) = 済 / 個人×その場 = 会計を挟む。**法人でサイクル未設定なら会計ステップでブロック**し顧客管理へ誘導 (サインは可)
+- **オンチェーン**: サイン署名時に Polygon へ自動アンカー (作業 + サインの真正性証明)。会計判定には依存させない
+- **BtoB は LINE 完了報告なしでも成立**: 完了報告はスタッフ操作、LINE 通知は BtoC 向け best-effort のため、法人案件は 証明書 → サイン → オンチェーン で完結できる
+- **状態モデル**: `reservations` に `signoff_status` / `signoff_requested_at` / `signoff_deadline` / `signed_off_at` を追加。判定は 16 ケースの単体テストで担保
 
 ### 2.5b-2 予約受付設定 `/admin/booking-settings`
 外部予約受付 (顧客向け予約フォーム) の受付スロット・定休日を一括管理。
@@ -370,6 +391,8 @@ Ledraは自動車施工（コーティング・フィルム・ラッピング等
 - **店舗検索** `/insurer/stores`: 施工店情報検索
 - **ウォッチリスト** `/insurer/watchlist`: 監視対象の証明書管理
 - **証明書詳細** `/insurer/c/[public_id]`: 個別証明書の詳細閲覧
+- **アンカー検証** `/insurer/anchor-verify` ★新規: 施工画像の SHA-256 を**ブラウザ側で計算**（画像は Ledra サーバーに送信しない）し、その**ハッシュのみ**を `/api/insurer/anchor-verify/[sha256]` に送って Polygon の LedraAnchor コントラクトを照会・検証（読み取り専用 / ガス代なし）。アンカー済み・契約済み施工店の証明書ならメタデータ（撮影日時・端末モデル・真正性グレード）を開示し、返却された tx_hash を Polygonscan/OKLink で第三者が独立再検証可能
+- **BtoB マッチ** `/insurer/btob-match` ★新規: 施工カテゴリ（PPF/コーティング/フィルム/ディテイリング/セラミック/修理）と都道府県から AI が提携施工店候補をスコアリング提案（カテゴリ適合・契約実績・案件量・エリアの加点 + LLM 推薦文。店舗評価スコアによる加点は将来対応）
 
 ### 4.3 案件管理 `/insurer/cases`
 - **一覧**: 案件検索・ステータス絞り込み
@@ -422,6 +445,7 @@ Ledraは自動車施工（コーティング・フィルム・ラッピング等
 - **同意文バージョニング**: 変更があっても当時の文面を再現可能
 - **Polygon ブロックチェーンアンカリング**: 署名ハッシュをオンチェーン記録、後日改ざん不能に
 - **driver.js オンボーディングツアー**: 初回利用者向けに 5 ステップ (内容確認→メール→電話認証→同意→送信) を案内、`localStorage` で再表示抑止
+- **案件サインオフ連携**: 案件ワークフロー (`/admin/jobs/[id]`) の作業完了サインオフ・パイプラインから発行した受領サインは予約に結線 (`delivery_receipts.reservation_id` / `signature_sessions.reservation_id`) され、署名完了で予約が `signoff_status='signed'` に自動遷移。発行前に施工前後写真ガードが掛かる (§2.5b)
 
 ### 5.5 代理店契約電子署名 `/agent-sign/[token]` ★実装済み
 代理店パートナーが Ledra との契約書に電子署名するための専用フロー。CloudSign の代替として軽量化。
@@ -476,6 +500,7 @@ Ledraは自動車施工（コーティング・フィルム・ラッピング等
 
 ### 7.3 LINE
 - **LINE Webhook**: LINEメッセージ受信・処理
+- **概算見積りの自動返信** (`quote.auto_reply_rough_estimate`, 既定 OFF): LINE で価格問い合わせ（例:「ヴェルファイアのコーティングいくら？」）を受信すると、車両＋過去実績から概算金額をレンジ（税込 ±15%）で顧客へ即返信し、正式・詳細な見積りは来店へ誘導する。未紐付けの新規客にも返信。詳細は `docs/ai-automation-guide.md`
 
 ### 7.4 Google Calendar
 - **予約連携**: 予約データをGoogleカレンダーに同期
@@ -558,6 +583,19 @@ Ledraは自動車施工（コーティング・フィルム・ラッピング等
 | `data-retention` | GDPR データエクスポート / 保管期限処理 |
 | `cleanup-insurer-logs` | 保険会社監査ログのクリーンアップ |
 | `outbox-flush` | トランザクショナル outbox パターンの非同期送出 |
+| `anchor-batch` ★新規 | 証明書写真ハッシュのバッチアンカリング |
+| `parts-anchor` ★新規 | 確定済み部品装着の個別 Polygon アンカー + 車両単位メタアンカー再計算 |
+| `passport-billing` ★新規 | Passport API 利用者の従量課金集計 |
+| `passport-meta-anchor-retry` ★新規 | パスポートメタアンカー書込み失敗分の再試行 |
+| `passport-transfers-expire` ★新規 | 期限切れ所有権移転リクエストの自動失効 |
+| `agent-commissions-reconcile` ★新規 | 代理店コミッションの定期照合 |
+| `manufacturer-monthly-summary` ★新規 | メーカー向け月次サマリ生成 |
+| `feature-metrics-rollup` ★新規 | 機能利用メトリクスの集計ロールアップ |
+| `image-variants-backfill` ★新規 | 画像バリアント (サムネ等) のバックフィル生成 |
+| `stripe-event-monitor` ★新規 | Stripe イベント取りこぼし監視・自己修復 |
+| `insurer-sla-alerts` ★新規 | 保険案件の SLA 期限接近 (at_risk) / 超過 (overdue) を毎時検知し担当者・管理者へ通知 |
+
+> Cron は計 **25 本** (vercel.json 登録ベース)。`maintenance` / `follow-up` は車検満了・走行距離ベースの整備リマインダーも担う。
 
 ---
 
@@ -685,7 +723,9 @@ Square売上と突合 → 経営分析
 
 | カテゴリ | 技術 |
 |---|---|
-| **フレームワーク** | Next.js 15 (App Router, React Compiler) |
+| **フレームワーク** | Next.js 16 (App Router, React Compiler) |
+| **ブロックチェーン** | Polygon PoS (LedraAnchor コントラクト / ethers v6) |
+| **タイムスタンプ** | RFC3161 TSA (部品装着確定時) |
 | **言語** | TypeScript |
 | **スタイリング** | Tailwind CSS v4 + Ledraデザインシステム (CSS変数, ライト/ダーク) |
 | **データベース** | Supabase (PostgreSQL) |
@@ -718,16 +758,18 @@ Square売上と突合 → 経営分析
 
 ### API数
 
-| ポータル | APIルート数 |
+| ポータル | APIルート数 (route.ts 実数) |
 |---|---|
-| Admin | 130+ (会計連携 / Polygon バックフィル / セットアップ・サンプルデータ / オンボーディングファネル等を含む) |
-| Agent | 15+ |
-| Insurer | 25+ |
-| 共通/Public | 35+ (受領サイン / 配送受領サイン / 代理店契約署名 / 公開操作ガイド / 資料一括 ZIP DL を含む) |
-| Mobile | 20+ (Apple Tap to Pay 関連を含む) |
-| Webhook | 5 |
-| Cron | 14 |
-| **合計** | **240+** |
+| Admin | **300** (会計連携 / Polygon / パスポート運営 / 部品インテグリティ / 供給チェーン / 組織・本社横断 等を含む) |
+| Agent | **40** |
+| Insurer | **42** (アンカー検証 / BtoB マッチを含む) |
+| Manufacturer ★新規 | **14** |
+| Passport / v1 外部API ★新規 | **15** (Passport verify / marketplace / referrals / ingest / accident-match) |
+| 共通/Public | 35+ (受領サイン / 部品装着署名 / 有料車両履歴レポート / 公開操作ガイド 等) |
+| Mobile | **23** (Apple Tap to Pay / QR 決済 / 本人確認OCR / 顧客インテーク を含む) |
+| Webhook | **13** (Stripe / Square / Resend / LINE / 供給パートナー / 動画プロバイダ) |
+| Cron | **24** |
+| **合計 (route.ts)** | **570** |
 
 ---
 
@@ -955,7 +997,8 @@ KPI 中心の Admin ダッシュボードに加え、現場スタッフ向けの
 | ✓ | 多言語化 (en / zh / vi / ko / pt-BR) | 実装済 (`/api/admin/translate`) + キャッシュテーブル `ai_translation_cache` |
 | ✓ | フィールド単位ポリシー (auto / suggest / manual) | `/admin/settings/ai-automation` で 30+ フィールドを切替可能 |
 | ✓ | AI 利用集計ダッシュボード | `/admin/platform/operations` (信頼度ヒストグラム / outcome 別 / トークン消費) |
-| ○ | 写真改ざん検出 (メタデータ/ハッシュ/EXIF) | 保険会社向けの強力な訴求 |
+| ✓ | 写真改ざん検出 (メタデータ/ハッシュ/EXIF) | 実装済 (`/api/admin/certificates/photo-tampering`)。保険会社は `/insurer/anchor-verify` でオンチェーン独立検証も可能 |
+| ✓ | 部品装着の真贋・改ざん検知 | 実装済 (部品インテグリティ。詳細は 13.3) |
 | △ | 不正パターン検出 (代理店・BtoB・保険請求) | 運営コスト削減 |
 
 #### 顧客接点強化
@@ -998,5 +1041,170 @@ KPI 中心の Admin ダッシュボードに加え、現場スタッフ向けの
 2. **タスク指向 > 機能指向** — 「何をしたいか」から入れる導線設計
 3. **データ間リンクを優先** — データ関連性があれば必ずリンク可能に
 4. **コマンドパレット中心** — パワーユーザーは Cmd+K で即アクセス可能
+
+---
+
+## 13. 2026-05〜06 追加機能
+
+> 本リスト前回更新 (2026-05-09) 以降に実装された機能群。コードベースは API ルートだけで 240+ → **570 (route.ts 実数)** へ拡張され、
+> **第5のポータル (メーカー)**、**車両パスポート / 外部API による事業モデル拡張**、**部品インテグリティ**、**供給チェーン連携** が加わりました。
+
+### 13.1 メーカーポータル（Manufacturer）★第5のポータル
+
+部品・コーティング剤メーカーが、自社の指定デザインで証明書を発行する**認定施工店ネットワークを一元監視**するための専用ポータル。ブランド保護 (brand protection) が目的。
+
+- **ログイン** `/manufacturer/login`: メール+パスワード認証
+- **ダッシュボード** `/manufacturer`: 認定施工店の稼働状況、メーカー指定デザイン証明書の月次/30日/全期間集計、トップ10施工店ランキング
+- **発行履歴** `/manufacturer/certificates`: 指定デザインで発行された証明書を全件一覧（施工店/テンプレート/サービス種別で絞り込み）
+- **品質チェック** `/manufacturer/quality`: 施工写真・保証情報・施工内容が欠けた証明書を自動検出し、施工店への指導材料を提供
+- **デザインテンプレート** `/manufacturer/templates`: 運用中のメーカー指定デザイン一覧（変更は運営へ依頼）
+- **認定施工店** `/manufacturer/tenants`: 認定中の施工店と各店の発行実績一覧
+- **ポータルメンバー** `/manufacturer/members`: 管理者のみ、社内スタッフ招待と権限管理
+- **操作ログ** `/manufacturer/audit`: 認定の付与/解除履歴（運営操作と社員操作を区別表示）
+- **運営側** `/admin/platform/manufacturers`: Ledra 運営がメーカー企業を登録・編集（slug・ロゴ・公式サイト・連絡先）。`manufacturer-monthly-summary` Cron が月次サマリを生成
+
+### 13.2 車両パスポート & 所有権移転 + Passport API ★新規
+
+VIN を鍵に**車両の全施工履歴を束ねる「デジタル車両パスポート」**と、その所有権を中古売買時に移転する仕組み。第三者 (中古車店・買取業者) 向けの**外部API・有料レポートで収益化**する。
+
+**所有権移転 (買取・中古販売向け)**
+- **移転受諾ページ** `/passport/transfer/[token]`: トークンベースの無認証ページ。受諾待ち/受諾済/辞退/キャンセル/期限切れのステータスとメッセージ・有効期限を表示
+- `POST /api/passport/transfers/initiate`: 施工店スタッフ（管理者以上）が移転をリクエストし新所有者へメール送信（TTL 指定可）
+- `accept` / `reject` / `cancel`: 新所有者の受諾（名前上書き可）/辞退、送信元のキャンセル
+- `passport-transfers-expire` Cron: 期限切れリクエストを自動失効
+
+**外部API（中古車店・買取業者向け / APIキー `lpk_live_*` 認証）**
+- `GET /api/v1/passport/verify`: VIN から施工履歴の有無を検証（`passport:verify` スコープ・月次クォータ・レート制限）
+- `GET /api/v1/passport/marketplace-info`: verify 結果 + **リード（紹介）トークン発行**（同一パートナー・同一VIN・7日以内は再利用しリード重複防止）
+- `POST /api/v1/passport/referrals/claim`: 買取成約時にリードトークンで報告し紹介手数料をクレーム
+
+**運営側**
+- `/admin/platform/passport-consumers`: API 利用者一覧（キー数・30日コール数・最終利用日）、月次クォータ/レート制限設定、キー発行/失効、呼び出し履歴ログ（エンドポイント/VIN/ステータス/応答時間）
+- `passport-billing` Cron: 利用者ごとの従量課金を集計
+
+### 13.3 部品インテグリティ（真贋証明・改ざん検知）★新規
+
+交換部品の装着を**顧客電子署名 + サーバ署名 + RFC3161 TSA タイムスタンプ + Polygon アンカー**で証明し、AI/ルールで改ざんを検知するコンプライアンス基盤。
+
+- `POST /api/parts/installations`: 部品装着レコード作成（content_hash 自動算出・AI 自動検査）
+- `POST /api/parts/confirmations`: 装着確認依頼（保証グレード/チャンネル決定、顧客本人へ OTP + 署名リンク送信）
+- **顧客署名ページ** `/parts/confirm/[token]`: 顧客が交換内容を確認し電子署名（無認証・トークンベース）。`sign` で顧客署名確定 + サーバ鍵署名 + RFC3161 TSA 付与
+- **整合性監査** `/admin/parts-integrity`: AI/ルールが検知した矛盾・改ざん疑い（part_integrity_findings）を重大度順（critical/warning/info）に一覧。検知ルール = シリアル使い回し / 写真使い回し / 数量不一致 / 三方照合不一致 / 文脈不一致 / ディープフェイク疑い / 写真加工 / 撮影時刻異常
+- **装着詳細** `/admin/parts-integrity/[installationId]`: 1件の内容・証拠・確定署名・Polygon アンカー・検知結果を一画面表示
+- `parts-anchor` Cron: 確定済み高額/シリアル装着を個別 Polygon アンカー化し、車両単位の全件メタアンカーを再計算
+
+### 13.4 供給チェーン連携（部品自動発注）★新規
+
+部品供給パートナーと API/Webhook で連携し、発注を半自動化する仕組み。
+
+- `/api/admin/supply/partners`: アクティブな供給パートナーの公開ディレクトリ + 自店の提携状況（enabled/disabled）
+- `/api/admin/supply/map-item`: 自社在庫品目をパートナー商材に紐付け（supplier_sku 自動ミラー）
+- `/api/admin/supply/products`: 提携済みパートナーの商材カタログ閲覧
+- `/api/admin/supply/auto-send`: パートナー発注の全自動送信 opt-in（enabled + 1発注上限額 + 月次上限がすべて必要、信頼パートナー & API連携済みのみ対象）
+- `POST /api/webhooks/supply/[partnerId]`: パートナー受注システムからの「受注確定/出荷/却下」通知（HMAC-SHA256 署名検証）。transport_status/external_order_id を更新（PO ステータス自体と入荷計上は手作業を維持＝人の関与の壁）
+- **運営側** `/admin/platform/supply-partners`: 運営がパートナー企業を登録・管理（連絡先・API認証形式・統合ステータス）
+
+### 13.5 公開車両履歴レポート（有料・第三者向け）★新規
+
+買取店など第三者が、任意 VIN の全施工履歴レポートを**都度課金（Stripe）でアンロック**できる収益化機能。
+
+- `POST /api/public/vehicle-report/checkout`: 無認証で任意 VIN のレポートを Stripe 決済（mode=payment / JPY）。VIN 実在確認（vehicle_passports に存在するもののみ）、金額はサーバ側 settings で決定、レートリミット付き
+- `GET /api/public/vehicle-report/unlock?session_id=...`: Stripe の success_url からのリダイレクト先。支払い完了を検証してアクセストークンを発行し `/v/[vin]` の全履歴を表示（顧客認証不要）
+- **運営側** `/admin/platform/vehicle-report`: 第三者向けレポート価格（JPY）を設定（パスポート履歴はテナント横断のためプラットフォーム共通価格）
+
+### 13.6 施工店ポータル（Admin）の追加業務機能 ★新規
+
+サイドバーは 6 → **9 グループ**（経理グループ新設等）に拡張。主な追加機能:
+
+**業務**
+- **承認インボックス** `/admin/inbox`: 証明書・発注・請求書の未承認ドラフトを集約しワンタップ承認
+- **メカニック稼働管理** `/admin/mechanic-gantt`: 本日のシフトを30分刻みガントで可視化（10秒ごとライブ更新の運用ディスプレイ）
+- **コンタクト管理** `/admin/contact-schedules`: 顧客接触予定（コール等）をカレンダー一元管理（完了/スキップ/リスケ）
+- **鈑金工程** `/admin/body-repair`: 車体整備案件を「引取→見積→工程→完成→納車」で追跡（詳細は 13.7）
+- **クーポン管理** `/admin/coupons`: クーポンコードの自動生成/手動作成・有効化・発行履歴追跡
+- **整備提案・交換管理** `/admin/service-reminders`: 次回施工期日を走行距離・実施日の双方で管理し期限間近フラグで優先度表示
+- **概算見積** `/admin/quick-quote`: メニュー項目をクリック選択・数量入力し税込見積額をリアルタイム計算
+- **スタッフ管理** `/admin/staff`: 社内/外注職人の登録、スキルタグ・連絡先・稼働実績集約、シフト一括置換、担当者別分析 `/admin/analytics/staff`
+- **ピット管理** `/admin/booths`: PPF/コーティング等のブース登録と指定日の予約割当確認
+- **施工パッケージ** `/admin/service-packages`: メニュー項目を組み合わせパッケージ化し価格戦略・推奨テンプレ設定
+- **メンテパック** `/admin/maintenance-packs`: 顧客向け整備チケット制度（総枚数/使用枚数/有効期限追跡）
+- **発注管理** `/admin/purchase-orders`: 「下書き→承認→送信→入荷」で仕入先/供給パートナーへ発注（欠品 backorder 対応）
+- **部品発注** `/admin/parts-orders`: 案件に紐付く部品の発注管理（期限超過/受領状態追跡）
+- **代車管理** `/admin/loaner-cars`: 代車台帳と貸出管理（返却期限把握、DB 一意制約で二重貸出防止）
+- **タイヤ保管** `/admin/tire-storage`: シーズンオフタイヤの保管位置・交換時期管理と返却リマインダー
+- **点検** `/admin/inspections`・`/admin/inspection-templates`: 車検満了 180 日以内の車両を期限順一覧、点検チェックリスト（JSON）の作成・既定設定
+- **在庫棚卸** `/admin/stocktake`: セッション作成時にアクティブ品目から明細自動生成しカウント進捗追跡
+
+**顧客**
+- **統合メッセージ** `/admin/messages`: 顧客・LINE からの受信をスレッド化し AI 返信ドラフト生成・リンク作成
+- **LINE配信** `/admin/line-broadcasts`: テナント顧客への LINE 一斉配信（draft/scheduled/sending/sent/failed）
+- **レビュー** `/admin/reviews`: 受領サイン後のレビューを AI 感情解析（sentiment/topics/要対応判定）
+- **店舗お知らせ** `/admin/shop-announcements`: 顧客向けお知らせを多言語（英/中/越）自動翻訳して配信
+- **顧客インテーク** `/admin/customer-intakes`: 事前カルテ招待リンク発行・提出管理・重複検出・承認登録（モバイル版 `mobile/customer-intakes` は Bearer 認証）
+- **顧客ランク** `/admin/settings/customer-ranks`: 来店回数・累計売上から自動ランク付けルール定義 + 全顧客一括再計算
+
+**情報・経理・組織・設定**
+- **HPコンテンツCMS** `/admin/site-content`: 公開ブログ/イベント/ウェビナーの作成・編集・公開
+- **売掛元帳** `/admin/payment-ledger`: 未請求残額と入金履歴一覧（payment_entries / billing-splits で按分管理）
+- **組織管理** `/admin/organizations`: オーナーの複数店舗を管理（メンバー店舗追加・全店舗当月実績の横断集計・作業履歴）
+- **本社横断ビュー** `/admin/hq-overview`: 組織オーナーが所属全店舗の顧客・車両・作業履歴を横断閲覧
+- **アドオン契約** `/admin/settings/addons`: 中古車マーケット・B2B案件・商談管理など追加機能の契約状況
+- **機能表示設定** `/admin/settings/features`: ユーザー個別の表示機能とテナント全体の機能制限を管理
+- **API連携** `/admin/integrations`: テナント向け API キー発行、メールテンプレート、送信 Webhook（イベント購読）の統合管理。生キー/secret は発行時のみ開示（Stripe 方式）
+
+**外部 v1 API（基幹システム / 外部チャネル連携）**
+- `POST /api/v1/ingest/{customers,vehicles,work-history}`: 基幹ソフトから顧客/車両/作業履歴を API キーで Push 取込（source_system + external_ref で冪等）
+- `GET /api/v1/accident-match?vin=...`: 保険会社向け、VIN から最適施工店をランキング（PII なし公開情報のみ返却）
+- `POST /api/external/booking`: 外部チャネル（Google Maps Reserve / LINE LIFF / Web 等）からの予約受付（重複チェック・Google Calendar 同期・LINE 確認メッセージ）
+
+### 13.7 鈑金塗装（body-repair）ワークフロー強化 ★新規
+
+中古車・事故車の鈑金塗装業務に特化したワークフロー。透明性ガイドライン対応を含む。
+
+- **工程ステージ管理** + ステージ遷移時の**顧客進捗自動通知（opt-in）**。TOCTOU 対策で二重通知を防止
+- **作業前/変更同意フロー** `consent-request`: ガイドライン 4.2(5) 対応の署名依頼 URL（電話番号下4桁で本人確認）
+- **進捗トラッキング URL** `track-link`: 顧客向け進捗ページ（idempotent 発行）
+- **AI 見積**: 案件から AI 見積を作成し見積書を紐付け
+- **代車紐付け**: 代車を案件に紐付け、案件から貸出/返却管理
+- **保険査定ステータスの構造化記録**: 承認額・支払可否を構造化保存、保険会社との往復メッセージを案件から処理
+- **納期 due_date と期限超過の可視化**
+
+### 13.8 整備・ディテイリング・用品取付 ★新規
+
+- **整備リマインダー自動通知** Cron: 定期点検・交換時期を**実施日ベース + 走行距離ベース**の双方で自動通知
+- **ディテイリング保証**: 保証終了日を月単位で自動算出（Cron は保存値を優先）
+- **用品取付**: 装着写真の「作成前ステージ」経路（撮影 → ハッシュ/EXIF 記録 → 作成API）で証拠性を確保
+- **音声メモ → 案件備考展開**: 現場の音声メモを案件の備考へ自動反映
+
+### 13.9 課金プラン & AI モデル選択の刷新 ★新規
+
+プラン別の上限と、プラン別 AI モデル選択（コスト最適化）を整備。
+
+| プラン | 月間証明発行上限 | 写真添付上限 | 店舗数上限 |
+|---|---|---|---|
+| Free | 20 件 | 3 枚 | 1 |
+| Starter | 80 件 | 5 枚 | 1 |
+| Standard | 300 件 | 10 枚 | 2 |
+| Pro | 無制限 | 20 枚 | 5 |
+
+- **プラン別 AI モデル選択**: 多くのルートハンドラ・自動化処理がプランに応じてモデル（Haiku / Sonnet / Opus）を切替し、Starter は AI 全機能を Haiku で解禁。ただし精度要件の高い一部処理（本人確認 OCR など Vision/Critical 系）はプランに依らず固定の高精度モデルを使用
+- **Wall-3 撤廃**: 全アクションを AI 自動化の対象に開放（フィールド単位ポリシー auto/suggest/manual + 信頼度しきい値 + 月次コストキャップで制御）
+- **AI 利用集計**: 運営ダッシュボード `/admin/platform/operations`（API: `/api/admin/platform/ai-usage`）でモデル別/outcome 別/トークン消費を可視化
+
+### 13.9b 標準工数 × レバーレート 工賃自動算出 ★新規 (2026-07)
+
+整備見積に日整連 (JASPA) 等の標準工数方式を反映する土台。工数データは有償ライセンスのためテナントが CSV で取込み、Ledra は算出エンジンを担う。
+
+- **レバーレート設定**: 設定 > 工賃設定 で工賃単価 (円/時) を登録 (`tenants.labor_rate_per_hour`)。保存時に工数持ち品目の提供価格を**一括再計算**
+- **品目マスタに標準工数**: `menu_items.labor_hours` (h)。入力すると 提供価格 = round(工数 × レバーレート) を自動算出 (`src/lib/pricing/labor.ts`)
+- **CSV 取込 5 列目に工数**: 単価空欄 + 工数あり + レート設定済みなら単価を自動算出 — 指数表の一括取込導線
+- **下流は無変更で反映**: unit_price を単一の真実として保存するため、見積・請求書・クイック見積・AI 見積すべてに自動反映
+- 詳細: `docs/pdca-ideals-gap-2026-07.md`
+
+### 13.10 モバイル / マーケティングの追加
+
+- **モバイルAPI 追加**: QR 決済セッション（`pos/checkout/qr-session` / `qr-status`）、本人確認 OCR（`identity/ocr`）、顧客インテーク取込、予約ステージ前進（`reservations/[id]/advance`）
+- **Webhook 追加**: 供給パートナー（`webhooks/supply/[partnerId]` / `supply-line`）、動画プロバイダ（`webhooks/video/[provider]`）
+- **マーケ追加ページ**: ブログ `/blog`・施工事例 `/cases`・デモ `/demo`・イベント `/events`・PoC `/poc`・ROI `/roi`・セキュリティ `/security`・財務透明性 `/financial-transparency`・データ開示 `/data-disclosure`・公開検証 `/verify`、機能詳細に在庫 `/features/inventory`・膜厚 `/features/thickness`
 
 ---

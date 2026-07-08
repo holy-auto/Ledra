@@ -71,7 +71,12 @@ export async function POST(req: NextRequest) {
     return apiForbidden("このAPIキーには marketplace スコープがありません。");
   }
 
-  const consumerLimited = await checkRateLimit(req, "general", `passport-consumer:${auth.ctx.consumerId}`);
+  const consumerLimited = await checkRateLimit(
+    req,
+    "general",
+    `passport-consumer:${auth.ctx.consumerId}`,
+    auth.ctx.rateLimitPerMinute,
+  );
   if (consumerLimited) return consumerLimited;
 
   const quota = await checkPassportMonthlyQuota(admin, auth.ctx.consumerId, auth.ctx.monthlyQuota);

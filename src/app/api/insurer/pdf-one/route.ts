@@ -33,84 +33,90 @@ export async function GET(req: NextRequest) {
   const planDeny = enforceInsurerPlan(caller, "pro");
   if (planDeny) return planDeny;
 
-  const url = new URL(req.url);
-  const pid = url.searchParams.get("pid");
-  if (!pid) return apiValidationError("pid is required");
-
-  const { ip, ua } = getClientMeta(req);
-
-  const supabase = await createClient();
-
-  const { data, error } = await supabase.rpc("insurer_get_certificate", {
-    p_public_id: pid,
-    p_ip: ip,
-    p_user_agent: ua,
-  });
-  if (error) return apiInternalError(error, "insurer.pdf-one");
-
-  const cert = Array.isArray(data) ? data[0] : null;
-  if (!cert) return apiNotFound("証明書が見つかりません。");
-
-  const { error: logErr } = await supabase.rpc("insurer_audit_log", {
-    p_action: "insurer.export.pdf.one",
-    p_target_public_id: pid,
-    p_query_json: null,
-    p_ip: ip,
-    p_user_agent: ua,
-  });
-  if (logErr) return apiValidationError(logErr.message);
-
-  const baseUrl = buildBaseUrl(req);
-  const publicUrl = `${baseUrl}/c/${encodeURIComponent(pid)}`;
-
-  let qrDataUrl = "";
   try {
-    qrDataUrl = await QRCode.toDataURL(publicUrl, { margin: 1, width: 240 });
-  } catch {
-    qrDataUrl = "";
+    const url = new URL(req.url);
+    const pid = url.searchParams.get("pid");
+    if (!pid) return apiValidationError("pid is required");
+
+    const { ip, ua } = getClientMeta(req);
+
+    const supabase = await createClient();
+
+    const { data, error } = await supabase.rpc("insurer_get_certificate", {
+      p_public_id: pid,
+      p_ip: ip,
+      p_user_agent: ua,
+    });
+    if (error) return apiInternalError(error, "insurer.pdf-one");
+
+    const cert = Array.isArray(data) ? data[0] : null;
+    if (!cert) return apiNotFound("証明書が見つかりません。");
+
+    const { error: logErr } = await supabase.rpc("insurer_audit_log", {
+      p_action: "insurer.export.pdf.one",
+      p_target_public_id: pid,
+      p_query_json: null,
+      p_ip: ip,
+      p_user_agent: ua,
+    });
+    if (logErr) return apiValidationError(logErr.message);
+
+    const baseUrl = buildBaseUrl(req);
+    const publicUrl = `${baseUrl}/c/${encodeURIComponent(pid)}`;
+
+    let qrDataUrl = "";
+    try {
+      qrDataUrl = await QRCode.toDataURL(publicUrl, { margin: 1, width: 240 });
+    } catch {
+      qrDataUrl = "";
+    }
+
+    // InsurerPdfDoc は <Document> を返すが戻り値型に DocumentProps の
+    // element 型を持っていないため、@react-pdf/renderer の pdf() に渡すには
+    // ReactElement<DocumentProps> として narrow する必要がある。
+    const docEl = React.createElement(InsurerPdfDoc, {
+      cert,
+      qrDataUrl,
+      publicUrl,
+    }) as unknown as React.ReactElement<DocumentProps>;
+
+    // Resolve certificate_id reliably from pid (public_id)
+    const { data: certIdRow, error: certIdErr } = await supabase
+      .from("certificates")
+      .select("id")
+      .eq("public_id", pid)
+      .maybeSingle();
+    if (certIdErr) throw certIdErr;
+    const certId = certIdRow?.id;
+    if (!certId) return apiNotFound("証明書が見つかりません。");
+
+    await logInsurerAccess({
+      action: "download_pdf",
+      certificateId: certId,
+      meta: { route: "GET /api/insurer/pdf-one", pid },
+      ip,
+      userAgent: ua,
+    });
+
+    // @react-pdf/renderer's browser lib types this as `Buffer | ReadableStream`,
+    // but on Node runtime it is always a Buffer. Narrow and copy to a fresh
+    // Uint8Array<ArrayBuffer> so NextResponse gets a valid BodyInit and we
+    // detach from Node's shared Buffer pool.
+    const buffer = await pdf(docEl).toBuffer();
+    if (!(buffer instanceof Uint8Array)) {
+      throw new Error("[insurer/pdf-one] renderer returned a stream instead of a buffer");
+    }
+    const buf = Uint8Array.from(buffer);
+    return new NextResponse(buf, {
+      headers: {
+        "content-type": "application/pdf",
+        "content-disposition": `attachment; filename="insurer_certificate_${pid}.pdf"`,
+        "cache-control": "no-store",
+      },
+    });
+  } catch (e) {
+    // 予期しない失敗 (証明書ID解決の DB エラー、レンダラのストリーム返却等) を
+    // 生 throw で 500 にせず、ログ付きの統一エラー応答に統一する。
+    return apiInternalError(e, "insurer.pdf-one");
   }
-
-  // InsurerPdfDoc は <Document> を返すが戻り値型に DocumentProps の
-  // element 型を持っていないため、@react-pdf/renderer の pdf() に渡すには
-  // ReactElement<DocumentProps> として narrow する必要がある。
-  const docEl = React.createElement(InsurerPdfDoc, {
-    cert,
-    qrDataUrl,
-    publicUrl,
-  }) as unknown as React.ReactElement<DocumentProps>;
-
-  // Resolve certificate_id reliably from pid (public_id)
-  const { data: certIdRow, error: certIdErr } = await supabase
-    .from("certificates")
-    .select("id")
-    .eq("public_id", pid)
-    .maybeSingle();
-  if (certIdErr) throw certIdErr;
-  const certId = certIdRow?.id;
-  if (!certId) return apiNotFound("証明書が見つかりません。");
-
-  await logInsurerAccess({
-    action: "download_pdf",
-    certificateId: certId,
-    meta: { route: "GET /api/insurer/pdf-one", pid },
-    ip,
-    userAgent: ua,
-  });
-
-  // @react-pdf/renderer's browser lib types this as `Buffer | ReadableStream`,
-  // but on Node runtime it is always a Buffer. Narrow and copy to a fresh
-  // Uint8Array<ArrayBuffer> so NextResponse gets a valid BodyInit and we
-  // detach from Node's shared Buffer pool.
-  const buffer = await pdf(docEl).toBuffer();
-  if (!(buffer instanceof Uint8Array)) {
-    throw new Error("[insurer/pdf-one] renderer returned a stream instead of a buffer");
-  }
-  const buf = Uint8Array.from(buffer);
-  return new NextResponse(buf, {
-    headers: {
-      "content-type": "application/pdf",
-      "content-disposition": `attachment; filename="insurer_certificate_${pid}.pdf"`,
-      "cache-control": "no-store",
-    },
-  });
 }

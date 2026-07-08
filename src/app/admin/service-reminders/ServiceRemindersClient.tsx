@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import PageHeader from "@/components/ui/PageHeader";
 import {
   SERVICE_REMINDER_TYPES,
   SERVICE_REMINDER_TYPE_LABEL,
@@ -174,39 +175,31 @@ export default function ServiceRemindersClient() {
 
   return (
     <div className="mx-auto max-w-4xl pb-20">
-      {/* ヘッダー */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-primary">整備提案・交換管理</h1>
-          <p className="mt-1 text-sm text-secondary">
-            走行距離・前回施工日から交換推奨時期を算出し、後日整備を提案します
-          </p>
-        </div>
-        <button
-          onClick={() => setAddOpen(true)}
-          className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2 font-medium text-white transition-colors hover:bg-accent/90"
-        >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-          提案を追加
-        </button>
-      </div>
-
-      {/* フィルタタブ */}
-      <div className="mb-6 flex border-b border-border-default">
-        {(["all", "due", "overdue"] as TabKey[]).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`border-b-2 px-5 py-2.5 text-sm font-medium transition-colors ${
-              activeTab === tab ? "border-accent text-accent" : "border-transparent text-secondary hover:text-primary"
-            }`}
-          >
-            {TAB_META[tab].label}
-            <span className="ml-1.5 text-xs text-muted">({TAB_META[tab].count})</span>
-          </button>
-        ))}
+      {/* ヘッダー + タブ（L字シェルのページバー） */}
+      <div className="mb-6">
+        <PageHeader
+          tag="整備提案"
+          title="整備提案・交換管理"
+          description="走行距離・前回施工日から交換推奨時期を算出し、後日整備を提案します"
+          actions={
+            <button
+              onClick={() => setAddOpen(true)}
+              className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2 font-medium text-white transition-colors hover:bg-accent/90"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              提案を追加
+            </button>
+          }
+          tabs={(["all", "due", "overdue"] as TabKey[]).map((tab) => ({
+            key: tab,
+            label: TAB_META[tab].label,
+            badge: TAB_META[tab].count,
+          }))}
+          activeTab={activeTab}
+          onTabSelect={(k) => setActiveTab(k as TabKey)}
+        />
       </div>
 
       {/* リスト */}

@@ -141,14 +141,16 @@ export async function POST(req: NextRequest) {
     if (slots && slots.length > 0) {
       const maxBookings = slots[0].max_bookings;
 
+      // 境界は排他（開始=前枠の終了 は重複としない）。空き状況 GET と揃え、隣接枠を
+      // 独立して予約可能にする。
       const { count } = await admin
         .from("reservations")
         .select("id", { count: "exact", head: true })
         .eq("tenant_id", tenant.id)
         .eq("scheduled_date", scheduledDate)
         .neq("status", "cancelled")
-        .lte("start_time", endTime)
-        .gte("end_time", startTime);
+        .lt("start_time", endTime)
+        .gt("end_time", startTime);
 
       if ((count ?? 0) >= maxBookings) {
         return apiError({

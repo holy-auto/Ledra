@@ -17,6 +17,7 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { categorizeAccountingLines, type AccountingAccount } from "@/lib/ai/accountingCategoryEstimate";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "./policy";
@@ -119,7 +120,9 @@ export async function maybeAutoCategorizeReservationOnIntake(
     if (lines.length === 0) return; // 明細が無ければ推定しない
 
     const usage = startAiRouteUsage(AUTO_CATEGORIZE_ENDPOINT);
-    const result = await categorizeAccountingLines(lines, DEFAULT_ACCOUNTING_CHART, DEFAULT_FALLBACK_CODE);
+    const result = await categorizeAccountingLines(lines, DEFAULT_ACCOUNTING_CHART, DEFAULT_FALLBACK_CODE, {
+      model: fastModelForPlanTier(tenant.plan_tier),
+    });
 
     const snapshot = {
       lines: result.lines,

@@ -41,4 +41,8 @@ describe("parseCsv", () => {
   it("respects maxRows guard", () => {
     expect(() => parseCsv("a\n1\n2\n3\n", { maxRows: 2 })).toThrow(/csv_too_many_rows/);
   });
+
+  it("rejects oversized source before parsing (byte cap)", () => {
+    expect(() => parseCsv("aaaaaaaaaa", { maxBytes: 5 })).toThrow(/csv_too_many_rows/);
+  });
 });

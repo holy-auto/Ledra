@@ -16,6 +16,7 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { classifyInquiry } from "@/lib/ai/inquiryClassify";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "./policy";
@@ -57,11 +58,14 @@ export async function maybeAutoClassifyInquiry(params: MaybeAutoClassifyInquiryP
     if (!canUseFeature(normalizePlanTier(tenant.plan_tier), "ai_inquiry_classify")) return;
 
     const usage = startAiRouteUsage(AUTO_CLASSIFY_ENDPOINT);
-    const result = await classifyInquiry({
-      subject: subject ?? "",
-      message,
-      customerHistory: customerName ? { name: customerName } : undefined,
-    });
+    const result = await classifyInquiry(
+      {
+        subject: subject ?? "",
+        message,
+        customerHistory: customerName ? { name: customerName } : undefined,
+      },
+      { model: fastModelForPlanTier(tenant.plan_tier) },
+    );
 
     const { error: upErr } = await admin
       .from("customer_inquiries")

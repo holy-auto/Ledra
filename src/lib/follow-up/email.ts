@@ -2,7 +2,7 @@
  * Follow-up & expiry reminder emails via Resend API.
  */
 
-import { escapeHtml } from "@/lib/sanitize";
+import { escapeHtml, sanitizeEmailHtml } from "@/lib/sanitize";
 import { sendEmail } from "@/lib/email/sendEmail";
 
 function wrap(title: string, body: string) {
@@ -72,13 +72,19 @@ export async function sendFollowUpEmail(params: {
   customerName: string;
   certificateLabel: string;
   daysSince: number;
+  /** AI パーソナライズ文面での上書き (任意)。未指定ならテンプレート文面。 */
+  subject?: string;
+  bodyHtml?: string;
 }): Promise<boolean> {
   const shop = escapeHtml(params.shopName);
   const customer = escapeHtml(params.customerName);
   const cert = escapeHtml(params.certificateLabel);
   const html = wrap(
     "施工後のフォローアップ",
-    `
+    // AI 生成本文は顧客名・店名などの外部由来データを含み prompt injection の
+    // 経路にもなり得るため、許可タグのみ残してサニタイズしてから埋め込む
+    (params.bodyHtml ? sanitizeEmailHtml(params.bodyHtml) : null) ??
+      `
       <p style="color: #1d1d1f; font-size: 14px;">
         ${customer} 様<br><br>
         ${shop}です。<br>
@@ -93,7 +99,43 @@ export async function sendFollowUpEmail(params: {
       </p>
     `,
   );
-  return send(params.customerEmail, `[${shop}] 施工後のご確認`, html);
+  return send(params.customerEmail, params.subject ?? `[${shop}] 施工後のご確認`, html);
+}
+
+/**
+ * 定期点検・交換時期のリマインドメール（顧客向け）。
+ * service_reminders の next_due_date / next_due_mileage が近づいた車両に対して送る。
+ * `timing` は到達した軸に応じた時期の文言（例: "2026-07-30頃" / "走行 40,000km 到達目安"）。
+ */
+export async function sendServiceReminderEmail(params: {
+  shopName: string;
+  customerEmail: string;
+  customerName: string;
+  serviceName: string;
+  vehicleLabel?: string | null;
+  timing: string;
+}): Promise<boolean> {
+  const shop = escapeHtml(params.shopName);
+  const customer = escapeHtml(params.customerName);
+  const service = escapeHtml(params.serviceName);
+  const vehicle = params.vehicleLabel ? escapeHtml(params.vehicleLabel) : null;
+  const html = wrap(
+    "点検・交換時期のご案内",
+    `
+      <p style="color: #1d1d1f; font-size: 14px;">
+        ${customer} 様<br><br>
+        ${shop}です。<br>
+        ${vehicle ? `${vehicle}の` : "お車の"}「${service}」の点検・交換時期（${escapeHtml(params.timing)}）が近づいてまいりました。
+      </p>
+      <p style="color: #1d1d1f; font-size: 14px;">
+        ご予約・ご相談はお気軽にお問い合わせください。安全のため、お早めの点検をおすすめいたします。
+      </p>
+      <p style="font-size: 13px; color: #86868b;">
+        今後ともよろしくお願いいたします。
+      </p>
+    `,
+  );
+  return send(params.customerEmail, `[${shop}] ${service}の点検・交換時期のご案内`, html);
 }
 
 /**

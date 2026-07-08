@@ -8,6 +8,7 @@ type LineStatus = {
   channel_id: string | null;
   liff_id: string | null;
   webhook_url: string | null;
+  link_prompt_enabled: boolean;
 };
 
 export default function LineConnectSection() {
@@ -32,9 +33,12 @@ export default function LineConnectSection() {
         setStatus(j);
         if (j.channel_id) setChannelId(j.channel_id);
         if (j.liff_id) setLiffId(j.liff_id);
+      } else {
+        // 状態取得の失敗を握りつぶすと「保存できたのに未連携表示」になるため必ず見せる
+        setErr(j?.message ?? j?.error ?? `連携状態の取得に失敗しました (HTTP ${res.status})`);
       }
     } catch {
-      // silently ignore
+      setErr("連携状態の取得に失敗しました。ネットワークを確認して再読み込みしてください。");
     }
   }, []);
 
@@ -63,12 +67,24 @@ export default function LineConnectSection() {
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
-      setSuccessMsg("LINE連携が完了しました");
+      setSuccessMsg(
+        "LINE連携が完了しました。仕上げに、下に表示された Webhook URL を LINE Developers Console に設定してください。",
+      );
       setEditing(false);
       setChannelSecret("");
       setAccessToken("");
+      // 直後の再取得が万一失敗しても Webhook URL は見せられるよう、POST の応答で即時反映する
+      if (j?.webhook_url) {
+        setStatus((s) => ({
+          enabled: true,
+          channel_id: channelId,
+          liff_id: liffId || null,
+          webhook_url: j.webhook_url,
+          link_prompt_enabled: s?.link_prompt_enabled ?? false,
+        }));
+      }
       await fetchStatus();
-      setTimeout(() => setSuccessMsg(null), 5000);
+      setTimeout(() => setSuccessMsg(null), 15000);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -88,11 +104,30 @@ export default function LineConnectSection() {
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
-      setStatus({ enabled: false, channel_id: null, liff_id: null, webhook_url: null });
+      setStatus({ enabled: false, channel_id: null, liff_id: null, webhook_url: null, link_prompt_enabled: false });
       setChannelId("");
       setChannelSecret("");
       setAccessToken("");
       setLiffId("");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleToggleLinkPrompt = async (next: boolean) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/admin/line", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "set_link_prompt", enabled: next }),
+      });
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      setStatus((s) => (s ? { ...s, link_prompt_enabled: next } : s));
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -116,6 +151,80 @@ export default function LineConnectSection() {
         LINE公式アカウントを連携すると、予約確認・リマインダー・書類送付をLINEで自動送信できます。
       </p>
 
+      {/* 料金の目安（設定時に確認できるヘルプ） */}
+      <details className="rounded-lg border border-border-subtle bg-surface-hover/30 px-3 py-2 text-xs text-secondary">
+        <summary className="cursor-pointer font-medium text-primary hover:text-accent">
+          💰 料金の目安（無料／有料の違い）
+        </summary>
+        <div className="mt-2 space-y-2 leading-relaxed">
+          <p>
+            <span className="font-medium text-primary">課金されるのは「プッシュ（店から先に送る通知）」だけ</span>
+            です。お客様からの問い合わせ・予約相談への自動応答（リプライ）は
+            <span className="font-medium">無料・無制限</span>。費用は「店から能動的に送る通数」で決まります。
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[11px] border-collapse">
+              <thead>
+                <tr className="text-muted text-left">
+                  <th className="py-1 pr-2 font-medium">プラン</th>
+                  <th className="py-1 pr-2 font-medium">月額</th>
+                  <th className="py-1 pr-2 font-medium">無料プッシュ枠</th>
+                  <th className="py-1 font-medium">超過</th>
+                </tr>
+              </thead>
+              <tbody className="text-secondary">
+                <tr className="border-t border-border-subtle">
+                  <td className="py-1 pr-2">コミュニケーション</td>
+                  <td className="py-1 pr-2">¥0</td>
+                  <td className="py-1 pr-2">200通/月</td>
+                  <td className="py-1">送れない</td>
+                </tr>
+                <tr className="border-t border-border-subtle">
+                  <td className="py-1 pr-2">ライト</td>
+                  <td className="py-1 pr-2">¥5,000</td>
+                  <td className="py-1 pr-2">5,000通/月</td>
+                  <td className="py-1">送れない</td>
+                </tr>
+                <tr className="border-t border-border-subtle">
+                  <td className="py-1 pr-2">スタンダード</td>
+                  <td className="py-1 pr-2">¥15,000</td>
+                  <td className="py-1 pr-2">30,000通/月</td>
+                  <td className="py-1">従量（〜¥3/通）</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="text-muted">
+            ※「1通」＝1人へ1メッセージ。100人へ一斉配信すると100通。料金は改定される場合があります。
+          </p>
+          <div>
+            <div className="font-medium text-primary">有料化が増える主な条件</div>
+            <ul className="mt-1 ml-4 list-disc space-y-0.5">
+              <li>
+                <span className="font-medium">一斉配信の頻度・対象人数</span>（友だち数×回数で一気に増える＝最大要因）
+              </li>
+              <li>友だち（連携）数の増加（配信・誕生日・リマインダーの母数）</li>
+              <li>月間の予約・作業台数（確認＋リマインダーで1台2〜3通）</li>
+              <li>リマインダーを「前日＋当日」など複数回送る設定</li>
+              <li>請求書・見積・決済リンクのLINE送付比率</li>
+              <li>鈑金など多工程案件（工程ごとの進捗通知）／点検・車検の定期リマインダー対象数</li>
+              <li>受信箱からのスタッフ手動返信（プッシュ扱い）</li>
+            </ul>
+          </div>
+          <div>
+            <div className="font-medium text-primary">目安</div>
+            <ul className="mt-1 ml-4 list-disc space-y-0.5">
+              <li>配信せず個別通知中心（月30台規模・友だち数百）→ だいたい無料〜ライト</li>
+              <li>月1回ほど配信＋通常運用（月100台・友だち1,000）→ ライト</li>
+              <li>配信を月2回以上 or 友だち2,000人超 → スタンダード検討</li>
+            </ul>
+          </div>
+          <p className="text-muted">
+            費用を抑えるコツ：会話で済むことは自動応答（無料）に寄せる／一斉配信はセグメントで人数を絞る／リマインダーは1通にまとめる／社内連絡はアプリ内通知で。
+          </p>
+        </div>
+      </details>
+
       {/* Status indicator */}
       <div className="flex items-center gap-3 text-sm">
         <span className="text-muted">ステータス:</span>
@@ -132,7 +241,18 @@ export default function LineConnectSection() {
           {status?.liff_id && <div className="text-xs text-muted font-mono">LIFF ID: {status.liff_id}</div>}
           {status?.webhook_url && (
             <div>
-              <div className="text-xs text-muted mb-1">Webhook URL（LINE Developers Consoleに設定）:</div>
+              <div className="text-xs text-muted mb-1">
+                Webhook URL（
+                <a
+                  href="https://developers.line.biz/console/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent underline hover:no-underline"
+                >
+                  LINE Developers Console
+                </a>
+                の「Messaging API設定」→「Webhook URL」に貼り付けて「Webhookの利用」をON）:
+              </div>
               <div className="flex items-center gap-2">
                 <code className="flex-1 text-xs font-mono bg-[var(--bg-inset)] border border-border-subtle rounded-lg px-3 py-2 text-secondary break-all">
                   {status.webhook_url}
@@ -204,12 +324,38 @@ export default function LineConnectSection() {
           <details className="text-xs text-muted">
             <summary className="cursor-pointer hover:text-secondary transition-colors">設定手順を確認</summary>
             <ol className="mt-2 ml-4 space-y-1 list-decimal">
-              <li>LINE Developers Console でMessaging APIチャネルを作成</li>
-              <li>チャネル基本設定から Channel ID と Channel Secret を取得</li>
-              <li>Messaging API設定から「チャネルアクセストークン（長期）」を発行</li>
-              <li>上記の値をこのフォームに入力して「連携する」をクリック</li>
-              <li>連携後に表示される Webhook URL を LINE Developers Console の Webhook設定に貼り付け</li>
-              <li>Webhookの利用をONに切り替え</li>
+              <li>
+                LINE公式アカウントがまだ無い場合は{" "}
+                <a
+                  href="https://manager.line.biz/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent underline hover:no-underline"
+                >
+                  LINE公式アカウント管理画面
+                </a>{" "}
+                から無料で開設
+              </li>
+              <li>
+                <a
+                  href="https://developers.line.biz/console/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent underline hover:no-underline"
+                >
+                  LINE Developers Console
+                </a>{" "}
+                を開き、公式アカウントに紐づく Messaging API チャネルを作成（無い場合は「新規チャネル作成 → Messaging
+                API」）
+              </li>
+              <li>「チャネル基本設定」タブから Channel ID と Channel Secret をコピー</li>
+              <li>「Messaging API設定」タブの一番下で「チャネルアクセストークン（長期）」を発行してコピー</li>
+              <li>コピーした3つの値をこのフォームに貼り付けて「連携する」をクリック</li>
+              <li>
+                連携後に表示される Webhook URL をコピーし、LINE Developers Console の「Messaging API設定」→ 「Webhook
+                URL」に貼り付けて「Webhookの利用」をON
+              </li>
+              <li>同じ画面で「応答メッセージ」はOFF推奨（Ledraからの自動返信と二重になるため）</li>
             </ol>
           </details>
         </div>
@@ -252,6 +398,28 @@ export default function LineConnectSection() {
           <p className="text-sm text-success">
             LINE連携が有効です。予約確認・リマインダー・書類リンクが自動送信されます。
           </p>
+        </div>
+      )}
+
+      {/* 連携案内の自動返信トグル */}
+      {isConnected && !editing && (
+        <div className="mt-3 rounded-lg border border-border-subtle p-3 space-y-2">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={status?.link_prompt_enabled ?? false}
+              disabled={busy}
+              onChange={(e) => handleToggleLinkPrompt(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span className="text-sm text-secondary">
+              <span className="font-medium text-primary">未連携のお客様に連携案内を自動返信する</span>
+              <br />
+              <span className="text-xs text-muted">
+                まだ顧客に紐づいていないLINEユーザーとのやり取りが少し進んだ段階で、連携のお願い（既存のお客様＝連携コード入力／はじめての方＝登録フォーム）を1度だけ自動送信します。
+              </span>
+            </span>
+          </label>
         </div>
       )}
     </div>

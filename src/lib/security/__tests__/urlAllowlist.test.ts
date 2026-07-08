@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   checkImageFetchUrl,
+  checkOutboundWebhookUrl,
   assertImageFetchUrl,
   partitionImageFetchUrls,
   SsrfBlockedError,
@@ -109,6 +110,62 @@ describe("urlAllowlist (SSRF guard)", () => {
     expect(() => assertImageFetchUrl("https://169.254.169.254/")).toThrow(SsrfBlockedError);
     const url = assertImageFetchUrl("https://abcd1234.supabase.co/x.jpg");
     expect(url.hostname).toBe("abcd1234.supabase.co");
+  });
+
+  describe("checkOutboundWebhookUrl", () => {
+    it("allows a normal https URL (custom port OK)", () => {
+      expect(checkOutboundWebhookUrl("https://hooks.example.com/ledra").ok).toBe(true);
+      expect(checkOutboundWebhookUrl("https://hooks.example.com:8443/ledra").ok).toBe(true);
+    });
+
+    it("rejects non-https schemes", () => {
+      expect(checkOutboundWebhookUrl("http://hooks.example.com/x")).toMatchObject({
+        ok: false,
+        reason: "scheme_not_allowed",
+      });
+    });
+
+    it("rejects IP literals (v4/v6, incl. private ranges and metadata)", () => {
+      expect(checkOutboundWebhookUrl("https://10.0.0.5/x")).toMatchObject({
+        ok: false,
+        reason: "ip_literal_not_allowed",
+      });
+      expect(checkOutboundWebhookUrl("https://169.254.169.254/latest/meta-data/")).toMatchObject({
+        ok: false,
+        reason: "ip_literal_not_allowed",
+      });
+      expect(checkOutboundWebhookUrl("https://[::1]/x")).toMatchObject({
+        ok: false,
+        reason: "ip_literal_not_allowed",
+      });
+    });
+
+    it("rejects localhost and reserved internal hostnames", () => {
+      expect(checkOutboundWebhookUrl("https://localhost/x")).toMatchObject({
+        ok: false,
+        reason: "localhost_not_allowed",
+      });
+      expect(checkOutboundWebhookUrl("https://foo.localhost/x")).toMatchObject({
+        ok: false,
+        reason: "localhost_not_allowed",
+      });
+      expect(checkOutboundWebhookUrl("https://nas.local/x")).toMatchObject({
+        ok: false,
+        reason: "reserved_host_not_allowed",
+      });
+      expect(checkOutboundWebhookUrl("https://db.internal/x")).toMatchObject({
+        ok: false,
+        reason: "reserved_host_not_allowed",
+      });
+    });
+
+    it("rejects embedded credentials and malformed URLs", () => {
+      expect(checkOutboundWebhookUrl("https://user:pass@hooks.example.com/x")).toMatchObject({
+        ok: false,
+        reason: "credentials_not_allowed",
+      });
+      expect(checkOutboundWebhookUrl("not a url")).toMatchObject({ ok: false, reason: "invalid_url" });
+    });
   });
 
   it("partitionImageFetchUrls splits allowed and blocked", () => {

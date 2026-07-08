@@ -3,6 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { normalizeRole, hasMinRole, type Role } from "./roles";
 import { hasPermission, type Permission } from "./permissions";
 import { normalizePlanTier, type PlanTier } from "@/lib/billing/planFeatures";
+import { getCachedTenantBilling } from "@/lib/billing/tenantBillingCache";
 
 export type CallerInfo = {
   userId: string;
@@ -46,7 +47,7 @@ export async function resolveCallerWithRole(
       .maybeSingle();
 
     if (mem?.tenant_id) {
-      const planTier = await resolvePlanTier(supabase, mem.tenant_id as string);
+      const planTier = await resolvePlanTier(mem.tenant_id as string);
       return {
         userId: userRes.user.id,
         tenantId: mem.tenant_id as string,
@@ -67,7 +68,7 @@ export async function resolveCallerWithRole(
 
   if (!mem?.tenant_id) return null;
 
-  const planTier = await resolvePlanTier(supabase, mem.tenant_id as string);
+  const planTier = await resolvePlanTier(mem.tenant_id as string);
 
   return {
     userId: userRes.user.id,
@@ -89,14 +90,16 @@ export async function resolveUserId(
   return data?.user?.id ?? null;
 }
 
-/** テナントの plan_tier を取得して正規化する */
-async function resolvePlanTier(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
-  tenantId: string,
-): Promise<PlanTier> {
+/**
+ * テナントの plan_tier を取得して正規化する。
+ * billing guard と共有の 60 秒キャッシュ (tenantBillingCache) を使い、認証のたびに走る
+ * plan_tier の重複クエリを 1 本に集約する。呼び出し元は tenantId のメンバーであることを
+ * 直前に確認済みのため、service-role 経由の tenant 行読み取りは安全。
+ */
+async function resolvePlanTier(tenantId: string): Promise<PlanTier> {
   try {
-    const { data } = await supabase.from("tenants").select("plan_tier").eq("id", tenantId).single();
-    return normalizePlanTier(data?.plan_tier);
+    const row = await getCachedTenantBilling(tenantId);
+    return normalizePlanTier(row?.plan_tier ?? null);
   } catch {
     return "free";
   }

@@ -91,12 +91,15 @@ export async function tryConsumeLineLinkCode(
     .maybeSingle();
   if (!claimed) return { linked: false };
 
-  const { error: linkErr } = await admin
-    .from("customers")
-    .update({ line_user_id: lineUserId })
-    .eq("id", row.customer_id)
-    .eq("tenant_id", tenantId);
-  if (linkErr) throw new Error(`customer line link failed: ${linkErr.message}`);
+  // 紐づけ + 過去メッセージの backfill + 履歴一括取り込みの enqueue をまとめて行う。
+  // (受信箱からの手動紐づけと挙動を揃える)
+  const { linkLineUserToCustomer } = await import("@/lib/line/linkCustomer");
+  const linked = await linkLineUserToCustomer({
+    tenantId,
+    customerId: row.customer_id as string,
+    lineUserId,
+  });
+  if (!linked.ok) throw new Error("customer line link failed");
 
   return { linked: true };
 }

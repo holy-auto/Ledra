@@ -3,8 +3,10 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import PageHeader from "@/components/ui/PageHeader";
 import CustomerDetailClient from "./CustomerDetailClient";
+import CustomerBranches from "./CustomerBranches";
 import CustomerNextActionPanel from "./CustomerNextActionPanel";
 import CustomerTabs from "./CustomerTabs";
 import { deriveSignals, type CustomerSignals } from "@/lib/customers/signals";
@@ -108,6 +110,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     invoices,
   });
 
+  // 連携コード発行 (本人確認に関わる書き込み) は staff 以上のみ。閲覧専用ユーザーには出さない。
+  const caller = await resolveCallerWithRole(supabase);
+  const canIssueLinkCode = !!caller && requireMinRole(caller, "staff");
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -122,6 +128,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
       {/* Customer Info + Edit */}
       <CustomerDetailClient customer={customer} />
+
+      {/* 法人 (BtoB) 顧客のみ支店・営業所を管理できる */}
+      {customer.customer_type === "corporate" && <CustomerBranches customerId={id} />}
 
       {/* 次のアクション。signals はサーバ側で確定済みなので即時表示。
           AI サマリは Suspense で並行ストリーム (失敗 / 未生成でも signals だけで動く)。 */}
@@ -142,6 +151,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         certificates={certificates}
         reservations={reservations}
         invoices={invoices}
+        canIssueLinkCode={canIssueLinkCode}
       />
     </div>
   );

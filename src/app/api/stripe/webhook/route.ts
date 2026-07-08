@@ -16,6 +16,7 @@ import { maskEmail } from "@/lib/logger";
 import { invalidateTenantBillingCache } from "@/lib/billing/guard";
 import { REPORT_ACCESS_VALIDITY_DAYS } from "@/lib/vehicleReport/access";
 import { recordSubscriptionCommission, advanceReferralToContracted } from "@/lib/agents/commission";
+import { recordInvoicePaymentBalance } from "@/lib/invoice/recordPayment";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -650,6 +651,79 @@ export async function POST(req: NextRequest) {
           break;
         }
 
+        // ─── 請求書 (documents) 決済リンク checkout (Connect destination charge, mode=payment) ───
+        // send-line-payment-link / connect/payment-link が createInvoicePaymentLink で作る
+        // Checkout の完了。metadata.invoice_id の請求書を「入金済」にして請求完了の導線を閉じる。
+        if (session.metadata?.invoice_id) {
+          const invoiceId = session.metadata.invoice_id;
+          const tenantId = session.metadata.tenant_id ?? null;
+
+          // 非同期決済 (コンビニ/銀行振込 等) は completed 時点で payment_status が
+          // 'unpaid' のことがある。実際に入金確定 ('paid') したときのみ paid 化し、
+          // 未確定で早まって閉じない (未確定分は別イベント/手動入金にフォールバック)。
+          if (session.payment_status !== "paid") {
+            console.info("webhook: invoice checkout completed but not yet paid", {
+              invoiceId,
+              paymentStatus: session.payment_status,
+            });
+            break;
+          }
+
+          const nowIso = new Date().toISOString();
+          // 古い決済リンクが取消後・金額変更後に完了しても誤って閉じないための防壁:
+          //  - payable な status のみ対象 (paid/cancelled/rejected を除外、再送にも冪等)
+          //  - 請求額と一致する入金のみ受け付ける (amount_total は最小通貨単位。JPY は
+          //    ゼロ小数なので円の documents.total とそのまま比較できる)
+          //  - tenant_id があれば追加スコープ (他テナントの doc を誤更新しない最終防壁)
+          let invQuery = supabase
+            .from("documents")
+            .update({ status: "paid", payment_date: nowIso.slice(0, 10), updated_at: nowIso })
+            .eq("id", invoiceId)
+            .in("doc_type", ["invoice", "consolidated_invoice"])
+            .not("status", "in", "(paid,cancelled,rejected)");
+          if (tenantId) invQuery = invQuery.eq("tenant_id", tenantId);
+          if (typeof session.amount_total === "number") invQuery = invQuery.eq("total", session.amount_total);
+
+          const { data: paidDocs, error: invErr } = await invQuery.select("id, tenant_id, total, customer_id");
+          if (invErr) {
+            // 一時的な DB 障害。break (=200/processed) で握りつぶすと請求書が未入金の
+            // まま放置され再処理もされないため、throw して claim に error_message を残し
+            // monitor cron の検知対象にする (Stripe へは 500 を返す)。
+            console.error("webhook: invoice paid update failed", { invoiceId, error: invErr });
+            throw invErr;
+          }
+          if (!paidDocs || paidDocs.length === 0) {
+            // 既に paid / 取消 / 金額不一致 等 → 冪等に no-op (再送でも安全)。
+            console.warn("webhook: invoice not marked paid (already paid, cancelled, or amount mismatch)", {
+              invoiceId,
+              amountTotal: session.amount_total,
+            });
+            break;
+          }
+
+          // 売掛元帳 (payment_entries) にもクレカ入金を記帳して消込を整合させる。
+          // status 更新 (主) は成功済みのため、記帳失敗は webhook 全体を失敗させず log のみ
+          // (best-effort)。reference_no=payment_intent で再送時の重複記帳を防ぐ。
+          const paidDoc = paidDocs[0] as { tenant_id: string; total: number | null; customer_id: string | null };
+          try {
+            await recordInvoicePaymentBalance(supabase, {
+              tenantId: paidDoc.tenant_id,
+              documentId: invoiceId,
+              total: Number(paidDoc.total ?? 0),
+              customerId: paidDoc.customer_id ?? null,
+              paymentMethod: "credit_card",
+              paymentDate: nowIso.slice(0, 10),
+              referenceNo: asStringId(session.payment_intent) ?? session.id,
+              notes: "Stripe決済リンクによる入金 (自動記帳)",
+            });
+          } catch (ledgerErr) {
+            console.error("webhook: invoice ledger entry failed (non-blocking)", { invoiceId, error: ledgerErr });
+          }
+
+          console.info("webhook: invoice paid via payment link", { invoiceId, tenantId });
+          break;
+        }
+
         // ─── テンプレートオプション checkout ───
         if (isTemplateOptionEvent(session.metadata as Record<string, string> | null)) {
           const tenantId = session.metadata?.tenant_id;
@@ -706,49 +780,6 @@ export async function POST(req: NextRequest) {
           if (tenant_id && !sub.metadata?.tenant_id) sub.metadata = { ...(sub.metadata ?? {}), tenant_id };
           if (tenant_slug && !sub.metadata?.tenant_slug) sub.metadata = { ...(sub.metadata ?? {}), tenant_slug };
           await syncBySubscription(stripe, supabase, sub);
-        }
-        break;
-      }
-
-      // ─── サブスク請求の支払い完了 → 代理店コミッションを生成 ───
-      // 紹介代理店経由テナントの「実際の決済額 × 料率」で pending コミッションを
-      // 起票する（送信=送金は壁3に従い管理者承認後）。冪等キーは invoice.id。
-      case "invoice.paid":
-      case "invoice.payment_succeeded": {
-        const invoice = event.data.object as Stripe.Invoice;
-        const inv = invoice as unknown as Record<string, unknown>;
-        const subscriptionId = asStringId(inv.subscription);
-        if (!subscriptionId) break; // サブスク以外（単発決済等）は対象外
-        if (invoice.metadata?.type === "insurer") break; // 保険会社サブスクは対象外
-
-        try {
-          const customerId = asStringId(invoice.customer);
-          const selector = await resolveTenantSelector({ supabase, customerId, subscriptionId });
-          // テナントが特定できない（保険会社サブスク等）場合はスキップ
-          if (selector && selector.by === "id") {
-            const result = await recordSubscriptionCommission(supabase, {
-              tenantId: selector.value,
-              subscriptionId,
-              invoiceId: invoice.id as string,
-              amountPaid: (invoice.amount_paid as number) ?? 0,
-              currency: invoice.currency,
-              periodStart: (inv.period_start as number | undefined) ?? null,
-              periodEnd: (inv.period_end as number | undefined) ?? null,
-            });
-            if (result.status === "created") {
-              console.info("webhook: agent commission generated", {
-                tenantId: selector.value,
-                invoiceId: invoice.id,
-                amount: result.amount,
-              });
-            }
-          }
-        } catch (e) {
-          // コミッション生成の失敗で課金 webhook 本体を失敗させない
-          console.error("webhook: agent commission generation failed", {
-            invoiceId: invoice.id,
-            error: e instanceof Error ? e.message : String(e),
-          });
         }
         break;
       }
@@ -872,7 +903,9 @@ export async function POST(req: NextRequest) {
       }
 
       // ✅ Portal操作後の支払い・失敗でも同期（invoice自体にmetadataが無いので subscription を取得）
+      // 支払い完了 (paid / payment_succeeded) では代理店コミッションも起票する
       case "invoice.paid":
+      case "invoice.payment_succeeded":
       case "invoice.payment_failed": {
         const inv = event.data.object as Stripe.Invoice & Record<string, unknown>;
         // Stripe API v2025+ moved subscription reference:
@@ -887,9 +920,51 @@ export async function POST(req: NextRequest) {
           inv.lines?.data?.[0]?.subscription;
         const subscriptionId = asStringId(rawSubId);
         if (!subscriptionId) {
+          // サブスク以外（単発決済等）は対象外
           console.warn("webhook: invoice has no subscription ID, skipping", { eventType: event.type, invId: inv.id });
           break;
         }
+
+        // ─── サブスク請求の支払い完了 → 代理店コミッションを生成 ───
+        // 紹介代理店経由テナントの「実際の決済額 × 料率」で pending コミッションを
+        // 起票する（送信=送金は壁3に従い管理者承認後）。冪等キーは invoice.id。
+        // 保険会社サブスク（invoice metadata で判別できる場合）は対象外。
+        if (event.type !== "invoice.payment_failed" && inv.metadata?.type !== "insurer") {
+          try {
+            const customerId = asStringId(inv.customer);
+            const selector = await resolveTenantSelector({ supabase, customerId, subscriptionId });
+            // テナントが特定できない（保険会社サブスク等）場合はスキップ
+            if (selector && selector.by === "id") {
+              const result = await recordSubscriptionCommission(supabase, {
+                tenantId: selector.value,
+                subscriptionId,
+                invoiceId: inv.id as string,
+                amountPaid: (inv.amount_paid as number) ?? 0,
+                currency: inv.currency,
+                periodStart: (inv.period_start as number | undefined) ?? null,
+                periodEnd: (inv.period_end as number | undefined) ?? null,
+              });
+              if (result.status === "created") {
+                console.info("webhook: agent commission generated", {
+                  tenantId: selector.value,
+                  invoiceId: inv.id,
+                  amount: result.amount,
+                });
+              }
+            }
+          } catch (e) {
+            // コミッション生成の失敗で課金 webhook 本体を失敗させない
+            console.error("webhook: agent commission generation failed", {
+              invoiceId: inv.id,
+              error: e instanceof Error ? e.message : String(e),
+            });
+          }
+        }
+
+        // payment_succeeded は同一請求で invoice.paid と重複して届くため、
+        // 以降の同期系（テンプレオプション更新・キャンペーン確定・失敗メール・サブスク同期）は
+        // paid / payment_failed 側でのみ実施する
+        if (event.type === "invoice.payment_succeeded") break;
 
         const sub = (await stripe.subscriptions.retrieve(subscriptionId)) as unknown as Stripe.Subscription &
           Record<string, unknown>;

@@ -28,6 +28,34 @@ interface ReplyRow {
   created_at: string;
 }
 
+/** API (market_inquiry_messages: sender_type/message) を画面用 ReplyRow に変換。 */
+function toReplyRows(messages: unknown): ReplyRow[] {
+  if (!Array.isArray(messages)) return [];
+  return messages.map((m) => {
+    const rec = (m ?? {}) as Record<string, unknown>;
+    return {
+      id: String(rec.id ?? ""),
+      sender: rec.sender_type === "seller" ? "出品者" : "お客様",
+      body: String(rec.message ?? ""),
+      created_at: String(rec.created_at ?? ""),
+    };
+  });
+}
+
+/** 一覧 API (market_vehicles をネストで返す) を画面用 InquiryRow に平坦化。 */
+function toInquiryRows(inquiries: unknown): InquiryRow[] {
+  if (!Array.isArray(inquiries)) return [];
+  return inquiries.map((x) => {
+    const rec = (x ?? {}) as Record<string, unknown>;
+    const veh = (rec.market_vehicles ?? {}) as Record<string, unknown>;
+    return {
+      ...(rec as unknown as InquiryRow),
+      maker: String(veh.maker ?? rec.maker ?? ""),
+      model: String(veh.model ?? rec.model ?? ""),
+    };
+  });
+}
+
 /* ---------- helpers ---------- */
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "all", label: "すべて" },
@@ -84,7 +112,7 @@ export default function InquiriesClient() {
       const res = await fetch(`/api/market/inquiries?${params.toString()}`, { cache: "no-store" });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
-      setInquiries(j.inquiries ?? j ?? []);
+      setInquiries(toInquiryRows(j.inquiries ?? j));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       setErr(msg);
@@ -117,7 +145,7 @@ export default function InquiriesClient() {
       const res = await fetch(`/api/market/inquiries/${id}/reply`, { cache: "no-store" });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
-      setReplies(j.replies ?? j ?? []);
+      setReplies(toReplyRows(j.messages ?? j));
     } catch {
       setReplies([]);
     } finally {
@@ -132,7 +160,8 @@ export default function InquiriesClient() {
       const res = await fetch(`/api/market/inquiries/${inquiryId}/reply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: replyText }),
+        // 管理画面からの返信は出品者として送る (スキーマは message + sender_type を要求)。
+        body: JSON.stringify({ message: replyText, sender_type: "seller" }),
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
@@ -140,7 +169,7 @@ export default function InquiriesClient() {
       // Refresh replies
       const rRes = await fetch(`/api/market/inquiries/${inquiryId}/reply`, { cache: "no-store" });
       const rJ = await parseJsonSafe(rRes);
-      setReplies(rJ?.replies ?? rJ ?? []);
+      setReplies(toReplyRows(rJ?.messages ?? rJ));
       // Refresh list
       await fetchInquiries(statusFilter);
     } catch (e: unknown) {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Badge from "@/components/ui/Badge";
+import PageHeader from "@/components/ui/PageHeader";
 import OnboardingFunnelSection from "./OnboardingFunnelSection";
 import OnboardingTenantsSection from "./OnboardingTenantsSection";
 import AiUsageDashboard from "./AiUsageDashboard";
@@ -219,25 +220,34 @@ export default function PlatformOperationsClient() {
 
   return (
     <div className="space-y-6">
-      {/* Refresh bar */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <PageHeader
+        tag="プラットフォーム"
+        title="運用ダッシュボード"
+        description="テナント・課金・セキュリティ・遠隔操作を一元管理します。"
+        meta={
           <span
-            className={`inline-flex h-2.5 w-2.5 rounded-full ${data.systemHealth.status === "healthy" ? "bg-success" : data.systemHealth.status === "warning" ? "bg-warning" : "bg-danger"}`}
-          />
-          <span className={`text-sm font-semibold ${healthColor(data.systemHealth.status)}`}>
+            className={`inline-flex items-center gap-2 text-sm font-semibold ${healthColor(data.systemHealth.status)}`}
+          >
+            <span
+              className={`inline-flex h-2.5 w-2.5 rounded-full ${data.systemHealth.status === "healthy" ? "bg-success" : data.systemHealth.status === "warning" ? "bg-warning" : "bg-danger"}`}
+            />
             システム: {healthLabel(data.systemHealth.status)}
           </span>
-        </div>
-        <div className="flex items-center gap-3">
-          {lastRefresh && (
-            <span className="text-xs text-muted">最終更新: {lastRefresh.toLocaleTimeString("ja-JP")}</span>
-          )}
-          <button onClick={fetchData} disabled={loading} className="btn-secondary text-xs px-3 py-1.5">
-            {loading ? "更新中..." : "更新"}
-          </button>
-        </div>
-      </div>
+        }
+        actions={
+          <>
+            {lastRefresh && (
+              <span className="text-xs text-muted">最終更新: {lastRefresh.toLocaleTimeString("ja-JP")}</span>
+            )}
+            <button onClick={fetchData} disabled={loading} className="btn-secondary text-xs px-3 py-1.5">
+              {loading ? "更新中..." : "更新"}
+            </button>
+          </>
+        }
+        tabs={TABS.map((tab) => ({ key: tab.key, label: tab.label }))}
+        activeTab={activeTab}
+        onTabSelect={(k) => setActiveTab(k as TabKey)}
+      />
 
       {/* Alerts */}
       {data.alerts.length > 0 && (
@@ -266,21 +276,6 @@ export default function PlatformOperationsClient() {
           ))}
         </div>
       )}
-
-      {/* Tab navigation */}
-      <div className="flex gap-1 border-b border-border-subtle">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
-              activeTab === tab.key ? "border-accent text-accent" : "border-transparent text-muted hover:text-primary"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
 
       {/* Tab content */}
       {activeTab === "overview" && <OverviewTab data={data} />}
@@ -1050,8 +1045,8 @@ function ActionsTab() {
             <select value={planTier} onChange={(e) => setPlanTier(e.target.value)} className="input-field">
               <option value="free">フリー</option>
               <option value="starter">スターター</option>
+              <option value="standard">スタンダード</option>
               <option value="pro">プロ</option>
-              <option value="enterprise">エンタープライズ</option>
             </select>
           </div>
         )}

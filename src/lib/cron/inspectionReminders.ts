@@ -22,8 +22,6 @@ type VehicleRow = {
   model: string | null;
   year: number | null;
   customer_id: string | null;
-  customer_name: string | null;
-  customer_email: string | null;
   inspection_expiry_date: string;
   inspection_reminder_sent_at: string | null;
 };
@@ -70,13 +68,18 @@ export async function processInspectionReminders(
   //  避けるトレードオフ。月次サマリで取り逃しを可視化する方針)
   const targetDate = toDateString(addDays(today, preDays));
 
-  const { data: rawVehicles } = await supabase
+  const { data: rawVehicles, error: vehErr } = await supabase
     .from("vehicles")
-    .select(
-      "id, maker, model, year, customer_id, customer_name, customer_email, inspection_expiry_date, inspection_reminder_sent_at",
-    )
+    .select("id, maker, model, year, customer_id, inspection_expiry_date, inspection_reminder_sent_at")
     .eq("tenant_id", setting.tenant_id)
     .eq("inspection_expiry_date", targetDate);
+
+  // SELECT が失敗したら静かに 0 件で終わらせず可視化する (過去にこの SELECT が
+  // 削除済みカラムを参照していてリマインドが無言で止まっていた回帰を防ぐ)。
+  if (vehErr) {
+    console.error("[inspection-reminder] vehicles select failed:", vehErr.message);
+    return 0;
+  }
 
   const vehicles = (rawVehicles ?? []) as VehicleRow[];
   if (vehicles.length === 0) return 0;
@@ -92,12 +95,10 @@ export async function processInspectionReminders(
   const pending = vehicles.filter((v) => v.inspection_reminder_sent_at === null);
   if (pending.length === 0) return 0;
 
-  // 顧客メール解決:
-  //   - vehicles.customer_email (denormalized snapshot) を最優先
-  //   - 無ければ customers.email を解決
-  const needCustomerLookup = pending
-    .filter((v) => !v.customer_email && v.customer_id)
-    .map((v) => v.customer_id!) as string[];
+  // 顧客連絡先は customers テーブルから解決する。
+  // (customer_name/customer_email は vehicles から削除済み = 20260321000002。
+  //  以前はそれらを SELECT していたためクエリが失敗し、リマインドが無言で止まっていた)
+  const needCustomerLookup = [...new Set(pending.filter((v) => v.customer_id).map((v) => v.customer_id!))];
   const customerMap = new Map<string, CustomerRow>();
   if (needCustomerLookup.length > 0) {
     const { data: customers } = await supabase.from("customers").select("id, name, email").in("id", needCustomerLookup);
@@ -108,8 +109,9 @@ export async function processInspectionReminders(
 
   let sent = 0;
   for (const v of pending) {
-    const email = v.customer_email ?? (v.customer_id ? (customerMap.get(v.customer_id)?.email ?? null) : null);
-    const name = v.customer_name ?? (v.customer_id ? (customerMap.get(v.customer_id)?.name ?? null) : null) ?? "お客様";
+    const customer = v.customer_id ? customerMap.get(v.customer_id) : null;
+    const email = customer?.email ?? null;
+    const name = customer?.name ?? "お客様";
 
     if (!email) continue;
 

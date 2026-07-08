@@ -63,6 +63,8 @@ export interface CreateIntakeInput {
   /** auth.users.id. 公開予約フローなど認証ユーザがいない経路では null を渡す. */
   createdBy: string | null;
   baseUrl: string;
+  /** 新規顧客向けに発行する場合の LINE userId. フォーム完了時に自動連携する. */
+  lineUserId?: string | null;
 }
 
 /**
@@ -92,6 +94,7 @@ export async function createIntakeInvitation(input: CreateIntakeInput): Promise<
         contact_phone: input.contactPhone ?? null,
         created_by: input.createdBy ?? null,
         expires_at: expiresAt.toISOString(),
+        line_user_id: input.lineUserId ?? null,
       })
       .select("id, short_id, expires_at")
       .single();
@@ -399,6 +402,7 @@ export async function approveIntake(input: ApproveIntakeInput): Promise<{ custom
     .eq("status", "submitted");
   if (uErr) throw uErr;
 
+  await maybeLinkLineUserForIntake(input.tenantId, input.intakeId, customerId);
   return { customerId, merged };
 }
 
@@ -584,6 +588,10 @@ export async function submitAndProcessIntake(input: SubmitAndProcessInput): Prom
       .eq("tenant_id", input.tenantId)
       .eq("status", "submitted");
 
+    // 注意: 公開フォームの自動マージ (既存顧客への strong-match) では LINE を自動連携しない。
+    // email + phone を知る第三者が公開 intake URL から既存顧客に自分の LINE を紐づけ、
+    // 以後のリマインダー/請求/書類通知を乗っ取れてしまうため。既存顧客への連携は
+    // スタッフ承認 (approveIntake) 経由でのみ行う。
     return { status: "auto_completed", customerId: strongMatch.id, merged: true };
   }
 
@@ -618,7 +626,44 @@ export async function submitAndProcessIntake(input: SubmitAndProcessInput): Prom
     .eq("tenant_id", input.tenantId)
     .eq("status", "submitted");
 
+  await maybeLinkLineUserForIntake(input.tenantId, input.intakeId, created.id);
   return { status: "auto_completed", customerId: created.id, merged: false };
+}
+
+/**
+ * intake 完了時に、招待に紐づいた line_user_id があれば顧客へ連携する。
+ * (customers.line_user_id セット + 過去メッセージ backfill + 履歴一括取り込み起動)
+ *
+ * intake 自体は既に完了済みなので、連携に失敗しても throw しない (fail-soft)。
+ * 既に別顧客へ紐づいている line_user_id なら何もしない (二重紐づけ防止)。
+ */
+async function maybeLinkLineUserForIntake(tenantId: string, intakeId: string, customerId: string): Promise<void> {
+  try {
+    const { admin } = createTenantScopedAdmin(tenantId);
+    const { data: invite } = await admin
+      .from("customer_intake_invitations")
+      .select("line_user_id")
+      .eq("id", intakeId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    const lineUserId = (invite?.line_user_id as string | null) ?? null;
+    if (!lineUserId) return;
+
+    const { data: existing } = await admin
+      .from("customers")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("line_user_id", lineUserId)
+      .neq("id", customerId)
+      .limit(1)
+      .maybeSingle();
+    if (existing) return;
+
+    const { linkLineUserToCustomer } = await import("@/lib/line/linkCustomer");
+    await linkLineUserToCustomer({ tenantId, customerId, lineUserId });
+  } catch (e) {
+    console.warn("[intake] line link failed", { tenantId, intakeId, err: e instanceof Error ? e.message : String(e) });
+  }
 }
 
 /** 提出された intake と email/phone が完全一致する既存顧客を最大 5 件返す. */

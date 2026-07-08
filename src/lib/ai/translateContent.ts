@@ -42,7 +42,7 @@ export interface TranslateResult {
   ai: boolean;
 }
 
-export async function translateText(input: TranslateInput): Promise<TranslateResult> {
+export async function translateText(input: TranslateInput, opts?: { model?: string }): Promise<TranslateResult> {
   if (!input.text.trim()) return { translated: "", confidence: 0, ai: false };
   if (!process.env.ANTHROPIC_API_KEY) return { translated: input.text, confidence: 0, ai: false };
 
@@ -58,7 +58,7 @@ export async function translateText(input: TranslateInput): Promise<TranslateRes
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 2048,
         system: buildSystemPrompt(langLabel, tone),
         messages: [

@@ -24,6 +24,9 @@ export const DeliveryNoteLineSchema = z.object({
 export const DeliveryNoteSchema = z.object({
   supplier_name: z.string().nullable(),
   delivery_date: z.string().nullable().describe("ISO日付。読めなければ null"),
+  customer_ref: z.string().nullable().describe("宛名・備考欄の顧客名（例:「〇〇様分」「〇〇様」）。無ければ null"),
+  vehicle_chassis: z.string().nullable().describe("車体番号・車台番号（備考欄や明細内の記載）。無ければ null"),
+  remarks: z.string().nullable().describe("その他の備考・メモ欄の内容。無ければ null"),
   lines: z.array(DeliveryNoteLineSchema),
 });
 
@@ -42,7 +45,13 @@ export async function extractDeliveryNote(base64: string, mediaType: ImageMediaT
         model: AI_MODEL_VISION,
         max_tokens: 2048,
         system: `あなたは自動車整備店の納品書を読み取る OCR アシスタントです。
-納品書の写真から、品名・品番(GTIN/JAN)・数量・単価・金額を1行ずつ正確に抽出し、JSON で返してください。
+納品書の写真から以下を正確に抽出し、JSON で返してください。
+- 仕入先名（supplier_name）
+- 納品日（delivery_date）
+- 宛名・備考欄の顧客名（customer_ref）：「〇〇様分」「〇〇様」など
+- 車体番号・車台番号（vehicle_chassis）：備考欄や明細内に記載されている場合
+- その他の備考・メモ（remarks）
+- 明細行：品名・品番(GTIN/JAN)・数量・単価・金額を1行ずつ
 読み取れない項目は null にしてください。推測で値を作らないこと。`,
         messages: [
           {
@@ -56,9 +65,25 @@ export async function extractDeliveryNote(base64: string, mediaType: ImageMediaT
         output_config: { format: zodOutputFormat(DeliveryNoteSchema) },
       }),
     );
-    return msg.parsed_output ?? { supplier_name: null, delivery_date: null, lines: [] };
+    return (
+      msg.parsed_output ?? {
+        supplier_name: null,
+        delivery_date: null,
+        customer_ref: null,
+        vehicle_chassis: null,
+        remarks: null,
+        lines: [],
+      }
+    );
   } catch {
-    return { supplier_name: null, delivery_date: null, lines: [] };
+    return {
+      supplier_name: null,
+      delivery_date: null,
+      customer_ref: null,
+      vehicle_chassis: null,
+      remarks: null,
+      lines: [],
+    };
   }
 }
 

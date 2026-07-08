@@ -122,11 +122,14 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 | `photo.auto_quality_check`               | 証明書写真アップロード時に Ledra Standard 基準の品質・抜け漏れ監査を自動付与 (注釈・発行はブロックしない) | OFF  | ✅ 写真アップロード (POST certificates/images/upload) |
 | `insurer_case.auto_fraud_score`           | 保険案件作成時に不正リスクを自動スコア (ルール一次 + グレーのみ AI、注釈。査定確定は人)                       | OFF  | ✅ 案件作成 (POST insurer/cases)                      |
 | `invoice.auto_draft_on_billing_step`      | ワークフローの会計/請求工程到達時に請求書を draft で自動起票 (送付は人 / 壁3)                                  | OFF  | ✅ WF会計工程 (reservations advance)                  |
+| `invoice.auto_draft_on_completion`        | 案件完了 (status=completed) 時に請求書を draft で自動起票 (WF会計工程を使わないテナント向け / 送付は人 / 壁3)   | OFF  | ✅ 完了 (reservations PUT / advance)                  |
 | `workflow.auto_apply_on_intake`           | 案件登録時に AI 提案ワークフローを自動適用し工程開始 (各工程の確定は人)                                        | OFF  | ✅ 予約作成 (POST reservations)                       |
 | `job.auto_next_action`                    | 案件の状態遷移時に次アクションを自動提案 (案件画面に即時表示・実行は人)                                        | OFF  | ✅ 進行 (POST reservations/[id]/advance)             |
 | `insurer_case.auto_summary`               | 保険案件作成時に査定担当向け 3 行サマリを自動生成 (注釈。査定確定は人)                                         | OFF  | ✅ 案件作成 (POST insurer/cases)                      |
 | `insurer_case.auto_assign_suggest`        | 保険案件作成時 (ルール未割当) に担当者候補を自動提案 (注釈。割当確定は人)                                       | OFF  | ✅ 案件作成 (POST insurer/cases)                      |
 | `inquiry.auto_classify`                   | 問い合わせ受信時にカテゴリ/優先度/返信下書きを自動生成 (注釈・下書き。送信は人)                                | OFF  | ✅ 問い合わせ受信 (POST customer/inquiry)             |
+| `quote.auto_draft_from_inbound`           | LINE 等の価格問い合わせ受信時に車両+過去実績から見積書を draft で自動起票 (送付は人 / 既知顧客のみ / 壁3)      | OFF  | ✅ LINE webhook (inboundAuto→quoteDraftAuto)         |
+| `quote.auto_reply_rough_estimate`         | LINE の価格問い合わせ受信時に**概算金額をレンジ(〜幅)で顧客へ即返信** (詳細見積りは来店誘導 / 未紐付け客も対象) | OFF  | ✅ LINE webhook (inboundAuto→quoteReplyAuto)         |
 
 > **certificate.auto_draft の配線**: 予約 (案件) が `completed` になった時点で
 > `maybeAutoDraftCertificateForReservation` (fire-and-forget) が走り、車両 + 過去事例から
@@ -158,6 +161,33 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 > レース (ダブルクリック等) でも二重送付しない。失敗時は予約を解放してリトライ可能。
 > **金額/内容の「確定」そのものは必ず人 (draft→sent は人の操作) = 壁3 を維持**。
 > 自動課金 (payment.auto_charge) は行わず、決済はあくまで顧客の操作。
+
+> **quote.auto_draft_from_inbound / quote.auto_reply_rough_estimate の配線 (見積の2系統)**:
+> LINE で価格問い合わせ (例: 「ヴェルファイアのコーティングいくら？」) を受信すると、
+> `handleWebhookEvents` → `maybeAutoProcessInboundMessage` (`inboundAuto.ts`, fire-and-forget)
+> の中で AI 抽出 (`extractInboundReservation`) が走り、施工内容 (service) + 車両 (vehicle) が
+> 読み取れた価格問い合わせ (intent = `inquiry_only` / `new_reservation`) に対して、独立した
+> 2 つの opt-in が並列で動く (どちらも既定 OFF / Standard プラン以上 + `ai_invoice_quote`)。
+>
+> - **`quote.auto_draft_from_inbound` (スタッフ確認あり)**: `maybeAutoDraftQuoteFromInbound`
+>   (`quoteDraftAuto.ts`) が車両 + 過去請求実績から見積書を `documents` に **status=draft** で
+>   起票し、スタッフに通知する。**送付はしない** — 人が draft→sent に確定した時点で
+>   `quote.auto_send_on_confirm` が送付を担う。**既知顧客のみ** / 24h 以内の重複起票はスキップ。
+> - **`quote.auto_reply_rough_estimate` (完全自動・概算のみ)**: `maybeAutoReplyRoughEstimate`
+>   (`quoteReplyAuto.ts`) が同じ材料から **概算金額をレンジ (税込 ±15% を ¥1,000 単位に丸め) で
+>   顧客の LINE へ即返信** する (`sendCustomerLineText` = push / outbound を受信箱に記録)。人の
+>   確認は挟まない。正式・詳細な見積りは案内文で **来店に誘導** する (詳細見積りは来店対応)。
+>   **未紐付けの新規客にも返信** (customerId=null 可 / 車両テキスト + テナント全体の過去実績で
+>   概算)。AI が使えない場合も決定的フォールバック概算で返信し、概算の材料が皆無 (総額 0) の
+>   ときだけ金額を出さず来店案内文を返す。監査ログ (`logAutoActionExecuted`,
+>   actionKey=`quote.auto_reply_rough_estimate`) に残す。
+>
+> 両者は独立 opt-in。両方 ON なら「顧客に即・概算 + スタッフに正式見積ドラフト」が同時に走る。
+> **無ゲート送付の壁3 (`quote.auto_send`) との区別**: 壁3 が禁じるのは **正式な見積書 (拘束力の
+> ある `documents`) を人の確認なしで送る** こと。本アクションが送るのは **非拘束の概算レンジ + 但し
+> 書き (概算・要来店)** のみで、正式見積りは常に来店に回すため別枠の opt-in として許可している。
+> 純粋関数 `roughEstimateRange` / `buildRoughEstimateMessage` は `quoteReplyAuto.ts` に切り出し、
+> 単体テスト済み (`src/lib/ai/automation/__tests__/quoteReplyAuto.test.ts`)。
 
 > **certificate.auto_create_draft_record の配線**: `certificate.auto_draft` (下書き JSON 生成)
 > の一歩先。予約 PUT で `status="completed"` になると、まず下書き JSON を生成し、続いて

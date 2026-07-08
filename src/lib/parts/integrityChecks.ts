@@ -97,6 +97,34 @@ export function buildFindingsFromAudit(installationId: string, audit: TamperingA
   return [...byRule.values()];
 }
 
+/**
+ * ステージ時 (evidence-upload) に EXIF から検出した改ざん疑い flag 群 → finding。
+ * 同一 (rule) は重複排除し、最も重い severity を採用する（buildFindingsFromAudit と同方針）。
+ * 作成 API はこれを findings に積み、content_hash 確定と同じ文脈で記録する。
+ */
+export function flagFindingsFromEvidence(
+  installationId: string,
+  evidence: Array<{ integrity_flags?: TamperingFlag[] | null }>,
+): IntegrityFinding[] {
+  const severityRank: Record<FindingSeverity, number> = { info: 0, warning: 1, critical: 2 };
+  const byRule = new Map<FindingRule, IntegrityFinding>();
+
+  for (const e of evidence) {
+    for (const flag of e.integrity_flags ?? []) {
+      const { rule, severity } = mapTamperingFlag(flag);
+      const existing = byRule.get(rule);
+      if (!existing) {
+        byRule.set(rule, { installation_id: installationId, rule, severity, detail: { flags: [flag] } });
+      } else {
+        (existing.detail.flags as TamperingFlag[]).push(flag);
+        if (severityRank[severity] > severityRank[existing.severity]) existing.severity = severity;
+      }
+    }
+  }
+
+  return [...byRule.values()];
+}
+
 /** シリアル使い回し（part_register_serial が 'reused' を返した）→ critical finding。 */
 export function serialReusedFinding(installationId: string, serialFingerprint: string): IntegrityFinding {
   return {

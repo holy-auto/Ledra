@@ -16,6 +16,7 @@ import { parseJsonBody } from "@/lib/api/parseBody";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { extractInboundReservation } from "@/lib/ai/inboundReservationExtract";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { loadAiAutomationSettings, resolveFieldPolicy } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
@@ -61,11 +62,14 @@ export async function POST(req: NextRequest) {
       return apiOk({ ai_disabled: true, extracted: null });
     }
 
-    const result = await extractInboundReservation({
-      text: parsed.data.text,
-      channel: parsed.data.channel,
-      receivedDate: parsed.data.received_date,
-    });
+    const result = await extractInboundReservation(
+      {
+        text: parsed.data.text,
+        channel: parsed.data.channel,
+        receivedDate: parsed.data.received_date,
+      },
+      { model: fastModelForPlanTier(caller.planTier) },
+    );
 
     const filter = (key: string, value: string | undefined) => {
       if (value == null) return undefined;

@@ -8,6 +8,7 @@ import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalE
 import { logger } from "@/lib/logger";
 import { runStepAutomationOnReach } from "@/lib/workflow/stepAutomations";
 import { maybeAutoCreateDraftCertificateForReservation } from "@/lib/ai/automation/certificateRecordAuto";
+import { maybeAutoCreateDraftInvoiceForReservation } from "@/lib/ai/automation/invoiceRecordAuto";
 import { maybeAutoNextActionForReservation } from "@/lib/ai/automation/nextActionAuto";
 
 const advanceSchema = z.object({
@@ -108,6 +109,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           }),
         ),
       );
+
+      // レガシーフローでも完了時は請求書ドラフトを自動起票 (invoice.auto_draft_on_completion
+      // が opt-in のテナントのみ・冪等・壁3)。advance は completed への実遷移のみ到達する
+      // (上で completed/cancelled は弾いている) ため遷移ガードは不要。
+      if (nextStatus === "completed") {
+        after(() =>
+          maybeAutoCreateDraftInvoiceForReservation({
+            tenantId: caller.tenantId,
+            reservationId: id,
+            trigger: "completion",
+          }).catch((e) =>
+            logger.warn("[advance] auto-create draft invoice (legacy completion) failed", {
+              reservationId: id,
+              err: e instanceof Error ? e.message : String(e),
+            }),
+          ),
+        );
+      }
 
       return apiJson({ ok: true, reservation: updated, legacy: true });
     }
@@ -220,18 +239,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         }),
       );
     }
-    // ワークフロー完了は予約 PUT ルートの発行フックを通らないため、証明書ドラフト
-    // 自動生成をここでも担保する（workflow 運用店舗の取りこぼし防止）。
+    // ワークフロー完了は予約 PUT ルートの発行フックを通らないため、証明書ドラフト＋請求書
+    // ドラフトの自動生成をここでも担保する（workflow 運用店舗の取りこぼし防止）。各自 opt-in /
+    // 冪等 / 壁3。レスポンス後に確実に完走させるため after() を使う。
     if (isLastStep) {
-      void maybeAutoCreateDraftCertificateForReservation({
-        tenantId: caller.tenantId,
-        reservationId: id,
-      }).catch((e) =>
-        logger.warn("[advance] auto-create draft certificate (completion) failed", {
+      after(async () => {
+        await maybeAutoCreateDraftCertificateForReservation({ tenantId: caller.tenantId, reservationId: id }).catch(
+          (e) =>
+            logger.warn("[advance] auto-create draft certificate (completion) failed", {
+              reservationId: id,
+              err: e instanceof Error ? e.message : String(e),
+            }),
+        );
+        await maybeAutoCreateDraftInvoiceForReservation({
+          tenantId: caller.tenantId,
           reservationId: id,
-          err: e instanceof Error ? e.message : String(e),
-        }),
-      );
+          trigger: "completion",
+        }).catch((e) =>
+          logger.warn("[advance] auto-create draft invoice (completion) failed", {
+            reservationId: id,
+            err: e instanceof Error ? e.message : String(e),
+          }),
+        );
+      });
     }
 
     // opt-in テナントでは、状態遷移後に次アクション提案を自動更新する (after() でレスポンス後に完走)。
@@ -256,11 +286,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       await supabase.from("vehicle_histories").insert({
         tenant_id: caller.tenantId,
         vehicle_id: reservation.vehicle_id,
-        reservation_id: id,
-        label: historyLabel,
-        note: note,
-        is_public: true,
-        created_by: caller.userId,
+        type: "progress_update",
+        title: historyLabel,
+        description: note ?? null,
+        performed_at: new Date().toISOString(),
       });
 
       // LINE通知（顧客にline_user_idがあれば送信）

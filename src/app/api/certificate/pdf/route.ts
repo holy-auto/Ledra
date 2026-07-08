@@ -144,13 +144,14 @@ export async function GET(req: Request) {
     | "current_version"
     | "maintenance_json"
     | "body_repair_json"
+    | "accessory_json"
   > & { id: string; tenant_id: string | null; manufacturer_template_id: string | null };
 
   const adm = createServiceRoleAdmin("public certificate PDF — fetch full cert + anchors for rendering");
   const { data: fullCert } = await adm
     .from("certificates")
     .select(
-      "id, tenant_id, ppf_coverage_json, service_type, coating_products_json, warranty_period_end, warranty_exclusions, current_version, maintenance_json, body_repair_json, manufacturer_template_id",
+      "id, tenant_id, ppf_coverage_json, service_type, coating_products_json, warranty_period_end, warranty_exclusions, current_version, maintenance_json, body_repair_json, accessory_json, manufacturer_template_id",
     )
     .eq("public_id", pid)
     .limit(1)
@@ -181,7 +182,9 @@ export async function GET(req: Request) {
 
     // Phase 2: PDF に貼る写真。rendered_storage_path があれば優先 (注釈焼き込み済み)、
     // なければ storage_path (原画像)。署名 URL は短命でも PDF レンダリング中に保てば十分。
-    const photoCandidates = allImages.filter((i) => i.storage_path || i.rendered_storage_path);
+    // renderCertificatePdf は先頭 8 枚だけ描画するため、sort_order 順 (取得時点でソート済み) の
+    // 先頭 8 枚に絞ってから署名する。全件署名すると未使用 URL の生成で無駄な往復が発生する。
+    const photoCandidates = allImages.filter((i) => i.storage_path || i.rendered_storage_path).slice(0, 8);
     const resolvedPhotos = await Promise.all(
       photoCandidates.map(async (img): Promise<PdfPhoto | null> => {
         const path = (img.rendered_storage_path as string | null) ?? (img.storage_path as string | null);
@@ -216,6 +219,7 @@ export async function GET(req: Request) {
     ppf_coverage_json: fullCert?.ppf_coverage_json ?? null,
     maintenance_json: fullCert?.maintenance_json ?? null,
     body_repair_json: fullCert?.body_repair_json ?? null,
+    accessory_json: fullCert?.accessory_json ?? null,
     service_type: fullCert?.service_type ?? null,
     expiry_type: cert.expiry_type ?? null,
     expiry_value: cert.expiry_value ?? null,
@@ -336,7 +340,20 @@ export async function GET(req: Request) {
   }
 
   // 標準デザイン（オプション未購入の全テナント共通）
-  const buf = await renderCertificatePdf(certRow, publicUrl, anchors, pdfMedia, photos);
+  // @react-pdf は <Image> の取得に1枚でも失敗 (署名URL期限切れ / 配信先ダウン等) すると
+  // レンダリング全体を throw する。写真/メディアは付加情報なので、失敗したら写真・メディア
+  // 抜きで1回だけ再描画し、本質 (QR / オンチェーンアンカー) を含む証明書は必ず配信する。
+  // batch-pdf ワーカーが per-cert で isolate しているのと同じ堅牢性を単発配信でも担保する。
+  let buf: Awaited<ReturnType<typeof renderCertificatePdf>>;
+  try {
+    buf = await renderCertificatePdf(certRow, publicUrl, anchors, pdfMedia, photos);
+  } catch (renderErr) {
+    console.error(
+      "[pdf] cert render failed, retrying without photos/media:",
+      renderErr instanceof Error ? renderErr.message : renderErr,
+    );
+    buf = await renderCertificatePdf(certRow, publicUrl, anchors);
+  }
 
   return new NextResponse(new Uint8Array(buf), {
     status: 200,

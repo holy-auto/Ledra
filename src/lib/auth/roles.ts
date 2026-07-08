@@ -25,7 +25,7 @@ export function normalizeRole(v: unknown): Role {
   if (s === "admin") return "admin";
   if (s === "staff") return "staff";
   if (s === "viewer") return "viewer";
-  return "admin"; // default fallback
+  return "viewer"; // 未知・空の値は最小権限にフォールバック (fail-closed)
 }
 
 /** Check if a role meets the minimum required role level */

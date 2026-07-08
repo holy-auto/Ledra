@@ -30,11 +30,13 @@ export async function POST(req: NextRequest) {
     }
     const { vehicle_id, buyer_name, buyer_email, message, buyer_company, buyer_phone } = parsed.data;
 
-    // Look up the vehicle to get seller tenant_id
+    // Look up the vehicle to get seller tenant_id。公開中(listed)の車両にのみ
+    // 問い合わせを許可する(下書き/予約済/売却済の ID を直接叩く経路を塞ぐ)。
     const { data: vehicle, error: vErr } = await admin
       .from("market_vehicles")
-      .select("tenant_id")
+      .select("tenant_id, status")
       .eq("id", vehicle_id)
+      .eq("status", "listed")
       .single();
 
     if (vErr || !vehicle) {

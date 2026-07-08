@@ -50,6 +50,7 @@ export type UrlRejectReason =
   | "empty_host"
   | "ip_literal_not_allowed"
   | "localhost_not_allowed"
+  | "reserved_host_not_allowed"
   | "host_not_allowlisted";
 
 export type UrlCheckResult = { ok: true; url: URL } | { ok: false; reason: UrlRejectReason };
@@ -129,6 +130,52 @@ export function checkImageFetchUrl(raw: string): UrlCheckResult {
 
   const allowed = allowedHostSuffixes().some((s) => hostMatchesSuffix(host, s));
   if (!allowed) return { ok: false, reason: "host_not_allowlisted" };
+
+  return { ok: true, url };
+}
+
+/**
+ * テナント設定の outbound webhook URL を検証する (SSRF guard)。
+ *
+ * 画像フェッチと違い宛先はテナント任意のホストなのでアローリストは使えない。
+ * 代わりに「明らかに内部を指すもの」を弾く:
+ *   - https 以外のスキーム
+ *   - 埋め込み credentials (`user:pass@`)
+ *   - IP リテラル (v4 / v6) — 10.0.0.5 や 169.254.169.254 への直撃を遮断
+ *   - localhost / *.localhost / *.local / *.internal
+ *
+ * 配信側 (outbound-webhooks.ts) は `redirect: "error"` でリダイレクト追従を
+ * 禁止すること (許可ホストが 302 で内部へ飛ばすのを防ぐ第二層)。
+ *
+ * ponytail: DNS リビンディング (正規に見えるホスト名がプライベート IP に解決
+ * されるケース) は resolve 時の IP 検査が無い限り防げない。https 必須で古典的な
+ * http メタデータエンドポイントは既に遮断済み。強化するなら配信時に lookup 済み
+ * IP を検査する fetch ラッパーを導入する。
+ */
+export function checkOutboundWebhookUrl(raw: string): UrlCheckResult {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return { ok: false, reason: "invalid_url" };
+  }
+
+  if (url.protocol !== "https:") return { ok: false, reason: "scheme_not_allowed" };
+  if (url.username || url.password) return { ok: false, reason: "credentials_not_allowed" };
+
+  const host = url.hostname.toLowerCase();
+  if (!host) return { ok: false, reason: "empty_host" };
+
+  // IPv6 hosts are bracketed by URL ("[::1]") so `:` / "[" catch them.
+  if (IPV4_RE.test(host) || host.includes(":") || host.startsWith("[")) {
+    return { ok: false, reason: "ip_literal_not_allowed" };
+  }
+  if (host === "localhost" || host.endsWith(".localhost")) {
+    return { ok: false, reason: "localhost_not_allowed" };
+  }
+  if (host.endsWith(".local") || host.endsWith(".internal")) {
+    return { ok: false, reason: "reserved_host_not_allowed" };
+  }
 
   return { ok: true, url };
 }

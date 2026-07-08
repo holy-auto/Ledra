@@ -16,6 +16,7 @@
  */
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { summarizeCase } from "@/lib/ai/caseSummary";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "./policy";
@@ -47,7 +48,7 @@ export async function maybeAutoSummarizeCase(params: MaybeAutoSummarizeCaseParam
 
     const admin = createServiceRoleAdmin("AI auto case summary — insurer case create after() lacks auth session");
 
-    const { data: tenant } = await admin.from("tenants").select("is_active").eq("id", tenantId).single();
+    const { data: tenant } = await admin.from("tenants").select("plan_tier, is_active").eq("id", tenantId).single();
     if (!tenant || tenant.is_active === false) return;
 
     // 案件を取得 (insurer_id で明示スコープ)。
@@ -74,14 +75,17 @@ export async function maybeAutoSummarizeCase(params: MaybeAutoSummarizeCaseParam
     ]);
 
     const usage = startAiRouteUsage(AUTO_SUMMARY_ENDPOINT);
-    const result = await summarizeCase({
-      subject: insCase.title as string | null,
-      body: insCase.description as string | null,
-      status: (insCase.status as string) ?? "open",
-      priority: (insCase.priority as string) ?? "normal",
-      vehicle: vehicleRes.data as { maker?: string; model?: string } | null,
-      certificate: certRes.data as { service_name?: string; issued_at?: string } | null,
-    });
+    const result = await summarizeCase(
+      {
+        subject: insCase.title as string | null,
+        body: insCase.description as string | null,
+        status: (insCase.status as string) ?? "open",
+        priority: (insCase.priority as string) ?? "normal",
+        vehicle: vehicleRes.data as { maker?: string; model?: string } | null,
+        certificate: certRes.data as { service_name?: string; issued_at?: string } | null,
+      },
+      { model: fastModelForPlanTier(tenant.plan_tier) },
+    );
 
     usage.record({
       tenantId,

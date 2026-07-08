@@ -8,12 +8,15 @@ import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import EmptyStateGuide from "@/components/ui/EmptyStateGuide";
+import { estimateReservationMinutes, formatMinutes } from "@/lib/booths/duration";
 import dynamic from "next/dynamic";
 
 const CalendarView = dynamic(() => import("./CalendarView"), {
   ssr: false,
   loading: () => <div className="glass-card h-96 animate-pulse bg-surface-hover rounded-2xl" />,
 });
+const VoiceMemoPanel = dynamic(() => import("@/app/admin/certificates/new/VoiceMemoPanel"), { ssr: false });
+import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { formatDate, formatJpy } from "@/lib/format";
 import { fetcher } from "@/lib/swr";
 import WorkflowStepper from "@/components/workflow/WorkflowStepper";
@@ -49,7 +52,19 @@ type Reservation = {
 
 type Customer = { id: string; name: string };
 type Vehicle = { id: string; maker: string; model: string; year: number | null; plate_display: string | null };
-type MenuItemMaster = { id: string; name: string; unit_price: number };
+type MenuItemMaster = { id: string; name: string; unit_price: number; estimated_minutes: number | null };
+type BookingCandidate = {
+  date: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  slot_end: string;
+  remaining: number;
+  fits: boolean;
+  loaner_free: number | null;
+};
+
+const WEEKDAY_JA = ["日", "月", "火", "水", "木", "金", "土"] as const;
 type Stats = { total: number; today_count: number; active_count: number };
 type ReservationsData = { reservations: Reservation[]; stats: Stats };
 
@@ -166,6 +181,8 @@ export default function ReservationsClient() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItemMaster[]>([]);
+  // 音声→備考 (Standard 以上の ai_draft 機能)。current tenant の plan_tier から判定。
+  const [canAiNote, setCanAiNote] = useState(false);
 
   // Form
   const [showForm, setShowForm] = useState(false);
@@ -183,6 +200,12 @@ export default function ReservationsClient() {
   const [saveMsg, setSaveMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [formStep, setFormStep] = useState<1 | 2>(1);
 
+  // 日程候補の提案（受けられる日程）
+  const [needsLoaner, setNeedsLoaner] = useState(false);
+  const [candidates, setCandidates] = useState<BookingCandidate[] | null>(null);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
+  const [candidatesErr, setCandidatesErr] = useState<string | null>(null);
+
   // Cancel
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState("");
@@ -196,6 +219,21 @@ export default function ReservationsClient() {
   const [gcalCalendarId, setGcalCalendarId] = useState<string | null>(null);
   const [gcalCalendarSaving, setGcalCalendarSaving] = useState(false);
   const [showGcalPanel, setShowGcalPanel] = useState(false);
+  const [gcalFeedback, setGcalFeedback] = useState<"connected" | "error" | null>(null);
+
+  // ?gcal=... のフィードバックはマウント時に一度だけ処理する（レンダー中の setState/replaceState を避ける）
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const gcalResult = params.get("gcal");
+    if (gcalResult === "connected") {
+      setGcalFeedback("connected");
+      setGcalConnected(true);
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (gcalResult === "error" || gcalResult === "auth_error") {
+      setGcalFeedback("error");
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
 
   // Booking URL
   const [tenantSlug, setTenantSlug] = useState<string | null>(null);
@@ -228,12 +266,20 @@ export default function ReservationsClient() {
       if (tenantRes.ok && tenantJ?.tenants) {
         const current = tenantJ.tenants.find((t: any) => t.is_current) ?? tenantJ.tenants[0];
         if (current?.slug) setTenantSlug(current.slug);
+        if (current?.plan_tier) setCanAiNote(canUseFeature(normalizePlanTier(current.plan_tier), "ai_draft"));
       }
       const custJ = await parseJsonSafe(custRes);
       if (custRes.ok && custJ?.customers) setCustomers(custJ.customers.map((c: any) => ({ id: c.id, name: c.name })));
       const menuJ = await parseJsonSafe(menuRes);
       if (menuRes.ok && menuJ?.items)
-        setMenuItems(menuJ.items.map((m: any) => ({ id: m.id, name: m.name, unit_price: m.unit_price })));
+        setMenuItems(
+          menuJ.items.map((m: any) => ({
+            id: m.id,
+            name: m.name,
+            unit_price: m.unit_price,
+            estimated_minutes: m.estimated_minutes ?? null,
+          })),
+        );
 
       try {
         const gcRes = await fetch("/api/admin/gcal");
@@ -422,6 +468,9 @@ export default function ReservationsClient() {
     setFormAmount(0);
     setSaveMsg(null);
     setFormStep(1);
+    setNeedsLoaner(false);
+    setCandidates(null);
+    setCandidatesErr(null);
   };
 
   const openCreateForm = () => {
@@ -460,6 +509,56 @@ export default function ReservationsClient() {
     setFormMenuItems(next);
     setFormAmount(next.reduce((sum, m) => sum + m.price, 0));
   };
+
+  // 選択メニューの推定作業時間（品目マスタ estimated_minutes の合計）。無ければ null。
+  const selectedEstMinutes = useMemo(() => {
+    const items = formMenuItems
+      .map((m) => menuItems.find((mi) => mi.id === m.menu_item_id))
+      .filter((mi): mi is MenuItemMaster => !!mi)
+      .map((mi) => ({ estimated_minutes: mi.estimated_minutes }));
+    return estimateReservationMinutes(items);
+  }, [formMenuItems, menuItems]);
+
+  // 推定作業時間を開始時刻に足して終了時刻へ反映する。開始未設定なら 09:00 を既定に。
+  function applyEstimatedDuration() {
+    if (selectedEstMinutes == null) return;
+    const start = formStartTime || "09:00";
+    const [h, m] = start.split(":").map(Number);
+    // ponytail: 日跨ぎ枠は想定外のため 23:59 で頭打ち（当日内作業の前提）。
+    const endMin = Math.min((h || 0) * 60 + (m || 0) + selectedEstMinutes, 24 * 60 - 1);
+    if (!formStartTime) setFormStartTime(start);
+    setFormEndTime(`${String(Math.floor(endMin / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`);
+  }
+
+  // 受けられる日程候補を取得（作業内容の所要時間＋代車の空きを加味）。
+  async function fetchCandidates() {
+    setCandidatesLoading(true);
+    setCandidatesErr(null);
+    try {
+      const params = new URLSearchParams();
+      const ids = formMenuItems.map((m) => m.menu_item_id).join(",");
+      if (ids) params.set("menu_item_ids", ids);
+      if (needsLoaner) params.set("needs_loaner", "1");
+      params.set("days", "21");
+      const res = await fetch(`/api/admin/booking-candidates?${params.toString()}`);
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      setCandidates((j?.candidates ?? []) as BookingCandidate[]);
+    } catch (e: unknown) {
+      setCandidatesErr(e instanceof Error ? e.message : String(e));
+      setCandidates(null);
+    } finally {
+      setCandidatesLoading(false);
+    }
+  }
+
+  // 候補を選んで日時フォームに反映。
+  function pickCandidate(c: BookingCandidate) {
+    setFormDate(c.date);
+    setFormStartTime(c.start_time);
+    setFormEndTime(c.end_time);
+    setSaveMsg({ text: `日時を ${c.date} ${c.start_time}〜${c.end_time} に設定しました`, ok: true });
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -599,29 +698,16 @@ export default function ReservationsClient() {
       />
 
       {/* ── Gcal feedback ── */}
-      {typeof window !== "undefined" &&
-        (() => {
-          const params = new URLSearchParams(window.location.search);
-          const gcalResult = params.get("gcal");
-          if (gcalResult === "connected") {
-            window.history.replaceState({}, "", window.location.pathname);
-            if (!gcalConnected) setGcalConnected(true);
-            return (
-              <div className="rounded-xl border border-accent/30 bg-accent-dim p-3 text-sm text-accent-text">
-                ✅ Googleカレンダーとの連携が完了しました！
-              </div>
-            );
-          }
-          if (gcalResult === "error" || gcalResult === "auth_error") {
-            window.history.replaceState({}, "", window.location.pathname);
-            return (
-              <div className="rounded-xl border border-danger/20 bg-danger-dim p-3 text-sm text-danger-text">
-                ❌ Googleカレンダーの連携に失敗しました。再度お試しください。
-              </div>
-            );
-          }
-          return null;
-        })()}
+      {gcalFeedback === "connected" && (
+        <div className="rounded-xl border border-accent/30 bg-accent-dim p-3 text-sm text-accent-text">
+          ✅ Googleカレンダーとの連携が完了しました！
+        </div>
+      )}
+      {gcalFeedback === "error" && (
+        <div className="rounded-xl border border-danger/20 bg-danger-dim p-3 text-sm text-danger-text">
+          ❌ Googleカレンダーの連携に失敗しました。再度お試しください。
+        </div>
+      )}
 
       {err && (
         <div className="rounded-xl border border-danger/20 bg-danger-dim p-3 text-sm text-danger-text">{err}</div>
@@ -1391,6 +1477,83 @@ export default function ReservationsClient() {
                             <span className="text-base font-bold text-accent-text">{formatJpy(formAmount)}</span>
                           </div>
                         )}
+                        {selectedEstMinutes != null && (
+                          <div className="mt-2 flex items-center justify-between gap-3 bg-inset border border-border-default rounded-xl px-4 py-2.5">
+                            <div className="min-w-0">
+                              <span className="text-xs text-secondary">推定作業時間（品目マスタ）</span>
+                              <div className="text-sm font-bold text-primary">{formatMinutes(selectedEstMinutes)}</div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={applyEstimatedDuration}
+                              className="shrink-0 rounded-lg border border-accent bg-surface px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent-dim transition-colors"
+                            >
+                              終了時刻に反映
+                            </button>
+                          </div>
+                        )}
+
+                        {/* 受けられる日程候補の提案 */}
+                        <div className="mt-3 rounded-xl border border-border-default bg-surface p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-xs font-semibold text-primary">受けられる日程を提案</span>
+                            <div className="flex items-center gap-3">
+                              <label className="flex items-center gap-1.5 text-xs text-secondary cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={needsLoaner}
+                                  onChange={(e) => setNeedsLoaner(e.target.checked)}
+                                  className="rounded border-border-default text-accent focus:ring-accent/30"
+                                />
+                                代車が必要
+                              </label>
+                              <button
+                                type="button"
+                                onClick={fetchCandidates}
+                                disabled={candidatesLoading}
+                                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-accent/90 transition-colors disabled:opacity-50"
+                              >
+                                {candidatesLoading ? "検索中…" : "候補を探す"}
+                              </button>
+                            </div>
+                          </div>
+                          <p className="mt-1 text-[11px] text-muted">
+                            作業内容の所要時間・受付枠の空き・定休日{needsLoaner ? "・代車の空き" : ""}を加味して、
+                            今日から3週間ぶんの受けられる日時を提案します。
+                          </p>
+                          {candidatesErr && <p className="mt-2 text-xs text-danger">{candidatesErr}</p>}
+                          {candidates != null && candidates.length === 0 && !candidatesErr && (
+                            <p className="mt-2 text-xs text-muted">条件に合う空き日程が見つかりませんでした。</p>
+                          )}
+                          {candidates != null && candidates.length > 0 && (
+                            <div className="mt-2 flex flex-col gap-1.5 max-h-56 overflow-y-auto">
+                              {candidates.map((c, i) => (
+                                <button
+                                  key={`${c.date}-${c.start_time}-${i}`}
+                                  type="button"
+                                  onClick={() => pickCandidate(c)}
+                                  className="flex items-center justify-between gap-2 rounded-lg border border-border-default bg-inset px-3 py-2 text-left hover:border-accent hover:bg-accent-dim transition-colors"
+                                >
+                                  <span className="text-sm font-medium text-primary">
+                                    {c.date.slice(5).replace("-", "/")}（{WEEKDAY_JA[c.day_of_week]}） {c.start_time}〜
+                                    {c.end_time}
+                                  </span>
+                                  <span className="flex items-center gap-1.5 shrink-0">
+                                    {!c.fits && (
+                                      <span className="text-[10px] font-medium text-warning bg-warning-dim rounded px-1.5 py-0.5">
+                                        枠超過
+                                      </span>
+                                    )}
+                                    {c.loaner_free != null && (
+                                      <span className="text-[10px] text-secondary">代車{c.loaner_free}台</span>
+                                    )}
+                                    <span className="text-[10px] text-muted">残{c.remaining}</span>
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
 
@@ -1405,6 +1568,12 @@ export default function ReservationsClient() {
                         placeholder="備考・メモ"
                       />
                     </label>
+                    {canAiNote && (
+                      <VoiceMemoPanel
+                        variant="note"
+                        onApply={(note) => setFormNote((prev) => (prev.trim() ? `${prev.trim()}\n${note}` : note))}
+                      />
+                    )}
 
                     {saveMsg && (
                       <div

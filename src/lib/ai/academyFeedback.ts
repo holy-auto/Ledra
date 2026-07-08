@@ -121,7 +121,10 @@ export interface CertificateFeedbackInput {
 // AIフィードバック生成
 // ─────────────────────────────────────────────
 
-export async function generateCertificateFeedback(input: CertificateFeedbackInput): Promise<CertificateFeedbackResult> {
+export async function generateCertificateFeedback(
+  input: CertificateFeedbackInput,
+  opts?: { model?: string },
+): Promise<CertificateFeedbackResult> {
   const client = getAnthropicClient();
 
   const systemPrompt = `あなたはLedra Academy の施工証明書品質コーチです。
@@ -175,7 +178,7 @@ export async function generateCertificateFeedback(input: CertificateFeedbackInpu
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL,
+        model: opts?.model ?? AI_MODEL,
         max_tokens: 1024,
         system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: userMessage }],
@@ -212,14 +215,17 @@ export interface AcademyCaseSummary {
   difficulty: number;
 }
 
-export async function generateAcademyCaseSummary(params: {
-  serviceName: string;
-  description?: string;
-  materialInfo?: string;
-  category: string;
-  qualityScore: number;
-  photoCount: number;
-}): Promise<AcademyCaseSummary> {
+export async function generateAcademyCaseSummary(
+  params: {
+    serviceName: string;
+    description?: string;
+    materialInfo?: string;
+    category: string;
+    qualityScore: number;
+    photoCount: number;
+  },
+  opts?: { model?: string },
+): Promise<AcademyCaseSummary> {
   const client = getAnthropicClient();
 
   const systemPrompt = `あなたはLedra Academy の教材作成AIです。
@@ -254,7 +260,7 @@ export async function generateAcademyCaseSummary(params: {
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 512,
         system: systemPrompt,
         messages: [{ role: "user", content: userMessage }],

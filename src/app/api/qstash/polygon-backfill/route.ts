@@ -6,7 +6,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { anchorToPolygon, verifyAnchor, findAnchorTx } from "@/lib/anchoring/providers";
 import { computeAuthenticityGrade, type AuthenticityGrade, type C2paKind } from "@/lib/anchoring/authenticityGrade";
 import { upsertVehiclePassport } from "@/lib/passport/upsertVehiclePassport";
-import { Client } from "@upstash/qstash";
+import { enqueuePolygonBackfillNextBatch } from "@/lib/qstash/publish";
 
 const polygonBackfillSchema = z.object({
   job_id: z.string().uuid(),
@@ -15,17 +15,6 @@ const polygonBackfillSchema = z.object({
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
-
-function getBaseUrl(): string {
-  const url = [
-    process.env.NEXT_PUBLIC_APP_URL,
-    process.env.APP_URL,
-    process.env.NEXT_PUBLIC_BASE_URL,
-    process.env.VERCEL_URL,
-  ].find(Boolean);
-  if (!url) throw new Error("Base URL not set");
-  return url.startsWith("http") ? url : `https://${url}`;
-}
 
 const BATCH_SIZE = 50;
 
@@ -61,6 +50,7 @@ async function handler(req: NextRequest) {
     if (fetchErr) throw fetchErr;
 
     let processedCount = 0;
+    let succeededCount = 0;
     const anchoredCertIds = new Set<string>();
 
     for (const img of candidates ?? []) {
@@ -118,6 +108,7 @@ async function handler(req: NextRequest) {
             updatePayload.authenticity_grade = gradeAfter;
           }
           await admin.from("certificate_images").update(updatePayload).eq("id", img.id);
+          succeededCount++;
           const certId = (img as { certificate_id?: string | null }).certificate_id;
           if (certId) anchoredCertIds.add(certId);
         }
@@ -164,16 +155,26 @@ async function handler(req: NextRequest) {
       .is("polygon_tx_hash", null);
 
     if (remaining && remaining > 0) {
-      const qstash = new Client({ token: process.env.QSTASH_TOKEN! });
-      await qstash.publishJSON({
-        url: `${getBaseUrl()}/api/qstash/polygon-backfill`,
-        body: { job_id, tenant_id },
-        retries: 2,
-        delay: 5,
-        // 同じ累積処理件数での再キュー要求はネットワーク再試行とみなして deduplication。
-        // 進捗が進めばキーが変わるので次バッチは正しく enqueue される。
-        deduplicationId: `polygon-backfill:${job_id}:${totalProcessed}`,
-      });
+      // ゼロ進捗検知: バッチが 1 件もアンカーできなかった場合、同じ 50 件を
+      // 永遠に再取得するだけなので failed にして再キューを止める。
+      // ponytail: バッチ単位の全滅検知のみ。upgrade path は画像単位の retry budget
+      // （certificate_images に試行カウンタを持たせて毒画像だけスキップ）。
+      if (succeededCount === 0 && (candidates?.length ?? 0) > 0) {
+        await admin
+          .from("polygon_backfill_jobs")
+          .update({
+            status: "failed",
+            processed_count: totalProcessed,
+            error_message: `batch made no progress: 0/${candidates?.length ?? 0} images anchored (remaining=${remaining})`,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", job_id);
+        console.error(`[polygon-backfill] job=${job_id} stalled: zero successes in batch, not requeueing`);
+        // 200 を返して QStash 側のメッセージ再試行も止める（ジョブは failed 記録済み）
+        return apiJson({ success: false, stalled: true, processed: processedCount });
+      }
+
+      await enqueuePolygonBackfillNextBatch({ job_id, tenant_id, total_processed: totalProcessed });
 
       await admin
         .from("polygon_backfill_jobs")

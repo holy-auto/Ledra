@@ -89,9 +89,12 @@ export default function SlotCalendarGrid({ slots, onCreateRange, onEraseRange, o
     return map;
   }, [slots]);
 
+  // セル [m, m+STEP) に少しでも重なる枠を「被覆」とみなす（重なり判定）。
+  // 15分/45分など STEP 未満・非整列の枠がグリッド上で不可視にならないようにする。
+  // 厳密な時刻編集は一覧ビュー側で行う想定。
   const cellCover = (day: number, i: number) => {
     const m = i * STEP;
-    return coverage[day]?.find((r) => r.s <= m && r.e >= m + STEP);
+    return coverage[day]?.find((r) => r.s < m + STEP && r.e > m);
   };
 
   const inDragRect = (day: number, i: number) => {

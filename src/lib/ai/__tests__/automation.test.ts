@@ -258,40 +258,45 @@ describe("filterVehicleOcrByPolicy", () => {
   });
 });
 
-describe("壁3 (NEVER_AUTO_FIELDS) clamp", () => {
-  it("flags money / identity fields as never-auto", () => {
-    expect(isNeverAutoField("invoice.items")).toBe(true);
-    expect(isNeverAutoField("job.estimated_price")).toBe(true);
-    expect(isNeverAutoField("customer.phone")).toBe(true);
-    expect(isNeverAutoField("vehicle.vin")).toBe(true);
-    // 非壁3
+describe("旧・壁3 フィールド (廃止済み — 全フィールドで auto 許可)", () => {
+  it("isNeverAutoField always returns false (Wall 3 disabled)", () => {
+    expect(isNeverAutoField("invoice.items")).toBe(false);
+    expect(isNeverAutoField("job.estimated_price")).toBe(false);
+    expect(isNeverAutoField("customer.phone")).toBe(false);
+    expect(isNeverAutoField("vehicle.vin")).toBe(false);
     expect(isNeverAutoField("vehicle.maker")).toBe(false);
-    expect(isNeverAutoField("certificate.title")).toBe(false);
     expect(isNeverAutoField("nope")).toBe(false);
   });
 
-  it("clamps an explicit auto on a 壁3 field down to suggest", () => {
-    for (const key of NEVER_AUTO_FIELDS) {
+  it("NEVER_AUTO_FIELDS is empty", () => {
+    expect(NEVER_AUTO_FIELDS.size).toBe(0);
+  });
+
+  it("allows auto on money / identity fields when explicitly set", () => {
+    for (const key of ["invoice.items", "customer.phone", "vehicle.vin", "job.estimated_price"]) {
       const settings = {
         ...DEFAULT_AI_AUTOMATION_SETTINGS,
         fieldPolicies: { [key]: "auto" as const },
       };
-      // confidence を高くしても auto にはならない (必ず確認必須)
-      expect(resolveFieldPolicy(settings, key, 0.99)).toBe("suggest");
+      expect(resolveFieldPolicy(settings, key, 0.99)).toBe("auto");
     }
   });
 
-  it("still allows manual on a 壁3 field (most restrictive wins)", () => {
+  it("still demotes to suggest on low confidence", () => {
+    const settings = {
+      ...DEFAULT_AI_AUTOMATION_SETTINGS,
+      fieldPolicies: { "invoice.items": "auto" as const },
+      confidenceThreshold: 0.8,
+    };
+    expect(resolveFieldPolicy(settings, "invoice.items", 0.5)).toBe("suggest");
+  });
+
+  it("still allows manual on any field", () => {
     const settings = {
       ...DEFAULT_AI_AUTOMATION_SETTINGS,
       fieldPolicies: { "invoice.items": "manual" as const },
     };
     expect(resolveFieldPolicy(settings, "invoice.items")).toBe("manual");
-  });
-
-  it("does not touch non-壁3 auto fields", () => {
-    // vehicle.maker は auto 既定のまま (壁3 ではない)
-    expect(resolveFieldPolicy(DEFAULT_AI_AUTOMATION_SETTINGS, "vehicle.maker", 0.99)).toBe("auto");
   });
 });
 

@@ -1,14 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import nextDynamic from "next/dynamic";
 import MutationGuard from "@/components/ui/MutationGuard";
+import PageHeader from "@/components/ui/PageHeader";
+import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import {
   BODY_REPAIR_STAGES,
   BODY_REPAIR_STAGE_LABEL,
   BODY_REPAIR_STAGE_COLOR,
   BODY_REPAIR_NEXT_STAGE,
+  CLAIM_STATUSES,
+  CLAIM_STATUS_LABEL,
   type BodyRepairStage,
 } from "@/lib/validations/body-repair-job";
+
+const VoiceMemoPanel = nextDynamic(() => import("@/app/admin/certificates/new/VoiceMemoPanel"), { ssr: false });
 
 // ─── 型定義 ──────────────────────────────────────────────────────
 interface JobCustomer {
@@ -37,6 +44,7 @@ interface BodyRepairJob {
   stage: BodyRepairStage;
   estimate_amount: number | null;
   actual_amount: number | null;
+  due_date: string | null;
   insurance_company: string | null;
   claim_number: string | null;
   assigned_staff_id: string | null;
@@ -55,8 +63,18 @@ interface BodyRepairJob {
   deviation_reason: string | null;
   is_specified_maintenance: boolean;
   record_retention_until: string | null;
+  estimate_document_id: string | null;
+  insurer_case_id: string | null;
+  claim_status: string | null;
+  claim_approved_amount: number | null;
+  claim_decided_at: string | null;
   customer: JobCustomer | null;
   vehicle: JobVehicle | null;
+}
+
+interface VehicleOption {
+  id: string;
+  label: string;
 }
 
 interface CustomerOption {
@@ -87,6 +105,45 @@ function formatAmount(n: number | null): string | null {
   return `¥${n.toLocaleString("ja-JP")}`;
 }
 
+/** 保険査定ステータスのチップ配色。承認=緑 / 一部=琥珀 / 差戻=赤 / 提出済=青。 */
+function claimChipCls(status: string): string {
+  switch (status) {
+    case "approved":
+      return "border-green-500/40 bg-green-500/15 text-green-300";
+    case "partial":
+      return "border-amber-500/40 bg-amber-500/15 text-amber-300";
+    case "rejected":
+      return "border-red-500/40 bg-red-500/15 text-red-300";
+    default:
+      return "border-blue-500/40 bg-blue-500/15 text-blue-300";
+  }
+}
+
+/** JST の当日 (YYYY-MM-DD)。納期の超過判定に使う。 */
+function jstTodayDate(): string {
+  return new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
+}
+
+/**
+ * 納期の状態。出庫済みは対象外。YYYY-MM-DD は辞書順比較で日付比較になる。
+ *   overdue … 期限超過 / today … 本日締切 / soon … 翌日締切 / null … 余裕あり or 未設定
+ */
+function dueState(job: BodyRepairJob): "overdue" | "today" | "soon" | null {
+  if (!job.due_date || job.stage === "delivered") return null;
+  const today = jstTodayDate();
+  if (job.due_date < today) return "overdue";
+  if (job.due_date === today) return "today";
+  const tomorrow = new Date(Date.now() + 9 * 3_600_000 + 86_400_000).toISOString().slice(0, 10);
+  if (job.due_date === tomorrow) return "soon";
+  return null;
+}
+
+function formatDueLabel(due: string): string {
+  // YYYY-MM-DD → M/D
+  const [, m, d] = due.split("-");
+  return `${Number(m)}/${Number(d)}`;
+}
+
 // ─── メインコンポーネント ─────────────────────────────────────────
 export default function BodyRepairClient() {
   const [jobs, setJobs] = useState<BodyRepairJob[]>([]);
@@ -95,6 +152,13 @@ export default function BodyRepairClient() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editJob, setEditJob] = useState<BodyRepairJob | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // 工程タブ: "all" = 全工程をカンバン表示 / 各工程 = その工程の案件のみ
+  const [activeStage, setActiveStage] = useState<"all" | BodyRepairStage>("all");
+  // 音声→備考 (ai_draft) / AI 見積 (ai_invoice_quote)。current tenant の plan_tier から判定。
+  const [canAiNote, setCanAiNote] = useState(false);
+  const [canAiQuote, setCanAiQuote] = useState(false);
+  // 納期チップは JST 当日基準。開きっぱなしでも日付境界で再計算するための tick。
+  const [, setDayTick] = useState(0);
 
   const showToast = useCallback((type: "success" | "error", msg: string) => {
     setToast({ type, msg });
@@ -119,6 +183,48 @@ export default function BodyRepairClient() {
   useEffect(() => {
     fetchJobs();
   }, [fetchJobs]);
+
+  // JST 日付境界で納期チップ (超過/本日/明日) を再計算する。開きっぱなしの
+  // 運用画面で「本日締切」が翌日に「超過」へ自動で切り替わるようにする。
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      const now = Date.now();
+      const jst = new Date(now + 9 * 3_600_000);
+      const nextJstMidnightUtc =
+        Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth(), jst.getUTCDate() + 1) - 9 * 3_600_000;
+      const ms = Math.max(1_000, nextJstMidnightUtc - now);
+      timer = setTimeout(() => {
+        setDayTick((t) => t + 1);
+        schedule();
+      }, ms);
+    };
+    schedule();
+    return () => clearTimeout(timer);
+  }, []);
+
+  // 現在テナントの plan_tier から音声→備考の可否を判定。
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/tenants");
+        if (!res.ok) return;
+        const data = await res.json();
+        const current = data?.tenants?.find((t: { is_current?: boolean }) => t.is_current) ?? data?.tenants?.[0];
+        if (alive && current?.plan_tier) {
+          const tier = normalizePlanTier(current.plan_tier);
+          setCanAiNote(canUseFeature(tier, "ai_draft"));
+          setCanAiQuote(canUseFeature(tier, "ai_invoice_quote"));
+        }
+      } catch {
+        /* plan 取得失敗時は非表示のまま (API 側でも 403 ガード) */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const advanceStage = useCallback(
     async (job: BodyRepairJob) => {
@@ -159,33 +265,41 @@ export default function BodyRepairClient() {
 
   return (
     <div className="mx-auto max-w-[1600px] pb-20">
-      {/* ヘッダー */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-primary">鈑金工程管理</h1>
-          <p className="mt-1 text-sm text-secondary">
-            受付 → 協定 → 鈑金 → 塗装 → 完成 → 出庫 の工程を案件ごとに管理します
-          </p>
-        </div>
-        <MutationGuard>
-          <button
-            onClick={() => setCreateOpen(true)}
-            className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2 font-medium text-white transition-colors hover:bg-accent/90"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
-            新規案件
-          </button>
-        </MutationGuard>
-      </div>
+      {/* ヘッダー + 工程タブ（L3 ページバー） */}
+      <PageHeader
+        tag="鈑金"
+        title="鈑金工程管理"
+        actions={
+          <MutationGuard>
+            <button
+              onClick={() => setCreateOpen(true)}
+              className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2 font-medium text-white transition-colors hover:bg-accent/90"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              新規案件
+            </button>
+          </MutationGuard>
+        }
+        tabs={[
+          { key: "all", label: "すべて", badge: jobs.length },
+          ...BODY_REPAIR_STAGES.map((stage) => ({
+            key: stage,
+            label: BODY_REPAIR_STAGE_LABEL[stage],
+            badge: (byStage.get(stage) ?? []).length,
+          })),
+        ]}
+        activeTab={activeStage}
+        onTabSelect={(k) => setActiveStage(k as "all" | BodyRepairStage)}
+      />
 
-      {/* Kanban ボード */}
+      {/* 工程ビュー: すべて=カンバン / 単一工程=カード一覧 */}
       {loading ? (
         <div className="flex min-h-[240px] items-center justify-center">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-accent border-t-transparent" />
         </div>
-      ) : (
+      ) : activeStage === "all" ? (
         <div className="flex gap-3 overflow-x-auto pb-4">
           {BODY_REPAIR_STAGES.map((stage) => {
             const list = byStage.get(stage) ?? [];
@@ -216,11 +330,28 @@ export default function BodyRepairClient() {
             );
           })}
         </div>
+      ) : (byStage.get(activeStage) ?? []).length === 0 ? (
+        <p className="glass-card rounded-xl px-4 py-16 text-center text-sm text-muted">
+          「{BODY_REPAIR_STAGE_LABEL[activeStage]}」の案件はありません
+        </p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {(byStage.get(activeStage) ?? []).map((job) => (
+            <JobCard
+              key={job.id}
+              job={job}
+              busy={busyId === job.id}
+              onAdvance={() => advanceStage(job)}
+              onEdit={() => setEditJob(job)}
+            />
+          ))}
+        </div>
       )}
 
       {/* 新規作成ダイアログ */}
       {createOpen && (
         <CreateDialog
+          canAiNote={canAiNote}
           onClose={() => setCreateOpen(false)}
           onCreated={async () => {
             setCreateOpen(false);
@@ -235,6 +366,7 @@ export default function BodyRepairClient() {
       {editJob && (
         <EditDialog
           job={editJob}
+          canAiQuote={canAiQuote}
           onClose={() => setEditJob(null)}
           onSaved={async () => {
             setEditJob(null);
@@ -274,6 +406,15 @@ function JobCard({
   const next = BODY_REPAIR_NEXT_STAGE[job.stage];
   const days = daysSince(job.intake_at);
   const amount = formatAmount(job.actual_amount ?? job.estimate_amount);
+  const due = dueState(job);
+  const dueChipCls =
+    due === "overdue"
+      ? "border-red-500/40 bg-red-500/15 text-red-300"
+      : due === "today"
+        ? "border-amber-500/40 bg-amber-500/15 text-amber-300"
+        : due === "soon"
+          ? "border-blue-500/40 bg-blue-500/15 text-blue-300"
+          : "border-border-subtle bg-inset text-muted";
 
   return (
     <div className="rounded-lg border border-border-subtle bg-surface p-3">
@@ -305,6 +446,22 @@ function JobCard({
           </span>
         )}
         {amount && <span className="text-xs font-semibold text-accent">{amount}</span>}
+        {job.due_date && (
+          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${dueChipCls}`}>
+            納期 {formatDueLabel(job.due_date)}
+            {due === "overdue" ? " ・超過" : due === "today" ? " ・本日" : due === "soon" ? " ・明日" : ""}
+          </span>
+        )}
+        {job.estimate_document_id && (
+          <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">
+            見積書
+          </span>
+        )}
+        {job.claim_status && (
+          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${claimChipCls(job.claim_status)}`}>
+            保険:{CLAIM_STATUS_LABEL[job.claim_status as keyof typeof CLAIM_STATUS_LABEL] ?? job.claim_status}
+          </span>
+        )}
       </div>
 
       {job.insurance_company && <div className="mt-1 truncate text-[11px] text-muted">{job.insurance_company}</div>}
@@ -338,10 +495,12 @@ function JobCard({
 
 // ─── 新規作成ダイアログ ───
 function CreateDialog({
+  canAiNote,
   onClose,
   onCreated,
   onError,
 }: {
+  canAiNote: boolean;
   onClose: () => void;
   onCreated: () => void;
   onError: (msg: string) => void;
@@ -349,7 +508,12 @@ function CreateDialog({
   const [query, setQuery] = useState("");
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [customerId, setCustomerId] = useState("");
+  // 車両は顧客に紐づくため、顧客選択後にその顧客の車両を候補表示する。
+  // 車両を紐付けておくと案件から AI 見積 (ai-from-vehicle) を作成できる。
+  const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
+  const [vehicleId, setVehicleId] = useState("");
   const [estimateAmount, setEstimateAmount] = useState("");
+  const [dueDate, setDueDate] = useState("");
   const [insuranceCompany, setInsuranceCompany] = useState("");
   const [claimNumber, setClaimNumber] = useState("");
   const [notes, setNotes] = useState("");
@@ -393,6 +557,35 @@ function CreateDialog({
     };
   }, [query]);
 
+  // 顧客が決まったらその顧客の車両を取得。顧客変更時は車両選択をリセットする。
+  useEffect(() => {
+    setVehicleId("");
+    setVehicles([]);
+    if (!customerId) return;
+    let active = true;
+    (async () => {
+      try {
+        const res = await fetch(`/api/admin/vehicles?customer_id=${customerId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const list = (data.vehicles ?? data.items ?? []) as Array<Record<string, unknown>>;
+        if (!active) return;
+        setVehicles(
+          list.map((v) => ({
+            id: String(v.id),
+            label:
+              [v.maker, v.model, v.year ? String(v.year) : null, v.plate_display].filter(Boolean).join(" ") || "車両",
+          })),
+        );
+      } catch {
+        /* 取得失敗時は車両候補なし */
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [customerId]);
+
   async function submit() {
     if (estimateAmount && (!Number.isInteger(Number(estimateAmount)) || Number(estimateAmount) < 0)) {
       onError("見積金額は 0 以上の整数で入力してください。");
@@ -405,8 +598,10 @@ function CreateDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customer_id: customerId || null,
+          vehicle_id: vehicleId || null,
           stage: "intake",
           estimate_amount: estimateAmount ? Number(estimateAmount) : null,
+          due_date: dueDate || null,
           insurance_company: insuranceCompany.trim() || null,
           claim_number: claimNumber.trim() || null,
           notes: notes.trim() || null,
@@ -473,16 +668,43 @@ function CreateDialog({
           )}
         </div>
 
-        <Field label="見積金額（円）">
-          <input
-            type="number"
-            min={0}
-            value={estimateAmount}
-            onChange={(e) => setEstimateAmount(e.target.value)}
-            placeholder="例: 180000"
-            className={`w-full ${inputCls}`}
-          />
-        </Field>
+        {customerId && (
+          <Field label="車両（任意・紐付けると AI 見積を作成できます）">
+            {vehicles.length === 0 ? (
+              <p className="text-xs text-muted">この顧客に登録車両がありません</p>
+            ) : (
+              <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} className={`w-full ${inputCls}`}>
+                <option value="">（車両を指定しない）</option>
+                {vehicles.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.label}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="見積金額（円）">
+            <input
+              type="number"
+              min={0}
+              value={estimateAmount}
+              onChange={(e) => setEstimateAmount(e.target.value)}
+              placeholder="例: 180000"
+              className={`w-full ${inputCls}`}
+            />
+          </Field>
+          <Field label="納期（完成予定日）">
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className={`w-full ${inputCls}`}
+            />
+          </Field>
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="保険会社">
@@ -551,6 +773,13 @@ function CreateDialog({
             className={`w-full resize-none ${inputCls}`}
           />
         </Field>
+        {canAiNote && (
+          <VoiceMemoPanel
+            variant="note"
+            serviceType="body_repair"
+            onApply={(note) => setNotes((prev) => (prev.trim() ? `${prev.trim()}\n${note}` : note))}
+          />
+        )}
       </div>
 
       <DialogActions onClose={onClose} onSubmit={submit} submitting={submitting} submitLabel="作成する" />
@@ -559,13 +788,415 @@ function CreateDialog({
 }
 
 // ─── 編集ダイアログ (ガイドライン4.2(2)(3): 予定/実績・差異理由・実績料金) ───
+const CASE_STATUS_LABEL: Record<string, string> = {
+  open: "新規",
+  in_progress: "処理中",
+  pending_tenant: "返答待ち",
+  resolved: "解決済",
+  closed: "クローズ",
+};
+const SENDER_LABEL: Record<string, string> = { insurer: "保険会社", tenant: "自店", system: "システム" };
+
+interface CaseMsg {
+  id: string;
+  sender_type: string;
+  content: string;
+  created_at: string;
+}
+interface CaseSummary {
+  id: string;
+  case_number: string | null;
+  title: string | null;
+  status: string;
+}
+interface InsurerCaseOption {
+  id: string;
+  case_number: string | null;
+  title: string | null;
+  status: string;
+  insurer: { name: string | null } | null;
+}
+
+function formatMsgTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/**
+ * 案件に紐づく保険案件 (insurer_cases) との往復メッセージを扱う (Phase 2D)。
+ * 未リンクなら自社の保険案件を選んで紐付け、リンク済みならスレッド表示 +
+ * 施工店としてメッセージ送信 (sender_type=tenant は API 側で固定)。
+ */
+function InsurerCaseSection({ job, onError }: { job: BodyRepairJob; onError: (msg: string) => void }) {
+  const [caseId, setCaseId] = useState<string | null>(job.insurer_case_id);
+  const [caseInfo, setCaseInfo] = useState<CaseSummary | null>(null);
+  const [messages, setMessages] = useState<CaseMsg[]>([]);
+  const [options, setOptions] = useState<InsurerCaseOption[]>([]);
+  const [pick, setPick] = useState("");
+  const [draft, setDraft] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  const loadThread = useCallback(async (cid: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/insurer-cases/${cid}/messages`);
+      const data = res.ok ? await res.json() : { case: null, messages: [] };
+      setCaseInfo((data.case ?? null) as CaseSummary | null);
+      setMessages(Array.isArray(data.messages) ? data.messages : []);
+    } catch {
+      /* noop */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const loadOptions = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/insurer-cases");
+      const data = res.ok ? await res.json() : { cases: [] };
+      setOptions(Array.isArray(data.cases) ? data.cases : []);
+    } catch {
+      /* noop */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (caseId) loadThread(caseId);
+    else loadOptions();
+  }, [caseId, loadThread, loadOptions]);
+
+  async function patchLink(value: string | null) {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/body-repair-jobs", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: job.id, insurer_case_id: value }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.message ?? "更新に失敗しました");
+      }
+      if (value) {
+        setCaseId(value);
+      } else {
+        setCaseId(null);
+        setCaseInfo(null);
+        setMessages([]);
+        setPick("");
+      }
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "更新に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function send() {
+    if (!caseId || !draft.trim()) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/admin/insurer-cases/${caseId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: draft.trim() }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.message ?? "送信に失敗しました");
+      }
+      setDraft("");
+      await loadThread(caseId);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "送信に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-border-subtle bg-inset p-3">
+      <div className="mb-1.5 text-xs font-semibold text-primary">保険会社とのやり取り</div>
+      {loading ? (
+        <p className="text-[11px] text-muted">読み込み中…</p>
+      ) : caseId && caseInfo ? (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-[11px] text-secondary">{caseInfo.case_number ?? "案件"}</span>
+            <span className="truncate text-xs text-primary">{caseInfo.title}</span>
+            <span className="rounded-full border border-border-subtle bg-surface px-2 py-0.5 text-[10px] text-muted">
+              {CASE_STATUS_LABEL[caseInfo.status] ?? caseInfo.status}
+            </span>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => patchLink(null)}
+              className="ml-auto text-[10px] text-muted underline transition-colors hover:text-primary disabled:opacity-50"
+            >
+              紐付け解除
+            </button>
+          </div>
+          <div className="max-h-44 space-y-1.5 overflow-y-auto rounded-md border border-border-subtle bg-surface p-2">
+            {messages.length === 0 ? (
+              <p className="text-[11px] text-muted">まだメッセージはありません</p>
+            ) : (
+              messages.map((m) => (
+                <div key={m.id} className={m.sender_type === "tenant" ? "text-right" : "text-left"}>
+                  <div className="text-[9.5px] text-muted">
+                    {SENDER_LABEL[m.sender_type] ?? m.sender_type} · {formatMsgTime(m.created_at)}
+                  </div>
+                  <div
+                    className={`inline-block max-w-[85%] whitespace-pre-wrap rounded-md px-2 py-1 text-left text-[11px] ${
+                      m.sender_type === "tenant" ? "bg-accent/15 text-primary" : "bg-inset text-secondary"
+                    }`}
+                  >
+                    {m.content}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="flex items-end gap-2">
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              rows={2}
+              placeholder="保険会社へのメッセージ（見積提出・確認依頼など）"
+              className={`w-full resize-none ${inputCls}`}
+            />
+            <MutationGuard>
+              <button
+                type="button"
+                disabled={busy || !draft.trim()}
+                onClick={send}
+                className="shrink-0 rounded-md bg-accent px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+              >
+                {busy ? "…" : "送信"}
+              </button>
+            </MutationGuard>
+          </div>
+        </div>
+      ) : options.length === 0 ? (
+        <p className="text-[11px] text-muted">紐付け可能な保険案件がありません</p>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={pick} onChange={(e) => setPick(e.target.value)} className={inputCls}>
+            <option value="">保険案件を選択</option>
+            {options.map((c) => (
+              <option key={c.id} value={c.id}>
+                {[c.case_number, c.insurer?.name, c.title].filter(Boolean).join(" / ")}
+              </option>
+            ))}
+          </select>
+          <MutationGuard>
+            <button
+              type="button"
+              disabled={busy || !pick}
+              onClick={() => patchLink(pick)}
+              className="rounded-md bg-accent px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+            >
+              {busy ? "…" : "この案件に紐付け"}
+            </button>
+          </MutationGuard>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ActiveLoan {
+  id: string;
+  return_due_at: string | null;
+  loaner_car: { name: string | null; plate_display: string | null } | null;
+}
+
+function formatLoanDue(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+/**
+ * 案件に紐付く代車の貸出/返却を扱う。アクティブな貸出があれば代車名・返却予定
+ * (超過は赤) と「返却する」を表示し、無ければ貸出可能な代車を選んで貸し出す。
+ * loaner_car_loans.body_repair_job_id 経由で案件と紐付ける (Phase 2B)。
+ */
+function LoanerSection({ job, onError }: { job: BodyRepairJob; onError: (msg: string) => void }) {
+  const [loan, setLoan] = useState<ActiveLoan | null>(null);
+  const [cars, setCars] = useState<VehicleOption[]>([]);
+  const [carId, setCarId] = useState("");
+  const [dueAt, setDueAt] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/loaner-cars/loans?body_repair_job_id=${job.id}&active_only=true`);
+      const data = res.ok ? await res.json() : { loans: [] };
+      const active = (Array.isArray(data.loans) && data.loans.length > 0 ? data.loans[0] : null) as ActiveLoan | null;
+      setLoan(active);
+      if (!active) {
+        const carsRes = await fetch("/api/admin/loaner-cars");
+        const carsData = carsRes.ok ? await carsRes.json() : { cars: [] };
+        const list = ((carsData.cars ?? []) as Array<Record<string, unknown>>).filter(
+          (c) => c.is_active && !c.current_loan,
+        );
+        setCars(
+          list.map((c) => ({
+            id: String(c.id),
+            label: [c.name, c.plate_display].filter(Boolean).join(" / ") || "代車",
+          })),
+        );
+      }
+    } catch {
+      /* 取得失敗時は何も表示しない */
+    } finally {
+      setLoading(false);
+    }
+  }, [job.id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function lend() {
+    if (!carId) {
+      onError("代車を選択してください。");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/loaner-cars/loans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          loaner_car_id: carId,
+          customer_id: job.customer_id ?? undefined,
+          body_repair_job_id: job.id,
+          return_due_at: dueAt || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.message ?? "貸出に失敗しました");
+      }
+      setCarId("");
+      setDueAt("");
+      await load();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "貸出に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function returnCar() {
+    if (!loan) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/loaner-cars/loans", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: loan.id }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.message ?? "返却に失敗しました");
+      }
+      await load();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "返却に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const overdue = loan?.return_due_at ? new Date(loan.return_due_at).getTime() < Date.now() : false;
+
+  return (
+    <div className="rounded-lg border border-border-subtle bg-inset p-3">
+      <div className="mb-1.5 text-xs font-semibold text-primary">代車</div>
+      {loading ? (
+        <p className="text-[11px] text-muted">読み込み中…</p>
+      ) : loan ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-primary">
+            {loan.loaner_car
+              ? [loan.loaner_car.name, loan.loaner_car.plate_display].filter(Boolean).join(" / ")
+              : "代車"}
+          </span>
+          {loan.return_due_at && (
+            <span
+              className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                overdue ? "border-red-500/40 bg-red-500/15 text-red-300" : "border-border-subtle bg-surface text-muted"
+              }`}
+            >
+              返却予定 {formatLoanDue(loan.return_due_at)}
+              {overdue ? " ・超過" : ""}
+            </span>
+          )}
+          <MutationGuard>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={returnCar}
+              className="rounded-md border border-border-strong px-2.5 py-1 text-[11px] text-secondary transition-colors hover:text-primary disabled:opacity-50"
+            >
+              {busy ? "…" : "返却する"}
+            </button>
+          </MutationGuard>
+        </div>
+      ) : cars.length === 0 ? (
+        <p className="text-[11px] text-muted">貸出可能な代車がありません</p>
+      ) : (
+        <div className="flex flex-wrap items-end gap-2">
+          <select value={carId} onChange={(e) => setCarId(e.target.value)} className={inputCls}>
+            <option value="">代車を選択</option>
+            {cars.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+          <input
+            type="date"
+            value={dueAt}
+            onChange={(e) => setDueAt(e.target.value)}
+            className={inputCls}
+            aria-label="返却予定日"
+          />
+          <MutationGuard>
+            <button
+              type="button"
+              disabled={busy || !carId}
+              onClick={lend}
+              className="rounded-md bg-accent px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+            >
+              {busy ? "…" : "貸し出す"}
+            </button>
+          </MutationGuard>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EditDialog({
   job,
+  canAiQuote,
   onClose,
   onSaved,
   onError,
 }: {
   job: BodyRepairJob;
+  canAiQuote: boolean;
   onClose: () => void;
   onSaved: () => void;
   onError: (msg: string) => void;
@@ -577,8 +1208,95 @@ function EditDialog({
   const [actualPaint, setActualPaint] = useState(actual.paint ?? "");
   const [deviationReason, setDeviationReason] = useState(job.deviation_reason ?? "");
   const [actualAmount, setActualAmount] = useState(job.actual_amount != null ? String(job.actual_amount) : "");
+  const [dueDate, setDueDate] = useState(job.due_date ?? "");
+  const [claimStatus, setClaimStatus] = useState(job.claim_status ?? "");
+  const [claimApproved, setClaimApproved] = useState(
+    job.claim_approved_amount != null ? String(job.claim_approved_amount) : "",
+  );
+  const [claimDecidedAt, setClaimDecidedAt] = useState(job.claim_decided_at ? job.claim_decided_at.slice(0, 10) : "");
   const [isSpecified, setIsSpecified] = useState(job.is_specified_maintenance);
   const [submitting, setSubmitting] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+
+  /**
+   * AI 見積を作成して案件に添付する。
+   * ai-from-vehicle で下書き生成 → documents に見積書を作成 → 案件へ
+   * estimate_document_id / estimate_amount を紐付け、の 3 ステップを順に実行する。
+   */
+  async function createAiEstimate() {
+    if (!job.vehicle_id) {
+      onError("AI 見積には車両の紐付けが必要です。");
+      return;
+    }
+    setAiBusy(true);
+    try {
+      // 1) AI 見積下書き
+      const aiRes = await fetch("/api/admin/quotes/ai-from-vehicle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vehicle_id: job.vehicle_id,
+          customer_id: job.customer_id ?? undefined,
+          service_category: "板金塗装",
+        }),
+      });
+      if (!aiRes.ok) {
+        const err = await aiRes.json().catch(() => ({}));
+        throw new Error(err.message ?? "AI 見積の生成に失敗しました");
+      }
+      const aiData = await aiRes.json();
+      if (aiData.ai_disabled || !aiData.draft) {
+        throw new Error("AI 自動化が無効です（設定から有効化してください）");
+      }
+      const draft = aiData.draft as {
+        items: Array<{ description: string; quantity: number; unit_price: number }>;
+        total: number;
+        terms?: string;
+      };
+
+      // 2) 見積書 (documents.doc_type='estimate') を作成
+      const items = draft.items.map((i) => ({
+        item_type: "item",
+        description: i.description,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+      }));
+      const docRes = await fetch("/api/admin/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          doc_type: "estimate",
+          customer_id: job.customer_id ?? null,
+          subject: "お見積書（鈑金塗装）",
+          items,
+          note: draft.terms ?? null,
+          status: "draft",
+          tax_rate: 10,
+        }),
+      });
+      if (!docRes.ok) {
+        const err = await docRes.json().catch(() => ({}));
+        throw new Error(err.message ?? "見積書の作成に失敗しました");
+      }
+      const doc = (await docRes.json()).document as { id: string; total: number };
+
+      // 3) 案件へ紐付け（見積金額も同期）
+      const patchRes = await fetch("/api/admin/body-repair-jobs", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: job.id, estimate_document_id: doc.id, estimate_amount: doc.total }),
+      });
+      if (!patchRes.ok) {
+        const err = await patchRes.json().catch(() => ({}));
+        throw new Error(err.message ?? "案件への紐付けに失敗しました");
+      }
+      onSaved();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "AI 見積の作成に失敗しました");
+    } finally {
+      setAiBusy(false);
+    }
+  }
 
   async function save() {
     if (actualAmount && (!Number.isInteger(Number(actualAmount)) || Number(actualAmount) < 0)) {
@@ -593,6 +1311,10 @@ function EditDialog({
         body: JSON.stringify({
           id: job.id,
           actual_amount: actualAmount ? Number(actualAmount) : null,
+          due_date: dueDate || null,
+          claim_status: claimStatus || null,
+          claim_approved_amount: claimApproved ? Number(claimApproved) : null,
+          claim_decided_at: claimDecidedAt || null,
           deviation_reason: deviationReason.trim() || null,
           is_specified_maintenance: isSpecified,
           actual_work: {
@@ -617,6 +1339,46 @@ function EditDialog({
   return (
     <DialogShell title="作業実績の記録" onClose={onClose}>
       <div className="space-y-4">
+        {/* AI 見積 */}
+        <div className="rounded-lg border border-border-subtle bg-inset p-3">
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-primary">AI 見積</span>
+            {job.estimate_document_id && (
+              <a
+                href={`/admin/documents/${job.estimate_document_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-md border border-accent/40 bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent transition-colors hover:bg-accent/20"
+              >
+                見積書を開く →
+              </a>
+            )}
+          </div>
+          {canAiQuote ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <MutationGuard>
+                <button
+                  type="button"
+                  disabled={aiBusy || !job.vehicle_id}
+                  onClick={createAiEstimate}
+                  className="rounded-md bg-accent px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+                >
+                  {aiBusy ? "作成中…" : job.estimate_document_id ? "AIで見積書を作り直す" : "AIで見積書を作成"}
+                </button>
+              </MutationGuard>
+              {!job.vehicle_id && <span className="text-[11px] text-muted">※ 車両が紐付いた案件で利用できます</span>}
+            </div>
+          ) : (
+            <p className="text-[11px] text-muted">AI 見積は Standard プラン以上でご利用いただけます。</p>
+          )}
+        </div>
+
+        {/* 代車 */}
+        <LoanerSection job={job} onError={onError} />
+
+        {/* 保険会社とのやり取り */}
+        <InsurerCaseSection job={job} onError={onError} />
+
         {/* 予定内容 (読み取り専用) */}
         <div className="rounded-lg border border-border-subtle bg-inset p-3 text-xs text-secondary">
           <div className="mb-1 font-semibold text-primary">予定（作業開始前）</div>
@@ -664,16 +1426,65 @@ function EditDialog({
           />
         </Field>
 
-        <Field label="実績金額（円）">
-          <input
-            type="number"
-            min={0}
-            value={actualAmount}
-            onChange={(e) => setActualAmount(e.target.value)}
-            placeholder="例: 185000"
-            className={`w-full ${inputCls}`}
-          />
-        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="実績金額（円）">
+            <input
+              type="number"
+              min={0}
+              value={actualAmount}
+              onChange={(e) => setActualAmount(e.target.value)}
+              placeholder="例: 185000"
+              className={`w-full ${inputCls}`}
+            />
+          </Field>
+          <Field label="納期（完成予定日）">
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className={`w-full ${inputCls}`}
+            />
+          </Field>
+        </div>
+
+        {/* 保険査定 (保険会社から受領した結果の記録) */}
+        <div className="rounded-lg border border-border-subtle bg-inset p-3">
+          <div className="mb-2 text-xs font-semibold text-primary">保険査定（受領結果）</div>
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="ステータス">
+              <select
+                value={claimStatus}
+                onChange={(e) => setClaimStatus(e.target.value)}
+                className={`w-full ${inputCls}`}
+              >
+                <option value="">未提出</option>
+                {CLAIM_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {CLAIM_STATUS_LABEL[s]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="承認額（円）">
+              <input
+                type="number"
+                min={0}
+                value={claimApproved}
+                onChange={(e) => setClaimApproved(e.target.value)}
+                placeholder="例: 175000"
+                className={`w-full ${inputCls}`}
+              />
+            </Field>
+            <Field label="査定受領日">
+              <input
+                type="date"
+                value={claimDecidedAt}
+                onChange={(e) => setClaimDecidedAt(e.target.value)}
+                className={`w-full ${inputCls}`}
+              />
+            </Field>
+          </div>
+        </div>
 
         <label className="flex items-center gap-2 text-sm text-secondary">
           <input

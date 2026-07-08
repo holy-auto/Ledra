@@ -2,13 +2,10 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { renderInvoicePdf, type TenantForPdf } from "@/lib/pdfInvoice";
 import { sendResendEmail } from "@/lib/email/resendSend";
 import { logger } from "@/lib/logger";
+import { todayJst } from "@/lib/gantt/board";
 
 function fmtJpy(n: number): string {
   return `¥${n.toLocaleString("ja-JP")}`;
-}
-
-function lastDayOfMonth(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth() + 1, 0);
 }
 
 function buildConsolidatedEmailHtml(params: {
@@ -83,16 +80,27 @@ export async function runMonthlyInvoices(targetDate?: Date): Promise<{ sent: num
   const supabase = createServiceRoleAdmin("orders/monthlyInvoice: 月次合算請求 (全テナントの job_order を跨いで集計)");
   const now = targetDate ?? new Date();
 
+  // 月境界は JST 基準で決める（UTC 深夜だと締め月が前月に寄り、月初/月末の
+  // 案件が別月に混入する）。
+  const jstYmd = todayJst(now); // "YYYY-MM-DD" (JST)
+  const jy = Number(jstYmd.slice(0, 4));
+  const jm = Number(jstYmd.slice(5, 7)); // 1-12
+  const ym = jstYmd.slice(0, 7); // "YYYY-MM"
+
   // 対象月（例: "2026年4月"）
-  const billingMonthStr = now.toLocaleDateString("ja-JP", { year: "numeric", month: "long" });
+  const billingMonthStr = `${jy}年${jm}月`;
 
-  // 当月1日〜末日の範囲
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
+  // 当月1日 00:00 〜 翌月1日 00:00（排他上限）を JST で表現。
+  const monthStart = `${ym}-01T00:00:00+09:00`;
+  const nextYm = jm === 12 ? `${jy + 1}-01` : `${jy}-${String(jm + 1).padStart(2, "0")}`;
+  const monthEnd = `${nextYm}-01T00:00:00+09:00`;
 
-  // 支払期限 = 翌月末
-  const dueDate = lastDayOfMonth(new Date(now.getFullYear(), now.getMonth() + 1, 1));
-  const dueDateStr = dueDate.toLocaleDateString("ja-JP");
+  // 支払期限 = 翌月末（JST）。翌々月の 0 日目 = 翌月末日。
+  const dueYear = jm === 12 ? jy + 1 : jy;
+  const dueMonth = jm === 12 ? 1 : jm + 1; // 1-12
+  const dueLast = new Date(Date.UTC(dueYear, dueMonth, 0)); // 翌月末日 (UTC 固定で日付ズレ回避)
+  const dueDateIso = dueLast.toISOString().slice(0, 10);
+  const dueDateStr = `${dueYear}/${dueMonth}/${dueLast.getUTCDate()}`;
 
   // 対象案件を取得（当月中に payment_pending になった monthly 案件）
   const { data: orders, error } = await supabase
@@ -110,7 +118,7 @@ export async function runMonthlyInvoices(targetDate?: Date): Promise<{ sent: num
     .eq("status", "payment_pending")
     .is("invoice_sent_at", null)
     .gte("client_approved_at", monthStart)
-    .lte("client_approved_at", monthEnd);
+    .lt("client_approved_at", monthEnd);
 
   if (error) {
     logger.error("[monthlyInvoice] fetch failed", { error: error.message });
@@ -149,9 +157,13 @@ export async function runMonthlyInvoices(targetDate?: Date): Promise<{ sent: num
       const totalAmount = tenantOrders.reduce((sum, o) => sum + ((o.accepted_amount as number) ?? 0), 0);
       if (totalAmount === 0) continue;
 
-      // 請求書番号（例: CINV-202604-ABC1）
-      const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
-      const shortId = fromTenantId.slice(0, 4).toUpperCase();
+      // 請求書番号（例: CINV-202604-1A2B3C4D5E6F）
+      // ponytail: テナント UUID 先頭 12 hex を採番に使う簡易方式。DB シーケンス等の
+      //   永続採番は未実装で、真の一意性は保証しない（4 hex では衝突しやすかったのを
+      //   12 hex に広げ実用上の衝突確率を無視できる水準にする）。月次×テナントで
+      //   採番を永続化する場合は別途シーケンス/採番テーブルへ移行する。
+      const dateStr = ym.replace("-", ""); // YYYYMM (JST)
+      const shortId = fromTenantId.replace(/-/g, "").slice(0, 12).toUpperCase();
       const invoiceNumber = `CINV-${dateStr}-${shortId}`;
 
       // 施工店情報（最初の受注テナントを代表として使用）
@@ -190,7 +202,7 @@ export async function runMonthlyInvoices(targetDate?: Date): Promise<{ sent: num
         invoice_number: invoiceNumber,
         status: "sent",
         issued_at: now.toISOString(),
-        due_date: dueDate.toISOString().slice(0, 10),
+        due_date: dueDateIso,
         subtotal: totalAmount,
         tax: 0,
         total: totalAmount,
@@ -241,7 +253,7 @@ export async function runMonthlyInvoices(targetDate?: Date): Promise<{ sent: num
         .update({
           invoice_number: invoiceNumber,
           invoice_sent_at: nowIso,
-          invoice_due_date: dueDate.toISOString().slice(0, 10),
+          invoice_due_date: dueDateIso,
           platform_fee_amount: null, // 個別ではなく合算で管理
           payout_amount: null,
         })

@@ -57,7 +57,7 @@ ${untrustedNotice("会話履歴")}`.trim();
 
 const EMPTY: ReplyDraftResult = { draft_reply: "", confidence: 0, ai: false };
 
-export async function generateReplyDraft(input: ReplyDraftInput): Promise<ReplyDraftResult> {
+export async function generateReplyDraft(input: ReplyDraftInput, opts?: { model?: string }): Promise<ReplyDraftResult> {
   // 返信対象 (直近の inbound) が無ければ下書きしない。
   const hasInbound = input.turns.some((t) => t.direction === "inbound" && t.body.trim().length > 0);
   if (!hasInbound) return EMPTY;
@@ -81,7 +81,7 @@ export async function generateReplyDraft(input: ReplyDraftInput): Promise<ReplyD
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 1024,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: facts.join("\n\n") }],

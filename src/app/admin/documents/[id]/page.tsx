@@ -4,14 +4,11 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import PageHeader from "@/components/ui/PageHeader";
 import DocumentDetailClient from "./DocumentDetailClient";
 import { DOC_TYPES, type DocType } from "@/types/document";
+import { createSignedAssetUrl } from "@/lib/signedUrl";
 
 export const dynamic = "force-dynamic";
 
-export default async function DocumentDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function DocumentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createSupabaseServerClient();
   const { data: userRes } = await supabase.auth.getUser();
@@ -52,9 +49,20 @@ export default async function DocumentDetailPage({
   // テナント情報（インボイス・口座情報用）
   const { data: tenant } = await supabase
     .from("tenants")
-    .select("name, address, contact_email, contact_phone, registration_number, logo_asset_path, company_seal_path, bank_info")
+    .select(
+      "name, address, contact_email, contact_phone, registration_number, logo_asset_path, company_seal_path, bank_info",
+    )
     .eq("id", mem.tenant_id)
     .single();
+
+  // ロゴ・角印は Storage パスで保存されているため、プレビュー表示用に署名付きURLへ変換する。
+  // 非表示 (show_logo / show_seal が false) の資産は署名しない — 署名付きURLは
+  // client component の props としてブラウザへ渡るため、意図的に隠した角印等が
+  // ダウンロード可能になるのを防ぐ (PDF レンダラと同じゲート条件)。
+  const [logoUrl, sealUrl] = await Promise.all([
+    doc.show_logo && tenant?.logo_asset_path ? createSignedAssetUrl(tenant.logo_asset_path, 3600) : null,
+    doc.show_seal && tenant?.company_seal_path ? createSignedAssetUrl(tenant.company_seal_path, 3600) : null,
+  ]);
 
   const docLabel = DOC_TYPES[doc.doc_type as DocType]?.label ?? doc.doc_type;
 
@@ -75,6 +83,8 @@ export default async function DocumentDetailPage({
         customerEmail={customerEmail}
         customerPhone={customerPhone}
         tenant={tenant}
+        logoUrl={logoUrl}
+        sealUrl={sealUrl}
       />
     </div>
   );

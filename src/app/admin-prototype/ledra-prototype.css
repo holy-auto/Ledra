@@ -1,0 +1,48 @@
+/* ════════════════════════════════════════════════════════════
+   Ledra Admin Prototype — scoped reset (.lp root)
+   The L3 "L-Shell" design is built almost entirely from inline styles
+   that reference the production design tokens in src/app/globals.css.
+   This file only provides a scoped reset + scrollbar styling so nothing
+   leaks into the rest of the app.
+   ════════════════════════════════════════════════════════════ */
+
+.lp {
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+.lp *,
+.lp *::before,
+.lp *::after {
+  box-sizing: border-box;
+}
+.lp button {
+  font-family: inherit;
+}
+.lp ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.lp ::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 4px;
+}
+
+@media (max-width: 880px) {
+  .lp .lp-table {
+    overflow-x: auto !important;
+  }
+  .lp .lp-table > div {
+    min-width: 680px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

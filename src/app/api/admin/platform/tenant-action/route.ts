@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { ADDON_KEYS, enableAddon, disableAddon, type AddonKey } from "@/lib/billing/addons";
+import { invalidateTenantBillingCache } from "@/lib/billing/tenantBillingCache";
 import {
   apiJson,
   apiUnauthorized,
@@ -27,7 +28,8 @@ const tenantActionSchema = z
     ),
     params: z
       .object({
-        plan_tier: z.enum(["free", "starter", "pro", "enterprise"]).optional(),
+        // canonical PlanTier (src/types/billing.ts) に合わせる
+        plan_tier: z.enum(["free", "starter", "standard", "pro"]).optional(),
         message: z.string().trim().max(2000).optional(),
         addon_key: z.enum(ADDON_KEY_VALUES).optional(),
         notes: z.string().trim().max(500).optional(),
@@ -152,6 +154,12 @@ export async function POST(req: NextRequest) {
         };
         break;
       }
+    }
+
+    // plan_tier / is_active を変更した操作は、共有の課金キャッシュを破棄して次リクエストに
+    // 即反映させる (認証層 resolvePlanTier と billing guard が同キャッシュを参照するため)。
+    if (action === "activate" || action === "deactivate" || action === "change_plan" || action === "reset_billing") {
+      await invalidateTenantBillingCache(tenantId);
     }
 
     // Log the action to admin_audit_logs

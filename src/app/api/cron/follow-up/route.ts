@@ -16,7 +16,9 @@ import {
   processSeasonalProposals,
   processMaintenanceReminders,
 } from "@/lib/cron/followUp";
+import { todayJst } from "@/lib/gantt/board";
 import { processInspectionReminders } from "@/lib/cron/inspectionReminders";
+import { processServiceReminders } from "@/lib/cron/serviceReminders";
 import { processBirthdayGreetings } from "@/lib/cron/birthdayGreetings";
 
 export const dynamic = "force-dynamic";
@@ -34,8 +36,11 @@ export async function GET(req: NextRequest) {
 
   try {
     const supabase = createServiceRoleAdmin("cron:follow-up — iterates every tenant's follow_up_settings");
-    const today = new Date();
-    const todayStr = today.toISOString().slice(0, 10);
+    // 「今日」は JST の暦日で統一する。Vercel (UTC) では JST 深夜の実行時に
+    // toISOString() ベースの日付計算が前日にずれるため、JST の今日を UTC 0 時に
+    // 固定した Date を全サブジョブへ渡す (各サブジョブは getUTC* / toISOString で読む)。
+    const todayStr = todayJst();
+    const today = new Date(`${todayStr}T00:00:00Z`);
 
     const lock = await withCronLock(supabase, "follow-up", 600, async () => {
       let remindersSent = 0;
@@ -43,6 +48,7 @@ export async function GET(req: NextRequest) {
       let seasonalSent = 0;
       let maintenanceSent = 0;
       let inspectionSent = 0;
+      let serviceReminderSent = 0;
       let birthdaySent = 0;
       try {
         const { data: rawSettings } = await supabase
@@ -76,13 +82,22 @@ export async function GET(req: NextRequest) {
             seasonalSent += await processSeasonalProposals(supabase, setting, shopName, today);
             maintenanceSent += await processMaintenanceReminders(supabase, setting, tenant, shopName, planTier, today);
             inspectionSent += await processInspectionReminders(supabase, setting, shopName, today);
+            serviceReminderSent += await processServiceReminders(supabase, setting, shopName, today);
             birthdaySent += await processBirthdayGreetings(supabase, setting, shopName, today);
           }
         }
       } catch (e) {
         console.error("[cron/follow-up] failed:", e);
       }
-      return { remindersSent, followUpsSent, seasonalSent, maintenanceSent, inspectionSent, birthdaySent };
+      return {
+        remindersSent,
+        followUpsSent,
+        seasonalSent,
+        maintenanceSent,
+        inspectionSent,
+        serviceReminderSent,
+        birthdaySent,
+      };
     });
 
     if (!lock.acquired) {
@@ -96,6 +111,7 @@ export async function GET(req: NextRequest) {
       seasonal_sent: lock.value.seasonalSent,
       maintenance_sent: lock.value.maintenanceSent,
       inspection_sent: lock.value.inspectionSent,
+      service_reminder_sent: lock.value.serviceReminderSent,
       birthday_sent: lock.value.birthdaySent,
       date: todayStr,
     });

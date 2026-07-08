@@ -14,6 +14,7 @@ import { apiOk, apiUnauthorized, apiNotFound, apiValidationError, apiInternalErr
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import {
   generatePurchaseOrderMessage,
   buildFallbackPurchaseOrderMessage,
@@ -114,7 +115,7 @@ export async function POST(req: NextRequest) {
     // テナント設定で AI が OFF ならモデルを呼ばず、決定論フォールバック文面を返す。
     const automation = await loadAiAutomationSettings(caller.tenantId);
     const message = automation.enabled
-      ? await generatePurchaseOrderMessage(input)
+      ? await generatePurchaseOrderMessage(input, { model: fastModelForPlanTier(caller.planTier) })
       : buildFallbackPurchaseOrderMessage(input);
 
     return apiOk({

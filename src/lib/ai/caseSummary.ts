@@ -53,15 +53,12 @@ const SYSTEM_PROMPT = `あなたは損保会社の査定担当を支援するア
 - 改行 / 絵文字 / カッコ書き禁止
 - 案件情報に無いことは line に書かない`.trim();
 
-export async function summarizeCase(input: CaseSummaryInput): Promise<CaseSummaryResult> {
+export async function summarizeCase(input: CaseSummaryInput, opts?: { model?: string }): Promise<CaseSummaryResult> {
   const fallback = buildFallbackLines(input);
   if (!process.env.ANTHROPIC_API_KEY) return fallback;
 
   const client = getAnthropicClient();
-  const facts: string[] = [
-    `ステータス: ${input.status}`,
-    `優先度: ${input.priority}`,
-  ];
+  const facts: string[] = [`ステータス: ${input.status}`, `優先度: ${input.priority}`];
   if (input.subject) facts.push(`件名: ${input.subject}`);
   if (input.vehicle) {
     facts.push(`車両: ${[input.vehicle.maker, input.vehicle.model].filter(Boolean).join(" ")}`);
@@ -84,7 +81,7 @@ export async function summarizeCase(input: CaseSummaryInput): Promise<CaseSummar
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 512,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: facts.join("\n\n") }],

@@ -10,6 +10,7 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateCertificateFeedback } from "@/lib/ai/academyFeedback";
+import { fastModelForPlanTier } from "@/lib/ai/client";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 const academyFeedbackSchema = z.object({
@@ -65,24 +66,27 @@ export async function POST(req: NextRequest) {
       .eq("category", cert.category ?? "")
       .limit(3);
 
-    const feedback = await generateCertificateFeedback({
-      certificate: {
-        service_name: cert.service_name ?? "",
-        description: cert.description ?? undefined,
-        material_info: cert.material_info ?? undefined,
-        warranty_period: cert.warranty_period ?? undefined,
-        work_areas: cert.work_areas ?? undefined,
-        photo_count: cert.photo_count ?? 0,
-        category: cert.category ?? undefined,
+    const feedback = await generateCertificateFeedback(
+      {
+        certificate: {
+          service_name: cert.service_name ?? "",
+          description: cert.description ?? undefined,
+          material_info: cert.material_info ?? undefined,
+          warranty_period: cert.warranty_period ?? undefined,
+          work_areas: cert.work_areas ?? undefined,
+          photo_count: cert.photo_count ?? 0,
+          category: cert.category ?? undefined,
+        },
+        qualityScore: qualityScore?.score ?? undefined,
+        missingFields: qualityScore?.missing_fields ?? undefined,
+        warningMessages: ((qualityScore?.warning_messages as { message: string }[]) ?? []).map((w) => w.message),
+        similarGoodCases: (similarCases ?? []).map((c) => ({
+          caseId: c.id,
+          learnPoint: c.ai_summary ?? "",
+        })),
       },
-      qualityScore: qualityScore?.score ?? undefined,
-      missingFields: qualityScore?.missing_fields ?? undefined,
-      warningMessages: ((qualityScore?.warning_messages as { message: string }[]) ?? []).map((w) => w.message),
-      similarGoodCases: (similarCases ?? []).map((c) => ({
-        caseId: c.id,
-        learnPoint: c.ai_summary ?? "",
-      })),
-    });
+      { model: fastModelForPlanTier(caller.planTier) },
+    );
 
     // 学習進捗を更新（upsert + certs_reviewed インクリメント）
     const { data: existing } = await admin

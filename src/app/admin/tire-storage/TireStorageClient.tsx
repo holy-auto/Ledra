@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import PageHeader from "@/components/ui/PageHeader";
 import { TIRE_TYPES, TIRE_TYPE_LABEL, type TireType, type TireStorageStatus } from "@/lib/validations/tire-storage";
 
 // ─── 型定義 ──────────────────────────────────────────────────────
@@ -163,11 +164,6 @@ export default function TireStorageClient() {
     [fetchItems, showToast],
   );
 
-  const STATUS_TABS: { key: StatusFilter; label: string }[] = [
-    { key: "stored", label: "保管中" },
-    { key: "returned", label: "返却済" },
-    { key: "all", label: "全件" },
-  ];
   const SWAP_TABS: { key: SwapFilter; label: string }[] = [
     { key: "this", label: "今月交換" },
     { key: "next", label: "来月交換" },
@@ -176,38 +172,33 @@ export default function TireStorageClient() {
 
   return (
     <div className="mx-auto max-w-6xl pb-20">
-      {/* ヘッダー */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-primary">タイヤ保管</h1>
-          <p className="mt-1 text-sm text-secondary">預かりタイヤの保管状況と季節交換時期を管理します</p>
-        </div>
-        <button
-          onClick={() => setCreateOpen(true)}
-          className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2 font-medium text-white transition-colors hover:bg-accent/90"
-        >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-          タイヤ預かり登録
-        </button>
-      </div>
+      {/* ヘッダー + ステータスタブ（L3 ページバー）。件数はステータス別サーバー取得のためバッジ無し。 */}
+      <PageHeader
+        tag="保管"
+        title="タイヤ保管"
+        description="預かりタイヤの保管状況と季節交換時期を管理します"
+        actions={
+          <button
+            onClick={() => setCreateOpen(true)}
+            className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2 font-medium text-white transition-colors hover:bg-accent/90"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+            タイヤ預かり登録
+          </button>
+        }
+        tabs={[
+          { key: "stored", label: "保管中" },
+          { key: "returned", label: "返却済" },
+          { key: "all", label: "全件" },
+        ]}
+        activeTab={statusFilter}
+        onTabSelect={(k) => setStatusFilter(k as StatusFilter)}
+      />
 
-      {/* フィルタバー */}
+      {/* 交換時期フィルタ */}
       <div className="mb-5 flex flex-wrap items-center gap-4">
-        <div className="flex rounded-lg border border-border-default p-0.5">
-          {STATUS_TABS.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setStatusFilter(t.key)}
-              className={`rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors ${
-                statusFilter === t.key ? "bg-accent text-white" : "text-secondary hover:text-primary"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted">交換時期</span>
           <div className="flex rounded-lg border border-border-default p-0.5">

@@ -54,7 +54,10 @@ const SYSTEM_PROMPT = `あなたは自動車施工店のオペレーション補
 作業時間と想定時間の乖離を受け取り、現場スタッフが即座に動ける指示を 1 文 (60 字以内、句点で終わる) で返します。
 推測表現禁止、改行 / 絵文字禁止、依頼ではなく「〜してください」の指示文で。`.trim();
 
-export async function generateTimerAlert(input: TimerAlertInput): Promise<TimerAlertSuggestion> {
+export async function generateTimerAlert(
+  input: TimerAlertInput,
+  opts?: { model?: string },
+): Promise<TimerAlertSuggestion> {
   const severity = evaluateTimerDeviation(input);
   const deviationRatio =
     input.estimatedMinutes > 0 ? (input.actualMinutes - input.estimatedMinutes) / input.estimatedMinutes : 0;
@@ -77,7 +80,7 @@ export async function generateTimerAlert(input: TimerAlertInput): Promise<TimerA
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.create({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 160,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: facts.map((f) => `- ${f}`).join("\n") }],

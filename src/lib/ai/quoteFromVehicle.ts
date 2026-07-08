@@ -54,6 +54,30 @@ export interface QuoteFromVehicleResult {
   ai: boolean;
 }
 
+/**
+ * invoices.items_json から明細行を寛容にパースする共有ヘルパー。
+ * (ai-from-vehicle ルートと quoteDraftAuto の 2 呼び出し元で共用)
+ * 見出し/小計行と ¥0 明細は価格統計を歪めるため除外する。
+ */
+export function extractInvoiceLines(
+  rawItems: unknown,
+  total: number | null,
+): { items: PastInvoiceLine[]; total: number } {
+  const lines: PastInvoiceLine[] = [];
+  if (Array.isArray(rawItems)) {
+    for (const it of rawItems) {
+      if (!it || typeof it !== "object") continue;
+      const rec = it as Record<string, unknown>;
+      if (rec.item_type && rec.item_type !== "item") continue;
+      const description = typeof rec.description === "string" ? rec.description.trim() : "";
+      const unitPrice = typeof rec.unit_price === "number" ? rec.unit_price : 0;
+      const quantity = typeof rec.quantity === "number" ? rec.quantity : 1;
+      if (description && unitPrice > 0) lines.push({ description, unit_price: unitPrice, quantity });
+    }
+  }
+  return { items: lines, total: total ?? lines.reduce((s, l) => s + l.unit_price * l.quantity, 0) };
+}
+
 export function buildDeterministicQuote(input: QuoteFromVehicleInput): QuoteFromVehicleResult {
   const items: QuoteFromVehicleResult["items"] = [];
   // 同カテゴリ過去請求書の中央値を採用 (外れ値耐性)
@@ -62,7 +86,7 @@ export function buildDeterministicQuote(input: QuoteFromVehicleInput): QuoteFrom
       const price =
         m.default_price && m.default_price > 0
           ? Math.round(m.default_price)
-          : medianUnitPriceFor(input.pastInvoices, m.name) ?? 0;
+          : (medianUnitPriceFor(input.pastInvoices, m.name) ?? 0);
       items.push({ description: m.name, quantity: 1, unit_price: price });
     }
   } else if (input.pastInvoices.length > 0) {
@@ -101,7 +125,10 @@ export function buildDeterministicQuote(input: QuoteFromVehicleInput): QuoteFrom
   };
 }
 
-export async function generateQuoteFromVehicle(input: QuoteFromVehicleInput): Promise<QuoteFromVehicleResult> {
+export async function generateQuoteFromVehicle(
+  input: QuoteFromVehicleInput,
+  opts?: { model?: string },
+): Promise<QuoteFromVehicleResult> {
   const baseline = buildDeterministicQuote(input);
   if (!process.env.ANTHROPIC_API_KEY) return baseline;
 
@@ -129,7 +156,7 @@ export async function generateQuoteFromVehicle(input: QuoteFromVehicleInput): Pr
   try {
     const msg = await withRetry("anthropic", () =>
       client.messages.parse({
-        model: AI_MODEL_FAST,
+        model: opts?.model ?? AI_MODEL_FAST,
         max_tokens: 1024,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: facts.join("\n\n") }],
@@ -170,7 +197,9 @@ const SYSTEM_PROMPT = `あなたは自動車施工店の見積もり作成を支
 confidence: 0.0〜1.0 で自己評価 (事例件数が少ない場合は低めに)。`.trim();
 
 function medianUnitPriceFor(invoices: QuoteFromVehicleInput["pastInvoices"], description: string): number | null {
-  const prices = invoices.flatMap((inv) => inv.items.filter((l) => l.description === description).map((l) => l.unit_price));
+  const prices = invoices.flatMap((inv) =>
+    inv.items.filter((l) => l.description === description).map((l) => l.unit_price),
+  );
   if (prices.length === 0) return null;
   prices.sort((a, b) => a - b);
   return Math.round(prices[Math.floor(prices.length / 2)]);
@@ -180,4 +209,3 @@ function avgTotal(invoices: QuoteFromVehicleInput["pastInvoices"]): number {
   if (invoices.length === 0) return 0;
   return Math.round(invoices.reduce((s, i) => s + i.total, 0) / invoices.length);
 }
-

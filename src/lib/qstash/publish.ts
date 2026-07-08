@@ -1,4 +1,21 @@
 import { Client } from "@upstash/qstash";
+import { createHash } from "node:crypto";
+
+const DEDUP_MAX_LENGTH = 100;
+
+/**
+ * QStash の deduplicationId は英数字・'_'・'-' 以外を受け付けない
+ * （':' を含むと "DeduplicationId cannot contain ':'" で publish が失敗する）。
+ * 予約文字を '-' に置換し、長すぎるキーは可読プレフィックス + sha256 短縮ダイジェスト
+ * で一意性を保ったまま切り詰める。
+ */
+export function sanitizeDeduplicationId(id: string): string {
+  const sanitized = id.replace(/[^a-zA-Z0-9_-]/g, "-");
+  if (sanitized.length <= DEDUP_MAX_LENGTH) return sanitized;
+  // ダイジェストは元文字列から取る（置換で潰れた差分でも一意性が残るように）
+  const digest = createHash("sha256").update(id).digest("hex").slice(0, 16);
+  return `${sanitized.slice(0, DEDUP_MAX_LENGTH - digest.length - 1)}-${digest}`;
+}
 
 function getClient() {
   const token = process.env.QSTASH_TOKEN;
@@ -29,7 +46,7 @@ function getBaseUrl() {
 async function publish(
   path: string,
   payload: Record<string, unknown>,
-  options?: { retries?: number; deduplicationId?: string },
+  options?: { retries?: number; deduplicationId?: string; delay?: number },
 ) {
   const client = getClient();
   if (!client) return null;
@@ -41,8 +58,9 @@ async function publish(
     url: targetUrl,
     body: payload,
     ...(options?.retries !== undefined && { retries: options.retries }),
+    ...(options?.delay !== undefined && { delay: options.delay }),
     ...(options?.deduplicationId !== undefined && {
-      deduplicationId: options.deduplicationId,
+      deduplicationId: sanitizeDeduplicationId(options.deduplicationId),
     }),
   });
 
@@ -59,7 +77,7 @@ export async function enqueueInsuranceCaseCreated(payload: {
   // ネットワーク再試行で多重 enqueue されても QStash 側で deduplication。
   const key = payload.public_id ?? payload.certificate_id ?? undefined;
   return publish("/api/qstash/insurance-case-created", payload, {
-    ...(typeof key === "string" && key && { deduplicationId: `case-created:${key}` }),
+    ...(typeof key === "string" && key && { deduplicationId: `case-created-${key}` }),
   });
 }
 
@@ -67,7 +85,23 @@ export async function enqueueInsuranceCaseCreated(payload: {
 export async function enqueuePolygonBackfill(payload: { job_id: string; tenant_id: string }) {
   return publish("/api/qstash/polygon-backfill", payload, {
     retries: 2,
-    deduplicationId: `polygon-backfill:init:${payload.job_id}`,
+    deduplicationId: `polygon-backfill-init-${payload.job_id}`,
+  });
+}
+
+/** Enqueue the next polygon backfill batch (QStash route の自己再キューイング用) */
+export async function enqueuePolygonBackfillNextBatch(payload: {
+  job_id: string;
+  tenant_id: string;
+  total_processed: number;
+}) {
+  const { total_processed, ...body } = payload;
+  return publish("/api/qstash/polygon-backfill", body, {
+    retries: 2,
+    delay: 5,
+    // 同じ累積処理件数での再キュー要求はネットワーク再試行とみなして deduplication。
+    // 進捗が進めばキーが変わるので次バッチは正しく enqueue される。
+    deduplicationId: `polygon-backfill-${payload.job_id}-${total_processed}`,
   });
 }
 
@@ -75,7 +109,7 @@ export async function enqueuePolygonBackfill(payload: { job_id: string; tenant_i
 export async function enqueueBatchPdf(payload: { job_id: string; tenant_id: string; public_ids: string[] }) {
   return publish("/api/qstash/batch-pdf", payload, {
     retries: 2,
-    deduplicationId: `batch-pdf:${payload.job_id}`,
+    deduplicationId: `batch-pdf-${payload.job_id}`,
   });
 }
 
@@ -83,6 +117,41 @@ export async function enqueueBatchPdf(payload: { job_id: string; tenant_id: stri
 export async function enqueueSquareSync(payload: { job_id: string; tenant_id: string }) {
   return publish("/api/qstash/square-sync", payload, {
     retries: 2,
-    deduplicationId: `square-sync:init:${payload.job_id}`,
+    deduplicationId: `square-sync-init-${payload.job_id}`,
+  });
+}
+
+/** Enqueue the next Square sync page (QStash route の自己再キューイング用) */
+export async function enqueueSquareSyncNextPage(payload: {
+  job_id: string;
+  tenant_id: string;
+  cursor: string;
+  page: number;
+}) {
+  return publish("/api/qstash/square-sync", payload, {
+    retries: 2,
+    // 2秒後に実行（Square レートリミット対策）
+    delay: 2,
+    // Square の cursor は不透明で長大なのでキーには使わず、(job_id, page) で deduplication。
+    // 同一ページの再キュー要求はネットワーク再試行扱いで弾かれ、次ページはキーが変わる。
+    deduplicationId: `square-sync-${payload.job_id}-page-${payload.page}`,
+  });
+}
+
+/**
+ * Enqueue LINE message-history reservation extraction for a newly linked customer.
+ *
+ * 顧客に line_user_id が紐づいた直後に呼ぶ。過去の inbound LINE メッセージを
+ * AI 解析して予約候補 (customer_messages.ai_extracted) を埋める。
+ * 顧客単位で deduplicate するので、複数経路から多重 enqueue されても 1 度だけ走る。
+ */
+export async function enqueueLineHistoryImport(payload: {
+  tenant_id: string;
+  customer_id: string;
+  line_user_id: string;
+}) {
+  return publish("/api/qstash/line-history-import", payload, {
+    retries: 2,
+    deduplicationId: `line-history-import-${payload.customer_id}`,
   });
 }
