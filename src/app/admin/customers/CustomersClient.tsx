@@ -3,7 +3,7 @@ import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import useSWR from "swr";
 import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
@@ -127,9 +127,96 @@ export default function CustomersClient() {
   // Delete
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // CSV 一括登録 (個人・法人を同一 CSV で混在可能)
+  const csvInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+
+  const handleCsvImport = async (file: File) => {
+    setImporting(true);
+    setSaveMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/admin/customers/bulk-import", { method: "POST", body: fd });
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      const { inserted = 0, updated = 0, skipped = 0, errors = [] } = j ?? {};
+      const parts = [`新規${inserted}件`, `更新${updated}件`];
+      if (skipped > 0) parts.push(`スキップ${skipped}件`);
+      const detail = errors.length > 0 ? `（例: ${errors[0].row_index + 1}行目 ${errors[0].error}）` : "";
+      setSaveMsg({ text: `CSV取込完了: ${parts.join(" / ")}${detail}`, ok: skipped === 0 });
+      mutate();
+    } catch (e: any) {
+      setSaveMsg({ text: "CSV取込に失敗しました: " + (e?.message ?? String(e)), ok: false });
+    } finally {
+      setImporting(false);
+      if (csvInputRef.current) csvInputRef.current.value = "";
+    }
+  };
+
+  // 記入例つきテンプレートを DL。ヘッダは bulk-import が受ける列に一致させる。
+  const downloadCsvTemplate = () => {
+    const header =
+      "name,name_kana,email,phone,postal_code,address,note,customer_type,corporate_number,invoice_registration_number,billing_cycle,short_name,honorific";
+    const sampleIndividual =
+      "山田太郎,ヤマダタロウ,taro@example.com,090-1234-5678,1234567,東京都渋谷区1-2-3,,個人,,,,,様";
+    const sampleCorporate =
+      "株式会社サンプル,カブシキガイシャサンプル,info@sample.co.jp,03-1234-5678,1000001,東京都千代田区1-1,,法人,1234567890123,T1234567890123,合算,サンプル,御中";
+    const csv = "﻿" + [header, sampleIndividual, sampleCorporate].join("\r\n") + "\r\n";
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "customers_template.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   // 郵便番号 → 住所 自動補完 (7桁揃った時点で照会し、住所が空の場合のみ埋める)
   const [postalHint, setPostalHint] = useState<string | null>(null);
   const [editPostalHint, setEditPostalHint] = useState<string | null>(null);
+
+  // 法人番号 → 会社情報 自動補完 (13桁揃った時点で国税庁 gBizINFO を照会)。
+  // 法人登録の入力を簡略化する狙い。会社名・住所は空欄のときだけ埋め、入力済みは上書きしない。
+  const [corpLookup, setCorpLookup] = useState<{
+    status: "idle" | "loading" | "done" | "notfound";
+    target: "create" | "edit" | null;
+  }>({ status: "idle", target: null });
+
+  const lookupCorporate = useCallback(async (number: string, target: "create" | "edit") => {
+    const cleaned = number.replace(/[-\s]/g, "");
+    if (!/^\d{13}$/.test(cleaned)) return;
+    setCorpLookup({ status: "loading", target });
+    try {
+      const res = await fetch(`/api/join/lookup-corporate?number=${encodeURIComponent(cleaned)}`);
+      if (!res.ok) {
+        setCorpLookup({ status: "notfound", target });
+        return;
+      }
+      const j = await res.json();
+      const setState = target === "create" ? setForm : setEditForm;
+      setState((prev) => ({
+        ...prev,
+        // 会社名・住所は未入力のときだけ補完 (入力済みは尊重)。法人区分にも寄せる。
+        name: prev.name.trim() ? prev.name : (j.company_name ?? prev.name),
+        address: prev.address.trim() ? prev.address : (j.address ?? prev.address),
+        customer_type: "corporate",
+      }));
+      setCorpLookup({ status: "done", target });
+    } catch {
+      setCorpLookup({ status: "notfound", target });
+    }
+  }, []);
+
+  const handleCorporateNumberChange = useCallback(
+    (value: string, target: "create" | "edit") => {
+      const setState = target === "create" ? setForm : setEditForm;
+      setState((prev) => ({ ...prev, corporate_number: value }));
+      setCorpLookup({ status: "idle", target });
+      const cleaned = value.replace(/[-\s]/g, "");
+      if (/^\d{13}$/.test(cleaned)) void lookupCorporate(cleaned, target);
+    },
+    [lookupCorporate],
+  );
 
   const autofillAddressFromPostal = useCallback(async (code: string, target: "create" | "edit") => {
     const setHint = target === "create" ? setPostalHint : setEditPostalHint;
@@ -273,6 +360,33 @@ export default function CustomersClient() {
         actions={
           <MutationGuard>
             <div className="flex flex-wrap items-center gap-3">
+              <input
+                ref={csvInputRef}
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void handleCsvImport(f);
+                }}
+              />
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={downloadCsvTemplate}
+                title="個人・法人を混在して一括登録できるCSVの記入例テンプレートをダウンロードします"
+              >
+                CSVテンプレート
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={importing}
+                onClick={() => csvInputRef.current?.click()}
+                title="個人・法人をまとめてCSVで一括登録します"
+              >
+                {importing ? "取込中…" : "CSVで一括登録"}
+              </button>
               <Link
                 href="/admin/customer-intakes"
                 className="btn-secondary"
@@ -587,11 +701,20 @@ export default function CustomersClient() {
                         <input
                           type="text"
                           value={form.corporate_number}
-                          onChange={(e) => setForm({ ...form, corporate_number: e.target.value })}
+                          onChange={(e) => handleCorporateNumberChange(e.target.value, "create")}
                           className="input-field"
-                          placeholder="13桁の数字"
+                          placeholder="13桁の数字 (入力で会社名・住所を自動取得)"
                           maxLength={13}
                         />
+                        {corpLookup.target === "create" && corpLookup.status === "loading" && (
+                          <p className="text-xs text-muted">国税庁データベースを照会中…</p>
+                        )}
+                        {corpLookup.target === "create" && corpLookup.status === "done" && (
+                          <p className="text-xs text-success">法人番号から会社情報を反映しました（空欄のみ補完）</p>
+                        )}
+                        {corpLookup.target === "create" && corpLookup.status === "notfound" && (
+                          <p className="text-xs text-muted">法人情報が見つかりませんでした（手入力してください）</p>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <label className="text-xs text-muted">インボイス登録番号</label>
@@ -849,11 +972,20 @@ export default function CustomersClient() {
                         <input
                           type="text"
                           value={editForm.corporate_number}
-                          onChange={(e) => setEditForm({ ...editForm, corporate_number: e.target.value })}
+                          onChange={(e) => handleCorporateNumberChange(e.target.value, "edit")}
                           className="input-field"
-                          placeholder="13桁の数字"
+                          placeholder="13桁の数字 (入力で会社名・住所を自動取得)"
                           maxLength={13}
                         />
+                        {corpLookup.target === "edit" && corpLookup.status === "loading" && (
+                          <p className="text-xs text-muted">国税庁データベースを照会中…</p>
+                        )}
+                        {corpLookup.target === "edit" && corpLookup.status === "done" && (
+                          <p className="text-xs text-success">法人番号から会社情報を反映しました（空欄のみ補完）</p>
+                        )}
+                        {corpLookup.target === "edit" && corpLookup.status === "notfound" && (
+                          <p className="text-xs text-muted">法人情報が見つかりませんでした（手入力してください）</p>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <label className="text-xs text-muted">インボイス登録番号</label>

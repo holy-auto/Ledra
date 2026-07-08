@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { customerCreateSchema } from "../customer";
+import { customerCreateSchema, customerCsvRowSchema } from "../customer";
 
 const BASE = { name: "テスト商事" };
 
@@ -59,5 +59,31 @@ describe("customerCreateSchema — 顧客区分に紐づく新規項目", () => 
       expect(r.data.transfer_fee_payer).toBeNull();
       expect(r.data.document_delivery_method).toBeNull();
     }
+  });
+});
+
+describe("customerCsvRowSchema — CSV 一括取込 (個人・法人混在)", () => {
+  it("個人行を受理する (customer_type 既定は個人)", () => {
+    const r = customerCsvRowSchema.safeParse({ name: "山田太郎", email: "taro@example.com" });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.customer_type).toBe("individual");
+  });
+
+  it("法人行を支払いサイクルなしでも受理する (取込は寛容: フォームの必須ルールは課さない)", () => {
+    const r = customerCsvRowSchema.safeParse({
+      name: "株式会社サンプル",
+      customer_type: "corporate",
+      corporate_number: "1234567890123",
+    });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.customer_type).toBe("corporate");
+      expect(r.data.billing_cycle).toBeNull();
+    }
+  });
+
+  it("名前が空の行は弾く", () => {
+    const r = customerCsvRowSchema.safeParse({ name: "" });
+    expect(r.success).toBe(false);
   });
 });

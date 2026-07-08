@@ -26,7 +26,7 @@ const externalRef = z
 
 const optStr = (max: number) => z.string().trim().max(max).optional().nullable();
 
-/** 顧客取込 */
+/** 顧客取込 (個人・法人ともに対応)。法人フィールドは任意。 */
 export const ingestCustomersSchema = z.object({
   source_system: sourceSystem,
   records: z
@@ -40,6 +40,23 @@ export const ingestCustomersSchema = z.object({
         postal_code: optStr(16),
         address: optStr(500),
         note: optStr(2000),
+        // 顧客区分。既定は個人。
+        customer_type: z.enum(["individual", "corporate"]).optional().nullable(),
+        // 法人番号 (13桁) / インボイス登録番号 (T+13桁)。任意。
+        corporate_number: z
+          .string()
+          .trim()
+          .regex(/^[0-9]{13}$/, "corporate_number は13桁の数字です。")
+          .optional()
+          .nullable(),
+        invoice_registration_number: z
+          .string()
+          .trim()
+          .regex(/^T[0-9]{13}$/, "invoice_registration_number は「T」+13桁です。")
+          .optional()
+          .nullable(),
+        // 法人の支払いサイクル。任意。
+        billing_cycle: z.enum(["per_job", "consolidated"]).optional().nullable(),
       }),
     )
     .min(1, "records は1件以上指定してください。")
