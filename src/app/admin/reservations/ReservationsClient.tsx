@@ -184,6 +184,8 @@ export default function ReservationsClient() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItemMaster[]>([]);
+  // 工程テンプレート（作業タスク分解の展開元）
+  const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
   // 音声→備考 (Standard 以上の ai_draft 機能)。current tenant の plan_tier から判定。
   const [canAiNote, setCanAiNote] = useState(false);
 
@@ -203,6 +205,8 @@ export default function ReservationsClient() {
   const [saveMsg, setSaveMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [formStep, setFormStep] = useState<1 | 2>(1);
 
+  // 工程テンプレート選択（"" = 品目から自動）。作業タスク分解の展開元＆予約への紐付け。
+  const [taskTemplateId, setTaskTemplateId] = useState("");
   // 日程候補の提案（受けられる日程）
   const [needsLoaner, setNeedsLoaner] = useState(false);
   const [considerStaff, setConsiderStaff] = useState(true);
@@ -261,11 +265,14 @@ export default function ReservationsClient() {
 
   const fetchMasterData = useCallback(async () => {
     try {
-      const [custRes, menuRes, tenantRes] = await Promise.all([
+      const [custRes, menuRes, tenantRes, tmplRes] = await Promise.all([
         fetch("/api/admin/customers"),
         fetch("/api/admin/menu-items"),
         fetch("/api/admin/tenants"),
+        fetch("/api/admin/workflow-templates"),
       ]);
+      const tmplJ = await parseJsonSafe(tmplRes);
+      if (tmplRes.ok && tmplJ?.templates) setTemplates(tmplJ.templates as WorkflowTemplate[]);
       const tenantJ = await parseJsonSafe(tenantRes);
       if (tenantRes.ok && tenantJ?.tenants) {
         const current = tenantJ.tenants.find((t: any) => t.is_current) ?? tenantJ.tenants[0];
@@ -476,6 +483,7 @@ export default function ReservationsClient() {
     setConsiderStaff(true);
     setCandidates(null);
     setCandidatesErr(null);
+    setTaskTemplateId("");
   };
 
   const openCreateForm = () => {
@@ -498,6 +506,7 @@ export default function ReservationsClient() {
       setFormNote(r.note ?? "");
       setFormMenuItems(r.menu_items_json ?? []);
       setFormAmount(r.estimated_amount ?? 0);
+      setTaskTemplateId(r.workflow_template_id ?? "");
       setSaveMsg(null);
       setFormStep(1);
       setShowForm(true);
@@ -524,14 +533,22 @@ export default function ReservationsClient() {
     return estimateReservationMinutes(items);
   }, [formMenuItems, menuItems]);
 
-  // 選択メニューをタスク分解し、1日あたり作業上限に収まるかの日程目安を出す。
+  // 作業タスクの分解元: 工程テンプレート選択時はその工程(steps)、未選択時は品目から。
+  const selectedTemplate = useMemo(
+    () => templates.find((t) => t.id === taskTemplateId) ?? null,
+    [templates, taskTemplateId],
+  );
   const taskPlan = useMemo(() => {
-    const items = formMenuItems.map((m) => ({
-      name: m.name,
-      minutes: menuItems.find((mi) => mi.id === m.menu_item_id)?.estimated_minutes ?? null,
-    }));
+    const items = selectedTemplate
+      ? [...selectedTemplate.steps]
+          .sort((a, b) => a.order - b.order)
+          .map((s) => ({ name: s.label, minutes: s.estimated_min }))
+      : formMenuItems.map((m) => ({
+          name: m.name,
+          minutes: menuItems.find((mi) => mi.id === m.menu_item_id)?.estimated_minutes ?? null,
+        }));
     return decomposeTasks(items);
-  }, [formMenuItems, menuItems]);
+  }, [selectedTemplate, formMenuItems, menuItems]);
 
   // 推定作業時間を開始時刻に足して終了時刻へ反映する。開始未設定なら 09:00 を既定に。
   function applyEstimatedDuration() {
@@ -589,6 +606,7 @@ export default function ReservationsClient() {
       note: formNote || null,
       menu_items_json: formMenuItems,
       estimated_amount: formAmount,
+      workflow_template_id: taskTemplateId || null,
     };
     if (editingId) payload.id = editingId;
     try {
@@ -1508,36 +1526,63 @@ export default function ReservationsClient() {
                           </div>
                         )}
 
-                        {/* 作業タスクの分解と日程目安 */}
-                        {taskPlan.tasks.length > 0 && (
+                        {/* 作業タスクの分解と日程目安（工程テンプレート展開） */}
+                        {(templates.length > 0 || taskPlan.tasks.length > 0) && (
                           <div className="mt-2 rounded-xl border border-border-default bg-inset p-3">
-                            <div className="flex items-center justify-between">
+                            <div className="flex items-center justify-between gap-2">
                               <span className="text-xs font-semibold text-primary">作業タスクと日程目安</span>
-                              <span className="text-[11px] text-secondary">
-                                合計 {formatMinutes(taskPlan.totalMinutes)}
-                                {taskPlan.dayCount > 1 && ` ・ 約${taskPlan.dayCount}日`}
-                              </span>
+                              {taskPlan.tasks.length > 0 && (
+                                <span className="text-[11px] text-secondary">
+                                  合計 {formatMinutes(taskPlan.totalMinutes)}
+                                  {taskPlan.dayCount > 1 && ` ・ 約${taskPlan.dayCount}日`}
+                                </span>
+                              )}
                             </div>
-                            <ul className="mt-2 space-y-1">
-                              {taskPlan.tasks.map((t, i) => (
-                                <li
-                                  key={`${t.name}-${i}`}
-                                  className="flex items-center justify-between gap-2 text-xs text-secondary"
+                            {templates.length > 0 && (
+                              <div className="mt-2 flex items-center gap-2">
+                                <span className="text-[11px] text-secondary shrink-0">工程テンプレート</span>
+                                <select
+                                  value={taskTemplateId}
+                                  onChange={(e) => setTaskTemplateId(e.target.value)}
+                                  className={`${inputCls} py-1 text-xs`}
                                 >
-                                  <span className="flex items-center gap-1.5 min-w-0">
-                                    <span className="shrink-0 text-[10px] text-accent-text bg-accent-dim rounded px-1.5 py-0.5">
-                                      {taskPlan.dayCount > 1 ? `${t.day}日目` : "当日"}
-                                    </span>
-                                    <span className="truncate text-primary">{t.name}</span>
-                                  </span>
-                                  <span className="shrink-0 text-muted">{formatMinutes(t.minutes)}</span>
-                                </li>
-                              ))}
-                            </ul>
-                            {taskPlan.dayCount > 1 && (
+                                  <option value="">品目から自動</option>
+                                  {templates.map((t) => (
+                                    <option key={t.id} value={t.id}>
+                                      {t.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+                            {taskPlan.tasks.length === 0 ? (
                               <p className="mt-2 text-[11px] text-muted">
-                                1日8時間を目安に分割した概算です。下の「受けられる日程を提案」で連続した空き日を確認できます。
+                                品目を選ぶか工程テンプレートを指定すると、作業タスクと日程目安が表示されます。
                               </p>
+                            ) : (
+                              <>
+                                <ul className="mt-2 space-y-1">
+                                  {taskPlan.tasks.map((t, i) => (
+                                    <li
+                                      key={`${t.name}-${i}`}
+                                      className="flex items-center justify-between gap-2 text-xs text-secondary"
+                                    >
+                                      <span className="flex items-center gap-1.5 min-w-0">
+                                        <span className="shrink-0 text-[10px] text-accent-text bg-accent-dim rounded px-1.5 py-0.5">
+                                          {taskPlan.dayCount > 1 ? `${t.day}日目` : "当日"}
+                                        </span>
+                                        <span className="truncate text-primary">{t.name}</span>
+                                      </span>
+                                      <span className="shrink-0 text-muted">{formatMinutes(t.minutes)}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                                {taskPlan.dayCount > 1 && (
+                                  <p className="mt-2 text-[11px] text-muted">
+                                    1日8時間を目安に分割した概算です。下の「受けられる日程を提案」で連続した空き日を確認できます。
+                                  </p>
+                                )}
+                              </>
                             )}
                           </div>
                         )}
