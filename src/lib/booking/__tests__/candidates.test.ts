@@ -84,6 +84,44 @@ describe("proposeCandidates", () => {
     expect(some[0].loaner_free).toBe(1);
   });
 
+  it("filters slots by accepted work categories (受入可否)", () => {
+    const catSlots = [
+      // 午前は洗車のみ受入、午後はすべて受入
+      { day_of_week: 1, start_time: "09:00:00", end_time: "12:00:00", max_bookings: 1, accepted_categories: ["洗車"] },
+      { day_of_week: 1, start_time: "13:00:00", end_time: "15:00:00", max_bookings: 1, accepted_categories: null },
+    ];
+    // コーティングの予約 → 午前(洗車のみ)は除外、午後のみ
+    const coating = proposeCandidates({
+      dates: ["2026-07-13"],
+      slots: catSlots,
+      closedDays: [],
+      reservations: [],
+      estimatedMinutes: null,
+      workCategories: ["コーティング"],
+    });
+    expect(coating.map((x) => x.start_time)).toEqual(["13:00"]);
+    // 洗車の予約 → 両方受入
+    const wash = proposeCandidates({
+      dates: ["2026-07-13"],
+      slots: catSlots,
+      closedDays: [],
+      reservations: [],
+      estimatedMinutes: null,
+      workCategories: ["洗車"],
+    });
+    expect(wash.map((x) => x.start_time)).toEqual(["09:00", "13:00"]);
+    expect(wash[0].accepted_categories).toEqual(["洗車"]);
+    // 作業カテゴリ未指定 → 絞り込みなし（両方）
+    const nofilter = proposeCandidates({
+      dates: ["2026-07-13"],
+      slots: catSlots,
+      closedDays: [],
+      reservations: [],
+      estimatedMinutes: null,
+    });
+    expect(nofilter).toHaveLength(2);
+  });
+
   it("respects the limit", () => {
     const c = proposeCandidates({
       dates: ["2026-07-13", "2026-07-14"],

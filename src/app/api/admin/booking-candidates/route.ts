@@ -91,11 +91,15 @@ export async function GET(req: NextRequest) {
     // ── 並列取得: 品目 / スロット / 定休日 / 予約 / 代車 / 貸出 ──
     const [menuRes, slotsRes, closedRes, resvRes, loanersRes, loansRes] = await Promise.all([
       menuItemIds.length > 0
-        ? supabase.from("menu_items").select("estimated_minutes").eq("tenant_id", tenantId).in("id", menuItemIds)
+        ? supabase
+            .from("menu_items")
+            .select("estimated_minutes, category_large")
+            .eq("tenant_id", tenantId)
+            .in("id", menuItemIds)
         : Promise.resolve({ data: [], error: null }),
       supabase
         .from("external_booking_slots")
-        .select("day_of_week, start_time, end_time, max_bookings")
+        .select("day_of_week, start_time, end_time, max_bookings, accepted_categories")
         .eq("tenant_id", tenantId)
         .eq("is_active", true),
       supabase.from("closed_days").select("type, day_of_week, closed_date").eq("tenant_id", tenantId),
@@ -120,8 +124,12 @@ export async function GET(req: NextRequest) {
     }
 
     // 所要時間: estimated_minutes 直接指定 > 品目合計。
-    const estimatedMinutes =
-      estimatedOverride ?? estimateReservationMinutes((menuRes.data ?? []) as { estimated_minutes: number | null }[]);
+    const menuRows = (menuRes.data ?? []) as { estimated_minutes: number | null; category_large: string | null }[];
+    const estimatedMinutes = estimatedOverride ?? estimateReservationMinutes(menuRows);
+    // 作業の大カテゴリ（受入可否フィルタ用）。品目に紐づく大カテゴリを重複排除。
+    const workCategories = Array.from(
+      new Set(menuRows.map((m) => m.category_large).filter((c): c is string => !!c && c.trim().length > 0)),
+    );
 
     // 代車の空き台数（日別）。貸出中で返却予定日が対象日以降（または無期限）なら不在扱い。
     // ponytail: 将来日の代車予約は別モデル化されていないため、現在の未返却貸出の返却予定で近似。
@@ -145,6 +153,7 @@ export async function GET(req: NextRequest) {
         start_time: string;
         end_time: string;
         max_bookings: number;
+        accepted_categories: string[] | null;
       }[],
       closedDays: (closedRes.data ?? []) as {
         type: "weekly" | "specific";
@@ -157,6 +166,7 @@ export async function GET(req: NextRequest) {
         end_time: string;
       }[],
       estimatedMinutes,
+      workCategories,
       needsLoaner,
       freeLoanersByDate,
       limit,

@@ -19,7 +19,7 @@ export async function GET(_req: NextRequest) {
     const [slotsRes, closedRes] = await Promise.all([
       supabase
         .from("external_booking_slots")
-        .select("id, day_of_week, start_time, end_time, max_bookings, is_active, label")
+        .select("id, day_of_week, start_time, end_time, max_bookings, is_active, label, accepted_categories")
         .eq("tenant_id", caller.tenantId)
         .order("day_of_week")
         .order("start_time"),
@@ -136,6 +136,7 @@ export async function PUT(req: NextRequest) {
         max_bookings: slot.max_bookings ?? 1,
         is_active: slot.is_active ?? true,
         label: slot.label ?? null,
+        accepted_categories: slot.accepted_categories ?? null,
       };
 
       if (slot.id) {

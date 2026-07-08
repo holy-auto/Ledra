@@ -17,6 +17,8 @@ export type CandidateWeeklySlot = {
   start_time: string;
   end_time: string;
   max_bookings: number;
+  /** 受け入れる作業の大カテゴリ。null/空=すべて受入。 */
+  accepted_categories?: string[] | null;
 };
 
 export type CandidateClosedDay = {
@@ -45,6 +47,8 @@ export type Candidate = {
   fits: boolean;
   /** その日に空いている代車台数。needsLoaner でないときは null。 */
   loaner_free: number | null;
+  /** このスロットが受け入れる作業の大カテゴリ。null=すべて受入。 */
+  accepted_categories: string[] | null;
 };
 
 export interface ProposeCandidatesOptions {
@@ -55,6 +59,8 @@ export interface ProposeCandidatesOptions {
   reservations: CandidateReservation[];
   /** 作業所要時間（分）。null なら所要時間フィルタはかけず fits=true 扱い。 */
   estimatedMinutes: number | null;
+  /** 予約する作業の大カテゴリ。指定時、受け入れないスロットは候補から除外する。空=絞らない。 */
+  workCategories?: string[];
   /** 代車必須か。true なら空き代車0の日は候補にしない。 */
   needsLoaner?: boolean;
   /** 日付ごとの空き代車台数（needsLoaner 時に参照）。 */
@@ -74,6 +80,14 @@ export function proposeCandidates(opts: ProposeCandidatesOptions): Candidate[] {
   const needsLoaner = opts.needsLoaner ?? false;
   const freeLoanersByDate = opts.freeLoanersByDate ?? {};
   const limit = opts.limit ?? 20;
+  const workCategories = new Set((opts.workCategories ?? []).filter((c) => c));
+
+  // スロットが対象作業を受け入れるか。受入カテゴリ未設定=すべて受入。作業カテゴリ未指定=絞らない。
+  const slotAccepts = (accepted: string[] | null | undefined): boolean => {
+    if (!accepted || accepted.length === 0) return true;
+    if (workCategories.size === 0) return true;
+    return accepted.some((c) => workCategories.has(c));
+  };
 
   const weeklyClosed = new Set<number>();
   const specificClosed = new Set<string>();
@@ -114,6 +128,7 @@ export function proposeCandidates(opts: ProposeCandidatesOptions): Candidate[] {
     const dayResv = resvByDate[date] ?? [];
     for (const slot of daySlots) {
       if (out.length >= limit) break;
+      if (!slotAccepts(slot.accepted_categories)) continue;
       const slotStart = timeToMinutes(slot.start_time);
       const slotEnd = timeToMinutes(slot.end_time);
       // 排他境界で重なる予約数（空き状況 GET / 満席判定と同じ規則）
@@ -135,6 +150,7 @@ export function proposeCandidates(opts: ProposeCandidatesOptions): Candidate[] {
         remaining,
         fits,
         loaner_free: loanerFree,
+        accepted_categories: slot.accepted_categories ?? null,
       });
     }
   }

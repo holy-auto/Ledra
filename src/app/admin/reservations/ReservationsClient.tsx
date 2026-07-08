@@ -62,6 +62,7 @@ type BookingCandidate = {
   remaining: number;
   fits: boolean;
   loaner_free: number | null;
+  accepted_categories: string[] | null;
 };
 
 const WEEKDAY_JA = ["日", "月", "火", "水", "木", "金", "土"] as const;
@@ -1539,6 +1540,11 @@ export default function ReservationsClient() {
                                     {c.end_time}
                                   </span>
                                   <span className="flex items-center gap-1.5 shrink-0">
+                                    {c.accepted_categories && c.accepted_categories.length > 0 && (
+                                      <span className="text-[10px] text-accent-text bg-accent-dim rounded px-1.5 py-0.5">
+                                        {c.accepted_categories.join("・")}
+                                      </span>
+                                    )}
                                     {!c.fits && (
                                       <span className="text-[10px] font-medium text-warning bg-warning-dim rounded px-1.5 py-0.5">
                                         枠超過

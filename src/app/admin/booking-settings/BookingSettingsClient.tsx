@@ -16,6 +16,7 @@ interface BookingSlot {
   max_bookings: number;
   is_active: boolean;
   label?: string;
+  accepted_categories?: string[] | null;
   _deleted?: boolean;
   _new?: boolean;
 }
@@ -80,6 +81,8 @@ export default function BookingSettingsClient() {
   const [activeTab, setActiveTab] = useState<"slots" | "closed">("slots");
   // 受付時間スロットの編集方法: カレンダー(grid) / 一覧(list)
   const [slotView, setSlotView] = useState<"grid" | "list">("grid");
+  // 受入可否で使う作業の大カテゴリ候補（品目マスタから収集）
+  const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
 
   // 追加フォーム用 state
   const [newSlot, setNewSlot] = useState<Partial<BookingSlot>>({
@@ -132,6 +135,31 @@ export default function BookingSettingsClient() {
     fetchSettings();
   }, [fetchSettings]);
 
+  // 受入カテゴリ候補（品目マスタの大カテゴリを重複排除して収集）
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/menu-items");
+        if (!res.ok) return;
+        const data = await res.json();
+        const cats = Array.from(
+          new Set(
+            (data.items ?? [])
+              .map((m: { category_large?: string | null }) => (m.category_large ?? "").trim())
+              .filter((c: string) => c.length > 0),
+          ),
+        ).sort() as string[];
+        if (!cancelled) setCategoryOptions(cats);
+      } catch {
+        /* 候補取得失敗は致命的でない（受入可否UIを出さないだけ） */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   function showToast(type: "success" | "error", msg: string) {
     setToast({ type, msg });
     setTimeout(() => setToast(null), 3500);
@@ -144,6 +172,18 @@ export default function BookingSettingsClient() {
 
   function handleDeleteSlot(tempId: string) {
     setSlots((prev) => prev.map((s) => (s._tempId === tempId ? { ...s, _deleted: true } : s)));
+  }
+
+  // 受入カテゴリのトグル（空配列は null=すべて受入に正規化）
+  function toggleSlotCategory(tempId: string, cat: string) {
+    setSlots((prev) =>
+      prev.map((s) => {
+        if (s._tempId !== tempId) return s;
+        const cur = s.accepted_categories ?? [];
+        const next = cur.includes(cat) ? cur.filter((c) => c !== cat) : [...cur, cat];
+        return { ...s, accepted_categories: next.length > 0 ? next : null };
+      }),
+    );
   }
 
   function handleAddSlot() {
@@ -672,7 +712,7 @@ export default function BookingSettingsClient() {
                 onEraseSlotAt={eraseSlotAt}
               />
               <p className="mt-3 text-xs text-muted">
-                同時受付数やラベルを細かく調整したいときは「一覧で編集」に切り替えてください。変更は上部の「保存する」で確定します。
+                同時受付数・ラベル・受入作業（洗車のみ可などの受入可否）を細かく調整したいときは「一覧で編集」に切り替えてください。変更は上部の「保存する」で確定します。
               </p>
             </div>
           )}
@@ -715,95 +755,125 @@ export default function BookingSettingsClient() {
                         <p className="px-4 py-3 text-sm text-muted italic">スロットなし</p>
                       ) : (
                         daySlots.map((slot) => (
-                          <div key={slot._tempId} className="flex items-center gap-3 px-4 py-3 hover:bg-surface-hover">
-                            {/* ON/OFFトグル */}
-                            <button
-                              onClick={() => handleSlotChange(slot._tempId, "is_active", !slot.is_active)}
-                              className={`relative w-10 h-5 rounded-full transition-colors ${
-                                slot.is_active ? "bg-accent" : "bg-border-strong"
-                              }`}
-                            >
-                              <span
-                                className={`absolute top-0.5 w-4 h-4 bg-inverse rounded-full shadow transition-transform ${
-                                  slot.is_active ? "translate-x-5" : "translate-x-0.5"
+                          <div key={slot._tempId} className="px-4 py-3 hover:bg-surface-hover">
+                            <div className="flex items-center gap-3">
+                              {/* ON/OFFトグル */}
+                              <button
+                                onClick={() => handleSlotChange(slot._tempId, "is_active", !slot.is_active)}
+                                className={`relative w-10 h-5 rounded-full transition-colors ${
+                                  slot.is_active ? "bg-accent" : "bg-border-strong"
                                 }`}
+                              >
+                                <span
+                                  className={`absolute top-0.5 w-4 h-4 bg-inverse rounded-full shadow transition-transform ${
+                                    slot.is_active ? "translate-x-5" : "translate-x-0.5"
+                                  }`}
+                                />
+                              </button>
+
+                              {/* 開始・終了時刻 */}
+                              <select
+                                value={slot.start_time.slice(0, 5)}
+                                onChange={(e) => handleSlotChange(slot._tempId, "start_time", e.target.value)}
+                                className={selectCls}
+                              >
+                                {TIME_OPTIONS.map((t) => (
+                                  <option key={t} value={t}>
+                                    {t}
+                                  </option>
+                                ))}
+                              </select>
+                              <span className="text-muted text-sm">〜</span>
+                              <select
+                                value={slot.end_time.slice(0, 5)}
+                                onChange={(e) => handleSlotChange(slot._tempId, "end_time", e.target.value)}
+                                className={selectCls}
+                              >
+                                {TIME_OPTIONS.map((t) => (
+                                  <option key={t} value={t}>
+                                    {t}
+                                  </option>
+                                ))}
+                              </select>
+
+                              {/* 同時受付数 */}
+                              <div className="flex items-center gap-1 ml-2">
+                                <button
+                                  onClick={() =>
+                                    handleSlotChange(slot._tempId, "max_bookings", Math.max(1, slot.max_bookings - 1))
+                                  }
+                                  className="w-6 h-6 rounded-full bg-inset hover:bg-surface-active flex items-center justify-center text-sm font-bold text-primary"
+                                >
+                                  −
+                                </button>
+                                <span className="w-6 text-center text-sm font-medium text-primary">
+                                  {slot.max_bookings}
+                                </span>
+                                <button
+                                  onClick={() =>
+                                    handleSlotChange(slot._tempId, "max_bookings", Math.min(99, slot.max_bookings + 1))
+                                  }
+                                  className="w-6 h-6 rounded-full bg-inset hover:bg-surface-active flex items-center justify-center text-sm font-bold text-primary"
+                                >
+                                  ＋
+                                </button>
+                                <span className="text-xs text-muted ml-1">名</span>
+                              </div>
+
+                              {/* ラベル */}
+                              <input
+                                type="text"
+                                value={slot.label ?? ""}
+                                onChange={(e) => handleSlotChange(slot._tempId, "label", e.target.value)}
+                                placeholder="ラベル（任意）"
+                                className={`flex-1 min-w-0 ${inputCls}`}
                               />
-                            </button>
 
-                            {/* 開始・終了時刻 */}
-                            <select
-                              value={slot.start_time.slice(0, 5)}
-                              onChange={(e) => handleSlotChange(slot._tempId, "start_time", e.target.value)}
-                              className={selectCls}
-                            >
-                              {TIME_OPTIONS.map((t) => (
-                                <option key={t} value={t}>
-                                  {t}
-                                </option>
-                              ))}
-                            </select>
-                            <span className="text-muted text-sm">〜</span>
-                            <select
-                              value={slot.end_time.slice(0, 5)}
-                              onChange={(e) => handleSlotChange(slot._tempId, "end_time", e.target.value)}
-                              className={selectCls}
-                            >
-                              {TIME_OPTIONS.map((t) => (
-                                <option key={t} value={t}>
-                                  {t}
-                                </option>
-                              ))}
-                            </select>
-
-                            {/* 同時受付数 */}
-                            <div className="flex items-center gap-1 ml-2">
+                              {/* 削除 */}
                               <button
-                                onClick={() =>
-                                  handleSlotChange(slot._tempId, "max_bookings", Math.max(1, slot.max_bookings - 1))
-                                }
-                                className="w-6 h-6 rounded-full bg-inset hover:bg-surface-active flex items-center justify-center text-sm font-bold text-primary"
+                                onClick={() => handleDeleteSlot(slot._tempId)}
+                                className="text-muted hover:text-danger transition-colors flex-shrink-0"
+                                title="削除"
                               >
-                                −
+                                <svg
+                                  className="w-4 h-4"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                  strokeWidth={2}
+                                >
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
                               </button>
-                              <span className="w-6 text-center text-sm font-medium text-primary">
-                                {slot.max_bookings}
-                              </span>
-                              <button
-                                onClick={() =>
-                                  handleSlotChange(slot._tempId, "max_bookings", Math.min(99, slot.max_bookings + 1))
-                                }
-                                className="w-6 h-6 rounded-full bg-inset hover:bg-surface-active flex items-center justify-center text-sm font-bold text-primary"
-                              >
-                                ＋
-                              </button>
-                              <span className="text-xs text-muted ml-1">名</span>
                             </div>
 
-                            {/* ラベル */}
-                            <input
-                              type="text"
-                              value={slot.label ?? ""}
-                              onChange={(e) => handleSlotChange(slot._tempId, "label", e.target.value)}
-                              placeholder="ラベル（任意）"
-                              className={`flex-1 min-w-0 ${inputCls}`}
-                            />
-
-                            {/* 削除 */}
-                            <button
-                              onClick={() => handleDeleteSlot(slot._tempId)}
-                              className="text-muted hover:text-danger transition-colors flex-shrink-0"
-                              title="削除"
-                            >
-                              <svg
-                                className="w-4 h-4"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                                strokeWidth={2}
-                              >
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
+                            {/* 受入作業（大カテゴリ）— 空=すべて受入、複数=複合受付 */}
+                            {categoryOptions.length > 0 && (
+                              <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-[3.25rem]">
+                                <span className="text-[11px] text-muted mr-0.5">受入作業:</span>
+                                {(!slot.accepted_categories || slot.accepted_categories.length === 0) && (
+                                  <span className="text-[11px] text-secondary">すべて受入</span>
+                                )}
+                                {categoryOptions.map((cat) => {
+                                  const on = (slot.accepted_categories ?? []).includes(cat);
+                                  return (
+                                    <button
+                                      key={cat}
+                                      type="button"
+                                      onClick={() => toggleSlotCategory(slot._tempId, cat)}
+                                      className={`rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                                        on
+                                          ? "border-accent bg-accent-dim text-accent-text"
+                                          : "border-border-default bg-surface text-secondary hover:border-border-strong"
+                                      }`}
+                                    >
+                                      {on ? "✓ " : ""}
+                                      {cat}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         ))
                       )}
