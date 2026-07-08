@@ -39,6 +39,8 @@ export const reservationCreateSchema = z.object({
   booth_id: nullableUuid,
   // 工程テンプレート（作業のタスク分解）。設定するとワークフロー開始で reservation_step_logs に展開される。
   workflow_template_id: nullableUuid,
+  // この予約で使う代車。日程候補の代車空き判定に使う。
+  loaner_car_id: nullableUuid,
   note: z
     .string()
     .trim()
@@ -75,6 +77,8 @@ export const reservationUpdateSchema = z.object({
   booth_id: nullableUuid,
   // 工程テンプレート（作業のタスク分解）。設定するとワークフロー開始で reservation_step_logs に展開される。
   workflow_template_id: nullableUuid,
+  // この予約で使う代車。日程候補の代車空き判定に使う。
+  loaner_car_id: nullableUuid,
   note: z
     .string()
     .trim()

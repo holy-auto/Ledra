@@ -123,14 +123,18 @@ export async function GET(req: NextRequest) {
       supabase.from("closed_days").select("type, day_of_week, closed_date").eq("tenant_id", tenantId),
       supabase
         .from("reservations")
-        .select("scheduled_date, start_time, end_time")
+        .select("scheduled_date, start_time, end_time, loaner_car_id")
         .eq("tenant_id", tenantId)
         .neq("status", "cancelled")
         .gte("scheduled_date", from)
         .lte("scheduled_date", to),
       supabase.from("loaner_cars").select("id").eq("tenant_id", tenantId).eq("is_active", true),
       needsLoaner
-        ? supabase.from("loaner_car_loans").select("return_due_at").eq("tenant_id", tenantId).is("returned_at", null)
+        ? supabase
+            .from("loaner_car_loans")
+            .select("loaner_car_id, return_due_at")
+            .eq("tenant_id", tenantId)
+            .is("returned_at", null)
         : Promise.resolve({ data: [], error: null }),
       // staff_shifts の SELECT は RLS で管理ロール限定のため、staff ロールでも人手判定が
       // 効くようテナント限定のサービスロールで読む（RLS で空になり黙って無効化されるのを防ぐ）。
@@ -171,18 +175,32 @@ export async function GET(req: NextRequest) {
     const workSpecified = menuItemIds.length > 0 || estimatedOverride != null;
     const excludeRestricted = excludeRestrictedParam || (workSpecified && workCategories.length === 0);
 
-    // 代車の空き台数（日別）。貸出中で返却予定日が対象日以降（または無期限）なら不在扱い。
-    // ponytail: 将来日の代車予約は別モデル化されていないため、現在の未返却貸出の返却予定で近似。
+    // 代車の空き台数（日別）。押さえ済み = ①その日の未キャンセル予約に割り当てられた代車
+    // ＋ ②現在貸出中で返却予定日が対象日以降（または無期限）の代車。稼働中の代車のみ数える。
     let freeLoanersByDate: Record<string, number> | undefined;
     if (needsLoaner) {
-      const loanerTotal = (loanersRes.data ?? []).length;
-      const dueDates = (loansRes.data ?? []).map((l: { return_due_at: string | null }) =>
-        l.return_due_at ? l.return_due_at.slice(0, 10) : null,
+      const activeLoanerIds = new Set(((loanersRes.data ?? []) as { id: string }[]).map((r) => r.id));
+      const loanerTotal = activeLoanerIds.size;
+
+      // ① 予約割当（日別）: date → その日に押さえられている稼働代車ID
+      const assignedByDate = new Map<string, Set<string>>();
+      for (const r of (resvRes.data ?? []) as { scheduled_date: string; loaner_car_id: string | null }[]) {
+        if (!r.loaner_car_id || !activeLoanerIds.has(r.loaner_car_id)) continue;
+        const key = r.scheduled_date.slice(0, 10);
+        (assignedByDate.get(key) ?? assignedByDate.set(key, new Set()).get(key)!).add(r.loaner_car_id);
+      }
+      // ② 現在貸出中（未返却）: {代車ID, 返却予定日}
+      const openLoans = ((loansRes.data ?? []) as { loaner_car_id: string; return_due_at: string | null }[]).map(
+        (l) => ({ id: l.loaner_car_id, due: l.return_due_at ? l.return_due_at.slice(0, 10) : null }),
       );
+
       freeLoanersByDate = {};
       for (const date of dates) {
-        const out = dueDates.filter((due) => due === null || due >= date).length;
-        freeLoanersByDate[date] = Math.max(0, loanerTotal - out);
+        const committed = new Set(assignedByDate.get(date) ?? []);
+        for (const l of openLoans) {
+          if (activeLoanerIds.has(l.id) && (l.due === null || l.due >= date)) committed.add(l.id);
+        }
+        freeLoanersByDate[date] = Math.max(0, loanerTotal - committed.size);
       }
     }
 

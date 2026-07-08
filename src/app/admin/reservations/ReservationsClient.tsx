@@ -46,14 +46,23 @@ type Reservation = {
   cancel_reason: string | null;
   created_at: string;
   workflow_template_id: string | null;
+  loaner_car_id: string | null;
   current_step_key: string | null;
   current_step_order: number;
   progress_pct: number;
 };
 
+type LoanerCar = { id: string; name: string; plate_display: string | null; is_active: boolean };
+
 type Customer = { id: string; name: string };
 type Vehicle = { id: string; maker: string; model: string; year: number | null; plate_display: string | null };
-type MenuItemMaster = { id: string; name: string; unit_price: number; estimated_minutes: number | null };
+type MenuItemMaster = {
+  id: string;
+  name: string;
+  unit_price: number;
+  estimated_minutes: number | null;
+  category_large: string | null;
+};
 type BookingCandidate = {
   date: string;
   day_of_week: number;
@@ -186,6 +195,8 @@ export default function ReservationsClient() {
   const [menuItems, setMenuItems] = useState<MenuItemMaster[]>([]);
   // 工程テンプレート（作業タスク分解の展開元）
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
+  // 代車（予約への割当用・稼働中のみ）
+  const [loaners, setLoaners] = useState<LoanerCar[]>([]);
   // 音声→備考 (Standard 以上の ai_draft 機能)。current tenant の plan_tier から判定。
   const [canAiNote, setCanAiNote] = useState(false);
 
@@ -207,6 +218,8 @@ export default function ReservationsClient() {
 
   // 工程テンプレート選択（"" = 品目から自動）。作業タスク分解の展開元＆予約への紐付け。
   const [taskTemplateId, setTaskTemplateId] = useState("");
+  // この予約に割り当てる代車（"" = なし）。
+  const [formLoanerId, setFormLoanerId] = useState("");
   // 編集中予約のワークフローが開始済みか（開始後はテンプレート変更不可）。
   const [formWorkflowStarted, setFormWorkflowStarted] = useState(false);
   // 日程候補の提案（受けられる日程）
@@ -267,14 +280,19 @@ export default function ReservationsClient() {
 
   const fetchMasterData = useCallback(async () => {
     try {
-      const [custRes, menuRes, tenantRes, tmplRes] = await Promise.all([
+      const [custRes, menuRes, tenantRes, tmplRes, loanerRes] = await Promise.all([
         fetch("/api/admin/customers"),
         fetch("/api/admin/menu-items"),
         fetch("/api/admin/tenants"),
         fetch("/api/admin/workflow-templates"),
+        fetch("/api/admin/loaner-cars"),
       ]);
       const tmplJ = await parseJsonSafe(tmplRes);
       if (tmplRes.ok && tmplJ?.templates) setTemplates(tmplJ.templates as WorkflowTemplate[]);
+      const loanerJ = await parseJsonSafe(loanerRes);
+      if (loanerRes.ok && loanerJ?.cars) {
+        setLoaners((loanerJ.cars as LoanerCar[]).filter((c) => c.is_active));
+      }
       const tenantJ = await parseJsonSafe(tenantRes);
       if (tenantRes.ok && tenantJ?.tenants) {
         const current = tenantJ.tenants.find((t: any) => t.is_current) ?? tenantJ.tenants[0];
@@ -291,6 +309,7 @@ export default function ReservationsClient() {
             name: m.name,
             unit_price: m.unit_price,
             estimated_minutes: m.estimated_minutes ?? null,
+            category_large: m.category_large ?? null,
           })),
         );
 
@@ -486,6 +505,7 @@ export default function ReservationsClient() {
     setCandidates(null);
     setCandidatesErr(null);
     setTaskTemplateId("");
+    setFormLoanerId("");
     setFormWorkflowStarted(false);
   };
 
@@ -510,6 +530,7 @@ export default function ReservationsClient() {
       setFormMenuItems(r.menu_items_json ?? []);
       setFormAmount(r.estimated_amount ?? 0);
       setTaskTemplateId(r.workflow_template_id ?? "");
+      setFormLoanerId(r.loaner_car_id ?? "");
       setFormWorkflowStarted(!!r.current_step_key || r.current_step_order > 0 || r.progress_pct > 0);
       setSaveMsg(null);
       setFormStep(1);
@@ -542,6 +563,23 @@ export default function ReservationsClient() {
     () => templates.find((t) => t.id === taskTemplateId) ?? null,
     [templates, taskTemplateId],
   );
+
+  // 「品目から自動」時に、選択メニューの大カテゴリと service_type が一致する工程テンプレを提案。
+  const matchedTemplate = useMemo(() => {
+    if (taskTemplateId) return null; // 手動選択済みなら提案しない
+    const cats = formMenuItems
+      .map((m) => menuItems.find((mi) => mi.id === m.menu_item_id)?.category_large)
+      .filter((c): c is string => !!c && c.trim().length > 0)
+      .map((c) => c.trim().toLowerCase());
+    if (cats.length === 0) return null;
+    return (
+      templates.find((t) => {
+        const st = (t.service_type ?? "").trim().toLowerCase();
+        if (!st) return false;
+        return cats.some((c) => c === st || c.includes(st) || st.includes(c));
+      }) ?? null
+    );
+  }, [taskTemplateId, formMenuItems, menuItems, templates]);
   const taskPlan = useMemo(() => {
     const items = selectedTemplate
       ? [...selectedTemplate.steps]
@@ -619,6 +657,7 @@ export default function ReservationsClient() {
       menu_items_json: formMenuItems,
       estimated_amount: formAmount,
       workflow_template_id: taskTemplateId || null,
+      loaner_car_id: formLoanerId || null,
     };
     if (editingId) payload.id = editingId;
     try {
@@ -1470,6 +1509,25 @@ export default function ReservationsClient() {
                       </label>
                     )}
 
+                    {/* 代車の割当（指定日の代車空きに反映） */}
+                    {loaners.length > 0 && (
+                      <label className={labelCls}>
+                        <span className={labelTextCls}>代車</span>
+                        <select
+                          value={formLoanerId}
+                          onChange={(e) => setFormLoanerId(e.target.value)}
+                          className={inputCls}
+                        >
+                          <option value="">なし</option>
+                          {loaners.map((l) => (
+                            <option key={l.id} value={l.id}>
+                              {l.plate_display ? `${l.name} / ${l.plate_display}` : l.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+
                     <div className="flex justify-end pt-2">
                       <button
                         type="button"
@@ -1574,6 +1632,20 @@ export default function ReservationsClient() {
                               {formWorkflowStarted && (
                                 <span className="text-[10px] text-muted shrink-0">開始後は変更不可</span>
                               )}
+                            </div>
+                          )}
+                          {matchedTemplate && !formWorkflowStarted && (
+                            <div className="mt-2 flex items-center gap-2 text-[11px] text-secondary">
+                              <span>
+                                作業内容から「<b className="text-primary">{matchedTemplate.name}</b>」工程に一致します。
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setTaskTemplateId(matchedTemplate.id)}
+                                className="shrink-0 rounded-md border border-accent px-2 py-0.5 text-[11px] font-semibold text-accent hover:bg-accent-dim transition-colors"
+                              >
+                                適用
+                              </button>
                             </div>
                           )}
                           {taskPlan.tasks.length === 0 ? (
