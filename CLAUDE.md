@@ -2,10 +2,14 @@
 
 ## PR 運用ルール
 
-- **Codex レビューは必須ではない**（任意）。マージは Codex のレビューを待たずに行ってよい。
-- 任意で自動コードレビューを回したいときだけ、PR 作成後に `@codex review` コメントを投稿して Codex（`chatgpt-codex-connector[bot]`）をトリガーする。
-  - Codex は「非ドラフトで PR を開く」「ドラフトを ready 化」「`@codex review` コメント」のいずれかでのみ起動する。
+- **Claude が PR を作成したら、`/code-review` を実行し、結果を PR にコメントとして投稿する**（Codex 代替の自動コードレビュー運用）。
+  - コード変更を含む PR が対象。ドキュメント/設定のみの PR はスキップしてよい（`/code-review` は差分に実行時の挙動が無ければ対象なしになる）。
+  - findings があれば重大な順に要約を PR コメントへ投稿する。無ければ「レビュー: 指摘なし」を 1 行残す。`/code-review --comment` を使えば inline コメントで投稿できる。
   - コメント投稿には GitHub MCP の `mcp__github__add_issue_comment`（PR番号を issue_number に指定）を使う。
+  - これは Claude セッションが作成する PR に適用される運用。人が直接開いた PR まで自動化したい場合は GitHub Actions 化が別途必要。
+- **Codex レビューは必須ではない**（任意）。マージは Codex のレビューを待たずに行ってよい。
+- 任意で Codex も回したいときだけ、PR 作成後に `@codex review` コメントを投稿して Codex（`chatgpt-codex-connector[bot]`）をトリガーする。
+  - Codex は「非ドラフトで PR を開く」「ドラフトを ready 化」「`@codex review` コメント」のいずれかでのみ起動する。ただし利用上限に達しているとレビューではなく上限メッセージが返る。
 
 ## Ponytail, lazy senior dev mode
 
