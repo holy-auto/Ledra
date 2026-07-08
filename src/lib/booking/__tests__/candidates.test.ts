@@ -206,6 +206,9 @@ describe("proposeCandidates", () => {
     const unknown = proposeCandidates({ ...base, staffShiftsByDate: {} });
     expect(unknown).toHaveLength(1);
     expect(unknown[0].staff_free).toBeNull();
+    // シフト行はあるが在籍0（空配列）の日は「判定対象・在籍0」として除外する
+    const zeroActive = proposeCandidates({ ...base, staffShiftsByDate: { "2026-07-13": [] } });
+    expect(zeroActive).toHaveLength(0);
   });
 
   it("checks staffing against the actual work duration, not the whole slot", () => {

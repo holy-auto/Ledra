@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { estimateReservationMinutes } from "@/lib/booths/duration";
 import { proposeCandidates } from "@/lib/booking/candidates";
@@ -87,11 +87,16 @@ export async function GET(req: NextRequest) {
       estimated_minutes: estimatedOverride,
       days,
       needs_loaner: needsLoaner,
-      consider_staff: considerStaff,
-      exclude_restricted: excludeRestricted,
+      consider_staff: considerStaffParam,
+      exclude_restricted: excludeRestrictedParam,
       limit,
     } = parsed.data;
     const tenantId = caller.tenantId;
+
+    // 人手判定はスタッフ名簿(members:view)を見られるロールに限定する。
+    // サービスロールで staff_shifts を読むため、権限の無い viewer 等に staff_free から
+    // シフト状況が漏れないようゲートする（名簿APIと同じ権限境界に揃える）。
+    const considerStaff = considerStaffParam && requirePermission(caller, "members:view");
 
     // 起点日（既定: 今日 / サーバTZ）。走査対象日を配列化。
     const today = new Date();
@@ -161,6 +166,10 @@ export async function GET(req: NextRequest) {
     const workCategories = Array.from(
       new Set(menuRows.map((m) => m.category_large).filter((c): c is string => !!c && c.trim().length > 0)),
     );
+    // 作業（品目/テンプレ/所要時間）が指定されているのに大カテゴリが取れない場合も、
+    // 受入制限枠は推薦しない（未分類品目でも「洗車のみ」枠等を誤って提案しないため）。
+    const workSpecified = menuItemIds.length > 0 || estimatedOverride != null;
+    const excludeRestricted = excludeRestrictedParam || (workSpecified && workCategories.length === 0);
 
     // 代車の空き台数（日別）。貸出中で返却予定日が対象日以降（または無期限）なら不在扱い。
     // ponytail: 将来日の代車予約は別モデル化されていないため、現在の未返却貸出の返却予定で近似。
@@ -196,13 +205,12 @@ export async function GET(req: NextRequest) {
         start_time: string | null;
         end_time: string | null;
       }[]) {
-        if (!activeStaffIds.has(s.staff_id)) continue; // 停止中スタッフのシフトは除外
         const key = s.work_date.slice(0, 10);
-        (staffShiftsByDate[key] ??= []).push({
-          staffId: s.staff_id,
-          start: toMin(s.start_time),
-          end: toMin(s.end_time),
-        });
+        // シフトが存在する日は「判定対象日」として必ずキーを作る（全員停止中なら空配列＝在籍0）。
+        // キーを作らないと proposeCandidates が「シフト未登録＝不問」と誤解し人手判定をスキップする。
+        const list = (staffShiftsByDate[key] ??= []);
+        if (!activeStaffIds.has(s.staff_id)) continue; // 停止中スタッフは在籍にカウントしない
+        list.push({ staffId: s.staff_id, start: toMin(s.start_time), end: toMin(s.end_time) });
       }
     }
 
