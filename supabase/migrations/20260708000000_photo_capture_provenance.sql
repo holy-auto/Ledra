@@ -52,13 +52,14 @@ CREATE INDEX IF NOT EXISTS idx_photo_capture_nonces_cert
 CREATE INDEX IF NOT EXISTS idx_photo_capture_nonces_expires
   ON photo_capture_nonces (expires_at);
 
+-- nonce は「サーバ発行の bearer 秘密」であり、cert 作成レスポンスで発行先クライアントに
+-- だけ渡す。テナントに SELECT を許すと、他 cert 用の未消費 nonce を列挙して任意アップロードに
+-- 添付でき単回束縛を崩せる（cert_idempotency_keys はクライアント発の非秘密キーなので露出可、
+-- という違い）。よって RLS 有効のまま **ポリシーを一切作らず**、発行/消費は service-role
+-- (captureNonce.ts) 経由のみに限定して deny-all にする。
 ALTER TABLE photo_capture_nonces ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS photo_capture_nonces_tenant_select ON photo_capture_nonces;
-CREATE POLICY photo_capture_nonces_tenant_select ON photo_capture_nonces
-  FOR SELECT USING (tenant_id IN (SELECT my_tenant_ids()));
-
--- INSERT / 消費は cert 作成・写真アップロード API (service-role 経由) のみ。
 
 -- ── 3) 原子的消費 RPC（part_verify_otp を鋳型: FOR UPDATE で直列化）───────────
 CREATE OR REPLACE FUNCTION public.consume_photo_capture_nonce(

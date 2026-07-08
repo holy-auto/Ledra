@@ -168,13 +168,15 @@ export function extractTimestampedHashHex(tokenDer: Uint8Array): string | null {
 export async function fetchTimestamp(
   tsaUrl: string,
   hashHex: string,
-  opts: { username?: string; password?: string; timeoutMs?: number } = {},
+  opts: { username?: string; password?: string; timeoutMs?: number; retryKey?: string } = {},
 ): Promise<TimeStampResult> {
   const wantHex = hashHex.trim().toLowerCase();
 
   // 外向き HTTP は withRetry（指数バックオフ＋per-key circuit breaker）を経由する。
+  // circuit breaker は key ごとなので、用途（parts 確定署名 / 写真の大量TSA）が
+  // 互いのブレーカーを開かないよう retryKey を分離できるようにする（既定は parts-tsa）。
   // nonce/controller は各リトライで作り直すため thunk 内で生成する。
-  return withRetry("parts-tsa", async () => {
+  return withRetry(opts.retryKey ?? "parts-tsa", async () => {
     const nonce = new Uint8Array(16);
     crypto.getRandomValues(nonce);
     const reqDer = buildTimeStampRequest(hashHex, { certReq: true, nonce });

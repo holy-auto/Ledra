@@ -23,6 +23,11 @@ export interface PhotoTsaResult {
   timestampAt: string;
 }
 
+/** アップロード経路上で TSA 取得に費やしてよい総時間の上限（fail-open の締切）。 */
+const PHOTO_TSA_DEADLINE_MS = 5_000;
+/** 1 リクエストの per-attempt タイムアウト（写真は大量なので短め）。 */
+const PHOTO_TSA_ATTEMPT_MS = 3_000;
+
 /** 写真 TSA が設定されているか。 */
 export function isPhotoTsaEnabled(): boolean {
   return (process.env.PHOTO_TSA_ENABLED ?? "").toLowerCase() === "true" && !!process.env.PHOTO_TSA_URL;
@@ -30,19 +35,31 @@ export function isPhotoTsaEnabled(): boolean {
 
 /**
  * 与えられたハッシュ(hex)に対してタイムスタンプトークンを取得する。
- * 未設定/失敗時はいずれも null（アップロードを止めない fail-open）。
+ * 未設定/失敗/締切超過はいずれも null（アップロードを止めない fail-open）。
+ *
+ * この await は provider fan-out より前に走るため、TSA が遅い/不達でも upload の
+ * `maxDuration` を食い潰さないよう、リトライ込みの総時間を締切でハードキャップする。
  */
 export async function requestPhotoTimestamp(hashHex: string): Promise<PhotoTsaResult | null> {
   if (!isPhotoTsaEnabled()) return null;
 
-  const url = process.env.PHOTO_TSA_URL!;
-  const authority = process.env.PHOTO_TSA_AUTHORITY ?? new URL(url).host;
   try {
-    const { token, genTime } = await fetchTimestamp(url, hashHex, {
+    const url = process.env.PHOTO_TSA_URL!;
+    // URL 解析も含めて try 内に置く（不正 URL でも 500 にせず null へ degrade）。
+    const authority = process.env.PHOTO_TSA_AUTHORITY || new URL(url).host;
+
+    const fetchP = fetchTimestamp(url, hashHex, {
       username: process.env.PHOTO_TSA_USERNAME,
       password: process.env.PHOTO_TSA_PASSWORD,
+      timeoutMs: PHOTO_TSA_ATTEMPT_MS,
+      // parts 確定署名とは別の circuit breaker key（相互に開かないよう分離）。
+      retryKey: "photo-tsa",
     });
-    return { token, authority, timestampAt: genTime };
+    // リトライ/バックオフ込みの総時間を締切でキャップ。
+    const deadlineP = new Promise<null>((resolve) => setTimeout(() => resolve(null), PHOTO_TSA_DEADLINE_MS));
+    const result = await Promise.race([fetchP, deadlineP]);
+    if (!result) return null; // 締切超過 → 封印なしで続行
+    return { token: result.token, authority, timestampAt: result.genTime };
   } catch (err) {
     console.warn(
       "[photo-tsa] timestamp request failed, degrading to no-seal",
