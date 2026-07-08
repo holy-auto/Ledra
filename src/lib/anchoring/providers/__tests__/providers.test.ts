@@ -29,7 +29,6 @@ describe("invokeAllUploadProviders", () => {
 
     expect(result.c2pa).toEqual({ manifestCid: null, verified: false, signedBuffer: null });
     expect(result.deepfake).toEqual({ score: null, verdict: null });
-    expect(result.deviceAttestation).toEqual({ provider: "none", verified: false });
     expect(result.polygon).toEqual({ txHash: null, anchored: false, network: null });
   });
 

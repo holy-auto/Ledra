@@ -13,6 +13,9 @@ import { stripGpsAndReadExif } from "@/lib/anchoring/imageExif";
 import { computeAuthenticityGrade } from "@/lib/anchoring/authenticityGrade";
 import { invokeAllUploadProviders } from "@/lib/anchoring/providers";
 import { requestPhotoTimestamp, isPhotoTsaEnabled } from "@/lib/anchoring/providers/photoTsa";
+import { verifyDeviceAttestation } from "@/lib/anchoring/providers/deviceAttestation";
+import { consumeCaptureNonce, type ConsumeNonceResult } from "@/lib/certificates/captureNonce";
+import { deriveCaptureBindingReason } from "@/lib/anchoring/captureBindingReason";
 import { upsertVehiclePassport } from "@/lib/passport/upsertVehiclePassport";
 import { generateImageVariants, variantStoragePath } from "@/lib/certificateImages/generateVariants";
 import { maybeAutoTamperingCheckForCertificate } from "@/lib/ai/automation/photoTamperingAuto";
@@ -61,11 +64,13 @@ export async function POST(req: NextRequest) {
     let publicId = String(form.get("public_id") ?? "").trim();
     const certIdemKey = String(form.get("cert_idempotency_key") ?? "").trim();
 
-    // 撮影時来歴（Phase 1 では純配線・グレードは動かない）:
-    //   device_token  … 端末アテステーショントークン（Play Integrity / App Attest）
-    //   capture_nonce … cert 作成時にサーバ発行した単回撮影nonce
+    // 撮影時来歴:
+    //   device_token    … 端末アテステーショントークン（Play Integrity / App Attest）
+    //   device_provider … "play_integrity" | "app_attest"
+    //   capture_nonce   … cert 作成時にサーバ発行した単回撮影nonce
     // 未送信（Web/ギャラリー/レガシー）なら空文字 → 非担保（basic）のまま。
     const deviceToken = String(form.get("device_token") ?? "").trim() || undefined;
+    const deviceProvider = String(form.get("device_provider") ?? "").trim() || undefined;
     const captureNonce = String(form.get("capture_nonce") ?? "").trim() || undefined;
 
     // 車体整備ガイドライン4.2(1): 撮影段階のタグ (任意。未指定は 'unspecified')。
@@ -130,6 +135,27 @@ export async function POST(req: NextRequest) {
         data: { max: maxPhotos, plan: planTier },
       });
     }
+
+    // ── 撮影時来歴の request-level 検証 ───────────────────────────────
+    // 端末アテステーションと単回nonceは「1撮影セッション = 1トークン/1nonce」なので、
+    // 写真ごとではなくリクエスト単位で1回だけ検証・消費し、全写真に適用する
+    // （Play Integrity は同一トークンの再復号が無駄、App Attest の attestation は一回性）。
+    const attestation = await verifyDeviceAttestation(deviceToken, {
+      provider: deviceProvider,
+      expectedNonce: captureNonce,
+    });
+    // nonce は cert 束縛の行ロックで単回消費。1リクエスト内の全写真がこのセッション nonce を共有。
+    // ponytail: 全ファイルが後段で検証落ちしても nonce は消費される（同 cert の再送は
+    // consumed → basic）。実害は「不正アップロードで nonce を1つ焼く」程度で稀、担保も弱めない。
+    const nonceResult: ConsumeNonceResult | null = captureNonce
+      ? await consumeCaptureNonce({
+          nonce: captureNonce,
+          tenantId,
+          certificateId: cert.id as string,
+          deviceKeyHash: attestation.deviceKeyHash,
+        })
+      : null;
+    const nonceOk = nonceResult === "ok";
 
     // ── Upload files ───────────────────────────────────────────────
     const toUpload = files.slice(0, remaining);
@@ -217,9 +243,10 @@ export async function POST(req: NextRequest) {
       }
 
       // ── Phase 3a+3b: verification providers (sign before upload) ──
-      // Pass the device attestation token and seal the capture context
-      // (certificate + nonce + TSA time) into the C2PA manifest.
-      const providers = await invokeAllUploadProviders(uploadBuffer, mime, sha256, deviceToken, {
+      // Seal the capture context (certificate + nonce + TSA time) into the C2PA
+      // manifest. Device attestation + nonce are verified once per request
+      // (see `attestation`/`nonceOk` above the loop), not per photo.
+      const providers = await invokeAllUploadProviders(uploadBuffer, mime, sha256, {
         publicId,
         captureNonce,
         tsaTimestamp: tsa?.timestampAt ?? null,
@@ -269,16 +296,15 @@ export async function POST(req: NextRequest) {
       }
 
       const c2paMode = (process.env.C2PA_MODE ?? "disabled") as "disabled" | "dev-signed" | "production";
-      // Phase 1 is pure plumbing: device attestation is still a stub (deviceOk
-      // always false) so captureBindingOk is false and every row stays `basic`.
-      // Phase 2 wires real attestation + `consumeCaptureNonce` to set nonceOk.
+      // 撮影時封印: 本番C2PA or TSA（dev-signed は信頼チェーン無しなので封印に数えない）。
+      const sealOk = (providers.c2pa.verified && c2paMode === "production") || !!tsa;
       const grade = computeAuthenticityGrade({
         hasSha256: true,
         hasC2pa: providers.c2pa.verified,
         c2paKind: c2paMode === "disabled" ? "none" : c2paMode,
         hasTsa: !!tsa,
-        deviceOk: providers.deviceAttestation.verified,
-        nonceOk: false,
+        deviceOk: attestation.verified,
+        nonceOk,
         deepfakeOk:
           providers.deepfake.verdict === "likely_real"
             ? true
@@ -287,8 +313,14 @@ export async function POST(req: NextRequest) {
               : null,
       });
 
-      // 監査用の非担保理由（Phase 1: 端末トークンも nonce も無ければ Web/ギャラリー流用）。
-      const captureBindingReason = !deviceToken && !captureNonce ? "gallery_upload" : null;
+      // 非担保なら「なぜ basic 止まりか」を監査列に記録（担保成立なら null）。
+      const captureBindingReason = deriveCaptureBindingReason({
+        hasDeviceToken: !!deviceToken,
+        hasNonce: !!captureNonce,
+        deviceVerified: attestation.verified,
+        nonceResult,
+        sealOk,
+      });
 
       const fileNameToStore = file.name || `photo_${i + 1}.${ext}`;
       const { data: insertedRow, error: insertError } = await admin
@@ -318,8 +350,8 @@ export async function POST(req: NextRequest) {
           capture_binding_reason: captureBindingReason,
           c2pa_manifest_cid: providers.c2pa.manifestCid,
           c2pa_verified: providers.c2pa.verified,
-          device_attestation_provider: providers.deviceAttestation.provider,
-          device_attestation_verified: providers.deviceAttestation.verified,
+          device_attestation_provider: attestation.provider,
+          device_attestation_verified: attestation.verified,
           deepfake_score: providers.deepfake.score,
           deepfake_verdict: providers.deepfake.verdict,
           polygon_tx_hash: providers.polygon.txHash,
