@@ -197,6 +197,87 @@ export async function fetchRecentConversation(
   }
 }
 
+/** PostgREST の ilike パターンで特別扱いされる文字をエスケープする。 */
+function escapeLike(value: string): string {
+  return value.replace(/([\\%_])/g, "\\$1");
+}
+
+/** 送信元メールアドレスで顧客を1件解決する (完全一致・大小無視)。 */
+async function resolveCustomerIdByEmail(tenantId: string, email: string | null): Promise<string | null> {
+  if (!email) return null;
+  const { admin } = createTenantScopedAdmin(tenantId);
+  try {
+    const { data } = await admin
+      .from("customers")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .ilike("email", escapeLike(email.trim()))
+      .limit(1)
+      .maybeSingle();
+    return (data?.id as string | undefined) ?? null;
+  } catch (e) {
+    logger.warn("[messageStore] resolveCustomerIdByEmail failed", {
+      tenantId,
+      err: e instanceof Error ? e.message : String(e),
+    });
+    return null;
+  }
+}
+
+export interface InboundEmailMessage {
+  tenantId: string;
+  /** 送信元メールアドレス (顧客解決 & 表示用)。 */
+  fromEmail: string | null;
+  subject?: string | null;
+  body: string;
+  /** RFC822 Message-ID (冪等化・デバッグ用)。 */
+  messageId?: string | null;
+  /** デバッグ用に残す元メタ (from/subject/headers 抜粋など)。 */
+  rawMeta?: unknown;
+}
+
+/**
+ * 受信メール (顧客発) を customer_messages に inbound / channel="email" で書き込む。
+ * 顧客は送信元アドレスで解決を試み、無ければ NULL のまま保存 (受信箱の未紐付け行)。
+ * 失敗時は呼び出し元 (webhook) を止めない。
+ */
+export async function recordInboundEmailMessage(
+  input: InboundEmailMessage,
+): Promise<{ ok: boolean; id?: string; customerId?: string | null }> {
+  try {
+    const customerId = await resolveCustomerIdByEmail(input.tenantId, input.fromEmail);
+    const admin = createServiceRoleAdmin("Inbound email logging — webhook lacks auth session");
+    const { data, error } = await admin
+      .from("customer_messages")
+      .insert({
+        tenant_id: input.tenantId,
+        customer_id: customerId,
+        channel: "email",
+        direction: "inbound",
+        body: input.body,
+        raw_event: {
+          from: input.fromEmail,
+          subject: input.subject ?? null,
+          message_id: input.messageId ?? null,
+          meta: input.rawMeta ?? null,
+        },
+      })
+      .select("id")
+      .single();
+    if (error) {
+      logger.warn("[messageStore] inbound email insert failed", { tenantId: input.tenantId, err: error.message });
+      return { ok: false, customerId };
+    }
+    return { ok: true, id: data?.id as string | undefined, customerId };
+  } catch (e) {
+    logger.warn("[messageStore] recordInboundEmailMessage threw", {
+      tenantId: input.tenantId,
+      err: e instanceof Error ? e.message : String(e),
+    });
+    return { ok: false };
+  }
+}
+
 /**
  * 店舗 → 顧客の Push 送信ログを customer_messages に書き込む。
  *

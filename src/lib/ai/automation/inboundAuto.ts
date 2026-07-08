@@ -38,6 +38,10 @@ export interface MaybeAutoProcessParams {
   receivedDate?: string;
   /** LINE ユーザー ID。顧客自動作成時に line_user_id を紐付けるために使う。 */
   lineUserId?: string;
+  /** メール受信時の送信元アドレス。顧客自動作成時に email を紐付ける。 */
+  email?: string;
+  /** 送信者の表示名など。AI が氏名を取れなかった場合の顧客名フォールバック。 */
+  customerName?: string;
 }
 
 function isMissingColumnError(err: { message?: string; code?: string } | null | undefined): boolean {
@@ -111,9 +115,10 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
         } else {
           resolvedCustomerId = await autoCreateCustomer(admin, {
             tenantId,
-            name: result.customer_name?.trim() ?? "自動登録顧客",
+            name: result.customer_name?.trim() || params.customerName?.trim() || "自動登録顧客",
             channel: params.channel,
             lineUserId: params.lineUserId,
+            email: result.email?.trim() || params.email?.trim() || undefined,
           });
           if (resolvedCustomerId && messageId) {
             await admin
@@ -311,6 +316,7 @@ interface AutoCreateCustomerInput {
   name: string;
   channel?: "line" | "email" | "form";
   lineUserId?: string;
+  email?: string;
 }
 
 /** 顧客レコードを service-role で自動作成する。失敗時は null を返す (投げない)。 */
@@ -328,6 +334,9 @@ async function autoCreateCustomer(
     };
     if (input.lineUserId) {
       row.line_user_id = input.lineUserId;
+    }
+    if (input.email) {
+      row.email = input.email;
     }
     const { error } = await admin.from("customers").insert(row);
     if (error) {

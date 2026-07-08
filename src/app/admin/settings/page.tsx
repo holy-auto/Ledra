@@ -8,6 +8,7 @@ import SettingsProgressCard from "./SettingsProgressCard";
 import FollowUpSettings from "./FollowUpSettings";
 import SquareConnectSection from "./SquareConnectSection";
 import LineConnectSection from "./LineConnectSection";
+import EmailInboundSection from "./EmailInboundSection";
 import NexPTGConnectSection from "./NexPTGConnectSection";
 import RestartTourButton from "./RestartTourButton";
 import BillingTimingSection from "./BillingTimingSection";
@@ -301,6 +302,24 @@ export default async function AdminSettingsPage() {
           </p>
         </div>
         <LineConnectSection />
+      </section>
+
+      {/* メール予約取り込み */}
+      <section className="glass-card p-5">
+        <div className="mb-5">
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">外部連携</div>
+          <div className="mt-1 text-base font-semibold text-primary inline-flex items-center gap-1.5">
+            メール予約取り込み
+            <HelpTooltip>
+              予約メールを専用アドレスへ自動転送すると、AI が日程・車両・内容を読み取り、確認付きで予約・ Google
+              カレンダーに取り込みます。LINE と同じ抽出・複合認識の仕組みを使います。
+            </HelpTooltip>
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            予約メールを専用アドレスへ自動転送するだけで、AIが予約内容を読み取りカレンダーに取り込みます。
+          </p>
+        </div>
+        <EmailInboundSection />
       </section>
 
       {/* NexPTG（膜厚計）連携 */}
