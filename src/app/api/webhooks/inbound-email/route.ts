@@ -32,16 +32,33 @@ function timingSafeEqual(a: string, b: string): boolean {
   return crypto.timingSafeEqual(ab, bb);
 }
 
-/** HTML しか無い場合の素朴なテキスト化 (フォールバック)。 */
+const HTML_ENTITIES: Record<string, string> = {
+  nbsp: " ",
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  "#39": "'",
+};
+
+/**
+ * HTML しか無い場合の素朴なテキスト化 (フォールバック)。
+ *
+ * - タグ除去は `<[^>]*>` (バウンド量指定子) で線形。攻撃者由来 HTML でも ReDoS に
+ *   ならないよう、隣接曖昧量指定子やバックトラッキング (script/style 本文の除去等) は使わない。
+ * - エンティティ復元は**単一パス**。`&amp;` を先に個別 replace すると `&amp;lt;` が
+ *   `&lt;` → `<` と二重復元される。1 回の走査で置換結果を再走査しないことで防ぐ。
+ * html は text/plain が無い場合のフォールバックであり、多少のノイズは実害なし。
+ */
 function htmlToText(html: string | null): string {
   if (!html) return "";
+  // 上限で切り詰め。タグ除去の全体走査が病的入力 (閉じない大量 '<') で超線形に
+  // ならないよう長さを制限する。抽出には十分な冒頭のみで足りる。
   return html
-    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
+    .slice(0, 100_000)
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&(nbsp|amp|lt|gt|quot|apos|#39);/gi, (m, e: string) => HTML_ENTITIES[e.toLowerCase()] ?? m)
     .replace(/\s+/g, " ")
     .trim();
 }

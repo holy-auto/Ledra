@@ -24,16 +24,32 @@ export function buildInboundAddress(token: string | null | undefined): string | 
   return `${LOCAL_PREFIX}${token}@${domain}`;
 }
 
-/** "Name <a@b>, c@d" 形式の1フィールドからメールアドレスだけを小文字で抜き出す。 */
+/** アドレスらしい単一トークンか (空白なし・@ が内側に1つ以上)。線形判定で ReDoS 回避。 */
+function looksLikeAddress(token: string): boolean {
+  if (/\s/.test(token)) return false;
+  const at = token.indexOf("@");
+  return at > 0 && at < token.length - 1;
+}
+
+/**
+ * "Name <a@b>, c@d" 形式の1フィールドからメールアドレスだけを小文字で抜き出す。
+ *
+ * カンマ/セミコロン区切りで分割し、各要素を素朴に処理する。正規表現の隣接する
+ * 曖昧な量指定子 (ReDoS) を避けるため、バックトラッキングを伴う抽出は使わない。
+ */
 export function extractAddresses(field: string): string[] {
   if (!field) return [];
   const out: string[] = [];
-  // <...> があればその中身、無ければ素の addr トークンを拾う。
-  const re = /<([^>]+)>|([^\s,;<>]+@[^\s,;<>]+)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(field)) !== null) {
-    const addr = (m[1] || m[2] || "").trim().toLowerCase();
-    if (addr.includes("@")) out.push(addr);
+  for (const rawPart of field.split(/[,;]/)) {
+    let part = rawPart.trim();
+    // 表示名付き "Name <addr>" は < > の中身を採用。
+    const lt = part.indexOf("<");
+    if (lt !== -1) {
+      const gt = part.indexOf(">", lt + 1);
+      if (gt !== -1) part = part.slice(lt + 1, gt).trim();
+    }
+    part = part.toLowerCase();
+    if (looksLikeAddress(part)) out.push(part);
   }
   return out;
 }
@@ -69,8 +85,12 @@ export function firstAddress(field: string | null | undefined): string | null {
 /** From ヘッダから表示名 (顧客名候補) を取り出す。アドレスしか無ければ null。 */
 export function displayName(field: string | null | undefined): string | null {
   if (!field) return null;
-  const m = field.match(/^\s*"?([^"<]+?)"?\s*</);
-  const name = m?.[1]?.trim();
+  const lt = field.indexOf("<");
+  if (lt <= 0) return null; // "<" が無い / 先頭 = 表示名なし
+  let name = field.slice(0, lt).trim();
+  if (name.length >= 2 && name.startsWith('"') && name.endsWith('"')) {
+    name = name.slice(1, -1).trim();
+  }
   return name && !name.includes("@") ? name : null;
 }
 

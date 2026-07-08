@@ -61,4 +61,15 @@ describe("inboundAddress", () => {
     expect(parseMessageId(headers)).toBe("<abc@mail.example.com>");
     expect(parseMessageId("no id here")).toBeNull();
   });
+
+  it("handles adversarial header input in linear time (no ReDoS)", () => {
+    // 攻撃者が制御しうる From/To ヘッダ。曖昧な量指定子があると多項式時間で固まる。
+    const evil = "a".repeat(200_000); // '@' も '<' も無い長大トークン
+    const start = performance.now();
+    expect(extractAddresses(evil)).toEqual([]);
+    expect(parseInboundToken(evil)).toBeNull();
+    expect(displayName(evil)).toBeNull();
+    // 線形実装なら一瞬で終わる。ReDoS があれば桁違いに遅くなる。
+    expect(performance.now() - start).toBeLessThan(500);
+  });
 });
