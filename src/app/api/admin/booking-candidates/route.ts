@@ -41,6 +41,11 @@ const querySchema = z.object({
     .enum(["0", "1", "true", "false"])
     .optional()
     .transform((v) => v !== "0" && v !== "false"),
+  // 作業カテゴリ不明時に受入制限枠を除外するか（工程テンプレのみ指定時などに使う）。
+  exclude_restricted: z
+    .enum(["0", "1", "true", "false"])
+    .optional()
+    .transform((v) => v === "1" || v === "true"),
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
@@ -83,6 +88,7 @@ export async function GET(req: NextRequest) {
       days,
       needs_loaner: needsLoaner,
       consider_staff: considerStaff,
+      exclude_restricted: excludeRestricted,
       limit,
     } = parsed.data;
     const tenantId = caller.tenantId;
@@ -211,6 +217,7 @@ export async function GET(req: NextRequest) {
       }[],
       estimatedMinutes,
       workCategories,
+      excludeRestricted,
       needsLoaner,
       freeLoanersByDate,
       considerStaff,

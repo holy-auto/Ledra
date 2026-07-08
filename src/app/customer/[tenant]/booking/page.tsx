@@ -297,13 +297,16 @@ export default function BookingPage() {
 
   // ─── Slot status helper ───────────────────────────────────
 
-  // 選択中カテゴリを受け入れるスロットか（指定なし/受入未設定=すべて対象）。
+  // 選択中カテゴリを受け入れるスロットか。
+  // 受入制限のある枠は、希望作業が未選択の間は表示しない（送信時に弾かれるのを防ぐ）。
+  // 希望作業を選んだら、その作業を受け入れる枠のみ表示。受入未設定の枠は常に対象。
   const slotMatchesCategory = useCallback(
-    (s: SlotInfo) =>
-      !selectedCategory ||
-      !s.accepted_categories ||
-      s.accepted_categories.length === 0 ||
-      s.accepted_categories.includes(selectedCategory),
+    (s: SlotInfo) => {
+      const restricted = !!s.accepted_categories && s.accepted_categories.length > 0;
+      if (!restricted) return true;
+      if (!selectedCategory) return false;
+      return s.accepted_categories!.includes(selectedCategory);
+    },
     [selectedCategory],
   );
 

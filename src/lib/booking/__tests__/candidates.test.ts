@@ -208,6 +208,38 @@ describe("proposeCandidates", () => {
     expect(unknown[0].staff_free).toBeNull();
   });
 
+  it("checks staffing against the actual work duration, not the whole slot", () => {
+    // 09:00-12:00 枠、60分作業。スタッフは 09:00-10:00 のみ在籍。
+    const slots = [{ day_of_week: 1, start_time: "09:00:00", end_time: "12:00:00", max_bookings: 1 }];
+    const r = proposeCandidates({
+      dates: ["2026-07-13"],
+      slots,
+      closedDays: [],
+      reservations: [],
+      estimatedMinutes: 60,
+      considerStaff: true,
+      staffShiftsByDate: { "2026-07-13": [{ staffId: "a", start: 540, end: 600 }] },
+    });
+    // 実作業は 09:00-10:00 なので在籍が付く → 提案される
+    expect(r).toHaveLength(1);
+    expect(r[0].end_time).toBe("10:00");
+    expect(r[0].staff_free).toBe(1);
+  });
+
+  it("excludes restricted slots when category is unknown and excludeRestricted is set", () => {
+    const slots = [
+      { day_of_week: 1, start_time: "09:00:00", end_time: "10:00:00", max_bookings: 1, accepted_categories: ["洗車"] },
+      { day_of_week: 1, start_time: "10:00:00", end_time: "11:00:00", max_bookings: 1, accepted_categories: null },
+    ];
+    const base = { dates: ["2026-07-13"], slots, closedDays: [], reservations: [], estimatedMinutes: null };
+    // カテゴリ不明 + excludeRestricted → 制限枠(洗車のみ)を除外、無制限枠のみ
+    const strict = proposeCandidates({ ...base, excludeRestricted: true });
+    expect(strict.map((x) => x.start_time)).toEqual(["10:00"]);
+    // 既定（excludeRestricted 無し）は従来どおり両方
+    const loose = proposeCandidates({ ...base });
+    expect(loose).toHaveLength(2);
+  });
+
   it("respects the limit", () => {
     const c = proposeCandidates({
       dates: ["2026-07-13", "2026-07-14"],

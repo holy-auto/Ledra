@@ -577,6 +577,10 @@ export default function ReservationsClient() {
       if (selectedTemplate && taskPlan.totalMinutes > 0) {
         params.set("estimated_minutes", String(taskPlan.totalMinutes));
       }
+      // 品目が無くテンプレのみ＝作業カテゴリが取れないため、受入制限枠は除外する。
+      if (selectedTemplate && formMenuItems.length === 0) {
+        params.set("exclude_restricted", "1");
+      }
       if (needsLoaner) params.set("needs_loaner", "1");
       if (!considerStaff) params.set("consider_staff", "0");
       params.set("days", "21");

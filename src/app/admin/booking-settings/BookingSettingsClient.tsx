@@ -314,6 +314,10 @@ export default function BookingSettingsClient() {
       let mergeEnd = endMin;
       let maxBookings = 1;
       let label = "";
+      // 結合した既存枠の受入カテゴリを引き継ぐ（制限が黙って外れないように）。
+      // いずれかが無制限なら結果も無制限、そうでなければ和集合。
+      const mergeCats = new Set<string>();
+      let anyUnrestricted = false;
       const result: (BookingSlot & { _tempId: string })[] = [];
       for (const s of prev) {
         const isActiveRow = !s._deleted && s.day_of_week === day;
@@ -326,6 +330,11 @@ export default function BookingSettingsClient() {
             mergeEnd = Math.max(mergeEnd, sEnd);
             if (s.max_bookings) maxBookings = s.max_bookings;
             if (s.label) label = s.label;
+            if (s.accepted_categories && s.accepted_categories.length > 0) {
+              s.accepted_categories.forEach((c) => mergeCats.add(c));
+            } else {
+              anyUnrestricted = true;
+            }
             // 既存枠は取り除く（id 付きは削除マーク、未保存は破棄）
             if (s.id) result.push({ ...s, _deleted: true });
             continue;
@@ -342,6 +351,7 @@ export default function BookingSettingsClient() {
         max_bookings: maxBookings,
         is_active: true,
         label,
+        accepted_categories: anyUnrestricted || mergeCats.size === 0 ? null : [...mergeCats],
       });
       return result;
     });
