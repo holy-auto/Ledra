@@ -67,13 +67,14 @@ export interface ProposeCandidatesOptions {
   needsLoaner?: boolean;
   /** 日付ごとの空き代車台数（needsLoaner 時に参照）。 */
   freeLoanersByDate?: Record<string, number>;
-  /** 人手の余りを考慮するか。true かつ その日のスタッフ数が判る場合、空き人手0以下の枠を除外。 */
+  /** 人手の余りを考慮するか。true かつ その日のシフトが判る場合、空き人手0以下の枠を除外。 */
   considerStaff?: boolean;
   /**
-   * 日付ごとの在籍スタッフ数（勤務シフトのある人数）。
+   * 日付ごとの勤務シフト（分単位。start/end が null なら終日勤務扱い）。
    * considerStaff 時に参照。エントリの無い日は「不明」として人手フィルタをかけない。
+   * スロット時間帯を実際にカバーするスタッフのみを在籍としてカウントする。
    */
-  staffCountByDate?: Record<string, number>;
+  staffShiftsByDate?: Record<string, Array<{ staffId: string; start: number | null; end: number | null }>>;
   /** 返す候補数の上限（既定 20）。 */
   limit?: number;
 }
@@ -89,8 +90,18 @@ export function proposeCandidates(opts: ProposeCandidatesOptions): Candidate[] {
   const needsLoaner = opts.needsLoaner ?? false;
   const freeLoanersByDate = opts.freeLoanersByDate ?? {};
   const considerStaff = opts.considerStaff ?? false;
-  const staffCountByDate = opts.staffCountByDate ?? {};
+  const staffShiftsByDate = opts.staffShiftsByDate ?? {};
   const limit = opts.limit ?? 20;
+
+  // 指定スロット [start,end) をカバーするシフトの、在籍スタッフ実人数（重複除去）。
+  const staffCoveringSlot = (date: string, slotStart: number, slotEnd: number): number => {
+    const ids = new Set<string>();
+    for (const sh of staffShiftsByDate[date] ?? []) {
+      const covers = (sh.start == null || sh.start <= slotStart) && (sh.end == null || sh.end >= slotEnd);
+      if (covers) ids.add(sh.staffId);
+    }
+    return ids.size;
+  };
   const workCategories = new Set((opts.workCategories ?? []).filter((c) => c));
 
   // スロットが対象作業を受け入れるか。受入カテゴリ未設定=すべて受入。作業カテゴリ未指定=絞らない。
@@ -149,11 +160,11 @@ export function proposeCandidates(opts: ProposeCandidatesOptions): Candidate[] {
       let remaining = slot.max_bookings - booked;
       if (remaining <= 0) continue;
 
-      // 人手の余り: その日の在籍スタッフ数 − 同時間帯の予約数。0以下なら受入不可。
-      // 在籍数が不明な日（シフト未登録）は人手フィルタをかけない。
+      // 人手の余り: スロット時間帯をカバーする在籍スタッフ数 − 同時間帯の予約数。
+      // 0以下なら受入不可。シフト未登録の日（エントリ無し）は人手フィルタをかけない。
       let staffFree: number | null = null;
-      if (considerStaff && date in staffCountByDate) {
-        staffFree = staffCountByDate[date] - booked;
+      if (considerStaff && date in staffShiftsByDate) {
+        staffFree = staffCoveringSlot(date, slotStart, slotEnd) - booked;
         if (staffFree <= 0) continue;
         remaining = Math.min(remaining, staffFree);
       }

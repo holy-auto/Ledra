@@ -123,7 +123,7 @@ export async function GET(req: NextRequest) {
       considerStaff
         ? supabase
             .from("staff_shifts")
-            .select("staff_id, work_date")
+            .select("staff_id, work_date, start_time, end_time")
             .eq("tenant_id", tenantId)
             .gte("work_date", from)
             .lte("work_date", to)
@@ -160,16 +160,31 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 日付ごとの在籍スタッフ数（同日に複数シフトがあっても人数として重複排除）。
-    let staffCountByDate: Record<string, number> | undefined;
+    // 日付ごとの勤務シフト（分単位。start/end 未設定は終日勤務）。スロット時間帯を
+    // カバーするスタッフのみを在籍としてカウントするため、時間帯まで持たせる。
+    let staffShiftsByDate:
+      | Record<string, Array<{ staffId: string; start: number | null; end: number | null }>>
+      | undefined;
     if (considerStaff) {
-      const byDate = new Map<string, Set<string>>();
-      for (const s of (shiftsRes.data ?? []) as { staff_id: string; work_date: string }[]) {
+      const toMin = (t: string | null): number | null => {
+        if (!t) return null;
+        const [h, m] = t.slice(0, 5).split(":").map(Number);
+        return (h || 0) * 60 + (m || 0);
+      };
+      staffShiftsByDate = {};
+      for (const s of (shiftsRes.data ?? []) as {
+        staff_id: string;
+        work_date: string;
+        start_time: string | null;
+        end_time: string | null;
+      }[]) {
         const key = s.work_date.slice(0, 10);
-        (byDate.get(key) ?? byDate.set(key, new Set()).get(key)!).add(s.staff_id);
+        (staffShiftsByDate[key] ??= []).push({
+          staffId: s.staff_id,
+          start: toMin(s.start_time),
+          end: toMin(s.end_time),
+        });
       }
-      staffCountByDate = {};
-      for (const [date, ids] of byDate) staffCountByDate[date] = ids.size;
     }
 
     const candidates = proposeCandidates({
@@ -196,7 +211,7 @@ export async function GET(req: NextRequest) {
       needsLoaner,
       freeLoanersByDate,
       considerStaff,
-      staffCountByDate,
+      staffShiftsByDate,
       limit,
     });
 

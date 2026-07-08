@@ -122,44 +122,57 @@ describe("proposeCandidates", () => {
     expect(nofilter).toHaveLength(2);
   });
 
-  it("accounts for staff headroom (人手の余り) when considerStaff is set", () => {
+  it("accounts for staff headroom (人手の余り) using shift time windows", () => {
     // 月 09-12(定員2)。既存予約1件(09-12) → booked=1。
     const staffSlots = [{ day_of_week: 1, start_time: "09:00:00", end_time: "12:00:00", max_bookings: 2 }];
     const resv = [{ scheduled_date: "2026-07-13", start_time: "09:00:00", end_time: "12:00:00" }];
-    // スタッフ1名 → 空き人手 1-1=0 → 除外
-    const noStaff = proposeCandidates({
+    const base = {
       dates: ["2026-07-13"],
       slots: staffSlots,
       closedDays: [],
       reservations: resv,
       estimatedMinutes: null,
       considerStaff: true,
-      staffCountByDate: { "2026-07-13": 1 },
+    };
+    // 終日勤務1名(null/null) → 空き人手 1-1=0 → 除外
+    const noStaff = proposeCandidates({
+      ...base,
+      staffShiftsByDate: { "2026-07-13": [{ staffId: "a", start: null, end: null }] },
     });
     expect(noStaff).toHaveLength(0);
-    // スタッフ3名 → 空き人手 3-1=2、残枠 min(2-1, 2)=1、staff_free=2
+    // 3名が枠をカバー → 空き人手 3-1=2、残枠 min(2-1,2)=1
     const withStaff = proposeCandidates({
-      dates: ["2026-07-13"],
-      slots: staffSlots,
-      closedDays: [],
-      reservations: resv,
-      estimatedMinutes: null,
-      considerStaff: true,
-      staffCountByDate: { "2026-07-13": 3 },
+      ...base,
+      staffShiftsByDate: {
+        "2026-07-13": [
+          { staffId: "a", start: 540, end: 720 },
+          { staffId: "b", start: null, end: null },
+          { staffId: "c", start: 480, end: 1080 },
+        ],
+      },
     });
     expect(withStaff).toHaveLength(1);
     expect(withStaff[0].staff_free).toBe(2);
     expect(withStaff[0].remaining).toBe(1);
-    // シフト未登録の日は人手フィルタをかけない（staff_free=null）
-    const unknown = proposeCandidates({
-      dates: ["2026-07-13"],
-      slots: staffSlots,
-      closedDays: [],
-      reservations: resv,
-      estimatedMinutes: null,
-      considerStaff: true,
-      staffCountByDate: {},
+    // 午後シフトのみ(13:00-)は 09-12 枠をカバーしない → カバー0、除外
+    const afternoonOnly = proposeCandidates({
+      ...base,
+      staffShiftsByDate: { "2026-07-13": [{ staffId: "a", start: 780, end: 1080 }] },
     });
+    expect(afternoonOnly).toHaveLength(0);
+    // 同一スタッフの重複シフトは実人数として1カウント（booked=1 → 空き0 → 除外）
+    const dupSameStaff = proposeCandidates({
+      ...base,
+      staffShiftsByDate: {
+        "2026-07-13": [
+          { staffId: "a", start: 540, end: 720 },
+          { staffId: "a", start: 540, end: 720 },
+        ],
+      },
+    });
+    expect(dupSameStaff).toHaveLength(0);
+    // シフト未登録の日は人手フィルタをかけない（staff_free=null）
+    const unknown = proposeCandidates({ ...base, staffShiftsByDate: {} });
     expect(unknown).toHaveLength(1);
     expect(unknown[0].staff_free).toBeNull();
   });
