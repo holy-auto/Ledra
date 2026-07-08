@@ -39,6 +39,7 @@ export type AutomationActionKey =
   | "quote.auto_send_on_confirm"
   | "quote.auto_send"
   | "quote.auto_draft_from_inbound"
+  | "quote.auto_reply_rough_estimate"
   | "accounting.auto_categorize_on_intake"
   | "invoice.auto_draft_on_billing_step"
   | "invoice.auto_draft_on_completion"
@@ -358,6 +359,15 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
       "鈑金 Kanban の工程ステージ (受付 → 協定 → 鈑金 → 塗装 → 完成 → 出庫) が進むたび、顧客へ LINE で進捗を自動通知する。顧客に LINE 連携 (line_user_id) がある場合のみ送信される。",
     defaultEnabled: false,
     guard: "AI 有効 + 顧客に LINE 連携あり",
+  },
+  {
+    key: "quote.auto_reply_rough_estimate",
+    workflow: "quote",
+    label: "受信メッセージに概算見積りを自動返信",
+    description:
+      "「ヴェルファイアのコーティングいくら？」のような価格問い合わせを LINE で受信した時点で、車両・過去の請求実績から概算金額を『レンジ (〜幅)』で自動返信する。返すのは概算のみで、正式・詳細なお見積りは案内文で来店に誘導する (詳細見積りは来店対応)。未紐付けの新規客にも返信する。金額の外向き送信を伴うため opt-in / 既定 OFF。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Standard プラン以上 + LINE 受信 + 施工内容と車両が読み取れた場合のみ",
   },
 ];
 
