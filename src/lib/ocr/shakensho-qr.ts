@@ -25,9 +25,10 @@ import {
 } from "@zxing/library";
 import type { ShakenshoData } from "./shakensho";
 
-// sharp.Region は名前空間メンバーで top-level named export ではないため別名定義する。
-// (sharp 型バンプ後に main で顕在化していた tsc エラーを修正。挙動変更なし。)
-type Region = sharp.Region;
+// sharp.Region は名前空間メンバーで top-level named export ではない。
+// default import した値 `sharp` は名前空間として参照できない（sharp 0.35.3 の
+// `export = sharp` 型構造で TS2503 になる）ため、import 型構文で名前空間メンバーを取る。
+type Region = import("sharp").Region;
 
 // ─────────────────────────────────────────────
 // 画像デコード
