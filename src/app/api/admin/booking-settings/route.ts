@@ -83,23 +83,33 @@ export async function PUT(req: NextRequest) {
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-    const {
-      slots,
-      closed_days: closedDays,
-      deleted_slot_ids: deletedSlotIds,
-      deleted_closed_day_ids: deletedClosedDayIds,
-    } = parsed.data;
+    const { slots, closed_days: closedDays, deleted_closed_day_ids: deletedClosedDayIds } = parsed.data;
 
-    // ── スロット削除 ──
-    if (deletedSlotIds.length > 0) {
-      const { error } = await supabase
+    // ── スロット差分削除（サーバ側で権威的に算出） ──
+    // slots は full-replace の desired set。省略時 (undefined) はスロットに一切触れず、
+    // 定休日のみ更新できるようにする（省略を「全消し」と誤解して全スロットを削除する
+    // 事故を防ぐ）。明示的な空配列 [] のときだけ全削除になる。
+    if (slots !== undefined) {
+      const desiredSlotIds = new Set(slots.map((s) => s.id).filter((id): id is string => !!id));
+      const { data: existingSlots, error: existingErr } = await supabase
         .from("external_booking_slots")
-        .delete()
-        .in("id", deletedSlotIds)
+        .select("id")
         .eq("tenant_id", caller.tenantId);
-      if (error) {
-        console.error("[booking-settings] delete slots error:", error.message);
-        return apiInternalError(error, "booking-settings");
+      if (existingErr) {
+        console.error("[booking-settings] list slots error:", existingErr.message);
+        return apiInternalError(existingErr, "booking-settings");
+      }
+      const slotIdsToDelete = (existingSlots ?? []).map((r) => r.id).filter((id) => !desiredSlotIds.has(id));
+      if (slotIdsToDelete.length > 0) {
+        const { error } = await supabase
+          .from("external_booking_slots")
+          .delete()
+          .in("id", slotIdsToDelete)
+          .eq("tenant_id", caller.tenantId);
+        if (error) {
+          console.error("[booking-settings] delete slots error:", error.message);
+          return apiInternalError(error, "booking-settings");
+        }
       }
     }
 
@@ -117,7 +127,7 @@ export async function PUT(req: NextRequest) {
     }
 
     // ── スロット upsert ──
-    for (const slot of slots) {
+    for (const slot of slots ?? []) {
       const payload = {
         tenant_id: caller.tenantId,
         day_of_week: slot.day_of_week,
@@ -129,14 +139,24 @@ export async function PUT(req: NextRequest) {
       };
 
       if (slot.id) {
-        const { error } = await supabase
+        // update が 0 件（id 不在 / 別テナント）だと「保存成功なのに未反映」になるため、
+        // 更新後の行を select で確認し、対象が無ければ insert にフォールバックする。
+        const { data: updated, error } = await supabase
           .from("external_booking_slots")
           .update(payload)
           .eq("id", slot.id)
-          .eq("tenant_id", caller.tenantId);
+          .eq("tenant_id", caller.tenantId)
+          .select("id");
         if (error) {
           console.error("[booking-settings] update slot error:", error.message);
           return apiInternalError(error, "booking-settings");
+        }
+        if (!updated || updated.length === 0) {
+          const { error: insErr } = await supabase.from("external_booking_slots").insert(payload);
+          if (insErr) {
+            console.error("[booking-settings] insert (fallback) slot error:", insErr.message);
+            return apiInternalError(insErr, "booking-settings");
+          }
         }
       } else {
         const { error } = await supabase.from("external_booking_slots").insert(payload);
