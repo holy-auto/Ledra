@@ -17,6 +17,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCertifiedTemplateForTenant } from "@/lib/manufacturers/certifiedTemplates";
+import { issueCaptureNonce } from "@/lib/certificates/captureNonce";
 
 export const dynamic = "force-dynamic";
 
@@ -128,6 +129,13 @@ export async function POST(req: Request) {
 
     const certificate = await supaInsertCertificate(caller.tenantId, insertRow);
 
+    // 撮影時来歴の単回nonceをサーバ発行し、レスポンスで返す（撮影クライアントが
+    // 写真アップロード時に添付し、cert 束縛の「新鮮な撮影」を証明する）。発行失敗は
+    // cert 作成を止めない（null のまま = そのテナントは当面 basic 止まり）。
+    const captureNonce = certificate?.id
+      ? await issueCaptureNonce({ tenantId: caller.tenantId, certificateId: certificate.id })
+      : null;
+
     // Fire-and-forget audit log
     logCertificateAction({
       type: "certificate_issued",
@@ -139,7 +147,7 @@ export async function POST(req: Request) {
       description: `顧客: ${b.customer_name}`,
     });
 
-    return apiJson({ certificate }, { status: 200 });
+    return apiJson({ certificate, capture_nonce: captureNonce }, { status: 200 });
   } catch (e) {
     return apiInternalError(e, "certificates/create");
   }

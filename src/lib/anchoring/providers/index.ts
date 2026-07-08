@@ -5,7 +5,7 @@
  * the upload or causes other providers to be skipped.
  */
 
-import { signC2pa } from "./c2pa";
+import { signC2pa, type CaptureBinding } from "./c2pa";
 import { checkDeepfake } from "./deepfake";
 import { verifyDeviceAttestation } from "./deviceAttestation";
 import { anchorToPolygon, verifyAnchor, buildExplorerUrl, findAnchorTx } from "./polygon";
@@ -23,7 +23,10 @@ function withTimeout<T>(promise: Promise<T>, fallback: T, label: string): Promis
       resolve(fallback);
     }, PROVIDER_TIMEOUT_MS);
     promise.then(
-      (value) => { clearTimeout(timer); resolve(value); },
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
       (err) => {
         clearTimeout(timer);
         console.warn(`[providers] ${label} threw`, err instanceof Error ? err.message : err);
@@ -52,16 +55,26 @@ export async function invokeAllUploadProviders(
   mime: string,
   sha256: string,
   deviceToken?: string,
+  captureBinding?: CaptureBinding,
 ): Promise<UploadProviderBundle> {
   const [c2pa, deepfake, deviceAttestation, polygon] = await Promise.all([
-    withTimeout(signC2pa(buffer, mime), { manifestCid: null, verified: false, signedBuffer: null }, "c2pa"),
+    withTimeout(
+      signC2pa(buffer, mime, captureBinding),
+      { manifestCid: null, verified: false, signedBuffer: null },
+      "c2pa",
+    ),
     withTimeout(checkDeepfake(buffer), { score: null, verdict: null }, "deepfake"),
-    withTimeout(verifyDeviceAttestation(deviceToken), { provider: "none" as const, verified: false }, "deviceAttestation"),
+    withTimeout(
+      verifyDeviceAttestation(deviceToken),
+      { provider: "none" as const, verified: false },
+      "deviceAttestation",
+    ),
     withTimeout(anchorToPolygon(sha256), { txHash: null, anchored: false, network: null }, "polygon"),
   ]);
 
   return { c2pa, deepfake, deviceAttestation, polygon };
 }
 
+export type { CaptureBinding } from "./c2pa";
 export type { UploadProviderBundle } from "./types";
 export type { C2paResult, DeepfakeResult, DeviceAttestationResult, PolygonAnchorResult, PolygonNetwork } from "./types";

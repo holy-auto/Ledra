@@ -12,6 +12,7 @@ import { hashSha256, computePerceptualHash } from "@/lib/anchoring/imageHashing"
 import { stripGpsAndReadExif } from "@/lib/anchoring/imageExif";
 import { computeAuthenticityGrade } from "@/lib/anchoring/authenticityGrade";
 import { invokeAllUploadProviders } from "@/lib/anchoring/providers";
+import { requestPhotoTimestamp } from "@/lib/anchoring/providers/photoTsa";
 import { upsertVehiclePassport } from "@/lib/passport/upsertVehiclePassport";
 import { generateImageVariants, variantStoragePath } from "@/lib/certificateImages/generateVariants";
 import { maybeAutoTamperingCheckForCertificate } from "@/lib/ai/automation/photoTamperingAuto";
@@ -59,6 +60,13 @@ export async function POST(req: NextRequest) {
     const form = await req.formData();
     let publicId = String(form.get("public_id") ?? "").trim();
     const certIdemKey = String(form.get("cert_idempotency_key") ?? "").trim();
+
+    // 撮影時来歴（Phase 1 では純配線・グレードは動かない）:
+    //   device_token  … 端末アテステーショントークン（Play Integrity / App Attest）
+    //   capture_nonce … cert 作成時にサーバ発行した単回撮影nonce
+    // 未送信（Web/ギャラリー/レガシー）なら空文字 → 非担保（basic）のまま。
+    const deviceToken = String(form.get("device_token") ?? "").trim() || undefined;
+    const captureNonce = String(form.get("capture_nonce") ?? "").trim() || undefined;
 
     // 車体整備ガイドライン4.2(1): 撮影段階のタグ (任意。未指定は 'unspecified')。
     const STAGE_VALUES = ["intake_before", "in_progress", "after", "unspecified"] as const;
@@ -166,6 +174,12 @@ export async function POST(req: NextRequest) {
       const ext = mime.split("/")[1]?.replace("jpeg", "jpg") ?? "jpg";
       const storagePath = `${tenantId}/${cert.id}/${Date.now()}_${i}.${ext}`;
 
+      // Original (pre-strip) hash: EXIF/GPS is stripped for privacy before
+      // storage, which destroys the as-captured bytes. Recording their SHA-256
+      // lets a dispute later verify a customer-supplied original without us
+      // ever storing the location-bearing original. Computed on the raw buffer.
+      const originalSha256 = hashSha256(buffer);
+
       // ── Phase 1: hash + strip EXIF/GPS ─────────────────────────
       // Any failure here falls back to the original buffer so a
       // flaky sharp binding never blocks a legitimate upload.
@@ -180,8 +194,18 @@ export async function POST(req: NextRequest) {
         console.warn("[upload] perceptual hash failed", err);
       }
 
+      // Capture-time seal: RFC3161 TSA over the stored hash (no-op/null unless
+      // PHOTO_TSA_* configured; never blocks the upload).
+      const tsa = await requestPhotoTimestamp(sha256);
+
       // ── Phase 3a+3b: verification providers (sign before upload) ──
-      const providers = await invokeAllUploadProviders(uploadBuffer, mime, sha256);
+      // Pass the device attestation token and seal the capture context
+      // (certificate + nonce + TSA time) into the C2PA manifest.
+      const providers = await invokeAllUploadProviders(uploadBuffer, mime, sha256, deviceToken, {
+        publicId,
+        captureNonce,
+        tsaTimestamp: tsa?.timestampAt ?? null,
+      });
 
       // If C2PA signed, use the signed buffer (manifest embedded) for storage
       const finalBuffer = providers.c2pa.signedBuffer ?? uploadBuffer;
@@ -227,11 +251,16 @@ export async function POST(req: NextRequest) {
       }
 
       const c2paMode = (process.env.C2PA_MODE ?? "disabled") as "disabled" | "dev-signed" | "production";
+      // Phase 1 is pure plumbing: device attestation is still a stub (deviceOk
+      // always false) so captureBindingOk is false and every row stays `basic`.
+      // Phase 2 wires real attestation + `consumeCaptureNonce` to set nonceOk.
       const grade = computeAuthenticityGrade({
         hasSha256: true,
         hasC2pa: providers.c2pa.verified,
         c2paKind: c2paMode === "disabled" ? "none" : c2paMode,
+        hasTsa: !!tsa,
         deviceOk: providers.deviceAttestation.verified,
+        nonceOk: false,
         deepfakeOk:
           providers.deepfake.verdict === "likely_real"
             ? true
@@ -239,6 +268,9 @@ export async function POST(req: NextRequest) {
               ? false
               : null,
       });
+
+      // 監査用の非担保理由（Phase 1: 端末トークンも nonce も無ければ Web/ギャラリー流用）。
+      const captureBindingReason = !deviceToken && !captureNonce ? "gallery_upload" : null;
 
       const fileNameToStore = file.name || `photo_${i + 1}.${ext}`;
       const { data: insertedRow, error: insertError } = await admin
@@ -253,10 +285,17 @@ export async function POST(req: NextRequest) {
           sort_order: existing + uploaded,
           stage,
           sha256,
+          original_sha256: originalSha256,
           perceptual_hash: perceptualHash,
           exif_captured_at: exif.capturedAt ? exif.capturedAt.toISOString() : null,
           exif_device_model: exif.deviceModel,
           exif_gps_stripped: exif.gpsStripped,
+          capture_nonce: captureNonce ?? null,
+          device_attestation_token_hash: deviceToken ? hashSha256(Buffer.from(deviceToken)) : null,
+          tsa_token: tsa?.token ?? null,
+          tsa_authority: tsa?.authority ?? null,
+          tsa_timestamp_at: tsa?.timestampAt ?? null,
+          capture_binding_reason: captureBindingReason,
           c2pa_manifest_cid: providers.c2pa.manifestCid,
           c2pa_verified: providers.c2pa.verified,
           device_attestation_provider: providers.deviceAttestation.provider,

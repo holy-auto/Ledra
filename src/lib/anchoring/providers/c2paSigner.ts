@@ -86,12 +86,12 @@ export async function createC2paSigner(mode: C2paMode): Promise<LocalSignerInsta
       }
     }
 
-    const signer = LocalSigner.newSigner(
-      Buffer.from(certPem),
-      Buffer.from(keyPem),
-      "es256",
-      undefined, // TSA URL - omit for dev, add in production later
-    );
+    // In production, timestamp the C2PA manifest itself via an RFC3161 TSA
+    // (reuses the photo-scoped PHOTO_TSA_URL). Dev-signed manifests skip it —
+    // they have no trust chain anyway and must stay out of the guaranteed tier.
+    const tsaUrl = mode === "production" ? process.env.PHOTO_TSA_URL || undefined : undefined;
+
+    const signer = LocalSigner.newSigner(Buffer.from(certPem), Buffer.from(keyPem), "es256", tsaUrl);
 
     cached = { mode, signer };
     return signer;

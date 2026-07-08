@@ -196,7 +196,9 @@ describe("computeAuthenticityGrade with c2paKind", () => {
       hasSha256: true,
       hasC2pa: true,
       c2paKind: "dev-signed",
+      hasTsa: false,
       deviceOk: true,
+      nonceOk: true,
       deepfakeOk: true,
     });
 
@@ -210,7 +212,9 @@ describe("computeAuthenticityGrade with c2paKind", () => {
       hasSha256: true,
       hasC2pa: true,
       c2paKind: "production",
+      hasTsa: false,
       deviceOk: true,
+      nonceOk: true,
       deepfakeOk: null,
     });
 
@@ -224,7 +228,9 @@ describe("computeAuthenticityGrade with c2paKind", () => {
       hasSha256: true,
       hasC2pa: true,
       c2paKind: "production",
+      hasTsa: false,
       deviceOk: true,
+      nonceOk: true,
       deepfakeOk: true,
     });
 
@@ -237,7 +243,9 @@ describe("computeAuthenticityGrade with c2paKind", () => {
     const grade = computeAuthenticityGrade({
       hasSha256: true,
       hasC2pa: false,
+      hasTsa: false,
       deviceOk: false,
+      nonceOk: false,
       deepfakeOk: null,
     });
 
