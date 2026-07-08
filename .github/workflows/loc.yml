@@ -1,0 +1,99 @@
+name: Lines of Code
+
+# コードの行数を GitHub 上で確認できるようにするワークフロー。
+#   - push (main) / PR / 手動実行 で cloc を走らせ、言語別の内訳を集計する。
+#   - 結果は Actions の「Job Summary」に表示されるので、実行ごとにブラウザで確認可能。
+#   - PR では同じ内訳をステッキーコメントとして投稿/更新するので、差分の規模も追える。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, staging]
+  workflow_dispatch:
+
+# 同一 PR / ブランチで連続実行された場合は古い実行をキャンセルし、最新だけ残す。
+concurrency:
+  group: loc-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  count:
+    name: Count lines of code
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # PR にコメントを投稿/更新するために必要。
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install cloc
+        run: sudo apt-get update && sudo apt-get install -y cloc
+
+      - name: Count lines of code
+        id: cloc
+        # node_modules / ビルド成果物 / lock ファイル等は計測対象から除外し、
+        # 「人が書いたコード」の規模が分かるようにする。
+        # cloc の Markdown 出力をそのまま summary とコメント本文に流用する。
+        run: |
+          set -euo pipefail
+          REPORT_FILE="$RUNNER_TEMP/cloc.md"
+          cloc . \
+            --md \
+            --quiet \
+            --exclude-dir=node_modules,.next,.git,.husky,dist,build,coverage,playwright-report,out,_review-pdfs \
+            --not-match-f='(package-lock\.json|.*\.lock|.*\.min\.(js|css))$' \
+            > "$REPORT_FILE"
+          echo "report_file=$REPORT_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Write job summary
+        run: |
+          {
+            echo "## 📊 Lines of Code"
+            echo ""
+            echo "計測時点: \`${{ github.sha }}\`"
+            echo ""
+            cat "${{ steps.cloc.outputs.report_file }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment on PR
+        # fork からの PR では GITHUB_TOKEN が read-only に降格され、コメントの
+        # POST/PATCH が 403 で失敗して LOC チェックが赤くなる。同一リポジトリ
+        # 内の PR に限定し、fork PR では summary だけ残してコメントは黙ってスキップする。
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPORT_FILE: ${{ steps.cloc.outputs.report_file }}
+        # <!-- loc-report --> マーカーで既存コメントを探し、あれば更新・なければ新規作成する
+        # (実行のたびにコメントが増えないようにするため)。
+        run: |
+          set -euo pipefail
+          BODY_FILE="$RUNNER_TEMP/loc-comment.md"
+          {
+            echo "<!-- loc-report -->"
+            echo "## 📊 Lines of Code"
+            echo ""
+            echo "_このコメントは push のたびに自動更新されます。_"
+            echo ""
+            cat "$REPORT_FILE"
+          } > "$BODY_FILE"
+
+          # --paginate で全ページを走査する (REST のデフォルトは 30 件/ページ)。
+          # コメントが多い PR でもマーカー付きコメントを取りこぼさず、毎回 POST して
+          # ステッキーコメントが増殖するのを防ぐ。
+          EXISTING_ID=$(gh api --paginate "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments?per_page=100" \
+            --jq '.[] | select(.body | startswith("<!-- loc-report -->")) | .id' \
+            | head -n1)
+
+          if [ -n "$EXISTING_ID" ]; then
+            gh api --method PATCH "repos/${{ github.repository }}/issues/comments/${EXISTING_ID}" \
+              -F body=@"$BODY_FILE"
+          else
+            gh api --method POST "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+              -F body=@"$BODY_FILE"
+          fi
