@@ -31,6 +31,8 @@ const documentShareSchema = z.object({
     .nullable()
     .optional()
     .transform((v) => v || undefined),
+  // メール送信時のみ有効。他の帳票を同封する場合の追加帳票ID（最大20件）。
+  additional_document_ids: z.array(z.string().uuid()).max(20).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -43,17 +45,28 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-    const { document_id: documentId, channel, recipient, message, idempotency_key: idempotencyKey } = parsed.data;
+    const {
+      document_id: documentId,
+      channel,
+      recipient,
+      message,
+      idempotency_key: idempotencyKey,
+      additional_document_ids: additionalDocumentIdsRaw,
+    } = parsed.data;
+    // 追加帳票の同封はメール送信時のみ対応（LINE/SMSは単一帳票のまま）
+    const additionalDocumentIds = channel === "email" ? (additionalDocumentIdsRaw ?? []) : [];
+    const allDocumentIds = [...new Set([documentId, ...additionalDocumentIds])];
 
-    // Fetch document
-    const { data: doc } = await supabase
+    // Fetch document(s)
+    const { data: docs } = await supabase
       .from("documents")
       .select("id, tenant_id, customer_id, recipient_name, doc_type, doc_number, status, total, created_at, updated_at")
-      .eq("id", documentId)
-      .eq("tenant_id", caller.tenantId)
-      .single();
+      .in("id", allDocumentIds)
+      .eq("tenant_id", caller.tenantId);
 
+    const doc = docs?.find((d) => d.id === documentId);
     if (!doc) return apiNotFound("帳票が見つかりません。");
+    const extraDocs = (docs ?? []).filter((d) => d.id !== documentId);
 
     const docType = doc.doc_type as DocType;
     const docLabel = DOC_TYPES[docType]?.label ?? doc.doc_type;
@@ -105,6 +118,11 @@ export async function POST(req: NextRequest) {
           recipientName: recipientName || recipient,
           senderName,
           message,
+          additionalDocuments: extraDocs.map((d) => ({
+            docType: DOC_TYPES[d.doc_type as DocType]?.label ?? d.doc_type,
+            docNumber: d.doc_number,
+            totalAmount: d.total,
+          })),
         });
       } else if (channel === "line") {
         success = await sendDocumentLink({
@@ -124,19 +142,22 @@ export async function POST(req: NextRequest) {
       success = false;
     }
 
-    // Log the share attempt (non-fatal: table may not exist in all environments)
+    // Log the share attempt for every included document (non-fatal: table may not exist in all environments)
     try {
       const { admin } = createTenantScopedAdmin(caller.tenantId);
-      await admin.from("document_share_log").insert({
-        document_id: documentId,
-        tenant_id: caller.tenantId,
-        channel,
-        recipient,
-        status: success ? "sent" : "failed",
-        error_message: success ? null : (errorMessage ?? "送信に失敗しました"),
-        sent_by: caller.userId,
-        ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
-      });
+      await admin.from("document_share_log").insert(
+        (docs ?? []).map((d) => ({
+          document_id: d.id,
+          tenant_id: caller.tenantId,
+          channel,
+          recipient,
+          status: success ? "sent" : "failed",
+          error_message: success ? null : (errorMessage ?? "送信に失敗しました"),
+          sent_by: caller.userId,
+          // 冪等キーは主帳票のみに付与（追加帳票行でのユニーク制約衝突を避ける）
+          ...(d.id === documentId && idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
+        })),
+      );
     } catch (logErr) {
       console.error("[document_share] Failed to write share log:", logErr);
     }
@@ -145,24 +166,25 @@ export async function POST(req: NextRequest) {
       return apiInternalError(errorMessage ?? "送信に失敗しました", "document_share");
     }
 
-    // Auto-update status from draft to sent
+    // Auto-update status from draft to sent for every included document
     // RLS をバイパスしてサービスロールで UPDATE（tenant_id で必ずスコープ限定）
+    const draftIds = (docs ?? []).filter((d) => d.status === "draft").map((d) => d.id);
     let updatedDoc = doc;
-    if (doc.status === "draft") {
+    if (draftIds.length > 0) {
       const { admin: adminForUpdate } = createTenantScopedAdmin(caller.tenantId);
       const { data: updated } = await adminForUpdate
         .from("documents")
         .update({ status: "sent", updated_at: new Date().toISOString() })
-        .eq("id", documentId)
+        .in("id", draftIds)
         .eq("tenant_id", caller.tenantId)
         .select(
           "id, tenant_id, customer_id, recipient_name, doc_type, doc_number, status, total, created_at, updated_at",
-        )
-        .single();
-      if (updated) updatedDoc = updated;
+        );
+      const updatedPrimary = updated?.find((d) => d.id === documentId);
+      if (updatedPrimary) updatedDoc = updatedPrimary;
     }
 
-    return apiOk({ document: updatedDoc, channel, sent: true });
+    return apiOk({ document: updatedDoc, channel, sent: true, shared_document_ids: allDocumentIds });
   } catch (e) {
     return apiInternalError(e, "document_share");
   }

@@ -1,8 +1,9 @@
 "use client";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Modal from "@/components/ui/Modal";
+import { DOC_TYPES, type DocType } from "@/types/document";
 
 interface ShareDocumentModalProps {
   open: boolean;
@@ -18,6 +19,13 @@ interface ShareDocumentModalProps {
   customerPhone?: string | null;
   onShared?: (channel: string) => void;
 }
+
+type OtherDocument = {
+  id: string;
+  doc_number: string;
+  doc_type: string;
+  total: number;
+};
 
 type Channel = "email" | "line" | "sms";
 
@@ -45,6 +53,37 @@ export default function ShareDocumentModal({
   const [lineUserId, setLineUserId] = useState("");
   const [phone, setPhone] = useState(customerPhone ?? "");
   const [message, setMessage] = useState("");
+
+  // Other documents of the same customer, selectable to bundle into the email
+  const [otherDocs, setOtherDocs] = useState<OtherDocument[]>([]);
+  const [loadingOthers, setLoadingOthers] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!open || !doc.customer_id) {
+      setOtherDocs([]);
+      setSelectedIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    setLoadingOthers(true);
+    (async () => {
+      try {
+        const res = await fetch(`/api/admin/documents?customer_id=${doc.customer_id}&page=1&per_page=50`);
+        const j = await parseJsonSafe(res);
+        if (cancelled) return;
+        const docs: OtherDocument[] = (j?.documents ?? []).filter((d: OtherDocument) => d.id !== doc.id);
+        setOtherDocs(docs);
+      } catch {
+        if (!cancelled) setOtherDocs([]);
+      } finally {
+        if (!cancelled) setLoadingOthers(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, doc.id, doc.customer_id]);
 
   const resetForm = () => {
     setResult(null);
@@ -75,6 +114,7 @@ export default function ShareDocumentModal({
           channel: tab,
           recipient,
           message: message.trim() || undefined,
+          ...(tab === "email" && selectedIds.size > 0 ? { additional_document_ids: Array.from(selectedIds) } : {}),
         }),
       });
       const j = await parseJsonSafe(res);
@@ -157,6 +197,34 @@ export default function ShareDocumentModal({
               onChange={(e) => setMessage(e.target.value)}
             />
           </div>
+          {loadingOthers && <p className="text-xs text-muted">他の帳票を読み込み中...</p>}
+          {otherDocs.length > 0 && (
+            <div>
+              <label className="mb-1 block text-xs text-muted">他の帳票も一緒に送付（任意）</label>
+              <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-[var(--border-subtle)] p-2">
+                {otherDocs.map((d) => (
+                  <label key={d.id} className="flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(d.id)}
+                      onChange={(e) => {
+                        setSelectedIds((prev) => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(d.id);
+                          else next.delete(d.id);
+                          return next;
+                        });
+                      }}
+                    />
+                    <span>
+                      {DOC_TYPES[d.doc_type as DocType]?.label ?? d.doc_type} {d.doc_number}
+                    </span>
+                    <span className="ml-auto text-muted">&yen;{d.total.toLocaleString("ja-JP")}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
