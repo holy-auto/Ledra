@@ -39,9 +39,17 @@ import { shouldAutoReplyRoughEstimate } from "./orchestrator";
 const ENDPOINT = "/api/line/webhook#auto-quote-reply";
 const TAX_RATE = 0.1;
 
-/** 価格問い合わせらしいと判断するキーワード。車両/施工内容が読み取れなかった
- * ときに「黙ってスキップ」か「不足情報を聞き返す」かを分けるための簡易判定。 */
-const PRICE_INQUIRY_PATTERN = /見積|みつもり|概算|いくら|金額|価格|料金/;
+/**
+ * 価格問い合わせらしいと判断するキーワード。車両/施工内容が読み取れなかった
+ * ときに「黙ってスキップ」か「不足情報を聞き返す」かを分けるための簡易判定。
+ *
+ * ponytail: 固定キーワードの正規表現なので、リストに無い言い回し (「どのくらい
+ * する？」等) は拾えず黙ってスキップされる。src/lib/ai/inquiryClassify.ts の
+ * buildDeterministicClassification と判定基準が重複してもいる。アップグレード
+ * 経路: この判定を extractInboundReservation (inboundReservationExtract.ts) の
+ * 抽出結果に intent とは別のブール値として持たせ、AI 自身に判定させる。
+ */
+const PRICE_INQUIRY_PATTERN = /見積|みつもり|概算|いくら|幾ら|金額|価格|料金|どのくらい|どれくらい/;
 
 export interface MaybeAutoReplyRoughEstimateParams {
   tenantId: string;
@@ -144,21 +152,23 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
       if (!PRICE_INQUIRY_PATTERN.test(params.text ?? "")) return;
       const askBody = buildMissingInfoMessage({ hasService: !!service, hasVehicle: !!vehicleText });
       const asked = await sendCustomerLineText({ tenantId, customerId: customerId ?? null, lineUserId, body: askBody });
-      if (asked) {
-        await logAutoActionExecuted({
-          tenantId,
-          actionKey: "quote.auto_reply_rough_estimate",
-          resource: { kind: "line_user", id: lineUserId },
-          detail: {
-            channel: params.channel ?? "line",
-            customer_id: customerId,
-            source_message_id: params.messageId,
-            missing_info: true,
-            has_service: !!service,
-            has_vehicle: !!vehicleText,
-          },
-        });
+      if (!asked) {
+        logger.warn("[quoteReplyAuto] missing-info reply delivery failed", { tenantId, lineUserId });
+        return;
       }
+      await logAutoActionExecuted({
+        tenantId,
+        actionKey: "quote.auto_reply_rough_estimate",
+        resource: { kind: "line_user", id: lineUserId },
+        detail: {
+          channel: params.channel ?? "line",
+          customer_id: customerId,
+          source_message_id: params.messageId,
+          missing_info: true,
+          has_service: !!service,
+          has_vehicle: !!vehicleText,
+        },
+      });
       return;
     }
 
@@ -242,6 +252,7 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
         channel: params.channel ?? "line",
         customer_id: customerId,
         source_message_id: params.messageId,
+        missing_info: false,
         confidence: quote.confidence,
         total_incl_tax: totalInclTax,
         has_amount: totalInclTax > 0,

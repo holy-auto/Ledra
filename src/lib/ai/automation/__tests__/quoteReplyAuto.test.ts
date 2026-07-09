@@ -200,6 +200,16 @@ describe("maybeAutoReplyRoughEstimate", () => {
     expect(body).not.toContain("お車の情報");
   });
 
+  it("does not audit-log a missing-info reply that failed to deliver", async () => {
+    mocks.sendCustomerLineText.mockResolvedValue(false);
+    await maybeAutoReplyRoughEstimate({
+      ...baseParams(),
+      vehicleText: "",
+      text: "コーティングの見積りが欲しいです",
+    });
+    expect(mocks.logAutoActionExecuted).not.toHaveBeenCalled();
+  });
+
   it("skips non-quote intents", async () => {
     await maybeAutoReplyRoughEstimate({ ...baseParams(), intent: "cancel" });
     expect(mocks.generateQuoteFromVehicle).not.toHaveBeenCalled();
