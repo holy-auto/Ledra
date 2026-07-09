@@ -32,7 +32,7 @@ export default function AdminTopBar() {
   const openSearch = () => window.dispatchEvent(new Event("open-command-palette"));
 
   return (
-    <div className="sticky top-0 z-20 flex h-11 flex-shrink-0 items-center gap-3 border-b border-border-default bg-base pr-3 pl-16 sm:pr-4 lg:pl-6">
+    <div className="sticky top-0 z-[45] flex h-11 flex-shrink-0 items-center gap-3 border-b border-border-default bg-base pr-3 pl-16 sm:pr-4 lg:pl-6">
       {/* パンくず（モバイルではハンバーガーと干渉するため非表示） */}
       <nav aria-label="パンくず" className="hidden min-w-0 items-center gap-1.5 text-[13px] lg:flex">
         <Link href="/admin" className="truncate text-secondary transition-colors hover:text-primary">
