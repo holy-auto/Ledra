@@ -144,10 +144,13 @@ export async function POST(req: NextRequest) {
     // client instead of a generic "invalid format or size" message.
     let lastFailure: { code: "validation_error" | "db_error" | "internal_error"; message: string } | null = null;
 
-    // 写真 TSA のリクエスト全体予算: 1 枚 5s 上限でも、TSA 不達時に 20 枚を順次待つと
-    // maxDuration(60s) を超えて 504 になる。1 枚でもタイムアウト/失敗したら以降の写真は
-    // TSA を諦めて封印なしで続行する（TSA 障害は通常バッチ全体で共通のため）。
+    // 写真 TSA のリクエスト全体予算。1 枚 5s 上限でも、遅い TSA を 20 枚順次待つと
+    // maxDuration(60s) を超えて 504 になる（失敗時だけでなく「遅いが成功」でも同じ）。
+    // 失敗時は即諦め、成功していても累計待機がこの予算を超えたら以降は TSA を打ち切って
+    // 封印なしで続行する（fail-open）。
     const tsaEnabled = isPhotoTsaEnabled();
+    const TSA_BATCH_BUDGET_MS = 15_000;
+    let tsaSpentMs = 0;
     let tsaGaveUp = false;
 
     for (let i = 0; i < toUpload.length; i++) {
@@ -201,12 +204,16 @@ export async function POST(req: NextRequest) {
       }
 
       // Capture-time seal: RFC3161 TSA over the stored hash (no-op/null unless
-      // PHOTO_TSA_* configured; never blocks the upload). Bounded per request:
-      // once a lookup fails under enabled TSA, skip the rest of the batch.
+      // PHOTO_TSA_* configured; never blocks the upload). Bounded per request by
+      // an aggregate time budget: give up for the rest of the batch once a lookup
+      // fails OR the cumulative TSA wait crosses the budget (covers a slow-but-
+      // successful TSA that would otherwise be awaited once per photo).
       let tsa: Awaited<ReturnType<typeof requestPhotoTimestamp>> = null;
       if (tsaEnabled && !tsaGaveUp) {
+        const startedAt = Date.now();
         tsa = await requestPhotoTimestamp(sha256);
-        if (!tsa) tsaGaveUp = true;
+        tsaSpentMs += Date.now() - startedAt;
+        if (!tsa || tsaSpentMs >= TSA_BATCH_BUDGET_MS) tsaGaveUp = true;
       }
 
       // ── Phase 3a+3b: verification providers (sign before upload) ──
