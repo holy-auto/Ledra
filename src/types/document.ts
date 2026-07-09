@@ -86,6 +86,8 @@ export type DocumentItemType = "item" | "heading" | "subtotal";
 
 export type DocumentItem = {
   item_type?: DocumentItemType;
+  /** 品番。品目マスタ(menu_items)の item_code と紐付け、帳票作成時の検索に使う。 */
+  item_code?: string | null;
   description: string;
   quantity: number;
   unit?: string;

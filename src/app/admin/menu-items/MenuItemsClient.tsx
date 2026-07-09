@@ -20,6 +20,7 @@ import MenuItemPackagesPanel from "./MenuItemPackagesPanel";
 type MenuItem = {
   id: string;
   name: string;
+  item_code: string | null;
   description: string | null;
   unit_price: number | null;
   cost_price: number | null;
@@ -60,6 +61,7 @@ export default function MenuItemsClient() {
   // Create form
   const [showForm, setShowForm] = useState(false);
   const [formName, setFormName] = useState("");
+  const [formItemCode, setFormItemCode] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [formUnitPrice, setFormUnitPrice] = useState("");
   const [formCostPrice, setFormCostPrice] = useState("");
@@ -76,6 +78,7 @@ export default function MenuItemsClient() {
   // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [editItemCode, setEditItemCode] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editUnitPrice, setEditUnitPrice] = useState("");
   const [editCostPrice, setEditCostPrice] = useState("");
@@ -136,6 +139,7 @@ export default function MenuItemsClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           name: formName.trim(),
+          item_code: formItemCode.trim() || null,
           description: formDescription.trim() || null,
           unit_price: formUnitPrice ? parseInt(formUnitPrice, 10) : 0,
           cost_price: formCostPrice ? parseInt(formCostPrice, 10) : 0,
@@ -152,6 +156,7 @@ export default function MenuItemsClient() {
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setShowForm(false);
       setFormName("");
+      setFormItemCode("");
       setFormDescription("");
       setFormUnitPrice("");
       setFormCostPrice("");
@@ -225,6 +230,7 @@ export default function MenuItemsClient() {
   const startEdit = (item: MenuItem) => {
     setEditingId(item.id);
     setEditName(item.name);
+    setEditItemCode(item.item_code ?? "");
     setEditDescription(item.description ?? "");
     setEditUnitPrice(item.unit_price != null ? String(item.unit_price) : "");
     setEditCostPrice(item.cost_price != null ? String(item.cost_price) : "");
@@ -251,6 +257,7 @@ export default function MenuItemsClient() {
         body: {
           id: editingId,
           name: editName.trim(),
+          item_code: editItemCode.trim() || null,
           description: editDescription.trim() || null,
           unit_price: editUnitPrice ? parseInt(editUnitPrice, 10) : 0,
           cost_price: editCostPrice ? parseInt(editCostPrice, 10) : 0,
@@ -602,6 +609,16 @@ export default function MenuItemsClient() {
                   />
                 </div>
                 <div className="space-y-1">
+                  <label className="text-xs text-muted">品番</label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    placeholder="例: GC-001（任意・帳票作成時の検索に使用）"
+                    value={formItemCode}
+                    onChange={(e) => setFormItemCode(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
                   <label className="text-xs text-muted">説明</label>
                   <input
                     type="text"
@@ -864,6 +881,9 @@ export default function MenuItemsClient() {
                       })()}
                     </th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">品目名</th>
+                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                      品番
+                    </th>
                     <th className="hidden lg:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
                       カテゴリ
                     </th>
@@ -913,6 +933,15 @@ export default function MenuItemsClient() {
                                 className="input-field py-1 text-sm"
                                 value={editName}
                                 onChange={(e) => setEditName(e.target.value)}
+                              />
+                            </td>
+                            <td className="hidden sm:table-cell px-5 py-3">
+                              <input
+                                type="text"
+                                className="input-field py-1 text-sm"
+                                placeholder="品番"
+                                value={editItemCode}
+                                onChange={(e) => setEditItemCode(e.target.value)}
                               />
                             </td>
                             <td className="hidden lg:table-cell px-5 py-3">
@@ -1042,6 +1071,9 @@ export default function MenuItemsClient() {
                           /* Display Row */
                           <>
                             <td className="px-5 py-3.5 font-medium text-primary">{item.name}</td>
+                            <td className="hidden sm:table-cell px-5 py-3.5 text-secondary font-mono text-xs">
+                              {item.item_code ?? "-"}
+                            </td>
                             <td className="hidden lg:table-cell px-5 py-3.5 text-secondary">
                               {[item.category_large, item.category_medium, item.category_small].some(Boolean) ? (
                                 <span className="whitespace-nowrap">
@@ -1111,7 +1143,7 @@ export default function MenuItemsClient() {
                       </tr>
                       {packagesOpen.has(item.id) && (
                         <tr className="bg-inset">
-                          <td colSpan={11} className="px-5 py-3">
+                          <td colSpan={12} className="px-5 py-3">
                             <div className="text-[10px] font-semibold tracking-[0.18em] text-muted">
                               この品目を使うパッケージ
                             </div>
@@ -1125,7 +1157,7 @@ export default function MenuItemsClient() {
                   ))}
                   {visibleItems.length === 0 && (
                     <tr>
-                      <td colSpan={11} className="px-5 py-8 text-center text-muted">
+                      <td colSpan={12} className="px-5 py-8 text-center text-muted">
                         {allItems.length === 0
                           ? "品目が登録されていません"
                           : "この絞り込み条件に一致する品目はありません"}

@@ -10,9 +10,11 @@ import Badge from "@/components/ui/Badge";
 import EmptyStateGuide from "@/components/ui/EmptyStateGuide";
 import { formatDate, formatJpy } from "@/lib/format";
 import { fetcher } from "@/lib/swr";
+import ItemCodeField from "@/components/documents/ItemCodeField";
 
 type InvoiceItem = {
   description: string;
+  item_code?: string | null;
   quantity: number;
   unit: string;
   unit_price: number;
@@ -58,6 +60,7 @@ type VehicleOption = {
 type MenuItem = {
   id: string;
   name: string;
+  item_code: string | null;
   description: string | null;
   unit_price: number;
   tax_category: number;
@@ -246,6 +249,7 @@ export default function InvoicesClient() {
           j.items.map((m: any) => ({
             id: m.id,
             name: m.name,
+            item_code: m.item_code ?? null,
             description: m.description,
             unit_price: m.unit_price,
             tax_category: m.tax_category,
@@ -404,10 +408,11 @@ export default function InvoicesClient() {
       const newItems = [...prev];
       const item = { ...newItems[index] };
       if (field === "description") item.description = value as string;
-      if (field === "quantity") item.quantity = parseInt(String(value), 10) || 0;
+      if (field === "item_code") item.item_code = (value as string) || null;
+      if (field === "quantity") item.quantity = parseFloat(String(value)) || 0;
       if (field === "unit") item.unit = value as string;
       if (field === "unit_price") item.unit_price = parseInt(String(value), 10) || 0;
-      item.amount = item.quantity * item.unit_price;
+      item.amount = Math.round(item.quantity * item.unit_price);
       newItems[index] = item;
       return newItems;
     });
@@ -418,9 +423,10 @@ export default function InvoicesClient() {
     if (!mi) return;
     const newItems = [...formItems];
     const item = { ...newItems[itemIndex] };
+    item.item_code = mi.item_code ?? null;
     item.description = mi.name + (mi.description ? ` (${mi.description})` : "");
     item.unit_price = mi.unit_price;
-    item.amount = item.quantity * item.unit_price;
+    item.amount = Math.round(item.quantity * item.unit_price);
     newItems[itemIndex] = item;
     setFormItems(newItems);
   };
@@ -439,7 +445,7 @@ export default function InvoicesClient() {
         if (cert.service_price != null && cert.service_price > 0) {
           item.description = item.description || `施工証明書 ${cert.public_id}`;
           item.unit_price = cert.service_price;
-          item.amount = item.quantity * cert.service_price;
+          item.amount = Math.round(item.quantity * cert.service_price);
         }
       }
     }
@@ -786,6 +792,16 @@ export default function InvoicesClient() {
                 {formItems.map((item, idx) => (
                   <div key={idx} className="space-y-1">
                     {menuItems.length > 0 && (
+                      <div className="max-w-xs mb-1">
+                        <ItemCodeField
+                          value={item.item_code ?? ""}
+                          menuItems={menuItems}
+                          onChange={(code) => updateItem(idx, "item_code", code)}
+                          onSelect={(mi) => handleMenuItemSelect(mi.id, idx)}
+                        />
+                      </div>
+                    )}
+                    {menuItems.length > 0 && (
                       <select
                         className="select-field py-1 text-xs mb-1"
                         value=""
@@ -855,7 +871,8 @@ export default function InvoicesClient() {
                         <input
                           type="number"
                           className="input-field"
-                          min="1"
+                          min="0"
+                          step="0.1"
                           value={item.quantity}
                           onChange={(e) => updateItem(idx, "quantity", e.target.value)}
                         />
