@@ -4,7 +4,6 @@ import { decideAutoSend, type AutoSendContext } from "../autoSend";
 function ctx(p: Partial<AutoSendContext>): AutoSendContext {
   return {
     optInEnabled: true,
-    partnerTrusted: true,
     partnerHasApi: true,
     orderTotalJpy: 10000,
     maxOrderJpy: 50000,
@@ -23,16 +22,17 @@ describe("decideAutoSend (壁3 隣接の全ガード)", () => {
     expect(decideAutoSend(ctx({ optInEnabled: false }))).toEqual({ ok: false, reason: "opt_out" });
   });
 
-  it("denies untrusted partner", () => {
-    expect(decideAutoSend(ctx({ partnerTrusted: false }))).toEqual({ ok: false, reason: "partner_not_trusted" });
-  });
-
   it("denies partner without structured transport (メールのみは自動送信しない)", () => {
     expect(decideAutoSend(ctx({ partnerHasApi: false }))).toEqual({ ok: false, reason: "no_api_transport" });
   });
 
-  it("allows trusted portal partner without API (ポータルは構造化搬送)", () => {
+  it("allows portal partner without API (ポータルは構造化搬送)", () => {
     expect(decideAutoSend(ctx({ partnerHasApi: false, partnerHasPortal: true }))).toEqual({ ok: true });
+  });
+
+  it("allows regardless of 運営 trust — 金額上限で制御する方針 (is_trusted はゲートしない)", () => {
+    // partnerTrusted ゲートは撤廃。opt-in + 搬送 + 金額上限が揃えば承認は不要。
+    expect(decideAutoSend(ctx({ maxOrderJpy: 50000, monthlyCapJpy: 200000 }))).toEqual({ ok: true });
   });
 
   it("denies when neither API nor portal is available", () => {

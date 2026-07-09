@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 /**
  * 供給パートナー発注の全自動送信 (opt-in) 設定カード。壁3 隣接のため既定 OFF。
- * 有効化 + 1発注上限 + 月次上限 がすべて揃って初めて、信頼パートナー & API連携先に
+ * 有効化 + 1発注上限 + 月次上限 がすべて揃って初めて、API・ポータル連携済みの提携先に
  * 限り自動送信される (それ以外は従来どおり draft → 人が承認・送信)。
  */
 export default function AutoSendSettings() {
@@ -78,7 +78,7 @@ export default function AutoSendSettings() {
         <div>
           <div className="text-sm font-semibold text-primary">発注の全自動送信（任意・上級）</div>
           <div className="text-xs text-muted">
-            信頼できる連携パートナー（API・ポータル）に限り、上限額の範囲内で発注ドラフトを自動送信します。既定はOFF。
+            API・ポータル連携済みの提携先に限り、上限額の範囲内で発注ドラフトを自動送信します。既定はOFF。
           </div>
         </div>
         <span className="text-muted text-sm">{open ? "閉じる ▲" : "設定 ▼"}</span>
@@ -116,7 +116,7 @@ export default function AutoSendSettings() {
 
           <p className="text-xs text-muted leading-relaxed">
             ※
-            上限を超える発注・信頼パートナー以外・API/ポータル未連携・メール発注先は、自動送信されず通常どおり下書きのまま残ります（人の承認が必要）。
+            上限を超える発注・API/ポータル未連携・メール発注先は、自動送信されず通常どおり下書きのまま残ります（人の承認が必要）。
           </p>
 
           {capsMissing && (

@@ -40,11 +40,10 @@ interface AutoSendState {
   monthlyCapJpy: number | null;
   monthlySentJpy: number;
   shopName: string;
-  /** partnerId -> 信頼/搬送 (API・ポータル)/連絡先 */
+  /** partnerId -> 搬送 (API・ポータル)/連絡先 */
   partners: Map<
     string,
     {
-      trusted: boolean;
       endpoint: string | null;
       authType: SupplyAuthType;
       apiConfig: Record<string, unknown> | null;
@@ -274,7 +273,7 @@ type Admin = ReturnType<typeof createServiceRoleAdmin>;
 
 /**
  * 全自動送信の事前読み込み。設定が OFF / 上限未設定なら null (= 自動送信しない)。
- * 有効時のみ、対象パートナーの API 設定・鍵・信頼フラグと当月の自動送信累計を集める。
+ * 有効時のみ、対象パートナーの API 設定・鍵と当月の自動送信累計を集める。
  */
 async function loadAutoSendState(admin: Admin, tenantId: string, partnerIds: string[]): Promise<AutoSendState | null> {
   const { data: settings } = await admin
@@ -304,10 +303,10 @@ async function loadAutoSendState(admin: Admin, tenantId: string, partnerIds: str
   const { data: tenant } = await admin.from("tenants").select("name").eq("id", tenantId).maybeSingle();
   const shopName = (tenant?.name as string | null) ?? "当店";
 
-  // 対象パートナーの API 設定 + 信頼フラグ + 鍵。
+  // 対象パートナーの API 設定 + 鍵。
   const { data: partnerRows } = await admin
     .from("supply_partners")
-    .select("id, is_trusted, api_endpoint, api_auth_type, portal_enabled, name, contact_email, line_user_id")
+    .select("id, api_endpoint, api_auth_type, portal_enabled, name, contact_email, line_user_id")
     .in("id", partnerIds);
   const { data: credRows } = await admin
     .from("supply_partner_credentials")
@@ -321,7 +320,6 @@ async function loadAutoSendState(admin: Admin, tenantId: string, partnerIds: str
   for (const p of partnerRows ?? []) {
     const apiKey = await readSecret(credBy.get(p.id as string) ?? null, "supply_partner_credentials.api_key");
     partners.set(p.id as string, {
-      trusted: p.is_trusted === true,
       endpoint: (p.api_endpoint as string | null) ?? null,
       authType: ((p.api_auth_type as string | null) ?? "none") as SupplyAuthType,
       apiConfig: null,
@@ -355,7 +353,6 @@ async function attemptAutoSend(
 
   const decision = decideAutoSend({
     optInEnabled: state.enabled,
-    partnerTrusted: Boolean(p?.trusted),
     partnerHasApi: hasApi,
     partnerHasPortal: hasPortal,
     orderTotalJpy: subtotal,

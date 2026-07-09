@@ -99,7 +99,7 @@ export default function SupplyPartnersClient() {
                 <th className="px-3 py-2 font-medium">パートナー</th>
                 <th className="px-3 py-2 font-medium">ステータス</th>
                 <th className="px-3 py-2 font-medium">API連携</th>
-                <th className="px-3 py-2 font-medium">信頼 (auto-send)</th>
+                <th className="px-3 py-2 font-medium">信頼 (任意)</th>
                 <th className="px-3 py-2 font-medium text-right">操作</th>
               </tr>
             </thead>
@@ -157,8 +157,9 @@ export default function SupplyPartnersClient() {
       )}
 
       <p className="text-xs text-secondary">
-        ※ is_trusted は auto-send(AI 自動発注送信)の必須ゲートです。信頼を付与しても、店舗側が opt-in
-        し上限を設定し、かつパートナーが API 連携済みでなければ自動送信は行われません(壁3)。
+        ※ is_trusted は運営の任意の信頼バッジで、auto-send(AI 自動発注送信)のゲートには使いません。auto-send は「店舗が
+        opt-in し 1発注上限・月次上限を設定」かつ「パートナーが
+        API・ポータル連携済み」なら、上限額の範囲内で行われます(金額上限が安全の核 / 壁3)。
       </p>
     </div>
   );

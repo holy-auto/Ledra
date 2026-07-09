@@ -2,7 +2,8 @@
  * 運営専用: 供給パートナー(卸元/メーカー)の審査・信頼管理。
  *
  * - GET:  全供給パートナーを運営ビューで一覧 (内部列含む。鍵そのものは読まない)。
- * - POST: auto-send の信頼ゲート is_trusted を付与/解除する。
+ * - POST: 任意の信頼バッジ is_trusted を付与/解除する (auto-send のゲートには使わない。
+ *         auto-send は店舗の opt-in + 金額上限 + API/ポータル連携で制御される)。
  *
  * セキュリティ:
  *   - isPlatformAdmin ゲート (super_admin もしくは運営テナントの owner/admin)。
@@ -91,7 +92,7 @@ export async function POST(req: NextRequest) {
     const { supply_partner_id, is_trusted } = parsed.data;
 
     const admin = createPlatformScopedAdmin(
-      "admin/platform/supply-partners: 運営による is_trusted (auto-send 信頼ゲート) の付与/解除",
+      "admin/platform/supply-partners: 運営による is_trusted (任意の信頼バッジ) の付与/解除",
     );
 
     const { data: partner, error: pErr } = await admin

@@ -201,13 +201,14 @@ describe("maybeAutoDraftPartnerReordersForTenant — auto-send E2E (壁3 隣接)
     expect(body.items[0]).toMatchObject({ sku: "SKU-A", quantity: 20, unit_cost: 3200 });
   });
 
-  it("パートナー未信頼 (is_trusted=false) は送信せず draft のまま (人の承認待ち)", async () => {
+  it("運営の信頼承認は不要 (is_trusted=false でも金額上限内なら自動送信する)", async () => {
+    // is_trusted ゲートは撤廃。金額上限の範囲内なら承認なしで送信する。
     state.store.supply_partners[0].is_trusted = false;
     const res = await maybeAutoDraftPartnerReordersForTenant("t1");
     expect(res.created).toBe(1);
-    expect(res.autoSent).toBe(0);
-    expect(state.store.purchase_orders[0].status).toBe("draft");
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(res.autoSent).toBe(1);
+    expect(state.store.purchase_orders[0].status).toBe("sent");
+    expect(fetchMock).toHaveBeenCalled();
   });
 
   it("auto-send 未 opt-in (enabled=false) は送信せず draft のまま", async () => {
