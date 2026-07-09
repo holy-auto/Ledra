@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { requireMinRole } from "@/lib/auth/checkRole";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { issueCaptureNonce } from "@/lib/certificates/captureNonce";
 import { apiOk, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api/response";
 
@@ -24,6 +25,11 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    // nonce 発行は cert あたりの単回撮影セッション想定。ペアのアップロード経路と同じく
+    // レート制限を掛け、認証済みでも nonce 行の無制限な量産（DoS/テーブル肥大）を防ぐ。
+    const limited = await checkRateLimit(request, "general");
+    if (limited) return limited;
+
     const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();
     // 写真撮影セッションの開始 = アップロードと同じ現場スタッフ以上のゲート。
