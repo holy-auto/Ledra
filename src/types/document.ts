@@ -17,7 +17,7 @@ export const DOC_TYPE_LIST = Object.entries(DOC_TYPES).map(([value, meta]) => ({
   ...meta,
 }));
 
-export type DocumentStatus = "draft" | "sent" | "accepted" | "paid" | "rejected" | "cancelled";
+export type DocumentStatus = "draft" | "sent" | "accepted" | "paid" | "overdue" | "rejected" | "cancelled";
 
 export const STATUS_OPTIONS: { value: DocumentStatus | "all"; label: string }[] = [
   { value: "all", label: "すべて" },
@@ -25,6 +25,7 @@ export const STATUS_OPTIONS: { value: DocumentStatus | "all"; label: string }[] 
   { value: "sent", label: "送付済" },
   { value: "accepted", label: "受理済" },
   { value: "paid", label: "入金済" },
+  { value: "overdue", label: "期限超過" },
   { value: "rejected", label: "却下" },
   { value: "cancelled", label: "キャンセル" },
 ];
@@ -44,6 +45,8 @@ export function statusVariant(s: string) {
       return "info" as const;
     case "paid":
       return "success" as const;
+    case "overdue":
+      return "danger" as const;
     case "rejected":
       return "danger" as const;
     case "cancelled":
@@ -53,14 +56,45 @@ export function statusVariant(s: string) {
   }
 }
 
-/** ステータス遷移マップ */
+/** ステータス遷移マップ（見積書・納品書等、一般帳票用） */
 export const STATUS_TRANSITIONS: Record<string, string[]> = {
   draft: ["sent"],
-  sent: ["accepted", "paid", "rejected", "cancelled"],
+  sent: ["accepted", "paid", "overdue", "rejected", "cancelled"],
   accepted: ["paid", "cancelled"],
+  overdue: ["paid", "cancelled"],
   rejected: [],
   paid: [],
   cancelled: [],
+};
+
+/**
+ * 請求書・合算請求書専用のステータス遷移マップ。
+ * 見積書由来の「受理/却下」は請求書には存在しない概念のため対象外にする
+ * （却下に遷移すると次の遷移先が無くなり、入金確定に戻せなくなるため）。
+ */
+const INVOICE_STATUS_TRANSITIONS: Record<string, string[]> = {
+  draft: ["sent"],
+  sent: ["paid", "overdue", "cancelled"],
+  overdue: ["paid", "cancelled"],
+  paid: [],
+  cancelled: [],
+};
+
+/** doc_type に応じた次のステータス遷移候補を返す。 */
+export function nextStatusesFor(docType: string, status: string): string[] {
+  const map =
+    docType === "invoice" || docType === "consolidated_invoice" ? INVOICE_STATUS_TRANSITIONS : STATUS_TRANSITIONS;
+  return map[status] ?? [];
+}
+
+/**
+ * 帳票変換の許容マップ。キーの doc_type から、値の doc_type へ「変換」できる
+ * (元帳票の宛先・明細・税設定等を引き継いで新規帳票を作成する)。
+ * 新しい変換パターンを追加する場合はここに1行足すだけでよい。
+ */
+export const CONVERSION_TARGETS: Partial<Record<DocType, DocType[]>> = {
+  estimate: ["delivery", "invoice"],
+  delivery: ["invoice"],
 };
 
 /**
@@ -135,6 +169,8 @@ export type DocumentRow = {
   tax: number;
   total: number;
   tax_rate: number;
+  /** 税率ごとの内訳（適格請求書の複数税率区分表示用）。null は未計算・非対応の旧データ。 */
+  tax_breakdown?: { rate: number; subtotal: number; tax: number }[] | null;
   items_json: DocumentItem[];
   note: string | null;
   meta_json: Record<string, unknown>;

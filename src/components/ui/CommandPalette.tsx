@@ -23,7 +23,7 @@ const COMMANDS = [
   { label: "店舗設定", href: "/admin/settings", section: "設定" },
   { label: "メンバー管理", href: "/admin/members", section: "設定" },
   { label: "ブランド証明書", href: "/admin/template-options", section: "設定" },
-  { label: "ロゴ設定", href: "/admin/logo", section: "設定" },
+  { label: "ロゴ・角印設定", href: "/admin/settings", section: "設定" },
   { label: "請求・プラン", href: "/admin/billing", section: "設定" },
 ];
 

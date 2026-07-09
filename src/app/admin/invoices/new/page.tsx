@@ -9,7 +9,7 @@ import { redirect } from "next/navigation";
  * `create=1` を付けてリダイレクトする。
  *
  * クエリで渡された `customer_id` / `vehicle_id` / `reservation_id` は
- * そのまま引き継ぎ、InvoicesClient 側で自動入力する。
+ * そのまま引き継ぎ、DocumentsClient → DocumentForm 側で自動入力する。
  */
 export const dynamic = "force-dynamic";
 

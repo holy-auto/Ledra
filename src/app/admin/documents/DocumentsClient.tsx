@@ -27,6 +27,8 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   const router = useRouter();
   const searchParams = useSearchParams();
   const prefillCustomerId = searchParams.get("customer_id") ?? "";
+  const prefillVehicleId = searchParams.get("vehicle_id") ?? "";
+  const prefillReservationId = searchParams.get("reservation_id") ?? "";
   const autoOpenForm = searchParams.get("create") === "1";
 
   const [typeFilter, setTypeFilter] = useState<string>(initialTypeFilter ?? "all");
@@ -62,6 +64,11 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
 
   // Delete
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // 入金記録（請求書のみ）
+  const [paymentTarget, setPaymentTarget] = useState<string | null>(null);
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [recordingPayment, setRecordingPayment] = useState(false);
 
   const handleFilterChange = (newType: string, newStatus: string) => {
     setTypeFilter(newType);
@@ -133,6 +140,60 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
             </div>
           </section>
 
+          {/* Aging Analysis（請求書のみ） */}
+          {activeTypeFilter === "invoice" &&
+            (() => {
+              const unpaid = docs.filter((d) => d.status === "sent" || d.status === "overdue");
+              if (unpaid.length === 0) return null;
+              const now = new Date();
+              const aging = { current: 0, d30: 0, d60: 0, d90: 0, currentAmt: 0, d30Amt: 0, d60Amt: 0, d90Amt: 0 };
+              for (const doc of unpaid) {
+                if (!doc.due_date) {
+                  aging.current++;
+                  aging.currentAmt += doc.total;
+                  continue;
+                }
+                const days = Math.floor((now.getTime() - new Date(doc.due_date).getTime()) / 86400000);
+                if (days <= 0) {
+                  aging.current++;
+                  aging.currentAmt += doc.total;
+                } else if (days <= 30) {
+                  aging.d30++;
+                  aging.d30Amt += doc.total;
+                } else if (days <= 60) {
+                  aging.d60++;
+                  aging.d60Amt += doc.total;
+                } else {
+                  aging.d90++;
+                  aging.d90Amt += doc.total;
+                }
+              }
+              return (
+                <section className="grid gap-4 grid-cols-2 sm:grid-cols-4">
+                  <div className="glass-card p-4">
+                    <div className="text-[10px] font-semibold tracking-[0.18em] text-muted">期限内</div>
+                    <div className="mt-1 text-lg font-bold text-primary">{formatJpy(aging.currentAmt)}</div>
+                    <div className="mt-0.5 text-[11px] text-muted">{aging.current}件</div>
+                  </div>
+                  <div className="glass-card p-4">
+                    <div className="text-[10px] font-semibold tracking-[0.18em] text-warning-text">30日超</div>
+                    <div className="mt-1 text-lg font-bold text-warning-text">{formatJpy(aging.d30Amt)}</div>
+                    <div className="mt-0.5 text-[11px] text-muted">{aging.d30}件</div>
+                  </div>
+                  <div className="glass-card p-4">
+                    <div className="text-[10px] font-semibold tracking-[0.18em] text-danger-text">60日超</div>
+                    <div className="mt-1 text-lg font-bold text-danger-text">{formatJpy(aging.d60Amt)}</div>
+                    <div className="mt-0.5 text-[11px] text-muted">{aging.d60}件</div>
+                  </div>
+                  <div className="glass-card p-4">
+                    <div className="text-[10px] font-semibold tracking-[0.18em] text-danger-text">90日超</div>
+                    <div className="mt-1 text-lg font-bold text-danger-text">{formatJpy(aging.d90Amt)}</div>
+                    <div className="mt-0.5 text-[11px] text-muted">{aging.d90}件</div>
+                  </div>
+                </section>
+              );
+            })()}
+
           {/* Filters */}
           <section className="glass-card p-5">
             <div className="flex gap-4 items-end flex-wrap">
@@ -176,6 +237,8 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
               mode="create"
               defaultDocType={defaultDocType}
               prefillCustomerId={prefillCustomerId}
+              prefillVehicleId={prefillVehicleId}
+              prefillReservationId={prefillReservationId}
               onSaved={(created) => {
                 // 作成後はそのまま書類詳細へ遷移し、確認・編集・PDF出力へ繋げる。
                 // （どの書類作成画面から来ても、作成→詳細の導線を揃える）
@@ -242,6 +305,18 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                           <Link href={`/admin/documents/${doc.id}`} className="btn-ghost px-3 py-1 text-xs">
                             詳細
                           </Link>
+                          {doc.doc_type === "invoice" && (doc.status === "sent" || doc.status === "overdue") && (
+                            <button
+                              type="button"
+                              className="btn-primary px-3 py-1 text-xs"
+                              onClick={() => {
+                                setPaymentTarget(doc.id);
+                                setPaymentDate(new Date().toISOString().slice(0, 10));
+                              }}
+                            >
+                              入金
+                            </button>
+                          )}
                           {doc.status === "draft" && (
                             <button
                               type="button"
@@ -268,6 +343,62 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
             </div>
           </section>
         </>
+      )}
+
+      {/* Payment Dialog（請求書のみ） */}
+      {paymentTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
+          onClick={() => setPaymentTarget(null)}
+        >
+          <div
+            className="mx-4 w-full max-w-sm rounded-2xl bg-surface p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-primary mb-3">入金を記録</h3>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs text-muted">入金日</label>
+                <input
+                  type="date"
+                  value={paymentDate}
+                  onChange={(e) => setPaymentDate(e.target.value)}
+                  className="input-field"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <button type="button" onClick={() => setPaymentTarget(null)} className="btn-secondary px-4 py-2 text-sm">
+                戻る
+              </button>
+              <button
+                type="button"
+                className="btn-primary px-4 py-2 text-sm"
+                disabled={recordingPayment}
+                onClick={async () => {
+                  if (recordingPayment) return;
+                  setRecordingPayment(true);
+                  try {
+                    const res = await fetch("/api/admin/documents", {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ id: paymentTarget, status: "paid", payment_date: paymentDate }),
+                    });
+                    if (!res.ok) throw new Error("Failed");
+                    setPaymentTarget(null);
+                    mutate();
+                  } catch (e: any) {
+                    alert("入金記録に失敗しました: " + (e?.message ?? String(e)));
+                  } finally {
+                    setRecordingPayment(false);
+                  }
+                }}
+              >
+                {recordingPayment ? "処理中…" : "入金確定"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

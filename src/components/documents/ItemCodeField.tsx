@@ -11,7 +11,7 @@ export type MenuItemOption = {
 
 /**
  * 品番(item_code)で品目マスタを検索し、選択した品目を明細行に反映するための入力欄。
- * 帳票作成フォーム(DocumentForm / InvoicesClient)で共用する。
+ * 帳票作成フォーム(DocumentForm)で使用する。
  */
 export default function ItemCodeField({
   value,

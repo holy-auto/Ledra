@@ -10,7 +10,7 @@ const docTypes = [
   "invoice",
   "consolidated_invoice",
 ] as const;
-const docStatuses = ["draft", "sent", "accepted", "paid", "rejected", "cancelled"] as const;
+const docStatuses = ["draft", "sent", "accepted", "paid", "overdue", "rejected", "cancelled"] as const;
 const honorifics = ["御中", "様", ""] as const;
 
 /**
@@ -105,6 +105,14 @@ export const documentCreateSchema = z.object({
   status: z.enum(docStatuses).default("draft"),
   issued_at: z.string().nullable().optional(),
   due_date: z.string().nullable().optional(),
+  payment_date: z.string().nullable().optional(),
+  vehicle_id: z
+    .string()
+    .uuid()
+    .nullable()
+    .optional()
+    .or(z.literal("").transform(() => null)),
+  vehicle_info: z.any().nullable().optional(),
   note: z
     .string()
     .trim()

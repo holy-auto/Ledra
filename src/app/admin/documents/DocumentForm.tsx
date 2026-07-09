@@ -33,6 +33,27 @@ type MenuItem = {
 const BILLING_CYCLE_LABEL: Record<string, string> = { per_job: "都度払い", consolidated: "合算（締め払い）" };
 type TemplateOption = { id: string; name: string; doc_type: string | null };
 
+type VehicleOption = {
+  id: string;
+  maker: string | null;
+  model: string | null;
+  year: number | null;
+  plate_display: string | null;
+  vin_code: string | null;
+  customer_id: string | null;
+  customer_name: string | null;
+  size_class: string | null;
+};
+
+type CertificateOption = {
+  id: string;
+  public_id: string;
+  customer_name: string;
+  service_price: number | null;
+  status: string;
+  created_at: string;
+};
+
 const emptyItem = (): DocumentItem => ({
   item_type: "item",
   description: "",
@@ -69,6 +90,10 @@ export type DocumentFormProps = {
   defaultDocType?: DocType;
   /** create モード時の顧客 ID プリフィル */
   prefillCustomerId?: string;
+  /** create モード時の車両 ID プリフィル */
+  prefillVehicleId?: string;
+  /** create モード時、案件(予約)からの AI 起票トリガー */
+  prefillReservationId?: string;
   /** 保存成功時 */
   onSaved: (document: DocumentRow) => void;
   /** キャンセル時 */
@@ -80,6 +105,8 @@ export default function DocumentForm({
   initial,
   defaultDocType,
   prefillCustomerId,
+  prefillVehicleId,
+  prefillReservationId,
   onSaved,
   onCancel,
 }: DocumentFormProps) {
@@ -117,9 +144,20 @@ export default function DocumentForm({
   const [formShowLogo, setFormShowLogo] = useState(initial?.show_logo ?? true);
   const [formShowBankInfo, setFormShowBankInfo] = useState(initial?.show_bank_info ?? false);
 
+  // 車両情報（請求書のみ）
+  const initialVehicleInfo = (initial?.vehicle_info_json as Record<string, unknown> | undefined) ?? {};
+  const [formVehicleId, setFormVehicleId] = useState(initial?.vehicle_id ?? "");
+  const [formVehicleModel, setFormVehicleModel] = useState((initialVehicleInfo.model as string) ?? "");
+  const [formVehiclePlate, setFormVehiclePlate] = useState((initialVehicleInfo.plate as string) ?? "");
+  const [formVehicleVin, setFormVehicleVin] = useState((initialVehicleInfo.vin as string) ?? "");
+
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
+  const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
+  const [certificates, setCertificates] = useState<CertificateOption[]>([]);
+  const [aiPrefillBusy, setAiPrefillBusy] = useState(false);
+  const [aiPrefillNote, setAiPrefillNote] = useState<string | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -182,9 +220,53 @@ export default function DocumentForm({
     } catch {}
   }, []);
 
+  const fetchVehicles = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/vehicles", { cache: "no-store" });
+      const j = await parseJsonSafe(res);
+      if (res.ok && j?.vehicles) {
+        setVehicles(
+          j.vehicles.map((v: any) => ({
+            id: v.id,
+            maker: v.maker,
+            model: v.model,
+            year: v.year,
+            plate_display: v.plate_display,
+            vin_code: v.vin_code,
+            customer_id: v.customer_id ?? v.customer?.id ?? null,
+            customer_name: v.customer?.name ?? null,
+            size_class: v.size_class ?? null,
+          })),
+        );
+      }
+    } catch {}
+  }, []);
+
+  const fetchCertificatesForCustomer = useCallback(async (customerId: string) => {
+    if (!customerId) {
+      setCertificates([]);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/admin/invoices?action=certificates&customer_id=${encodeURIComponent(customerId)}`, {
+        cache: "no-store",
+      });
+      const j = await parseJsonSafe(res);
+      setCertificates(res.ok && j?.certificates ? j.certificates : []);
+    } catch {
+      setCertificates([]);
+    }
+  }, []);
+
   useEffect(() => {
-    Promise.all([fetchCustomers(), fetchMenuItems(), fetchTemplates()]);
-  }, [fetchCustomers, fetchMenuItems, fetchTemplates]);
+    Promise.all([fetchCustomers(), fetchMenuItems(), fetchTemplates(), fetchVehicles()]);
+  }, [fetchCustomers, fetchMenuItems, fetchTemplates, fetchVehicles]);
+
+  // 請求書は施工証明書の紐付けに対応するため、顧客が決まったら証明書一覧を取得する
+  useEffect(() => {
+    if (formDocType !== "invoice") return;
+    fetchCertificatesForCustomer(formCustomerId);
+  }, [formDocType, formCustomerId, fetchCertificatesForCustomer]);
 
   // create モードで URL プリフィル
   const prefillAppliedRef = useRef(false);
@@ -196,6 +278,95 @@ export default function DocumentForm({
     setFormCustomerId(prefillCustomerId);
     prefillAppliedRef.current = true;
   }, [customers, prefillCustomerId, isEdit]);
+
+  const handleVehicleSelect = useCallback(
+    (vehicleId: string) => {
+      setFormVehicleId(vehicleId);
+      if (!vehicleId) {
+        setFormVehicleModel("");
+        setFormVehiclePlate("");
+        setFormVehicleVin("");
+        return;
+      }
+      const v = vehicles.find((veh) => veh.id === vehicleId);
+      if (v) {
+        const sizeTag = v.size_class ? ` [${v.size_class}]` : "";
+        const modelStr = [v.maker, v.model, v.year ? String(v.year) : null].filter(Boolean).join(" ") + sizeTag;
+        setFormVehicleModel(modelStr);
+        setFormVehiclePlate(v.plate_display ?? "");
+        setFormVehicleVin(v.vin_code ?? "");
+        // 車両に紐付き顧客がいて、顧客未選択なら自動選択
+        if (v.customer_id && !formCustomerId) {
+          setFormCustomerId(v.customer_id);
+        }
+      }
+    },
+    [vehicles, formCustomerId],
+  );
+
+  // create モードで URL プリフィル（車両）
+  const prefillVehicleAppliedRef = useRef(false);
+  useEffect(() => {
+    if (isEdit) return;
+    if (prefillVehicleAppliedRef.current) return;
+    if (!prefillVehicleId) return;
+    if (vehicles.length === 0) return;
+    handleVehicleSelect(prefillVehicleId);
+    prefillVehicleAppliedRef.current = true;
+  }, [isEdit, prefillVehicleId, vehicles, handleVehicleSelect]);
+
+  // 案件(予約)からの AI 起票: reservation_id がクエリに付いていれば明細・備考を自動起票する
+  const aiPrefillAppliedRef = useRef(false);
+  useEffect(() => {
+    if (isEdit) return;
+    if (aiPrefillAppliedRef.current) return;
+    if (!prefillReservationId) return;
+    aiPrefillAppliedRef.current = true;
+    (async () => {
+      setAiPrefillBusy(true);
+      try {
+        const res = await fetch("/api/admin/invoices/ai-from-job", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reservation_id: prefillReservationId }),
+        });
+        if (res.status === 403 || res.status === 429) {
+          const j = await res.json().catch(() => ({}));
+          setAiPrefillNote(j?.message ?? "AI 起票は利用できません。");
+          return;
+        }
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok || !j?.ok || j.ai_disabled || !j.draft) {
+          setAiPrefillNote("AI 起票に失敗しました。手動で入力してください。");
+          return;
+        }
+        const draft = j.draft as {
+          items?: Array<{ description: string; quantity: number; unit: string; unit_price: number }>;
+          note?: string;
+        };
+        if (draft.items && draft.items.length > 0) {
+          setFormItems(
+            recalcSubtotals(
+              draft.items.map((it) => ({
+                item_type: "item" as const,
+                description: it.description,
+                quantity: it.quantity,
+                unit: it.unit,
+                unit_price: it.unit_price,
+                amount: Math.round(it.quantity * it.unit_price),
+              })),
+            ),
+          );
+        }
+        if (draft.note) setFormNote(draft.note);
+        setAiPrefillNote("✨ AI で明細・備考を起票しました。内容を確認して保存してください。");
+      } catch {
+        setAiPrefillNote("AI 起票で通信エラーが発生しました。");
+      } finally {
+        setAiPrefillBusy(false);
+      }
+    })();
+  }, [isEdit, prefillReservationId]);
 
   // ─── Item management ───
   const updateItem = (index: number, field: keyof DocumentItem, value: string | number | null) => {
@@ -274,6 +445,7 @@ export default function DocumentForm({
     item.item_code = mi.item_code ?? null;
     item.description = mi.name + (mi.description ? ` (${mi.description})` : "");
     item.unit_price = mi.unit_price;
+    item.tax_category = mi.tax_category;
     if (mi.cost_price != null) item.cost_price = mi.cost_price;
     if (mi.margin_rate != null) item.margin_rate = mi.margin_rate;
     item.amount = Math.round(item.quantity * item.unit_price);
@@ -355,6 +527,11 @@ export default function DocumentForm({
         template_id: formTemplateId || null,
         issued_at: formIssuedAt,
         due_date: formDueDate || null,
+        vehicle_id: formVehicleId || null,
+        vehicle_info:
+          formVehicleModel || formVehiclePlate || formVehicleVin
+            ? { model: formVehicleModel, plate: formVehiclePlate, vin: formVehicleVin }
+            : null,
         note: formNote,
         items: formItems,
         tax_rate: formTaxRate,
@@ -402,6 +579,12 @@ export default function DocumentForm({
             if (terms) setFormNote(terms);
           }}
         />
+      )}
+
+      {!isEdit && formDocType === "invoice" && (aiPrefillBusy || aiPrefillNote) && (
+        <div className="rounded-xl border border-accent/30 bg-accent/5 px-3 py-2 text-xs text-accent">
+          {aiPrefillBusy ? "AI で起票中..." : aiPrefillNote}
+        </div>
       )}
 
       <div>
@@ -625,6 +808,67 @@ export default function DocumentForm({
         </div>
       </div>
 
+      {/* 車両情報（請求書のみ） */}
+      {formDocType === "invoice" && (
+        <div className="border-t border-border-subtle pt-4 space-y-2">
+          <div className="text-xs font-semibold text-muted tracking-[0.18em]">車両情報（任意）</div>
+          {vehicles.length > 0 && (
+            <div className="space-y-1">
+              <label className="text-xs text-muted">登録車両から選択</label>
+              <select
+                className="select-field"
+                value={formVehicleId}
+                onChange={(e) => handleVehicleSelect(e.target.value)}
+              >
+                <option value="">車両を選択...</option>
+                {vehicles.map((v) => {
+                  const label = [v.maker, v.model, v.year ? String(v.year) : null].filter(Boolean).join(" ");
+                  return (
+                    <option key={v.id} value={v.id}>
+                      {label || "（名称なし）"}
+                      {v.plate_display ? `（${v.plate_display}）` : ""}
+                      {v.customer_name ? ` — ${v.customer_name}` : ""}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs text-muted">車種</label>
+              <input
+                type="text"
+                className="input-field"
+                placeholder="Toyota Prius"
+                value={formVehicleModel}
+                onChange={(e) => setFormVehicleModel(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted">ナンバー</label>
+              <input
+                type="text"
+                className="input-field"
+                placeholder="水戸 300 あ 12-34"
+                value={formVehiclePlate}
+                onChange={(e) => setFormVehiclePlate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted">車台番号</label>
+              <input
+                type="text"
+                className="input-field font-mono"
+                placeholder="VIN"
+                value={formVehicleVin}
+                onChange={(e) => setFormVehicleVin(e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* テンプレート選択 */}
       <div className="flex flex-wrap items-end gap-4">
         <div className="space-y-1 min-w-[280px]">
@@ -826,6 +1070,45 @@ export default function DocumentForm({
                             </option>
                           ))}
                         </datalist>
+                        {formDocType === "invoice" && certificates.length > 0 && (
+                          <div className="flex items-center gap-2 mt-1">
+                            <label className="text-[10px] text-muted whitespace-nowrap">証明書紐付け:</label>
+                            <select
+                              className="select-field text-xs py-1"
+                              value={item.certificate_id ?? ""}
+                              onChange={(e) => {
+                                const certId = e.target.value;
+                                const newItems = [...formItems];
+                                const it = { ...newItems[idx] };
+                                if (!certId) {
+                                  it.certificate_id = null;
+                                  it.certificate_public_id = null;
+                                } else {
+                                  const cert = certificates.find((c) => c.id === certId);
+                                  if (cert) {
+                                    it.certificate_id = cert.id;
+                                    it.certificate_public_id = cert.public_id;
+                                    if (cert.service_price != null && cert.service_price > 0) {
+                                      it.description = it.description || `施工証明書 ${cert.public_id}`;
+                                      it.unit_price = cert.service_price;
+                                      it.amount = Math.round(it.quantity * cert.service_price);
+                                    }
+                                  }
+                                }
+                                newItems[idx] = it;
+                                setFormItems(recalcSubtotals(newItems));
+                              }}
+                            >
+                              <option value="">紐付けなし</option>
+                              {certificates.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.public_id} — {c.service_price != null ? formatJpy(c.service_price) : "料金未設定"}{" "}
+                                  ({c.status === "active" ? "有効" : c.status})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
                       </div>
                       <input
                         type="number"

@@ -6,9 +6,10 @@ import Badge from "@/components/ui/Badge";
 import ShareDocumentModal from "@/components/documents/ShareDocumentModal";
 import { formatDate, formatDateTime, formatJpy } from "@/lib/format";
 import {
+  CONVERSION_TARGETS,
   DOC_TYPES,
-  STATUS_TRANSITIONS,
   isDocumentEditable,
+  nextStatusesFor,
   statusLabel,
   statusVariant,
   type DocType,
@@ -44,6 +45,8 @@ export default function DocumentDetailClient({
   tenant,
   logoUrl,
   sealUrl,
+  canSendLinePayment = false,
+  customerHasLine = false,
 }: {
   document: DocumentRow;
   customerName: string | null;
@@ -52,26 +55,38 @@ export default function DocumentDetailClient({
   tenant: TenantInfo;
   logoUrl?: string | null;
   sealUrl?: string | null;
+  /** LINE 決済リンク送信の可否（請求書のみ。Stripe Connect オンボーディング済 + LINE 連携済） */
+  canSendLinePayment?: boolean;
+  /** 顧客に LINE ユーザが紐付いているか（ボタンの無効化理由表示に使う） */
+  customerHasLine?: boolean;
 }) {
   const [doc, setDoc] = useState(initial);
   const [updating, setUpdating] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
-  const [converting, setConverting] = useState(false);
+  const [converting, setConverting] = useState<DocType | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [paymentDateInput, setPaymentDateInput] = useState<string | null>(null);
+  const [linePayBusy, setLinePayBusy] = useState(false);
+  const [linePayUrl, setLinePayUrl] = useState<string | null>(null);
 
-  const handleStatusChange = async (newStatus: string) => {
+  const handleStatusChange = async (newStatus: string, paymentDate?: string) => {
     setUpdating(true);
     setMsg(null);
     try {
       const res = await fetch("/api/admin/documents", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: doc.id, status: newStatus }),
+        body: JSON.stringify({
+          id: doc.id,
+          status: newStatus,
+          ...(paymentDate ? { payment_date: paymentDate } : {}),
+        }),
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setDoc(j.document);
+      setPaymentDateInput(null);
       setMsg({ text: `ステータスを「${statusLabel(newStatus)}」に変更しました`, ok: true });
     } catch (e: any) {
       setMsg({ text: e?.message ?? String(e), ok: false });
@@ -80,15 +95,49 @@ export default function DocumentDetailClient({
     }
   };
 
-  const handleConvertToInvoice = async () => {
-    if (!confirm("この書類を元に請求書を作成しますか？")) return;
-    setConverting(true);
+  const handleSendLinePaymentLink = async () => {
+    if (!canSendLinePayment) return;
+    if (
+      !confirm(
+        `LINE で決済リンクを送信します。\n金額: ¥${doc.total.toLocaleString("ja-JP")}\n${customerName ?? doc.recipient_name ?? "お客様"} 様に送ってよろしいですか？`,
+      )
+    ) {
+      return;
+    }
+    setLinePayBusy(true);
+    setMsg(null);
+    setLinePayUrl(null);
+    try {
+      const res = await fetch(`/api/admin/invoices/${doc.id}/send-line-payment-link`, { method: "POST" });
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      const url = j?.checkout_url as string | undefined;
+      if (url) setLinePayUrl(url);
+      if (j?.delivered === false) {
+        setMsg({
+          text: "決済リンクを生成しましたが、LINE 配信に失敗しました。下に表示された URL をコピーして他の手段で送付してください。",
+          ok: false,
+        });
+      } else {
+        setMsg({ text: "LINE に決済リンクを送信しました。顧客の入金をお待ちください。", ok: true });
+      }
+    } catch (e) {
+      setMsg({ text: e instanceof Error ? e.message : String(e), ok: false });
+    } finally {
+      setLinePayBusy(false);
+    }
+  };
+
+  const handleConvertTo = async (targetDocType: DocType) => {
+    const targetLabel = DOC_TYPES[targetDocType]?.label ?? targetDocType;
+    if (!confirm(`この書類を元に${targetLabel}を作成しますか？`)) return;
+    setConverting(targetDocType);
     try {
       const res = await fetch("/api/admin/documents", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          doc_type: "invoice",
+          doc_type: targetDocType,
           customer_id: doc.customer_id,
           // 顧客未紐付け (recipient_* を直接持つ) の伝票でも宛先を失わないよう引き継ぐ。
           // 例: 中古車商談から作成した見積 (customer_id なし・宛名は buyer)。
@@ -104,17 +153,19 @@ export default function DocumentDetailClient({
           is_invoice_compliant: doc.is_invoice_compliant,
           show_seal: doc.show_seal,
           show_logo: doc.show_logo,
+          vehicle_id: doc.vehicle_id,
+          vehicle_info: doc.vehicle_info_json,
           source_document_id: doc.id,
           note: doc.note,
         }),
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
-      setMsg({ text: `請求書 ${j.document?.doc_number} を作成しました`, ok: true });
+      setMsg({ text: `${targetLabel} ${j.document?.doc_number} を作成しました`, ok: true });
     } catch (e: any) {
       setMsg({ text: e?.message ?? String(e), ok: false });
     } finally {
-      setConverting(false);
+      setConverting(null);
     }
   };
 
@@ -141,10 +192,13 @@ export default function DocumentDetailClient({
   };
 
   const items = (doc.items_json ?? []) as DocumentItem[];
-  const nextStatuses = STATUS_TRANSITIONS[doc.status] ?? [];
+  const nextStatuses = nextStatusesFor(doc.doc_type, doc.status);
   const docLabel = DOC_TYPES[doc.doc_type as DocType]?.label ?? doc.doc_type;
-  const canConvert = doc.doc_type === "estimate" || doc.doc_type === "delivery";
+  const conversionTargets = CONVERSION_TARGETS[doc.doc_type as DocType] ?? [];
   const canEdit = isDocumentEditable(doc.doc_type, doc.status);
+  // 入金記録・LINE決済リンクは請求書・合算請求書のみ対象（サーバ側 send-line-payment-link /
+  // documents PUT の売掛元帳記帳も同じ2種類を対象にしている）
+  const isInvoice = doc.doc_type === "invoice" || doc.doc_type === "consolidated_invoice";
 
   return (
     <div className="space-y-6">
@@ -170,21 +224,29 @@ export default function DocumentDetailClient({
                 type="button"
                 className={ns === "cancelled" || ns === "rejected" ? "btn-danger text-xs" : "btn-secondary text-xs"}
                 disabled={updating}
-                onClick={() => handleStatusChange(ns)}
+                onClick={() => {
+                  // 請求書の「入金済」は入金日を記録するため、直接変更せず日付ピッカーを開く
+                  if (isInvoice && ns === "paid") {
+                    setPaymentDateInput(new Date().toISOString().slice(0, 10));
+                    return;
+                  }
+                  handleStatusChange(ns);
+                }}
               >
                 {statusLabel(ns)}に変更
               </button>
             ))}
-            {canConvert && (
+            {conversionTargets.map((target) => (
               <button
+                key={target}
                 type="button"
                 className="btn-secondary text-xs"
-                disabled={converting}
-                onClick={handleConvertToInvoice}
+                disabled={converting !== null}
+                onClick={() => handleConvertTo(target)}
               >
-                {converting ? "変換中…" : "請求書に変換"}
+                {converting === target ? "変換中…" : `${DOC_TYPES[target].label}に変換`}
               </button>
-            )}
+            ))}
             <button type="button" className="btn-ghost text-xs" onClick={handlePrint}>
               印刷
             </button>
@@ -194,8 +256,69 @@ export default function DocumentDetailClient({
             <button type="button" className="btn-primary text-xs" onClick={() => setShareOpen(true)}>
               共有
             </button>
+            {isInvoice && doc.status !== "paid" && doc.status !== "cancelled" && (
+              <button
+                type="button"
+                className="btn-primary text-xs"
+                disabled={!canSendLinePayment || linePayBusy}
+                onClick={handleSendLinePaymentLink}
+                title={
+                  canSendLinePayment
+                    ? "LINE で決済リンクを送信"
+                    : customerHasLine
+                      ? "Stripe Connect オンボーディング / LINE 連携を確認してください"
+                      : "顧客に LINE ユーザが紐付いていません"
+                }
+              >
+                {linePayBusy ? "送信中…" : "💚 LINE で決済リンクを送る"}
+              </button>
+            )}
           </div>
         </div>
+        {linePayUrl && (
+          <div className="mt-3 rounded-md border border-border-default bg-inset p-3 text-xs">
+            <div className="text-muted mb-1">決済リンク (24 時間有効):</div>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 break-all font-mono text-[11px] text-primary">{linePayUrl}</code>
+              <button
+                type="button"
+                className="btn-ghost text-[11px]"
+                onClick={() => {
+                  navigator.clipboard.writeText(linePayUrl).then(
+                    () => setMsg({ text: "リンクをコピーしました", ok: true }),
+                    () => setMsg({ text: "コピーに失敗しました", ok: false }),
+                  );
+                }}
+              >
+                📋 コピー
+              </button>
+            </div>
+          </div>
+        )}
+        {paymentDateInput !== null && (
+          <div className="mt-3 rounded-md border border-border-default bg-inset p-3 space-y-2">
+            <div className="text-xs text-muted">入金日</div>
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                className="input-field text-sm"
+                value={paymentDateInput}
+                onChange={(e) => setPaymentDateInput(e.target.value)}
+              />
+              <button
+                type="button"
+                className="btn-primary px-3 py-1.5 text-xs"
+                disabled={updating}
+                onClick={() => handleStatusChange("paid", paymentDateInput)}
+              >
+                {updating ? "処理中…" : "入金確定"}
+              </button>
+              <button type="button" className="btn-ghost px-3 py-1.5 text-xs" onClick={() => setPaymentDateInput(null)}>
+                キャンセル
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Edit Form (canEdit && editing 時のみ) */}

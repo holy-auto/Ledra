@@ -11,6 +11,8 @@ import { resolveBaseUrl } from "@/lib/url";
 import { maybeAutoSendDocumentOnConfirm } from "@/lib/ai/automation/documentAuto";
 import { insertDocWithRetry } from "@/lib/invoice/invoiceNumber";
 import { autoRegisterMenuItems } from "@/lib/documents/autoRegisterMenuItems";
+import { buildTaxBreakdown, totalTax, isValidRegistrationNumber } from "@/lib/invoice/taxBreakdown";
+import { recordInvoicePaymentBalance } from "@/lib/invoice/recordPayment";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +60,13 @@ function calcItems(items: any[], taxRate: number, isTaxInclusive = false) {
       amount,
     };
     if (item.item_code != null && String(item.item_code).trim()) mapped.item_code = String(item.item_code).trim();
-    if (item.tax_category != null) mapped.tax_category = item.tax_category;
+    if (item.tax_category != null) {
+      mapped.tax_category = item.tax_category;
+      // レガシーな /api/admin/invoices・pdfInvoice.tsx は tax_rate/is_reduced_rate を見るため、
+      // 同じ明細を両ルートのどちらで読んでも軽減税率表示が揃うよう併記しておく。
+      mapped.tax_rate = item.tax_category;
+      if (item.tax_category === 8) mapped.is_reduced_rate = true;
+    }
     if (item.cost_price != null && item.cost_price !== "") {
       const cp = parseInt(String(item.cost_price), 10);
       if (!isNaN(cp) && cp >= 0) mapped.cost_price = cp;
@@ -75,18 +83,31 @@ function calcItems(items: any[], taxRate: number, isTaxInclusive = false) {
   let subtotal: number;
   let tax: number;
   let total: number;
+  let taxBreakdown: { rate: number; subtotal: number; tax: number }[];
   if (isTaxInclusive) {
-    // 税込入力モード：amount は税込金額。税抜の subtotal を逆算する
+    // 税込入力モード：amount は税込金額。税抜の subtotal を逆算する。
+    // (複数税率の混在は非対応。税込モードは単一税率の書類のみを想定)
     total = itemsSum;
     subtotal = Math.round(itemsSum / (1 + taxRate / 100));
     tax = total - subtotal;
+    taxBreakdown = [{ rate: taxRate, subtotal, tax }];
   } else {
-    // 税抜入力モード（既定）
+    // 税抜入力モード（既定）。行ごとの tax_category (10/8) を見て税率区分ごとに
+    // 「対価の額」「消費税額等」を分けて集計する（適格請求書の複数税率区分表示要件）。
+    taxBreakdown = buildTaxBreakdown(
+      itemsJson
+        .filter((it) => it.item_type === "item")
+        .map((it) => ({
+          amount: it.amount as number,
+          tax_rate: typeof it.tax_category === "number" ? (it.tax_category as number) : null,
+        })),
+      taxRate,
+    );
     subtotal = itemsSum;
-    tax = Math.floor(subtotal * (taxRate / 100));
+    tax = totalTax(taxBreakdown);
     total = subtotal + tax;
   }
-  return { itemsJson, subtotal, tax, total };
+  return { itemsJson, subtotal, tax, total, taxBreakdown };
 }
 
 // ─── GET: 帳票一覧 ───
@@ -203,7 +224,6 @@ export async function POST(req: NextRequest) {
     const items = input.items ?? [];
     const taxRate = input.tax_rate ?? 10;
     const status = input.status;
-    const isInvoiceCompliant = !!input.is_invoice_compliant;
     const sourceDocumentId = input.source_document_id || null;
     const showSeal = !!input.show_seal;
     const showLogo = input.show_logo !== false;
@@ -219,13 +239,28 @@ export async function POST(req: NextRequest) {
     const paymentTerms = input.payment_terms;
     const deliveryDate = input.delivery_date;
     const templateId = input.template_id;
+    const paymentDate = input.payment_date || null;
+    const vehicleId = input.vehicle_id || null;
+    const vehicleInfo = input.vehicle_info ?? {};
     const isTaxInclusive = !!input.is_tax_inclusive;
     const metaJson = {
       ...(input.meta_json ?? {}),
       is_tax_inclusive: isTaxInclusive,
     };
 
-    const { itemsJson, subtotal, tax, total } = calcItems(items, taxRate, isTaxInclusive);
+    // 適格請求書フラグは「明示 ON」かつ「テナントの登録番号が T+13桁」のときのみ ON。
+    // フォーマット不正 / 未設定なら強制 OFF にして、PDF 上で「インボイス対応」表記が
+    // 出ないようにする (受領側で仕入税額控除に使われる誤解を防ぐ)。
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const tenantInfo = await admin
+      .from("tenants")
+      .select("registration_number")
+      .eq("id", caller.tenantId)
+      .maybeSingle();
+    const tenantRegNumberValid = isValidRegistrationNumber(tenantInfo.data?.registration_number ?? null);
+    const isInvoiceCompliant = !!input.is_invoice_compliant && tenantRegNumberValid;
+
+    const { itemsJson, subtotal, tax, total, taxBreakdown } = calcItems(items, taxRate, isTaxInclusive);
 
     const row = {
       id: crypto.randomUUID(),
@@ -242,6 +277,9 @@ export async function POST(req: NextRequest) {
       payment_terms: paymentTerms,
       delivery_date: deliveryDate,
       template_id: templateId,
+      payment_date: paymentDate,
+      vehicle_id: vehicleId,
+      vehicle_info_json: vehicleInfo,
       doc_type: docType,
       issued_at: issuedAt,
       due_date: dueDate,
@@ -250,6 +288,7 @@ export async function POST(req: NextRequest) {
       tax,
       total,
       tax_rate: taxRate,
+      tax_breakdown: taxBreakdown,
       items_json: itemsJson,
       note,
       meta_json: metaJson,
@@ -263,7 +302,6 @@ export async function POST(req: NextRequest) {
     // RLS をバイパスしてサービスロールで INSERT（tenant_id で必ずスコープ限定）。
     // doc_number は採番→INSERT の間に競合し得るため、UNIQUE 索引 + 23505 リトライで
     // 二重採番を防ぐ（ユーザが番号を明示した場合はリトライせず 1 回のみ）。
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data, error } = await insertDocWithRetry(
       admin,
       caller.tenantId,
@@ -274,7 +312,7 @@ export async function POST(req: NextRequest) {
           .from("documents")
           .insert({ ...row, doc_number: docNumber })
           .select(
-            "id, tenant_id, customer_id, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, items_json, note, meta_json, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, created_at, updated_at",
+            "id, tenant_id, customer_id, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, payment_date, vehicle_id, vehicle_info_json, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, tax_breakdown, items_json, note, meta_json, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, created_at, updated_at",
           )
           .single(),
       { fixedNumber: input.doc_number || null },
@@ -324,6 +362,8 @@ export async function PUT(req: NextRequest) {
       body.period_end !== undefined ||
       body.payment_terms !== undefined ||
       body.delivery_date !== undefined ||
+      body.vehicle_id !== undefined ||
+      body.vehicle_info !== undefined ||
       body.note !== undefined ||
       body.is_invoice_compliant !== undefined ||
       body.show_seal !== undefined ||
@@ -332,29 +372,24 @@ export async function PUT(req: NextRequest) {
       body.tax_rate !== undefined ||
       body.is_tax_inclusive !== undefined;
 
-    if (isContentEdit) {
-      const { data: existing } = await supabase
-        .from("documents")
-        .select("doc_type, status")
-        .eq("id", id)
-        .eq("tenant_id", caller.tenantId)
-        .single();
-      if (existing && !isDocumentEditable(existing.doc_type, existing.status)) {
-        return apiValidationError("送付済みの請求書は内容を編集できません。");
-      }
+    // 状態確認は PUT 全体で使うため（内容編集ガード・入金記帳の doc_type 判定）、
+    // isContentEdit の有無に関わらず一度だけ取得する。
+    const { data: existing } = await supabase
+      .from("documents")
+      .select("doc_type, status")
+      .eq("id", id)
+      .eq("tenant_id", caller.tenantId)
+      .single();
+
+    if (isContentEdit && existing && !isDocumentEditable(existing.doc_type, existing.status)) {
+      return apiValidationError("送付済みの請求書は内容を編集できません。");
     }
 
     // 「確定 (draft→sent)」を検出するため、ステータス更新時は変更前の状態を控える。
-    let priorStatus: string | null = null;
-    if (body.status === "sent") {
-      const { data: prior } = await supabase
-        .from("documents")
-        .select("status")
-        .eq("id", id)
-        .eq("tenant_id", caller.tenantId)
-        .maybeSingle();
-      priorStatus = (prior?.status as string | null) ?? null;
-    }
+    const priorStatus: string | null = body.status !== undefined ? (existing?.status ?? null) : null;
+
+    // RLS をバイパスしてサービスロールで UPDATE（tenant_id で必ずスコープ限定）
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
@@ -362,9 +397,24 @@ export async function PUT(req: NextRequest) {
     if (body.customer_id !== undefined) updates.customer_id = body.customer_id || null;
     if (body.issued_at !== undefined) updates.issued_at = body.issued_at;
     if (body.due_date !== undefined) updates.due_date = body.due_date;
+    if (body.payment_date !== undefined) updates.payment_date = body.payment_date || null;
+    if (body.vehicle_id !== undefined) updates.vehicle_id = body.vehicle_id || null;
+    if (body.vehicle_info !== undefined) updates.vehicle_info_json = body.vehicle_info ?? {};
     if (body.note !== undefined) updates.note = body.note;
     if (body.doc_number !== undefined) updates.doc_number = body.doc_number;
-    if (body.is_invoice_compliant !== undefined) updates.is_invoice_compliant = !!body.is_invoice_compliant;
+    if (body.is_invoice_compliant !== undefined) {
+      // 登録番号フォーマット未通過なら、明示 ON でも強制 OFF にする (PDF 表示と整合)
+      if (body.is_invoice_compliant) {
+        const tenantInfo = await admin
+          .from("tenants")
+          .select("registration_number")
+          .eq("id", caller.tenantId)
+          .maybeSingle();
+        updates.is_invoice_compliant = isValidRegistrationNumber(tenantInfo.data?.registration_number ?? null);
+      } else {
+        updates.is_invoice_compliant = false;
+      }
+    }
     if (body.show_seal !== undefined) updates.show_seal = !!body.show_seal;
     if (body.show_logo !== undefined) updates.show_logo = !!body.show_logo;
     if (body.show_bank_info !== undefined) updates.show_bank_info = !!body.show_bank_info;
@@ -384,26 +434,25 @@ export async function PUT(req: NextRequest) {
     if (body.items !== undefined) {
       const taxRate = body.tax_rate ?? 10;
       const isTaxInclusive = !!body.is_tax_inclusive;
-      const { itemsJson, subtotal, tax, total } = calcItems(body.items ?? [], taxRate, isTaxInclusive);
+      const { itemsJson, subtotal, tax, total, taxBreakdown } = calcItems(body.items ?? [], taxRate, isTaxInclusive);
       updates.items_json = itemsJson;
       updates.subtotal = subtotal;
       updates.tax = tax;
       updates.total = total;
       updates.tax_rate = taxRate;
+      updates.tax_breakdown = taxBreakdown;
       // meta_json は他の更新と共存させるため、明示的に渡された meta_json があればマージ
       const baseMeta = (body.meta_json as Record<string, unknown> | undefined) ?? {};
       updates.meta_json = { ...baseMeta, is_tax_inclusive: isTaxInclusive };
     }
 
-    // RLS をバイパスしてサービスロールで UPDATE（tenant_id で必ずスコープ限定）
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data, error } = await admin
       .from("documents")
       .update(updates)
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .select(
-        "id, tenant_id, customer_id, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, items_json, note, meta_json, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, created_at, updated_at",
+        "id, tenant_id, customer_id, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, payment_date, vehicle_id, vehicle_info_json, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, tax_breakdown, items_json, note, meta_json, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, created_at, updated_at",
       )
       .single();
 
@@ -420,6 +469,29 @@ export async function PUT(req: NextRequest) {
           // 自動登録の失敗は握り潰す（帳票保存自体は既に成功済み）
         }
       });
+    }
+
+    // 請求書が「入金済」に更新されたら売掛元帳 (payment_entries) にも残高分を記帳して
+    // 消込を整合させる (status=paid だけだと元帳上は未消込のまま残るため)。
+    // 記帳失敗は status 更新 (主) を巻き戻さず log のみ (best-effort)。
+    if (body.status === "paid" && (data?.doc_type === "invoice" || data?.doc_type === "consolidated_invoice")) {
+      try {
+        await recordInvoicePaymentBalance(admin, {
+          tenantId: caller.tenantId,
+          documentId: data.id,
+          total: Number(data.total ?? 0),
+          customerId: (data.customer_id as string | null) ?? null,
+          paymentMethod: "cash",
+          paymentDate: (data.payment_date as string | null) ?? new Date().toISOString().slice(0, 10),
+          // 手動「入金済」更新は referenceNo が無く、連打で二重記帳し得る。
+          // document + 金額で決まる安定キーを渡し、recordPayment 側の重複ガードに拾わせる。
+          referenceNo: `manual:${data.id}:${Math.round(Number(data.total ?? 0))}`,
+          recordedBy: caller.userId,
+          notes: "請求書を入金済に更新 (自動記帳)",
+        });
+      } catch (ledgerErr) {
+        console.error("documents PUT: ledger entry failed (non-blocking)", ledgerErr);
+      }
     }
 
     // 確定 (draft→sent) の瞬間に、opt-in 済みテナントでは顧客へ自動送付する。
