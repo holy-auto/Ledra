@@ -12,7 +12,7 @@ import { hashSha256, computePerceptualHash } from "@/lib/anchoring/imageHashing"
 import { stripGpsAndReadExif } from "@/lib/anchoring/imageExif";
 import { computeAuthenticityGrade } from "@/lib/anchoring/authenticityGrade";
 import { invokeAllUploadProviders } from "@/lib/anchoring/providers";
-import { requestPhotoTimestamp } from "@/lib/anchoring/providers/photoTsa";
+import { requestPhotoTimestamp, isPhotoTsaEnabled } from "@/lib/anchoring/providers/photoTsa";
 import { upsertVehiclePassport } from "@/lib/passport/upsertVehiclePassport";
 import { generateImageVariants, variantStoragePath } from "@/lib/certificateImages/generateVariants";
 import { maybeAutoTamperingCheckForCertificate } from "@/lib/ai/automation/photoTamperingAuto";
@@ -144,6 +144,12 @@ export async function POST(req: NextRequest) {
     // client instead of a generic "invalid format or size" message.
     let lastFailure: { code: "validation_error" | "db_error" | "internal_error"; message: string } | null = null;
 
+    // 写真 TSA のリクエスト全体予算: 1 枚 5s 上限でも、TSA 不達時に 20 枚を順次待つと
+    // maxDuration(60s) を超えて 504 になる。1 枚でもタイムアウト/失敗したら以降の写真は
+    // TSA を諦めて封印なしで続行する（TSA 障害は通常バッチ全体で共通のため）。
+    const tsaEnabled = isPhotoTsaEnabled();
+    let tsaGaveUp = false;
+
     for (let i = 0; i < toUpload.length; i++) {
       const file = toUpload[i];
       if (!file || !file.size) continue;
@@ -195,8 +201,13 @@ export async function POST(req: NextRequest) {
       }
 
       // Capture-time seal: RFC3161 TSA over the stored hash (no-op/null unless
-      // PHOTO_TSA_* configured; never blocks the upload).
-      const tsa = await requestPhotoTimestamp(sha256);
+      // PHOTO_TSA_* configured; never blocks the upload). Bounded per request:
+      // once a lookup fails under enabled TSA, skip the rest of the batch.
+      let tsa: Awaited<ReturnType<typeof requestPhotoTimestamp>> = null;
+      if (tsaEnabled && !tsaGaveUp) {
+        tsa = await requestPhotoTimestamp(sha256);
+        if (!tsa) tsaGaveUp = true;
+      }
 
       // ── Phase 3a+3b: verification providers (sign before upload) ──
       // Pass the device attestation token and seal the capture context
