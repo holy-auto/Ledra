@@ -122,6 +122,8 @@ export async function handleCertificateImageUpload(req: NextRequest, tenantId: s
       expectedNonce: captureNonce,
     });
     // nonce は cert 束縛の行ロックで単回消費。1リクエスト内の全写真がこのセッション nonce を共有。
+    // ponytail: 全ファイルが後段で検証落ちしても nonce は消費される（同 cert の再送は
+    // consumed → basic）。実害は「不正アップロードで nonce を1つ焼く」程度で稀、担保も弱めない。
     const nonceResult: ConsumeNonceResult | null = captureNonce
       ? await consumeCaptureNonce({
           nonce: captureNonce,
