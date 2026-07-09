@@ -60,7 +60,13 @@ function calcItems(items: any[], taxRate: number, isTaxInclusive = false) {
       amount,
     };
     if (item.item_code != null && String(item.item_code).trim()) mapped.item_code = String(item.item_code).trim();
-    if (item.tax_category != null) mapped.tax_category = item.tax_category;
+    if (item.tax_category != null) {
+      mapped.tax_category = item.tax_category;
+      // レガシーな /api/admin/invoices・pdfInvoice.tsx は tax_rate/is_reduced_rate を見るため、
+      // 同じ明細を両ルートのどちらで読んでも軽減税率表示が揃うよう併記しておく。
+      mapped.tax_rate = item.tax_category;
+      if (item.tax_category === 8) mapped.is_reduced_rate = true;
+    }
     if (item.cost_price != null && item.cost_price !== "") {
       const cp = parseInt(String(item.cost_price), 10);
       if (!isNaN(cp) && cp >= 0) mapped.cost_price = cp;
@@ -468,7 +474,7 @@ export async function PUT(req: NextRequest) {
     // 請求書が「入金済」に更新されたら売掛元帳 (payment_entries) にも残高分を記帳して
     // 消込を整合させる (status=paid だけだと元帳上は未消込のまま残るため)。
     // 記帳失敗は status 更新 (主) を巻き戻さず log のみ (best-effort)。
-    if (body.status === "paid" && data?.doc_type === "invoice") {
+    if (body.status === "paid" && (data?.doc_type === "invoice" || data?.doc_type === "consolidated_invoice")) {
       try {
         await recordInvoicePaymentBalance(admin, {
           tenantId: caller.tenantId,

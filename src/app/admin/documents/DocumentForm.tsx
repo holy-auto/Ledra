@@ -445,6 +445,7 @@ export default function DocumentForm({
     item.item_code = mi.item_code ?? null;
     item.description = mi.name + (mi.description ? ` (${mi.description})` : "");
     item.unit_price = mi.unit_price;
+    item.tax_category = mi.tax_category;
     if (mi.cost_price != null) item.cost_price = mi.cost_price;
     if (mi.margin_rate != null) item.margin_rate = mi.margin_rate;
     item.amount = Math.round(item.quantity * item.unit_price);

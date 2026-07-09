@@ -8,8 +8,8 @@ import { formatDate, formatDateTime, formatJpy } from "@/lib/format";
 import {
   CONVERSION_TARGETS,
   DOC_TYPES,
-  STATUS_TRANSITIONS,
   isDocumentEditable,
+  nextStatusesFor,
   statusLabel,
   statusVariant,
   type DocType,
@@ -192,11 +192,13 @@ export default function DocumentDetailClient({
   };
 
   const items = (doc.items_json ?? []) as DocumentItem[];
-  const nextStatuses = STATUS_TRANSITIONS[doc.status] ?? [];
+  const nextStatuses = nextStatusesFor(doc.doc_type, doc.status);
   const docLabel = DOC_TYPES[doc.doc_type as DocType]?.label ?? doc.doc_type;
   const conversionTargets = CONVERSION_TARGETS[doc.doc_type as DocType] ?? [];
   const canEdit = isDocumentEditable(doc.doc_type, doc.status);
-  const isInvoice = doc.doc_type === "invoice";
+  // 入金記録・LINE決済リンクは請求書・合算請求書のみ対象（サーバ側 send-line-payment-link /
+  // documents PUT の売掛元帳記帳も同じ2種類を対象にしている）
+  const isInvoice = doc.doc_type === "invoice" || doc.doc_type === "consolidated_invoice";
 
   return (
     <div className="space-y-6">

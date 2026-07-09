@@ -56,7 +56,7 @@ export function statusVariant(s: string) {
   }
 }
 
-/** ステータス遷移マップ */
+/** ステータス遷移マップ（見積書・納品書等、一般帳票用） */
 export const STATUS_TRANSITIONS: Record<string, string[]> = {
   draft: ["sent"],
   sent: ["accepted", "paid", "overdue", "rejected", "cancelled"],
@@ -66,6 +66,26 @@ export const STATUS_TRANSITIONS: Record<string, string[]> = {
   paid: [],
   cancelled: [],
 };
+
+/**
+ * 請求書・合算請求書専用のステータス遷移マップ。
+ * 見積書由来の「受理/却下」は請求書には存在しない概念のため対象外にする
+ * （却下に遷移すると次の遷移先が無くなり、入金確定に戻せなくなるため）。
+ */
+const INVOICE_STATUS_TRANSITIONS: Record<string, string[]> = {
+  draft: ["sent"],
+  sent: ["paid", "overdue", "cancelled"],
+  overdue: ["paid", "cancelled"],
+  paid: [],
+  cancelled: [],
+};
+
+/** doc_type に応じた次のステータス遷移候補を返す。 */
+export function nextStatusesFor(docType: string, status: string): string[] {
+  const map =
+    docType === "invoice" || docType === "consolidated_invoice" ? INVOICE_STATUS_TRANSITIONS : STATUS_TRANSITIONS;
+  return map[status] ?? [];
+}
 
 /**
  * 帳票変換の許容マップ。キーの doc_type から、値の doc_type へ「変換」できる
