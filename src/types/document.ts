@@ -100,6 +100,12 @@ export type DocumentItem = {
   tax_category?: number; // 10 or 8 (軽減税率)
   certificate_id?: string | null;
   certificate_public_id?: string | null;
+  /**
+   * 数量入力欄の編集中の生文字列（UI専用、保存はしない）。
+   * quantity は再パース後の数値なので、コントロール入力に直接使うと
+   * 「0」や末尾の小数点(例: "0."）が再描画で消えてしまう。入力中はこちらを表示する。
+   */
+  _quantity_text?: string;
 };
 
 export type RecipientHonorific = "御中" | "様" | "";

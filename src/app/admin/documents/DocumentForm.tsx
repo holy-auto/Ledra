@@ -206,7 +206,13 @@ export default function DocumentForm({
       if (field === "description") item.description = value as string;
       if (field === "item_code") item.item_code = (value as string) || null;
       if (field === "unit") item.unit = (value as string) ?? "";
-      if (field === "quantity") item.quantity = parseFloat(String(value)) || 0;
+      if (field === "quantity") {
+        // 表示は入力中の生文字列を保持する。quantity（パース後の数値）から
+        // 都度作り直すと、"0" や末尾の "0." のような入力途中の表記が
+        // 再描画のたびに消えてしまう。
+        item._quantity_text = value as string;
+        item.quantity = parseFloat(String(value)) || 0;
+      }
       if (field === "unit_price") item.unit_price = parseInt(String(value), 10) || 0;
       if (field === "cost_price") {
         const v = value === "" || value == null ? 0 : parseInt(String(value), 10) || 0;
@@ -241,6 +247,8 @@ export default function DocumentForm({
     const newItems = [...formItems];
     const item = { ...newItems[index] };
     item.item_type = newType;
+    // 行タイプ変更で quantity を作り直すため、入力中テキストの残骸を破棄する
+    delete item._quantity_text;
     if (newType === "heading") {
       item.quantity = 0;
       item.unit_price = 0;
@@ -825,7 +833,7 @@ export default function DocumentForm({
                         min="0"
                         step="0.1"
                         placeholder="1"
-                        value={item.quantity || ""}
+                        value={item._quantity_text ?? String(item.quantity)}
                         onChange={(e) => updateItem(idx, "quantity", e.target.value)}
                       />
                       <input

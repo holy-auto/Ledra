@@ -21,6 +21,11 @@ type InvoiceItem = {
   amount: number;
   certificate_id?: string | null;
   certificate_public_id?: string | null;
+  /**
+   * 数量入力欄の編集中の生文字列（UI専用、保存はしない）。
+   * quantity から都度作り直すと "0" や末尾の "0." が再描画で消えるため。
+   */
+  _quantity_text?: string;
 };
 
 type Invoice = {
@@ -409,7 +414,10 @@ export default function InvoicesClient() {
       const item = { ...newItems[index] };
       if (field === "description") item.description = value as string;
       if (field === "item_code") item.item_code = (value as string) || null;
-      if (field === "quantity") item.quantity = parseFloat(String(value)) || 0;
+      if (field === "quantity") {
+        item._quantity_text = value as string;
+        item.quantity = parseFloat(String(value)) || 0;
+      }
       if (field === "unit") item.unit = value as string;
       if (field === "unit_price") item.unit_price = parseInt(String(value), 10) || 0;
       item.amount = Math.round(item.quantity * item.unit_price);
@@ -873,7 +881,7 @@ export default function InvoicesClient() {
                           className="input-field"
                           min="0"
                           step="0.1"
-                          value={item.quantity}
+                          value={item._quantity_text ?? String(item.quantity)}
                           onChange={(e) => updateItem(idx, "quantity", e.target.value)}
                         />
                       </div>
