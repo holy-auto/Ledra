@@ -29,6 +29,15 @@ type MenuItem = {
   margin_rate: number | null;
   tax_category: number;
 };
+type Branch = {
+  id: string;
+  customer_id: string;
+  name: string;
+  postal_code: string | null;
+  address: string | null;
+  phone: string | null;
+  contact_person: string | null;
+};
 
 const BILLING_CYCLE_LABEL: Record<string, string> = { per_job: "都度払い", consolidated: "合算（締め払い）" };
 type TemplateOption = { id: string; name: string; doc_type: string | null };
@@ -152,7 +161,10 @@ export default function DocumentForm({
   const [formVehicleVin, setFormVehicleVin] = useState((initialVehicleInfo.vin as string) ?? "");
 
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [formBranchId, setFormBranchId] = useState("");
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [menuItemsError, setMenuItemsError] = useState(false);
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
   const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
   const [certificates, setCertificates] = useState<CertificateOption[]>([]);
@@ -206,8 +218,13 @@ export default function DocumentForm({
             tax_category: m.tax_category,
           })),
         );
+        setMenuItemsError(false);
+      } else {
+        setMenuItemsError(true);
       }
-    } catch {}
+    } catch {
+      setMenuItemsError(true);
+    }
   }, []);
 
   const fetchTemplates = useCallback(async () => {
@@ -258,9 +275,31 @@ export default function DocumentForm({
     }
   }, []);
 
+  const fetchBranchesForCustomer = useCallback(async (customerId: string) => {
+    if (!customerId) {
+      setBranches([]);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/admin/customer-branches?customer_id=${encodeURIComponent(customerId)}`, {
+        cache: "no-store",
+      });
+      const j = await parseJsonSafe(res);
+      setBranches(res.ok && j?.branches ? j.branches : []);
+    } catch {
+      setBranches([]);
+    }
+  }, []);
+
   useEffect(() => {
     Promise.all([fetchCustomers(), fetchMenuItems(), fetchTemplates(), fetchVehicles()]);
   }, [fetchCustomers, fetchMenuItems, fetchTemplates, fetchVehicles]);
+
+  // 顧客（法人）が決まったら、登録済みの支店一覧を取得する
+  useEffect(() => {
+    setFormBranchId("");
+    fetchBranchesForCustomer(formCustomerId);
+  }, [formCustomerId, fetchBranchesForCustomer]);
 
   // 請求書は施工証明書の紐付けに対応するため、顧客が決まったら証明書一覧を取得する
   useEffect(() => {
@@ -660,6 +699,34 @@ export default function DocumentForm({
             }}
           />
         </div>
+        {branches.length > 0 && (
+          <div className="space-y-1">
+            <label className="text-xs text-muted">支店</label>
+            <select
+              className="select-field"
+              value={formBranchId}
+              onChange={(e) => {
+                const id = e.target.value;
+                setFormBranchId(id);
+                if (!id) return;
+                const b = branches.find((br) => br.id === id);
+                if (b) {
+                  setFormRecipientName(b.name);
+                  setFormRecipientPostalCode(b.postal_code ?? "");
+                  setFormRecipientAddress(b.address ?? "");
+                  setFormRecipientPhone(b.phone ?? "");
+                }
+              }}
+            >
+              <option value="">選択なし（本社宛て）</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="space-y-1">
           <label className="text-xs text-muted">書類番号</label>
           <input
@@ -1023,31 +1090,42 @@ export default function DocumentForm({
                   ) : (
                     <>
                       <div className="min-w-0">
-                        {menuItems.length > 0 && (
-                          <div className="mb-1">
-                            <ItemCodeField
-                              value={item.item_code ?? ""}
-                              menuItems={menuItems}
-                              onChange={(code) => updateItem(idx, "item_code", code)}
-                              onSelect={(mi) => handleMenuItemSelect(mi.id, idx)}
-                            />
-                          </div>
-                        )}
-                        {menuItems.length > 0 && (
-                          <select
-                            className="select-field py-1 text-xs mb-1 w-full"
-                            value=""
-                            onChange={(e) => {
-                              if (e.target.value) handleMenuItemSelect(e.target.value, idx);
-                            }}
-                          >
-                            <option value="">品目マスタから選択...</option>
-                            {menuItems.map((mi) => (
-                              <option key={mi.id} value={mi.id}>
-                                {mi.name} ({formatJpy(mi.unit_price)})
-                              </option>
-                            ))}
-                          </select>
+                        {menuItems.length > 0 ? (
+                          <>
+                            <div className="mb-1">
+                              <ItemCodeField
+                                value={item.item_code ?? ""}
+                                menuItems={menuItems}
+                                onChange={(code) => updateItem(idx, "item_code", code)}
+                                onSelect={(mi) => handleMenuItemSelect(mi.id, idx)}
+                              />
+                            </div>
+                            <select
+                              className="select-field py-1 text-xs mb-1 w-full"
+                              value=""
+                              onChange={(e) => {
+                                if (e.target.value) handleMenuItemSelect(e.target.value, idx);
+                              }}
+                            >
+                              <option value="">品目マスタから選択...</option>
+                              {menuItems.map((mi) => (
+                                <option key={mi.id} value={mi.id}>
+                                  {mi.name} ({formatJpy(mi.unit_price)})
+                                </option>
+                              ))}
+                            </select>
+                          </>
+                        ) : (
+                          idx === 0 && (
+                            <div className="mb-1 text-[11px] text-muted">
+                              {menuItemsError
+                                ? "品目マスタの読み込みに失敗しました。再読み込みしてください。"
+                                : "品目マスタが未登録、または全品目が無効化されています。"}{" "}
+                              <Link href="/admin/menu-items" className="underline">
+                                品目管理へ
+                              </Link>
+                            </div>
+                          )
                         )}
                         <input
                           type="text"
