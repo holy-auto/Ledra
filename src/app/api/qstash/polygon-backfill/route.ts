@@ -4,7 +4,12 @@ import { apiJson } from "@/lib/api/response";
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { anchorToPolygon, verifyAnchor, findAnchorTx } from "@/lib/anchoring/providers";
-import { computeAuthenticityGrade, type AuthenticityGrade, type C2paKind } from "@/lib/anchoring/authenticityGrade";
+import {
+  computeAuthenticityGrade,
+  highestGrade,
+  type AuthenticityGrade,
+  type C2paKind,
+} from "@/lib/anchoring/authenticityGrade";
 import { upsertVehiclePassport } from "@/lib/passport/upsertVehiclePassport";
 import { enqueuePolygonBackfillNextBatch } from "@/lib/qstash/publish";
 
@@ -61,13 +66,20 @@ async function handler(req: NextRequest) {
         "unverified") as AuthenticityGrade;
       const deepfakeVerdict = (img as { deepfake_verdict?: string | null }).deepfake_verdict ?? null;
       const deepfakeOk = deepfakeVerdict === "likely_real" ? true : deepfakeVerdict === "likely_fake" ? false : null;
+      // Anchoring does not feed the authenticity tier, and the capture-binding
+      // gate (nonceOk) is decided at upload and not reconstructable from these
+      // columns. So compute conservatively and NEVER downgrade below the stored
+      // grade — backfill only ever preserves or upgrades.
       const gradeAfter = computeAuthenticityGrade({
         hasSha256: true,
         hasC2pa: Boolean((img as { c2pa_verified?: boolean }).c2pa_verified),
         c2paKind: (c2paMode === "disabled" ? "none" : c2paMode) as C2paKind,
+        hasTsa: false,
         deviceOk: Boolean((img as { device_attestation_verified?: boolean }).device_attestation_verified),
+        nonceOk: false,
         deepfakeOk,
       });
+      const nextGrade = highestGrade([gradeBefore, gradeAfter]);
 
       try {
         const alreadyOnChain = await verifyAnchor(sha);
@@ -103,8 +115,8 @@ async function handler(req: NextRequest) {
             polygon_tx_hash: txHash,
             polygon_network: network,
           };
-          if (gradeAfter !== gradeBefore) {
-            updatePayload.authenticity_grade = gradeAfter;
+          if (nextGrade !== gradeBefore) {
+            updatePayload.authenticity_grade = nextGrade;
           }
           await admin.from("certificate_images").update(updatePayload).eq("id", img.id);
           succeededCount++;

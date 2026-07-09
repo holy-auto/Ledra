@@ -86,12 +86,13 @@ export async function createC2paSigner(mode: C2paMode): Promise<LocalSignerInsta
       }
     }
 
-    const signer = LocalSigner.newSigner(
-      Buffer.from(certPem),
-      Buffer.from(keyPem),
-      "es256",
-      undefined, // TSA URL - omit for dev, add in production later
-    );
+    // Do NOT wire the photo TSA into the C2PA signer: a slow/unreachable TSA
+    // during `builder.sign` would make signing throw and drop the whole manifest,
+    // coupling fail-open photo timestamping to C2PA availability. The capture-time
+    // seal is provided independently by the standalone RFC3161 token stored in
+    // certificate_images.tsa_token (see photoTsa.requestPhotoTimestamp), which
+    // already satisfies captureTimeSealOk. Keep C2PA signing self-contained.
+    const signer = LocalSigner.newSigner(Buffer.from(certPem), Buffer.from(keyPem), "es256", undefined);
 
     cached = { mode, signer };
     return signer;

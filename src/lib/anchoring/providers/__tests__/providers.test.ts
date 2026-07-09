@@ -29,7 +29,6 @@ describe("invokeAllUploadProviders", () => {
 
     expect(result.c2pa).toEqual({ manifestCid: null, verified: false, signedBuffer: null });
     expect(result.deepfake).toEqual({ score: null, verdict: null });
-    expect(result.deviceAttestation).toEqual({ provider: "none", verified: false });
     expect(result.polygon).toEqual({ txHash: null, anchored: false, network: null });
   });
 
@@ -196,7 +195,9 @@ describe("computeAuthenticityGrade with c2paKind", () => {
       hasSha256: true,
       hasC2pa: true,
       c2paKind: "dev-signed",
+      hasTsa: false,
       deviceOk: true,
+      nonceOk: true,
       deepfakeOk: true,
     });
 
@@ -210,7 +211,9 @@ describe("computeAuthenticityGrade with c2paKind", () => {
       hasSha256: true,
       hasC2pa: true,
       c2paKind: "production",
+      hasTsa: false,
       deviceOk: true,
+      nonceOk: true,
       deepfakeOk: null,
     });
 
@@ -224,7 +227,9 @@ describe("computeAuthenticityGrade with c2paKind", () => {
       hasSha256: true,
       hasC2pa: true,
       c2paKind: "production",
+      hasTsa: false,
       deviceOk: true,
+      nonceOk: true,
       deepfakeOk: true,
     });
 
@@ -237,7 +242,9 @@ describe("computeAuthenticityGrade with c2paKind", () => {
     const grade = computeAuthenticityGrade({
       hasSha256: true,
       hasC2pa: false,
+      hasTsa: false,
       deviceOk: false,
+      nonceOk: false,
       deepfakeOk: null,
     });
 

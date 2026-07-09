@@ -66,6 +66,7 @@
     "@vercel/speed-insights": "^2.0.0",
     "@zxing/browser": "^0.2.1",
     "@zxing/library": "^0.22.0",
+    "cbor-x": "^1.6.4",
     "cheerio": "^1.2.0",
     "driver.js": "^1.6.0",
     "ethers": "^6.17.0",

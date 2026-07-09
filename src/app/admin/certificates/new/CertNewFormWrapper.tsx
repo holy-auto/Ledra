@@ -409,13 +409,16 @@ export default function CertNewFormWrapper({
         return;
       }
 
-      const { public_id } = result;
+      const { public_id, capture_nonce } = result;
 
       if (files.length > 0) {
         setUploadProgress(`写真をアップロード中 (0/${files.length})…`);
         try {
           const photoForm = new FormData();
           photoForm.append("public_id", public_id);
+          // 撮影時来歴: 作成時に払い出した単回nonceを写真アップロードへ引き渡す
+          // （これが無いと担保ゲートの nonceOk が満たせない）。
+          if (capture_nonce) photoForm.append("capture_nonce", capture_nonce);
           files.forEach((f) => photoForm.append("photos", f));
           const uploadRes = await fetch("/api/certificates/images/upload", {
             method: "POST",

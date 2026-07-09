@@ -35,6 +35,14 @@ export type DeviceAttestationProvider = "play_integrity" | "app_attest" | "none"
 export interface DeviceAttestationResult {
   provider: DeviceAttestationProvider;
   verified: boolean;
+  /**
+   * Stable hash of the attested device key (App Attest: SHA-256 of the attested
+   * public key). Recorded on the consumed capture nonce for replay/farm
+   * detection. `null` for providers that expose no device key (Play Integrity).
+   */
+  deviceKeyHash?: string | null;
+  /** Short machine reason when `verified` is false (audit / capture_binding_reason). */
+  reason?: string | null;
 }
 
 /* ── Polygon anchoring ─────────────────────────────────────────── */
@@ -54,6 +62,5 @@ export interface PolygonAnchorResult {
 export interface UploadProviderBundle {
   c2pa: C2paResult;
   deepfake: DeepfakeResult;
-  deviceAttestation: DeviceAttestationResult;
   polygon: PolygonAnchorResult;
 }

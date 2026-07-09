@@ -6,9 +6,10 @@ import { makePublicId } from "@/lib/publicId";
 import { resolveCertifiedTemplateForTenant } from "@/lib/manufacturers/certifiedTemplates";
 import { fuzzyMatchCustomer, type CustomerCandidate } from "@/lib/ai/customerFuzzyMatch";
 import { recordCoatingConsumableInstallations } from "@/lib/parts/coatingIntegration";
+import { issueCaptureNonce } from "@/lib/certificates/captureNonce";
 
 export type CreateCertResult =
-  | { ok: true; public_id: string; status: "draft"; photo_required: boolean }
+  | { ok: true; public_id: string; status: "draft"; photo_required: boolean; capture_nonce: string | null }
   | { ok: false; error: string };
 
 export async function createCertAction(formData: FormData): Promise<CreateCertResult> {
@@ -414,6 +415,13 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
   if (error) return { ok: false, error: error.message };
 
   const certificateId = certRow?.id as string | undefined;
+
+  // 撮影時来歴の単回nonceを発行し、成功レスポンスで撮影クライアントへ渡す
+  // （写真アップロード時に添付して cert 束縛の新鮮な撮影を証明する）。発行失敗は
+  // 発行を止めない（null＝そのテナントは当面 basic 止まり）。これが実運用の作成経路
+  // （online フォーム / /api/admin/certificates）で nonce を確実に払い出す箇所。
+  const captureNonce = certificateId ? await issueCaptureNonce({ tenantId, certificateId }) : null;
+
   const now = new Date().toISOString();
 
   // コーティング剤/PPFフィルムは消耗品として part_installations に記録し、部品交換用の
@@ -521,5 +529,5 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
   // 写真アップロード後の活性化チョークポイントで triggerCertificateIssued
   // として発火する (issueHooks.ts)。ここ (draft 作成時) では発火しない。
 
-  return { ok: true, public_id, status: "draft", photo_required: requestedActive };
+  return { ok: true, public_id, status: "draft", photo_required: requestedActive, capture_nonce: captureNonce };
 }

@@ -69,13 +69,31 @@ async function pinToPinata(signedBuffer: Buffer): Promise<string | null> {
 }
 
 /**
+ * Capture-binding payload sealed into the manifest so a signed photo cannot be
+ * silently moved to a different certificate/vehicle or replayed for another
+ * capture. All fields optional — only the ones present are asserted.
+ */
+export interface CaptureBinding {
+  /** Certificate public_id this photo belongs to. */
+  publicId?: string | null;
+  /** Vehicle VIN the certificate is for. */
+  vin?: string | null;
+  /** Server-issued single-use capture nonce. */
+  captureNonce?: string | null;
+  /** RFC3161 TSA genTime over the capture hash, if a TSA seal was obtained. */
+  tsaTimestamp?: string | null;
+}
+
+/**
  * Sign an image buffer with a C2PA manifest.
  *
  * On success the returned `signedBuffer` contains the image with the
  * manifest embedded.  The caller should upload this buffer to storage
  * instead of the original.
+ *
+ * `binding` seals certificate/vehicle/nonce/time into a custom assertion.
  */
-export async function signC2pa(buffer: Buffer, mime: string): Promise<C2paResult> {
+export async function signC2pa(buffer: Buffer, mime: string, binding?: CaptureBinding): Promise<C2paResult> {
   const mode = getMode();
   if (mode === "disabled") return DISABLED_RESULT;
 
@@ -114,6 +132,20 @@ export async function signC2pa(buffer: Buffer, mime: string): Promise<C2paResult
         { action: "c2pa.edited", parameters: { name: "exif_gps_metadata_removed" } },
       ],
     });
+
+    // Seal the capture context into the manifest: which certificate/vehicle this
+    // photo is for, the single-use capture nonce, and the TSA time. This binds
+    // the signed image to one certificate so it cannot be reused elsewhere, and
+    // ties it to a nonce that only existed after that certificate was created.
+    const bindingEntries = Object.entries({
+      cert_public_id: binding?.publicId ?? undefined,
+      vin: binding?.vin ?? undefined,
+      capture_nonce: binding?.captureNonce ?? undefined,
+      tsa_timestamp: binding?.tsaTimestamp ?? undefined,
+    }).filter(([, v]) => v != null && v !== "");
+    if (bindingEntries.length > 0) {
+      builder.addAssertion("com.ledra.capture", Object.fromEntries(bindingEntries));
+    }
 
     const input = { buffer, mimeType: mime };
     const output: { buffer: Buffer | null } = { buffer: null };

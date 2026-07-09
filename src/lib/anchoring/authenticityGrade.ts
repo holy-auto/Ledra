@@ -21,21 +21,39 @@ export interface GradeFlags {
   /**
    * Which type of C2PA signing was used.
    * `dev-signed` does NOT upgrade the grade (self-signed cert has no trust chain).
-   * Only `production` C2PA counts toward `verified` / `premium`.
+   * Only `production` C2PA counts toward the capture-time seal.
    */
   c2paKind?: C2paKind;
-  /** Play Integrity / App Attest token validated. */
+  /** RFC3161 TSA token present over the capture hash (an alternative capture-time seal). */
+  hasTsa: boolean;
+  /** Device attestation (Play Integrity / App Attest) validated. */
   deviceOk: boolean;
+  /** Server-issued single-use capture nonce verified fresh and bound to this certificate. */
+  nonceOk: boolean;
   /** Deepfake check passed. `null` means not evaluated. */
   deepfakeOk: boolean | null;
 }
 
+/**
+ * Grade a photo by how much of the *capture-time provenance* chain it carries.
+ *
+ * Prevention is the guarantee: a photo reaches the "guaranteed" tiers
+ * (`verified` / `premium`) only when it is cryptographically bound to a real
+ * attested device, a fresh single-use server nonce for this certificate, AND a
+ * capture-time seal (production C2PA or an RFC3161 TSA token). Anything short of
+ * that — legacy rows, web/gallery uploads, offline captures — stays at `basic`
+ * (best-effort). The AI/deepfake signal is a *second line*: it only lifts an
+ * already-capture-bound photo from `verified` to `premium`; it never gates the
+ * guarantee.
+ */
 export function computeAuthenticityGrade(flags: GradeFlags): AuthenticityGrade {
   if (!flags.hasSha256) return "unverified";
-  // dev-signed C2PA has no trust chain → does not upgrade grade
-  const effectiveC2pa = flags.hasC2pa && flags.c2paKind !== "dev-signed";
-  if (!effectiveC2pa) return "basic";
-  if (!flags.deviceOk) return "basic";
+  // Capture-time seal: production C2PA (dev-signed has no trust chain) OR a TSA token.
+  const productionC2pa = flags.hasC2pa && flags.c2paKind !== "dev-signed";
+  const captureTimeSealOk = productionC2pa || flags.hasTsa;
+  // The full prevention chain = the guarantee.
+  const captureBindingOk = flags.deviceOk && flags.nonceOk && captureTimeSealOk;
+  if (!captureBindingOk) return "basic";
   if (flags.deepfakeOk === true) return "premium";
   return "verified";
 }
