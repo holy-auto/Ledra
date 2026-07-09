@@ -214,6 +214,7 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
       intent: result.intent,
       service: result.service,
       vehicleText: result.vehicle,
+      text,
       messageId,
       channel: params.channel ?? "line",
       settings,

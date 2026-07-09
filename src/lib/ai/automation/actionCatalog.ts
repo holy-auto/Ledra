@@ -367,7 +367,8 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     description:
       "「ヴェルファイアのコーティングいくら？」のような価格問い合わせを LINE で受信した時点で、車両・過去の請求実績から概算金額を『レンジ (〜幅)』で自動返信する。返すのは概算のみで、正式・詳細なお見積りは案内文で来店に誘導する (詳細見積りは来店対応)。未紐付けの新規客にも返信する。金額の外向き送信を伴うため opt-in / 既定 OFF。",
     defaultEnabled: false,
-    guard: "AI 有効 + Standard プラン以上 + LINE 受信 + 施工内容と車両が読み取れた場合のみ",
+    guard:
+      "AI 有効 + Standard プラン以上 + LINE 受信。施工内容と車両が読み取れれば概算金額を返信、どちらか読み取れなくても価格問い合わせらしい文面なら不足情報を聞き返す",
   },
 ];
 
