@@ -380,7 +380,7 @@ export default function InvoicesClient() {
               quantity: it.quantity,
               unit: it.unit,
               unit_price: it.unit_price,
-              amount: it.quantity * it.unit_price,
+              amount: Math.round(it.quantity * it.unit_price),
               is_reduced_rate: false,
             })),
           );

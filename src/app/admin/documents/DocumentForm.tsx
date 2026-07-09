@@ -384,7 +384,7 @@ export default function DocumentForm({
               quantity: it.quantity,
               unit: "式",
               unit_price: it.unit_price,
-              amount: it.quantity * it.unit_price,
+              amount: Math.round(it.quantity * it.unit_price),
               is_reduced_rate: false,
               tax_rate: null,
               certificate_id: null,
@@ -432,10 +432,13 @@ export default function DocumentForm({
               setFormCustomerId(id);
               if (!id) return;
               setFormRecipientName("");
-              // 顧客管理に登録済みの敬称・住所・支払条件を宛先詳細へ自動反映する
+              // 顧客管理に登録済みの敬称・住所・支払条件を宛先詳細へ自動反映する。
+              // 編集モードでは既に手入力・確定済みの宛先情報を上書きしないよう、
+              // 新規作成時のみ自動反映する。
+              if (isEdit) return;
               const c = customers.find((cust) => cust.id === id);
               if (c) {
-                if (c.honorific) setFormRecipientHonorific(c.honorific);
+                setFormRecipientHonorific(c.honorific || "御中");
                 setFormRecipientPostalCode(c.postal_code ?? "");
                 setFormRecipientAddress(c.address ?? "");
                 setFormRecipientPhone(c.phone ?? "");

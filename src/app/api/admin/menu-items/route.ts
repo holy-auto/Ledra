@@ -142,6 +142,10 @@ export async function POST(req: NextRequest) {
       )
       .single();
     if (error) {
+      // (tenant_id, item_code) UNIQUE 違反は 23505。品番の重複として返す。
+      if ((error as { code?: string }).code === "23505") {
+        return apiValidationError("この品番は既に使用されています。別の品番を指定してください。");
+      }
       return apiInternalError(error, "menu-items insert");
     }
 
@@ -178,6 +182,10 @@ export async function PUT(req: NextRequest) {
       .single();
 
     if (error) {
+      // (tenant_id, item_code) UNIQUE 違反は 23505。品番の重複として返す。
+      if ((error as { code?: string }).code === "23505") {
+        return apiValidationError("この品番は既に使用されています。別の品番を指定してください。");
+      }
       return apiInternalError(error, "menu-items update");
     }
 
