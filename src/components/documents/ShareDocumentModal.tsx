@@ -1,9 +1,12 @@
 "use client";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import useSWR from "swr";
 import Modal from "@/components/ui/Modal";
 import { DOC_TYPES, type DocType } from "@/types/document";
+import { formatJpy } from "@/lib/format";
+import { fetcher, adminSwrConfig } from "@/lib/swr";
 
 interface ShareDocumentModalProps {
   open: boolean;
@@ -55,35 +58,13 @@ export default function ShareDocumentModal({
   const [message, setMessage] = useState("");
 
   // Other documents of the same customer, selectable to bundle into the email
-  const [otherDocs, setOtherDocs] = useState<OtherDocument[]>([]);
-  const [loadingOthers, setLoadingOthers] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (!open || !doc.customer_id) {
-      setOtherDocs([]);
-      setSelectedIds(new Set());
-      return;
-    }
-    let cancelled = false;
-    setLoadingOthers(true);
-    (async () => {
-      try {
-        const res = await fetch(`/api/admin/documents?customer_id=${doc.customer_id}&page=1&per_page=50`);
-        const j = await parseJsonSafe(res);
-        if (cancelled) return;
-        const docs: OtherDocument[] = (j?.documents ?? []).filter((d: OtherDocument) => d.id !== doc.id);
-        setOtherDocs(docs);
-      } catch {
-        if (!cancelled) setOtherDocs([]);
-      } finally {
-        if (!cancelled) setLoadingOthers(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, doc.id, doc.customer_id]);
+  const { data: otherDocsData, isLoading: loadingOthers } = useSWR<{ documents: OtherDocument[] }>(
+    open && doc.customer_id ? `/api/admin/documents?customer_id=${doc.customer_id}&page=1&per_page=50` : null,
+    fetcher,
+    adminSwrConfig,
+  );
+  const otherDocs = (otherDocsData?.documents ?? []).filter((d) => d.id !== doc.id);
 
   const resetForm = () => {
     setResult(null);
@@ -219,7 +200,7 @@ export default function ShareDocumentModal({
                     <span>
                       {DOC_TYPES[d.doc_type as DocType]?.label ?? d.doc_type} {d.doc_number}
                     </span>
-                    <span className="ml-auto text-muted">&yen;{d.total.toLocaleString("ja-JP")}</span>
+                    <span className="ml-auto text-muted">{formatJpy(d.total)}</span>
                   </label>
                 ))}
               </div>

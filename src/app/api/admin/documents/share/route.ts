@@ -31,7 +31,9 @@ const documentShareSchema = z.object({
     .nullable()
     .optional()
     .transform((v) => v || undefined),
-  // メール送信時のみ有効。他の帳票を同封する場合の追加帳票ID（最大20件）。
+  // メール送信時のみ有効。他の帳票を同封する場合の追加帳票ID。
+  // ponytail: 20件は暫定上限（1通のメールが肥大化しすぎない程度の目安）。
+  // 上限を上げる場合はメール本文のテーブル表示とUI側のチェックリストも合わせて見直すこと。
   additional_document_ids: z.array(z.string().uuid()).max(20).optional(),
 });
 
@@ -54,19 +56,37 @@ export async function POST(req: NextRequest) {
       additional_document_ids: additionalDocumentIdsRaw,
     } = parsed.data;
     // 追加帳票の同封はメール送信時のみ対応（LINE/SMSは単一帳票のまま）
-    const additionalDocumentIds = channel === "email" ? (additionalDocumentIdsRaw ?? []) : [];
-    const allDocumentIds = [...new Set([documentId, ...additionalDocumentIds])];
+    const additionalDocumentIds = [...new Set(channel === "email" ? (additionalDocumentIdsRaw ?? []) : [])].filter(
+      (id) => id !== documentId,
+    );
 
-    // Fetch document(s)
-    const { data: docs } = await supabase
+    const selectCols =
+      "id, tenant_id, customer_id, recipient_name, doc_type, doc_number, status, total, created_at, updated_at";
+
+    // Fetch primary document
+    const { data: doc } = await supabase
       .from("documents")
-      .select("id, tenant_id, customer_id, recipient_name, doc_type, doc_number, status, total, created_at, updated_at")
-      .in("id", allDocumentIds)
-      .eq("tenant_id", caller.tenantId);
+      .select(selectCols)
+      .eq("id", documentId)
+      .eq("tenant_id", caller.tenantId)
+      .single();
 
-    const doc = docs?.find((d) => d.id === documentId);
     if (!doc) return apiNotFound("帳票が見つかりません。");
-    const extraDocs = (docs ?? []).filter((d) => d.id !== documentId);
+
+    // 追加帳票は主帳票と同じ顧客のものだけを許可する（他顧客の帳票詳細が
+    // 誤って同封・メール送信されたり、無関係に下書き→送付済みへ状態変更
+    // されたりするのを防ぐ）。主帳票に顧客が紐付いていない場合は同封不可。
+    let extraDocs: NonNullable<typeof doc>[] = [];
+    if (additionalDocumentIds.length > 0 && doc.customer_id) {
+      const { data: extras } = await supabase
+        .from("documents")
+        .select(selectCols)
+        .in("id", additionalDocumentIds)
+        .eq("tenant_id", caller.tenantId)
+        .eq("customer_id", doc.customer_id);
+      extraDocs = extras ?? [];
+    }
+    const docs = [doc, ...extraDocs];
 
     const docType = doc.doc_type as DocType;
     const docLabel = DOC_TYPES[docType]?.label ?? doc.doc_type;
@@ -154,7 +174,9 @@ export async function POST(req: NextRequest) {
           status: success ? "sent" : "failed",
           error_message: success ? null : (errorMessage ?? "送信に失敗しました"),
           sent_by: caller.userId,
-          // 冪等キーは主帳票のみに付与（追加帳票行でのユニーク制約衝突を避ける）
+          // ponytail: 冪等キーは主帳票のみに付与（追加帳票行でのユニーク制約衝突を避ける）。
+          // 上限: 同一キーでのリトライは追加帳票側のログ重複を防げない。追加帳票ごとに
+          // 一意なキーを持たせるか document_id を含めた複合キーにするのが本来の直し方。
           ...(d.id === documentId && idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
         })),
       );
@@ -184,7 +206,12 @@ export async function POST(req: NextRequest) {
       if (updatedPrimary) updatedDoc = updatedPrimary;
     }
 
-    return apiOk({ document: updatedDoc, channel, sent: true, shared_document_ids: allDocumentIds });
+    return apiOk({
+      document: updatedDoc,
+      channel,
+      sent: true,
+      shared_document_ids: docs.map((d) => d.id),
+    });
   } catch (e) {
     return apiInternalError(e, "document_share");
   }
