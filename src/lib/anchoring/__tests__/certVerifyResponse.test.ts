@@ -118,8 +118,18 @@ describe("buildCertVerifyResponse", () => {
         polygon_network: "amoy",
         authenticity_grade: "verified",
         created_at: "2026-06-05T08:00:00.000Z",
+        tsa_authority: null,
+        tsa_timestamp_at: null,
       },
-      { sha256: null, polygon_tx_hash: "0xnope", polygon_network: "amoy", authenticity_grade: null, created_at: null },
+      {
+        sha256: null,
+        polygon_tx_hash: "0xnope",
+        polygon_network: "amoy",
+        authenticity_grade: null,
+        created_at: null,
+        tsa_authority: null,
+        tsa_timestamp_at: null,
+      },
     ];
     const res = buildCertVerifyResponse({ ...base, anchors: [], images });
     expect(res.image_anchors).toHaveLength(1);
@@ -128,6 +138,30 @@ describe("buildCertVerifyResponse", () => {
       tx_hash: "0ximgtx",
       network: "amoy",
       polygonscan_url: "https://amoy.polygonscan.com/tx/0ximgtx",
+    });
+  });
+
+  it("exposes TSA authority/timestamp for a photo sealed independently of polygon anchoring", () => {
+    const images: RawImageRow[] = [
+      {
+        sha256: "f".repeat(64),
+        polygon_tx_hash: null,
+        polygon_network: null,
+        authenticity_grade: "verified",
+        created_at: "2026-06-05T08:00:00.000Z",
+        tsa_authority: "freetsa.org",
+        tsa_timestamp_at: "2026-06-05T07:59:58.000Z",
+      },
+    ];
+    const res = buildCertVerifyResponse({ ...base, anchors: [], images });
+    expect(res.image_anchors).toHaveLength(1);
+    expect(res.image_anchors[0]).toMatchObject({
+      sha256: "f".repeat(64),
+      tx_hash: null,
+      network: null,
+      polygonscan_url: null,
+      tsa_authority: "freetsa.org",
+      tsa_timestamp_at: "2026-06-05T07:59:58.000Z",
     });
   });
 });

@@ -47,6 +47,10 @@ export interface RawImageRow {
   polygon_network: string | null;
   authenticity_grade: string | null;
   created_at: string | null;
+  /** RFC3161 TSA authority (host) that sealed this photo's existence time, if any. */
+  tsa_authority: string | null;
+  /** TSA-asserted timestamp (independent of our own created_at). */
+  tsa_timestamp_at: string | null;
 }
 
 export interface CertVerifyAnchorDTO {
@@ -74,6 +78,8 @@ export interface CertVerifyImageAnchorDTO {
   authenticity_grade: string | null;
   polygonscan_url: string | null;
   created_at: string | null;
+  tsa_authority: string | null;
+  tsa_timestamp_at: string | null;
 }
 
 // type alias (interface ではなく) — apiOk が要求する Record<string, unknown> へ
@@ -160,6 +166,8 @@ export function buildCertVerifyResponse(input: {
         authenticity_grade: img.authenticity_grade,
         polygonscan_url: buildExplorerUrl(img.polygon_tx_hash, network),
         created_at: img.created_at,
+        tsa_authority: img.tsa_authority,
+        tsa_timestamp_at: img.tsa_timestamp_at,
       };
     });
 

@@ -80,11 +80,16 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ public_id: 
     }
 
     // 画像バイト列アンカー (既存の per-image アンカー) も併記。
+    // polygon 未アンカーでも TSA 封印済みなら第三者が独立検証できる証跡があるため、
+    // どちらか一方でも揃っている行を返す (polygon 限定だと TSA のみの担保撮影が
+    // 一切露出せず、Phase 4 の「第三者が存在時刻を独立検証可能に」の趣旨に反する)。
     const { data: imageData } = await admin
       .from("certificate_images")
-      .select("sha256, polygon_tx_hash, polygon_network, authenticity_grade, created_at")
+      .select(
+        "sha256, polygon_tx_hash, polygon_network, authenticity_grade, created_at, tsa_authority, tsa_timestamp_at",
+      )
       .eq("certificate_id", certId)
-      .not("polygon_tx_hash", "is", null)
+      .or("polygon_tx_hash.not.is.null,tsa_token.not.is.null")
       .order("created_at", { ascending: true });
     const images = (imageData ?? []) as RawImageRow[];
 
