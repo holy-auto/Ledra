@@ -2,7 +2,11 @@
 import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useState } from "react";
+import useSWR from "swr";
 import Modal from "@/components/ui/Modal";
+import { DOC_TYPES, type DocType } from "@/types/document";
+import { formatJpy } from "@/lib/format";
+import { fetcher, adminSwrConfig } from "@/lib/swr";
 
 interface ShareDocumentModalProps {
   open: boolean;
@@ -18,6 +22,13 @@ interface ShareDocumentModalProps {
   customerPhone?: string | null;
   onShared?: (channel: string) => void;
 }
+
+type OtherDocument = {
+  id: string;
+  doc_number: string;
+  doc_type: string;
+  total: number;
+};
 
 type Channel = "email" | "line" | "sms";
 
@@ -45,6 +56,15 @@ export default function ShareDocumentModal({
   const [lineUserId, setLineUserId] = useState("");
   const [phone, setPhone] = useState(customerPhone ?? "");
   const [message, setMessage] = useState("");
+
+  // Other documents of the same customer, selectable to bundle into the email
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const { data: otherDocsData, isLoading: loadingOthers } = useSWR<{ documents: OtherDocument[] }>(
+    open && doc.customer_id ? `/api/admin/documents?customer_id=${doc.customer_id}&page=1&per_page=50` : null,
+    fetcher,
+    adminSwrConfig,
+  );
+  const otherDocs = (otherDocsData?.documents ?? []).filter((d) => d.id !== doc.id);
 
   const resetForm = () => {
     setResult(null);
@@ -75,6 +95,7 @@ export default function ShareDocumentModal({
           channel: tab,
           recipient,
           message: message.trim() || undefined,
+          ...(tab === "email" && selectedIds.size > 0 ? { additional_document_ids: Array.from(selectedIds) } : {}),
         }),
       });
       const j = await parseJsonSafe(res);
@@ -157,6 +178,34 @@ export default function ShareDocumentModal({
               onChange={(e) => setMessage(e.target.value)}
             />
           </div>
+          {loadingOthers && <p className="text-xs text-muted">他の帳票を読み込み中...</p>}
+          {otherDocs.length > 0 && (
+            <div>
+              <label className="mb-1 block text-xs text-muted">他の帳票も一緒に送付（任意）</label>
+              <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-[var(--border-subtle)] p-2">
+                {otherDocs.map((d) => (
+                  <label key={d.id} className="flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(d.id)}
+                      onChange={(e) => {
+                        setSelectedIds((prev) => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(d.id);
+                          else next.delete(d.id);
+                          return next;
+                        });
+                      }}
+                    />
+                    <span>
+                      {DOC_TYPES[d.doc_type as DocType]?.label ?? d.doc_type} {d.doc_number}
+                    </span>
+                    <span className="ml-auto text-muted">{formatJpy(d.total)}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
