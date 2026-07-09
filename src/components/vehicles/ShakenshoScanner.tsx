@@ -46,8 +46,17 @@ export default function ShakenshoScanner({ open, onResult, onClose }: Props) {
     let cancelled = false;
     let controls: IScannerControls | null = null;
 
+    // 車検証スキャンは背面 (環境向き) カメラを優先する。ideal なので背面が無い
+    // 端末 (PC・前面のみ) では自動でフォールバックし OverconstrainedError にしない。
+    // (既定デバイス任せの decodeFromVideoDevice だとモバイルで前面カメラが
+    //  選ばれ、印字QRにピントが合わない問題があった。BarcodeScanner と同作法。)
+    const constraints: MediaStreamConstraints = {
+      audio: false,
+      video: { facingMode: { ideal: "environment" } },
+    };
+
     reader
-      .decodeFromVideoDevice(undefined, videoEl, (result) => {
+      .decodeFromConstraints(constraints, videoEl, (result) => {
         if (cancelled || calledRef.current) return;
         if (result) {
           calledRef.current = true;

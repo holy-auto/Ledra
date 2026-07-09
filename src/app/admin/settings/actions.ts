@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { calcLaborPrice } from "@/lib/pricing/labor";
+import { settingsSchema } from "./settingsSchema";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type SettingsResult = { ok: true } | { ok: false; error: string };
@@ -20,22 +21,34 @@ export async function updateTenantSettingsAction(formData: FormData): Promise<Se
   const tenantId = await getTenantId(supabase);
   if (!tenantId) return { ok: false, error: "unauthorized" };
 
-  const name = String(formData.get("name") ?? "").trim();
-  if (!name) return { ok: false, error: "店舗名は必須です" };
+  // フォームで送られてきた項目のみ検証対象に含める (undefined は optional で素通し)。
+  const get = (k: string) => (formData.has(k) ? String(formData.get(k) ?? "").trim() : undefined);
+  const parsed = settingsSchema.safeParse({
+    name: String(formData.get("name") ?? "").trim(),
+    contact_email: get("contact_email"),
+    contact_phone: get("contact_phone"),
+    address: get("address"),
+    website_url: get("website_url"),
+    registration_number: get("registration_number"),
+    bank_name: get("bank_name"),
+    bank_branch_name: get("bank_branch_name"),
+    bank_account_type: get("bank_account_type"),
+    bank_account_number: get("bank_account_number"),
+    bank_account_holder: get("bank_account_holder"),
+  });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "入力内容が正しくありません" };
+  }
+  const v = parsed.data;
 
   // Build update payload — include extended fields only if present in the form
-  const payload: Record<string, unknown> = { name };
-  const contact_email = String(formData.get("contact_email") ?? "").trim();
-  const contact_phone = String(formData.get("contact_phone") ?? "").trim();
-  const address = String(formData.get("address") ?? "").trim();
-  const website_url = String(formData.get("website_url") ?? "").trim();
-  const registration_number = String(formData.get("registration_number") ?? "").trim();
+  const payload: Record<string, unknown> = { name: v.name };
   // Only include extended fields if the form sent them (columnsExist path)
-  if (formData.has("contact_email")) payload.contact_email = contact_email || null;
-  if (formData.has("contact_phone")) payload.contact_phone = contact_phone || null;
-  if (formData.has("address")) payload.address = address || null;
-  if (formData.has("website_url")) payload.website_url = website_url || null;
-  if (formData.has("registration_number")) payload.registration_number = registration_number || null;
+  if (formData.has("contact_email")) payload.contact_email = v.contact_email || null;
+  if (formData.has("contact_phone")) payload.contact_phone = v.contact_phone || null;
+  if (formData.has("address")) payload.address = v.address || null;
+  if (formData.has("website_url")) payload.website_url = v.website_url || null;
+  if (formData.has("registration_number")) payload.registration_number = v.registration_number || null;
 
   // レバーレート (工賃単価、円/時)。空欄 = 未設定 (null)
   let laborRate: number | null | undefined;
@@ -53,11 +66,11 @@ export async function updateTenantSettingsAction(formData: FormData): Promise<Se
 
   if (formData.has("bank_name")) {
     payload.bank_info = {
-      bank_name: String(formData.get("bank_name") ?? "").trim() || null,
-      branch_name: String(formData.get("bank_branch_name") ?? "").trim() || null,
-      account_type: String(formData.get("bank_account_type") ?? "").trim() || "普通",
-      account_number: String(formData.get("bank_account_number") ?? "").trim() || null,
-      account_holder: String(formData.get("bank_account_holder") ?? "").trim() || null,
+      bank_name: v.bank_name || null,
+      branch_name: v.bank_branch_name || null,
+      account_type: v.bank_account_type || "普通",
+      account_number: v.bank_account_number || null,
+      account_holder: v.bank_account_holder || null,
     };
   }
 
