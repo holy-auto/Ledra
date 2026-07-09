@@ -117,3 +117,17 @@ export const customerUpdateSchema = z
 export const customerDeleteSchema = z.object({
   id: z.string().uuid("無効なIDです。"),
 });
+
+/**
+ * CSV 一括取込の 1 行分スキーマ。
+ *
+ * 個人・法人を同一 CSV で混在登録できるよう、UI フォームと同じ全項目を受けつつ、
+ * 法人の支払いサイクル必須 (`customerCreateSchema` の refine) は敢えて外す。
+ * billing_cycle は DB 上 nullable で、未指定なら後から画面で補える方が
+ * 「1 行の不足で CSV 全体を弾く」より実務に合う (取込は寛容に、詳細は後追いで)。
+ */
+export const customerCsvRowSchema = z.object({
+  name: z.string().trim().min(1, "顧客名は必須です。").max(100),
+  ...customerBaseFields,
+});
+export type CustomerCsvRow = z.infer<typeof customerCsvRowSchema>;

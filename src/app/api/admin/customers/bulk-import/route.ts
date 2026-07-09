@@ -2,17 +2,21 @@
  * POST /api/admin/customers/bulk-import
  *
  * Content-Type: text/csv または multipart/form-data ('file' フィールド)。
- * CSV ヘッダ: name, email, phone, note  (順不同、name 必須)
+ * CSV ヘッダ (順不同, name 必須):
+ *   name, name_kana, email, phone, postal_code, address, note,
+ *   customer_type(個人/法人 または individual/corporate),
+ *   corporate_number, invoice_registration_number, billing_cycle(都度/合算),
+ *   short_name, honorific
+ * → 個人・法人を同一 CSV で混在登録できる。
  *
- * 1 行 = 1 customer。同一テナント内で email が一致する既存行は upsert。
- * 戻り値は { inserted, updated, skipped, errors[] }。
+ * 1 行 = 1 customer。同一テナント内で email が一致 (無ければ氏名+電話の名寄せ) する
+ * 既存行は upsert。戻り値は { inserted, updated, skipped, errors[] }。
  *
  * 認証: caller 必須 + role >= staff。
  * Rate limit: tenant ごとに 60s/3 リクエストまで (大量送信防止)。
  */
 
 import type { NextRequest } from "next/server";
-import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
@@ -20,28 +24,38 @@ import { apiOk, apiUnauthorized, apiForbidden, apiValidationError, apiInternalEr
 import { parseCsv } from "@/lib/csv/parse";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { fuzzyMatchCustomer, type CustomerCandidate } from "@/lib/ai/customerFuzzyMatch";
+import { customerCsvRowSchema } from "@/lib/validations/customer";
 import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const rowSchema = z.object({
-  name: z.string().trim().min(1).max(200),
-  email: z
-    .string()
-    .trim()
-    .email()
-    .max(254)
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
-  phone: z
-    .string()
-    .trim()
-    .max(40)
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
-  note: z.string().trim().max(2000).optional(),
-});
+/** 日本語ラベル → enum 値へ寄せる。CSV は人手編集を想定し表記揺れを吸収する。 */
+const CUSTOMER_TYPE_ALIASES: Record<string, "individual" | "corporate"> = {
+  個人: "individual",
+  法人: "corporate",
+  individual: "individual",
+  corporate: "corporate",
+};
+const BILLING_CYCLE_ALIASES: Record<string, "per_job" | "consolidated"> = {
+  都度: "per_job",
+  都度払い: "per_job",
+  per_job: "per_job",
+  合算: "consolidated",
+  締め払い: "consolidated",
+  consolidated: "consolidated",
+};
+
+/** CSV セル (常に string) を customerCsvRowSchema が解釈できる形へ正規化する。 */
+function normalizeCsvRow(raw: Record<string, string>): Record<string, unknown> {
+  const t = (raw.customer_type ?? "").trim();
+  const b = (raw.billing_cycle ?? "").trim();
+  return {
+    ...raw,
+    customer_type: t ? (CUSTOMER_TYPE_ALIASES[t.toLowerCase()] ?? CUSTOMER_TYPE_ALIASES[t] ?? t) : undefined,
+    billing_cycle: b ? (BILLING_CYCLE_ALIASES[b.toLowerCase()] ?? BILLING_CYCLE_ALIASES[b] ?? b) : undefined,
+  };
+}
 
 async function readCsv(req: NextRequest): Promise<{ ok: true; csv: string } | { ok: false; error: string }> {
   const ct = (req.headers.get("content-type") ?? "").toLowerCase();
@@ -97,7 +111,7 @@ export async function POST(req: NextRequest) {
 
     for (let i = 0; i < parsed.rows.length; i++) {
       const raw = parsed.rows[i];
-      const row = rowSchema.safeParse(raw);
+      const row = customerCsvRowSchema.safeParse(normalizeCsvRow(raw));
       if (!row.success) {
         errors.push({ row_index: i, error: row.error.issues[0]?.message ?? "invalid" });
         skipped += 1;
@@ -131,12 +145,21 @@ export async function POST(req: NextRequest) {
       }
 
       if (existingId) {
-        // 既存顧客の更新では、空の列で既存の連絡先を上書き (消去) しない。
+        // 既存顧客の更新では、空の列で既存の値を上書き (消去) しない。
         // 値のある列だけを更新する。
         const updatePayload: Record<string, unknown> = { name: v.name };
+        if (v.name_kana) updatePayload.name_kana = v.name_kana;
         if (v.email) updatePayload.email = v.email;
         if (v.phone) updatePayload.phone = v.phone;
+        if (v.postal_code) updatePayload.postal_code = v.postal_code;
+        if (v.address) updatePayload.address = v.address;
         if (v.note) updatePayload.note = v.note;
+        if (v.customer_type === "corporate") updatePayload.customer_type = "corporate";
+        if (v.corporate_number) updatePayload.corporate_number = v.corporate_number;
+        if (v.invoice_registration_number) updatePayload.invoice_registration_number = v.invoice_registration_number;
+        if (v.billing_cycle) updatePayload.billing_cycle = v.billing_cycle;
+        if (v.short_name) updatePayload.short_name = v.short_name;
+        if (v.honorific) updatePayload.honorific = v.honorific;
 
         const { error } = await admin.from("customers").update(updatePayload).eq("id", existingId);
         if (error) {
@@ -151,9 +174,18 @@ export async function POST(req: NextRequest) {
           .insert({
             tenant_id: tenantId,
             name: v.name,
-            email: v.email ?? null,
-            phone: v.phone ?? null,
-            note: v.note ?? null,
+            name_kana: v.name_kana,
+            email: v.email,
+            phone: v.phone,
+            postal_code: v.postal_code,
+            address: v.address,
+            note: v.note,
+            customer_type: v.customer_type,
+            corporate_number: v.corporate_number,
+            invoice_registration_number: v.invoice_registration_number,
+            billing_cycle: v.billing_cycle,
+            short_name: v.short_name,
+            honorific: v.honorific,
           })
           .select("id, name, name_kana, phone, email")
           .single();
