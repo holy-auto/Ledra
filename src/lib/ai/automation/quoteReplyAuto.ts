@@ -18,7 +18,12 @@
  * 安全ガード:
  *   - opt-in (quote.auto_reply_rough_estimate, 既定 OFF) + Standard プラン以上
  *   - LINE 受信 (lineUserId あり) のみ — push で返信する
- *   - intent が inquiry_only / new_reservation で施工内容と車両の両方が抽出できた場合のみ
+ *   - intent が inquiry_only / new_reservation
+ *
+ * 施工内容/車両の一方または両方が読み取れなかった場合:
+ *   - 原文に価格問い合わせらしいキーワード (見積/概算/いくら 等) があれば、
+ *     金額は出さず不足情報 (車両・施工内容) を尋ね返す
+ *   - キーワードも無ければ従来通り何もしない (無関係な問い合わせへの誤爆を避ける)
  */
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
@@ -34,6 +39,10 @@ import { shouldAutoReplyRoughEstimate } from "./orchestrator";
 const ENDPOINT = "/api/line/webhook#auto-quote-reply";
 const TAX_RATE = 0.1;
 
+/** 価格問い合わせらしいと判断するキーワード。車両/施工内容が読み取れなかった
+ * ときに「黙ってスキップ」か「不足情報を聞き返す」かを分けるための簡易判定。 */
+const PRICE_INQUIRY_PATTERN = /見積|みつもり|概算|いくら|金額|価格|料金/;
+
 export interface MaybeAutoReplyRoughEstimateParams {
   tenantId: string;
   /** 既知顧客 ID。null (未紐付けの新規客) でも返信する。 */
@@ -44,12 +53,30 @@ export interface MaybeAutoReplyRoughEstimateParams {
   intent: string;
   service?: string;
   vehicleText?: string;
+  /** 受信メッセージの原文。施工内容/車両が未抽出のとき、価格問い合わせらしいか
+   * どうかの判定にのみ使う (キーワード一致のみ、AI 呼び出しはしない)。 */
+  text?: string;
   /** 起票元の customer_messages.id (トレーサビリティ用)。 */
   messageId: string | null;
   channel?: string;
   /** 呼び出し元 (inboundAuto) が既にロード済みなら渡して二重読込を避ける。 */
   settings?: AiAutomationSettings;
   tenant?: { plan_tier: string | null; is_active: boolean | null };
+}
+
+/** 施工内容/車両の一方または両方が読み取れなかったとき、不足情報を尋ねる返信文。 */
+export function buildMissingInfoMessage(input: { hasService: boolean; hasVehicle: boolean }): string {
+  const asks: string[] = [];
+  if (!input.hasVehicle) asks.push("お車の情報 (メーカー・車種・年式)");
+  if (!input.hasService) asks.push("ご希望の施工内容");
+  return [
+    "【お見積りについて】",
+    "概算のお見積りをお出ししたいのですが、下記を教えていただけますでしょうか。",
+    "",
+    ...asks.map((a) => `◯ ${a}`),
+    "",
+    "分かる範囲で構いませんので、返信をお願いいたします。",
+  ].join("\n");
 }
 
 /**
@@ -95,9 +122,6 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
   try {
     const lineUserId = params.lineUserId?.trim();
     if (!lineUserId) return; // push 返信先が無い (LINE 以外) なら何もしない
-    const service = params.service?.trim();
-    const vehicleText = params.vehicleText?.trim();
-    if (!service || !vehicleText) return;
     if (params.intent !== "inquiry_only" && params.intent !== "new_reservation") return;
 
     const settings = params.settings ?? (await loadAiAutomationSettings(tenantId));
@@ -110,6 +134,33 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
       null;
     if (!tenant || tenant.is_active === false) return;
     if (!canUseFeature(normalizePlanTier(tenant.plan_tier), "ai_invoice_quote")) return;
+
+    const service = params.service?.trim();
+    const vehicleText = params.vehicleText?.trim();
+    if (!service || !vehicleText) {
+      // AI 抽出が施工内容/車両を取り損ねても、原文が価格問い合わせらしければ
+      // 黙ってスキップせず不足情報を聞き返す。キーワードが無ければ従来通り何もしない
+      // (無関係な問い合わせに車両情報を尋ね返すのを避けるため)。
+      if (!PRICE_INQUIRY_PATTERN.test(params.text ?? "")) return;
+      const askBody = buildMissingInfoMessage({ hasService: !!service, hasVehicle: !!vehicleText });
+      const asked = await sendCustomerLineText({ tenantId, customerId: customerId ?? null, lineUserId, body: askBody });
+      if (asked) {
+        await logAutoActionExecuted({
+          tenantId,
+          actionKey: "quote.auto_reply_rough_estimate",
+          resource: { kind: "line_user", id: lineUserId },
+          detail: {
+            channel: params.channel ?? "line",
+            customer_id: customerId,
+            source_message_id: params.messageId,
+            missing_info: true,
+            has_service: !!service,
+            has_vehicle: !!vehicleText,
+          },
+        });
+      }
+      return;
+    }
 
     // 顧客名・登録車両は既知顧客のときだけ引く。未紐付けの新規客は車両テキストと
     // テナント全体の過去請求実績だけで概算する (精度は落ちるが返信はできる)。

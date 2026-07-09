@@ -28,7 +28,12 @@ vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({}) },
 }));
 
-import { maybeAutoReplyRoughEstimate, roughEstimateRange, buildRoughEstimateMessage } from "../quoteReplyAuto";
+import {
+  maybeAutoReplyRoughEstimate,
+  roughEstimateRange,
+  buildRoughEstimateMessage,
+  buildMissingInfoMessage,
+} from "../quoteReplyAuto";
 
 const TENANT = "11111111-1111-1111-1111-111111111111";
 const CUSTOMER = "22222222-2222-4222-a222-222222222222";
@@ -105,6 +110,13 @@ describe("buildRoughEstimateMessage", () => {
   });
 });
 
+describe("buildMissingInfoMessage", () => {
+  it("asks only for what is missing", () => {
+    expect(buildMissingInfoMessage({ hasService: true, hasVehicle: false })).toContain("お車の情報");
+    expect(buildMissingInfoMessage({ hasService: false, hasVehicle: true })).toContain("ご希望の施工内容");
+  });
+});
+
 describe("maybeAutoReplyRoughEstimate", () => {
   it("sends a rough estimate range to a known customer and audits it", async () => {
     await maybeAutoReplyRoughEstimate(baseParams());
@@ -152,9 +164,40 @@ describe("maybeAutoReplyRoughEstimate", () => {
     expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
   });
 
-  it("does nothing when service or vehicle could not be extracted", async () => {
-    await maybeAutoReplyRoughEstimate({ ...baseParams(), vehicleText: "" });
+  it("does nothing when service or vehicle could not be extracted and the text has no price-inquiry keyword", async () => {
+    await maybeAutoReplyRoughEstimate({ ...baseParams(), vehicleText: "", text: "定休日はいつですか？" });
     expect(mocks.generateQuoteFromVehicle).not.toHaveBeenCalled();
+    expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
+  });
+
+  it("asks for the missing vehicle info instead of skipping silently when the text looks like a price inquiry", async () => {
+    await maybeAutoReplyRoughEstimate({
+      ...baseParams(),
+      vehicleText: "",
+      text: "コーティングの見積りが欲しいです",
+    });
+    expect(mocks.generateQuoteFromVehicle).not.toHaveBeenCalled();
+    expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
+    const body = mocks.sendCustomerLineText.mock.calls[0][0].body;
+    expect(body).toContain("お車の情報");
+    expect(body).not.toContain("ご希望の施工内容");
+    expect(mocks.logAutoActionExecuted).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionKey: "quote.auto_reply_rough_estimate",
+        detail: expect.objectContaining({ missing_info: true }),
+      }),
+    );
+  });
+
+  it("asks for the missing service info when only the vehicle was extracted", async () => {
+    await maybeAutoReplyRoughEstimate({
+      ...baseParams(),
+      service: "",
+      text: "アルファードの見積りをお願いします",
+    });
+    const body = mocks.sendCustomerLineText.mock.calls[0][0].body;
+    expect(body).toContain("ご希望の施工内容");
+    expect(body).not.toContain("お車の情報");
   });
 
   it("skips non-quote intents", async () => {
