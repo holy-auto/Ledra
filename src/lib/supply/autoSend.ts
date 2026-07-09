@@ -2,21 +2,21 @@
  * 供給パートナー発注の「全自動送信」可否判定 — 純関数 (壁3 隣接の安全ガード)。
  *
  * 自動送信 (人の承認なしで draft→sent し外部 API へ発注) は通常の壁3 を越える操作。
- * そのため **すべての条件が揃ったときだけ** 許可し、既定では一切送らない。
+ * 安全の要は「金額上限 (1発注 + 月次)」で、これを店舗が明示設定していることを核の条件とする。
+ * opt-in + 構造化搬送 (API/ポータル) + 金額上限の全条件が揃ったときだけ許可し、既定では送らない。
+ * 運営の信頼パートナー承認 (is_trusted) は自動送信のゲートには使わない (金額上限で制御する方針)。
  * 判定ロジックを純関数に切り出してテスト可能にする (IO は partnerReorder 側)。
  */
 
 export interface AutoSendContext {
   /** テナントが自動送信を opt-in 済みか (tenant_supply_auto_send_settings.enabled)。 */
   optInEnabled: boolean;
-  /** 運営が承認した信頼パートナーか (supply_partners.is_trusted)。 */
-  partnerTrusted: boolean;
   /** パートナーが API 連携済みか (メールのみは自動送信しない)。 */
   partnerHasApi: boolean;
   /**
    * パートナーが Ledra ホストの受注ポータルを使うか (supply_partners.portal_enabled)。
    * ポータルは Ledra が両側を握るプル型で確実に届くため、API 同様に構造化搬送として
-   * 自動送信の対象に含める (信頼パートナーなら API 無しでも可)。既定 false。
+   * 自動送信の対象に含める (API 無しでも可)。既定 false。
    */
   partnerHasPortal?: boolean;
   /** この発注の概算合計 (円)。 */
@@ -33,7 +33,6 @@ export type AutoSendDecision = { ok: true } | { ok: false; reason: AutoSendDenyR
 
 export type AutoSendDenyReason =
   | "opt_out"
-  | "partner_not_trusted"
   | "no_api_transport"
   | "empty_order"
   | "no_per_order_cap"
@@ -47,7 +46,6 @@ export type AutoSendDenyReason =
  */
 export function decideAutoSend(ctx: AutoSendContext): AutoSendDecision {
   if (!ctx.optInEnabled) return { ok: false, reason: "opt_out" };
-  if (!ctx.partnerTrusted) return { ok: false, reason: "partner_not_trusted" };
   // 構造化搬送 (API or ポータル) が無ければ自動送信しない。メールのみは対象外。
   if (!ctx.partnerHasApi && !ctx.partnerHasPortal) return { ok: false, reason: "no_api_transport" };
   if (!(ctx.orderTotalJpy > 0)) return { ok: false, reason: "empty_order" };

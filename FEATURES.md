@@ -1100,7 +1100,7 @@ VIN を鍵に**車両の全施工履歴を束ねる「デジタル車両パス�
 - `/api/admin/supply/partners`: アクティブな供給パートナーの公開ディレクトリ + 自店の提携状況（enabled/disabled）
 - `/api/admin/supply/map-item`: 自社在庫品目をパートナー商材に紐付け（supplier_sku 自動ミラー）
 - `/api/admin/supply/products`: 提携済みパートナーの商材カタログ閲覧
-- `/api/admin/supply/auto-send`: パートナー発注の全自動送信 opt-in（enabled + 1発注上限額 + 月次上限がすべて必要、信頼パートナー & API連携済みのみ対象）
+- `/api/admin/supply/auto-send`: パートナー発注の全自動送信 opt-in（enabled + 1発注上限額 + 月次上限がすべて必要、API・ポータル連携済みのみ対象。金額上限を安全の核とし、運営の信頼承認は要件としない）
 - `POST /api/webhooks/supply/[partnerId]`: パートナー受注システムからの「受注確定/出荷/却下」通知（HMAC-SHA256 署名検証）。transport_status/external_order_id を更新（PO ステータス自体と入荷計上は手作業を維持＝人の関与の壁）
 - **運営側** `/admin/platform/supply-partners`: 運営がパートナー企業を登録・管理（連絡先・API認証形式・統合ステータス）
 
