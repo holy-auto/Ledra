@@ -26,8 +26,10 @@ export async function issueCaptureNonce(params: { tenantId: string; certificateI
   if (!tenantId || !certificateId) return null;
   // 128bit のランダム nonce。衝突は現実的に無く、PK 重複時は素直に失敗させる。
   const nonce = randomBytes(16).toString("hex");
-  const admin = createServiceRoleAdmin("photo capture nonce issue — cert create");
   try {
+    // service-role client 初期化 (env 欠落等) も try 内に置く。cert 作成の後に
+    // 呼ばれるため、ここで throw すると作成アクションごと 500 になる。fail-open で null。
+    const admin = createServiceRoleAdmin("photo capture nonce issue — cert create");
     const { error } = await admin.from("photo_capture_nonces").insert({
       nonce,
       tenant_id: tenantId,
@@ -58,8 +60,9 @@ export async function consumeCaptureNonce(params: {
 }): Promise<ConsumeNonceResult> {
   const { nonce, tenantId, certificateId, deviceKeyHash } = params;
   if (!nonce || !tenantId || !certificateId) return "not_found";
-  const admin = createServiceRoleAdmin("photo capture nonce consume — image upload");
   try {
+    // service-role client 初期化も try 内に置き、失敗は fail-closed で 'error' に。
+    const admin = createServiceRoleAdmin("photo capture nonce consume — image upload");
     const { data, error } = await admin.rpc("consume_photo_capture_nonce", {
       p_nonce: nonce,
       p_tenant_id: tenantId,
