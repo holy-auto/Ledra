@@ -9,8 +9,18 @@ const categoryField = z
   .optional()
   .transform((v) => v || null);
 
+// 品番（任意）。空文字は null に正規化する。
+const itemCodeField = z
+  .string()
+  .trim()
+  .max(60)
+  .nullable()
+  .optional()
+  .transform((v) => v || null);
+
 export const menuItemCreateSchema = z.object({
   name: z.string().trim().min(1, "品目名は必須です。").max(100),
+  item_code: itemCodeField,
   category_large: categoryField,
   category_medium: categoryField,
   category_small: categoryField,
@@ -37,6 +47,7 @@ export const menuItemCreateSchema = z.object({
 export const menuItemUpdateSchema = z.object({
   id: z.string().uuid("無効なIDです。"),
   name: z.string().trim().min(1).max(100).optional(),
+  item_code: itemCodeField,
   category_large: categoryField,
   category_medium: categoryField,
   category_small: categoryField,

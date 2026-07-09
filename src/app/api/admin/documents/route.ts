@@ -10,6 +10,7 @@ import { documentCreateSchema, documentUpdateSchema, documentDeleteSchema } from
 import { resolveBaseUrl } from "@/lib/url";
 import { maybeAutoSendDocumentOnConfirm } from "@/lib/ai/automation/documentAuto";
 import { insertDocWithRetry } from "@/lib/invoice/invoiceNumber";
+import { autoRegisterMenuItems } from "@/lib/documents/autoRegisterMenuItems";
 
 export const dynamic = "force-dynamic";
 
@@ -43,9 +44,9 @@ function calcItems(items: any[], taxRate: number, isTaxInclusive = false) {
       } as Record<string, unknown>;
     }
 
-    const qty = parseInt(String(item.quantity || 0), 10);
+    const qty = parseFloat(String(item.quantity || 0)) || 0;
     const unitPrice = parseInt(String(item.unit_price || 0), 10);
-    const amount = qty * unitPrice;
+    const amount = Math.round(qty * unitPrice);
     itemsSum += amount;
     runningSubtotal += amount;
     const mapped: Record<string, unknown> = {
@@ -56,6 +57,7 @@ function calcItems(items: any[], taxRate: number, isTaxInclusive = false) {
       unit_price: unitPrice,
       amount,
     };
+    if (item.item_code != null && String(item.item_code).trim()) mapped.item_code = String(item.item_code).trim();
     if (item.tax_category != null) mapped.tax_category = item.tax_category;
     if (item.cost_price != null && item.cost_price !== "") {
       const cp = parseInt(String(item.cost_price), 10);
@@ -281,6 +283,15 @@ export async function POST(req: NextRequest) {
       return apiInternalError(error, "documents POST");
     }
 
+    // 品目マスタに無い明細は自動登録する（保存自体は失敗させない fire-and-forget）
+    after(async () => {
+      try {
+        await autoRegisterMenuItems(admin, caller.tenantId, items);
+      } catch {
+        // 自動登録の失敗は握り潰す（帳票保存自体は既に成功済み）
+      }
+    });
+
     return apiJson({ ok: true, document: data });
   } catch (e) {
     return apiInternalError(e, "documents POST");
@@ -398,6 +409,17 @@ export async function PUT(req: NextRequest) {
 
     if (error) {
       return apiInternalError(error, "documents PUT");
+    }
+
+    // 品目マスタに無い明細は自動登録する（保存自体は失敗させない fire-and-forget）
+    if (body.items !== undefined) {
+      after(async () => {
+        try {
+          await autoRegisterMenuItems(admin, caller.tenantId, body.items ?? []);
+        } catch {
+          // 自動登録の失敗は握り潰す（帳票保存自体は既に成功済み）
+        }
+      });
     }
 
     // 確定 (draft→sent) の瞬間に、opt-in 済みテナントでは顧客へ自動送付する。

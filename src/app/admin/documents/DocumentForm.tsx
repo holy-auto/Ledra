@@ -7,17 +7,30 @@ import { formatJpy } from "@/lib/format";
 import { calcSellingPrice } from "@/lib/pricing/margin";
 import { DOC_TYPES, DOC_TYPE_LIST, type DocType, type DocumentItem, type DocumentRow } from "@/types/document";
 import QuoteAiDraftPanel from "./QuoteAiDraftPanel";
+import ItemCodeField from "@/components/documents/ItemCodeField";
 
-type Customer = { id: string; name: string };
+type Customer = {
+  id: string;
+  name: string;
+  honorific: "御中" | "様" | "" | null;
+  postal_code: string | null;
+  address: string | null;
+  phone: string | null;
+  billing_cycle: "per_job" | "consolidated" | null;
+  billing_terms_note: string | null;
+};
 type MenuItem = {
   id: string;
   name: string;
+  item_code: string | null;
   description: string | null;
   unit_price: number;
   cost_price: number | null;
   margin_rate: number | null;
   tax_category: number;
 };
+
+const BILLING_CYCLE_LABEL: Record<string, string> = { per_job: "都度払い", consolidated: "合算（締め払い）" };
 type TemplateOption = { id: string; name: string; doc_type: string | null };
 
 const emptyItem = (): DocumentItem => ({
@@ -122,7 +135,18 @@ export default function DocumentForm({
       const res = await fetch("/api/admin/customers", { cache: "no-store" });
       const j = await parseJsonSafe(res);
       if (res.ok && j?.customers) {
-        setCustomers(j.customers.map((c: any) => ({ id: c.id, name: c.name })));
+        setCustomers(
+          j.customers.map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            honorific: c.honorific ?? null,
+            postal_code: c.postal_code ?? null,
+            address: c.address ?? null,
+            phone: c.phone ?? null,
+            billing_cycle: c.billing_cycle ?? null,
+            billing_terms_note: c.billing_terms_note ?? null,
+          })),
+        );
       }
     } catch {}
   }, []);
@@ -136,6 +160,7 @@ export default function DocumentForm({
           j.items.map((m: any) => ({
             id: m.id,
             name: m.name,
+            item_code: m.item_code ?? null,
             description: m.description,
             unit_price: m.unit_price,
             cost_price: m.cost_price ?? null,
@@ -179,8 +204,9 @@ export default function DocumentForm({
       const newItems = [...prev];
       const item = { ...newItems[index] };
       if (field === "description") item.description = value as string;
+      if (field === "item_code") item.item_code = (value as string) || null;
       if (field === "unit") item.unit = (value as string) ?? "";
-      if (field === "quantity") item.quantity = parseInt(String(value), 10) || 0;
+      if (field === "quantity") item.quantity = parseFloat(String(value)) || 0;
       if (field === "unit_price") item.unit_price = parseInt(String(value), 10) || 0;
       if (field === "cost_price") {
         const v = value === "" || value == null ? 0 : parseInt(String(value), 10) || 0;
@@ -198,7 +224,7 @@ export default function DocumentForm({
       }
       const type = item.item_type ?? "item";
       if (type === "item") {
-        item.amount = item.quantity * item.unit_price;
+        item.amount = Math.round(item.quantity * item.unit_price);
       }
       newItems[index] = item;
       return recalcSubtotals(newItems);
@@ -226,7 +252,7 @@ export default function DocumentForm({
       if (!item.description) item.description = "小計";
     } else {
       if (!item.quantity) item.quantity = 1;
-      item.amount = item.quantity * item.unit_price;
+      item.amount = Math.round(item.quantity * item.unit_price);
     }
     newItems[index] = item;
     setFormItems(recalcSubtotals(newItems));
@@ -237,11 +263,12 @@ export default function DocumentForm({
     if (!mi) return;
     const newItems = [...formItems];
     const item = { ...newItems[itemIndex] };
+    item.item_code = mi.item_code ?? null;
     item.description = mi.name + (mi.description ? ` (${mi.description})` : "");
     item.unit_price = mi.unit_price;
     if (mi.cost_price != null) item.cost_price = mi.cost_price;
     if (mi.margin_rate != null) item.margin_rate = mi.margin_rate;
-    item.amount = item.quantity * item.unit_price;
+    item.amount = Math.round(item.quantity * item.unit_price);
     newItems[itemIndex] = item;
     setFormItems(recalcSubtotals(newItems));
   };
@@ -357,7 +384,7 @@ export default function DocumentForm({
               quantity: it.quantity,
               unit: "式",
               unit_price: it.unit_price,
-              amount: it.quantity * it.unit_price,
+              amount: Math.round(it.quantity * it.unit_price),
               is_reduced_rate: false,
               tax_rate: null,
               certificate_id: null,
@@ -401,8 +428,24 @@ export default function DocumentForm({
             className="select-field"
             value={formCustomerId}
             onChange={(e) => {
-              setFormCustomerId(e.target.value);
-              if (e.target.value) setFormRecipientName("");
+              const id = e.target.value;
+              setFormCustomerId(id);
+              if (!id) return;
+              setFormRecipientName("");
+              // 顧客管理に登録済みの敬称・住所・支払条件を宛先詳細へ自動反映する。
+              // 編集モードでは既に手入力・確定済みの宛先情報を上書きしないよう、
+              // 新規作成時のみ自動反映する。
+              if (isEdit) return;
+              const c = customers.find((cust) => cust.id === id);
+              if (c) {
+                setFormRecipientHonorific(c.honorific || "御中");
+                setFormRecipientPostalCode(c.postal_code ?? "");
+                setFormRecipientAddress(c.address ?? "");
+                setFormRecipientPhone(c.phone ?? "");
+                setFormPaymentTerms(
+                  c.billing_terms_note || (c.billing_cycle ? BILLING_CYCLE_LABEL[c.billing_cycle] : ""),
+                );
+              }
             }}
           >
             <option value="">選択なし</option>
@@ -729,6 +772,16 @@ export default function DocumentForm({
                     <>
                       <div className="min-w-0">
                         {menuItems.length > 0 && (
+                          <div className="mb-1">
+                            <ItemCodeField
+                              value={item.item_code ?? ""}
+                              menuItems={menuItems}
+                              onChange={(code) => updateItem(idx, "item_code", code)}
+                              onSelect={(mi) => handleMenuItemSelect(mi.id, idx)}
+                            />
+                          </div>
+                        )}
+                        {menuItems.length > 0 && (
                           <select
                             className="select-field py-1 text-xs mb-1 w-full"
                             value=""
@@ -770,6 +823,7 @@ export default function DocumentForm({
                         type="number"
                         className="input-field"
                         min="0"
+                        step="0.1"
                         placeholder="1"
                         value={item.quantity || ""}
                         onChange={(e) => updateItem(idx, "quantity", e.target.value)}

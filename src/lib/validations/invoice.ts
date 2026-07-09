@@ -2,6 +2,8 @@ import { z } from "zod";
 
 const invoiceItemSchema = z.object({
   description: z.string().max(500).optional(),
+  /** 品番。品目マスタ(menu_items)の item_code と紐付け、帳票作成時の検索に使う。 */
+  item_code: z.string().max(60).nullable().optional(),
   quantity: z.coerce.number().min(0).optional(),
   unit: z.string().max(20).optional(),
   unit_price: z.coerce.number().min(0).optional(),

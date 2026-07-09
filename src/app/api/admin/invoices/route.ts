@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
@@ -16,6 +16,7 @@ import { invoiceCreateSchema, invoiceUpdateSchema, invoiceDeleteSchema } from "@
 import { buildTaxBreakdown, totalTax, isValidRegistrationNumber } from "@/lib/invoice/taxBreakdown";
 import { recordInvoicePaymentBalance } from "@/lib/invoice/recordPayment";
 import { insertInvoiceWithRetry } from "@/lib/invoice/invoiceNumber";
+import { autoRegisterMenuItems } from "@/lib/documents/autoRegisterMenuItems";
 
 export const dynamic = "force-dynamic";
 
@@ -187,9 +188,9 @@ export async function POST(req: NextRequest) {
     //   税率ごとに小計・税額を区分 (適格請求書要件)。
     let subtotal = 0;
     const itemsJson = items.map((item: any) => {
-      const qty = parseInt(String(item.quantity || 0), 10);
+      const qty = parseFloat(String(item.quantity || 0)) || 0;
       const unitPrice = parseInt(String(item.unit_price || 0), 10);
-      const amount = qty * unitPrice;
+      const amount = Math.round(qty * unitPrice);
       subtotal += amount;
       const lineRate = typeof item.tax_rate === "number" ? item.tax_rate : item.is_reduced_rate ? 8 : null;
       const mapped: Record<string, unknown> = {
@@ -199,6 +200,7 @@ export async function POST(req: NextRequest) {
         unit_price: unitPrice,
         amount,
       };
+      if (item.item_code != null && String(item.item_code).trim()) mapped.item_code = String(item.item_code).trim();
       if (lineRate !== null) mapped.tax_rate = lineRate;
       if (item.is_reduced_rate || lineRate === 8) mapped.is_reduced_rate = true;
       if (item.certificate_id) mapped.certificate_id = item.certificate_id;
@@ -275,6 +277,15 @@ export async function POST(req: NextRequest) {
       return apiInternalError(error, "invoices insert");
     }
 
+    // 品目マスタに無い明細は自動登録する（保存自体は失敗させない fire-and-forget）
+    after(async () => {
+      try {
+        await autoRegisterMenuItems(admin, caller.tenantId, items);
+      } catch {
+        // 自動登録の失敗は握り潰す（請求書保存自体は既に成功済み）
+      }
+    });
+
     // 後方互換: invoice_number エイリアス
     return apiJson({ ok: true, invoice: { ...data, invoice_number: data.doc_number } });
   } catch (e: unknown) {
@@ -330,9 +341,9 @@ export async function PUT(req: NextRequest) {
       const items = body.items ?? [];
       let subtotal = 0;
       const itemsJson = items.map((item: any) => {
-        const qty = parseInt(String(item.quantity || 0), 10);
+        const qty = parseFloat(String(item.quantity || 0)) || 0;
         const unitPrice = parseInt(String(item.unit_price || 0), 10);
-        const amount = qty * unitPrice;
+        const amount = Math.round(qty * unitPrice);
         subtotal += amount;
         const lineRate = typeof item.tax_rate === "number" ? item.tax_rate : item.is_reduced_rate ? 8 : null;
         const mapped: Record<string, unknown> = {
@@ -342,6 +353,7 @@ export async function PUT(req: NextRequest) {
           unit_price: unitPrice,
           amount,
         };
+        if (item.item_code != null && String(item.item_code).trim()) mapped.item_code = String(item.item_code).trim();
         if (lineRate !== null) mapped.tax_rate = lineRate;
         if (item.is_reduced_rate || lineRate === 8) mapped.is_reduced_rate = true;
         if (item.certificate_id) mapped.certificate_id = item.certificate_id;
@@ -381,6 +393,17 @@ export async function PUT(req: NextRequest) {
 
     if (error) {
       return apiInternalError(error, "invoices update");
+    }
+
+    // 品目マスタに無い明細は自動登録する（保存自体は失敗させない fire-and-forget）
+    if (body.items !== undefined) {
+      after(async () => {
+        try {
+          await autoRegisterMenuItems(admin, caller.tenantId, body.items ?? []);
+        } catch {
+          // 自動登録の失敗は握り潰す（請求書保存自体は既に成功済み）
+        }
+      });
     }
 
     // 「入金済」に更新したら売掛元帳 (payment_entries) にも残高分を記帳して消込を
