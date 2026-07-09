@@ -80,15 +80,7 @@ const certStatusVariant = (s: string) => {
 };
 
 type TabKey =
-  | "summary"
-  | "parties"
-  | "certificates"
-  | "photos"
-  | "inspection"
-  | "parts"
-  | "billing"
-  | "billing_split"
-  | "handoff";
+  "summary" | "parties" | "certificates" | "photos" | "inspection" | "parts" | "billing" | "billing_split" | "handoff";
 
 interface Props {
   reservation: JobReservation;
@@ -134,7 +126,7 @@ export default function JobDetailTabs({
     return `/admin/certificates/new${qs ? `?${qs}` : ""}`;
   })();
 
-  // reservation_id を含めると InvoicesClient が ai-from-job で明細・備考を起票する
+  // reservation_id を含めると DocumentForm が ai-from-job で明細・備考を起票する
   const invoiceNewUrl = (() => {
     const params = new URLSearchParams();
     params.set("reservation_id", reservation.id);

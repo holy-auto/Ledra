@@ -4,6 +4,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import type { SquareConnection } from "@/types/square";
 import SettingsForm from "./SettingsForm";
+import LogoSealSection from "./LogoSealSection";
 import SettingsProgressCard from "./SettingsProgressCard";
 import FollowUpSettings from "./FollowUpSettings";
 import SquareConnectSection from "./SquareConnectSection";
@@ -80,7 +81,12 @@ async function fetchTenantExtended(tenantId: string): Promise<TenantExtended> {
   }
 }
 
-export default async function AdminSettingsPage() {
+export default async function AdminSettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ ok?: string; e?: string }>;
+}) {
+  const sp = await searchParams;
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -204,9 +210,6 @@ export default async function AdminSettingsPage() {
           <Link href="/admin/settings/addons" className="btn-secondary">
             ご契約アドオン
           </Link>
-          <Link href="/admin/logo" className="btn-secondary">
-            ロゴを設定
-          </Link>
         </div>
       </section>
 
@@ -264,6 +267,9 @@ export default async function AdminSettingsPage() {
           }
         />
       </section>
+
+      {/* ロゴ・角印 */}
+      <LogoSealSection sp={sp} />
 
       {/* 請求タイミング */}
       <section className="glass-card p-5">

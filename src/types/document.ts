@@ -17,7 +17,7 @@ export const DOC_TYPE_LIST = Object.entries(DOC_TYPES).map(([value, meta]) => ({
   ...meta,
 }));
 
-export type DocumentStatus = "draft" | "sent" | "accepted" | "paid" | "rejected" | "cancelled";
+export type DocumentStatus = "draft" | "sent" | "accepted" | "paid" | "overdue" | "rejected" | "cancelled";
 
 export const STATUS_OPTIONS: { value: DocumentStatus | "all"; label: string }[] = [
   { value: "all", label: "すべて" },
@@ -25,6 +25,7 @@ export const STATUS_OPTIONS: { value: DocumentStatus | "all"; label: string }[] 
   { value: "sent", label: "送付済" },
   { value: "accepted", label: "受理済" },
   { value: "paid", label: "入金済" },
+  { value: "overdue", label: "期限超過" },
   { value: "rejected", label: "却下" },
   { value: "cancelled", label: "キャンセル" },
 ];
@@ -44,6 +45,8 @@ export function statusVariant(s: string) {
       return "info" as const;
     case "paid":
       return "success" as const;
+    case "overdue":
+      return "danger" as const;
     case "rejected":
       return "danger" as const;
     case "cancelled":
@@ -56,11 +59,22 @@ export function statusVariant(s: string) {
 /** ステータス遷移マップ */
 export const STATUS_TRANSITIONS: Record<string, string[]> = {
   draft: ["sent"],
-  sent: ["accepted", "paid", "rejected", "cancelled"],
+  sent: ["accepted", "paid", "overdue", "rejected", "cancelled"],
   accepted: ["paid", "cancelled"],
+  overdue: ["paid", "cancelled"],
   rejected: [],
   paid: [],
   cancelled: [],
+};
+
+/**
+ * 帳票変換の許容マップ。キーの doc_type から、値の doc_type へ「変換」できる
+ * (元帳票の宛先・明細・税設定等を引き継いで新規帳票を作成する)。
+ * 新しい変換パターンを追加する場合はここに1行足すだけでよい。
+ */
+export const CONVERSION_TARGETS: Partial<Record<DocType, DocType[]>> = {
+  estimate: ["delivery", "invoice"],
+  delivery: ["invoice"],
 };
 
 /**
@@ -135,6 +149,8 @@ export type DocumentRow = {
   tax: number;
   total: number;
   tax_rate: number;
+  /** 税率ごとの内訳（適格請求書の複数税率区分表示用）。null は未計算・非対応の旧データ。 */
+  tax_breakdown?: { rate: number; subtotal: number; tax: number }[] | null;
   items_json: DocumentItem[];
   note: string | null;
   meta_json: Record<string, unknown>;

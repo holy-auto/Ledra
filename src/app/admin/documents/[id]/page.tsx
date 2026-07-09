@@ -35,25 +35,34 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
   let customerName: string | null = null;
   let customerEmail: string | null = null;
   let customerPhone: string | null = null;
+  let customerHasLine = false;
   if (doc.customer_id) {
     const { data: cust } = await supabase
       .from("customers")
-      .select("name, email, phone")
+      .select("name, email, phone, line_user_id")
       .eq("id", doc.customer_id)
       .single();
     customerName = cust?.name ?? null;
     customerEmail = cust?.email ?? null;
     customerPhone = cust?.phone ?? null;
+    customerHasLine = !!cust?.line_user_id;
   }
 
-  // テナント情報（インボイス・口座情報用）
+  // テナント情報（インボイス・口座情報用）+ Stripe Connect 状態 (請求書の LINE 決済リンク用)
   const { data: tenant } = await supabase
     .from("tenants")
     .select(
-      "name, address, contact_email, contact_phone, registration_number, logo_asset_path, company_seal_path, bank_info",
+      "name, address, contact_email, contact_phone, registration_number, logo_asset_path, company_seal_path, bank_info, stripe_connect_account_id, stripe_connect_onboarded, line_enabled",
     )
     .eq("id", mem.tenant_id)
     .single();
+
+  const canSendLinePayment = !!(
+    tenant?.stripe_connect_account_id &&
+    tenant?.stripe_connect_onboarded &&
+    tenant?.line_enabled &&
+    customerHasLine
+  );
 
   // ロゴ・角印は Storage パスで保存されているため、プレビュー表示用に署名付きURLへ変換する。
   // 非表示 (show_logo / show_seal が false) の資産は署名しない — 署名付きURLは
@@ -85,6 +94,8 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
         tenant={tenant}
         logoUrl={logoUrl}
         sealUrl={sealUrl}
+        canSendLinePayment={canSendLinePayment}
+        customerHasLine={customerHasLine}
       />
     </div>
   );

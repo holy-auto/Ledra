@@ -235,7 +235,7 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
     return `/admin/certificates/new${qs ? `?${qs}` : ""}`;
   })();
 
-  // 案件 (reservation) ID を含めて遷移すると InvoicesClient が
+  // 案件 (reservation) ID を含めて遷移すると DocumentForm が
   // ai-from-job を叩いて明細・備考を AI 起票する。
   const invoiceNewUrl = (() => {
     const params = new URLSearchParams();
