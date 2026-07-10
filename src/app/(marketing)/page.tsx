@@ -15,6 +15,7 @@ import { IntegrationLogoWall } from "@/components/marketing/IntegrationLogoWall"
 import { MobileAppSection } from "@/components/marketing/MobileAppSection";
 import { NewsTeaser } from "@/components/marketing/NewsTeaser";
 import { GrowthJourney } from "@/components/marketing/GrowthJourney";
+import { NetworkPreviewSection } from "@/components/marketing/NetworkPreviewSection";
 import { TrustSecuritySection } from "@/components/marketing/TrustSecuritySection";
 import { CustomerCasesSection } from "@/components/marketing/CustomerCasesSection";
 import { CustomerSuccessSection } from "@/components/marketing/CustomerSuccessSection";
@@ -232,6 +233,11 @@ export default async function HomePage() {
       {/* 成長の透明性 — ゼロからの今をそのまま見せる */}
       <Suspense>
         <GrowthJourney />
+      </Suspense>
+
+      {/* ネットワークの広がり — 点と線で見る証明書・施工店・メーカー・保険会社・ユーザー */}
+      <Suspense>
+        <NetworkPreviewSection />
       </Suspense>
 
       {/* カスタマーサクセス・伴走 */}
