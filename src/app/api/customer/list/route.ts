@@ -27,7 +27,6 @@ export async function GET(req: Request) {
     const globalToken = c.get(GLOBAL_PORTAL_COOKIE)?.value ?? "";
 
     let phoneHash = "";
-    let phoneLast4: string | undefined;
     let sessionEmail: string | undefined;
     // Phase 2: session に bake された customer_id があれば collision-proof path
     let sessionCustomerId: string | null = null;
@@ -36,8 +35,6 @@ export async function GET(req: Request) {
       const tenantSession = await validateSession(tenantId, tenantToken);
       if (tenantSession) {
         phoneHash = tenantSession.phone_last4_hash;
-        // 後方互換: セッションに平文 last4 が保存されていれば渡す
-        if (tenantSession.phone_last4) phoneLast4 = tenantSession.phone_last4;
         sessionEmail = tenantSession.email;
         sessionCustomerId = tenantSession.customer_id;
       }
@@ -47,8 +44,6 @@ export async function GET(req: Request) {
       const portalAccess = await resolvePortalTenantAccessByGlobalToken(tenant_slug, globalToken);
       if (portalAccess) {
         phoneHash = portalAccess.phone_last4_hash;
-        // 古い証明書（ハッシュなし）への後方互換のため平文の下4桁も保持
-        if (portalAccess.phone_last4) phoneLast4 = portalAccess.phone_last4;
         if ("email" in portalAccess && typeof portalAccess.email === "string") {
           sessionEmail = portalAccess.email;
         }
@@ -58,27 +53,21 @@ export async function GET(req: Request) {
     if (!phoneHash) return apiUnauthorized();
 
     if (action === "history") {
-      const history = await listHistoryForCustomer(tenantId, phoneHash, phoneLast4, sessionEmail, sessionCustomerId);
+      const history = await listHistoryForCustomer(tenantId, phoneHash, sessionEmail, sessionCustomerId);
       return apiJson({ ok: true, history });
     }
 
     if (action === "reservations") {
-      const reservations = await listReservationsForCustomer(
-        tenantId,
-        phoneHash,
-        phoneLast4,
-        sessionEmail,
-        sessionCustomerId,
-      );
+      const reservations = await listReservationsForCustomer(tenantId, phoneHash, sessionEmail, sessionCustomerId);
       return apiJson({ ok: true, reservations });
     }
 
     if (action === "profile") {
-      const profile = await getCustomerProfile(tenantId, phoneHash, phoneLast4, sessionEmail, sessionCustomerId);
+      const profile = await getCustomerProfile(tenantId, phoneHash, sessionEmail, sessionCustomerId);
       return apiJson({ ok: true, profile });
     }
 
-    const rows = await listCertificatesForCustomer(tenantId, phoneHash, phoneLast4, sessionEmail, sessionCustomerId);
+    const rows = await listCertificatesForCustomer(tenantId, phoneHash, sessionEmail, sessionCustomerId);
 
     return apiJson({ ok: true, rows });
   } catch (e: unknown) {

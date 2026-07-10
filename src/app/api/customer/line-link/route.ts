@@ -15,7 +15,7 @@ import { cookies } from "next/headers";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { CUSTOMER_COOKIE, getTenantIdBySlug, validateSession } from "@/lib/customerPortalServer";
+import { CUSTOMER_COOKIE, getTenantIdBySlug, validateSession, phoneLast4Hash } from "@/lib/customerPortalServer";
 import { GLOBAL_PORTAL_COOKIE, resolvePortalTenantAccessByGlobalToken } from "@/lib/customerPortalGlobal";
 import { generateCustomerLinkCode } from "@/lib/line/linkCode";
 
@@ -41,14 +41,14 @@ async function resolvePortalCustomer(tenantSlug: string): Promise<{ tenantId: st
   const globalToken = c.get(GLOBAL_PORTAL_COOKIE)?.value ?? "";
 
   let email = "";
-  let phoneLast4 = "";
+  let phoneHash = "";
   let customerId: string | null = null;
 
   if (tenantToken) {
     const sess = await validateSession(tenantId, tenantToken);
     if (sess) {
       email = sess.email;
-      phoneLast4 = sess.phone_last4 ?? "";
+      phoneHash = sess.phone_last4_hash ?? "";
       customerId = sess.customer_id ?? null;
     }
   }
@@ -56,7 +56,7 @@ async function resolvePortalCustomer(tenantSlug: string): Promise<{ tenantId: st
     const access = await resolvePortalTenantAccessByGlobalToken(tenantSlug, globalToken);
     if (access) {
       email = access.email;
-      phoneLast4 = access.phone_last4 ?? "";
+      phoneHash = access.phone_last4_hash ?? "";
     }
   }
 
@@ -74,14 +74,21 @@ async function resolvePortalCustomer(tenantSlug: string): Promise<{ tenantId: st
     .ilike("email", email);
   if (!rows || rows.length === 0) return null;
 
-  // 候補が 1 件だけなら一意。複数あるときは下4桁が一意に一致した行のみ採用し、
+  // 候補が 1 件だけなら一意。複数あるときは下4桁ハッシュが一意に一致した行のみ採用し、
   // 曖昧（0 件 / 複数一致 / 下4桁不明）なら特定失敗として null を返す。
+  // 平文照合は廃止し、顧客電話の下4桁を同じ recipe でハッシュ化して session と比較する。
   let chosen: { id: string } | null = null;
   if (rows.length === 1) {
     chosen = rows[0] as { id: string };
-  } else if (phoneLast4) {
-    const digits = (s: string | null) => (s ?? "").replace(/\D/g, "");
-    const matches = rows.filter((r) => digits(r.phone).endsWith(phoneLast4));
+  } else if (phoneHash) {
+    const last4 = (s: string | null) => {
+      const d = (s ?? "").replace(/\D/g, "");
+      return d.length >= 4 ? d.slice(-4) : null;
+    };
+    const matches = rows.filter((r) => {
+      const l4 = last4(r.phone);
+      return l4 !== null && phoneLast4Hash(tenantId, l4) === phoneHash;
+    });
     if (matches.length === 1) chosen = matches[0] as { id: string };
   }
   if (!chosen) return null;

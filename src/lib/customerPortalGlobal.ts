@@ -199,7 +199,8 @@ export async function listPortalMemberships(email: string, last4: string, prefer
         tenantCustomers[0] ??
         null;
       const phoneHash = phoneLast4Hash(String(tenantId), last4Norm);
-      const certs = await listCertificatesForCustomer(String(tenantId), phoneHash, last4Norm);
+      // 証明書検索はハッシュ一本化 (平文 last4 フォールバック廃止)。
+      const certs = await listCertificatesForCustomer(String(tenantId), phoneHash);
       const phoneMatched = tenantCustomers.some((c: { phone: string | null }) =>
         customerPhoneMatchesLast4(c?.phone, last4Norm),
       );

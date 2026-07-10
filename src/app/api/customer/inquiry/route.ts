@@ -91,9 +91,7 @@ export async function POST(req: NextRequest) {
     if (!sess) return apiUnauthorized();
 
     // 顧客名を取得（ベストエフォート）
-    const profile = await getCustomerProfile(sess.tenantId, sess.phoneHash, undefined, sess.email).catch(
-      (): null => null,
-    );
+    const profile = await getCustomerProfile(sess.tenantId, sess.phoneHash, sess.email).catch((): null => null);
     const customerName = profile?.name ?? null;
 
     const { admin } = createTenantScopedAdmin(sess.tenantId);

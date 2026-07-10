@@ -72,16 +72,17 @@ export async function getTenantIdBySlug(slug: string): Promise<string | null> {
   return data?.id ?? null;
 }
 
-export async function tenantHasPhoneHash(tenantId: string, phoneHash: string, phoneLast4?: string): Promise<boolean> {
+export async function tenantHasPhoneHash(tenantId: string, phoneHash: string): Promise<boolean> {
   const db = admin();
-  // ハッシュで検索、なければ平文の下4桁でも検索（古いデータへの後方互換）
-  let query = db.from("certificates").select("id").eq("tenant_id", tenantId).neq("status", "void").limit(1);
-  if (phoneLast4) {
-    query = query.or(`customer_phone_last4_hash.eq.${phoneHash},customer_phone_last4.eq.${phoneLast4}`);
-  } else {
-    query = query.eq("customer_phone_last4_hash", phoneHash);
-  }
-  const { data } = await query;
+  // ハッシュのみで検索。旧データは backfill-certificate-phone-hash スクリプトで
+  // ハッシュ済みのため、平文 (customer_phone_last4) フォールバックは廃止。
+  const { data } = await db
+    .from("certificates")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .neq("status", "void")
+    .eq("customer_phone_last4_hash", phoneHash)
+    .limit(1);
   return Array.isArray(data) && data.length > 0;
 }
 
@@ -139,25 +140,15 @@ export async function markCodeUsed(id: string) {
  * no matched cert has a customer_id, returns null — the caller should
  * fall back to the legacy phone_hash + email scope.
  */
-async function resolveUniqueCustomerId(
-  tenantId: string,
-  phoneHash: string,
-  email: string,
-  phoneLast4?: string,
-): Promise<string | null> {
+async function resolveUniqueCustomerId(tenantId: string, phoneHash: string, email: string): Promise<string | null> {
   const db = admin();
-  let query = db
+  const query = db
     .from("certificates")
     .select("customer_id, customer_email")
     .eq("tenant_id", tenantId)
     .neq("status", "void")
-    .not("customer_id", "is", null);
-
-  if (phoneLast4) {
-    query = query.or(`customer_phone_last4_hash.eq.${phoneHash},customer_phone_last4.eq.${phoneLast4}`);
-  } else {
-    query = query.eq("customer_phone_last4_hash", phoneHash);
-  }
+    .not("customer_id", "is", null)
+    .eq("customer_phone_last4_hash", phoneHash);
 
   const { data } = await query;
   if (!data || data.length === 0) return null;
@@ -174,22 +165,22 @@ async function resolveUniqueCustomerId(
   return [...uniqueIds][0];
 }
 
-export async function createSession(tenantId: string, email: string, phoneHash: string, phoneLast4?: string) {
+export async function createSession(tenantId: string, email: string, phoneHash: string) {
   const token = randomHex(32);
   const sHash = sessionHash(token);
   const expires = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
   // Bake the resolved customer_id when unambiguous. Null is acceptable;
   // callers will fall back to phone_hash + email scoping.
-  const customerId = await resolveUniqueCustomerId(tenantId, phoneHash, email, phoneLast4);
+  const customerId = await resolveUniqueCustomerId(tenantId, phoneHash, email);
 
+  // phone_last4 (平文) はセッションに保存しない。証明書検索はハッシュ一本化済み。
   const { error } = await admin()
     .from("customer_sessions")
     .insert({
       tenant_id: tenantId,
       email: normalizeEmail(email),
       phone_last4_hash: phoneHash,
-      phone_last4: phoneLast4 ?? null,
       session_hash: sHash,
       customer_id: customerId,
       expires_at: expires,
@@ -212,7 +203,7 @@ export async function validateSession(tenantId: string, token: string) {
   const sHash = sessionHash(token);
   const { data } = await admin()
     .from("customer_sessions")
-    .select("id, email, phone_last4_hash, phone_last4, customer_id, expires_at, revoked_at")
+    .select("id, email, phone_last4_hash, customer_id, expires_at, revoked_at")
     .eq("tenant_id", tenantId)
     .eq("session_hash", sHash)
     .limit(1)
@@ -223,7 +214,6 @@ export async function validateSession(tenantId: string, token: string) {
   return data as {
     email: string;
     phone_last4_hash: string;
-    phone_last4: string | null;
     customer_id: string | null;
   };
 }
@@ -231,7 +221,6 @@ export async function validateSession(tenantId: string, token: string) {
 export async function listCertificatesForCustomer(
   tenantId: string,
   phoneHash: string,
-  phoneLast4?: string,
   /**
    * セッションから取得した email。渡された場合、certificates.customer_email
    * との一致で絞り込む (同一テナントで末尾4桁が衝突した別顧客のデータを
@@ -262,12 +251,9 @@ export async function listCertificatesForCustomer(
 
   // Legacy / fallback path: scope by phone_last4_hash. Applied when the
   // session predates the customer_id binding or when the customer could
-  // not be uniquely resolved at login time.
-  if (phoneLast4) {
-    query = query.or(`customer_phone_last4_hash.eq.${phoneHash},customer_phone_last4.eq.${phoneLast4}`);
-  } else {
-    query = query.eq("customer_phone_last4_hash", phoneHash);
-  }
+  // not be uniquely resolved at login time. 平文 (customer_phone_last4)
+  // フォールバックは廃止 — 旧データは backfill 済みでハッシュ一致する。
+  query = query.eq("customer_phone_last4_hash", phoneHash);
 
   const { data } = await query;
   if (!data) return [];
@@ -287,11 +273,10 @@ export async function listCertificatesForCustomer(
 export async function listHistoryForCustomer(
   tenantId: string,
   phoneHash: string,
-  phoneLast4?: string,
   email?: string,
   customerId?: string | null,
 ) {
-  const certs = await listCertificatesForCustomer(tenantId, phoneHash, phoneLast4, email, customerId);
+  const certs = await listCertificatesForCustomer(tenantId, phoneHash, email, customerId);
   if (!certs || certs.length === 0) return [];
 
   const certPublicIds = certs.map((c: { public_id: string }) => c.public_id);
@@ -320,7 +305,6 @@ export async function listHistoryForCustomer(
 export async function listReservationsForCustomer(
   tenantId: string,
   phoneHash: string,
-  phoneLast4?: string,
   email?: string,
   sessionCustomerId?: string | null,
 ) {
@@ -331,7 +315,7 @@ export async function listReservationsForCustomer(
 
   if (!resolvedCustomerId) {
     // Legacy path: derive customer_id via cert lookup.
-    const certs = await listCertificatesForCustomer(tenantId, phoneHash, phoneLast4, email);
+    const certs = await listCertificatesForCustomer(tenantId, phoneHash, email);
     if (!certs || certs.length === 0) return [];
 
     const customerNames = [
@@ -375,7 +359,6 @@ export async function listReservationsForCustomer(
 export async function getCustomerProfile(
   tenantId: string,
   phoneHash: string,
-  phoneLast4?: string,
   email?: string,
   sessionCustomerId?: string | null,
 ) {
@@ -408,7 +391,7 @@ export async function getCustomerProfile(
   }
 
   // Legacy path: name-based lookup via certs.
-  const certs = await listCertificatesForCustomer(tenantId, phoneHash, phoneLast4, email);
+  const certs = await listCertificatesForCustomer(tenantId, phoneHash, email);
   if (!certs || certs.length === 0) return null;
 
   const customerNames = [
