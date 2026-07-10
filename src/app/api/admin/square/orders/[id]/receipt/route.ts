@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
@@ -138,16 +138,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     if (error) return apiInternalError(error, "square order receipt POST");
 
-    const { error: linkErr } = await admin
-      .from("square_orders")
-      .update({ receipt_document_id: data.id })
-      .eq("id", id)
-      .eq("tenant_id", caller.tenantId);
-    if (linkErr) {
-      // documents 側の作成自体は成功しているため失敗させない。
-      // 次回呼び出し時は meta_json.square_order_id 側の照合で自己修復される。
-      console.error("[square order receipt] failed to persist receipt_document_id link:", linkErr.message);
-    }
+    // documents 側の作成は既に成功しているため、リンク更新はレスポンス後に回してよい。
+    // 失敗しても次回呼び出し時に meta_json.square_order_id 側の照合で自己修復される。
+    after(async () => {
+      const { error: linkErr } = await admin
+        .from("square_orders")
+        .update({ receipt_document_id: data.id })
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId);
+      if (linkErr) {
+        console.error("[square order receipt] failed to persist receipt_document_id link:", linkErr.message);
+      }
+    });
 
     return apiOk({ document: data });
   } catch (e) {
