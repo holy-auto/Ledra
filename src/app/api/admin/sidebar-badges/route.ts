@@ -122,13 +122,57 @@ export async function GET() {
         }
       })();
 
-      const [reservations, square, expiringCerts, draftCerts, overdueInvoices, unreadMessages] = await Promise.all([
+      // 承認インボックスと同じ「人の承認待ち下書き」を数える (発注 / 請求)。
+      // 証明書ドラフトは draftCerts を再利用し、3 種の合計を pending_approvals とする。
+      // 承認インボックス (/api/admin/inbox) と同じ status=draft の 3 種を対象にする。
+      // ただしバッジは全件の exact count、インボックス一覧は 1 種あたり 50 件で
+      // 打ち切るため、1 種が 50 件を超えるとバッジの方が多くなる点は許容
+      // (バッジは「未処理が何件あるか」を正しく示す方が有用)。
+      const draftPurchaseOrdersPromise = (async () => {
+        try {
+          const { count } = await admin
+            .from("purchase_orders")
+            .select("id", { count: "exact", head: true })
+            .eq("tenant_id", caller.tenantId)
+            .eq("status", "draft");
+          return count ?? 0;
+        } catch {
+          return 0;
+        }
+      })();
+
+      const draftInvoicesPromise = (async () => {
+        try {
+          const { count } = await admin
+            .from("documents")
+            .select("id", { count: "exact", head: true })
+            .eq("tenant_id", caller.tenantId)
+            .eq("doc_type", "invoice")
+            .eq("status", "draft");
+          return count ?? 0;
+        } catch {
+          return 0;
+        }
+      })();
+
+      const [
+        reservations,
+        square,
+        expiringCerts,
+        draftCerts,
+        overdueInvoices,
+        unreadMessages,
+        draftPurchaseOrders,
+        draftInvoices,
+      ] = await Promise.all([
         reservationsPromise,
         squareUnlinkedPromise,
         expiringCertsPromise,
         draftCertsPromise,
         overdueInvoicesPromise,
         unreadMessagesPromise,
+        draftPurchaseOrdersPromise,
+        draftInvoicesPromise,
       ]);
 
       return {
@@ -138,6 +182,8 @@ export async function GET() {
         draft_certs: draftCerts,
         overdue_invoices: overdueInvoices,
         messages_unread: unreadMessages,
+        // AI が用意して人の承認待ちの下書き総数 (証明書 + 発注 + 請求)。
+        pending_approvals: draftCerts + draftPurchaseOrders + draftInvoices,
       };
     });
 

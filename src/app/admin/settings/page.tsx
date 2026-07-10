@@ -6,6 +6,7 @@ import type { SquareConnection } from "@/types/square";
 import SettingsForm from "./SettingsForm";
 import LogoSealSection from "./LogoSealSection";
 import SettingsProgressCard from "./SettingsProgressCard";
+import SettingsHub from "./SettingsHub";
 import FollowUpSettings from "./FollowUpSettings";
 import SquareConnectSection from "./SquareConnectSection";
 import LineConnectSection from "./LineConnectSection";
@@ -171,15 +172,25 @@ export default async function AdminSettingsPage({
         }
       />
 
-      <SettingsProgressCard
-        hasShopName={!!name}
-        hasContact={hasContact}
-        hasAddress={hasAddress}
-        hasLogo={hasLogo}
-        hasInvoiceNumber={hasInvoiceNumber}
-        hasBankInfo={hasBankInfo}
-        hasStripeConnect={hasStripeConnect}
+      {/* 設定・マスタのハブ（サイドバーから外した設定系をここに集約）。
+          必須未入力 (店舗名・連絡先) があれば冒頭に要対応の導線を出す。 */}
+      <SettingsHub
+        requiredMissing={[!name ? "店舗名" : null, !hasContact ? "連絡先" : null].filter(
+          (v): v is string => v !== null,
+        )}
       />
+
+      <div id="settings-progress" className="scroll-mt-20">
+        <SettingsProgressCard
+          hasShopName={!!name}
+          hasContact={hasContact}
+          hasAddress={hasAddress}
+          hasLogo={hasLogo}
+          hasInvoiceNumber={hasInvoiceNumber}
+          hasBankInfo={hasBankInfo}
+          hasStripeConnect={hasStripeConnect}
+        />
+      </div>
 
       {/* Plan info */}
       <section className="glass-card p-5">

@@ -113,6 +113,26 @@ export default function OnboardingTour(): null {
             },
           },
           {
+            element: "[data-tour='settings-gear']",
+            popover: {
+              title: "7. 設定・マスタは歯車に集約",
+              description:
+                "店舗設定・API連携・各種マスタなどの設定項目は、メニューを増やさないよう右下の歯車ボタンにまとめました。設定を変えたいときはここから開けます。",
+              side: "top",
+              align: "start",
+            },
+          },
+          {
+            element: "[data-tour='approval-inbox']",
+            popover: {
+              title: "8. AIの下書きは「承認インボックス」で確認",
+              description:
+                "AIが証明書・発注・請求などの下書きを用意します。人の承認が必要なものはここに集まり、待ち件数が数字（要確認）で表示されます。ワンタップで承認できます。",
+              side: "right",
+              align: "start",
+            },
+          },
+          {
             element: 'a[href="/admin/support"]',
             popover: {
               title: "困ったときは",

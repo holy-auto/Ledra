@@ -5,7 +5,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useCurrentRole } from "@/lib/auth/useCurrentRole";
-import { ROUTE_PERMISSIONS, type Permission } from "@/lib/auth/permissions";
+import { type Permission } from "@/lib/auth/permissions";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import { FEATURE_BY_HREF, isAdvancedFeatureVisible, isVisibleInBusinessMode } from "@/lib/features/catalog";
 import { useFeaturePrefs } from "@/lib/features/useFeaturePrefs";
@@ -36,6 +36,7 @@ function useSidebarBadges(intervalMs = 60_000): BadgeCounts {
       if (json.reservations_today > 0) next.reservations_today = json.reservations_today;
       if (json.square_unlinked > 0) next.square_unlinked = json.square_unlinked;
       if (json.messages_unread > 0) next.messages_unread = json.messages_unread;
+      if (json.pending_approvals > 0) next.pending_approvals = json.pending_approvals;
       setBadges(next);
     } catch {
       // silently ignore
@@ -76,22 +77,22 @@ function useSidebarBadges(intervalMs = 60_000): BadgeCounts {
 /* ------------------------------------------------------------------ */
 /*  Badge component                                                    */
 /* ------------------------------------------------------------------ */
-function NavBadge({ count, gold = false }: { count: number; gold?: boolean }) {
+function NavBadge({ count, gold = false, attention = false }: { count: number; gold?: boolean; attention?: boolean }) {
   if (count <= 0) return null;
   const label = count > 99 ? "99+" : String(count);
   // 通常はアラート性を示す赤。ゴールド項目（証明書など上位機能）は格上げのゴールド。
+  // attention（承認インボックス = AI の人手承認待ち）は「対応が必要」を表す琥珀。
+  const bg = attention ? "bg-amber-500" : gold ? "bg-accent-gold" : "bg-red-500";
   return (
     <span
-      className={`ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] leading-none font-bold text-white ${
-        gold ? "bg-accent-gold" : "bg-red-500"
-      }`}
+      className={`ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] leading-none font-bold text-white ${bg}`}
     >
       {label}
     </span>
   );
 }
 
-type NavItem = {
+export type NavItem = {
   href: string;
   label: string;
   exact?: boolean;
@@ -119,9 +120,27 @@ type NavItem = {
    * アイコン/ドットをブルーではなくゴールドで表現し、格を一段上げて見せる。
    */
   gold?: boolean;
+  /**
+   * 設定・マスタ系項目。サイドバーには出さず、歯車から開く設定ハブ
+   * (/admin/settings) にのみ集約する。ラベル逆引き (ADMIN_NAV_LABELS) と
+   * パンくずは維持したいので、項目自体は NAV_GROUPS に残したまま描画だけ抑止する。
+   */
+  hub?: boolean;
+  /**
+   * AI 自動化の「人の承認待ち」を表す要確認項目 (承認インボックス)。承認待ちが
+   * ある時 (badge > 0) はアラート赤ではなく琥珀 (要対応) のバッジ＋アイコン色＋
+   * 左の琥珀ラインで強調する。0 件の時は通常項目と同じ見た目。
+   */
+  attention?: boolean;
+  /**
+   * 設定ハブでの表示見出し。hub 項目をカテゴリ分けするために使う。
+   */
+  hubSection?: string;
+  /** オンボーディングツアーで指し示すための data-tour 属性値。 */
+  dataTour?: string;
 };
 
-type NavGroup = {
+export type NavGroup = {
   label: string;
   items: NavItem[];
   defaultOpen?: boolean;
@@ -148,7 +167,7 @@ export function computeInitialGroupState(
   return initial;
 }
 
-const NAV_GROUPS: NavGroup[] = [
+export const NAV_GROUPS: NavGroup[] = [
   {
     label: "",
     items: [
@@ -171,6 +190,9 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/inbox",
         label: "承認インボックス",
         requiredPermission: "dashboard:view",
+        badgeKey: "pending_approvals",
+        attention: true,
+        dataTour: "approval-inbox",
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path
@@ -185,7 +207,9 @@ const NAV_GROUPS: NavGroup[] = [
     defaultOpen: true,
   },
   {
-    label: "業務",
+    // 旧「業務」は項目数が多すぎたため、予約・作業まわりと 在庫・部品・装備まわりの
+    // 2 グループに分割して走査しやすくする（二段整理）。
+    label: "予約・作業",
     items: [
       {
         href: "/admin/reservations",
@@ -371,6 +395,8 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/booking-settings",
         label: "予約受付設定",
         requiredPermission: "settings:view",
+        hub: true,
+        hubSection: "業務設定",
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
@@ -409,6 +435,8 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/settings/follow-up",
         label: "フォローアップ設定",
         requiredPermission: "settings:view",
+        hub: true,
+        hubSection: "業務設定",
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path
@@ -419,6 +447,12 @@ const NAV_GROUPS: NavGroup[] = [
           </svg>
         ),
       },
+    ],
+    defaultOpen: true,
+  },
+  {
+    label: "在庫・部品・装備",
+    items: [
       {
         href: "/admin/menu-items",
         label: "品目マスタ",
@@ -1031,18 +1065,31 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/payment-ledger",
         label: "売掛元帳",
         requiredPermission: "invoices:view",
-        icon: <span className="text-base leading-none">💴</span>,
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M9 14.25l6-6m4.5-3.493V21.75l-3.75-1.5-3.75 1.5-3.75-1.5-3.75 1.5V4.757c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0c1.1.128 1.907 1.077 1.907 2.185ZM9.75 9h.008v.008H9.75V9Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm4.125 4.5h.008v.008h-.008V13.5Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
+            />
+          </svg>
+        ),
       },
     ],
     defaultOpen: true,
   },
   {
-    label: "設定",
+    // 設定・マスタ系 (hub:true) は歯車から開く設定ハブ (/admin/settings) に集約し、
+    // サイドバーには描画しない。ここに残るのは本社横断 (組織管理・横断ビュー) と
+    // 運営 (platformOnly) 項目だけなので、グループ見出しも「本社・運営」にする。
+    label: "本社・運営",
     items: [
       {
         href: "/admin/settings",
         label: "店舗設定",
         requiredPermission: "settings:view",
+        hub: true,
+        hubSection: "店舗・組織",
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path
@@ -1058,6 +1105,9 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/stores",
         label: "店舗管理",
         requiredPermission: "stores:view",
+        // ハブ(/admin/settings)は settings:view でゲートされるため、settings:view を持たず
+        // stores:view のみ持つ staff / viewer がここから到達できなくなる。彼らのナビ導線を
+        // 保つため hub 化せず、従来どおり advanced のサイドバー項目 (既定は非表示) のまま残す。
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path
@@ -1072,6 +1122,8 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/members",
         label: "メンバー",
         requiredPermission: "members:view",
+        hub: true,
+        hubSection: "店舗・組織",
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path
@@ -1116,6 +1168,8 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/integrations",
         label: "API連携",
         requiredPermission: "settings:view",
+        hub: true,
+        hubSection: "連携・課金",
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path
@@ -1130,12 +1184,24 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/stocktake",
         label: "在庫棚卸",
         requiredPermission: "menu_items:manage",
-        icon: <span className="text-base leading-none">📦</span>,
+        hub: true,
+        hubSection: "マスタ・在庫",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15a2.25 2.25 0 0 1 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25Z"
+            />
+          </svg>
+        ),
       },
       {
         href: "/admin/settings/customer-ranks",
         label: "顧客ランク",
         requiredPermission: "settings:view",
+        hub: true,
+        hubSection: "業務設定",
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path
@@ -1150,6 +1216,8 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/inspection-templates",
         label: "点検テンプレート",
         requiredPermission: "settings:view",
+        hub: true,
+        hubSection: "業務設定",
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path
@@ -1165,6 +1233,8 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/template-options",
         label: "ブランド証明書",
         requiredPermission: "template_options:view",
+        // template_options:view のみで settings:view を持たない staff / viewer が
+        // ハブ経由で到達できなくなるため hub 化しない（ナビ導線を維持）。
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path
@@ -1179,6 +1249,8 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/shop",
         label: "ショップ",
         requiredPermission: "shop:view",
+        // shop:view のみで settings:view を持たない staff / viewer が
+        // ハブ経由で到達できなくなるため hub 化しない（ナビ導線を維持）。
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path
@@ -1193,6 +1265,8 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/billing",
         label: "請求・プラン",
         requiredPermission: "billing:view",
+        hub: true,
+        hubSection: "連携・課金",
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path
@@ -1207,6 +1281,8 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/audit",
         label: "操作履歴",
         requiredPermission: "audit:view",
+        hub: true,
+        hubSection: "監査・その他",
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
@@ -1309,6 +1385,27 @@ const NAV_GROUPS: NavGroup[] = [
 export const ADMIN_NAV_LABELS: Record<string, string> = Object.fromEntries(
   NAV_GROUPS.flatMap((group) => group.items.map((item) => [item.href, item.label] as const)),
 );
+
+export type AdminCommand = { label: string; href: string; section: string };
+
+/**
+ * コマンドパレット (Cmd+K) 用の全ページ一覧を NAV_GROUPS から導出する。
+ * 設定ハブに集約した項目 (hub) も検索対象に含めることで、「サイドバーから
+ * 消えた画面がどこにあるか分からない」を解消する。運営専用 (platformOnly) と
+ * 未公開 (hidden) は除外。権限による絞り込みはしない (到達先で AdminRouteGuard が
+ * 弾くため)。ラベルの二重管理を避けるため NAV_GROUPS を単一の出典とする。
+ */
+export function adminCommandItems(): AdminCommand[] {
+  const items: AdminCommand[] = [];
+  for (const group of NAV_GROUPS) {
+    for (const item of group.items) {
+      if (item.hidden || item.platformOnly) continue;
+      const section = item.hub ? "設定・マスタ" : group.label || "メイン";
+      items.push({ label: item.label, href: item.href, section });
+    }
+  }
+  return items;
+}
 
 /**
  * パスに対応するセクションラベルを、最長 href 前方一致で解決する。
@@ -1462,6 +1559,9 @@ export default function Sidebar() {
       items.filter((item) => {
         if (item.hidden) return false;
 
+        // 設定・マスタ系 (hub) は歯車から開く設定ハブに集約。サイドバーには出さない。
+        if (item.hub) return false;
+
         // Strict platform-only gate: hide unless verified as platform admin.
         // No optimistic display — contractors must never see these links.
         if (item.platformOnly && !isPlatformAdmin) return false;
@@ -1522,22 +1622,28 @@ export default function Sidebar() {
     // 証明書などゴールド項目のみ格上げしてゴールドで見せる。
     const accentText = item.gold ? "text-accent-gold" : "text-accent";
     const dotBg = item.gold ? "bg-accent-gold" : "bg-accent";
+    // attention（承認インボックス）で承認待ちがある時は、AI 自動化の「人の確認が必要」
+    // を琥珀で常時可視化する（アクティブでなくてもアイコンを色付け・左に琥珀ライン）。
+    const needsAttention = item.attention && badgeCount > 0;
 
     return (
       <li key={item.href}>
         <Link
           href={item.href}
           aria-current={isActive ? "page" : undefined}
+          data-tour={item.dataTour}
           className={`flex items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-2 text-[13px] transition-all duration-150 ${
             isActive
               ? "bg-base font-medium text-primary shadow-[inset_0_0_0_1px_var(--border-default)]"
-              : "font-normal text-secondary hover:bg-surface-hover hover:text-primary"
+              : needsAttention
+                ? "font-medium text-primary shadow-[inset_2px_0_0_0_#f59e0b] hover:bg-surface-hover"
+                : "font-normal text-secondary hover:bg-surface-hover hover:text-primary"
           }`}
         >
-          <span className={isActive ? accentText : "text-muted"}>{item.icon}</span>
+          <span className={needsAttention ? "text-amber-500" : isActive ? accentText : "text-muted"}>{item.icon}</span>
           <span className="flex-1 truncate">{item.label}</span>
           {badgeCount > 0 ? (
-            <NavBadge count={badgeCount} gold={item.gold} />
+            <NavBadge count={badgeCount} gold={item.gold} attention={item.attention} />
           ) : isActive ? (
             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotBg}`} />
           ) : null}
@@ -1594,6 +1700,20 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-3 py-3">
+        {/* 検索入口: 既存のコマンドパレット (Cmd+K) を起動。項目を集約した分、
+            「どこにあるか分からない」を検索で補う。ロジックは重複させず event で起動。 */}
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new Event("open-command-palette"))}
+          className="mb-2 flex w-full items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-2 text-[13px] text-muted shadow-[inset_0_0_0_1px_var(--border-default)] transition-colors hover:bg-surface-hover hover:text-primary"
+        >
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}>
+            <circle cx="11" cy="11" r="7" />
+            <path strokeLinecap="round" d="M21 21l-4.35-4.35" />
+          </svg>
+          <span className="flex-1 text-left">検索</span>
+          <kbd className="rounded border border-border-default px-1.5 py-0.5 font-mono text-[10px] text-muted">⌘K</kbd>
+        </button>
         {NAV_GROUPS.map((group) => {
           const visibleItems = filterItems(group.items);
           if (visibleItems.length === 0) return null;
@@ -1675,7 +1795,8 @@ export default function Sidebar() {
           </span>
           <Link
             href="/admin/settings"
-            aria-label="設定"
+            aria-label="設定・マスタ"
+            data-tour="settings-gear"
             className="inline-flex flex-shrink-0 rounded-[var(--radius-sm)] p-1 text-muted transition-colors hover:bg-surface-hover hover:text-primary"
           >
             <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

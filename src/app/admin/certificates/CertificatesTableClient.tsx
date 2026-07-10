@@ -27,7 +27,8 @@ const statusVariant = (s: string) => {
     case "expired":
       return "warning" as const;
     case "draft":
-      return "default" as const;
+      // 下書き = 人の承認待ち。承認導線と同じ琥珀(warning)で統一表示。
+      return "warning" as const;
     default:
       return "default" as const;
   }
