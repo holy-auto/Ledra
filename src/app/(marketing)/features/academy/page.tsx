@@ -76,7 +76,7 @@ export default function AcademyPage() {
       <Breadcrumbs
         items={[
           { name: "機能", url: "/features" },
-          { name: "Ledraアカデミー", url: "/features/academy" },
+          { name: "Ledra Academy", url: "/features/academy" },
         ]}
       />
       <PageHero

@@ -1,4 +1,5 @@
 import { Hero } from "@/components/marketing/Hero";
+import { CTAButton } from "@/components/marketing/CTAButton";
 import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { FeatureGrid } from "@/components/marketing/FeatureGrid";
@@ -196,14 +197,9 @@ export default async function HomePage() {
                 PoC（概念実証）プログラムを受付中です。NDA 締結のうえ、約10週間で検証できます。
               </p>
             </div>
-            <Link
-              href="/poc-program"
-              data-cta-location="home-enterprise"
-              data-cta-label="PoCプログラムを見る"
-              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-white/20 px-6 py-3 text-sm font-medium text-white transition-colors hover:border-white/40"
-            >
+            <CTAButton variant="outline" href="/poc-program" trackLocation="home-enterprise" className="shrink-0">
               PoC プログラムを見る &rarr;
-            </Link>
+            </CTAButton>
           </div>
         </ScrollReveal>
       </Section>

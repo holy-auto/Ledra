@@ -67,18 +67,19 @@ export default function StoryPage() {
       <Section>
         <SectionHeading title="代表・堀越友輔の歩み" subtitle="ここに書いてあることは、すべて事実です。" />
         <ol className="relative mx-auto max-w-3xl space-y-10 border-l border-white/[0.08] pl-8">
+          {/* li を ol の直下に置く（ol > div > li は不正な HTML でスクリーンリーダーの項目数が壊れる） */}
           {journey.map((item, i) => (
-            <ScrollReveal key={item.title} variant="fade-up" delay={i * 100}>
-              <li className="relative">
-                <span
-                  aria-hidden
-                  className="absolute -left-[2.4rem] top-1.5 block h-3 w-3 rounded-full border border-blue-400/60 bg-[#060a12]"
-                />
+            <li key={item.title} className="relative">
+              <span
+                aria-hidden
+                className="absolute -left-[2.4rem] top-1.5 block h-3 w-3 rounded-full border border-blue-400/60 bg-[#060a12]"
+              />
+              <ScrollReveal variant="fade-up" delay={i * 100}>
                 <div className="text-xs font-medium uppercase tracking-widest text-blue-300">{item.era}</div>
                 <h3 className="mt-2 text-lg font-bold text-white">{item.title}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-white/90">{item.body}</p>
-              </li>
-            </ScrollReveal>
+              </ScrollReveal>
+            </li>
           ))}
         </ol>
       </Section>

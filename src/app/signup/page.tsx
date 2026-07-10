@@ -193,7 +193,11 @@ export default function SignupPage() {
 
         {/* 登録の流れ — 3ステップで迷わせない */}
         <ol className="space-y-1.5 text-sm text-secondary" aria-label="登録の流れ">
-          {["お店の名前とメールを入力", "届いたメールのボタンを押す", "登録完了（約2分）"].map((step, i) => (
+          {[
+            "お店の名前とメールを入力",
+            mode === "magic" ? "届いたメールのボタンを押す" : "パスワードを決めて入力",
+            "登録完了（約2分）",
+          ].map((step, i) => (
             <li key={step} className="flex items-center gap-2.5">
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent text-xs font-semibold">
                 {i + 1}

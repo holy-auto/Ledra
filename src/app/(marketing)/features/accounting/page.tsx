@@ -83,7 +83,7 @@ export default function AccountingPage() {
       <Breadcrumbs
         items={[
           { name: "機能", url: "/features" },
-          { name: "POS会計・請求", url: "/features/accounting" },
+          { name: "会計連携", url: "/features/accounting" },
         ]}
       />
       <PageHero

@@ -86,9 +86,10 @@ export default function PocProgramPage() {
       <Section bg="alt">
         <SectionHeading title="進め方" subtitle="NDA から報告まで、標準で約10週間です。" />
         <ol className="mx-auto max-w-3xl space-y-8">
+          {/* li を ol の直下に置く（ol > div > li は不正な HTML でスクリーンリーダーの項目数が壊れる） */}
           {steps.map((s, i) => (
-            <ScrollReveal key={s.step} variant="fade-up" delay={i * 100}>
-              <li className="flex items-start gap-5">
+            <li key={s.step}>
+              <ScrollReveal variant="fade-up" delay={i * 100} className="flex items-start gap-5">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-700 text-sm font-bold text-white shadow-[0_0_16px_rgba(59,130,246,0.4)]">
                   {s.step}
                 </div>
@@ -96,8 +97,8 @@ export default function PocProgramPage() {
                   <h3 className="text-base font-bold text-white">{s.title}</h3>
                   <p className="mt-2 text-sm leading-relaxed text-white/90">{s.body}</p>
                 </div>
-              </li>
-            </ScrollReveal>
+              </ScrollReveal>
+            </li>
           ))}
         </ol>
       </Section>
