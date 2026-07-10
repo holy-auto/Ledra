@@ -112,8 +112,7 @@ export async function POST(req: Request) {
       status: "draft" as const,
       customer_name: b.customer_name,
 
-      // 新規からはここを正しく保存
-      customer_phone_last4,
+      // 平文 (customer_phone_last4) は保存しない。検索・紐付けはハッシュ一本化。
       customer_phone_last4_hash,
 
       vehicle_info_json: b.vehicle_info_json ?? {},

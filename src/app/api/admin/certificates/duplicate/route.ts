@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
       // 顧客情報
       customer_name: source.customer_name ?? null,
       customer_id: source.customer_id ?? null,
-      customer_phone_last4: source.customer_phone_last4 ?? null,
+      // 平文 (customer_phone_last4) は複製しない。ハッシュのみ引き継ぐ。
       customer_phone_last4_hash: source.customer_phone_last4_hash ?? null,
       // テンプレート・コンテンツ
       content_free_text: source.content_free_text ?? null,

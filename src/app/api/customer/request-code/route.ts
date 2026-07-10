@@ -102,7 +102,7 @@ export async function POST(req: Request) {
       return apiValidationError("hash_failed");
     }
 
-    const ok = await tenantHasPhoneHash(tenantId, phoneHash, last4Raw);
+    const ok = await tenantHasPhoneHash(tenantId, phoneHash);
     if (!ok) {
       logger.info("customer/request-code: no matching certificate (silently noop)", { tenantId });
       return genericOk;

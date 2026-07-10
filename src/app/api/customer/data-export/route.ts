@@ -53,34 +53,10 @@ export async function GET(req: Request) {
     if (!session) return apiUnauthorized();
 
     const [profile, certificates, history, reservations] = await Promise.all([
-      getCustomerProfile(
-        tenantId,
-        session.phone_last4_hash,
-        session.phone_last4 ?? undefined,
-        session.email,
-        session.customer_id,
-      ),
-      listCertificatesForCustomer(
-        tenantId,
-        session.phone_last4_hash,
-        session.phone_last4 ?? undefined,
-        session.email,
-        session.customer_id,
-      ),
-      listHistoryForCustomer(
-        tenantId,
-        session.phone_last4_hash,
-        session.phone_last4 ?? undefined,
-        session.email,
-        session.customer_id,
-      ),
-      listReservationsForCustomer(
-        tenantId,
-        session.phone_last4_hash,
-        session.phone_last4 ?? undefined,
-        session.email,
-        session.customer_id,
-      ),
+      getCustomerProfile(tenantId, session.phone_last4_hash, session.email, session.customer_id),
+      listCertificatesForCustomer(tenantId, session.phone_last4_hash, session.email, session.customer_id),
+      listHistoryForCustomer(tenantId, session.phone_last4_hash, session.email, session.customer_id),
+      listReservationsForCustomer(tenantId, session.phone_last4_hash, session.email, session.customer_id),
     ]);
 
     const generatedAt = new Date().toISOString();
