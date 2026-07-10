@@ -39,6 +39,9 @@ export const partEvidenceSchema = z.object({
   authenticity_grade: z.enum(["unverified", "basic", "verified", "premium"]).optional(),
   exif_captured_at: z.string().datetime().nullable().optional(),
   capture_nonce: z.string().trim().max(128).nullable().optional(),
+  /** ステージ時 (evidence-upload) に取得した RFC3161 TSA局/存在時刻。未設定/失敗時は null。 */
+  tsa_authority: z.string().trim().max(256).nullable().optional(),
+  tsa_timestamp_at: z.string().datetime().nullable().optional(),
   ocr_extracted: z.any().nullable().optional(),
   /** ステージ時に検出した改ざん疑い flag。作成時に finding 化される。 */
   integrity_flags: z.array(z.enum(TAMPERING_FLAGS)).max(20).optional(),

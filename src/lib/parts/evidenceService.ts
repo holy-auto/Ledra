@@ -17,6 +17,15 @@
  *  4. EXIF の有無・flag で真正性グレードを付与。
  *  5. GPS/EXIF を除去した上で assets バケットへ保存し storage_path を返す
  *     （ハッシュは保存する除去後バイトで算出する）。
+ *  6. RFC3161 TSA（`PARTS_TSA_*`）でハッシュに存在時刻を封印（設定時のみ・fail-open）。
+ *     確定署名 (signConfirmation) は required_assurance='any' なら起きないことがあり、
+ *     その場合ここが写真に付く唯一の時刻封印になる。
+ *
+ * TSA は現状グレード計算 (authenticity_grade) には反映しない — グレードは引き続き
+ * EXIF/改ざんflag のみで決まる (unverified|basic)。端末アテステーション・単回nonce
+ * 束縛が無い状態で TSA だけを理由に verified へ引き上げるのは certificate_images の
+ * `computeAuthenticityGrade` の意味論（deviceOk && nonceOk && captureTimeSealOk）と
+ * 矛盾するため、当面は監査用メタとして記録するに留める。
  *
  * 重複・シリアル使い回し・flag→finding の記録は作成 API (createInstallation) 側で、
  * content_hash 確定と同じトランザクション文脈で行う（本サービスは DB 行を作らない）。
@@ -27,6 +36,7 @@ import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages"; // 共有 "a
 import { hashSha256, computePerceptualHash } from "@/lib/anchoring/imageHashing";
 import { stripGpsAndReadExif } from "@/lib/anchoring/imageExif";
 import { extractExifMeta, detectExifFlags, type TamperingFlag } from "@/lib/ai/photoTamperingCheck";
+import { requestEvidenceTimestamp } from "@/lib/parts/evidenceTsa";
 
 type Admin = ReturnType<typeof createTenantScopedAdmin>["admin"];
 
@@ -49,6 +59,10 @@ export interface StagedPhoto {
   authenticity_grade: "unverified" | "basic";
   /** EXIF から検出した改ざん疑い flag（作成時に finding 化される）。 */
   integrity_flags: TamperingFlag[];
+  /** RFC3161 TSA局（PARTS_TSA_* 未設定/失敗時は null）。 */
+  tsa_authority: string | null;
+  /** TSA局が証明した存在時刻。 */
+  tsa_timestamp_at: string | null;
 }
 
 /**
@@ -82,6 +96,9 @@ export async function stageInstallationPhoto(opts: {
   const sha256 = hashSha256(uploadBuffer);
   const perceptualHash = await computePerceptualHash(uploadBuffer);
 
+  // 撮影時封印: RFC3161 TSA（未設定/失敗は null — アップロードを止めない）。
+  const tsa = await requestEvidenceTimestamp(sha256);
+
   const ext = mime.split("/")[1]?.replace("jpeg", "jpg") ?? "jpg";
   const storagePath = `parts/${tenantId}/staging/${kind}-${Date.now()}-${sha256.slice(0, 8)}.${ext}`;
   const { error: upErr } = await admin.storage
@@ -96,5 +113,7 @@ export async function stageInstallationPhoto(opts: {
     exif_captured_at: exifCapturedAt,
     authenticity_grade: authenticityGrade,
     integrity_flags: integrityFlags,
+    tsa_authority: tsa?.authority ?? null,
+    tsa_timestamp_at: tsa?.timestampAt ?? null,
   };
 }

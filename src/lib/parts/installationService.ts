@@ -105,6 +105,8 @@ export async function createInstallation(
       authenticity_grade: e.authenticity_grade ?? "unverified",
       exif_captured_at: e.exif_captured_at ?? null,
       capture_nonce: e.capture_nonce ?? null,
+      tsa_authority: e.tsa_authority ?? null,
+      tsa_timestamp_at: e.tsa_timestamp_at ?? null,
       ocr_extracted: e.ocr_extracted ?? null,
     }));
     const { error: evErr } = await admin.from("part_installation_evidence").insert(rows);

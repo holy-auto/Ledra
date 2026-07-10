@@ -8,16 +8,19 @@ vi.mock("@/lib/anchoring/imageHashing", () => ({
 }));
 vi.mock("@/lib/ai/photoTamperingCheck", () => ({ extractExifMeta: vi.fn(), detectExifFlags: vi.fn() }));
 vi.mock("@/lib/anchoring/imageExif", () => ({ stripGpsAndReadExif: vi.fn() }));
+vi.mock("@/lib/parts/evidenceTsa", () => ({ requestEvidenceTimestamp: vi.fn() }));
 
 import { stageInstallationPhoto } from "@/lib/parts/evidenceService";
 import { extractExifMeta, detectExifFlags } from "@/lib/ai/photoTamperingCheck";
 import { hashSha256 } from "@/lib/anchoring/imageHashing";
 import { stripGpsAndReadExif } from "@/lib/anchoring/imageExif";
+import { requestEvidenceTimestamp } from "@/lib/parts/evidenceTsa";
 
 const exifMock = vi.mocked(extractExifMeta);
 const flagsMock = vi.mocked(detectExifFlags);
 const stripMock = vi.mocked(stripGpsAndReadExif);
 const hashMock = vi.mocked(hashSha256);
+const tsaMock = vi.mocked(requestEvidenceTimestamp);
 
 const STRIPPED = Buffer.from("gps-removed-bytes");
 
@@ -70,6 +73,8 @@ describe("stageInstallationPhoto", () => {
       gpsStripped: true,
     });
     hashMock.mockClear();
+    tsaMock.mockReset();
+    tsaMock.mockResolvedValue(null); // default: TSA disabled/no-op
   });
 
   it("hashes, extracts EXIF, uploads to staging and returns metadata (grade basic when clean EXIF)", async () => {
@@ -83,8 +88,41 @@ describe("stageInstallationPhoto", () => {
     expect(res.exif_captured_at).toBe("2026-06-01T10:00:00.000Z");
     expect(res.authenticity_grade).toBe("basic");
     expect(res.integrity_flags).toEqual([]);
+    expect(res.tsa_authority).toBeNull();
+    expect(res.tsa_timestamp_at).toBeNull();
     expect(uploaded).toHaveLength(1);
     expect(uploaded[0]).toMatch(/^parts\/t1\/staging\/install_photo-\d+-aaaaaaaa\.jpg$/);
+  });
+
+  it("seals the stored-bytes hash with TSA when PARTS_TSA is enabled, without upgrading the grade", async () => {
+    exifMock.mockResolvedValue(exif({ takenAt: new Date("2026-06-01T10:00:00Z"), hasExif: true }) as any);
+    tsaMock.mockResolvedValueOnce({
+      token: Buffer.from("der"),
+      authority: "tsa.example.com",
+      timestampAt: "2026-06-01T10:00:01.000Z",
+    });
+    const { admin } = makeAdmin();
+
+    const res = await stageInstallationPhoto({ admin, ...baseArgs() });
+
+    expect(res.tsa_authority).toBe("tsa.example.com");
+    expect(res.tsa_timestamp_at).toBe("2026-06-01T10:00:01.000Z");
+    // TSA alone (no device attestation / nonce binding) never upgrades past basic.
+    expect(res.authenticity_grade).toBe("basic");
+    // Sealed over the stored (post-GPS-strip) hash, matching what's actually persisted.
+    expect(tsaMock).toHaveBeenCalledWith("a".repeat(64));
+  });
+
+  it("degrades to no-seal (tsa fields null) when TSA is disabled/fails, without blocking the upload", async () => {
+    exifMock.mockResolvedValue(exif({ hasExif: true }) as any);
+    tsaMock.mockResolvedValueOnce(null);
+    const { admin, uploaded } = makeAdmin();
+
+    const res = await stageInstallationPhoto({ admin, ...baseArgs() });
+
+    expect(res.tsa_authority).toBeNull();
+    expect(res.tsa_timestamp_at).toBeNull();
+    expect(uploaded).toHaveLength(1);
   });
 
   it("marks grade unverified and null capture time when EXIF is absent", async () => {
