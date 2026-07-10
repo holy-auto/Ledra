@@ -2,9 +2,10 @@
  * POST /api/parts/installations/evidence-upload
  *
  * 現場タブレットの「撮るだけ」経路の最初の一歩。装着写真を 1 枚アップロードし、
- * サーバ側で SHA-256 / 知覚ハッシュ / EXIF 撮影日時 / 改ざん疑い flag を算出して返す。
- * **装着レコードはまだ作らない**。クライアントは返ったメタ (storage_path / sha256 /
- * perceptual_hash / exif_captured_at / authenticity_grade / integrity_flags) を作成 API
+ * サーバ側で SHA-256 / 知覚ハッシュ / EXIF 撮影日時 / 改ざん疑い flag / RFC3161 TSA
+ * （設定時のみ）を算出して返す。**装着レコードはまだ作らない**。クライアントは返った
+ * メタ (storage_path / sha256 / perceptual_hash / exif_captured_at / authenticity_grade /
+ * integrity_flags / tsa_authority / tsa_timestamp_at) を作成 API
  * (`POST /api/parts/installations`) の evidence[] に渡すため、写真は content_hash
  * （顧客が署名する manifest）に確実に取り込まれる（作成後に追記して署名対象の外に
  * 漏れることがない）。
