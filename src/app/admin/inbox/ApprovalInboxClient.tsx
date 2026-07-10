@@ -84,9 +84,7 @@ export default function ApprovalInboxClient() {
       {msg && <div className="rounded-xl bg-accent/10 px-4 py-2 text-sm text-primary">{msg}</div>}
 
       {total === 0 ? (
-        <div className="rounded-2xl border border-border-subtle p-10 text-center text-muted">
-          承認待ちはありません ✨
-        </div>
+        <div className="rounded-2xl border border-border-subtle p-10 text-center text-muted">承認待ちはありません</div>
       ) : (
         (data?.sections ?? []).map((section) => (
           <section key={section.key} className="rounded-2xl border border-border-subtle">

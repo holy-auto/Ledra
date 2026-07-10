@@ -6,6 +6,7 @@ import type { SquareConnection } from "@/types/square";
 import SettingsForm from "./SettingsForm";
 import LogoSealSection from "./LogoSealSection";
 import SettingsProgressCard from "./SettingsProgressCard";
+import SettingsHub from "./SettingsHub";
 import FollowUpSettings from "./FollowUpSettings";
 import SquareConnectSection from "./SquareConnectSection";
 import LineConnectSection from "./LineConnectSection";
@@ -170,6 +171,9 @@ export default async function AdminSettingsPage({
           </Link>
         }
       />
+
+      {/* 設定・マスタのハブ（サイドバーから外した設定系をここに集約） */}
+      <SettingsHub />
 
       <SettingsProgressCard
         hasShopName={!!name}
