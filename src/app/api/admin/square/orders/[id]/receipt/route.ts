@@ -12,6 +12,7 @@ import {
 } from "@/lib/api/response";
 import { insertDocWithRetry } from "@/lib/invoice/invoiceNumber";
 import { calcItems } from "@/lib/documents/calcItems";
+import { deriveTaxRateFromSquareAmounts, mapSquareLineItems } from "@/lib/documents/squareReceipt";
 import { DOC_TYPES } from "@/types/document";
 
 export const dynamic = "force-dynamic";
@@ -43,14 +44,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     if (!order) return apiNotFound("指定されたSquareオーダーが見つかりません。");
 
-    // 既に作成済みなら既存の領収書をそのまま返す（二重作成防止・冪等）
-    if (order.receipt_document_id) {
-      const { data: existing } = await admin
+    // 既に作成済みなら既存の領収書をそのまま返す（二重作成防止・冪等）。
+    // square_orders.receipt_document_id が何らかの理由で更新に失敗していた場合に備え、
+    // documents.meta_json の square_order_id からも既存領収書を探す（自己修復）。
+    const existingReceiptId = order.receipt_document_id;
+    let existing: Record<string, unknown> | null = null;
+    if (existingReceiptId) {
+      const { data } = await admin.from("documents").select(DOC_SELECT).eq("id", existingReceiptId).maybeSingle();
+      existing = data;
+    }
+    if (!existing) {
+      const { data } = await admin
         .from("documents")
         .select(DOC_SELECT)
-        .eq("id", order.receipt_document_id)
+        .eq("tenant_id", caller.tenantId)
+        .eq("doc_type", "receipt")
+        .contains("meta_json", { square_order_id: order.square_order_id })
         .maybeSingle();
-      if (existing) return apiOk({ document: existing, already_exists: true });
+      existing = data;
+    }
+    if (existing) {
+      if (!existingReceiptId) {
+        await admin
+          .from("square_orders")
+          .update({ receipt_document_id: existing.id })
+          .eq("id", id)
+          .eq("tenant_id", caller.tenantId);
+      }
+      return apiOk({ document: existing, already_exists: true });
     }
 
     let recipientName: string | null = null;
@@ -59,33 +80,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       recipientName = customer?.name ?? null;
     }
 
+    const taxRate = deriveTaxRateFromSquareAmounts(order.total_amount, order.tax_amount ?? 0);
+
     const rawItems: any[] = Array.isArray(order.items_json) ? order.items_json : [];
     const items =
       rawItems.length > 0
-        ? rawItems.map((li: any) => {
-            const qty = parseFloat(String(li.quantity ?? "1")) || 1;
-            const totalMoney = Number(li.total_money?.amount ?? 0);
-            const unitPrice = totalMoney > 0 ? Math.round(totalMoney / qty) : Number(li.base_price_money?.amount ?? 0);
-            return {
-              description: li.name || "商品",
-              quantity: qty,
-              unit_price: unitPrice,
-              tax_category: 10,
-            };
-          })
+        ? mapSquareLineItems(rawItems, taxRate)
         : [
             {
               description: "Square売上",
               quantity: 1,
               unit_price: order.total_amount,
-              tax_category: 10,
+              tax_category: taxRate,
             },
           ];
-
-    // Square の税込金額から実効税率を逆算する（不明時は標準税率10%）
-    const taxAmount = order.tax_amount ?? 0;
-    const preTax = order.total_amount - taxAmount;
-    const taxRate = preTax > 0 && taxAmount > 0 ? Math.round((taxAmount / preTax) * 100) : 10;
 
     const { itemsJson, subtotal, tax, total, taxBreakdown } = calcItems(items, taxRate, true);
 
@@ -130,11 +138,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     if (error) return apiInternalError(error, "square order receipt POST");
 
-    await admin
+    const { error: linkErr } = await admin
       .from("square_orders")
       .update({ receipt_document_id: data.id })
       .eq("id", id)
       .eq("tenant_id", caller.tenantId);
+    if (linkErr) {
+      // documents 側の作成自体は成功しているため失敗させない。
+      // 次回呼び出し時は meta_json.square_order_id 側の照合で自己修復される。
+      console.error("[square order receipt] failed to persist receipt_document_id link:", linkErr.message);
+    }
 
     return apiOk({ document: data });
   } catch (e) {

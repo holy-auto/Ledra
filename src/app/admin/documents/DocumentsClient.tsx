@@ -15,6 +15,7 @@ import {
   STATUS_OPTIONS,
   statusLabel,
   statusVariant,
+  isDocumentDeletable,
   type DocType,
   type DocumentRow,
 } from "@/types/document";
@@ -80,9 +81,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
     setSelectedIds(new Set());
   };
 
-  // 下書き、または領収書（POS 等で status='paid' 固定発行されるため下書きを経由しない）は削除可能。
-  // それ以外の送付済み帳票は証跡保持のため削除不可。
-  const isDeletable = (doc: DocumentRow) => doc.status === "draft" || doc.doc_type === "receipt";
+  const isDeletable = (doc: DocumentRow) => isDocumentDeletable(doc.doc_type, doc.status);
   const deletableDocs = docs.filter(isDeletable);
   const allSelected = deletableDocs.length > 0 && deletableDocs.every((d) => selectedIds.has(d.id));
 
@@ -96,10 +95,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   };
 
   const toggleSelectAll = () => {
-    setSelectedIds((prev) => {
-      if (allSelected) return new Set();
-      return new Set(deletableDocs.map((d) => d.id));
-    });
+    setSelectedIds(allSelected ? new Set() : new Set(deletableDocs.map((d) => d.id)));
   };
 
   const handleDelete = async (id: string) => {
@@ -113,6 +109,12 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      setSelectedIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
       mutate();
     } catch (e: any) {
       alert("削除に失敗しました: " + (e?.message ?? String(e)));

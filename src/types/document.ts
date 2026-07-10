@@ -110,6 +110,17 @@ export function isDocumentEditable(docType: string, status: string): boolean {
 }
 
 /**
+ * 帳票が削除可能か判定する。
+ * - 下書きはいつでも削除可能（証跡として確定していないため）
+ * - 領収書（receipt）は POS 等で status='paid' 固定のまま発行され下書きを経由しないため、
+ *   ステータスを問わず削除可能とする（誤発行の取り消し用途）
+ * - それ以外の送付済み帳票（見積書・請求書等）は証跡保持のため下書きのみ削除可
+ */
+export function isDocumentDeletable(docType: string, status: string): boolean {
+  return status === "draft" || docType === "receipt";
+}
+
+/**
  * 明細行のタイプ。
  * - "item"（既定）: 通常の品目行（数量×単価＝金額）
  * - "heading": セクション見出し行（金額計算には含めない）

@@ -1,11 +1,18 @@
 import { NextRequest, after } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { DOC_TYPES, isDocumentEditable, type DocType } from "@/types/document";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { DOC_TYPES, isDocumentEditable, isDocumentDeletable, type DocType } from "@/types/document";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { parsePagination } from "@/lib/api/pagination";
-import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiForbidden,
+  apiValidationError,
+  apiNotFound,
+  apiInternalError,
+} from "@/lib/api/response";
 import { documentCreateSchema, documentUpdateSchema, documentDeleteSchema } from "@/lib/validations/document";
 import { resolveBaseUrl } from "@/lib/url";
 import { maybeAutoSendDocumentOnConfirm } from "@/lib/ai/automation/documentAuto";
@@ -434,6 +441,7 @@ export async function DELETE(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const parsed = documentDeleteSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -449,10 +457,7 @@ export async function DELETE(req: NextRequest) {
 
     if (!docs || docs.length === 0) return apiNotFound("帳票が見つかりません。");
 
-    // 下書きは自由に削除可能。領収書は POS 等で status='paid' 固定で作られ
-    // 下書きを経由しないため、誤発行の取り消しができるよう status を問わず削除可とする。
-    // それ以外（送付済みの見積書・請求書等）は証跡保持のため下書きのみ削除可のまま。
-    const eligible = docs.filter((d) => d.status === "draft" || d.doc_type === "receipt");
+    const eligible = docs.filter((d) => isDocumentDeletable(d.doc_type, d.status));
     if (eligible.length === 0) {
       return apiValidationError("下書きステータスの帳票、または領収書のみ削除できます。");
     }
@@ -463,6 +468,10 @@ export async function DELETE(req: NextRequest) {
     const { error } = await admin.from("documents").delete().in("id", eligibleIds).eq("tenant_id", caller.tenantId);
 
     if (error) {
+      // 23503: 他の帳票の source_document_id からまだ参照されている（変換元として使われた帳票）
+      if (error.code === "23503") {
+        return apiValidationError("他の帳票の作成元になっている帳票は削除できません。");
+      }
       return apiInternalError(error, "documents DELETE");
     }
 
