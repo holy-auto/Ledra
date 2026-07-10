@@ -73,6 +73,22 @@ async function countRows(tenantId: string, table: string, tenantColumn = "tenant
   }
 }
 
+async function hasCustomizedFeatures(tenantId: string, userId: string): Promise<boolean> {
+  const { admin } = createTenantScopedAdmin(tenantId);
+  try {
+    const { data } = await admin
+      .from("user_feature_prefs")
+      .select("visible_features")
+      .eq("tenant_id", tenantId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    return Array.isArray(data?.visible_features) && data.visible_features.length > 0;
+  } catch (e) {
+    logger.warn("SetupChecklist: feature prefs check failed", { err: e instanceof Error ? e.message : String(e) });
+    return false;
+  }
+}
+
 export function SetupChecklistSkeleton() {
   return (
     <div className="glass-card p-5 animate-pulse">
@@ -87,13 +103,14 @@ export function SetupChecklistSkeleton() {
   );
 }
 
-export default async function SetupChecklist({ tenantId }: { tenantId: string }) {
-  const [tenant, vehicleCount, certCount, customerCount, memberCount] = await Promise.all([
+export default async function SetupChecklist({ tenantId, userId }: { tenantId: string; userId?: string }) {
+  const [tenant, vehicleCount, certCount, customerCount, memberCount, hasCustomizedFeats] = await Promise.all([
     fetchTenantInfo(tenantId),
     countRows(tenantId, "vehicles"),
     countRows(tenantId, "certificates"),
     countRows(tenantId, "customers"),
     countRows(tenantId, "tenant_memberships"),
+    userId ? hasCustomizedFeatures(tenantId, userId) : Promise.resolve(false),
   ]);
 
   const hasShopInfo = !!(tenant.contact_email || tenant.contact_phone || tenant.address);
@@ -142,6 +159,15 @@ export default async function SetupChecklist({ tenantId }: { tenantId: string })
       href: "/admin/members",
       cta: "メンバー管理を開く",
       done: hasInvitedMember,
+      optional: true,
+    },
+    {
+      id: "customize_features",
+      label: "使う機能だけ選んで、サイドバーをすっきりさせる",
+      description: "「機能をカスタマイズ」から普段使わない機能を非表示にできます。あとからいつでも変更できます。",
+      href: "/admin/settings/features",
+      cta: "機能をカスタマイズ",
+      done: hasCustomizedFeats,
       optional: true,
     },
   ];

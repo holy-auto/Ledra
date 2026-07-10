@@ -18,6 +18,7 @@ import BodyRepairDetailsSection from "./BodyRepairDetailsSection";
 import AccessoryDetailsSection from "./AccessoryDetailsSection";
 import PhotoUploadSection, { type PhotoUploadHandle } from "./PhotoUploadSection";
 import ManufacturerTemplatePicker from "./ManufacturerTemplatePicker";
+import CertFormProgressRail from "./CertFormProgressRail";
 import Button from "@/components/ui/Button";
 import HelpTooltip from "@/components/ui/HelpTooltip";
 import type { PlanTier } from "@/lib/billing/planFeatures";
@@ -142,6 +143,37 @@ export default function CertNewFormWrapper({
   const photoRef = useRef<PhotoUploadHandle>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const warrantyRef = useRef<HTMLTextAreaElement>(null);
+
+  // 各 id は isPpf/isMaintenance/isBodyRepair/isAccessory が排他的である前提
+  // (CertNewFormWrapper 内で同時に true にならない) で一意にしている。
+  const detailSection = isPpf
+    ? { id: "sec-detail-ppf", label: "PPF施工範囲" }
+    : isMaintenance
+      ? { id: "sec-detail-maintenance", label: "整備内容" }
+      : isBodyRepair
+        ? { id: "sec-detail-body-repair", label: "鈑金塗装内容" }
+        : isAccessory
+          ? { id: "sec-detail-accessory", label: "用品取付内容" }
+          : null;
+
+  const formSections = useMemo(() => {
+    const list = [
+      { id: "sec-package", label: "施工パッケージ" },
+      { id: "sec-vehicle", label: "車種選択" },
+    ];
+    if (detailSection) list.push(detailSection);
+    if (isCoatingOrPpf) list.push({ id: "sec-coating", label: "コーティング剤・使用フィルム" });
+    list.push(
+      { id: "sec-expiry", label: "有効期限・保証期間" },
+      { id: "sec-photos", label: "施工写真" },
+      { id: "sec-work", label: "詳細な施工内容" },
+      { id: "sec-film", label: "膜厚計測" },
+      { id: "sec-maintenance-date", label: "メンテナンス実施日" },
+      { id: "sec-warranty-exclusions", label: "保証除外内容" },
+      { id: "sec-remarks", label: "備考" },
+    );
+    return list;
+  }, [detailSection, isCoatingOrPpf]);
 
   const maxPhotos = PHOTO_LIMITS[planTier];
   const planLabel = PLAN_LABELS[planTier];
@@ -579,18 +611,20 @@ export default function CertNewFormWrapper({
         {defaultReservationId && <input type="hidden" name="reservation_id" value={defaultReservationId} />}
         {serviceType && <input type="hidden" name="service_type" value={serviceType} />}
 
+        <CertFormProgressRail sections={formSections} />
+
         {/* ━━━ 0a. メーカー指定デザイン（認定施工店のみ表示） ━━━ */}
         <section className="pb-6">
           <ManufacturerTemplatePicker serviceType={serviceType} />
         </section>
 
         {/* ━━━ 0. 施工パッケージ ━━━ */}
-        <section className="pb-6">
+        <section id="sec-package" className="pb-6">
           <CertPackagePicker templates={templates} currentTemplateId={tid} />
         </section>
 
         {/* ━━━ 1. 車種選択 ━━━ */}
-        <section data-vehicle-picker className="pb-6">
+        <section id="sec-vehicle" data-vehicle-picker className="pb-6">
           <VehiclePickerSection
             vehicles={
               defaultCustomerId
@@ -649,41 +683,41 @@ export default function CertNewFormWrapper({
 
         {/* ━━━ 2. PPF施工範囲（PPFテンプレート時のみ） ━━━ */}
         {isPpf && (
-          <section className="border-t border-border-subtle py-6">
+          <section id="sec-detail-ppf" className="border-t border-border-subtle py-6">
             <PpfCoverageSection />
           </section>
         )}
 
         {/* ━━━ 2b. 整備内容（整備テンプレート時のみ） ━━━ */}
         {isMaintenance && (
-          <section className="border-t border-border-subtle py-6">
+          <section id="sec-detail-maintenance" className="border-t border-border-subtle py-6">
             <MaintenanceDetailsSection />
           </section>
         )}
 
         {/* ━━━ 2c. 鈑金塗装内容（鈑金塗装テンプレート時のみ） ━━━ */}
         {isBodyRepair && (
-          <section className="border-t border-border-subtle py-6">
+          <section id="sec-detail-body-repair" className="border-t border-border-subtle py-6">
             <BodyRepairDetailsSection />
           </section>
         )}
 
         {/* ━━━ 2d. 用品取付内容（用品取付テンプレート時のみ） ━━━ */}
         {isAccessory && (
-          <section className="border-t border-border-subtle py-6">
+          <section id="sec-detail-accessory" className="border-t border-border-subtle py-6">
             <AccessoryDetailsSection />
           </section>
         )}
 
         {/* ━━━ 3. コーティング剤 / 使用フィルム（コーティング・PPF時のみ） ━━━ */}
         {isCoatingOrPpf && (
-          <section className="border-t border-border-subtle py-6">
+          <section id="sec-coating" className="border-t border-border-subtle py-6">
             <CoatingProductsSection serviceType={serviceType} />
           </section>
         )}
 
         {/* ━━━ 3. 有効期限・保証期間 ━━━ */}
-        <section className="border-t border-border-subtle py-6 space-y-4">
+        <section id="sec-expiry" className="border-t border-border-subtle py-6 space-y-4">
           <div className={sectionHeaderCls}>
             <div className={sectionTagCls}>EXPIRY & WARRANTY</div>
             <div className={`${sectionTitleCls} flex items-center gap-1.5`}>
@@ -715,7 +749,7 @@ export default function CertNewFormWrapper({
         </section>
 
         {/* ━━━ 4. 施工写真 ━━━ */}
-        <section className="border-t border-border-subtle py-6 space-y-4">
+        <section id="sec-photos" className="border-t border-border-subtle py-6 space-y-4">
           <div className="flex items-center gap-1.5 -mb-2">
             <span className="text-xs font-semibold tracking-[0.18em] text-muted">PHOTOS</span>
             <HelpTooltip>
@@ -759,7 +793,7 @@ export default function CertNewFormWrapper({
         </section>
 
         {/* ━━━ 5. 詳細な施工内容 ━━━ */}
-        <section className="border-t border-border-subtle py-6 space-y-4">
+        <section id="sec-work" className="border-t border-border-subtle py-6 space-y-4">
           <div className={sectionHeaderCls}>
             <div className={sectionTagCls}>WORK DETAILS</div>
             <div className={`${sectionTitleCls} flex items-center gap-1.5`}>
@@ -798,12 +832,12 @@ export default function CertNewFormWrapper({
         </section>
 
         {/* ━━━ 6. 膜厚計測 ━━━ */}
-        <section className="border-t border-border-subtle py-6">
+        <section id="sec-film" className="border-t border-border-subtle py-6">
           <FilmThicknessSection />
         </section>
 
         {/* ━━━ 7. メンテナンス実施日 ━━━ */}
-        <section className="border-t border-border-subtle py-6 space-y-4">
+        <section id="sec-maintenance-date" className="border-t border-border-subtle py-6 space-y-4">
           <div className={sectionHeaderCls}>
             <div className={sectionTagCls}>MAINTENANCE</div>
             <div className={sectionTitleCls}>メンテナンス実施日</div>
@@ -815,7 +849,7 @@ export default function CertNewFormWrapper({
         </section>
 
         {/* ━━━ 8. 保証除外内容 ━━━ */}
-        <section className="border-t border-border-subtle py-6 space-y-4">
+        <section id="sec-warranty-exclusions" className="border-t border-border-subtle py-6 space-y-4">
           <div className={sectionHeaderCls}>
             <div className={sectionTagCls}>WARRANTY EXCLUSIONS</div>
             <div className={`${sectionTitleCls} flex items-center gap-1.5`}>
@@ -854,7 +888,7 @@ export default function CertNewFormWrapper({
         </section>
 
         {/* ━━━ 9. 備考欄 ━━━ */}
-        <section className="border-t border-border-subtle py-6 space-y-4">
+        <section id="sec-remarks" className="border-t border-border-subtle py-6 space-y-4">
           <div className={sectionHeaderCls}>
             <div className={sectionTagCls}>REMARKS</div>
             <div className={sectionTitleCls}>備考</div>

@@ -7,13 +7,15 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useCurrentRole } from "@/lib/auth/useCurrentRole";
 import { ROUTE_PERMISSIONS, type Permission } from "@/lib/auth/permissions";
 import { ROLE_LABELS } from "@/lib/auth/roles";
-import { FEATURE_BY_HREF, isAdvancedFeatureVisible } from "@/lib/features/catalog";
+import { FEATURE_BY_HREF, isAdvancedFeatureVisible, isVisibleInBusinessMode } from "@/lib/features/catalog";
 import { useFeaturePrefs } from "@/lib/features/useFeaturePrefs";
 import StoreSelector from "@/components/ui/StoreSelector";
 import ThemeToggle from "@/lib/theme/ThemeToggle";
 import SidebarShell from "@/components/ui/SidebarShell";
 import ContextSwitcher from "@/components/ui/ContextSwitcher";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
+import BusinessModeToggle from "@/components/ui/BusinessModeToggle";
+import { useBusinessMode } from "@/lib/business-mode/BusinessModeContext";
 
 /* ------------------------------------------------------------------ */
 /*  Badge counts hook                                                  */
@@ -125,7 +127,26 @@ type NavGroup = {
   defaultOpen?: boolean;
 };
 
-const STORAGE_KEY = "sidebar-groups";
+// v2: bumped because pre-v2 persisted blobs were captured while the
+// defaultOpen bug was live (every group saved as open) — bumping the key
+// invalidates that stale state so existing users get a correct first
+// render instead of being stuck with the old, always-open snapshot.
+const STORAGE_KEY = "sidebar-groups-v2";
+
+/**
+ * First-visit open/closed state per group: mobile always starts collapsed,
+ * desktop respects each group's own `defaultOpen` (defaults to open).
+ */
+export function computeInitialGroupState(
+  groups: readonly Pick<NavGroup, "label" | "defaultOpen">[],
+  isMobile: boolean,
+): Record<string, boolean> {
+  const initial: Record<string, boolean> = {};
+  groups.forEach((g) => {
+    if (g.label) initial[g.label] = isMobile ? false : (g.defaultOpen ?? true);
+  });
+  return initial;
+}
 
 const NAV_GROUPS: NavGroup[] = [
   {
@@ -1398,6 +1419,7 @@ export default function Sidebar() {
   const { tenantDisabled, userVisible, loading: prefsLoading } = useFeaturePrefs();
   const tenantDisabledSet = useMemo(() => new Set(tenantDisabled), [tenantDisabled]);
   const userVisibleSet = useMemo(() => new Set(userVisible), [userVisible]);
+  const { mode: businessMode, hydrated: businessModeHydrated } = useBusinessMode();
   const isMobile = useIsMobile();
   const badges = useSidebarBadges();
 
@@ -1421,12 +1443,8 @@ export default function Sidebar() {
         setGroupState(persisted);
       }
     } else {
-      // First visit: desktop = all open, mobile = all closed
-      const initial: Record<string, boolean> = {};
-      NAV_GROUPS.forEach((g) => {
-        if (g.label) initial[g.label] = !isMobile;
-      });
-      setGroupState(initial);
+      // First visit: desktop = each group's defaultOpen (default true), mobile = all closed
+      setGroupState(computeInitialGroupState(NAV_GROUPS, isMobile));
     }
   }, [isMobile]);
 
@@ -1469,9 +1487,29 @@ export default function Sidebar() {
           }
         }
 
+        // 業種別モードによる絞り込み: businessModes 未タグの項目は共通機能として
+        // 常時表示。タグ済みの項目は選択中モードに含まれる時だけ表示する。
+        // hydrated 前は localStorage の実値が未確定なので絞り込まない
+        // (前回選んだモードに応じて項目が消えるフラッシュを防ぐ)。
+        const effectiveMode = !businessModeHydrated || businessMode === "all" ? null : businessMode;
+        if (!isVisibleInBusinessMode(item.href, effectiveMode)) {
+          return false;
+        }
+
         return true;
       }),
-    [loading, role, can, isPlatformAdmin, isOrgUser, prefsLoading, tenantDisabledSet, userVisibleSet],
+    [
+      loading,
+      role,
+      can,
+      isPlatformAdmin,
+      isOrgUser,
+      prefsLoading,
+      tenantDisabledSet,
+      userVisibleSet,
+      businessMode,
+      businessModeHydrated,
+    ],
   );
 
   const renderItem = (item: NavItem) => {
@@ -1534,9 +1572,21 @@ export default function Sidebar() {
       )}
 
       {/* View Mode Toggle (店頭 / 管理) */}
-      <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-4 py-2">
+      <div
+        data-tour="view-mode-toggle"
+        className="flex items-center justify-between gap-2 border-b border-border-subtle px-4 py-2"
+      >
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">モード</span>
         <ViewModeToggle />
+      </div>
+
+      {/* Business Mode Toggle (整備 / 鈑金塗装 / コーティング / PPF) */}
+      <div
+        data-tour="business-mode-toggle"
+        className="flex items-center justify-between gap-2 border-b border-border-subtle px-4 py-2"
+      >
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">業種</span>
+        <BusinessModeToggle />
       </div>
 
       {/* Store Selector */}
@@ -1558,7 +1608,7 @@ export default function Sidebar() {
           }
 
           // Collapsible group
-          const isOpen = groupState[group.label] ?? true;
+          const isOpen = groupState[group.label] ?? group.defaultOpen ?? true;
           return (
             <CollapsibleGroup
               key={group.label}
@@ -1594,6 +1644,7 @@ export default function Sidebar() {
         </Link>
         <Link
           href="/admin/settings/features"
+          data-tour="customize-features"
           aria-current={pathname === "/admin/settings/features" ? "page" : undefined}
           className={`flex items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-2 text-[13px] font-medium transition-all duration-150 mb-1 ${
             pathname === "/admin/settings/features"
