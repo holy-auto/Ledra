@@ -1,4 +1,5 @@
 import { PageHero } from "@/components/marketing/PageHero";
+import { Breadcrumbs } from "@/components/marketing/Breadcrumbs";
 import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { FeatureGrid } from "@/components/marketing/FeatureGrid";
@@ -127,6 +128,12 @@ const features = [
 export default function Customer360Page() {
   return (
     <>
+      <Breadcrumbs
+        items={[
+          { name: "機能", url: "/features" },
+          { name: "顧客360°ビュー", url: "/features/customer-360" },
+        ]}
+      />
       <PageHero
         badge="FEATURE › 顧客 360° ビュー"
         title="顧客のすべてを、1画面で把握する。"

@@ -1,4 +1,5 @@
 import { PageHero } from "@/components/marketing/PageHero";
+import { Breadcrumbs } from "@/components/marketing/Breadcrumbs";
 import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { FeatureGrid } from "@/components/marketing/FeatureGrid";
@@ -146,6 +147,12 @@ const features = [
 export default function TimelinePage() {
   return (
     <>
+      <Breadcrumbs
+        items={[
+          { name: "機能", url: "/features" },
+          { name: "サービス履歴タイムライン", url: "/features/timeline" },
+        ]}
+      />
       <PageHero
         badge="FEATURE › 履歴タイムライン"
         title="一台の車に、起きたことが全部ある。"

@@ -1,4 +1,5 @@
 import { PageHero } from "@/components/marketing/PageHero";
+import { Breadcrumbs } from "@/components/marketing/Breadcrumbs";
 import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { FeatureGrid } from "@/components/marketing/FeatureGrid";
@@ -86,6 +87,12 @@ const capabilityCards = [
 export default function JobWorkflowPage() {
   return (
     <>
+      <Breadcrumbs
+        items={[
+          { name: "機能", url: "/features" },
+          { name: "案件ワークフロー", url: "/features/job-workflow" },
+        ]}
+      />
       <PageHero
         badge="FEATURE › 案件ワークフロー"
         title="予約から入金まで、1つの画面で。"

@@ -74,11 +74,11 @@ export function Hero() {
             </h1>
 
             <p className="mt-7 text-base md:text-lg leading-relaxed text-white max-w-xl animate-[hero-fade-up_0.8s_ease-out_0.95s_both]">
-              Ledraは、施工証明・履歴管理・加盟店連携・技術育成を通じて、現場の技術を可視化し、業界全体に信頼と価値を届けるプラットフォームです。
+              施工記録を、改ざん不可能なデジタル証明書に。Ledraは現場の技術を可視化し、施工店・代理店・保険会社をつなぐプラットフォームです。
             </p>
 
             <p className="mt-3 min-h-[1.6em] text-xs md:text-sm font-medium tracking-wide text-white animate-[hero-fade-in_0.6s_ease-out_1.05s_both]">
-              <HeroTypewriter text="施工記録を、改ざん不可能なデジタル証明書に。" startDelay={1200} speed={48} />
+              <HeroTypewriter text="履歴に、嘘をつかせない。" startDelay={1200} speed={48} />
             </p>
 
             <div className="flex flex-col sm:flex-row gap-3 mt-9 animate-[hero-fade-up_0.8s_ease-out_0.9s_both]">

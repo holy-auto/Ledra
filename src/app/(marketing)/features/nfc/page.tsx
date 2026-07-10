@@ -1,4 +1,5 @@
 import { PageHero } from "@/components/marketing/PageHero";
+import { Breadcrumbs } from "@/components/marketing/Breadcrumbs";
 import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { FeatureGrid } from "@/components/marketing/FeatureGrid";
@@ -85,6 +86,12 @@ const vehiclePassportItems = [
 export default function NfcPage() {
   return (
     <>
+      <Breadcrumbs
+        items={[
+          { name: "機能", url: "/features" },
+          { name: "NFC対応", url: "/features/nfc" },
+        ]}
+      />
       <PageHero
         badge="FEATURE › NFC対応"
         title="スマホをかざすだけで、施工の証明。"

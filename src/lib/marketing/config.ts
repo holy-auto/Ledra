@@ -49,12 +49,16 @@ export const footerNavGroups = [
       { label: "BtoB発注をしたい企業の方へ", href: "/for-btob" },
       { label: "代理店の方へ", href: "/for-agents" },
       { label: "保険会社の方へ", href: "/for-insurers" },
+      { label: "大手企業との PoC", href: "/poc-program" },
       { label: "料金", href: "/pricing" },
+      { label: "正直な比較（向いていない方）", href: "/honest-comparison" },
     ],
   },
   {
     heading: "リソース",
     links: [
+      { label: "創業ストーリー", href: "/story" },
+      { label: "透明性ダッシュボード", href: "/financial-transparency" },
       { label: "資料ダウンロード", href: "/resources" },
       { label: "ROIシミュレーター", href: "/roi" },
       { label: "事例", href: "/cases" },

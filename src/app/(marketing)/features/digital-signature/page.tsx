@@ -1,4 +1,5 @@
 import { PageHero } from "@/components/marketing/PageHero";
+import { Breadcrumbs } from "@/components/marketing/Breadcrumbs";
 import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { FeatureGrid } from "@/components/marketing/FeatureGrid";
@@ -107,6 +108,12 @@ const steps = [
 export default function DigitalSignaturePage() {
   return (
     <>
+      <Breadcrumbs
+        items={[
+          { name: "機能", url: "/features" },
+          { name: "電子署名", url: "/features/digital-signature" },
+        ]}
+      />
       <PageHero
         badge="FEATURE › 電子署名"
         title="契約の握手を、デジタルで完結させる。"

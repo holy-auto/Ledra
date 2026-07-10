@@ -6,6 +6,7 @@ import { CookieConsent } from "@/components/marketing/CookieConsent";
 import { PostHogProvider } from "@/components/marketing/PostHogProvider";
 import { GoogleAnalytics } from "@/components/marketing/GoogleAnalytics";
 import { CTATracker } from "@/components/marketing/CTATracker";
+import { StickyMobileCTA } from "@/components/marketing/StickyMobileCTA";
 import MarketingThemeWrapper from "./MarketingThemeWrapper";
 
 const notoSansJP = Noto_Sans_JP({
@@ -47,6 +48,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
       <Header />
       <main>{children}</main>
       <Footer />
+      <StickyMobileCTA />
       <CookieConsent />
     </MarketingThemeWrapper>
   );

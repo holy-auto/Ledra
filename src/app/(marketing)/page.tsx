@@ -63,6 +63,11 @@ export default async function HomePage() {
       {/* Ledra でできること — 旧: 課題提起 / 解決 / 流れ / エコシステム / 証明書プレビュー を統合 */}
       <WhatYouCanDoSection />
 
+      {/* すべて実数 — 本番DBの実数を隠さず見せる（履歴に嘘をつかせないブランドの幹） */}
+      <Suspense>
+        <GrowthJourney />
+      </Suspense>
+
       {/* ターゲット別導線 */}
       <Section id="usecases">
         <SectionHeading
@@ -179,6 +184,30 @@ export default async function HomePage() {
       {/* セキュリティ・改ざん防止の根拠を、技術として開示 */}
       <TrustSecuritySection />
 
+      {/* 大手企業向け PoC 導線 */}
+      <Section bg="alt">
+        <ScrollReveal variant="fade-up">
+          <div className="mx-auto flex max-w-4xl flex-col items-start gap-6 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-8 md:flex-row md:items-center md:justify-between md:p-10">
+            <div>
+              <div className="text-xs font-medium uppercase tracking-widest text-blue-300">For Enterprise</div>
+              <h3 className="mt-3 text-xl font-bold text-white">メーカー・保険会社・大手流通の方へ</h3>
+              <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/90">
+                改ざん不可能な施工履歴を、貴社の査定・保証・流通の業務で検証する
+                PoC（概念実証）プログラムを受付中です。NDA 締結のうえ、約10週間で検証できます。
+              </p>
+            </div>
+            <Link
+              href="/poc-program"
+              data-cta-location="home-enterprise"
+              data-cta-label="PoCプログラムを見る"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-white/20 px-6 py-3 text-sm font-medium text-white transition-colors hover:border-white/40"
+            >
+              PoC プログラムを見る &rarr;
+            </Link>
+          </div>
+        </ScrollReveal>
+      </Section>
+
       {/* ユースケース */}
       <Section bg="alt" id="compare">
         <SectionHeading title="ご利用シーン" subtitle="さまざまな場面でLedraをご活用いただけます" />
@@ -229,11 +258,6 @@ export default async function HomePage() {
 
       {/* メディア掲載・受賞 (Coming soon 枠) */}
       <MediaAwardsRow />
-
-      {/* 成長の透明性 — ゼロからの今をそのまま見せる */}
-      <Suspense>
-        <GrowthJourney />
-      </Suspense>
 
       {/* ネットワークの広がり — 点と線で見る証明書・施工店・メーカー・保険会社・ユーザー */}
       <Suspense>

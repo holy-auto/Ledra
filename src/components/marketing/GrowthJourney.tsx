@@ -119,8 +119,8 @@ export async function GrowthJourney() {
   return (
     <Section bg="alt" id="growth">
       <SectionHeading
-        title="ゼロから、業界の標準へ。"
-        subtitle="Ledra は意図的に「最初の数字」を隠しません。いま何社が乗っているか、次にどこを目指しているかを率直に共有することで、先行パートナーと一緒に業界を作り直していきます。"
+        title="この数字は、すべて実数です。"
+        subtitle="履歴に嘘をつかせないサービスだから、まず自分たちの数字から嘘をなくします。小さくても本番データベースの実数をそのまま表示し、いま何社が乗っているか、次にどこを目指しているかを率直に共有します。"
       />
 
       <ScrollReveal variant="fade-up">

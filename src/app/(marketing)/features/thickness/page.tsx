@@ -1,4 +1,5 @@
 import { PageHero } from "@/components/marketing/PageHero";
+import { Breadcrumbs } from "@/components/marketing/Breadcrumbs";
 import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { FeatureGrid } from "@/components/marketing/FeatureGrid";
@@ -74,6 +75,12 @@ const flowSteps = [
 export default function ThicknessPage() {
   return (
     <>
+      <Breadcrumbs
+        items={[
+          { name: "機能", url: "/features" },
+          { name: "塗膜厚レポート", url: "/features/thickness" },
+        ]}
+      />
       <PageHero
         badge="FEATURE › 塗膜厚レポート"
         title="仕上がりを、数値で裏付ける。"

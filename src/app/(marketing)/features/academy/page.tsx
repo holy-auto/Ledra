@@ -1,4 +1,5 @@
 import { PageHero } from "@/components/marketing/PageHero";
+import { Breadcrumbs } from "@/components/marketing/Breadcrumbs";
 import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { FeatureGrid } from "@/components/marketing/FeatureGrid";
@@ -72,6 +73,12 @@ const flowSteps = [
 export default function AcademyPage() {
   return (
     <>
+      <Breadcrumbs
+        items={[
+          { name: "機能", url: "/features" },
+          { name: "Ledraアカデミー", url: "/features/academy" },
+        ]}
+      />
       <PageHero
         badge="FEATURE › Ledra Academy"
         title="施工品質を、人とチームに定着させる。"

@@ -1,4 +1,5 @@
 import { PageHero } from "@/components/marketing/PageHero";
+import { Breadcrumbs } from "@/components/marketing/Breadcrumbs";
 import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { FeatureGrid } from "@/components/marketing/FeatureGrid";
@@ -72,6 +73,12 @@ const flowSteps = [
 export default function InventoryPage() {
   return (
     <>
+      <Breadcrumbs
+        items={[
+          { name: "機能", url: "/features" },
+          { name: "在庫管理", url: "/features/inventory" },
+        ]}
+      />
       <PageHero
         badge="FEATURE › 在庫管理"
         title="材料の残りを、勘から記録へ。"

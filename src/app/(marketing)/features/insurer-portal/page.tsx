@@ -1,4 +1,5 @@
 import { PageHero } from "@/components/marketing/PageHero";
+import { Breadcrumbs } from "@/components/marketing/Breadcrumbs";
 import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { FeatureGrid } from "@/components/marketing/FeatureGrid";
@@ -127,6 +128,12 @@ const techSpecs = [
 export default function InsurerPortalPage() {
   return (
     <>
+      <Breadcrumbs
+        items={[
+          { name: "機能", url: "/features" },
+          { name: "保険会社ポータル", url: "/features/insurer-portal" },
+        ]}
+      />
       <PageHero
         badge="FEATURE › 保険会社ポータル"
         title="施工証明の確認を、数秒に。"

@@ -1,4 +1,5 @@
 import { PageHero } from "@/components/marketing/PageHero";
+import { Breadcrumbs } from "@/components/marketing/Breadcrumbs";
 import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { FeatureGrid } from "@/components/marketing/FeatureGrid";
@@ -103,6 +104,12 @@ const sourceComparison = [
 export default function VehicleOcrPage() {
   return (
     <>
+      <Breadcrumbs
+        items={[
+          { name: "機能", url: "/features" },
+          { name: "車検証OCR", url: "/features/vehicle-ocr" },
+        ]}
+      />
       <PageHero
         badge="FEATURE › 車検証OCR"
         title="車検証を撮るだけで、車両情報が入る。"

@@ -1,4 +1,5 @@
 import { PageHero } from "@/components/marketing/PageHero";
+import { Breadcrumbs } from "@/components/marketing/Breadcrumbs";
 import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { FeatureGrid } from "@/components/marketing/FeatureGrid";
@@ -104,6 +105,12 @@ const techCards = [
 export default function BlockchainAnchoringPage() {
   return (
     <>
+      <Breadcrumbs
+        items={[
+          { name: "機能", url: "/features" },
+          { name: "ブロックチェーン・アンカリング", url: "/features/blockchain-anchoring" },
+        ]}
+      />
       <PageHero
         badge="FEATURE › 改ざん検知"
         title="施工写真を、世界が証明する。"
