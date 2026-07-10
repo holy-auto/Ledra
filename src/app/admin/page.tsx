@@ -11,6 +11,7 @@ import CmdKHintToast from "./CmdKHintToast";
 import DashboardModeSwitch from "./DashboardModeSwitch";
 import TodayTasksWidget, { TodayTasksWidgetSkeleton } from "./TodayTasksWidget";
 import SetupChecklist, { SetupChecklistSkeleton } from "./SetupChecklist";
+import ApprovalInboxWidget, { ApprovalInboxWidgetSkeleton } from "./ApprovalInboxWidget";
 
 // ── Partner Rank System ──
 interface PartnerRank {
@@ -422,6 +423,13 @@ export default async function AdminHome({ searchParams }: { searchParams?: Promi
 
   const adminContent = (
     <>
+      {/* AI 自動化の人の承認待ち — 一等地に常設（0 件なら自動で非表示） */}
+      {tenantId && (
+        <Suspense fallback={<ApprovalInboxWidgetSkeleton />}>
+          <ApprovalInboxWidget tenantId={tenantId} />
+        </Suspense>
+      )}
+
       {/* Setup Checklist — 完了で自動的に非表示 */}
       {tenantId && (
         <Suspense fallback={<SetupChecklistSkeleton />}>

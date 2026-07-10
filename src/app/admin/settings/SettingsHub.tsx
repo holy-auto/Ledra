@@ -12,8 +12,11 @@ type HubCard = HubEntry & { icon: React.ReactNode };
  * 設定ハブ: サイドバーから外した設定・マスタ系項目 (NavItem.hub) を、歯車から
  * 開くこのページに集約表示する。項目定義は NAV_GROUPS を単一の出典として再利用し、
  * 二重管理を避ける。自分自身 (/admin/settings) はカードにしない。
+ *
+ * requiredMissing: 未入力の必須設定ラベル。歯車を開いた人が「次に何をすべきか」で
+ * 迷わないよう、ハブ最上部に要対応の導線を出す（下の SettingsProgressCard の要約）。
  */
-export default function SettingsHub() {
+export default function SettingsHub({ requiredMissing = [] }: { requiredMissing?: string[] }) {
   const { role, loading, isPlatformAdmin, isOrgUser, can } = useCurrentRole();
 
   // NAV_GROUPS から hub 項目だけを取り出す（アイコンも保持）。定義は静的なので一度きり。
@@ -54,6 +57,35 @@ export default function SettingsHub() {
           店舗・業務・連携などの設定はここに集約しました。よく使う項目はカードから開けます。
         </p>
       </div>
+
+      {requiredMissing.length > 0 && (
+        <a
+          href="#settings-progress"
+          className="flex items-start gap-2.5 rounded-[var(--radius-md)] border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-[12.5px] transition-colors hover:bg-amber-500/15"
+        >
+          <svg
+            width="16"
+            height="16"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.6}
+            className="mt-0.5 shrink-0 text-amber-500"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z"
+            />
+          </svg>
+          <span className="min-w-0 flex-1 text-secondary">
+            <span className="font-medium text-primary">未入力の必須設定が {requiredMissing.length} 件あります</span>
+            <span className="mt-0.5 block truncate text-muted">
+              {requiredMissing.join(" ・ ")} — セットアップを完了しましょう
+            </span>
+          </span>
+        </a>
+      )}
 
       {sections.map(({ section, items }) => (
         <div key={section} className="space-y-2">

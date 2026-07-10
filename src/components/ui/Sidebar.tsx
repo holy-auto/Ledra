@@ -5,7 +5,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useCurrentRole } from "@/lib/auth/useCurrentRole";
-import { ROUTE_PERMISSIONS, type Permission } from "@/lib/auth/permissions";
+import { type Permission } from "@/lib/auth/permissions";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import { FEATURE_BY_HREF, isAdvancedFeatureVisible, isVisibleInBusinessMode } from "@/lib/features/catalog";
 import { useFeaturePrefs } from "@/lib/features/useFeaturePrefs";
@@ -207,7 +207,9 @@ export const NAV_GROUPS: NavGroup[] = [
     defaultOpen: true,
   },
   {
-    label: "業務",
+    // 旧「業務」は項目数が多すぎたため、予約・作業まわりと 在庫・部品・装備まわりの
+    // 2 グループに分割して走査しやすくする（二段整理）。
+    label: "予約・作業",
     items: [
       {
         href: "/admin/reservations",
@@ -445,6 +447,12 @@ export const NAV_GROUPS: NavGroup[] = [
           </svg>
         ),
       },
+    ],
+    defaultOpen: true,
+  },
+  {
+    label: "在庫・部品・装備",
+    items: [
       {
         href: "/admin/menu-items",
         label: "品目マスタ",
@@ -1378,6 +1386,27 @@ export const ADMIN_NAV_LABELS: Record<string, string> = Object.fromEntries(
   NAV_GROUPS.flatMap((group) => group.items.map((item) => [item.href, item.label] as const)),
 );
 
+export type AdminCommand = { label: string; href: string; section: string };
+
+/**
+ * コマンドパレット (Cmd+K) 用の全ページ一覧を NAV_GROUPS から導出する。
+ * 設定ハブに集約した項目 (hub) も検索対象に含めることで、「サイドバーから
+ * 消えた画面がどこにあるか分からない」を解消する。運営専用 (platformOnly) と
+ * 未公開 (hidden) は除外。権限による絞り込みはしない (到達先で AdminRouteGuard が
+ * 弾くため)。ラベルの二重管理を避けるため NAV_GROUPS を単一の出典とする。
+ */
+export function adminCommandItems(): AdminCommand[] {
+  const items: AdminCommand[] = [];
+  for (const group of NAV_GROUPS) {
+    for (const item of group.items) {
+      if (item.hidden || item.platformOnly) continue;
+      const section = item.hub ? "設定・マスタ" : group.label || "メイン";
+      items.push({ label: item.label, href: item.href, section });
+    }
+  }
+  return items;
+}
+
 /**
  * パスに対応するセクションラベルを、最長 href 前方一致で解決する。
  * 例: /admin/certificates/123 → "証明書"。未登録の深いルートは undefined。
@@ -1671,6 +1700,20 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-3 py-3">
+        {/* 検索入口: 既存のコマンドパレット (Cmd+K) を起動。項目を集約した分、
+            「どこにあるか分からない」を検索で補う。ロジックは重複させず event で起動。 */}
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new Event("open-command-palette"))}
+          className="mb-2 flex w-full items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-2 text-[13px] text-muted shadow-[inset_0_0_0_1px_var(--border-default)] transition-colors hover:bg-surface-hover hover:text-primary"
+        >
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}>
+            <circle cx="11" cy="11" r="7" />
+            <path strokeLinecap="round" d="M21 21l-4.35-4.35" />
+          </svg>
+          <span className="flex-1 text-left">検索</span>
+          <kbd className="rounded border border-border-default px-1.5 py-0.5 font-mono text-[10px] text-muted">⌘K</kbd>
+        </button>
         {NAV_GROUPS.map((group) => {
           const visibleItems = filterItems(group.items);
           if (visibleItems.length === 0) return null;

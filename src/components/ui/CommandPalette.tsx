@@ -2,30 +2,12 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { adminCommandItems, type AdminCommand } from "@/components/ui/Sidebar";
 
-// Quick-access items for admin portal
-const COMMANDS = [
-  { label: "ダッシュボード", href: "/admin", section: "ページ" },
-  { label: "証明書一覧", href: "/admin/certificates", section: "ページ" },
-  { label: "新規証明書発行", href: "/admin/certificates/new", section: "アクション" },
-  { label: "車両管理", href: "/admin/vehicles", section: "ページ" },
-  { label: "顧客管理", href: "/admin/customers", section: "ページ" },
-  { label: "予約管理", href: "/admin/reservations", section: "ページ" },
-  { label: "請求・帳票", href: "/admin/invoices", section: "ページ" },
-  { label: "Square売上", href: "/admin/square", section: "ページ" },
-  { label: "経営分析", href: "/admin/management", section: "ページ" },
-  { label: "BtoBプラットフォーム", href: "/admin/btob", section: "ページ" },
-  { label: "案件受発注", href: "/admin/orders", section: "ページ" },
-  { label: "ヒアリング", href: "/admin/hearing", section: "ページ" },
-  { label: "品目マスタ", href: "/admin/menu-items", section: "ページ" },
-  { label: "NFC管理", href: "/admin/nfc", section: "ページ" },
-  { label: "お知らせ", href: "/admin/announcements", section: "ページ" },
-  { label: "店舗設定", href: "/admin/settings", section: "設定" },
-  { label: "メンバー管理", href: "/admin/members", section: "設定" },
-  { label: "ブランド証明書", href: "/admin/template-options", section: "設定" },
-  { label: "ロゴ・角印設定", href: "/admin/settings", section: "設定" },
-  { label: "請求・プラン", href: "/admin/billing", section: "設定" },
-];
+// よく使うアクション（ページではなく操作）。ページ一覧は NAV_GROUPS から導出し、
+// 設定ハブに集約した画面も含めて検索できるようにする（単一の出典を再利用）。
+const ACTIONS: AdminCommand[] = [{ label: "新規証明書発行", href: "/admin/certificates/new", section: "アクション" }];
+const COMMANDS: AdminCommand[] = [...ACTIONS, ...adminCommandItems()];
 
 export default function CommandPalette() {
   const [open, setOpen] = useState(false);
