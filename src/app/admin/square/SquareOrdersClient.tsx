@@ -2,6 +2,8 @@
 import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
@@ -53,11 +55,16 @@ const orderStateLabel = (s: string): string => {
 };
 
 export default function SquareOrdersClient() {
+  const router = useRouter();
+
   // Filters
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
   const perPage = 50;
+
+  // Create receipt
+  const [creatingReceiptId, setCreatingReceiptId] = useState<string | null>(null);
 
   // Connect
   const [connecting, setConnecting] = useState(false);
@@ -162,6 +169,23 @@ export default function SquareOrdersClient() {
   const handleLinkSave = () => {
     setLinkTarget(null);
     mutate();
+  };
+
+  const handleCreateReceipt = async (order: SquareOrder) => {
+    setCreatingReceiptId(order.id);
+    try {
+      const res = await fetch(`/api/admin/square/orders/${order.id}/receipt`, { method: "POST" });
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      mutate();
+      if (j?.document?.id) {
+        router.push(`/admin/documents/${j.document.id}`);
+      }
+    } catch (e: any) {
+      setSyncMsg({ text: e?.message ?? "領収書の作成に失敗しました", ok: false });
+    } finally {
+      setCreatingReceiptId(null);
+    }
   };
 
   return (
@@ -343,13 +367,32 @@ export default function SquareOrdersClient() {
                         </Badge>
                       </td>
                       <td className="px-3 sm:px-5 py-3.5">
-                        <button
-                          type="button"
-                          className="btn-ghost px-3 py-1 text-xs"
-                          onClick={() => setLinkTarget(order)}
-                        >
-                          {order.customer_id ? "編集" : "紐付け"}
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            className="btn-ghost px-3 py-1 text-xs"
+                            onClick={() => setLinkTarget(order)}
+                          >
+                            {order.customer_id ? "編集" : "紐付け"}
+                          </button>
+                          {order.receipt_document_id ? (
+                            <Link
+                              href={`/admin/documents/${order.receipt_document_id}`}
+                              className="btn-ghost px-3 py-1 text-xs"
+                            >
+                              領収書を見る
+                            </Link>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn-ghost px-3 py-1 text-xs"
+                              disabled={creatingReceiptId === order.id}
+                              onClick={() => handleCreateReceipt(order)}
+                            >
+                              {creatingReceiptId === order.id ? "作成中…" : "領収書作成"}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

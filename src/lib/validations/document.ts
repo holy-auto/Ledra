@@ -143,6 +143,9 @@ export const documentUpdateSchema = documentCreateSchema.partial().extend({
   id: z.string().uuid("id is required"),
 });
 
-export const documentDeleteSchema = z.object({
-  id: z.string().uuid("無効なIDです。"),
-});
+export const documentDeleteSchema = z
+  .object({
+    id: z.string().uuid("無効なIDです。").optional(),
+    ids: z.array(z.string().uuid()).min(1).max(500).optional(),
+  })
+  .refine((v) => Boolean(v.id) || Boolean(v.ids?.length), { message: "削除対象を指定してください。" });

@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
     let query = admin
       .from("square_orders")
       .select(
-        "id, square_order_id, square_location_id, order_state, total_amount, tax_amount, net_amount, currency, payment_methods, square_customer_id, square_receipt_url, square_created_at, square_closed_at, customer_id, vehicle_id, certificate_id, note, synced_at, customers(id, name), vehicles(id, maker, model, plate_display)",
+        "id, square_order_id, square_location_id, order_state, total_amount, tax_amount, net_amount, currency, payment_methods, square_customer_id, square_receipt_url, square_created_at, square_closed_at, customer_id, vehicle_id, certificate_id, receipt_document_id, note, synced_at, customers(id, name), vehicles(id, maker, model, plate_display)",
         { count: "exact" },
       )
       .eq("tenant_id", caller.tenantId)

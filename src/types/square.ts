@@ -33,6 +33,7 @@ export type SquareOrder = {
   customer_id: string | null;
   vehicle_id: string | null;
   certificate_id: string | null;
+  receipt_document_id: string | null;
   note: string | null;
   synced_at: string;
   // Joined fields

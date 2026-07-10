@@ -15,6 +15,7 @@ import {
   STATUS_OPTIONS,
   statusLabel,
   statusVariant,
+  isDocumentDeletable,
   type DocType,
   type DocumentRow,
 } from "@/types/document";
@@ -64,6 +65,8 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
 
   // Delete
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // 入金記録（請求書のみ）
   const [paymentTarget, setPaymentTarget] = useState<string | null>(null);
@@ -75,6 +78,24 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
     setStatusFilter(newStatus);
     setActiveTypeFilter(newType);
     setActiveStatusFilter(newStatus);
+    setSelectedIds(new Set());
+  };
+
+  const isDeletable = (doc: DocumentRow) => isDocumentDeletable(doc.doc_type, doc.status);
+  const deletableDocs = docs.filter(isDeletable);
+  const allSelected = deletableDocs.length > 0 && deletableDocs.every((d) => selectedIds.has(d.id));
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedIds(allSelected ? new Set() : new Set(deletableDocs.map((d) => d.id)));
   };
 
   const handleDelete = async (id: string) => {
@@ -88,11 +109,39 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      setSelectedIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
       mutate();
     } catch (e: any) {
       alert("削除に失敗しました: " + (e?.message ?? String(e)));
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (!confirm(`選択した ${ids.length} 件の帳票を削除しますか？`)) return;
+    setBulkDeleting(true);
+    try {
+      const res = await fetch("/api/admin/documents", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      setSelectedIds(new Set());
+      mutate();
+    } catch (e: any) {
+      alert("一括削除に失敗しました: " + (e?.message ?? String(e)));
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -252,13 +301,42 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
 
           {/* Document List */}
           <section className="glass-card overflow-hidden">
-            <div className="border-b border-border-subtle p-5">
+            <div className="border-b border-border-subtle p-5 flex items-center justify-between flex-wrap gap-3">
               <div className="text-xs font-semibold tracking-[0.18em] text-muted">帳票一覧</div>
+              {selectedIds.size > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted">{selectedIds.size} 件選択中</span>
+                  <button
+                    type="button"
+                    className="btn-ghost px-3 py-1 text-xs"
+                    onClick={() => setSelectedIds(new Set())}
+                  >
+                    選択解除
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-danger px-3 py-1 text-xs"
+                    disabled={bulkDeleting}
+                    onClick={handleBulkDelete}
+                  >
+                    {bulkDeleting ? "削除中…" : "選択した帳票を削除"}
+                  </button>
+                </div>
+              )}
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="bg-surface-hover">
                   <tr>
+                    <th className="px-5 py-3 w-10">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        disabled={deletableDocs.length === 0}
+                        onChange={toggleSelectAll}
+                        aria-label="すべて選択"
+                      />
+                    </th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">種別</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">書類番号</th>
                     <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
@@ -277,6 +355,16 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                 <tbody className="divide-y divide-border-subtle">
                   {docs.map((doc) => (
                     <tr key={doc.id} className="hover:bg-surface-hover/60">
+                      <td className="px-5 py-3.5">
+                        {isDeletable(doc) && (
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(doc.id)}
+                            onChange={() => toggleSelected(doc.id)}
+                            aria-label={`${doc.doc_number}を選択`}
+                          />
+                        )}
+                      </td>
                       <td className="px-5 py-3.5">
                         <Badge variant={DOC_TYPES[doc.doc_type]?.color ?? "default"}>
                           {docTypeLabel(doc.doc_type)}
@@ -317,7 +405,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                               入金
                             </button>
                           )}
-                          {doc.status === "draft" && (
+                          {isDeletable(doc) && (
                             <button
                               type="button"
                               className="btn-danger px-3 py-1 text-xs"
@@ -333,7 +421,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                   ))}
                   {docs.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-5 py-8 text-center text-muted">
+                      <td colSpan={8} className="px-5 py-8 text-center text-muted">
                         帳票がありません
                       </td>
                     </tr>
