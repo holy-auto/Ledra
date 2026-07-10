@@ -58,6 +58,7 @@ export const footerNavGroups = [
       { label: "資料ダウンロード", href: "/resources" },
       { label: "ROIシミュレーター", href: "/roi" },
       { label: "事例", href: "/cases" },
+      { label: "ネットワークの広がり", href: "/network" },
       { label: "お知らせ", href: "/news" },
       { label: "ブログ", href: "/blog" },
       { label: "イベント", href: "/events" },
