@@ -124,7 +124,10 @@ export async function GET() {
 
       // 承認インボックスと同じ「人の承認待ち下書き」を数える (発注 / 請求)。
       // 証明書ドラフトは draftCerts を再利用し、3 種の合計を pending_approvals とする。
-      // 承認インボックス (/api/admin/inbox) の total とロジックを一致させる。
+      // 承認インボックス (/api/admin/inbox) と同じ status=draft の 3 種を対象にする。
+      // ただしバッジは全件の exact count、インボックス一覧は 1 種あたり 50 件で
+      // 打ち切るため、1 種が 50 件を超えるとバッジの方が多くなる点は許容
+      // (バッジは「未処理が何件あるか」を正しく示す方が有用)。
       const draftPurchaseOrdersPromise = (async () => {
         try {
           const { count } = await admin

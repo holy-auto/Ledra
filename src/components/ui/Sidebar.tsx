@@ -127,8 +127,9 @@ export type NavItem = {
    */
   hub?: boolean;
   /**
-   * AI 自動化の「人の承認待ち」を表す要確認項目 (承認インボックス)。バッジを
-   * アラート赤ではなく琥珀 (要対応) で見せ、件数 0 でも小さなドットで存在を示す。
+   * AI 自動化の「人の承認待ち」を表す要確認項目 (承認インボックス)。承認待ちが
+   * ある時 (badge > 0) はアラート赤ではなく琥珀 (要対応) のバッジ＋アイコン色＋
+   * 左の琥珀ラインで強調する。0 件の時は通常項目と同じ見た目。
    */
   attention?: boolean;
   /**
@@ -1096,8 +1097,9 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/admin/stores",
         label: "店舗管理",
         requiredPermission: "stores:view",
-        hub: true,
-        hubSection: "店舗・組織",
+        // ハブ(/admin/settings)は settings:view でゲートされるため、settings:view を持たず
+        // stores:view のみ持つ staff / viewer がここから到達できなくなる。彼らのナビ導線を
+        // 保つため hub 化せず、従来どおり advanced のサイドバー項目 (既定は非表示) のまま残す。
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path
@@ -1223,8 +1225,8 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/admin/template-options",
         label: "ブランド証明書",
         requiredPermission: "template_options:view",
-        hub: true,
-        hubSection: "業務設定",
+        // template_options:view のみで settings:view を持たない staff / viewer が
+        // ハブ経由で到達できなくなるため hub 化しない（ナビ導線を維持）。
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path
@@ -1239,8 +1241,8 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/admin/shop",
         label: "ショップ",
         requiredPermission: "shop:view",
-        hub: true,
-        hubSection: "店舗・組織",
+        // shop:view のみで settings:view を持たない staff / viewer が
+        // ハブ経由で到達できなくなるため hub 化しない（ナビ導線を維持）。
         icon: (
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path

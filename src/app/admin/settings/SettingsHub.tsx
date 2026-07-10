@@ -36,8 +36,9 @@ export default function SettingsHub() {
   const sections = useMemo(
     () =>
       groupHubEntries(
+        // can は Permission 型を取るが、HubGate は文字列 API。境界で 1 度だけ広げる。
         entries,
-        { role, loading, isPlatformAdmin, isOrgUser, can: (p: string) => can(p as never) },
+        { role, loading, isPlatformAdmin, isOrgUser, can: can as (p: string) => boolean },
         "/admin/settings",
       ),
     [entries, role, loading, isPlatformAdmin, isOrgUser, can],
