@@ -9,6 +9,7 @@ import {
   sanitizeFeatureKeys,
   isAdvancedFeatureVisible,
   featureTierForHref,
+  isVisibleInBusinessMode,
 } from "../catalog";
 
 describe("feature catalog integrity", () => {
@@ -101,5 +102,29 @@ describe("featureTierForHref", () => {
     // unknown / platform / hidden routes are never gated by this layer
     expect(featureTierForHref("/admin/platform/operations")).toBe("core");
     expect(featureTierForHref("/admin/totally-unknown")).toBe("core");
+  });
+});
+
+describe("isVisibleInBusinessMode", () => {
+  it("never filters when no mode is selected (null = 'all')", () => {
+    expect(isVisibleInBusinessMode("/admin/tire-storage", null)).toBe(true);
+    expect(isVisibleInBusinessMode("/admin/body-repair", null)).toBe(true);
+  });
+
+  it("shows a tagged feature only in one of its tagged modes", () => {
+    expect(isVisibleInBusinessMode("/admin/tire-storage", "mechanic")).toBe(true);
+    expect(isVisibleInBusinessMode("/admin/tire-storage", "coating")).toBe(false);
+    expect(isVisibleInBusinessMode("/admin/thickness-reports", "coating")).toBe(true);
+    expect(isVisibleInBusinessMode("/admin/thickness-reports", "ppf")).toBe(true);
+    expect(isVisibleInBusinessMode("/admin/thickness-reports", "mechanic")).toBe(false);
+  });
+
+  it("treats untagged features as common — always visible in any selected mode", () => {
+    expect(isVisibleInBusinessMode("/admin/customers", "mechanic")).toBe(true);
+    expect(isVisibleInBusinessMode("/admin/customers", "ppf")).toBe(true);
+  });
+
+  it("treats unknown hrefs as common (never filtered)", () => {
+    expect(isVisibleInBusinessMode("/admin/totally-unknown", "mechanic")).toBe(true);
   });
 });

@@ -425,7 +425,7 @@ export default async function AdminHome({ searchParams }: { searchParams?: Promi
       {/* Setup Checklist — 完了で自動的に非表示 */}
       {tenantId && (
         <Suspense fallback={<SetupChecklistSkeleton />}>
-          <SetupChecklist tenantId={tenantId} />
+          <SetupChecklist tenantId={tenantId} userId={caller.userId} />
         </Suspense>
       )}
 

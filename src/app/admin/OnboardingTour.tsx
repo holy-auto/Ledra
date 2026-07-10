@@ -83,6 +83,36 @@ export default function OnboardingTour(): null {
             },
           },
           {
+            element: "[data-tour='view-mode-toggle']",
+            popover: {
+              title: "4. 画面をシンプルにするには",
+              description:
+                "「店頭」に切り替えると、レジ操作など日常業務に絞った大きなボタンの画面になります。管理業務に戻るときは「管理」へ。作業内容に応じていつでも切り替えられます。",
+              side: "right",
+              align: "start",
+            },
+          },
+          {
+            element: "[data-tour='business-mode-toggle']",
+            popover: {
+              title: "5. 今の作業に合わせて絞り込む",
+              description:
+                "整備・鈑金塗装・コーティング・PPFから今の作業を選ぶと、関係する機能だけがサイドバーに残ります。「すべて」に戻せばいつでも全項目表示に戻せます。",
+              side: "right",
+              align: "start",
+            },
+          },
+          {
+            element: "[data-tour='customize-features']",
+            popover: {
+              title: "6. サイドバーを自分好みに",
+              description:
+                "「機能をカスタマイズ」から、普段使わない機能を非表示にできます。よく使う機能だけを残して、メニューをすっきりさせましょう。",
+              side: "right",
+              align: "start",
+            },
+          },
+          {
             element: 'a[href="/admin/support"]',
             popover: {
               title: "困ったときは",

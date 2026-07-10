@@ -7,6 +7,7 @@ import Link from "next/link";
 import { fetcher } from "@/lib/swr";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import { formatJpy } from "@/lib/format";
+import HelpTooltip from "@/components/ui/HelpTooltip";
 import {
   SERVICE_PACKAGE_CATEGORIES,
   SERVICE_PACKAGE_CATEGORY_LABEL,
@@ -196,7 +197,13 @@ export default function CertPackagePicker({ templates, currentTemplateId }: Prop
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">PACKAGE</div>
-          <div className="mt-1 text-base font-semibold text-primary">施工パッケージから取り込む (任意)</div>
+          <div className="mt-1 text-base font-semibold text-primary inline-flex items-center gap-1.5">
+            施工パッケージから取り込む (任意)
+            <HelpTooltip>
+              「設定 →
+              施工パッケージ」で登録済みのメニューを選ぶと、価格・明細を自動で反映します。使わない場合はこのまま次に進んでも構いません。
+            </HelpTooltip>
+          </div>
           <div className="mt-1 text-xs text-muted">
             選択すると施工内容欄に明細を初期表示します。テンプレ未選択なら推奨レイアウトが自動選択されます。
           </div>
