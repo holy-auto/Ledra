@@ -3,9 +3,9 @@ import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { ScrollReveal } from "@/components/marketing/ScrollReveal";
 import { CTABanner } from "@/components/marketing/CTABanner";
-import { NetworkStatsGrid, type NetworkStatItem } from "@/components/marketing/NetworkStatsGrid";
+import { NetworkStatsGrid } from "@/components/marketing/NetworkStatsGrid";
 import { NetworkGraph } from "@/components/marketing/diagrams/NetworkGraph";
-import { getNetworkStats, type NetworkNode, type RegionalNode } from "@/lib/marketing/network";
+import { getNetworkStats, toNetworkStatItems, type NetworkNode } from "@/lib/marketing/network";
 
 export const metadata = {
   title: "ネットワークの広がり ── 証明書・施工店・メーカー・保険会社",
@@ -63,21 +63,9 @@ function toBreakdown(nodes: NetworkNode[]) {
   return nodes.map((n) => ({ label: n.name, count: n.shopCount }));
 }
 
-function regionsToBreakdown(regions: RegionalNode[]) {
-  return regions.map((r) => ({ label: r.prefecture, count: r.count }));
-}
-
 export default async function NetworkPage() {
   const stats = await getNetworkStats();
-
-  const items: NetworkStatItem[] = [
-    { label: "証明書件数", value: stats.certificateCount, unit: "件" },
-    { label: "施工店", value: stats.shopCount, unit: "店" },
-    { label: "メーカー", value: stats.manufacturerCount, unit: "社" },
-    { label: "保険会社", value: stats.insurerCount, unit: "社" },
-    { label: "エンドユーザー", value: stats.customerCount, unit: "人" },
-    { label: "利用アカウント", value: stats.accountCount, unit: "件" },
-  ];
+  const items = toNetworkStatItems(stats);
 
   return (
     <>
@@ -118,6 +106,8 @@ export default async function NetworkPage() {
             <NetworkGraph
               certificateCount={stats.certificateCount}
               shopCount={stats.shopCount}
+              manufacturerCount={stats.manufacturerCount}
+              insurerCount={stats.insurerCount}
               customerCount={stats.customerCount}
               regions={stats.regions}
               manufacturers={stats.manufacturers}
@@ -136,7 +126,7 @@ export default async function NetworkPage() {
             <BreakdownList
               title="地域別 施工店数"
               unit="店"
-              items={regionsToBreakdown(stats.regions)}
+              items={stats.regions.map((r) => ({ label: r.prefecture, count: r.count }))}
               emptyText="地域データはまだありません。"
             />
             <BreakdownList

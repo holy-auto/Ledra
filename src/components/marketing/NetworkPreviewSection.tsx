@@ -2,9 +2,9 @@ import Link from "next/link";
 import { Section } from "./Section";
 import { SectionHeading } from "./SectionHeading";
 import { ScrollReveal } from "./ScrollReveal";
-import { NetworkStatsGrid, type NetworkStatItem } from "./NetworkStatsGrid";
+import { NetworkStatsGrid } from "./NetworkStatsGrid";
 import { NetworkGraph } from "./diagrams/NetworkGraph";
-import { getNetworkStats } from "@/lib/marketing/network";
+import { getNetworkStats, toNetworkStatItems } from "@/lib/marketing/network";
 
 /**
  * トップページ用の要約セクション。詳細は /network で見せる
@@ -12,15 +12,7 @@ import { getNetworkStats } from "@/lib/marketing/network";
  */
 export async function NetworkPreviewSection() {
   const stats = await getNetworkStats();
-
-  const items: NetworkStatItem[] = [
-    { label: "証明書件数", value: stats.certificateCount, unit: "件" },
-    { label: "施工店", value: stats.shopCount, unit: "店" },
-    { label: "メーカー", value: stats.manufacturerCount, unit: "社" },
-    { label: "保険会社", value: stats.insurerCount, unit: "社" },
-    { label: "エンドユーザー", value: stats.customerCount, unit: "人" },
-    { label: "利用アカウント", value: stats.accountCount, unit: "件" },
-  ];
+  const items = toNetworkStatItems(stats);
 
   return (
     <Section bg="alt" id="network">
@@ -38,6 +30,8 @@ export async function NetworkPreviewSection() {
           <NetworkGraph
             certificateCount={stats.certificateCount}
             shopCount={stats.shopCount}
+            manufacturerCount={stats.manufacturerCount}
+            insurerCount={stats.insurerCount}
             customerCount={stats.customerCount}
             regions={stats.regions}
             manufacturers={stats.manufacturers}

@@ -1,4 +1,5 @@
 import type { NetworkNode, RegionalNode } from "@/lib/marketing/network";
+import { buildSatellites, type Point } from "./networkGraphLayout";
 
 /**
  * 証明書・施工店・メーカー・保険会社のネットワークを「点と線」で見せる図。
@@ -11,6 +12,10 @@ import type { NetworkNode, RegionalNode } from "@/lib/marketing/network";
 type NetworkGraphProps = {
   certificateCount: number;
   shopCount: number;
+  /** 有効なメーカー数 (認定エッジが0件のメーカーも含む、統計行と一致させる) */
+  manufacturerCount: number;
+  /** 有効な保険会社数 (契約エッジが0件の保険会社も含む、統計行と一致させる) */
+  insurerCount: number;
   customerCount: number;
   regions: RegionalNode[];
   manufacturers: NetworkNode[];
@@ -19,21 +24,6 @@ type NetworkGraphProps = {
   maxSatellites?: number;
   className?: string;
 };
-
-type Point = { x: number; y: number };
-
-function angleToPoint(cx: number, cy: number, r: number, deg: number): Point {
-  const rad = (deg * Math.PI) / 180;
-  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
-}
-
-/** count 個の点を、中心 (cx,cy) から半径 r で startDeg〜endDeg の弧上に等間隔配置 */
-function fanPositions(cx: number, cy: number, r: number, count: number, startDeg: number, endDeg: number): Point[] {
-  if (count <= 0) return [];
-  if (count === 1) return [angleToPoint(cx, cy, r, (startDeg + endDeg) / 2)];
-  const step = (endDeg - startDeg) / (count - 1);
-  return Array.from({ length: count }, (_, i) => angleToPoint(cx, cy, r, startDeg + step * i));
-}
 
 function Satellite({
   point,
@@ -74,20 +64,11 @@ function Satellite({
   );
 }
 
-function satelliteList(
-  entries: { label: string; count: number }[],
-  maxSatellites: number,
-): { label: string; count: number }[] {
-  if (entries.length <= maxSatellites) return entries;
-  const shown = entries.slice(0, maxSatellites - 1);
-  const restCount = entries.slice(maxSatellites - 1).reduce((s, e) => s + e.count, 0);
-  const restN = entries.length - (maxSatellites - 1);
-  return [...shown, { label: `+${restN}件`, count: restCount }];
-}
-
 export function NetworkGraph({
   certificateCount,
   shopCount,
+  manufacturerCount,
+  insurerCount,
   customerCount,
   regions,
   manufacturers,
@@ -103,20 +84,28 @@ export function NetworkGraph({
   const insHub: Point = { x: 660, y: 490 };
   const usersHub: Point = { x: 200, y: 500 };
 
-  const regionSats = fanPositions(shopHub.x, shopHub.y, 150, Math.min(regions.length, maxSatellites), 150, 210);
-  const mfrSats = fanPositions(mfrHub.x, mfrHub.y, 150, Math.min(manufacturers.length, maxSatellites), -60, 20);
-  const insSats = fanPositions(insHub.x, insHub.y, 150, Math.min(insurers.length, maxSatellites), -20, 60);
-
-  const regionEntries = satelliteList(
+  const regionSats = buildSatellites(
     regions.map((r) => ({ label: r.prefecture, count: r.count })),
+    shopHub,
+    150,
+    150,
+    210,
     maxSatellites,
   );
-  const mfrEntries = satelliteList(
+  const mfrSats = buildSatellites(
     manufacturers.map((m) => ({ label: m.name, count: m.shopCount })),
+    mfrHub,
+    150,
+    -60,
+    20,
     maxSatellites,
   );
-  const insEntries = satelliteList(
+  const insSats = buildSatellites(
     insurers.map((i) => ({ label: i.name, count: i.shopCount })),
+    insHub,
+    150,
+    -20,
+    60,
     maxSatellites,
   );
 
@@ -164,55 +153,43 @@ export function NetworkGraph({
       />
 
       {/* Region satellites (施工店の全国展開) */}
-      {regionSats.map((p, i) => {
-        const e = regionEntries[i];
-        if (!e) return null;
-        return (
-          <Satellite
-            key={`region-${i}`}
-            point={p}
-            hub={shopHub}
-            label={e.label}
-            count={e.count}
-            unit="店"
-            color="#4d9fff"
-          />
-        );
-      })}
+      {regionSats.map((s, i) => (
+        <Satellite
+          key={`region-${i}`}
+          point={s.point}
+          hub={shopHub}
+          label={s.label}
+          count={s.count}
+          unit="店"
+          color="#4d9fff"
+        />
+      ))}
 
       {/* Manufacturer satellites */}
-      {mfrSats.map((p, i) => {
-        const e = mfrEntries[i];
-        if (!e) return null;
-        return (
-          <Satellite
-            key={`mfr-${i}`}
-            point={p}
-            hub={mfrHub}
-            label={e.label}
-            count={e.count}
-            unit="店"
-            color="#a78bfa"
-          />
-        );
-      })}
+      {mfrSats.map((s, i) => (
+        <Satellite
+          key={`mfr-${i}`}
+          point={s.point}
+          hub={mfrHub}
+          label={s.label}
+          count={s.count}
+          unit="店"
+          color="#a78bfa"
+        />
+      ))}
 
       {/* Insurer satellites */}
-      {insSats.map((p, i) => {
-        const e = insEntries[i];
-        if (!e) return null;
-        return (
-          <Satellite
-            key={`ins-${i}`}
-            point={p}
-            hub={insHub}
-            label={e.label}
-            count={e.count}
-            unit="店"
-            color="#34d399"
-          />
-        );
-      })}
+      {insSats.map((s, i) => (
+        <Satellite
+          key={`ins-${i}`}
+          point={s.point}
+          hub={insHub}
+          label={s.label}
+          count={s.count}
+          unit="店"
+          color="#34d399"
+        />
+      ))}
 
       {/* Core node — 証明書 */}
       <g>
@@ -290,7 +267,7 @@ export function NetworkGraph({
           メーカー
         </text>
         <text x={mfrHub.x} y={mfrHub.y + 15} textAnchor="middle" fill="#ffffff" fontSize="20" fontWeight="700">
-          {manufacturers.length.toLocaleString()}
+          {manufacturerCount.toLocaleString()}
         </text>
         <text x={mfrHub.x} y={mfrHub.y + 30} textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize="9">
           認定メーカー
@@ -321,7 +298,7 @@ export function NetworkGraph({
           保険会社
         </text>
         <text x={insHub.x} y={insHub.y + 15} textAnchor="middle" fill="#ffffff" fontSize="20" fontWeight="700">
-          {insurers.length.toLocaleString()}
+          {insurerCount.toLocaleString()}
         </text>
         <text x={insHub.x} y={insHub.y + 30} textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize="9">
           提携保険会社

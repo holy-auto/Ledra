@@ -59,6 +59,16 @@ const fallback: NetworkStats = {
 };
 
 /**
+ * Supabase の埋め込みリレーションは to-one でもオブジェクト/配列どちらの形でも
+ * 返り得るため、どちらでも name を取り出せるようにする。
+ */
+export function extractEmbeddedName(rel: unknown): string | undefined {
+  const one = Array.isArray(rel) ? rel[0] : rel;
+  const name = (one as { name?: unknown } | null)?.name;
+  return typeof name === "string" ? name : undefined;
+}
+
+/**
  * (manufacturer_id|insurer_id, 関連先の name) の行リストを、エッジ数の多い順の
  * ノード配列にたたむ。
  *
@@ -66,7 +76,7 @@ const fallback: NetworkStats = {
  * アクティブ行数が数千を超えて全件フェッチが重くなったら、専用 RPC に
  * 集約ロジックを移す（他の platform_* RPC と同じ SECURITY DEFINER 集約関数）。
  */
-function groupEdges(
+export function groupEdges(
   rows: Record<string, unknown>[] | null,
   idKey: string,
   nameOf: (row: Record<string, unknown>) => string | undefined,
@@ -124,16 +134,28 @@ const fetchNetworkStats = unstable_cache(
         supabase.from("insurer_tenant_contracts").select("insurer_id, insurers(name)").eq("status", "active"),
       ]);
 
-      const manufacturers = groupEdges(mctRes.data, "manufacturer_id", (r) => {
-        const m = r.manufacturers as { name?: string } | { name?: string }[] | null;
-        return Array.isArray(m) ? m[0]?.name : m?.name;
-      });
-      const insurers = groupEdges(itcRes.data, "insurer_id", (r) => {
-        const i = r.insurers as { name?: string } | { name?: string }[] | null;
-        return Array.isArray(i) ? i[0]?.name : i?.name;
-      });
+      const manufacturers = groupEdges(mctRes.data, "manufacturer_id", (r) => extractEmbeddedName(r.manufacturers));
+      const insurers = groupEdges(itcRes.data, "insurer_id", (r) => extractEmbeddedName(r.insurers));
 
       const regions = ((regionalRes.data ?? []) as RegionalNode[]).filter((r) => r.prefecture !== "未設定");
+
+      // どれか1つでもエラーを返していたら isLive は名乗らない
+      // (supabase-js は fetch 失敗時に throw ではなく {error} を返すため、
+      // 外側の try/catch だけでは検知できない)
+      const results = [
+        shops,
+        certs,
+        manufacturersCount,
+        insurersCount,
+        customers,
+        tenantMembers,
+        insurerUsers,
+        manufacturerMembers,
+        regionalRes,
+        mctRes,
+        itcRes,
+      ];
+      const isLive = results.every((r) => !r.error);
 
       return {
         certificateCount: certs.count ?? 0,
@@ -145,7 +167,7 @@ const fetchNetworkStats = unstable_cache(
         manufacturers,
         insurers,
         regions,
-        isLive: true,
+        isLive,
         fetchedAt: new Date().toISOString(),
       };
     } catch {
@@ -158,4 +180,16 @@ const fetchNetworkStats = unstable_cache(
 
 export async function getNetworkStats(): Promise<NetworkStats> {
   return fetchNetworkStats();
+}
+
+/** トップページの要約セクションと /network 詳細ページで共有する主要6指標 */
+export function toNetworkStatItems(stats: NetworkStats): { label: string; value: number; unit: string }[] {
+  return [
+    { label: "証明書件数", value: stats.certificateCount, unit: "件" },
+    { label: "施工店", value: stats.shopCount, unit: "店" },
+    { label: "メーカー", value: stats.manufacturerCount, unit: "社" },
+    { label: "保険会社", value: stats.insurerCount, unit: "社" },
+    { label: "エンドユーザー", value: stats.customerCount, unit: "人" },
+    { label: "利用アカウント", value: stats.accountCount, unit: "件" },
+  ];
 }
