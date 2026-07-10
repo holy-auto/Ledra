@@ -26,12 +26,15 @@ const VALID_MODES: readonly SelectedBusinessMode[] = ["all", "mechanic", "body_p
 type BusinessModeContextValue = {
   mode: SelectedBusinessMode;
   setMode: (mode: SelectedBusinessMode) => void;
+  /** true 後にクライアント側の永続値が反映された状態（ViewModeContext と同じ規約） */
+  hydrated: boolean;
 };
 
 const BusinessModeContext = createContext<BusinessModeContextValue | null>(null);
 
 export function BusinessModeProvider({ children }: { children: React.ReactNode }) {
   const [mode, setModeState] = useState<SelectedBusinessMode>(DEFAULT_MODE);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     try {
@@ -42,6 +45,7 @@ export function BusinessModeProvider({ children }: { children: React.ReactNode }
     } catch {
       /* localStorage が使えない環境では DEFAULT_MODE のまま */
     }
+    setHydrated(true);
   }, []);
 
   const setMode = useCallback((next: SelectedBusinessMode) => {
@@ -53,14 +57,14 @@ export function BusinessModeProvider({ children }: { children: React.ReactNode }
     }
   }, []);
 
-  return <BusinessModeContext.Provider value={{ mode, setMode }}>{children}</BusinessModeContext.Provider>;
+  return <BusinessModeContext.Provider value={{ mode, setMode, hydrated }}>{children}</BusinessModeContext.Provider>;
 }
 
 export function useBusinessMode(): BusinessModeContextValue {
   const ctx = useContext(BusinessModeContext);
   if (!ctx) {
     // Provider で包まれていない場合も壊れないように。"all"（無フィルタ）にフォールバックする。
-    return { mode: DEFAULT_MODE, setMode: () => {} };
+    return { mode: DEFAULT_MODE, setMode: () => {}, hydrated: false };
   }
   return ctx;
 }

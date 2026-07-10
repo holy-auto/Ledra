@@ -42,6 +42,54 @@ describe("feature catalog integrity", () => {
       expect(groupKeys.has(f.groupKey)).toBe(true);
     }
   });
+
+  // Regression guard: a route that had no catalog entry before was implicitly
+  // "core" (featureTierForHref falls back to "core" for unknown hrefs — see
+  // below), i.e. always visible. Newly cataloguing it as "advanced" would
+  // retroactively hide it for every existing user whose user_feature_prefs
+  // has no row yet (isAdvancedFeatureVisible defaults to hidden). These hrefs
+  // were backfilled into the catalog in this change and must stay "core" so
+  // existing sidebars don't lose links overnight.
+  it("routes newly added to the catalog stay core (no retroactive hiding)", () => {
+    const previouslyUncataloguedHrefs = [
+      "/admin/agent-commissions",
+      "/admin/body-repair",
+      "/admin/booths",
+      "/admin/contact-schedules",
+      "/admin/coupons",
+      "/admin/deals",
+      "/admin/hq-overview",
+      "/admin/inspection-templates",
+      "/admin/insurers",
+      "/admin/integrations",
+      "/admin/line-broadcasts",
+      "/admin/loaner-cars",
+      "/admin/maintenance-packs",
+      "/admin/market-vehicles",
+      "/admin/messages",
+      "/admin/next-touch",
+      "/admin/notification-logs",
+      "/admin/organizations",
+      "/admin/parts-install/new",
+      "/admin/parts-orders",
+      "/admin/payment-ledger",
+      "/admin/pos",
+      "/admin/price-stats",
+      "/admin/purchase-orders",
+      "/admin/quick-quote",
+      "/admin/reviews",
+      "/admin/service-reminders",
+      "/admin/settings/follow-up",
+      "/admin/settings/customer-ranks",
+      "/admin/shop-announcements",
+      "/admin/staff",
+      "/admin/stocktake",
+      "/admin/tire-storage",
+    ];
+    for (const href of previouslyUncataloguedHrefs) {
+      expect(FEATURE_BY_HREF.get(href)?.tier, `${href} must stay core`).toBe("core");
+    }
+  });
 });
 
 describe("isKnownAdvancedFeature", () => {

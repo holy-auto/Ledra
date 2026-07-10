@@ -11,6 +11,14 @@ export type CertFormSection = { id: string; label: string };
 export default function CertFormProgressRail({ sections }: { sections: CertFormSection[] }) {
   const [activeId, setActiveId] = useState(sections[0]?.id);
 
+  // セクション構成が変わって(テンプレート切替等) activeId が消えたら、
+  // 次の IntersectionObserver 発火まで古いラベルが出続けないようリセットする。
+  useEffect(() => {
+    if (!sections.some((s) => s.id === activeId)) {
+      setActiveId(sections[0]?.id);
+    }
+  }, [sections, activeId]);
+
   useEffect(() => {
     const targets = sections.map((s) => document.getElementById(s.id)).filter((el): el is HTMLElement => el !== null);
     if (targets.length === 0) return;

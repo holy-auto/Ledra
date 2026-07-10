@@ -127,7 +127,11 @@ type NavGroup = {
   defaultOpen?: boolean;
 };
 
-const STORAGE_KEY = "sidebar-groups";
+// v2: bumped because pre-v2 persisted blobs were captured while the
+// defaultOpen bug was live (every group saved as open) — bumping the key
+// invalidates that stale state so existing users get a correct first
+// render instead of being stuck with the old, always-open snapshot.
+const STORAGE_KEY = "sidebar-groups-v2";
 
 /**
  * First-visit open/closed state per group: mobile always starts collapsed,
@@ -1415,7 +1419,7 @@ export default function Sidebar() {
   const { tenantDisabled, userVisible, loading: prefsLoading } = useFeaturePrefs();
   const tenantDisabledSet = useMemo(() => new Set(tenantDisabled), [tenantDisabled]);
   const userVisibleSet = useMemo(() => new Set(userVisible), [userVisible]);
-  const { mode: businessMode } = useBusinessMode();
+  const { mode: businessMode, hydrated: businessModeHydrated } = useBusinessMode();
   const isMobile = useIsMobile();
   const badges = useSidebarBadges();
 
@@ -1485,13 +1489,27 @@ export default function Sidebar() {
 
         // 業種別モードによる絞り込み: businessModes 未タグの項目は共通機能として
         // 常時表示。タグ済みの項目は選択中モードに含まれる時だけ表示する。
-        if (!isVisibleInBusinessMode(item.href, businessMode === "all" ? null : businessMode)) {
+        // hydrated 前は localStorage の実値が未確定なので絞り込まない
+        // (前回選んだモードに応じて項目が消えるフラッシュを防ぐ)。
+        const effectiveMode = !businessModeHydrated || businessMode === "all" ? null : businessMode;
+        if (!isVisibleInBusinessMode(item.href, effectiveMode)) {
           return false;
         }
 
         return true;
       }),
-    [loading, role, can, isPlatformAdmin, isOrgUser, prefsLoading, tenantDisabledSet, userVisibleSet, businessMode],
+    [
+      loading,
+      role,
+      can,
+      isPlatformAdmin,
+      isOrgUser,
+      prefsLoading,
+      tenantDisabledSet,
+      userVisibleSet,
+      businessMode,
+      businessModeHydrated,
+    ],
   );
 
   const renderItem = (item: NavItem) => {
@@ -1590,7 +1608,7 @@ export default function Sidebar() {
           }
 
           // Collapsible group
-          const isOpen = groupState[group.label] ?? true;
+          const isOpen = groupState[group.label] ?? group.defaultOpen ?? true;
           return (
             <CollapsibleGroup
               key={group.label}
