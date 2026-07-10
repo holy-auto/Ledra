@@ -76,13 +76,16 @@ async function countRows(tenantId: string, table: string, tenantColumn = "tenant
 async function hasCustomizedFeatures(tenantId: string, userId: string): Promise<boolean> {
   const { admin } = createTenantScopedAdmin(tenantId);
   try {
+    // 行の有無だけを見る: PUT /api/admin/feature-prefs は保存のたびに upsert するため、
+    // 行が存在する = 一度でも保存した、を意味する。visible_features の長さで判定すると
+    // 「意図的に全機能を無効化」したユーザーが永久に未完了扱いになってしまう。
     const { data } = await admin
       .from("user_feature_prefs")
-      .select("visible_features")
+      .select("user_id")
       .eq("tenant_id", tenantId)
       .eq("user_id", userId)
       .maybeSingle();
-    return Array.isArray(data?.visible_features) && data.visible_features.length > 0;
+    return data !== null;
   } catch (e) {
     logger.warn("SetupChecklist: feature prefs check failed", { err: e instanceof Error ? e.message : String(e) });
     return false;
