@@ -136,6 +136,31 @@ export async function ArticleJsonLd({ title, description, slug, publishedAt, ima
   return <script type="application/ld+json" nonce={nonce} dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />;
 }
 
+type DefinedTermInput = { term: string; definition: string; slug: string };
+
+/**
+ * 用語集の個別ページ用 DefinedTerm 構造化データ。
+ * 用語集全体を inDefinedTermSet で束ね、Google に「これは用語集の一項目」
+ * であることを伝える。
+ */
+export async function DefinedTermJsonLd({ term, definition, slug }: DefinedTermInput) {
+  const data = {
+    "@context": "https://schema.org",
+    "@type": "DefinedTerm",
+    name: term,
+    description: definition,
+    url: `${siteConfig.siteUrl}/glossary/${slug}`,
+    inDefinedTermSet: {
+      "@type": "DefinedTermSet",
+      name: "Ledra 用語集",
+      url: `${siteConfig.siteUrl}/glossary`,
+    },
+  };
+
+  const nonce = await getNonce();
+  return <script type="application/ld+json" nonce={nonce} dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />;
+}
+
 type BreadcrumbItem = { name: string; url: string };
 
 export async function BreadcrumbJsonLd({ items }: { items: BreadcrumbItem[] }) {

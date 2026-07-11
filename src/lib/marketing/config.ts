@@ -66,6 +66,7 @@ export const footerNavGroups = [
       { label: "ネットワークの広がり", href: "/network" },
       { label: "お知らせ", href: "/news" },
       { label: "ブログ", href: "/blog" },
+      { label: "用語集", href: "/glossary" },
       { label: "イベント", href: "/events" },
     ],
   },
