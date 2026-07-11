@@ -11,6 +11,8 @@ import {
 } from "@/lib/certificates/photoRequirement";
 import { triggerCertificateIssued } from "@/lib/certificates/issueHooks";
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
+import { getActorAssurance } from "@/lib/auth/mfa";
+import { describeAssurance } from "@/lib/certificates/issuerAssurance";
 import {
   apiOk,
   apiInternalError,
@@ -134,6 +136,14 @@ export async function PUT(req: Request) {
     // Audit log (fire-and-forget)
     const { ip, userAgent } = getRequestMeta(req);
     const auditType = newStatus === "void" ? "certificate_voided" : "certificate_issued";
+    let description = `ステータス変更: ${currentStatus} → ${newStatus}`;
+    // 発行 (→active) は「誰が・どの本人性強度で発行したか」を監査へ残す
+    // (roadmap 4-14: パスキー等の強い本人性を発行の証跡に紐づける)。
+    // 取得失敗は "不明" になるだけで発行はブロックしない (getActorAssurance 内で吸収)。
+    if (newStatus === "active") {
+      const assurance = await getActorAssurance(supabase);
+      description += ` (発行者の本人性: ${describeAssurance(assurance)})`;
+    }
     logCertificateAction({
       type: auditType,
       tenantId: caller.tenantId,
@@ -141,7 +151,7 @@ export async function PUT(req: Request) {
       certificateId: cert.id,
       vehicleId: cert.vehicle_id ?? null,
       userId: caller.userId,
-      description: `ステータス変更: ${currentStatus} → ${newStatus}`,
+      description,
       ip,
       userAgent,
     });

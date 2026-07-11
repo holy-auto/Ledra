@@ -133,3 +133,38 @@ export async function isAal2Verified(supabase: Db): Promise<boolean> {
   const res = await mfa.getAuthenticatorAssuranceLevel();
   return res.data?.currentLevel === "aal2";
 }
+
+export interface ActorAssurance {
+  /** 現セッションの認証保証レベル。取得不能なら null。 */
+  aal: "aal1" | "aal2" | null;
+  /** この認証にパスキー (WebAuthn) が使われたか。 */
+  usedWebAuthn: boolean;
+}
+
+/**
+ * 現在のセッションの「本人性の強さ」を返す。証明書発行時に「誰が・どの強度で
+ * 発行したか」を監査へ残すために使う (roadmap 4-14 の狙い)。
+ *
+ * Supabase Auth は totp / phone / webauthn を MFA factor として扱う。パスキーで
+ * ステップアップしたセッションは currentAuthenticationMethods に webauthn を含み、
+ * currentLevel=aal2 になる。取得不能 (未対応バージョン / 失敗) は
+ * { aal: null, usedWebAuthn: false } にフォールバックする (発行はブロックしない)。
+ */
+export async function getActorAssurance(supabase: Db): Promise<ActorAssurance> {
+  const fallback: ActorAssurance = { aal: null, usedWebAuthn: false };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mfa = (supabase.auth as any)?.mfa;
+  if (!mfa || typeof mfa.getAuthenticatorAssuranceLevel !== "function") return fallback;
+  try {
+    const res = await mfa.getAuthenticatorAssuranceLevel();
+    const level = res.data?.currentLevel ?? null;
+    const methods = (res.data?.currentAuthenticationMethods ?? []) as Array<{ method?: string }>;
+    const usedWebAuthn = methods.some((m) => typeof m.method === "string" && m.method.includes("webauthn"));
+    return {
+      aal: level === "aal2" ? "aal2" : level === "aal1" ? "aal1" : null,
+      usedWebAuthn,
+    };
+  } catch {
+    return fallback;
+  }
+}
