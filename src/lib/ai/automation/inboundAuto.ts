@@ -24,7 +24,12 @@ import { loadAiAutomationSettings } from "./policy";
 import { maybeAutoDraftQuoteFromInbound } from "./quoteDraftAuto";
 import { maybeAutoReplyRoughEstimate } from "./quoteReplyAuto";
 import { maybeAutoReplyKnowledge } from "./knowledgeReplyAuto";
-import { shouldAutoExtractInbound, decideInboundCommit } from "./orchestrator";
+import {
+  shouldAutoExtractInbound,
+  shouldAutoReplyKnowledge,
+  shouldAutoReplyRoughEstimate,
+  decideInboundCommit,
+} from "./orchestrator";
 
 const AUTO_EXTRACT_ENDPOINT = "/api/line/webhook#auto-extract";
 
@@ -58,11 +63,21 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
     if (!text || !text.trim()) return;
 
     const settings = await loadAiAutomationSettings(tenantId);
-    if (!shouldAutoExtractInbound(settings)) return;
+    // 抽出そのものの opt-in に加え、抽出結果 (intent 等) に依存する自動返信系の
+    // opt-in だけが有効な場合も抽出は内部依存として実行する (結果の保存はしない)。
+    // これが無いと「ナレッジ自動返信だけ ON」のテナントで機能が沈黙する。
+    const wantExtract = shouldAutoExtractInbound(settings);
+    const wantKnowledgeReply = shouldAutoReplyKnowledge(settings);
+    const wantEstimateReply = shouldAutoReplyRoughEstimate(settings);
+    if (!wantExtract && !wantKnowledgeReply && !wantEstimateReply) return;
 
     // プラン / 有効性チェック (webhook には auth セッションが無いので DB から直接読む)。
     const admin = createServiceRoleAdmin("AI auto-extract inbound — LINE webhook lacks auth session");
-    const { data: tenant } = await admin.from("tenants").select("plan_tier, is_active").eq("id", tenantId).single();
+    const { data: tenant } = await admin
+      .from("tenants")
+      .select("plan_tier, is_active, name")
+      .eq("id", tenantId)
+      .single();
     if (!tenant || tenant.is_active === false) return;
     if (!canUseFeature(normalizePlanTier(tenant.plan_tier), "ai_inbound_extract")) return;
 
@@ -87,7 +102,8 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
     const snapshot = { ...result, auto: true, extracted_at: new Date().toISOString() };
 
     // 受信箱に下書きとして保存 (ai_extracted)。列未作成でも続行。
-    if (messageId) {
+    // auto_extract が OFF (自動返信系のためだけに抽出した) 場合は保存しない。
+    if (wantExtract && messageId) {
       const { error: upErr } = await admin
         .from("customer_messages")
         .update({ ai_extracted: snapshot })
@@ -206,30 +222,37 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
       tenant,
     });
 
-    // 価格問い合わせ → 概算見積りを LINE で完全自動返信 (opt-in / 未紐付け客も対象 /
-    // 内部で fail-soft)。上のドラフト起票とは独立した opt-in。詳細見積りは来店対応。
-    const estimateReplied = await maybeAutoReplyRoughEstimate({
+    // 一般質問 → 店舗/共通ナレッジで LINE 自動返信 (opt-in / 内部で fail-soft)。
+    // 概算見積りより**先に**試す: 「駐車場の料金は？」のような価格キーワードを含む
+    // 一般質問を、見積りの「不足情報聞き返し」が誤って先取りしないため。ナレッジで
+    // 回答できない場合 (can_answer=false) は何も送らず false が返り、見積りに進む。
+    // ponytail: 二重返信ガードは返り値 boolean の手配線。自動返信系が 3 つ以上に
+    // 増えたら、customer_messages の元メッセージ単位で送信をデデュープする共有層
+    // (sendCustomerLineText のラッパー) に置き換える。
+    const knowledgeReplied = await maybeAutoReplyKnowledge({
       tenantId,
       customerId: resolvedCustomerId,
       lineUserId: params.lineUserId,
       intent: result.intent,
-      service: result.service,
-      vehicleText: result.vehicle,
       text,
       messageId,
       channel: params.channel ?? "line",
       settings,
       tenant,
+      history,
     });
 
-    // 一般質問 → 店舗ナレッジで LINE 自動返信 (opt-in / 内部で fail-soft)。
-    // 概算見積りが同じメッセージに返信済みなら二重返信になるためスキップ。
-    if (!estimateReplied) {
-      await maybeAutoReplyKnowledge({
+    // 価格問い合わせ → 概算見積りを LINE で完全自動返信 (opt-in / 未紐付け客も対象 /
+    // 内部で fail-soft)。上のドラフト起票とは独立した opt-in。詳細見積りは来店対応。
+    // ナレッジが同じメッセージに返信済みなら二重返信になるためスキップ。
+    if (!knowledgeReplied) {
+      await maybeAutoReplyRoughEstimate({
         tenantId,
         customerId: resolvedCustomerId,
         lineUserId: params.lineUserId,
         intent: result.intent,
+        service: result.service,
+        vehicleText: result.vehicle,
         text,
         messageId,
         channel: params.channel ?? "line",

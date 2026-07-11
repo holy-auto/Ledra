@@ -131,6 +131,9 @@ export function buildRoughEstimateMessage(input: {
  */
 export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEstimateParams): Promise<boolean> {
   const { tenantId, customerId } = params;
+  // 送信成功後に後続処理 (監査ログ等) が投げても「返信済み」を正しく報告する
+  // (catch で false を返すと呼び出し側の二重返信ガードが破れるため)。
+  let replied = false;
   try {
     const lineUserId = params.lineUserId?.trim();
     if (!lineUserId) return false; // push 返信先が無い (LINE 以外) なら何もしない
@@ -160,6 +163,7 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
         logger.warn("[quoteReplyAuto] missing-info reply delivery failed", { tenantId, lineUserId });
         return false;
       }
+      replied = true;
       await logAutoActionExecuted({
         tenantId,
         actionKey: "quote.auto_reply_rough_estimate",
@@ -247,6 +251,7 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
       usage.record({ tenantId, outcome: "error", meta: { auto: true, committed: false } });
       return false;
     }
+    replied = true;
 
     await logAutoActionExecuted({
       tenantId,
@@ -275,6 +280,6 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
       tenantId,
       err: e instanceof Error ? e.message : String(e),
     });
-    return false;
+    return replied;
   }
 }

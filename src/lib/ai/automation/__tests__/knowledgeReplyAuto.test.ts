@@ -17,7 +17,11 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 vi.mock("../policy", () => ({ loadAiAutomationSettings: mocks.loadAiAutomationSettings }));
 vi.mock("../orchestrator", () => ({ shouldAutoReplyKnowledge: mocks.shouldAutoReplyKnowledge }));
-vi.mock("@/lib/ai/knowledgeReply", () => ({ generateKnowledgeReply: mocks.generateKnowledgeReply }));
+vi.mock("@/lib/ai/knowledgeReply", () => ({
+  generateKnowledgeReply: mocks.generateKnowledgeReply,
+  KNOWLEDGE_LIMIT: 50,
+  SHARED_KNOWLEDGE_LIMIT: 30,
+}));
 vi.mock("@/lib/line/messageStore", () => ({ fetchRecentConversation: mocks.fetchRecentConversation }));
 vi.mock("@/lib/ai/client", () => ({ fastModelForPlanTier: () => "claude-haiku" }));
 vi.mock("@/lib/ai/recordRouteUsage", () => ({ startAiRouteUsage: () => ({ record: mocks.usageRecord }) }));
@@ -66,9 +70,10 @@ beforeEach(() => {
 });
 
 describe("maybeAutoReplyKnowledge", () => {
-  it("sends a knowledge-based reply and audits it", async () => {
-    await maybeAutoReplyKnowledge(baseParams());
+  it("sends a knowledge-based reply, audits it, and reports replied=true", async () => {
+    const replied = await maybeAutoReplyKnowledge(baseParams());
 
+    expect(replied).toBe(true);
     expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
     const arg = mocks.sendCustomerLineText.mock.calls[0][0];
     expect(arg).toMatchObject({ tenantId: TENANT, customerId: CUSTOMER, lineUserId: LINE_USER });
@@ -83,6 +88,26 @@ describe("maybeAutoReplyKnowledge", () => {
     expect(genArg.tenantName).toBe("HOLY自動車");
   });
 
+  it("also answers from shared (global) knowledge when the tenant has none of its own", async () => {
+    mocks.store.tables.tenant_line_knowledge = [];
+    mocks.store.tables.global_line_knowledge = [
+      { enabled: true, title: "コーティングとは", content: "塗装面を保護する施工です。" },
+    ];
+    const replied = await maybeAutoReplyKnowledge(baseParams());
+    expect(replied).toBe(true);
+    const genArg = mocks.generateKnowledgeReply.mock.calls[0][0];
+    expect(genArg.knowledge).toHaveLength(0);
+    expect(genArg.sharedKnowledge).toHaveLength(1);
+    expect(genArg.sharedKnowledge[0]).toMatchObject({ title: "コーティングとは" });
+  });
+
+  it("reuses the caller-provided conversation history instead of re-fetching", async () => {
+    const history = [{ direction: "inbound" as const, text: "こんにちは", date: "2026-07-10" }];
+    await maybeAutoReplyKnowledge({ ...baseParams(), history });
+    expect(mocks.fetchRecentConversation).not.toHaveBeenCalled();
+    expect(mocks.generateKnowledgeReply.mock.calls[0][0].history).toBe(history);
+  });
+
   it("also replies to an unknown (unlinked) LINE user", async () => {
     await maybeAutoReplyKnowledge({ ...baseParams(), customerId: null });
     expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
@@ -91,7 +116,8 @@ describe("maybeAutoReplyKnowledge", () => {
 
   it("does nothing when opt-in is off", async () => {
     mocks.shouldAutoReplyKnowledge.mockReturnValue(false);
-    await maybeAutoReplyKnowledge(baseParams());
+    const replied = await maybeAutoReplyKnowledge(baseParams());
+    expect(replied).toBe(false);
     expect(mocks.generateKnowledgeReply).not.toHaveBeenCalled();
     expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
   });
@@ -101,11 +127,12 @@ describe("maybeAutoReplyKnowledge", () => {
     expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
   });
 
-  it("does nothing when the tenant has no enabled knowledge", async () => {
+  it("does nothing when neither tenant nor shared knowledge is enabled", async () => {
     mocks.store.tables.tenant_line_knowledge = [
       { tenant_id: TENANT, enabled: false, title: "営業時間", content: "..." },
     ];
-    await maybeAutoReplyKnowledge(baseParams());
+    const replied = await maybeAutoReplyKnowledge(baseParams());
+    expect(replied).toBe(false);
     expect(mocks.generateKnowledgeReply).not.toHaveBeenCalled();
     expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
   });
@@ -142,9 +169,16 @@ describe("maybeAutoReplyKnowledge", () => {
     expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
   });
 
-  it("does not audit-log a reply that failed to deliver", async () => {
+  it("does not audit-log a reply that failed to deliver and reports replied=false", async () => {
     mocks.sendCustomerLineText.mockResolvedValue(false);
-    await maybeAutoReplyKnowledge(baseParams());
+    const replied = await maybeAutoReplyKnowledge(baseParams());
+    expect(replied).toBe(false);
     expect(mocks.logAutoActionExecuted).not.toHaveBeenCalled();
+  });
+
+  it("still reports replied=true when post-send bookkeeping throws (double-reply guard)", async () => {
+    mocks.logAutoActionExecuted.mockRejectedValue(new Error("audit down"));
+    const replied = await maybeAutoReplyKnowledge(baseParams());
+    expect(replied).toBe(true);
   });
 });

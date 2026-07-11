@@ -31,6 +31,12 @@ COMMENT ON TABLE tenant_line_knowledge IS
 CREATE INDEX IF NOT EXISTS idx_tenant_line_knowledge_tenant
   ON tenant_line_knowledge (tenant_id, enabled, created_at);
 
+-- updated_at は共有トリガで自動更新 (core_tables の set_updated_at())
+DROP TRIGGER IF EXISTS trg_tenant_line_knowledge_updated_at ON tenant_line_knowledge;
+CREATE TRIGGER trg_tenant_line_knowledge_updated_at
+  BEFORE UPDATE ON tenant_line_knowledge
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
 -- RLS: 参照はテナントメンバー、書き込みは owner/admin のみ
 -- (自動返信の回答内容を直接左右するため staff には書かせない)
 ALTER TABLE tenant_line_knowledge ENABLE ROW LEVEL SECURITY;

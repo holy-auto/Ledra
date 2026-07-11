@@ -1,12 +1,12 @@
 /**
- * PATCH  — LINE ナレッジ 1 件の更新 (owner / admin のみ)。
- * DELETE — LINE ナレッジ 1 件の削除 (owner / admin のみ)。
+ * 運営専用: 全テナント共有ナレッジ 1 件の更新 / 削除 (isPlatformAdmin)。
  */
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
+import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import {
   apiOk,
   apiUnauthorized,
@@ -16,7 +16,6 @@ import {
   apiValidationError,
 } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
-import { logAiAuditEvent } from "@/lib/audit/aiAuditLog";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -35,36 +34,26 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "admin")) {
-      return apiForbidden("LINEナレッジの編集は管理者のみ行えます。");
-    }
+    if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const parsed = await parseJsonBody(req, updateSchema);
     if (!parsed.ok) return parsed.response;
     if (Object.keys(parsed.data).length === 0) return apiValidationError("変更内容がありません。");
 
-    const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
+    const admin = createPlatformScopedAdmin("platform/line-knowledge: 全テナント共有ナレッジの運営管理 (更新)");
     // updated_at は DB トリガ (set_updated_at) が自動更新する。
     const { data, error } = await admin
-      .from("tenant_line_knowledge")
+      .from("global_line_knowledge")
       .update(parsed.data)
       .eq("id", id)
-      .eq("tenant_id", tenantId)
       .select("id, title, content, enabled, created_at, updated_at")
       .maybeSingle();
-    if (error) return apiInternalError(error, "line-knowledge PATCH");
-    if (!data) return apiNotFound("ナレッジが見つかりません。");
-
-    void logAiAuditEvent({
-      tenantId,
-      userId: caller.userId,
-      action: "ai_settings_changed",
-      detail: { line_knowledge: { updated: id, fields: Object.keys(parsed.data) } },
-    });
+    if (error) return apiInternalError(error, "platform line-knowledge PATCH");
+    if (!data) return apiNotFound("共有ナレッジが見つかりません。");
 
     return apiOk({ entry: data });
   } catch (e: unknown) {
-    return apiInternalError(e, "line-knowledge PATCH");
+    return apiInternalError(e, "platform line-knowledge PATCH");
   }
 }
 
@@ -76,32 +65,15 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "admin")) {
-      return apiForbidden("LINEナレッジの編集は管理者のみ行えます。");
-    }
+    if (!isPlatformAdmin(caller)) return apiForbidden();
 
-    const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
-    // 消えた行を select で確認する: 0 行削除 (既に削除済み / 他テナントの ID) を
-    // 成功扱いにして幻の監査ログを残さない。
-    const { data, error } = await admin
-      .from("tenant_line_knowledge")
-      .delete()
-      .eq("id", id)
-      .eq("tenant_id", tenantId)
-      .select("id")
-      .maybeSingle();
-    if (error) return apiInternalError(error, "line-knowledge DELETE");
-    if (!data) return apiNotFound("ナレッジが見つかりません。");
-
-    void logAiAuditEvent({
-      tenantId,
-      userId: caller.userId,
-      action: "ai_settings_changed",
-      detail: { line_knowledge: { deleted: id } },
-    });
+    const admin = createPlatformScopedAdmin("platform/line-knowledge: 全テナント共有ナレッジの運営管理 (削除)");
+    const { data, error } = await admin.from("global_line_knowledge").delete().eq("id", id).select("id").maybeSingle();
+    if (error) return apiInternalError(error, "platform line-knowledge DELETE");
+    if (!data) return apiNotFound("共有ナレッジが見つかりません。");
 
     return apiOk({ deleted: true });
   } catch (e: unknown) {
-    return apiInternalError(e, "line-knowledge DELETE");
+    return apiInternalError(e, "platform line-knowledge DELETE");
   }
 }

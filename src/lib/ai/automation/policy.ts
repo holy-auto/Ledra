@@ -81,7 +81,8 @@ export interface LoadAiSettingsOptions {
   applyCostCap?: boolean;
 }
 
-function isMissingTableError(err: { message?: string; code?: string } | null | undefined): boolean {
+/** テーブル未作成 (マイグレーション未適用) の検出。他ルートの degrade 判定でも使う。 */
+export function isMissingTableError(err: { message?: string; code?: string } | null | undefined): boolean {
   if (!err) return false;
   if (err.code === "42P01" || err.code === "PGRST205") return true;
   const msg = (err.message ?? "").toLowerCase();

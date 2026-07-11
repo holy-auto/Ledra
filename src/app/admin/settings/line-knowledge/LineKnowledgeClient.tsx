@@ -13,9 +13,18 @@ interface KnowledgeEntry {
   updated_at: string;
 }
 
-const API = "/api/admin/settings/line-knowledge";
-
-export default function LineKnowledgeClient({ role }: { role: string }) {
+export default function LineKnowledgeClient({
+  role,
+  apiBase = "/api/admin/settings/line-knowledge",
+  showActivationHint = true,
+}: {
+  role: string;
+  /** CRUD API のベースパス。運営の共有ナレッジ管理ページが差し替えて再利用する。 */
+  apiBase?: string;
+  /** 「自動返信を有効にするには」の案内カード (テナント設定のみ表示)。 */
+  showActivationHint?: boolean;
+}) {
+  const API = apiBase;
   const canEdit = role === "owner" || role === "admin";
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,13 +48,16 @@ export default function LineKnowledgeClient({ role }: { role: string }) {
       if (res.ok && Array.isArray(j?.entries)) {
         setEntries(j.entries as KnowledgeEntry[]);
         setWarning(typeof j?.warning === "string" ? j.warning : null);
+      } else {
+        // 空一覧と読込失敗を混同させない (「まだナレッジがありません」と誤表示しない)。
+        setWarning("ナレッジの読み込みに失敗しました。再読み込みしてください。");
       }
     } catch {
-      // keep empty list
+      setWarning("ナレッジの読み込みに失敗しました。再読み込みしてください。");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [API]);
 
   useEffect(() => {
     void fetchEntries();
@@ -72,7 +84,7 @@ export default function LineKnowledgeClient({ role }: { role: string }) {
         setContent("");
         flash("ナレッジを追加しました。", true);
       } else {
-        flash((j?.error as string) || "追加に失敗しました。", false);
+        flash((j?.message as string) || "追加に失敗しました。", false);
       }
     } catch {
       flash("追加に失敗しました。", false);
@@ -93,7 +105,7 @@ export default function LineKnowledgeClient({ role }: { role: string }) {
         setEntries((prev) => prev.map((e) => (e.id === id ? (j.entry as KnowledgeEntry) : e)));
         return true;
       }
-      flash((j?.error as string) || "更新に失敗しました。", false);
+      flash((j?.message as string) || "更新に失敗しました。", false);
       return false;
     } catch {
       flash("更新に失敗しました。", false);
@@ -110,7 +122,7 @@ export default function LineKnowledgeClient({ role }: { role: string }) {
         flash("削除しました。", true);
       } else {
         const j = await parseJsonSafe(res);
-        flash((j?.error as string) || "削除に失敗しました。", false);
+        flash((j?.message as string) || "削除に失敗しました。", false);
       }
     } catch {
       flash("削除に失敗しました。", false);
@@ -139,16 +151,20 @@ export default function LineKnowledgeClient({ role }: { role: string }) {
       )}
       {warning && <div className="rounded-lg border border-amber-300 px-4 py-2 text-sm text-amber-700">{warning}</div>}
 
-      <section className="glass-card p-5">
-        <div className="text-base font-semibold text-primary">自動返信を有効にするには</div>
-        <p className="mt-1 text-xs text-muted">
-          ナレッジの登録に加えて、AI 自動入力設定で「受信メッセージに店舗ナレッジで自動返信」を ON
-          にすると自動返信が始まります (既定 OFF)。ナレッジだけ登録して OFF のままにもできます。
-        </p>
-        <Link href="/admin/settings/ai-automation" className="btn-secondary mt-3 inline-block">
-          ✨ AI 自動入力の設定を開く →
-        </Link>
-      </section>
+      {showActivationHint && (
+        <section className="glass-card p-5">
+          <div className="text-base font-semibold text-primary">自動返信を有効にするには</div>
+          <p className="mt-1 text-xs text-muted">
+            ナレッジの登録に加えて、AI 自動入力設定で「受信メッセージに店舗ナレッジで自動返信」を ON
+            にすると自動返信が始まります (既定 OFF)。ナレッジだけ登録して OFF のままにもできます。
+            運営が提供する全店舗共通ナレッジも、同じ自動返信の回答ソースとして使われます
+            (内容が重なる場合はこの店舗ナレッジが優先されます)。
+          </p>
+          <Link href="/admin/settings/ai-automation" className="btn-secondary mt-3 inline-block">
+            ✨ AI 自動入力の設定を開く →
+          </Link>
+        </section>
+      )}
 
       {canEdit && (
         <section className="glass-card p-5 space-y-3">
@@ -225,47 +241,45 @@ export default function LineKnowledgeClient({ role }: { role: string }) {
                     </div>
                   </div>
                 ) : (
-                  <>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className={`text-sm font-semibold ${e.enabled ? "text-primary" : "text-muted"}`}>
-                          {e.title}
-                          {!e.enabled && <span className="ml-2 text-xs font-normal text-muted">(停止中)</span>}
-                        </div>
-                        <p className="mt-1 whitespace-pre-wrap text-sm text-secondary">{e.content}</p>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className={`text-sm font-semibold ${e.enabled ? "text-primary" : "text-muted"}`}>
+                        {e.title}
+                        {!e.enabled && <span className="ml-2 text-xs font-normal text-muted">(停止中)</span>}
                       </div>
-                      {canEdit && (
-                        <div className="flex shrink-0 flex-col items-end gap-1 text-xs">
-                          <label className="inline-flex cursor-pointer items-center gap-1.5">
-                            <input
-                              type="checkbox"
-                              checked={e.enabled}
-                              onChange={() => void handlePatch(e.id, { enabled: !e.enabled })}
-                            />
-                            回答に使う
-                          </label>
-                          <button
-                            type="button"
-                            className="underline"
-                            onClick={() => {
-                              setEditingId(e.id);
-                              setEditTitle(e.title);
-                              setEditContent(e.content);
-                            }}
-                          >
-                            編集
-                          </button>
-                          <button
-                            type="button"
-                            className="text-red-600 underline"
-                            onClick={() => void handleDelete(e.id)}
-                          >
-                            削除
-                          </button>
-                        </div>
-                      )}
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-secondary">{e.content}</p>
                     </div>
-                  </>
+                    {canEdit && (
+                      <div className="flex shrink-0 flex-col items-end gap-1 text-xs">
+                        <label className="inline-flex cursor-pointer items-center gap-1.5">
+                          <input
+                            type="checkbox"
+                            checked={e.enabled}
+                            onChange={() => void handlePatch(e.id, { enabled: !e.enabled })}
+                          />
+                          回答に使う
+                        </label>
+                        <button
+                          type="button"
+                          className="underline"
+                          onClick={() => {
+                            setEditingId(e.id);
+                            setEditTitle(e.title);
+                            setEditContent(e.content);
+                          }}
+                        >
+                          編集
+                        </button>
+                        <button
+                          type="button"
+                          className="text-red-600 underline"
+                          onClick={() => void handleDelete(e.id)}
+                        >
+                          削除
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
               </li>
             ))}

@@ -17,11 +17,16 @@
  */
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
-import { generateKnowledgeReply, type KnowledgeEntry } from "@/lib/ai/knowledgeReply";
+import {
+  generateKnowledgeReply,
+  KNOWLEDGE_LIMIT,
+  SHARED_KNOWLEDGE_LIMIT,
+  type KnowledgeEntry,
+} from "@/lib/ai/knowledgeReply";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { sendCustomerLineText } from "@/lib/line/client";
-import { fetchRecentConversation } from "@/lib/line/messageStore";
+import { fetchRecentConversation, type ConversationTurn } from "@/lib/line/messageStore";
 import { logger } from "@/lib/logger";
 import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { loadAiAutomationSettings, type AiAutomationSettings } from "./policy";
@@ -29,13 +34,9 @@ import { shouldAutoReplyKnowledge } from "./orchestrator";
 
 const ENDPOINT = "/api/line/webhook#auto-knowledge-reply";
 
-/**
- * プロンプトに注入するナレッジの上限件数。
- * ponytail: RAG での事前絞り込みはせず先頭 50 件を全件注入する (登録順)。
- * 50 件 × 最大 2,200 字でも fast モデルの文脈に収まる。数百件規模が必要に
- * なったら pgvector 等の検索に移行する。
- */
-const KNOWLEDGE_LIMIT = 50;
+// ponytail: 注入は RAG での事前絞り込みをせず先頭から全件 (KNOWLEDGE_LIMIT +
+// SHARED_KNOWLEDGE_LIMIT = 80 件、1 件 ≤2,200 字) を渡す。数百件規模が必要に
+// なったら pgvector 等の検索に移行する。上限定義は knowledgeReply.ts (単一定義)。
 
 export interface MaybeAutoReplyKnowledgeParams {
   tenantId: string;
@@ -52,65 +53,87 @@ export interface MaybeAutoReplyKnowledgeParams {
   channel?: string;
   /** 呼び出し元 (inboundAuto) が既にロード済みなら渡して二重読込を避ける。 */
   settings?: AiAutomationSettings;
-  tenant?: { plan_tier: string | null; is_active: boolean | null };
+  tenant?: { plan_tier: string | null; is_active: boolean | null; name?: string | null };
+  /** 呼び出し元が抽出用に取得済みの会話文脈。渡されなければ自前で取得する。 */
+  history?: ConversationTurn[];
 }
 
-/** 受信メッセージに店舗ナレッジで LINE 自動返信する。失敗しても投げない。 */
-export async function maybeAutoReplyKnowledge(params: MaybeAutoReplyKnowledgeParams): Promise<void> {
+function hasText(k: { title?: string | null; content?: string | null }): k is KnowledgeEntry {
+  return !!k.title?.trim() && !!k.content?.trim();
+}
+
+/**
+ * 受信メッセージに店舗ナレッジで LINE 自動返信する。失敗しても投げない。
+ * 返り値は「このメッセージに返信を送ったか」— 呼び出し側 (inboundAuto) が
+ * 概算見積り自動返信との二重返信を防ぐために使う。
+ */
+export async function maybeAutoReplyKnowledge(params: MaybeAutoReplyKnowledgeParams): Promise<boolean> {
   const { tenantId, customerId } = params;
+  // 送信成功後に後続処理 (監査ログ等) が投げても「返信済み」を正しく報告する。
+  let replied = false;
   try {
     const lineUserId = params.lineUserId?.trim();
-    if (!lineUserId) return; // push 返信先が無い (LINE 以外) なら何もしない
-    if (!params.text?.trim()) return;
-    // 予約のキャンセル・変更はスタッフが操作する。ナレッジ返信で「対応済み」と
-    // 誤認させないため返信しない (受信箱でスタッフが対応する)。
-    if (params.intent === "cancel" || params.intent === "change_reservation") return;
+    if (!lineUserId) return false; // push 返信先が無い (LINE 以外) なら何もしない
+    if (!params.text?.trim()) return false;
+    // 許可 intent のみ返信する (fail-closed)。cancel / change_reservation は
+    // スタッフが操作するため、ナレッジ返信で「対応済み」と誤認させない。
+    // intent の enum が将来増えても、明示的に許可するまで自動返信しない。
+    if (!["inquiry_only", "new_reservation", "other"].includes(params.intent)) return false;
 
     const settings = params.settings ?? (await loadAiAutomationSettings(tenantId));
-    if (!shouldAutoReplyKnowledge(settings)) return;
+    if (!shouldAutoReplyKnowledge(settings)) return false;
 
     const admin = createServiceRoleAdmin("AI auto-reply knowledge — LINE webhook lacks auth session");
     const tenant =
       params.tenant ??
-      (await admin.from("tenants").select("plan_tier, is_active").eq("id", tenantId).single()).data ??
+      (await admin.from("tenants").select("plan_tier, is_active, name").eq("id", tenantId).single()).data ??
       null;
-    if (!tenant || tenant.is_active === false) return;
-    if (!canUseFeature(normalizePlanTier(tenant.plan_tier), "ai_inbound_extract")) return;
+    if (!tenant || tenant.is_active === false) return false;
+    if (!canUseFeature(normalizePlanTier(tenant.plan_tier), "ai_inbound_extract")) return false;
 
-    // 回答ソース: 有効なナレッジ (登録順)。1 件も無ければ学習前なので何もしない。
-    const { data: knowledgeRows } = await admin
-      .from("tenant_line_knowledge")
-      .select("title, content")
-      .eq("tenant_id", tenantId)
-      .eq("enabled", true)
-      .order("created_at", { ascending: true })
-      .limit(KNOWLEDGE_LIMIT);
-    const knowledge = ((knowledgeRows as KnowledgeEntry[] | null) ?? []).filter(
-      (k) => k.title?.trim() && k.content?.trim(),
-    );
-    if (knowledge.length === 0) return;
-
-    const { data: tenantNameRow } = await admin.from("tenants").select("name").eq("id", tenantId).maybeSingle();
+    // 回答ソース: 店舗ナレッジ + 全テナント共有ナレッジ (どちらも enabled のみ・登録順)。
+    // 独立クエリなので並列に取得する。合わせて 1 件も無ければ学習前なので何もしない。
+    const [tenantKnowledgeRes, sharedKnowledgeRes] = await Promise.all([
+      admin
+        .from("tenant_line_knowledge")
+        .select("title, content")
+        .eq("tenant_id", tenantId)
+        .eq("enabled", true)
+        .order("created_at", { ascending: true })
+        .limit(KNOWLEDGE_LIMIT),
+      admin
+        .from("global_line_knowledge")
+        .select("title, content")
+        .eq("enabled", true)
+        .order("created_at", { ascending: true })
+        .limit(SHARED_KNOWLEDGE_LIMIT),
+    ]);
+    const knowledge = ((tenantKnowledgeRes.data as KnowledgeEntry[] | null) ?? []).filter(hasText);
+    const sharedKnowledge = ((sharedKnowledgeRes.data as KnowledgeEntry[] | null) ?? []).filter(hasText);
+    if (knowledge.length + sharedKnowledge.length === 0) return false;
 
     // 「それは土曜もですか？」のような指示語を解釈できるよう会話文脈も渡す。
-    const history = await fetchRecentConversation(
-      tenantId,
-      { customerId, lineUserId },
-      { currentMessageId: params.messageId },
-    );
+    // 呼び出し元 (inboundAuto) が抽出用に取得済みならそれを再利用する。
+    const history =
+      params.history ??
+      (await fetchRecentConversation(tenantId, { customerId, lineUserId }, { currentMessageId: params.messageId }));
 
+    // ponytail: 雑談・お礼だけのメッセージでも AI 呼び出しは走る (can_answer=false で
+    // 返信はしない)。トークン節約の上限に当たったら、extractInboundReservation の
+    // 抽出結果に「質問を含むか」のブール値を追加してここで前置きゲートする。
     const usage = startAiRouteUsage(ENDPOINT);
     const result = await generateKnowledgeReply(
       {
         text: params.text,
         knowledge,
+        sharedKnowledge,
         history,
-        tenantName: (tenantNameRow as { name?: string | null } | null)?.name ?? null,
+        tenantName: (tenant as { name?: string | null }).name ?? null,
       },
       { model: fastModelForPlanTier(tenant.plan_tier) },
     );
 
-    const threshold = typeof settings.confidenceThreshold === "number" ? settings.confidenceThreshold : 0.5;
+    const threshold = settings.confidenceThreshold;
     const reply = result.reply?.trim();
     if (!result.ai || !result.can_answer || !reply || result.confidence < threshold) {
       usage.record({
@@ -119,7 +142,7 @@ export async function maybeAutoReplyKnowledge(params: MaybeAutoReplyKnowledgePar
         confidence: result.confidence,
         meta: { auto: true, committed: false, can_answer: result.can_answer, ai: result.ai },
       });
-      return;
+      return false;
     }
 
     const delivered = await sendCustomerLineText({
@@ -130,8 +153,9 @@ export async function maybeAutoReplyKnowledge(params: MaybeAutoReplyKnowledgePar
     });
     if (!delivered) {
       usage.record({ tenantId, outcome: "error", meta: { auto: true, committed: false } });
-      return;
+      return false;
     }
+    replied = true;
 
     await logAutoActionExecuted({
       tenantId,
@@ -143,6 +167,7 @@ export async function maybeAutoReplyKnowledge(params: MaybeAutoReplyKnowledgePar
         source_message_id: params.messageId,
         confidence: result.confidence,
         knowledge_count: knowledge.length,
+        shared_knowledge_count: sharedKnowledge.length,
       },
     });
 
@@ -150,12 +175,19 @@ export async function maybeAutoReplyKnowledge(params: MaybeAutoReplyKnowledgePar
       tenantId,
       outcome: "ok",
       confidence: result.confidence,
-      meta: { auto: true, committed: true, knowledge_count: knowledge.length },
+      meta: {
+        auto: true,
+        committed: true,
+        knowledge_count: knowledge.length,
+        shared_knowledge_count: sharedKnowledge.length,
+      },
     });
+    return true;
   } catch (e) {
     logger.warn("[knowledgeReplyAuto] maybeAutoReplyKnowledge threw", {
       tenantId,
       err: e instanceof Error ? e.message : String(e),
     });
+    return replied;
   }
 }
