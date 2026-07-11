@@ -42,7 +42,9 @@ export async function GET() {
       }
       return apiInternalError(error, "line-knowledge GET");
     }
-    return apiOk({ entries: data ?? [] });
+    // role は初回学習カード (LineKnowledgeOnboardingCard) が「編集権限のある人に
+    // だけ出す」判定に使う。
+    return apiOk({ entries: data ?? [], role: caller.role });
   } catch (e: unknown) {
     return apiInternalError(e, "line-knowledge GET");
   }
