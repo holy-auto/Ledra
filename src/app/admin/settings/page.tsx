@@ -429,6 +429,24 @@ export default async function AdminSettingsPage({
         </Link>
       </section>
 
+      {/* 施工ナレッジ (現場の勘所) */}
+      <section className="glass-card p-5">
+        <div className="mb-4">
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">FIELD KNOWLEDGE</div>
+          <div className="mt-1 text-base font-semibold text-primary inline-flex items-center gap-1.5">
+            施工ナレッジ (現場の勘所)
+            <HelpTooltip>
+              車種別の注意点・配線ルート・クレーム事例など、ベテランの知見を登録しておくと、スタッフが AI
+              に質問して引き出せます。AI は登録した内容だけを根拠に答え、記録に無い内容は「確認が必要」と返します。
+            </HelpTooltip>
+          </div>
+          <p className="mt-1 text-xs text-muted">現場の勘所を資産化し、新人でも AI で引き出せるようにします。</p>
+        </div>
+        <Link href="/admin/field-knowledge" className="btn-secondary">
+          🔧 施工ナレッジを開く →
+        </Link>
+      </section>
+
       {/* Security */}
       <section className="glass-card p-5">
         <div className="mb-4">
