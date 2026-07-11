@@ -3,6 +3,7 @@ import { CTAButton } from "./CTAButton";
 import { HeroTypewriter } from "./HeroTypewriter";
 import { ScreenshotFrame } from "./ScreenshotFrame";
 import { Hero3DCertificate } from "./hero3d/Hero3DCertificate";
+import { ExperimentText } from "./ExperimentText";
 
 const TITLE_LINE_1 = ["現場の", "技術を、"];
 const TITLE_LINE_2 = ["業界の", "力へ。"];
@@ -84,7 +85,8 @@ export function Hero() {
 
             <div className="flex flex-col sm:flex-row gap-3 mt-9 animate-[hero-fade-up_0.8s_ease-out_0.9s_both]">
               <CTAButton variant="white" href="/signup" trackLocation="hero">
-                無料で試す
+                {/* A/B: 「無料で試す」vs「5分で証明書を発行」。露出は experiment_exposed で計測 */}
+                <ExperimentText experiment="hero_primary_cta" />
               </CTAButton>
               <CTAButton variant="white-outline" href="/resources" trackLocation="hero">
                 資料ダウンロード

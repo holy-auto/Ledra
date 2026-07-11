@@ -41,7 +41,8 @@ export type MarketingEvent =
   | { name: "document_download_failed"; props: { resource_key: string; reason: string } }
   | { name: "roi_calculated"; props: { monthly_certs: number; hours_per_cert: number; estimated_saving_yen: number } }
   | { name: "form_validation_failed"; props: { source: LeadSource; reason?: string } }
-  | { name: "page_section_viewed"; props: { section: string } };
+  | { name: "page_section_viewed"; props: { section: string } }
+  | { name: "experiment_exposed"; props: { experiment: string; variant: string } };
 
 export function track<E extends MarketingEvent>(event: E): void {
   const ph = client();
