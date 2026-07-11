@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { deriveTodayTasks, type TaskTile } from "@/lib/admin/todayTasks";
+import { type TaskTile } from "@/lib/admin/todayTasks";
+import { fetchTodaySignals, tilesFromSignals } from "@/lib/admin/fetchTodaySignals";
+import { buildDeterministicDigest } from "@/lib/admin/dailyDigest";
 import TodayTasksScopeToggle from "./TodayTasksScopeToggle";
 
 /**
@@ -78,67 +79,11 @@ export default async function TodayTasksWidget({
   scope?: "tenant" | "mine";
   currentUserId?: string | null;
 }) {
-  const { admin } = createTenantScopedAdmin(tenantId);
-  const today = new Date();
-  const todayStr = today.toISOString().slice(0, 10);
-
-  // 180 日前の日付文字列
-  const dormantCutoff = new Date(today.getTime() - 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-
   const effectiveScope = scope === "mine" && currentUserId ? "mine" : "tenant";
 
-  // 並列取得。各クエリは LIMIT を強く効かせて、ダッシュボード描画コストを抑える。
-  let reservationsQ = admin
-    .from("reservations")
-    .select("id, status, scheduled_date, title")
-    .eq("tenant_id", tenantId)
-    .or(`status.eq.in_progress,scheduled_date.eq.${todayStr}`)
-    .neq("status", "cancelled")
-    .limit(200);
-  if (effectiveScope === "mine" && currentUserId) {
-    reservationsQ = reservationsQ.eq("assigned_user_id", currentUserId);
-  }
-  const [reservationsRes, invoicesRes, certsRes, churnRes] = await Promise.all([
-    reservationsQ,
-    admin
-      .from("documents")
-      .select("id, status, total, due_date")
-      .eq("tenant_id", tenantId)
-      .in("doc_type", ["invoice", "consolidated_invoice"])
-      .in("status", ["sent", "overdue"])
-      .limit(200),
-    admin
-      .from("certificates")
-      .select("id, status, expiry_date")
-      .eq("tenant_id", tenantId)
-      .eq("status", "active")
-      .not("expiry_date", "is", null)
-      .gte("expiry_date", todayStr)
-      .limit(200),
-    // 離反リスク: 最終来店 > 180 日かつアクティブ予約なしの顧客数
-    // reservations テーブルから顧客 ID + max scheduled_date を取得し、
-    // 180 日超のものを絞る。シンプルに client で件数だけ取る。
-    admin
-      .from("reservations")
-      .select("customer_id")
-      .eq("tenant_id", tenantId)
-      .eq("status", "completed")
-      .lt("scheduled_date", dormantCutoff)
-      .limit(500),
-  ]);
-
-  // 離反リスク顧客数: 上記クエリで来店があるが最終来店が 180 日超の顧客を
-  // 重複排除して数える (簡易 heuristic。予約中顧客の除外は UI 側で案内のみ)
-  const dormantCustomerIds = new Set((churnRes.data ?? []).map((r: { customer_id: string }) => r.customer_id));
-  const churnRiskCustomerCount = dormantCustomerIds.size;
-
-  const tiles = deriveTodayTasks({
-    reservations: reservationsRes.data ?? [],
-    invoices: invoicesRes.data ?? [],
-    certificates: certsRes.data ?? [],
-    churnRiskCustomerCount,
-    now: today,
-  });
+  // データ取得は fetchTodaySignals に集約 (日次サマリ・将来の cron と共有)。
+  const signals = await fetchTodaySignals(tenantId, { scope, currentUserId });
+  const tiles = tilesFromSignals(signals);
 
   const showToggle = currentUserId != null;
   const headerRow = (
@@ -165,9 +110,20 @@ export default async function TodayTasksWidget({
     );
   }
 
+  // 「今日のまとめ」(AIマネージャー): タイル (決定論・SQL由来) を 1 文に要約。
+  // 描画時は AI を呼ばず決定論版を出す (コスト安全)。AI 整形版は日次 cron 実装
+  // (Phase 2-B) で保存・差し替え予定。
+  const digest = buildDeterministicDigest(tiles);
+
   return (
     <div>
       {headerRow}
+      <div className="glass-card mb-4 flex items-start gap-2 p-4">
+        <span aria-hidden className="text-lg leading-none">
+          🗒️
+        </span>
+        <p className="text-sm leading-relaxed text-secondary">{digest.text}</p>
+      </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {tiles.map((tile) => {
           const style = TONE_STYLE[tile.tone];
