@@ -15,6 +15,24 @@ jobs:
     timeout-minutes: 15
     permissions:
       pull-requests: write
+    # ジョブレベルで定義: ビルドだけでなく LHCI が起動する `npm run start` にも必要。
+    # instrumentation の envValidation が本番モードで形式チェック（最小長・base64）を行うため、
+    # ダミーでも「形式が正しい」値にしないと全リクエストが 500 になる。
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://test.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: stub
+      SUPABASE_SERVICE_ROLE_KEY: stub-service-role-key-padded-to-forty-chars-min
+      STRIPE_SECRET_KEY: sk_test_stub
+      STRIPE_WEBHOOK_SECRET: whsec_stub
+      CRON_SECRET: 4f8a2c9e7b1d6f3a5e0c8b7a9d2f4e6c
+      CUSTOMER_AUTH_PEPPER: 9c1e4b7f2a8d5c3e6f0a1b4d7e2c5f8a
+      RESEND_API_KEY: stub
+      QSTASH_TOKEN: stub
+      QSTASH_CURRENT_SIGNING_KEY: sig_stub
+      QSTASH_NEXT_SIGNING_KEY: sig_stub
+      UPSTASH_REDIS_REST_URL: https://stub.upstash.io
+      UPSTASH_REDIS_REST_TOKEN: stub-upstash-token-0123456789abcdef
+      SECRET_ENCRYPTION_KEY: QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=
     steps:
       - uses: actions/checkout@v7
 
@@ -27,19 +45,6 @@ jobs:
 
       - name: Build (production)
         run: npm run build
-        env:
-          # Build needs these even though we don't actually hit Supabase.
-          NEXT_PUBLIC_SUPABASE_URL: https://test.supabase.co
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: stub
-          SUPABASE_SERVICE_ROLE_KEY: stub
-          STRIPE_SECRET_KEY: sk_test_stub
-          STRIPE_WEBHOOK_SECRET: whsec_stub
-          CRON_SECRET: stub
-          CUSTOMER_AUTH_PEPPER: stub
-          RESEND_API_KEY: stub
-          QSTASH_TOKEN: stub
-          QSTASH_CURRENT_SIGNING_KEY: sig_stub
-          QSTASH_NEXT_SIGNING_KEY: sig_stub
 
       - name: Lighthouse CI
         uses: treosh/lighthouse-ci-action@v12

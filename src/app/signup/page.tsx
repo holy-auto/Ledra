@@ -23,7 +23,8 @@ const isEmail = (v: string) => /^\S+@\S+\.\S+$/.test(v);
 
 export default function SignupPage() {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>("password");
+  // 既定はパスワード入力が要らないメールリンク方式（迷わず登録できる導線を優先）
+  const [mode, setMode] = useState<Mode>("magic");
   const [values, setValues] = useState<Record<FieldKey, string>>(initialValues);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldKey, string>>>({});
   const [showDetails, setShowDetails] = useState(false);
@@ -190,6 +191,22 @@ export default function SignupPage() {
           <p className="text-sm text-muted mt-1">施工店アカウントを作成して始めましょう</p>
         </div>
 
+        {/* 登録の流れ — 3ステップで迷わせない */}
+        <ol className="space-y-1.5 text-sm text-secondary" aria-label="登録の流れ">
+          {[
+            "お店の名前とメールを入力",
+            mode === "magic" ? "届いたメールのボタンを押す" : "パスワードを決めて入力",
+            "登録完了（約2分）",
+          ].map((step, i) => (
+            <li key={step} className="flex items-center gap-2.5">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent text-xs font-semibold">
+                {i + 1}
+              </span>
+              {step}
+            </li>
+          ))}
+        </ol>
+
         {errors.length > 0 && (
           <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 space-y-1">
             {errors.map((err, i) => (
@@ -328,6 +345,13 @@ export default function SignupPage() {
             <Link href="/login" className="text-accent hover:underline font-medium">
               ログイン
             </Link>
+          </p>
+          <p className="text-xs text-muted">
+            登録がうまくいかないときは
+            <Link href="/contact" className="text-accent hover:underline mx-1">
+              お問い合わせ
+            </Link>
+            ください。スタッフが一緒に登録をお手伝いします。
           </p>
         </div>
       </div>

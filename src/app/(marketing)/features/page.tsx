@@ -1,4 +1,5 @@
 import { PageHero } from "@/components/marketing/PageHero";
+import { Breadcrumbs } from "@/components/marketing/Breadcrumbs";
 import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { FeatureGrid } from "@/components/marketing/FeatureGrid";
@@ -28,6 +29,7 @@ export const metadata = {
 export default function FeaturesPage() {
   return (
     <>
+      <Breadcrumbs items={[{ name: "機能", url: "/features" }]} />
       <PageHero
         badge="FEATURES"
         title="記録と信頼を、一つのプラットフォームで。"

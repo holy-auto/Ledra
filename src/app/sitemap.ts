@@ -39,7 +39,10 @@ const staticPages: Array<{ path: string; changeFrequency: Freq; priority: number
   { path: "/features/inventory", changeFrequency: "monthly", priority: 0.7 },
   { path: "/features/thickness", changeFrequency: "monthly", priority: 0.7 },
 
-  // Decision support
+  // Brand & decision support
+  { path: "/story", changeFrequency: "monthly", priority: 0.7 },
+  { path: "/vision", changeFrequency: "monthly", priority: 0.7 },
+  { path: "/honest-comparison", changeFrequency: "monthly", priority: 0.7 },
   { path: "/faq", changeFrequency: "monthly", priority: 0.7 },
   { path: "/roi", changeFrequency: "monthly", priority: 0.7 },
   { path: "/demo", changeFrequency: "monthly", priority: 0.7 },
@@ -54,7 +57,7 @@ const staticPages: Array<{ path: string; changeFrequency: Freq; priority: number
   // Trust & resources
   { path: "/security", changeFrequency: "monthly", priority: 0.6 },
   { path: "/resources", changeFrequency: "monthly", priority: 0.6 },
-  { path: "/poc", changeFrequency: "monthly", priority: 0.6 },
+  { path: "/poc-program", changeFrequency: "monthly", priority: 0.7 },
   { path: "/verify", changeFrequency: "monthly", priority: 0.6 },
   { path: "/support", changeFrequency: "monthly", priority: 0.5 },
   { path: "/financial-transparency", changeFrequency: "monthly", priority: 0.5 },

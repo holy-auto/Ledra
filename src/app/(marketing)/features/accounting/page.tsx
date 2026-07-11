@@ -1,4 +1,5 @@
 import { PageHero } from "@/components/marketing/PageHero";
+import { Breadcrumbs } from "@/components/marketing/Breadcrumbs";
 import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { FeatureGrid } from "@/components/marketing/FeatureGrid";
@@ -79,6 +80,12 @@ const capabilityCards = [
 export default function AccountingPage() {
   return (
     <>
+      <Breadcrumbs
+        items={[
+          { name: "機能", url: "/features" },
+          { name: "会計連携", url: "/features/accounting" },
+        ]}
+      />
       <PageHero
         badge="FEATURE › 会計連携"
         title="請求のあとの「もう一回入力」を、なくす。"

@@ -1,4 +1,5 @@
 import { PageHero } from "@/components/marketing/PageHero";
+import { Breadcrumbs } from "@/components/marketing/Breadcrumbs";
 import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { FeatureGrid } from "@/components/marketing/FeatureGrid";
@@ -109,6 +110,12 @@ const usecases = [
 export default function CustomerPortalPage() {
   return (
     <>
+      <Breadcrumbs
+        items={[
+          { name: "機能", url: "/features" },
+          { name: "顧客ポータル", url: "/features/customer-portal" },
+        ]}
+      />
       <PageHero
         badge="FEATURE › 顧客ポータル"
         title="顧客が、いつでも証明書を見られる。"

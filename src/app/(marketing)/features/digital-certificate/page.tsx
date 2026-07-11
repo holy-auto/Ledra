@@ -1,4 +1,5 @@
 import { PageHero } from "@/components/marketing/PageHero";
+import { Breadcrumbs } from "@/components/marketing/Breadcrumbs";
 import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { FeatureGrid } from "@/components/marketing/FeatureGrid";
@@ -117,6 +118,12 @@ const lifecycleStages = [
 export default function DigitalCertificatePage() {
   return (
     <>
+      <Breadcrumbs
+        items={[
+          { name: "機能", url: "/features" },
+          { name: "デジタル施工証明書", url: "/features/digital-certificate" },
+        ]}
+      />
       <PageHero
         badge="FEATURE › デジタル施工証明書"
         title="施工の記録を、改ざんできない証明書に。"

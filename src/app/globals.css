@@ -795,6 +795,56 @@ body {
 }
 
 /* ══════════════════════════════════════════════════
+   Scroll-telling — 「1台の車の一生」タイムライン
+   CSS Scroll-Driven Animations (animation-timeline: view())
+   のみで実装。JS 不要・メインスレッド負荷ゼロ。
+   非対応ブラウザ・reduced-motion では @supports/@media の
+   外側にあるためアニメーションが一切適用されず、常に
+   完全表示の静的な状態にフォールバックする。
+   ══════════════════════════════════════════════════ */
+.car-journey-stage {
+  opacity: 1;
+  transform: none;
+}
+.car-journey-line {
+  transform: scaleX(1);
+}
+
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    /* animation-duration は scroll/view タイムラインでは進行度の基準に
+       使われないが、省略すると 0s 扱いになり実装によってはアニメーション
+       自体が発火しない（＝opacity:0 のまま固まる）ため、明示的に指定する。 */
+    .car-journey-stage {
+      opacity: 0;
+      transform: translateY(28px) scale(0.98);
+      animation: car-journey-reveal 1ms linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 35%;
+    }
+    .car-journey-line {
+      transform-origin: left center;
+      transform: scaleX(0);
+      animation: car-journey-line-grow 1ms linear both;
+      animation-timeline: view();
+      animation-range: entry 10% cover 90%;
+    }
+  }
+}
+
+@keyframes car-journey-reveal {
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes car-journey-line-grow {
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* ══════════════════════════════════════════════════
    Component Recipes — Marketing (Dark)
    ══════════════════════════════════════════════════ */
 @layer components {
