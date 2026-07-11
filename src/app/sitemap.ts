@@ -41,6 +41,7 @@ const staticPages: Array<{ path: string; changeFrequency: Freq; priority: number
 
   // Brand & decision support
   { path: "/story", changeFrequency: "monthly", priority: 0.7 },
+  { path: "/vision", changeFrequency: "monthly", priority: 0.7 },
   { path: "/honest-comparison", changeFrequency: "monthly", priority: 0.7 },
   { path: "/faq", changeFrequency: "monthly", priority: 0.7 },
   { path: "/roi", changeFrequency: "monthly", priority: 0.7 },

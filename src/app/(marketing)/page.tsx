@@ -2,8 +2,6 @@ import { Hero } from "@/components/marketing/Hero";
 import { CTAButton } from "@/components/marketing/CTAButton";
 import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
-import { FeatureGrid } from "@/components/marketing/FeatureGrid";
-import { FeatureCard } from "@/components/marketing/FeatureCard";
 import { PricingCards } from "@/components/marketing/PricingCards";
 import { PricingCard } from "@/components/marketing/PricingCard";
 import { FAQList } from "@/components/marketing/FAQList";
@@ -27,6 +25,8 @@ import { FeatureCatalogSection } from "@/components/marketing/FeatureCatalogSect
 import { IndustryEntries } from "@/components/marketing/IndustryEntries";
 import { CommunityEducationSection } from "@/components/marketing/CommunityEducationSection";
 import { QuickStartReliabilityBar } from "@/components/marketing/QuickStartReliabilityBar";
+import { CarJourneySection } from "@/components/marketing/CarJourneySection";
+import { ProductTourSection } from "@/components/marketing/ProductTourSection";
 import { PLANS } from "@/lib/marketing/pricing";
 import Link from "next/link";
 import { Suspense } from "react";
@@ -63,6 +63,9 @@ export default async function HomePage() {
 
       {/* Ledra でできること — 旧: 課題提起 / 解決 / 流れ / エコシステム / 証明書プレビュー を統合 */}
       <WhatYouCanDoSection />
+
+      {/* インタラクティブ・プロダクトツアー — 登録不要でその場で操作を体験 */}
+      <ProductTourSection />
 
       {/* すべて実数 — 本番DBの実数を隠さず見せる（履歴に嘘をつかせないブランドの幹） */}
       <Suspense>
@@ -204,45 +207,8 @@ export default async function HomePage() {
         </ScrollReveal>
       </Section>
 
-      {/* ユースケース */}
-      <Section bg="alt" id="compare">
-        <SectionHeading title="ご利用シーン" subtitle="さまざまな場面でLedraをご活用いただけます" />
-        <FeatureGrid>
-          <FeatureCard
-            variant="bordered"
-            delay={0}
-            icon={
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6">
-                <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" />
-              </svg>
-            }
-            title="コーティング施工後の証明"
-            description="ボディコーティングやガラスコーティングの施工完了後に、施工内容・使用材料・保証期間を記載した証明書を発行。"
-          />
-          <FeatureCard
-            variant="bordered"
-            delay={100}
-            icon={
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6">
-                <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-              </svg>
-            }
-            title="保険査定時のエビデンス"
-            description="保険会社が車両の施工履歴を確認する際のエビデンスとして活用。デジタルデータで迅速な査定をサポート。"
-          />
-          <FeatureCard
-            variant="bordered"
-            delay={200}
-            icon={
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6">
-                <path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-              </svg>
-            }
-            title="中古車売買時の付加価値"
-            description="施工証明書を車両の付加価値として提示。買い手への信頼感醸成と、中古車の適正評価に貢献します。"
-          />
-        </FeatureGrid>
-      </Section>
+      {/* ユースケース — 「1台の車の一生」スクロールテリング */}
+      <CarJourneySection />
 
       {/* 業態別 LP 導線 */}
       <IndustryEntries />
@@ -280,6 +246,14 @@ export default async function HomePage() {
         />
         <Container className="relative py-24 md:py-32">
           <NarrativeTypewriter />
+          <div className="mt-10 text-center">
+            <Link
+              href="/vision"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              2030年の未来予想図を見る →
+            </Link>
+          </div>
         </Container>
       </section>
 

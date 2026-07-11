@@ -58,6 +58,7 @@ export const footerNavGroups = [
     heading: "リソース",
     links: [
       { label: "創業ストーリー", href: "/story" },
+      { label: "未来予想図", href: "/vision" },
       { label: "透明性ダッシュボード", href: "/financial-transparency" },
       { label: "資料ダウンロード", href: "/resources" },
       { label: "ROIシミュレーター", href: "/roi" },
