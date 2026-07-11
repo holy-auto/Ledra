@@ -2,6 +2,7 @@ import { Container } from "./Container";
 import { CTAButton } from "./CTAButton";
 import { HeroTypewriter } from "./HeroTypewriter";
 import { ScreenshotFrame } from "./ScreenshotFrame";
+import { Hero3DCertificate } from "./hero3d/Hero3DCertificate";
 
 const TITLE_LINE_1 = ["現場の", "技術を、"];
 const TITLE_LINE_2 = ["業界の", "力へ。"];
@@ -122,16 +123,19 @@ export function Hero() {
             <div className="relative lg:-mr-[10vw] xl:-mr-[18vw]">
               {/* Decorative glow behind frame */}
               <div className="absolute -inset-6 bg-gradient-to-br from-blue-500/20 via-violet-500/10 to-transparent blur-2xl rounded-3xl pointer-events-none" />
-              <ScreenshotFrame
-                src="/marketing/screenshots/01-admin-dashboard.png"
-                alt="Ledra 管理ダッシュボード"
-                url="admin.ledra.app/dashboard"
-                priority
-                sizes="(min-width: 1024px) 65vw, 100vw"
-                className="relative"
-              >
-                <HeroDashboardMock />
-              </ScreenshotFrame>
+              {/* 対応デバイスでは 3D「浮かぶ証明書」へクロスフェード。スクショが LCP を担う */}
+              <Hero3DCertificate>
+                <ScreenshotFrame
+                  src="/marketing/screenshots/01-admin-dashboard.png"
+                  alt="Ledra 管理ダッシュボード"
+                  url="admin.ledra.app/dashboard"
+                  priority
+                  sizes="(min-width: 1024px) 65vw, 100vw"
+                  className="relative"
+                >
+                  <HeroDashboardMock />
+                </ScreenshotFrame>
+              </Hero3DCertificate>
 
               {/* Floating sub-card */}
               <div className="hidden md:block absolute -bottom-6 -left-6 w-[44%] max-w-[260px] rounded-xl border border-white/[0.1] bg-[#0a0f1a]/95 backdrop-blur-md p-3 shadow-[0_20px_40px_rgba(0,0,0,0.5)]">
