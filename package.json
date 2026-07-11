@@ -57,6 +57,7 @@
     "@peculiar/webcrypto": "^1.7.1",
     "@peculiar/x509": "^2.0.0",
     "@react-pdf/renderer": "^4.5.1",
+    "@react-three/fiber": "^9.6.1",
     "@remotion/cli": "^4.0.486",
     "@sentry/nextjs": "^10.63.0",
     "@supabase/ssr": "^0.12.0",
@@ -93,6 +94,7 @@
     "stripe": "^20.4.1",
     "svix": "^1.96.1",
     "swr": "^2.4.2",
+    "three": "^0.185.1",
     "viem": "^2.54.6",
     "zod": "^4.4.3"
   },
@@ -110,6 +112,7 @@
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "^0.185.1",
     "@vitejs/plugin-react": "^6.0.3",
     "@vitest/coverage-v8": "^4.1.10",
     "babel-plugin-react-compiler": "^1.0.0",
