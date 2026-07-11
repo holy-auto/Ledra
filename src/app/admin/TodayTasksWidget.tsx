@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { type TaskTile } from "@/lib/admin/todayTasks";
-import { fetchTodaySignals, tilesFromSignals } from "@/lib/admin/fetchTodaySignals";
+import { fetchTodaySignals, tilesFromSignals, fetchStoredDailyDigest } from "@/lib/admin/fetchTodaySignals";
 import { buildDeterministicDigest } from "@/lib/admin/dailyDigest";
 import TodayTasksScopeToggle from "./TodayTasksScopeToggle";
 
@@ -81,8 +81,12 @@ export default async function TodayTasksWidget({
 }) {
   const effectiveScope = scope === "mine" && currentUserId ? "mine" : "tenant";
 
-  // データ取得は fetchTodaySignals に集約 (日次サマリ・将来の cron と共有)。
-  const signals = await fetchTodaySignals(tenantId, { scope, currentUserId });
+  // データ取得は fetchTodaySignals に集約 (日次サマリ・cron と共有)。
+  // 保存済み AI サマリ (日次 cron 生成) は並列で読む。
+  const [signals, storedDigest] = await Promise.all([
+    fetchTodaySignals(tenantId, { scope, currentUserId }),
+    fetchStoredDailyDigest(tenantId),
+  ]);
   const tiles = tilesFromSignals(signals);
 
   const showToggle = currentUserId != null;
@@ -110,10 +114,10 @@ export default async function TodayTasksWidget({
     );
   }
 
-  // 「今日のまとめ」(AIマネージャー): タイル (決定論・SQL由来) を 1 文に要約。
-  // 描画時は AI を呼ばず決定論版を出す (コスト安全)。AI 整形版は日次 cron 実装
-  // (Phase 2-B) で保存・差し替え予定。
-  const digest = buildDeterministicDigest(tiles);
+  // 「今日のまとめ」(AIマネージャー): 日次 cron が保存した AI 整形版があれば
+  // それを、無ければ描画時に決定論版 (AIコストなし) を出す。数値はいずれも
+  // タイル (決定論・SQL由来) が源。
+  const digest = storedDigest ?? buildDeterministicDigest(tiles);
 
   return (
     <div>

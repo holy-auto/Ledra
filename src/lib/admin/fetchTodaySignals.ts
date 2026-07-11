@@ -92,3 +92,23 @@ export function tilesFromSignals(signals: TodaySignals): TaskTile[] {
     now: signals.now,
   });
 }
+
+/**
+ * 日次 cron が保存した当日の「今日のまとめ」を読む。無ければ null。
+ * ダッシュボードはこれを優先し、無ければ描画時に決定論版へフォールバックする
+ * (描画のたびに AI を呼ばない)。※保存値は cron 実行時点のスナップショット。
+ */
+export async function fetchStoredDailyDigest(
+  tenantId: string,
+  now?: Date,
+): Promise<{ text: string; ai: boolean } | null> {
+  const { admin } = createTenantScopedAdmin(tenantId);
+  const dateStr = (now ?? new Date()).toISOString().slice(0, 10);
+  const { data } = await admin
+    .from("tenant_daily_digests")
+    .select("text, ai")
+    .eq("tenant_id", tenantId)
+    .eq("digest_date", dateStr)
+    .maybeSingle<{ text: string; ai: boolean }>();
+  return data ? { text: data.text, ai: data.ai } : null;
+}

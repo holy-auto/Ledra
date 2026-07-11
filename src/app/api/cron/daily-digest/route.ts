@@ -1,0 +1,115 @@
+import { NextRequest } from "next/server";
+import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { verifyCronRequest } from "@/lib/cronAuth";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { withCronLock } from "@/lib/cron/lock";
+import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
+import { fetchTodaySignals, tilesFromSignals } from "@/lib/admin/fetchTodaySignals";
+import { generateDailyDigest } from "@/lib/admin/dailyDigest";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
+import { logger } from "@/lib/logger";
+
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
+/**
+ * Daily Digest Cron (店長向け「今日のまとめ」/ AIマネージャー)
+ * ---------------------------------------------------------
+ * 毎朝、AI 有効テナントごとに deriveTodayTasks のタイル (件数=SQL由来の事実) を
+ * AI で自然文ブリーフィングに整形し、tenant_daily_digests に当日 1 行 upsert する。
+ * ダッシュボードはこの行を読み、無ければ描画時に決定論版へフォールバックするため
+ * 描画のたびに AI を呼ばずに済む (コスト安全)。
+ *
+ * gating: loadAiAutomationSettings(tenantId).enabled が
+ *   「AI マスタースイッチ ON かつ月次コストキャップ未超過」を表す。false のテナントは
+ *   スキップ (AI 生成しない = 決定論版のまま)。AI 使用量は startAiRouteUsage 経由で
+ *   ai_usage_logs 記録 + コストキャップ加算される。
+ *
+ * ponytail: 全 is_active テナントを直列処理する。現状 (〜数百店) は maxDuration=300
+ *   内で十分。それを超える規模になったら QStash でテナント分割 fan-out に切り替える。
+ */
+export async function GET(req: NextRequest) {
+  const auth = verifyCronRequest(req);
+  if (!auth.authorized) return apiUnauthorized(auth.error ?? "unauthorized");
+
+  try {
+    const admin = createServiceRoleAdmin("cron daily-digest — per-tenant morning briefing generation");
+
+    const locked = await withCronLock(admin, "daily-digest", 600, async () => {
+      const now = new Date();
+      const digestDate = now.toISOString().slice(0, 10);
+
+      const { data: tenants, error: tErr } = await admin
+        .from("tenants")
+        .select("id, name")
+        .eq("is_active", true)
+        .returns<{ id: string; name: string | null }[]>();
+      if (tErr) throw new Error(`tenants query failed: ${tErr.message}`);
+
+      let aiGenerated = 0;
+      let skippedNoAi = 0;
+      let skippedNoTasks = 0;
+      let failed = 0;
+
+      for (const tenant of tenants ?? []) {
+        try {
+          const settings = await loadAiAutomationSettings(tenant.id);
+          // AI 無効 / コストキャップ超過テナントは AI 生成しない (決定論版のまま)。
+          if (!settings.enabled) {
+            skippedNoAi++;
+            continue;
+          }
+
+          const signals = await fetchTodaySignals(tenant.id, { now });
+          const tiles = tilesFromSignals(signals);
+          // 急ぎタスクが無い日は保存しない (ダッシュボードは決定論の空メッセージを出す)。
+          if (tiles.length === 0) {
+            skippedNoTasks++;
+            continue;
+          }
+
+          const usage = startAiRouteUsage("/api/cron/daily-digest");
+          const digest = await generateDailyDigest(tiles, { tenantName: tenant.name });
+          // ai=false は AI が実際には走らなかった (キー未設定/失敗) ケース。
+          usage.record({ tenantId: tenant.id, outcome: digest.ai ? "ok" : "ai_disabled" });
+
+          const { error: upErr } = await admin.from("tenant_daily_digests").upsert(
+            {
+              tenant_id: tenant.id,
+              digest_date: digestDate,
+              text: digest.text,
+              ai: digest.ai,
+              updated_at: now.toISOString(),
+            },
+            { onConflict: "tenant_id,digest_date" },
+          );
+          if (upErr) throw new Error(upErr.message);
+
+          if (digest.ai) aiGenerated++;
+        } catch (e) {
+          failed++;
+          logger.warn("daily digest generation failed", {
+            tenantId: tenant.id,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
+
+      return {
+        date: digestDate,
+        tenants: (tenants ?? []).length,
+        ai_generated: aiGenerated,
+        skipped_no_ai: skippedNoAi,
+        skipped_no_tasks: skippedNoTasks,
+        failed,
+      };
+    });
+
+    if (!locked.acquired) {
+      return apiJson({ ok: true, skipped: "lock_not_acquired" });
+    }
+    return apiJson({ ok: true, ...locked.value });
+  } catch (e) {
+    return apiInternalError(e, "cron daily-digest");
+  }
+}
