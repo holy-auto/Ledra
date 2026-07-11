@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { drawCertificateTexture, CARD_W, CARD_H } from "./certificateTexture";
@@ -46,17 +46,21 @@ function CertificateCard({ pointer }: { pointer: React.MutableRefObject<{ x: num
     t.colorSpace = THREE.SRGBColorSpace;
     return t;
   }, []);
+  // R3F は map= で渡したテクスチャを自動 dispose しない。アンマウント時に GPU メモリを解放。
+  useEffect(() => () => texture.dispose(), [texture]);
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock }, delta) => {
     const g = group.current;
     if (!g) return;
     const t = clock.getElapsedTime();
     // 浮遊 (bob) + 緩い自転 + ポインタ視差 (lerp)
+    // イージング係数はフレームレート非依存化（60fps で従来 0.06/frame 相当）。
+    const ease = 1 - Math.exp(-3.7 * delta);
     g.position.y = Math.sin(t * 0.7) * 0.12;
     const targetRotY = Math.sin(t * 0.35) * 0.22 + pointer.current.x * 0.18;
     const targetRotX = Math.sin(t * 0.5) * 0.05 - pointer.current.y * 0.12;
-    g.rotation.y += (targetRotY - g.rotation.y) * 0.06;
-    g.rotation.x += (targetRotX - g.rotation.x) * 0.06;
+    g.rotation.y += (targetRotY - g.rotation.y) * ease;
+    g.rotation.x += (targetRotX - g.rotation.x) * ease;
   });
 
   const aspect = CARD_W / CARD_H;
@@ -204,9 +208,21 @@ function ChainBlocks() {
   );
 }
 
-export default function CertificateScene({ className = "" }: { className?: string }) {
+export default function CertificateScene({
+  className = "",
+  active = true,
+  onReady,
+}: {
+  className?: string;
+  /** ビューポート内か。false の間は frameloop を止めて GPU/CPU を消費しない。 */
+  active?: boolean;
+  /** WebGL コンテキスト生成が成功し最初の描画が可能になった時に呼ぶ。 */
+  onReady?: () => void;
+}) {
   const pointer = useRef({ x: 0, y: 0 });
   const glow = useMemo(() => makeGlowTexture(), []);
+  // グローテクスチャもアンマウント時に解放（map= 渡しは自動 dispose されない）。
+  useEffect(() => () => glow.dispose(), [glow]);
 
   return (
     <div
@@ -222,10 +238,13 @@ export default function CertificateScene({ className = "" }: { className?: strin
       }}
     >
       <Canvas
+        // ビューポート外では "never" にして rAF レンダーを完全停止（スクロール後の電池/GPU 浪費を防ぐ）。
+        frameloop={active ? "always" : "never"}
         dpr={[1, 1.75]}
         camera={{ position: [0, 0, 5.4], fov: 40 }}
         gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
         style={{ background: "transparent" }}
+        onCreated={() => onReady?.()}
         aria-hidden
       >
         <ambientLight intensity={0.75} />
