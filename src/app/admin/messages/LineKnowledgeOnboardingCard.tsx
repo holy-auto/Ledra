@@ -7,22 +7,21 @@ import { ONBOARDING_QUESTIONS, buildKnowledgeEntries } from "./lineKnowledgeOnbo
 
 const API = "/api/admin/settings/line-knowledge";
 
-// ponytail: 「あとで」の記憶はブラウザ単位 (localStorage)。別端末では再表示されるが、
-// ナレッジを1件でも登録すれば全端末で出なくなるので許容。テナント単位で厳密に
-// 記憶したくなったら tenant_ai_automation_settings 側にフラグを持たせる。
-const DISMISS_KEY = "ledra:line-knowledge-onboarding:dismissed";
+// ponytail: 「あとで」の記憶はブラウザ単位 (localStorage、既存の ledra_ プレフィックス
+// 規約に合わせる)。別端末では再表示されるが、ナレッジを1件でも登録すればサーバー側
+// ゲート (messages/page.tsx) が全端末で非表示にするので許容。
+const DISMISS_KEY = "ledra_line_knowledge_onboarding_dismissed";
 
 /**
  * LINE ナレッジの初回学習カード (メッセージ受信箱の上部)。
  *
- * ナレッジ未登録の管理者が受信箱を開いたとき、固定質問 (営業時間・住所・
- * 電話番号・代車など) に答えるだけで最低限の学習を済ませられる。
- * 完了後・スキップ後の追加学習は 店舗設定 > LINEナレッジ に誘導する。
- *
- * 表示条件: owner/admin + ナレッジ 0 件 + テーブル作成済み + 未スキップ。
+ * 表示するかどうか (編集権限 + ナレッジ 0 件) はサーバー側 (messages/page.tsx) が
+ * 判定済み。ここでは「あとで」のローカル記憶だけを見る。固定質問 (営業時間・住所・
+ * 電話番号・代車など) に答えるだけで最低限の学習を済ませ、以降の追加学習は
+ * 店舗設定 > LINEナレッジ に誘導する。
  */
 export default function LineKnowledgeOnboardingCard() {
-  // idle=判定中 (何も出さない) / form=質問フォーム / done=完了メッセージ / hidden=非表示
+  // idle=判定中 / form=質問フォーム / done=完了メッセージ / hidden=非表示 (あとで)
   const [phase, setPhase] = useState<"idle" | "form" | "done" | "hidden">("idle");
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -30,30 +29,11 @@ export default function LineKnowledgeOnboardingCard() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        if (typeof window !== "undefined" && window.localStorage.getItem(DISMISS_KEY)) {
-          if (!cancelled) setPhase("hidden");
-          return;
-        }
-        const res = await fetch(API, { cache: "no-store" });
-        const j = await parseJsonSafe(res);
-        // 登録済み / テーブル未作成 / 読込失敗 / 権限なし (staff は role 無し) は出さない。
-        const show =
-          res.ok &&
-          Array.isArray(j?.entries) &&
-          j.entries.length === 0 &&
-          !j?.warning &&
-          (j?.role === "owner" || j?.role === "admin");
-        if (!cancelled) setPhase(show ? "form" : "hidden");
-      } catch {
-        if (!cancelled) setPhase("hidden");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    try {
+      setPhase(window.localStorage.getItem(DISMISS_KEY) ? "hidden" : "form");
+    } catch {
+      setPhase("form");
+    }
   }, []);
 
   function dismiss() {
@@ -65,35 +45,53 @@ export default function LineKnowledgeOnboardingCard() {
     setPhase("hidden");
   }
 
+  /**
+   * 回答済みの質問を 1 件ずつ登録する。成功した回答は answers から取り除くため、
+   * 一部失敗後のリトライでは残り (失敗分) だけが再送され、重複登録にならない。
+   * 全件成功したときだけ完了画面に進む — 部分失敗を成功として見せない。
+   *
+   * ponytail: POST は既存 API を 1 件ずつ直列で叩く (最大 6 リクエスト)。初回
+   * オンボーディングで一度きりなので許容。頻度が上がるなら entries 配列を受ける
+   * バッチ POST を API 側に足す。
+   */
   async function handleSave() {
     const entries = buildKnowledgeEntries(answers);
     if (entries.length === 0) return;
     setSaving(true);
     setError(null);
-    try {
-      let saved = 0;
-      for (const entry of entries) {
+    const failedTitles: string[] = [];
+    let saved = 0;
+    for (const q of ONBOARDING_QUESTIONS) {
+      const content = (answers[q.key] ?? "").trim();
+      if (!content) continue;
+      try {
         const res = await fetch(API, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(entry),
+          body: JSON.stringify({ title: q.title, content }),
         });
         if (res.ok) {
           saved += 1;
+          setAnswers((prev) => {
+            const next = { ...prev };
+            delete next[q.key];
+            return next;
+          });
         } else {
           const j = await parseJsonSafe(res);
-          setError((j?.message as string) || "一部のナレッジを保存できませんでした。");
+          failedTitles.push(`${q.title}${j?.message ? ` (${j.message})` : ""}`);
         }
+      } catch {
+        failedTitles.push(q.title);
       }
-      setSavedCount(saved);
-      if (saved > 0) {
-        setPhase("done");
-      }
-    } catch {
-      setError("保存に失敗しました。通信環境をご確認ください。");
-    } finally {
-      setSaving(false);
     }
+    setSavedCount((prev) => prev + saved);
+    if (failedTitles.length === 0) {
+      setPhase("done");
+    } else {
+      setError(`保存できなかった項目があります: ${failedTitles.join(" / ")}。もう一度お試しください。`);
+    }
+    setSaving(false);
   }
 
   if (phase === "idle" || phase === "hidden") return null;
@@ -103,9 +101,8 @@ export default function LineKnowledgeOnboardingCard() {
       <section className="glass-card p-5">
         <div className="text-base font-semibold text-primary">✅ {savedCount} 件のナレッジを学習させました</div>
         <p className="mt-1 text-xs text-muted">
-          追加で学習させたい内容 (メニュー・料金方針・よくある質問など) は、店舗設定 &gt; LINEナレッジ
-          からいつでも登録できます。自動返信を始めるには AI 自動入力設定で「受信メッセージに店舗ナレッジで自動返信」を
-          ON にしてください。
+          追加の学習はいつでも 店舗設定 &gt; LINEナレッジ から。自動返信を始めるには AI 自動入力設定を ON
+          にしてください。
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Link href="/admin/settings/line-knowledge" className="btn-secondary">
@@ -147,6 +144,7 @@ export default function LineKnowledgeOnboardingCard() {
       </div>
 
       {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+      {savedCount > 0 && !error && <p className="mt-2 text-xs text-muted">{savedCount} 件は保存済みです。</p>}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <button type="button" className="btn-primary" disabled={saving || answeredCount === 0} onClick={handleSave}>
@@ -155,7 +153,6 @@ export default function LineKnowledgeOnboardingCard() {
         <button type="button" className="btn-secondary" disabled={saving} onClick={dismiss}>
           あとで (設定から登録する)
         </button>
-        <span className="text-xs text-muted">あとからは 店舗設定 &gt; LINEナレッジ で登録できます。</span>
       </div>
     </section>
   );

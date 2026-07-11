@@ -8,7 +8,6 @@ import { fetcher } from "@/lib/swr";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import MessageBubbleBody from "@/app/admin/messages/MessageBubbleBody";
 import { ExtractedCandidateCard, type ExtractedResult } from "@/components/messages/ExtractedCandidateCard";
-import LineKnowledgeOnboardingCard from "./LineKnowledgeOnboardingCard";
 
 /**
  * 横断的な LINE 会話受信箱 (/admin/messages)。
@@ -264,9 +263,6 @@ export default function MessagesInboxClient() {
         activeTab={unreadOnly ? "unread" : "all"}
         onTabSelect={(k) => setUnreadOnly(k === "unread")}
       />
-
-      {/* ナレッジ未登録の管理者向け: 固定質問で最低限の学習を済ませる初回カード */}
-      <LineKnowledgeOnboardingCard />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-[320px_1fr]">
         {/* ── 左: スレッド一覧 ── */}
