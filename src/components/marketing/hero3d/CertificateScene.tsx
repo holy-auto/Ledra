@@ -9,8 +9,7 @@ import { drawCertificateTexture, CARD_W, CARD_H } from "./certificateTexture";
  * Hero シグネチャー 3D: 「浮かぶ証明書」。
  *
  * 構成: ガラス質の証明書カードが浮遊し、下から立ち上る光の粒（施工記録）が
- * カードを経てブロックチェーン（奥のブロック列）へ刻まれていく。
- * Gold のパルスが「アンカリングの瞬間」。ポインタで緩やかに視差。
+ * カードへ吸い込まれていく。ポインタで緩やかに視差。
  *
  * パフォーマンス方針:
  * - ポストプロセスなし。発光は加算ブレンドのスプライトで擬似的に。
@@ -18,7 +17,6 @@ import { drawCertificateTexture, CARD_W, CARD_H } from "./certificateTexture";
  * - 表示可否は heroWebglGate で事前判定済み（このファイルは対応機でのみロードされる）。
  */
 
-const GOLD = new THREE.Color("#c9a55c");
 const BLUE = new THREE.Color("#4d9fff");
 const VIOLET = new THREE.Color("#a78bfa");
 
@@ -158,56 +156,6 @@ function RecordParticles({ map }: { map: THREE.Texture }) {
   );
 }
 
-const BLOCK_COUNT = 5;
-const ANCHOR_CYCLE = 4; // 秒 / ブロック
-
-/** 奥へ連なるブロックチェーン。周期的に 1 ブロックが Gold に灯る = アンカリング */
-function ChainBlocks() {
-  const mats = useRef<THREE.MeshStandardMaterial[]>([]);
-  useFrame(({ clock }) => {
-    const t = clock.getElapsedTime();
-    const active = Math.floor(t / ANCHOR_CYCLE) % BLOCK_COUNT;
-    const phase = (t % ANCHOR_CYCLE) / ANCHOR_CYCLE; // 0→1
-    const pulse = Math.max(0, Math.sin(Math.min(phase * 2, 1) * Math.PI)); // 前半で点灯→減衰
-    mats.current.forEach((m, i) => {
-      if (!m) return;
-      const on = i === active ? pulse : 0;
-      m.emissive.copy(GOLD);
-      m.emissiveIntensity = 0.06 + on * 0.9;
-      m.opacity = 0.65 + on * 0.3;
-    });
-  });
-
-  return (
-    <group position={[2.35, -1.5, -1.6]} rotation={[0.35, -0.5, 0]}>
-      {Array.from({ length: BLOCK_COUNT }, (_, i) => (
-        <group key={i} position={[i * 0.78, i * 0.1, -i * 0.55]}>
-          <mesh>
-            <boxGeometry args={[0.5, 0.5, 0.5]} />
-            <meshStandardMaterial
-              ref={(m) => {
-                if (m) mats.current[i] = m;
-              }}
-              color="#22355c"
-              transparent
-              opacity={0.65}
-              metalness={0.4}
-              roughness={0.5}
-            />
-          </mesh>
-          {/* リンク */}
-          {i < BLOCK_COUNT - 1 && (
-            <mesh position={[0.39, 0.05, -0.27]} rotation={[0, 0.6, 0.12]}>
-              <cylinderGeometry args={[0.012, 0.012, 0.55]} />
-              <meshBasicMaterial color={GOLD} transparent opacity={0.35} />
-            </mesh>
-          )}
-        </group>
-      ))}
-    </group>
-  );
-}
-
 export default function CertificateScene({
   className = "",
   active = true,
@@ -255,7 +203,6 @@ export default function CertificateScene({
         <BackGlow map={glow} />
         <RecordParticles map={glow} />
         <CertificateCard pointer={pointer} />
-        <ChainBlocks />
       </Canvas>
     </div>
   );
