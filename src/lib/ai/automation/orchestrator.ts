@@ -57,6 +57,15 @@ export function shouldAutoReplyRoughEstimate(settings: AiAutomationSettings): bo
   return resolveAutoAction(settings, "quote.auto_reply_rough_estimate");
 }
 
+/**
+ * 受信メッセージ (一般質問) に店舗ナレッジで LINE 自動返信してよいか。
+ * 顧客へ外向きにテキストを送るが、回答ソースはテナント管理者が登録した
+ * ナレッジのみ (AI がナレッジ外の内容を創作しないことを生成側で強制する)。
+ */
+export function shouldAutoReplyKnowledge(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "inbound_message.auto_reply_knowledge");
+}
+
 export interface InboundExtractionLike {
   intent?: string | null;
   confidence?: number | null;

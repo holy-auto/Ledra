@@ -124,24 +124,31 @@ export function buildRoughEstimateMessage(input: {
   ].join("\n");
 }
 
-/** 受信メッセージに概算見積りを LINE で自動返信する。失敗しても投げない。 */
-export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEstimateParams): Promise<void> {
+/**
+ * 受信メッセージに概算見積りを LINE で自動返信する。失敗しても投げない。
+ * 返り値は「このメッセージに返信を送ったか」— 呼び出し側 (inboundAuto) が
+ * ナレッジ自動返信との二重返信を防ぐために使う。
+ */
+export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEstimateParams): Promise<boolean> {
   const { tenantId, customerId } = params;
+  // 送信成功後に後続処理 (監査ログ等) が投げても「返信済み」を正しく報告する
+  // (catch で false を返すと呼び出し側の二重返信ガードが破れるため)。
+  let replied = false;
   try {
     const lineUserId = params.lineUserId?.trim();
-    if (!lineUserId) return; // push 返信先が無い (LINE 以外) なら何もしない
-    if (params.intent !== "inquiry_only" && params.intent !== "new_reservation") return;
+    if (!lineUserId) return false; // push 返信先が無い (LINE 以外) なら何もしない
+    if (params.intent !== "inquiry_only" && params.intent !== "new_reservation") return false;
 
     const settings = params.settings ?? (await loadAiAutomationSettings(tenantId));
-    if (!shouldAutoReplyRoughEstimate(settings)) return;
+    if (!shouldAutoReplyRoughEstimate(settings)) return false;
 
     const admin = createServiceRoleAdmin("AI auto-reply rough estimate — LINE webhook lacks auth session");
     const tenant =
       params.tenant ??
       (await admin.from("tenants").select("plan_tier, is_active").eq("id", tenantId).single()).data ??
       null;
-    if (!tenant || tenant.is_active === false) return;
-    if (!canUseFeature(normalizePlanTier(tenant.plan_tier), "ai_invoice_quote")) return;
+    if (!tenant || tenant.is_active === false) return false;
+    if (!canUseFeature(normalizePlanTier(tenant.plan_tier), "ai_invoice_quote")) return false;
 
     const service = params.service?.trim();
     const vehicleText = params.vehicleText?.trim();
@@ -149,13 +156,14 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
       // AI 抽出が施工内容/車両を取り損ねても、原文が価格問い合わせらしければ
       // 黙ってスキップせず不足情報を聞き返す。キーワードが無ければ従来通り何もしない
       // (無関係な問い合わせに車両情報を尋ね返すのを避けるため)。
-      if (!PRICE_INQUIRY_PATTERN.test(params.text ?? "")) return;
+      if (!PRICE_INQUIRY_PATTERN.test(params.text ?? "")) return false;
       const askBody = buildMissingInfoMessage({ hasService: !!service, hasVehicle: !!vehicleText });
       const asked = await sendCustomerLineText({ tenantId, customerId: customerId ?? null, lineUserId, body: askBody });
       if (!asked) {
         logger.warn("[quoteReplyAuto] missing-info reply delivery failed", { tenantId, lineUserId });
-        return;
+        return false;
       }
+      replied = true;
       await logAutoActionExecuted({
         tenantId,
         actionKey: "quote.auto_reply_rough_estimate",
@@ -169,7 +177,7 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
           has_vehicle: !!vehicleText,
         },
       });
-      return;
+      return true;
     }
 
     // 顧客名・登録車両は既知顧客のときだけ引く。未紐付けの新規客は車両テキストと
@@ -241,8 +249,9 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
     });
     if (!delivered) {
       usage.record({ tenantId, outcome: "error", meta: { auto: true, committed: false } });
-      return;
+      return false;
     }
+    replied = true;
 
     await logAutoActionExecuted({
       tenantId,
@@ -265,10 +274,12 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
       confidence: quote.confidence,
       meta: { auto: true, committed: true, ai: quote.ai, total_incl_tax: totalInclTax },
     });
+    return true;
   } catch (e) {
     logger.warn("[quoteReplyAuto] maybeAutoReplyRoughEstimate threw", {
       tenantId,
       err: e instanceof Error ? e.message : String(e),
     });
+    return replied;
   }
 }

@@ -408,6 +408,27 @@ export default async function AdminSettingsPage({
         </Link>
       </section>
 
+      {/* LINE ナレッジ (自動返信の学習) */}
+      <section className="glass-card p-5">
+        <div className="mb-4">
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">LINE KNOWLEDGE</div>
+          <div className="mt-1 text-base font-semibold text-primary inline-flex items-center gap-1.5">
+            LINEナレッジ (自動返信の学習)
+            <HelpTooltip>
+              営業時間・駐車場・対応可否・支払い方法など、LINE 公式アカウントの AI
+              自動返信に答えさせたい内容を登録します。AI は登録した内容だけを根拠に返信し、登録が無い質問は
+              スタッフ対応に残します。自動返信の ON/OFF は AI 自動入力の設定で切り替えます。
+            </HelpTooltip>
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            よくある質問と回答を登録して、LINE の AI 自動返信に「学習」させます。
+          </p>
+        </div>
+        <Link href="/admin/settings/line-knowledge" className="btn-secondary">
+          💬 LINEナレッジを開く →
+        </Link>
+      </section>
+
       {/* Security */}
       <section className="glass-card p-5">
         <div className="mb-4">
