@@ -130,6 +130,7 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 | `inquiry.auto_classify`                   | 問い合わせ受信時にカテゴリ/優先度/返信下書きを自動生成 (注釈・下書き。送信は人)                                | OFF  | ✅ 問い合わせ受信 (POST customer/inquiry)             |
 | `quote.auto_draft_from_inbound`           | LINE 等の価格問い合わせ受信時に車両+過去実績から見積書を draft で自動起票 (送付は人 / 既知顧客のみ / 壁3)      | OFF  | ✅ LINE webhook (inboundAuto→quoteDraftAuto)         |
 | `quote.auto_reply_rough_estimate`         | LINE の価格問い合わせ受信時に**概算金額をレンジ(〜幅)で顧客へ即返信** (詳細見積りは来店誘導 / 未紐付け客も対象) | OFF  | ✅ LINE webhook (inboundAuto→quoteReplyAuto)         |
+| `inbound_message.auto_reply_knowledge`    | LINE の一般質問 (営業時間・駐車場 等) 受信時に**店舗ナレッジのみを根拠に自動返信** (ナレッジ外は返信せずスタッフ対応に残す) | OFF  | ✅ LINE webhook (inboundAuto→knowledgeReplyAuto)     |
 
 > **certificate.auto_draft の配線**: 予約 (案件) が `completed` になった時点で
 > `maybeAutoDraftCertificateForReservation` (fire-and-forget) が走り、車両 + 過去事例から
@@ -188,6 +189,23 @@ AI を自動実行するか) を制御する。これが「利用者の入力頻
 > 書き (概算・要来店)** のみで、正式見積りは常に来店に回すため別枠の opt-in として許可している。
 > 純粋関数 `roughEstimateRange` / `buildRoughEstimateMessage` は `quoteReplyAuto.ts` に切り出し、
 > 単体テスト済み (`src/lib/ai/automation/__tests__/quoteReplyAuto.test.ts`)。
+
+> **inbound_message.auto_reply_knowledge の配線 (LINE ナレッジ自動返信)**:
+> テナントが「AI に学習させたい」内容 (営業時間・定休日・駐車場・対応可否・支払い方法 等) を
+> `/admin/settings/line-knowledge` で `tenant_line_knowledge` テーブルに登録する
+> (CRUD: `/api/admin/settings/line-knowledge`、編集は owner/admin のみ / 上限 100 件)。
+> LINE 受信時は `maybeAutoProcessInboundMessage` の末尾で `maybeAutoReplyKnowledge`
+> (`knowledgeReplyAuto.ts`) が走り、`generateKnowledgeReply` (`knowledgeReply.ts`) が
+> **登録ナレッジのみを根拠に** 返信文を生成して LINE へ push する (`sendCustomerLineText`)。
+>
+> 安全ガード: opt-in (既定 OFF) + Standard 以上 (`ai_inbound_extract`) / AI が
+> 「ナレッジのみで回答可能」(can_answer) と判断し confidence ≥ 閾値の場合のみ送信 /
+> ナレッジ未登録なら何もしない / intent = cancel・change_reservation は返信しない
+> (予約操作はスタッフが行うため「対応済み」と誤認させない) /
+> **概算見積り (`quote.auto_reply_rough_estimate`) が同じメッセージに返信済みならスキップ**
+> (二重返信防止 — `maybeAutoReplyRoughEstimate` の返り値 boolean で判定)。
+> 監査ログ (`logAutoActionExecuted`, actionKey=`inbound_message.auto_reply_knowledge`) に残す。
+> 単体テスト: `src/lib/ai/automation/__tests__/knowledgeReplyAuto.test.ts`。
 
 > **certificate.auto_create_draft_record の配線**: `certificate.auto_draft` (下書き JSON 生成)
 > の一歩先。予約 PUT で `status="completed"` になると、まず下書き JSON を生成し、続いて

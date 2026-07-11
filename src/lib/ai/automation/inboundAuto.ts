@@ -23,6 +23,7 @@ import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { loadAiAutomationSettings } from "./policy";
 import { maybeAutoDraftQuoteFromInbound } from "./quoteDraftAuto";
 import { maybeAutoReplyRoughEstimate } from "./quoteReplyAuto";
+import { maybeAutoReplyKnowledge } from "./knowledgeReplyAuto";
 import { shouldAutoExtractInbound, decideInboundCommit } from "./orchestrator";
 
 const AUTO_EXTRACT_ENDPOINT = "/api/line/webhook#auto-extract";
@@ -207,7 +208,7 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
 
     // 価格問い合わせ → 概算見積りを LINE で完全自動返信 (opt-in / 未紐付け客も対象 /
     // 内部で fail-soft)。上のドラフト起票とは独立した opt-in。詳細見積りは来店対応。
-    await maybeAutoReplyRoughEstimate({
+    const estimateReplied = await maybeAutoReplyRoughEstimate({
       tenantId,
       customerId: resolvedCustomerId,
       lineUserId: params.lineUserId,
@@ -220,6 +221,22 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
       settings,
       tenant,
     });
+
+    // 一般質問 → 店舗ナレッジで LINE 自動返信 (opt-in / 内部で fail-soft)。
+    // 概算見積りが同じメッセージに返信済みなら二重返信になるためスキップ。
+    if (!estimateReplied) {
+      await maybeAutoReplyKnowledge({
+        tenantId,
+        customerId: resolvedCustomerId,
+        lineUserId: params.lineUserId,
+        intent: result.intent,
+        text,
+        messageId,
+        channel: params.channel ?? "line",
+        settings,
+        tenant,
+      });
+    }
 
     usage.record({
       tenantId,

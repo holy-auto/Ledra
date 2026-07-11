@@ -57,7 +57,8 @@ export type AutomationActionKey =
   | "inquiry.auto_classify"
   | "customer.auto_create"
   | "payment.auto_charge"
-  | "body_repair.auto_notify_on_stage_advance";
+  | "body_repair.auto_notify_on_stage_advance"
+  | "inbound_message.auto_reply_knowledge";
 
 export interface AutomationActionDef {
   key: AutomationActionKey;
@@ -369,6 +370,16 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     defaultEnabled: false,
     guard:
       "AI 有効 + Standard プラン以上 + LINE 受信。施工内容と車両が読み取れれば概算金額を返信、どちらか読み取れなくても価格問い合わせらしい文面なら不足情報を聞き返す",
+  },
+  {
+    key: "inbound_message.auto_reply_knowledge",
+    workflow: "inbound_message",
+    label: "受信メッセージに店舗ナレッジで自動返信",
+    description:
+      "「営業時間は？」「駐車場ありますか？」のような質問を LINE で受信した時点で、店舗設定 > LINEナレッジ に登録した内容から回答できる場合のみ自動返信する。ナレッジに無い質問には返信せずスタッフ対応に残す (AI が勝手に答えを作らない)。顧客への外向き送信を伴うため opt-in / 既定 OFF。",
+    defaultEnabled: false,
+    guard:
+      "AI 有効 + Standard プラン以上 + LINE 受信 + 有効なナレッジ登録あり + AI がナレッジのみで回答可能と判断 + confidence≥閾値。概算見積りの自動返信が同じメッセージに返信済みの場合はスキップ (二重返信防止)",
   },
 ];
 
