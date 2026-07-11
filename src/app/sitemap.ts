@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 import { siteConfig } from "@/lib/marketing/config";
 import { listContent, type ContentCollection } from "@/lib/marketing/content";
 import { listPublishedPosts } from "@/lib/marketing/site-content-posts";
+import { GLOSSARY } from "@/lib/marketing/glossary";
 
 const base = siteConfig.siteUrl;
 
@@ -43,6 +44,7 @@ const staticPages: Array<{ path: string; changeFrequency: Freq; priority: number
   { path: "/story", changeFrequency: "monthly", priority: 0.7 },
   { path: "/vision", changeFrequency: "monthly", priority: 0.7 },
   { path: "/honest-comparison", changeFrequency: "monthly", priority: 0.7 },
+  { path: "/glossary", changeFrequency: "monthly", priority: 0.6 },
   { path: "/faq", changeFrequency: "monthly", priority: 0.7 },
   { path: "/roi", changeFrequency: "monthly", priority: 0.7 },
   { path: "/demo", changeFrequency: "monthly", priority: 0.7 },
@@ -133,6 +135,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...news.map((e) => toEntry("/news", e)),
     ...cases.map((e) => toEntry("/cases", e)),
     ...[...blog.values()].map((e) => toEntry("/blog", e)),
+    // 用語集の個別ページ（静的・有限集合）
+    ...GLOSSARY.map((t) => toEntry("/glossary", { slug: t.slug })),
   ];
 
   return [...staticEntries, ...dynamicEntries];

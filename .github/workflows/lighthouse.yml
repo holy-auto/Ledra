@@ -53,6 +53,10 @@ jobs:
             http://localhost:3000/
             http://localhost:3000/security
             http://localhost:3000/news
+            http://localhost:3000/story
+            http://localhost:3000/poc-program
+            http://localhost:3000/glossary
+            http://localhost:3000/glossary/coating-certificate
           uploadArtifacts: true
           temporaryPublicStorage: true
           configPath: ".lighthouserc.json"
