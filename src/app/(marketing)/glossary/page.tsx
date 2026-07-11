@@ -1,10 +1,9 @@
 import { PageHero } from "@/components/marketing/PageHero";
 import { Breadcrumbs } from "@/components/marketing/Breadcrumbs";
 import { Section } from "@/components/marketing/Section";
-import { ScrollReveal } from "@/components/marketing/ScrollReveal";
+import { FeatureCard } from "@/components/marketing/FeatureCard";
 import { CTABanner } from "@/components/marketing/CTABanner";
 import { GLOSSARY_CATEGORIES, listGlossaryByCategory } from "@/lib/marketing/glossary";
-import Link from "next/link";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -58,16 +57,14 @@ export default function GlossaryPage() {
             </div>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {terms.map((t, i) => (
-                <ScrollReveal key={t.slug} variant="fade-up" delay={(i % 2) * 80}>
-                  <Link
-                    href={`/glossary/${t.slug}`}
-                    className="block h-full rounded-2xl border border-white/[0.08] bg-white/[0.03] p-6 transition-colors hover:border-white/[0.16] hover:bg-white/[0.05]"
-                  >
-                    <h3 className="text-base font-bold text-white">{t.term}</h3>
-                    <p className="mt-2 text-sm leading-relaxed text-white/80">{t.short}</p>
-                    <span className="mt-3 inline-block text-xs font-medium text-blue-400">くわしく見る &rarr;</span>
-                  </Link>
-                </ScrollReveal>
+                <FeatureCard
+                  key={t.slug}
+                  variant="bordered"
+                  delay={(i % 2) * 80}
+                  title={t.term}
+                  description={t.short}
+                  href={`/glossary/${t.slug}`}
+                />
               ))}
             </div>
           </div>
