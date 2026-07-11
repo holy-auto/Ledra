@@ -70,6 +70,30 @@ export default function NfcScanScreen() {
         throw new Error("有効なURLが見つかりません");
       }
 
+      // URL 種別で分岐: /s/v/<publicId> は車両タグ、それ以外は従来どおり証明書タグ。
+      const pathname = (() => {
+        try {
+          return new URL(url).pathname;
+        } catch {
+          return url;
+        }
+      })();
+      const vehicleMatch = pathname.match(/\/s\/v\/([^/]+)\/?$/);
+      if (vehicleMatch) {
+        const vehiclePublicId = vehicleMatch[1];
+        const { data: vehicle, error: vehicleError } = await supabase
+          .from("vehicles")
+          .select("id")
+          .eq("public_id", vehiclePublicId)
+          .eq("tenant_id", user!.tenantId)
+          .single();
+        if (vehicleError || !vehicle) {
+          throw new Error("対応する車両が見つかりません");
+        }
+        router.push(`/vehicles/${vehicle.id}`);
+        return;
+      }
+
       // Parse public_id from URL (e.g., https://example.com/cert/PUBLIC_ID)
       const urlParts = url.split("/");
       const publicId = urlParts[urlParts.length - 1];

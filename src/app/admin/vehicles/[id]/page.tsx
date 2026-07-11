@@ -4,6 +4,8 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { formatDate, formatDateTime } from "@/lib/format";
 import ServiceTimeline, { type TimelineEvent } from "./ServiceTimeline";
 import VehicleCustomerLink from "./VehicleCustomerLink";
+import VehicleTagQr from "./VehicleTagQr";
+import { qrSvgDataUrl } from "@/lib/qr";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +30,8 @@ export default async function AdminVehicleDetailPage({
   const savedFlag = Array.isArray(sp?.saved) ? sp?.saved[0] : sp?.saved;
   const voidedFlag = Array.isArray(sp?.voided) ? sp?.voided[0] : sp?.voided;
   const errFlag = Array.isArray(sp?.e) ? sp?.e[0] : sp?.e;
+  // タグ (NFC/QR) からの作業開始導線。/s/v/[publicId] が ?start=1 で送ってくる。
+  const startFlag = Array.isArray(sp?.start) ? sp?.start[0] : sp?.start;
 
   const supabase = await createSupabaseServerClient();
 
@@ -139,6 +143,7 @@ export default async function AdminVehicleDetailPage({
     customer: { id: string; name: string | null } | null;
     // 新カラム (存在しないテナントもあるので optional)
     size_class?: string | null;
+    public_id?: string | null;
   };
   const { data: vehicle, error: vehicleError } = await supabase
     .from("vehicles")
@@ -150,6 +155,12 @@ export default async function AdminVehicleDetailPage({
   if (vehicleError || !vehicle) {
     return <div className="p-6 text-primary">車両が見つかりません。</div>;
   }
+
+  // 車両タグ (NFC/QR) に焼く公開 URL と印刷用 QR。public_id が無い車両
+  // (バックフィル前など) はタグ表示をスキップする。
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.ledra.co.jp";
+  const tagUrl = vehicle.public_id ? `${appUrl}/s/v/${vehicle.public_id}` : null;
+  const tagQrDataUrl = tagUrl ? await qrSvgDataUrl(tagUrl) : null;
 
   const { data: certs } = await supabase
     .from("certificates")
@@ -370,6 +381,23 @@ export default async function AdminVehicleDetailPage({
         </div>
       ) : null}
 
+      {startFlag ? (
+        <section className="glass-card border-accent/40 bg-accent-dim p-6 space-y-3">
+          <h2 className="text-lg font-semibold text-primary">この車両の作業を開始</h2>
+          <p className="text-sm text-secondary">
+            タグを読み取りました。作業内容を選んで開始してください。証明書作成では作業メニュー別の必須写真がガイドされます。
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Link href={`/admin/certificates/new?vehicle_id=${vehicle.id}`} className="btn-primary">
+              施工証明書を作成（写真ガイド）
+            </Link>
+            <Link href="/admin/jobs/new" className="btn-secondary">
+              作業・予約を登録
+            </Link>
+          </div>
+        </section>
+      ) : null}
+
       <section className="glass-card p-6 space-y-3">
         <h2 className="text-lg font-semibold text-primary">車両情報</h2>
         <div className="grid gap-3 md:grid-cols-2 text-sm text-secondary">
@@ -465,6 +493,13 @@ export default async function AdminVehicleDetailPage({
         </div>
         <ServiceTimeline events={timelineEvents} />
       </section>
+
+      {tagQrDataUrl && tagUrl ? (
+        <section className="glass-card p-6 space-y-4">
+          <h2 className="text-lg font-semibold text-primary">車両タグ (QR)</h2>
+          <VehicleTagQr dataUrl={tagQrDataUrl} tagUrl={tagUrl} />
+        </section>
+      ) : null}
 
       <section className="glass-card p-6 space-y-4">
         <h2 className="text-lg font-semibold text-primary">NFCタグ</h2>
