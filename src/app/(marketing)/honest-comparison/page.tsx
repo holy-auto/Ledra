@@ -3,6 +3,7 @@ import { Breadcrumbs } from "@/components/marketing/Breadcrumbs";
 import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { ScrollReveal } from "@/components/marketing/ScrollReveal";
+import { FeatureCard } from "@/components/marketing/FeatureCard";
 import { CTABanner } from "@/components/marketing/CTABanner";
 import Link from "next/link";
 import type { Metadata } from "next";
@@ -104,12 +105,13 @@ export default function HonestComparisonPage() {
         <SectionHeading title="Ledra に向いていない方" />
         <div className="mx-auto grid max-w-4xl grid-cols-1 gap-6 md:grid-cols-2">
           {notForYou.map((item, i) => (
-            <ScrollReveal key={item.title} variant="fade-up" delay={i * 80}>
-              <div className="h-full rounded-2xl border border-white/[0.08] bg-white/[0.03] p-7">
-                <h3 className="text-base font-bold text-white">{item.title}</h3>
-                <p className="mt-3 text-sm leading-relaxed text-white/90">{item.body}</p>
-              </div>
-            </ScrollReveal>
+            <FeatureCard
+              key={item.title}
+              variant="bordered"
+              delay={i * 80}
+              title={item.title}
+              description={item.body}
+            />
           ))}
         </div>
         <ScrollReveal variant="fade-in" delay={300}>

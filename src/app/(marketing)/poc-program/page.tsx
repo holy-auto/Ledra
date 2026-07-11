@@ -3,6 +3,7 @@ import { Breadcrumbs } from "@/components/marketing/Breadcrumbs";
 import { Section } from "@/components/marketing/Section";
 import { SectionHeading } from "@/components/marketing/SectionHeading";
 import { ScrollReveal } from "@/components/marketing/ScrollReveal";
+import { FeatureCard } from "@/components/marketing/FeatureCard";
 import { CTABanner } from "@/components/marketing/CTABanner";
 import Link from "next/link";
 import type { Metadata } from "next";
@@ -73,12 +74,7 @@ export default function PocProgramPage() {
         <SectionHeading title="検証テーマの例" subtitle="貴社の課題に合わせて設計します。以下は代表例です。" />
         <div className="mx-auto grid max-w-4xl grid-cols-1 gap-6 md:grid-cols-2">
           {themes.map((t, i) => (
-            <ScrollReveal key={t.title} variant="fade-up" delay={i * 80}>
-              <div className="h-full rounded-2xl border border-white/[0.08] bg-white/[0.03] p-7">
-                <h3 className="text-base font-bold text-white">{t.title}</h3>
-                <p className="mt-3 text-sm leading-relaxed text-white/90">{t.body}</p>
-              </div>
-            </ScrollReveal>
+            <FeatureCard key={t.title} variant="bordered" delay={i * 80} title={t.title} description={t.body} />
           ))}
         </div>
       </Section>

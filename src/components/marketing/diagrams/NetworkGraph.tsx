@@ -1,5 +1,6 @@
 import type { NetworkNode, RegionalNode } from "@/lib/marketing/network";
 import { buildSatellites, type Point, type Satellite as SatelliteData } from "./networkGraphLayout";
+import { BRAND_ACCENT } from "@/lib/marketing/brandAccentColors";
 
 /**
  * 証明書・施工店・メーカー・保険会社のネットワークを「点と線」で見せる図。
@@ -32,10 +33,7 @@ type NetworkGraphProps = {
   className?: string;
 };
 
-const GOLD = "#c9a55c";
-const BLUE = "#4d9fff";
-const VIOLET = "#a78bfa";
-const EMERALD = "#34d399";
+const { gold: GOLD, blue: BLUE, violet: VIOLET, emerald: EMERALD } = BRAND_ACCENT;
 
 /** hub → satellite の緩いカーブ（中点を法線方向に少し押し出す） */
 function curve(from: Point, to: Point, bend = 0.14): string {
@@ -73,36 +71,20 @@ function FlowDot({
   dur,
   begin,
   r = 2.6,
-  reverse = false,
 }: {
   d: string;
   color: string;
   dur: string;
   begin: string;
   r?: number;
-  reverse?: boolean;
 }) {
   return (
     <g className="ng-motion">
       <circle r={r * 2.4} fill={color} opacity="0.18">
-        <animateMotion
-          dur={dur}
-          begin={begin}
-          repeatCount="indefinite"
-          path={d}
-          keyPoints={reverse ? "1;0" : "0;1"}
-          keyTimes="0;1"
-        />
+        <animateMotion dur={dur} begin={begin} repeatCount="indefinite" path={d} />
       </circle>
       <circle r={r} fill={color}>
-        <animateMotion
-          dur={dur}
-          begin={begin}
-          repeatCount="indefinite"
-          path={d}
-          keyPoints={reverse ? "1;0" : "0;1"}
-          keyTimes="0;1"
-        />
+        <animateMotion dur={dur} begin={begin} repeatCount="indefinite" path={d} />
       </circle>
     </g>
   );
@@ -134,8 +116,8 @@ function Satellite({
         strokeDasharray="2 4"
         strokeLinecap="round"
       />
-      {/* halo + core dot */}
-      <circle cx={point.x} cy={point.y} r="10" fill={color} opacity="0.1">
+      {/* halo + core dot（pulse は reduced-motion で停止） */}
+      <circle cx={point.x} cy={point.y} r="10" fill={color} opacity="0.1" className="ng-motion">
         <animate
           attributeName="opacity"
           values="0.08;0.2;0.08"

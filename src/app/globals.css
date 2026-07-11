@@ -812,17 +812,20 @@ body {
 
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) {
+    /* animation-duration は scroll/view タイムラインでは進行度の基準に
+       使われないが、省略すると 0s 扱いになり実装によってはアニメーション
+       自体が発火しない（＝opacity:0 のまま固まる）ため、明示的に指定する。 */
     .car-journey-stage {
       opacity: 0;
       transform: translateY(28px) scale(0.98);
-      animation: car-journey-reveal linear both;
+      animation: car-journey-reveal 1ms linear both;
       animation-timeline: view();
       animation-range: entry 0% cover 35%;
     }
     .car-journey-line {
       transform-origin: left center;
       transform: scaleX(0);
-      animation: car-journey-line-grow linear both;
+      animation: car-journey-line-grow 1ms linear both;
       animation-timeline: view();
       animation-range: entry 10% cover 90%;
     }
