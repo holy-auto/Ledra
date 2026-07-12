@@ -286,21 +286,34 @@ export async function handleWebhookEvents(
       }
     }
 
-    // リッチメニュー等の postback アクション: テキストが無いイベントも受信箱に記録して
-    // スタッフが気付けるようにする (webhook には displayText は含まれず data のみ届く)。
+    // postback アクション。会話フロー (flow:*) のボタンなら分岐処理を試み、処理でき
+    // たら受信箱ログ/スタッフ通知はスキップする (フロー側で対応済みのため)。それ以外
+    // (リッチメニュー等) は従来どおり受信箱に記録してスタッフが気付けるようにする。
     if (event.type === "postback" && event.source?.userId) {
-      const stored = await recordInboundLineMessage({
-        tenantId,
-        lineUserId: event.source.userId,
-        body: `[メニュー操作] ${event.postback?.data ?? ""}`.trim(),
-        rawEvent: event,
-        lineTimestampMs: event.timestamp ?? null,
-      });
-      await maybeNotifyInboundMessage({
-        tenantId,
-        lineUserId: event.source.userId,
-        customerId: stored.customerId ?? null,
-      });
+      const data = event.postback?.data ?? "";
+      let flowHandled = false;
+      if (data.startsWith("flow:")) {
+        try {
+          const { handleFlowPostback } = await import("@/lib/ai/automation/conversationFlowPostback");
+          flowHandled = await handleFlowPostback({ tenantId, lineUserId: event.source.userId, data });
+        } catch {
+          flowHandled = false; // fail-soft: 通常の受信箱記録にフォールバック
+        }
+      }
+      if (!flowHandled) {
+        const stored = await recordInboundLineMessage({
+          tenantId,
+          lineUserId: event.source.userId,
+          body: `[メニュー操作] ${data}`.trim(),
+          rawEvent: event,
+          lineTimestampMs: event.timestamp ?? null,
+        });
+        await maybeNotifyInboundMessage({
+          tenantId,
+          lineUserId: event.source.userId,
+          customerId: stored.customerId ?? null,
+        });
+      }
     }
 
     // スタンプ・画像などテキスト以外のメッセージも記録する。
@@ -514,6 +527,61 @@ export async function sendCustomerLineText(params: {
       delivered: false,
       failureReason: err instanceof Error ? err.message : String(err),
     });
+    return false;
+  }
+}
+
+/**
+ * 顧客へテキスト + クイックリプライ (postback ボタン) を LINE Push 送信し、
+ * customer_messages に outbound として記録する (本文はボタンラベルを併記)。
+ *
+ * 会話フロー (line_conversation_flows) の可否・日程選択などボタン駆動の分岐に使う。
+ * 失敗しても投げない (fail-soft)。
+ */
+export async function sendCustomerLineButtons(params: {
+  tenantId: string;
+  customerId?: string | null;
+  lineUserId: string;
+  text: string;
+  buttons: Array<{ label: string; data: string }>;
+  sentByUserId?: string | null;
+}): Promise<boolean> {
+  const trimmed = params.text.trim();
+  if (!trimmed || params.buttons.length === 0) return false;
+
+  // 履歴表示用の本文 (ボタンは受信箱で見えないためラベルを併記)。
+  const logBody = `${trimmed}\n[選択肢] ${params.buttons.map((b) => b.label).join(" / ")}`;
+  const record = (delivered: boolean, failureReason?: string) =>
+    recordOutboundLineMessage({
+      tenantId: params.tenantId,
+      customerId: params.customerId ?? null,
+      lineUserId: params.lineUserId,
+      body: logBody,
+      sentByUserId: params.sentByUserId ?? null,
+      delivered,
+      failureReason,
+    });
+
+  const config = await getLineConfig(params.tenantId);
+  if (!config) {
+    await record(false, "LINE integration not configured for this tenant");
+    return false;
+  }
+
+  // LINE の quickReply は 1 メッセージにつき最大 13 ボタン。postback アクションで送る。
+  const quickReply = {
+    items: params.buttons.slice(0, 13).map((b) => ({
+      type: "action",
+      action: { type: "postback", label: b.label.slice(0, 20), data: b.data, displayText: b.label },
+    })),
+  };
+
+  try {
+    await sendMessage(config.channelAccessToken, params.lineUserId, [{ type: "text", text: trimmed, quickReply }]);
+    await record(true);
+    return true;
+  } catch (err) {
+    await record(false, err instanceof Error ? err.message : String(err));
     return false;
   }
 }
