@@ -210,23 +210,11 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
       }
     }
 
-    // 価格問い合わせ → 見積ドラフト自動起票 (opt-in / 既知顧客のみ / 内部で fail-soft)。
-    await maybeAutoDraftQuoteFromInbound({
-      tenantId,
-      customerId: resolvedCustomerId,
-      intent: result.intent,
-      service: result.service,
-      vehicleText: result.vehicle,
-      messageId,
-      channel: params.channel ?? "line",
-      settings,
-      tenant,
-    });
-
     // 進行中の会話フローが「詳細待ち (awaiting_quote_detail)」なら、今回の受信を
     // その詳細 (車種+年式) として取り込み、正式見積書の下書きを作成してフローを
-    // 進める (opt-in / 内部で fail-soft)。処理したら他の自動返信はスキップする
-    // (同じ受信に概算やナレッジを重ねて返さない)。
+    // 進める (opt-in / 内部で fail-soft)。**他の自動処理より先に**判定し、処理したら
+    // 早期 return する — 見積ドラフト自動起票 (下) と二重に下書きを作らず、概算・
+    // ナレッジ返信も重ねて送らないため。
     const flowAdvanced = await maybeAdvanceQuoteFlowOnDetail({
       tenantId,
       customerId: resolvedCustomerId,
@@ -247,6 +235,19 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
       });
       return;
     }
+
+    // 価格問い合わせ → 見積ドラフト自動起票 (opt-in / 既知顧客のみ / 内部で fail-soft)。
+    await maybeAutoDraftQuoteFromInbound({
+      tenantId,
+      customerId: resolvedCustomerId,
+      intent: result.intent,
+      service: result.service,
+      vehicleText: result.vehicle,
+      messageId,
+      channel: params.channel ?? "line",
+      settings,
+      tenant,
+    });
 
     // 一般質問 → 店舗/共通ナレッジで LINE 自動返信 (opt-in / 内部で fail-soft)。
     // 概算見積りより**先に**試す: 「駐車場の料金は？」のような価格キーワードを含む
