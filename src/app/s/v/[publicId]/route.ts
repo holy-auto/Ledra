@@ -34,27 +34,32 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
     return NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(next)}`, origin));
   }
 
-  const { data: membership } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .single();
+  // ユーザが所属する全店舗。複数店舗スタッフは、選択中でない店舗のタグでも
+  // 自分の所属店舗のものなら解決できるようにする (active tenant 固定で 404 を防ぐ)。
+  const { data: memberships } = await supabase.from("tenant_memberships").select("tenant_id").eq("user_id", user.id);
+  const tenantIds = (memberships ?? []).map((m) => m.tenant_id as string).filter(Boolean);
 
-  if (!membership?.tenant_id) {
+  if (tenantIds.length === 0) {
     return new NextResponse("Not found", { status: 404 });
   }
 
   const { data: vehicle } = await supabase
     .from("vehicles")
-    .select("id")
-    .eq("tenant_id", membership.tenant_id)
+    .select("id, tenant_id")
+    .in("tenant_id", tenantIds)
     .eq("public_id", publicId)
-    .maybeSingle();
+    .maybeSingle<{ id: string; tenant_id: string }>();
 
   if (!vehicle?.id) {
     return new NextResponse("Not found", { status: 404 });
   }
 
-  return NextResponse.redirect(new URL(`/admin/vehicles/${vehicle.id}?start=1`, origin));
+  // 解決した車両の店舗をアクティブにして、遷移先 (車両詳細) の店舗コンテキストを合わせる。
+  const res = NextResponse.redirect(new URL(`/admin/vehicles/${vehicle.id}?start=1`, origin));
+  res.cookies.set("active_tenant_id", vehicle.tenant_id, {
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+  });
+  return res;
 }

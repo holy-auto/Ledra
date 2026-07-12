@@ -18,7 +18,8 @@ import { apiOk, apiUnauthorized, apiInternalError, apiValidationError } from "@/
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
-import { isMissingTableError } from "@/lib/ai/automation/policy";
+import { isMissingTableError, loadAiAutomationSettings } from "@/lib/ai/automation/policy";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { answerFieldKnowledge, FIELD_KNOWLEDGE_LIMIT } from "@/lib/ai/fieldKnowledgeAnswer";
 import type { KnowledgeEntry } from "@/lib/ai/knowledgeReply";
 
@@ -36,8 +37,20 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
+    // スクリプトによる連投コストを防ぐ AI レート制限 (ユーザ単位)。
+    const limited = await checkRateLimit(req, "ai", caller.userId);
+    if (limited) return limited;
+
     if (!canUseFeature(caller.planTier, "ai_academy_qa")) {
       return apiValidationError("この機能はStandardプラン以上でご利用いただけます。", { code: "plan_limit" });
+    }
+
+    // AI マスタースイッチ OFF / 月次コストキャップ超過のテナントは呼ばせない。
+    const aiSettings = await loadAiAutomationSettings(caller.tenantId);
+    if (!aiSettings.enabled) {
+      return apiValidationError("AI が無効か、今月の利用上限に達しています。設定をご確認ください。", {
+        code: "ai_disabled",
+      });
     }
 
     const parsed = askSchema.safeParse(await req.json().catch(() => ({})));

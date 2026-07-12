@@ -46,10 +46,15 @@ vi.mock("@/lib/supabase/admin", () => ({
     },
   }),
 }));
-vi.mock("@/lib/ai/automation/policy", () => ({ loadAiAutomationSettings: (id: string) => loadSettingsMock(id) }));
+vi.mock("@/lib/ai/automation/policy", () => ({
+  loadAiAutomationSettings: (id: string) => loadSettingsMock(id),
+  resolveAutoAction: (settings: { enabled?: boolean; autoActions?: Record<string, boolean> }, key: string) =>
+    settings.enabled === true && settings.autoActions?.[key] === true,
+}));
 vi.mock("@/lib/admin/fetchTodaySignals", () => ({
   fetchTodaySignals: (id: string) => fetchSignalsMock(id),
   tilesFromSignals: (s: { tiles: unknown[] }) => s.tiles,
+  businessDateString: () => "2026-07-12",
 }));
 vi.mock("@/lib/admin/dailyDigest", () => ({ generateDailyDigest: (...a: unknown[]) => genMock(...a) }));
 vi.mock("@/lib/ai/recordRouteUsage", () => ({ startAiRouteUsage: () => ({ record: recordMock }) }));
@@ -74,7 +79,10 @@ describe("GET /api/cron/daily-digest", () => {
       { id: TENANT_B, name: "店B" },
       { id: TENANT_C, name: "店C" },
     ];
-    loadSettingsMock.mockImplementation((id: string) => ({ enabled: id !== TENANT_B }));
+    loadSettingsMock.mockImplementation((id: string) => ({
+      enabled: id !== TENANT_B,
+      autoActions: id !== TENANT_B ? { "manager.auto_daily_digest": true } : {},
+    }));
     fetchSignalsMock.mockImplementation((id: string) => ({
       tiles: id === TENANT_C ? [] : [{ id: "in_progress_jobs", label: "作業中の案件", count: 2 }],
     }));

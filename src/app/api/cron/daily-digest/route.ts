@@ -3,8 +3,8 @@ import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 import { verifyCronRequest } from "@/lib/cronAuth";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { withCronLock } from "@/lib/cron/lock";
-import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
-import { fetchTodaySignals, tilesFromSignals } from "@/lib/admin/fetchTodaySignals";
+import { loadAiAutomationSettings, resolveAutoAction } from "@/lib/ai/automation/policy";
+import { fetchTodaySignals, tilesFromSignals, businessDateString } from "@/lib/admin/fetchTodaySignals";
 import { generateDailyDigest } from "@/lib/admin/dailyDigest";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
 
     const locked = await withCronLock(admin, "daily-digest", 600, async () => {
       const now = new Date();
-      const digestDate = now.toISOString().slice(0, 10);
+      const digestDate = businessDateString(now);
 
       const { data: tenants, error: tErr } = await admin
         .from("tenants")
@@ -54,8 +54,9 @@ export async function GET(req: NextRequest) {
       for (const tenant of tenants ?? []) {
         try {
           const settings = await loadAiAutomationSettings(tenant.id);
-          // AI 無効 / コストキャップ超過テナントは AI 生成しない (決定論版のまま)。
-          if (!settings.enabled) {
+          // 明示 opt-in (manager.auto_daily_digest=ON) かつ AI 有効・キャップ未超過の
+          // テナントのみ生成する。未 opt-in / AI 無効は決定論版のまま (想定外コスト防止)。
+          if (!resolveAutoAction(settings, "manager.auto_daily_digest")) {
             skippedNoAi++;
             continue;
           }

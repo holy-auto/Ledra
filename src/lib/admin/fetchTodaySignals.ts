@@ -11,6 +11,18 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { deriveTodayTasks, type TaskTile } from "@/lib/admin/todayTasks";
 
+/**
+ * 「営業日」の日付文字列 (YYYY-MM-DD) を JST で返す。
+ *
+ * 日次サマリの保存キー (digest_date) と読取キーを JST で統一するために使う。
+ * cron は UTC で発火するため、UTC 日付を使うと日付の繰り上がりで保存済みサマリが
+ * 日中に消える。Ledra は国内向けなので JST (UTC+9・DST なし) を営業日とする。
+ * ponytail: 店舗別タイムゾーンには未対応 (全店 JST 前提)。海外展開時に店舗 tz を持つ。
+ */
+export function businessDateString(now: Date = new Date()): string {
+  return new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
 export interface TodaySignals {
   reservations: Array<{ id: string; status: string | null; scheduled_date: string; title?: string | null }>;
   invoices: Array<{ id: string; status: string | null; total: number | null; due_date: string | null }>;
@@ -103,7 +115,7 @@ export async function fetchStoredDailyDigest(
   now?: Date,
 ): Promise<{ text: string; ai: boolean } | null> {
   const { admin } = createTenantScopedAdmin(tenantId);
-  const dateStr = (now ?? new Date()).toISOString().slice(0, 10);
+  const dateStr = businessDateString(now);
   const { data } = await admin
     .from("tenant_daily_digests")
     .select("text, ai")

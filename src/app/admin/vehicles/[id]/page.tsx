@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { formatDate, formatDateTime } from "@/lib/format";
 import ServiceTimeline, { type TimelineEvent } from "./ServiceTimeline";
 import VehicleCustomerLink from "./VehicleCustomerLink";
@@ -35,24 +36,14 @@ export default async function AdminVehicleDetailPage({
 
   const supabase = await createSupabaseServerClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // active_tenant_id cookie を尊重してテナントを解決する (複数店舗スタッフ対応)。
+  // タグ経由 (/s/v) は解決した車両の店舗を active にしてから遷移してくる。
+  const caller = await resolveCallerWithRole(supabase);
 
-  if (!user) {
+  if (!caller) {
     return <div className="p-6 text-primary">ログインしてください。</div>;
   }
-
-  const { data: membership } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .single();
-
-  if (!membership?.tenant_id) {
-    return <div className="p-6 text-primary">tenant が見つかりません。</div>;
-  }
+  const tenantId = caller.tenantId;
 
   async function voidCertificate(formData: FormData) {
     "use server";
@@ -148,7 +139,7 @@ export default async function AdminVehicleDetailPage({
   const { data: vehicle, error: vehicleError } = await supabase
     .from("vehicles")
     .select("*, customer:customers(id, name)")
-    .eq("tenant_id", membership.tenant_id)
+    .eq("tenant_id", tenantId)
     .eq("id", id)
     .single<VehicleDetailRow>();
 
@@ -165,7 +156,7 @@ export default async function AdminVehicleDetailPage({
   const { data: certs } = await supabase
     .from("certificates")
     .select("id, public_id, certificate_no, service_type, created_at, status")
-    .eq("tenant_id", membership.tenant_id)
+    .eq("tenant_id", tenantId)
     .eq("vehicle_id", id)
     .order("created_at", { ascending: false });
 
@@ -187,7 +178,7 @@ export default async function AdminVehicleDetailPage({
   const { data: historiesRaw } = await supabase
     .from("vehicle_histories")
     .select("*")
-    .eq("tenant_id", membership.tenant_id)
+    .eq("tenant_id", tenantId)
     .eq("vehicle_id", id)
     .order("created_at", { ascending: false })
     .returns<VehicleHistoryRow[]>();
@@ -195,7 +186,7 @@ export default async function AdminVehicleDetailPage({
   const { data: tags } = await supabase
     .from("nfc_tags")
     .select("id, tag_code, status, written_at, attached_at, certificate_id")
-    .eq("tenant_id", membership.tenant_id)
+    .eq("tenant_id", tenantId)
     .eq("vehicle_id", id)
     .order("created_at", { ascending: false });
 
@@ -203,7 +194,7 @@ export default async function AdminVehicleDetailPage({
   const { data: reservations } = await supabase
     .from("reservations")
     .select("id, title, status, scheduled_date, start_time, end_time, created_at, updated_at")
-    .eq("tenant_id", membership.tenant_id)
+    .eq("tenant_id", tenantId)
     .eq("vehicle_id", id)
     .order("scheduled_date", { ascending: false });
 
@@ -213,7 +204,7 @@ export default async function AdminVehicleDetailPage({
     .select(
       "id, name, measured_at, device_serial_number, comment, unit_of_measure, thickness_measurements(value_um, interpretation, is_inside)",
     )
-    .eq("tenant_id", membership.tenant_id)
+    .eq("tenant_id", tenantId)
     .eq("vehicle_id", id)
     .order("measured_at", { ascending: false });
 
@@ -391,7 +382,10 @@ export default async function AdminVehicleDetailPage({
             <Link href={`/admin/certificates/new?vehicle_id=${vehicle.id}`} className="btn-primary">
               施工証明書を作成（写真ガイド）
             </Link>
-            <Link href="/admin/jobs/new" className="btn-secondary">
+            <Link
+              href={`/admin/jobs/new?vehicle_id=${vehicle.id}${vehicle.customer_id ? `&customer_id=${vehicle.customer_id}` : ""}`}
+              className="btn-secondary"
+            >
               作業・予約を登録
             </Link>
           </div>

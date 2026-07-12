@@ -3,10 +3,10 @@
  *
  * 検証する契約:
  *   - 未ログイン → /login?next=/s/v/<publicId> へリダイレクト
- *   - 他テナントの車両 / 不明な public_id → 404
- *   - 自テナントの車両 → /admin/vehicles/<id>?start=1 へリダイレクト
- *   - vehicles クエリが tenant_id と public_id の両方で必ず絞り込まれる
- *     (テナント分離の要。ここが壊れると他店舗の車両を開けてしまう)
+ *   - 自分の所属店舗に無い public_id → 404
+ *   - 所属店舗の車両 → /admin/vehicles/<id>?start=1 へリダイレクト
+ *   - vehicles クエリが「ユーザの全所属テナント (in) + public_id (eq)」で絞られる
+ *     (テナント分離の要 + 複数店舗スタッフ対応)
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -28,41 +28,44 @@ vi.mock("@/lib/supabase/server", () => ({
 import { GET } from "../route";
 
 const TENANT = "11111111-1111-1111-1111-111111111111";
+const OTHER = "99999999-9999-9999-9999-999999999999";
 const USER = "22222222-2222-2222-2222-222222222222";
 const VEHICLE = "44444444-4444-4444-4444-444444444444";
 const PUBLIC_ID = "veh_abc123";
 
-/** 記録した vehicles クエリの eq フィルタ ([col, val] の配列)。 */
-let capturedVehicleEq: Array<[string, unknown]>;
+let capturedVehicleIn: [string, unknown] | null;
+let capturedVehicleEq: [string, unknown] | null;
 
 function setup(opts: {
   user: { id: string } | null;
-  membership: { tenant_id: string } | null;
-  vehicle: { id: string } | null;
+  membershipTenantIds: string[];
+  vehicle: { id: string; tenant_id: string } | null;
 }) {
-  capturedVehicleEq = [];
+  capturedVehicleIn = null;
+  capturedVehicleEq = null;
   getUserMock.mockResolvedValue({ data: { user: opts.user } });
   fromMock.mockImplementation((table: string) => {
     if (table === "tenant_memberships") {
       return {
         select: () => ({
-          eq: () => ({
-            limit: () => ({
-              single: () => Promise.resolve({ data: opts.membership, error: null }),
-            }),
-          }),
+          eq: () => Promise.resolve({ data: opts.membershipTenantIds.map((t) => ({ tenant_id: t })), error: null }),
         }),
       };
     }
     if (table === "vehicles") {
-      const eq = (col: string, val: unknown) => {
-        capturedVehicleEq.push([col, val]);
-        return {
-          eq,
-          maybeSingle: () => Promise.resolve({ data: opts.vehicle, error: null }),
-        };
+      return {
+        select: () => ({
+          in: (col: string, val: unknown) => {
+            capturedVehicleIn = [col, val];
+            return {
+              eq: (col2: string, val2: unknown) => {
+                capturedVehicleEq = [col2, val2];
+                return { maybeSingle: () => Promise.resolve({ data: opts.vehicle, error: null }) };
+              },
+            };
+          },
+        }),
       };
-      return { select: () => ({ eq }) };
     }
     throw new Error(`unexpected table ${table}`);
   });
@@ -80,7 +83,7 @@ describe("GET /s/v/[publicId]", () => {
   });
 
   it("未ログインなら /login?next=/s/v/<publicId> へリダイレクト", async () => {
-    setup({ user: null, membership: null, vehicle: null });
+    setup({ user: null, membershipTenantIds: [], vehicle: null });
     const res = await GET(req(), ctx);
     expect(res.status).toBe(307);
     const loc = res.headers.get("location")!;
@@ -88,19 +91,23 @@ describe("GET /s/v/[publicId]", () => {
     expect(decodeURIComponent(loc)).toContain(`/s/v/${PUBLIC_ID}`);
   });
 
-  it("他テナントの車両 (解決不能) は 404", async () => {
-    setup({ user: { id: USER }, membership: { tenant_id: TENANT }, vehicle: null });
+  it("所属店舗に無い車両は 404", async () => {
+    setup({ user: { id: USER }, membershipTenantIds: [TENANT], vehicle: null });
     const res = await GET(req(), ctx);
     expect(res.status).toBe(404);
   });
 
-  it("自テナントの車両は詳細ページ (?start=1) へリダイレクトし、tenant_id と public_id で絞り込む", async () => {
-    setup({ user: { id: USER }, membership: { tenant_id: TENANT }, vehicle: { id: VEHICLE } });
+  it("所属店舗の車両は詳細ページ (?start=1) へリダイレクトし、全所属テナント + public_id で絞る", async () => {
+    setup({
+      user: { id: USER },
+      membershipTenantIds: [OTHER, TENANT],
+      vehicle: { id: VEHICLE, tenant_id: TENANT },
+    });
     const res = await GET(req(), ctx);
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toBe(`https://app.example.com/admin/vehicles/${VEHICLE}?start=1`);
-    // テナント分離: 両フィルタが必ず適用されていること
-    expect(capturedVehicleEq).toContainEqual(["tenant_id", TENANT]);
-    expect(capturedVehicleEq).toContainEqual(["public_id", PUBLIC_ID]);
+    // テナント分離: ユーザの全所属テナントに限定 + public_id で解決
+    expect(capturedVehicleIn).toEqual(["tenant_id", [OTHER, TENANT]]);
+    expect(capturedVehicleEq).toEqual(["public_id", PUBLIC_ID]);
   });
 });

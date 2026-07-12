@@ -34,7 +34,7 @@ export default function WalkinJobClient() {
 
   const [title, setTitle] = useState(() => searchParams.get("title")?.trim() || `飛び込み案件 ${today()}`);
   const [customerId, setCustomerId] = useState<string>(() => searchParams.get("customer_id") || "");
-  const [vehicleId, setVehicleId] = useState<string>("");
+  const [vehicleId, setVehicleId] = useState<string>(() => searchParams.get("vehicle_id") || "");
   const [estimatedAmount, setEstimatedAmount] = useState<number>(0);
   const [note, setNote] = useState(() => searchParams.get("note") || "");
   const [initialStatus, setInitialStatus] = useState<"arrived" | "in_progress">("arrived");

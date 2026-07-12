@@ -117,7 +117,8 @@ export default async function TodayTasksWidget({
   // 「今日のまとめ」(AIマネージャー): 日次 cron が保存した AI 整形版があれば
   // それを、無ければ描画時に決定論版 (AIコストなし) を出す。数値はいずれも
   // タイル (決定論・SQL由来) が源。
-  const digest = storedDigest ?? buildDeterministicDigest(tiles);
+  // storedDigest は店舗全体(cron)の要約。mine スコープでは個人タイルと矛盾するため使わない。
+  const digest = effectiveScope === "tenant" && storedDigest ? storedDigest : buildDeterministicDigest(tiles);
 
   return (
     <div>
