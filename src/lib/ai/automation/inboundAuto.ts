@@ -24,7 +24,7 @@ import { loadAiAutomationSettings } from "./policy";
 import { maybeAutoDraftQuoteFromInbound } from "./quoteDraftAuto";
 import { maybeAutoReplyRoughEstimate } from "./quoteReplyAuto";
 import { maybeAutoReplyKnowledge } from "./knowledgeReplyAuto";
-import { maybeStartQuoteFlow } from "./conversationFlowAuto";
+import { maybeStartQuoteFlow, maybeAdvanceQuoteFlowOnDetail } from "./conversationFlowAuto";
 import {
   shouldAutoExtractInbound,
   shouldAutoReplyKnowledge,
@@ -222,6 +222,31 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
       settings,
       tenant,
     });
+
+    // 進行中の会話フローが「詳細待ち (awaiting_quote_detail)」なら、今回の受信を
+    // その詳細 (車種+年式) として取り込み、正式見積書の下書きを作成してフローを
+    // 進める (opt-in / 内部で fail-soft)。処理したら他の自動返信はスキップする
+    // (同じ受信に概算やナレッジを重ねて返さない)。
+    const flowAdvanced = await maybeAdvanceQuoteFlowOnDetail({
+      tenantId,
+      customerId: resolvedCustomerId,
+      lineUserId: params.lineUserId,
+      service: result.service,
+      vehicleText: result.vehicle,
+      messageId,
+      channel: params.channel ?? "line",
+      settings,
+      tenant,
+    });
+    if (flowAdvanced) {
+      usage.record({
+        tenantId,
+        outcome: "ok",
+        confidence: typeof result.confidence === "number" ? result.confidence : null,
+        meta: { auto: true, flow: "quote_detail_advanced", channel: params.channel ?? "line" },
+      });
+      return;
+    }
 
     // 一般質問 → 店舗/共通ナレッジで LINE 自動返信 (opt-in / 内部で fail-soft)。
     // 概算見積りより**先に**試す: 「駐車場の料金は？」のような価格キーワードを含む

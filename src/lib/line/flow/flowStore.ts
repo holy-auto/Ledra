@@ -55,6 +55,44 @@ export async function getActiveFlow(
   }
 }
 
+/**
+ * フローを次状態へ進める。state を更新し context をマージする (失敗しても投げない)。
+ * 想定外の並行更新を避けるため、現在 state が期待どおりのときだけ更新する
+ * (`expectState` 指定時)。更新できたら true。
+ */
+export async function advanceFlow(
+  admin: Admin,
+  flow: { id: string; context_json?: Record<string, unknown> },
+  input: {
+    toState: FlowState;
+    contextPatch?: Record<string, unknown>;
+    quoteDocId?: string | null;
+    reservationId?: string | null;
+    expectState?: FlowState;
+  },
+): Promise<boolean> {
+  try {
+    const patch: Record<string, unknown> = {
+      state: input.toState,
+      context_json: { ...(flow.context_json ?? {}), ...(input.contextPatch ?? {}) },
+    };
+    if (input.quoteDocId !== undefined) patch.quote_doc_id = input.quoteDocId;
+    if (input.reservationId !== undefined) patch.reservation_id = input.reservationId;
+
+    let q = admin.from("line_conversation_flows").update(patch).eq("id", flow.id);
+    if (input.expectState) q = q.eq("state", input.expectState);
+    const { error } = await q;
+    if (error) {
+      logger.warn("[flowStore] advanceFlow failed", { flowId: flow.id, err: error.message });
+      return false;
+    }
+    return true;
+  } catch (e) {
+    logger.warn("[flowStore] advanceFlow threw", { flowId: flow.id, err: e instanceof Error ? e.message : String(e) });
+    return false;
+  }
+}
+
 /** 新しいフローを作成する。作成できたら行を返す (失敗時 null)。 */
 export async function createFlow(
   admin: Admin,

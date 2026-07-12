@@ -249,12 +249,19 @@ none / idle
     車検証写真 or 車種+年式を教えてください」と続けて尋ね、スレッドを
     `awaiting_quote_detail` として記録 (`conversationFlowAuto.ts`、inboundAuto から
     fire-and-forget)。これで「概算だけで終わる」状態を解消。
-- **Phase 1b**: 応答の取り込みと貫通 (次PR)
-  - postback ディスパッチャ (line/client.ts の postback 分岐を会話フローへ)
-  - 詳細受領 (車検証 OCR / 車種+年式) →[B]正式見積書 draft (既存 quoteDraftAuto 再利用)
-    →(スタッフ送付)→[C]OK/NG →[F]日程候補提示 (booking-candidates 再利用) →
+- **Phase 1b-1**: 詳細受領 → 正式見積書 draft (実装済み)
+  - 見積り下書きの共有コアを抽出 (`quoteDraftCore.ts`、quote.auto_draft_from_inbound と共用)
+  - `awaiting_quote_detail` のフローに対し、顧客の詳細返信 (車種+年式) を取り込み
+    正式見積書 draft を作成 → `quote_drafted` へ進め、顧客へ「担当より正式見積りを
+    お送りします」と返信 + スタッフ通知 (`maybeAdvanceQuoteFlowOnDetail`)
+  - 既知顧客のみ (未紐付け客の登録誘導 [A0] は 1b-2)。この受信を処理したら他の
+    自動返信 (概算・ナレッジ) はスキップ (二重返信防止)
+- **Phase 1b-2**: 可否 → 日程調整の貫通 (次PR)
+  - postback ディスパッチャ (line/client.ts の postback 分岐を会話フローへ) +
+    スタッフの見積り送付 (draft→sent) で [B]→[C] へ遷移し OK/NG ボタンを付与
+  - [C]OK/NG →[D]オプション確認 →[F]日程候補提示 (booking-candidates 再利用) →
     予約作成 (reservations / gcal / 代車) → お礼クローズ
-  - [A0] 未登録客の登録誘導 (既存 intake 招待の再利用)
+  - 車検証 OCR での詳細受領 (画像) / [A0] 未登録客の登録誘導 (既存 intake 招待の再利用)
 - **Phase 2**: オプション提案 (C) を [B]/[D] に織り込む
 - **Phase 3**: 証明書分岐 — 登録車両あり (既存) / 未登録→入庫日車検証撮影→登録→draft
 - **Phase 4**: 請求書 — 追加作業の LINE 承認 [H]、作業終了→金額確定 [I]→送付

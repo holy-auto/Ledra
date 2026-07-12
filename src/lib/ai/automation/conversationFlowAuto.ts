@@ -17,12 +17,16 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { sendCustomerLineText } from "@/lib/line/client";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
-import { getActiveFlow, createFlow } from "@/lib/line/flow/flowStore";
-import { buildQuoteDetailAsk } from "@/lib/line/flow/messages";
+import { getActiveFlow, createFlow, advanceFlow } from "@/lib/line/flow/flowStore";
+import { buildQuoteDetailAsk, buildFormalQuoteComingAck } from "@/lib/line/flow/messages";
+import { createInboundQuoteDraft } from "./quoteDraftCore";
 import { loadAiAutomationSettings, type AiAutomationSettings } from "./policy";
 import { shouldRunConversationFlow } from "./orchestrator";
+
+const FLOW_QUOTE_ENDPOINT = "/api/line/webhook#flow-quote-draft";
 
 export interface MaybeStartQuoteFlowParams {
   tenantId: string;
@@ -112,5 +116,119 @@ export async function maybeStartQuoteFlow(params: MaybeStartQuoteFlowParams): Pr
       tenantId,
       err: e instanceof Error ? e.message : String(e),
     });
+  }
+}
+
+export interface MaybeAdvanceQuoteFlowParams {
+  tenantId: string;
+  customerId: string | null;
+  lineUserId?: string | null;
+  /** 今回の受信から抽出した施工内容・車両 (詳細返信の中身)。 */
+  service?: string;
+  vehicleText?: string;
+  messageId: string | null;
+  channel?: string;
+  settings?: AiAutomationSettings;
+  tenant?: { plan_tier: string | null; is_active: boolean | null };
+}
+
+/**
+ * `awaiting_quote_detail` の進行中フローに対し、顧客が返してきた詳細 (車種+年式)
+ * を取り込んで正式見積書の下書きを作成し、フローを `quote_drafted` へ進める。
+ *
+ * 返り値 true = この受信をフロー詳細として処理した (呼び出し側は概算/ナレッジ等の
+ * 他の返信をスキップする)。false = 該当フロー無し / 詳細が読めない → 未処理。
+ *
+ * 既知顧客のみ下書きを作る (未紐付け客の登録誘導は後続フェーズ)。失敗しても投げない。
+ */
+export async function maybeAdvanceQuoteFlowOnDetail(params: MaybeAdvanceQuoteFlowParams): Promise<boolean> {
+  const { tenantId, customerId } = params;
+  try {
+    const lineUserId = params.lineUserId?.trim();
+    if (!lineUserId) return false;
+
+    const settings = params.settings ?? (await loadAiAutomationSettings(tenantId));
+    if (!shouldRunConversationFlow(settings)) return false;
+
+    const admin = createServiceRoleAdmin("AI conversation flow (advance) — LINE webhook lacks auth session");
+    const flow = await getActiveFlow(admin, tenantId, { customerId, lineUserId });
+    if (!flow || flow.state !== "awaiting_quote_detail") return false;
+
+    // 見積り下書きは既知顧客のみ。未紐付け客は登録誘導 (後続フェーズ) までフローを保持。
+    const draftCustomerId = flow.customer_id ?? customerId;
+    if (!draftCustomerId) return false;
+
+    // 施工内容は元の問い合わせ (context) を、車両は今回の返信を優先して合成する。
+    const ctx = flow.context_json as { service?: string | null; vehicle_text?: string | null };
+    const service = params.service?.trim() || ctx.service?.trim() || "";
+    const vehicleText = params.vehicleText?.trim() || ctx.vehicle_text?.trim() || "";
+    // 車両が今回も過去も読めないなら詳細ではない (質問等)。フローは保持して未処理を返す。
+    if (!params.vehicleText?.trim() && !ctx.vehicle_text?.trim()) return false;
+    if (!service || !vehicleText) return false;
+
+    const tenant =
+      params.tenant ??
+      (await admin.from("tenants").select("plan_tier, is_active").eq("id", tenantId).single()).data ??
+      null;
+    if (!tenant || tenant.is_active === false) return false;
+    if (!canUseFeature(normalizePlanTier(tenant.plan_tier), "ai_invoice_quote")) return false;
+
+    const usage = startAiRouteUsage(FLOW_QUOTE_ENDPOINT);
+    const draft = await createInboundQuoteDraft(admin, {
+      tenantId,
+      customerId: draftCustomerId,
+      service,
+      vehicleText,
+      planTier: tenant.plan_tier,
+      sourceMessageId: params.messageId,
+      origin: "conversation_flow",
+    });
+    if (!draft) {
+      // 見積り材料が皆無。フローは保持し (スタッフが対応)、他の自動返信はしない。
+      usage.record({ tenantId, outcome: "error", meta: { auto: true, committed: false } });
+      return true;
+    }
+
+    await advanceFlow(admin, flow, {
+      toState: "quote_drafted",
+      quoteDocId: draft.docId,
+      contextPatch: { service, vehicle_text: vehicleText },
+      expectState: "awaiting_quote_detail",
+    });
+
+    await sendCustomerLineText({
+      tenantId,
+      customerId: draftCustomerId,
+      lineUserId,
+      body: buildFormalQuoteComingAck(),
+    });
+
+    await logAutoActionExecuted({
+      tenantId,
+      actionKey: "inbound_message.auto_conversation_flow",
+      resource: { kind: "document", id: draft.docId },
+      detail: {
+        channel: params.channel ?? "line",
+        customer_id: draftCustomerId,
+        source_message_id: params.messageId,
+        flow_id: flow.id,
+        state: "quote_drafted",
+        total: draft.total,
+      },
+    });
+
+    usage.record({
+      tenantId,
+      outcome: draft.ai ? "ok" : "error",
+      confidence: draft.confidence,
+      meta: { auto: true, committed: true, total: draft.total },
+    });
+    return true;
+  } catch (e) {
+    logger.warn("[conversationFlowAuto] maybeAdvanceQuoteFlowOnDetail threw", {
+      tenantId,
+      err: e instanceof Error ? e.message : String(e),
+    });
+    return false;
   }
 }
