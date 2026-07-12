@@ -32,11 +32,14 @@ export async function getActiveFlow(
   if (!key.customerId && !key.lineUserId) return null;
   try {
     // customer_id を優先。未紐付けは line_user_id で束ねる。
+    // expires_at 超過の停滞フローは「進行中」に数えない — 失効 cron が state を
+    // 落とす前でも、期限切れフローが新規開始を永久に塞ぐのを防ぐ (時刻ベースで実効)。
     let q = admin
       .from("line_conversation_flows")
       .select("id, tenant_id, customer_id, line_user_id, state, context_json")
       .eq("tenant_id", tenantId)
       .not("state", "in", "(closed,expired)")
+      .gt("expires_at", new Date().toISOString())
       .order("updated_at", { ascending: false })
       .limit(1);
     q = key.customerId ? q.eq("customer_id", key.customerId) : q.eq("line_user_id", key.lineUserId as string);

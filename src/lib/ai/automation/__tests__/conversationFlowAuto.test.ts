@@ -70,6 +70,12 @@ describe("maybeStartQuoteFlow", () => {
     );
   });
 
+  it("does not start (avoids contradictory double-message) when a reply already went out", async () => {
+    await maybeStartQuoteFlow({ ...baseParams(), alreadyReplied: true });
+    expect(mocks.store.inserts).toHaveLength(0);
+    expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
+  });
+
   it("does nothing when opt-in is off", async () => {
     mocks.shouldRunConversationFlow.mockReturnValue(false);
     await maybeStartQuoteFlow(baseParams());

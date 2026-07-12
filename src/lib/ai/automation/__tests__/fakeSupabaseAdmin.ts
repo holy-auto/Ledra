@@ -55,6 +55,7 @@ export function makeFakeAdmin(store: FakeStore): any {
       neq: () => builder,
       not: () => builder,
       in: () => builder,
+      gt: () => builder,
       gte: () => builder,
       contains: () => builder,
       lte: () => builder,

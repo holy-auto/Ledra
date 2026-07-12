@@ -33,6 +33,12 @@ export interface MaybeStartQuoteFlowParams {
   vehicleText?: string;
   messageId: string | null;
   channel?: string;
+  /**
+   * この受信メッセージに対し、概算見積り or ナレッジで既に顧客へ返信済みか。
+   * 返信済みなら文面が矛盾・重複するため会話フロー開始 (詳細依頼) を見送る
+   * (概算の「詳細はご来店で」と、フローの「送れば見積り送付」は背反)。
+   */
+  alreadyReplied?: boolean;
   settings?: AiAutomationSettings;
   tenant?: { plan_tier: string | null; is_active: boolean | null };
 }
@@ -43,6 +49,8 @@ export async function maybeStartQuoteFlow(params: MaybeStartQuoteFlowParams): Pr
   try {
     const lineUserId = params.lineUserId?.trim();
     if (!lineUserId) return;
+    // 同一メッセージに概算/ナレッジで返信済みなら、矛盾・二重メッセージを避けて見送る。
+    if (params.alreadyReplied) return;
     if (params.intent !== "inquiry_only" && params.intent !== "new_reservation") return;
     // 施工内容 or 車両のどちらも読み取れない一般文には反応しない (誤爆防止)。
     if (!params.service?.trim() && !params.vehicleText?.trim()) return;
@@ -76,12 +84,11 @@ export async function maybeStartQuoteFlow(params: MaybeStartQuoteFlowParams): Pr
     });
     if (!flow) return; // 一意制約競合など。二重送信しない。
 
-    const msg = buildQuoteDetailAsk();
     const delivered = await sendCustomerLineText({
       tenantId,
       customerId: customerId ?? null,
       lineUserId,
-      body: msg.text,
+      body: buildQuoteDetailAsk(),
     });
     if (!delivered) {
       logger.warn("[conversationFlowAuto] detail-ask delivery failed", { tenantId, lineUserId });
