@@ -13,14 +13,25 @@
  * 金額の外向き確定 (見積書の送付そのもの) は人が行った後にだけ進む (壁3 維持)。
  */
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { sendCustomerLineText, sendCustomerLineButtons } from "@/lib/line/client";
+import { recordInboundLineMessage } from "@/lib/line/messageStore";
 import { logger } from "@/lib/logger";
 import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { getActiveFlow, getFlowByQuoteDoc, advanceFlow } from "@/lib/line/flow/flowStore";
 import { interpretReply } from "@/lib/line/flow/interpret";
 import { buildQuoteApprovalAsk, buildScheduleHandoff, buildQuoteConsultHandoff } from "@/lib/line/flow/messages";
 import { loadAiAutomationSettings } from "./policy";
-import { shouldRunConversationFlow } from "./orchestrator";
+import { shouldRunConversationFlow, shouldAutoSendDocumentOnConfirm } from "./orchestrator";
+
+type Admin = ReturnType<typeof createServiceRoleAdmin>;
+
+/** テナントが有効 + AI 会話フローのプラン要件を満たすか (他のフロー入口と同じガード)。 */
+async function tenantEligible(admin: Admin, tenantId: string): Promise<boolean> {
+  const { data: tenant } = await admin.from("tenants").select("plan_tier, is_active").eq("id", tenantId).single();
+  if (!tenant || tenant.is_active === false) return false;
+  return canUseFeature(normalizePlanTier(tenant.plan_tier), "ai_inbound_extract");
+}
 
 /** スタッフに「この後の対応」を促す通知 (fail-soft)。 */
 async function notifyStaff(
@@ -50,8 +61,12 @@ export async function maybeAdvanceFlowOnQuoteSent(params: { tenantId: string; do
   try {
     const settings = await loadAiAutomationSettings(tenantId);
     if (!shouldRunConversationFlow(settings)) return;
+    // 見積書が確定時に LINE 自動送付される設定のときだけ可否を尋ねる。そうでないと
+    // 顧客が見積りを受け取っていないのに「お送りしました」と可否ボタンが届いてしまう。
+    if (!shouldAutoSendDocumentOnConfirm(settings, "estimate")) return;
 
     const admin = createServiceRoleAdmin("AI conversation flow (quote sent) — no auth session");
+    if (!(await tenantEligible(admin, tenantId))) return;
     const flow = await getFlowByQuoteDoc(admin, tenantId, documentId);
     if (!flow || flow.state !== "quote_drafted") return;
     const lineUserId = flow.line_user_id?.trim();
@@ -111,10 +126,19 @@ export async function handleFlowPostback(params: {
 
     const event = interpretReply(flow.state, { postbackData: params.data });
     if (!event) return false;
+    if (!(await tenantEligible(admin, tenantId))) return false;
 
     // Phase 1b-2: 可否ゲートのみ自動処理。
     if (flow.state === "awaiting_quote_ok" && (event.type === "yes" || event.type === "no")) {
       const approved = event.type === "yes";
+      // 顧客の選択をスレッドに残す (postback はスキップされ受信箱に出ないため)。
+      // 失敗しても本処理は続行 (fail-soft)。
+      await recordInboundLineMessage({
+        tenantId,
+        lineUserId,
+        body: approved ? "「はい、お願いします」を選択" : "「相談する」を選択",
+        rawEvent: { flow_postback: params.data },
+      });
       // ponytail: 承認後は現状スタッフ引き継ぎ (human_takeover)。オプション提案 (Phase 2)
       // と自動日程提示 (1b-3) を実装したら awaiting_option_confirm / awaiting_schedule_pick
       // へ進める。ここを差し替えるだけで段階的に自動化を伸ばせる。
