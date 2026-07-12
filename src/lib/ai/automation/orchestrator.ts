@@ -66,6 +66,16 @@ export function shouldAutoReplyKnowledge(settings: AiAutomationSettings): boolea
   return resolveAutoAction(settings, "inbound_message.auto_reply_knowledge");
 }
 
+/**
+ * 受信メッセージ (価格問い合わせ) を起点に、複数ターンの会話フロー (見積り→可否→
+ * 日程調整…) を LINE で自動進行してよいか。会話を状態機械で保持し顧客の OK/NG や
+ * ボタン選択で分岐する (line_conversation_flows)。金額の外向き確定 (正式見積書・
+ * 請求書の送付) は各既存アクションの opt-in と人の 1 タップを引き続き尊重する。
+ */
+export function shouldRunConversationFlow(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "inbound_message.auto_conversation_flow");
+}
+
 export interface InboundExtractionLike {
   intent?: string | null;
   confidence?: number | null;

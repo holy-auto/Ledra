@@ -24,6 +24,7 @@ import { loadAiAutomationSettings } from "./policy";
 import { maybeAutoDraftQuoteFromInbound } from "./quoteDraftAuto";
 import { maybeAutoReplyRoughEstimate } from "./quoteReplyAuto";
 import { maybeAutoReplyKnowledge } from "./knowledgeReplyAuto";
+import { maybeStartQuoteFlow, maybeAdvanceQuoteFlowOnDetail } from "./conversationFlowAuto";
 import {
   shouldAutoExtractInbound,
   shouldAutoReplyKnowledge,
@@ -209,6 +210,32 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
       }
     }
 
+    // 進行中の会話フローが「詳細待ち (awaiting_quote_detail)」なら、今回の受信を
+    // その詳細 (車種+年式) として取り込み、正式見積書の下書きを作成してフローを
+    // 進める (opt-in / 内部で fail-soft)。**他の自動処理より先に**判定し、処理したら
+    // 早期 return する — 見積ドラフト自動起票 (下) と二重に下書きを作らず、概算・
+    // ナレッジ返信も重ねて送らないため。
+    const flowAdvanced = await maybeAdvanceQuoteFlowOnDetail({
+      tenantId,
+      customerId: resolvedCustomerId,
+      lineUserId: params.lineUserId,
+      service: result.service,
+      vehicleText: result.vehicle,
+      messageId,
+      channel: params.channel ?? "line",
+      settings,
+      tenant,
+    });
+    if (flowAdvanced) {
+      usage.record({
+        tenantId,
+        outcome: "ok",
+        confidence: typeof result.confidence === "number" ? result.confidence : null,
+        meta: { auto: true, flow: "quote_detail_advanced", channel: params.channel ?? "line" },
+      });
+      return;
+    }
+
     // 価格問い合わせ → 見積ドラフト自動起票 (opt-in / 既知顧客のみ / 内部で fail-soft)。
     await maybeAutoDraftQuoteFromInbound({
       tenantId,
@@ -245,8 +272,9 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
     // 価格問い合わせ → 概算見積りを LINE で完全自動返信 (opt-in / 未紐付け客も対象 /
     // 内部で fail-soft)。上のドラフト起票とは独立した opt-in。詳細見積りは来店対応。
     // ナレッジが同じメッセージに返信済みなら二重返信になるためスキップ。
+    let estimateReplied = false;
     if (!knowledgeReplied) {
-      await maybeAutoReplyRoughEstimate({
+      estimateReplied = await maybeAutoReplyRoughEstimate({
         tenantId,
         customerId: resolvedCustomerId,
         lineUserId: params.lineUserId,
@@ -260,6 +288,24 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
         tenant,
       });
     }
+
+    // 価格問い合わせ → 会話フローを開始し「概算だけで終わらせず」正式見積りへ続ける
+    // (opt-in / 内部で fail-soft)。概算見積り・ナレッジ返信とは独立した opt-in。
+    // 詳細 (車検証/車種+年式) を尋ね、スレッドを状態機械に記録する (Phase 1a)。
+    // 同一メッセージに概算/ナレッジで返信済みなら矛盾・二重を避けて見送る。
+    await maybeStartQuoteFlow({
+      tenantId,
+      customerId: resolvedCustomerId,
+      lineUserId: params.lineUserId,
+      intent: result.intent,
+      service: result.service,
+      vehicleText: result.vehicle,
+      messageId,
+      channel: params.channel ?? "line",
+      alreadyReplied: knowledgeReplied || estimateReplied,
+      settings,
+      tenant,
+    });
 
     usage.record({
       tenantId,

@@ -59,6 +59,7 @@ export type AutomationActionKey =
   | "payment.auto_charge"
   | "body_repair.auto_notify_on_stage_advance"
   | "inbound_message.auto_reply_knowledge"
+  | "inbound_message.auto_conversation_flow"
   | "manager.auto_daily_digest";
 
 export interface AutomationActionDef {
@@ -381,6 +382,16 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     defaultEnabled: false,
     guard:
       "AI 有効 + Standard プラン以上 + LINE 受信 + 有効なナレッジ登録あり + AI がナレッジのみで回答可能と判断 + confidence≥閾値。概算見積りの自動返信より先に判定され、ナレッジで返信した場合は概算見積りをスキップ (二重返信防止)",
+  },
+  {
+    key: "inbound_message.auto_conversation_flow",
+    workflow: "inbound_message",
+    label: "見積り問い合わせから会話を自動で継続 (見積り→可否→日程)",
+    description:
+      "価格問い合わせを受けたら、概算見積りを送るだけで終わらせず会話を継続する。まず正式なお見積りのために車検証写真 or 車種+年式を尋ね、詳細が揃ったら正式見積書の下書きを用意 (送付はスタッフが確認)。以降、顧客の OK/NG やボタン選択に応じて日程調整まで自動で進める。会話は状態機械 (line_conversation_flows) で保持し、放置は 72h で失効、NG・想定外はスタッフ引き継ぎ。金額の外向き確定 (正式見積書・請求書の送付) は各既存アクションの opt-in と人の 1 タップを尊重する。opt-in / 既定 OFF。",
+    defaultEnabled: false,
+    guard:
+      "AI 有効 + Standard プラン以上 + LINE 受信 + 価格問い合わせ (施工内容 or 車両が読み取れる) + 進行中フローが無いこと。UI は LINE ボタン主。",
   },
   {
     key: "manager.auto_daily_digest",

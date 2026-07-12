@@ -1,0 +1,215 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { emptyStore, makeFakeAdmin, type FakeStore } from "./fakeSupabaseAdmin";
+
+const mocks = vi.hoisted(() => ({
+  loadAiAutomationSettings: vi.fn(),
+  shouldRunConversationFlow: vi.fn(),
+  sendCustomerLineText: vi.fn(),
+  logAutoActionExecuted: vi.fn(),
+  createInboundQuoteDraft: vi.fn(),
+  usageRecord: vi.fn(),
+  store: null as unknown as FakeStore,
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({ createServiceRoleAdmin: () => makeFakeAdmin(mocks.store) }));
+vi.mock("../policy", () => ({ loadAiAutomationSettings: mocks.loadAiAutomationSettings }));
+vi.mock("../orchestrator", () => ({ shouldRunConversationFlow: mocks.shouldRunConversationFlow }));
+vi.mock("@/lib/line/client", () => ({ sendCustomerLineText: mocks.sendCustomerLineText }));
+vi.mock("@/lib/audit/aiAuditLog", () => ({ logAutoActionExecuted: mocks.logAutoActionExecuted }));
+vi.mock("../quoteDraftCore", () => ({ createInboundQuoteDraft: mocks.createInboundQuoteDraft }));
+vi.mock("@/lib/ai/recordRouteUsage", () => ({ startAiRouteUsage: () => ({ record: mocks.usageRecord }) }));
+vi.mock("@/lib/logger", () => ({
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({}) },
+}));
+
+import { maybeStartQuoteFlow, maybeAdvanceQuoteFlowOnDetail } from "../conversationFlowAuto";
+
+const TENANT = "11111111-1111-1111-1111-111111111111";
+const CUSTOMER = "22222222-2222-4222-a222-222222222222";
+const LINE_USER = "Uabc123";
+
+function baseParams() {
+  return {
+    tenantId: TENANT,
+    customerId: CUSTOMER,
+    lineUserId: LINE_USER,
+    intent: "inquiry_only",
+    service: "コーティング",
+    vehicleText: "アルファード",
+    messageId: "msg-1",
+    channel: "line",
+  };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.store = emptyStore({
+    tenants: [{ id: TENANT, plan_tier: "pro", is_active: true }],
+    line_conversation_flows: [],
+  });
+  mocks.loadAiAutomationSettings.mockResolvedValue({});
+  mocks.shouldRunConversationFlow.mockReturnValue(true);
+  mocks.sendCustomerLineText.mockResolvedValue(true);
+  mocks.createInboundQuoteDraft.mockResolvedValue({ docId: "doc-1", total: 132000, ai: true, confidence: 0.8 });
+});
+
+describe("maybeStartQuoteFlow", () => {
+  it("creates an awaiting_quote_detail flow and asks for vehicle detail", async () => {
+    await maybeStartQuoteFlow(baseParams());
+
+    const inserted = mocks.store.inserts.find((i) => i.table === "line_conversation_flows");
+    expect(inserted).toBeTruthy();
+    expect(inserted!.payload).toMatchObject({
+      tenant_id: TENANT,
+      customer_id: CUSTOMER,
+      state: "awaiting_quote_detail",
+    });
+    expect(inserted!.payload.context_json).toMatchObject({ service: "コーティング", vehicle_text: "アルファード" });
+
+    expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
+    const body = mocks.sendCustomerLineText.mock.calls[0][0].body;
+    expect(body).toContain("車検証");
+    expect(body).toContain("車種");
+    expect(mocks.logAutoActionExecuted).toHaveBeenCalledWith(
+      expect.objectContaining({ actionKey: "inbound_message.auto_conversation_flow" }),
+    );
+  });
+
+  it("does not start (avoids contradictory double-message) when a reply already went out", async () => {
+    await maybeStartQuoteFlow({ ...baseParams(), alreadyReplied: true });
+    expect(mocks.store.inserts).toHaveLength(0);
+    expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when opt-in is off", async () => {
+    mocks.shouldRunConversationFlow.mockReturnValue(false);
+    await maybeStartQuoteFlow(baseParams());
+    expect(mocks.store.inserts).toHaveLength(0);
+    expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
+  });
+
+  it("does nothing without a LINE user id", async () => {
+    await maybeStartQuoteFlow({ ...baseParams(), lineUserId: null });
+    expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
+  });
+
+  it("skips non-price intents", async () => {
+    await maybeStartQuoteFlow({ ...baseParams(), intent: "cancel" });
+    expect(mocks.store.inserts).toHaveLength(0);
+    expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
+  });
+
+  it("skips when neither service nor vehicle could be read (avoids false starts)", async () => {
+    await maybeStartQuoteFlow({ ...baseParams(), service: "", vehicleText: "" });
+    expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
+  });
+
+  it("does not start a second flow when one is already active", async () => {
+    mocks.store.tables.line_conversation_flows = [
+      { tenant_id: TENANT, customer_id: CUSTOMER, line_user_id: LINE_USER, state: "awaiting_quote_ok" },
+    ];
+    await maybeStartQuoteFlow(baseParams());
+    expect(mocks.store.inserts).toHaveLength(0);
+    expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
+  });
+
+  it("does not audit-log when the detail-ask delivery fails", async () => {
+    mocks.sendCustomerLineText.mockResolvedValue(false);
+    await maybeStartQuoteFlow(baseParams());
+    expect(mocks.logAutoActionExecuted).not.toHaveBeenCalled();
+  });
+});
+
+function advanceParams() {
+  return {
+    tenantId: TENANT,
+    customerId: CUSTOMER,
+    lineUserId: LINE_USER,
+    service: "",
+    vehicleText: "アルファード 2022年式",
+    messageId: "msg-2",
+    channel: "line",
+  };
+}
+
+describe("maybeAdvanceQuoteFlowOnDetail", () => {
+  beforeEach(() => {
+    // 詳細待ちの進行中フロー (元の問い合わせで service を保持)。
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-1",
+        tenant_id: TENANT,
+        customer_id: CUSTOMER,
+        line_user_id: LINE_USER,
+        state: "awaiting_quote_detail",
+        context_json: { service: "コーティング", vehicle_text: null },
+      },
+    ];
+  });
+
+  it("creates a formal quote draft from the detail reply, advances the flow, and acknowledges the customer", async () => {
+    const handled = await maybeAdvanceQuoteFlowOnDetail(advanceParams());
+    expect(handled).toBe(true);
+
+    // 元の問い合わせの service + 今回の車両で下書きを作る。
+    expect(mocks.createInboundQuoteDraft).toHaveBeenCalledTimes(1);
+    const draftArg = mocks.createInboundQuoteDraft.mock.calls[0][1];
+    expect(draftArg).toMatchObject({
+      service: "コーティング",
+      vehicleText: "アルファード 2022年式",
+      origin: "conversation_flow",
+    });
+
+    // フローが quote_drafted に進み quote_doc_id が入る。
+    const upd = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    expect(upd?.payload).toMatchObject({ state: "quote_drafted", quote_doc_id: "doc-1" });
+
+    expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
+    expect(mocks.sendCustomerLineText.mock.calls[0][0].body).toContain("正式なお見積り");
+    expect(mocks.logAutoActionExecuted).toHaveBeenCalledWith(
+      expect.objectContaining({ actionKey: "inbound_message.auto_conversation_flow" }),
+    );
+  });
+
+  it("returns false (not handled) when there is no active detail-waiting flow", async () => {
+    mocks.store.tables.line_conversation_flows = [];
+    const handled = await maybeAdvanceQuoteFlowOnDetail(advanceParams());
+    expect(handled).toBe(false);
+    expect(mocks.createInboundQuoteDraft).not.toHaveBeenCalled();
+  });
+
+  it("returns false when the flow is not in awaiting_quote_detail", async () => {
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-1",
+        tenant_id: TENANT,
+        customer_id: CUSTOMER,
+        line_user_id: LINE_USER,
+        state: "quote_drafted",
+        context_json: {},
+      },
+    ];
+    const handled = await maybeAdvanceQuoteFlowOnDetail(advanceParams());
+    expect(handled).toBe(false);
+  });
+
+  it("does not draft when the reply carries no vehicle detail (e.g. a question)", async () => {
+    const handled = await maybeAdvanceQuoteFlowOnDetail({ ...advanceParams(), vehicleText: "" });
+    expect(handled).toBe(false);
+    expect(mocks.createInboundQuoteDraft).not.toHaveBeenCalled();
+  });
+
+  it("handles the message (returns true) but sends nothing when there is no pricing basis", async () => {
+    mocks.createInboundQuoteDraft.mockResolvedValue(null);
+    const handled = await maybeAdvanceQuoteFlowOnDetail(advanceParams());
+    expect(handled).toBe(true); // フローを保持しつつ他の自動返信はしない
+    expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when opt-in is off", async () => {
+    mocks.shouldRunConversationFlow.mockReturnValue(false);
+    const handled = await maybeAdvanceQuoteFlowOnDetail(advanceParams());
+    expect(handled).toBe(false);
+    expect(mocks.createInboundQuoteDraft).not.toHaveBeenCalled();
+  });
+});
