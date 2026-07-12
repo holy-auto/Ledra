@@ -49,7 +49,8 @@ export async function GET() {
 }
 
 const createSchema = z.object({
-  title: z.string().trim().min(1, "質問/トピックを入力してください。").max(200),
+  // 質問/トピックは任意 (未入力なら本文だけを学習させる)。本文は必須。
+  title: z.string().trim().max(200).optional().default(""),
   content: z.string().trim().min(1, "回答/知識本文を入力してください。").max(2000),
 });
 

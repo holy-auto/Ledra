@@ -18,7 +18,7 @@ import { untrustedNotice } from "@/lib/ai/promptSafety";
 import { renderHistory, wrapUntrustedBody, type InboundHistoryTurn } from "@/lib/ai/inboundReservationExtract";
 
 export interface KnowledgeEntry {
-  /** 質問 / トピック (例: "営業時間") */
+  /** 質問 / トピック (例: "営業時間")。任意 — 空欄なら content だけを注入する。 */
   title: string;
   /** 回答 / 知識本文 */
   content: string;
@@ -94,7 +94,13 @@ ${untrustedNotice("受信本文")}`.trim();
  */
 export function renderKnowledgeBlock(knowledge: KnowledgeEntry[], tag: string): string {
   if (knowledge.length === 0) return "";
-  const lines = knowledge.map((k, i) => `${i + 1}. ${k.title.trim()}\n${k.content.trim()}`);
+  // title は任意。Q&A なら「1. 質問 改行 回答」、自由文なら「1. 本文」だけを出す
+  // (空タイトルで見出し行が空になり本文の意味が崩れるのを防ぐ)。
+  const lines = knowledge.map((k, i) => {
+    const title = k.title.trim();
+    const content = k.content.trim();
+    return title ? `${i + 1}. ${title}\n${content}` : `${i + 1}. ${content}`;
+  });
   return `<${tag}>\n${lines.join("\n\n")}\n</${tag}>\n\n`;
 }
 

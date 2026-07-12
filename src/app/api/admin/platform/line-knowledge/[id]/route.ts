@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const updateSchema = z.object({
-  title: z.string().trim().min(1).max(200).optional(),
+  title: z.string().trim().max(200).optional(),
   content: z.string().trim().min(1).max(2000).optional(),
   enabled: z.boolean().optional(),
 });

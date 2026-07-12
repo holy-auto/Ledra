@@ -19,6 +19,20 @@ describe("renderKnowledgeBlock", () => {
   it("returns an empty string (no empty tag block) for an empty list", () => {
     expect(renderKnowledgeBlock([], "共通ナレッジ")).toBe("");
   });
+
+  it("emits content only (no dangling heading line) when title is blank", () => {
+    const block = renderKnowledgeBlock(
+      [
+        { title: "", content: "当店は完全予約制です。" },
+        { title: "  ", content: "作業中の飲食はご遠慮ください。" },
+      ],
+      "店舗ナレッジ",
+    );
+    expect(block).toContain("1. 当店は完全予約制です。");
+    expect(block).toContain("2. 作業中の飲食はご遠慮ください。");
+    // 空タイトルで "1. \n本文" のような空見出し行を作らない
+    expect(block).not.toContain("1. \n");
+  });
 });
 
 describe("generateKnowledgeReply fallback", () => {

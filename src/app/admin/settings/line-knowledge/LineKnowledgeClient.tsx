@@ -69,7 +69,8 @@ export default function LineKnowledgeClient({
   }
 
   async function handleAdd() {
-    if (!title.trim() || !content.trim()) return;
+    // タイトル (質問 / トピック) は任意。本文だけあれば学習させられる。
+    if (!content.trim()) return;
     setSaving(true);
     try {
       const res = await fetch(API, {
@@ -130,7 +131,7 @@ export default function LineKnowledgeClient({
   }
 
   async function saveEdit() {
-    if (!editingId || !editTitle.trim() || !editContent.trim()) return;
+    if (!editingId || !editContent.trim()) return;
     const ok = await handlePatch(editingId, { title: editTitle.trim(), content: editContent.trim() });
     if (ok) {
       setEditingId(null);
@@ -170,32 +171,27 @@ export default function LineKnowledgeClient({
         <section className="glass-card p-5 space-y-3">
           <div className="text-base font-semibold text-primary">ナレッジを追加</div>
           <div>
-            <label className="block text-xs text-muted mb-1">質問 / トピック (例: 営業時間を教えて)</label>
+            <label className="block text-xs text-muted mb-1">質問 / トピック (任意 — 例: 営業時間を教えて)</label>
             <input
               className="input-field w-full"
               value={title}
               maxLength={200}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="営業時間を教えて"
+              placeholder="営業時間を教えて (空欄でも登録できます)"
             />
           </div>
           <div>
-            <label className="block text-xs text-muted mb-1">回答 / 知識本文 (AI はこの内容のとおりに答えます)</label>
+            <label className="block text-xs text-muted mb-1">知識本文 (AI はこの内容のとおりに答えます)</label>
             <textarea
               className="input-field w-full"
               rows={4}
               value={content}
               maxLength={2000}
               onChange={(e) => setContent(e.target.value)}
-              placeholder="平日 9:00〜18:00、日曜・祝日は定休です。"
+              placeholder="平日 9:00〜18:00、日曜・祝日は定休です。（質問と対にせず、覚えさせたいことだけでもOK）"
             />
           </div>
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={saving || !title.trim() || !content.trim()}
-            onClick={handleAdd}
-          >
+          <button type="button" className="btn-primary" disabled={saving || !content.trim()} onClick={handleAdd}>
             {saving ? "追加中…" : "追加する"}
           </button>
         </section>
@@ -209,8 +205,8 @@ export default function LineKnowledgeClient({
           <p className="text-sm text-muted">読み込み中…</p>
         ) : entries.length === 0 ? (
           <p className="text-sm text-muted">
-            まだナレッジがありません。よくある質問とその回答を登録すると、LINE の AI
-            自動返信が答えられるようになります。
+            まだナレッジがありません。よくある質問とその回答や、覚えさせたい店舗の情報 (質問と対でなくてもOK)
+            を登録すると、LINE の AI 自動返信が答えられるようになります。
           </p>
         ) : (
           <ul className="space-y-3">
@@ -222,6 +218,7 @@ export default function LineKnowledgeClient({
                       className="input-field w-full"
                       value={editTitle}
                       maxLength={200}
+                      placeholder="質問 / トピック (任意)"
                       onChange={(ev) => setEditTitle(ev.target.value)}
                     />
                     <textarea
@@ -243,11 +240,22 @@ export default function LineKnowledgeClient({
                 ) : (
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className={`text-sm font-semibold ${e.enabled ? "text-primary" : "text-muted"}`}>
-                        {e.title}
-                        {!e.enabled && <span className="ml-2 text-xs font-normal text-muted">(停止中)</span>}
-                      </div>
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-secondary">{e.content}</p>
+                      {/* タイトル (質問 / トピック) は任意。空欄なら本文を主役に表示する。 */}
+                      {e.title ? (
+                        <div className={`text-sm font-semibold ${e.enabled ? "text-primary" : "text-muted"}`}>
+                          {e.title}
+                          {!e.enabled && <span className="ml-2 text-xs font-normal text-muted">(停止中)</span>}
+                        </div>
+                      ) : (
+                        !e.enabled && <div className="text-xs text-muted">(停止中)</div>
+                      )}
+                      <p
+                        className={`mt-1 whitespace-pre-wrap text-sm ${
+                          e.title ? "text-secondary" : e.enabled ? "text-primary" : "text-muted"
+                        }`}
+                      >
+                        {e.content}
+                      </p>
                     </div>
                     {canEdit && (
                       <div className="flex shrink-0 flex-col items-end gap-1 text-xs">
