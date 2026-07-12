@@ -358,6 +358,7 @@ export default async function HomePage() {
         tertiaryLabel="デモを見る"
         tertiaryHref="/demo"
         trackLocation="home-final"
+        primaryExperiment="home_final_cta"
       />
     </>
   );

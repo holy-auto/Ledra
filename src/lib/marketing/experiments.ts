@@ -17,7 +17,7 @@
 
 export type Variant = "control" | "treatment";
 
-export type ExperimentKey = "hero_primary_cta";
+export type ExperimentKey = "hero_primary_cta" | "home_final_cta";
 
 export type Experiment = {
   key: ExperimentKey;
@@ -31,6 +31,13 @@ export const EXPERIMENTS: Record<ExperimentKey, Experiment> = {
     variants: {
       control: "無料で試す",
       treatment: "5分で証明書を発行",
+    },
+  },
+  home_final_cta: {
+    key: "home_final_cta",
+    variants: {
+      control: "無料で試す",
+      treatment: "5分で無料発行を試す",
     },
   },
 };

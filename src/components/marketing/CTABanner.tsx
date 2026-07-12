@@ -3,6 +3,8 @@
 import { Container } from "./Container";
 import { CTAButton } from "./CTAButton";
 import { ScrollReveal } from "./ScrollReveal";
+import { ExperimentText } from "./ExperimentText";
+import type { ExperimentKey } from "@/lib/marketing/experiments";
 
 export function CTABanner({
   title = "Ledraを始めましょう",
@@ -14,6 +16,7 @@ export function CTABanner({
   tertiaryLabel,
   tertiaryHref,
   trackLocation,
+  primaryExperiment,
 }: {
   title?: string;
   subtitle?: string;
@@ -24,6 +27,8 @@ export function CTABanner({
   tertiaryLabel?: string;
   tertiaryHref?: string;
   trackLocation?: string;
+  /** 指定時は主ボタンのラベルを A/B 実験の文言に差し替える（露出は experiment_exposed で計測）。 */
+  primaryExperiment?: ExperimentKey;
 }) {
   return (
     <section className="relative overflow-hidden bg-gradient-to-br from-[#0a0f1a] via-[#1e293b] to-[#0a0f1a]">
@@ -55,7 +60,7 @@ export function CTABanner({
         <ScrollReveal variant="fade-up" delay={200}>
           <div className="flex flex-col sm:flex-row gap-3 justify-center mt-12">
             <CTAButton variant="white" href={primaryHref} trackLocation={trackLocation}>
-              {primaryLabel}
+              {primaryExperiment ? <ExperimentText experiment={primaryExperiment} /> : primaryLabel}
             </CTAButton>
             <CTAButton variant="white-outline" href={secondaryHref} trackLocation={trackLocation}>
               {secondaryLabel}
