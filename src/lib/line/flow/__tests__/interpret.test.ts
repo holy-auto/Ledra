@@ -21,6 +21,7 @@ describe("interpretReply", () => {
     expect(interpretReply("awaiting_quote_ok", { postbackData: "flow:no" })).toEqual({ type: "no" });
     expect(interpretReply("awaiting_schedule_pick", { postbackData: "flow:slot:1" })).toEqual({
       type: "slot_selected",
+      index: 1,
     });
     expect(interpretReply("awaiting_option_confirm", { postbackData: "flow:option:x" })).toEqual({
       type: "option_selected",
@@ -49,5 +50,11 @@ describe("interpretReply", () => {
   it("returns null for unrecognized input", () => {
     expect(interpretReply("awaiting_quote_ok", { text: "うーん検討します" })).toBeNull();
     expect(interpretReply("awaiting_quote_ok", {})).toBeNull();
+  });
+
+  it("rejects a non-numeric or negative slot index (malformed/spoofed postback)", () => {
+    expect(interpretReply("awaiting_schedule_pick", { postbackData: "flow:slot:abc" })).toBeNull();
+    expect(interpretReply("awaiting_schedule_pick", { postbackData: "flow:slot:-1" })).toBeNull();
+    expect(interpretReply("awaiting_schedule_pick", { postbackData: "flow:slot:" })).toBeNull();
   });
 });

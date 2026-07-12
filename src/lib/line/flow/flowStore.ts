@@ -19,6 +19,7 @@ export interface ConversationFlowRow {
   line_user_id: string | null;
   state: FlowState;
   context_json: Record<string, unknown>;
+  quote_doc_id: string | null;
 }
 
 type Admin = ReturnType<typeof createServiceRoleAdmin>;
@@ -36,7 +37,7 @@ export async function getActiveFlow(
     // 落とす前でも、期限切れフローが新規開始を永久に塞ぐのを防ぐ (時刻ベースで実効)。
     let q = admin
       .from("line_conversation_flows")
-      .select("id, tenant_id, customer_id, line_user_id, state, context_json")
+      .select("id, tenant_id, customer_id, line_user_id, state, context_json, quote_doc_id")
       .eq("tenant_id", tenantId)
       .not("state", "in", "(closed,expired)")
       .gt("expires_at", new Date().toISOString())
@@ -64,7 +65,7 @@ export async function getFlowByQuoteDoc(
   try {
     const { data, error } = await admin
       .from("line_conversation_flows")
-      .select("id, tenant_id, customer_id, line_user_id, state, context_json")
+      .select("id, tenant_id, customer_id, line_user_id, state, context_json, quote_doc_id")
       .eq("tenant_id", tenantId)
       .eq("quote_doc_id", quoteDocId)
       .not("state", "in", "(closed,expired)")
@@ -144,7 +145,7 @@ export async function createFlow(
         last_message_id: input.lastMessageId ?? null,
         expires_at: expiresAt,
       })
-      .select("id, tenant_id, customer_id, line_user_id, state, context_json")
+      .select("id, tenant_id, customer_id, line_user_id, state, context_json, quote_doc_id")
       .single();
     if (error) {
       // 一意制約違反 (既に進行中フローがある) は競合として無視。

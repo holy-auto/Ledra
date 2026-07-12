@@ -263,11 +263,19 @@ none / idle
     付与 (`maybeAdvanceFlowOnQuoteSent`)
   - 顧客の可否 postback で分岐 (`handleFlowPostback`): はい → 日程調整へ (現状は
     スタッフ引き継ぎ + 案内 + 通知) / 相談する・想定外 → スタッフ引き継ぎ
-- **Phase 1b-3**: 日程調整の自動化 (次PR)
-  - [C]OK → [F]日程候補提示 (booking-candidates 再利用・代車空き込み) → 顧客が
-    スロット選択 → 予約作成 (reservations / gcal / 代車) → お礼クローズ
-  - オプション提案 (Phase 2) / 車検証 OCR での詳細受領 (画像) / [A0] 未登録客の
-    登録誘導 (既存 intake 招待の再利用)
+- **Phase 1b-3**: 日程調整の自動化 (実装済み)
+  - [C]OK → 空き日程候補を取得 (`fetchFlowScheduleCandidates` — 既存の純粋関数
+    `proposeCandidates` を service-role で簡易呼び出し。品目 ID が無いため所要時間
+    フィルタ・代車/人手判定は未適用、`limit=3` 件をボタン提示) → 候補ゼロ件なら
+    従来どおりスタッフ引き継ぎ
+  - 顧客がスロット選択 (`flow:slot:<index>`) → 選択日を再取得して直前の空き状況を
+    再検証 → 埋まっていればスタッフ引き継ぎ (お詫び文)、空いていれば `reservations`
+    へ確定作成 (status=confirmed。顧客の明示的な承認を経ているため「【要確認】」は
+    付けない) + gcal 同期 (`syncCreateEvent`、非ブロッキング) → フローを `closed` に
+    してお礼メッセージ送信 + スタッフ通知
+  - 残課題 (次フェーズ): オプション提案 (Phase 2) / 車検証 OCR での詳細受領 (画像) /
+    [A0] 未登録客の登録誘導 (既存 intake 招待の再利用) / 代車必須判定・人手判定を
+    日程候補取得に反映
 - **Phase 2**: オプション提案 (C) を [B]/[D] に織り込む
 - **Phase 3**: 証明書分岐 — 登録車両あり (既存) / 未登録→入庫日車検証撮影→登録→draft
 - **Phase 4**: 請求書 — 追加作業の LINE 承認 [H]、作業終了→金額確定 [I]→送付
