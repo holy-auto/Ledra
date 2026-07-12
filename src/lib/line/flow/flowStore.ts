@@ -55,6 +55,32 @@ export async function getActiveFlow(
   }
 }
 
+/** 進行中フローを見積書 doc_id で 1 件返す (スタッフ送付フック用)。無ければ null。 */
+export async function getFlowByQuoteDoc(
+  admin: Admin,
+  tenantId: string,
+  quoteDocId: string,
+): Promise<ConversationFlowRow | null> {
+  try {
+    const { data, error } = await admin
+      .from("line_conversation_flows")
+      .select("id, tenant_id, customer_id, line_user_id, state, context_json")
+      .eq("tenant_id", tenantId)
+      .eq("quote_doc_id", quoteDocId)
+      .not("state", "in", "(closed,expired)")
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      logger.warn("[flowStore] getFlowByQuoteDoc failed", { tenantId, err: error.message });
+      return null;
+    }
+    return (data as ConversationFlowRow | null) ?? null;
+  } catch (e) {
+    logger.warn("[flowStore] getFlowByQuoteDoc threw", { tenantId, err: e instanceof Error ? e.message : String(e) });
+    return null;
+  }
+}
+
 /**
  * フローを次状態へ進める。state を更新し context をマージする (失敗しても投げない)。
  * 想定外の並行更新を避けるため、現在 state が期待どおりのときだけ更新する

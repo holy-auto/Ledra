@@ -256,12 +256,18 @@ none / idle
     お送りします」と返信 + スタッフ通知 (`maybeAdvanceQuoteFlowOnDetail`)
   - 既知顧客のみ (未紐付け客の登録誘導 [A0] は 1b-2)。この受信を処理したら他の
     自動返信 (概算・ナレッジ) はスキップ (二重返信防止)
-- **Phase 1b-2**: 可否 → 日程調整の貫通 (次PR)
+- **Phase 1b-2**: 可否ゲート (実装済み)
   - postback ディスパッチャ (line/client.ts の postback 分岐を会話フローへ) +
-    スタッフの見積り送付 (draft→sent) で [B]→[C] へ遷移し OK/NG ボタンを付与
-  - [C]OK/NG →[D]オプション確認 →[F]日程候補提示 (booking-candidates 再利用) →
-    予約作成 (reservations / gcal / 代車) → お礼クローズ
-  - 車検証 OCR での詳細受領 (画像) / [A0] 未登録客の登録誘導 (既存 intake 招待の再利用)
+    LINE ボタン送信 (`sendCustomerLineButtons`)
+  - スタッフの見積り送付 (documents draft→sent) で [B]→[C] へ遷移し OK/NG ボタンを
+    付与 (`maybeAdvanceFlowOnQuoteSent`)
+  - 顧客の可否 postback で分岐 (`handleFlowPostback`): はい → 日程調整へ (現状は
+    スタッフ引き継ぎ + 案内 + 通知) / 相談する・想定外 → スタッフ引き継ぎ
+- **Phase 1b-3**: 日程調整の自動化 (次PR)
+  - [C]OK → [F]日程候補提示 (booking-candidates 再利用・代車空き込み) → 顧客が
+    スロット選択 → 予約作成 (reservations / gcal / 代車) → お礼クローズ
+  - オプション提案 (Phase 2) / 車検証 OCR での詳細受領 (画像) / [A0] 未登録客の
+    登録誘導 (既存 intake 招待の再利用)
 - **Phase 2**: オプション提案 (C) を [B]/[D] に織り込む
 - **Phase 3**: 証明書分岐 — 登録車両あり (既存) / 未登録→入庫日車検証撮影→登録→draft
 - **Phase 4**: 請求書 — 追加作業の LINE 承認 [H]、作業終了→金額確定 [I]→送付

@@ -1,9 +1,18 @@
 /**
  * LINE 会話フローの送信メッセージ組み立て — 純粋ロジック。
- *
- * Phase 1a は詳細依頼文のみ。以降のフェーズ (OK/NG 確認・日程提示・支払方法) の
- * 文面と LINE ボタン (quickReply) は、応答を取り込む Phase 1b でここへ足す。
  */
+
+/** LINE quickReply の 1 ボタン (postback アクション)。data は interpret.ts が解釈する。 */
+export interface FlowButton {
+  label: string;
+  /** `flow:<event>[:<arg>]` 形式。 */
+  data: string;
+}
+
+export interface FlowButtonMessage {
+  text: string;
+  buttons: FlowButton[];
+}
 
 /**
  * 正式見積りのための詳細情報 (車検証写真 or 車種+年式) を依頼する文面。
@@ -32,5 +41,38 @@ export function buildFormalQuoteComingAck(): string {
   return [
     "ありがとうございます。いただいた内容で正式なお見積りをお作りしています。",
     "担当が確認のうえ、こちらのトークにお見積りをお送りしますので少々お待ちください。",
+  ].join("\n");
+}
+
+/**
+ * 正式見積書を送付した直後に、内容でよいか (可否) をボタンで尋ねる。
+ * スタッフが draft→sent に確定した時点で送る。
+ */
+export function buildQuoteApprovalAsk(): FlowButtonMessage {
+  return {
+    text: [
+      "お見積りをお送りしました。内容はいかがでしょうか？",
+      "このお見積りで進めてよろしければ「はい」、ご相談されたい場合は「相談する」をお選びください。",
+    ].join("\n"),
+    buttons: [
+      { label: "はい、お願いします", data: "flow:yes" },
+      { label: "相談する", data: "flow:no" },
+    ],
+  };
+}
+
+/** 可否で OK をもらい、次段 (日程調整) へ進むことを伝える案内。 */
+export function buildScheduleHandoff(): string {
+  return [
+    "ありがとうございます。それでは作業日程のご相談に進みます。",
+    "代車の空き状況とあわせて、担当より日程の候補をご連絡いたします。少々お待ちください。",
+  ].join("\n");
+}
+
+/** 「相談する」(NG) を受けてスタッフ対応に切り替える案内。 */
+export function buildQuoteConsultHandoff(): string {
+  return [
+    "承知いたしました。内容について担当よりご連絡し、ご相談させていただきます。",
+    "ご不明な点やご希望があれば、このトークにお書きくださいませ。",
   ].join("\n");
 }
