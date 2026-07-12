@@ -158,8 +158,13 @@ export async function getActorAssurance(supabase: Db): Promise<ActorAssurance> {
   try {
     const res = await mfa.getAuthenticatorAssuranceLevel();
     const level = res.data?.currentLevel ?? null;
-    const methods = (res.data?.currentAuthenticationMethods ?? []) as Array<{ method?: string }>;
-    const usedWebAuthn = methods.some((m) => typeof m.method === "string" && m.method.includes("webauthn"));
+    // currentAuthenticationMethods は詳細オブジェクトの配列にも RFC 形式の
+    // 文字列配列 (['password','webauthn']) にもなりうるので両対応する。
+    const methods = (res.data?.currentAuthenticationMethods ?? []) as Array<string | { method?: string }>;
+    const usedWebAuthn = methods.some((m) => {
+      const name = typeof m === "string" ? m : m?.method;
+      return typeof name === "string" && name.includes("webauthn");
+    });
     return {
       aal: level === "aal2" ? "aal2" : level === "aal1" ? "aal1" : null,
       usedWebAuthn,

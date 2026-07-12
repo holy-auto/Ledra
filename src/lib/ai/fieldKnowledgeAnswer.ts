@@ -70,7 +70,7 @@ const SYSTEM_PROMPT = `あなたは自動車施工店の現場スタッフを補
 confidence: ナレッジが質問に合致している度合いを 0.0〜1.0 で自己評価。
 質問とナレッジの対応が曖昧なら低めに付ける。
 
-${untrustedNotice("質問文")}`.trim();
+${untrustedNotice("受信本文")}`.trim();
 
 export async function answerFieldKnowledge(
   input: FieldKnowledgeAnswerInput,
