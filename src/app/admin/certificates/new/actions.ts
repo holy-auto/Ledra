@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { makePublicId } from "@/lib/publicId";
 import { resolveCertifiedTemplateForTenant } from "@/lib/manufacturers/certifiedTemplates";
@@ -15,13 +16,12 @@ export type CreateCertResult =
 export async function createCertAction(formData: FormData): Promise<CreateCertResult> {
   const supabase = await createSupabaseServerClient();
 
-  const { data: userRes } = await supabase.auth.getUser();
-  const userId = userRes.user?.id ?? null;
-  if (!userId) return { ok: false, error: "unauthorized" };
-
-  const { data: mem } = await supabase.from("tenant_memberships").select("tenant_id").limit(1).single();
-  const tenantId = mem?.tenant_id as string | undefined;
-  if (!tenantId) return { ok: false, error: "no_tenant" };
+  // 画面表示と同じ active テナントで解決する (スキャンした別店舗の車両で発行しても
+  // first-membership 側に作られる/失敗するのを防ぐ)。
+  const caller = await resolveCallerWithRole(supabase);
+  if (!caller) return { ok: false, error: "unauthorized" };
+  const userId = caller.userId;
+  const tenantId = caller.tenantId;
 
   const template_id = String(formData.get("template_id") || "");
   const template_name = String(formData.get("template_name") || "");

@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { formatDate, formatDateTime } from "@/lib/format";
 import ServiceTimeline, { type TimelineEvent } from "./ServiceTimeline";
 import VehicleCustomerLink from "./VehicleCustomerLink";
+import VehicleTagQr from "./VehicleTagQr";
+import { qrSvgDataUrl } from "@/lib/qr";
 
 export const dynamic = "force-dynamic";
 
@@ -28,27 +31,19 @@ export default async function AdminVehicleDetailPage({
   const savedFlag = Array.isArray(sp?.saved) ? sp?.saved[0] : sp?.saved;
   const voidedFlag = Array.isArray(sp?.voided) ? sp?.voided[0] : sp?.voided;
   const errFlag = Array.isArray(sp?.e) ? sp?.e[0] : sp?.e;
+  // タグ (NFC/QR) からの作業開始導線。/s/v/[publicId] が ?start=1 で送ってくる。
+  const startFlag = Array.isArray(sp?.start) ? sp?.start[0] : sp?.start;
 
   const supabase = await createSupabaseServerClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // active_tenant_id cookie を尊重してテナントを解決する (複数店舗スタッフ対応)。
+  // タグ経由 (/s/v) は解決した車両の店舗を active にしてから遷移してくる。
+  const caller = await resolveCallerWithRole(supabase);
 
-  if (!user) {
+  if (!caller) {
     return <div className="p-6 text-primary">ログインしてください。</div>;
   }
-
-  const { data: membership } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .single();
-
-  if (!membership?.tenant_id) {
-    return <div className="p-6 text-primary">tenant が見つかりません。</div>;
-  }
+  const tenantId = caller.tenantId;
 
   async function voidCertificate(formData: FormData) {
     "use server";
@@ -60,29 +55,18 @@ export default async function AdminVehicleDetailPage({
 
     const supabase = await createSupabaseServerClient();
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
+    // 画面表示と同じ active テナントで解決する (複数店舗スタッフで削除が別店舗を
+    // 探して失敗するのを防ぐ)。
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) {
       redirect("/login");
     }
-
-    const { data: membership } = await supabase
-      .from("tenant_memberships")
-      .select("tenant_id")
-      .eq("user_id", user.id)
-      .limit(1)
-      .single();
-
-    if (!membership?.tenant_id) {
-      redirect(`/admin/vehicles/${id}?e=1`);
-    }
+    const membershipTenantId = caller.tenantId;
 
     const existing = await supabase
       .from("certificates")
       .select("id, tenant_id, vehicle_id, public_id, status")
-      .eq("tenant_id", membership.tenant_id)
+      .eq("tenant_id", membershipTenantId)
       .eq("vehicle_id", id)
       .eq("id", certId)
       .limit(1)
@@ -104,7 +88,7 @@ export default async function AdminVehicleDetailPage({
         status: "void",
         updated_at: nowIso,
       })
-      .eq("tenant_id", membership.tenant_id)
+      .eq("tenant_id", membershipTenantId)
       .eq("vehicle_id", id)
       .eq("id", certId);
 
@@ -113,7 +97,7 @@ export default async function AdminVehicleDetailPage({
     }
 
     await supabase.from("vehicle_histories").insert({
-      tenant_id: membership.tenant_id,
+      tenant_id: membershipTenantId,
       vehicle_id: id,
       type: "certificate_voided",
       title: "施工証明書を削除",
@@ -139,11 +123,12 @@ export default async function AdminVehicleDetailPage({
     customer: { id: string; name: string | null } | null;
     // 新カラム (存在しないテナントもあるので optional)
     size_class?: string | null;
+    public_id?: string | null;
   };
   const { data: vehicle, error: vehicleError } = await supabase
     .from("vehicles")
     .select("*, customer:customers(id, name)")
-    .eq("tenant_id", membership.tenant_id)
+    .eq("tenant_id", tenantId)
     .eq("id", id)
     .single<VehicleDetailRow>();
 
@@ -151,10 +136,16 @@ export default async function AdminVehicleDetailPage({
     return <div className="p-6 text-primary">車両が見つかりません。</div>;
   }
 
+  // 車両タグ (NFC/QR) に焼く公開 URL と印刷用 QR。public_id が無い車両
+  // (バックフィル前など) はタグ表示をスキップする。
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.ledra.co.jp";
+  const tagUrl = vehicle.public_id ? `${appUrl}/s/v/${vehicle.public_id}` : null;
+  const tagQrDataUrl = tagUrl ? await qrSvgDataUrl(tagUrl) : null;
+
   const { data: certs } = await supabase
     .from("certificates")
     .select("id, public_id, certificate_no, service_type, created_at, status")
-    .eq("tenant_id", membership.tenant_id)
+    .eq("tenant_id", tenantId)
     .eq("vehicle_id", id)
     .order("created_at", { ascending: false });
 
@@ -176,7 +167,7 @@ export default async function AdminVehicleDetailPage({
   const { data: historiesRaw } = await supabase
     .from("vehicle_histories")
     .select("*")
-    .eq("tenant_id", membership.tenant_id)
+    .eq("tenant_id", tenantId)
     .eq("vehicle_id", id)
     .order("created_at", { ascending: false })
     .returns<VehicleHistoryRow[]>();
@@ -184,7 +175,7 @@ export default async function AdminVehicleDetailPage({
   const { data: tags } = await supabase
     .from("nfc_tags")
     .select("id, tag_code, status, written_at, attached_at, certificate_id")
-    .eq("tenant_id", membership.tenant_id)
+    .eq("tenant_id", tenantId)
     .eq("vehicle_id", id)
     .order("created_at", { ascending: false });
 
@@ -192,7 +183,7 @@ export default async function AdminVehicleDetailPage({
   const { data: reservations } = await supabase
     .from("reservations")
     .select("id, title, status, scheduled_date, start_time, end_time, created_at, updated_at")
-    .eq("tenant_id", membership.tenant_id)
+    .eq("tenant_id", tenantId)
     .eq("vehicle_id", id)
     .order("scheduled_date", { ascending: false });
 
@@ -202,7 +193,7 @@ export default async function AdminVehicleDetailPage({
     .select(
       "id, name, measured_at, device_serial_number, comment, unit_of_measure, thickness_measurements(value_um, interpretation, is_inside)",
     )
-    .eq("tenant_id", membership.tenant_id)
+    .eq("tenant_id", tenantId)
     .eq("vehicle_id", id)
     .order("measured_at", { ascending: false });
 
@@ -370,6 +361,26 @@ export default async function AdminVehicleDetailPage({
         </div>
       ) : null}
 
+      {startFlag ? (
+        <section className="glass-card border-accent/40 bg-accent-dim p-6 space-y-3">
+          <h2 className="text-lg font-semibold text-primary">この車両の作業を開始</h2>
+          <p className="text-sm text-secondary">
+            タグを読み取りました。作業内容を選んで開始してください。証明書作成では作業メニュー別の必須写真がガイドされます。
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Link href={`/admin/certificates/new?vehicle_id=${vehicle.id}`} className="btn-primary">
+              施工証明書を作成（写真ガイド）
+            </Link>
+            <Link
+              href={`/admin/jobs/new?vehicle_id=${vehicle.id}${vehicle.customer_id ? `&customer_id=${vehicle.customer_id}` : ""}`}
+              className="btn-secondary"
+            >
+              作業・予約を登録
+            </Link>
+          </div>
+        </section>
+      ) : null}
+
       <section className="glass-card p-6 space-y-3">
         <h2 className="text-lg font-semibold text-primary">車両情報</h2>
         <div className="grid gap-3 md:grid-cols-2 text-sm text-secondary">
@@ -465,6 +476,13 @@ export default async function AdminVehicleDetailPage({
         </div>
         <ServiceTimeline events={timelineEvents} />
       </section>
+
+      {tagQrDataUrl && tagUrl ? (
+        <section className="glass-card p-6 space-y-4">
+          <h2 className="text-lg font-semibold text-primary">車両タグ (QR)</h2>
+          <VehicleTagQr dataUrl={tagQrDataUrl} tagUrl={tagUrl} />
+        </section>
+      ) : null}
 
       <section className="glass-card p-6 space-y-4">
         <h2 className="text-lg font-semibold text-primary">NFCタグ</h2>

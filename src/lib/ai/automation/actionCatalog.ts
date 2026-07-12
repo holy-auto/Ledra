@@ -58,7 +58,8 @@ export type AutomationActionKey =
   | "customer.auto_create"
   | "payment.auto_charge"
   | "body_repair.auto_notify_on_stage_advance"
-  | "inbound_message.auto_reply_knowledge";
+  | "inbound_message.auto_reply_knowledge"
+  | "manager.auto_daily_digest";
 
 export interface AutomationActionDef {
   key: AutomationActionKey;
@@ -380,6 +381,15 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     defaultEnabled: false,
     guard:
       "AI 有効 + Standard プラン以上 + LINE 受信 + 有効なナレッジ登録あり + AI がナレッジのみで回答可能と判断 + confidence≥閾値。概算見積りの自動返信より先に判定され、ナレッジで返信した場合は概算見積りをスキップ (二重返信防止)",
+  },
+  {
+    key: "manager.auto_daily_digest",
+    workflow: "job",
+    label: "毎朝の「今日のまとめ」をAIで自動生成",
+    description:
+      "日次バッチで、店舗の未発行・期限・不足など『今日の確認事項』(決定論で確定した件数) を店長向けの短い自然文ブリーフィングに整形して保存する。件数は SQL 由来のみで AI は言い換えるだけ (事実を作らない)。ダッシュボード内表示のみで外部送信・確定には関与しない。既定 OFF (opt-in)。",
+    defaultEnabled: false,
+    guard: "AI 有効 (master switch + 月次コストキャップ) + 明示 opt-in",
   },
 ];
 
