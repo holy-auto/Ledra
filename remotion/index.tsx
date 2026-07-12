@@ -5,6 +5,9 @@ import { Slideshow, totalFrames } from "./Slideshow";
 // ── 説明会 ────────────────────────────────────────────────────────────
 import { LedraVideo } from "./LedraVideo";
 
+// ── 短尺プロダクトツアー (LP/商談/SNS) ────────────────────────────────
+import { ProductTourVideo, PRODUCT_TOUR_FRAMES } from "./ProductTour";
+
 // ── Admin オンボーディング ─────────────────────────────────────────────
 import { AdminWelcome } from "./slides/admin-onboarding/Welcome";
 import { AdminInitialSetup } from "./slides/admin-onboarding/InitialSetup";
@@ -383,6 +386,15 @@ const AgentFullGuideVideo: React.FC = () => (
 
 export const RemotionRoot: React.FC = () => (
   <>
+    {/* 短尺プロダクトツアー — LP/商談/SNS 向け (約28s) */}
+    <Composition
+      id="ProductTour"
+      component={ProductTourVideo}
+      durationInFrames={PRODUCT_TOUR_FRAMES}
+      fps={FPS} width={W} height={H}
+      defaultProps={{}}
+    />
+
     {/* 説明会 (10スライド × 27s = 270s = 4.5min) */}
     <Composition
       id="LedraIntro"
