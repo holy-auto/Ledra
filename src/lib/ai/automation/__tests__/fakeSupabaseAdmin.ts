@@ -34,9 +34,12 @@ export function makeFakeAdmin(store: FakeStore): any {
     const filters: Record<string, any> = {};
     let op: "select" | "update" | "insert" = "select";
     let updatePayload: Record<string, any> = {};
+    let insertedPayload: Record<string, any> = {};
 
     const rows = () => store.tables[table] ?? [];
     const matched = () => rows().filter((r) => Object.entries(filters).every(([k, v]) => r[k] === v));
+    // 挿入行の返却値: id が無ければ簡易採番して返す (呼び出し側が id を使うため)。
+    const insertReturn = () => ({ id: insertedPayload.id ?? `fake-${store.inserts.length}`, ...insertedPayload });
 
     const applyUpdate = () => {
       store.updates.push({ table, payload: updatePayload, filters: { ...filters } });
@@ -57,8 +60,10 @@ export function makeFakeAdmin(store: FakeStore): any {
       lte: () => builder,
       order: () => builder,
       limit: () => builder,
-      maybeSingle: async () => ({ data: matched()[0] ?? null, error: null }),
+      // insert().select().single()/maybeSingle() は挿入した行を返す (実 PostgREST 準拠)。
+      maybeSingle: async () => ({ data: op === "insert" ? insertReturn() : (matched()[0] ?? null), error: null }),
       single: async () => {
+        if (op === "insert") return { data: insertReturn(), error: null };
         const row = matched()[0] ?? null;
         return { data: row, error: row ? null : { message: "no row" } };
       },
@@ -69,6 +74,7 @@ export function makeFakeAdmin(store: FakeStore): any {
       },
       insert: (payload: any) => {
         op = "insert";
+        insertedPayload = Array.isArray(payload) ? payload[0] : payload;
         store.inserts.push({ table, payload });
         return builder;
       },

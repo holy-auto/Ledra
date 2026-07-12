@@ -24,6 +24,7 @@ import { loadAiAutomationSettings } from "./policy";
 import { maybeAutoDraftQuoteFromInbound } from "./quoteDraftAuto";
 import { maybeAutoReplyRoughEstimate } from "./quoteReplyAuto";
 import { maybeAutoReplyKnowledge } from "./knowledgeReplyAuto";
+import { maybeStartQuoteFlow } from "./conversationFlowAuto";
 import {
   shouldAutoExtractInbound,
   shouldAutoReplyKnowledge,
@@ -260,6 +261,22 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
         tenant,
       });
     }
+
+    // 価格問い合わせ → 会話フローを開始し「概算だけで終わらせず」正式見積りへ続ける
+    // (opt-in / 内部で fail-soft)。概算見積り・ナレッジ返信とは独立した opt-in。
+    // 詳細 (車検証/車種+年式) を尋ね、スレッドを状態機械に記録する (Phase 1a)。
+    await maybeStartQuoteFlow({
+      tenantId,
+      customerId: resolvedCustomerId,
+      lineUserId: params.lineUserId,
+      intent: result.intent,
+      service: result.service,
+      vehicleText: result.vehicle,
+      messageId,
+      channel: params.channel ?? "line",
+      settings,
+      tenant,
+    });
 
     usage.record({
       tenantId,
