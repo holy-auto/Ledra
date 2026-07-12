@@ -4,6 +4,7 @@ import { verifyCronRequest } from "@/lib/cronAuth";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { withCronLock } from "@/lib/cron/lock";
 import { loadAiAutomationSettings, resolveAutoAction } from "@/lib/ai/automation/policy";
+import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { fetchTodaySignals, tilesFromSignals, businessDateString } from "@/lib/admin/fetchTodaySignals";
 import { generateDailyDigest } from "@/lib/admin/dailyDigest";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
@@ -41,9 +42,9 @@ export async function GET(req: NextRequest) {
 
       const { data: tenants, error: tErr } = await admin
         .from("tenants")
-        .select("id, name")
+        .select("id, name, plan_tier")
         .eq("is_active", true)
-        .returns<{ id: string; name: string | null }[]>();
+        .returns<{ id: string; name: string | null; plan_tier: string | null }[]>();
       if (tErr) throw new Error(`tenants query failed: ${tErr.message}`);
 
       let aiGenerated = 0;
@@ -53,6 +54,12 @@ export async function GET(req: NextRequest) {
 
       for (const tenant of tenants ?? []) {
         try {
+          // プラン非対応 (opt-in 後に格下げ等) は保存済みフラグに関わらずスキップ。
+          // 設定 UI の auto-action 有効化と同じ feature キーで判定する。
+          if (!canUseFeature(normalizePlanTier(tenant.plan_tier), "ai_inbound_extract")) {
+            skippedNoAi++;
+            continue;
+          }
           const settings = await loadAiAutomationSettings(tenant.id);
           // 明示 opt-in (manager.auto_daily_digest=ON) かつ AI 有効・キャップ未超過の
           // テナントのみ生成する。未 opt-in / AI 無効は決定論版のまま (想定外コスト防止)。

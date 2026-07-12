@@ -40,9 +40,12 @@ export async function fetchTodaySignals(
   opts?: { scope?: "tenant" | "mine"; currentUserId?: string | null; now?: Date },
 ): Promise<TodaySignals> {
   const { admin } = createTenantScopedAdmin(tenantId);
-  const now = opts?.now ?? new Date();
-  const todayStr = now.toISOString().slice(0, 10);
-  const dormantCutoff = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const realNow = opts?.now ?? new Date();
+  // 「今日」は営業タイムゾーン (JST) で判定する。digest_date (businessDateString) と
+  // 揃え、UTC 日付とのズレでダッシュボードのタイルと保存済みサマリが食い違うのを防ぐ。
+  const jstNow = new Date(realNow.getTime() + 9 * 60 * 60 * 1000);
+  const todayStr = jstNow.toISOString().slice(0, 10);
+  const dormantCutoff = new Date(jstNow.getTime() - 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   const effectiveScope = opts?.scope === "mine" && opts?.currentUserId ? "mine" : "tenant";
 
@@ -90,7 +93,7 @@ export async function fetchTodaySignals(
     invoices: invoicesRes.data ?? [],
     certificates: certsRes.data ?? [],
     churnRiskCustomerCount: dormantCustomerIds.size,
-    now,
+    now: jstNow,
   };
 }
 

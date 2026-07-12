@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
     const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
     const { data: rows, error } = await admin
       .from("tenant_field_knowledge")
-      .select("title, content")
+      .select("title, content, vehicle_model, tags")
       .eq("tenant_id", tenantId)
       .eq("enabled", true)
       .order("created_at", { ascending: true })
@@ -72,7 +72,16 @@ export async function POST(req: NextRequest) {
       if (!isMissingTableError(error)) return apiInternalError(error, "field-knowledge ask");
     }
 
-    const knowledge: KnowledgeEntry[] = (rows ?? []).map((r) => ({ title: r.title, content: r.content }));
+    // 対象車種 / タグは UI に表示されるが本文には含まれないため、回答根拠として
+    // ナレッジ本文に畳み込む (車種別メモを取りこぼさない)。
+    const knowledge: KnowledgeEntry[] = (rows ?? []).map((r) => {
+      const row = r as { title: string; content: string; vehicle_model?: string | null; tags?: string[] | null };
+      const meta = [
+        row.vehicle_model ? `対象車種: ${row.vehicle_model}` : null,
+        Array.isArray(row.tags) && row.tags.length > 0 ? `タグ: ${row.tags.join(", ")}` : null,
+      ].filter(Boolean);
+      return { title: row.title, content: meta.length > 0 ? `${meta.join(" / ")}\n${row.content}` : row.content };
+    });
 
     const usage = startAiRouteUsage("/api/admin/field-knowledge/ask");
     const result = await answerFieldKnowledge(

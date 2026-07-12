@@ -1,7 +1,7 @@
 "use client";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Card from "@/components/ui/Card";
@@ -35,6 +35,8 @@ export default function WalkinJobClient() {
   const [title, setTitle] = useState(() => searchParams.get("title")?.trim() || `飛び込み案件 ${today()}`);
   const [customerId, setCustomerId] = useState<string>(() => searchParams.get("customer_id") || "");
   const [vehicleId, setVehicleId] = useState<string>(() => searchParams.get("vehicle_id") || "");
+  // タグ (/s/v) 経由で渡された車両は、顧客未選択でも保持する (作業登録で車両を失わない)。
+  const initialVehicleRef = useRef<string>(searchParams.get("vehicle_id") || "");
   const [estimatedAmount, setEstimatedAmount] = useState<number>(0);
   const [note, setNote] = useState(() => searchParams.get("note") || "");
   const [initialStatus, setInitialStatus] = useState<"arrived" | "in_progress">("arrived");
@@ -77,7 +79,8 @@ export default function WalkinJobClient() {
   useEffect(() => {
     if (!customerId) {
       setVehicles([]);
-      setVehicleId("");
+      // URL 指定の初期車両 (タグ由来) は保持。手動選択した値のみクリアする。
+      setVehicleId((prev) => (prev && prev === initialVehicleRef.current ? prev : ""));
       return;
     }
     (async () => {

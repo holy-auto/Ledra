@@ -16,7 +16,7 @@ const { loadSettingsMock, fetchSignalsMock, genMock, recordMock, upsertMock, ten
   genMock: vi.fn(),
   recordMock: vi.fn(),
   upsertMock: vi.fn().mockResolvedValue({ error: null }),
-  tenantsData: { rows: [] as Array<{ id: string; name: string | null }> },
+  tenantsData: { rows: [] as Array<{ id: string; name: string | null; plan_tier?: string | null }> },
 }));
 
 vi.mock("@/lib/cronAuth", () => ({ verifyCronRequest: () => ({ authorized: true }) }));
@@ -56,6 +56,10 @@ vi.mock("@/lib/admin/fetchTodaySignals", () => ({
   tilesFromSignals: (s: { tiles: unknown[] }) => s.tiles,
   businessDateString: () => "2026-07-12",
 }));
+vi.mock("@/lib/billing/planFeatures", () => ({
+  canUseFeature: () => true,
+  normalizePlanTier: (t: string | null) => t ?? "free",
+}));
 vi.mock("@/lib/admin/dailyDigest", () => ({ generateDailyDigest: (...a: unknown[]) => genMock(...a) }));
 vi.mock("@/lib/ai/recordRouteUsage", () => ({ startAiRouteUsage: () => ({ record: recordMock }) }));
 vi.mock("@/lib/logger", () => ({ logger: { warn: vi.fn() } }));
@@ -75,9 +79,9 @@ describe("GET /api/cron/daily-digest", () => {
     upsertMock.mockClear();
 
     tenantsData.rows = [
-      { id: TENANT_A, name: "店A" },
-      { id: TENANT_B, name: "店B" },
-      { id: TENANT_C, name: "店C" },
+      { id: TENANT_A, name: "店A", plan_tier: "standard" },
+      { id: TENANT_B, name: "店B", plan_tier: "standard" },
+      { id: TENANT_C, name: "店C", plan_tier: "standard" },
     ];
     loadSettingsMock.mockImplementation((id: string) => ({
       enabled: id !== TENANT_B,

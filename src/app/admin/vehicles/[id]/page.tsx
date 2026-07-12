@@ -55,29 +55,18 @@ export default async function AdminVehicleDetailPage({
 
     const supabase = await createSupabaseServerClient();
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
+    // 画面表示と同じ active テナントで解決する (複数店舗スタッフで削除が別店舗を
+    // 探して失敗するのを防ぐ)。
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) {
       redirect("/login");
     }
-
-    const { data: membership } = await supabase
-      .from("tenant_memberships")
-      .select("tenant_id")
-      .eq("user_id", user.id)
-      .limit(1)
-      .single();
-
-    if (!membership?.tenant_id) {
-      redirect(`/admin/vehicles/${id}?e=1`);
-    }
+    const membershipTenantId = caller.tenantId;
 
     const existing = await supabase
       .from("certificates")
       .select("id, tenant_id, vehicle_id, public_id, status")
-      .eq("tenant_id", membership.tenant_id)
+      .eq("tenant_id", membershipTenantId)
       .eq("vehicle_id", id)
       .eq("id", certId)
       .limit(1)
@@ -99,7 +88,7 @@ export default async function AdminVehicleDetailPage({
         status: "void",
         updated_at: nowIso,
       })
-      .eq("tenant_id", membership.tenant_id)
+      .eq("tenant_id", membershipTenantId)
       .eq("vehicle_id", id)
       .eq("id", certId);
 
@@ -108,7 +97,7 @@ export default async function AdminVehicleDetailPage({
     }
 
     await supabase.from("vehicle_histories").insert({
-      tenant_id: membership.tenant_id,
+      tenant_id: membershipTenantId,
       vehicle_id: id,
       type: "certificate_voided",
       title: "施工証明書を削除",

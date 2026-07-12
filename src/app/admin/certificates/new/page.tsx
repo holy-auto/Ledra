@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import PageHeader from "@/components/ui/PageHeader";
 import FirstUseInlineGuide from "@/components/ui/FirstUseInlineGuide";
 import CertNewFormWrapper, { type Template, type TemplateSchema } from "./CertNewFormWrapper";
@@ -28,13 +29,9 @@ export default async function Page({
   const defaultReservationId = sp.reservation_id ?? undefined;
 
   const supabase = await createSupabaseServerClient();
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes.user) redirect("/login?next=/admin/certificates/new");
-
-  const { data: mem } = await supabase.from("tenant_memberships").select("tenant_id").limit(1).single();
-
-  if (!mem) return <div className="text-sm text-muted">tenant_memberships が見つかりません。</div>;
-  const tenantId = mem.tenant_id as string;
+  const caller = await resolveCallerWithRole(supabase);
+  if (!caller) redirect("/login?next=/admin/certificates/new");
+  const tenantId = caller.tenantId;
 
   // tenantId 確定後は全クエリを並列実行
   // DB の schema_json は任意 JSON なので、TemplateSchema 互換として扱う
