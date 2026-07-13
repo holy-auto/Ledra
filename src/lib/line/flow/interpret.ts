@@ -45,8 +45,15 @@ export function interpretReply(
         return { type: "registered" };
       case "option":
         return { type: "option_selected" };
-      case "slot":
-        return { type: "slot_selected" };
+      case "slot": {
+        // `flow:slot:<index>` — index は提示した候補配列への添字。数値でなければ
+        // 想定外の postback として扱い、フロー処理をスキップさせる (null)。
+        // Number("") === 0 になる罠があるため、空文字は先に弾く。
+        if (!pb.arg) return null;
+        const index = Number(pb.arg);
+        if (!Number.isInteger(index) || index < 0) return null;
+        return { type: "slot_selected", index };
+      }
       case "cancel":
         return { type: "handoff" };
       default:

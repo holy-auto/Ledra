@@ -30,7 +30,7 @@ export type FlowEvent =
   | { type: "yes" } // 肯定 (OK)
   | { type: "no" } // 否定 (NG)
   | { type: "option_selected" } // オプション選択
-  | { type: "slot_selected" } // 日程スロット選択
+  | { type: "slot_selected"; index: number } // 日程スロット選択 (提示した候補配列の index)
   | { type: "handoff" }; // 想定外/NG → スタッフ引き継ぎ
 
 /** 終端状態か (これ以上自動では進めない)。 */
@@ -57,7 +57,11 @@ export function nextFlowState(state: FlowState, event: FlowEvent): FlowState | n
     case "quote_drafted":
       return event.type === "quote_sent" ? "awaiting_quote_ok" : null;
     case "awaiting_quote_ok":
-      if (event.type === "yes") return "awaiting_option_confirm";
+      // ponytail: Phase 2 (オプション提案) 未実装のため、確認ステップを飛ばして直接
+      // [F] 日程候補提示へ進む (エンジンは候補ゼロ件なら human_takeover にフォール
+      // バックする)。天井: awaiting_option_confirm には遷移しない。Phase 2 実装時は
+      // ここを "awaiting_option_confirm" に差し替える。
+      if (event.type === "yes") return "awaiting_schedule_pick";
       if (event.type === "no") return "human_takeover";
       return null;
     case "awaiting_option_confirm":
