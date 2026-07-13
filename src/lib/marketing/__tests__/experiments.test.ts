@@ -41,4 +41,11 @@ describe("experiments 割当ロジック", () => {
       }
     }
   });
+
+  it("レジストリの key と登録キーが一致する", () => {
+    for (const [key, exp] of Object.entries(EXPERIMENTS)) {
+      expect(exp.key).toBe(key);
+    }
+    expect(Object.keys(EXPERIMENTS)).toEqual(expect.arrayContaining(["hero_primary_cta", "home_final_cta"]));
+  });
 });

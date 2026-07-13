@@ -26,6 +26,7 @@
     "demo:reset-tenant": "tsx scripts/setup-demo-tenant.ts --reset",
     "video:studio": "remotion studio remotion/index.tsx",
     "video:render": "remotion render remotion/index.tsx LedraIntro out/LedraIntro.mp4",
+    "video:render:tour": "remotion render remotion/index.tsx ProductTour out/ProductTour.mp4",
     "screenshots:capture": "tsx scripts/capture-screenshots.ts",
     "check:secrets-age": "tsx scripts/check-secrets-age.ts",
     "check:bundle-size": "node scripts/check-bundle-size.js",
