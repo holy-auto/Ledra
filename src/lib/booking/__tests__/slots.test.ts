@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { generateIntervalSlots, minutesToTime, timeToMinutes } from "../slots";
+import { addDays, generateIntervalSlots, minutesToTime, timeToMinutes } from "../slots";
 
 describe("minutesToTime / timeToMinutes", () => {
   it("round-trips HH:MM", () => {
@@ -8,6 +8,19 @@ describe("minutesToTime / timeToMinutes", () => {
     expect(minutesToTime(1440)).toBe("24:00");
     expect(timeToMinutes("09:00")).toBe(540);
     expect(timeToMinutes("21:30:00")).toBe(1290);
+  });
+});
+
+describe("addDays", () => {
+  it("advances by n days, rolling over month/year boundaries", () => {
+    expect(addDays("2026-07-13", 1)).toBe("2026-07-14");
+    expect(addDays("2026-07-30", 3)).toBe("2026-08-02");
+    expect(addDays("2026-12-30", 3)).toBe("2027-01-02");
+  });
+
+  it("handles the leap-year Feb 29 boundary", () => {
+    expect(addDays("2028-02-28", 1)).toBe("2028-02-29");
+    expect(addDays("2028-02-29", 1)).toBe("2028-03-01");
   });
 });
 

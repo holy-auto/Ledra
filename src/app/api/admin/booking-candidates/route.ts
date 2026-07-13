@@ -6,6 +6,7 @@ import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { estimateReservationMinutes } from "@/lib/booths/duration";
 import { proposeCandidates } from "@/lib/booking/candidates";
+import { addDays } from "@/lib/booking/slots";
 
 export const dynamic = "force-dynamic";
 
@@ -48,14 +49,6 @@ const querySchema = z.object({
     .transform((v) => v === "1" || v === "true"),
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
-
-/** YYYY-MM-DD をローカル正午基準で n 日進める。 */
-function addDays(date: string, n: number): string {
-  const [y, m, d] = date.split("-").map(Number);
-  const dt = new Date(y, (m || 1) - 1, d || 1, 12, 0, 0);
-  dt.setDate(dt.getDate() + n);
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
-}
 
 /**
  * GET /api/admin/booking-candidates
@@ -207,8 +200,7 @@ export async function GET(req: NextRequest) {
     // 日付ごとの勤務シフト（分単位。start/end 未設定は終日勤務）。スロット時間帯を
     // カバーするスタッフのみを在籍としてカウントするため、時間帯まで持たせる。
     let staffShiftsByDate:
-      | Record<string, Array<{ staffId: string; start: number | null; end: number | null }>>
-      | undefined;
+      Record<string, Array<{ staffId: string; start: number | null; end: number | null }>> | undefined;
     if (considerStaff) {
       const toMin = (t: string | null): number | null => {
         if (!t) return null;

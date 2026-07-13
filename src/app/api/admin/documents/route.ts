@@ -415,6 +415,7 @@ export async function PUT(req: NextRequest) {
     // 既にコミット済みなのでレスポンスは成功扱いのまま。
     if (priorStatus === "draft" && data?.status === "sent") {
       const baseUrl = resolveBaseUrl({ req });
+      const isEstimate = data?.doc_type === "estimate";
       after(async () => {
         try {
           await maybeAutoSendDocumentOnConfirm({
@@ -425,6 +426,16 @@ export async function PUT(req: NextRequest) {
           });
         } catch {
           // maybeAutoSendDocumentOnConfirm は内部で握り潰すが、二重で保護する。
+        }
+        // 見積書の送付なら、その見積りに紐づく会話フローを可否待ちへ進め、
+        // 顧客に可否ボタンを送る (opt-in / 該当フロー無しは no-op / 内部で fail-soft)。
+        if (isEstimate) {
+          try {
+            const { maybeAdvanceFlowOnQuoteSent } = await import("@/lib/ai/automation/conversationFlowPostback");
+            await maybeAdvanceFlowOnQuoteSent({ tenantId: caller.tenantId, documentId: id });
+          } catch {
+            // fail-soft
+          }
         }
       });
     }

@@ -9,6 +9,8 @@
  *   from(t).select().eq()...maybeSingle()/single()           → 1 行
  *   from(t).select().eq()....(await)                          → 配列 (thenable)
  *   from(t).update(payload).eq()...(await)                    → store.updates に記録 + 行へ反映
+ *   from(t).update(payload).eq()...select("id")(await)        → 実 PostgREST 同様、実際に
+ *                                                                 マッチした行 (更新後の値) を返す
  *   from(t).insert(payload)[.select().single()] / .then()     → store.inserts に記録
  *   storage.from(b).createSignedUrl(p) / download(p) / remove / upload
  *
@@ -35,19 +37,26 @@ export function makeFakeAdmin(store: FakeStore): any {
     let op: "select" | "update" | "insert" = "select";
     let updatePayload: Record<string, any> = {};
     let insertedPayload: Record<string, any> = {};
+    let wantsSelect = false;
 
     const rows = () => store.tables[table] ?? [];
     const matched = () => rows().filter((r) => Object.entries(filters).every(([k, v]) => r[k] === v));
     // 挿入行の返却値: id が無ければ簡易採番して返す (呼び出し側が id を使うため)。
     const insertReturn = () => ({ id: insertedPayload.id ?? `fake-${store.inserts.length}`, ...insertedPayload });
 
+    // 更新前にマッチした行 (更新後の値を積んで返す。実 PostgREST の RETURNING と同様)。
     const applyUpdate = () => {
+      const affected = matched();
       store.updates.push({ table, payload: updatePayload, filters: { ...filters } });
-      for (const r of matched()) Object.assign(r, updatePayload);
+      for (const r of affected) Object.assign(r, updatePayload);
+      return affected;
     };
 
     const builder: any = {
-      select: () => builder,
+      select: () => {
+        wantsSelect = true;
+        return builder;
+      },
       eq: (c: string, v: any) => {
         filters[c] = v;
         return builder;
@@ -82,8 +91,8 @@ export function makeFakeAdmin(store: FakeStore): any {
       // await したときの解決値 (op に応じて分岐)。
       then: (resolve: (v: any) => void) => {
         if (op === "update") {
-          applyUpdate();
-          resolve({ data: null, error: null });
+          const affected = applyUpdate();
+          resolve({ data: wantsSelect ? affected.map((r) => ({ ...r })) : null, error: null });
         } else if (op === "insert") {
           resolve({ data: null, error: null });
         } else {

@@ -19,6 +19,7 @@ export interface ConversationFlowRow {
   line_user_id: string | null;
   state: FlowState;
   context_json: Record<string, unknown>;
+  quote_doc_id: string | null;
 }
 
 type Admin = ReturnType<typeof createServiceRoleAdmin>;
@@ -36,7 +37,7 @@ export async function getActiveFlow(
     // 落とす前でも、期限切れフローが新規開始を永久に塞ぐのを防ぐ (時刻ベースで実効)。
     let q = admin
       .from("line_conversation_flows")
-      .select("id, tenant_id, customer_id, line_user_id, state, context_json")
+      .select("id, tenant_id, customer_id, line_user_id, state, context_json, quote_doc_id")
       .eq("tenant_id", tenantId)
       .not("state", "in", "(closed,expired)")
       .gt("expires_at", new Date().toISOString())
@@ -55,10 +56,41 @@ export async function getActiveFlow(
   }
 }
 
+/** 進行中フローを見積書 doc_id で 1 件返す (スタッフ送付フック用)。無ければ null。 */
+export async function getFlowByQuoteDoc(
+  admin: Admin,
+  tenantId: string,
+  quoteDocId: string,
+): Promise<ConversationFlowRow | null> {
+  try {
+    const { data, error } = await admin
+      .from("line_conversation_flows")
+      .select("id, tenant_id, customer_id, line_user_id, state, context_json, quote_doc_id")
+      .eq("tenant_id", tenantId)
+      .eq("quote_doc_id", quoteDocId)
+      .not("state", "in", "(closed,expired)")
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      logger.warn("[flowStore] getFlowByQuoteDoc failed", { tenantId, err: error.message });
+      return null;
+    }
+    return (data as ConversationFlowRow | null) ?? null;
+  } catch (e) {
+    logger.warn("[flowStore] getFlowByQuoteDoc threw", { tenantId, err: e instanceof Error ? e.message : String(e) });
+    return null;
+  }
+}
+
 /**
  * フローを次状態へ進める。state を更新し context をマージする (失敗しても投げない)。
  * 想定外の並行更新を避けるため、現在 state が期待どおりのときだけ更新する
  * (`expectState` 指定時)。更新できたら true。
+ *
+ * `.select("id")` で実際に更新できた行を取得し、0 件なら false を返す。これが無いと
+ * PostgREST は WHERE 句 (expectState) が 0 行にしかマッチしなくても成功扱い (error=null)
+ * を返すため、`expectState` による楽観ロックが機能しない (LINE の postback 再配信等で
+ * 同じフローが二重処理されうる)。
  */
 export async function advanceFlow(
   admin: Admin,
@@ -81,9 +113,16 @@ export async function advanceFlow(
 
     let q = admin.from("line_conversation_flows").update(patch).eq("id", flow.id);
     if (input.expectState) q = q.eq("state", input.expectState);
-    const { error } = await q;
+    const { data, error } = await q.select("id");
     if (error) {
       logger.warn("[flowStore] advanceFlow failed", { flowId: flow.id, err: error.message });
+      return false;
+    }
+    if ((data?.length ?? 0) === 0) {
+      logger.warn("[flowStore] advanceFlow: no row matched (stale state or concurrent update)", {
+        flowId: flow.id,
+        expectState: input.expectState,
+      });
       return false;
     }
     return true;
@@ -118,7 +157,7 @@ export async function createFlow(
         last_message_id: input.lastMessageId ?? null,
         expires_at: expiresAt,
       })
-      .select("id, tenant_id, customer_id, line_user_id, state, context_json")
+      .select("id, tenant_id, customer_id, line_user_id, state, context_json, quote_doc_id")
       .single();
     if (error) {
       // 一意制約違反 (既に進行中フローがある) は競合として無視。
