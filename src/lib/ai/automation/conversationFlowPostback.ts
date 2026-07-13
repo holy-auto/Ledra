@@ -8,10 +8,13 @@
  *      LINE webhook の postback から呼ぶ):
  *        - はい → 空き日程候補を取得しボタン提示 (候補ゼロならスタッフ引き継ぎ)
  *        - 相談する / 想定外 → スタッフ引き継ぎ
- *   C. 顧客が日程候補を選択した時点で (handleFlowPostback):
+ *   C. 顧客が日程候補を選択した時点で (handleFlowPostback → handleSlotSelected):
+ *        - まず awaiting_schedule_pick → scheduled への更新を試みて選択を排他確保
+ *          (postback 再配信・連打による二重処理を防ぐ楽観ロック。失敗したら false)
  *        - 直前に埋まっていないか再検証 → 予約を自動作成 (reservations + gcal) →
  *          フローをクローズしお礼を送る
  *        - 埋まっていればスタッフ引き継ぎ
+ *        - 「その他の日程を相談する」(flow:cancel) はスタッフ引き継ぎ
  *
  * すべて opt-in (inbound_message.auto_conversation_flow) + fail-soft。
  * 金額の外向き確定 (見積書の送付そのもの) は人が行った後にだけ進む (壁3 維持)。
@@ -248,6 +251,41 @@ export async function handleFlowPostback(params: {
       return handleSlotSelected(admin, tenantId, flow, lineUserId, event.index);
     }
 
+    // 「その他の日程を相談する」(flow:cancel → handoff)。提示した候補では合わない
+    // ということなのでスタッフに引き継ぐ。
+    if (flow.state === "awaiting_schedule_pick" && event.type === "handoff") {
+      await recordInboundLineMessage({
+        tenantId,
+        lineUserId,
+        body: "「その他の日程を相談する」を選択",
+        rawEvent: { flow_postback: params.data },
+      });
+      await advanceFlow(admin, flow, {
+        toState: "human_takeover",
+        contextPatch: { schedule_decision: "consult" },
+        expectState: "awaiting_schedule_pick",
+      });
+      await sendCustomerLineText({
+        tenantId,
+        customerId: flow.customer_id,
+        lineUserId,
+        body: buildScheduleHandoff(),
+      });
+      await notifyStaff(
+        admin,
+        tenantId,
+        "日程のご相談希望 — ご対応をお願いします",
+        "お客様が提示した日程候補以外をご希望です。代車の空きとあわせて日程をご相談ください。",
+      );
+      await logAutoActionExecuted({
+        tenantId,
+        actionKey: "inbound_message.auto_conversation_flow",
+        resource: { kind: "line_user", id: lineUserId },
+        detail: { flow_id: flow.id, state: "human_takeover", schedule_decision: "consult" },
+      });
+      return true;
+    }
+
     return false;
   } catch (e) {
     logger.warn("[conversationFlowPostback] handleFlowPostback threw", {
@@ -280,6 +318,16 @@ async function handleSlotSelected(
   const chosen = candidates[index];
   if (!chosen) return false;
 
+  // 選択を排他的に確保する (楽観ロック)。LINE の postback 再配信や連打で同じ選択が
+  // 二重に届いても、awaiting_schedule_pick → scheduled の更新が通るのは最初の 1 件
+  // だけなので (advanceFlow は expectState にマッチする行が無ければ false を返す)、
+  // 以降の空き再検証・予約作成・お礼送信を二重実行しない。
+  const claimed = await advanceFlow(admin, flow, {
+    toState: "scheduled",
+    expectState: "awaiting_schedule_pick",
+  });
+  if (!claimed) return false;
+
   // 顧客の選択をスレッドに残す (postback はスキップされ受信箱に出ないため)。
   await recordInboundLineMessage({
     tenantId,
@@ -295,7 +343,7 @@ async function handleSlotSelected(
     await advanceFlow(admin, flow, {
       toState: "human_takeover",
       contextPatch: { schedule_conflict: true },
-      expectState: "awaiting_schedule_pick",
+      expectState: "scheduled",
     });
     await sendCustomerLineText({
       tenantId,
@@ -336,6 +384,11 @@ async function handleSlotSelected(
     .join("\n")
     .slice(0, 1000);
 
+  // ponytail: menu_items_json は空のまま起票する (LINE 会話フローは確定した品目
+  // ID を持たないため)。天井: workflowAuto/invoiceRecordAuto/accountingAuto/
+  // certificateAuto など menu_items_json から品目名・金額を読む下流の自動処理は
+  // この予約に対しては空リストとして扱われる。Phase 2 でオプション確認時に品目 ID
+  // を確定できるようになったら、その内容をここに渡す。
   const { error } = await admin.from("reservations").insert({
     id: reservationId,
     tenant_id: tenantId,
@@ -375,7 +428,7 @@ async function handleSlotSelected(
     toState: "closed",
     reservationId,
     contextPatch: { confirmed_date: chosen.date, confirmed_start_time: chosen.start_time },
-    expectState: "awaiting_schedule_pick",
+    expectState: "scheduled",
   });
 
   await sendCustomerLineText({

@@ -57,9 +57,10 @@ export function nextFlowState(state: FlowState, event: FlowEvent): FlowState | n
     case "quote_drafted":
       return event.type === "quote_sent" ? "awaiting_quote_ok" : null;
     case "awaiting_quote_ok":
-      // Phase 2 (オプション提案) 未実装のため、確認ステップを飛ばして直接
+      // ponytail: Phase 2 (オプション提案) 未実装のため、確認ステップを飛ばして直接
       // [F] 日程候補提示へ進む (エンジンは候補ゼロ件なら human_takeover にフォール
-      // バックする)。Phase 2 実装時はここを "awaiting_option_confirm" に差し替える。
+      // バックする)。天井: awaiting_option_confirm には遷移しない。Phase 2 実装時は
+      // ここを "awaiting_option_confirm" に差し替える。
       if (event.type === "yes") return "awaiting_schedule_pick";
       if (event.type === "no") return "human_takeover";
       return null;

@@ -86,6 +86,11 @@ export async function getFlowByQuoteDoc(
  * フローを次状態へ進める。state を更新し context をマージする (失敗しても投げない)。
  * 想定外の並行更新を避けるため、現在 state が期待どおりのときだけ更新する
  * (`expectState` 指定時)。更新できたら true。
+ *
+ * `.select("id")` で実際に更新できた行を取得し、0 件なら false を返す。これが無いと
+ * PostgREST は WHERE 句 (expectState) が 0 行にしかマッチしなくても成功扱い (error=null)
+ * を返すため、`expectState` による楽観ロックが機能しない (LINE の postback 再配信等で
+ * 同じフローが二重処理されうる)。
  */
 export async function advanceFlow(
   admin: Admin,
@@ -108,9 +113,16 @@ export async function advanceFlow(
 
     let q = admin.from("line_conversation_flows").update(patch).eq("id", flow.id);
     if (input.expectState) q = q.eq("state", input.expectState);
-    const { error } = await q;
+    const { data, error } = await q.select("id");
     if (error) {
       logger.warn("[flowStore] advanceFlow failed", { flowId: flow.id, err: error.message });
+      return false;
+    }
+    if ((data?.length ?? 0) === 0) {
+      logger.warn("[flowStore] advanceFlow: no row matched (stale state or concurrent update)", {
+        flowId: flow.id,
+        expectState: input.expectState,
+      });
       return false;
     }
     return true;

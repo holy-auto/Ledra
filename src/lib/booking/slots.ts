@@ -27,6 +27,14 @@ export function timeToMinutes(t: string): number {
   return (h || 0) * 60 + (m || 0);
 }
 
+/** YYYY-MM-DD をローカル正午基準で n 日進める（日付跨ぎの TZ 揺れを避ける）。 */
+export function addDays(date: string, n: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const dt = new Date(y, (m || 1) - 1, d || 1, 12, 0, 0);
+  dt.setDate(dt.getDate() + n);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+}
+
 export interface GenerateIntervalSlotsOptions {
   /** 対象曜日（0=日〜6=土）。重複は無視。 */
   days: number[];

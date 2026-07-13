@@ -5,11 +5,16 @@
  * service-role で簡易にデータ取得して呼ぶ。LINE 会話では確定した品目 ID を
  * 持たないため所要時間フィルタはかけない (estimatedMinutes=null → 全枠 fits=true)。
  *
- * ponytail: 代車必須判定・人手判定は行わない (顧客にまだ「代車が要るか」を確認して
- * いないため)。Phase 2 でオプション確認時に代車要否を聞けるようになったら
- * needsLoaner / considerStaff を渡す (booking-candidates route と同じ配線)。
+ * ponytail: 代車必須判定・人手判定・作業カテゴリ絞り込み (needsLoaner /
+ * considerStaff / workCategories) は行わない (顧客にまだ「代車が要るか」「どの
+ * カテゴリの作業か」を確認していないため)。天井: 受入カテゴリ制限のある枠にも
+ * 候補が出うる／所要時間が不明なため候補・予約の end_time は枠の終了時刻そのもの
+ * になる (実作業時間ではない)。Phase 2 でオプション確認時にこれらを聞けるように
+ * なったら needsLoaner / considerStaff / workCategories / estimatedMinutes を渡す
+ * (booking-candidates route と同じ配線)。
  */
 import { proposeCandidates, type Candidate } from "@/lib/booking/candidates";
+import { addDays } from "@/lib/booking/slots";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 
 type Admin = ReturnType<typeof createServiceRoleAdmin>;
@@ -18,14 +23,6 @@ export interface FlowScheduleCandidate {
   date: string;
   start_time: string;
   end_time: string;
-}
-
-/** YYYY-MM-DD をローカル正午基準で n 日進める (booking-candidates/route.ts と同じ実装)。 */
-function addDays(date: string, n: number): string {
-  const [y, m, d] = date.split("-").map(Number);
-  const dt = new Date(y, (m || 1) - 1, d || 1, 12, 0, 0);
-  dt.setDate(dt.getDate() + n);
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
 }
 
 function todayYmd(): string {

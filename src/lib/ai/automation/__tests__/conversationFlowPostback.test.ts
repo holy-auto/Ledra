@@ -248,8 +248,10 @@ describe("handleFlowPostback — slot selection (Phase 1b-3)", () => {
     });
     expect(mocks.syncCreateEvent).toHaveBeenCalledTimes(1);
 
-    const upd = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
-    expect(upd?.payload).toMatchObject({ state: "closed" });
+    // 選択の排他確保 (awaiting_schedule_pick → scheduled) → 確定 (→ closed) の2回更新される。
+    const flowUpdates = mocks.store.updates.filter((u) => u.table === "line_conversation_flows");
+    expect(flowUpdates.map((u) => u.payload.state)).toEqual(["scheduled", "closed"]);
+    const upd = flowUpdates[flowUpdates.length - 1];
     expect(upd?.payload.reservation_id).toBe(inserted?.payload.id);
     expect(mocks.sendCustomerLineText.mock.calls[0][0].body).toContain("確定");
   });
@@ -262,9 +264,47 @@ describe("handleFlowPostback — slot selection (Phase 1b-3)", () => {
     expect(handled).toBe(true);
 
     expect(mocks.store.inserts.some((i) => i.table === "reservations")).toBe(false);
+    const flowUpdates = mocks.store.updates.filter((u) => u.table === "line_conversation_flows");
+    expect(flowUpdates.map((u) => u.payload.state)).toEqual(["scheduled", "human_takeover"]);
+    expect(mocks.sendCustomerLineText.mock.calls[0][0].body).toContain("埋まって");
+  });
+
+  it("ignores a redelivered slot-select postback once the flow has already moved past awaiting_schedule_pick", async () => {
+    // LINE の at-least-once 配信で同じ postback が再送された場合を模す。1回目の処理で
+    // flow は既に scheduled まで進んでいるため、outer の state ガードで素通しされる。
+    seedOpenSlots(mocks.store);
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-1",
+        tenant_id: TENANT,
+        customer_id: CUSTOMER,
+        line_user_id: LINE_USER,
+        state: "scheduled",
+        quote_doc_id: DOC,
+        context_json: { schedule_candidates: [CANDIDATE] },
+      },
+    ];
+
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:slot:0" });
+    expect(handled).toBe(false);
+    expect(mocks.store.inserts.some((i) => i.table === "reservations")).toBe(false);
+    expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
+  });
+
+  it("hands off to staff when the customer taps 'その他の日程を相談する' (flow:cancel)", async () => {
+    seedAwaitingSchedulePick();
+
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:cancel" });
+    expect(handled).toBe(true);
+
     const upd = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
     expect(upd?.payload).toMatchObject({ state: "human_takeover" });
-    expect(mocks.sendCustomerLineText.mock.calls[0][0].body).toContain("埋まって");
+    expect(upd?.payload.context_json).toMatchObject({ schedule_decision: "consult" });
+    expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
+    expect(mocks.store.inserts.some((i) => i.table === "notifications")).toBe(true);
+    expect(mocks.recordInboundLineMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ body: expect.stringContaining("その他の日程") }),
+    );
   });
 
   it("returns false for an out-of-range slot index", async () => {
