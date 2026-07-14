@@ -12,7 +12,18 @@ import {
 } from "../board";
 
 function mkCase(id: string, start: number, end: number): GanttCase {
-  return { id, label: "", sub: "", kind: "work", tag: "", start, end, prog: 0, staffIds: ["u1"] };
+  return {
+    id,
+    label: "",
+    sub: "",
+    kind: "work",
+    tag: "",
+    start,
+    end,
+    prog: 0,
+    staffIds: ["u1"],
+    status: "in_progress",
+  };
 }
 
 describe("parseTimeToHours", () => {
@@ -50,8 +61,30 @@ describe("deriveProgress", () => {
 describe("capacityOf", () => {
   it("sums assigned hours over the 11h shift", () => {
     const cases: GanttCase[] = [
-      { id: "a", label: "", sub: "", kind: "work", tag: "", start: 9, end: 12, prog: 0, staffIds: ["u1"] },
-      { id: "b", label: "", sub: "", kind: "work", tag: "", start: 13, end: 14, prog: 0, staffIds: ["u1"] },
+      {
+        id: "a",
+        label: "",
+        sub: "",
+        kind: "work",
+        tag: "",
+        start: 9,
+        end: 12,
+        prog: 0,
+        staffIds: ["u1"],
+        status: "in_progress",
+      },
+      {
+        id: "b",
+        label: "",
+        sub: "",
+        kind: "work",
+        tag: "",
+        start: 13,
+        end: 14,
+        prog: 0,
+        staffIds: ["u1"],
+        status: "in_progress",
+      },
     ];
     // 4h / 11h ≈ 36%
     expect(capacityOf("u1", cases)).toBe(36);

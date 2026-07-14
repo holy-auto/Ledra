@@ -47,6 +47,15 @@ export type AiCertificateDraft = {
   generated_at?: string;
 };
 
+/** ワークフローテンプレートの1工程 (advance API と同じ形)。 */
+export type WorkflowStep = {
+  order: number;
+  key: string;
+  label: string;
+  is_customer_visible: boolean;
+  estimated_min: number;
+};
+
 export type JobReservation = {
   id: string;
   title: string | null;
@@ -73,6 +82,13 @@ export type JobReservation = {
   created_at: string;
   ai_certificate_draft?: AiCertificateDraft | null;
   handoff_notes?: HandoffNote[] | null;
+  // 工程テンプレート駆動のワークフロー (POST .../advance で進行)
+  workflow_template_id?: string | null;
+  current_step_key?: string | null;
+  current_step_order?: number | null;
+  progress_pct?: number | null;
+  // 部品交換あり。ON でバックエンドが装着記録 (draft) を自動作成する。
+  parts_replacement?: boolean | null;
 };
 
 export type JobCustomer = {

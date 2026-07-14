@@ -63,7 +63,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     const { data: cert, error: fetchErr } = await admin
       .from("certificates")
       .select(
-        "id, public_id, status, vehicle_id, customer_id, customer_name, vehicle_info_json, service_type, created_by",
+        "id, public_id, status, vehicle_id, customer_id, customer_name, vehicle_info_json, service_type, created_by, reservation_id",
       )
       .eq("tenant_id", caller.tenantId)
       .eq("id", found.certificate_id)
@@ -128,6 +128,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       vehiclePlate: vinfo.plate ?? null,
       serviceType: (cert.service_type as string | null) ?? null,
       createdBy: (cert.created_by as string | null) ?? caller.userId,
+      reservationId: (cert.reservation_id as string | null) ?? null,
     }).catch(() => {
       /* fire-and-forget */
     });

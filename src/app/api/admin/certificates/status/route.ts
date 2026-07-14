@@ -74,7 +74,9 @@ export async function PUT(req: Request) {
     // Fetch current certificate (scoped to caller's tenant)
     const { data: cert, error: fetchErr } = await admin
       .from("certificates")
-      .select("id, vehicle_id, status, customer_id, customer_name, vehicle_info_json, service_type, created_by")
+      .select(
+        "id, vehicle_id, status, customer_id, customer_name, vehicle_info_json, service_type, created_by, reservation_id",
+      )
       .eq("tenant_id", caller.tenantId)
       .eq("public_id", publicId)
       .limit(1)
@@ -170,6 +172,7 @@ export async function PUT(req: Request) {
         vehiclePlate: vinfo.plate ?? null,
         serviceType: (cert.service_type as string | null) ?? null,
         createdBy: (cert.created_by as string | null) ?? caller.userId,
+        reservationId: (cert.reservation_id as string | null) ?? null,
       }).catch(() => {
         /* fire-and-forget: issueHooks 内で log 済み */
       });

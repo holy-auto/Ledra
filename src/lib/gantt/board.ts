@@ -25,6 +25,8 @@ export interface GanttCase {
   end: number;
   prog: number; // 0–100
   staffIds: string[];
+  /** 予約の生ステータス。ジョブ詳細と同じ POST .../advance で進行できるかの判定に使う。 */
+  status: string;
 }
 
 export interface GanttUnassigned {
@@ -235,6 +237,7 @@ export function buildGanttData(
         end: cEnd,
         prog: deriveProgress(r.progress_pct, r.status),
         staffIds: [r.assigned_user_id as string],
+        status: r.status ?? "confirmed",
       });
     } else {
       unassigned.push({ id: r.id, label, sub, kind, tag: tag || "時間未設定" });
@@ -273,6 +276,7 @@ export function demoGanttData(dateStr: string): GanttData {
       end: 12.5,
       prog: 65,
       staffIds: ["d-suzuki"],
+      status: "in_progress",
     },
     {
       id: "dc2",
@@ -284,6 +288,7 @@ export function demoGanttData(dateStr: string): GanttData {
       end: 14.5,
       prog: 80,
       staffIds: ["d-yamada"],
+      status: "in_progress",
     },
     {
       id: "dc3",
@@ -295,6 +300,7 @@ export function demoGanttData(dateStr: string): GanttData {
       end: 13.0,
       prog: 35,
       staffIds: ["d-sasaki"],
+      status: "in_progress",
     },
     {
       id: "dc4",
@@ -306,6 +312,7 @@ export function demoGanttData(dateStr: string): GanttData {
       end: 14.5,
       prog: 0,
       staffIds: ["d-suzuki"],
+      status: "in_progress",
     },
     {
       id: "dc5",
@@ -317,6 +324,7 @@ export function demoGanttData(dateStr: string): GanttData {
       end: 18.5,
       prog: 18,
       staffIds: ["d-yamada"],
+      status: "in_progress",
     },
     {
       id: "dc6",
@@ -328,6 +336,7 @@ export function demoGanttData(dateStr: string): GanttData {
       end: 12.0,
       prog: 50,
       staffIds: ["d-nakamura"],
+      status: "in_progress",
     },
     {
       id: "dc7",
@@ -339,6 +348,7 @@ export function demoGanttData(dateStr: string): GanttData {
       end: 16.5,
       prog: 0,
       staffIds: ["d-sasaki"],
+      status: "in_progress",
     },
     {
       id: "dc8",
@@ -350,6 +360,7 @@ export function demoGanttData(dateStr: string): GanttData {
       end: 17.0,
       prog: 22,
       staffIds: ["d-sasaki2"],
+      status: "in_progress",
     },
   ];
   const unassigned: GanttUnassigned[] = [

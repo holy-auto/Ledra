@@ -13,7 +13,7 @@ import { fetcher } from "@/lib/swr";
 import { computeWorkDurationText } from "@/lib/admin/work-duration";
 import { enqueueOrFetch } from "@/lib/outbox/enqueueOrFetch";
 import { inferJobSkillTags, skillMatchScore, SERVICE_TYPES } from "@/lib/staff/skills";
-import { STATUS_FLOW, STATUS_LABEL, STATUS_HINT, type JobReservation } from "./types";
+import { STATUS_FLOW, STATUS_LABEL, STATUS_HINT, type JobReservation, type WorkflowStep } from "./types";
 
 type MemberRow = {
   user_id: string;
@@ -55,14 +55,17 @@ interface Props {
   reservation: JobReservation;
   customerId: string | null;
   vehicleId: string | null;
+  /** テンプレートの工程一覧 (workflow_template_id が設定されている場合のみ)。 */
+  workflowSteps?: WorkflowStep[] | null;
 }
 
-export default function JobStatusPanel({ reservation, customerId, vehicleId }: Props) {
+export default function JobStatusPanel({ reservation, customerId, vehicleId, workflowSteps }: Props) {
   const router = useRouter();
   const { mode, hydrated } = useViewMode();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [assigneeBusy, setAssigneeBusy] = useState(false);
+  const [partsBusy, setPartsBusy] = useState(false);
 
   const currentStatus = reservation.status;
 
@@ -114,22 +117,42 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
 
   // currentStatus は早期 return 後の本体描画で使用
   const isCancelled = currentStatus === "cancelled";
-  const currentIndex = STATUS_FLOW.indexOf(currentStatus as (typeof STATUS_FLOW)[number]);
-  const nextStatus = currentIndex >= 0 && currentIndex < STATUS_FLOW.length - 1 ? STATUS_FLOW[currentIndex + 1] : null;
 
-  async function advanceStatus(target: string) {
+  // テンプレート駆動ワークフロー (workflow_template_id 設定済み) か、レガシー4ステップかを出し分け。
+  // どちらも POST .../advance で進行する (advance API 側がテンプレート有無を吸収する)。
+  const hasTemplate = !!reservation.workflow_template_id && !!workflowSteps && workflowSteps.length > 0;
+  const currentStepOrder = reservation.current_step_order ?? 0;
+  const nextTemplateStep = hasTemplate ? (workflowSteps!.find((s) => s.order === currentStepOrder + 1) ?? null) : null;
+
+  const currentIndex = STATUS_FLOW.indexOf(currentStatus as (typeof STATUS_FLOW)[number]);
+  const legacyNextStatus =
+    currentIndex >= 0 && currentIndex < STATUS_FLOW.length - 1 ? STATUS_FLOW[currentIndex + 1] : null;
+
+  // advance() 自体が status==="completed"/"cancelled" を弾く唯一の判定源。テンプレート駆動時に
+  // currentStepOrder と手元の workflowSteps.length を突き合わせると、最終工程に乗った直後
+  // (currentStepOrder === totalSteps, まだ in_progress) でボタンが消えて完了操作ができなくなる
+  // ため、ここでは currentStatus だけを見る (レガシーフローと判定基準を揃える)。
+  const canAdvance = !isCancelled && currentStatus !== "completed" && (hasTemplate || legacyNextStatus != null);
+  const nextLabel = hasTemplate
+    ? (nextTemplateStep?.label ?? "完了")
+    : legacyNextStatus
+      ? STATUS_LABEL[legacyNextStatus]
+      : null;
+
+  /** 案件ワークフローを次の工程へ1タップ進行する (ジョブ詳細・メカニック稼働管理で共通の確認ボタン)。 */
+  async function advance() {
     setBusy(true);
     setErr(null);
     try {
       const r = await enqueueOrFetch({
-        url: "/api/admin/reservations",
-        method: "PUT",
-        body: { id: reservation.id, status: target },
-        label: `案件ステータス → ${STATUS_LABEL[target] ?? target}`,
+        url: `/api/admin/reservations/${reservation.id}/advance`,
+        method: "POST",
+        body: {},
+        label: `案件を次の工程へ${nextLabel ? ` (${nextLabel})` : ""}`,
         kind: "reservation_update",
       });
       if (r.queued) {
-        setErr(`📡 オフラインです。ステータス変更を保留し、ネット復帰後に自動同期します。`);
+        setErr(`📡 オフラインです。進行を保留し、ネット復帰後に自動同期します。`);
         return;
       }
       if (!r.ok && r.response) {
@@ -141,6 +164,34 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** 部品交換ありトグル。ON にするとバックエンドが装着記録 (draft) を自動作成する (新規UIは無し)。 */
+  async function togglePartsReplacement(next: boolean) {
+    setPartsBusy(true);
+    setErr(null);
+    try {
+      const r = await enqueueOrFetch({
+        url: "/api/admin/reservations",
+        method: "PUT",
+        body: { id: reservation.id, parts_replacement: next },
+        label: `部品交換あり: ${next ? "ON" : "OFF"} (${reservation.title ?? "案件"})`,
+        kind: "reservation_update",
+      });
+      if (r.queued) {
+        setErr(`📡 オフラインです。変更を保留し、ネット復帰後に自動同期します。`);
+        return;
+      }
+      if (!r.ok && r.response) {
+        const j = await parseJsonSafe(r.response);
+        throw new Error(j?.error ?? `HTTP ${r.status}`);
+      }
+      router.refresh();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPartsBusy(false);
     }
   }
 
@@ -281,17 +332,17 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
               <Badge variant={isCancelled ? "danger" : currentStatus === "completed" ? "success" : "info"}>
                 {STATUS_LABEL[currentStatus] ?? currentStatus}
               </Badge>
-              <span className="text-[13px] text-secondary">{STATUS_HINT[currentStatus] ?? ""}</span>
+              <span className="text-[13px] text-secondary">
+                {hasTemplate
+                  ? (workflowSteps!.find((s) => s.order === currentStepOrder)?.label ?? STATUS_HINT[currentStatus])
+                  : (STATUS_HINT[currentStatus] ?? "")}
+              </span>
             </div>
           </div>
-          {nextStatus && !isCancelled && (
+          {canAdvance && (
             <MutationGuard>
-              <button
-                onClick={() => advanceStatus(nextStatus)}
-                disabled={busy}
-                className="btn-primary text-sm px-4 py-2 disabled:opacity-50"
-              >
-                {busy ? "更新中..." : `${STATUS_LABEL[nextStatus]} へ進む →`}
+              <button onClick={advance} disabled={busy} className="btn-primary text-sm px-4 py-2 disabled:opacity-50">
+                {busy ? "更新中..." : `確認: ${nextLabel} へ進む →`}
               </button>
             </MutationGuard>
           )}
@@ -406,14 +457,41 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
               {currentStatus === "in_progress" && <span className="text-muted">(計測中)</span>}
             </div>
           )}
+
+          {/* 部品交換あり: ON にするとバックエンドが装着記録 (draft) を自動作成する。 */}
+          <div className="flex items-center gap-2">
+            <span className="font-semibold tracking-[0.12em] text-muted uppercase">部品交換</span>
+            <MutationGuard>
+              <button
+                type="button"
+                onClick={() => togglePartsReplacement(!reservation.parts_replacement)}
+                disabled={partsBusy || isCancelled}
+                aria-pressed={!!reservation.parts_replacement}
+                className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors disabled:opacity-50 ${
+                  reservation.parts_replacement
+                    ? "border-accent-amber/40 bg-accent-amber-dim text-accent-amber-text"
+                    : "border-border-strong text-muted hover:text-primary"
+                }`}
+              >
+                部品交換あり {reservation.parts_replacement ? "ON" : "OFF"}
+              </button>
+            </MutationGuard>
+            {partsBusy && <span className="text-muted">更新中…</span>}
+          </div>
         </div>
 
         <ol className="mt-5 flex items-center gap-2 overflow-x-auto">
-          {STATUS_FLOW.map((s, i) => {
-            const active = !isCancelled && i === currentIndex;
-            const done = !isCancelled && i < currentIndex;
+          {(hasTemplate
+            ? workflowSteps!.map((s) => ({ key: s.key, label: s.label, order: s.order }))
+            : STATUS_FLOW.map((s, i) => ({ key: s, label: STATUS_LABEL[s], order: i }))
+          ).map((s, i) => {
+            const active = hasTemplate
+              ? !isCancelled && s.order === currentStepOrder
+              : !isCancelled && i === currentIndex;
+            const done = hasTemplate ? !isCancelled && s.order < currentStepOrder : !isCancelled && i < currentIndex;
+            const total = hasTemplate ? workflowSteps!.length : STATUS_FLOW.length;
             return (
-              <li key={s} className="flex items-center gap-2 whitespace-nowrap">
+              <li key={s.key} className="flex items-center gap-2 whitespace-nowrap">
                 <div
                   className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${
                     active
@@ -426,9 +504,9 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId }: P
                   <span className="flex h-5 w-5 items-center justify-center rounded-full bg-surface/60 text-[11px] font-bold">
                     {done ? "✓" : i + 1}
                   </span>
-                  {STATUS_LABEL[s]}
+                  {s.label}
                 </div>
-                {i < STATUS_FLOW.length - 1 && <span className="text-muted">→</span>}
+                {i < total - 1 && <span className="text-muted">→</span>}
               </li>
             );
           })}

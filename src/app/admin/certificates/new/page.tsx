@@ -119,6 +119,21 @@ export default async function Page({
 
   if (tplErr) return <div className="text-sm text-danger">テンプレ読み込みエラー: {tplErr.message}</div>;
 
+  // 案件の「部品交換あり」トグルが ON なら、整備内容セクションへの既定メモを用意する
+  // (発行前に人が編集・削除できる下書きへの差し込みで、壁3は維持される)。
+  let defaultPartsReplacedNote: string | undefined;
+  if (defaultReservationId) {
+    const { data: sourceReservation } = await supabase
+      .from("reservations")
+      .select("parts_replacement")
+      .eq("id", defaultReservationId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (sourceReservation?.parts_replacement) {
+      defaultPartsReplacedNote = "部品交換あり";
+    }
+  }
+
   const tenantLogoPath = (tenantRow?.logo_asset_path as string | null) ?? null;
   const planTier = normalizePlanTier(tenantRow?.plan_tier) as PlanTier;
   const defaultWarrantyExclusions = (tenantRow?.default_warranty_exclusions as string | null) ?? "";
@@ -187,6 +202,7 @@ export default async function Page({
         defaultVehicleId={defaultVehicleId}
         defaultCustomerId={defaultCustomerId}
         defaultReservationId={defaultReservationId}
+        defaultPartsReplacedNote={defaultPartsReplacedNote}
         templates={list}
         selectedTemplate={selected}
         tenantLogoPath={tenantLogoPath}

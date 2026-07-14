@@ -24,6 +24,7 @@ import { maybeAutoCreateDraftCertificateForReservation } from "@/lib/ai/automati
 import { maybeAutoCreateDraftInvoiceForReservation } from "@/lib/ai/automation/invoiceRecordAuto";
 import { maybeAutoCategorizeReservationOnIntake } from "@/lib/ai/automation/accountingAuto";
 import { maybeAutoProposeWorkflowForReservation } from "@/lib/ai/automation/workflowAuto";
+import { createDraftPartInstallationForReservation } from "@/lib/parts/installationService";
 
 export const dynamic = "force-dynamic";
 
@@ -404,7 +405,7 @@ export async function PUT(req: NextRequest) {
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .select(
-        "id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, assigned_staff_id, booth_id, status, estimated_amount, gcal_event_id, cancelled_at, cancel_reason, work_started_at, work_completed_at, created_at, updated_at",
+        "id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, assigned_staff_id, booth_id, status, estimated_amount, gcal_event_id, cancelled_at, cancel_reason, work_started_at, work_completed_at, parts_replacement, created_at, updated_at",
       )
       .single();
 
@@ -454,6 +455,28 @@ export async function PUT(req: NextRequest) {
           tenantId: caller.tenantId,
           reservationId: data.id,
         }),
+      );
+    }
+
+    // 部品交換トグル ON: 新規UIは作らず、バックエンドのみで作業前の最小限レコード
+    // (part_installations, status=draft) を自動作成する。作業後の写真は証明書発行時に
+    // 相乗りするため、ここでは写真もフォームも要求しない。冪等 (既存 draft があれば作らない・
+    // DB のユニークインデックスでも保証)。レスポンスを遅らせないよう after() で実行する。
+    if (sentKeys.has("parts_replacement") && updates.parts_replacement === true) {
+      after(() =>
+        createDraftPartInstallationForReservation({
+          tenantId: caller.tenantId,
+          reservationId: data.id,
+          vehicleId: data.vehicle_id,
+          customerId: data.customer_id,
+          userId: caller.userId,
+          partNameHint: data.title,
+        }).catch((e) =>
+          logger.warn("[reservations PUT] draft part installation auto-create failed", {
+            reservationId: data.id,
+            err: e instanceof Error ? e.message : String(e),
+          }),
+        ),
       );
     }
 
