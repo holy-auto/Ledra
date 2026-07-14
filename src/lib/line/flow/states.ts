@@ -66,10 +66,17 @@ export function nextFlowState(state: FlowState, event: FlowEvent): FlowState | n
       if (event.type === "no") return "human_takeover";
       return null;
     case "awaiting_option_confirm":
-      // オプション選択 → 見積り再送を経て最終確認 [E] へ。
+      // ponytail: オプション選択 → 見積書を更新していったん [B] (quote_drafted) に
+      // 戻す (再送はスタッフの draft→sent 操作を経る。壁3 維持)。その後 [B] からは
+      // 通常どおり quote_sent イベントで進むが、実装 (IO 層) は context の
+      // selected_options が非空なら [C] ではなく [E] (最終確認) へ進める —
+      // この分岐は state+event だけでなく context (実行時情報) に依存するため、
+      // 純粋な本関数では表現できない。天井: quote_drafted の遷移を context 引数
+      // 込みにしない限りここは実装との対応が完全には取れない (詳細は
+      // conversationFlowPostback.ts の maybeAdvanceFlowOnQuoteSent を参照)。
       // オプション不要 → 内容は変わらないため再確認を挟まず直接 [F] へ
       // (「はい」の直後にまた「はい」を聞く冗長さを避ける、意図的な近道)。
-      if (event.type === "option_selected") return "awaiting_final_ok";
+      if (event.type === "option_selected") return "quote_drafted";
       if (event.type === "options_none") return "awaiting_schedule_pick";
       return null;
     case "awaiting_final_ok":

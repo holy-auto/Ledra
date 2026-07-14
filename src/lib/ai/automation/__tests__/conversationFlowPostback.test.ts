@@ -329,6 +329,59 @@ describe("handleFlowPostback — option selection (Phase 2)", () => {
     expect(mocks.store.updates.some((u) => u.table === "documents")).toBe(false);
   });
 
+  it("ignores a redelivered option-select postback once the flow has already claimed the selection", async () => {
+    // LINE の at-least-once 配信で同じ postback が再送された場合を模す。1回目の処理で
+    // flow は既に quote_drafted まで進んでいるため、outer の state ガードで素通しされ、
+    // 見積書は二重更新されない。
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-1",
+        tenant_id: TENANT,
+        customer_id: CUSTOMER,
+        line_user_id: LINE_USER,
+        state: "quote_drafted",
+        quote_doc_id: DOC,
+        context_json: { option_candidates: [OPTION], selected_options: [OPTION] },
+      },
+    ];
+    mocks.store.tables.documents = [
+      {
+        id: DOC,
+        items_json: [
+          { item_type: "item", description: OPTION.name, quantity: 1, unit_price: OPTION.price, amount: OPTION.price },
+        ],
+        tax_rate: 10,
+      },
+    ];
+
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:option:0" });
+    expect(handled).toBe(false);
+    expect(mocks.store.updates.some((u) => u.table === "documents")).toBe(false);
+    expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
+  });
+
+  it("converts the option's tax-exclusive catalog price to tax-inclusive when the quote is in tax-inclusive mode", async () => {
+    seedAwaitingOptionConfirm();
+    mocks.store.tables.documents = [
+      {
+        id: DOC,
+        items_json: [{ item_type: "item", description: "コーティング", quantity: 1, unit_price: 33000, amount: 33000 }],
+        tax_rate: 10,
+        meta_json: { is_tax_inclusive: true },
+        status: "sent",
+      },
+    ];
+
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:option:0" });
+    expect(handled).toBe(true);
+
+    const docUpdate = mocks.store.updates.find((u) => u.table === "documents");
+    expect(docUpdate?.payload).toMatchObject({ subtotal: 38000, tax: 3800, total: 41800 });
+    // 税抜8000円 (登録メニュー価格) が税込8800円に換算されて追加されている。
+    const items = docUpdate?.payload.items_json as Array<{ description: string; unit_price: number }>;
+    expect(items.find((i) => i.description === OPTION.name)?.unit_price).toBe(8800);
+  });
+
   it("options_none: proceeds straight to schedule candidates without changing the quote", async () => {
     seedAwaitingOptionConfirm();
     seedOpenSlots(mocks.store);

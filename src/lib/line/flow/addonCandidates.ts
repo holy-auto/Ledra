@@ -50,7 +50,10 @@ export async function fetchAddonRecommendations(
   const allMenu = (menuRes.data as OptionMenuCandidate[] | null) ?? [];
   // 基本見積りと同一名の品目は除外 (同じ内容を「オプション」として二重提案しない)。
   const nonDuplicate = allMenu.filter((m) => !excludeNames.has(m.name.trim().toLowerCase()));
-  // 施工内容のカテゴリに緩く一致する品目を優先 (自由入力のため部分一致)。無ければ全件から選ぶ。
+  // ponytail: 施工内容のカテゴリ一致は部分文字列比較のみ (category_large は自由入力の
+  // ため taxonomy が無い)。天井: 「洗車」を含む無関係な問い合わせ文にも「洗車」カテゴリの
+  // 品目がマッチしうる (AI 側の id 検証で無登録品目の提案は防げるが、無関係な提案は防げ
+  // ない)。上げる場合は menu_items にカテゴリ taxonomy (enum/マスタ) を導入して置き換える。
   const category = params.serviceCategory.trim().toLowerCase();
   const categoryMatched = category
     ? nonDuplicate.filter((m) => m.category_large && category.includes(m.category_large.trim().toLowerCase()))

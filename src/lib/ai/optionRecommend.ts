@@ -151,11 +151,22 @@ export async function generateOptionRecommendations(
     const parsed = msg.parsed_output;
     if (!parsed || parsed.options.length === 0) return baseline;
 
-    const candidateIds = new Set(input.menuCandidates.map((m) => m.id));
+    const candidateById = new Map(input.menuCandidates.map((m) => [m.id, m]));
     const options: RecommendedOption[] = parsed.options
-      // 登録メニューがあるときは、そこに実在する id の提案だけを通す (勝手に作らない)。
-      .filter((o) => input.menuCandidates.length === 0 || (o.menu_item_id != null && candidateIds.has(o.menu_item_id)))
-      .map((o) => ({ menuItemId: o.menu_item_id, name: o.name, price: o.price, reason: o.reason }));
+      .map((o) => {
+        // 登録メニューがあるときは id が実在する候補のものだけを通す (勝手に作らない)。
+        // 名前・価格は AI の言い直しではなく、必ず候補の値をそのまま採用する — AI の
+        // 出力をそのまま信じると、id は本物でも金額だけ間違って言い換えられる
+        // (hallucination / 丸め) 余地が残ってしまうため。
+        if (input.menuCandidates.length > 0) {
+          if (o.menu_item_id == null) return null;
+          const canonical = candidateById.get(o.menu_item_id);
+          if (!canonical) return null;
+          return { menuItemId: canonical.id, name: canonical.name, price: canonical.unit_price, reason: o.reason };
+        }
+        return { menuItemId: null, name: o.name, price: o.price, reason: o.reason };
+      })
+      .filter((o): o is RecommendedOption => o !== null);
     if (options.length === 0) return baseline;
     return { options: options.slice(0, MAX_OPTIONS), ai: true };
   } catch (err) {

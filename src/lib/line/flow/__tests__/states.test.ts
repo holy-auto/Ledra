@@ -7,7 +7,10 @@ describe("nextFlowState", () => {
     expect(nextFlowState("awaiting_quote_detail", { type: "detail_provided" })).toBe("quote_drafted");
     expect(nextFlowState("quote_drafted", { type: "quote_sent" })).toBe("awaiting_quote_ok");
     expect(nextFlowState("awaiting_quote_ok", { type: "yes" })).toBe("awaiting_option_confirm");
-    expect(nextFlowState("awaiting_option_confirm", { type: "option_selected", index: 0 })).toBe("awaiting_final_ok");
+    // オプション選択は見積り更新のため一旦 quote_drafted (再送待ち) に戻る。実装
+    // (IO層) は再送時に selected_options の有無を見て awaiting_final_ok へ進める
+    // (この分岐は context 依存のため純粋な nextFlowState では表現しない)。
+    expect(nextFlowState("awaiting_option_confirm", { type: "option_selected", index: 0 })).toBe("quote_drafted");
     expect(nextFlowState("awaiting_final_ok", { type: "yes" })).toBe("awaiting_schedule_pick");
     expect(nextFlowState("awaiting_schedule_pick", { type: "slot_selected", index: 0 })).toBe("scheduled");
   });

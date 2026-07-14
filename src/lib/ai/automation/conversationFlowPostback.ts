@@ -63,7 +63,11 @@ import { shouldRunConversationFlow, shouldAutoSendDocumentOnConfirm } from "./or
 const SCHEDULE_CANDIDATES_KEY = "schedule_candidates";
 /** 提示したオプション候補を提示順のまま保持するための context キー。 */
 const OPTION_CANDIDATES_KEY = "option_candidates";
-/** 追加が確定したオプション (最終見積り再送の要否判定・予約の menu_items_json にも使う) の context キー。 */
+// ponytail: 追加が確定したオプション (最終見積り再送の要否判定・予約の
+// menu_items_json にも使う) の context キー。MVP として選択は常に 1 件のみ
+// ([selectedOption] で毎回まるごと上書き)。天井: 複数選択に対応する場合は
+// states.ts の awaiting_option_confirm 遷移をループに変え、ここを追記
+// (スプレッド) に変更する必要がある。
 const SELECTED_OPTIONS_KEY = "selected_options";
 
 /** context_json[SELECTED_OPTIONS_KEY] の要素の形。 */
@@ -621,6 +625,23 @@ async function handleOptionSelected(
   const chosen = candidates[index];
   if (!chosen || !flow.quote_doc_id) return false;
 
+  const selectedOption: SelectedOptionRecord = {
+    name: chosen.name,
+    price: chosen.price,
+    menuItemId: chosen.menuItemId,
+  };
+
+  // 選択を排他的に確保する (楽観ロック)。handleSlotSelected と同じ理由 (postback
+  // 再配信・連打による見積りへの二重追加を防ぐ)。見積り更新に先立って
+  // awaiting_option_confirm → quote_drafted のクレームを取り、通ったリクエストだけが
+  // 以降の見積書更新・顧客案内・スタッフ通知を行う。
+  const claimed = await advanceFlow(admin, flow, {
+    toState: "quote_drafted",
+    contextPatch: { [SELECTED_OPTIONS_KEY]: [selectedOption] },
+    expectState: "awaiting_option_confirm",
+  });
+  if (!claimed) return false;
+
   await recordInboundLineMessage({
     tenantId,
     lineUserId,
@@ -630,7 +651,7 @@ async function handleOptionSelected(
 
   const { data: doc, error: fetchError } = await admin
     .from("documents")
-    .select("items_json, tax_rate")
+    .select("items_json, tax_rate, meta_json")
     .eq("id", flow.quote_doc_id)
     .maybeSingle();
   if (fetchError || !doc) {
@@ -645,35 +666,37 @@ async function handleOptionSelected(
     ? ((doc as { items_json: unknown[] }).items_json as Array<Record<string, unknown>>)
     : [];
   const taxRate = (doc as { tax_rate?: number | null }).tax_rate ?? 10;
+  // documents PUT ルートと同じ場所 (meta_json.is_tax_inclusive) から税込/税抜モードを
+  // 読む。ここを見ずに税抜固定で再計算すると、税込モードの見積りを壊してしまう。
+  const isTaxInclusive = !!(doc as { meta_json?: Record<string, unknown> | null }).meta_json?.is_tax_inclusive;
+  // menu_items.unit_price (chosen.price) は常に税抜。税込モードの書類に追加するときは
+  // 他の明細と揃うよう税込に換算してから渡す (そのまま渡すと税抜額を税込額として
+  // 扱ってしまい、この行だけ税が乗らなくなる)。
+  const optionUnitPrice = isTaxInclusive ? Math.round(chosen.price * (1 + taxRate / 100)) : chosen.price;
 
-  const { itemsJson, subtotal, tax, total } = calcItems(
-    [...existingItems, { item_type: "item", description: chosen.name, quantity: 1, unit_price: chosen.price }],
+  const { itemsJson, subtotal, tax, total, taxBreakdown } = calcItems(
+    [...existingItems, { item_type: "item", description: chosen.name, quantity: 1, unit_price: optionUnitPrice }],
     taxRate,
-    false,
+    isTaxInclusive,
   );
 
-  const selectedOption: SelectedOptionRecord = {
-    name: chosen.name,
-    price: chosen.price,
-    menuItemId: chosen.menuItemId,
-  };
+  // documents PUT ルートと同じ列を更新する (tax_breakdown も込みで — 適格請求書の
+  // 複数税率区分表示や PDF がこれを参照するため、items_json/total だけの更新だと
+  // 古い内訳が残ってしまう)。
   const { error: updateError } = await admin
     .from("documents")
-    .update({ items_json: itemsJson, subtotal, tax, total, status: "draft" })
+    .update({ items_json: itemsJson, subtotal, tax, total, tax_breakdown: taxBreakdown, status: "draft" })
     .eq("id", flow.quote_doc_id);
   if (updateError) {
+    // クレームは既に quote_drafted へ進んでいるが見積書自体の更新は失敗している。
+    // まれなケースであり、ここでロールバックはせず (壁3: 送付はどのみち人が行う)
+    // スタッフが気付けるようログのみ残す。
     logger.warn("[conversationFlowPostback] option-select: quote update failed", {
       tenantId,
       err: updateError.message,
     });
     return false;
   }
-
-  await advanceFlow(admin, flow, {
-    toState: "quote_drafted",
-    contextPatch: { [SELECTED_OPTIONS_KEY]: [selectedOption] },
-    expectState: "awaiting_option_confirm",
-  });
 
   await sendCustomerLineText({
     tenantId,
