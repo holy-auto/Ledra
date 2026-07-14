@@ -152,6 +152,26 @@ export type NavGroup = {
 // render instead of being stuck with the old, always-open snapshot.
 const STORAGE_KEY = "sidebar-groups-v2";
 
+/** ユーザーがピン留めした href の永続化キー。 */
+const PINS_KEY = "sidebar-pins-v1";
+
+/**
+ * 常時表示する「コア」機能の href（並び順もこの配列で決まる）。
+ * ラベル/アイコン/バッジは NAV_GROUPS 側の定義を再利用するため、ここは href のみ。
+ * 「進捗管理」「帳票管理」は完全一致ラベルが無いため近い画面を割り当てている
+ * （進捗管理→メカニック稼働ガント / 帳票管理→請求・帳票）。差し替えはこの1箇所で完結。
+ */
+const CORE_HREFS: readonly string[] = [
+  "/admin/reservations", // 予約管理
+  "/admin/messages", // メッセージ
+  "/admin/customers", // 顧客管理
+  "/admin/vehicles", // 車両管理
+  "/admin/invoices", // 帳票管理（請求・帳票）
+  "/admin/certificates", // 証明書
+  "/admin/staff", // スタッフ管理
+  "/admin/mechanic-gantt", // 進捗管理（メカニック稼働ガント）
+];
+
 /**
  * First-visit open/closed state per group: mobile always starts collapsed,
  * desktop respects each group's own `defaultOpen` (defaults to open).
@@ -1470,6 +1490,28 @@ function saveGroupState(state: Record<string, boolean>) {
   }
 }
 
+/** Read persisted pinned hrefs from localStorage (defensive: only string[]). */
+function loadPins(): string[] {
+  try {
+    const raw = localStorage.getItem(PINS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.filter((h): h is string => typeof h === "string");
+    }
+  } catch {
+    /* ignore */
+  }
+  return [];
+}
+
+function savePins(pins: string[]) {
+  try {
+    localStorage.setItem(PINS_KEY, JSON.stringify(pins));
+  } catch {
+    /* ignore */
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /*  Collapsible Group Component                                       */
 /* ------------------------------------------------------------------ */
@@ -1567,6 +1609,40 @@ export default function Sidebar() {
     });
   }, []);
 
+  // Slim (コア + ピン) / Full (全機能) の表示切替。既定は slim。セッション内のみ保持。
+  const [showAll, setShowAll] = useState(false);
+
+  // ピン留め状態 -----------------------------------------------------------
+  const [pins, setPins] = useState<string[]>([]);
+  useEffect(() => setPins(loadPins()), []);
+  const pinSet = useMemo(() => new Set(pins), [pins]);
+  const togglePin = useCallback((href: string) => {
+    setPins((prev) => {
+      const next = prev.includes(href) ? prev.filter((h) => h !== href) : [...prev, href];
+      savePins(next);
+      return next;
+    });
+  }, []);
+
+  // href → NavItem 索引（NAV_GROUPS が単一の出典。ラベル/アイコン/バッジを再利用）。
+  const itemByHref = useMemo(() => {
+    const m = new Map<string, NavItem>();
+    for (const g of NAV_GROUPS) for (const it of g.items) if (!m.has(it.href)) m.set(it.href, it);
+    return m;
+  }, []);
+  const coreItems = useMemo(
+    () => CORE_HREFS.map((h) => itemByHref.get(h)).filter((x): x is NavItem => !!x),
+    [itemByHref],
+  );
+  const pinnedItems = useMemo(
+    () =>
+      pins
+        .filter((h) => !CORE_HREFS.includes(h))
+        .map((h) => itemByHref.get(h))
+        .filter((x): x is NavItem => !!x),
+    [pins, itemByHref],
+  );
+
   // Filter visible items per group
   const filterItems = useCallback(
     (items: NavItem[]) =>
@@ -1626,10 +1702,11 @@ export default function Sidebar() {
     ],
   );
 
-  const renderItem = (item: NavItem) => {
+  const renderItem = (item: NavItem, opts?: { pinnable?: boolean }) => {
     const isActive = item.exact ? pathname === item.href : pathname.startsWith(item.href);
 
     const badgeCount = item.badgeKey ? (badges[item.badgeKey] ?? 0) : 0;
+    const pinned = pinSet.has(item.href);
 
     // L字シェル: アクティブ項目は面 (サイドバー) から一段沈めたピルで表す
     // (bg-base + インセットリング)。アクセントはアイコンと右端ドットに集約し、
@@ -1641,7 +1718,7 @@ export default function Sidebar() {
     const needsAttention = item.attention && badgeCount > 0;
 
     return (
-      <li key={item.href}>
+      <li key={item.href} className={opts?.pinnable ? "group relative" : undefined}>
         <Link
           href={item.href}
           aria-current={isActive ? "page" : undefined}
@@ -1662,6 +1739,34 @@ export default function Sidebar() {
             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotBg}`} />
           ) : null}
         </Link>
+        {/* ピン留めトグル。ponytail: 行の右端（バッジ/ドット位置）に重ねる。ホバー時のみ
+            表示するため通常時は見えず、ピン済みは常時ピンアイコンを出す。 */}
+        {opts?.pinnable && (
+          <button
+            type="button"
+            aria-label={pinned ? `${item.label}のピン留めを解除` : `${item.label}をピン留め`}
+            aria-pressed={pinned}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              togglePin(item.href);
+            }}
+            className={`absolute right-1.5 top-1/2 inline-flex -translate-y-1/2 rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] p-1 transition-opacity hover:bg-surface-hover ${
+              pinned ? "text-accent opacity-100" : "text-muted opacity-0 group-hover:opacity-100"
+            }`}
+          >
+            <svg
+              width="14"
+              height="14"
+              fill={pinned ? "currentColor" : "none"}
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={1.6}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 4h6l-1 6 3 3v2H7v-2l3-3-1-6Z M12 15v5" />
+            </svg>
+          </button>
+        )}
       </li>
     );
   };
@@ -1714,46 +1819,102 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-3 py-3">
-        {/* 検索入口: 既存のコマンドパレット (Cmd+K) を起動。項目を集約した分、
-            「どこにあるか分からない」を検索で補う。ロジックは重複させず event で起動。 */}
+        {/* AIチャット入口: 自由文で目的の画面を開く。Cmd+K パレットは併存
+            （AdminTopBar の検索ピルから起動）。ロジックは重複させず event で起動。 */}
         <button
           type="button"
-          onClick={() => window.dispatchEvent(new Event("open-command-palette"))}
+          onClick={() => window.dispatchEvent(new Event("open-assistant-chat"))}
           className="mb-2 flex w-full items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-2 text-[13px] text-muted shadow-[inset_0_0_0_1px_var(--border-default)] transition-colors hover:bg-surface-hover hover:text-primary"
         >
           <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}>
-            <circle cx="11" cy="11" r="7" />
-            <path strokeLinecap="round" d="M21 21l-4.35-4.35" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M8 10h8M8 14h5M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12Z"
+            />
           </svg>
-          <span className="flex-1 text-left">検索</span>
-          <kbd className="rounded border border-border-default px-1.5 py-0.5 font-mono text-[10px] text-muted">⌘K</kbd>
+          <span className="flex-1 text-left">AIに聞いて画面を開く</span>
         </button>
-        {NAV_GROUPS.map((group) => {
-          const visibleItems = filterItems(group.items);
-          if (visibleItems.length === 0) return null;
 
-          // Main group (no label) — always visible, not collapsible
-          if (!group.label) {
+        {showAll ? (
+          /* Full: 既存の全 NAV_GROUPS を表示（何も失わない退避路）。各項目はピン留め可能。 */
+          NAV_GROUPS.map((group) => {
+            const visibleItems = filterItems(group.items);
+            if (visibleItems.length === 0) return null;
+
+            // Main group (no label) — always visible, not collapsible
+            if (!group.label) {
+              return (
+                <ul key="__main" className="space-y-0.5">
+                  {visibleItems.map((it) => renderItem(it, { pinnable: true }))}
+                </ul>
+              );
+            }
+
+            // Collapsible group
+            const isOpen = groupState[group.label] ?? group.defaultOpen ?? true;
             return (
-              <ul key="__main" className="space-y-0.5">
-                {visibleItems.map(renderItem)}
-              </ul>
+              <CollapsibleGroup
+                key={group.label}
+                label={group.label}
+                isOpen={isOpen}
+                onToggle={() => toggleGroup(group.label)}
+              >
+                {visibleItems.map((it) => renderItem(it, { pinnable: true }))}
+              </CollapsibleGroup>
             );
-          }
+          })
+        ) : (
+          /* Slim: メイン（ダッシュボード + 承認インボックス）→ コア → ピン留め。
+             それぞれ既存 filterItems を通すので RBAC/プラン/業種ゲートは維持される。 */
+          <>
+            {(() => {
+              const mainGroup = NAV_GROUPS.find((g) => !g.label);
+              const items = mainGroup ? filterItems(mainGroup.items) : [];
+              return items.length ? <ul className="space-y-0.5">{items.map((it) => renderItem(it))}</ul> : null;
+            })()}
 
-          // Collapsible group
-          const isOpen = groupState[group.label] ?? group.defaultOpen ?? true;
-          return (
-            <CollapsibleGroup
-              key={group.label}
-              label={group.label}
-              isOpen={isOpen}
-              onToggle={() => toggleGroup(group.label)}
-            >
-              {visibleItems.map(renderItem)}
-            </CollapsibleGroup>
-          );
-        })}
+            {(() => {
+              const items = filterItems(coreItems);
+              return items.length ? (
+                <ul className="mt-1 space-y-0.5">{items.map((it) => renderItem(it, { pinnable: true }))}</ul>
+              ) : null;
+            })()}
+
+            {(() => {
+              const items = filterItems(pinnedItems);
+              if (!items.length) return null;
+              return (
+                <div className="mt-2">
+                  <div className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
+                    ピン留め
+                  </div>
+                  <ul className="space-y-0.5">{items.map((it) => renderItem(it, { pinnable: true }))}</ul>
+                </div>
+              );
+            })()}
+          </>
+        )}
+
+        {/* Slim ↔ Full 切替 */}
+        <button
+          type="button"
+          onClick={() => setShowAll((v) => !v)}
+          className="mt-3 flex w-full items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted transition-colors hover:text-secondary"
+        >
+          <svg
+            width="12"
+            height="12"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2.5}
+            className={`shrink-0 transition-transform duration-200 ${showAll ? "rotate-90" : "rotate-0"}`}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+          </svg>
+          {showAll ? "コア表示に戻す" : "すべての機能を表示"}
+        </button>
       </nav>
 
       {/* Footer */}
