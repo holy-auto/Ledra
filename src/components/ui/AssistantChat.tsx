@@ -68,9 +68,15 @@ export default function AssistantChat() {
     };
   }, []);
 
-  // 開いたら入力にフォーカス
+  // 開いたら入力にフォーカス／閉じたら会話をリセット（次に開くと使い方ヘルプが再表示される）。
+  // Cmd+J トグル・Escape・背景クリックなど閉じ方に依らず必ずリセットするため open に集約する。
   useEffect(() => {
-    if (open) requestAnimationFrame(() => inputRef.current?.focus());
+    if (open) {
+      requestAnimationFrame(() => inputRef.current?.focus());
+    } else {
+      setMessages([]);
+      setQuery("");
+    }
   }, [open]);
 
   // 新しいメッセージで最下部へスクロール
@@ -78,15 +84,13 @@ export default function AssistantChat() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, loading]);
 
-  // 閉じる時に会話をリセット（次に開くと使い方ヘルプが再表示される）。
+  // 会話クリア（「使い方」ボタン用: 開いたままヘルプ表示に戻す）。閉じる時のリセットは
+  // 上の open 監視 effect が担うため、close は open を倒すだけでよい。
   const reset = useCallback(() => {
     setMessages([]);
     setQuery("");
   }, []);
-  const close = useCallback(() => {
-    setOpen(false);
-    reset();
-  }, [reset]);
+  const close = useCallback(() => setOpen(false), []);
 
   const navigate = useCallback(
     (href: string) => {
@@ -302,7 +306,7 @@ export default function AssistantChat() {
               if (e.key === "Enter" && e.nativeEvent.isComposing) e.preventDefault();
             }}
             placeholder="例: 予約を開いて / 膜厚測定 / 先月の売上"
-            className="h-12 flex-1 rounded-xl bg-[var(--bg-surface)] px-4 text-base text-primary placeholder:text-muted shadow-[inset_0_0_0_1px_var(--border-subtle)] outline-none focus:shadow-[inset_0_0_0_1px_var(--accent)]"
+            className="h-12 flex-1 rounded-xl bg-[var(--bg-surface)] px-4 text-base text-primary placeholder:text-muted shadow-[inset_0_0_0_1px_var(--border-subtle)] outline-none focus:shadow-[inset_0_0_0_1px_var(--color-accent)]"
           />
           <button
             type="submit"
