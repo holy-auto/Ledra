@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { adminCommandItems, ADMIN_NAV_LABELS, type AdminCommand } from "@/components/ui/Sidebar";
+import { adminCommandItems, ADMIN_NAV_LABELS, CORE_HREFS, type AdminCommand } from "@/components/ui/Sidebar";
 
 /**
  * AIナビゲーション・チャット。
@@ -15,16 +15,8 @@ import { adminCommandItems, ADMIN_NAV_LABELS, type AdminCommand } from "@/compon
  */
 
 const CATALOG: AdminCommand[] = adminCommandItems();
-const CORE_HREFS = new Set([
-  "/admin/reservations",
-  "/admin/messages",
-  "/admin/customers",
-  "/admin/vehicles",
-  "/admin/invoices",
-  "/admin/certificates",
-  "/admin/staff",
-  "/admin/mechanic-gantt",
-]);
+// コア href は Sidebar を単一の出典として再利用（二重管理しない）。
+const CORE_HREF_SET = new Set(CORE_HREFS);
 
 /** 「こう打つとこう動く」例文。実在 href のみ表示（ラベルは逆引きで解決）。 */
 const NAV_EXAMPLES: { phrase: string; href: string }[] = [
@@ -37,7 +29,7 @@ const NAV_EXAMPLES: { phrase: string; href: string }[] = [
 ].filter((e) => ADMIN_NAV_LABELS[e.href]);
 
 /** 非コア画面の発見用チップ（クリックで即遷移）。長すぎないよう上限。 */
-const DISCOVERY_CHIPS: AdminCommand[] = CATALOG.filter((c) => !CORE_HREFS.has(c.href)).slice(0, 16);
+const DISCOVERY_CHIPS: AdminCommand[] = CATALOG.filter((c) => !CORE_HREF_SET.has(c.href)).slice(0, 16);
 
 type Chip = { href: string; label: string };
 type Msg = { role: "user" | "assistant"; text: string; chips?: Chip[] };
@@ -75,24 +67,37 @@ export default function AssistantChat() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, loading]);
 
+  // 閉じる時に会話をリセット（次に開くと使い方ヘルプが再表示される）。
+  const reset = useCallback(() => {
+    setMessages([]);
+    setQuery("");
+  }, []);
+  const close = useCallback(() => {
+    setOpen(false);
+    reset();
+  }, [reset]);
+
   const navigate = useCallback(
     (href: string) => {
-      setOpen(false);
+      close();
       router.push(href);
     },
-    [router],
+    [close, router],
   );
 
   const pushAssistant = useCallback((msg: Msg) => setMessages((prev) => [...prev, msg]), []);
 
   const fallback = useCallback(
-    (q: string) => {
+    (q: string, aiDown: boolean) => {
       const chips = staticFilter(q);
-      pushAssistant({
-        role: "assistant",
-        text: chips.length ? "AIが使えないため、名前が近い画面の候補です。" : "該当する画面が見つかりませんでした。",
-        chips,
-      });
+      const text = chips.length
+        ? aiDown
+          ? "AIに接続できませんでした。名前が近い画面の候補です。"
+          : "ぴったりの画面は見つかりませんでした。名前が近い候補です。"
+        : aiDown
+          ? "AIに接続できませんでした。少し待って再度お試しください。"
+          : "該当する画面が見つかりませんでした。";
+      pushAssistant({ role: "assistant", text, chips });
     },
     [pushAssistant],
   );
@@ -128,14 +133,14 @@ export default function AssistantChat() {
             });
             return;
           }
-          // AI が空手で返した → 静的フィルタで補う
-          fallback(q);
+          // AI が正常応答したが一致・候補なし → 静的フィルタで補う（AIは生きている）
+          fallback(q, false);
           return;
         }
-        // 非 200 / plan 制限など → フォールバック
-        fallback(q);
+        // 非 200 / plan 制限など → AI 到達不可としてフォールバック
+        fallback(q, true);
       } catch {
-        fallback(q);
+        fallback(q, true);
       } finally {
         setLoading(false);
       }
@@ -150,7 +155,7 @@ export default function AssistantChat() {
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-[12vh] backdrop-blur-sm"
-      onClick={() => setOpen(false)}
+      onClick={close}
     >
       <div
         className="flex max-h-[70vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border-subtle bg-[var(--bg-elevated)] shadow-2xl"
@@ -158,7 +163,7 @@ export default function AssistantChat() {
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             e.preventDefault();
-            setOpen(false);
+            close();
           }
         }}
       >
@@ -174,6 +179,15 @@ export default function AssistantChat() {
             </svg>
           </span>
           <span className="flex-1 text-sm font-medium text-primary">AIナビ — 開きたい画面を打つ</span>
+          {!showHelp && (
+            <button
+              type="button"
+              onClick={reset}
+              className="rounded-md border border-border-subtle px-2 py-0.5 text-[11px] text-muted transition-colors hover:bg-surface-hover hover:text-primary"
+            >
+              使い方
+            </button>
+          )}
           <kbd className="hidden rounded-md border border-border-subtle bg-[var(--bg-surface)] px-1.5 py-0.5 font-mono text-[11px] text-muted sm:inline-flex">
             ESC
           </kbd>
@@ -272,6 +286,10 @@ export default function AssistantChat() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            // 日本語IME変換確定のEnterで送信されないようガード（isComposing 中は submit を抑止）。
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && e.nativeEvent.isComposing) e.preventDefault();
+            }}
             placeholder="例: 予約を開いて / 膜厚測定 / 先月の売上"
             className="flex-1 bg-transparent px-1 text-sm text-primary placeholder:text-muted outline-none"
           />

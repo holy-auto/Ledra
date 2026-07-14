@@ -161,7 +161,7 @@ const PINS_KEY = "sidebar-pins-v1";
  * 「進捗管理」「帳票管理」は完全一致ラベルが無いため近い画面を割り当てている
  * （進捗管理→メカニック稼働ガント / 帳票管理→請求・帳票）。差し替えはこの1箇所で完結。
  */
-const CORE_HREFS: readonly string[] = [
+export const CORE_HREFS: readonly string[] = [
   "/admin/reservations", // 予約管理
   "/admin/messages", // メッセージ
   "/admin/customers", // 顧客管理
@@ -1740,8 +1740,9 @@ export default function Sidebar() {
           ) : null}
         </Link>
         {/* ピン留めトグル。ponytail: 行の右端（バッジ/ドット位置）に重ねる。ホバー時のみ
-            表示するため通常時は見えず、ピン済みは常時ピンアイコンを出す。 */}
-        {opts?.pinnable && (
+            表示するため通常時は見えず、ピン済みは常時ピンアイコンを出す。
+            コア項目は常時表示のためピン留めしても意味が無く、ボタンを出さない。 */}
+        {opts?.pinnable && !CORE_HREFS.includes(item.href) && (
           <button
             type="button"
             aria-label={pinned ? `${item.label}のピン留めを解除` : `${item.label}をピン留め`}
