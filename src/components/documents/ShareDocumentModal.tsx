@@ -21,6 +21,11 @@ interface ShareDocumentModalProps {
   customerEmail?: string | null;
   customerPhone?: string | null;
   onShared?: (channel: string) => void;
+  /**
+   * 帳票一覧の一括送付から開く場合、あらかじめ同封する他の帳票IDを指定する。
+   * 指定時はメールのみに絞る（同封はメール送信でのみ対応のため）。
+   */
+  initialAdditionalDocumentIds?: string[];
 }
 
 type OtherDocument = {
@@ -31,6 +36,9 @@ type OtherDocument = {
 };
 
 type Channel = "email" | "line" | "sms";
+
+// サーバー側 documentShareSchema の additional_document_ids.max(20) と同じ上限。
+const MAX_ADDITIONAL_DOCUMENTS = 20;
 
 const TABS: { key: Channel; label: string }[] = [
   { key: "email", label: "メール" },
@@ -46,25 +54,38 @@ export default function ShareDocumentModal({
   customerEmail,
   customerPhone,
   onShared,
+  initialAdditionalDocumentIds,
 }: ShareDocumentModalProps) {
+  const bulkMode = (initialAdditionalDocumentIds?.length ?? 0) > 0;
+  const tabs = bulkMode ? TABS.filter((t) => t.key === "email") : TABS;
   const [tab, setTab] = useState<Channel>("email");
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
 
   // Form fields
-  const [email, setEmail] = useState(customerEmail ?? "");
+  const [emailInput, setEmailInput] = useState<string | undefined>(undefined);
   const [lineUserId, setLineUserId] = useState("");
-  const [phone, setPhone] = useState(customerPhone ?? "");
+  const [phoneInput, setPhoneInput] = useState<string | undefined>(undefined);
   const [message, setMessage] = useState("");
 
   // Other documents of the same customer, selectable to bundle into the email
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(initialAdditionalDocumentIds ?? []));
   const { data: otherDocsData, isLoading: loadingOthers } = useSWR<{ documents: OtherDocument[] }>(
     open && doc.customer_id ? `/api/admin/documents?customer_id=${doc.customer_id}&page=1&per_page=50` : null,
     fetcher,
     adminSwrConfig,
   );
   const otherDocs = (otherDocsData?.documents ?? []).filter((d) => d.id !== doc.id);
+
+  // 一覧ページからの一括送付では顧客の連絡先が渡されないため、customer_id から補完する
+  const shouldFetchCustomer = open && !!doc.customer_id && customerEmail === undefined && customerPhone === undefined;
+  const { data: customerLookup } = useSWR<{ customers: { id: string; email: string | null; phone: string | null }[] }>(
+    shouldFetchCustomer ? `/api/admin/customers?id=${doc.customer_id}` : null,
+    fetcher,
+    adminSwrConfig,
+  );
+  const email = emailInput ?? customerEmail ?? customerLookup?.customers?.[0]?.email ?? "";
+  const phone = phoneInput ?? customerPhone ?? customerLookup?.customers?.[0]?.phone ?? "";
 
   const resetForm = () => {
     setResult(null);
@@ -115,7 +136,9 @@ export default function ShareDocumentModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={`${doc.doc_number} を共有`}
+      title={
+        bulkMode ? `${1 + (initialAdditionalDocumentIds?.length ?? 0)} 件の帳票を共有` : `${doc.doc_number} を共有`
+      }
       footer={
         <>
           <button type="button" className="btn-ghost text-sm" onClick={onClose}>
@@ -127,9 +150,15 @@ export default function ShareDocumentModal({
         </>
       }
     >
+      {bulkMode && (
+        <p className="text-xs text-muted">
+          選択した {1 + (initialAdditionalDocumentIds?.length ?? 0)}{" "}
+          件をまとめてメールで送付します（同封はメールのみ対応）。
+        </p>
+      )}
       {/* Tabs */}
       <div className="flex gap-1 rounded-lg bg-[var(--bg-secondary)] p-1">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.key}
             type="button"
@@ -162,7 +191,7 @@ export default function ShareDocumentModal({
               className="input-field w-full"
               placeholder="example@email.com"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => setEmailInput(e.target.value)}
             />
           </div>
           <div>
@@ -181,28 +210,37 @@ export default function ShareDocumentModal({
           {loadingOthers && <p className="text-xs text-muted">他の帳票を読み込み中...</p>}
           {otherDocs.length > 0 && (
             <div>
-              <label className="mb-1 block text-xs text-muted">他の帳票も一緒に送付（任意）</label>
+              <label className="mb-1 block text-xs text-muted">
+                他の帳票も一緒に送付（任意・最大{MAX_ADDITIONAL_DOCUMENTS}件、あと
+                {Math.max(0, MAX_ADDITIONAL_DOCUMENTS - selectedIds.size)}件選択可）
+              </label>
               <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-[var(--border-subtle)] p-2">
-                {otherDocs.map((d) => (
-                  <label key={d.id} className="flex items-center gap-2 text-xs">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(d.id)}
-                      onChange={(e) => {
-                        setSelectedIds((prev) => {
-                          const next = new Set(prev);
-                          if (e.target.checked) next.add(d.id);
-                          else next.delete(d.id);
-                          return next;
-                        });
-                      }}
-                    />
-                    <span>
-                      {DOC_TYPES[d.doc_type as DocType]?.label ?? d.doc_type} {d.doc_number}
-                    </span>
-                    <span className="ml-auto text-muted">{formatJpy(d.total)}</span>
-                  </label>
-                ))}
+                {otherDocs.map((d) => {
+                  const checked = selectedIds.has(d.id);
+                  const disabled = !checked && selectedIds.size >= MAX_ADDITIONAL_DOCUMENTS;
+                  return (
+                    <label key={d.id} className={`flex items-center gap-2 text-xs ${disabled ? "opacity-50" : ""}`}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={disabled}
+                        onChange={(e) => {
+                          setSelectedIds((prev) => {
+                            const next = new Set(prev);
+                            if (e.target.checked) {
+                              if (next.size < MAX_ADDITIONAL_DOCUMENTS) next.add(d.id);
+                            } else next.delete(d.id);
+                            return next;
+                          });
+                        }}
+                      />
+                      <span>
+                        {DOC_TYPES[d.doc_type as DocType]?.label ?? d.doc_type} {d.doc_number}
+                      </span>
+                      <span className="ml-auto text-muted">{formatJpy(d.total)}</span>
+                    </label>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -255,7 +293,7 @@ export default function ShareDocumentModal({
               className="input-field w-full"
               placeholder="090-1234-5678"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => setPhoneInput(e.target.value)}
             />
           </div>
           <div>
