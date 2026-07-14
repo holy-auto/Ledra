@@ -29,7 +29,8 @@ export type FlowEvent =
   | { type: "quote_sent" } // スタッフが正式見積書を送付 (draft→sent)
   | { type: "yes" } // 肯定 (OK)
   | { type: "no" } // 否定 (NG)
-  | { type: "option_selected" } // オプション選択
+  | { type: "option_selected"; index: number } // オプション選択 (提示した候補配列の index)
+  | { type: "options_none" } // オプション不要 (提示された候補をどれも選ばない)
   | { type: "slot_selected"; index: number } // 日程スロット選択 (提示した候補配列の index)
   | { type: "handoff" }; // 想定外/NG → スタッフ引き継ぎ
 
@@ -57,15 +58,27 @@ export function nextFlowState(state: FlowState, event: FlowEvent): FlowState | n
     case "quote_drafted":
       return event.type === "quote_sent" ? "awaiting_quote_ok" : null;
     case "awaiting_quote_ok":
-      // ponytail: Phase 2 (オプション提案) 未実装のため、確認ステップを飛ばして直接
-      // [F] 日程候補提示へ進む (エンジンは候補ゼロ件なら human_takeover にフォール
-      // バックする)。天井: awaiting_option_confirm には遷移しない。Phase 2 実装時は
-      // ここを "awaiting_option_confirm" に差し替える。
-      if (event.type === "yes") return "awaiting_schedule_pick";
+      // 「はい」でオプション確認 [D] へ。おすすめオプションが 1 件も無い場合は
+      // エンジン側が [D] を素通りして直接 [F] 日程候補提示へ進める
+      // (ponytail: 候補ゼロ件の判定はここでは分からない実行時情報のため、エンジンの
+      // 責務にする。天井: 状態機械上は必ず [D] を経由する体で定義している)。
+      if (event.type === "yes") return "awaiting_option_confirm";
       if (event.type === "no") return "human_takeover";
       return null;
     case "awaiting_option_confirm":
-      return event.type === "option_selected" ? "awaiting_final_ok" : null;
+      // ponytail: オプション選択 → 見積書を更新していったん [B] (quote_drafted) に
+      // 戻す (再送はスタッフの draft→sent 操作を経る。壁3 維持)。その後 [B] からは
+      // 通常どおり quote_sent イベントで進むが、実装 (IO 層) は context の
+      // selected_options が非空なら [C] ではなく [E] (最終確認) へ進める —
+      // この分岐は state+event だけでなく context (実行時情報) に依存するため、
+      // 純粋な本関数では表現できない。天井: quote_drafted の遷移を context 引数
+      // 込みにしない限りここは実装との対応が完全には取れない (詳細は
+      // conversationFlowPostback.ts の maybeAdvanceFlowOnQuoteSent を参照)。
+      // オプション不要 → 内容は変わらないため再確認を挟まず直接 [F] へ
+      // (「はい」の直後にまた「はい」を聞く冗長さを避ける、意図的な近道)。
+      if (event.type === "option_selected") return "quote_drafted";
+      if (event.type === "options_none") return "awaiting_schedule_pick";
+      return null;
     case "awaiting_final_ok":
       if (event.type === "yes") return "awaiting_schedule_pick";
       if (event.type === "no") return "human_takeover";

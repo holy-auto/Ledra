@@ -279,12 +279,40 @@ none / idle
   (`maybeAutoCategorizeReservationOnIntake` / `maybeAutoProposeWorkflowForReservation`)
   を `handleSlotSelected` の予約作成後に配線 (管理画面の予約作成ルートと同じ挙動に
   揃えた。実装済み)
-- **Phase 2**: オプション提案 (C) を [B]/[D] に織り込む。実装時に判明: 代車必須判定・
-  人手判定・受入カテゴリ絞り込み (`needsLoaner`/`considerStaff`/`workCategories`) と
-  `reservations.menu_items_json` の実品目化は、いずれも「顧客に代車要否・オプション
-  を確認して初めて分かる情報」なので Phase 1b-3 の技術的負債ではなく **Phase 2 の
-  スコープに含める** (option 確認で選ばれた項目を実 `menu_items` に対応付け、その
-  category_large / 代車要否をここに渡す)。
+- **Phase 2**: オプション提案 [D]/[E] (実装済み)
+  - `src/lib/ai/optionRecommend.ts` (純関数 + AI、テスト付き) — 登録メニュー
+    (`menu_items`) を優先し、無ければ過去請求実績からのみ提案 (ナレッジ同様「勝手に
+    作らない」— 登録メニューがあるときは AI 提案を候補の `id` に厳密一致するものだけに
+    絞り込む)
+  - `src/lib/line/flow/addonCandidates.ts` (IO) — テナントの登録メニューを取得し
+    (施工内容カテゴリで緩く絞り込み、基本見積りと同名の品目は除外)、
+    `generateOptionRecommendations` を呼ぶ
+  - [C] OK 直後、`fetchAddonRecommendations` を呼び 1 件も無ければ [F] 日程候補へ直行
+    (Phase 1b-3 の挙動を維持)。1〜3 件あれば [D] へ進めボタン提示
+  - [D] で顧客がオプションを選択 → 見積書 `documents` に明細を追加して再計算
+    (`calcItems`) し `status: draft` に戻す (再送はスタッフの draft→sent 操作を経る。
+    壁3 維持) → `quote_drafted` へ戻し、`maybeAdvanceFlowOnQuoteSent` が
+    `selected_options` の有無で初回送付 ([C]) か再送 ([E] 最終確認) かを判定
+  - [D] で「オプションなしで進める」→ 内容が変わらないため [E] の再確認を挟まず
+    直接 [F] へ (意図的な近道。実装ノート参照)
+  - [E] 最終OK → [F]。「相談する」→ スタッフ引き継ぎ
+  - 選ばれたオプションが登録メニュー由来なら `reservations.menu_items_json` に実品目
+    として反映 (基本見積り明細は引き続き自由記述のため反映されない。既知の限界として
+    コード内に ponytail コメントで明記)
+  - 実装ノート: MVP は「1 件まで選択」に単純化 (design 上の `selected_options` 配列は
+    複数対応を示唆するが、LINE クイックリプライの UX 上、複数選択ループは別途必要に
+    なったら追加する)。代車必須判定・人手判定・受入カテゴリ絞り込み
+    (`needsLoaner`/`considerStaff`/`workCategories`) は本 Phase でも見送り — これらは
+    「代車が要るか」という追加の質問が要り、今回のオプション提案 (アドオン選択) とは
+    別の関心事のため、必要になった時点で別途対応する
+  - **レビュー修正**: `handleOptionSelected` が `handleSlotSelected` と同じ楽観ロック
+    (state クレームを先に取り、以降の見積書更新・通知を排他化) を欠いていたため追加
+    (postback 再配信・連打での見積り二重追加を防止)。AI 提案の id 検証は通していたが
+    名前・価格は AI の言い換えをそのまま採用していた不備を修正し、登録メニューの
+    正規の値を必ず使うよう変更 (価格の hallucination/丸めを防止)。オプション追加時の
+    見積り再計算が `meta_json.is_tax_inclusive` (税込モード) を見ておらず、追加した
+    オプションの税抜価格をそのまま税込額として扱ってしまう不備も修正 (税込モードの
+    書類では登録メニュー価格を税込換算してから追加)。
 - **Phase 3**: 証明書分岐 — 登録車両あり (既存) / 未登録→入庫日車検証撮影→登録→draft
 - **Phase 4**: 請求書 — 追加作業の LINE 承認 [H]、作業終了→金額確定 [I]→送付
 - **Phase 5**: 支払方法分岐 (K)

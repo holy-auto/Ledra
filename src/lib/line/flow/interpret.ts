@@ -26,6 +26,18 @@ export function parseFlowPostback(data: string | null | undefined): { event: str
 }
 
 /**
+ * postback の arg を提示済み候補配列への添字として解釈する。数値でなければ null
+ * (想定外の postback としてフロー処理をスキップさせる)。
+ * `Number("") === 0` になる罠があるため、空文字は先に弾く。
+ */
+function parseCandidateIndex(arg: string | undefined): number | null {
+  if (!arg) return null;
+  const index = Number(arg);
+  if (!Number.isInteger(index) || index < 0) return null;
+  return index;
+}
+
+/**
  * 現在状態と受信内容 (postback 優先、無ければテキスト) からフローイベントを判定する。
  * 判定不能なら null。
  */
@@ -43,16 +55,17 @@ export function interpretReply(
         return { type: "no" };
       case "registered":
         return { type: "registered" };
-      case "option":
-        return { type: "option_selected" };
+      case "option": {
+        // `flow:option:<index>` — index は提示したオプション候補配列への添字。
+        const index = parseCandidateIndex(pb.arg);
+        return index === null ? null : { type: "option_selected", index };
+      }
+      case "options_none":
+        return { type: "options_none" };
       case "slot": {
-        // `flow:slot:<index>` — index は提示した候補配列への添字。数値でなければ
-        // 想定外の postback として扱い、フロー処理をスキップさせる (null)。
-        // Number("") === 0 になる罠があるため、空文字は先に弾く。
-        if (!pb.arg) return null;
-        const index = Number(pb.arg);
-        if (!Number.isInteger(index) || index < 0) return null;
-        return { type: "slot_selected", index };
+        // `flow:slot:<index>` — index は提示した候補配列への添字。
+        const index = parseCandidateIndex(pb.arg);
+        return index === null ? null : { type: "slot_selected", index };
       }
       case "cancel":
         return { type: "handoff" };

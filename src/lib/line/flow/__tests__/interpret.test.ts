@@ -23,8 +23,12 @@ describe("interpretReply", () => {
       type: "slot_selected",
       index: 1,
     });
-    expect(interpretReply("awaiting_option_confirm", { postbackData: "flow:option:x" })).toEqual({
+    expect(interpretReply("awaiting_option_confirm", { postbackData: "flow:option:0" })).toEqual({
       type: "option_selected",
+      index: 0,
+    });
+    expect(interpretReply("awaiting_option_confirm", { postbackData: "flow:options_none" })).toEqual({
+      type: "options_none",
     });
     expect(interpretReply("awaiting_registration", { postbackData: "flow:registered" })).toEqual({
       type: "registered",
@@ -56,5 +60,11 @@ describe("interpretReply", () => {
     expect(interpretReply("awaiting_schedule_pick", { postbackData: "flow:slot:abc" })).toBeNull();
     expect(interpretReply("awaiting_schedule_pick", { postbackData: "flow:slot:-1" })).toBeNull();
     expect(interpretReply("awaiting_schedule_pick", { postbackData: "flow:slot:" })).toBeNull();
+  });
+
+  it("rejects a non-numeric or negative option index (malformed/spoofed postback)", () => {
+    expect(interpretReply("awaiting_option_confirm", { postbackData: "flow:option:abc" })).toBeNull();
+    expect(interpretReply("awaiting_option_confirm", { postbackData: "flow:option:-1" })).toBeNull();
+    expect(interpretReply("awaiting_option_confirm", { postbackData: "flow:option:" })).toBeNull();
   });
 });

@@ -2,6 +2,7 @@
  * LINE 会話フローの送信メッセージ組み立て — 純粋ロジック。
  */
 import type { FlowScheduleCandidate } from "./scheduleCandidates";
+import type { RecommendedOption } from "@/lib/ai/optionRecommend";
 
 /** LINE quickReply の 1 ボタン (postback アクション)。data は interpret.ts が解釈する。 */
 export interface FlowButton {
@@ -91,6 +92,56 @@ function formatDateJa(date: string): string {
 /** "HH:MM:SS" / "HH:MM" → "HH:MM"。 */
 function formatTimeShort(t: string): string {
   return t.slice(0, 5);
+}
+
+/**
+ * 見積りOKの直後に、おすすめオプションをボタンで提示する (Phase 2)。
+ * 「オプションなしで進める」で内容を変えずに日程調整へ進める。
+ */
+export function buildOptionRecommendAsk(options: RecommendedOption[]): FlowButtonMessage {
+  return {
+    text: [
+      "ありがとうございます！あわせて、こちらのオプションはいかがでしょうか？",
+      ...options.map((o) => `◯ ${o.name}（+¥${o.price.toLocaleString("ja-JP")}）— ${o.reason}`),
+      "",
+      "追加をご希望の場合はボタンからお選びください（不要な場合はそのまま進められます）。",
+    ].join("\n"),
+    buttons: [
+      ...options.map((o, i) => ({
+        label: `追加する: ${o.name.slice(0, 16)}`,
+        data: `flow:option:${i}`,
+      })),
+      { label: "オプションなしで進める", data: "flow:options_none" },
+    ],
+  };
+}
+
+/**
+ * オプション追加を受け付けたことの案内。見積り更新→スタッフ再送→最終OKへ続く。
+ * 見積書の再送そのものはスタッフが行う (壁3) ため「担当より」と明示する。
+ */
+export function buildOptionAddedAck(option: RecommendedOption): string {
+  return [
+    `「${option.name}」を追加したお見積りをお作りしています。`,
+    "担当が確認のうえ、更新後のお見積りをこちらのトークにお送りしますので少々お待ちください。",
+  ].join("\n");
+}
+
+/**
+ * オプション追加後の更新見積りを送付した直後に、最終OKをボタンで尋ねる。
+ * `buildQuoteApprovalAsk` と同じ postback (yes/no) を使うため文面のみ差し替える。
+ */
+export function buildFinalQuoteApprovalAsk(): FlowButtonMessage {
+  return {
+    text: [
+      "オプションを反映したお見積りをお送りしました。この内容でよろしいでしょうか？",
+      "このお見積りで進めてよろしければ「はい」、ご相談されたい場合は「相談する」をお選びください。",
+    ].join("\n"),
+    buttons: [
+      { label: "はい、お願いします", data: "flow:yes" },
+      { label: "相談する", data: "flow:no" },
+    ],
+  };
 }
 
 /**
