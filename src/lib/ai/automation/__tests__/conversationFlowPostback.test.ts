@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   recordInboundLineMessage: vi.fn(),
   logAutoActionExecuted: vi.fn(),
   syncCreateEvent: vi.fn(),
+  maybeAutoCategorizeReservationOnIntake: vi.fn(),
+  maybeAutoProposeWorkflowForReservation: vi.fn(),
   store: null as unknown as FakeStore,
 }));
 
@@ -30,6 +32,12 @@ vi.mock("@/lib/line/client", () => ({
 vi.mock("@/lib/line/messageStore", () => ({ recordInboundLineMessage: mocks.recordInboundLineMessage }));
 vi.mock("@/lib/audit/aiAuditLog", () => ({ logAutoActionExecuted: mocks.logAutoActionExecuted }));
 vi.mock("@/lib/gcal/client", () => ({ syncCreateEvent: mocks.syncCreateEvent }));
+vi.mock("../accountingAuto", () => ({
+  maybeAutoCategorizeReservationOnIntake: mocks.maybeAutoCategorizeReservationOnIntake,
+}));
+vi.mock("../workflowAuto", () => ({
+  maybeAutoProposeWorkflowForReservation: mocks.maybeAutoProposeWorkflowForReservation,
+}));
 vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({}) },
 }));
@@ -247,6 +255,15 @@ describe("handleFlowPostback — slot selection (Phase 1b-3)", () => {
       estimated_amount: 33000,
     });
     expect(mocks.syncCreateEvent).toHaveBeenCalledTimes(1);
+    // 管理画面の予約作成ルートと同じ intake フック (勘定科目提案・ワークフロー提案) も呼ぶ。
+    expect(mocks.maybeAutoCategorizeReservationOnIntake).toHaveBeenCalledWith({
+      tenantId: TENANT,
+      reservationId: inserted?.payload.id,
+    });
+    expect(mocks.maybeAutoProposeWorkflowForReservation).toHaveBeenCalledWith({
+      tenantId: TENANT,
+      reservationId: inserted?.payload.id,
+    });
 
     // 選択の排他確保 (awaiting_schedule_pick → scheduled) → 確定 (→ closed) の2回更新される。
     const flowUpdates = mocks.store.updates.filter((u) => u.table === "line_conversation_flows");

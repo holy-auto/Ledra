@@ -274,9 +274,17 @@ none / idle
     付けない) + gcal 同期 (`syncCreateEvent`、非ブロッキング) → フローを `closed` に
     してお礼メッセージ送信 + スタッフ通知
   - 残課題 (次フェーズ): オプション提案 (Phase 2) / 車検証 OCR での詳細受領 (画像) /
-    [A0] 未登録客の登録誘導 (既存 intake 招待の再利用) / 代車必須判定・人手判定を
-    日程候補取得に反映
-- **Phase 2**: オプション提案 (C) を [B]/[D] に織り込む
+    [A0] 未登録客の登録誘導 (既存 intake 招待の再利用)
+- **Phase 1b-3 追加修正**: 案件登録時の勘定科目提案・ワークフロー提案フック
+  (`maybeAutoCategorizeReservationOnIntake` / `maybeAutoProposeWorkflowForReservation`)
+  を `handleSlotSelected` の予約作成後に配線 (管理画面の予約作成ルートと同じ挙動に
+  揃えた。実装済み)
+- **Phase 2**: オプション提案 (C) を [B]/[D] に織り込む。実装時に判明: 代車必須判定・
+  人手判定・受入カテゴリ絞り込み (`needsLoaner`/`considerStaff`/`workCategories`) と
+  `reservations.menu_items_json` の実品目化は、いずれも「顧客に代車要否・オプション
+  を確認して初めて分かる情報」なので Phase 1b-3 の技術的負債ではなく **Phase 2 の
+  スコープに含める** (option 確認で選ばれた項目を実 `menu_items` に対応付け、その
+  category_large / 代車要否をここに渡す)。
 - **Phase 3**: 証明書分岐 — 登録車両あり (既存) / 未登録→入庫日車検証撮影→登録→draft
 - **Phase 4**: 請求書 — 追加作業の LINE 承認 [H]、作業終了→金額確定 [I]→送付
 - **Phase 5**: 支払方法分岐 (K)
