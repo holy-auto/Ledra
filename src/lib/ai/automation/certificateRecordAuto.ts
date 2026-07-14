@@ -38,6 +38,7 @@ interface ReservationRow {
   title: string | null;
   ai_certificate_draft?: unknown;
   ai_certificate_id?: string | null;
+  parts_replacement?: boolean | null;
 }
 
 function isMissingColumnError(err: { message?: string; code?: string } | null | undefined): boolean {
@@ -84,7 +85,7 @@ export async function maybeAutoCreateDraftCertificateForReservation(
     // ai_certificate_id 列が無い (マイグレーション未適用) 環境では重複防止できないため作らない。
     const sel = await admin
       .from("reservations")
-      .select("vehicle_id, customer_id, title, ai_certificate_draft, ai_certificate_id")
+      .select("vehicle_id, customer_id, title, ai_certificate_draft, ai_certificate_id, parts_replacement")
       .eq("id", reservationId)
       .eq("tenant_id", tenantId)
       .maybeSingle();
@@ -169,8 +170,10 @@ export async function maybeAutoCreateDraftCertificateForReservation(
         : [];
       const description = nonEmpty(draft?.description);
       const cautions = nonEmpty(draft?.cautions);
-      // 本文 (content_free_text): 説明 + 注意事項を改行で連結 (どちらか欠けても可)。
-      const freeText = [description, cautions].filter(Boolean).join("\n\n") || null;
+      // 本文 (content_free_text): 説明 + 注意事項 + 部品交換の事実 (あれば) を改行で連結。
+      // 発行前に人が編集・削除できる下書きへの差し込みなので壁3は維持される。
+      const partsNote = reservation.parts_replacement ? "本施工において部品交換を実施しました。" : null;
+      const freeText = [description, cautions, partsNote].filter(Boolean).join("\n\n") || null;
 
       const publicId = await allocatePublicId();
       if (!publicId) {
@@ -190,6 +193,7 @@ export async function maybeAutoCreateDraftCertificateForReservation(
       const certRow: Record<string, unknown> = {
         tenant_id: tenantId,
         public_id: publicId,
+        reservation_id: reservationId,
         vehicle_id: reservation.vehicle_id,
         customer_id: reservation.customer_id,
         customer_name: customerName,
@@ -248,6 +252,7 @@ export async function maybeAutoCreateDraftCertificateForReservation(
           customerId: reservation.customer_id,
           vehicleModel: vehicleModel,
           vehiclePlate,
+          reservationId,
         }).catch((e) => {
           logger.warn("[certificateRecordAuto] triggerCertificateIssued failed", {
             tenantId,

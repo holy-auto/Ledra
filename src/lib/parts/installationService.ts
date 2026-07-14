@@ -16,6 +16,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { computePartContentHash, serialFingerprint, deriveRequiredAssurance } from "@/lib/parts/contentHash";
 import { serialReusedFinding, flagFindingsFromEvidence, type IntegrityFinding } from "@/lib/parts/integrityChecks";
 import type { PartInstallationCreateInput } from "@/lib/validations/partInstallation";
+import { logger } from "@/lib/logger";
 
 export interface CreateInstallationResult {
   installation: {
@@ -192,4 +193,86 @@ async function findDuplicateEvidence(
 
   if (error) throw new Error(`duplicate evidence query failed: ${error.message}`);
   return data ?? [];
+}
+
+/**
+ * 予約の「部品交換あり」トグル ON で呼ぶ、作業前の最小限レコード作成。
+ *
+ * 新規UI（フォーム/パネル）は作らない前提のため、部品名・数量は仮の値のまま
+ * `status='draft'` で作成する（詳細な入力・写真は求めない）。既に未完了の draft が
+ * あれば重複作成しない（トグルの ON/OFF を繰り返しても1件に収束）。
+ *
+ * 「作業後の写真」は既存の証明書発行フロー（施工後写真必須ルール）に相乗りし、
+ * 証明書が発行された時点で `completeDraftPartInstallationsForReservation` が
+ * draft → installed に一括遷移させる（本関数はその起点を作るだけ）。
+ */
+export async function createDraftPartInstallationForReservation(params: {
+  tenantId: string;
+  reservationId: string;
+  vehicleId?: string | null;
+  customerId?: string | null;
+  userId?: string | null;
+  partNameHint?: string | null;
+}): Promise<{ id: string; created: boolean }> {
+  const { admin } = createTenantScopedAdmin(params.tenantId);
+
+  const { data: existing } = await admin
+    .from("part_installations")
+    .select("id")
+    .eq("tenant_id", params.tenantId)
+    .eq("reservation_id", params.reservationId)
+    .eq("status", "draft")
+    .limit(1)
+    .maybeSingle();
+  if (existing?.id) return { id: existing.id as string, created: false };
+
+  const partName = params.partNameHint?.trim() || "部品交換（詳細未入力）";
+  const requiredAssurance = deriveRequiredAssurance("consumable", null);
+  const installationId = randomUUID();
+
+  const { error } = await admin.from("part_installations").insert({
+    id: installationId,
+    tenant_id: params.tenantId,
+    reservation_id: params.reservationId,
+    vehicle_id: params.vehicleId ?? null,
+    customer_id: params.customerId ?? null,
+    part_name: partName,
+    part_kind: "consumable",
+    quantity: 1,
+    unit: "個",
+    required_assurance: requiredAssurance,
+    status: "draft",
+    installed_by: params.userId ?? null,
+  });
+  if (error) throw new Error(`part_installations draft insert failed: ${error.message}`);
+
+  return { id: installationId, created: true };
+}
+
+/**
+ * 予約に紐づく draft の装着記録を installed に一括遷移させる（証明書発行時に呼ぶ）。
+ * 施工後写真の存在は呼び出し元（証明書発行の必須チェック）が既に保証している前提で、
+ * ここでは新しい写真要件を課さない。失敗しても証明書発行はブロックしない (呼び出し側で catch)。
+ */
+export async function completeDraftPartInstallationsForReservation(
+  tenantId: string,
+  reservationId: string,
+): Promise<number> {
+  const { admin } = createTenantScopedAdmin(tenantId);
+  const { data, error } = await admin
+    .from("part_installations")
+    .update({ status: "installed", installed_at: new Date().toISOString() })
+    .eq("tenant_id", tenantId)
+    .eq("reservation_id", reservationId)
+    .eq("status", "draft")
+    .select("id");
+  if (error) {
+    logger.warn("[installationService] completeDraftPartInstallationsForReservation failed", {
+      tenantId,
+      reservationId,
+      err: error.message,
+    });
+    return 0;
+  }
+  return data?.length ?? 0;
 }

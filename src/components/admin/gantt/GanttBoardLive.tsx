@@ -27,7 +27,7 @@ export default function GanttBoardLive({ initialData, dateStr }: { initialData: 
     return () => clearInterval(id);
   }, []);
 
-  const { data } = useSWR<{ data: GanttData }>(`/api/admin/gantt?date=${date}`, fetcher, {
+  const { data, mutate } = useSWR<{ data: GanttData }>(`/api/admin/gantt?date=${date}`, fetcher, {
     // SSR と同じ日付のときだけ初期データを使う（日付が変わったら取得し直す）。
     fallbackData: date === dateStr ? { data: initialData } : undefined,
     refreshInterval: 10_000,
@@ -37,5 +37,20 @@ export default function GanttBoardLive({ initialData, dateStr }: { initialData: 
     errorRetryCount: 2,
   });
 
-  return <GanttBoard realData={data?.data ?? initialData} dateStr={date} />;
+  // ジョブ詳細と同じ「1タップ進行」を盤面からも実行する。成功したら即時 revalidate し、
+  // 10秒ポーリングを待たずに他画面と同じ状態に揃える。
+  async function advanceCase(reservationId: string) {
+    const res = await fetch(`/api/admin/reservations/${reservationId}/advance`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j?.error ?? j?.message ?? `HTTP ${res.status}`);
+    }
+    await mutate();
+  }
+
+  return <GanttBoard realData={data?.data ?? initialData} dateStr={date} onAdvance={advanceCase} />;
 }

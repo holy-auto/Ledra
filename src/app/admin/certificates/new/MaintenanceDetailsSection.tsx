@@ -44,11 +44,16 @@ const SEVERITY_COLORS: Record<string, string> = {
   critical: "bg-red-50 border-red-200 text-red-700",
 };
 
-export default function MaintenanceDetailsSection() {
+interface Props {
+  /** 案件の「部品交換あり」トグルが ON のとき、既定値として差し込む一言 (人が発行前に編集・削除できる)。 */
+  defaultPartsReplacedNote?: string;
+}
+
+export default function MaintenanceDetailsSection({ defaultPartsReplacedNote }: Props) {
   const [data, setData] = useState<MaintenanceData>({
     work_types: [],
     mileage: "",
-    parts_replaced: "",
+    parts_replaced: defaultPartsReplacedNote ?? "",
     next_service_date: "",
     findings: "",
     mechanic_name: "",

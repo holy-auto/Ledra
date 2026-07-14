@@ -88,6 +88,8 @@ type Props = {
   defaultVehicleId?: string;
   defaultCustomerId?: string;
   defaultReservationId?: string;
+  /** 案件の「部品交換あり」トグルが ON のとき、整備内容セクションへの既定メモ。 */
+  defaultPartsReplacedNote?: string;
   templates: Template[];
   selectedTemplate: Template | null;
   tenantLogoPath: string | null;
@@ -118,6 +120,7 @@ export default function CertNewFormWrapper({
   defaultVehicleId,
   defaultCustomerId,
   defaultReservationId,
+  defaultPartsReplacedNote,
   templates,
   selectedTemplate,
   tenantLogoPath,
@@ -691,7 +694,7 @@ export default function CertNewFormWrapper({
         {/* ━━━ 2b. 整備内容（整備テンプレート時のみ） ━━━ */}
         {isMaintenance && (
           <section id="sec-detail-maintenance" className="border-t border-border-subtle py-6">
-            <MaintenanceDetailsSection />
+            <MaintenanceDetailsSection defaultPartsReplacedNote={defaultPartsReplacedNote} />
           </section>
         )}
 

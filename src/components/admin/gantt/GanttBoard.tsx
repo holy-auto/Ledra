@@ -39,7 +39,14 @@ const ROW_LABEL_W = 200;
 const UNASSIGN_W = 200;
 const LANE_H = 46;
 
-export default function GanttBoard({ realData, dateStr }: { realData: GanttData; dateStr: string }) {
+interface GanttBoardProps {
+  realData: GanttData;
+  dateStr: string;
+  /** ケースバーの「確認して次へ進める」から呼ぶ。ジョブ詳細と同じ POST .../advance を実行する。 */
+  onAdvance?: (reservationId: string) => Promise<void>;
+}
+
+export default function GanttBoard({ realData, dateStr, onAdvance }: GanttBoardProps) {
   const realEmpty = realData.cases.length === 0 && realData.unassigned.length === 0 && realData.staff.length === 0;
   // デモ表示は「ユーザが明示トグルしていなければ realEmpty に追従」する純導出。
   // これにより live ポーリングで空→実データに変わると自動でデモを抜け、ユーザが
@@ -47,6 +54,26 @@ export default function GanttBoard({ realData, dateStr }: { realData: GanttData;
   const [demoOverride, setDemoOverride] = useState<boolean | null>(null);
   const showDemo = demoOverride ?? realEmpty;
   const data = showDemo ? demoGanttData(dateStr) : realData;
+
+  // ケースバーをクリックすると出す「確認して次へ進める」パネル。
+  const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
+  const [advancing, setAdvancing] = useState(false);
+  const [advanceErr, setAdvanceErr] = useState<string | null>(null);
+  const activeCase = data.cases.find((c) => c.id === activeCaseId) ?? null;
+
+  async function handleAdvance() {
+    if (!activeCase || !onAdvance) return;
+    setAdvancing(true);
+    setAdvanceErr(null);
+    try {
+      await onAdvance(activeCase.id);
+      setActiveCaseId(null);
+    } catch (e) {
+      setAdvanceErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAdvancing(false);
+    }
+  }
 
   // NOW ライン: 開きっぱなしの運用ディスプレイでも現在時刻に追従するよう毎分更新。
   const [nowH, setNowH] = useState(() => nowHoursJst());
@@ -231,17 +258,23 @@ export default function GanttBoard({ realData, dateStr }: { realData: GanttData;
                         const k = KIND[c.kind];
                         const compact = height < 58;
                         return (
-                          <div
+                          <button
                             key={c.id}
-                            title={`${c.label} · ${c.sub}\n${formatHour(c.start)}–${formatHour(c.end)} · ${c.tag} · ${c.prog}%`}
-                            className="absolute flex flex-col overflow-hidden rounded-[var(--radius-sm)] px-2 py-1"
+                            type="button"
+                            onClick={() => {
+                              setAdvanceErr(null);
+                              setActiveCaseId(c.id);
+                            }}
+                            title={`${c.label} · ${c.sub}\n${formatHour(c.start)}–${formatHour(c.end)} · ${c.tag} · ${c.prog}%\nクリックで確認`}
+                            className="absolute flex cursor-pointer flex-col overflow-hidden rounded-[var(--radius-sm)] px-2 py-1 text-left transition-shadow hover:brightness-105"
                             style={{
                               left,
                               top,
                               width,
                               height,
                               background: k.dim,
-                              boxShadow: `inset 0 0 0 1px ${k.accent}`,
+                              boxShadow:
+                                activeCaseId === c.id ? `0 0 0 2px ${k.accent}` : `inset 0 0 0 1px ${k.accent}`,
                               borderLeft: `3px solid ${k.accent}`,
                             }}
                           >
@@ -272,7 +305,7 @@ export default function GanttBoard({ realData, dateStr }: { realData: GanttData;
                                 </span>
                               )}
                             </div>
-                          </div>
+                          </button>
                         );
                       })}
                       {/* now line */}
@@ -290,6 +323,43 @@ export default function GanttBoard({ realData, dateStr }: { realData: GanttData;
           </div>
         )}
       </div>
+
+      {/* 確認パネル: ケースバークリックで開く。ジョブ詳細と同じ「確認して次へ進める」を盤面からも実行できる。 */}
+      {activeCase && (
+        <div className="fixed inset-x-0 bottom-0 z-50 flex justify-center p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border-default bg-surface p-4 shadow-[var(--shadow-lg)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-bold text-primary">{activeCase.label}</div>
+                <div className="text-xs text-muted">
+                  {activeCase.sub} · {activeCase.tag} · 進捗 {activeCase.prog}%
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveCaseId(null)}
+                className="text-muted hover:text-primary"
+                aria-label="閉じる"
+              >
+                ×
+              </button>
+            </div>
+            {advanceErr && <div className="mt-2 text-xs text-danger-text">{advanceErr}</div>}
+            <div className="mt-3 flex justify-end gap-2">
+              {activeCase.status !== "completed" && activeCase.status !== "cancelled" && onAdvance && (
+                <button
+                  type="button"
+                  onClick={handleAdvance}
+                  disabled={advancing}
+                  className="btn-primary text-sm px-4 py-2 disabled:opacity-50"
+                >
+                  {advancing ? "更新中..." : "確認して次へ進める →"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

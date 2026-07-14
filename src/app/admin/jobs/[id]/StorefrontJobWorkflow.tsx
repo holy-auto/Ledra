@@ -38,6 +38,7 @@ type Reservation = {
   cancelled_at: string | null;
   cancel_reason: string | null;
   created_at: string;
+  parts_replacement?: boolean | null;
 };
 
 type Customer = {
@@ -111,6 +112,7 @@ export default function StorefrontJobWorkflow({ reservation, customer, vehicle, 
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [partsBusy, setPartsBusy] = useState(false);
 
   const currentStatus = reservation.status;
   const isCancelled = currentStatus === "cancelled";
@@ -148,6 +150,28 @@ export default function StorefrontJobWorkflow({ reservation, customer, vehicle, 
     }
   }
 
+  /** 部品交換ありトグル。ON にするとバックエンドが装着記録 (draft) を自動作成する (新規UIは無し)。 */
+  async function togglePartsReplacement(next: boolean) {
+    setPartsBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/admin/reservations", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: reservation.id, parts_replacement: next }),
+      });
+      if (!res.ok) {
+        const j = await parseJsonSafe(res);
+        throw new Error(j?.error ?? j?.message ?? `HTTP ${res.status}`);
+      }
+      router.refresh();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPartsBusy(false);
+    }
+  }
+
   const certificateNewUrl = (() => {
     const params = new URLSearchParams();
     if (reservation.vehicle_id) params.set("vehicle_id", reservation.vehicle_id);
@@ -176,6 +200,19 @@ export default function StorefrontJobWorkflow({ reservation, customer, vehicle, 
             現在のステータス
           </span>
           <span className="text-xl font-bold text-primary">{STATUS_LABEL[currentStatus] ?? currentStatus}</span>
+          <button
+            type="button"
+            onClick={() => togglePartsReplacement(!reservation.parts_replacement)}
+            disabled={partsBusy || isCancelled}
+            aria-pressed={!!reservation.parts_replacement}
+            className={`ml-auto rounded-full border px-3 py-1 text-[11px] font-medium transition-colors disabled:opacity-50 ${
+              reservation.parts_replacement
+                ? "border-accent-amber/40 bg-accent-amber-dim text-accent-amber-text"
+                : "border-border-strong text-muted hover:text-primary"
+            }`}
+          >
+            部品交換あり {reservation.parts_replacement ? "ON" : "OFF"}
+          </button>
         </div>
 
         {/* 進行バー */}

@@ -79,6 +79,8 @@ export const reservationUpdateSchema = z.object({
   workflow_template_id: nullableUuid,
   // この予約で使う代車。日程候補の代車空き判定に使う。
   loaner_car_id: nullableUuid,
+  // 部品交換あり。ON にすると part_installations (draft) を自動作成する。
+  parts_replacement: z.boolean().optional(),
   note: z
     .string()
     .trim()

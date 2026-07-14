@@ -24,6 +24,7 @@ import { maybeAutoCreateDraftCertificateForReservation } from "@/lib/ai/automati
 import { maybeAutoCreateDraftInvoiceForReservation } from "@/lib/ai/automation/invoiceRecordAuto";
 import { maybeAutoCategorizeReservationOnIntake } from "@/lib/ai/automation/accountingAuto";
 import { maybeAutoProposeWorkflowForReservation } from "@/lib/ai/automation/workflowAuto";
+import { createDraftPartInstallationForReservation } from "@/lib/parts/installationService";
 
 export const dynamic = "force-dynamic";
 
@@ -455,6 +456,27 @@ export async function PUT(req: NextRequest) {
           reservationId: data.id,
         }),
       );
+    }
+
+    // 部品交換トグル ON: 新規UIは作らず、バックエンドのみで作業前の最小限レコード
+    // (part_installations, status=draft) を自動作成する。作業後の写真は証明書発行時に
+    // 相乗りするため、ここでは写真もフォームも要求しない。冪等 (既存 draft があれば作らない)。
+    if (sentKeys.has("parts_replacement") && updates.parts_replacement === true) {
+      try {
+        await createDraftPartInstallationForReservation({
+          tenantId: caller.tenantId,
+          reservationId: data.id,
+          vehicleId: data.vehicle_id,
+          customerId: data.customer_id,
+          userId: caller.userId,
+          partNameHint: data.title,
+        });
+      } catch (e) {
+        logger.warn("[reservations PUT] draft part installation auto-create failed", {
+          reservationId: data.id,
+          err: e instanceof Error ? e.message : String(e),
+        });
+      }
     }
 
     // 案件完了時: 各種ドラフトを自動生成 (各自 opt-in のテナントのみ・発行/送付は必ず人 = 壁3)。
