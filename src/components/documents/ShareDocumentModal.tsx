@@ -37,6 +37,9 @@ type OtherDocument = {
 
 type Channel = "email" | "line" | "sms";
 
+// サーバー側 documentShareSchema の additional_document_ids.max(20) と同じ上限。
+const MAX_ADDITIONAL_DOCUMENTS = 20;
+
 const TABS: { key: Channel; label: string }[] = [
   { key: "email", label: "メール" },
   { key: "line", label: "LINE" },
@@ -207,28 +210,37 @@ export default function ShareDocumentModal({
           {loadingOthers && <p className="text-xs text-muted">他の帳票を読み込み中...</p>}
           {otherDocs.length > 0 && (
             <div>
-              <label className="mb-1 block text-xs text-muted">他の帳票も一緒に送付（任意）</label>
+              <label className="mb-1 block text-xs text-muted">
+                他の帳票も一緒に送付（任意・最大{MAX_ADDITIONAL_DOCUMENTS}件、あと
+                {Math.max(0, MAX_ADDITIONAL_DOCUMENTS - selectedIds.size)}件選択可）
+              </label>
               <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-[var(--border-subtle)] p-2">
-                {otherDocs.map((d) => (
-                  <label key={d.id} className="flex items-center gap-2 text-xs">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(d.id)}
-                      onChange={(e) => {
-                        setSelectedIds((prev) => {
-                          const next = new Set(prev);
-                          if (e.target.checked) next.add(d.id);
-                          else next.delete(d.id);
-                          return next;
-                        });
-                      }}
-                    />
-                    <span>
-                      {DOC_TYPES[d.doc_type as DocType]?.label ?? d.doc_type} {d.doc_number}
-                    </span>
-                    <span className="ml-auto text-muted">{formatJpy(d.total)}</span>
-                  </label>
-                ))}
+                {otherDocs.map((d) => {
+                  const checked = selectedIds.has(d.id);
+                  const disabled = !checked && selectedIds.size >= MAX_ADDITIONAL_DOCUMENTS;
+                  return (
+                    <label key={d.id} className={`flex items-center gap-2 text-xs ${disabled ? "opacity-50" : ""}`}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={disabled}
+                        onChange={(e) => {
+                          setSelectedIds((prev) => {
+                            const next = new Set(prev);
+                            if (e.target.checked) {
+                              if (next.size < MAX_ADDITIONAL_DOCUMENTS) next.add(d.id);
+                            } else next.delete(d.id);
+                            return next;
+                          });
+                        }}
+                      />
+                      <span>
+                        {DOC_TYPES[d.doc_type as DocType]?.label ?? d.doc_type} {d.doc_number}
+                      </span>
+                      <span className="ml-auto text-muted">{formatJpy(d.total)}</span>
+                    </label>
+                  );
+                })}
               </div>
             </div>
           )}

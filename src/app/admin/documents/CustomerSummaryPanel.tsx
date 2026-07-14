@@ -3,8 +3,10 @@ import { useMemo, useState } from "react";
 import { formatJpy } from "@/lib/format";
 import { DOC_TYPES, type DocType, type DocumentRow } from "@/types/document";
 
-// キャンセル・却下は集計対象から除外（実質発生しなかった帳票のため）
-const VOID_STATUSES = new Set(["cancelled", "rejected"]);
+// キャンセル・却下・下書きは集計対象から除外する。
+// キャンセル/却下は実質発生しなかった帳票、下書きは未送付でまだ確定していない金額のため、
+// 他の分析（RevenueAnalytics の estimatePipeline 等）と同様に実績合計には含めない。
+const VOID_STATUSES = new Set(["cancelled", "rejected", "draft"]);
 const UNPAID_STATUSES = new Set(["sent", "overdue", "accepted"]);
 
 const CHART_COLORS = [
@@ -25,7 +27,14 @@ function sumTotal(docs: DocumentRow[]) {
   return docs.filter((d) => !VOID_STATUSES.has(d.status)).reduce((s, d) => s + d.total, 0);
 }
 
-export default function CustomerSummaryPanel({ docs }: { docs: DocumentRow[] }) {
+export default function CustomerSummaryPanel({
+  docs,
+  filterScopeLabel,
+}: {
+  docs: DocumentRow[];
+  /** 一覧側の種別/ステータス絞り込みが有効な場合、その内容（例:「見積書 / 入金済」）。有効時はその旨を明示する。 */
+  filterScopeLabel?: string | null;
+}) {
   const customerGroups = useMemo<CustomerGroup[]>(() => {
     const map = new Map<string, CustomerGroup>();
     for (const d of docs) {
@@ -46,14 +55,22 @@ export default function CustomerSummaryPanel({ docs }: { docs: DocumentRow[] }) 
 
   if (docs.length === 0 || customerGroups.length === 0) return null;
 
-  const activeDocs =
-    activeCustomerId === "__all__" ? docs : (customerGroups.find((g) => g.customerId === activeCustomerId)?.docs ?? []);
+  // 絞り込み変更や削除等で選択中の顧客が候補から消えた場合、「すべて」に自動で戻す
+  // （消えたタブがハイライトされたまま空表示になるのを防ぐ）。
+  const activeGroup = customerGroups.find((g) => g.customerId === activeCustomerId);
+  const effectiveActiveId = activeGroup ? activeCustomerId : "__all__";
+  const activeDocs = effectiveActiveId === "__all__" ? docs : (activeGroup?.docs ?? docs);
 
   return (
     <section className="glass-card overflow-hidden">
       <div className="border-b border-border-subtle p-5">
         <div className="text-xs font-semibold tracking-[0.18em] text-muted">顧客別集計</div>
         <div className="mt-0.5 text-[15px] font-semibold text-primary">顧客ごとの帳票サマリー</div>
+        {filterScopeLabel && (
+          <div className="mt-1 text-[11px] text-warning-text">
+            現在の絞り込み条件（{filterScopeLabel}）を反映しています。他の帳票は集計に含まれません。
+          </div>
+        )}
       </div>
 
       {/* 顧客タブ */}
@@ -62,7 +79,7 @@ export default function CustomerSummaryPanel({ docs }: { docs: DocumentRow[] }) 
           type="button"
           onClick={() => setActiveCustomerId("__all__")}
           className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-            activeCustomerId === "__all__" ? "bg-accent-dim text-accent" : "text-secondary hover:text-primary"
+            effectiveActiveId === "__all__" ? "bg-accent-dim text-accent" : "text-secondary hover:text-primary"
           }`}
         >
           すべて
@@ -73,7 +90,7 @@ export default function CustomerSummaryPanel({ docs }: { docs: DocumentRow[] }) 
             type="button"
             onClick={() => setActiveCustomerId(g.customerId)}
             className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-              activeCustomerId === g.customerId ? "bg-accent-dim text-accent" : "text-secondary hover:text-primary"
+              effectiveActiveId === g.customerId ? "bg-accent-dim text-accent" : "text-secondary hover:text-primary"
             }`}
           >
             {g.customerName}
@@ -165,10 +182,14 @@ function TrendChart({ docs }: { docs: DocumentRow[] }) {
       row.count += 1;
       map.set(key, row);
     }
-    return Array.from(map.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-6)
-      .map(([key, v]) => ({ key, label: `${parseInt(key.slice(5, 7), 10)}月`, ...v }));
+    return (
+      Array.from(map.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .slice(-6)
+        // 活動月のみの集計（空白月は詰めない）のため、直近6件が複数年にまたがることがある。
+        // 月のみだと同じ月が年をまたいで重複表示され得るため、年（下2桁）も表示する。
+        .map(([key, v]) => ({ key, label: `${key.slice(2, 4)}年${parseInt(key.slice(5, 7), 10)}月`, ...v }))
+    );
   }, [docs]);
 
   const maxVal = Math.max(...months.map((m) => m.total), 1);

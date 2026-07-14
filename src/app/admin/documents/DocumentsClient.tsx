@@ -89,7 +89,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   };
 
   const isDeletable = (doc: DocumentRow) => isDocumentDeletable(doc.doc_type, doc.status);
-  const isSendable = (doc: DocumentRow) => !!doc.customer_id;
+  const isSendable = (doc: DocumentRow) => !!doc.customer_id && doc.status !== "cancelled" && doc.status !== "rejected";
   const selectableDocs = docs.filter((d) => isDeletable(d) || isSendable(d));
   const allSelected = selectableDocs.length > 0 && selectableDocs.every((d) => selectedIds.has(d.id));
 
@@ -173,6 +173,15 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   };
 
   const docTypeLabel = (dt: string) => DOC_TYPES[dt as DocType]?.label ?? dt;
+
+  // CustomerSummaryPanel は現在の一覧フィルタと同じ docs を受け取るため、
+  // 絞り込み中であることを明示しないと「未入金額が0件」等の集計が誤解される。
+  const filterScopeLabel = [
+    activeTypeFilter !== "all" ? docTypeLabel(activeTypeFilter) : null,
+    activeStatusFilter !== "all" ? statusLabel(activeStatusFilter) : null,
+  ]
+    .filter(Boolean)
+    .join(" / ");
 
   const defaultDocType: DocType =
     initialTypeFilter && initialTypeFilter in DOC_TYPES ? (initialTypeFilter as DocType) : "estimate";
@@ -271,7 +280,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
             })()}
 
           {/* 顧客別集計 */}
-          <CustomerSummaryPanel docs={docs} />
+          <CustomerSummaryPanel docs={docs} filterScopeLabel={filterScopeLabel || null} />
 
           {/* Filters */}
           <section className="glass-card p-5">

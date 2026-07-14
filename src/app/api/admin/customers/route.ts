@@ -40,9 +40,11 @@ export async function GET(req: NextRequest) {
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
 
+    // id 指定時は単一顧客の直接取得（例: 送付モーダルの連絡先補完）のため、
+    // ページネーション件数や証明書/請求書の集計は不要 — 後続のカウント系クエリを丸ごとスキップする。
+    const isSingleIdLookup = !!idParam;
     if (idParam) {
       query = query.eq("id", idParam);
-      countQuery = countQuery.eq("id", idParam);
     }
 
     if (q) {
@@ -57,7 +59,10 @@ export async function GET(req: NextRequest) {
       query = query.range(from, to);
     }
 
-    const [{ data: customers, error }, { count: totalCount }] = await Promise.all([query, countQuery]);
+    const [{ data: customers, error }, { count: totalCount }] = await Promise.all([
+      query,
+      isSingleIdLookup ? Promise.resolve({ count: null }) : countQuery,
+    ]);
     if (error) {
       return apiInternalError(error, "customers GET");
     }
@@ -67,7 +72,7 @@ export async function GET(req: NextRequest) {
     const certCounts: Record<string, number> = {};
     const invoiceCounts: Record<string, number> = {};
 
-    if (customerIds.length > 0) {
+    if (customerIds.length > 0 && !isSingleIdLookup) {
       const [{ data: certs }, { data: invs }] = await Promise.all([
         supabase
           .from("certificates")

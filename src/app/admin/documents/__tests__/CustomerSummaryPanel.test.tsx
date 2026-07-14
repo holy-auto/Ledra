@@ -104,4 +104,43 @@ describe("CustomerSummaryPanel", () => {
     expect(grandTotalCell()?.textContent).toBe("¥5,000");
     expect(unpaidCell()?.textContent).toBe("-"); // status=paid は未入金なし
   });
+
+  it("excludes draft documents from the aggregate total (not yet sent to the customer)", () => {
+    const withDraft: DocumentRow[] = [
+      ...docs,
+      makeDoc({
+        id: "5",
+        customer_id: "cust-a",
+        customer_name: "顧客A",
+        doc_type: "estimate",
+        total: 50000,
+        status: "draft",
+      }),
+    ];
+    const { container } = render(<CustomerSummaryPanel docs={withDraft} />);
+    fireEvent.click(screen.getByRole("button", { name: "顧客A" }));
+    const grandTotalCell = () => container.querySelector("tfoot td:nth-child(3)");
+    // 下書きの50000は未送付のため合計に含まれない（顧客Aの合計は引き続き3000のまま）
+    expect(grandTotalCell()?.textContent).toBe("¥3,000");
+  });
+
+  it("falls back to the overview tab when the selected customer disappears from a narrower docs list", () => {
+    const { container, rerender } = render(<CustomerSummaryPanel docs={docs} />);
+    fireEvent.click(screen.getByRole("button", { name: "顧客A" }));
+    const grandTotalCell = () => container.querySelector("tfoot td:nth-child(3)");
+    expect(grandTotalCell()?.textContent).toBe("¥3,000");
+
+    // 顧客Aの帳票が一覧フィルタ変更等で消えた状態を模す
+    const withoutCustomerA = docs.filter((d) => d.customer_id !== "cust-a");
+    rerender(<CustomerSummaryPanel docs={withoutCustomerA} />);
+
+    // 「すべて」タブへ自動的に戻り、空表示のまま取り残されない
+    expect(screen.getByRole("button", { name: "すべて" }).className).toContain("bg-accent-dim");
+    expect(grandTotalCell()?.textContent).toBe("¥5,000");
+  });
+
+  it("shows a notice when the parent list filter narrows the docs passed in", () => {
+    render(<CustomerSummaryPanel docs={docs} filterScopeLabel="請求書 / 入金済" />);
+    expect(screen.getByText(/請求書 \/ 入金済/)).toBeDefined();
+  });
 });
