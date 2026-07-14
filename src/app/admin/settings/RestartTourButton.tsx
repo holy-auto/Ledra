@@ -1,12 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { TOUR_DONE_KEY } from "../OnboardingTour";
 
 export default function RestartTourButton() {
   const router = useRouter();
 
   function handleClick() {
-    localStorage.removeItem("ledra_tour_done");
+    localStorage.removeItem(TOUR_DONE_KEY);
     router.push("/admin");
   }
 

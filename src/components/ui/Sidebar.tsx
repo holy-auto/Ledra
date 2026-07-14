@@ -476,6 +476,7 @@ export default function Sidebar() {
             （AdminTopBar の検索ピルから起動）。ロジックは重複させず event で起動。 */}
         <button
           type="button"
+          data-tour="assistant-chat"
           onClick={() => window.dispatchEvent(new Event("open-assistant-chat"))}
           className="mb-2 flex w-full items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-2 text-[13px] text-muted shadow-[inset_0_0_0_1px_var(--border-default)] transition-colors hover:bg-surface-hover hover:text-primary"
         >
@@ -552,6 +553,7 @@ export default function Sidebar() {
         {/* Slim ↔ Full 切替 */}
         <button
           type="button"
+          data-tour="all-features-toggle"
           onClick={() => setShowAll((v) => !v)}
           className="mt-3 flex w-full items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted transition-colors hover:text-secondary"
         >
