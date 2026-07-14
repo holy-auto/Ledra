@@ -17,7 +17,7 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { withRetry } from "@/lib/http/withRetry";
 import { getAnthropicClient, AI_MODEL_FAST, cacheableSystem } from "@/lib/ai/client";
-import { adminCommandItems } from "@/components/ui/Sidebar";
+import { adminCommandItems } from "@/components/ui/adminNav";
 
 // ビルド時固定の画面カタログ（NAV_GROUPS が単一の出典）。
 const CATALOG = adminCommandItems();
