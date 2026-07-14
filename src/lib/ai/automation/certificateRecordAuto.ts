@@ -172,7 +172,11 @@ export async function maybeAutoCreateDraftCertificateForReservation(
       const cautions = nonEmpty(draft?.cautions);
       // 本文 (content_free_text): 説明 + 注意事項 + 部品交換の事実 (あれば) を改行で連結。
       // 発行前に人が編集・削除できる下書きへの差し込みなので壁3は維持される。
-      const partsNote = reservation.parts_replacement ? "本施工において部品交換を実施しました。" : null;
+      // parts_replacement は予約単位のフラグ (カテゴリー別ではない) なので、複数カテゴリーに
+      // 分かれた下書き (例: 洗車 + オイル交換) に同じ一文を無差別に付けると、部品交換に無関係な
+      // 証明書にまで誤った記載をしてしまう。単一カテゴリーのときだけ差し込む。
+      const partsNote =
+        reservation.parts_replacement && draftUnits.length === 1 ? "本施工において部品交換を実施しました。" : null;
       const freeText = [description, cautions, partsNote].filter(Boolean).join("\n\n") || null;
 
       const publicId = await allocatePublicId();

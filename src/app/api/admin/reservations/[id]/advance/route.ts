@@ -4,12 +4,47 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { sendProgressUpdate } from "@/lib/line/client";
 import { sendProgressCompletionReliable } from "@/lib/line/clientWithRetry";
+import { syncCreateEvent, syncUpdateEvent } from "@/lib/gcal/client";
 import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { logger } from "@/lib/logger";
 import { runStepAutomationOnReach } from "@/lib/workflow/stepAutomations";
+import { maybeAutoDraftCertificateForReservation } from "@/lib/ai/automation/certificateAuto";
 import { maybeAutoCreateDraftCertificateForReservation } from "@/lib/ai/automation/certificateRecordAuto";
 import { maybeAutoCreateDraftInvoiceForReservation } from "@/lib/ai/automation/invoiceRecordAuto";
 import { maybeAutoNextActionForReservation } from "@/lib/ai/automation/nextActionAuto";
+
+/** advance() 後に GCal イベントを作成/更新する (advance は cancelled への遷移が無いため削除分岐は不要)。 */
+function syncGcalAfterAdvance(
+  tenantId: string,
+  reservation: {
+    id: string;
+    title: string | null;
+    scheduled_date: string;
+    start_time: string | null;
+    end_time: string | null;
+    note: string | null;
+    gcal_event_id: string | null;
+  },
+): void {
+  const payload = {
+    id: reservation.id,
+    title: reservation.title ?? "",
+    scheduled_date: reservation.scheduled_date,
+    start_time: reservation.start_time,
+    end_time: reservation.end_time,
+    note: reservation.note,
+  };
+  const sync = reservation.gcal_event_id
+    ? syncUpdateEvent(tenantId, { ...payload, gcal_event_id: reservation.gcal_event_id })
+    : syncCreateEvent(tenantId, payload);
+  sync.catch((error) =>
+    logger.warn("[advance] gcal sync failed (non-blocking)", {
+      error,
+      tenantId,
+      reservationId: reservation.id,
+    }),
+  );
+}
 
 const advanceSchema = z.object({
   note: z.string().trim().max(2000).nullable().optional(),
@@ -69,7 +104,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { data: reservation } = await supabase
       .from("reservations")
       .select(
-        "id, status, workflow_template_id, current_step_key, current_step_order, progress_pct, customer_id, vehicle_id, title",
+        "id, status, workflow_template_id, current_step_key, current_step_order, progress_pct, customer_id, vehicle_id, title, work_started_at, work_completed_at, gcal_event_id, scheduled_date, start_time, end_time, note",
       )
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
@@ -87,17 +122,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         return apiValidationError("no_next_step");
       }
       const nextStatus = LEGACY_STATUS_FLOW[currentIdx + 1];
+      const nowIso = new Date().toISOString();
+      // 作業タイマー: PUT /api/admin/reservations と同じ規約 (未設定のときだけ埋める)。
+      const legacyTimerUpdates: Record<string, string> = {};
+      if (nextStatus === "in_progress" && !reservation.work_started_at) {
+        legacyTimerUpdates.work_started_at = nowIso;
+      }
+      if (nextStatus === "completed") {
+        if (!reservation.work_started_at) legacyTimerUpdates.work_started_at = nowIso;
+        if (!reservation.work_completed_at) legacyTimerUpdates.work_completed_at = nowIso;
+      }
+
       const { data: updated, error } = await supabase
         .from("reservations")
-        .update({ status: nextStatus })
+        .update({ status: nextStatus, ...legacyTimerUpdates })
         .eq("id", id)
         .eq("tenant_id", caller.tenantId)
         .select(
-          "id, status, customer_id, vehicle_id, title, scheduled_date, start_time, end_time, created_at, updated_at",
+          "id, status, customer_id, vehicle_id, title, scheduled_date, start_time, end_time, note, gcal_event_id, created_at, updated_at",
         )
         .single();
 
       if (error) return apiInternalError(error, "advance legacy update");
+
+      // ── Google Calendar 同期（非ブロッキング） ──
+      syncGcalAfterAdvance(caller.tenantId, updated);
 
       // opt-in テナントでは、状態遷移後に次アクション提案を自動更新する。レスポンス後に確実に
       // 完走させるため after() を使う (un-awaited な void だと serverless で打ち切られ得る)。
@@ -110,12 +159,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         ),
       );
 
-      // レガシーフローでも完了時は請求書ドラフトを自動起票 (invoice.auto_draft_on_completion
-      // が opt-in のテナントのみ・冪等・壁3)。advance は completed への実遷移のみ到達する
-      // (上で completed/cancelled は弾いている) ため遷移ガードは不要。
+      // レガシーフローでも完了時は証明書ドラフト内容の生成＋証明書ドラフト行＋請求書ドラフトを
+      // 自動起票する (各自 opt-in のテナントのみ・冪等・壁3)。PUT /api/admin/reservations の
+      // 完了フックと同じ並び (AI下書き内容 → 証明書行 → 請求書) を advance() 経由でも担保する。
+      // advance は completed への実遷移のみ到達する (上で completed/cancelled は弾いている)
+      // ため遷移ガードは不要。
       if (nextStatus === "completed") {
-        after(() =>
-          maybeAutoCreateDraftInvoiceForReservation({
+        after(async () => {
+          await maybeAutoDraftCertificateForReservation({ tenantId: caller.tenantId, reservationId: id }).catch((e) =>
+            logger.warn("[advance] auto-draft certificate content (legacy completion) failed", {
+              reservationId: id,
+              err: e instanceof Error ? e.message : String(e),
+            }),
+          );
+          await maybeAutoCreateDraftCertificateForReservation({ tenantId: caller.tenantId, reservationId: id }).catch(
+            (e) =>
+              logger.warn("[advance] auto-create draft certificate (legacy completion) failed", {
+                reservationId: id,
+                err: e instanceof Error ? e.message : String(e),
+              }),
+          );
+          await maybeAutoCreateDraftInvoiceForReservation({
             tenantId: caller.tenantId,
             reservationId: id,
             trigger: "completion",
@@ -124,8 +188,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               reservationId: id,
               err: e instanceof Error ? e.message : String(e),
             }),
-          ),
-        );
+          );
+        });
       }
 
       return apiJson({ ok: true, reservation: updated, legacy: true });
@@ -210,6 +274,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       newStatus = "completed";
     }
 
+    // 作業タイマー: PUT /api/admin/reservations と同じ規約 (未設定のときだけ埋める)。
+    const timerUpdates: Record<string, string> = {};
+    if (newStatus === "in_progress" && !reservation.work_started_at) {
+      timerUpdates.work_started_at = now.toISOString();
+    }
+    if (newStatus === "completed") {
+      if (!reservation.work_started_at) timerUpdates.work_started_at = now.toISOString();
+      if (!reservation.work_completed_at) timerUpdates.work_completed_at = now.toISOString();
+    }
+
     // ─── 予約更新 ───
     const { data: updatedReservation, error: updateError } = await supabase
       .from("reservations")
@@ -218,15 +292,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         current_step_key: nextStep?.key ?? reservation.current_step_key,
         current_step_order: isLastStep ? currentOrder : nextOrder,
         progress_pct: progressPct,
+        ...timerUpdates,
       })
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
-      .select("id, status, current_step_key, current_step_order, progress_pct, customer_id, vehicle_id, title")
+      .select(
+        "id, status, current_step_key, current_step_order, progress_pct, customer_id, vehicle_id, title, scheduled_date, start_time, end_time, note, gcal_event_id",
+      )
       .single();
 
     if (updateError) {
       return apiInternalError(updateError, "advance update");
     }
+
+    // ── Google Calendar 同期（非ブロッキング） ──
+    syncGcalAfterAdvance(caller.tenantId, updatedReservation);
 
     // ─── 設定済みワークフローを汲み取った各工程の AI 自動化 ───
     // 到達した工程の意味（証明書/会計…）に応じて先回りで下書きを生成する
@@ -244,6 +324,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // 冪等 / 壁3。レスポンス後に確実に完走させるため after() を使う。
     if (isLastStep) {
       after(async () => {
+        await maybeAutoDraftCertificateForReservation({ tenantId: caller.tenantId, reservationId: id }).catch((e) =>
+          logger.warn("[advance] auto-draft certificate content (completion) failed", {
+            reservationId: id,
+            err: e instanceof Error ? e.message : String(e),
+          }),
+        );
         await maybeAutoCreateDraftCertificateForReservation({ tenantId: caller.tenantId, reservationId: id }).catch(
           (e) =>
             logger.warn("[advance] auto-create draft certificate (completion) failed", {

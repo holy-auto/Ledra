@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import BigActionButton from "@/components/pos/BigActionButton";
 import POSSection from "@/components/pos/POSSection";
 import { formatDate, formatJpy } from "@/lib/format";
+import { enqueueOrFetch } from "@/lib/outbox/enqueueOrFetch";
 
 /**
  * StorefrontJobWorkflow
@@ -155,14 +156,20 @@ export default function StorefrontJobWorkflow({ reservation, customer, vehicle, 
     setPartsBusy(true);
     setErr(null);
     try {
-      const res = await fetch("/api/admin/reservations", {
+      const r = await enqueueOrFetch({
+        url: "/api/admin/reservations",
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: reservation.id, parts_replacement: next }),
+        body: { id: reservation.id, parts_replacement: next },
+        label: `部品交換あり: ${next ? "ON" : "OFF"} (${reservation.title ?? "案件"})`,
+        kind: "reservation_update",
       });
-      if (!res.ok) {
-        const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? j?.message ?? `HTTP ${res.status}`);
+      if (r.queued) {
+        setErr(`📡 オフラインです。変更を保留し、ネット復帰後に自動同期します。`);
+        return;
+      }
+      if (!r.ok && r.response) {
+        const j = await parseJsonSafe(r.response);
+        throw new Error(j?.error ?? `HTTP ${r.status}`);
       }
       router.refresh();
     } catch (e: unknown) {

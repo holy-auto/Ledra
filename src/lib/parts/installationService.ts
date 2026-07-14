@@ -244,7 +244,23 @@ export async function createDraftPartInstallationForReservation(params: {
     status: "draft",
     installed_by: params.userId ?? null,
   });
-  if (error) throw new Error(`part_installations draft insert failed: ${error.message}`);
+  if (error) {
+    // 23505 = unique_violation。並行リクエスト (オフライン再送・二重タップ等) が先に
+    // draft を作った場合、idx_part_installations_one_draft_per_reservation に衝突する。
+    // その draft を返して冪等に振る舞う (投げない)。
+    if (error.code === "23505") {
+      const { data: raced } = await admin
+        .from("part_installations")
+        .select("id")
+        .eq("tenant_id", params.tenantId)
+        .eq("reservation_id", params.reservationId)
+        .eq("status", "draft")
+        .limit(1)
+        .maybeSingle();
+      if (raced?.id) return { id: raced.id as string, created: false };
+    }
+    throw new Error(`part_installations draft insert failed: ${error.message}`);
+  }
 
   return { id: installationId, created: true };
 }

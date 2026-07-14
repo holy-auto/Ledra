@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Modal from "@/components/ui/Modal";
 import {
   type GanttData,
   type GanttKind,
@@ -324,42 +325,39 @@ export default function GanttBoard({ realData, dateStr, onAdvance }: GanttBoardP
         )}
       </div>
 
-      {/* 確認パネル: ケースバークリックで開く。ジョブ詳細と同じ「確認して次へ進める」を盤面からも実行できる。 */}
-      {activeCase && (
-        <div className="fixed inset-x-0 bottom-0 z-50 flex justify-center p-4">
-          <div className="w-full max-w-md rounded-2xl border border-border-default bg-surface p-4 shadow-[var(--shadow-lg)]">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-bold text-primary">{activeCase.label}</div>
-                <div className="text-xs text-muted">
-                  {activeCase.sub} · {activeCase.tag} · 進捗 {activeCase.prog}%
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setActiveCaseId(null)}
-                className="text-muted hover:text-primary"
-                aria-label="閉じる"
-              >
-                ×
-              </button>
+      {/* 確認パネル: ケースバークリックで開く。ジョブ詳細と同じ「確認して次へ進める」を盤面からも実行できる。
+          既存の共有 Modal を使う (Escape/フォーカストラップ/スクロールロックを個別実装しない)。 */}
+      <Modal
+        open={!!activeCase}
+        onClose={() => setActiveCaseId(null)}
+        title={activeCase?.label ?? ""}
+        footer={
+          activeCase &&
+          !showDemo &&
+          activeCase.status !== "completed" &&
+          activeCase.status !== "cancelled" &&
+          onAdvance ? (
+            <button
+              type="button"
+              onClick={handleAdvance}
+              disabled={advancing}
+              className="btn-primary text-sm px-4 py-2 disabled:opacity-50"
+            >
+              {advancing ? "更新中..." : "確認して次へ進める →"}
+            </button>
+          ) : undefined
+        }
+      >
+        {activeCase && (
+          <>
+            <div className="text-xs text-muted">
+              {activeCase.sub} · {activeCase.tag} · 進捗 {activeCase.prog}%
             </div>
-            {advanceErr && <div className="mt-2 text-xs text-danger-text">{advanceErr}</div>}
-            <div className="mt-3 flex justify-end gap-2">
-              {activeCase.status !== "completed" && activeCase.status !== "cancelled" && onAdvance && (
-                <button
-                  type="button"
-                  onClick={handleAdvance}
-                  disabled={advancing}
-                  className="btn-primary text-sm px-4 py-2 disabled:opacity-50"
-                >
-                  {advancing ? "更新中..." : "確認して次へ進める →"}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+            {showDemo && <div className="text-xs text-muted">デモデータのため進行操作はできません。</div>}
+            {advanceErr && <div className="text-xs text-danger-text">{advanceErr}</div>}
+          </>
+        )}
+      </Modal>
     </div>
   );
 }

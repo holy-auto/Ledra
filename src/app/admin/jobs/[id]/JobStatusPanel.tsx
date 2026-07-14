@@ -128,10 +128,11 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
   const legacyNextStatus =
     currentIndex >= 0 && currentIndex < STATUS_FLOW.length - 1 ? STATUS_FLOW[currentIndex + 1] : null;
 
-  const canAdvance =
-    !isCancelled &&
-    currentStatus !== "completed" &&
-    (hasTemplate ? currentStepOrder < (workflowSteps?.length ?? 0) : legacyNextStatus != null);
+  // advance() 自体が status==="completed"/"cancelled" を弾く唯一の判定源。テンプレート駆動時に
+  // currentStepOrder と手元の workflowSteps.length を突き合わせると、最終工程に乗った直後
+  // (currentStepOrder === totalSteps, まだ in_progress) でボタンが消えて完了操作ができなくなる
+  // ため、ここでは currentStatus だけを見る (レガシーフローと判定基準を揃える)。
+  const canAdvance = !isCancelled && currentStatus !== "completed" && (hasTemplate || legacyNextStatus != null);
   const nextLabel = hasTemplate
     ? (nextTemplateStep?.label ?? "完了")
     : legacyNextStatus
