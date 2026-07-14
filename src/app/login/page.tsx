@@ -87,7 +87,7 @@ export default async function Page({
       redirect(destination);
     }
 
-    redirect("/admin/certificates");
+    redirect("/admin");
   }
 
   return (

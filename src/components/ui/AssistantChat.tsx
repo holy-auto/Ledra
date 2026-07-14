@@ -50,11 +50,22 @@ export default function AssistantChat() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
-  // 起動イベント（サイドバー入口ボタン）
+  // 起動: サイドバー/トップバーの入口ボタン（event）＋ グローバルショートカット ⌘/Ctrl+J。
+  // 頻繁に使うため、どの管理画面からでもキー一発で開けるようにする。
   useEffect(() => {
     const handleOpen = () => setOpen(true);
+    const handleKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "j" || e.key === "J")) {
+        e.preventDefault();
+        setOpen((v) => !v);
+      }
+    };
     window.addEventListener("open-assistant-chat", handleOpen);
-    return () => window.removeEventListener("open-assistant-chat", handleOpen);
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      window.removeEventListener("open-assistant-chat", handleOpen);
+      window.removeEventListener("keydown", handleKey);
+    };
   }, []);
 
   // 開いたら入力にフォーカス
@@ -273,9 +284,9 @@ export default function AssistantChat() {
           )}
         </div>
 
-        {/* Input */}
+        {/* Input — 頻繁に打つので大きめ・打ちやすく（text-base=16px は iOS の自動ズームも防ぐ） */}
         <form
-          className="flex items-center gap-2 border-t border-border-subtle px-3 py-2.5"
+          className="flex items-center gap-2 border-t border-border-subtle p-3"
           onSubmit={(e) => {
             e.preventDefault();
             send(query);
@@ -291,12 +302,12 @@ export default function AssistantChat() {
               if (e.key === "Enter" && e.nativeEvent.isComposing) e.preventDefault();
             }}
             placeholder="例: 予約を開いて / 膜厚測定 / 先月の売上"
-            className="flex-1 bg-transparent px-1 text-sm text-primary placeholder:text-muted outline-none"
+            className="h-12 flex-1 rounded-xl bg-[var(--bg-surface)] px-4 text-base text-primary placeholder:text-muted shadow-[inset_0_0_0_1px_var(--border-subtle)] outline-none focus:shadow-[inset_0_0_0_1px_var(--accent)]"
           />
           <button
             type="submit"
             disabled={loading || !query.trim()}
-            className="inline-flex items-center rounded-lg bg-accent px-3 py-1.5 text-[13px] font-medium text-inverse transition-opacity disabled:opacity-40"
+            className="inline-flex h-12 items-center rounded-xl bg-accent px-5 text-[15px] font-medium text-inverse transition-opacity disabled:opacity-40"
           >
             送信
           </button>

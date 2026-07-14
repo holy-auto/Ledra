@@ -2,11 +2,11 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 
 /**
  * ログイン後のデフォルトリダイレクト先をコンテキストに基づいて決定する。
- * - 施工店のみ → /admin/certificates
+ * - 施工店のみ → /admin（ダッシュボード）
  * - 代理店のみ → /agent
- * - 両方 → 前回のアクティブコンテキスト or デフォルト施工店
+ * - 両方 → 前回のアクティブコンテキスト or デフォルト施工店（/admin ダッシュボード）
  * - 本社専用ユーザ（組織オーナー / 本社チーム） → /admin/hq-overview
- * - どちらでもない → /admin/certificates (施工店登録フローへ)
+ * - どちらでもない → /admin（ダッシュボード。施工店登録フローもここから辿れる）
  *
  * パスワードログイン（server action）とマジックリンクの /auth/callback の
  * 双方から呼ばれるため、ここに集約している。
@@ -40,9 +40,9 @@ export async function resolveDefaultRedirect(userId: string, activeContext: stri
   const hasAgent = !!agentUser?.agent_id && status === "active";
 
   if (hasShop && hasAgent) {
-    // 両方持っている: 前回のコンテキストまたはデフォルト施工店
+    // 両方持っている: 前回のコンテキストまたはデフォルト施工店（ダッシュボード）
     if (activeContext === "agent") return "/agent";
-    return "/admin/certificates";
+    return "/admin";
   }
 
   if (hasAgent) return "/agent";
@@ -69,5 +69,5 @@ export async function resolveDefaultRedirect(userId: string, activeContext: stri
     if (isOrgUser) return "/admin/hq-overview";
   }
 
-  return "/admin/certificates";
+  return "/admin";
 }
