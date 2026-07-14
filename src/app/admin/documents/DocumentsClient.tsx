@@ -20,6 +20,10 @@ import {
   type DocumentRow,
 } from "@/types/document";
 import DocumentForm from "./DocumentForm";
+import ShareDocumentModal from "@/components/documents/ShareDocumentModal";
+import CustomerSummaryPanel from "./CustomerSummaryPanel";
+
+const MAX_BULK_SHARE = 20;
 
 type Stats = { total: number; unpaid_amount: number };
 type DocumentsData = { documents: DocumentRow[]; stats: Stats };
@@ -68,6 +72,9 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
+  // 一括送付
+  const [bulkShareOpen, setBulkShareOpen] = useState(false);
+
   // 入金記録（請求書のみ）
   const [paymentTarget, setPaymentTarget] = useState<string | null>(null);
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
@@ -82,8 +89,9 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   };
 
   const isDeletable = (doc: DocumentRow) => isDocumentDeletable(doc.doc_type, doc.status);
-  const deletableDocs = docs.filter(isDeletable);
-  const allSelected = deletableDocs.length > 0 && deletableDocs.every((d) => selectedIds.has(d.id));
+  const isSendable = (doc: DocumentRow) => !!doc.customer_id;
+  const selectableDocs = docs.filter((d) => isDeletable(d) || isSendable(d));
+  const allSelected = selectableDocs.length > 0 && selectableDocs.every((d) => selectedIds.has(d.id));
 
   const toggleSelected = (id: string) => {
     setSelectedIds((prev) => {
@@ -95,8 +103,27 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   };
 
   const toggleSelectAll = () => {
-    setSelectedIds(allSelected ? new Set() : new Set(deletableDocs.map((d) => d.id)));
+    setSelectedIds(allSelected ? new Set() : new Set(selectableDocs.map((d) => d.id)));
   };
+
+  const selectedDocs = docs.filter((d) => selectedIds.has(d.id));
+  const selectedDeletableCount = selectedDocs.filter(isDeletable).length;
+  const selectedCustomerIds = new Set(selectedDocs.map((d) => d.customer_id).filter(Boolean));
+  const canBulkSend =
+    selectedDocs.length > 0 &&
+    selectedDocs.every((d) => d.customer_id) &&
+    selectedCustomerIds.size === 1 &&
+    selectedDocs.length <= MAX_BULK_SHARE + 1;
+  const bulkSendDisabledReason =
+    selectedDocs.length === 0
+      ? undefined
+      : selectedCustomerIds.size > 1
+        ? "同じ顧客の帳票のみ一括送付できます"
+        : selectedDocs.length > MAX_BULK_SHARE + 1
+          ? `一度に送付できるのは${MAX_BULK_SHARE + 1}件までです`
+          : !selectedDocs.every((d) => d.customer_id)
+            ? "顧客が未設定の帳票は送付できません"
+            : undefined;
 
   const handleDelete = async (id: string) => {
     if (!confirm("この帳票を削除しますか？")) return;
@@ -124,7 +151,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   };
 
   const handleBulkDelete = async () => {
-    const ids = Array.from(selectedIds);
+    const ids = docs.filter((d) => selectedIds.has(d.id) && isDeletable(d)).map((d) => d.id);
     if (ids.length === 0) return;
     if (!confirm(`選択した ${ids.length} 件の帳票を削除しますか？`)) return;
     setBulkDeleting(true);
@@ -243,6 +270,9 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
               );
             })()}
 
+          {/* 顧客別集計 */}
+          <CustomerSummaryPanel docs={docs} />
+
           {/* Filters */}
           <section className="glass-card p-5">
             <div className="flex gap-4 items-end flex-wrap">
@@ -304,7 +334,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
             <div className="border-b border-border-subtle p-5 flex items-center justify-between flex-wrap gap-3">
               <div className="text-xs font-semibold tracking-[0.18em] text-muted">帳票一覧</div>
               {selectedIds.size > 0 && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs text-muted">{selectedIds.size} 件選択中</span>
                   <button
                     type="button"
@@ -315,11 +345,21 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                   </button>
                   <button
                     type="button"
+                    className="btn-primary px-3 py-1 text-xs"
+                    disabled={!canBulkSend}
+                    title={bulkSendDisabledReason}
+                    onClick={() => setBulkShareOpen(true)}
+                  >
+                    選択した帳票を送付
+                  </button>
+                  <button
+                    type="button"
                     className="btn-danger px-3 py-1 text-xs"
-                    disabled={bulkDeleting}
+                    disabled={bulkDeleting || selectedDeletableCount === 0}
+                    title={selectedDeletableCount === 0 ? "削除できる帳票が選択されていません" : undefined}
                     onClick={handleBulkDelete}
                   >
-                    {bulkDeleting ? "削除中…" : "選択した帳票を削除"}
+                    {bulkDeleting ? "削除中…" : `選択した帳票を削除 (${selectedDeletableCount})`}
                   </button>
                 </div>
               )}
@@ -332,7 +372,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                       <input
                         type="checkbox"
                         checked={allSelected}
-                        disabled={deletableDocs.length === 0}
+                        disabled={selectableDocs.length === 0}
                         onChange={toggleSelectAll}
                         aria-label="すべて選択"
                       />
@@ -356,7 +396,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                   {docs.map((doc) => (
                     <tr key={doc.id} className="hover:bg-surface-hover/60">
                       <td className="px-5 py-3.5">
-                        {isDeletable(doc) && (
+                        {(isDeletable(doc) || isSendable(doc)) && (
                           <input
                             type="checkbox"
                             checked={selectedIds.has(doc.id)}
@@ -431,6 +471,22 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
             </div>
           </section>
         </>
+      )}
+
+      {/* 一括送付モーダル */}
+      {bulkShareOpen && selectedDocs.length > 0 && (
+        <ShareDocumentModal
+          open={bulkShareOpen}
+          onClose={() => setBulkShareOpen(false)}
+          document={selectedDocs[0]}
+          customerName={selectedDocs[0].customer_name}
+          initialAdditionalDocumentIds={selectedDocs.slice(1).map((d) => d.id)}
+          onShared={() => {
+            setBulkShareOpen(false);
+            setSelectedIds(new Set());
+            mutate();
+          }}
+        />
       )}
 
       {/* Payment Dialog（請求書のみ） */}

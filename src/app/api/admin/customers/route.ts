@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
 
     const url = new URL(req.url);
     const q = (url.searchParams.get("q") ?? "").trim();
+    const idParam = (url.searchParams.get("id") ?? "").trim();
     const { page, perPage, from, to } = parsePagination(req, { maxPerPage: 200 });
 
     // Count query for pagination metadata
@@ -38,6 +39,11 @@ export async function GET(req: NextRequest) {
       )
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
+
+    if (idParam) {
+      query = query.eq("id", idParam);
+      countQuery = countQuery.eq("id", idParam);
+    }
 
     if (q) {
       const sq = escapeIlike(q);
