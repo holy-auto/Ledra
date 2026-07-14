@@ -144,10 +144,13 @@ export default function AssistantChat() {
             return;
           }
           if (json.reply || chips.length) {
+            // 候補が空（エンティティ0件 or 画面誤判定）の時は、名前が近い画面を静的フィルタで補い
+            // 行き止まりを避ける（例「顧客管理」を検索意図と誤判定 → 顧客管理の画面を提示）。
+            const finalChips = chips.length ? chips : staticFilter(q);
             pushAssistant({
               role: "assistant",
               text: json.reply || "近い画面の候補です。",
-              chips,
+              chips: finalChips,
             });
             return;
           }
