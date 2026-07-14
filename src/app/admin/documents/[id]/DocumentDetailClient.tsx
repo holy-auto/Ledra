@@ -385,6 +385,22 @@ export default function DocumentDetailClient({
               )}
             </div>
 
+            {/* Vehicle Info */}
+            {(() => {
+              const vi = (doc.vehicle_info_json ?? {}) as { model?: string; plate?: string; vin?: string };
+              if (!vi.model && !vi.plate && !vi.vin) return null;
+              return (
+                <div className="border-b border-border-subtle pb-4 print:border-gray-300">
+                  <div className="text-xs text-muted print:text-gray-500">車両情報</div>
+                  <div className="text-sm text-primary print:text-black mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                    {vi.model && <span>車種：{vi.model}</span>}
+                    {vi.plate && <span>ナンバー：{vi.plate}</span>}
+                    {vi.vin && <span className="font-mono">車台番号：{vi.vin}</span>}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Items Table */}
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">

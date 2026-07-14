@@ -113,6 +113,7 @@ export type DocForPdf = {
   payment_terms?: string | null;
   delivery_date?: string | null;
   template_id?: string | null;
+  vehicle_info_json?: { model?: string; plate?: string; vin?: string } | null;
 };
 
 export type TenantForDocPdf = {
@@ -335,6 +336,10 @@ export async function renderDocumentPdf(
   const honorific = doc.recipient_honorific ?? "御中";
   const bank = tenant.bank_info;
   const period = fmtPeriod(doc.period_start, doc.period_end);
+  const vehicleInfo = doc.vehicle_info_json ?? null;
+  const vehicleLine = vehicleInfo
+    ? [vehicleInfo.model, vehicleInfo.plate].filter(Boolean).join(" / ") || null
+    : null;
 
   const productItems = items.filter((it) => (it.item_type ?? "item") === "item");
   const breakdown =
@@ -411,6 +416,18 @@ export async function renderDocumentPdf(
           <View style={s.summaryRow}>
             <Text style={s.summaryLabel}>期間</Text>
             <Text style={s.summaryValue}>{period}</Text>
+          </View>
+        )}
+        {vehicleLine && (
+          <View style={s.summaryRow}>
+            <Text style={s.summaryLabel}>車両</Text>
+            <Text style={s.summaryValue}>{vehicleLine}</Text>
+          </View>
+        )}
+        {vehicleInfo?.vin && (
+          <View style={s.summaryRow}>
+            <Text style={s.summaryLabel}>車台番号</Text>
+            <Text style={s.summaryValue}>{vehicleInfo.vin}</Text>
           </View>
         )}
         {doc.payment_terms && (
