@@ -22,6 +22,7 @@ import {
 import DocumentForm from "./DocumentForm";
 import ShareDocumentModal from "@/components/documents/ShareDocumentModal";
 import CustomerSummaryPanel from "./CustomerSummaryPanel";
+import { canConsolidateDocuments } from "@/lib/documents/consolidateEligibility";
 
 const MAX_BULK_SHARE = 20;
 
@@ -75,6 +76,9 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   // 一括送付
   const [bulkShareOpen, setBulkShareOpen] = useState(false);
 
+  // 合算請求書の作成
+  const [creatingConsolidated, setCreatingConsolidated] = useState(false);
+
   // 入金記録（請求書のみ）
   const [paymentTarget, setPaymentTarget] = useState<string | null>(null);
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
@@ -125,6 +129,10 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
             ? "顧客が未設定の帳票は送付できません"
             : undefined;
 
+  const consolidateEligibility = canConsolidateDocuments(selectedDocs);
+  const canConsolidate = consolidateEligibility.ok;
+  const consolidateDisabledReason = consolidateEligibility.reason;
+
   const handleDelete = async (id: string) => {
     if (!confirm("この帳票を削除しますか？")) return;
     setDeletingId(id);
@@ -169,6 +177,48 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
       alert("一括削除に失敗しました: " + (e?.message ?? String(e)));
     } finally {
       setBulkDeleting(false);
+    }
+  };
+
+  const handleCreateConsolidated = async () => {
+    if (!canConsolidate) return;
+    if (!confirm(`選択した ${selectedDocs.length} 件を合算して請求書を作成しますか？`)) return;
+    setCreatingConsolidated(true);
+    try {
+      const customerId = selectedDocs[0].customer_id;
+      // 各元帳票の合計金額（税込）を1明細行として並べる。複数税率が混在する場合でも
+      // ponytail: 税率区分は一律 10% で計算する（元帳票ごとの税率差異は反映しない）。
+      // 混在税率を厳密に扱う場合は元帳票ごとに tax_breakdown を合算する処理へ拡張が必要。
+      const items = selectedDocs.map((d) => ({
+        item_type: "item",
+        description: `${docTypeLabel(d.doc_type)} ${d.doc_number}`,
+        quantity: 1,
+        unit_price: d.total,
+      }));
+      const res = await fetch("/api/admin/documents", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          doc_type: "consolidated_invoice",
+          customer_id: customerId,
+          items,
+          tax_rate: 10,
+          is_tax_inclusive: true,
+          status: "draft",
+          source_document_id: selectedDocs[0].id,
+          meta_json: { source_document_ids: selectedDocs.map((d) => d.id) },
+          note: `合算対象: ${selectedDocs.map((d) => d.doc_number).join("、")}`,
+        }),
+      });
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      setSelectedIds(new Set());
+      mutate();
+      router.push(`/admin/documents/${j.document.id}`);
+    } catch (e: any) {
+      alert("合算請求書の作成に失敗しました: " + (e?.message ?? String(e)));
+    } finally {
+      setCreatingConsolidated(false);
     }
   };
 
@@ -360,6 +410,15 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                     onClick={() => setBulkShareOpen(true)}
                   >
                     選択した帳票を送付
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary px-3 py-1 text-xs"
+                    disabled={!canConsolidate || creatingConsolidated}
+                    title={consolidateDisabledReason}
+                    onClick={handleCreateConsolidated}
+                  >
+                    {creatingConsolidated ? "作成中…" : "合算請求書を作成"}
                   </button>
                   <button
                     type="button"
