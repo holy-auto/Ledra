@@ -31,7 +31,6 @@
  * 「【要確認】」は付けない。
  */
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { sendCustomerLineText, sendCustomerLineButtons } from "@/lib/line/client";
 import { recordInboundLineMessage } from "@/lib/line/messageStore";
 import { syncCreateEvent } from "@/lib/gcal/client";
@@ -57,7 +56,7 @@ import {
   buildOptionAddedAck,
   buildFinalQuoteApprovalAsk,
 } from "@/lib/line/flow/messages";
-import { loadAiAutomationSettings } from "./policy";
+import { loadAiAutomationSettings, tenantEligibleForAiAutomation, notifyStaffOfAiAction } from "./policy";
 import { shouldRunConversationFlow, shouldAutoSendDocumentOnConfirm } from "./orchestrator";
 
 /** 提示した日程候補を提示順のまま保持するための context キー。 */
@@ -81,32 +80,6 @@ interface SelectedOptionRecord {
 type Admin = ReturnType<typeof createServiceRoleAdmin>;
 type FlowRow = ConversationFlowRow;
 
-/** テナントが有効 + AI 会話フローのプラン要件を満たすか (他のフロー入口と同じガード)。 */
-async function tenantEligible(admin: Admin, tenantId: string): Promise<boolean> {
-  const { data: tenant } = await admin.from("tenants").select("plan_tier, is_active").eq("id", tenantId).single();
-  if (!tenant || tenant.is_active === false) return false;
-  return canUseFeature(normalizePlanTier(tenant.plan_tier), "ai_inbound_extract");
-}
-
-/** スタッフに「この後の対応」を促す通知 (fail-soft)。 */
-async function notifyStaff(
-  admin: ReturnType<typeof createServiceRoleAdmin>,
-  tenantId: string,
-  title: string,
-  body: string,
-): Promise<void> {
-  const { error } = await admin.from("notifications").insert({
-    tenant_id: tenantId,
-    user_id: null,
-    notification_type: "ai_action",
-    priority: "normal",
-    title,
-    body,
-    link_path: "/admin/messages",
-  });
-  if (error) logger.warn("[conversationFlowPostback] notify failed", { tenantId, err: error.message });
-}
-
 /**
  * 正式見積書の送付 (draft→sent) を受けて、紐づくフローを可否待ちへ進め、
  * 顧客へ可否ボタンを送る。documents PUT の draft→sent フックから呼ぶ。失敗しても投げない。
@@ -124,7 +97,7 @@ export async function maybeAdvanceFlowOnQuoteSent(params: { tenantId: string; do
     if (!shouldAutoSendDocumentOnConfirm(settings, "estimate")) return;
 
     const admin = createServiceRoleAdmin("AI conversation flow (quote sent) — no auth session");
-    if (!(await tenantEligible(admin, tenantId))) return;
+    if (!(await tenantEligibleForAiAutomation(admin, tenantId))) return;
     const flow = await getFlowByQuoteDoc(admin, tenantId, documentId);
     if (!flow || flow.state !== "quote_drafted") return;
     const lineUserId = flow.line_user_id?.trim();
@@ -188,7 +161,7 @@ export async function handleFlowPostback(params: {
 
     const event = interpretReply(flow.state, { postbackData: params.data });
     if (!event) return false;
-    if (!(await tenantEligible(admin, tenantId))) return false;
+    if (!(await tenantEligibleForAiAutomation(admin, tenantId))) return false;
 
     // 可否ゲート (Phase 1b-2)。
     if (flow.state === "awaiting_quote_ok" && (event.type === "yes" || event.type === "no")) {
@@ -214,7 +187,7 @@ export async function handleFlowPostback(params: {
           lineUserId,
           body: buildQuoteConsultHandoff(),
         });
-        await notifyStaff(
+        await notifyStaffOfAiAction(
           admin,
           tenantId,
           "見積りに相談希望 — ご対応をお願いします",
@@ -254,7 +227,7 @@ export async function handleFlowPostback(params: {
         text: optAsk.text,
         buttons: optAsk.buttons,
       });
-      await notifyStaff(
+      await notifyStaffOfAiAction(
         admin,
         tenantId,
         "見積りOK — オプションを提案しました",
@@ -306,7 +279,7 @@ export async function handleFlowPostback(params: {
           lineUserId,
           body: buildQuoteConsultHandoff(),
         });
-        await notifyStaff(
+        await notifyStaffOfAiAction(
           admin,
           tenantId,
           "最終見積りに相談希望 — ご対応をお願いします",
@@ -348,7 +321,7 @@ export async function handleFlowPostback(params: {
         lineUserId,
         body: buildScheduleHandoff(),
       });
-      await notifyStaff(
+      await notifyStaffOfAiAction(
         admin,
         tenantId,
         "日程のご相談希望 — ご対応をお願いします",
@@ -422,7 +395,7 @@ async function handleSlotSelected(
       lineUserId,
       body: buildScheduleConflictHandoff(),
     });
-    await notifyStaff(
+    await notifyStaffOfAiAction(
       admin,
       tenantId,
       "選択日程が埋まりました — ご対応をお願いします",
@@ -534,7 +507,7 @@ async function handleSlotSelected(
     lineUserId,
     body: buildReservationConfirmed(chosen),
   });
-  await notifyStaff(
+  await notifyStaffOfAiAction(
     admin,
     tenantId,
     "ご予約が自動登録されました",
@@ -583,7 +556,7 @@ async function presentScheduleOrHandoff(
       expectState: flow.state,
     });
     await sendCustomerLineText({ tenantId, customerId: flow.customer_id, lineUserId, body: buildScheduleHandoff() });
-    await notifyStaff(
+    await notifyStaffOfAiAction(
       admin,
       tenantId,
       "日程調整をお願いします",
@@ -611,7 +584,7 @@ async function presentScheduleOrHandoff(
     text: askMsg.text,
     buttons: askMsg.buttons,
   });
-  await notifyStaff(
+  await notifyStaffOfAiAction(
     admin,
     tenantId,
     "日程候補を提示しました",
@@ -722,7 +695,7 @@ async function handleOptionSelected(
     lineUserId,
     body: buildOptionAddedAck(chosen),
   });
-  await notifyStaff(
+  await notifyStaffOfAiAction(
     admin,
     tenantId,
     "オプション追加希望 — 見積りの再送をお願いします",

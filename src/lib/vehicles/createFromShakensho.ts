@@ -6,7 +6,8 @@
  * ユーザーセッションが無いため、この専用関数で直接 insert する。
  */
 import type { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import { calcSizeClass, extractFirstRegistrationYear, type ShakenshoData } from "@/lib/ocr/shakensho";
+import { extractFirstRegistrationYear, type ShakenshoData } from "@/lib/ocr/shakensho";
+import { resolveVehicleSizeClass } from "@/lib/vehicles/resolveSizeClass";
 import { emitEntityWebhook } from "@/lib/outbound-webhooks";
 import { logger } from "@/lib/logger";
 
@@ -34,20 +35,13 @@ export async function createVehicleFromShakensho(
   // ようにし、詳細はスタッフに確認してもらう)。
   const model = data.model?.trim() || "不明";
 
-  let sizeClass: string | null = null;
-  if (data.length_mm && data.width_mm && data.height_mm) {
-    sizeClass = calcSizeClass(data.length_mm, data.width_mm, data.height_mm);
-  }
-  if (!sizeClass) {
-    const { data: sizeRow } = await admin
-      .from("vehicle_size_master")
-      .select("size_class")
-      .eq("maker", maker)
-      .eq("model", model)
-      .limit(1)
-      .maybeSingle();
-    sizeClass = (sizeRow as { size_class?: string } | null)?.size_class ?? null;
-  }
+  const sizeClass = await resolveVehicleSizeClass(admin, {
+    maker,
+    model,
+    lengthMm: data.length_mm,
+    widthMm: data.width_mm,
+    heightMm: data.height_mm,
+  });
 
   const insertRow = {
     tenant_id: tenantId,

@@ -19,6 +19,7 @@ export type FlowState =
   | "awaiting_schedule_pick" // [F]  代車空き+作業日候補を提示、選択待ち
   | "scheduled" // [G]  予約確定 (商談クローズ)
   | "awaiting_vehicle_photo" // 未登録車両の入庫日、車検証撮影待ち (商談フローとは別の後続フロー)
+  | "processing_vehicle_photo" // 受信した写真を OCR/登録処理中 (排他クレーム。二重配信でのレース防止)
   | "human_takeover" // スタッフ引き継ぎ (自動進行停止)
   | "closed" // 正常終了
   | "expired"; // 放置失効
@@ -91,9 +92,12 @@ export function nextFlowState(state: FlowState, event: FlowEvent): FlowState | n
       return null; // engine が closed に落とす
     case "awaiting_vehicle_photo":
       // 画像は postback/text とは別経路 (IO 層が画像メッセージを直接検知) で届くため、
-      // interpretReply からはこのイベントは発行されない。OCR 成功時にクローズする
-      // 遷移だけを純関数側の記録として残す。
-      return event.type === "photo_received" ? "closed" : null;
+      // interpretReply からはこのイベントは発行されない。受信直後にまず
+      // processing_vehicle_photo へ排他クレームし (advanceFlow の expectState で
+      // 二重配信を弾く)、OCR 完了後に closed/human_takeover へ進む。
+      return event.type === "photo_received" ? "processing_vehicle_photo" : null;
+    case "processing_vehicle_photo":
+      return null; // IO 層 (vehicleCaptureAuto.ts) が OCR 結果に応じて closed/human_takeover に進める
     default:
       return null;
   }

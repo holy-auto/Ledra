@@ -23,7 +23,9 @@
  * cron / バッチから繰り返し呼べる。
  */
 
-import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { createTenantScopedAdmin, createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
+import { logger } from "@/lib/logger";
 import {
   AUTOMATION_FIELD_BY_KEY,
   AUTOMATION_SOURCES,
@@ -360,4 +362,35 @@ export function filterVehicleOcrByPolicy(
   }
 
   return { extracted: out, policies };
+}
+
+type ServiceRoleAdmin = ReturnType<typeof createServiceRoleAdmin>;
+
+/**
+ * テナントが有効 + AI 会話フロー系の自動化のプラン要件を満たすか。
+ * LINE 会話フロー・車両撮影自動化など、複数の auto-action 入口で共通のゲート。
+ */
+export async function tenantEligibleForAiAutomation(admin: ServiceRoleAdmin, tenantId: string): Promise<boolean> {
+  const { data: tenant } = await admin.from("tenants").select("plan_tier, is_active").eq("id", tenantId).single();
+  if (!tenant || tenant.is_active === false) return false;
+  return canUseFeature(normalizePlanTier(tenant.plan_tier), "ai_inbound_extract");
+}
+
+/** スタッフに AI 自動化の「この後の対応」を促す通知 (fail-soft)。 */
+export async function notifyStaffOfAiAction(
+  admin: ServiceRoleAdmin,
+  tenantId: string,
+  title: string,
+  body: string,
+): Promise<void> {
+  const { error } = await admin.from("notifications").insert({
+    tenant_id: tenantId,
+    user_id: null,
+    notification_type: "ai_action",
+    priority: "normal",
+    title,
+    body,
+    link_path: "/admin/messages",
+  });
+  if (error) logger.warn("[policy] notifyStaffOfAiAction failed", { tenantId, err: error.message });
 }

@@ -34,14 +34,16 @@ describe("nextFlowState", () => {
       "awaiting_final_ok",
       "awaiting_schedule_pick",
       "awaiting_vehicle_photo",
+      "processing_vehicle_photo",
     ];
     for (const s of states) {
       expect(nextFlowState(s, { type: "handoff" })).toBe("human_takeover");
     }
   });
 
-  it("closes the vehicle-photo side-flow on photo_received", () => {
-    expect(nextFlowState("awaiting_vehicle_photo", { type: "photo_received" })).toBe("closed");
+  it("claims the vehicle-photo side-flow (processing_vehicle_photo) on photo_received, then leaves closing to the IO layer", () => {
+    expect(nextFlowState("awaiting_vehicle_photo", { type: "photo_received" })).toBe("processing_vehicle_photo");
+    expect(nextFlowState("processing_vehicle_photo", { type: "photo_received" })).toBeNull();
   });
 
   it("returns null for undefined transitions (event does not match state)", () => {

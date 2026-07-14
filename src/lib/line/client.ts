@@ -345,6 +345,9 @@ export async function handleWebhookEvents(
               tenantId,
               lineUserId: event.source.userId,
               imageBuffer: Buffer.from(fetched.buf),
+              attachmentPath: fetched.path,
+              attachmentContentType: fetched.contentType,
+              lineMessageId: msg.id ?? null,
             });
           } catch {
             flowHandled = false; // fail-soft: 通常の受信箱記録にフォールバック

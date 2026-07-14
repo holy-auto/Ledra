@@ -79,6 +79,7 @@ describe("GET /api/cron/vehicle-capture-prompt", () => {
       expect.anything(),
       TENANT,
       expect.objectContaining({ id: "res-line" }),
+      expect.arrayContaining([expect.objectContaining({ id: "flow-origin" })]),
     );
   });
 
@@ -112,6 +113,35 @@ describe("GET /api/cron/vehicle-capture-prompt", () => {
     // (promptVehicleCaptureIfNeeded 自体は vehicleCaptureAuto.test.ts で検証済み)。
     expect(mocks.promptVehicleCaptureIfNeeded).toHaveBeenCalledTimes(1);
     expect(body.prompted).toBe(0);
+    expect(body.skipped).toBe(1);
+  });
+
+  it("does not misclassify a manually-created reservation that only has an unrelated closed side-flow (future purpose marker)", async () => {
+    mocks.store.tables.reservations = [
+      {
+        id: "res-manual-with-other-flow",
+        tenant_id: TENANT,
+        customer_id: "cust-1",
+        scheduled_date: TODAY,
+        status: "confirmed",
+        vehicle_id: null,
+      },
+    ];
+    mocks.store.tables.line_conversation_flows = [
+      // 将来 Phase4/5 が追加しうる、別 purpose を持つ側フロー。元の商談フローではない。
+      {
+        id: "flow-invoice-approval",
+        tenant_id: TENANT,
+        reservation_id: "res-manual-with-other-flow",
+        state: "closed",
+        context_json: { purpose: "invoice_approval" },
+      },
+    ];
+
+    const res = await GET(new NextRequest("https://app.example.com/api/cron/vehicle-capture-prompt"));
+    const body = await res.json();
+
+    expect(mocks.promptVehicleCaptureIfNeeded).not.toHaveBeenCalled();
     expect(body.skipped).toBe(1);
   });
 

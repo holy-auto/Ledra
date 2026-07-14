@@ -149,6 +149,21 @@ describe("handleVehiclePhotoMessage", () => {
     expect(mocks.parseShakenshoAuto).not.toHaveBeenCalled();
   });
 
+  it("only registers a vehicle once when the same flow is delivered twice (LINE redelivery race)", async () => {
+    mocks.store.tables.line_conversation_flows = [activeFlow()];
+    mocks.parseShakenshoAuto.mockResolvedValue({ data: { maker: "トヨタ", model: "アルファード" }, source: "ocr" });
+    mocks.createVehicleFromShakensho.mockResolvedValue("vehicle-1");
+
+    const [first, second] = await Promise.all([
+      handleVehiclePhotoMessage(baseParams()),
+      handleVehiclePhotoMessage(baseParams()),
+    ]);
+
+    expect([first, second].filter(Boolean)).toHaveLength(1);
+    expect(mocks.createVehicleFromShakensho).toHaveBeenCalledTimes(1);
+    expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
+  });
+
   it("registers the vehicle, links the reservation, and closes the flow on success", async () => {
     mocks.store.tables.line_conversation_flows = [activeFlow()];
     mocks.parseShakenshoAuto.mockResolvedValue({ data: { maker: "トヨタ", model: "アルファード" }, source: "ocr" });
@@ -165,7 +180,7 @@ describe("handleVehiclePhotoMessage", () => {
     const reservationUpdate = mocks.store.updates.find((u) => u.table === "reservations");
     expect(reservationUpdate?.payload).toMatchObject({ vehicle_id: "vehicle-1" });
 
-    const flowUpdate = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    const flowUpdate = mocks.store.updates.filter((u) => u.table === "line_conversation_flows").pop();
     expect(flowUpdate?.payload).toMatchObject({ state: "closed" });
 
     expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
@@ -179,6 +194,21 @@ describe("handleVehiclePhotoMessage", () => {
     );
   });
 
+  it("does not overwrite a vehicle_id a staff member already assigned to the reservation", async () => {
+    mocks.store.tables.line_conversation_flows = [activeFlow()];
+    mocks.store.tables.reservations = [
+      { id: RESERVATION, tenant_id: TENANT, customer_id: CUSTOMER, vehicle_id: "staff-assigned-vehicle" },
+    ];
+    mocks.parseShakenshoAuto.mockResolvedValue({ data: { maker: "トヨタ", model: "アルファード" }, source: "ocr" });
+    mocks.createVehicleFromShakensho.mockResolvedValue("vehicle-1");
+
+    const handled = await handleVehiclePhotoMessage(baseParams());
+    expect(handled).toBe(true);
+
+    const reservation = mocks.store.tables.reservations.find((r) => r.id === RESERVATION);
+    expect(reservation?.vehicle_id).toBe("staff-assigned-vehicle");
+  });
+
   it("hands off to staff when the maker could not be read", async () => {
     mocks.store.tables.line_conversation_flows = [activeFlow()];
     mocks.parseShakenshoAuto.mockResolvedValue({ data: {}, source: "ocr" });
@@ -187,7 +217,7 @@ describe("handleVehiclePhotoMessage", () => {
     expect(handled).toBe(true);
     expect(mocks.createVehicleFromShakensho).not.toHaveBeenCalled();
 
-    const flowUpdate = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    const flowUpdate = mocks.store.updates.filter((u) => u.table === "line_conversation_flows").pop();
     expect(flowUpdate?.payload).toMatchObject({ state: "human_takeover" });
     expect(mocks.sendCustomerLineText.mock.calls[0][0].body).toContain("読み取れません");
   });
@@ -199,7 +229,7 @@ describe("handleVehiclePhotoMessage", () => {
 
     const handled = await handleVehiclePhotoMessage(baseParams());
     expect(handled).toBe(true);
-    const flowUpdate = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    const flowUpdate = mocks.store.updates.filter((u) => u.table === "line_conversation_flows").pop();
     expect(flowUpdate?.payload).toMatchObject({ state: "human_takeover" });
   });
 
@@ -213,7 +243,7 @@ describe("handleVehiclePhotoMessage", () => {
     const handled = await handleVehiclePhotoMessage(baseParams());
     expect(handled).toBe(true);
     expect(mocks.parseShakenshoAuto).not.toHaveBeenCalled();
-    const flowUpdate = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    const flowUpdate = mocks.store.updates.filter((u) => u.table === "line_conversation_flows").pop();
     expect(flowUpdate?.payload).toMatchObject({ state: "human_takeover" });
   });
 });

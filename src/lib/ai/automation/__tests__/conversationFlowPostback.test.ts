@@ -20,7 +20,10 @@ vi.mock("@/lib/billing/planFeatures", () => ({
   canUseFeature: () => true,
   normalizePlanTier: (t: string) => t,
 }));
-vi.mock("../policy", () => ({ loadAiAutomationSettings: mocks.loadAiAutomationSettings }));
+vi.mock("../policy", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../policy")>();
+  return { ...actual, loadAiAutomationSettings: mocks.loadAiAutomationSettings };
+});
 vi.mock("../orchestrator", () => ({
   shouldRunConversationFlow: mocks.shouldRunConversationFlow,
   shouldAutoSendDocumentOnConfirm: mocks.shouldAutoSendDocumentOnConfirm,

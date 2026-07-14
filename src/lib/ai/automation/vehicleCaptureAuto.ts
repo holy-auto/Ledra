@@ -18,7 +18,6 @@
  * すべて opt-in (vehicle.auto_capture_via_line) + fail-soft。
  */
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { sendCustomerLineText } from "@/lib/line/client";
 import { recordInboundLineMessage } from "@/lib/line/messageStore";
 import { logger } from "@/lib/logger";
@@ -37,7 +36,12 @@ import {
 } from "@/lib/line/flow/messages";
 import { parseShakenshoAuto } from "@/lib/ocr/shakensho";
 import { createVehicleFromShakensho } from "@/lib/vehicles/createFromShakensho";
-import { loadAiAutomationSettings, isSourceAllowed } from "./policy";
+import {
+  loadAiAutomationSettings,
+  isSourceAllowed,
+  tenantEligibleForAiAutomation,
+  notifyStaffOfAiAction,
+} from "./policy";
 import { shouldAutoCaptureVehicleViaLine } from "./orchestrator";
 
 type Admin = ReturnType<typeof createServiceRoleAdmin>;
@@ -45,27 +49,6 @@ type Admin = ReturnType<typeof createServiceRoleAdmin>;
 /** この予約専用の車両撮影フローかどうかを区別する context の目印キー/値。 */
 export const FLOW_PURPOSE_KEY = "purpose";
 export const FLOW_PURPOSE_VEHICLE_CAPTURE = "vehicle_capture";
-
-/** テナントが有効 + AI 会話フローのプラン要件を満たすか (他のフロー入口と同じガード)。 */
-async function tenantEligible(admin: Admin, tenantId: string): Promise<boolean> {
-  const { data: tenant } = await admin.from("tenants").select("plan_tier, is_active").eq("id", tenantId).single();
-  if (!tenant || tenant.is_active === false) return false;
-  return canUseFeature(normalizePlanTier(tenant.plan_tier), "ai_inbound_extract");
-}
-
-/** スタッフに「この後の対応」を促す通知 (fail-soft)。 */
-async function notifyStaff(admin: Admin, tenantId: string, title: string, body: string): Promise<void> {
-  const { error } = await admin.from("notifications").insert({
-    tenant_id: tenantId,
-    user_id: null,
-    notification_type: "ai_action",
-    priority: "normal",
-    title,
-    body,
-    link_path: "/admin/messages",
-  });
-  if (error) logger.warn("[vehicleCaptureAuto] notify failed", { tenantId, err: error.message });
-}
 
 export interface ReservationForCapture {
   id: string;
@@ -75,19 +58,23 @@ export interface ReservationForCapture {
 /**
  * 入庫日を迎えた予約について、車両未登録なら車検証撮影を依頼する。既にこの予約に
  * 対する撮影フローがあれば (成功/失敗問わず) 再送しない。処理したら true。
+ *
+ * `knownFlows` を渡すと、この予約に紐づくフロー行の再取得をスキップする
+ * (呼び出し側の cron が LINE 起源判定のため既に取得済みの場合の重複クエリ回避)。
  */
 export async function promptVehicleCaptureIfNeeded(
   admin: Admin,
   tenantId: string,
   reservation: ReservationForCapture,
+  knownFlows?: ConversationFlowRow[],
 ): Promise<boolean> {
   try {
     if (!reservation.customer_id) return false;
     const settings = await loadAiAutomationSettings(tenantId);
     if (!shouldAutoCaptureVehicleViaLine(settings)) return false;
-    if (!(await tenantEligible(admin, tenantId))) return false;
+    if (!(await tenantEligibleForAiAutomation(admin, tenantId))) return false;
 
-    const existingFlows = await getFlowsByReservationId(admin, tenantId, reservation.id);
+    const existingFlows = knownFlows ?? (await getFlowsByReservationId(admin, tenantId, reservation.id));
     if (existingFlows.some((f) => f.context_json[FLOW_PURPOSE_KEY] === FLOW_PURPOSE_VEHICLE_CAPTURE)) return false;
 
     const { data: customer } = await admin
@@ -101,6 +88,12 @@ export async function promptVehicleCaptureIfNeeded(
 
     // 進行中の別フロー (商談中など) と競合する場合は割り込まない
     // (line_conversation_flows の一意制約違反で createFlow が自然に null を返す)。
+    // ponytail: この一意制約は (tenant_id, customer_id) 単位 (スレッド単位) のため、
+    // 同一顧客が同日に複数台の入庫予約を持つ場合、2台目以降はここで競合しスキップ
+    // される (cron は scheduled_date=当日のみを見るため以降リトライされない)。天井:
+    // 同一顧客・同日複数台のケースは稀と判断し許容。upgrade path: 一意制約を
+    // (tenant_id, customer_id, reservation_id) に変更する移行を行うか、1台目の
+    // フローが closed になった時点で同顧客の未処理予約を連鎖的に開始する。
     const flow = await createFlow(admin, {
       tenantId,
       customerId: reservation.customer_id,
@@ -142,26 +135,43 @@ export async function promptVehicleCaptureIfNeeded(
  * 顧客が画像を送ってきた時点で、進行中の車両撮影フローがあれば OCR → 車両登録 →
  * 予約への紐付けを行う。処理したら true (呼び出し側は通常の受信箱記録をスキップ)。
  * 対象フローが無ければ false。失敗しても投げない。
+ *
+ * LINE の webhook 再配信や連続送信で同じフローに対し二重に呼ばれても、OCR/登録の
+ * 副作用を起こす前に `processing_vehicle_photo` へ排他クレームする
+ * (advanceFlow の expectState 楽観ロック)。クレームに負けた側は即 false を返す。
  */
 export async function handleVehiclePhotoMessage(params: {
   tenantId: string;
   lineUserId: string;
   customerId?: string | null;
   imageBuffer: Buffer;
+  attachmentPath?: string | null;
+  attachmentContentType?: string | null;
+  lineMessageId?: string | null;
 }): Promise<boolean> {
   const { tenantId, lineUserId, imageBuffer } = params;
   try {
     const admin = createServiceRoleAdmin("AI vehicle capture (photo) — no auth session");
     const flow = await getActiveFlow(admin, tenantId, { customerId: params.customerId, lineUserId });
     if (!flow || flow.state !== "awaiting_vehicle_photo") return false;
-    if (!(await tenantEligible(admin, tenantId))) return false;
+    if (!(await tenantEligibleForAiAutomation(admin, tenantId))) return false;
 
-    // 顧客の送信をスレッドに残す (画像はどのみち通常経路で保存されないため)。
+    const claimed = await advanceFlow(admin, flow, {
+      toState: "processing_vehicle_photo",
+      expectState: "awaiting_vehicle_photo",
+    });
+    if (!claimed) return false;
+
+    // 顧客の送信をスレッドに残す (画像は client.ts が既に line-media に保存済みのため
+    // その参照も一緒に記録する — 受信箱で写真を確認できるようにする)。
     await recordInboundLineMessage({
       tenantId,
       lineUserId,
       body: "[車検証の写真を送信]",
       rawEvent: { flow_photo: true },
+      lineMessageId: params.lineMessageId ?? null,
+      attachmentPath: params.attachmentPath ?? null,
+      attachmentContentType: params.attachmentContentType ?? null,
     });
 
     const settings = await loadAiAutomationSettings(tenantId);
@@ -187,7 +197,12 @@ export async function handleVehiclePhotoMessage(params: {
 
     const reservationId = flow.reservation_id ?? null;
     if (reservationId) {
-      const { error } = await admin.from("reservations").update({ vehicle_id: vehicleId }).eq("id", reservationId);
+      // OCR 中にスタッフが管理画面で正しい車両を手動割当て済みなら上書きしない。
+      const { error } = await admin
+        .from("reservations")
+        .update({ vehicle_id: vehicleId })
+        .eq("id", reservationId)
+        .is("vehicle_id", null);
       if (error) {
         logger.warn("[vehicleCaptureAuto] reservation vehicle_id update failed", {
           tenantId,
@@ -200,7 +215,7 @@ export async function handleVehiclePhotoMessage(params: {
     await advanceFlow(admin, flow, {
       toState: "closed",
       contextPatch: { vehicle_id: vehicleId },
-      expectState: "awaiting_vehicle_photo",
+      expectState: "processing_vehicle_photo",
     });
 
     const vehicleLabel = [parsed.maker, parsed.model].filter(Boolean).join(" ") || "お車";
@@ -210,7 +225,7 @@ export async function handleVehiclePhotoMessage(params: {
       lineUserId,
       body: buildVehiclePhotoRegistered(vehicleLabel),
     });
-    await notifyStaff(
+    await notifyStaffOfAiAction(
       admin,
       tenantId,
       "車検証の写真から車両を自動登録しました",
@@ -243,7 +258,7 @@ async function handoffVehiclePhoto(
   await advanceFlow(admin, flow, {
     toState: "human_takeover",
     contextPatch: { vehicle_capture_failed: reason },
-    expectState: "awaiting_vehicle_photo",
+    expectState: "processing_vehicle_photo",
   });
   await sendCustomerLineText({
     tenantId,
@@ -251,7 +266,7 @@ async function handoffVehiclePhoto(
     lineUserId,
     body: buildVehiclePhotoFailedHandoff(),
   });
-  await notifyStaff(
+  await notifyStaffOfAiAction(
     admin,
     tenantId,
     "車検証の自動読み取りに失敗しました",

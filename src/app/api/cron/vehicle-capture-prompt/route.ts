@@ -5,11 +5,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { withCronLock } from "@/lib/cron/lock";
 import { businessDateString } from "@/lib/admin/fetchTodaySignals";
 import { getFlowsByReservationId } from "@/lib/line/flow/flowStore";
-import {
-  promptVehicleCaptureIfNeeded,
-  FLOW_PURPOSE_KEY,
-  FLOW_PURPOSE_VEHICLE_CAPTURE,
-} from "@/lib/ai/automation/vehicleCaptureAuto";
+import { promptVehicleCaptureIfNeeded, FLOW_PURPOSE_KEY } from "@/lib/ai/automation/vehicleCaptureAuto";
 import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -66,14 +62,16 @@ export async function GET(req: NextRequest) {
 
           for (const reservation of reservations ?? []) {
             const flows = await getFlowsByReservationId(admin, tenant.id, reservation.id);
-            const fromLineFlow = flows.some(
-              (f) => f.state === "closed" && f.context_json[FLOW_PURPOSE_KEY] !== FLOW_PURPOSE_VEHICLE_CAPTURE,
-            );
+            // 元の商談フローは purpose マーカーを持たない (vehicle_capture 等の側フロー
+            // だけが付ける) — 将来 Phase4/5 が別の purpose を持つ側フローを追加しても
+            // 「マーカー無し = 元フロー」の判定は変わらず正しく成立する (既知の purpose
+            // 値を都度列挙する除外方式より前方互換)。
+            const fromLineFlow = flows.some((f) => f.state === "closed" && !f.context_json[FLOW_PURPOSE_KEY]);
             if (!fromLineFlow) {
               skipped++;
               continue;
             }
-            const sent = await promptVehicleCaptureIfNeeded(admin, tenant.id, reservation);
+            const sent = await promptVehicleCaptureIfNeeded(admin, tenant.id, reservation, flows);
             if (sent) prompted++;
             else skipped++;
           }
