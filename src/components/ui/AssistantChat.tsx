@@ -133,8 +133,11 @@ export default function AssistantChat() {
         const json = await res.json().catch(() => null);
         if (res.ok && json?.ok) {
           const href: string | null = json.href ?? null;
-          const alternatives: string[] = Array.isArray(json.alternatives) ? json.alternatives : [];
-          const chips: Chip[] = alternatives.map((h) => ({ href: h, label: ADMIN_NAV_LABELS[h] ?? h }));
+          // サーバが {href,label} 済みのチップを返す（画面候補・エンティティ候補の両方）。
+          const chips: Chip[] = (Array.isArray(json.alternatives) ? json.alternatives : []).filter(
+            (a: unknown): a is Chip =>
+              !!a && typeof (a as Chip).href === "string" && typeof (a as Chip).label === "string",
+          );
           if (href) {
             pushAssistant({ role: "assistant", text: json.reply || `${ADMIN_NAV_LABELS[href] ?? href} を開きます。` });
             navigate(href);
@@ -229,6 +232,10 @@ export default function AssistantChat() {
                     </li>
                   ))}
                 </ul>
+                <p className="mt-2 text-[12px] text-muted">
+                  「田中さんの情報」「ナンバー品川300」「車体番号〇〇」「証明書
+                  LD-001」などで、顧客・車両・証明書・請求書も直接探せます。
+                </p>
               </div>
               <div>
                 <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-muted">
@@ -305,7 +312,7 @@ export default function AssistantChat() {
             onKeyDown={(e) => {
               if (e.key === "Enter" && e.nativeEvent.isComposing) e.preventDefault();
             }}
-            placeholder="例: 予約を開いて / 膜厚測定 / 先月の売上"
+            placeholder="例: 予約を開いて / 田中さんの情報 / ナンバー品川300"
             className="h-12 flex-1 rounded-xl bg-[var(--bg-surface)] px-4 text-base text-primary placeholder:text-muted shadow-[inset_0_0_0_1px_var(--border-subtle)] outline-none focus:shadow-[inset_0_0_0_1px_var(--color-accent)]"
           />
           <button

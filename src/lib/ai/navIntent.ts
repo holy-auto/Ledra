@@ -42,6 +42,7 @@ export function resolveHrefFromCatalog(raw: string | null | undefined): string |
 
 const NavIntentSchema = z.object({
   href: z.string().nullable(),
+  searchQuery: z.string().nullable(),
   reply: z.string(),
   alternatives: z.array(z.string()),
 });
@@ -49,6 +50,11 @@ const NavIntentSchema = z.object({
 export interface NavIntentResult {
   /** 開く画面（カタログ照合済み）。一致無しは null。 */
   href: string | null;
+  /**
+   * 特定エンティティ（顧客/車両/証明書/請求書）を探したい意図のときの検索語。
+   * 例:「田中さんの情報」→「田中」。画面遷移の意図なら null。
+   */
+  searchQuery: string | null;
   /** 日本語1文の応答（「予約管理を開きます」等）。 */
   reply: string;
   /** 近い候補の href（カタログ照合済み・最大3件）。 */
@@ -58,12 +64,18 @@ export interface NavIntentResult {
 const CATALOG_TEXT = CATALOG.map((c) => `${c.href}\t${c.label}${c.section ? `（${c.section}）` : ""}`).join("\n");
 
 const SYSTEM_PROMPT = `あなたは Ledra 管理画面のナビゲーション補助です。
-ユーザーの自由文の要望に最も一致する画面を、下の一覧から1つだけ選びます。
+ユーザーの自由文を読み、(A) 画面を開く要望か、(B) 特定の相手/モノを探す要望か を判断します。
 
-出力ルール:
-- href は必ず下の一覧の値をそのままコピーして返す。一覧に無いパスを創作しない。
-- 十分に一致する画面が無ければ href は null にし、alternatives に近い候補の href を最大3件入れる。
-- reply は日本語1文で、開く画面名（または候補提示）を簡潔に述べる。
+(A) 画面を開く要望（「予約を開いて」「先月の売上」など）:
+- href に下の一覧の値をそのままコピーして返す。一覧に無いパスは創作しない。searchQuery は null。
+- 十分に一致する画面が無ければ href は null、alternatives に近い候補の href を最大3件。
+
+(B) 特定エンティティを探す要望（顧客・車両・証明書・請求書を名前や番号で確認したい）:
+- 例:「田中さんの情報を確認したい」「ナンバー品川300の車」「車体番号ABC123の車両」「証明書LD-001」「帳票番号INV-2024の請求書」。
+- href は null にし、searchQuery に検索語だけを入れる（相手/モノを特定する語。例「田中」「品川300」「ABC123」「LD-001」「INV-2024」）。
+- 「〜の情報」「確認したい」などの語は除き、検索に効く語だけを searchQuery に入れる。
+
+reply は日本語1文で、開く画面名 or 「『田中』を検索します」等を簡潔に述べる。
 
 画面一覧 (href<TAB>ラベル):
 ${CATALOG_TEXT}`;
@@ -93,10 +105,13 @@ export async function resolveNavIntent(query: string, opts?: { model?: string })
       .map((h) => resolveHrefFromCatalog(h))
       .filter((h): h is string => h !== null && h !== href)
       .slice(0, 3);
+    // 画面が確定したらエンティティ検索はしない（href 優先）。
+    const rawSearch = (out?.searchQuery ?? "").trim();
+    const searchQuery = !href && rawSearch.length >= 2 ? rawSearch : null;
 
-    return { href, reply: out?.reply ?? "", alternatives };
+    return { href, searchQuery, reply: out?.reply ?? "", alternatives };
   } catch (err) {
     console.error("[navIntent] error:", err);
-    return { href: null, reply: "", alternatives: [] };
+    return { href: null, searchQuery: null, reply: "", alternatives: [] };
   }
 }

@@ -1,18 +1,21 @@
 /**
  * POST /api/admin/assistant/navigate
- * ナビゲーション補助（自然文 → 開く画面 href）。
+ * ナビゲーション補助（自然文 → 開く画面 href、または特定エンティティの検索）。
  *
  * ナビ補助は低コストかつ全プランで有用なため、ハードなプラン制限は設けない
  * （モデルのみプラン別: Starter=Haiku）。到達先ページのアクセス制御は
- * AdminRouteGuard が担保する。
+ * AdminRouteGuard が担保する。エンティティ検索（顧客/車両/証明書/請求書）は
+ * 顧客データに触れるため、既存のグローバル検索と同じ staff 以上に限定する。
  */
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { resolveNavIntent } from "@/lib/ai/navIntent";
 import { fastModelForPlanTier } from "@/lib/ai/client";
+import { searchEntities, entityResultsToChips, type EntityChip } from "@/lib/search/entities";
+import { ADMIN_NAV_LABELS } from "@/components/ui/adminNav";
 
 const bodySchema = z.object({
   query: z.string().trim().min(1, "検索する内容を入力してください").max(500),
@@ -33,11 +36,58 @@ export async function POST(req: NextRequest) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
 
-    const result = await resolveNavIntent(parsed.data.query, {
+    const intent = await resolveNavIntent(parsed.data.query, {
       model: fastModelForPlanTier(caller.planTier),
     });
 
-    return apiOk({ href: result.href, reply: result.reply, alternatives: result.alternatives });
+    // 画面遷移が確定していればそれを返す（label はサーバで確定）。
+    if (intent.href) {
+      const alternatives: EntityChip[] = intent.alternatives.map((h) => ({
+        href: h,
+        label: ADMIN_NAV_LABELS[h] ?? h,
+      }));
+      return apiOk({ href: intent.href, reply: intent.reply, alternatives });
+    }
+
+    // エンティティ検索の意図: 顧客/車両/証明書/請求書を名前・番号で探す。
+    if (intent.searchQuery) {
+      if (!requireMinRole(caller, "staff")) {
+        return apiOk({
+          href: null,
+          reply: "検索の権限がありません。担当者にご確認ください。",
+          alternatives: [] as EntityChip[],
+        });
+      }
+      const results = await searchEntities(caller.tenantId, intent.searchQuery, 6);
+      const chips = entityResultsToChips(results);
+      if (chips.length === 1) {
+        // 単一ヒットは即遷移。
+        return apiOk({
+          href: chips[0].href,
+          reply: `${chips[0].label} を開きます。`,
+          alternatives: [] as EntityChip[],
+        });
+      }
+      if (chips.length === 0) {
+        return apiOk({
+          href: null,
+          reply: `「${intent.searchQuery}」に一致する顧客・車両・証明書・請求書は見つかりませんでした。`,
+          alternatives: [] as EntityChip[],
+        });
+      }
+      return apiOk({
+        href: null,
+        reply: intent.reply || `「${intent.searchQuery}」の検索結果です。`,
+        alternatives: chips.slice(0, 8),
+      });
+    }
+
+    // 画面もエンティティも確定せず: 画面候補（あれば）を返し、UI 側の静的フィルタに委ねる。
+    const alternatives: EntityChip[] = intent.alternatives.map((h) => ({
+      href: h,
+      label: ADMIN_NAV_LABELS[h] ?? h,
+    }));
+    return apiOk({ href: null, reply: intent.reply, alternatives });
   } catch (e: unknown) {
     return apiInternalError(e);
   }
