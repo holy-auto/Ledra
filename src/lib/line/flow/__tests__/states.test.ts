@@ -2,17 +2,18 @@ import { describe, it, expect } from "vitest";
 import { nextFlowState, isTerminal, type FlowState } from "../states";
 
 describe("nextFlowState", () => {
-  it("advances the happy path: registration → detail → draft → ok → schedule (Phase 2 option-confirm step skipped until implemented)", () => {
+  it("advances the happy path: registration → detail → draft → ok → option confirm → final ok → schedule", () => {
     expect(nextFlowState("awaiting_registration", { type: "registered" })).toBe("awaiting_quote_detail");
     expect(nextFlowState("awaiting_quote_detail", { type: "detail_provided" })).toBe("quote_drafted");
     expect(nextFlowState("quote_drafted", { type: "quote_sent" })).toBe("awaiting_quote_ok");
-    expect(nextFlowState("awaiting_quote_ok", { type: "yes" })).toBe("awaiting_schedule_pick");
+    expect(nextFlowState("awaiting_quote_ok", { type: "yes" })).toBe("awaiting_option_confirm");
+    expect(nextFlowState("awaiting_option_confirm", { type: "option_selected", index: 0 })).toBe("awaiting_final_ok");
+    expect(nextFlowState("awaiting_final_ok", { type: "yes" })).toBe("awaiting_schedule_pick");
     expect(nextFlowState("awaiting_schedule_pick", { type: "slot_selected", index: 0 })).toBe("scheduled");
   });
 
-  it("still defines the Phase 2 option-confirm chain for future wiring, even though it is currently unreachable", () => {
-    expect(nextFlowState("awaiting_option_confirm", { type: "option_selected" })).toBe("awaiting_final_ok");
-    expect(nextFlowState("awaiting_final_ok", { type: "yes" })).toBe("awaiting_schedule_pick");
+  it("skips the final-ok re-confirmation when no options are selected (nothing changed)", () => {
+    expect(nextFlowState("awaiting_option_confirm", { type: "options_none" })).toBe("awaiting_schedule_pick");
   });
 
   it("routes NG at either approval gate to human_takeover (fail-closed)", () => {

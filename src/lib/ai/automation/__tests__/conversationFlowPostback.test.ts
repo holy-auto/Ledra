@@ -64,6 +64,22 @@ beforeEach(() => {
   mocks.syncCreateEvent.mockResolvedValue("gcal-event-1");
 });
 
+/** テナントに登録メニューを seed し、おすすめオプション候補が出るようにする。 */
+function seedMenuItems(store: FakeStore) {
+  store.tables.menu_items = [
+    {
+      tenant_id: TENANT,
+      id: "menu-1",
+      name: "ホイールコーティング",
+      unit_price: 8000,
+      category_large: "コーティング",
+      is_active: true,
+      sort_order: 0,
+    },
+  ];
+  store.tables.invoices = [];
+}
+
 /** 全曜日どこかにヒットするよう全曜日ぶん緩い受付枠を seed する (今日から14日以内に必ず候補が出る)。 */
 function seedOpenSlots(store: FakeStore) {
   store.tables.external_booking_slots = Array.from({ length: 7 }, (_, dow) => ({
@@ -123,6 +139,26 @@ describe("maybeAdvanceFlowOnQuoteSent", () => {
     await maybeAdvanceFlowOnQuoteSent({ tenantId: TENANT, documentId: DOC });
     expect(mocks.sendCustomerLineButtons).not.toHaveBeenCalled();
   });
+
+  it("re-send after an option was added: advances to awaiting_final_ok with final-approval buttons (Phase 2)", async () => {
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-1",
+        tenant_id: TENANT,
+        customer_id: CUSTOMER,
+        line_user_id: LINE_USER,
+        state: "quote_drafted",
+        quote_doc_id: DOC,
+        context_json: { selected_options: [{ name: "ホイールコーティング", price: 8000, menuItemId: "menu-1" }] },
+      },
+    ];
+    await maybeAdvanceFlowOnQuoteSent({ tenantId: TENANT, documentId: DOC });
+
+    const upd = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    expect(upd?.payload).toMatchObject({ state: "awaiting_final_ok" });
+    expect(mocks.sendCustomerLineButtons).toHaveBeenCalledTimes(1);
+    expect(mocks.sendCustomerLineButtons.mock.calls[0][0].text).toContain("オプションを反映");
+  });
 });
 
 describe("handleFlowPostback", () => {
@@ -176,6 +212,26 @@ describe("handleFlowPostback", () => {
     expect(btnArg.buttons[btnArg.buttons.length - 1].data).toBe("flow:cancel");
   });
 
+  it("on OK with addon options available: presents option buttons instead of schedule candidates", async () => {
+    seedAwaitingOk();
+    seedMenuItems(mocks.store);
+
+    // quote_doc_id 未設定 (seedAwaitingOk はセットしない) でも安全に動くことも兼ねて確認する。
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:yes" });
+    expect(handled).toBe(true);
+
+    const upd = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    expect(upd?.payload).toMatchObject({ state: "awaiting_option_confirm" });
+    const options = upd?.payload.context_json.option_candidates as Array<{ name: string }>;
+    expect(options.length).toBeGreaterThan(0);
+    expect(options[0].name).toBe("ホイールコーティング");
+
+    expect(mocks.sendCustomerLineButtons).toHaveBeenCalledTimes(1);
+    const btnArg = mocks.sendCustomerLineButtons.mock.calls[0][0];
+    expect(btnArg.buttons[0].data).toBe("flow:option:0");
+    expect(btnArg.buttons[btnArg.buttons.length - 1].data).toBe("flow:options_none");
+  });
+
   it("on NG (相談する): switches to human takeover with a consult message", async () => {
     seedAwaitingOk();
     const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:no" });
@@ -211,6 +267,117 @@ describe("handleFlowPostback", () => {
     mocks.shouldRunConversationFlow.mockReturnValue(false);
     const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:yes" });
     expect(handled).toBe(false);
+  });
+});
+
+describe("handleFlowPostback — option selection (Phase 2)", () => {
+  const OPTION = {
+    menuItemId: "menu-1",
+    name: "ホイールコーティング",
+    price: 8000,
+    reason: "登録メニューからのおすすめ",
+  };
+
+  function seedAwaitingOptionConfirm(options: Array<Record<string, unknown>> = [OPTION]) {
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-1",
+        tenant_id: TENANT,
+        customer_id: CUSTOMER,
+        line_user_id: LINE_USER,
+        state: "awaiting_option_confirm",
+        quote_doc_id: DOC,
+        context_json: { option_candidates: options },
+      },
+    ];
+  }
+
+  it("option_selected: appends the option to the quote and returns it to draft for re-send", async () => {
+    seedAwaitingOptionConfirm();
+    mocks.store.tables.documents = [
+      {
+        id: DOC,
+        items_json: [{ item_type: "item", description: "コーティング", quantity: 1, unit_price: 50000, amount: 50000 }],
+        tax_rate: 10,
+        status: "sent",
+      },
+    ];
+
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:option:0" });
+    expect(handled).toBe(true);
+
+    const docUpdate = mocks.store.updates.find((u) => u.table === "documents");
+    expect(docUpdate?.payload).toMatchObject({ status: "draft", subtotal: 58000, tax: 5800, total: 63800 });
+    expect(docUpdate?.payload.items_json).toHaveLength(2);
+
+    const flowUpdate = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    expect(flowUpdate?.payload).toMatchObject({ state: "quote_drafted" });
+    expect(flowUpdate?.payload.context_json.selected_options).toEqual([
+      { name: "ホイールコーティング", price: 8000, menuItemId: "menu-1" },
+    ]);
+    expect(mocks.sendCustomerLineText.mock.calls[0][0].body).toContain("ホイールコーティング");
+    expect(mocks.store.inserts.some((i) => i.table === "notifications")).toBe(true);
+    expect(mocks.recordInboundLineMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ body: expect.stringContaining("ホイールコーティング") }),
+    );
+  });
+
+  it("returns false for an out-of-range option index", async () => {
+    seedAwaitingOptionConfirm([]);
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:option:0" });
+    expect(handled).toBe(false);
+    expect(mocks.store.updates.some((u) => u.table === "documents")).toBe(false);
+  });
+
+  it("options_none: proceeds straight to schedule candidates without changing the quote", async () => {
+    seedAwaitingOptionConfirm();
+    seedOpenSlots(mocks.store);
+
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:options_none" });
+    expect(handled).toBe(true);
+    expect(mocks.store.updates.some((u) => u.table === "documents")).toBe(false);
+    const flowUpdate = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    expect(flowUpdate?.payload).toMatchObject({ state: "awaiting_schedule_pick" });
+    expect(mocks.recordInboundLineMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ body: expect.stringContaining("オプションなし") }),
+    );
+  });
+});
+
+describe("handleFlowPostback — final approval after option add (Phase 2)", () => {
+  function seedAwaitingFinalOk() {
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-1",
+        tenant_id: TENANT,
+        customer_id: CUSTOMER,
+        line_user_id: LINE_USER,
+        state: "awaiting_final_ok",
+        quote_doc_id: DOC,
+        context_json: { selected_options: [{ name: "ホイールコーティング", price: 8000, menuItemId: "menu-1" }] },
+      },
+    ];
+  }
+
+  it("final ok (yes): proceeds to schedule candidates", async () => {
+    seedAwaitingFinalOk();
+    seedOpenSlots(mocks.store);
+
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:yes" });
+    expect(handled).toBe(true);
+    const flowUpdate = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    expect(flowUpdate?.payload).toMatchObject({ state: "awaiting_schedule_pick" });
+  });
+
+  it("final ok (no / 相談する): hands off to staff with a consult message", async () => {
+    seedAwaitingFinalOk();
+
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:no" });
+    expect(handled).toBe(true);
+    const flowUpdate = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    expect(flowUpdate?.payload).toMatchObject({ state: "human_takeover" });
+    expect(flowUpdate?.payload.context_json).toMatchObject({ final_decision: "consult" });
+    expect(mocks.sendCustomerLineText.mock.calls[0][0].body).toContain("相談");
   });
 });
 
