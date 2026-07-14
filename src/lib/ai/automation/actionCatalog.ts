@@ -60,7 +60,8 @@ export type AutomationActionKey =
   | "body_repair.auto_notify_on_stage_advance"
   | "inbound_message.auto_reply_knowledge"
   | "inbound_message.auto_conversation_flow"
-  | "manager.auto_daily_digest";
+  | "manager.auto_daily_digest"
+  | "vehicle.auto_capture_via_line";
 
 export interface AutomationActionDef {
   key: AutomationActionKey;
@@ -401,6 +402,15 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
       "日次バッチで、店舗の未発行・期限・不足など『今日の確認事項』(決定論で確定した件数) を店長向けの短い自然文ブリーフィングに整形して保存する。件数は SQL 由来のみで AI は言い換えるだけ (事実を作らない)。ダッシュボード内表示のみで外部送信・確定には関与しない。既定 OFF (opt-in)。",
     defaultEnabled: false,
     guard: "AI 有効 (master switch + 月次コストキャップ) + 明示 opt-in",
+  },
+  {
+    key: "vehicle.auto_capture_via_line",
+    workflow: "vehicle",
+    label: "未登録車両の入庫日にLINEで車検証撮影を依頼し自動登録",
+    description:
+      "LINE 会話フロー経由で確定した予約のうち、車両が未登録のものについて、入庫日 (作業予定日) の朝に車検証の撮影を LINE で依頼する。写真を受け取ったら OCR で車両を自動登録し予約に紐付ける (登録後は既存の証明書下書き自動作成が通常どおり働く)。メーカーが読み取れない等 OCR に失敗した場合はスタッフに引き継ぐ。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Standard プラン以上 + LINE会話フロー経由の予約 + 車両未登録 + 進行中フローが無いこと",
   },
 ];
 

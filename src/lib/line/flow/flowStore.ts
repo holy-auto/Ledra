@@ -20,6 +20,7 @@ export interface ConversationFlowRow {
   state: FlowState;
   context_json: Record<string, unknown>;
   quote_doc_id: string | null;
+  reservation_id: string | null;
 }
 
 type Admin = ReturnType<typeof createServiceRoleAdmin>;
@@ -37,7 +38,7 @@ export async function getActiveFlow(
     // 落とす前でも、期限切れフローが新規開始を永久に塞ぐのを防ぐ (時刻ベースで実効)。
     let q = admin
       .from("line_conversation_flows")
-      .select("id, tenant_id, customer_id, line_user_id, state, context_json, quote_doc_id")
+      .select("id, tenant_id, customer_id, line_user_id, state, context_json, quote_doc_id, reservation_id")
       .eq("tenant_id", tenantId)
       .not("state", "in", "(closed,expired)")
       .gt("expires_at", new Date().toISOString())
@@ -65,7 +66,7 @@ export async function getFlowByQuoteDoc(
   try {
     const { data, error } = await admin
       .from("line_conversation_flows")
-      .select("id, tenant_id, customer_id, line_user_id, state, context_json, quote_doc_id")
+      .select("id, tenant_id, customer_id, line_user_id, state, context_json, quote_doc_id, reservation_id")
       .eq("tenant_id", tenantId)
       .eq("quote_doc_id", quoteDocId)
       .not("state", "in", "(closed,expired)")
@@ -79,6 +80,37 @@ export async function getFlowByQuoteDoc(
   } catch (e) {
     logger.warn("[flowStore] getFlowByQuoteDoc threw", { tenantId, err: e instanceof Error ? e.message : String(e) });
     return null;
+  }
+}
+
+/**
+ * 予約に紐づくフローを全件返す (state を問わない)。予約を作った商談フロー自体も
+ * `reservation_id` を持つため、呼び出し側は `context_json` の目印
+ * (例: purpose マーカー) で目的のフローだけを絞り込むこと。取得失敗時は空配列。
+ */
+export async function getFlowsByReservationId(
+  admin: Admin,
+  tenantId: string,
+  reservationId: string,
+): Promise<ConversationFlowRow[]> {
+  try {
+    const { data, error } = await admin
+      .from("line_conversation_flows")
+      .select("id, tenant_id, customer_id, line_user_id, state, context_json, quote_doc_id, reservation_id")
+      .eq("tenant_id", tenantId)
+      .eq("reservation_id", reservationId);
+    if (error) {
+      logger.warn("[flowStore] getFlowsByReservationId failed", { tenantId, reservationId, err: error.message });
+      return [];
+    }
+    return (data as ConversationFlowRow[] | null) ?? [];
+  } catch (e) {
+    logger.warn("[flowStore] getFlowsByReservationId threw", {
+      tenantId,
+      reservationId,
+      err: e instanceof Error ? e.message : String(e),
+    });
+    return [];
   }
 }
 
@@ -142,6 +174,7 @@ export async function createFlow(
     state: FlowState;
     context?: Record<string, unknown>;
     lastMessageId?: string | null;
+    reservationId?: string | null;
   },
 ): Promise<ConversationFlowRow | null> {
   try {
@@ -156,8 +189,9 @@ export async function createFlow(
         context_json: input.context ?? {},
         last_message_id: input.lastMessageId ?? null,
         expires_at: expiresAt,
+        reservation_id: input.reservationId ?? null,
       })
-      .select("id, tenant_id, customer_id, line_user_id, state, context_json, quote_doc_id")
+      .select("id, tenant_id, customer_id, line_user_id, state, context_json, quote_doc_id, reservation_id")
       .single();
     if (error) {
       // 一意制約違反 (既に進行中フローがある) は競合として無視。

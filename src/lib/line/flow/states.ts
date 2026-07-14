@@ -18,6 +18,7 @@ export type FlowState =
   | "awaiting_final_ok" // [E]  最終見積り送付済、最終OK待ち
   | "awaiting_schedule_pick" // [F]  代車空き+作業日候補を提示、選択待ち
   | "scheduled" // [G]  予約確定 (商談クローズ)
+  | "awaiting_vehicle_photo" // 未登録車両の入庫日、車検証撮影待ち (商談フローとは別の後続フロー)
   | "human_takeover" // スタッフ引き継ぎ (自動進行停止)
   | "closed" // 正常終了
   | "expired"; // 放置失効
@@ -32,6 +33,7 @@ export type FlowEvent =
   | { type: "option_selected"; index: number } // オプション選択 (提示した候補配列の index)
   | { type: "options_none" } // オプション不要 (提示された候補をどれも選ばない)
   | { type: "slot_selected"; index: number } // 日程スロット選択 (提示した候補配列の index)
+  | { type: "photo_received" } // 車検証などの画像を受領 (postback/text とは別経路で IO 層が検知)
   | { type: "handoff" }; // 想定外/NG → スタッフ引き継ぎ
 
 /** 終端状態か (これ以上自動では進めない)。 */
@@ -87,6 +89,11 @@ export function nextFlowState(state: FlowState, event: FlowEvent): FlowState | n
       return event.type === "slot_selected" ? "scheduled" : null;
     case "scheduled":
       return null; // engine が closed に落とす
+    case "awaiting_vehicle_photo":
+      // 画像は postback/text とは別経路 (IO 層が画像メッセージを直接検知) で届くため、
+      // interpretReply からはこのイベントは発行されない。OCR 成功時にクローズする
+      // 遷移だけを純関数側の記録として残す。
+      return event.type === "photo_received" ? "closed" : null;
     default:
       return null;
   }

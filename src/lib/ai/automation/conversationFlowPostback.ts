@@ -43,6 +43,7 @@ import { interpretReply } from "@/lib/line/flow/interpret";
 import { fetchFlowScheduleCandidates, type FlowScheduleCandidate } from "@/lib/line/flow/scheduleCandidates";
 import { fetchAddonRecommendations } from "@/lib/line/flow/addonCandidates";
 import type { RecommendedOption } from "@/lib/ai/optionRecommend";
+import { matchVehicleByText, type VehicleTextCandidate } from "@/lib/vehicles/matchByText";
 import { maybeAutoCategorizeReservationOnIntake } from "./accountingAuto";
 import { maybeAutoProposeWorkflowForReservation } from "./workflowAuto";
 import {
@@ -436,13 +437,29 @@ async function handleSlotSelected(
     return true;
   }
 
-  const ctx = flow.context_json as { service?: string | null };
+  const ctx = flow.context_json as { service?: string | null; vehicle_text?: string | null };
   const title = (ctx.service?.trim() || "LINEご予約").slice(0, 200);
 
   let estimatedAmount = 0;
   if (flow.quote_doc_id) {
     const { data: doc } = await admin.from("documents").select("total").eq("id", flow.quote_doc_id).maybeSingle();
     estimatedAmount = (doc as { total?: number } | null)?.total ?? 0;
+  }
+
+  // 登録車両との照合 (Phase 3)。一致すれば vehicle_id を付け、既存の証明書自動化
+  // (vehicle_id 必須) が案件完了時に働くようにする。曖昧な一致は誤登録を避けて
+  // スキップし (matchVehicleByText)、後日の入庫日プロンプト (vehicleCaptureAuto.ts)
+  // で車検証撮影から登録する経路に回す。
+  let vehicleId: string | null = null;
+  if (flow.customer_id && ctx.vehicle_text?.trim()) {
+    const { data: vehicles } = await admin
+      .from("vehicles")
+      .select("id, maker, model, plate_display")
+      .eq("tenant_id", tenantId)
+      .eq("customer_id", flow.customer_id)
+      .limit(10);
+    const matched = matchVehicleByText((vehicles as VehicleTextCandidate[] | null) ?? [], ctx.vehicle_text);
+    vehicleId = matched?.id ?? null;
   }
 
   const reservationId = crypto.randomUUID();
@@ -467,6 +484,7 @@ async function handleSlotSelected(
     id: reservationId,
     tenant_id: tenantId,
     customer_id: flow.customer_id,
+    vehicle_id: vehicleId,
     title,
     scheduled_date: chosen.date,
     start_time: chosen.start_time,

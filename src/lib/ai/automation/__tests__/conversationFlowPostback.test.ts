@@ -552,4 +552,76 @@ describe("handleFlowPostback — slot selection (Phase 1b-3)", () => {
     expect(handled).toBe(false);
     expect(mocks.store.inserts.some((i) => i.table === "reservations")).toBe(false);
   });
+
+  it("links vehicle_id when the customer's stated vehicle matches exactly one registered vehicle (Phase 3)", async () => {
+    seedOpenSlots(mocks.store);
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-1",
+        tenant_id: TENANT,
+        customer_id: CUSTOMER,
+        line_user_id: LINE_USER,
+        state: "awaiting_schedule_pick",
+        quote_doc_id: DOC,
+        context_json: { schedule_candidates: [CANDIDATE], vehicle_text: "アルファード" },
+      },
+    ];
+    mocks.store.tables.documents = [{ id: DOC, total: 33000 }];
+    mocks.store.tables.vehicles = [
+      {
+        id: "veh-1",
+        tenant_id: TENANT,
+        customer_id: CUSTOMER,
+        maker: "トヨタ",
+        model: "アルファード",
+        plate_display: null,
+      },
+    ];
+
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:slot:0" });
+    expect(handled).toBe(true);
+
+    const inserted = mocks.store.inserts.find((i) => i.table === "reservations");
+    expect(inserted?.payload).toMatchObject({ vehicle_id: "veh-1" });
+  });
+
+  it("leaves vehicle_id unset when the stated vehicle matches more than one registered vehicle (ambiguous, Phase 3)", async () => {
+    seedOpenSlots(mocks.store);
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-1",
+        tenant_id: TENANT,
+        customer_id: CUSTOMER,
+        line_user_id: LINE_USER,
+        state: "awaiting_schedule_pick",
+        quote_doc_id: DOC,
+        context_json: { schedule_candidates: [CANDIDATE], vehicle_text: "アルファード" },
+      },
+    ];
+    mocks.store.tables.documents = [{ id: DOC, total: 33000 }];
+    mocks.store.tables.vehicles = [
+      {
+        id: "veh-1",
+        tenant_id: TENANT,
+        customer_id: CUSTOMER,
+        maker: "トヨタ",
+        model: "アルファード",
+        plate_display: null,
+      },
+      {
+        id: "veh-2",
+        tenant_id: TENANT,
+        customer_id: CUSTOMER,
+        maker: "トヨタ",
+        model: "アルファード",
+        plate_display: null,
+      },
+    ];
+
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:slot:0" });
+    expect(handled).toBe(true);
+
+    const inserted = mocks.store.inserts.find((i) => i.table === "reservations");
+    expect(inserted?.payload.vehicle_id).toBeNull();
+  });
 });

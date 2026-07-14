@@ -313,7 +313,34 @@ none / idle
     見積り再計算が `meta_json.is_tax_inclusive` (税込モード) を見ておらず、追加した
     オプションの税抜価格をそのまま税込額として扱ってしまう不備も修正 (税込モードの
     書類では登録メニュー価格を税込換算してから追加)。
-- **Phase 3**: 証明書分岐 — 登録車両あり (既存) / 未登録→入庫日車検証撮影→登録→draft
+- **Phase 3**: 証明書分岐 — 登録車両あり (既存) / 未登録→入庫日車検証撮影→登録→draft (実装済み)
+  - 既存の証明書自動下書き (`certificateAuto.ts`/`certificateRecordAuto.ts`) は
+    `reservations.vehicle_id` が付いていれば案件完了時に通常どおり働くため、本 Phase の
+    スコープは「`vehicle_id` をどう埋めるか」の二経路のみ (証明書側には手を入れない)。
+  - **経路A: 予約確定時の照合** — `handleSlotSelected` ([F] 日程確定) で、顧客が
+    問い合わせ時に述べた車種テキスト (`context_json.vehicle_text`) を顧客の登録車両
+    (`vehicles`, customer_id 一致) と突き合わせ、`matchVehicleByText`
+    (`src/lib/vehicles/matchByText.ts`, 純関数) で 1 件に絞れれば `reservations.vehicle_id`
+    に設定する。複数一致 (曖昧) は誤登録を避けて未設定のままとし、経路Bに委ねる。
+  - **経路B: 入庫日の車検証撮影 (未登録車両向け)** —
+    `src/lib/ai/automation/vehicleCaptureAuto.ts` (opt-in: `vehicle.auto_capture_via_line`)。
+    - Cron (`/api/cron/vehicle-capture-prompt`, 毎朝 8:00 JST) が、本日入庫予定・
+      `vehicle_id` 未設定・LINE 会話フロー経由 (`line_conversation_flows.reservation_id`
+      に元フローが `closed` で存在) の予約を検出し `promptVehicleCaptureIfNeeded` を呼ぶ。
+      その予約専用の新しい会話フロー行を `awaiting_vehicle_photo` 状態で作成し (元の
+      商談フローとは別行 — `reservation_id` は共有するため `context_json.purpose:
+      "vehicle_capture"` で判別する)、車検証撮影を LINE で依頼する。
+    - 顧客が画像を送信すると `line/client.ts` の webhook ループが
+      `awaiting_vehicle_photo` 中かを判定するため画像バイト列を保持したまま
+      `handleVehiclePhotoMessage` に渡す (`fetchAndStoreLineMedia` に
+      `returnBuffer: true` を追加し、保存に加えてその場で OCR に使えるようにした —
+      再ダウンロード不要)。既存の `parseShakenshoAuto` (QR→OCR フォールバック) で
+      車両情報を抽出し、`createVehicleFromShakensho` (`src/lib/vehicles/`) で
+      `vehicles` に自動登録、予約の `vehicle_id` を更新してフローを `closed` にする。
+    - OCR 失敗・メーカー未検出・AI 自動入力/身分証書類ソースが無効な場合は
+      `human_takeover` へ引き継ぎスタッフに通知する (誤った車種を作らない)。
+  - 撮影依頼はテナントの `ai_inbound_extract` プラン要件 + マスタースイッチ + 明示
+    opt-in を満たし、かつ同一予約への撮影フローが未作成のときのみ送る (再送しない)。
 - **Phase 4**: 請求書 — 追加作業の LINE 承認 [H]、作業終了→金額確定 [I]→送付
 - **Phase 5**: 支払方法分岐 (K)
 

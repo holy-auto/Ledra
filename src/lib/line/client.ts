@@ -324,14 +324,32 @@ export async function handleWebhookEvents(
       let attachment: { path: string; contentType: string } | null = null;
       let body = NON_TEXT_MESSAGE_LABELS[msg.type] ?? `[${msg.type}]`;
 
+      let flowHandled = false;
       if (["image", "video", "audio", "file"].includes(msg.type) && msg.id) {
         // content API から実データを取得して保存
         const { fetchAndStoreLineMedia } = await import("@/lib/line/media");
-        attachment = await fetchAndStoreLineMedia({
+        // 画像は入庫日の車検証撮影フロー (awaiting_vehicle_photo) 中かもしれないため、
+        // バイト列も保持しておき OCR にそのまま渡せるようにする (再ダウンロード回避)。
+        const isImage = msg.type === "image";
+        const fetched = await fetchAndStoreLineMedia({
           tenantId,
           accessToken: config.channelAccessToken,
           messageId: msg.id,
+          returnBuffer: isImage,
         });
+        attachment = fetched ? { path: fetched.path, contentType: fetched.contentType } : null;
+        if (isImage && fetched?.buf) {
+          try {
+            const { handleVehiclePhotoMessage } = await import("@/lib/ai/automation/vehicleCaptureAuto");
+            flowHandled = await handleVehiclePhotoMessage({
+              tenantId,
+              lineUserId: event.source.userId,
+              imageBuffer: Buffer.from(fetched.buf),
+            });
+          } catch {
+            flowHandled = false; // fail-soft: 通常の受信箱記録にフォールバック
+          }
+        }
         if (msg.type === "file" && msg.fileName) body = `[ファイル] ${msg.fileName}`;
       } else if (msg.type === "sticker" && msg.stickerId) {
         // スタンプは公開 CDN の静止画を保存して表示
@@ -349,21 +367,23 @@ export async function handleWebhookEvents(
           .join("\n");
       }
 
-      const stored = await recordInboundLineMessage({
-        tenantId,
-        lineUserId: event.source.userId,
-        body,
-        rawEvent: event,
-        lineMessageId: msg.id ?? null,
-        lineTimestampMs: event.timestamp ?? null,
-        attachmentPath: attachment?.path ?? null,
-        attachmentContentType: attachment?.contentType ?? null,
-      });
-      await maybeNotifyInboundMessage({
-        tenantId,
-        lineUserId: event.source.userId,
-        customerId: stored.customerId ?? null,
-      });
+      if (!flowHandled) {
+        const stored = await recordInboundLineMessage({
+          tenantId,
+          lineUserId: event.source.userId,
+          body,
+          rawEvent: event,
+          lineMessageId: msg.id ?? null,
+          lineTimestampMs: event.timestamp ?? null,
+          attachmentPath: attachment?.path ?? null,
+          attachmentContentType: attachment?.contentType ?? null,
+        });
+        await maybeNotifyInboundMessage({
+          tenantId,
+          lineUserId: event.source.userId,
+          customerId: stored.customerId ?? null,
+        });
+      }
     }
 
     if (event.type === "message" && event.message?.type === "text" && event.source?.userId) {

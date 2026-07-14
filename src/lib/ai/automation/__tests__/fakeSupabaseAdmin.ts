@@ -61,6 +61,11 @@ export function makeFakeAdmin(store: FakeStore): any {
         filters[c] = v;
         return builder;
       },
+      // is(col, null) は eq と同じ完全一致フィルタとして扱う (テストでは null 判定のみ使用)。
+      is: (c: string, v: any) => {
+        filters[c] = v;
+        return builder;
+      },
       neq: () => builder,
       not: () => builder,
       in: () => builder,
@@ -70,6 +75,7 @@ export function makeFakeAdmin(store: FakeStore): any {
       lte: () => builder,
       order: () => builder,
       limit: () => builder,
+      returns: () => builder,
       // insert().select().single()/maybeSingle() は挿入した行を返す (実 PostgREST 準拠)。
       maybeSingle: async () => ({ data: op === "insert" ? insertReturn() : (matched()[0] ?? null), error: null }),
       single: async () => {

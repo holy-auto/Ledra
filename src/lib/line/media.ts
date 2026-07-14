@@ -40,7 +40,9 @@ async function fetchAndStore(params: {
   tenantId: string;
   /** バケット内のファイル名 (拡張子抜き)。呼び出し側で形式検証済みであること。 */
   key: string;
-}): Promise<{ path: string; contentType: string } | null> {
+  /** true なら取得したバイト列も返す (OCR 等、保存に加えてその場でデータが要る呼び出し側向け)。 */
+  returnBuffer?: boolean;
+}): Promise<{ path: string; contentType: string; buf?: Uint8Array } | null> {
   try {
     const res = await fetch(params.url, { headers: params.headers });
     if (!res.ok) {
@@ -60,7 +62,7 @@ async function fetchAndStore(params: {
       logger.warn("[line.media] storage upload failed", { err: error.message, path });
       return null;
     }
-    return { path, contentType };
+    return { path, contentType, ...(params.returnBuffer ? { buf } : {}) };
   } catch (e) {
     logger.warn("[line.media] fetchAndStore threw", {
       err: e instanceof Error ? e.message : String(e),
@@ -79,7 +81,8 @@ export async function fetchAndStoreLineMedia(params: {
   tenantId: string;
   accessToken: string;
   messageId: string;
-}): Promise<{ path: string; contentType: string } | null> {
+  returnBuffer?: boolean;
+}): Promise<{ path: string; contentType: string; buf?: Uint8Array } | null> {
   // messageId は webhook ペイロード由来 (信頼境界の外)。URL・Storage パスに
   // 埋め込む前に形式を検証し、パストラバーサル/リクエスト改変を防ぐ。
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(params.messageId)) {
@@ -91,6 +94,7 @@ export async function fetchAndStoreLineMedia(params: {
     headers: { Authorization: `Bearer ${params.accessToken}` },
     tenantId: params.tenantId,
     key: params.messageId,
+    returnBuffer: params.returnBuffer,
   });
 }
 
