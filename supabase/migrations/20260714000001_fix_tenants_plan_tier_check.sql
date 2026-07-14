@@ -1,10 +1,14 @@
 -- ============================================================
 -- tenants.plan_tier の CHECK 制約を実態(4tier)に合わせて修正
--- 20260318000001_plan_tier_4tier_campaign.sql は plan_tier を
--- text + CHECK 制約ではなく enum 型だと誤認しており、
--- CHECK 制約 (mini/standard/pro) を更新し忘れていた。
--- そのため plan_tier='free' での INSERT が全件失敗し、
--- 新規登録(/api/signup)が常にロールバックされていた。
+--
+-- 注意: 本番DBでは plan_tier は既に plan_tier_enum 型に変換済み
+-- (マイグレーション履歴外でダッシュボードから変更されたとみられる)。
+-- そのため本番の新規登録失敗の直接原因ではない。
+-- このマイグレーションは、マイグレーション履歴だけから再構築した
+-- 環境(ローカル/CI/新規Supabaseプロジェクト)で
+-- 20260313020000_core_tables.sql の古いCHECK制約(mini/standard/pro)
+-- が残ったまま plan_tier='free' のINSERTが失敗する、という
+-- 本番との乖離を防ぐための整合性修正。
 -- ============================================================
 
 ALTER TABLE tenants DROP CONSTRAINT IF EXISTS tenants_plan_tier_check;
