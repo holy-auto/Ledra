@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Drawer from "@/components/ui/Drawer";
 import { OPERATION_GUIDE_GROUPS } from "@/lib/operationGuides";
-import { TOUR_DONE_KEY } from "./OnboardingTour";
+import { TOUR_DONE_KEY } from "@/lib/onboarding";
 
 const GUIDE_KEY_PREFIX = "ledra_guide_";
 

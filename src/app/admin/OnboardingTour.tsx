@@ -4,11 +4,8 @@ import { useEffect, useState } from "react";
 // CSS is small (~3KB) and harmless to ship eagerly; keep it as a side-effect
 // import so PostCSS/Next picks it up. The heavy JS module is loaded lazily.
 import "driver.js/dist/driver.css";
-
-// v2: 新機能（AIナビ・サイドバー整理・ピン留め）の説明ステップを追加したので
-// キーを更新し、既存ユーザーにも新ステップ入りのツアーを一度だけ再表示する。
-// 3ファイル（本ファイル / HelpDrawer / RestartTourButton）で共有する単一の出典。
-export const TOUR_DONE_KEY = "ledra_tour_done_v2";
+// キーは副作用フリーの共有モジュールが単一の出典（driver.js を他ページに巻き込まない）。
+import { TOUR_DONE_KEY } from "@/lib/onboarding";
 
 export default function OnboardingTour(): null {
   const [ready, setReady] = useState(false);

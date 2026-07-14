@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { TOUR_DONE_KEY } from "../OnboardingTour";
+import { TOUR_DONE_KEY } from "@/lib/onboarding";
 
 export default function RestartTourButton() {
   const router = useRouter();
