@@ -11,7 +11,8 @@
  *   C. 顧客が日程候補を選択した時点で (handleFlowPostback → handleSlotSelected):
  *        - まず awaiting_schedule_pick → scheduled への更新を試みて選択を排他確保
  *          (postback 再配信・連打による二重処理を防ぐ楽観ロック。失敗したら false)
- *        - 直前に埋まっていないか再検証 → 予約を自動作成 (reservations + gcal) →
+ *        - 直前に埋まっていないか再検証 → 予約を自動作成 (reservations + gcal +
+ *          勘定科目/ワークフロー自動提案 — 管理画面の予約作成ルートと同じフック) →
  *          フローをクローズしお礼を送る
  *        - 埋まっていればスタッフ引き継ぎ
  *        - 「その他の日程を相談する」(flow:cancel) はスタッフ引き継ぎ
@@ -31,6 +32,8 @@ import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { getActiveFlow, getFlowByQuoteDoc, advanceFlow } from "@/lib/line/flow/flowStore";
 import { interpretReply } from "@/lib/line/flow/interpret";
 import { fetchFlowScheduleCandidates, type FlowScheduleCandidate } from "@/lib/line/flow/scheduleCandidates";
+import { maybeAutoCategorizeReservationOnIntake } from "./accountingAuto";
+import { maybeAutoProposeWorkflowForReservation } from "./workflowAuto";
 import {
   buildQuoteApprovalAsk,
   buildScheduleHandoff,
@@ -406,6 +409,11 @@ async function handleSlotSelected(
     logger.warn("[conversationFlowPostback] reservation insert failed", { tenantId, err: error.message });
     return false;
   }
+
+  // 案件登録時の勘定科目提案・ワークフロー提案 (管理画面の予約作成ルートと同じフック)。
+  // いずれも opt-in + 提案の保存のみ (壁3 とは無関係)。レスポンスを遅らせないよう待たない。
+  void maybeAutoCategorizeReservationOnIntake({ tenantId, reservationId });
+  void maybeAutoProposeWorkflowForReservation({ tenantId, reservationId });
 
   // Google カレンダー同期 (非ブロッキング、失敗しても予約自体は成立させる)。
   syncCreateEvent(tenantId, {
