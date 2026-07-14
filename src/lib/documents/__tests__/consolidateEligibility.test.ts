@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { isConsolidatableDoc, canConsolidateDocuments } from "../consolidateEligibility";
+import type { DocType, DocumentStatus } from "@/types/document";
 
-function doc(overrides: { doc_type: string; status: string; customer_id: string | null }) {
+function doc(overrides: { doc_type: DocType; status: DocumentStatus; customer_id: string | null }) {
   return overrides;
 }
 
