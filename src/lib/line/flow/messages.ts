@@ -181,3 +181,32 @@ export function buildReservationConfirmed(candidate: FlowScheduleCandidate): str
     "ご来店を心よりお待ちしております。ありがとうございました！",
   ].join("\n");
 }
+
+/**
+ * 入庫日の朝、未登録車両の車検証撮影を依頼する文面 (Phase 3)。
+ * `awaiting_vehicle_photo` の入口メッセージ。
+ */
+export function buildVehiclePhotoRequest(): string {
+  return [
+    "本日はご来店ありがとうございます。",
+    "施工証明書の発行のため、お車の車検証のお写真をこのトークに送信してください。",
+    "",
+    "（撮影が難しい場合は、そのままご来店いただいても大丈夫です。受付でご案内いたします。）",
+  ].join("\n");
+}
+
+/** 車検証写真を受け取り車両登録できたときの案内。フローのクローズ文面。 */
+export function buildVehiclePhotoRegistered(vehicleLabel: string): string {
+  return [
+    `車検証を確認し、${vehicleLabel} を登録いたしました。`,
+    "ご来店を心よりお待ちしております。ありがとうございました！",
+  ].join("\n");
+}
+
+/** 車検証写真の読み取りに失敗した/情報が不足していたときのスタッフ引き継ぎ案内。 */
+export function buildVehiclePhotoFailedHandoff(): string {
+  return [
+    "申し訳ございません、お写真から車両情報をうまく読み取れませんでした。",
+    "受付にて改めて確認させていただきますので、ご来店の際は車検証をお持ちください。",
+  ].join("\n");
+}

@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   buildLineLinkPrompt: vi.fn(),
   fetchAndStoreLineMedia: vi.fn(),
   fetchAndStoreLineSticker: vi.fn(),
+  handleVehiclePhotoMessage: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
@@ -50,6 +51,9 @@ vi.mock("@/lib/line/media", () => ({
   fetchAndStoreLineMedia: mocks.fetchAndStoreLineMedia,
   fetchAndStoreLineSticker: mocks.fetchAndStoreLineSticker,
   LINE_MEDIA_BUCKET: "line-media",
+}));
+vi.mock("@/lib/ai/automation/vehicleCaptureAuto", () => ({
+  handleVehiclePhotoMessage: mocks.handleVehiclePhotoMessage,
 }));
 vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({}) },
@@ -102,6 +106,44 @@ describe("handleWebhookEvents", () => {
         attachmentPath: `${TENANT}/img1.jpg`,
         attachmentContentType: "image/jpeg",
       }),
+    );
+  });
+
+  it("routes image bytes to the vehicle-photo flow handler and skips the normal inbound record when handled", async () => {
+    const buf = new Uint8Array([1, 2, 3]);
+    mocks.fetchAndStoreLineMedia.mockResolvedValue({ path: `${TENANT}/img1.jpg`, contentType: "image/jpeg", buf });
+    mocks.handleVehiclePhotoMessage.mockResolvedValue(true);
+
+    await handleWebhookEvents(TENANT, [
+      { type: "message", source: { userId: USER, type: "user" }, message: { type: "image", id: "img1" } },
+    ]);
+
+    expect(mocks.fetchAndStoreLineMedia).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: TENANT, messageId: "img1", returnBuffer: true }),
+    );
+    expect(mocks.handleVehiclePhotoMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: TENANT, lineUserId: USER }),
+    );
+    const passedBuffer = mocks.handleVehiclePhotoMessage.mock.calls[0][0].imageBuffer;
+    expect(Buffer.isBuffer(passedBuffer)).toBe(true);
+    expect(mocks.recordInboundLineMessage).not.toHaveBeenCalled();
+    expect(mocks.maybeNotifyInboundMessage).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the normal inbound record when there is no active vehicle-photo flow", async () => {
+    mocks.fetchAndStoreLineMedia.mockResolvedValue({
+      path: `${TENANT}/img1.jpg`,
+      contentType: "image/jpeg",
+      buf: new Uint8Array([1]),
+    });
+    mocks.handleVehiclePhotoMessage.mockResolvedValue(false);
+
+    await handleWebhookEvents(TENANT, [
+      { type: "message", source: { userId: USER, type: "user" }, message: { type: "image", id: "img1" } },
+    ]);
+
+    expect(mocks.recordInboundLineMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ body: "[画像]", attachmentPath: `${TENANT}/img1.jpg` }),
     );
   });
 

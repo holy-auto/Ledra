@@ -447,3 +447,17 @@ export function shouldAutoSuggestAssignee(settings: AiAutomationSettings): boole
 export function shouldAutoClassifyInquiry(settings: AiAutomationSettings): boolean {
   return resolveAutoAction(settings, "inquiry.auto_classify");
 }
+
+// ─────────────────────────────────────────────
+// LINE会話フロー由来の予約 → 入庫日の車検証撮影依頼・自動登録
+// ─────────────────────────────────────────────
+
+/**
+ * LINE 会話フロー経由で確定した予約について、入庫日に車検証撮影を依頼し、
+ * 受け取った写真から車両を自動登録してよいか。既存の証明書自動化 (vehicle_id
+ * が付けば動く) を働かせるための前段。写真を受け取れず OCR に失敗した場合は
+ * 人に引き継ぐため安全 (勝手に車種を作らない)。
+ */
+export function shouldAutoCaptureVehicleViaLine(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "vehicle.auto_capture_via_line");
+}

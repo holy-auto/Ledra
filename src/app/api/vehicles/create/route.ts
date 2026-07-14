@@ -3,7 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { vehicleCreateSchema } from "@/lib/validations/vehicle";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiJson, apiOk, apiInternalError, apiUnauthorized, apiValidationError } from "@/lib/api/response";
-import { calcSizeClass } from "@/lib/ocr/shakensho";
+import { resolveVehicleSizeClass } from "@/lib/vehicles/resolveSizeClass";
 import { emitEntityWebhook } from "@/lib/outbound-webhooks";
 import type { VehicleSizeClass } from "@/lib/validations/vehicle";
 
@@ -28,21 +28,14 @@ export async function POST(req: Request) {
     // size_classが未指定ならマスタから自動判定
     let sizeClass = b.size_class ?? null;
 
-    // 寸法が全て揃っていれば体積から直接判定（マスタより優先）
-    if (!sizeClass && b.full_length_mm && b.full_width_mm && b.full_height_mm) {
-      sizeClass = calcSizeClass(b.full_length_mm, b.full_width_mm, b.full_height_mm) as VehicleSizeClass;
-    }
-
-    // 寸法がなければマスタから判定
-    if (!sizeClass && b.maker && b.model) {
-      const { data: sizeRow } = await supabase
-        .from("vehicle_size_master")
-        .select("size_class")
-        .eq("maker", b.maker)
-        .eq("model", b.model)
-        .limit(1)
-        .maybeSingle();
-      if (sizeRow?.size_class) sizeClass = sizeRow.size_class;
+    if (!sizeClass) {
+      sizeClass = (await resolveVehicleSizeClass(supabase, {
+        maker: b.maker,
+        model: b.model,
+        lengthMm: b.full_length_mm,
+        widthMm: b.full_width_mm,
+        heightMm: b.full_height_mm,
+      })) as VehicleSizeClass | null;
     }
 
     const insertRow: Record<string, unknown> = {
