@@ -49,9 +49,13 @@ export default function SidebarShell({ children }: SidebarShellProps) {
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar
+          h-dvh (動的ビューポート高) を使う。h-screen(100vh) はモバイル/タブレットの
+          アドレスバー/ツールバー領域を含むため、固定サイドバーの下端(フッターのログアウト/
+          設定)が可視領域の外にはみ出してスクロールでも届かなくなる。dvh は実際の可視高に
+          追従するのでフッターが常に見え、nav 内スクロールも正しく収まる。 */}
       <aside
-        className={`fixed left-0 top-0 z-40 flex h-screen w-60 flex-col border-r border-border-subtle bg-[var(--bg-surface-solid)] transition-transform duration-300 ease-out lg:bg-[var(--bg-elevated)] lg:backdrop-blur-[40px] lg:backdrop-saturate-[180%] ${
+        className={`fixed left-0 top-0 z-40 flex h-dvh w-60 flex-col border-r border-border-subtle bg-[var(--bg-surface-solid)] transition-transform duration-300 ease-out lg:bg-[var(--bg-elevated)] lg:backdrop-blur-[40px] lg:backdrop-saturate-[180%] ${
           open ? "translate-x-0" : "-translate-x-full"
         } lg:translate-x-0`}
       >
