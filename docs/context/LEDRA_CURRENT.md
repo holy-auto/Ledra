@@ -53,6 +53,9 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
 - 帳票管理（一括送付・顧客別集計・グラフ表示・車両情報表示）
 - マイグレーション運用の安全化（CHECK 制約は NOT VALID + VALIDATE で追加）
 - モバイル/タブレットのUI不具合修正（サイドバースクロール、通知ドロップダウン）
+- `src/components/ui/` の UI キット（33コンポーネント）を claude.ai/design に
+  同期（`.design-sync/` 配下にツール設定・再同期用スクリプトをコミット済み。
+  再同期手順は `.design-sync/NOTES.md` 参照）
 
 ## 使い方
 

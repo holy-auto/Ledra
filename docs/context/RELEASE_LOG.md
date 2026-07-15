@@ -12,6 +12,20 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-07-15 Ledra UIキットを claude.ai/design に同期 (PR #760)
+- 内容: `src/components/ui/` の33コンポーネントを、実際にビルドされたコード
+  （esbuildバンドル + 実際のprops型 + レンダリング済みプレビュー）として
+  既存の「Ledra Design System」プロジェクトに取り込んだ。うち16コンポーネント
+  （Button, Card, Badge, Modal, Drawer, ConfirmDialog, フォーム系, StatCard,
+  EmptyState, Skeleton, FloatingField, ToastProvider, SectionTag）はLedraの
+  実際の業務文脈（施工証明書・車両・保険）に沿ったサンプルを手作業で作成し
+  グレーディング済み。残り17個は実プロパティ型付きで機能するが、プレビュー
+  カードは「未作成」の正直な表示のまま。
+- 対象: claude.ai/design 上でのデザイン作業（Ledraの実コンポーネントを使った
+  デザイン生成の土台）。アプリ本体（Next.jsランタイム）への変更は無し。
+- 副産物: 同期ツールのデフォルト設定 `guidelinesGlob` が `docs/` 配下の機密
+  文書84件を巻き込む事故を未然に検知・修正（詳細は DECISION_LOG.md）。
+
 ## 直近のリリース（git log 直近30件より、2026-07 時点で把握できるもの）
 
 ## 2026-07 モバイル/タブレットのUI不具合修正 (PR #754)
