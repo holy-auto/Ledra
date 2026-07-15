@@ -1,5 +1,9 @@
 import { ConfirmDialog } from "holy-cert";
 
+// See Modal.tsx for why the minHeight wrapper is needed for fixed-overlay
+// single-mode previews. ponytail: 420 is hand-picked, not derived from
+// cfg.overrides.ConfirmDialog.viewport (560x460) — keep the two in sync by
+// hand if either changes; see Modal.tsx for the upgrade path.
 export function Danger() {
   return (
     <div style={{ minHeight: 420 }}>

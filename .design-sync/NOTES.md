@@ -10,7 +10,7 @@
   environment; `@zxing/library@0.22.0` warns it wants Node >=24 (`EBADENGINE`)
   but installs and builds fine — non-blocking.
 
-## componentSrcMap exclusions (12 of 39 files in src/components/ui/)
+## componentSrcMap exclusions (13 of 46 files in src/components/ui/)
 
 Excluded because they can't render standalone outside the real Next.js app
 shell / data layer, not because they're low quality:
@@ -18,9 +18,10 @@ shell / data layer, not because they're low quality:
 - **Next.js App Router-coupled** (`useRouter`/`usePathname`/`next/navigation`,
   or are the router-driven shell itself): `AdminTopBar`, `CommandPalette`,
   `ContextSwitcher`, `EmptyStateGuide`, `NavigationProgress`, `PageBar`,
-  `Sidebar`, `SidebarShell`. (`PageHeader`, which IS included, imports
-  `PageBar` internally — that's fine, `PageBar.tsx` itself only uses
-  `next/link`, which bundles statically without needing router context.)
+  `Sidebar`, `SidebarShell`. `PageHeader` is ALSO excluded (not included) —
+  it imports `PageBar` internally, so keeping it would pull `next/link` back
+  into the curated bundle entry as a transitive dependency (see "Bundling
+  gotchas" below).
 - **Direct Supabase/data-fetching components**: `NotificationBell`,
   `OrderCsvImport`.
 - **Non-visual infrastructure**: `ViewerModeProvider` (data-fetching context

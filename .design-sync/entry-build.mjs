@@ -20,6 +20,12 @@ const entries = Object.entries(cfg.componentSrcMap).filter(([, v]) => v !== null
 // drops every default export, since ES modules never re-export `default`
 // via a wildcard. Re-export explicitly, keyed off whether the source file
 // actually has a top-level `export default`.
+// ponytail: hasDefault only recognizes the literal `export default …` form
+// (checked against all 33 mapped files today — all match). A component
+// added later that exports via `export { Foo as default }` or re-exports
+// someone else's default would be misclassified and fail to bundle with an
+// esbuild "no matching export" error. Upgrade path: parse with ts-morph
+// (already a converter dependency) instead of a regex if that ever happens.
 const componentLines = entries.map(([name, relPath]) => {
   const abs = path.resolve(relPath);
   const src = fs.readFileSync(abs, "utf8");

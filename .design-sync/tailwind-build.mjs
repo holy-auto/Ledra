@@ -18,6 +18,7 @@ const result = await postcss([tailwindcss()]).process(input, {
 // (.design-sync/fonts/fonts.css) instead of skipping to system fallbacks.
 const fontVarBridge = fs.readFileSync(".design-sync/runtime-font-vars.css", "utf8");
 
+const output = result.css + "\n" + fontVarBridge;
 fs.mkdirSync(".design-sync/.cache", { recursive: true });
-fs.writeFileSync(".design-sync/.cache/compiled.css", result.css + "\n" + fontVarBridge);
-console.log("wrote", result.css.length, "bytes to .design-sync/.cache/compiled.css");
+fs.writeFileSync(".design-sync/.cache/compiled.css", output);
+console.log("wrote", output.length, "bytes to .design-sync/.cache/compiled.css");

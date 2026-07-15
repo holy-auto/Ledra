@@ -2,7 +2,9 @@ import { Drawer, FormField, Input, Select, Button } from "holy-cert";
 
 export function Default() {
   // See Modal.tsx for why the minHeight wrapper is needed for fixed-overlay
-  // single-mode previews.
+  // single-mode previews. ponytail: 560 is hand-picked, not derived from
+  // cfg.overrides.Drawer.viewport (480x600) — keep the two in sync by hand
+  // if either changes; see Modal.tsx for the upgrade path.
   return (
     <div style={{ minHeight: 560 }}>
       <Drawer open onClose={() => {}} title="車両情報を編集">

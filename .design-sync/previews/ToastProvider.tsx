@@ -14,7 +14,9 @@ function FireToast({ message, variant }: { message: string; variant: "success" |
 
 export function Success() {
   // See Modal.tsx for why the minHeight wrapper is needed for fixed-overlay
-  // single-mode previews.
+  // single-mode previews. ponytail: 160 is hand-picked, not derived from
+  // cfg.overrides.ToastProvider.viewport (420x200) — keep the two in sync by
+  // hand if either changes; see Modal.tsx for the upgrade path.
   return (
     <div style={{ minHeight: 160 }}>
       <ToastProvider>
