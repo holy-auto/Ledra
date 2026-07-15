@@ -73,9 +73,10 @@ export async function POST(req: NextRequest) {
 
     if (!doc) return apiNotFound("帳票が見つかりません。");
 
-    // 追加帳票は主帳票と同じ顧客のものだけを許可する（他顧客の帳票詳細が
-    // 誤って同封・メール送信されたり、無関係に下書き→送付済みへ状態変更
-    // されたりするのを防ぐ）。主帳票に顧客が紐付いていない場合は同封不可。
+    // 追加帳票は主帳票と同じ顧客の「未送付（下書き）」のものだけを許可する
+    // （他顧客の帳票詳細が誤って同封・メール送信されるのを防ぐのに加え、
+    // 既に送付済みの帳票を誤って二重送付しないよう status=draft のみに絞る）。
+    // 主帳票に顧客が紐付いていない場合は同封不可。
     let extraDocs: NonNullable<typeof doc>[] = [];
     if (additionalDocumentIds.length > 0 && doc.customer_id) {
       const { data: extras } = await supabase
@@ -83,7 +84,8 @@ export async function POST(req: NextRequest) {
         .select(selectCols)
         .in("id", additionalDocumentIds)
         .eq("tenant_id", caller.tenantId)
-        .eq("customer_id", doc.customer_id);
+        .eq("customer_id", doc.customer_id)
+        .eq("status", "draft");
       extraDocs = extras ?? [];
     }
     const docs = [doc, ...extraDocs];

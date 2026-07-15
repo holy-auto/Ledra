@@ -26,3 +26,15 @@ export function calcMarginRate(cost: number, sellingPrice: number): number | nul
   if (c === 0) return null;
   return Math.round(((p - c) / c) * 10000) / 100; // 小数2桁
 }
+
+/**
+ * 案件金額とレス率（％）から外注職人への支払額を算出する。
+ *   payout = round(base_amount × rate / 100)
+ * - base_amount: 案件金額（整数円）
+ * - rate: レス率（％）。null/undefined の場合は未設定として base_amount をそのまま返す
+ */
+export function calcCommissionAmount(baseAmount: number, ratePercent: number | null | undefined): number {
+  const b = Number.isFinite(baseAmount) && baseAmount > 0 ? Math.floor(baseAmount) : 0;
+  if (ratePercent == null || !Number.isFinite(ratePercent)) return b;
+  return Math.round(b * (ratePercent / 100));
+}

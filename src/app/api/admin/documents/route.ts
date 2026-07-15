@@ -35,10 +35,16 @@ export async function GET(req: NextRequest) {
     const docType = url.searchParams.get("doc_type") ?? "";
     const status = url.searchParams.get("status") ?? "";
     const customerId = url.searchParams.get("customer_id") ?? "";
+    // 発行日 (issued_at) による期間絞り込み。YYYY-MM-DD 形式のみ受け付ける。
+    const dateFromRaw = url.searchParams.get("date_from") ?? "";
+    const dateToRaw = url.searchParams.get("date_to") ?? "";
+    const isoDate = /^\d{4}-\d{2}-\d{2}$/;
+    const dateFrom = isoDate.test(dateFromRaw) ? dateFromRaw : "";
+    const dateTo = isoDate.test(dateToRaw) ? dateToRaw : "";
     const { page, perPage, from, to } = parsePagination(req, { maxPerPage: 200 });
 
     const selectCols =
-      "id, tenant_id, customer_id, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, note, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, created_at, updated_at";
+      "id, tenant_id, customer_id, staff_member_id, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, note, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, created_at, updated_at";
 
     let query = supabase
       .from("documents")
@@ -62,6 +68,14 @@ export async function GET(req: NextRequest) {
     if (customerId) {
       query = query.eq("customer_id", customerId);
       countQuery = countQuery.eq("customer_id", customerId);
+    }
+    if (dateFrom) {
+      query = query.gte("issued_at", dateFrom);
+      countQuery = countQuery.gte("issued_at", dateFrom);
+    }
+    if (dateTo) {
+      query = query.lte("issued_at", dateTo);
+      countQuery = countQuery.lte("issued_at", dateTo);
     }
 
     if (page > 0) {
@@ -132,6 +146,7 @@ export async function POST(req: NextRequest) {
     }
 
     const customerId = input.customer_id || null;
+    const staffMemberId = input.staff_member_id || null;
     const issuedAt = input.issued_at || new Date().toISOString().slice(0, 10);
     const dueDate = input.due_date || null;
     const note = input.note;
@@ -180,6 +195,7 @@ export async function POST(req: NextRequest) {
       id: crypto.randomUUID(),
       tenant_id: caller.tenantId,
       customer_id: customerId,
+      staff_member_id: staffMemberId,
       recipient_name: recipientName,
       recipient_honorific: recipientHonorific,
       recipient_postal_code: recipientPostalCode,
@@ -226,7 +242,7 @@ export async function POST(req: NextRequest) {
           .from("documents")
           .insert({ ...row, doc_number: docNumber })
           .select(
-            "id, tenant_id, customer_id, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, payment_date, vehicle_id, vehicle_info_json, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, tax_breakdown, items_json, note, meta_json, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, created_at, updated_at",
+            "id, tenant_id, customer_id, staff_member_id, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, payment_date, vehicle_id, vehicle_info_json, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, tax_breakdown, items_json, note, meta_json, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, created_at, updated_at",
           )
           .single(),
       { fixedNumber: input.doc_number || null },
@@ -267,6 +283,7 @@ export async function PUT(req: NextRequest) {
     // 既存帳票の状態を確認し、内容編集の可否をチェック（ステータス変更は別途許可）
     const isContentEdit =
       body.items !== undefined ||
+      body.staff_member_id !== undefined ||
       body.recipient_name !== undefined ||
       body.recipient_postal_code !== undefined ||
       body.recipient_address !== undefined ||
@@ -309,6 +326,7 @@ export async function PUT(req: NextRequest) {
 
     if (body.status !== undefined) updates.status = body.status;
     if (body.customer_id !== undefined) updates.customer_id = body.customer_id || null;
+    if (body.staff_member_id !== undefined) updates.staff_member_id = body.staff_member_id || null;
     if (body.issued_at !== undefined) updates.issued_at = body.issued_at;
     if (body.due_date !== undefined) updates.due_date = body.due_date;
     if (body.payment_date !== undefined) updates.payment_date = body.payment_date || null;
@@ -366,7 +384,7 @@ export async function PUT(req: NextRequest) {
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .select(
-        "id, tenant_id, customer_id, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, payment_date, vehicle_id, vehicle_info_json, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, tax_breakdown, items_json, note, meta_json, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, created_at, updated_at",
+        "id, tenant_id, customer_id, staff_member_id, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, payment_date, vehicle_id, vehicle_info_json, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, tax_breakdown, items_json, note, meta_json, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, created_at, updated_at",
       )
       .single();
 

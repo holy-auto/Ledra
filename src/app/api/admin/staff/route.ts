@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
     const [staffRes, statsRes] = await Promise.all([
       supabase
         .from("staff_members")
-        .select("id, user_id, name, kind, email, phone, skills, color, is_active, note, created_at")
+        .select("id, user_id, name, kind, email, phone, skills, color, is_active, note, commission_rate, created_at")
         .eq("tenant_id", caller.tenantId)
         .order("is_active", { ascending: false })
         .order("name", { ascending: true }),
@@ -123,6 +123,7 @@ export async function POST(req: NextRequest) {
         color: input.color,
         note: input.note,
         is_active: input.is_active,
+        commission_rate: input.commission_rate,
       })
       .select("id")
       .single();

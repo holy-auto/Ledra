@@ -30,3 +30,15 @@ export const storeUpdateSchema = z.object({
   business_hours: businessHours,
   is_active: z.boolean().optional(),
 });
+
+/** 店舗担当者の役割。manager = 店長/責任者、staff = 一般担当。 */
+export const storeMemberRoles = ["manager", "staff"] as const;
+
+export const storeMemberAddSchema = z.object({
+  user_id: z.string().uuid("user_id is required"),
+  role: z.enum(storeMemberRoles).default("staff"),
+});
+
+export const storeMemberDeleteSchema = z.object({
+  user_id: z.string().uuid("user_id is required"),
+});

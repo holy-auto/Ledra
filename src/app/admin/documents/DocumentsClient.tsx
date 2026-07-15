@@ -26,6 +26,31 @@ import { canConsolidateDocuments } from "@/lib/documents/consolidateEligibility"
 
 const MAX_BULK_SHARE = 20;
 
+type PeriodFilter = "all" | "week" | "month" | "year";
+
+/** 期間プリセットから発行日 (issued_at) の絞り込み範囲 (YYYY-MM-DD) を算出する。週は月曜起点。 */
+function periodRange(period: PeriodFilter): { from: string; to: string } | null {
+  if (period === "all") return null;
+  const now = new Date();
+  const toStr = (d: Date) => d.toISOString().slice(0, 10);
+  if (period === "year") {
+    return { from: `${now.getFullYear()}-01-01`, to: `${now.getFullYear()}-12-31` };
+  }
+  if (period === "month") {
+    const from = new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return { from: toStr(from), to: toStr(to) };
+  }
+  // week: 月曜始まり
+  const day = now.getDay();
+  const diffToMonday = day === 0 ? 6 : day - 1;
+  const from = new Date(now);
+  from.setDate(now.getDate() - diffToMonday);
+  const to = new Date(from);
+  to.setDate(from.getDate() + 6);
+  return { from: toStr(from), to: toStr(to) };
+}
+
 type Stats = { total: number; unpaid_amount: number };
 type DocumentsData = { documents: DocumentRow[]; stats: Stats };
 
@@ -35,18 +60,25 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   const prefillCustomerId = searchParams.get("customer_id") ?? "";
   const prefillVehicleId = searchParams.get("vehicle_id") ?? "";
   const prefillReservationId = searchParams.get("reservation_id") ?? "";
+  const prefillStaffMemberId = searchParams.get("staff_id") ?? "";
   const autoOpenForm = searchParams.get("create") === "1";
 
   const [typeFilter, setTypeFilter] = useState<string>(initialTypeFilter ?? "all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [activeTypeFilter, setActiveTypeFilter] = useState<string>(initialTypeFilter ?? "all");
   const [activeStatusFilter, setActiveStatusFilter] = useState<string>("all");
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("all");
 
   // Build SWR key
   const swrKey = (() => {
     const params = new URLSearchParams();
     if (activeTypeFilter && activeTypeFilter !== "all") params.set("doc_type", activeTypeFilter);
     if (activeStatusFilter && activeStatusFilter !== "all") params.set("status", activeStatusFilter);
+    const range = periodRange(periodFilter);
+    if (range) {
+      params.set("date_from", range.from);
+      params.set("date_to", range.to);
+    }
     return `/api/admin/documents?${params.toString()}`;
   })();
 
@@ -364,6 +396,22 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                   ))}
                 </select>
               </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted">期間</label>
+                <select
+                  className="select-field"
+                  value={periodFilter}
+                  onChange={(e) => {
+                    setPeriodFilter(e.target.value as PeriodFilter);
+                    setSelectedIds(new Set());
+                  }}
+                >
+                  <option value="all">すべて</option>
+                  <option value="week">今週</option>
+                  <option value="month">今月</option>
+                  <option value="year">今年</option>
+                </select>
+              </div>
             </div>
           </section>
 
@@ -377,6 +425,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
               prefillCustomerId={prefillCustomerId}
               prefillVehicleId={prefillVehicleId}
               prefillReservationId={prefillReservationId}
+              prefillStaffMemberId={prefillStaffMemberId}
               onSaved={(created) => {
                 // 作成後はそのまま書類詳細へ遷移し、確認・編集・PDF出力へ繋げる。
                 // （どの書類作成画面から来ても、作成→詳細の導線を揃える）
@@ -548,7 +597,10 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
           onClose={() => setBulkShareOpen(false)}
           document={selectedDocs[0]}
           customerName={selectedDocs[0].customer_name}
-          initialAdditionalDocumentIds={selectedDocs.slice(1).map((d) => d.id)}
+          initialAdditionalDocumentIds={selectedDocs
+            .slice(1)
+            .filter((d) => d.status === "draft")
+            .map((d) => d.id)}
           onShared={() => {
             setBulkShareOpen(false);
             setSelectedIds(new Set());

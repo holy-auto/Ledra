@@ -4,7 +4,7 @@ import { parseJsonSafe } from "@/lib/api/safeJson";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatJpy } from "@/lib/format";
-import { calcSellingPrice } from "@/lib/pricing/margin";
+import { calcSellingPrice, calcCommissionAmount } from "@/lib/pricing/margin";
 import { DOC_TYPES, DOC_TYPE_LIST, type DocType, type DocumentItem, type DocumentRow } from "@/types/document";
 import QuoteAiDraftPanel from "./QuoteAiDraftPanel";
 import ItemCodeField from "@/components/documents/ItemCodeField";
@@ -37,6 +37,13 @@ type Branch = {
   address: string | null;
   phone: string | null;
   contact_person: string | null;
+};
+
+type ExternalStaff = {
+  id: string;
+  name: string;
+  kind: "internal" | "external";
+  commission_rate: number | null;
 };
 
 const BILLING_CYCLE_LABEL: Record<string, string> = { per_job: "都度払い", consolidated: "合算（締め払い）" };
@@ -103,6 +110,8 @@ export type DocumentFormProps = {
   prefillVehicleId?: string;
   /** create モード時、案件(予約)からの AI 起票トリガー */
   prefillReservationId?: string;
+  /** create モード時の外注職人 ID プリフィル（外注請求書作成用） */
+  prefillStaffMemberId?: string;
   /** 保存成功時 */
   onSaved: (document: DocumentRow) => void;
   /** キャンセル時 */
@@ -116,6 +125,7 @@ export default function DocumentForm({
   prefillCustomerId,
   prefillVehicleId,
   prefillReservationId,
+  prefillStaffMemberId,
   onSaved,
   onCancel,
 }: DocumentFormProps) {
@@ -128,7 +138,9 @@ export default function DocumentForm({
   const [formDocType, setFormDocType] = useState<DocType>(
     (initial?.doc_type as DocType) ?? defaultDocType ?? "estimate",
   );
+  const isStaffInvoice = formDocType === "staff_invoice";
   const [formCustomerId, setFormCustomerId] = useState(initial?.customer_id ?? "");
+  const [formStaffMemberId, setFormStaffMemberId] = useState(initial?.staff_member_id ?? "");
   const [formRecipientName, setFormRecipientName] = useState(initial?.recipient_name ?? "");
   const [formRecipientHonorific, setFormRecipientHonorific] = useState<"御中" | "様" | "">(
     (initial?.recipient_honorific as "御中" | "様" | "") ?? "御中",
@@ -167,6 +179,7 @@ export default function DocumentForm({
   const [menuItemsError, setMenuItemsError] = useState(false);
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
   const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
+  const [externalStaff, setExternalStaff] = useState<ExternalStaff[]>([]);
   const [certificates, setCertificates] = useState<CertificateOption[]>([]);
   const [aiPrefillBusy, setAiPrefillBusy] = useState(false);
   const [aiPrefillNote, setAiPrefillNote] = useState<string | null>(null);
@@ -294,9 +307,43 @@ export default function DocumentForm({
     }
   }, []);
 
+  const fetchExternalStaff = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/staff", { cache: "no-store" });
+      const j = await parseJsonSafe(res);
+      if (res.ok && j?.staff) {
+        setExternalStaff(
+          (j.staff as Array<{ id: string; name: string; kind: string; commission_rate: number | null }>)
+            .filter((s) => s.kind === "external")
+            .map((s) => ({ id: s.id, name: s.name, kind: "external" as const, commission_rate: s.commission_rate })),
+        );
+      }
+    } catch {}
+  }, []);
+
   useEffect(() => {
-    Promise.all([fetchCustomers(), fetchMenuItems(), fetchTemplates(), fetchVehicles()]);
-  }, [fetchCustomers, fetchMenuItems, fetchTemplates, fetchVehicles]);
+    Promise.all([fetchCustomers(), fetchMenuItems(), fetchTemplates(), fetchVehicles(), fetchExternalStaff()]);
+  }, [fetchCustomers, fetchMenuItems, fetchTemplates, fetchVehicles, fetchExternalStaff]);
+
+  // create モードで URL プリフィル（外注職人）
+  const prefillStaffAppliedRef = useRef(false);
+  useEffect(() => {
+    if (isEdit) return;
+    if (prefillStaffAppliedRef.current) return;
+    if (!prefillStaffMemberId) return;
+    if (externalStaff.length === 0) return;
+    setFormStaffMemberId(prefillStaffMemberId);
+    prefillStaffAppliedRef.current = true;
+    // 初期行が未入力のままなら、選択された職人のレス率を先取りしてセットする。
+    const staff = externalStaff.find((s) => s.id === prefillStaffMemberId);
+    if (staff?.commission_rate != null) {
+      setFormItems((items) =>
+        items.length === 1 && !items[0].description && !items[0].cost_price
+          ? [{ ...items[0], margin_rate: Math.round(staff.commission_rate! * 10000) / 100 }]
+          : items,
+      );
+    }
+  }, [isEdit, prefillStaffMemberId, externalStaff]);
 
   // 顧客（法人）が決まったら、登録済みの支店一覧を取得する
   useEffect(() => {
@@ -431,14 +478,18 @@ export default function DocumentForm({
         const v = value === "" || value == null ? 0 : parseInt(String(value), 10) || 0;
         item.cost_price = v;
         if (item.margin_rate != null) {
-          item.unit_price = calcSellingPrice(v, item.margin_rate);
+          item.unit_price = isStaffInvoice
+            ? calcCommissionAmount(v, item.margin_rate)
+            : calcSellingPrice(v, item.margin_rate);
         }
       }
       if (field === "margin_rate") {
         const v = value === "" || value == null ? null : parseFloat(String(value));
         item.margin_rate = v == null || isNaN(v) ? null : v;
         if (item.cost_price != null && item.margin_rate != null) {
-          item.unit_price = calcSellingPrice(item.cost_price, item.margin_rate);
+          item.unit_price = isStaffInvoice
+            ? calcCommissionAmount(item.cost_price, item.margin_rate)
+            : calcSellingPrice(item.cost_price, item.margin_rate);
         }
       }
       const type = item.item_type ?? "item";
@@ -450,7 +501,14 @@ export default function DocumentForm({
     });
   };
 
-  const addItem = () => setFormItems(recalcSubtotals([...formItems, emptyItem()]));
+  const addItem = () => {
+    const next = emptyItem();
+    if (isStaffInvoice && formStaffMemberId) {
+      const staff = externalStaff.find((s) => s.id === formStaffMemberId);
+      if (staff?.commission_rate != null) next.margin_rate = Math.round(staff.commission_rate * 10000) / 100;
+    }
+    setFormItems(recalcSubtotals([...formItems, next]));
+  };
   const removeItem = (index: number) => {
     if (formItems.length <= 1) return;
     setFormItems(recalcSubtotals(formItems.filter((_, i) => i !== index)));
@@ -550,12 +608,17 @@ export default function DocumentForm({
 
   // ─── Submit ───
   const handleSubmit = async () => {
+    if (isStaffInvoice && !formStaffMemberId) {
+      setSaveMsg({ text: "外注職人を選択してください", ok: false });
+      return;
+    }
     setSaving(true);
     setSaveMsg(null);
     try {
       const payload: Record<string, unknown> = {
         doc_type: formDocType,
-        customer_id: formCustomerId || null,
+        customer_id: isStaffInvoice ? null : formCustomerId || null,
+        staff_member_id: isStaffInvoice ? formStaffMemberId || null : null,
         recipient_name: formRecipientName || null,
         recipient_honorific: formRecipientHonorific,
         recipient_postal_code: formRecipientPostalCode || null,
@@ -655,54 +718,75 @@ export default function DocumentForm({
             ))}
           </select>
         </div>
-        <div className="space-y-1">
-          <label className="text-xs text-muted">顧客</label>
-          <select
-            className="select-field"
-            value={formCustomerId}
-            onChange={(e) => {
-              const id = e.target.value;
-              setFormCustomerId(id);
-              if (!id) return;
-              setFormRecipientName("");
-              // 顧客管理に登録済みの敬称・住所・支払条件を宛先詳細へ自動反映する。
-              // 編集モードでは既に手入力・確定済みの宛先情報を上書きしないよう、
-              // 新規作成時のみ自動反映する。
-              if (isEdit) return;
-              const c = customers.find((cust) => cust.id === id);
-              if (c) {
-                setFormRecipientHonorific(c.honorific || "御中");
-                setFormRecipientPostalCode(c.postal_code ?? "");
-                setFormRecipientAddress(c.address ?? "");
-                setFormRecipientPhone(c.phone ?? "");
-                setFormPaymentTerms(
-                  c.billing_terms_note || (c.billing_cycle ? BILLING_CYCLE_LABEL[c.billing_cycle] : ""),
-                );
-              }
-            }}
-          >
-            <option value="">選択なし</option>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs text-muted">宛先店舗名（BtoB用）</label>
-          <input
-            type="text"
-            className="input-field"
-            placeholder="顧客未選択時に店舗名を直接入力"
-            value={formRecipientName}
-            onChange={(e) => {
-              setFormRecipientName(e.target.value);
-              if (e.target.value) setFormCustomerId("");
-            }}
-          />
-        </div>
-        {branches.length > 0 && (
+        {isStaffInvoice ? (
+          <div className="space-y-1">
+            <label className="text-xs text-muted">外注職人</label>
+            <select
+              className="select-field"
+              value={formStaffMemberId}
+              onChange={(e) => setFormStaffMemberId(e.target.value)}
+            >
+              <option value="">選択してください</option>
+              {externalStaff.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                  {s.commission_rate != null ? `（レス率 ${Math.round(s.commission_rate * 10000) / 100}%）` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-1">
+              <label className="text-xs text-muted">顧客</label>
+              <select
+                className="select-field"
+                value={formCustomerId}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setFormCustomerId(id);
+                  if (!id) return;
+                  setFormRecipientName("");
+                  // 顧客管理に登録済みの敬称・住所・支払条件を宛先詳細へ自動反映する。
+                  // 編集モードでは既に手入力・確定済みの宛先情報を上書きしないよう、
+                  // 新規作成時のみ自動反映する。
+                  if (isEdit) return;
+                  const c = customers.find((cust) => cust.id === id);
+                  if (c) {
+                    setFormRecipientHonorific(c.honorific || "御中");
+                    setFormRecipientPostalCode(c.postal_code ?? "");
+                    setFormRecipientAddress(c.address ?? "");
+                    setFormRecipientPhone(c.phone ?? "");
+                    setFormPaymentTerms(
+                      c.billing_terms_note || (c.billing_cycle ? BILLING_CYCLE_LABEL[c.billing_cycle] : ""),
+                    );
+                  }
+                }}
+              >
+                <option value="">選択なし</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted">宛先店舗名（BtoB用）</label>
+              <input
+                type="text"
+                className="input-field"
+                placeholder="顧客未選択時に店舗名を直接入力"
+                value={formRecipientName}
+                onChange={(e) => {
+                  setFormRecipientName(e.target.value);
+                  if (e.target.value) setFormCustomerId("");
+                }}
+              />
+            </div>
+          </>
+        )}
+        {!isStaffInvoice && branches.length > 0 && (
           <div className="space-y-1">
             <label className="text-xs text-muted">支店</label>
             <select
@@ -1015,8 +1099,8 @@ export default function DocumentForm({
               <label className="text-xs text-muted">内容</label>
               <label className="text-xs text-muted">数量</label>
               <label className="text-xs text-muted">単位</label>
-              <label className="text-xs text-muted">原価</label>
-              <label className="text-xs text-muted">利益率%</label>
+              <label className="text-xs text-muted">{isStaffInvoice ? "案件金額" : "原価"}</label>
+              <label className="text-xs text-muted">{isStaffInvoice ? "レス率%" : "利益率%"}</label>
               <label className="text-xs text-muted">単価</label>
               <label className="text-xs text-muted text-right">金額</label>
               <span />
@@ -1217,16 +1301,24 @@ export default function DocumentForm({
                           placeholder="0"
                           value={item.cost_price || ""}
                           onChange={(e) => updateItem(idx, "cost_price", e.target.value)}
-                          title="原価（仕入値）。利益率と組み合わせて単価を自動算出。"
+                          title={
+                            isStaffInvoice
+                              ? "案件金額。レス率と組み合わせて支払額を自動算出。"
+                              : "原価（仕入値）。利益率と組み合わせて単価を自動算出。"
+                          }
                         />
                         <input
                           type="number"
                           className="input-field"
                           step="0.01"
-                          placeholder="30"
+                          placeholder={isStaffInvoice ? "70" : "30"}
                           value={item.margin_rate ?? ""}
                           onChange={(e) => updateItem(idx, "margin_rate", e.target.value)}
-                          title="利益率%。原価×(1+利益率%) で単価を自動算出。"
+                          title={
+                            isStaffInvoice
+                              ? "レス率%。案件金額×レス率% で支払額を自動算出。"
+                              : "利益率%。原価×(1+利益率%) で単価を自動算出。"
+                          }
                         />
                         <input
                           type="number"
@@ -1239,8 +1331,12 @@ export default function DocumentForm({
                           onChange={(e) => updateItem(idx, "unit_price", e.target.value)}
                           title={
                             (item.cost_price ?? 0) > 0 && item.margin_rate != null
-                              ? "原価と利益率から自動算出（手動で上書き可）"
-                              : "提供価格（単価）"
+                              ? isStaffInvoice
+                                ? "案件金額とレス率から自動算出（手動で上書き可）"
+                                : "原価と利益率から自動算出（手動で上書き可）"
+                              : isStaffInvoice
+                                ? "支払額"
+                                : "提供価格（単価）"
                           }
                         />
                         <div className="input-field bg-transparent text-secondary cursor-default text-right">
