@@ -14,6 +14,19 @@
 
 ## 直近のリリース（git log 直近30件より、2026-07 時点で把握できるもの）
 
+## 2026-07 現場入力の負担軽減ブラッシュアップ (PR #759)
+- 内容:
+  - 点検フォーム (`InspectionRecordForm`) を格上げ。写真を base64 インライン保存から
+    Supabase Storage アップロード (`/api/admin/inspection-records/images`) に置換、
+    カメラ直行 (`capture="environment"`) とアルバム選択の2入力化、音声メモ (VoiceMemoPanel
+    note バリアント) を所見入力に流用、テンプレ再取得を呼び出し元からの受け渡しで省略。
+  - 証明書フォームの膜厚セクションに写真OCR取込を追加。膜厚計/測定シート写真から
+    部位別μmを Vision OCR で抽出し編集可能な行として差し込む (`/api/admin/certificates/thickness/ocr`,
+    `src/lib/ai/thicknessGaugeOcr.ts`)。部位名正規化は純関数 `mapPanelToPreset`。
+  - 車検証OCR (`VehiclePickerSection`)・納品書OCR (`DeliveryNoteUpload`) の画像入力に
+    `capture="environment"` を追加し、現場文書撮影のカメラ直行を横断統一。
+- 対象: 点検フロー (`/admin/jobs/[id]` 点検タブ)、証明書発行フォーム、車検証/納品書OCR入力。
+
 ## 2026-07 モバイル/タブレットのUI不具合修正 (PR #754)
 - 内容: サイドバースクロールと通知ドロップダウンの見切れを修正。
 - 対象: モバイル/タブレット全般。

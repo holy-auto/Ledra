@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { parseJsonSafe } from "@/lib/api/safeJson";
+import VoiceMemoPanel from "@/app/admin/certificates/new/VoiceMemoPanel";
 import {
   INSPECTION_TYPES,
   INSPECTION_TYPE_LABEL,
@@ -21,9 +22,9 @@ import {
  *     - text   : テキスト入力
  *     - numeric: 数値入力
  *     各項目に任意の「備考」テキストを付与可能
- *  3. 「写真を追加」: file input (image/*, multiple) — data URL プレビュー
- *     (Supabase Storage への実アップロードは本機能の対象外。data URL を
- *      photo_urls にそのまま保存する)
+ *  3. 「カメラで撮影 / アルバムから選択」: 選択時に Supabase Storage
+ *     (`/api/admin/inspection-records/images`) へアップロードし、返った公開 URL を
+ *     photo_urls に保存する。所見は音声メモ (VoiceMemoPanel) からも入力できる。
  *  4. 「点検を保存」: POST /api/admin/inspection-records
  */
 
@@ -31,10 +32,27 @@ type TemplateItem = { id: string; label: string; type: InspectionItemType };
 type Template = { id: string; name: string; items: TemplateItem[] };
 type TemplateResponse = { templates: Template[] };
 
+/** 呼び出し元が取得済みのテンプレートを渡すための緩い形 (再取得を省く)。 */
+type ProvidedTemplate = { id: string; name: string; items: Array<{ id: string; label: string; type: string }> };
+
+function normalizeTemplate(t: ProvidedTemplate): Template {
+  return {
+    id: t.id,
+    name: t.name,
+    items: (Array.isArray(t.items) ? t.items : []).map((it) => ({
+      id: it.id,
+      label: it.label,
+      type: it.type as InspectionItemType,
+    })),
+  };
+}
+
 type AnswerValue = { value: string; note: string };
 
 interface Props {
   templateId: string;
+  /** 呼び出し元が既に取得済みのテンプレート。渡すとマウント時の再取得を省略する。 */
+  template?: ProvidedTemplate;
   reservationId?: string;
   vehicleId?: string;
   customerId?: string;
@@ -50,11 +68,11 @@ const OK_NG_OPTIONS: { value: string; label: string; tone: string }[] = [
   { value: "na", label: "△", tone: "text-warning-text border-warning" },
 ];
 
-// data URL のおおよそのバイト数 (base64 部分長 * 3/4)。1 枚 4MB 程度を上限の目安とする。
-const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
+const MAX_PHOTOS = 20;
 
 export default function InspectionRecordForm({
   templateId,
+  template: providedTemplate,
   reservationId,
   vehicleId,
   customerId,
@@ -62,9 +80,12 @@ export default function InspectionRecordForm({
   onSaved,
   onCancel,
 }: Props) {
-  const [template, setTemplate] = useState<Template | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [template, setTemplate] = useState<Template | null>(
+    providedTemplate ? normalizeTemplate(providedTemplate) : null,
+  );
+  const [loading, setLoading] = useState(!providedTemplate);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const [inspectionType, setInspectionType] = useState<InspectionType>(defaultType);
   const [inspectorName, setInspectorName] = useState("");
@@ -76,7 +97,9 @@ export default function InspectionRecordForm({
   const [formError, setFormError] = useState<string | null>(null);
 
   // テンプレートをマウント時に取得 (一覧から該当 ID を抽出)。
+  // 呼び出し元が template を渡していれば再取得しない。
   useEffect(() => {
+    if (providedTemplate) return;
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -101,7 +124,7 @@ export default function InspectionRecordForm({
     return () => {
       cancelled = true;
     };
-  }, [templateId]);
+  }, [templateId, providedTemplate]);
 
   const items = useMemo(() => template?.items ?? [], [template]);
 
@@ -115,21 +138,24 @@ export default function InspectionRecordForm({
   const handlePhotos = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setFormError(null);
-    const next: string[] = [];
-    for (const file of Array.from(files)) {
-      if (photos.length + next.length >= 20) break;
-      if (file.size > MAX_PHOTO_BYTES) {
-        setFormError("4MB を超える画像はスキップしました。");
-        continue;
-      }
-      try {
-        const dataUrl = await readAsDataUrl(file);
-        next.push(dataUrl);
-      } catch {
-        setFormError("画像の読み込みに失敗しました。");
-      }
+    // 残り受け入れ枚数だけを Storage へアップロードする。
+    const remaining = MAX_PHOTOS - photos.length;
+    if (remaining <= 0) return;
+    const picked = Array.from(files).slice(0, remaining);
+    setUploading(true);
+    try {
+      const form = new FormData();
+      picked.forEach((f) => form.append("photos", f));
+      const res = await fetch("/api/admin/inspection-records/images", { method: "POST", body: form });
+      const j = await parseJsonSafe<{ urls?: string[]; message?: string }>(res);
+      if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
+      const urls = j?.urls ?? [];
+      if (urls.length > 0) setPhotos((prev) => [...prev, ...urls].slice(0, MAX_PHOTOS));
+    } catch (e) {
+      setFormError("写真のアップロードに失敗しました: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setUploading(false);
     }
-    if (next.length > 0) setPhotos((prev) => [...prev, ...next].slice(0, 20));
   };
 
   const removePhoto = (idx: number) => {
@@ -293,23 +319,51 @@ export default function InspectionRecordForm({
         </ul>
       )}
 
-      {/* 外観写真 */}
+      {/* 外観写真 — カメラ直行 (撮影) とアルバム選択の 2 入力。証明書フォームの
+          PhotoUploadSection と同じ使い分け。 */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-[12px] font-medium text-secondary">外観写真 ({photos.length}/20)</span>
-          <label className="btn-secondary cursor-pointer text-xs">
-            写真を追加
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                void handlePhotos(e.target.files);
-                e.target.value = "";
-              }}
-            />
-          </label>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-[12px] font-medium text-secondary">
+            外観写真 ({photos.length}/{MAX_PHOTOS}){uploading && " — アップロード中…"}
+          </span>
+          <div className="flex gap-2">
+            <label
+              className={`btn-secondary cursor-pointer text-xs ${
+                uploading || photos.length >= MAX_PHOTOS ? "pointer-events-none opacity-50" : ""
+              }`}
+            >
+              カメラで撮影
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                capture="environment"
+                className="hidden"
+                disabled={uploading || photos.length >= MAX_PHOTOS}
+                onChange={(e) => {
+                  void handlePhotos(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            <label
+              className={`btn-secondary cursor-pointer text-xs ${
+                uploading || photos.length >= MAX_PHOTOS ? "pointer-events-none opacity-50" : ""
+              }`}
+            >
+              アルバムから選択
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                multiple
+                className="hidden"
+                disabled={uploading || photos.length >= MAX_PHOTOS}
+                onChange={(e) => {
+                  void handlePhotos(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </div>
         </div>
         {photos.length > 0 && (
           <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
@@ -318,7 +372,7 @@ export default function InspectionRecordForm({
                 key={idx}
                 className="group relative aspect-square overflow-hidden rounded-lg border border-border-subtle"
               >
-                {/* data URL のプレビュー。next/image の最適化は不要なので unoptimized。 */}
+                {/* Storage の公開 URL。next/image の remotePatterns 設定に依存しないよう unoptimized。 */}
                 <Image src={src} alt={`点検写真 ${idx + 1}`} fill sizes="120px" unoptimized className="object-cover" />
                 <button
                   type="button"
@@ -334,8 +388,15 @@ export default function InspectionRecordForm({
         )}
       </div>
 
-      <label className="block space-y-1">
+      <div className="space-y-2">
         <span className="text-[12px] font-medium text-secondary">特記事項</span>
+        {/* 音声で所見を話すだけ → AI 整形して特記事項に流し込む。証明書フォームと同じ VoiceMemoPanel を
+            note バリアントで再利用。Web Speech 非対応環境では手打ちにフォールバックする。 */}
+        <VoiceMemoPanel
+          variant="note"
+          serviceType="inspection"
+          onApply={(note) => setNotes((prev) => (prev ? `${prev}\n${note}` : note))}
+        />
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
@@ -343,7 +404,7 @@ export default function InspectionRecordForm({
           className="input-field min-h-[60px] w-full"
           maxLength={2000}
         />
-      </label>
+      </div>
 
       <div className="flex justify-end gap-2 pt-1">
         {onCancel && (
@@ -357,13 +418,4 @@ export default function InspectionRecordForm({
       </div>
     </div>
   );
-}
-
-function readAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error ?? new Error("read error"));
-    reader.readAsDataURL(file);
-  });
 }

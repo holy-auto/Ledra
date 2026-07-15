@@ -89,6 +89,7 @@ export default function JobInspectionTab({ reservationId, vehicleId, customerId 
       {starting && defaultTemplate && (
         <InspectionRecordForm
           templateId={defaultTemplate.id}
+          template={defaultTemplate}
           reservationId={reservationId}
           vehicleId={vehicleId ?? undefined}
           customerId={customerId ?? undefined}

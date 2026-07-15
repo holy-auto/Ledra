@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import HelpTooltip from "@/components/ui/HelpTooltip";
+import { parseJsonSafe } from "@/lib/api/safeJson";
+import { THICKNESS_LOCATION_PRESETS } from "@/lib/certificates/thicknessPanels";
 
 type Row = {
   id: number;
@@ -11,21 +13,10 @@ type Row = {
   notes: string;
 };
 
-const LOCATION_PRESETS = [
-  "ボンネット",
-  "ルーフ",
-  "右フロントフェンダー",
-  "左フロントフェンダー",
-  "右フロントドア",
-  "左フロントドア",
-  "右リアドア",
-  "左リアドア",
-  "右リアフェンダー",
-  "左リアフェンダー",
-  "トランク/リアゲート",
-  "右サイドステップ",
-  "左サイドステップ",
-];
+const LOCATION_PRESETS = THICKNESS_LOCATION_PRESETS;
+
+type OcrReading = { location: string; before_um: number | null; after_um: number | null; notes: string };
+type OcrResponse = { status?: string; readings?: OcrReading[]; notice?: string; message?: string };
 
 // 車展開図の部位→座標マッピング（トップダウンビュー）
 const DIAGRAM_POSITIONS: Record<string, { x: number; y: number }> = {
@@ -120,12 +111,54 @@ function CarDiagramSvg({ rows }: { rows: Row[] }) {
 
 export default function FilmThicknessSection() {
   const [rows, setRows] = useState<Row[]>([newRow()]);
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const [ocrMsg, setOcrMsg] = useState<string | null>(null);
 
   const update = (id: number, field: keyof Row, value: string) =>
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
 
   const addRow = () => setRows((prev) => [...prev, newRow()]);
   const removeRow = (id: number) => setRows((prev) => (prev.length > 1 ? prev.filter((r) => r.id !== id) : prev));
+
+  // 膜厚計/測定シート写真を OCR して行を追記する。値は編集可能な下書き扱い（人が確認して確定）。
+  const handleOcr = async (file: File | null) => {
+    if (!file) return;
+    setOcrMsg(null);
+    setOcrBusy(true);
+    try {
+      const form = new FormData();
+      form.append("image", file);
+      const res = await fetch("/api/admin/certificates/thickness/ocr", { method: "POST", body: form });
+      const j = await parseJsonSafe<OcrResponse>(res);
+      if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
+      if (j?.status === "skipped") {
+        setOcrMsg(j?.notice ?? "AI 自動入力が停止中のため、手動で入力してください。");
+        return;
+      }
+      const readings = j?.readings ?? [];
+      if (readings.length === 0) {
+        setOcrMsg("読み取れる膜厚が見つかりませんでした。手動で入力してください。");
+        return;
+      }
+      // 抽出行を追記。空の初期行が残っていれば置き換える。
+      const imported: Row[] = readings.map((r) => ({
+        id: nextId++,
+        location: r.location ?? "",
+        before_um: r.before_um != null ? String(r.before_um) : "",
+        after_um: r.after_um != null ? String(r.after_um) : "",
+        notes: r.notes ?? "",
+      }));
+      setRows((prev) => {
+        const base = prev.filter((r) => r.location.trim() || r.before_um || r.after_um);
+        return [...base, ...imported];
+      });
+      setOcrMsg(`${imported.length} 部位を取り込みました。内容を確認してください。`);
+    } catch (e) {
+      setOcrMsg("取り込みに失敗しました: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setOcrBusy(false);
+    }
+  };
 
   const validRows = rows.filter((r) => r.location.trim() || r.before_um || r.after_um);
   const jsonValue = JSON.stringify(
@@ -154,6 +187,29 @@ export default function FilmThicknessSection() {
           </HelpTooltip>
         </div>
         <p className="mt-1 text-xs text-muted">各部位の施工前後の膜厚（μm）を記録します。</p>
+      </div>
+
+      {/* 膜厚計/測定シートの写真から取り込み（カメラ直行）。取り込んだ値は編集可能。 */}
+      <div className="space-y-1.5">
+        <label
+          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border-default px-3 py-2 text-sm text-secondary hover:border-border-strong ${
+            ocrBusy ? "pointer-events-none opacity-50" : ""
+          }`}
+        >
+          {ocrBusy ? "取り込み中…" : "膜厚計から取り込み"}
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            capture="environment"
+            className="hidden"
+            disabled={ocrBusy}
+            onChange={(e) => {
+              void handleOcr(e.target.files?.[0] ?? null);
+              e.target.value = "";
+            }}
+          />
+        </label>
+        {ocrMsg && <p className="text-xs text-muted">{ocrMsg}</p>}
       </div>
 
       {/* 車展開図 */}
