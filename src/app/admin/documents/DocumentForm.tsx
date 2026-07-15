@@ -322,8 +322,15 @@ export default function DocumentForm({
   }, []);
 
   useEffect(() => {
-    Promise.all([fetchCustomers(), fetchMenuItems(), fetchTemplates(), fetchVehicles(), fetchExternalStaff()]);
-  }, [fetchCustomers, fetchMenuItems, fetchTemplates, fetchVehicles, fetchExternalStaff]);
+    Promise.all([fetchCustomers(), fetchMenuItems(), fetchTemplates(), fetchVehicles()]);
+  }, [fetchCustomers, fetchMenuItems, fetchTemplates, fetchVehicles]);
+
+  // 外注請求書のときだけ外注職人一覧を取得する（members:view 権限が無いロールで
+  // 他の帳票作成が壊れるのを防ぎ、無関係な画面でレス率等の財務データを取得しない）。
+  useEffect(() => {
+    if (!isStaffInvoice) return;
+    fetchExternalStaff();
+  }, [isStaffInvoice, fetchExternalStaff]);
 
   // create モードで URL プリフィル（外注職人）
   const prefillStaffAppliedRef = useRef(false);

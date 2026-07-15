@@ -36,6 +36,7 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   receipt: "領収書",
   invoice: "請求書",
   consolidated_invoice: "合算請求書",
+  staff_invoice: "外注請求書",
 };
 
 /** 帳票種別ごとの挨拶文 */
@@ -48,6 +49,7 @@ const DOC_TYPE_GREETINGS: Record<string, string> = {
   order_confirmation: "下記のとおりご注文を承りました。",
   inspection: "下記のとおり検収いたしました。",
   receipt: "下記のとおり領収いたしました。",
+  staff_invoice: "下記のとおり外注費をご請求申し上げます。",
 };
 
 /** 発行日ラベルも書類種別で分ける */
@@ -55,6 +57,7 @@ const ISSUED_LABEL: Record<string, string> = {
   estimate: "見積日",
   invoice: "請求日",
   consolidated_invoice: "請求日",
+  staff_invoice: "請求日",
   delivery: "納品日",
   purchase_order: "発注日",
   order_confirmation: "受注日",
@@ -337,9 +340,7 @@ export async function renderDocumentPdf(
   const bank = tenant.bank_info;
   const period = fmtPeriod(doc.period_start, doc.period_end);
   const vehicleInfo = doc.vehicle_info_json ?? null;
-  const vehicleLine = vehicleInfo
-    ? [vehicleInfo.model, vehicleInfo.plate].filter(Boolean).join(" / ") || null
-    : null;
+  const vehicleLine = vehicleInfo ? [vehicleInfo.model, vehicleInfo.plate].filter(Boolean).join(" / ") || null : null;
 
   const productItems = items.filter((it) => (it.item_type ?? "item") === "item");
   const breakdown =

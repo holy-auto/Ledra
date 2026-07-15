@@ -227,34 +227,38 @@ export default function RevenueAnalytics() {
             <>
               {/* Weekly Bar Chart */}
               <div className="flex items-end gap-1 sm:gap-2 h-36 sm:h-44 overflow-x-auto">
-                {data.weeks.map((w, idx) => {
+                {(() => {
                   const weekMax = Math.max(...data.weeks.map((x) => x.combinedTotal), 1);
-                  const height = weekMax > 0 ? (w.combinedTotal / weekMax) * 100 : 0;
-                  const isCurrentWeek = idx === data.weeks.length - 1;
-                  return (
-                    <div key={w.week} className="flex-1 flex flex-col items-center gap-1 group">
-                      <div className="text-[10px] font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                        {formatJpy(w.combinedTotal)}
+                  return data.weeks.map((w, idx) => {
+                    const height = weekMax > 0 ? (w.combinedTotal / weekMax) * 100 : 0;
+                    const isCurrentWeek = idx === data.weeks.length - 1;
+                    return (
+                      <div key={w.week} className="flex-1 flex flex-col items-center gap-1 group">
+                        <div className="text-[10px] font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                          {formatJpy(w.combinedTotal)}
+                        </div>
+                        <div className="h-4" />
+                        <div
+                          className="w-full rounded-t-lg transition-all duration-500 ease-out min-h-[4px]"
+                          style={{
+                            height: `${Math.max(height, 3)}%`,
+                            background: isCurrentWeek
+                              ? "linear-gradient(180deg, var(--accent-blue), var(--accent-violet))"
+                              : w.combinedTotal > 0
+                                ? "linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 30%, transparent), color-mix(in srgb, var(--accent-violet) 20%, transparent))"
+                                : "var(--color-border-default)",
+                          }}
+                        />
+                        <div
+                          className={`text-[10px] mt-1 ${isCurrentWeek ? "font-semibold text-accent" : "text-muted"}`}
+                        >
+                          {w.label}
+                        </div>
+                        <div className="text-[9px] text-muted">{w.count}件</div>
                       </div>
-                      <div className="h-4" />
-                      <div
-                        className="w-full rounded-t-lg transition-all duration-500 ease-out min-h-[4px]"
-                        style={{
-                          height: `${Math.max(height, 3)}%`,
-                          background: isCurrentWeek
-                            ? "linear-gradient(180deg, var(--accent-blue), var(--accent-violet))"
-                            : w.combinedTotal > 0
-                              ? "linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 30%, transparent), color-mix(in srgb, var(--accent-violet) 20%, transparent))"
-                              : "var(--color-border-default)",
-                        }}
-                      />
-                      <div className={`text-[10px] mt-1 ${isCurrentWeek ? "font-semibold text-accent" : "text-muted"}`}>
-                        {w.label}
-                      </div>
-                      <div className="text-[9px] text-muted">{w.count}件</div>
-                    </div>
-                  );
-                })}
+                    );
+                  });
+                })()}
               </div>
 
               {/* Weekly Table */}

@@ -104,8 +104,10 @@ export async function GET(req: NextRequest) {
 
     // 統計
     const total = enriched.length;
+    // staff_invoice はテナントが外注職人へ「支払う」金額（未払費用）であり、
+    // 顧客からの「未入金額」（売掛金）とは意味が逆なので合算しない。
     const unpaidAmount = enriched
-      .filter((d) => d.status === "sent" || d.status === "accepted")
+      .filter((d) => (d.status === "sent" || d.status === "accepted") && d.doc_type !== "staff_invoice")
       .reduce((sum, d) => sum + (d.total ?? 0), 0);
 
     return apiJson({
@@ -143,6 +145,12 @@ export async function POST(req: NextRequest) {
     const docType = input.doc_type as DocType;
     if (!DOC_TYPES[docType]) {
       return apiValidationError("invalid doc_type");
+    }
+    // 外注請求書（内部精算・金銭データ）は staff_members と同じ管理ロール限定にする。
+    // RLS 側にも RESTRICTIVE ポリシーがあるが、この POST は service-role でRLSを
+    // バイパスするため、API 層でも明示的にガードする。
+    if (docType === "staff_invoice" && !requireMinRole(caller, "admin")) {
+      return apiForbidden("外注請求書の作成は管理者ロールのみ可能です。");
     }
 
     const customerId = input.customer_id || null;
@@ -189,6 +197,21 @@ export async function POST(req: NextRequest) {
     const tenantRegNumberValid = isValidRegistrationNumber(tenantInfo.data?.registration_number ?? null);
     const isInvoiceCompliant = !!input.is_invoice_compliant && tenantRegNumberValid;
 
+    // staff_member_id は他テナントの staff_members を指せてしまわないよう検証し、
+    // 併せて宛先名（PDF・詳細画面表示用）に職人名を補完する。
+    let staffMemberName: string | null = null;
+    if (docType === "staff_invoice") {
+      if (!staffMemberId) return apiValidationError("外注職人を選択してください。");
+      const { data: staffRow } = await admin
+        .from("staff_members")
+        .select("name")
+        .eq("id", staffMemberId)
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
+      if (!staffRow) return apiValidationError("無効な外注職人が指定されました。");
+      staffMemberName = staffRow.name;
+    }
+
     const { itemsJson, subtotal, tax, total, taxBreakdown } = calcItems(items, taxRate, isTaxInclusive);
 
     const row = {
@@ -196,7 +219,7 @@ export async function POST(req: NextRequest) {
       tenant_id: caller.tenantId,
       customer_id: customerId,
       staff_member_id: staffMemberId,
-      recipient_name: recipientName,
+      recipient_name: recipientName || staffMemberName,
       recipient_honorific: recipientHonorific,
       recipient_postal_code: recipientPostalCode,
       recipient_address: recipientAddress,
@@ -251,14 +274,18 @@ export async function POST(req: NextRequest) {
       return apiInternalError(error, "documents POST");
     }
 
-    // 品目マスタに無い明細は自動登録する（保存自体は失敗させない fire-and-forget）
-    after(async () => {
-      try {
-        await autoRegisterMenuItems(admin, caller.tenantId, items);
-      } catch {
-        // 自動登録の失敗は握り潰す（帳票保存自体は既に成功済み）
-      }
-    });
+    // 品目マスタに無い明細は自動登録する（保存自体は失敗させない fire-and-forget）。
+    // staff_invoice の明細は cost_price/margin_rate が「案件金額/レス率」という別意味
+    // なので、通常の原価/利益率として品目マスタへ登録してしまわないよう除外する。
+    if (docType !== "staff_invoice") {
+      after(async () => {
+        try {
+          await autoRegisterMenuItems(admin, caller.tenantId, items);
+        } catch {
+          // 自動登録の失敗は握り潰す（帳票保存自体は既に成功済み）
+        }
+      });
+    }
 
     return apiJson({ ok: true, document: data });
   } catch (e) {
@@ -316,11 +343,28 @@ export async function PUT(req: NextRequest) {
       return apiValidationError("送付済みの請求書は内容を編集できません。");
     }
 
+    // 外注請求書（金銭データ）は staff_members と同じ管理ロール限定にする。
+    // POST 側と同じ理由（service-role で RLS をバイパスするため）で API 層でもガードする。
+    if (existing?.doc_type === "staff_invoice" && !requireMinRole(caller, "admin")) {
+      return apiForbidden("外注請求書の更新は管理者ロールのみ可能です。");
+    }
+
     // 「確定 (draft→sent)」を検出するため、ステータス更新時は変更前の状態を控える。
     const priorStatus: string | null = body.status !== undefined ? (existing?.status ?? null) : null;
 
     // RLS をバイパスしてサービスロールで UPDATE（tenant_id で必ずスコープ限定）
     const { admin } = createTenantScopedAdmin(caller.tenantId);
+
+    // staff_member_id を変更する場合、他テナントの staff_members を指せないよう検証する。
+    if (body.staff_member_id) {
+      const { data: staffRow } = await admin
+        .from("staff_members")
+        .select("id")
+        .eq("id", body.staff_member_id)
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
+      if (!staffRow) return apiValidationError("無効な外注職人が指定されました。");
+    }
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
@@ -392,8 +436,9 @@ export async function PUT(req: NextRequest) {
       return apiInternalError(error, "documents PUT");
     }
 
-    // 品目マスタに無い明細は自動登録する（保存自体は失敗させない fire-and-forget）
-    if (body.items !== undefined) {
+    // 品目マスタに無い明細は自動登録する（保存自体は失敗させない fire-and-forget）。
+    // staff_invoice は cost_price/margin_rate が別意味のため対象外（POST と同じ理由）。
+    if (body.items !== undefined && data?.doc_type !== "staff_invoice") {
       after(async () => {
         try {
           await autoRegisterMenuItems(admin, caller.tenantId, body.items ?? []);

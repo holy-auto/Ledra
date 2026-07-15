@@ -32,7 +32,10 @@ type PeriodFilter = "all" | "week" | "month" | "year";
 function periodRange(period: PeriodFilter): { from: string; to: string } | null {
   if (period === "all") return null;
   const now = new Date();
-  const toStr = (d: Date) => d.toISOString().slice(0, 10);
+  // toISOString() はUTCに変換するため、JST等UTC+の環境では日付がズレる
+  // （例: 7/1 00:00 JSTはUTCでは6/30 15:00）。ローカル日付をそのまま文字列化する。
+  const toStr = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   if (period === "year") {
     return { from: `${now.getFullYear()}-01-01`, to: `${now.getFullYear()}-12-31` };
   }
