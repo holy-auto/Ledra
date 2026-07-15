@@ -1,0 +1,28 @@
+/* Noto Sans JP + Geist Mono — same families the real app self-hosts at
+   Next.js build time via next/font/google (src/app/layout.tsx). next/font
+   doesn't leave static font files in the repo for the scraper to find, so
+   these are harvested directly from Google Fonts (same public source
+   next/font itself pulls from) — see .design-sync/NOTES.md.
+   Weight 700 is intentionally omitted: DESIGN_SYSTEM.md says Ledra never
+   uses 700 for Noto Sans JP ("太字は密度を下げる"). */
+@font-face {
+  font-family: "Noto Sans JP";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./noto-sans-jp-400.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Noto Sans JP";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./noto-sans-jp-500.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./geist-mono-400.ttf") format("truetype");
+}
