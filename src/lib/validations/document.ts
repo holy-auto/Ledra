@@ -9,6 +9,7 @@ const docTypes = [
   "receipt",
   "invoice",
   "consolidated_invoice",
+  "staff_invoice",
 ] as const;
 const docStatuses = ["draft", "sent", "accepted", "paid", "overdue", "rejected", "cancelled"] as const;
 const honorifics = ["御中", "様", ""] as const;
@@ -39,6 +40,8 @@ export type DocumentItem = z.infer<typeof documentItemSchema>;
 export const documentCreateSchema = z.object({
   doc_type: z.enum(docTypes, { message: "無効な帳票タイプです。" }),
   customer_id: z.string().uuid().nullable().optional(),
+  /** 外注請求書 (doc_type=staff_invoice) の宛先となる外注職人。 */
+  staff_member_id: z.string().uuid().nullable().optional(),
   recipient_name: z
     .string()
     .trim()

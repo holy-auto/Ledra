@@ -33,6 +33,7 @@ type OtherDocument = {
   doc_number: string;
   doc_type: string;
   total: number;
+  status: string;
 };
 
 type Channel = "email" | "line" | "sms";
@@ -75,7 +76,8 @@ export default function ShareDocumentModal({
     fetcher,
     adminSwrConfig,
   );
-  const otherDocs = (otherDocsData?.documents ?? []).filter((d) => d.id !== doc.id);
+  // 送付済み（下書き以外）の帳票は誤って二重送付しないよう候補から除外する。
+  const otherDocs = (otherDocsData?.documents ?? []).filter((d) => d.id !== doc.id && d.status === "draft");
 
   // 一覧ページからの一括送付では顧客の連絡先が渡されないため、customer_id から補完する
   const shouldFetchCustomer = open && !!doc.customer_id && customerEmail === undefined && customerPhone === undefined;

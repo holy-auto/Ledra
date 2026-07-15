@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import { SUGGESTED_SKILLS } from "@/lib/staff/skills";
@@ -21,6 +22,8 @@ type Staff = {
   color: string | null;
   is_active: boolean;
   note: string | null;
+  /** レス率（0〜1）。外注請求書の金額自動計算に使うデフォルト値。 */
+  commission_rate: number | null;
   stats: StaffStats;
 };
 type Member = { user_id: string; display_name: string | null; email: string | null };
@@ -41,6 +44,8 @@ type Draft = {
   phone: string;
   skillsText: string;
   is_active: boolean;
+  /** レス率の入力欄用テキスト（%表記、例: "70"）。空文字は未設定。 */
+  commissionRateText: string;
 };
 
 const EMPTY_DRAFT: Draft = {
@@ -51,6 +56,7 @@ const EMPTY_DRAFT: Draft = {
   phone: "",
   skillsText: "",
   is_active: true,
+  commissionRateText: "",
 };
 
 function parseSkills(text: string): string[] {
@@ -131,6 +137,7 @@ export default function StaffClient() {
       phone: s.phone ?? "",
       skillsText: s.skills.join(", "),
       is_active: s.is_active,
+      commissionRateText: s.commission_rate != null ? String(Math.round(s.commission_rate * 10000) / 100) : "",
     });
   };
 
@@ -142,6 +149,13 @@ export default function StaffClient() {
     }
     setSaving(true);
     setMsg(null);
+    const rateInput = draft.commissionRateText.trim();
+    const rate = rateInput === "" ? null : Number(rateInput);
+    if (rate != null && (isNaN(rate) || rate < 0 || rate > 100)) {
+      setMsg({ text: "レス率は0〜100の数値で入力してください", ok: false });
+      setSaving(false);
+      return;
+    }
     const payload = {
       ...(draft.id ? { id: draft.id } : {}),
       name: draft.name.trim(),
@@ -151,6 +165,7 @@ export default function StaffClient() {
       phone: draft.phone.trim() || null,
       skills: parseSkills(draft.skillsText),
       is_active: draft.is_active,
+      commission_rate: rate == null ? null : rate / 100,
     };
     try {
       const res = await fetch("/api/admin/staff", {
@@ -335,6 +350,24 @@ export default function StaffClient() {
                 onChange={(e) => setDraft({ ...draft, phone: e.target.value })}
               />
             </div>
+            {draft.kind === "external" && (
+              <div className="space-y-1">
+                <label className="text-xs text-secondary">レス率（%・任意）</label>
+                <input
+                  className="input-field"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.1"
+                  placeholder="例: 70"
+                  value={draft.commissionRateText}
+                  onChange={(e) => setDraft({ ...draft, commissionRateText: e.target.value })}
+                />
+                <p className="text-[11px] text-muted">
+                  外注請求書の作成時、案件金額に自動で掛け算して支払額を算出します。
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="space-y-1">
@@ -448,6 +481,14 @@ export default function StaffClient() {
                 <button type="button" onClick={() => openShifts(s)} className="btn-secondary text-xs px-3 py-1.5">
                   シフト {shiftStaffId === s.id ? "▲" : "▼"}
                 </button>
+                {s.kind === "external" && (
+                  <Link
+                    href={`/admin/documents?type=staff_invoice&create=1&staff_id=${s.id}`}
+                    className="btn-secondary text-xs px-3 py-1.5"
+                  >
+                    外注請求書を作成
+                  </Link>
+                )}
                 <button
                   type="button"
                   onClick={() => removeStaff(s)}

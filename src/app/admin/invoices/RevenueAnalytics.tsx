@@ -19,11 +19,19 @@ type YearData = {
   count: number;
 };
 
+type WeekData = {
+  week: string;
+  label: string;
+  combinedTotal: number;
+  count: number;
+};
+
 type CustomerRevenue = { id: string; name: string; total: number };
 
 type AnalyticsData = {
   months: MonthData[];
   years: YearData[];
+  weeks: WeekData[];
   current: {
     month: number;
     monthLabel: string;
@@ -68,7 +76,7 @@ function GrowthBadge({ rate }: { rate: number | null }) {
 export default function RevenueAnalytics() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<"monthly" | "yearly">("monthly");
+  const [viewMode, setViewMode] = useState<"weekly" | "monthly" | "yearly">("monthly");
   const [activeCustomerId, setActiveCustomerId] = useState("__all__");
 
   useEffect(() => {
@@ -159,6 +167,15 @@ export default function RevenueAnalytics() {
           <div className="flex gap-1 rounded-lg p-0.5" style={{ background: "var(--color-border-default)" }}>
             <button
               type="button"
+              onClick={() => setViewMode("weekly")}
+              className={`px-3 py-1.5 rounded-md text-[11px] font-medium transition-all ${
+                viewMode === "weekly" ? "bg-surface text-accent shadow-sm" : "text-secondary hover:text-primary"
+              }`}
+            >
+              週別
+            </button>
+            <button
+              type="button"
               onClick={() => setViewMode("monthly")}
               className={`px-3 py-1.5 rounded-md text-[11px] font-medium transition-all ${
                 viewMode === "monthly" ? "bg-surface text-accent shadow-sm" : "text-secondary hover:text-primary"
@@ -206,7 +223,77 @@ export default function RevenueAnalytics() {
         )}
 
         <div className={`space-y-4 transition-opacity ${loading ? "opacity-50" : ""}`}>
-          {viewMode === "monthly" ? (
+          {viewMode === "weekly" ? (
+            <>
+              {/* Weekly Bar Chart */}
+              <div className="flex items-end gap-1 sm:gap-2 h-36 sm:h-44 overflow-x-auto">
+                {(() => {
+                  const weekMax = Math.max(...data.weeks.map((x) => x.combinedTotal), 1);
+                  return data.weeks.map((w, idx) => {
+                    const height = weekMax > 0 ? (w.combinedTotal / weekMax) * 100 : 0;
+                    const isCurrentWeek = idx === data.weeks.length - 1;
+                    return (
+                      <div key={w.week} className="flex-1 flex flex-col items-center gap-1 group">
+                        <div className="text-[10px] font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                          {formatJpy(w.combinedTotal)}
+                        </div>
+                        <div className="h-4" />
+                        <div
+                          className="w-full rounded-t-lg transition-all duration-500 ease-out min-h-[4px]"
+                          style={{
+                            height: `${Math.max(height, 3)}%`,
+                            background: isCurrentWeek
+                              ? "linear-gradient(180deg, var(--accent-blue), var(--accent-violet))"
+                              : w.combinedTotal > 0
+                                ? "linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 30%, transparent), color-mix(in srgb, var(--accent-violet) 20%, transparent))"
+                                : "var(--color-border-default)",
+                          }}
+                        />
+                        <div
+                          className={`text-[10px] mt-1 ${isCurrentWeek ? "font-semibold text-accent" : "text-muted"}`}
+                        >
+                          {w.label}
+                        </div>
+                        <div className="text-[9px] text-muted">{w.count}件</div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+
+              {/* Weekly Table */}
+              <div className="border-t border-border-subtle pt-3">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-[12px]">
+                    <thead>
+                      <tr>
+                        <th className="text-left py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
+                          週
+                        </th>
+                        <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
+                          合計
+                        </th>
+                        <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
+                          件数
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border-subtle">
+                      {[...data.weeks].reverse().map((w, idx) => (
+                        <tr key={w.week} className={idx === 0 ? "bg-accent-dim" : ""}>
+                          <td className="py-2 px-2 text-secondary font-medium">{w.label}</td>
+                          <td className="py-2 px-2 text-right font-semibold text-primary">
+                            {formatJpy(w.combinedTotal)}
+                          </td>
+                          <td className="py-2 px-2 text-right text-muted">{w.count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          ) : viewMode === "monthly" ? (
             <>
               {/* Monthly Bar Chart */}
               <div className="flex items-end gap-1 sm:gap-2 h-36 sm:h-44 overflow-x-auto">
