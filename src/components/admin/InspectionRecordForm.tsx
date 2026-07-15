@@ -335,7 +335,7 @@ export default function InspectionRecordForm({
               カメラで撮影
               <input
                 type="file"
-                accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                accept="image/jpeg,image/png,image/webp"
                 capture="environment"
                 className="hidden"
                 disabled={uploading || photos.length >= MAX_PHOTOS}
@@ -353,7 +353,7 @@ export default function InspectionRecordForm({
               アルバムから選択
               <input
                 type="file"
-                accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                accept="image/jpeg,image/png,image/webp"
                 multiple
                 className="hidden"
                 disabled={uploading || photos.length >= MAX_PHOTOS}
