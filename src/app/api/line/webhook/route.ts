@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiInternalError, apiError } from "@/lib/api/response";
 import { verifySignature, handleWebhookEvents } from "@/lib/line/client";
@@ -72,9 +72,16 @@ export async function POST(req: NextRequest) {
     }
 
     if (eventsToProcess.length > 0) {
-      // 非同期で処理（LINE は 200 を即返す必要がある）
-      handleWebhookEvents(tenantId, eventsToProcess as Parameters<typeof handleWebhookEvents>[1]).catch((e) => {
-        console.error("[LINE webhook] event handling error:", e);
+      // 非同期で処理（LINE は 200 を即返す必要がある）。
+      // after() でレスポンス確定後もサーバーレス実行環境が処理完了まで生かす
+      // （素の fire-and-forget だとレスポンス送信直後に打ち切られうる）。
+      const eventsForHandler = eventsToProcess as Parameters<typeof handleWebhookEvents>[1];
+      after(async () => {
+        try {
+          await handleWebhookEvents(tenantId, eventsForHandler);
+        } catch (e) {
+          console.error("[LINE webhook] event handling error:", e);
+        }
       });
     }
 
