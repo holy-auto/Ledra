@@ -14,6 +14,21 @@
 - 起票日: YYYY-MM-DD
 ```
 
+## 点検写真OCR・担当メカニック提案のフロントUI差し込み
+- 状況: repair-workflow-ai で、点検写真OCR API (`/api/admin/inspection-records/ocr`)
+  と担当メカニック候補の保存 (`reservations.ai_assignee_suggestion`) はバックエンド
+  側を実装したが、それらを実画面へ差し込むフロントUIが未着手。具体的には
+  (a) 点検表フォームに「メーター/タイヤ写真を撮る→数値を自動入力」ボタン、
+  (b) 案件詳細 (`/admin/jobs/[id]`) の担当ピッカーへ AI 候補を★表示する導線。
+- 選択肢: (a) 同ブランチで続けてUIまで実装 / (b) UIは別PRに切り出す /
+  (c) 既存の VoiceMemoPanel / JobStatusPanel パターンに合わせて段階実装。
+- 影響範囲: UIが無いとバックエンドは呼ばれず価値が出ない。ただしAPIは独立して
+  テスト・利用可能なため、UI着手前でも壊れはしない。
+- 次のアクション: UIスコープを確認して着手判断。既存の
+  `VoiceMemoPanel.tsx`（写真/音声→フォーム流し込み）と `JobStatusPanel.tsx`
+  （スキル一致順ソート）が最も流用しやすい。
+- 起票日: 2026-07-16
+
 ## conversationFlowPostback.ts の未await fire-and-forget呼び出しへの対応要否
 - 状況: PR #761 のコードレビューで、`src/lib/ai/automation/conversationFlowPostback.ts`
   の `handleSlotSelected`（LINE予約枠選択postbackの処理）内に、
