@@ -6,6 +6,9 @@ import { claimWebhookEvent } from "@/lib/webhooks/idempotency";
 import { readSecret } from "@/lib/crypto/tenantSecrets";
 
 export const dynamic = "force-dynamic";
+// after() 内で車検証OCR等のLLM呼び出しチェーンを実行するため、既定の実行時間では
+// 途中で打ち切られうる（vehicles/parse-shakken 等の他OCRルートと同じ60秒に合わせる）。
+export const maxDuration = 60;
 
 /**
  * POST /api/line/webhook?tenant_id=xxx
