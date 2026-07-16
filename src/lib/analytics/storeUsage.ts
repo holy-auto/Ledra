@@ -84,12 +84,6 @@ function countByTenant(rows: IdRow[]): Map<string, number> {
   return m;
 }
 
-function tenantsWith(rows: IdRow[]): Set<string> {
-  const s = new Set<string>();
-  for (const r of rows) if (r.tenant_id) s.add(r.tenant_id);
-  return s;
-}
-
 /**
  * 店舗別利用状況を集計する純関数。
  *
@@ -149,21 +143,33 @@ export function buildStoreUsage(input: {
   // 操作回数の多い順を headline に。
   stores.sort((a, b) => b.operations - a.operations || b.reservations - a.reservations);
 
-  const activeStoreCount = input.tenants.filter((t) => t.is_active ?? false).length;
+  const activeTenantIds = new Set(input.tenants.filter((t) => t.is_active ?? false).map((t) => t.id));
+  const activeStoreCount = activeTenantIds.size;
   // 利用率の分母はアクティブ店舗数。0 のときは全店舗数にフォールバック。
-  const denom = activeStoreCount > 0 ? activeStoreCount : input.tenants.length;
+  const allTenantIds = new Set(input.tenants.map((t) => t.id));
+  const denomIds = activeStoreCount > 0 ? activeTenantIds : allTenantIds;
+  const denom = denomIds.size;
 
-  const featureSets: Record<string, Set<string>> = {
-    reservations: tenantsWith(input.reservationRows),
-    work_records: tenantsWith(input.operationsRows),
-    invoices: tenantsWith(input.invoiceRows),
-    certificates: tenantsWith(input.certificateRows),
-    customers: tenantsWith(input.customerRows),
-    payments: tenantsWith(input.paymentRows),
+  // 利用率の分子は分母と同じ母集団 (アクティブ店舗) に限定する。
+  // 期中に非アクティブ化した店舗や、tenants に無い tenant_id の行を数えると
+  // 利用率が 100% を超えてしまうため、母集団内の店舗だけを数える。
+  const usingWithin = (rows: IdRow[]): number => {
+    const s = new Set<string>();
+    for (const r of rows) if (r.tenant_id && denomIds.has(r.tenant_id)) s.add(r.tenant_id);
+    return s.size;
+  };
+
+  const featureRows: Record<string, IdRow[]> = {
+    reservations: input.reservationRows,
+    work_records: input.operationsRows,
+    invoices: input.invoiceRows,
+    certificates: input.certificateRows,
+    customers: input.customerRows,
+    payments: input.paymentRows,
   };
 
   const feature_adoption: FeatureAdoption[] = STORE_USAGE_FEATURES.map((f) => {
-    const using = featureSets[f.key]?.size ?? 0;
+    const using = usingWithin(featureRows[f.key] ?? []);
     return {
       key: f.key,
       label: f.label,

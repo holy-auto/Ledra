@@ -98,6 +98,19 @@ describe("buildStoreUsage", () => {
     expect(payments.adoption_rate).toBe(0);
   });
 
+  it("caps adoption at 100% by counting only active stores in the numerator", () => {
+    // 非アクティブ店舗 t3 が期中に請求を作成 → 分子に混ぜると 2/2=100% を超える。
+    const r = buildStoreUsage({
+      ...base,
+      invoiceRows: [{ tenant_id: "t1" }, { tenant_id: "t3" }],
+    });
+    const invoices = r.feature_adoption.find((f) => f.key === "invoices")!;
+    // t3 は非アクティブなので分子に含めない → t1 のみ 1/2 = 0.5。
+    expect(invoices.tenants_using).toBe(1);
+    expect(invoices.adoption_rate).toBe(0.5);
+    expect(r.feature_adoption.every((f) => (f.adoption_rate ?? 0) <= 1)).toBe(true);
+  });
+
   it("passes through cumulative totals unchanged", () => {
     const r = buildStoreUsage(base);
     expect(r.cumulative).toEqual({ reservations: 42, work_records: 130, invoices: 17 });
