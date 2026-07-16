@@ -62,7 +62,6 @@ export default function DeliveryNoteUpload({ installationId }: { installationId:
           ref={inputRef}
           type="file"
           accept="image/jpeg,image/png,image/webp,image/gif"
-          capture="environment"
           className="hidden"
           disabled={uploading}
           onChange={handleFile}

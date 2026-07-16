@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiInternalError, apiError } from "@/lib/api/response";
 import { verifySignature, handleWebhookEvents } from "@/lib/line/client";
@@ -6,6 +6,9 @@ import { claimWebhookEvent } from "@/lib/webhooks/idempotency";
 import { readSecret } from "@/lib/crypto/tenantSecrets";
 
 export const dynamic = "force-dynamic";
+// after() 内で車検証OCR等のLLM呼び出しチェーンを実行するため、既定の実行時間では
+// 途中で打ち切られうる（vehicles/parse-shakken 等の他OCRルートと同じ60秒に合わせる）。
+export const maxDuration = 60;
 
 /**
  * POST /api/line/webhook?tenant_id=xxx
@@ -72,9 +75,16 @@ export async function POST(req: NextRequest) {
     }
 
     if (eventsToProcess.length > 0) {
-      // 非同期で処理（LINE は 200 を即返す必要がある）
-      handleWebhookEvents(tenantId, eventsToProcess as Parameters<typeof handleWebhookEvents>[1]).catch((e) => {
-        console.error("[LINE webhook] event handling error:", e);
+      // 非同期で処理（LINE は 200 を即返す必要がある）。
+      // after() でレスポンス確定後もサーバーレス実行環境が処理完了まで生かす
+      // （素の fire-and-forget だとレスポンス送信直後に打ち切られうる）。
+      const eventsForHandler = eventsToProcess as Parameters<typeof handleWebhookEvents>[1];
+      after(async () => {
+        try {
+          await handleWebhookEvents(tenantId, eventsForHandler);
+        } catch (e) {
+          console.error("[LINE webhook] event handling error:", e);
+        }
       });
     }
 

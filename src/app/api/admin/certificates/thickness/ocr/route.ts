@@ -17,7 +17,7 @@ import { apiOk, apiUnauthorized, apiForbidden, apiValidationError, apiInternalEr
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { extractThicknessReadings } from "@/lib/ai/thicknessGaugeOcr";
 import { mapPanelToPreset } from "@/lib/certificates/thicknessPanels";
-import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
+import { loadAiAutomationSettings, isSourceAllowed } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 export const runtime = "nodejs";
@@ -61,7 +61,10 @@ export async function POST(req: NextRequest) {
   // 5) AI マスタースイッチ OFF / 月次コストキャップ超過時はスキップして手打ちにフォールバック
   const usage = startAiRouteUsage("/api/admin/certificates/thickness/ocr");
   const aiSettings = await loadAiAutomationSettings(caller.tenantId);
-  if (!aiSettings.enabled) {
+  // グローバル停止に加え、管理者が「書類画像を Vision に送る」情報源を無効化していれば
+  // 画像を Anthropic に送らず手打ちにフォールバックする。膜厚計表示/測定シートの読取は
+  // 車検証 OCR (parse-shakken) と同じ「書類画像→フィールド抽出」なので identity_documents で判定。
+  if (!aiSettings.enabled || !isSourceAllowed(aiSettings, "identity_documents")) {
     usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
     return apiOk({
       status: "skipped" as const,
