@@ -63,6 +63,15 @@ Key tokens (see `styles.css` for the full set): `--bg-base`, `--bg-surface-solid
 
 Font weight: Noto Sans JP UI text stays at 400/500; 600 only on `.text-h2`/`.text-h3`/`.text-micro`-level headings. **Never use weight 700** — it's an intentional house rule (bold reduces density/refinement in this system).
 
+## Font licensing
+
+Both shipped font families are SIL Open Font License 1.1 — redistribution requires the copyright + license notice to travel with the files:
+
+- **Noto Sans JP** — Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'
+- **Geist Mono** — Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font.git)
+
+Both are licensed under the SIL Open Font License, Version 1.1; the full license text is available at https://scripts.sil.org/OFL and also ships alongside the font files in `fonts/OFL-NotoSansJP.txt` / `fonts/OFL-GeistMono.txt` when present. This notice is the authoritative copy — `fonts.css` itself is machine-generated from bare `@font-face` rules only and cannot carry a comment.
+
 ## Where the truth lives
 
 - `styles.css` (imports `_ds_bundle.css` + `fonts/fonts.css`) — the full compiled stylesheet, tokens, and every class above. Read it before styling anything non-trivial.
