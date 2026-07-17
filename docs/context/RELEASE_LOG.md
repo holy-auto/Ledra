@@ -92,3 +92,12 @@
 - ホーム最終CTAコピーのA/B実験を追加 (commit d81dc63)
 - マイグレーションのCHECK制約追加をNOT VALID+VALIDATEに変更 (commit 0e49489,
   詳細は DECISION_LOG.md)
+
+## 2026-07 店舗利用状況ダッシュボード（運営専用）
+- 内容: 運営が店舗ごとの利用状況を横断確認できるダッシュボードを追加。
+  - 店舗別 月間: 操作回数 / 予約 / 請求 / アクティブ会員 / 最終ログイン
+  - 累計件数: 予約・作業記録・請求（全期間・全店舗）
+  - 機能別利用率: 当月に各機能を使った店舗の割合（予約/作業記録/請求/証明書/顧客/決済）
+- 対象: `/admin/platform/store-usage`（platformOnly）。API `/api/admin/platform/store-usage`、
+  集計 `src/lib/analytics/storeUsage.ts`（ユニットテスト付き）。
+- 注記: ログイン「回数」は未記録のため、last_sign_in_at ベースの「アクティブ会員」で近似。
