@@ -14,6 +14,7 @@ import { computeWorkDurationText } from "@/lib/admin/work-duration";
 import { enqueueOrFetch } from "@/lib/outbox/enqueueOrFetch";
 import { inferJobSkillTags, skillMatchScore, SERVICE_TYPES } from "@/lib/staff/skills";
 import { computeStepGuideState } from "@/lib/workflow/stepChecklist";
+import StepGuidePanel from "@/components/workflow/StepGuidePanel";
 import { STATUS_FLOW, STATUS_LABEL, STATUS_HINT, type JobReservation, type WorkflowStep } from "./types";
 
 type MemberRow = {
@@ -404,70 +405,14 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
         </div>
 
         {/* 現場ガイド: この工程で撮る写真・確認する項目（撮り忘れ／確認漏れ防止） */}
-        {guide && guide.total > 0 && !isCancelled && currentStatus !== "completed" && (
-          <div className="mt-4 rounded-xl border border-border-subtle bg-inset p-3 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold tracking-[0.14em] text-muted">この工程のガイド</span>
-              <span className={`text-[11px] font-semibold ${guide.allSatisfied ? "text-success-text" : "text-muted"}`}>
-                {guide.allSatisfied ? "✓ 確認済み" : `未確認 ${guide.outstanding}件`}
-              </span>
-            </div>
-
-            {pendingWarn && guide.outstanding > 0 && (
-              <div className="rounded-lg border border-warning/30 bg-warning-dim px-3 py-2 text-[11px] text-warning-text">
-                未確認の項目が {guide.outstanding}{" "}
-                件あります。撮り忘れ・確認漏れがないかご確認ください。問題なければ「このまま進める」を押してください。
-              </div>
-            )}
-
-            {guide.photos.length > 0 && (
-              <div className="space-y-1">
-                <div className="text-[11px] text-muted">📸 撮る写真</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {guide.photos.map((p) => (
-                    <button
-                      key={p.label}
-                      type="button"
-                      onClick={() => togglePhoto(p.label)}
-                      className={`rounded-full border px-2.5 py-1 text-[11px] transition-colors ${
-                        p.done
-                          ? "border-success/30 bg-success-dim text-success-text"
-                          : "border-border-default bg-surface text-secondary hover:bg-surface-hover"
-                      }`}
-                    >
-                      {p.done ? "✓ " : "○ "}
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {guide.checks.length > 0 && (
-              <div className="space-y-1">
-                <div className="text-[11px] text-muted">✓ 確認項目</div>
-                <div className="flex flex-col gap-1">
-                  {guide.checks.map((c) => (
-                    <button
-                      key={c.label}
-                      type="button"
-                      onClick={() => toggleCheck(c.label)}
-                      className="flex items-center gap-2 rounded-lg px-1 py-0.5 text-left text-xs text-secondary hover:bg-surface-hover"
-                    >
-                      <span
-                        className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border text-[10px] ${
-                          c.done ? "border-success bg-success text-white" : "border-border-default bg-surface"
-                        }`}
-                      >
-                        {c.done ? "✓" : ""}
-                      </span>
-                      <span className={c.done ? "text-muted line-through" : ""}>{c.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+        {!isCancelled && currentStatus !== "completed" && (
+          <StepGuidePanel
+            guide={guide}
+            onTogglePhoto={togglePhoto}
+            onToggleCheck={toggleCheck}
+            pendingWarn={pendingWarn}
+            className="mt-4 rounded-xl border border-border-subtle bg-inset p-3 space-y-2.5"
+          />
         )}
 
         {/* 担当者ピッカー + 作業タイマー */}
