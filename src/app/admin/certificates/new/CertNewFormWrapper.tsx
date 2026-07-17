@@ -16,6 +16,7 @@ import CoatingProductsSection from "./CoatingProductsSection";
 import PpfCoverageSection from "./PpfCoverageSection";
 import MaintenanceDetailsSection from "./MaintenanceDetailsSection";
 import BodyRepairDetailsSection from "./BodyRepairDetailsSection";
+import DamageMapSection from "./DamageMapSection";
 import AccessoryDetailsSection from "./AccessoryDetailsSection";
 import PhotoUploadSection, { type PhotoUploadHandle } from "./PhotoUploadSection";
 import ManufacturerTemplatePicker from "./ManufacturerTemplatePicker";
@@ -702,8 +703,10 @@ export default function CertNewFormWrapper({
 
         {/* ━━━ 2c. 鈑金塗装内容（鈑金塗装テンプレート時のみ） ━━━ */}
         {isBodyRepair && (
-          <section id="sec-detail-body-repair" className="border-t border-border-subtle py-6">
+          <section id="sec-detail-body-repair" className="border-t border-border-subtle py-6 space-y-6">
             <BodyRepairDetailsSection />
+            {/* 車両図タップで傷・損傷位置を記録（damage_map_json）。 */}
+            <DamageMapSection />
           </section>
         )}
 
