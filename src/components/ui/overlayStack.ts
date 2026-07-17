@@ -6,18 +6,17 @@
 // Every overlay root uses `position: fixed`, which always establishes its
 // own stacking context — but a NESTED stacking context is confined inside
 // its containing (DOM ancestor) overlay's own context: a BarcodeScanner
-// (z-[60]) opened from within a Drawer (z-50) cannot use its z-index to
-// visually escape ABOVE a completely separate, unrelated sibling Modal
-// (z-50) — the scanner's z-60 only outranks *other content painted inside
-// that same Drawer's stacking context*, not content in an entirely
-// different top-level stacking context. So z-index (and DOM-order
-// tiebreak) must be compared between each overlay's OUTERMOST open
-// ancestor ("root" branch) — never between two elements at different
-// nesting depths directly — and only after that branch-level comparison
-// does "deepest overlay in the winning branch" decide the final answer
-// (an ancestor is always superseded by whatever's nested inside it,
-// regardless of any z-index, since a DOM descendant always paints on top
-// of its own ancestor's content).
+// (z-[60]) opened from within a Modal (z-50) cannot use its z-index to
+// visually escape ABOVE a completely separate sibling Modal (z-50), even
+// if that sibling has no scanner of its own — the nested scanner's z-60
+// only outranks other content painted inside its own Modal's stacking
+// context. Finding the true topmost overlay therefore means walking the
+// nesting tree one level at a time: at the top level, rank the overlays
+// with no open ancestor against each other; whichever wins, look at what's
+// nested directly inside IT and rank those against each other; repeat
+// until reaching a level with nothing nested inside the winner. Comparing
+// two overlays' raw z-index is only ever valid between such direct
+// siblings — never between overlays at different nesting depths.
 const openElements = new Set<HTMLElement>();
 
 // Shared with every overlay's own focus trap, so there's one definition of
@@ -40,20 +39,10 @@ export function unregisterOverlay(el: HTMLElement) {
   // it, it falls back to <body>, which the newly-exposed overlay's own Tab
   // trap doesn't catch (it only redirects once activeElement is already
   // its first/last control). Move focus back into whatever's now topmost.
-  for (const candidate of openElements) {
-    if (!isTopOverlay(candidate)) continue;
-    if (candidate.contains(document.activeElement)) return;
-    const [first] = getFocusableElements(candidate);
-    first?.focus();
-    return;
-  }
-}
-
-function isAncestorOfAnotherOpenOverlay(el: HTMLElement): boolean {
-  for (const other of openElements) {
-    if (other !== el && el.contains(other)) return true;
-  }
-  return false;
+  const topmost = topmostOverlay();
+  if (!topmost || topmost.contains(document.activeElement)) return;
+  const [first] = getFocusableElements(topmost);
+  first?.focus();
 }
 
 function zIndexOf(el: HTMLElement): number {
@@ -61,29 +50,26 @@ function zIndexOf(el: HTMLElement): number {
   return Number.isNaN(z) ? 0 : z;
 }
 
-// The outermost currently-open overlay containing `el` (or `el` itself if
-// nothing open contains it) -- the branch whose z-index/DOM-position
-// actually competes against unrelated overlays.
-function rootOverlayOf(el: HTMLElement): HTMLElement {
-  let root = el;
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const other of openElements) {
-      if (other !== root && other.contains(root)) {
-        root = other;
-        changed = true;
-        break;
-      }
-    }
-  }
-  return root;
+// The nearest currently-open overlay that contains `el`, or null if none
+// does (i.e. `el` is a top-level overlay).
+function immediateParentOverlayOf(el: HTMLElement): HTMLElement | null {
+  const containers = [...openElements].filter((o) => o !== el && o.contains(el));
+  if (containers.length === 0) return null;
+  // The immediate (nearest) parent is the one every other container in the
+  // set also contains — i.e. the most deeply nested of them.
+  return containers.find((c) => containers.every((other) => other === c || other.contains(c))) ?? containers[0];
 }
 
-// `a` visually paints on top of `b` when they share the same immediate
-// stacking context (equal-depth siblings, or two branch roots): higher
-// z-index wins; on a tie, whichever is LATER in DOM document order does
-// (how the browser resolves equal z-index in one stacking context).
+// Open overlays whose immediate parent is exactly `parent` (null = the
+// top-level siblings with no open ancestor at all).
+function directChildOverlaysOf(parent: HTMLElement | null): HTMLElement[] {
+  return [...openElements].filter((candidate) => immediateParentOverlayOf(candidate) === parent);
+}
+
+// `a` visually paints on top of `b` when they're direct siblings under the
+// same immediate parent (or both top-level): higher z-index wins; on a
+// tie, whichever is LATER in DOM document order does (how the browser
+// resolves equal z-index within one stacking context).
 function beats(a: HTMLElement, b: HTMLElement): boolean {
   const za = zIndexOf(a);
   const zb = zIndexOf(b);
@@ -91,31 +77,17 @@ function beats(a: HTMLElement, b: HTMLElement): boolean {
   return (b.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
 }
 
+function topmostOverlay(): HTMLElement | null {
+  let winner: HTMLElement | null = null;
+  let level = directChildOverlaysOf(winner);
+  while (level.length > 0) {
+    winner = level.reduce((a, b) => (beats(b, a) ? b : a));
+    level = directChildOverlaysOf(winner);
+  }
+  return winner;
+}
+
 export function isTopOverlay(el: HTMLElement | null): boolean {
   if (!el || !openElements.has(el)) return false;
-  if (isAncestorOfAnotherOpenOverlay(el)) return false;
-
-  // 1. Which branch (outermost open ancestor) wins — confines each nested
-  // overlay's z-index to its own containing context first.
-  let winningRoot: HTMLElement | null = null;
-  for (const candidate of openElements) {
-    const candidateRoot = rootOverlayOf(candidate);
-    if (!winningRoot || (candidateRoot !== winningRoot && beats(candidateRoot, winningRoot))) {
-      winningRoot = candidateRoot;
-    }
-  }
-  if (rootOverlayOf(el) !== winningRoot) return false;
-
-  // 2. Within that winning branch, more than one leaf can exist side by
-  // side (e.g. a Drawer containing both an open ConfirmDialog and an open
-  // BarcodeScanner, neither nested in the other) — rank those leaves by
-  // the same z-index/DOM-order rule, since siblings nested at the same
-  // depth genuinely do compete within their shared containing context.
-  let winningLeaf: HTMLElement | null = null;
-  for (const candidate of openElements) {
-    if (isAncestorOfAnotherOpenOverlay(candidate)) continue;
-    if (rootOverlayOf(candidate) !== winningRoot) continue;
-    if (!winningLeaf || beats(candidate, winningLeaf)) winningLeaf = candidate;
-  }
-  return winningLeaf === el;
+  return topmostOverlay() === el;
 }

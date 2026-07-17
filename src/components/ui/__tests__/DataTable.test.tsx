@@ -88,6 +88,20 @@ describe("DataTable", () => {
     expect(button.textContent).toContain("↓");
   });
 
+  it("provides a mobile sort toolbar for sortable columns, since the desktop header is hidden below md", () => {
+    const sortableColumns: Column<TestRow>[] = [
+      { key: "name", header: "Name", render: (row) => row.name, sortable: true, sortValue: (row) => row.name },
+    ];
+    const { container } = render(<DataTable columns={sortableColumns} data={sampleData} rowKey={rowKey} />);
+    const mobileToolbar = container.querySelector(".md\\:hidden button");
+    expect(mobileToolbar).not.toBeNull();
+    expect(mobileToolbar?.textContent).toContain("Name");
+
+    fireEvent.click(mobileToolbar!);
+    expect(mobileToolbar?.getAttribute("aria-pressed")).toBe("true");
+    expect(mobileToolbar?.textContent).toContain("↑");
+  });
+
   it("renders checkboxes when selectable", () => {
     const { container } = render(
       <DataTable

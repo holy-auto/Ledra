@@ -206,4 +206,41 @@ describe("overlayStack", () => {
     unregisterOverlay(drawer);
     drawer.remove();
   });
+
+  it("ranks intermediate branches by sibling comparison before descending to leaves", () => {
+    // The exact bug Codex caught: a two-stage root-then-leaf comparison
+    // would compare the deeply-nested scanner's raw z-60 directly against
+    // a shallower sibling Modal, skipping the level in between where that
+    // scanner's own branch (ModalA) already lost. Structure:
+    //   root (no explicit overlay -- ModalA and ModalB are both top-level)
+    //     ModalA (z-50, DOM-first) -> Scanner (z-60) nested inside it
+    //     ModalB (z-50, DOM-later, sibling of ModalA, nothing nested)
+    // ModalB must win outright at the ModalA-vs-ModalB level (DOM order
+    // breaks their z-50 tie); the scanner never gets to compete since it
+    // isn't a sibling of ModalB, regardless of its higher z-index.
+    const modalA = document.createElement("div");
+    modalA.style.zIndex = "50";
+    const scanner = document.createElement("div");
+    scanner.style.zIndex = "60";
+    modalA.appendChild(scanner);
+
+    const modalB = document.createElement("div");
+    modalB.style.zIndex = "50";
+
+    document.body.append(modalA, modalB); // modalA (containing scanner) first, modalB later
+
+    registerOverlay(modalA);
+    registerOverlay(scanner);
+    registerOverlay(modalB);
+
+    expect(isTopOverlay(modalB)).toBe(true);
+    expect(isTopOverlay(scanner)).toBe(false);
+    expect(isTopOverlay(modalA)).toBe(false);
+
+    unregisterOverlay(modalB);
+    unregisterOverlay(scanner);
+    unregisterOverlay(modalA);
+    modalA.remove();
+    modalB.remove();
+  });
 });

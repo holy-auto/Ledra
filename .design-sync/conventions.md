@@ -63,7 +63,7 @@ When in doubt, reuse a spacing value you can see in one of this kit's own `.prom
 
 Key tokens (see `styles.css` for the full set): `--bg-base`, `--bg-surface-solid`, `--bg-elevated`, `--bg-inset`, `--text-primary`, `--text-secondary`, `--text-ink2`, `--text-muted`, `--accent-blue` (primary accent), `--accent-gold` (reserve for certificates / blockchain-anchor moments only — see `AnchorBadge` — never as a general accent), `--radius-sm|md|lg|xl|full`, `--shadow-sm|md|lg|xl|focus`, `--border-default`, `--border-subtle`.
 
-Font weight: Noto Sans JP UI text stays at 400/500; 600 only on `.text-h2`/`.text-h3`/`.text-micro`-level headings. **Never use weight 700** — it's an intentional house rule (bold reduces density/refinement in this system).
+Font weight: Noto Sans JP UI text stays at 400/500; 600 only on `.text-h2`/`.text-h3`/`.text-micro`-level headings. **Don't use raw `font-bold` (700) on body/heading text** — it's an intentional house rule (bold reduces density/refinement in this system). The one exception, already established in shipped components: small numbered/icon badges (see `FirstUseInlineGuide`, `HelpTooltip`, `Stepper`) use `font-bold` — that's a badge/icon-label treatment, not a text-role override, so it doesn't extend to running text.
 
 ## Font licensing
 

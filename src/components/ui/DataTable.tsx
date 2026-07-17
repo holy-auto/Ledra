@@ -214,6 +214,28 @@ export default function DataTable<T>({
 
       {/* Mobile card view */}
       <div className="md:hidden">
+        {columns.some((c) => c.sortable) && (
+          <div className="flex items-center gap-2 overflow-x-auto border-b border-border-default px-4 py-2">
+            {columns
+              .filter((c) => c.sortable)
+              .map((col) => (
+                <button
+                  key={col.key}
+                  type="button"
+                  onClick={() => handleSort(col.key)}
+                  aria-pressed={sortKey === col.key}
+                  className={`inline-flex shrink-0 items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                    sortKey === col.key
+                      ? "bg-accent-dim text-accent"
+                      : "bg-[var(--bg-surface)] text-secondary hover:bg-surface-hover"
+                  }`}
+                >
+                  {col.header}
+                  {sortKey === col.key && <span>{sortDir === "asc" ? "↑" : "↓"}</span>}
+                </button>
+              ))}
+          </div>
+        )}
         {data.length === 0 ? (
           <div className="px-4 py-12 text-center text-sm text-muted">{emptyMessage}</div>
         ) : (
