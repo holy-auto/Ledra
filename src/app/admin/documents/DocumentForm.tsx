@@ -7,6 +7,7 @@ import { formatJpy } from "@/lib/format";
 import { calcSellingPrice, calcCommissionAmount } from "@/lib/pricing/margin";
 import { DOC_TYPES, DOC_TYPE_LIST, type DocType, type DocumentItem, type DocumentRow } from "@/types/document";
 import QuoteAiDraftPanel from "./QuoteAiDraftPanel";
+import InvoiceOcrButton from "./InvoiceOcrButton";
 import ItemCodeField from "@/components/documents/ItemCodeField";
 
 type Customer = {
@@ -1093,9 +1094,19 @@ export default function DocumentForm({
 
       {/* Line Items */}
       <div className="space-y-2">
-        <div className="flex items-baseline justify-between">
+        <div className="flex items-baseline justify-between gap-2 flex-wrap">
           <div className="text-xs font-semibold text-muted tracking-[0.18em]">明細項目</div>
-          <div className="text-[11px] text-muted">{formIsTaxInclusive ? "単価は税込で入力" : "単価は税抜で入力"}</div>
+          <div className="flex items-center gap-3">
+            {/* 仕入先/外注請求書の写真からOCRで明細を取り込む（下書き・確定は人）。 */}
+            <InvoiceOcrButton
+              disabled={saving}
+              onExtracted={(ocrItems, header) => {
+                setFormItems(recalcSubtotals(ocrItems.length > 0 ? ocrItems : [emptyItem()]));
+                if (header.due_date && !formDueDate) setFormDueDate(header.due_date);
+              }}
+            />
+            <div className="text-[11px] text-muted">{formIsTaxInclusive ? "単価は税込で入力" : "単価は税抜で入力"}</div>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <div className="min-w-[960px] space-y-1">

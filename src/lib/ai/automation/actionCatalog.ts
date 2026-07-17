@@ -52,6 +52,7 @@ export type AutomationActionKey =
   | "parts.auto_reconcile_delivery_note"
   | "photo.auto_tampering_check"
   | "photo.auto_quality_check"
+  | "photo.auto_classify_stage"
   | "insurer_case.auto_fraud_score"
   | "insurer_case.auto_summary"
   | "insurer_case.auto_assign_suggest"
@@ -275,6 +276,15 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     guard: "AI 有効 + Standard プラン以上 (ai_quality_vision) + 施工カテゴリ判定済み",
   },
   {
+    key: "photo.auto_classify_stage",
+    workflow: "certificate",
+    label: "施工写真の施工前/施工後を自動分類",
+    description:
+      "施工写真がアップロードされた時点で、未タグ (stage 未設定) の写真を施工前/施工後に AI が自動分類し、提案として証明書に保存する。stage の確定 (書き換え) や発行の before/after ゲートには関与しない — 人が UI で提案を確認して確定する。注釈のみのため安全。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Standard プラン以上 (ai_quality_vision) + 未タグの写真あり",
+  },
+  {
     key: "insurer_case.auto_fraud_score",
     workflow: "insurer_case",
     label: "保険案件の受信時に不正リスクを自動スコア",
@@ -470,6 +480,7 @@ export const RECOMMENDED_AUTOMATION_ACTION_KEYS: ReadonlySet<string> = new Set<s
   "parts.auto_reconcile_delivery_note",
   "photo.auto_tampering_check",
   "photo.auto_quality_check",
+  "photo.auto_classify_stage",
   "insurer_case.auto_fraud_score",
   "insurer_case.auto_summary",
   "insurer_case.auto_assign_suggest",

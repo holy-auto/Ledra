@@ -8,6 +8,7 @@ import { resolveCertifiedTemplateForTenant } from "@/lib/manufacturers/certified
 import { fuzzyMatchCustomer, type CustomerCandidate } from "@/lib/ai/customerFuzzyMatch";
 import { recordCoatingConsumableInstallations } from "@/lib/parts/coatingIntegration";
 import { issueCaptureNonce } from "@/lib/certificates/captureNonce";
+import { parseDamageMap } from "@/lib/certificates/damageMap";
 
 export type CreateCertResult =
   | { ok: true; public_id: string; status: "draft"; photo_required: boolean; capture_nonce: string | null }
@@ -108,6 +109,9 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
   } catch {
     // ignore parse errors — field is optional
   }
+
+  // Damage map JSON (optional — 傷・損傷位置マップ)。不正・空はマーカー0件として null 化。
+  const damage_map_data = parseDamageMap(formData.get("damage_map_json"));
 
   // Accessory JSON (optional — accessory templates only)
   let accessory_data: Record<string, any> = {};
@@ -388,6 +392,7 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
       ppf_coverage_json: ppf_coverage.length > 0 ? ppf_coverage : [],
       maintenance_json: Object.keys(maintenance_data).length > 0 ? maintenance_data : {},
       body_repair_json: Object.keys(body_repair_data).length > 0 ? body_repair_data : {},
+      damage_map_json: damage_map_data ?? null,
       accessory_json: Object.keys(accessory_data).length > 0 ? accessory_data : {},
       service_type: service_type || null,
       quality_fields_json: quality_fields,

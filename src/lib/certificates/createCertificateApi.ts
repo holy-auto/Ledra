@@ -59,6 +59,7 @@ export const certCreateJsonSchema = z
     ppf_coverage_json: z.array(z.unknown()).optional(),
     maintenance_json: z.record(z.string(), z.unknown()).optional(),
     body_repair_json: z.record(z.string(), z.unknown()).optional(),
+    damage_map_json: z.record(z.string(), z.unknown()).nullable().optional(),
     accessory_json: z.record(z.string(), z.unknown()).optional(),
 
     // パッケージ
@@ -140,6 +141,9 @@ export function jsonToCertFormData(input: CertCreateJsonInput): FormData {
   if (input.body_repair_json) {
     fd.append("body_repair_json", JSON.stringify(input.body_repair_json));
   }
+  if (input.damage_map_json) {
+    fd.append("damage_map_json", JSON.stringify(input.damage_map_json));
+  }
   if (input.accessory_json) {
     fd.append("accessory_json", JSON.stringify(input.accessory_json));
   }
@@ -213,6 +217,7 @@ export function formDataToCertJson(fd: FormData): Record<string, unknown> {
     "ppf_coverage_json",
     "maintenance_json",
     "body_repair_json",
+    "damage_map_json",
     "accessory_json",
     "package_snapshot_json",
     "quality_fields_json",
