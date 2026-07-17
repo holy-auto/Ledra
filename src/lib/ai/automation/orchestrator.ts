@@ -413,6 +413,15 @@ export function shouldAutoQualityCheck(settings: AiAutomationSettings): boolean 
   return resolveAutoAction(settings, "photo.auto_quality_check");
 }
 
+/**
+ * 施工写真アップロード時に before/after 分類を自動実行してよいか。
+ * 結果は提案 (meta.stage_suggestions) の注釈のみで、stage の確定・発行ゲートには
+ * 関与しない (提案のみ・非壁3)。
+ */
+export function shouldAutoClassifyStage(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "photo.auto_classify_stage");
+}
+
 // ─────────────────────────────────────────────
 // 保険案件 (claim) → 不正リスク自動スコア
 // ─────────────────────────────────────────────

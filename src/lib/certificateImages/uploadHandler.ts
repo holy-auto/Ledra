@@ -18,6 +18,7 @@ import { consumeCaptureNonce, type ConsumeNonceResult } from "@/lib/certificates
 import { processUploadedPhoto } from "@/lib/certificateImages/processUploadedPhoto";
 import { maybeAutoTamperingCheckForCertificate } from "@/lib/ai/automation/photoTamperingAuto";
 import { maybeAutoQualityCheckForCertificate } from "@/lib/ai/automation/photoQualityAuto";
+import { maybeAutoClassifyStageForCertificate } from "@/lib/ai/automation/photoStageClassifyAuto";
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
 import { detectMagicByteMime } from "@/lib/media/magicBytes";
 
@@ -208,6 +209,9 @@ export async function handleCertificateImageUpload(req: NextRequest, tenantId: s
     after(async () => {
       await maybeAutoTamperingCheckForCertificate({ tenantId, certificateId: certId });
       await maybeAutoQualityCheckForCertificate({ tenantId, certificateId: certId });
+      // 未タグ写真の before/after 自動分類 (提案を meta.stage_suggestions に保存)。
+      // 別 meta キーだが順次にして最新 meta を読み直す。
+      await maybeAutoClassifyStageForCertificate({ tenantId, certificateId: certId });
     });
     // 画像追加で image_sha256_set が変わるため新しい digest を anchor queue に積む（best-effort）。
     enqueueCertificateAnchor({ tenantId, certificateId: certId }).catch(() => {});
