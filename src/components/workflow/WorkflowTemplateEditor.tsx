@@ -8,6 +8,10 @@ export type WorkflowStep = {
   label: string;
   is_customer_visible: boolean;
   estimated_min: number;
+  /** この工程で撮る写真のガイド（任意）。 */
+  required_photos?: string[] | null;
+  /** この工程で確認する項目（任意）。 */
+  checklist?: string[] | null;
 };
 
 type Props = {
@@ -19,12 +23,34 @@ function generateKey(label: string, index: number): string {
   return `step_${index + 1}_${label.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, "").slice(0, 8)}`;
 }
 
+type GuideField = "photos" | "checks";
+
 export default function WorkflowTemplateEditor({ steps, onChange }: Props) {
   const [newLabel, setNewLabel] = useState("");
+  // 改行区切りの生テキストを工程 key ごとに保持（入力中の空行で候補が消えないように）。
+  // 親には正規化済み配列（trim・空行除去）を渡す。
+  const [rawGuide, setRawGuide] = useState<Record<string, Partial<Record<GuideField, string>>>>({});
 
   const updateStep = (index: number, field: keyof WorkflowStep, value: unknown) => {
     const updated = steps.map((s, i) => (i === index ? { ...s, [field]: value } : s));
     onChange(updated);
+  };
+
+  const guideText = (step: WorkflowStep, field: GuideField): string => {
+    const raw = rawGuide[step.key];
+    if (raw && field in raw) return raw[field] ?? "";
+    const arr = field === "photos" ? step.required_photos : step.checklist;
+    return (arr ?? []).join("\n");
+  };
+
+  const setGuideText = (step: WorkflowStep, field: GuideField, text: string) => {
+    setRawGuide((prev) => ({ ...prev, [step.key]: { ...prev[step.key], [field]: text } }));
+    const items = text
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const stepField = field === "photos" ? "required_photos" : "checklist";
+    onChange(steps.map((s) => (s.key === step.key ? { ...s, [stepField]: items } : s)));
   };
 
   const moveUp = (index: number) => {
@@ -116,6 +142,31 @@ export default function WorkflowTemplateEditor({ steps, onChange }: Props) {
                         className="rounded border-border-default text-accent focus:ring-accent"
                       />
                       <span>📱 顧客に通知</span>
+                    </label>
+                  </div>
+
+                  {/* 現場ガイド（任意）: この工程で撮る写真・確認項目。1行に1項目。
+                      作業者のステッパーに写真ガイド／チェックリストとして表示される。 */}
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <label className="block text-[11px] text-muted">
+                      📸 撮る写真（1行に1つ・任意）
+                      <textarea
+                        value={guideText(step, "photos")}
+                        onChange={(e) => setGuideText(step, "photos", e.target.value)}
+                        rows={2}
+                        placeholder={"交換前\n新旧部品\n品番\n取付後"}
+                        className="mt-1 w-full rounded-lg border border-border-default bg-inset px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-accent"
+                      />
+                    </label>
+                    <label className="block text-[11px] text-muted">
+                      ✓ 確認項目（1行に1つ・任意）
+                      <textarea
+                        value={guideText(step, "checks")}
+                        onChange={(e) => setGuideText(step, "checks", e.target.value)}
+                        rows={2}
+                        placeholder={"バックアップ電源\n電圧測定\n故障コード確認"}
+                        className="mt-1 w-full rounded-lg border border-border-default bg-inset px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-accent"
+                      />
                     </label>
                   </div>
                 </div>
